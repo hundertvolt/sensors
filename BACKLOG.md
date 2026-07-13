@@ -121,6 +121,44 @@ hands-on field experience with the current deployed units:
   locks truly cover the complete bus access with no gaps, and that they can't block each other
   (e.g. deadlock, or one long-held lock starving an unrelated bus user).
 
+### Code structure / style patterns for the refactor (owner-specified, not yet implemented)
+
+Additional style and structure patterns the refactor is expected to apply throughout. The project
+owner noted **much of this is already done in `improved-quality/`** — recorded here as the
+patterns to hold the rest of the refactor to, not as new/unstarted work:
+
+- **Define configs and behavior used at multiple sites in exactly one location** — no
+  hand-copied constants/logic repeated per device or per sensor (this is the same spirit as the
+  existing config-duplication concern in "Deferred / explicitly out-of-scope work" below, now
+  elevated to a general structural principle, not just a config-keys issue).
+- **Handle device / sensor / functional config storage separately** — already visible in
+  `improved-quality/base_classes.py`'s `SensorReaderConfig`, which gives each sensor its own
+  `config_<name>.cfg` file via a per-instance `ConfigManager`, rather than one monolithic
+  device-wide config file (see also the "Config-schema data-loss risk" item above, which this
+  directly supersedes for the refactor).
+- **Reduce code size, improve readability, especially via inheritance** — e.g.
+  `improved-quality/base_classes.py`'s `SensorReader`/`SensorReaderConfig` hierarchy, and
+  `asy_fram_manager.py`'s `_AsyBaseFramChunk` base class with `AsyFramChunk`/
+  `AsyFramTimestampedChunk` subclasses.
+- **Generalized startup / error-recovery behavior** — e.g. `SensorReader._error_check()` in
+  `base_classes.py` centralizes the increment/decrement-error-counter-and-decide-to-die logic that
+  every current `sensortask-*.py` driver hand-rolls separately today.
+- **Trace-log error codes inside FRAM, surviving a reboot** — implemented via `PrintLogHistStore`
+  (`print_log.py`), which persists an error/warning code history + count into a FRAM chunk,
+  restored on `setup()`.
+- **Store errors alongside console prints, not instead of them** — `PrintLog`/`PrintLogHistory`'s
+  `err_s()`/`wrn_s()` both persist the error code *and* still `print()` it; logging isn't meant to
+  replace the existing debug-print visibility.
+- **Handle FRAM more generically and consistently** — `improved-quality/asy_fram_manager.py`'s
+  chunk-class hierarchy (see inheritance point above) plus `LockableBuffer`-based buffer types is
+  the intended generalized model, vs. the current codebase's more ad hoc FRAM chunk handling.
+- **Refactor identical/similar behavior into classes** — same evidence as the inheritance point
+  above; this is a general principle to keep applying, not a one-off.
+- **Refactor long/deep program flows into subfunctions with an early-return scheme** — a general
+  style requirement for the remaining refactor work (e.g. the current codebase's deeply nested
+  `sensortask-*.py` REST handlers and `async_connect.py`'s `wlanConnect()` are examples of what
+  *not* to carry forward as-is).
+
 ## Decided for the refactor
 
 - **`modules/_boot.py`'s `import sensortask.py`** (see open question #1 below) will be addressed
