@@ -39,9 +39,13 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
 
 ## Hard rules
 
-- **Do not edit `improved-quality/`.** It's the WIP refactor target — out of scope. It's useful
-  read-only context for what's already been identified/addressed (it independently has
-  `base_classes.py`, `config_manager.py`, `print_log.py`, `mypy.ini`, `pycheck.sh`).
+- **Don't edit `improved-quality/`'s *source* files (drivers, managers, etc.) — they're the WIP
+  refactor target, out of scope for routine editing.** This does **not** cover its dev-tooling
+  config: `mypy.ini`/`pycheck.sh` were an ad hoc, trial-and-error setup the project owner
+  explicitly asked to have questioned and replaced (confirmed directly, not inferred) — they've
+  been retired in favor of root-level `pyproject.toml` + `scripts/lint.sh`/`scripts/typecheck.sh`
+  (see "Code quality tooling" below). Source files elsewhere in `improved-quality/` remain
+  read-only context until the refactor itself starts.
 - **Do not "fix" `modules/_boot.py`'s `import sensortask.py`** (literal `.py` in the import
   statement) without testing on real hardware first. It works reliably today; MicroPython's
   documented freeze/import behavior says the module should be named `sensortask` with the
@@ -83,6 +87,42 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
 - Prefer flagging genuinely ambiguous/architecturally significant decisions to the project owner
   over guessing — several open questions in BACKLOG.md exist precisely because the code's actual
   intent wasn't obvious from reading it alone.
+
+## Code quality tooling
+
+- **Config lives in root `pyproject.toml`** (ruff/mypy/pytest/uv, dev-tooling only — the shipped
+  code stays frozen-bytecode-only, not restructured into an installable package). Run manually via
+  `scripts/lint.sh` (ruff) and `scripts/typecheck.sh` (mypy); both assume `ruff`/`mypy` are already
+  on `PATH` (e.g. an activated `uv sync`-created venv). **Not wired into CI yet** — see BACKLOG.md.
+- **Scope is `improved-quality/` only, for now.** The pre-refactor deployed codebase (`python/`,
+  `modules/`) has no lint/type config yet; extending scope there is a separate future decision, not
+  assumed by this setup.
+- **`ruff format` is deliberately not used anywhere** — line breaks are hand-chosen throughout this
+  codebase; `line-length = 320` (ruff's own ceiling) plus an `E501` ignore keep this a non-issue even
+  if `format` is ever run by accident. Lint rule selection (`E`/`F`/`W`/`I`/`UP`/`B`) is stricter
+  than ruff's default but well short of enabling everything.
+- **Bare `except:` (E722) is intentionally left enabled**, unlike the old `improved-quality/pycheck.sh`
+  — the project owner wants ruff to flag existing bare excepts as a tracked to-do, not silence them
+  before they're fixed (test-driven-development framing, confirmed directly).
+- **mypy is stricter than default, short of `--strict`** (`disallow_untyped_defs`,
+  `check_untyped_defs`, `warn_return_any`, `warn_unreachable`, `strict_equality`, etc., but not
+  `disallow_any_generics`/`disallow_untyped_calls`/`disallow_subclassing_any`). Does **not** disable
+  the `assignment` error code — the old `improved-quality/mypy.ini` did, but BACKLOG.md records that
+  as never a deliberate choice.
+- **MicroPython stubs**: `micropython-rp2-rpi_pico_w-stubs` (PyPI, board/version-specific, pulls in
+  `micropython-stdlib-stubs`), version-pinned to match `toolchain/versions.toml`'s firmware target.
+  Installed by `scripts/typecheck.sh` into `typings/` (gitignored) — **deliberately not** a
+  `pyproject.toml` `[dependency-groups]` entry, because these stubs must fully replace mypy's
+  typeshed for MicroPython/CPython stdlib-name collisions (`time`, `math`, `select`, `errno`, ...
+  — see `[tool.mypy]`'s `custom_typeshed_dir`), and doing that against the same venv that also
+  holds mypy/ruff/pytest's own dependencies breaks type-checking of those. Keep this isolation if
+  you touch the stub setup — it's load-bearing, not incidental, confirmed by testing the collision
+  directly in-session.
+- **`microdot.py` is excluded from both tools' direct checks** (vendored, not ours to restyle —
+  see the hard rule above), but code that *imports* it is still fully checked; mypy's
+  `follow_imports`/`follow_imports_for_stubs` settings make this work for both regular Python files
+  and the `.pyi` stub files in `typings/` (stub files are otherwise exempt from `follow_imports` by
+  default — a real, tested distinction, not a guess).
 
 ## Pull request workflow
 

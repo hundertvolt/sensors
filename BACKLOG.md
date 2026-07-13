@@ -28,21 +28,30 @@ refactor work itself starts:
   shell command scripts and as a CI pipeline in GitLab, which **shall also attempt a real firmware
   build** (running the equivalent of `build-*.sh`, with the full micropython/pico-sdk/picotool
   toolchain) as a pipeline stage, not just lint/type-check/unit-test.
+  - **Done (manual scripts only, not CI yet)**: root `pyproject.toml` + `scripts/lint.sh` +
+    `scripts/typecheck.sh`, scoped to `improved-quality/` only for now (see CLAUDE.md's "Code
+    quality tooling" section for the full rationale). `improved-quality/mypy.ini` and
+    `improved-quality/pycheck.sh` — an ad hoc, trial-and-error setup — have been retired in favor
+    of this. **Still open**: wiring an equivalent GitLab CI pipeline, extending scope to the
+    pre-refactor codebase (`python/`, `modules/`), and unit tests (blocked on CLAUDE.md's "No unit
+    tests against the current codebase" rule and on the MicroPython Unix-port setup below).
   - **This elevates the build/dev-environment setup item** (see "Deferred / explicitly
     out-of-scope work" below) **from someday-work to a real near-term prerequisite**: CI can't
     build firmware while `build-*.sh`/`update_and_install.txt` still assume a hardcoded
     `/home/nico/rpi_pico/...` layout. Genericizing that setup needs to happen before/alongside
     building this CI stage, not after.
-  - **MicroPython stubs**: install the published PyPI `micropython-stubs` package (or the relevant
-    board/port-specific variant, e.g. an rp2-flavored one) rather than hand-rolling stub files.
-  - **Ruff/mypy config**: stricter than default where it concerns actual code quality/correctness,
-    but **allow any line length and don't introduce line breaks** — ruff's `--format` step should
-    likely be omitted entirely rather than configured with a line-length; this is a deliberate
-    style choice, not an oversight.
-    - **mypy must NOT disable the `assignment` error code.** `improved-quality/mypy.ini` currently
-      has `disable_error_code = assignment`, but this was never a deliberate choice — mypy should
-      check type-incompatible assignments like everything else. Drop this exception when the
-      refactor's mypy config is actually built.
+  - **MicroPython stubs**: **done** — `micropython-rp2-rpi_pico_w-stubs` (PyPI, board/version
+    specific; pulls in `micropython-stdlib-stubs`), installed by `scripts/typecheck.sh` into a
+    gitignored `typings/` directory kept deliberately separate from the main dev venv (see
+    CLAUDE.md for why — it's load-bearing, not incidental). Version pin currently tracks
+    `toolchain/versions.toml`'s 1.28.0 firmware target.
+  - **Ruff/mypy config**: **done** for the scope above — stricter than default where it concerns
+    actual code quality/correctness, but **allow any line length and don't introduce line
+    breaks** — ruff's `--format` step is omitted entirely rather than configured with a
+    line-length; this is a deliberate style choice, not an oversight.
+    - **mypy does NOT disable the `assignment` error code** (done — the old
+      `improved-quality/mypy.ini`'s `disable_error_code = assignment` was never a deliberate
+      choice and has been dropped in the new `pyproject.toml` config).
   - **No hard test-coverage percentage gate for now** — tests must exist and run in CI, but no
     specific minimum coverage threshold is enforced yet.
   - **PEP 604 union syntax** (`int | None`, already used in `improved-quality/base_classes.py`) is
@@ -67,7 +76,7 @@ refactor work itself starts:
       way I2C/SPI get mocked at the hardware boundary.
 - **Centralized config**: all tooling config shall live in `pyproject.toml`, as **dev-tooling
   config only** (ruff/mypy/pytest/uv sections) — the shipped code stays frozen-bytecode-only, not
-  restructured into an installable package.
+  restructured into an installable package. **Done** — root `pyproject.toml`, see above.
 - **Unified CRC-based data-integrity checking**, generalized and kept as a standing feature, not a
   one-off: `improved-quality/crc_checks.py`'s generic `CRC8`/`CRC16`/`CRC32` engine (with a
   `CRC_Pass` no-op for when it's not needed) grew organically — first added for UART data
@@ -267,7 +276,10 @@ refactor work actually begins:
 4. **Tooling and CI** (mypy/ruff config, MicroPython stubs, the `uv`-managed venv + Unix-port
    interpreter setup script, unit tests, GitLab CI including the firmware-build stage) — comes
    last since it's meaningfully easier to write tests and wire up CI against the settled
-   post-refactor structure than against a moving target.
+   post-refactor structure than against a moving target. **Partial exception, done out of order**:
+   manual-only mypy/ruff config + MicroPython stubs (see "Production-level code quality" above)
+   were pulled forward ahead of this sequencing, scoped to `improved-quality/` as it stands today —
+   CI wiring, unit tests, and extending scope still follow this sequencing.
 
 ## Findings from reviewing `improved-quality/` against this spec
 

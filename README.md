@@ -180,6 +180,11 @@ mypy, ruff, and a GitLab CI pipeline (including a real firmware build) that don'
 current codebase at all. See BACKLOG.md's "Final-goal requirements for the refactor" for the full,
 detailed target.
 
+**Code quality checks** (mypy/ruff, scoped to `improved-quality/` for now) can already be run
+manually via `scripts/lint.sh` and `scripts/typecheck.sh`, config in the root `pyproject.toml` —
+see CLAUDE.md's "Code quality tooling" section. Not wired into CI yet; unit tests aren't in scope
+yet either (see CLAUDE.md's "No unit tests against the current codebase" rule).
+
 ## Further reading
 
 - **CLAUDE.md** — AI-session operating constraints and architecture reference.
