@@ -43,8 +43,11 @@ refactor work itself starts:
   - **MicroPython stubs**: **done** — `micropython-rp2-rpi_pico_w-stubs` (PyPI, board/version
     specific; pulls in `micropython-stdlib-stubs`), installed by `scripts/typecheck.sh` into a
     gitignored `typings/` directory kept deliberately separate from the main dev venv (see
-    CLAUDE.md for why — it's load-bearing, not incidental). Version pin currently tracks
-    `toolchain/versions.toml`'s 1.28.0 firmware target.
+    CLAUDE.md for why — it's load-bearing, not incidental). Version is auto-derived from
+    `toolchain/versions.toml`'s `[micropython] ref` (the single source of truth for the firmware
+    target — currently 1.28.0), not a second hand-kept pin; a mismatch (malformed `ref`, or no
+    published stub release yet for that firmware version) fails loudly with an actionable error
+    rather than silently falling back to something stale.
   - **Ruff/mypy config**: **done** for the scope above — stricter than default where it concerns
     actual code quality/correctness, but **allow any line length and don't introduce line
     breaks** — ruff's `--format` step is omitted entirely rather than configured with a

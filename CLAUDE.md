@@ -110,8 +110,15 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
   the `assignment` error code — the old `improved-quality/mypy.ini` did, but BACKLOG.md records that
   as never a deliberate choice.
 - **MicroPython stubs**: `micropython-rp2-rpi_pico_w-stubs` (PyPI, board/version-specific, pulls in
-  `micropython-stdlib-stubs`), version-pinned to match `toolchain/versions.toml`'s firmware target.
-  Installed by `scripts/typecheck.sh` into `typings/` (gitignored) — **deliberately not** a
+  `micropython-stdlib-stubs`). Published by the same project as
+  [`josverl/micropython-stubs`](https://github.com/josverl/micropython-stubs) — PyPI is just its
+  distribution channel, not a separate/alternative stub source. **Version is auto-derived, not a
+  separate hand-kept pin**: `scripts/typecheck.sh` reads `toolchain/versions.toml`'s
+  `[micropython] ref` (the single source of truth for the firmware version target) and installs
+  the matching `<major>.<minor>.<patch>.*` stub release, failing with a clear, actionable error
+  (not a silent fallback) if `ref` isn't a plain `vX.Y.Z` tag or no matching stub release exists
+  upstream yet (stub releases can lag a new MicroPython release). Installed into `typings/`
+  (gitignored) — **deliberately not** a
   `pyproject.toml` `[dependency-groups]` entry, because these stubs must fully replace mypy's
   typeshed for MicroPython/CPython stdlib-name collisions (`time`, `math`, `select`, `errno`, ...
   — see `[tool.mypy]`'s `custom_typeshed_dir`), and doing that against the same venv that also

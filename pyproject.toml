@@ -18,8 +18,9 @@ dev = [
     "pytest",
 ]
 
-# RPI_PICO_W-specific MicroPython stubs (version pin lives in scripts/typecheck.sh, matching
-# toolchain/versions.toml's firmware target) are deliberately NOT a [dependency-groups] entry:
+# RPI_PICO_W-specific MicroPython stubs (version auto-derived by scripts/typecheck.sh from
+# toolchain/versions.toml's [micropython] ref - the single source of truth for the firmware
+# version target, not duplicated here) are deliberately NOT a [dependency-groups] entry:
 # these stub packages are meant to fully replace mypy's typeshed for stdlib-name collisions
 # (time, math, select, errno, ...; see [tool.mypy] below), and doing that against the same venv
 # that also holds mypy/ruff/pytest's own runtime dependencies breaks type-checking of *those*
