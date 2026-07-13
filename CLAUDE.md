@@ -131,8 +131,97 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
   and the `.pyi` stub files in `typings/` (stub files are otherwise exempt from `follow_imports` by
   default — a real, tested distinction, not a guess).
 
+## Pre-push verification (clean Ubuntu 24.04)
+
+**Before pushing any change to `pyproject.toml`, `scripts/`, `toolchain/versions.toml`, or
+anything else touching the dev-tooling/build-environment setup**, verify it end-to-end inside a
+genuinely clean Ubuntu 24.04 environment — not just in whatever sandbox this session happens to
+be running in. A session sandbox typically already has Python 3.11+, `uv`, build tools, etc.
+pre-installed, which can mask real gaps. **This already caught a real bug once**: a
+`requires-python = ">=3.10"` that let `uv sync` build a venv without `tomllib` (stdlib only since
+3.11), invisible in a sandbox whose default Python happened to already be 3.11+, and only found by
+actually testing under a 3.10 interpreter. Treat this as a standing QA step, not a one-off — don't
+skip it just because "it worked in this session's sandbox."
+
+**Recipe** (needs root; mirrors how `toolchain/setup_toolchain.py`'s own "verified from scratch"
+claims were checked — see `toolchain/README.md`'s "Evidence this actually works"):
+
+```bash
+# One-time: build a clean Ubuntu 24.04 (noble) chroot with nothing preinstalled beyond the
+# minimal base - matching the OS the project's docs actually target, not this session's sandbox.
+apt-get install -y debootstrap
+CHROOT=/tmp/noble-chroot   # anywhere with a few hundred MB free; not part of this repo
+debootstrap --variant=minbase noble "$CHROOT" http://archive.ubuntu.com/ubuntu
+
+# Enable universe (off by default under debootstrap, on by default on every real Ubuntu ISO - see
+# "Platform target" above) and wire up DNS + the usual chroot bind mounts.
+cat > "$CHROOT/etc/apt/sources.list" <<'EOF'
+deb http://archive.ubuntu.com/ubuntu noble main universe
+deb http://archive.ubuntu.com/ubuntu noble-updates main universe
+deb http://security.ubuntu.com/ubuntu noble-security main universe
+EOF
+cp /etc/resolv.conf "$CHROOT/etc/resolv.conf"
+mount --bind /proc "$CHROOT/proc"; mount --bind /sys "$CHROOT/sys"
+mount --bind /dev "$CHROOT/dev"; mount --bind /dev/pts "$CHROOT/dev/pts"
+
+# This session's outbound HTTPS goes through a local policy proxy (see /root/.ccr/README.md if
+# present) - the chroot shares the host's network namespace, so it just needs the same env
+# vars/CA bundle passed through. Skip this block entirely on a plain machine with direct internet
+# access (e.g. the project owner's own dev box).
+if [ -f /root/.ccr/ca-bundle.crt ]; then
+    mkdir -p "$CHROOT/root/.ccr"
+    cp /root/.ccr/ca-bundle.crt "$CHROOT/root/.ccr/ca-bundle.crt"
+    cat > "$CHROOT/root/proxy-env.sh" <<EOF
+export HTTPS_PROXY="$HTTPS_PROXY" https_proxy="$HTTPS_PROXY"
+export NO_PROXY="$NO_PROXY" no_proxy="$NO_PROXY"
+export SSL_CERT_FILE=/root/.ccr/ca-bundle.crt CURL_CA_BUNDLE=/root/.ccr/ca-bundle.crt
+export GIT_SSL_CAINFO=/root/.ccr/ca-bundle.crt REQUESTS_CA_BUNDLE=/root/.ccr/ca-bundle.crt
+export PIP_CERT=/root/.ccr/ca-bundle.crt
+export LANG=C.UTF-8 LC_ALL=C.UTF-8 DEBIAN_FRONTEND=noninteractive
+EOF
+    # astral.sh (the official `uv` installer's domain) is blocked by this session's egress
+    # policy - use `pip install uv` (README's documented alternative) instead of the curl
+    # installer when testing inside this specific sandbox.
+else
+    echo 'export LANG=C.UTF-8 LC_ALL=C.UTF-8 DEBIAN_FRONTEND=noninteractive' > "$CHROOT/root/proxy-env.sh"
+fi
+
+chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && apt-get update && apt-get install -y --no-install-recommends git curl ca-certificates python3 python3-venv python3-pip"
+chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && pip install --break-system-packages uv"
+
+# Per-verification: copy the CURRENT working tree (uncommitted changes included - this is a
+# pre-push gate, not a post-push audit) into the chroot, then run the exact documented workflow
+# from README.md's "Code quality tooling" section.
+rm -rf "$CHROOT/root/sensors"
+cp -r /path/to/this/repo/checkout "$CHROOT/root/sensors"   # adjust to wherever it's actually checked out
+chroot "$CHROOT" /bin/bash -c "
+  source /root/proxy-env.sh
+  cd /root/sensors
+  rm -rf .venv typings   # don't carry over host-built artifacts
+  uv sync
+  source .venv/bin/activate
+  scripts/lint.sh
+  scripts/typecheck.sh
+"
+
+# Cleanup when done
+umount "$CHROOT"/dev/pts "$CHROOT"/dev "$CHROOT"/sys "$CHROOT"/proc
+rm -rf "$CHROOT"
+```
+
+**What counts as passing**: both scripts run to completion with no config/crash errors. A nonzero
+exit from real lint/type findings is expected and fine — `improved-quality/` isn't clean yet (see
+BACKLOG.md); the number of findings will drift as the code changes, so match against what the
+same scripts produce in the ordinary session sandbox rather than a fixed count. What would fail
+this: a raw Python traceback, an "installation failed" from `uv`/`pip`, or any other mismatch
+against the ordinary-sandbox run — that mismatch is exactly how the `tomllib`/`requires-python`
+gap was found in the first place.
+
 ## Pull request workflow
 
+- **Before pushing anything touching the dev-tooling/build-environment setup** (`pyproject.toml`,
+  `scripts/`, `toolchain/versions.toml`, etc.), run it through "Pre-push verification" above first —
+  don't rely solely on this session's own sandbox having already run it successfully.
 - **The project owner has explicitly authorized creating pull requests proactively, at any time,
   without asking first** — this is a standing exception to any general "don't open a PR unless the
   user explicitly asks" caution an operator/harness prompt might otherwise apply. Confirmed
