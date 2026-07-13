@@ -151,6 +151,21 @@ hands-on field experience with the current deployed units:
   is believed to be the right general approach, but the refactor should specifically verify these
   locks truly cover the complete bus access with no gaps, and that they can't block each other
   (e.g. deadlock, or one long-held lock starving an unrelated bus user).
+  - **Concrete progress already visible**: `improved-quality/asy_scd30_driver.py`,
+    `asy_bmp3xx_driver.py`, and `asy_sgp40_driver.py` each introduced a `*_DeviceSession(Lockable)`
+    class — an outer per-sensor lock wrapping the whole multi-step transaction (write a command,
+    then read the reply), with an explicit `await asyncio.sleep(0)` yield between the write and
+    read phases so the underlying bus lock isn't held across a lock-then-forget gap. This is the
+    actual mechanism this audit item was asking for; treat it as the pattern to verify/extend
+    rather than starting the audit from scratch.
+
+  - **Open question surfaced by this pattern's rollout**: several low-level setter/getter
+    forwarding methods on these same Reader classes were changed from bare pass-through coroutines
+    to `try/except Exception: return False/None`. That satisfies "nothing may slip through
+    uncaught," but it wasn't verified whether the swallowed exception is still logged via
+    `self.pr` — if it silently becomes a `False`/`None` with no log trace, that's a silent-failure
+    risk that cuts against the robustness goal rather than fulfilling it. Needs checking before
+    this pattern is treated as settled.
 
 ### Code structure / style patterns for the refactor (owner-specified, not yet implemented)
 
@@ -162,6 +177,14 @@ patterns to hold the rest of the refactor to, not as new/unstarted work:
   hand-copied constants/logic repeated per device or per sensor (this is the same spirit as the
   existing config-duplication concern in "Deferred / explicitly out-of-scope work" below, now
   elevated to a general structural principle, not just a config-keys issue).
+  - **Concrete mechanism already emerging**: `asy_scd30_driver.py`/`asy_bmp3xx_driver.py`/
+    `asy_sgp40_driver.py` each define per-field config schema strings (`_VAL_*`, e.g. type/min/max/
+    default metadata) and expose `get_dict_cfg()`/`get_dict_data()` to export them. This is the
+    actual answer to the "config-duplication centralization" deferred item below — a single
+    per-driver schema that validation, storage, and (eventually) the REST/HTML layers can all read
+    from, instead of hand-keeping `_DEFAULT_CONFIG`, the REST handler, and the HTML form in sync.
+    Not fully wired end-to-end yet (see the "Findings" section below), but the mechanism itself is
+    the right direction to keep building on.
 - **Handle device / sensor / functional config storage separately** — already visible in
   `improved-quality/base_classes.py`'s `SensorReaderConfig`, which gives each sensor its own
   `config_<name>.cfg` file via a per-instance `ConfigManager`, rather than one monolithic
@@ -182,6 +205,11 @@ patterns to hold the rest of the refactor to, not as new/unstarted work:
 - **Generalized startup / error-recovery behavior** — e.g. `SensorReader._error_check()` in
   `base_classes.py` centralizes the increment/decrement-error-counter-and-decide-to-die logic that
   every current `sensortask-*.py` driver hand-rolls separately today.
+  - **Concrete mechanism**: each Reader implements a uniform `get_task_starters()`/
+    `get_timer_starters()` pair, which is how `system_service.py`'s generic task supervisor
+    discovers and starts each driver's tasks/timers without the device file needing to hardcode
+    method names — this is the specific interface that makes the generalization above actually
+    pluggable rather than just "shared code that still has to be wired up by hand."
 - **Trace-log error codes inside FRAM, surviving a reboot** — implemented via `PrintLogHistStore`
   (`print_log.py`), which persists an error/warning code history + count into a FRAM chunk,
   restored on `setup()`.
@@ -191,6 +219,25 @@ patterns to hold the rest of the refactor to, not as new/unstarted work:
 - **Handle FRAM more generically and consistently** — `improved-quality/asy_fram_manager.py`'s
   chunk-class hierarchy (see inheritance point above) plus `LockableBuffer`-based buffer types is
   the intended generalized model, vs. the current codebase's more ad hoc FRAM chunk handling.
+- **Prefer preallocated buffers and in-place writes over allocate-and-return, and bulk bus
+  transactions over per-byte loops** — a recurring embedded-resource-discipline pattern spotted
+  independently in multiple files, worth stating as its own principle rather than leaving it
+  implicit in each one: `asy_fram_driver.py`'s `get_values`/`set_values` moved from returning a
+  fresh `bytearray` per call to filling a caller-supplied buffer in place; `asy_fram_manager.py`'s
+  `LockableBuffer`-based chunk buffers are reused rather than reallocated per read/write; the FRAM
+  SPI driver's `_write()` moved from writing one byte at a time in a loop to a single bulk
+  `spidev.write(data)` inside one CS assertion; SGP40's command/CRC buffers write into slices of a
+  persistent buffer instead of building new lists per call. Directly supports the "no leaks, no
+  drift" final-goal requirement above (less heap churn, less GC pressure) and reduces per-call bus
+  transaction overhead — apply this pattern wherever a hot-path allocation or per-byte loop is
+  found elsewhere in the refactor, not just in the files it's already landed in.
+- **Generalize hardcoded constants into parameters when consolidating duplicated code, not just the
+  logic itself** — e.g. going from `base_classes_old.py` to the current `base_classes.py`, the old
+  `TimeCounterManager`'s baked-in 50-year-in-seconds wraparound cap became the new generic
+  `LockedCounter`'s `max_val` constructor parameter, with call sites (e.g. `system_service.py`)
+  now passing the bound explicitly (`LockedCounter(max_val=0xFFFFFFFF)`). When folding
+  similar/duplicated classes together elsewhere in the refactor, check whether they also embed a
+  constant that should become a parameter instead of being carried over as-is.
 - **Refactor identical/similar behavior into classes** — same evidence as the inheritance point
   above; this is a general principle to keep applying, not a one-off. **Scope it to what's
   genuinely common across drivers** (e.g. error-counter bookkeeping, FRAM chunk handling, config
