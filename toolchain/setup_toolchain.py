@@ -71,8 +71,18 @@ def log(msg: str) -> None:
 # different gcc-arm-none-eabi build, an old picotool) can never be picked up instead of
 # the one this script itself just installed. Nothing here is trusted from the caller's
 # shell/profile to silently change what gets built, with what flags, or using what tools.
-BUILD_ENV_ALLOWLIST = ("HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "TERM", "TMPDIR")
+BUILD_ENV_ALLOWLIST = ("HOME", "USER", "LOGNAME", "TERM", "TMPDIR")
 BUILD_ENV_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+# LANG/LC_ALL are deliberately *not* in the allowlist above and forced to C.UTF-8 instead of
+# passed through: build_firmware()/build_mpy_cross() detect failures by grepping build output
+# for the literal English "error:"/"warning:" (gcc/make don't offer a machine-readable
+# success/failure signal beyond exit code + freeform text). GCC and binutils *can* emit
+# translated diagnostics via gettext catalogs on a system where the caller's locale has one
+# installed — inheriting the caller's LANG/LC_ALL would risk a real warning silently not
+# matching those English-only patterns. C.UTF-8 keeps UTF-8 text handling (unlike plain "C")
+# while guaranteeing English tool output every time, regardless of the caller's own locale.
+BUILD_ENV_LOCALE = "C.UTF-8"
 
 # On top of the base allowlist, git/apt calls (and the rp2 "submodules" Makefile target,
 # which does both a git fetch *and* an internal cmake configure pass) also need whatever
@@ -88,6 +98,8 @@ NETWORK_ENV_EXTRA = (
 def build_env() -> dict[str, str]:
     env = {k: v for k, v in os.environ.items() if k in BUILD_ENV_ALLOWLIST}
     env["PATH"] = BUILD_ENV_PATH
+    env["LANG"] = BUILD_ENV_LOCALE
+    env["LC_ALL"] = BUILD_ENV_LOCALE
     return env
 
 

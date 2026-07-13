@@ -523,6 +523,17 @@ from reading the code alone:
     that only `git`/`apt-get` needed real env, but that target's own internal `cmake` configure
     pass picked up the fake `cmake` and failed, which is exactly why `network_env()` exists as a
     distinct, explicit combination rather than a binary ambient/clean split.
+  - **A real installer run on the project owner's own machine surfaced a second locale-related
+    gap in this isolation, missed by the adversarial test above**: `LANG`/`LC_ALL` were still
+    being allowlisted through from the caller's shell, visible as German-localized `git`/`apt`
+    output in that run's log. Since `build_firmware()`/`build_mpy_cross()` detect failure by
+    grepping build output for the literal English `error:`/`warning:` (the only signal `make`/
+    `gcc` give beyond exit code), and GCC/binutils diagnostics can be translated via gettext
+    catalogs on a system where the caller's locale has one installed, this could have silently
+    defeated that detection on some machines. Fixed by forcing `LANG=C.UTF-8`/`LC_ALL=C.UTF-8` in
+    `build_env()` instead of passing them through; re-verified by re-running `setup` with
+    `LANG=de_DE.UTF-8` set in the calling shell and confirming output stayed in English and all
+    three checks still passed.
   - **`update_and_install.txt` re-verified against current (2026) upstream docs — structurally
     still accurate, but missing one real, currently-relevant gotcha.** The three-separate-clones
     approach (`pico-sdk`, `picotool`, `micropython`), the `lib/mbedtls` submodule-init step, the

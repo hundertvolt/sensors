@@ -95,12 +95,14 @@ caller's shell wholesale. Two flavors, both defined right at the top of `setup_t
 - **`build_env()`** — for the actual compile steps (picotool's build, `mpy-cross`, the firmware
   build, running the cross-compiled sample): a fixed, deterministic `PATH`
   (`/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`) plus a small allowlist
-  (`HOME`, `USER`, `LOGNAME`, `LANG`, `LC_ALL`, `TERM`, `TMPDIR`). Everything else — `CC`/`CXX`/
-  `CFLAGS`/`CXXFLAGS`/`LDFLAGS`/`MAKEFLAGS`, any `CMAKE_*` variable, `PICO_SDK_PATH`/`PICO_BOARD`,
+  (`HOME`, `USER`, `LOGNAME`, `TERM`, `TMPDIR`). Everything else — `CC`/`CXX`/`CFLAGS`/
+  `CXXFLAGS`/`LDFLAGS`/`MAKEFLAGS`, any `CMAKE_*` variable, `PICO_SDK_PATH`/`PICO_BOARD`,
   `PYTHONPATH`, a leftover `http_proxy` meant for some unrelated tool — is dropped. The fixed
   `PATH` also means a shadowing binary earlier in the caller's `PATH` (a personal `~/bin/cmake`,
   a different `gcc-arm-none-eabi` build, an old `picotool`) can never be picked up instead of
-  the toolchain this script itself just built/installed.
+  the toolchain this script itself just built/installed. `LANG`/`LC_ALL` are also *not* passed
+  through — they're forced to `C.UTF-8` instead (see "Verified adversarially" below for why
+  this matters more than it looks).
 - **`network_env()`** — the same base, plus whatever proxy/CA configuration is actually present
   (`HTTPS_PROXY`/`https_proxy`/`HTTP_PROXY`/`http_proxy`/`NO_PROXY`/`no_proxy`/`ALL_PROXY`/
   `all_proxy`/`SSL_CERT_FILE`/`GIT_SSL_CAINFO`/`CURL_CA_BUNDLE`/`REQUESTS_CA_BUNDLE`), explicitly
@@ -162,6 +164,18 @@ Claims above that are checkable were checked, not just written down:
   pass picked up the fake `cmake` and failed outright — the concrete bug that motivated the split
   in the first place, not a hypothetical one. After the fix, both `setup` and `test` completed
   successfully with zero trace of any of the injected poison in the build logs.
+- **A real run on someone else's machine surfaced a second, subtler gap**: a full log from an
+  actual Ubuntu 24.04 dev machine (German locale) showed `git`/`apt` output in German
+  (`Klone nach`, `Submodul-Pfad ... ausgecheckt`) — meaning `LANG`/`LC_ALL` were still being
+  passed through from the caller's shell at the time. That's a real problem, not just cosmetic:
+  `build_firmware()`/`build_mpy_cross()` detect failure by grepping build output for the literal
+  English `error:`/`warning:` (there's no other machine-readable signal from `make`/`gcc`), and
+  GCC/binutils diagnostics *can* be translated via gettext catalogs on a system where the
+  caller's locale has one installed — silently defeating that detection. Fixed by forcing
+  `LANG=C.UTF-8`/`LC_ALL=C.UTF-8` in `build_env()` instead of allowlisting them through.
+  Re-verified by re-running the full `setup` flow with `LANG=de_DE.UTF-8` set in the calling
+  shell (reproducing the exact locale from that log): `git` output was confirmed back to English
+  (`Cloning into ...` instead of `Klone nach ...`), and all three checks still passed.
 
 ## Why not a full venv
 
