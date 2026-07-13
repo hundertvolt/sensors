@@ -1,106 +1,96 @@
 # Build environment installer
 
-Single-command setup/update for the MicroPython RP2040/Pico W firmware build toolchain:
-MicroPython itself, a matching `pico-sdk` (for building `picotool`), a version-matched
-`picotool`, and the ARM cross-compiler.
+One command sets up (or updates) everything needed to build MicroPython firmware for the
+Raspberry Pi Pico W: MicroPython itself, a matching `pico-sdk`, a version-matched `picotool`,
+and the ARM cross-compiler.
 
-## Usage
+## Why this isn't just "apt install the toolchain"
 
-There are two subcommands, `setup` and `test`. `setup` is the default if you omit it (so
-existing invocations without a subcommand keep working):
+Two problems make a naive install unreliable, and this script exists specifically to solve
+both:
+
+1. **The four pieces have to agree with each other exactly, or the build silently breaks.**
+   `picotool` has enforced a matching major.minor version against the `pico-sdk` it's built with
+   since pico-sdk 2.0.0 (a mismatch fails outright with "Incompatible picotool installation
+   found"), and the `pico-sdk` version has to be whatever MicroPython's own build actually
+   compiles against — not just "some recent pico-sdk". Getting this right by hand means cross-
+   referencing three separate repos' tags/submodule pins every time you change versions. See
+   "How the versions fit together" below for how the script avoids this by construction instead
+   of by careful bookkeeping.
+2. **Every dev machine has its own installed tools and environment variables, and any of them
+   could silently change what gets built.** A leftover `CFLAGS` from an unrelated project, a
+   personal `~/bin/cmake` earlier in `PATH`, a different `picotool` already installed — none of
+   these should be able to change the output of a build that's supposed to be reproducible. See
+   "Environment isolation" below.
+
+## Quick start
 
 ```sh
-uv run toolchain/setup_toolchain.py                              # = setup: install/update per versions.toml
+uv run toolchain/setup_toolchain.py                              # install/update per versions.toml
 uv run toolchain/setup_toolchain.py --latest                      # pin + install newest stable MicroPython
 uv run toolchain/setup_toolchain.py --micropython-ref v1.26.1     # build a specific ref instead
 
 uv run toolchain/setup_toolchain.py test                          # re-verify an existing install, offline
 ```
 
-No `pip install`/venv setup needed by hand — `uv run` provisions an ephemeral, cached
-interpreter for the script itself (see "Why not a full venv" below). Re-running `setup`
-against an existing install is also how updates work: it fetches, checks out whatever ref
-is now pinned, and rebuilds only what changed.
+No `pip install`/venv setup needed by hand for the script itself — `uv run` provisions an
+ephemeral, cached interpreter (see "Why not a full venv" below). There are two subcommands,
+`setup` and `test`; `setup` is the default if you omit it, so all of the invocations above
+except the last one are really `setup` in disguise.
 
-`test` is deliberately separate from `setup`: it never touches apt or git remotes, it just
-rebuilds the standard firmware image and `mpy-cross` from whatever is already checked out at
-`--toolchain-dir` and re-runs the same three checks. That makes it fast (~30s vs. minutes for a
-full `setup`), fully offline/reproducible, and the natural shape for a CI step later: a `setup`
-run (or a restored cache of its `--toolchain-dir`) provisions the toolchain once, and `test` is
-the repeatable gate that checks it still builds cleanly — see "Not yet covered" below. Run it
-against a `--toolchain-dir` with no toolchain installed yet and it fails immediately with a clear
-message telling you to run `setup` first, rather than a confusing build error.
+**Prerequisites:**
 
-Requires `sudo` (for `apt-get install` and `picotool`'s `make install`), outbound network access
-to GitHub and the distro package mirrors, and `uv` itself already installed (`pip install uv`, or
-the official `curl -LsSf https://astral.sh/uv/install.sh | sh` installer).
+- `sudo` access (used for `apt-get install` and `picotool`'s `make install`).
+- Outbound network access to GitHub and your distro's package mirrors.
+- [`uv`](https://docs.astral.sh/uv/) itself already installed (`pip install uv`, or the official
+  `curl -LsSf https://astral.sh/uv/install.sh | sh` installer).
+- Ubuntu's `universe` apt component enabled — the default on every official Ubuntu image, so
+  this only matters on a deliberately minimal base (e.g. a bare `debootstrap` rootfs, which
+  enables only `main` unless told otherwise); `gcc-arm-none-eabi` and its newlib packages live
+  in `universe`.
 
-The `apt-get install` step needs Ubuntu's `universe` component enabled — the default on every
-official Ubuntu image, so this only matters if you're starting from a deliberately minimal base
-(e.g. a bare `debootstrap`-built rootfs, which enables only `main` unless told otherwise);
-`gcc-arm-none-eabi`, `libnewlib-arm-none-eabi`, and `libstdc++-arm-none-eabi-newlib` all live in
-`universe`.
+## How it works
 
-## What gets pinned, and how
+The whole design follows from the two problems above. Walking through what `setup` actually
+does, in order:
 
-Only the MicroPython ref is pinned by hand, in `versions.toml`. Everything else is derived
-automatically each run:
+1. **Check out MicroPython at the pinned ref.** `versions.toml` records exactly one hand-picked
+   version — the MicroPython tag — because everything downstream can be *derived* from it rather
+   than tracked separately (see step 2). This is also the only version a human ever needs to
+   decide on; bumping it (by hand, or via `--latest`) is the entire "what do I upgrade to" question.
+2. **Derive the matching `pico-sdk` version, instead of pinning it separately.** MicroPython's own
+   git repo already records which `pico-sdk` commit it builds against, as an ordinary git
+   submodule pin at `lib/pico-sdk`. The script reads that pin directly
+   (`derive_pico_sdk_commit()`) rather than maintaining a second, independent version number that
+   could drift out of sync with the first one.
+3. **Derive the matching `picotool` version the same way.** Since `picotool` only requires a
+   major.minor match against `pico-sdk` (not an exact commit), the script resolves the derived
+   pico-sdk commit to its nearest tag, takes the major.minor, and picks the newest `picotool` tag
+   sharing it (`derive_picotool_ref()`). Two derivations, zero independently-tracked version
+   numbers beyond the one in step 1.
+4. **Install the ARM cross-compiler from the distro's `gcc-arm-none-eabi` package.** Unlike the
+   other three, this one genuinely doesn't need a hand-tracked pin — it's a known-working,
+   reproducibly-installable toolchain for pico-sdk 2.x straight from `apt`.
+5. **Build everything inside an explicitly constructed, isolated environment**, not whatever the
+   caller's shell happens to have set — see "Environment isolation" below. This is what makes
+   the versions derived in steps 1–4 the actual versions used, instead of being second-guessed
+   by a stray environment variable or a shadowing binary.
+6. **Verify the result before declaring success**, every single run: build a standard firmware
+   image, build `mpy-cross`, and cross-compile a sample file with it (see "Verification" below).
+   A `setup` that finishes without running these checks would just be an assertion that the
+   pieces are probably fine; running them is what makes it a proof.
 
-- **pico-sdk**: read directly from MicroPython's own `lib/pico-sdk` git submodule pin at the
-  chosen ref — this is exactly the pico-sdk version the firmware actually compiles against,
-  so it can never drift out of sync with the MicroPython ref.
-- **picotool**: picotool enforces a matching major.minor version against the pico-sdk it's
-  built with (a hard requirement since pico-sdk 2.0.0 — a mismatch fails with "Incompatible
-  picotool installation found"). The script resolves the derived pico-sdk commit to its
-  nearest tag, takes the major.minor, and picks the newest picotool tag sharing it.
-- **ARM cross-compiler**: installed from the distro's `gcc-arm-none-eabi` package (currently
-  13.2.rel1 on Ubuntu noble) rather than a separately-pinned version — this is the "fitting"
-  version in the sense of being a known-working, reproducibly-installable toolchain for
-  pico-sdk 2.x, not a hand-tracked pin like the other three.
-
-To move to a new MicroPython release: edit `versions.toml`'s `ref` (or pass `--latest`) and
-re-run. Everything downstream re-derives and rebuilds as needed.
-
-## Directory layout
-
-```
-<toolchain-dir>/          default: $PICO_TOOLCHAIN_DIR or ~/pico-toolchain
-  micropython/             full clone, checked out at the pinned ref
-  pico-sdk/                full clone, checked out at the ref MicroPython pins
-  picotool/                full clone, checked out at the derived matching tag; built + `sudo make install`ed
-```
-
-Full (non-shallow) clones are used deliberately, not just for the initial install — shallow
-clones make the *update* path (fetch + checkout an arbitrary new ref) unreliable, and update
-is a first-class requirement here, not an afterthought.
-
-## Verification
-
-Every run re-verifies the environment end-to-end before reporting success:
-
-1. A standard, unchanged firmware image builds for the target board (default `RPI_PICO_W`)
-   with no compiler errors or warnings.
-2. `mpy-cross` (the cross-compiler) builds cleanly.
-3. `mpy-cross` successfully cross-compiles a throwaway sample `.py` file.
-
-Any failure aborts with a non-zero exit and the build log leading up to it.
-
-**Verified end-to-end on a genuinely clean Ubuntu 24.04 system**: a `debootstrap`-built `noble`
-chroot with nothing preinstalled beyond the minimal base (no build tools, no `git`/`curl`/`sudo`,
-no `uv`, no apt cache beyond `main`) — the script installed every system dependency itself
-(after enabling `universe`, see "Usage" above) and passed all three checks in ~3 minutes, for
-both the latest stable MicroPython release and the currently-deployed `v1.26.1` pin. The
-in-place update path (existing `v1.26.1` install → re-run targeting the latest release) was also
-verified: existing clones are fetched and re-checked-out rather than re-cloned, the derived
-pico-sdk/picotool versions bump automatically, and only the affected pieces rebuild. `test` was
-verified separately against a `setup`-provisioned install: it completed in ~30s (vs. minutes for
-`setup`), touched no network or apt state, and passed all three checks.
+`test` is `setup` with steps 1–4 skipped: it assumes an install already exists at
+`--toolchain-dir` and just re-runs steps 5–6 against whatever is already checked out there. That
+split exists because steps 1–4 need network/apt access and can change what's installed, while
+steps 5–6 don't need either and are what you actually want to re-run repeatedly (locally, or
+eventually in CI — see "CI perspective" below) to confirm the toolchain still builds cleanly.
 
 ## Environment isolation
 
 Every subprocess this script runs — `git`, `apt-get`, `cmake`, `make`, `picotool`, the built
 `mpy-cross` binary — gets an explicit, constructed environment instead of inheriting the
-caller's shell wholesale. Two flavors:
+caller's shell wholesale. Two flavors, both defined right at the top of `setup_toolchain.py`:
 
 - **`build_env()`** — for the actual compile steps (picotool's build, `mpy-cross`, the firmware
   build, running the cross-compiled sample): a fixed, deterministic `PATH`
@@ -117,23 +107,61 @@ caller's shell wholesale. Two flavors:
   named rather than inherited wholesale. Used for `git`/`apt-get` calls, and for the rp2 port's
   `make submodules` target specifically because that one Makefile target both fetches submodules
   over git *and* runs a preliminary `cmake` configure pass — it needs the deterministic `PATH`
-  and real network access at the same time.
+  and real network access at the same time (the concrete bug this exact split was built to fix —
+  see "Verified adversarially" below).
 
 `picotool`'s own install location is also pinned explicitly
 (`-DCMAKE_INSTALL_PREFIX=/usr/local`, matching where it's later invoked from by absolute path)
 rather than left to whatever a stray `CMAKE_INSTALL_PREFIX` or local `cmake` cache would
 otherwise resolve to.
 
-**Verified adversarially, not just asserted**: ran both `setup` and `test` with a deliberately
-hostile ambient environment — `CC`/`CXX` pointed at `/bin/false`, garbage `CFLAGS`/`CXXFLAGS`/
-`LDFLAGS`/`MAKEFLAGS`, a bogus `PICO_SDK_PATH`/`PICO_BOARD`/`PYTHONPATH`/`CMAKE_INSTALL_PREFIX`/
-`CMAKE_TOOLCHAIN_FILE`, and fake `cmake`/`arm-none-eabi-gcc`/`picotool` shell scripts (each just
-printing a marker and exiting 1) placed earlier in `PATH` than the real toolchain. Before this
-isolation existed, `make submodules`'s internal `cmake` configure pass picked up the fake `cmake`
-and failed outright — the concrete bug that motivated splitting `network_env()` out from
-`build_env()` rather than just leaving git/apt calls fully ambient. After the fix, both `setup`
-and `test` completed successfully with zero trace of any of the injected poison in the build
-logs.
+## Directory layout
+
+```
+<toolchain-dir>/          default: $PICO_TOOLCHAIN_DIR or ~/pico-toolchain
+  micropython/             full clone, checked out at the pinned ref
+  pico-sdk/                full clone, checked out at the ref MicroPython pins
+  picotool/                full clone, checked out at the derived matching tag; built + `sudo make install`ed
+```
+
+Full (non-shallow) clones are used deliberately, not just for the initial install — shallow
+clones make the *update* path (fetch + checkout an arbitrary new ref) unreliable, and update
+is a first-class requirement here, not an afterthought.
+
+## Verification
+
+Every `setup` or `test` run re-verifies the environment end-to-end before reporting success:
+
+1. A standard, unchanged firmware image builds for the target board (default `RPI_PICO_W`)
+   with no compiler errors or warnings.
+2. `mpy-cross` (the cross-compiler) builds cleanly.
+3. `mpy-cross` successfully cross-compiles a throwaway sample `.py` file.
+
+Any failure aborts with a non-zero exit and the build log leading up to it.
+
+## Evidence this actually works
+
+Claims above that are checkable were checked, not just written down:
+
+- **A genuinely clean Ubuntu 24.04 system, from scratch**: a `debootstrap`-built `noble` chroot
+  with nothing preinstalled beyond the minimal base (no build tools, no `git`/`curl`/`sudo`, no
+  `uv`, no apt cache beyond `main`) — the script installed every system dependency itself (after
+  enabling `universe`, see "Quick start" above) and passed all three checks in ~3 minutes, for
+  both the latest stable MicroPython release and the currently-deployed `v1.26.1` pin.
+- **The in-place update path**: existing `v1.26.1` install → re-run targeting the latest
+  release. Existing clones are fetched and re-checked-out rather than re-cloned, the derived
+  pico-sdk/picotool versions bump automatically, and only the affected pieces rebuild.
+- **`test` in isolation**: run against a `setup`-provisioned install, it completed in ~30s
+  (vs. minutes for `setup`), touched no network or apt state, and passed all three checks.
+- **Environment isolation, adversarially**: ran both `setup` and `test` with a deliberately
+  hostile ambient environment — `CC`/`CXX` pointed at `/bin/false`, garbage `CFLAGS`/`CXXFLAGS`/
+  `LDFLAGS`/`MAKEFLAGS`, a bogus `PICO_SDK_PATH`/`PICO_BOARD`/`PYTHONPATH`/`CMAKE_INSTALL_PREFIX`/
+  `CMAKE_TOOLCHAIN_FILE`, and fake `cmake`/`arm-none-eabi-gcc`/`picotool` shell scripts (each just
+  printing a marker and exiting 1) placed earlier in `PATH` than the real toolchain. Before the
+  `network_env()`/`build_env()` split existed, `make submodules`'s internal `cmake` configure
+  pass picked up the fake `cmake` and failed outright — the concrete bug that motivated the split
+  in the first place, not a hypothetical one. After the fix, both `setup` and `test` completed
+  successfully with zero trace of any of the injected poison in the build logs.
 
 ## Why not a full venv
 

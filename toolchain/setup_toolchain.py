@@ -12,10 +12,20 @@ Usage (from anywhere, via uv — no venv/pip setup needed):
     uv run toolchain/setup_toolchain.py
     uv run toolchain/setup_toolchain.py --latest          # bump to newest stable MicroPython
     uv run toolchain/setup_toolchain.py --micropython-ref v1.26.1
+    uv run toolchain/setup_toolchain.py test              # re-verify an existing install, offline
 
 Re-running this same command against an existing toolchain directory is how updates work:
 it fetches, checks out whatever ref is now pinned, re-derives the matching pico-sdk/picotool
 versions, and rebuilds only what's needed.
+
+Two design decisions shape most of the code below, both explained at length in
+toolchain/README.md's "How it works":
+  - Only the MicroPython ref is a hand-picked version (see versions.toml). The pico-sdk and
+    picotool versions are *derived* from it (derive_pico_sdk_commit / derive_picotool_ref)
+    instead of being tracked as separate pins that could quietly drift out of sync.
+  - Every build subprocess runs in an explicitly constructed environment (build_env /
+    network_env), never the caller's raw shell — so a leftover CFLAGS, a shadowing ~/bin/cmake,
+    or some other locally-installed thing can't silently change what gets built.
 
 See toolchain/README.md for the full picture (what this does and does not cover).
 """
@@ -128,10 +138,17 @@ def ensure_apt_packages(packages: list[str], skip: bool) -> None:
 
 
 def is_sha(ref: str) -> bool:
+    """True for a raw commit hash (e.g. a pico-sdk pin read out of a git tree) as opposed to
+    a tag/branch name (e.g. "v1.28.0"). The two need different checkout handling below: tags
+    are always fetched by `git fetch --tags`, but an arbitrary commit might not be reachable
+    that way and needs fetching directly by its hash instead."""
     return bool(re.fullmatch(r"[0-9a-f]{7,40}", ref))
 
 
 def clone_full(url: str, dest: Path) -> None:
+    # Deliberately a full clone, not `--depth 1`: a shallow clone only has one ref's history,
+    # which breaks the *update* path (fetch + checkout some other arbitrary ref later) — and
+    # updating in place, not just installing once, is a first-class requirement here.
     dest.parent.mkdir(parents=True, exist_ok=True)
     run(["git", "clone", "--quiet", url, str(dest)], env=network_env())
 
@@ -144,6 +161,8 @@ def checkout_ref(repo: Path, ref: str) -> None:
             run(["git", "checkout", "--quiet", ref], cwd=repo, env=env)
             return
         except SetupError:
+            # The commit wasn't already present locally (e.g. a pico-sdk pin from a
+            # MicroPython ref we haven't built before) — fetch it directly by hash.
             pass
         run(["git", "fetch", "--quiet", "origin", ref], cwd=repo, env=env)
         run(["git", "checkout", "--quiet", "FETCH_HEAD"], cwd=repo, env=env)
@@ -152,6 +171,8 @@ def checkout_ref(repo: Path, ref: str) -> None:
 
 
 def ensure_repo_at_ref(url: str, dest: Path, ref: str) -> None:
+    """Clone-or-update: the same call handles both "doesn't exist yet" (setup) and "already
+    exists, may be pinned to something else" (update) — there's no separate update codepath."""
     if not dest.exists():
         log(f"Cloning {url} -> {dest}")
         clone_full(url, dest)
@@ -161,6 +182,10 @@ def ensure_repo_at_ref(url: str, dest: Path, ref: str) -> None:
 
 
 def derive_pico_sdk_commit(micropython_dir: Path, mpy_ref: str) -> str:
+    """The pico-sdk version to use is never chosen independently — it's read straight out of
+    MicroPython's own git submodule pin at lib/pico-sdk, which is exactly the pico-sdk commit
+    the firmware actually compiles against. This is the mechanism that makes "only pin
+    MicroPython" (see versions.toml) possible instead of tracking two version numbers by hand."""
     out = run(["git", "ls-tree", mpy_ref, "lib/pico-sdk"], cwd=micropython_dir, env=network_env())
     # format: "160000 commit <sha>\tlib/pico-sdk"
     fields = out.split()
@@ -170,6 +195,11 @@ def derive_pico_sdk_commit(micropython_dir: Path, mpy_ref: str) -> str:
 
 
 def derive_picotool_ref(pico_sdk_dir: Path, pico_sdk_commit: str) -> str:
+    """picotool only needs to match pico-sdk's major.minor (not its exact commit) — but that
+    match is enforced at build time (a mismatch fails with "Incompatible picotool installation
+    found" since pico-sdk 2.0.0), so getting it wrong isn't a style nitpick, it's a build
+    failure. Resolve the derived pico-sdk commit to its nearest tag, then pick the newest
+    picotool tag sharing that major.minor."""
     described = run(["git", "describe", "--tags", pico_sdk_commit], cwd=pico_sdk_dir, env=network_env()).strip()
     match = re.match(r"^(\d+)\.(\d+)\.", described)
     if not match:
@@ -273,6 +303,10 @@ def cross_compile_sample(mpy_cross_binary: Path) -> None:
 
 
 def latest_stable_micropython_ref() -> str:
+    """Backs --latest: the only version this whole script tracks by hand is the MicroPython
+    ref (versions.toml), so "upgrade everything" reduces to "find the newest MicroPython tag,
+    write it back to versions.toml, and let derive_pico_sdk_commit/derive_picotool_ref do the
+    rest on the next run"."""
     out = run(["git", "ls-remote", "--tags", MICROPYTHON_URL], env=network_env())
     candidates = []
     for line in out.splitlines():
@@ -295,6 +329,11 @@ def print_verification_summary(board: str, uf2: Path, mpy_cross_binary: Path) ->
 
 
 def run_setup(args: argparse.Namespace, versions_path: Path, versions: dict) -> int:
+    """Install or update. The steps below are exactly "How it works" in toolchain/README.md:
+    pin MicroPython -> derive pico-sdk -> derive picotool -> install the ARM toolchain -> build
+    everything in an isolated environment -> verify. ensure_repo_at_ref() doubles as the update
+    mechanism (clone if missing, fetch+checkout if not), so there's no separate "update" branch
+    of this function — re-running it against an existing --toolchain-dir *is* the update."""
     mpy_ref = args.micropython_ref
     if args.latest:
         mpy_ref = latest_stable_micropython_ref()
@@ -341,6 +380,8 @@ def run_setup(args: argparse.Namespace, versions_path: Path, versions: dict) -> 
 
 
 def run_test(args: argparse.Namespace, versions: dict) -> int:
+    """Just steps 5-6 of run_setup (build + verify), against whatever is already checked out —
+    see the module docstring and toolchain/README.md's "How it works" for why that split exists."""
     board = versions["toolchain"]["board"]
     toolchain_dir = args.toolchain_dir.expanduser().resolve()
     micropython_dir = toolchain_dir / "micropython"
