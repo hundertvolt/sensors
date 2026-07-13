@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sensor Configuration</title>
+    <link rel="stylesheet" type="text/css" href="style.css">
+    <script src="functions.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <div class="group">
+            <div class="card">
+                <h2>SCD30 - CO2, Temperature, Humidity</h2>
+                <div class="card sub">
+                    <h2>Measurement Interval [s]</h2>
+                    <input type="text" id="input_sample_interv_SCD"/>
+                    <p class="p_dyn">Current value: <span id="current_sample_interv_SCD">Loading...</span> s</p>
+                    <p>Valid values: 2 to 1800 s</p>
+                </div>
+                <div class="card sub">
+                    <h2>Temperature Offset [K]</h2>
+                    <input type="text" id="input_temp_offset_SCD"/>
+                    <p class="p_dyn">Current value: <span id="current_temp_offset_SCD">Loading...</span> K</p>
+                    <p>Valid values: 0.0 to 655.35 K</p>
+                </div>
+                <div class="card sub">
+                    <h2>Ambient Pressure [hPa]<br>Start Measurement</h2>
+                    <input type="text" id="input_amb_press_SCD"/>
+                    <p class="p_dyn">Current value: <span id="current_amb_press_SCD">Loading...</span> hPa</p>
+                    <p>Valid values: 700 to 1400 hPa<br>0 = Compensation off / use Altitude</p>
+                    <p><i><b>Start</b> continuous measurement</i></p>
+                </div>
+                <div class="card sub">
+                    <h2>Altitude [m] above sea level</h2>
+                    <input type="text" id="input_altitude_SCD"/>
+                    <p class="p_dyn">Current value: <span id="current_altitude_SCD">Loading...</span> m</p>
+                    <p>Valid values: 0 to 65535 m</p>
+                    <p><i>Only used if <b>Ambient Pressure is set to 0</b>.</i></p>
+                    <p><i><b>Turn off</b> continuous measurement for this setting.</i></p>
+                </div>
+                <div class="card sub">
+                    <h2>Stop Measurement</h2>
+                    <div class="input-button left">
+                        <button id="button_stop_meas_scd">Select</button>
+                    </div>
+                    <p class="p_dyn">Selected command: <span id="input_stop_meas_SCD"></span></p>
+                    <p><i>Only <b>"Off"</b> will have an effect.</i></p>
+                    <p><i>Start measurement with <b>"Ambient Pressure"</b>.</i></p>
+                </div>
+                <div class="card sub">
+                    <h2>Forced Calibration Reference [ppm]</h2>
+                    <input type="text" id="input_forced_ref_SCD"/>
+                    <p class="p_dyn">Current value: <span id="current_forced_ref_SCD">Loading...</span> ppm</p>
+                    <p>Valid values: 400 to 2000 ppm</p>
+                </div>
+                <div class="card sub">
+                    <h2>Automatic Self-Calibration</h2>
+                    <div class="input-button left">
+                        <button id="button_selfcal_scd">Select</button>
+                    </div>
+                    <p class="p_dyn">Selected command: <span id="input_selfcal_SCD"></span></p>
+                    <p class="p_dyn">Current value: <span id="current_selfcal_SCD">Loading...</span></p>
+                </div>
+                <div class="input-button center">
+                    <button id="apply_scd">Apply</button>
+                    <p class="p_dyn" id="scd_result"></p>
+                </div>
+            </div>
+            <div class="card">
+                <h2>SGP40 - VOC Index</h2>
+                <div class="card sub">
+                    <h2>VOC Index Backup Interval [min]</h2>
+                    <input type="text" id="input_backup_interv_SGP"/>
+                    <p class="p_dyn">Current value: <span id="current_backup_interv_SGP">Loading...</span> min</p>
+                    <p>Valid values: 0 to 1440 min</p>
+                    <p>Settings between 1 minute and 1 day.<br>0 turns off backups.</p>
+                </div>
+                <div class="card sub">
+                    <h2>VOC Index Backup Max Age [min]</h2>
+                    <input type="text" id="input_backup_maxage_SGP"/>
+                    <p class="p_dyn">Current value: <span id="current_backup_maxage_SGP">Loading...</span> min</p>
+                    <p>Valid values: 0 to 10080 min</p>
+                    <p>Use backups younger than 1 minute to 1 week.<br>0 uses all found backups.</p>
+                </div>
+                <div class="card sub">
+                    <h2>VOC Index NTP wait time [s]</h2>
+                    <input type="text" id="input_backup_ntpwait_SGP"/>
+                    <p class="p_dyn">Current value: <span id="current_backup_ntpwait_SGP">Loading...</span> s</p>
+                    <p>Valid values: 0 to 600 s</p>
+                    <p>Wait time for NTP sync before using timestamped backups.<br>0 = never wait.</p>
+                </div>
+                <div class="card sub">
+                    <h2>Reset VOC index</h2>
+                    <div class="input-button left">
+                        <button id="button_reset_SGP">Select</button>
+                    </div>
+                    <p class="p_dyn">Selected command: <span id="input_reset_SGP"></span></p>
+                    <p><i>Only <b>"On"</b> will have an effect.</i></p>
+                    <p>Resets the VOC algorithm and deletes the current backup.</p>
+                </div>
+                <div class="input-button center">
+                    <button id="apply_sgp">Apply</button>
+                    <p class="p_dyn" id="shtc_result"></p>
+                </div>
+            </div>
+        </div>
+        <div class="links" id="links">
+            <a href="/nettimeconfig.html">Network and Time Settings</a>
+            <a href="/index.html">Sensor Measurements</a>
+            <a href="/systemledconfig.html">System Settings and Auto LED</a>
+        </div>
+    </div>
+    
+    <script>
+        const inputFieldsSCD = {
+            MeasInt: document.getElementById("input_sample_interv_SCD"),
+            TempOffs: document.getElementById("input_temp_offset_SCD"),
+            AmbPres: document.getElementById("input_amb_press_SCD"),
+            Altitude: document.getElementById("input_altitude_SCD"),
+            ContMeas: document.getElementById("input_stop_meas_SCD"),
+            ForceCalRef: document.getElementById("input_forced_ref_SCD"),
+            SelfCal: document.getElementById("input_selfcal_SCD"),
+            script_cfg: {
+                cmd: "setSCD",
+                addr: "/sensors/cmd",
+                result: document.getElementById("scd_result")
+            }
+        };
+
+        const inputFieldsSGP = {
+            SGPBackupPeriod: document.getElementById("input_backup_interv_SGP"),
+            SGPBackupMaxAge: document.getElementById("input_backup_maxage_SGP"),
+            SGPWaitTimeNTP: document.getElementById("input_backup_ntpwait_SGP"),
+            SGPResetVOC: document.getElementById("input_reset_SGP"),
+            script_cfg: {
+                cmd: "setSGP",
+                addr: "/sensors/cmd",
+                result: document.getElementById("sgp_result")
+            }
+        };
+
+        const currentSensorValues = {
+            SCD30_MeasInt: document.getElementById("current_sample_interv_SCD"),
+            SCD30_TempOffs: document.getElementById("current_temp_offset_SCD"),
+            SCD30_AmbPres: document.getElementById("current_amb_press_SCD"),
+            SCD30_Altitude: document.getElementById("current_altitude_SCD"),
+            SCD30_ForceCalRef: document.getElementById("current_forced_ref_SCD"),
+            SCD30_SelfCal: document.getElementById("current_selfcal_SCD"),
+            SGP40_SGPBackupPeriod: document.getElementById("current_backup_interv_SGP"),
+            SGP40_SGPBackupMaxAge: document.getElementById("current_backup_maxage_SGP"),
+            SGP40_SGPWaitTimeNTP: document.getElementById("current_backup_ntpwait_SGP"),
+            script_cfg: {
+                multi_val: true,
+                addr: "/sensors/config"
+            }
+        };
+
+        updateCurrentValues(currentSensorValues);
+
+        const stopMeasScdButton = document.getElementById("button_stop_meas_scd");
+        stopMeasScdButton.addEventListener("click", () => toggleButtonSwitch(inputFieldsSCD, 'ContMeas', false));
+
+        const selfcalScdButton = document.getElementById("button_selfcal_scd");
+        selfcalScdButton.addEventListener("click", () => toggleButtonSwitch(inputFieldsSCD, 'SelfCal', true));
+
+        const applyScdButton = document.getElementById("apply_scd");
+        applyScdButton.addEventListener("click", () => putSensorCfg(inputFieldsSCD, currentSensorValues));
+
+        const resetVocSgpButton = document.getElementById("button_reset_SGP");
+        resetVocSgpButton.addEventListener("click", () => toggleButtonSwitch(inputFieldsSGP, 'SGPResetVOC', true));
+
+        const applySgpButton = document.getElementById("apply_sgp");
+        applySgpButton.addEventListener("click", () => putSensorCfg(inputFieldsSGP, currentSensorValues));
+
+    </script>
+</body>
+</html>

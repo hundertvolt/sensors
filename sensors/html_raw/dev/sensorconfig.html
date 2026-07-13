@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sensor Configuration</title>
+    <link rel="stylesheet" type="text/css" href="style.css">
+    <script src="functions.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <div class="group">
+            <div class="card">
+                <h2>SCD30 - CO2, Temperature, Humidity</h2>
+                <div class="card sub">
+                    <h2>Measurement Interval [s]</h2>
+                    <input type="text" id="input_sample_interv_SCD"/>
+                    <p class="p_dyn">Current value: <span id="current_sample_interv_SCD">Loading...</span> s</p>
+                    <p>Valid values: 2 to 1800 s</p>
+                </div>
+                <div class="card sub">
+                    <h2>Temperature Offset [K]</h2>
+                    <input type="text" id="input_temp_offset_SCD"/>
+                    <p class="p_dyn">Current value: <span id="current_temp_offset_SCD">Loading...</span> K</p>
+                    <p>Valid values: 0.0 to 655.35 K</p>
+                </div>
+                <div class="card sub">
+                    <h2>Ambient Pressure [hPa]<br>Start Measurement</h2>
+                    <input type="text" id="input_amb_press_SCD"/>
+                    <p class="p_dyn">Current value: <span id="current_amb_press_SCD">Loading...</span> hPa</p>
+                    <p>Valid values: 700 to 1400 hPa<br>0 = Compensation off / use Altitude</p>
+                    <p><i><b>Start</b> continuous measurement</i></p>
+                </div>
+                <div class="card sub">
+                    <h2>Altitude [m] above sea level</h2>
+                    <input type="text" id="input_altitude_SCD"/>
+                    <p class="p_dyn">Current value: <span id="current_altitude_SCD">Loading...</span> m</p>
+                    <p>Valid values: 0 to 65535 m</p>
+                    <p><i>Only used if <b>Ambient Pressure is set to 0</b>.</i></p>
+                    <p><i><b>Turn off</b> continuous measurement for this setting.</i></p>
+                </div>
+                <div class="card sub">
+                    <h2>Stop Measurement</h2>
+                    <div class="input-button left">
+                        <button id="button_stop_meas_scd">Select</button>
+                    </div>
+                    <p class="p_dyn">Selected command: <span id="input_stop_meas_SCD"></span></p>
+                    <p><i>Only <b>"Off"</b> will have an effect.</i></p>
+                    <p><i>Start measurement with <b>"Ambient Pressure"</b>.</i></p>
+                </div>
+                <div class="card sub">
+                    <h2>Forced Calibration Reference [ppm]</h2>
+                    <input type="text" id="input_forced_ref_SCD"/>
+                    <p class="p_dyn">Current value: <span id="current_forced_ref_SCD">Loading...</span> ppm</p>
+                    <p>Valid values: 400 to 2000 ppm</p>
+                </div>
+                <div class="card sub">
+                    <h2>Automatic Self-Calibration</h2>
+                    <div class="input-button left">
+                        <button id="button_selfcal_scd">Select</button>
+                    </div>
+                    <p class="p_dyn">Selected command: <span id="input_selfcal_SCD"></span></p>
+                    <p class="p_dyn">Current value: <span id="current_selfcal_SCD">Loading...</span></p>
+                </div>
+                <div class="input-button center">
+                    <button id="apply_scd">Apply</button>
+                    <p class="p_dyn" id="scd_result"></p>
+                </div>
+            </div>
+            <div class="card">
+                <h2>SGP40 - VOC Index</h2>
+                <div class="card sub">
+                    <h2>VOC Index Backup Interval [min]</h2>
+                    <input type="text" id="input_backup_interv_SGP"/>
+                    <p class="p_dyn">Current value: <span id="current_backup_interv_SGP">Loading...</span> min</p>
+                    <p>Valid values: 0 to 1440 min</p>
+                    <p>Settings between 1 minute and 1 day.<br>0 turns off backups.</p>
+                </div>
+                <div class="card sub">
+                    <h2>VOC Index Backup Max Age [min]</h2>
+                    <input type="text" id="input_backup_maxage_SGP"/>
+                    <p class="p_dyn">Current value: <span id="current_backup_maxage_SGP">Loading...</span> min</p>
+                    <p>Valid values: 0 to 10080 min</p>
+                    <p>Use backups younger than 1 minute to 1 week.<br>0 uses all found backups.</p>
+                </div>
+                <div class="card sub">
+                    <h2>VOC Index NTP wait time [s]</h2>
+                    <input type="text" id="input_backup_ntpwait_SGP"/>
+                    <p class="p_dyn">Current value: <span id="current_backup_ntpwait_SGP">Loading...</span> s</p>
+                    <p>Valid values: 0 to 600 s</p>
+                    <p>Wait time for NTP sync before using timestamped backups.<br>0 = never wait.</p>
+                </div>
+                <div class="card sub">
+                    <h2>Reset VOC index</h2>
+                    <div class="input-button left">
+                        <button id="button_reset_SGP">Select</button>
+                    </div>
+                    <p class="p_dyn">Selected command: <span id="input_reset_SGP"></span></p>
+                    <p><i>Only <b>"On"</b> will have an effect.</i></p>
+                    <p>Resets the VOC algorithm and deletes the current backup.</p>
+                </div>
+                <div class="input-button center">
+                    <button id="apply_sgp">Apply</button>
+                    <p class="p_dyn" id="shtc_result"></p>
+                </div>
+            </div>
+            <div class="card">
+                <h2>SHTC3 - Temperature, Humidity</h2>
+                <div class="card sub">
+                    <h2>Measurement Interval [s]</h2>
+                    <input type="text" id="input_sample_interv_SHTC"/>
+                    <p class="p_dyn">Current value: <span id="current_sample_interv_SHTC">Loading...</span> s</p>
+                    <p>Valid values: 1 to 3600 s</p>
+                </div>
+                <div class="card sub">
+                    <h2>Temperature Offset [K]</h2>
+                    <input type="text" id="input_temp_offset_SHTC"/>
+                    <p class="p_dyn">Current value: <span id="current_temp_offset_SHTC">Loading...</span> K</p>
+                    <p>Valid values: -10.0 to 10.0 K</p>
+                </div>
+                <div class="card sub">
+                    <h2>Filter Coefficient</h2>
+                    <input type="text" id="input_filt_coeff_SHTC"/>
+                    <p class="p_dyn">Current value: <span id="current_filt_coeff_SHTC">Loading...</span></p>
+                    <p>First order IIR lowpass filter coefficient.<br><b>Set to -1.0 to turn off.</b></p>
+                    <p>Valid values: -1.0; 0.0 to 1.0</p>
+                </div>
+                <div class="input-button center">
+                    <button id="apply_shtc">Apply</button>
+                    <p class="p_dyn" id="shtc_result"></p>
+                </div>
+            </div>
+            <div class="card">
+                <h2>MPRLS - Pressure</h2>
+                <div class="card sub">
+                    <h2>Measurement Interval [s]</h2>
+                    <input type="text" id="input_sample_interv_MPRLS"/>
+                    <p class="p_dyn">Current value: <span id="current_sample_interv_MPRLS">Loading...</span> s</p>
+                    <p>Valid values: 1 to 3600 s</p>
+                </div>
+                <div class="card sub">
+                    <h2>Pressure Offset [K]</h2>
+                    <input type="text" id="input_press_offset_MPRLS"/>
+                    <p class="p_dyn">Current value: <span id="current_press_offset_MPRLS">Loading...</span> hPa</p>
+                    <p>Valid values: -500.0 to 500.0 K</p>
+                </div>
+                <div class="card sub">
+                    <h2>Filter Coefficient</h2>
+                    <input type="text" id="input_filt_coeff_MPRLS"/>
+                    <p class="p_dyn">Current value: <span id="current_filt_coeff_MPRLS">Loading...</span></p>
+                    <p>First order IIR lowpass filter coefficient.<br><b>Set to -1.0 to turn off.</b></p>
+                    <p>Valid values: -1.0; 0.0 to 1.0</p>
+                </div>
+                <div class="input-button center">
+                    <button id="apply_mprls">Apply</button>
+                    <p class="p_dyn" id="mprls_result"></p>
+                </div>
+            </div>
+            <div class="card">
+                <h2>ISL29125 - RGB Brightness</h2>
+                <div class="card sub">
+                    <h2>Measurement Interval [s]</h2>
+                    <input type="text" id="input_sample_interv_ISL29125"/>
+                    <p class="p_dyn">Current value: <span id="current_sample_interv_ISL29125">Loading...</span> s</p>
+                    <p>Valid values: 1 to 3600 s</p>
+                </div>
+                <div class="card sub">
+                    <h2>Operation Mode</h2>
+                    <input type="text" id="input_op_mode_ISL29125"/>
+                    <p class="p_dyn">Current value: <span id="current_op_mode_ISL29125">Loading...</span></p>
+                    <p>Valid values: 0 to 7</p>
+                    <p><b>Value assignment:</b><br>0 = POWERDOWN<br>1 = GREEN_ONLY<br>2 = RED_ONLY<br>3 = BLUE_ONLY<br>4 = STANDBY<br>5 = RED_GREEN_BLUE<br>6 = GREEN_RED<br>7 = GREEN_BLUE
+                </div>
+                <div class="card sub">
+                    <h2>Sensing Range</h2>
+                    <input type="text" id="input_sens_range_ISL29125"/>
+                    <p class="p_dyn">Current value: <span id="current_sens_range_ISL29125">Loading...</span></p>
+                    <p>Valid values: 0 to 1</p>
+                    <p><b>Value assignment:</b><br>0 = LUX_375<br>1 = LUX_10K
+                </div>
+                <div class="card sub">
+                    <h2>ADC Resolution</h2>
+                    <input type="text" id="input_adc_res_ISL29125"/>
+                    <p class="p_dyn">Current value: <span id="current_adc_res_ISL29125">Loading...</span></p>
+                    <p>Valid values: 0 to 1</p>
+                    <p><b>Value assignment:</b><br>0 = RES_16BITS<br>1 = RES_12BITS
+                </div>
+                <div class="card sub">
+                    <h2>Infrared Compensation</h2>
+                    <input type="text" id="input_ir_comp_ISL29125"/>
+                    <p class="p_dyn">Current value: <span id="current_ir_comp_ISL29125">Loading...</span></p>
+                    <p>Valid values: -1 to 63</p>
+                    <p><b>Value assignment:</b><br>-1 = IR Compensation off<br>0 to 63 = IR Compensation on with this value
+                </div>
+                <div class="card sub">
+                    <h2>Interrupt Assignment</h2>
+                    <input type="text" id="input_int_ass_ISL29125"/>
+                    <p class="p_dyn">Current value: <span id="current_int_ass_ISL29125">Loading...</span></p>
+                    <p>Valid values: 0 to 3</p>
+                    <p><b>Value assignment:</b><br>0 = NO_INTERRUPT<br>1 = GREEN_INTERRUPT<br>2 = RED_INTERRUPT<br>3 = BLUE_INTERRUPT
+                </div>
+                <div class="card sub">
+                    <h2>Interrupt High Threshold</h2>
+                    <input type="text" id="input_int_hi_thres_ISL29125"/>
+                    <p class="p_dyn">Current value: <span id="current_int_hi_thres_ISL29125">Loading...</span></p>
+                    <p>Valid values: 0 to 65535</p>
+                </div>
+                <div class="card sub">
+                    <h2>Interrupt Low Threshold</h2>
+                    <input type="text" id="input_int_lo_thres_ISL29125"/>
+                    <p class="p_dyn">Current value: <span id="current_int_lo_thres_ISL29125">Loading...</span></p>
+                    <p>Valid values: 0 to 65535</p>
+                </div>
+                <div class="card sub">
+                    <h2>Interrupt Auto Clear</h2>
+                    <input type="text" id="input_auto_clr_ISL29125"/>
+                    <p class="p_dyn">Current value: <span id="current_auto_clr_ISL29125">Loading...</span></p>
+                    <p>Valid values: -1 to 3600000</p>
+                    <p><b>Value assignment:</b><br>-1 = Auto Clear off<br>0 = Always clear immediately<br>>0 = Wait time in ms until next clear
+                </div>
+                <div class="card sub">
+                    <h2>Interrupt Persistent Control</h2>
+                    <input type="text" id="input_pers_ctl_ISL29125"/>
+                    <p class="p_dyn">Current value: <span id="current_pers_ctl_ISL29125">Loading...</span></p>
+                    <p>Valid values: 0 to 3</p>
+                    <p><b>Value assignment:</b><br>0 = IC1<br>1 = IC2<br>2 = IC4<br>3 = IC8
+                </div>
+                <div class="input-button center">
+                    <button id="apply_isl">Apply</button>
+                    <p class="p_dyn" id="isl_result"></p>
+                </div>
+            </div>
+        </div>
+        <div class="links" id="links">
+            <a href="/nettimeconfig.html">Network and Time Settings</a>
+            <a href="/index.html">Sensor Measurements</a>
+            <a href="/systemledconfig.html">System Settings and Auto LED</a>
+        </div>
+    </div>
+    
+    <script>
+        const inputFieldsSCD = {
+            MeasInt: document.getElementById("input_sample_interv_SCD"),
+            TempOffs: document.getElementById("input_temp_offset_SCD"),
+            AmbPres: document.getElementById("input_amb_press_SCD"),
+            Altitude: document.getElementById("input_altitude_SCD"),
+            ContMeas: document.getElementById("input_stop_meas_SCD"),
+            ForceCalRef: document.getElementById("input_forced_ref_SCD"),
+            SelfCal: document.getElementById("input_selfcal_SCD"),
+            script_cfg: {
+                cmd: "setSCD",
+                addr: "/sensors/cmd",
+                result: document.getElementById("scd_result")
+            }
+        };
+        
+        const inputFieldsSGP = {
+            SGPBackupPeriod: document.getElementById("input_backup_interv_SGP"),
+            SGPBackupMaxAge: document.getElementById("input_backup_maxage_SGP"),
+            SGPWaitTimeNTP: document.getElementById("input_backup_ntpwait_SGP"),
+            SGPResetVOC: document.getElementById("input_reset_SGP"),
+            script_cfg: {
+                cmd: "setSGP",
+                addr: "/sensors/cmd",
+                result: document.getElementById("sgp_result")
+            }
+        };
+        
+        const inputFieldsSHTC = {
+            SHTCSampleInterv: document.getElementById("input_sample_interv_SHTC"),
+            SHTCTempOffs: document.getElementById("input_temp_offset_SHTC"),
+            SHTCFiltCoeff: document.getElementById("input_filt_coeff_SHTC"),
+            script_cfg: {
+                cmd: "setSHTC",
+                addr: "/sensors/cmd",
+                result: document.getElementById("shtc_result")
+            }
+        };
+
+        const inputFieldsMPRLS = {
+            MPRLSSampleInterv: document.getElementById("input_sample_interv_MPRLS"),
+            MPRLSPressOffset: document.getElementById("input_press_offset_MPRLS"),
+            MPRLSFiltCoeff: document.getElementById("input_filt_coeff_MPRLS"),
+            script_cfg: {
+                cmd: "setMPRLS",
+                addr: "/sensors/cmd",
+                result: document.getElementById("mprls_result")
+            }
+        };
+
+        const inputFieldsISL29125 = {
+            ISLSampleInterv: document.getElementById("input_sample_interv_ISL29125"),
+            ISLOperationMode: document.getElementById("input_op_mode_ISL29125"),
+            ISLSensingRange: document.getElementById("input_sens_range_ISL29125"),
+            ISLAdcResolution: document.getElementById("input_adc_res_ISL29125"),
+            ISLIrCompensation: document.getElementById("input_ir_comp_ISL29125"),
+            ISLInterruptAssignment: document.getElementById("input_int_ass_ISL29125"),
+            ISLInterruptHighThres: document.getElementById("input_int_hi_thres_ISL29125"),
+            ISLInterruptLowThres: document.getElementById("input_int_lo_thres_ISL29125"),
+            ISLInterruptAutoClear: document.getElementById("input_auto_clr_ISL29125"),
+            ISLPersistentControl: document.getElementById("input_pers_ctl_ISL29125"),
+            script_cfg: {
+                cmd: "setISL",
+                addr: "/sensors/cmd",
+                result: document.getElementById("isl_result")
+            }
+        };
+        
+        const currentSensorValues = {
+            SHTC3_SHTCSampleInterv: document.getElementById("current_sample_interv_SHTC"),
+            SHTC3_SHTCTempOffs: document.getElementById("current_temp_offset_SHTC"),
+            SHTC3_SHTCFiltCoeff: document.getElementById("current_filt_coeff_SHTC"),
+            MPRLS_MPRLSSampleInterv: document.getElementById("current_sample_interv_MPRLS"),
+            MPRLS_MPRLSPressOffset: document.getElementById("current_press_offset_MPRLS"),
+            MPRLS_MPRLSFiltCoeff: document.getElementById("current_filt_coeff_MPRLS"),
+            SCD30_MeasInt: document.getElementById("current_sample_interv_SCD"),
+            SCD30_TempOffs: document.getElementById("current_temp_offset_SCD"),
+            SCD30_AmbPres: document.getElementById("current_amb_press_SCD"),
+            SCD30_Altitude: document.getElementById("current_altitude_SCD"),
+            SCD30_ForceCalRef: document.getElementById("current_forced_ref_SCD"),
+            SCD30_SelfCal: document.getElementById("current_selfcal_SCD"),
+            SGP40_SGPBackupPeriod: document.getElementById("current_backup_interv_SGP"),
+            SGP40_SGPBackupMaxAge: document.getElementById("current_backup_maxage_SGP"),
+            SGP40_SGPWaitTimeNTP: document.getElementById("current_backup_ntpwait_SGP"),
+            ISL29125_ISLSampleInterv: document.getElementById("current_sample_interv_ISL29125"),
+            ISL29125_ISLOperationMode: document.getElementById("current_op_mode_ISL29125"),
+            ISL29125_ISLSensingRange: document.getElementById("current_sens_range_ISL29125"),
+            ISL29125_ISLAdcResolution: document.getElementById("current_adc_res_ISL29125"),
+            ISL29125_ISLIrCompensation: document.getElementById("current_ir_comp_ISL29125"),
+            ISL29125_ISLInterruptAssignment: document.getElementById("current_int_ass_ISL29125"),
+            ISL29125_ISLInterruptHighThres: document.getElementById("current_int_hi_thres_ISL29125"),
+            ISL29125_ISLInterruptLowThres: document.getElementById("current_int_lo_thres_ISL29125"),
+            ISL29125_ISLInterruptAutoClear: document.getElementById("current_auto_clr_ISL29125"),
+            ISL29125_ISLPersistentControl: document.getElementById("current_pers_ctl_ISL29125"),
+            script_cfg: {
+                multi_val: true,
+                addr: "/sensors/config"
+            }
+        };
+        
+        updateCurrentValues(currentSensorValues);
+
+        const stopMeasScdButton = document.getElementById("button_stop_meas_scd");
+        stopMeasScdButton.addEventListener("click", () => toggleButtonSwitch(inputFieldsSCD, 'ContMeas', false));
+
+        const selfcalScdButton = document.getElementById("button_selfcal_scd");
+        selfcalScdButton.addEventListener("click", () => toggleButtonSwitch(inputFieldsSCD, 'SelfCal', true));
+        
+        const resetVocSgpButton = document.getElementById("button_reset_SGP");
+        resetVocSgpButton.addEventListener("click", () => toggleButtonSwitch(inputFieldsSGP, 'SGPResetVOC', true));
+
+        const applySgpButton = document.getElementById("apply_sgp");
+        applySgpButton.addEventListener("click", () => putSensorCfg(inputFieldsSGP, currentSensorValues));
+        
+        const applyScdButton = document.getElementById("apply_scd");
+        applyScdButton.addEventListener("click", () => putSensorCfg(inputFieldsSCD, currentSensorValues));
+
+        const applyShtcButton = document.getElementById("apply_shtc");
+        applyShtcButton.addEventListener("click", () => putSensorCfg(inputFieldsSHTC, currentSensorValues));
+
+        const applyMPRLSButton = document.getElementById("apply_mprls");
+        applyMPRLSButton.addEventListener("click", () => putSensorCfg(inputFieldsMPRLS, currentSensorValues));
+        
+        const applyIslButton = document.getElementById("apply_isl");
+        applyIslButton.addEventListener("click", () => putSensorCfg(inputFieldsISL29125, currentSensorValues));
+        
+    </script>
+</body>
+</html>

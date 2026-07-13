@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sensor Configuration</title>
+    <link rel="stylesheet" type="text/css" href="style.css">
+    <script src="functions.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <div class="group">
+            <div class="card">
+                <h2>LED Auto Pause Time</h2>
+                <div class="card sub">
+                    <h2>Pause Time [s]</h2>
+                    <input type="text" id="input_led_pause"/>
+                    <p class="p_dyn"><strong>Remaining Pause Time:</strong><br><span id="current_led_pause">Loading...</span></p>
+                    <p>Valid values: 0 to 3600<br>Temporarily turn off automatic LED signals.</p>
+                </div>
+                <div class="input-button center">
+                    <button id="apply_led_pause">Apply</button>
+                    <p class="p_dyn" id="led_pause_result"></p>
+                </div>
+            </div>
+            <div class="card">
+                <h2>LED Command</h2>
+                <div class="card sub">
+                    <h2>LED Red Value</h2>
+                    <input type="text" id="input_led_r"/>
+                    <p>Valid values: 0 to 255<br>Default = 0</p>
+                </div>
+                <div class="card sub">
+                    <h2>LED Green Value</h2>
+                    <input type="text" id="input_led_g"/>
+                    <p>Valid values: 0 to 255<br>Default = 0</p>
+                </div>
+                <div class="card sub">
+                    <h2>LED Blue Value</h2>
+                    <input type="text" id="input_led_b"/>
+                    <p>Valid values: 0 to 255<br>Default = 0</p>
+                </div>
+                <div class="card sub">
+                    <h2>LED Time Value [s]</h2>
+                    <input type="text" id="input_led_t"/>
+                    <p>Valid values: 0.5 to 60.0<br>Default = 1.0</p>
+                </div>
+                <div class="input-button center">
+                    <button id="apply_led_flash">Flash LED</button>
+                    <p class="p_dyn" id="led_flash_result"></p>
+                </div>
+            </div>
+            <div class="card">
+                <h2>LED Auto Configuration</h2>
+                <div class="card sub">
+                    <h2>LED Auto Main Switch</h2>
+                    <div class="input-button left">
+                        <button id="button_led_auto">Select</button>
+                    </div>
+                    <p class="p_dyn">Selected command: <span id="input_led_auto"></span></p>
+                    <p class="p_dyn">Current value: <span id="current_led_auto">Loading...</span></p>
+                    <p><i>
+                        Auto On and Off times must be on the <b>same day</b>.<br>
+                        Auto On must be <b>before</b> Off</b>.
+                    </i></p>
+                </div>
+                <div class="card sub">
+                    <h2>LED Auto On Hour</h2>
+                    <input type="text" id="input_led_auto_on_h"/>
+                    <p class="p_dyn">Current value: <span id="current_led_auto_on_h">Loading...</span></p>
+                    <p>Valid values: 0 to 23</p>
+                </div>
+                <div class="card sub">
+                    <h2>LED Auto On Minute</h2>
+                    <input type="text" id="input_led_auto_on_m"/>
+                    <p class="p_dyn">Current value: <span id="current_led_auto_on_m">Loading...</span></p>
+                    <p>Valid values: 0 to 59</p>
+                </div>
+                <div class="card sub">
+                    <h2>LED Auto Off Hour</h2>
+                    <input type="text" id="input_led_auto_off_h"/>
+                    <p class="p_dyn">Current value: <span id="current_led_auto_off_h">Loading...</span></p>
+                    <p>Valid values: 0 to 23</p>
+                </div>
+                <div class="card sub">
+                    <h2>LED Auto Off Minute</h2>
+                    <input type="text" id="input_led_auto_off_m"/>
+                    <p class="p_dyn">Current value: <span id="current_led_auto_off_m">Loading...</span></p>
+                    <p>Valid values: 0 to 59</p>
+                </div>
+                <div class="card sub">
+                    <h2>LED Auto Flash Brightness</h2>
+                    <input type="text" id="input_led_auto_bri"/>
+                    <p class="p_dyn">Current value: <span id="current_led_auto_bri">Loading...</span></p>
+                    <p>Valid values: 1 to 255</p>
+                </div>
+                <div class="card sub">
+                    <h2>LED Auto Flash Interval [s]</h2>
+                    <input type="text" id="input_led_auto_interv"/>
+                    <p class="p_dyn">Current value: <span id="current_led_auto_interv">Loading...</span> s</p>
+                    <p>Valid values: 60.0 to 3600.0 s</p>
+                </div>
+                <div class="card sub">
+                    <h2>LED Auto Flash Duration [s]</h2>
+                    <input type="text" id="input_led_auto_dur"/>
+                    <p class="p_dyn">Current value: <span id="current_led_auto_dur">Loading...</span> s</p>
+                    <p>Valid values: 0.5 to 10.0 s</p>
+                </div>
+                <div class="card sub">
+                    <h2>LED Auto CO2 Threshold [ppm]</h2>
+                    <input type="text" id="input_led_auto_co2"/>
+                    <p class="p_dyn">Current value: <span id="current_led_auto_co2">Loading...</span> ppm</p>
+                    <p>Valid values: 0 to 3000 ppm</p>
+                </div>
+                <div class="card sub">
+                    <h2>LED Auto VOC Threshold [ticks]</h2>
+                    <input type="text" id="input_led_auto_voc"/>
+                    <p class="p_dyn">Current value: <span id="current_led_auto_voc">Loading...</span> ticks</p>
+                    <p>Valid values: 0 to 500 ticks</p>
+                </div>
+                <div class="card sub">
+                    <h2>LED Auto Humidity Threshold [%]</h2>
+                    <input type="text" id="input_led_auto_hum"/>
+                    <p class="p_dyn">Current value: <span id="current_led_auto_hum">Loading...</span> %</p>
+                    <p>Valid values: 0.0 to 100.0 %</p>
+                </div>
+                <div class="input-button center">
+                    <button id="apply_led">Apply</button>
+                    <p class="p_dyn" id="led_result"></p>
+                </div>
+            </div>
+            <div class="card">
+                <h2>System LED</h2>
+                <div class="card sub">
+                    <h2>WiFi LED Switch</h2>
+                    <div class="input-button left">
+                        <button id="button_led_wifi">Select</button>
+                    </div>
+                    <p class="p_dyn">Selected command: <span id="input_led_wifi"></span></p>
+                    <p class="p_dyn">Current value: <span id="current_led_wifi">Loading...</span></p>
+                </div>
+                <div class="input-button center">
+                    <button id="apply_led_wifi">Apply</button>
+                    <p class="p_dyn" id="led_wifi_result"></p>
+                </div>
+            </div>
+            <div class="card">
+                <h2>System Status</h2>
+                <div>
+                    <p class="p_dyn"><strong>System Uptime:<br></strong><span id="sys_uptime">Loading...</span> s</p>
+                    <p class="p_dyn"><strong>WiFi Uptime:<br></strong><span id="wifi_uptime">Loading...</span> s</p>
+                    <p class="p_dyn"><strong>NTP last sync:<br></strong><span id="ntp_lastsync">Loading...</span> s</p>
+                    <p class="p_dyn"><strong>Boot Signature:<br></strong><span id="boot_signature">Loading...</span></p>
+                    <p class="p_dyn"><strong>Global error status:<br></strong><span id="error_status">Loading...</span></p>
+                    <p class="p_dyn"><strong>Task Error Count:<br></strong><span id="task_errcnt">Loading...</span></p>
+                    <p class="p_dyn"><strong>Task last error:<br></strong><span id="task_lasterr">Loading...</span></p>
+                    <p class="p_dyn"><strong>SCD30 Error Count:<br></strong><span id="scd30_errcnt">Loading...</span></p>
+                    <p class="p_dyn"><strong>SGP40 Last Backup:<br></strong><span id="sgp40_backup_ts">Loading...</span></p>
+                    <p class="p_dyn"><strong>SGP40 Restore Timestamp:<br></strong><span id="sgp40_restore_ts">Loading...</span></p>
+                    <p class="p_dyn"><strong>SGP40 Error Count:<br></strong><span id="sgp40_errcnt">Loading...</span></p>
+                    <p class="p_dyn"><strong>SGP40 Critical Memory Errors:<br></strong><span id="sgp40_mem_crit">Loading...</span></p>
+                    <p class="p_dyn"><strong>SGP40 Uncritical Memory Errors:<br></strong><span id="sgp40_mem_uncrit">Loading...</span></p>
+                    <p class="p_dyn"><strong>SGP40 Last Memory Error:<br></strong><span id="sgp40_mem_lasterr">Loading...</span></p>
+                    <p class="p_dyn"><strong>BMP388 Error Count:<br></strong><span id="bmp388_errcnt">Loading...</span></p>
+
+                </div>
+            </div>
+            <div class="card">
+                <h2>Issue System Command</h2>
+                <div class="card sub">
+                    <h2>Special Commands</h2>
+                    <input type="text" id="special_sys_cmd"/>
+                    <p>Valid values:<br>
+                    <i>- reboot</i> reboot system<br>
+                    <i>- bootloader</i> reboot into bootloader<br>
+                    <i>- mempause</i> pause backups for 5 minutes</p>
+                </div>
+                <div class="input-button center">
+                    <button id="apply_sys_cmd">Apply</button>
+                    <p class="p_dyn" id="sys_cmd_result"></p>
+                </div>
+            </div>
+        </div>
+        <div class="links" id="links">
+            <a href="/nettimeconfig.html">Network and Time Settings</a>
+            <a href="/sensorconfig.html">Sensor Settings</a>
+            <a href="/index.html">Sensor Measurements</a>
+        </div>
+    </div>
+
+    <script>
+        const inputPauseLED = {
+            pauseTime: document.getElementById("input_led_pause"),
+            script_cfg: {
+                cmd: "pauseAutoLED",
+                addr: "/led/cmd",
+                result: document.getElementById("led_pause_result")
+            }
+        };
+
+        const currentStatusLED = {
+            pauseTime: document.getElementById("current_led_pause"),
+            script_cfg: {
+                multi_val: false,
+                addr: "/led/status"
+            }
+        };
+
+        const inputFlashLED = {
+            r: document.getElementById("input_led_r"),
+            g: document.getElementById("input_led_g"),
+            b: document.getElementById("input_led_b"),
+            t: document.getElementById("input_led_t"),
+            script_cfg: {
+                cmd: "lightCmdLED",
+                addr: "/led/cmd",
+                result: document.getElementById("led_flash_result")
+            }
+        };
+
+        const inputWifiLED = {
+            LedWifiOn: document.getElementById("input_led_wifi"),
+            script_cfg: {
+                cmd: "setWiFiLED",
+                addr: "/led/cmd",
+                result: document.getElementById("led_wifi_result")
+            }
+        };
+
+        const inputAutoLED = {
+            LedAutoOn: document.getElementById("input_led_auto"),
+            LedAutoOnH: document.getElementById("input_led_auto_on_h"),
+            LedAutoOnM: document.getElementById("input_led_auto_on_m"),
+            LedAutoOffH: document.getElementById("input_led_auto_off_h"),
+            LedAutoOffM: document.getElementById("input_led_auto_off_m"),
+            LedAutoFlashBri: document.getElementById("input_led_auto_bri"),
+            LedAutoInterv: document.getElementById("input_led_auto_interv"),
+            LedAutoFlashDur: document.getElementById("input_led_auto_dur"),
+            LedWarnCO2: document.getElementById("input_led_auto_co2"),
+            LedWarnVOC: document.getElementById("input_led_auto_voc"),
+            LedWarnHum: document.getElementById("input_led_auto_hum"),
+            script_cfg: {
+                cmd: "setAutoLED",
+                addr: "/led/cmd",
+                result: document.getElementById("led_result")
+            }
+        };
+
+        const currentConfigLED = {
+            LedWifiOn: document.getElementById("current_led_wifi"),
+            LedAutoOn: document.getElementById("current_led_auto"),
+            LedAutoOnH: document.getElementById("current_led_auto_on_h"),
+            LedAutoOnM: document.getElementById("current_led_auto_on_m"),
+            LedAutoOffH: document.getElementById("current_led_auto_off_h"),
+            LedAutoOffM: document.getElementById("current_led_auto_off_m"),
+            LedAutoFlashBri: document.getElementById("current_led_auto_bri"),
+            LedAutoInterv: document.getElementById("current_led_auto_interv"),
+            LedAutoFlashDur: document.getElementById("current_led_auto_dur"),
+            LedWarnCO2: document.getElementById("current_led_auto_co2"),
+            LedWarnVOC: document.getElementById("current_led_auto_voc"),
+            LedWarnHum: document.getElementById("current_led_auto_hum"),
+            script_cfg: {
+                multi_val: false,
+                addr: "/led/config"
+            }
+        };
+
+        const currentStatusSys = {
+            Sys_Uptime: document.getElementById("sys_uptime"),
+            Wifi_Uptime: document.getElementById("wifi_uptime"),
+            NTP_LastSync: document.getElementById("ntp_lastsync"),
+            Boot_Signature: document.getElementById("boot_signature"),
+            Error_Status: document.getElementById("error_status"),
+            SCD30_ErrCnt: document.getElementById("scd30_errcnt"),
+            SGP40_ErrCnt: document.getElementById("sgp40_errcnt"),
+            SGP40_Backup_TS: document.getElementById("sgp40_backup_ts"),
+            SGP40_Restore_TS: document.getElementById("sgp40_restore_ts"),
+            SGP40_MemErr_Critical: document.getElementById("sgp40_mem_crit"),
+            SGP40_MemErr_Uncritical: document.getElementById("sgp40_mem_uncrit"),
+            SGP40_MemErr_Last: document.getElementById("sgp40_mem_lasterr"),
+            BMP388_ErrCnt: document.getElementById("bmp388_errcnt"),
+            Task_ErrCnt: document.getElementById("task_errcnt"),
+            Task_LastErr: document.getElementById("task_lasterr"),
+            script_cfg: {
+                multi_val: false,
+                addr: "/system/status"
+            }
+        };
+
+        const inputSysCmd = {
+            content: document.getElementById("special_sys_cmd"),
+            script_cfg: {
+                cmd: "systemCmd",
+                addr: "/system/cmd",
+                result: document.getElementById("sys_cmd_result")
+            }
+        };
+
+        updateCurrentValues(currentConfigLED);
+
+        updateCurrentValues(currentStatusLED);
+        setInterval(updateCurrentValues, 500, currentStatusLED);
+
+        updateCurrentValues(currentStatusSys);
+        setInterval(updateCurrentValues, 500, currentStatusSys);
+
+        const applyLedPauseButton = document.getElementById("apply_led_pause");
+        applyLedPauseButton.addEventListener("click", () => putSensorCfg(inputPauseLED, currentStatusLED));
+
+        const applyLedFlashButton = document.getElementById("apply_led_flash");
+        applyLedFlashButton.addEventListener("click", () => putSensorCfg(inputFlashLED, null));
+
+        const ledWifiButton = document.getElementById("button_led_wifi");
+        ledWifiButton.addEventListener("click", () => toggleButtonSwitch(inputWifiLED, 'LedWifiOn', true));
+
+        const applyWifiButton = document.getElementById("apply_led_wifi");
+        applyWifiButton.addEventListener("click", () => putSensorCfg(inputWifiLED, currentConfigLED));
+
+        const ledAutoButton = document.getElementById("button_led_auto");
+        ledAutoButton.addEventListener("click", () => toggleButtonSwitch(inputAutoLED, 'LedAutoOn', true));
+
+        const applyLedButton = document.getElementById("apply_led");
+        applyLedButton.addEventListener("click", () => putSensorCfg(inputAutoLED, currentConfigLED));
+
+        const applySysButton = document.getElementById("apply_sys_cmd");
+        applySysButton.addEventListener("click", () => putSensorCfg(inputSysCmd, null));
+
+    </script>
+</body>
+</html>

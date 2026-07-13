@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sensor Measurements</title>
+    <link rel="stylesheet" type="text/css" href="style.css">
+    <script src="functions.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="group">
+            <div class="card">
+                <h2>SGP40 Measurements</h2>
+                <div>
+                    <p class="p_dyn"><strong>VOC Index:</strong><br><span id="SGP40_VOC">Loading...</span> ticks</p>
+                    <p class="p_dyn"><strong>VOC Raw:</strong><br><span id="SGP40_Raw">Loading...</span></p>
+                    <p class="p_dyn"><strong>Timestamp:</strong><br><span id="SGP40_TS">Loading...</span> s</p>
+                </div>
+            </div>
+            <div class="card">
+                <h2>SCD30 Measurements</h2>
+                <div>
+                    <p class="p_dyn"><strong>CO2:</strong><br><span id="SCD30_CO2">Loading...</span> ppm</p>
+                    <p class="p_dyn"><strong>Temperature:</strong><br><span id="SCD30_Temp">Loading...</span> °C</p>
+                    <p class="p_dyn"><strong>Relative Humidity:</strong><br><span id="SCD30_Hum">Loading...</span> %</p>
+                    <p class="p_dyn"><strong>Wet Bulb Temperature:</strong><br><span id="SCD30_WetBulb">Loading...</span> °C</p>
+                    <p class="p_dyn"><strong>Dew Point:</strong><br><span id="SCD30_DewPoint">Loading...</span> °C</p>
+                    <p class="p_dyn"><strong>Timestamp:</strong><br><span id="SCD30_TS">Loading...</span> s</p>
+                </div>
+            </div>
+            <div class="card">
+                <h2>BMP388 Measurements</h2>
+                <div>
+                    <p class="p_dyn"><strong>Pressure:</strong><br><span id="BMP388_Pres">Loading...</span> hPa</p>
+                    <p class="p_dyn"><strong>Temperature:</strong><br><span id="BMP388_Temp">Loading...</span> °C</p>
+                    <p class="p_dyn"><strong>Sea Level Pressure:</strong><br><span id="BMP388_SLPres">Loading...</span> hPa</p>
+                    <p class="p_dyn"><strong>Timestamp:</strong><br><span id="BMP388_TS">Loading...</span> s</p>
+                </div>
+            </div>
+        </div>
+        <div class="links" id="links">
+            <a href="/nettimeconfig.html">Network and Time Settings</a>
+            <a href="/sensorconfig.html">Sensor Settings</a>
+            <a href="/systemledconfig.html">System Settings and Auto LED</a>
+        </div>
+    </div>
+
+    <script>
+        const measurements = {
+            SCD30_CO2: document.getElementById("SCD30_CO2"),
+            SCD30_Temp: document.getElementById("SCD30_Temp"),
+            SCD30_Hum: document.getElementById("SCD30_Hum"),
+            SCD30_WetBulb: document.getElementById("SCD30_WetBulb"),
+            SCD30_DewPoint: document.getElementById("SCD30_DewPoint"),
+            SCD30_TS: document.getElementById("SCD30_TS"),
+            SGP40_VOC: document.getElementById("SGP40_VOC"),
+            SGP40_Raw: document.getElementById("SGP40_Raw"),
+            SGP40_TS: document.getElementById("SGP40_TS"),
+            BMP388_Pres: document.getElementById("BMP388_Pres"),
+            BMP388_Temp: document.getElementById("BMP388_Temp"),
+            BMP388_SLPres: document.getElementById("BMP388_SLPres"),
+            BMP388_TS: document.getElementById("BMP388_TS"),
+            script_cfg: {
+                multi_val: true,
+                addr: "/sensors/status"
+            }
+        };
+
+        updateCurrentValues(measurements);
+        setInterval(updateCurrentValues, 2000, measurements);
+    </script>
+</body>
+</html>

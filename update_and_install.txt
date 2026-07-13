@@ -1,0 +1,24 @@
+Alle Verzeichnisse:
+
+git pull --rebase
+git checkout tags/<release_tag_name>
+
+in pico-sdk:
+git submodule update --init lib/mbedtls
+
+in picotool:
+(libusb muss installiert sein   sudo apt-get install libusb-1.0-0-dev)
+
+mkdir build
+cd build
+cmake .. -DPICO_SDK_PATH=../../pico-sdk
+make
+sudo make install
+
+in micropython:
+cd mpy-cross
+make
+cd ports/rp2
+make BOARD=RPI_PICO_W submodules
+
+--> build skripte für RPI Firmware funktionieren
