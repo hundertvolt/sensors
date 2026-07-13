@@ -76,6 +76,13 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
   over guessing — several open questions in BACKLOG.md exist precisely because the code's actual
   intent wasn't obvious from reading it alone.
 
+## Pull request workflow
+
+- **Always create a pull request with a meaningful description** when finishing work on a branch —
+  summarize what changed and why, not just a file list.
+- **Automatically subscribe to the pull request's activity** (review comments, CI results) right
+  after opening it, so review feedback and CI failures get picked up without being asked again.
+
 ## Architecture reference
 
 See README.md's "Architecture at a glance" section for the condensed version. Key modules if you
