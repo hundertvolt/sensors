@@ -479,6 +479,37 @@ from reading the code alone:
   MicroPython/pico-sdk/picotool rather than pinning to what's in the current handwritten notes;
   MicroPython's rp2 port depends on specific pico-sdk submodules (e.g. `lib/mbedtls`), which
   `update_and_install.txt` already gestures at.
+  - **`update_and_install.txt` re-verified against current (2026) upstream docs — structurally
+    still accurate, but missing one real, currently-relevant gotcha.** The three-separate-clones
+    approach (`pico-sdk`, `picotool`, `micropython`), the `lib/mbedtls` submodule-init step, the
+    `libusb-1.0-0-dev` dependency, and the picotool `cmake -DPICO_SDK_PATH=... && make && sudo make
+    install` steps are all still exactly right per current
+    [`picotool/BUILDING.md`](https://github.com/raspberrypi/picotool/blob/master/BUILDING.md) and
+    the MicroPython
+    [`ports/rp2/README.md`](https://github.com/micropython/micropython/blob/master/ports/rp2/README.md)
+    (`make -C mpy-cross` from the repo root, then `make BOARD=RPI_PICO_W submodules`/`clean`/build
+    from `ports/rp2`).
+    - **New requirement since pico-sdk 2.0.0, not covered by the current notes**: a standalone
+      `picotool` build must have a matching major.minor version to the pico-sdk it's built
+      against (enforced via install marker files, not just `PATH`) — a version mismatch now fails
+      the build outright with "Incompatible picotool installation found"
+      ([pico-sdk#1990](https://github.com/raspberrypi/pico-sdk/issues/1990)). **This already
+      applies today, not just at refactor time**: MicroPython 1.26 (the currently deployed pin)
+      bundles pico-sdk **2.1.1** as its internal submodule, so anyone rebuilding the toolchain from
+      `update_and_install.txt` right now needs the standalone `pico-sdk`/`picotool` clones checked
+      out at a matching `2.1.x` tag, or the build breaks. Whatever MicroPython version the refactor
+      eventually lands on will pin its own matching pico-sdk version — check it fresh at that time
+      rather than assuming `2.1.1` still applies.
+    - **Toolchain packages were never listed in the notes at all** (and still aren't a gap
+      introduced by drift, just a pre-existing one): `build-essential`, `cmake`, `pkg-config`,
+      `git`, and the ARM cross-compiler (`gcc-arm-none-eabi`, `libnewlib-arm-none-eabi`,
+      `libstdc++-arm-none-eabi-newlib` on Debian/Ubuntu) are all still required but were presumably
+      assumed pre-installed. Worth listing explicitly once this becomes a real setup script.
+    - **An official one-shot alternative exists**:
+      [`raspberrypi/pico-setup`](https://github.com/raspberrypi/pico-setup)'s `pico_setup.sh`
+      installs the toolchain, clones pico-sdk, and builds/installs picotool in one script — worth
+      considering as a base for the genericized setup script instead of hand-rolling the same
+      steps.
 - **No end-user reference for Neopixel LED colors/patterns exists.** The single physical LED does
   double duty (steady WiFi-status indicator + transient warning/external-command flash), confirmed
   intentional, but there's no legend anywhere (HTML UI, printed label) explaining what each
