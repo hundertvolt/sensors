@@ -89,5 +89,11 @@ need to go deeper:
   `TimeCounterManager`, `LockedValue`/`Flag`.
 - `python/IndividualDrivers/asy_fram_driver.py` / `asy_fram_manager.py` — raw SPI FRAM driver +
   chunk allocator with dual-copy redundancy (arzi/neu/wozi only, not dev).
+- **SCD30's `AmbPres` (ambient-pressure compensation) is stored in the sensor's own internal
+  non-volatile memory as a one-time-set value, not a continuously-updated live input.** This is why
+  it's a static config value on every unit — including wozi, which has a live BMP388 — and why
+  `set_ambient_pressure` is called with `force=True` in the REST handler: resending the same value
+  is also the SCD30's documented command to resume continuous measurement after it's been stopped.
+  Don't "fix" this into a live BMP388→SCD30 feed; it's intentional, confirmed by the project owner.
 - Task supervisor lives in `main()` inside each `sensortask-*.py`, not in a shared module — it's
   duplicated per device file today.

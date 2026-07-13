@@ -31,6 +31,42 @@ constraints.
   lock, following the existing `get_long_block_lock()` pattern in `async_connect.py`) so
   timing-sensitive code gets to run before/around it rather than stalling alongside it. This is now
   a standing convention for new code, not just the original NTP/Neopixel case — see CLAUDE.md.
+- **Neopixel warning-flash sequencing and the task-supervisor error-budget counter are both
+  behaviorally correct and intentional as designed** (see "Functional clarifications" below) but
+  both were flagged by the project owner as implementable more efficiently — worth a cleaner
+  implementation in the refactor without changing the observed behavior.
+
+## Functional clarifications
+
+Confirmed by the project owner in a dedicated Q&A round, covering behavior that wasn't obvious
+from reading the code alone:
+
+- **wozi's SCD30 `AmbPres` is intentionally static, even with a live BMP388 present.** The SCD30
+  stores ambient-pressure compensation in its own internal non-volatile memory as a one-time-set
+  value — it isn't designed to track a continuously-updated live barometric reading. So BMP388's
+  live pressure correctly is *not* auto-fed into it on any unit; this isn't a gap, on arzi/neu or
+  wozi.
+- **Air-quality warning LED sequencing is exactly as intended**: one color mapped to each condition
+  (CO2/VOC/humidity), with a pause between flashes rather than combining simultaneous warnings into
+  one signal. Confirmed correct as designed (see refactor efficiency note above).
+- **FRAM SGP40 backup "0 = disabled" semantics are intended**: `SGPBackupPeriod=0` disables
+  periodic backup writes, `SGPBackupMaxAge=0` disables the staleness check. Currently undocumented
+  anywhere user-facing — see the new deferred-work item below.
+- **Permanent WiFi deactivation after a second STA failure streak (post-hotspot) is a deliberate
+  safety feature**, not a gap: it exists specifically so an unclaimed hotspot doesn't stay open
+  indefinitely. A physical power-cycle is the accepted recovery path for a unit that reaches this
+  state.
+- **SCD30 `ForceCalRef` forced recalibration has a real field maintenance procedure behind it** —
+  confirmed to exist, but the procedure itself wasn't captured in this session. Still needs writing
+  down (see new open question below).
+- **The web UI intentionally shows raw sensor numbers only, no color-coded readings** — the
+  physical LED is considered the sufficient at-a-glance air-quality indicator; this is not a
+  missing feature.
+- **FRAM's 8KB allocation vs. SGP40's 248-byte current usage has plenty of confirmed headroom** for
+  future FRAM-backed sensors/features.
+- **SGP40 silently falling back to uncompensated VOC readings when SCD30 is down/stale, with no
+  distinct "degraded" signal, is acceptable as-is** — SCD30's own error counter already surfaces
+  the underlying cause; a separate flag isn't needed.
 
 ## Open questions (need the project owner's input or further investigation)
 
@@ -88,6 +124,11 @@ constraints.
     checked so far look RP2350-specific (DMA/PIO/pin-alt-function fixes), not RP2040-breaking, but
     this hasn't been exhaustively checked against every module in this codebase, and will need
     re-checking again at whatever point the refactor actually picks a version to land on.
+12. **SCD30 `ForceCalRef` field procedure isn't written down anywhere yet.** Confirmed a real
+    maintenance routine exists for using it (see "Functional clarifications" above), but the actual
+    steps (reference concentration, exposure conditions/timing, how often it's done) still need to
+    be captured from the project owner and documented — currently only the REST field itself exists
+    in code with no procedure attached.
 
 ## Deferred / explicitly out-of-scope work (with reasoning)
 
@@ -111,6 +152,13 @@ constraints.
   MicroPython/pico-sdk/picotool rather than pinning to what's in the current handwritten notes;
   MicroPython's rp2 port depends on specific pico-sdk submodules (e.g. `lib/mbedtls`), which
   `update_and_install.txt` already gestures at.
+- **No end-user reference for Neopixel LED colors/patterns exists.** The single physical LED does
+  double duty (steady WiFi-status indicator + transient warning/external-command flash), confirmed
+  intentional, but there's no legend anywhere (HTML UI, printed label) explaining what each
+  color/pattern means. Worth adding one, low priority.
+- **FRAM SGP40 "0 = disabled" semantics need user-facing documentation** — confirmed intended
+  behavior (see "Functional clarifications" above), just not written down anywhere a unit's admin
+  would see it (API docs, HTML tooltip, etc.).
 
 ## Security notes
 
