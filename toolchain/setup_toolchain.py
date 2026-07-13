@@ -12,6 +12,7 @@ Usage (from anywhere, via uv — no venv/pip setup needed):
     uv run toolchain/setup_toolchain.py
     uv run toolchain/setup_toolchain.py --latest          # bump to newest stable MicroPython
     uv run toolchain/setup_toolchain.py --micropython-ref v1.26.1
+    uv run toolchain/setup_toolchain.py --clean           # wipe build dirs, then rebuild from scratch
     uv run toolchain/setup_toolchain.py test              # re-verify an existing install, offline
 
 Re-running this same command against an existing toolchain directory is how updates work:
@@ -302,6 +303,28 @@ def build_firmware(micropython_dir: Path, board: str, jobs: int) -> Path:
     return uf2
 
 
+def clean_build_dirs(toolchain_dir: Path, board: str) -> None:
+    """Wipe every build-artifact directory without touching the git clones themselves, so the
+    setup that follows rebuilds everything from scratch -- as if freshly installed -- without
+    re-cloning multi-gigabyte source trees that haven't actually changed. build_firmware() and
+    build_and_install_picotool() already do this for their own build dirs on every run (that's
+    why the firmware step always fully recompiles while mpy-cross's build/ is normally left
+    alone and rebuilds incrementally); this is the same action made available on demand and
+    extended to mpy-cross's build/ too, the one directory nothing else ever clears."""
+    log("Cleaning all build-artifact directories")
+    targets = [
+        toolchain_dir / "picotool" / "build",
+        toolchain_dir / "micropython" / "mpy-cross" / "build",
+        toolchain_dir / "micropython" / "ports" / "rp2" / f"build-{board}",
+    ]
+    for target in targets:
+        if target.exists():
+            print(f"Removing {target}")
+            shutil.rmtree(target)
+        else:
+            print(f"(nothing to clean at {target})")
+
+
 def cross_compile_sample(mpy_cross_binary: Path) -> None:
     log("Cross-compiling a sample .py file to verify mpy-cross works")
     with tempfile.TemporaryDirectory() as tmp:
@@ -366,6 +389,9 @@ def run_setup(args: argparse.Namespace, versions_path: Path, versions: dict) -> 
     print(f"Toolchain directory: {toolchain_dir}")
     print(f"MicroPython ref: {mpy_ref}")
     print(f"Board: {board}")
+
+    if args.clean:
+        clean_build_dirs(toolchain_dir, board)
 
     ensure_apt_packages(apt_packages, args.skip_apt)
 
@@ -442,6 +468,13 @@ def main() -> int:
     setup_parser.add_argument("--micropython-ref", help="Override the MicroPython tag/ref to build (default: from versions.toml)")
     setup_parser.add_argument("--latest", action="store_true", help="Detect the newest stable MicroPython release and pin versions.toml to it")
     setup_parser.add_argument("--skip-apt", action="store_true", help="Skip installing system/apt packages")
+    setup_parser.add_argument(
+        "--clean",
+        action="store_true",
+        help="Wipe all build-artifact directories (picotool/build, mpy-cross/build, ports/rp2/build-<board>) "
+        "before building, without re-cloning the git sources -- brings the toolchain back to a "
+        "from-scratch build state",
+    )
 
     subparsers.add_parser(
         "test",

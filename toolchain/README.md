@@ -29,6 +29,7 @@ both:
 uv run toolchain/setup_toolchain.py                              # install/update per versions.toml
 uv run toolchain/setup_toolchain.py --latest                      # pin + install newest stable MicroPython
 uv run toolchain/setup_toolchain.py --micropython-ref v1.26.1     # build a specific ref instead
+uv run toolchain/setup_toolchain.py --clean                       # wipe build dirs, then rebuild from scratch
 
 uv run toolchain/setup_toolchain.py test                          # re-verify an existing install, offline
 ```
@@ -79,6 +80,18 @@ does, in order:
    image, build `mpy-cross`, and cross-compile a sample file with it (see "Verification" below).
    A `setup` that finishes without running these checks would just be an assertion that the
    pieces are probably fine; running them is what makes it a proof.
+
+Step 6 is intentionally a mix of from-scratch and incremental: the firmware build always wipes
+`ports/rp2/build-<board>` first, so "builds with zero errors/warnings" is a genuine proof every
+run rather than a cached one, but `mpy-cross`'s build directory is otherwise left alone — if
+nothing in its source changed, it just relinks instead of recompiling. That's a deliberate,
+useful property (a `setup`/update re-run doesn't waste time re-verifying unchanged output), not
+an oversight — but it means there's normally no single command that forces *everything* back to
+a truly from-scratch build state without also re-cloning gigabytes of unchanged git history.
+`--clean` is that command: it wipes every build-artifact directory (`picotool/build`,
+`mpy-cross/build`, `ports/rp2/build-<board>`, via `clean_build_dirs()`) before the steps above
+run, without touching the git clones themselves, then proceeds through the normal build+verify
+flow — so it ends in the same state a genuinely fresh install would.
 
 `test` is `setup` with steps 1–4 skipped: it assumes an install already exists at
 `--toolchain-dir` and just re-runs steps 5–6 against whatever is already checked out there. That

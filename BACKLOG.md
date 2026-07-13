@@ -534,6 +534,17 @@ from reading the code alone:
     `build_env()` instead of passing them through; re-verified by re-running `setup` with
     `LANG=de_DE.UTF-8` set in the calling shell and confirming output stayed in English and all
     three checks still passed.
+  - **Added `--clean`** (`uv run toolchain/setup_toolchain.py --clean`), prompted directly by the
+    project owner noticing that a repeat `setup` run doesn't recompile `mpy-cross` at all when
+    its source hasn't changed (correct, deliberate behavior — the firmware build always wipes its
+    own build dir first for the same reason, but `mpy-cross`'s is otherwise left alone to rebuild
+    incrementally). `--clean` wipes every build-artifact directory (`picotool/build`,
+    `mpy-cross/build`, `ports/rp2/build-<board>`) without touching the git clones, then proceeds
+    through the normal build+verify flow — bringing the toolchain back to a from-scratch build
+    state on demand without re-cloning multi-gigabyte source trees. Verified: a fresh install,
+    then a normal re-run (confirmed `mpy-cross` skips recompilation, matching the observed
+    behavior), then `--clean` (confirmed it wipes the build dirs and `mpy-cross` fully recompiles
+    again), all ending with all three checks passing.
   - **`update_and_install.txt` re-verified against current (2026) upstream docs — structurally
     still accurate, but missing one real, currently-relevant gotcha.** The three-separate-clones
     approach (`pico-sdk`, `picotool`, `micropython`), the `lib/mbedtls` submodule-init step, the

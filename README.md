@@ -122,7 +122,22 @@ uv run toolchain/setup_toolchain.py
 ```
 
 Either way, the matching `pico-sdk`/`picotool` versions are re-derived automatically and only
-what's actually changed gets rebuilt.
+what's actually changed gets rebuilt — including, deliberately, not rebuilding `mpy-cross` at
+all if its source hasn't changed since last time (see below for when you don't want that).
+
+**Forcing a truly from-scratch rebuild** without re-cloning the (multi-gigabyte) git sources:
+
+```sh
+uv run toolchain/setup_toolchain.py --clean
+```
+
+Normal `setup`/update runs are intentionally incremental where it's safe to be: the firmware
+build always fully recompiles (so "builds with zero errors/warnings" stays a genuine proof every
+run), but `mpy-cross`'s build directory is otherwise left alone and just rebuilds whatever
+actually changed. `--clean` wipes every build-artifact directory (`picotool/build`,
+`mpy-cross/build`, `ports/rp2/build-<board>`) before building, bringing the toolchain back to a
+from-scratch build state on demand — useful if you suspect a stale build artifact, or just want
+to confirm a truly clean build still succeeds.
 
 **Testing** an already-installed toolchain (no `setup`/network/apt work, just a fast rebuild +
 re-check — ~30s vs. minutes for `setup`):
