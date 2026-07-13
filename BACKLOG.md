@@ -4,6 +4,28 @@ Open questions and explicitly deferred work, with reasoning, so nothing here get
 from scratch in a future session. See README.md for orientation and CLAUDE.md for operating
 constraints.
 
+## Final-goal requirements for the refactor (owner-specified, not yet implemented)
+
+These are additional requirements for what the `improved-quality/` refactor must eventually
+deliver. Recorded here as a target/spec — not implemented yet, not to be actioned until the
+refactor work itself starts:
+
+- **Stability / robustness**: thorough error handling throughout — no error condition that can
+  plausibly occur in real operation should lead to an uncaught exception; anything that might
+  happen should be caught and handled explicitly. The hardware watchdog is a last resort only
+  (e.g. undefined state after an electrical brownout, a MicroPython interpreter-level failure),
+  not a routine recovery mechanism for expected error conditions.
+- **No leaks, no drift**: the system should be able to theoretically run indefinitely without
+  exhausting any resource (memory, handles, counters, etc.).
+- **Production-level code quality**: unit tests, mypy, and ruff shall all be available both as
+  shell command scripts and as a CI pipeline in GitLab. MicroPython stubs (available for
+  typechecking) shall be installed and used.
+- **Self-contained venv via `uv`**: testing shall be possible on a generic Linux machine inside a
+  venv installable via `uv sync`. Test as close to the real (MicroPython/hardware) environment as
+  possible; mock only where there is no other way (e.g. a physical bus connection to a physical
+  sensor).
+- **Centralized config**: all tooling config shall live in `pyproject.toml`.
+
 ## Decided for the refactor
 
 - **`modules/_boot.py`'s `import sensortask.py`** (see open question #1 below) will be addressed
