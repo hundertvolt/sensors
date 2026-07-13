@@ -67,6 +67,13 @@ update_and_install.txt   handwritten toolchain setup notes (MicroPython/pico-sdk
 
 ## Build process
 
+**Toolchain setup** (MicroPython + a matching `pico-sdk` + a matching `picotool` + the ARM
+cross-compiler) is now a single scripted, updatable step — see `toolchain/README.md`:
+
+```sh
+uv run toolchain/setup_toolchain.py
+```
+
 Each `build-<device>.sh`: assembles `python/build/` from `CommonDrivers` + the manifest + the
 device's needed `IndividualDrivers` + gzipped/frozen HTML → temporarily swaps `modules/_boot.py`
 and `modules/sensortask-<device>.py` (renamed to `sensortask.py`) into the upstream MicroPython
@@ -74,10 +81,10 @@ and `modules/sensortask-<device>.py` (renamed to `sensortask.py`) into the upstr
 `make -C ports/rp2 BOARD=RPI_PICO_W FROZEN_MANIFEST=<path>` → copies out `firmware.uf2` → restores
 the original `_boot.py`.
 
-This assumes the repo's `python/` directory is checked out as `py-include/python` alongside a full
-`micropython` source tree, `pico-sdk`, and `picotool` (see `update_and_install.txt` — currently has
-hardcoded `/home/nico/rpi_pico/...` paths that will need genericizing whenever a shared dev-env
-setup is tackled).
+This still assumes the repo's `python/` directory is checked out as `py-include/python` alongside
+the `micropython` tree that `toolchain/setup_toolchain.py` sets up, with `FROZEN_MANIFEST`'s
+hardcoded `/home/nico/rpi_pico/...` path in each `build-<device>.sh` genericized to match — not yet
+done, see BACKLOG.md.
 
 ## Refactor in progress
 

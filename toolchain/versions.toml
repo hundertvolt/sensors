@@ -1,0 +1,27 @@
+# Pin for the build-environment installer (toolchain/setup_toolchain.py).
+#
+# Only the MicroPython ref is pinned by hand here. pico-sdk and picotool versions are
+# *derived automatically* at install/update time:
+#   - pico-sdk ref = the exact commit MicroPython's own `lib/pico-sdk` submodule points to
+#     at this ref (so it always matches what the firmware build actually compiles against).
+#   - picotool ref = the newest picotool tag sharing that pico-sdk commit's major.minor
+#     version (picotool enforces a major.minor match against the pico-sdk it's built with).
+#
+# To move to a newer MicroPython release: change `ref` below (or run the installer with
+# `--latest` to auto-detect and write back the newest stable tag), then re-run the
+# installer — it updates in place.
+[micropython]
+ref = "v1.28.0"
+
+[toolchain]
+board = "RPI_PICO_W"
+apt_packages = [
+    "build-essential",
+    "cmake",
+    "pkg-config",
+    "git",
+    "libusb-1.0-0-dev",
+    "gcc-arm-none-eabi",
+    "libnewlib-arm-none-eabi",
+    "libstdc++-arm-none-eabi-newlib",
+]

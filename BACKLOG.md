@@ -471,14 +471,26 @@ from reading the code alone:
 - **Unit tests** — not to be written against the current codebase. The plan is: fully understand
   how the current system works first, confirm what's already been well-transferred into
   `improved-quality/`, and write tests as part of that refactor, not before.
-- **Dev/build environment setup (venv, pinned toolchain versions)** — not started yet, but **no
-  longer purely low-priority/someday work**: the CI requirement that it also attempt a real
-  firmware build (see "Final-goal requirements for the refactor" above) makes genericizing
-  `build-*.sh`/`update_and_install.txt`'s hardcoded paths a real near-term prerequisite, not just a
-  nice-to-have. General direction when it happens: track the most recent *stable* releases of
-  MicroPython/pico-sdk/picotool rather than pinning to what's in the current handwritten notes;
-  MicroPython's rp2 port depends on specific pico-sdk submodules (e.g. `lib/mbedtls`), which
-  `update_and_install.txt` already gestures at.
+- **Dev/build environment setup (venv, pinned toolchain versions)** — **toolchain installer done**:
+  `toolchain/setup_toolchain.py` (run via `uv run toolchain/setup_toolchain.py`, see
+  `toolchain/README.md`) now clones/builds a matching MicroPython + pico-sdk + picotool + ARM
+  cross-compiler from scratch, and updates an existing install in place (re-run the same command
+  after bumping `toolchain/versions.toml`'s MicroPython ref, or pass `--latest`). Verified in this
+  repo's sandbox: a clean install of the latest stable MicroPython (v1.28.0) and of the currently-
+  deployed pin (v1.26.1) each build a standard, unchanged `RPI_PICO_W` firmware image with zero
+  compiler errors/warnings, build a working `mpy-cross`, and successfully cross-compile a sample
+  `.py`; updating an existing v1.26.1 install to v1.28.0 via the same command was also verified
+  (including a real bug caught and fixed along the way — building `mpy-cross` before syncing
+  submodules left stale submodule pins from the old version, producing a spurious "-dirty" version
+  string; fixed by syncing submodules first).
+  - **Still not done**: this only covers the generic toolchain, not this project's own firmware
+    build. `build-*.sh`/`FROZEN_MANIFEST`'s hardcoded `/home/nico/rpi_pico/...` path and the
+    `py-include` symlink wiring (see root README's "Build process") still need genericizing to
+    actually point at a `toolchain/setup_toolchain.py`-provisioned tree — that's the natural next
+    step, not yet started.
+  - The CI requirement that it also attempt a real firmware build (see "Final-goal requirements for
+    the refactor" above) makes that remaining step a real near-term prerequisite, not just a
+    nice-to-have, once picked back up.
   - **`update_and_install.txt` re-verified against current (2026) upstream docs — structurally
     still accurate, but missing one real, currently-relevant gotcha.** The three-separate-clones
     approach (`pico-sdk`, `picotool`, `micropython`), the `lib/mbedtls` submodule-init step, the
