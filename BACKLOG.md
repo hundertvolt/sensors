@@ -471,14 +471,80 @@ from reading the code alone:
 - **Unit tests** — not to be written against the current codebase. The plan is: fully understand
   how the current system works first, confirm what's already been well-transferred into
   `improved-quality/`, and write tests as part of that refactor, not before.
-- **Dev/build environment setup (venv, pinned toolchain versions)** — not started yet, but **no
-  longer purely low-priority/someday work**: the CI requirement that it also attempt a real
-  firmware build (see "Final-goal requirements for the refactor" above) makes genericizing
-  `build-*.sh`/`update_and_install.txt`'s hardcoded paths a real near-term prerequisite, not just a
-  nice-to-have. General direction when it happens: track the most recent *stable* releases of
-  MicroPython/pico-sdk/picotool rather than pinning to what's in the current handwritten notes;
-  MicroPython's rp2 port depends on specific pico-sdk submodules (e.g. `lib/mbedtls`), which
-  `update_and_install.txt` already gestures at.
+- **Dev/build environment setup (venv, pinned toolchain versions)** — **toolchain installer done**:
+  `toolchain/setup_toolchain.py` (run via `uv run toolchain/setup_toolchain.py`, see
+  `toolchain/README.md`) now clones/builds a matching MicroPython + pico-sdk + picotool + ARM
+  cross-compiler from scratch, and updates an existing install in place (re-run the same command
+  after bumping `toolchain/versions.toml`'s MicroPython ref, or pass `--latest`). Verified in this
+  repo's sandbox: a clean install of the latest stable MicroPython (v1.28.0) and of the currently-
+  deployed pin (v1.26.1) each build a standard, unchanged `RPI_PICO_W` firmware image with zero
+  compiler errors/warnings, build a working `mpy-cross`, and successfully cross-compile a sample
+  `.py`; updating an existing v1.26.1 install to v1.28.0 via the same command was also verified
+  (including a real bug caught and fixed along the way — building `mpy-cross` before syncing
+  submodules left stale submodule pins from the old version, producing a spurious "-dirty" version
+  string; fixed by syncing submodules first).
+  - **Still not done**: this only covers the generic toolchain, not this project's own firmware
+    build. `build-*.sh`/`FROZEN_MANIFEST`'s hardcoded `/home/nico/rpi_pico/...` path and the
+    `py-include` symlink wiring (see root README's "Build process") still need genericizing to
+    actually point at a `toolchain/setup_toolchain.py`-provisioned tree — that's the natural next
+    step, not yet started.
+  - The CI requirement that it also attempt a real firmware build (see "Final-goal requirements for
+    the refactor" above) makes that remaining step a real near-term prerequisite, not just a
+    nice-to-have, once picked back up.
+  - **Re-verified from scratch on a genuinely clean Ubuntu 24.04 system**, not just a fresh
+    directory inside an already-provisioned sandbox: built a `debootstrap`-based `noble` chroot
+    with nothing preinstalled beyond the minimal base (no build tools, no `git`/`sudo`/`uv`, no apt
+    cache beyond the `main` component) and ran the installer inside it end-to-end. Passed all three
+    checks for both the latest release and the `v1.26.1` pin, and the update path (existing
+    `v1.26.1` install → re-run targeting latest) worked too. One genuine prerequisite surfaced:
+    `debootstrap`'s default `sources.list` only enables `main`, and `gcc-arm-none-eabi` (plus its
+    newlib packages) lives in `universe` — not a script bug, since every official Ubuntu 24.04
+    image ships with `universe` enabled already, but worth the explicit callout for anyone building
+    from a deliberately minimal base. Documented in `toolchain/README.md` and the root README.
+  - **Added a `test` subcommand** (`uv run toolchain/setup_toolchain.py test`) alongside `setup`,
+    for exactly the CI-firmware-build requirement above: it re-runs the same three verification
+    checks against whatever is already installed at `--toolchain-dir`, but never touches apt or
+    git remotes, so it's fast (~30s vs. minutes for `setup`) and fully offline/reproducible.
+    Verified working against a `setup`-provisioned install, and verified it fails with a clear,
+    actionable message (not a confusing build error) when pointed at a directory with no toolchain
+    installed yet. No CI pipeline exists to wire it into yet — this just makes the eventual wiring
+    a drop-in rather than a redesign.
+  - **Hardened against ambient-environment interference.** Every subprocess call now gets an
+    explicitly constructed environment (fixed `PATH` plus a small variable allowlist for the
+    actual compile steps; the same plus explicit proxy/CA passthrough for `git`/`apt-get` and the
+    rp2 port's `make submodules` target, which does both a git fetch and an internal cmake
+    configure pass) instead of inheriting the caller's shell wholesale — see "Environment
+    isolation" in `toolchain/README.md` for the full breakdown of what's allowed through and why.
+    Verified adversarially: ran both `setup` and `test` with `CC`/`CXX` pointed at `/bin/false`,
+    garbage `CFLAGS`/`MAKEFLAGS`, a bogus `PICO_SDK_PATH`/`CMAKE_INSTALL_PREFIX`, and fake
+    `cmake`/`arm-none-eabi-gcc`/`picotool` scripts placed ahead in `PATH` — all real interference
+    a machine with other locally-installed tooling could plausibly have. Confirmed one genuine bug
+    this way before the fix: `make submodules` was left on fully-ambient environment on the theory
+    that only `git`/`apt-get` needed real env, but that target's own internal `cmake` configure
+    pass picked up the fake `cmake` and failed, which is exactly why `network_env()` exists as a
+    distinct, explicit combination rather than a binary ambient/clean split.
+  - **A real installer run on the project owner's own machine surfaced a second locale-related
+    gap in this isolation, missed by the adversarial test above**: `LANG`/`LC_ALL` were still
+    being allowlisted through from the caller's shell, visible as German-localized `git`/`apt`
+    output in that run's log. Since `build_firmware()`/`build_mpy_cross()` detect failure by
+    grepping build output for the literal English `error:`/`warning:` (the only signal `make`/
+    `gcc` give beyond exit code), and GCC/binutils diagnostics can be translated via gettext
+    catalogs on a system where the caller's locale has one installed, this could have silently
+    defeated that detection on some machines. Fixed by forcing `LANG=C.UTF-8`/`LC_ALL=C.UTF-8` in
+    `build_env()` instead of passing them through; re-verified by re-running `setup` with
+    `LANG=de_DE.UTF-8` set in the calling shell and confirming output stayed in English and all
+    three checks still passed.
+  - **Added `--clean`** (`uv run toolchain/setup_toolchain.py --clean`), prompted directly by the
+    project owner noticing that a repeat `setup` run doesn't recompile `mpy-cross` at all when
+    its source hasn't changed (correct, deliberate behavior — the firmware build always wipes its
+    own build dir first for the same reason, but `mpy-cross`'s is otherwise left alone to rebuild
+    incrementally). `--clean` wipes every build-artifact directory (`picotool/build`,
+    `mpy-cross/build`, `ports/rp2/build-<board>`) without touching the git clones, then proceeds
+    through the normal build+verify flow — bringing the toolchain back to a from-scratch build
+    state on demand without re-cloning multi-gigabyte source trees. Verified: a fresh install,
+    then a normal re-run (confirmed `mpy-cross` skips recompilation, matching the observed
+    behavior), then `--clean` (confirmed it wipes the build dirs and `mpy-cross` fully recompiles
+    again), all ending with all three checks passing.
   - **`update_and_install.txt` re-verified against current (2026) upstream docs — structurally
     still accurate, but missing one real, currently-relevant gotcha.** The three-separate-clones
     approach (`pico-sdk`, `picotool`, `micropython`), the `lib/mbedtls` submodule-init step, the

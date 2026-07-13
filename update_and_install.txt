@@ -1,3 +1,13 @@
+SUPERSEDED: this manual recipe is now automated by `toolchain/setup_toolchain.py` (run via
+`uv run toolchain/setup_toolchain.py` — see `toolchain/README.md`). It also fixes the version-
+matching problem this recipe left implicit: since pico-sdk 2.0.0, a standalone `picotool` build
+must have a matching major.minor version to whatever pico-sdk it's built against, and MicroPython
+1.26 already bundles pico-sdk 2.1.1 internally — so "current release tags" for `pico-sdk`/
+`picotool` below are not independent choices, they must track whatever MicroPython version you're
+building. The script derives both automatically instead of requiring you to work this out by hand.
+
+Kept below only as the original manual notes for reference:
+
 Alle Verzeichnisse:
 
 git pull --rebase

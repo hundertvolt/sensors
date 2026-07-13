@@ -67,6 +67,98 @@ update_and_install.txt   handwritten toolchain setup notes (MicroPython/pico-sdk
 
 ## Build process
 
+### Toolchain setup (`toolchain/setup_toolchain.py`)
+
+Building firmware needs a matching set of MicroPython + `pico-sdk` + `picotool` + the ARM
+cross-compiler. Getting these four to actually agree with each other used to be a manual,
+error-prone recipe (`update_and_install.txt`); it's now one scripted, updatable command. Full
+design details live in `toolchain/README.md` — this section is the everyday-usage cheat sheet.
+
+Every build step runs in an explicitly constructed environment (fixed `PATH`, a small
+variable allowlist), not whatever happens to be ambient in your shell — a stray `CC`/`CFLAGS`,
+a shadowing binary earlier in `PATH`, or a leftover `PICO_SDK_PATH` from an unrelated project
+can't silently change what gets built. Verified adversarially against a deliberately poisoned
+environment (fake compilers/tools placed ahead in `PATH`, garbage build-flag env vars) — see
+"Environment isolation" in `toolchain/README.md`.
+
+**Prerequisites** (a stock Ubuntu 24.04 install already satisfies all of these):
+
+- A Debian/Ubuntu system with the `universe` component enabled in apt sources (on by default for
+  every official Ubuntu image/ISO — only relevant if you're on a deliberately minimal base, e.g. a
+  `debootstrap`-built rootfs, which only enables `main` unless told otherwise). `gcc-arm-none-eabi`
+  and friends live in `universe`.
+- `sudo` access (the script uses it for `apt-get install` and `picotool`'s `make install`).
+- [`uv`](https://docs.astral.sh/uv/) itself installed — `pip install uv`, or the official installer
+  `curl -LsSf https://astral.sh/uv/install.sh | sh` (the script's own dependencies are then handled
+  automatically by `uv run`, no separate `pip install`/venv step needed for anything else).
+- Outbound network access to GitHub and your distro's package mirrors.
+
+**Verified from scratch on a genuinely clean Ubuntu 24.04 system** (a `debootstrap`-built `noble`
+chroot with nothing preinstalled beyond the minimal base — no apt cache, no build tools, no `uv`):
+installs every dependency itself and passes all three checks below in ~3 minutes.
+
+**Everyday usage:**
+
+```sh
+# First-time setup (also the command you re-run for everyday use — see "Updating" below)
+uv run toolchain/setup_toolchain.py
+
+# Build a specific MicroPython version instead of the pinned default
+# (e.g. matching the version actually deployed on units today, see CLAUDE.md)
+uv run toolchain/setup_toolchain.py --micropython-ref v1.26.1
+
+# Install somewhere other than the default ~/pico-toolchain
+uv run toolchain/setup_toolchain.py --toolchain-dir /path/to/toolchain
+```
+
+**Updating** an existing install is the same command, not a separate procedure:
+
+```sh
+# Detect + pin + install the newest stable MicroPython release
+uv run toolchain/setup_toolchain.py --latest
+
+# Or bump toolchain/versions.toml's [micropython] ref by hand, then:
+uv run toolchain/setup_toolchain.py
+```
+
+Either way, the matching `pico-sdk`/`picotool` versions are re-derived automatically and only
+what's actually changed gets rebuilt — including, deliberately, not rebuilding `mpy-cross` at
+all if its source hasn't changed since last time (see below for when you don't want that).
+
+**Forcing a truly from-scratch rebuild** without re-cloning the (multi-gigabyte) git sources:
+
+```sh
+uv run toolchain/setup_toolchain.py --clean
+```
+
+Normal `setup`/update runs are intentionally incremental where it's safe to be: the firmware
+build always fully recompiles (so "builds with zero errors/warnings" stays a genuine proof every
+run), but `mpy-cross`'s build directory is otherwise left alone and just rebuilds whatever
+actually changed. `--clean` wipes every build-artifact directory (`picotool/build`,
+`mpy-cross/build`, `ports/rp2/build-<board>`) before building, bringing the toolchain back to a
+from-scratch build state on demand — useful if you suspect a stale build artifact, or just want
+to confirm a truly clean build still succeeds.
+
+**Testing** an already-installed toolchain (no `setup`/network/apt work, just a fast rebuild +
+re-check — ~30s vs. minutes for `setup`):
+
+```sh
+uv run toolchain/setup_toolchain.py test
+```
+
+Meant to run manually today, with an eye toward becoming a CI step later (once this project has
+a CI pipeline at all — see BACKLOG.md): `setup` provisions the toolchain once, `test` is the
+repeatable, offline gate that checks it still builds cleanly.
+
+**What a successful `setup` or `test` run proves**, every time:
+
+1. A standard, unchanged firmware image builds for the target board with zero compiler
+   errors/warnings.
+2. `mpy-cross` (the cross-compiler) builds cleanly.
+3. `mpy-cross` successfully cross-compiles a throwaway sample `.py` file.
+
+### Building this project's firmware
+
 Each `build-<device>.sh`: assembles `python/build/` from `CommonDrivers` + the manifest + the
 device's needed `IndividualDrivers` + gzipped/frozen HTML → temporarily swaps `modules/_boot.py`
 and `modules/sensortask-<device>.py` (renamed to `sensortask.py`) into the upstream MicroPython
@@ -74,10 +166,10 @@ and `modules/sensortask-<device>.py` (renamed to `sensortask.py`) into the upstr
 `make -C ports/rp2 BOARD=RPI_PICO_W FROZEN_MANIFEST=<path>` → copies out `firmware.uf2` → restores
 the original `_boot.py`.
 
-This assumes the repo's `python/` directory is checked out as `py-include/python` alongside a full
-`micropython` source tree, `pico-sdk`, and `picotool` (see `update_and_install.txt` — currently has
-hardcoded `/home/nico/rpi_pico/...` paths that will need genericizing whenever a shared dev-env
-setup is tackled).
+This still assumes the repo's `python/` directory is checked out as `py-include/python` alongside
+the `micropython` tree that `toolchain/setup_toolchain.py` sets up, with `FROZEN_MANIFEST`'s
+hardcoded `/home/nico/rpi_pico/...` path in each `build-<device>.sh` genericized to match — not yet
+done, see BACKLOG.md.
 
 ## Refactor in progress
 
