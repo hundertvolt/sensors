@@ -60,10 +60,22 @@ hands-on field experience with the current deployed units:
   that either caught too early (masking the real problem, handling it wrong) or let exceptions
   propagate too far (not caught where they needed to be). The refactor needs deliberate focus on
   getting these constructs' actual behavior right, not just present.
+  - **Catch granularity confirmed**: today's pattern in e.g. `asy_scd30_driver.py`'s `read_scd()` —
+    one broad `except:` around a whole per-iteration multi-command read, with full task-death +
+    supervisor-respawn as the only deeper reset — is confirmed as the right granularity. Don't
+    split into finer per-command catches within one iteration.
+  - **Exception types**: distinguish exception types only where genuinely different handling is
+    required; otherwise treat uniformly. The one hard rule: **nothing may ever silently slip
+    through uncaught** — this is about handling appropriately, not about never discriminating.
 - **Live bus reconnect must be preserved**: field-tested by physically disconnecting and
   reconnecting an I2C/SPI wire on a live unit — it was possible to handle entirely in software
   (exception handling, responses, retry) and have the sensor reconnect live once the cable was
   reinserted, without a reboot. This property must survive the refactor.
+  - **Recovery mechanism confirmed, but treat as a basis to revisit, not gospel**: the
+    task-death-and-respawn path (dead reader task → supervisor restarts it → fresh `setup()`/reset)
+    is confirmed as what has been making live reconnect work — but the project owner flagged it may
+    be incomplete, and it should be revisited/hardened during the actual refactor work rather than
+    assumed complete.
 - **Sensor/bus-specific defined-state recovery should be as complete as possible**: sensor
   firmware/bus stacks can end up in an undefined state, and there are bus/sensor-specific ways to
   force a defined state again (e.g. clocking out a fixed number of cycles, reset sequences, reset
@@ -71,10 +83,38 @@ hands-on field experience with the current deployed units:
   `asy_spi_driver.py`'s `extra_clocks` parameter cycles the bus after CS deassert); the refactor
   should make sure this is used as completely/consistently as possible across all buses and
   sensors, not just where it happens to exist today.
+  - **I2C recovery is device-specific, not bus-generic**: unlike SPI's `extra_clocks`, I2C recovery
+    (retry + sensor reset commands) is expected to vary per device — check what each individual
+    driver already does before assuming a gap. If a genuinely generalizable I2C-side mechanism
+    turns up (e.g. common to several sensors), it's fine to add to the shared bus driver; otherwise
+    keep it device-specific. *(Follow-up needed: this session only read `asy_scd30_driver.py`'s
+    reset path in depth — SGP40's `_reset()` and BMP3xx's reset command still need the same
+    review before concluding what's generalizable.)*
+  - **FRAM's SPI bus gets the same bus-recovery treatment as sensor buses** — no special-casing
+    needed there; the project owner already handles many corrupted-memory situations at the data
+    level (dual-copy redundancy), and applying the same bus-level recovery techniques on top is
+    fine.
+  - **Keep error handling per-driver, not a shared generic framework**: despite the goal of
+    consistency, a shared retry/backoff/reset policy object across all Readers was explicitly
+    rejected — sensors (especially I2C ones) differ enough that per-driver hand-rolled handling is
+    preferred over forcing a common abstraction.
 - **Blocking calls must have a timeout or other unblock mechanism**: calls previously assumed safe
   turned out to block in practice — a real source of unexpected errors. The refactor should
   re-check this specifically: any call that can block should have an explicit timeout or another
   way to guarantee it can't hang indefinitely.
+  - **Known real-world case**: the SCD30 (which has its own onboard microcontroller) has been
+    observed to hang the bus — suspected to be the SCD30's own firmware getting stuck, not the
+    RP2040's I2C peripheral. Since MicroPython's cooperative scheduler can't preempt a synchronous
+    `machine.I2C` call already in progress, an asyncio-level timeout cannot actually interrupt a
+    transaction that's genuinely wedged mid-flight.
+  - **Decided**: for a truly stuck bus/sensor (the SCD30-hang case), **the hardware watchdog is the
+    accepted backstop** — not something to chase a software-only fix for. No respawn-rate cap/
+    backoff is needed beyond the existing task-supervisor error-budget; current behavior there is
+    considered adequate.
+  - **For calls that genuinely can be timeout-wrapped** (e.g. `socket.getaddrinfo()`, FRAM SPI
+    transactions, anything not a raw blocking `machine.I2C` call mid-transaction), **standardize on
+    one consistent timeout/cancellation mechanism** applied everywhere such a call exists, rather
+    than a different bespoke approach per call site.
 - **Bus concurrency via `asyncio.Lock` + `async with` needs a coverage audit**: the current pattern
   (one lock per physical bus, acquired per-transaction via `I2CDevice`/`SPIDevice`'s `async with`)
   is believed to be the right general approach, but the refactor should specifically verify these
