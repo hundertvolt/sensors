@@ -501,6 +501,14 @@ from reading the code alone:
     newlib packages) lives in `universe` — not a script bug, since every official Ubuntu 24.04
     image ships with `universe` enabled already, but worth the explicit callout for anyone building
     from a deliberately minimal base. Documented in `toolchain/README.md` and the root README.
+  - **Added a `test` subcommand** (`uv run toolchain/setup_toolchain.py test`) alongside `setup`,
+    for exactly the CI-firmware-build requirement above: it re-runs the same three verification
+    checks against whatever is already installed at `--toolchain-dir`, but never touches apt or
+    git remotes, so it's fast (~30s vs. minutes for `setup`) and fully offline/reproducible.
+    Verified working against a `setup`-provisioned install, and verified it fails with a clear,
+    actionable message (not a confusing build error) when pointed at a directory with no toolchain
+    installed yet. No CI pipeline exists to wire it into yet — this just makes the eventual wiring
+    a drop-in rather than a redesign.
   - **`update_and_install.txt` re-verified against current (2026) upstream docs — structurally
     still accurate, but missing one real, currently-relevant gotcha.** The three-separate-clones
     approach (`pico-sdk`, `picotool`, `micropython`), the `lib/mbedtls` submodule-init step, the

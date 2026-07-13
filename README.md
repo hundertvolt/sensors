@@ -117,7 +117,18 @@ uv run toolchain/setup_toolchain.py
 Either way, the matching `pico-sdk`/`picotool` versions are re-derived automatically and only
 what's actually changed gets rebuilt.
 
-**What a successful run proves**, every time (not just at initial install):
+**Testing** an already-installed toolchain (no `setup`/network/apt work, just a fast rebuild +
+re-check — ~30s vs. minutes for `setup`):
+
+```sh
+uv run toolchain/setup_toolchain.py test
+```
+
+Meant to run manually today, with an eye toward becoming a CI step later (once this project has
+a CI pipeline at all — see BACKLOG.md): `setup` provisions the toolchain once, `test` is the
+repeatable, offline gate that checks it still builds cleanly.
+
+**What a successful `setup` or `test` run proves**, every time:
 
 1. A standard, unchanged firmware image builds for the target board with zero compiler
    errors/warnings.

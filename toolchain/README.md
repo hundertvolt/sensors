@@ -6,16 +6,30 @@ MicroPython itself, a matching `pico-sdk` (for building `picotool`), a version-m
 
 ## Usage
 
+There are two subcommands, `setup` and `test`. `setup` is the default if you omit it (so
+existing invocations without a subcommand keep working):
+
 ```sh
-uv run toolchain/setup_toolchain.py                              # install/update per versions.toml
+uv run toolchain/setup_toolchain.py                              # = setup: install/update per versions.toml
 uv run toolchain/setup_toolchain.py --latest                      # pin + install newest stable MicroPython
 uv run toolchain/setup_toolchain.py --micropython-ref v1.26.1     # build a specific ref instead
+
+uv run toolchain/setup_toolchain.py test                          # re-verify an existing install, offline
 ```
 
 No `pip install`/venv setup needed by hand — `uv run` provisions an ephemeral, cached
-interpreter for the script itself (see "Why not a full venv" below). Re-running the same
-command is also how you update an existing install: it fetches, checks out whatever ref
+interpreter for the script itself (see "Why not a full venv" below). Re-running `setup`
+against an existing install is also how updates work: it fetches, checks out whatever ref
 is now pinned, and rebuilds only what changed.
+
+`test` is deliberately separate from `setup`: it never touches apt or git remotes, it just
+rebuilds the standard firmware image and `mpy-cross` from whatever is already checked out at
+`--toolchain-dir` and re-runs the same three checks. That makes it fast (~30s vs. minutes for a
+full `setup`), fully offline/reproducible, and the natural shape for a CI step later: a `setup`
+run (or a restored cache of its `--toolchain-dir`) provisions the toolchain once, and `test` is
+the repeatable gate that checks it still builds cleanly — see "Not yet covered" below. Run it
+against a `--toolchain-dir` with no toolchain installed yet and it fails immediately with a clear
+message telling you to run `setup` first, rather than a confusing build error.
 
 Requires `sudo` (for `apt-get install` and `picotool`'s `make install`), outbound network access
 to GitHub and the distro package mirrors, and `uv` itself already installed (`pip install uv`, or
@@ -78,7 +92,9 @@ no `uv`, no apt cache beyond `main`) — the script installed every system depen
 both the latest stable MicroPython release and the currently-deployed `v1.26.1` pin. The
 in-place update path (existing `v1.26.1` install → re-run targeting the latest release) was also
 verified: existing clones are fetched and re-checked-out rather than re-cloned, the derived
-pico-sdk/picotool versions bump automatically, and only the affected pieces rebuild.
+pico-sdk/picotool versions bump automatically, and only the affected pieces rebuild. `test` was
+verified separately against a `setup`-provisioned install: it completed in ~30s (vs. minutes for
+`setup`), touched no network or apt state, and passed all three checks.
 
 ## Why not a full venv
 
@@ -98,3 +114,14 @@ This installs the generic MicroPython/pico-sdk/picotool/cross-compiler toolchain
 it builds and cross-compiles. It does **not** yet wire up `build-*.sh`'s hardcoded
 `/home/nico/rpi_pico/...` paths or the `py-include` symlink this project's own firmware
 builds expect — that's the next step (see BACKLOG.md).
+
+## CI perspective
+
+`test` is written with an eventual CI stage in mind (see BACKLOG.md's "Final-goal requirements
+for the refactor" — a real firmware build as a CI pipeline stage), even though no CI pipeline
+exists yet for this repo. The intended shape once that's built: a `setup` job provisions (or
+restores a cache of) `--toolchain-dir`, and a `test` job runs against it as the actual gate —
+offline, fast, and not dependent on GitHub/apt reachability at gate time. Nothing about `test`
+today assumes a specific CI system; it's just a plain script invocation with a clean exit code,
+so it should drop into whatever pipeline (GitHub Actions, GitLab CI, etc.) is set up later
+without changes.

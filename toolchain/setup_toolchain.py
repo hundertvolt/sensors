@@ -227,23 +227,14 @@ def latest_stable_micropython_ref() -> str:
     return candidates[-1][1]
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument(
-        "--toolchain-dir",
-        type=Path,
-        default=Path(os.environ.get("PICO_TOOLCHAIN_DIR", Path.home() / "pico-toolchain")),
-        help="Directory holding the micropython/pico-sdk/picotool source trees (default: $PICO_TOOLCHAIN_DIR or ~/pico-toolchain)",
-    )
-    parser.add_argument("--micropython-ref", help="Override the MicroPython tag/ref to build (default: from versions.toml)")
-    parser.add_argument("--latest", action="store_true", help="Detect the newest stable MicroPython release and pin versions.toml to it")
-    parser.add_argument("--skip-apt", action="store_true", help="Skip installing system/apt packages")
-    parser.add_argument("--jobs", type=int, default=os.cpu_count() or 4, help="Parallel make jobs")
-    args = parser.parse_args()
+def print_verification_summary(board: str, uf2: Path, mpy_cross_binary: Path) -> None:
+    log("All verification checks passed")
+    print(f"  1. Standard {board} firmware built with no errors/warnings: {uf2}")
+    print(f"  2. Cross-compiler built: {mpy_cross_binary}")
+    print("  3. Sample .py cross-compiled successfully")
 
-    versions_path = Path(__file__).parent / "versions.toml"
-    versions = load_versions(versions_path)
 
+def run_setup(args: argparse.Namespace, versions_path: Path, versions: dict) -> int:
     mpy_ref = args.micropython_ref
     if args.latest:
         mpy_ref = latest_stable_micropython_ref()
@@ -285,11 +276,81 @@ def main() -> int:
     uf2 = build_firmware(micropython_dir, board, args.jobs)
     cross_compile_sample(mpy_cross_binary)
 
-    log("All verification checks passed")
-    print(f"  1. Standard {board} firmware built with no errors/warnings: {uf2}")
-    print(f"  2. Cross-compiler built: {mpy_cross_binary}")
-    print("  3. Sample .py cross-compiled successfully")
+    print_verification_summary(board, uf2, mpy_cross_binary)
     return 0
+
+
+def run_test(args: argparse.Namespace, versions: dict) -> int:
+    board = versions["toolchain"]["board"]
+    toolchain_dir = args.toolchain_dir.expanduser().resolve()
+    micropython_dir = toolchain_dir / "micropython"
+    rp2_dir = micropython_dir / "ports" / "rp2"
+
+    if not (micropython_dir / "mpy-cross").is_dir() or not rp2_dir.is_dir():
+        raise SetupError(
+            f"no toolchain found at {toolchain_dir} — run `setup` first "
+            f"(e.g. `uv run toolchain/setup_toolchain.py setup`)"
+        )
+
+    log(f"Testing existing toolchain at {toolchain_dir} (offline: no apt/git network access)")
+    print(f"Board: {board}")
+
+    # Deliberately does not touch apt, git remotes, or the pico-sdk/picotool derivation —
+    # this re-verifies whatever is already checked out, so it's fast, reproducible, and
+    # runnable offline. That's what makes it suitable as a standalone CI step later: `setup`
+    # (or a restored cache of its --toolchain-dir) provisions the toolchain once, and `test`
+    # is the repeatable gate that checks it still builds cleanly.
+    mpy_cross_binary = build_mpy_cross(micropython_dir, args.jobs)
+    uf2 = build_firmware(micropython_dir, board, args.jobs)
+    cross_compile_sample(mpy_cross_binary)
+
+    print_verification_summary(board, uf2, mpy_cross_binary)
+    return 0
+
+
+def main() -> int:
+    toolchain_dir_default = Path(os.environ.get("PICO_TOOLCHAIN_DIR", Path.home() / "pico-toolchain"))
+
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument(
+        "--toolchain-dir",
+        type=Path,
+        default=toolchain_dir_default,
+        help="Directory holding the micropython/pico-sdk/picotool source trees (default: $PICO_TOOLCHAIN_DIR or ~/pico-toolchain)",
+    )
+    common.add_argument("--jobs", type=int, default=os.cpu_count() or 4, help="Parallel make jobs")
+
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    subparsers = parser.add_subparsers(dest="command")
+
+    setup_parser = subparsers.add_parser(
+        "setup", parents=[common], help="Install or update the toolchain (default if no subcommand given)"
+    )
+    setup_parser.add_argument("--micropython-ref", help="Override the MicroPython tag/ref to build (default: from versions.toml)")
+    setup_parser.add_argument("--latest", action="store_true", help="Detect the newest stable MicroPython release and pin versions.toml to it")
+    setup_parser.add_argument("--skip-apt", action="store_true", help="Skip installing system/apt packages")
+
+    subparsers.add_parser(
+        "test",
+        parents=[common],
+        help="Re-verify an already-installed toolchain with no network/apt access — the CI-friendly check",
+    )
+
+    # Backward/convenience compat: `setup_toolchain.py [--some-setup-flag ...]` (no subcommand)
+    # still means "setup", so existing invocations and muscle memory keep working.
+    argv = sys.argv[1:]
+    if argv and argv[0] not in ("setup", "test", "-h", "--help"):
+        argv = ["setup", *argv]
+    elif not argv:
+        argv = ["setup"]
+    args = parser.parse_args(argv)
+
+    versions_path = Path(__file__).parent / "versions.toml"
+    versions = load_versions(versions_path)
+
+    if args.command == "test":
+        return run_test(args, versions)
+    return run_setup(args, versions_path, versions)
 
 
 if __name__ == "__main__":
