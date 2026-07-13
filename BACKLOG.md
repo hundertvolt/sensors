@@ -509,6 +509,20 @@ from reading the code alone:
     actionable message (not a confusing build error) when pointed at a directory with no toolchain
     installed yet. No CI pipeline exists to wire it into yet — this just makes the eventual wiring
     a drop-in rather than a redesign.
+  - **Hardened against ambient-environment interference.** Every subprocess call now gets an
+    explicitly constructed environment (fixed `PATH` plus a small variable allowlist for the
+    actual compile steps; the same plus explicit proxy/CA passthrough for `git`/`apt-get` and the
+    rp2 port's `make submodules` target, which does both a git fetch and an internal cmake
+    configure pass) instead of inheriting the caller's shell wholesale — see "Environment
+    isolation" in `toolchain/README.md` for the full breakdown of what's allowed through and why.
+    Verified adversarially: ran both `setup` and `test` with `CC`/`CXX` pointed at `/bin/false`,
+    garbage `CFLAGS`/`MAKEFLAGS`, a bogus `PICO_SDK_PATH`/`CMAKE_INSTALL_PREFIX`, and fake
+    `cmake`/`arm-none-eabi-gcc`/`picotool` scripts placed ahead in `PATH` — all real interference
+    a machine with other locally-installed tooling could plausibly have. Confirmed one genuine bug
+    this way before the fix: `make submodules` was left on fully-ambient environment on the theory
+    that only `git`/`apt-get` needed real env, but that target's own internal `cmake` configure
+    pass picked up the fake `cmake` and failed, which is exactly why `network_env()` exists as a
+    distinct, explicit combination rather than a binary ambient/clean split.
   - **`update_and_install.txt` re-verified against current (2026) upstream docs — structurally
     still accurate, but missing one real, currently-relevant gotcha.** The three-separate-clones
     approach (`pico-sdk`, `picotool`, `micropython`), the `lib/mbedtls` submodule-init step, the

@@ -96,6 +96,45 @@ pico-sdk/picotool versions bump automatically, and only the affected pieces rebu
 verified separately against a `setup`-provisioned install: it completed in ~30s (vs. minutes for
 `setup`), touched no network or apt state, and passed all three checks.
 
+## Environment isolation
+
+Every subprocess this script runs — `git`, `apt-get`, `cmake`, `make`, `picotool`, the built
+`mpy-cross` binary — gets an explicit, constructed environment instead of inheriting the
+caller's shell wholesale. Two flavors:
+
+- **`build_env()`** — for the actual compile steps (picotool's build, `mpy-cross`, the firmware
+  build, running the cross-compiled sample): a fixed, deterministic `PATH`
+  (`/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`) plus a small allowlist
+  (`HOME`, `USER`, `LOGNAME`, `LANG`, `LC_ALL`, `TERM`, `TMPDIR`). Everything else — `CC`/`CXX`/
+  `CFLAGS`/`CXXFLAGS`/`LDFLAGS`/`MAKEFLAGS`, any `CMAKE_*` variable, `PICO_SDK_PATH`/`PICO_BOARD`,
+  `PYTHONPATH`, a leftover `http_proxy` meant for some unrelated tool — is dropped. The fixed
+  `PATH` also means a shadowing binary earlier in the caller's `PATH` (a personal `~/bin/cmake`,
+  a different `gcc-arm-none-eabi` build, an old `picotool`) can never be picked up instead of
+  the toolchain this script itself just built/installed.
+- **`network_env()`** — the same base, plus whatever proxy/CA configuration is actually present
+  (`HTTPS_PROXY`/`https_proxy`/`HTTP_PROXY`/`http_proxy`/`NO_PROXY`/`no_proxy`/`ALL_PROXY`/
+  `all_proxy`/`SSL_CERT_FILE`/`GIT_SSL_CAINFO`/`CURL_CA_BUNDLE`/`REQUESTS_CA_BUNDLE`), explicitly
+  named rather than inherited wholesale. Used for `git`/`apt-get` calls, and for the rp2 port's
+  `make submodules` target specifically because that one Makefile target both fetches submodules
+  over git *and* runs a preliminary `cmake` configure pass — it needs the deterministic `PATH`
+  and real network access at the same time.
+
+`picotool`'s own install location is also pinned explicitly
+(`-DCMAKE_INSTALL_PREFIX=/usr/local`, matching where it's later invoked from by absolute path)
+rather than left to whatever a stray `CMAKE_INSTALL_PREFIX` or local `cmake` cache would
+otherwise resolve to.
+
+**Verified adversarially, not just asserted**: ran both `setup` and `test` with a deliberately
+hostile ambient environment — `CC`/`CXX` pointed at `/bin/false`, garbage `CFLAGS`/`CXXFLAGS`/
+`LDFLAGS`/`MAKEFLAGS`, a bogus `PICO_SDK_PATH`/`PICO_BOARD`/`PYTHONPATH`/`CMAKE_INSTALL_PREFIX`/
+`CMAKE_TOOLCHAIN_FILE`, and fake `cmake`/`arm-none-eabi-gcc`/`picotool` shell scripts (each just
+printing a marker and exiting 1) placed earlier in `PATH` than the real toolchain. Before this
+isolation existed, `make submodules`'s internal `cmake` configure pass picked up the fake `cmake`
+and failed outright — the concrete bug that motivated splitting `network_env()` out from
+`build_env()` rather than just leaving git/apt calls fully ambient. After the fix, both `setup`
+and `test` completed successfully with zero trace of any of the injected poison in the build
+logs.
+
 ## Why not a full venv
 
 This mostly isn't Python-package territory: apt packages, multi-gigabyte git source trees,

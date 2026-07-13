@@ -74,6 +74,13 @@ cross-compiler. Getting these four to actually agree with each other used to be 
 error-prone recipe (`update_and_install.txt`); it's now one scripted, updatable command. Full
 design details live in `toolchain/README.md` — this section is the everyday-usage cheat sheet.
 
+Every build step runs in an explicitly constructed environment (fixed `PATH`, a small
+variable allowlist), not whatever happens to be ambient in your shell — a stray `CC`/`CFLAGS`,
+a shadowing binary earlier in `PATH`, or a leftover `PICO_SDK_PATH` from an unrelated project
+can't silently change what gets built. Verified adversarially against a deliberately poisoned
+environment (fake compilers/tools placed ahead in `PATH`, garbage build-flag env vars) — see
+"Environment isolation" in `toolchain/README.md`.
+
 **Prerequisites** (a stock Ubuntu 24.04 install already satisfies all of these):
 
 - A Debian/Ubuntu system with the `universe` component enabled in apt sources (on by default for

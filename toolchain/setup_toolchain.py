@@ -53,10 +53,46 @@ def log(msg: str) -> None:
     print(f"\n== {msg}", flush=True)
 
 
-def run(cmd: list[str], cwd: Path | None = None, check: bool = True) -> str:
+# Every subprocess this script runs gets this fixed, deterministic PATH and a small
+# allowlist of ambient variables — never the caller's raw environment. Deliberately an
+# allowlist, not a blocklist: CC/CXX/CFLAGS/LDFLAGS/MAKEFLAGS, CMAKE_*, PICO_SDK_PATH/
+# PICO_BOARD, PYTHONPATH, and anything else not listed here are all dropped, and a fixed
+# PATH means a shadowing binary earlier in the caller's PATH (a stray ~/bin/cmake, a
+# different gcc-arm-none-eabi build, an old picotool) can never be picked up instead of
+# the one this script itself just installed. Nothing here is trusted from the caller's
+# shell/profile to silently change what gets built, with what flags, or using what tools.
+BUILD_ENV_ALLOWLIST = ("HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "TERM", "TMPDIR")
+BUILD_ENV_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+# On top of the base allowlist, git/apt calls (and the rp2 "submodules" Makefile target,
+# which does both a git fetch *and* an internal cmake configure pass) also need whatever
+# proxy/CA configuration this machine's network actually requires — explicitly named
+# here rather than inherited wholesale, so it's still only ever these specific variables.
+NETWORK_ENV_EXTRA = (
+    "HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy",
+    "NO_PROXY", "no_proxy", "ALL_PROXY", "all_proxy",
+    "SSL_CERT_FILE", "GIT_SSL_CAINFO", "CURL_CA_BUNDLE", "REQUESTS_CA_BUNDLE",
+)
+
+
+def build_env() -> dict[str, str]:
+    env = {k: v for k, v in os.environ.items() if k in BUILD_ENV_ALLOWLIST}
+    env["PATH"] = BUILD_ENV_PATH
+    return env
+
+
+def network_env() -> dict[str, str]:
+    env = build_env()
+    for key in NETWORK_ENV_EXTRA:
+        if key in os.environ:
+            env[key] = os.environ[key]
+    return env
+
+
+def run(cmd: list[str], cwd: Path | None = None, check: bool = True, env: dict[str, str] | None = None) -> str:
     print(f"$ {' '.join(cmd)}" + (f"   (cwd={cwd})" if cwd else ""), flush=True)
     result = subprocess.run(
-        cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+        cmd, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
     )
     print(result.stdout)
     if check and result.returncode != 0:
@@ -80,12 +116,14 @@ def ensure_apt_packages(packages: list[str], skip: bool) -> None:
         log("Skipping apt package install (--skip-apt)")
         return
     log("Installing/checking system packages")
+    env = network_env()
     # Non-fatal: unrelated third-party sources some environments have configured (PPAs etc.)
     # may be blocked or broken without affecting the main archive packages we actually need.
-    run(["sudo", "apt-get", "update"], check=False)
+    run(["sudo", "apt-get", "update"], check=False, env=env)
     run(
         ["sudo", "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "install", "-y",
-         "--no-install-recommends", *packages]
+         "--no-install-recommends", *packages],
+        env=env,
     )
 
 
@@ -95,21 +133,22 @@ def is_sha(ref: str) -> bool:
 
 def clone_full(url: str, dest: Path) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
-    run(["git", "clone", "--quiet", url, str(dest)])
+    run(["git", "clone", "--quiet", url, str(dest)], env=network_env())
 
 
 def checkout_ref(repo: Path, ref: str) -> None:
-    run(["git", "fetch", "--quiet", "--tags", "--force", "origin"], cwd=repo)
+    env = network_env()
+    run(["git", "fetch", "--quiet", "--tags", "--force", "origin"], cwd=repo, env=env)
     if is_sha(ref):
         try:
-            run(["git", "checkout", "--quiet", ref], cwd=repo)
+            run(["git", "checkout", "--quiet", ref], cwd=repo, env=env)
             return
         except SetupError:
             pass
-        run(["git", "fetch", "--quiet", "origin", ref], cwd=repo)
-        run(["git", "checkout", "--quiet", "FETCH_HEAD"], cwd=repo)
+        run(["git", "fetch", "--quiet", "origin", ref], cwd=repo, env=env)
+        run(["git", "checkout", "--quiet", "FETCH_HEAD"], cwd=repo, env=env)
     else:
-        run(["git", "checkout", "--quiet", ref], cwd=repo)
+        run(["git", "checkout", "--quiet", ref], cwd=repo, env=env)
 
 
 def ensure_repo_at_ref(url: str, dest: Path, ref: str) -> None:
@@ -122,7 +161,7 @@ def ensure_repo_at_ref(url: str, dest: Path, ref: str) -> None:
 
 
 def derive_pico_sdk_commit(micropython_dir: Path, mpy_ref: str) -> str:
-    out = run(["git", "ls-tree", mpy_ref, "lib/pico-sdk"], cwd=micropython_dir)
+    out = run(["git", "ls-tree", mpy_ref, "lib/pico-sdk"], cwd=micropython_dir, env=network_env())
     # format: "160000 commit <sha>\tlib/pico-sdk"
     fields = out.split()
     if len(fields) < 3:
@@ -131,13 +170,13 @@ def derive_pico_sdk_commit(micropython_dir: Path, mpy_ref: str) -> str:
 
 
 def derive_picotool_ref(pico_sdk_dir: Path, pico_sdk_commit: str) -> str:
-    described = run(["git", "describe", "--tags", pico_sdk_commit], cwd=pico_sdk_dir).strip()
+    described = run(["git", "describe", "--tags", pico_sdk_commit], cwd=pico_sdk_dir, env=network_env()).strip()
     match = re.match(r"^(\d+)\.(\d+)\.", described)
     if not match:
         raise SetupError(f"could not parse major.minor from pico-sdk tag {described!r}")
     major, minor = match.group(1), match.group(2)
 
-    out = run(["git", "ls-remote", "--tags", PICOTOOL_URL])
+    out = run(["git", "ls-remote", "--tags", PICOTOOL_URL], env=network_env())
     candidates = []
     for line in out.splitlines():
         m = re.search(rf"refs/tags/({major}\.{minor}\.\d+)$", line)
@@ -149,29 +188,47 @@ def derive_picotool_ref(pico_sdk_dir: Path, pico_sdk_commit: str) -> str:
     return candidates[-1]
 
 
-def build_and_install_picotool(picotool_dir: Path, pico_sdk_dir: Path, jobs: int) -> None:
+PICOTOOL_INSTALL_PREFIX = "/usr/local"
+
+
+def build_and_install_picotool(picotool_dir: Path, pico_sdk_dir: Path, jobs: int) -> Path:
     log(f"Building and installing picotool (against pico-sdk at {pico_sdk_dir})")
     build_dir = picotool_dir / "build"
     if build_dir.exists():
         shutil.rmtree(build_dir)
     build_dir.mkdir()
-    run(["cmake", "..", f"-DPICO_SDK_PATH={pico_sdk_dir}"], cwd=build_dir)
-    run(["make", f"-j{jobs}"], cwd=build_dir)
-    run(["sudo", "make", "install"], cwd=build_dir)
-    version_out = run(["picotool", "version"])
+    env = build_env()
+    # Pinned explicitly (not left to whatever cmake's own default resolves to) so the
+    # install location is deterministic regardless of ambient cmake config/env state.
+    run(
+        ["cmake", "..", f"-DPICO_SDK_PATH={pico_sdk_dir}", f"-DCMAKE_INSTALL_PREFIX={PICOTOOL_INSTALL_PREFIX}"],
+        cwd=build_dir,
+        env=env,
+    )
+    run(["make", f"-j{jobs}"], cwd=build_dir, env=env)
+    run(["sudo", "make", "install"], cwd=build_dir, env=env)
+    picotool_binary = Path(PICOTOOL_INSTALL_PREFIX) / "bin" / "picotool"
+    if not picotool_binary.exists():
+        raise SetupError(f"picotool install did not produce {picotool_binary}")
+    # Invoked by absolute path, not a bare "picotool" PATH lookup — a stray picotool
+    # installed elsewhere on PATH (a different version, an unrelated package) must not
+    # be able to shadow the one just built for this pico-sdk.
+    version_out = run([str(picotool_binary), "version"], env=env)
     print(f"Installed: {version_out.strip()}")
+    return picotool_binary
 
 
 def build_mpy_cross(micropython_dir: Path, jobs: int) -> Path:
     log("Building mpy-cross")
     mpy_cross_dir = micropython_dir / "mpy-cross"
-    out = run(["make", f"-j{jobs}"], cwd=mpy_cross_dir)
+    env = build_env()
+    out = run(["make", f"-j{jobs}"], cwd=mpy_cross_dir, env=env)
     if re.search(r"\bwarning:", out, re.IGNORECASE):
         raise SetupError("mpy-cross build produced warnings (see log above)")
     binary = mpy_cross_dir / "build" / "mpy-cross"
     if not binary.exists():
         raise SetupError("mpy-cross build did not produce build/mpy-cross")
-    version_out = run([str(binary), "--version"])
+    version_out = run([str(binary), "--version"], env=env)
     print(f"Built: {version_out.strip()}")
     return binary
 
@@ -179,7 +236,10 @@ def build_mpy_cross(micropython_dir: Path, jobs: int) -> Path:
 def fetch_rp2_submodules(micropython_dir: Path, board: str) -> None:
     log(f"Fetching submodules needed for BOARD={board}")
     rp2_dir = micropython_dir / "ports" / "rp2"
-    run(["make", f"BOARD={board}", "submodules"], cwd=rp2_dir)
+    # Needs network_env(), not build_env(): this Makefile target both fetches submodules
+    # over git and runs a preliminary cmake configure pass, so it needs the deterministic
+    # PATH *and* real network/proxy access at the same time.
+    run(["make", f"BOARD={board}", "submodules"], cwd=rp2_dir, env=network_env())
 
 
 def build_firmware(micropython_dir: Path, board: str, jobs: int) -> Path:
@@ -188,7 +248,7 @@ def build_firmware(micropython_dir: Path, board: str, jobs: int) -> Path:
     build_dir = rp2_dir / f"build-{board}"
     if build_dir.exists():
         shutil.rmtree(build_dir)
-    out = run(["make", f"BOARD={board}", f"-j{jobs}"], cwd=rp2_dir)
+    out = run(["make", f"BOARD={board}", f"-j{jobs}"], cwd=rp2_dir, env=build_env())
     if re.search(r"\berror:", out, re.IGNORECASE):
         raise SetupError("firmware build reported an error (see log above)")
     if re.search(r"\bwarning:", out, re.IGNORECASE):
@@ -205,7 +265,7 @@ def cross_compile_sample(mpy_cross_binary: Path) -> None:
     with tempfile.TemporaryDirectory() as tmp:
         sample_py = Path(tmp) / "sample.py"
         sample_py.write_text(SAMPLE_PY)
-        run([str(mpy_cross_binary), str(sample_py)])
+        run([str(mpy_cross_binary), str(sample_py)], env=build_env())
         sample_mpy = Path(tmp) / "sample.mpy"
         if not sample_mpy.exists() or sample_mpy.stat().st_size == 0:
             raise SetupError("mpy-cross did not produce a non-empty sample.mpy")
@@ -213,7 +273,7 @@ def cross_compile_sample(mpy_cross_binary: Path) -> None:
 
 
 def latest_stable_micropython_ref() -> str:
-    out = run(["git", "ls-remote", "--tags", MICROPYTHON_URL])
+    out = run(["git", "ls-remote", "--tags", MICROPYTHON_URL], env=network_env())
     candidates = []
     for line in out.splitlines():
         m = re.search(r"refs/tags/(v\d+\.\d+(?:\.\d+)?)$", line)
@@ -264,7 +324,7 @@ def run_setup(args: argparse.Namespace, versions_path: Path, versions: dict) -> 
     pico_sdk_commit = derive_pico_sdk_commit(micropython_dir, mpy_ref)
     log(f"MicroPython {mpy_ref} pins pico-sdk commit {pico_sdk_commit}")
     ensure_repo_at_ref(PICO_SDK_URL, pico_sdk_dir, pico_sdk_commit)
-    run(["git", "submodule", "update", "--init", "lib/mbedtls"], cwd=pico_sdk_dir)
+    run(["git", "submodule", "update", "--init", "lib/mbedtls"], cwd=pico_sdk_dir, env=network_env())
 
     picotool_ref = derive_picotool_ref(pico_sdk_dir, pico_sdk_commit)
     log(f"Matching picotool tag: {picotool_ref}")
