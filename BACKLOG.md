@@ -28,12 +28,21 @@ refactor work itself starts:
   shell command scripts and as a CI pipeline in GitLab, which **shall also attempt a real firmware
   build** (running the equivalent of `build-*.sh`, with the full micropython/pico-sdk/picotool
   toolchain) as a pipeline stage, not just lint/type-check/unit-test.
+  - **This elevates the build/dev-environment setup item** (see "Deferred / explicitly
+    out-of-scope work" below) **from someday-work to a real near-term prerequisite**: CI can't
+    build firmware while `build-*.sh`/`update_and_install.txt` still assume a hardcoded
+    `/home/nico/rpi_pico/...` layout. Genericizing that setup needs to happen before/alongside
+    building this CI stage, not after.
   - **MicroPython stubs**: install the published PyPI `micropython-stubs` package (or the relevant
     board/port-specific variant, e.g. an rp2-flavored one) rather than hand-rolling stub files.
   - **Ruff/mypy config**: stricter than default where it concerns actual code quality/correctness,
     but **allow any line length and don't introduce line breaks** — ruff's `--format` step should
     likely be omitted entirely rather than configured with a line-length; this is a deliberate
     style choice, not an oversight.
+    - **mypy must NOT disable the `assignment` error code.** `improved-quality/mypy.ini` currently
+      has `disable_error_code = assignment`, but this was never a deliberate choice — mypy should
+      check type-incompatible assignments like everything else. Drop this exception when the
+      refactor's mypy config is actually built.
   - **No hard test-coverage percentage gate for now** — tests must exist and run in CI, but no
     specific minimum coverage threshold is enforced yet.
   - **PEP 604 union syntax** (`int | None`, already used in `improved-quality/base_classes.py`) is
@@ -43,10 +52,19 @@ refactor work itself starts:
   venv installable via `uv sync`. **Tests run under the real MicroPython interpreter** (e.g. a
   built Unix port), not CPython — "as close to the real environment as possible" means the actual
   MicroPython runtime, not just MicroPython-flavored stubs on top of CPython.
+  - **How `uv` and the Unix port connect**: `uv sync` itself only manages the CPython-side tooling
+    (pytest, ruff, mypy, etc.) — it can't install a compiled MicroPython binary. The plan is a
+    setup script that builds/installs the MicroPython Unix port interpreter if it isn't already
+    present, ideally triggered automatically from `uv` (e.g. a `uv run` entry point or a hook), so
+    `uv sync` remains the single onboarding command even though it's delegating that one step out.
   - **Mocking boundary**: mock only at the raw bus-transaction level (`machine.I2C`/`machine.SPI`
     read/write calls) — drivers, Reader classes, `ConfigManager`, and REST handlers should all run
     for real, unmocked, in tests. Mock higher up (e.g. whole driver classes) only if there's truly
     no other way.
+    - **`network`/CYW43 (WiFi) is in the same "mock it, no other way" tier as the physical
+      buses** — the MicroPython Unix port has no real WiFi hardware at all, so `async_connect.py`'s
+      WiFi-dependent logic needs `network` mocked to be testable in the automated suite, the same
+      way I2C/SPI get mocked at the hardware boundary.
 - **Centralized config**: all tooling config shall live in `pyproject.toml`, as **dev-tooling
   config only** (ruff/mypy/pytest/uv sections) — the shipped code stays frozen-bytecode-only, not
   restructured into an installable package.
@@ -98,6 +116,12 @@ hands-on field experience with the current deployed units:
     consistency, a shared retry/backoff/reset policy object across all Readers was explicitly
     rejected — sensors (especially I2C ones) differ enough that per-driver hand-rolled handling is
     preferred over forcing a common abstraction.
+    - **How this squares with "refactor identical/similar behavior into classes" below**: only
+      generalize what's genuinely common to *all* drivers (e.g. the error-counter
+      increment/decay bookkeeping already generalized in `SensorReader._error_check()`) — bus/
+      sensor-specific retry, backoff, and reset-sequence logic stays in the specific driver.
+      Don't force fragmentation by over-abstracting, but don't force a shared policy object onto
+      genuinely device-specific recovery logic either.
 - **Blocking calls must have a timeout or other unblock mechanism**: calls previously assumed safe
   turned out to block in practice — a real source of unexpected errors. The refactor should
   re-check this specifically: any call that can block should have an explicit timeout or another
@@ -153,11 +177,35 @@ patterns to hold the rest of the refactor to, not as new/unstarted work:
   chunk-class hierarchy (see inheritance point above) plus `LockableBuffer`-based buffer types is
   the intended generalized model, vs. the current codebase's more ad hoc FRAM chunk handling.
 - **Refactor identical/similar behavior into classes** — same evidence as the inheritance point
-  above; this is a general principle to keep applying, not a one-off.
+  above; this is a general principle to keep applying, not a one-off. **Scope it to what's
+  genuinely common across drivers** (e.g. error-counter bookkeeping, FRAM chunk handling, config
+  storage) — this doesn't extend to forcing a shared framework onto bus/sensor-specific error
+  recovery, which is deliberately kept per-driver (see the "Bus/sensor error-recovery robustness"
+  section above for why).
 - **Refactor long/deep program flows into subfunctions with an early-return scheme** — a general
   style requirement for the remaining refactor work (e.g. the current codebase's deeply nested
   `sensortask-*.py` REST handlers and `async_connect.py`'s `wlanConnect()` are examples of what
   *not* to carry forward as-is).
+
+### Rough suggested sequencing
+
+A rough priority order across everything above, so this doesn't read as one flat unordered list —
+not a committed project plan, just a sensible dependency-aware starting point for whenever the
+refactor work actually begins:
+
+1. **Dev/build environment setup** (genericized `build-*.sh`/toolchain paths) — everything else
+   that touches CI or a real firmware build depends on this existing first.
+2. **Per-sensor config storage** and the other code-structure patterns (inheritance-based
+   `SensorReader`/`SensorReaderConfig`, generalized FRAM chunk handling, generalized
+   startup/error-counter bookkeeping) — foundational structure that the robustness work below
+   builds on top of.
+3. **Bus/sensor error-recovery robustness** (nested try/except correctness, live reconnect,
+   defined-state recovery, timeout handling, lock-coverage audit) — depends on the structural
+   pieces above existing to refactor *into*, rather than bolting robustness onto the old shape.
+4. **Tooling and CI** (mypy/ruff config, MicroPython stubs, the `uv`-managed venv + Unix-port
+   interpreter setup script, unit tests, GitLab CI including the firmware-build stage) — comes
+   last since it's meaningfully easier to write tests and wire up CI against the settled
+   post-refactor structure than against a moving target.
 
 ## Decided for the refactor
 
@@ -302,8 +350,11 @@ from reading the code alone:
 - **Unit tests** — not to be written against the current codebase. The plan is: fully understand
   how the current system works first, confirm what's already been well-transferred into
   `improved-quality/`, and write tests as part of that refactor, not before.
-- **Dev/build environment setup (venv, pinned toolchain versions)** — deliberately not started yet.
-  General direction when it does happen: track the most recent *stable* releases of
+- **Dev/build environment setup (venv, pinned toolchain versions)** — not started yet, but **no
+  longer purely low-priority/someday work**: the CI requirement that it also attempt a real
+  firmware build (see "Final-goal requirements for the refactor" above) makes genericizing
+  `build-*.sh`/`update_and_install.txt`'s hardcoded paths a real near-term prerequisite, not just a
+  nice-to-have. General direction when it happens: track the most recent *stable* releases of
   MicroPython/pico-sdk/picotool rather than pinning to what's in the current handwritten notes;
   MicroPython's rp2 port depends on specific pico-sdk submodules (e.g. `lib/mbedtls`), which
   `update_and_install.txt` already gestures at.

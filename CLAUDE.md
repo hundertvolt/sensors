@@ -49,7 +49,10 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
   bugs.
 - **No unit tests against the current codebase.** The agreed plan is: fully understand the current
   system first, confirm what's already transferred into `improved-quality/`, and write tests as
-  part of that refactor — not before, and not against the current code.
+  part of that refactor — not before, and not against the current code. This does **not**
+  contradict BACKLOG.md's detailed testing requirements (pytest under a real MicroPython Unix-port
+  interpreter, `uv`-managed venv, mocking boundary, etc.) — those describe what the *refactored*
+  code must eventually have; they are not retroactively applicable to today's pre-refactor code.
 - **Don't touch `sensors/config.json`-equivalent files or commit any real credentials.** A real
   WiFi SSID/password was previously committed and had to be scrubbed from history — see
   BACKLOG.md's security notes. A `.gitignore` now covers per-device config/build artifacts, but

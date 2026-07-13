@@ -79,6 +79,15 @@ This assumes the repo's `python/` directory is checked out as `py-include/python
 hardcoded `/home/nico/rpi_pico/...` paths that will need genericizing whenever a shared dev-env
 setup is tackled).
 
+## Refactor in progress
+
+The `improved-quality/` refactor (see "Repository layout" above) isn't just a cleanup — it targets
+the most recent *stable* MicroPython/pico-sdk/picotool/Microdot releases, expands error handling
+and bus/sensor fault recovery considerably beyond what's described above, and adds unit tests,
+mypy, ruff, and a GitLab CI pipeline (including a real firmware build) that don't exist for the
+current codebase at all. See BACKLOG.md's "Final-goal requirements for the refactor" for the full,
+detailed target.
+
 ## Further reading
 
 - **CLAUDE.md** — AI-session operating constraints and architecture reference.
