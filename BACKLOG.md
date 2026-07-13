@@ -15,16 +15,41 @@ refactor work itself starts:
   happen should be caught and handled explicitly. The hardware watchdog is a last resort only
   (e.g. undefined state after an electrical brownout, a MicroPython interpreter-level failure),
   not a routine recovery mechanism for expected error conditions.
+  - **Bare `except:` is forbidden in the refactored code** — `except Exception:` (or a narrower/
+    specific exception type) is required everywhere. This is stricter than
+    `improved-quality/pycheck.sh`'s current ruff config, which ignores E722 (bare except); that
+    ignore should be dropped for the refactor.
 - **No leaks, no drift**: the system should be able to theoretically run indefinitely without
-  exhausting any resource (memory, handles, counters, etc.).
+  exhausting any resource (memory, handles, counters, etc.). **Verified via design discipline, not
+  an automated soak test** — no dedicated long-running/memory-tracking test is required in CI for
+  this; it's enforced through code review and patterns (bounded buffers, no unbounded growth),
+  not a CI gate.
 - **Production-level code quality**: unit tests, mypy, and ruff shall all be available both as
-  shell command scripts and as a CI pipeline in GitLab. MicroPython stubs (available for
-  typechecking) shall be installed and used.
+  shell command scripts and as a CI pipeline in GitLab, which **shall also attempt a real firmware
+  build** (running the equivalent of `build-*.sh`, with the full micropython/pico-sdk/picotool
+  toolchain) as a pipeline stage, not just lint/type-check/unit-test.
+  - **MicroPython stubs**: install the published PyPI `micropython-stubs` package (or the relevant
+    board/port-specific variant, e.g. an rp2-flavored one) rather than hand-rolling stub files.
+  - **Ruff/mypy config**: stricter than default where it concerns actual code quality/correctness,
+    but **allow any line length and don't introduce line breaks** — ruff's `--format` step should
+    likely be omitted entirely rather than configured with a line-length; this is a deliberate
+    style choice, not an oversight.
+  - **No hard test-coverage percentage gate for now** — tests must exist and run in CI, but no
+    specific minimum coverage threshold is enforced yet.
+  - **PEP 604 union syntax** (`int | None`, already used in `improved-quality/base_classes.py`) is
+    fine to keep using for now as typing-only; whether it actually executes correctly at runtime on
+    the deployed MicroPython version is a separate concern to verify later, not urgent yet.
 - **Self-contained venv via `uv`**: testing shall be possible on a generic Linux machine inside a
-  venv installable via `uv sync`. Test as close to the real (MicroPython/hardware) environment as
-  possible; mock only where there is no other way (e.g. a physical bus connection to a physical
-  sensor).
-- **Centralized config**: all tooling config shall live in `pyproject.toml`.
+  venv installable via `uv sync`. **Tests run under the real MicroPython interpreter** (e.g. a
+  built Unix port), not CPython — "as close to the real environment as possible" means the actual
+  MicroPython runtime, not just MicroPython-flavored stubs on top of CPython.
+  - **Mocking boundary**: mock only at the raw bus-transaction level (`machine.I2C`/`machine.SPI`
+    read/write calls) — drivers, Reader classes, `ConfigManager`, and REST handlers should all run
+    for real, unmocked, in tests. Mock higher up (e.g. whole driver classes) only if there's truly
+    no other way.
+- **Centralized config**: all tooling config shall live in `pyproject.toml`, as **dev-tooling
+  config only** (ruff/mypy/pytest/uv sections) — the shipped code stays frozen-bytecode-only, not
+  restructured into an installable package.
 
 ## Decided for the refactor
 
