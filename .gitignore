@@ -1,0 +1,13 @@
+# Per-device runtime config (real WiFi credentials/hostnames) — never commit a real one.
+config.json
+modules/config.json
+
+# Build output (see build-*.sh)
+python/build/
+firmware.uf2
+*.uf2
+
+# Local editor/OS cruft
+.DS_Store
+__pycache__/
+*.pyc

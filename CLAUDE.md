@@ -52,8 +52,14 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
   part of that refactor — not before, and not against the current code.
 - **Don't touch `sensors/config.json`-equivalent files or commit any real credentials.** A real
   WiFi SSID/password was previously committed and had to be scrubbed from history — see
-  BACKLOG.md's security notes. There is currently no `.gitignore`; be deliberate about what you
-  stage, especially anything resembling per-device config.
+  BACKLOG.md's security notes. A `.gitignore` now covers per-device config/build artifacts, but
+  still be deliberate about what you stage.
+- **Long-blocking operations must not stall timing-sensitive work.** Any new code that blocks the
+  event loop for a noticeable time (e.g. `socket.getaddrinfo()`) must not do so while
+  timing-sensitive work like the Neopixel animation needs to run — either avoid the block, or
+  coordinate via `async_connect.py`'s `get_long_block_lock()` pattern so timing-sensitive code runs
+  before/around it. This is a standing convention for all new code, not just the original
+  NTP-vs-Neopixel case it was written for.
 
 ## Working agreements
 
@@ -77,8 +83,8 @@ need to go deeper:
   BACKLOG.md's config-duplication item).
 - `python/CommonDrivers/async_connect.py` — WiFi STA + AP/hotspot fallback + NTP client with
   manual CET/CEST DST math (`cettime()`); exposes `get_long_block_lock()`, a shared lock
-  serializing `socket.getaddrinfo()` against Neopixel animation (see BACKLOG.md #6 for scope
-  questions).
+  serializing `socket.getaddrinfo()` against Neopixel animation — this pattern is now the general
+  convention for long-blocking operations, see "Hard rules" above.
 - `python/CommonDrivers/async_manager.py` — `ConfigManager`, `DataManager`,
   `TimeCounterManager`, `LockedValue`/`Flag`.
 - `python/IndividualDrivers/asy_fram_driver.py` / `asy_fram_manager.py` — raw SPI FRAM driver +
