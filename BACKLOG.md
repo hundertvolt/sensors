@@ -51,6 +51,36 @@ refactor work itself starts:
   config only** (ruff/mypy/pytest/uv sections) — the shipped code stays frozen-bytecode-only, not
   restructured into an installable package.
 
+### Bus/sensor error-recovery robustness (owner-specified, not yet implemented)
+
+Additional requirements specifically about exception handling and bus/sensor fault recovery, from
+hands-on field experience with the current deployed units:
+
+- **Nested try/except correctness**: past firmware crashes have come from nested try/except blocks
+  that either caught too early (masking the real problem, handling it wrong) or let exceptions
+  propagate too far (not caught where they needed to be). The refactor needs deliberate focus on
+  getting these constructs' actual behavior right, not just present.
+- **Live bus reconnect must be preserved**: field-tested by physically disconnecting and
+  reconnecting an I2C/SPI wire on a live unit — it was possible to handle entirely in software
+  (exception handling, responses, retry) and have the sensor reconnect live once the cable was
+  reinserted, without a reboot. This property must survive the refactor.
+- **Sensor/bus-specific defined-state recovery should be as complete as possible**: sensor
+  firmware/bus stacks can end up in an undefined state, and there are bus/sensor-specific ways to
+  force a defined state again (e.g. clocking out a fixed number of cycles, reset sequences, reset
+  commands) — depends on the bus type and sensor. Some of this already exists (e.g.
+  `asy_spi_driver.py`'s `extra_clocks` parameter cycles the bus after CS deassert); the refactor
+  should make sure this is used as completely/consistently as possible across all buses and
+  sensors, not just where it happens to exist today.
+- **Blocking calls must have a timeout or other unblock mechanism**: calls previously assumed safe
+  turned out to block in practice — a real source of unexpected errors. The refactor should
+  re-check this specifically: any call that can block should have an explicit timeout or another
+  way to guarantee it can't hang indefinitely.
+- **Bus concurrency via `asyncio.Lock` + `async with` needs a coverage audit**: the current pattern
+  (one lock per physical bus, acquired per-transaction via `I2CDevice`/`SPIDevice`'s `async with`)
+  is believed to be the right general approach, but the refactor should specifically verify these
+  locks truly cover the complete bus access with no gaps, and that they can't block each other
+  (e.g. deadlock, or one long-held lock starving an unrelated bus user).
+
 ## Decided for the refactor
 
 - **`modules/_boot.py`'s `import sensortask.py`** (see open question #1 below) will be addressed
