@@ -31,8 +31,14 @@ python/
   IndividualDrivers/      only copied in if a given device config needs them
   Manifest/manifest.py    MicroPython freeze manifest used by the build
 improved-quality/        WIP refactor target (out of scope for day-to-day work; see CLAUDE.md)
+toolchain/               MicroPython/pico-sdk/picotool build-environment installer
+  versions.toml             single source of truth for the target MicroPython version - see
+                            "Toolchain setup" below for how everything else derives from it
+  setup_toolchain.py
 build-{arzi,dev,neu,wozi}.sh   per-device build scripts
 update_and_install.txt   handwritten toolchain setup notes (MicroPython/pico-sdk/picotool)
+pyproject.toml           dev-tooling config (ruff/mypy/pytest/uv) - see "Code quality tooling" below
+scripts/                 lint.sh / typecheck.sh - manual code-quality check runners
 ```
 
 ## Architecture at a glance
@@ -73,6 +79,16 @@ Building firmware needs a matching set of MicroPython + `pico-sdk` + `picotool` 
 cross-compiler. Getting these four to actually agree with each other used to be a manual,
 error-prone recipe (`update_and_install.txt`); it's now one scripted, updatable command. Full
 design details live in `toolchain/README.md` — this section is the everyday-usage cheat sheet.
+
+**Bumping the MicroPython version**: change `toolchain/versions.toml`'s `[micropython] ref`
+(by hand, or via `setup_toolchain.py --latest` — see "Updating" below). That's the *only* place
+to change it — everything else derives from that one value automatically, with no second file to
+keep in sync:
+
+- The matching `pico-sdk`/`picotool` versions (see "How it works" in `toolchain/README.md`).
+- The MicroPython type stubs `scripts/typecheck.sh` uses for `mypy` (see "Code quality tooling"
+  below) — it reads this same `ref` and installs the matching stub release, failing with a clear
+  error instead of silently drifting if no matching stub release exists upstream yet.
 
 Every build step runs in an explicitly constructed environment (fixed `PATH`, a small
 variable allowlist), not whatever happens to be ambient in your shell — a stray `CC`/`CFLAGS`,
@@ -180,10 +196,24 @@ mypy, ruff, and a GitLab CI pipeline (including a real firmware build) that don'
 current codebase at all. See BACKLOG.md's "Final-goal requirements for the refactor" for the full,
 detailed target.
 
-**Code quality checks** (mypy/ruff, scoped to `improved-quality/` for now) can already be run
-manually via `scripts/lint.sh` and `scripts/typecheck.sh`, config in the root `pyproject.toml` —
-see CLAUDE.md's "Code quality tooling" section. Not wired into CI yet; unit tests aren't in scope
-yet either (see CLAUDE.md's "No unit tests against the current codebase" rule).
+## Code quality tooling
+
+Ruff and mypy checks, scoped to `improved-quality/` only for now (the pre-refactor codebase —
+`python/`, `modules/` — isn't covered yet), can already be run manually:
+
+```sh
+uv sync                    # one-time, and after pulling changes - installs ruff/mypy/pytest into .venv
+source .venv/bin/activate  # scripts/*.sh assume ruff/mypy are already on PATH
+
+scripts/lint.sh            # ruff check
+scripts/typecheck.sh       # mypy, using MicroPython stubs matching toolchain/versions.toml (see above)
+```
+
+Not wired into CI yet, and unit tests aren't in scope yet either (see CLAUDE.md's "No unit tests
+against the current codebase" rule) — see BACKLOG.md for the full plan. Config lives in the root
+`pyproject.toml`; see CLAUDE.md's "Code quality tooling" section for the full rationale (why
+`ruff format` isn't used, why the MicroPython stubs install into a separate `typings/` directory
+instead of the main dev venv, etc.).
 
 ## Further reading
 
