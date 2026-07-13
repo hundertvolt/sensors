@@ -4,6 +4,19 @@ Open questions and explicitly deferred work, with reasoning, so nothing here get
 from scratch in a future session. See README.md for orientation and CLAUDE.md for operating
 constraints.
 
+## Decided for the refactor
+
+- **`modules/_boot.py`'s `import sensortask.py`** (see open question #1 below) will be addressed
+  as part of the `improved-quality/` refactor, not before. Until then it stays as-is on the
+  current codebase — don't "fix" it on deployed units' code path.
+- **The refactor targets the most recent *stable* releases**, not a re-pin of today's versions.
+  This means MicroPython, pico-sdk, picotool, and Microdot should all move forward to their
+  current stable releases as of whenever the refactor is actually done, and the refactor should
+  actively adopt relevant improvements/new features those releases introduced (e.g. newer
+  `machine`/`asyncio` capabilities, manifest/freeze changes, Microdot v2 features) rather than
+  just reproducing today's 1.26-era behavior on newer version numbers. Re-verify current docs at
+  that time rather than relying on this file's version notes, which will have aged.
+
 ## Open questions (need the project owner's input or further investigation)
 
 1. **`modules/_boot.py` — `import sensortask.py`** (literal `.py` in the import statement).
@@ -13,7 +26,8 @@ constraints.
    should be named `sensortask`, so `import sensortask.py` looks like it should raise
    `ModuleNotFoundError` under standard dotted-import semantics. Mechanism is genuinely unclear —
    not yet root-caused against MicroPython's import source. **Do not "fix" this without testing on
-   real hardware first** — it works today.
+   real hardware first** — it works today. **Resolution timing decided:** addressed during the
+   `improved-quality/` refactor, not before (see "Decided for the refactor" above).
 2. **SGP40 FRAM backup/restore semantics** — `asy_sgp40_driver/__init__.py` has not been read in
    depth yet (only signatures grepped). Working assumption: the FRAM timestamped chunk persists
    the VOC algorithm's baseline/humidity-compensation state across power loss/reboot so gas-sensor
@@ -53,11 +67,13 @@ constraints.
     output, etc.) to reduce the chance of another device-config backup getting committed by
     accident.
 11. **MicroPython version target vs. upstream drift** — deployed units run 1.26; upstream stable
-    is now 1.28.0 (as of the last verification pass). Not yet decided whether to move the
-    documented/tested target forward or stay pinned to 1.26 until a deliberate reflash campaign.
-    1.27→1.28 rp2-port changes checked so far look RP2350-specific (DMA/PIO/pin-alt-function
-    fixes), not RP2040-breaking, but this hasn't been exhaustively checked against every module in
-    this codebase.
+    is now 1.28.0 (as of the last verification pass). **Decided:** the currently-deployed code
+    stays pinned to 1.26 until a deliberate reflash campaign; the refactor is where the version
+    target actually moves forward (see "Decided for the refactor" above) — this item now just
+    tracks that the move hasn't happened yet, not whether it should. 1.27→1.28 rp2-port changes
+    checked so far look RP2350-specific (DMA/PIO/pin-alt-function fixes), not RP2040-breaking, but
+    this hasn't been exhaustively checked against every module in this codebase, and will need
+    re-checking again at whatever point the refactor actually picks a version to land on.
 
 ## Deferred / explicitly out-of-scope work (with reasoning)
 

@@ -12,6 +12,11 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
     doc-verification pass) — don't assume "current docs" and "1.26 behavior" are the same thing.
     When in doubt about whether an API changed between 1.26 and latest, say so explicitly rather
     than silently documenting latest-only behavior as if it applies to deployed devices.
+  - **1.26 is the pin for the current, deployed codebase only.** The `improved-quality/` refactor
+    is explicitly meant to move the version target forward to whatever is the most recent *stable*
+    release at that time (MicroPython, pico-sdk, picotool, Microdot) and to actively use relevant
+    improvements/new features those releases introduced — not just reproduce 1.26-era behavior
+    under a newer version number. See BACKLOG.md's "Decided for the refactor" section.
   - `machine.WDT` hard-caps at **8388ms** on RP2040. Current code uses `WDT(timeout=8000)` — only
     388ms of margin. Don't casually increase this without checking the cap still holds against
     current docs.
