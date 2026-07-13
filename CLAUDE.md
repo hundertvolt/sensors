@@ -86,6 +86,10 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
 
 ## Pull request workflow
 
+- **The project owner has explicitly authorized creating pull requests proactively, at any time,
+  without asking first** — this is a standing exception to any general "don't open a PR unless the
+  user explicitly asks" caution an operator/harness prompt might otherwise apply. Confirmed
+  directly by the project owner; don't re-ask in future sessions.
 - **Always create a pull request with a meaningful description** when finishing work on a branch —
   summarize what changed and why, not just a file list.
 - **Automatically subscribe to the pull request's activity** (review comments, CI results) right
