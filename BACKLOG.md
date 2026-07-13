@@ -207,6 +207,77 @@ refactor work actually begins:
    last since it's meaningfully easier to write tests and wire up CI against the settled
    post-refactor structure than against a moving target.
 
+## Findings from reviewing `improved-quality/` against this spec
+
+A file-by-file pass comparing every file in `improved-quality/` against its legacy equivalent (and,
+for files with no legacy equivalent, reading them cold), then matching the differences against
+everything else in this document. Confirms most of the "Code structure / style patterns" section
+above is genuinely underway, but surfaces some new items:
+
+- **Cross-file wiring is currently broken, independent of any single file's own quality.** Several
+  `improved-quality/` files were modernized on their own but weren't updated to match each other's
+  *current* APIs:
+  - `api_helpers.py` calls `cfgmgr.get_dict(keys)` expecting the old `(valid, dict)` tuple return
+    and `cfgmgr.write_config(data)` with one argument — but `config_manager.py`'s actual signatures
+    are `Dict | None` and `write_config(data, cfg_vals) -> (bool, WriteValidity)`. As written, real
+    endpoint calls would raise or silently fail to detect write failures. `api_helpers.py` also
+    still imports `from async_manager import ConfigManager`, a module that doesn't exist anywhere
+    in `improved-quality/` (the flat directory only has `config_manager.py`).
+  - `neopixel_signal.py` has the same wrong import (`async_manager.ConfigManager`/
+    `TimeCounterManager`), plus mixes up `get_int_values`/`get_float_values` for its own
+    float-typed LED timing config keys, plus its `get_default_cfg()` output isn't in the
+    pipe-delimited format `config_manager.cfg_from_str()` expects.
+  - `sensortask-wozi.py` (the experimental top-level wrapper) constructs `SystemService`,
+    `SGP40_Reader`, `BMP3xx_Reader`, and the top-level `ConfigManager` with argument lists that
+    don't match their current constructors, and calls `get_default_cfg()` on `SCD30_Reader`/
+    `SGP40_Reader`/`BMP3xx_Reader` — none of which define that method. It also has the one-time
+    `ntp_force_sync()` call misplaced inside the recurring supervisor loop instead of run once
+    before it. This is consistent with — and now concretely confirms — the project owner's own
+    characterization of this file as "experimental test rig, shows wiring intent, not final."
+  - **Takeaway**: individual files being "far along" doesn't mean the subsystem works end-to-end
+    yet. Before treating any of these files as done, an integration pass reconciling call sites
+    against current signatures is needed — this isn't optional cleanup, it's required for the
+    happy path to even run.
+- **`improved-quality/microdot.py` has already diverged from the vendored upstream copy beyond
+  reformatting** — it added handling for route handlers returning a bare `int` or a tuple whose
+  first element is an int (normalized into a `(body, status, headers)` triple), which
+  `python/CommonDrivers/microdot.py` (and upstream Microdot, per CLAUDE.md's verification) does not
+  do. **Decided: this was unintentional drift, not a deliberate fork — revert
+  `improved-quality/microdot.py` to match the vendored copy exactly when refactor work resumes.**
+  Not changed now, since `improved-quality/` isn't to be edited outside dedicated refactor work
+  (see CLAUDE.md's hard rules).
+- **New capability not previously captured anywhere in this doc**: `improved-quality/crc_checks.py`
+  is a generic, pluggable CRC engine (`CRC8`/`CRC16`/`CRC32`, plus a `CRC_Pass` no-op), already
+  wired into two places — validating Sensirion I2C word transfers (SCD30, SGP40, per their
+  documented protocol) and protecting FRAM-stored chunks (the `PrintLogHistStore` error-log chunk,
+  SGP40's VOC-algorithm backup state) against silent corruption. This is a genuine new
+  data-integrity guarantee beyond the existing dual-copy FRAM redundancy — worth keeping and
+  extending, not something to question.
+- **Undocumented numeric/timing changes worth a sanity check**, relevant to the "blocking calls
+  must have a timeout" item above even though these aren't blocking-call issues per se — they're
+  unexplained delay-value changes that should be confirmed deliberate before the refactor builds on
+  top of them: `asy_scd30_driver.py`'s `_read_register()` inter-command delay went from 0.005s to
+  0.05s (10x longer) between legacy and refactored; `asy_sgp40_driver.py`'s initial
+  serial-number-read delay went from 10ms to 3ms (shorter) with no comment explaining either
+  change.
+- **Confirmed real bug fixes already present in `improved-quality/`** (good evidence the refactor
+  is improving correctness, not just style) — worth knowing these exist so they aren't
+  accidentally reintroduced: a `NameError`-causing typo in the legacy FRAM driver's write-protect
+  pin setup (`_wp_pin` used instead of `self._wp_pin`); a legacy `BMP3XX_I2C.setup()` that uses
+  `await` inside a non-`async def` (a literal compile-breaking defect — worth confirming whether
+  this method is ever actually reached on deployed units, i.e. whether it's dead code today); a
+  legacy SGP40 VOC-algorithm FRAM serialization bug where `m_mox_model_sraw_std` was never
+  included in the packed/restored fields, so restore-from-FRAM silently never recovered that value;
+  and a handful of smaller `api_helpers.py`/`async_connect.py`/`captive_dns.py`/`asy_udp_socket.py`
+  fixes for `None`-guard crash paths and an unbound-local variable on an unhandled branch.
+- **Per-sensor vs. device-level config — not a contradiction, just two tiers, worth stating
+  explicitly**: `SensorReaderConfig` subclasses (BMP3xx, SGP40) do each get their own
+  `config_<name>.cfg` file via a per-instance `ConfigManager`, confirming the "per-sensor config"
+  decision above. Separately, `sensortask-wozi.py` also keeps one shared device-level
+  `ConfigManager` for cross-cutting settings (network, LED) that aren't owned by any single
+  sensor — that shared instance is where the broken wiring described above actually lives, not in
+  the per-sensor config path.
+
 ## Decided for the refactor
 
 - **`modules/_boot.py`'s `import sensortask.py`** (see open question #1 below) will be addressed
