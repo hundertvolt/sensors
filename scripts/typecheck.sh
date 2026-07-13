@@ -16,7 +16,18 @@ derive_firmware_version() {
     python3 <<'PYEOF'
 import re
 import sys
-import tomllib
+
+try:
+    import tomllib
+except ModuleNotFoundError:
+    print(
+        f"error: this needs python3 >= 3.11 (tomllib, stdlib since 3.11) to parse "
+        f"toolchain/versions.toml - the python3 on PATH is {sys.version.split()[0]}. "
+        "Activate a venv built against a newer interpreter (see pyproject.toml's "
+        "requires-python) or install one, then retry.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 versions_path = "toolchain/versions.toml"
 

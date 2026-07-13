@@ -6,7 +6,12 @@
 name = "sensors-tooling"
 version = "0.1.0"
 description = "Dev-tooling config for the sensors firmware repo (ruff/mypy/pytest/uv), not an installable package."
-requires-python = ">=3.10"
+# >=3.11, not >=3.10: scripts/typecheck.sh needs tomllib (stdlib since 3.11) to parse
+# toolchain/versions.toml. Matches toolchain/setup_toolchain.py's own requires-python for the same
+# reason - keeping this at 3.10 let `uv sync` build a venv without tomllib, which surfaced as a
+# raw traceback rather than a clean error (verified directly, then fixed both here and with an
+# explicit check in scripts/typecheck.sh as a second line of defense).
+requires-python = ">=3.11"
 
 [tool.uv]
 package = false
