@@ -4,11 +4,13 @@ Open questions and explicitly deferred work, with reasoning, so nothing here get
 from scratch in a future session. See README.md for orientation and CLAUDE.md for operating
 constraints.
 
-## Final-goal requirements for the refactor (owner-specified, not yet implemented)
+## Final-goal requirements for the refactor (owner-specified, mostly not yet implemented)
 
 These are additional requirements for what the `improved-quality/` refactor must eventually
-deliver. Recorded here as a target/spec — not implemented yet, not to be actioned until the
-refactor work itself starts:
+deliver. Recorded here as a target/spec — mostly not implemented yet, not to be actioned until the
+refactor work itself starts, **except where marked done below**: the manual-only ruff/mypy/stub
+tooling was deliberately pulled forward ahead of the refactor (see "Rough suggested sequencing"
+below for why that's a scoped exception, not a change in overall approach):
 
 - **Stability / robustness**: thorough error handling throughout — no error condition that can
   plausibly occur in real operation should lead to an uncaught exception; anything that might
@@ -16,9 +18,12 @@ refactor work itself starts:
   (e.g. undefined state after an electrical brownout, a MicroPython interpreter-level failure),
   not a routine recovery mechanism for expected error conditions.
   - **Bare `except:` is forbidden in the refactored code** — `except Exception:` (or a narrower/
-    specific exception type) is required everywhere. This is stricter than
-    `improved-quality/pycheck.sh`'s current ruff config, which ignores E722 (bare except); that
-    ignore should be dropped for the refactor.
+    specific exception type) is required everywhere. The current ruff config (root
+    `pyproject.toml`, see "Production-level code quality" below) already doesn't ignore E722 —
+    bare excepts still present in `improved-quality/` today show up as flagged findings rather
+    than being silenced. Actually eliminating them is still real refactor work, not a config
+    change; the old `improved-quality/pycheck.sh` (which did ignore E722) is gone, retired in
+    favor of this.
 - **No leaks, no drift**: the system should be able to theoretically run indefinitely without
   exhausting any resource (memory, handles, counters, etc.). **Verified via design discipline, not
   an automated soak test** — no dedicated long-running/memory-tracking test is required in CI for
