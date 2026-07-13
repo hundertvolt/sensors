@@ -67,12 +67,64 @@ update_and_install.txt   handwritten toolchain setup notes (MicroPython/pico-sdk
 
 ## Build process
 
-**Toolchain setup** (MicroPython + a matching `pico-sdk` + a matching `picotool` + the ARM
-cross-compiler) is now a single scripted, updatable step — see `toolchain/README.md`:
+### Toolchain setup (`toolchain/setup_toolchain.py`)
+
+Building firmware needs a matching set of MicroPython + `pico-sdk` + `picotool` + the ARM
+cross-compiler. Getting these four to actually agree with each other used to be a manual,
+error-prone recipe (`update_and_install.txt`); it's now one scripted, updatable command. Full
+design details live in `toolchain/README.md` — this section is the everyday-usage cheat sheet.
+
+**Prerequisites** (a stock Ubuntu 24.04 install already satisfies all of these):
+
+- A Debian/Ubuntu system with the `universe` component enabled in apt sources (on by default for
+  every official Ubuntu image/ISO — only relevant if you're on a deliberately minimal base, e.g. a
+  `debootstrap`-built rootfs, which only enables `main` unless told otherwise). `gcc-arm-none-eabi`
+  and friends live in `universe`.
+- `sudo` access (the script uses it for `apt-get install` and `picotool`'s `make install`).
+- [`uv`](https://docs.astral.sh/uv/) itself installed — `pip install uv`, or the official installer
+  `curl -LsSf https://astral.sh/uv/install.sh | sh` (the script's own dependencies are then handled
+  automatically by `uv run`, no separate `pip install`/venv step needed for anything else).
+- Outbound network access to GitHub and your distro's package mirrors.
+
+**Verified from scratch on a genuinely clean Ubuntu 24.04 system** (a `debootstrap`-built `noble`
+chroot with nothing preinstalled beyond the minimal base — no apt cache, no build tools, no `uv`):
+installs every dependency itself and passes all three checks below in ~3 minutes.
+
+**Everyday usage:**
 
 ```sh
+# First-time setup (also the command you re-run for everyday use — see "Updating" below)
+uv run toolchain/setup_toolchain.py
+
+# Build a specific MicroPython version instead of the pinned default
+# (e.g. matching the version actually deployed on units today, see CLAUDE.md)
+uv run toolchain/setup_toolchain.py --micropython-ref v1.26.1
+
+# Install somewhere other than the default ~/pico-toolchain
+uv run toolchain/setup_toolchain.py --toolchain-dir /path/to/toolchain
+```
+
+**Updating** an existing install is the same command, not a separate procedure:
+
+```sh
+# Detect + pin + install the newest stable MicroPython release
+uv run toolchain/setup_toolchain.py --latest
+
+# Or bump toolchain/versions.toml's [micropython] ref by hand, then:
 uv run toolchain/setup_toolchain.py
 ```
+
+Either way, the matching `pico-sdk`/`picotool` versions are re-derived automatically and only
+what's actually changed gets rebuilt.
+
+**What a successful run proves**, every time (not just at initial install):
+
+1. A standard, unchanged firmware image builds for the target board with zero compiler
+   errors/warnings.
+2. `mpy-cross` (the cross-compiler) builds cleanly.
+3. `mpy-cross` successfully cross-compiles a throwaway sample `.py` file.
+
+### Building this project's firmware
 
 Each `build-<device>.sh`: assembles `python/build/` from `CommonDrivers` + the manifest + the
 device's needed `IndividualDrivers` + gzipped/frozen HTML → temporarily swaps `modules/_boot.py`

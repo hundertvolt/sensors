@@ -17,8 +17,15 @@ interpreter for the script itself (see "Why not a full venv" below). Re-running 
 command is also how you update an existing install: it fetches, checks out whatever ref
 is now pinned, and rebuilds only what changed.
 
-Requires `sudo` (for `apt-get install` and `picotool`'s `make install`) and outbound network
-access to GitHub and the distro package mirrors.
+Requires `sudo` (for `apt-get install` and `picotool`'s `make install`), outbound network access
+to GitHub and the distro package mirrors, and `uv` itself already installed (`pip install uv`, or
+the official `curl -LsSf https://astral.sh/uv/install.sh | sh` installer).
+
+The `apt-get install` step needs Ubuntu's `universe` component enabled — the default on every
+official Ubuntu image, so this only matters if you're starting from a deliberately minimal base
+(e.g. a bare `debootstrap`-built rootfs, which enables only `main` unless told otherwise);
+`gcc-arm-none-eabi`, `libnewlib-arm-none-eabi`, and `libstdc++-arm-none-eabi-newlib` all live in
+`universe`.
 
 ## What gets pinned, and how
 
@@ -63,6 +70,15 @@ Every run re-verifies the environment end-to-end before reporting success:
 3. `mpy-cross` successfully cross-compiles a throwaway sample `.py` file.
 
 Any failure aborts with a non-zero exit and the build log leading up to it.
+
+**Verified end-to-end on a genuinely clean Ubuntu 24.04 system**: a `debootstrap`-built `noble`
+chroot with nothing preinstalled beyond the minimal base (no build tools, no `git`/`curl`/`sudo`,
+no `uv`, no apt cache beyond `main`) — the script installed every system dependency itself
+(after enabling `universe`, see "Usage" above) and passed all three checks in ~3 minutes, for
+both the latest stable MicroPython release and the currently-deployed `v1.26.1` pin. The
+in-place update path (existing `v1.26.1` install → re-run targeting the latest release) was also
+verified: existing clones are fetched and re-checked-out rather than re-cloned, the derived
+pico-sdk/picotool versions bump automatically, and only the affected pieces rebuild.
 
 ## Why not a full venv
 

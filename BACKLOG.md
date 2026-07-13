@@ -491,6 +491,16 @@ from reading the code alone:
   - The CI requirement that it also attempt a real firmware build (see "Final-goal requirements for
     the refactor" above) makes that remaining step a real near-term prerequisite, not just a
     nice-to-have, once picked back up.
+  - **Re-verified from scratch on a genuinely clean Ubuntu 24.04 system**, not just a fresh
+    directory inside an already-provisioned sandbox: built a `debootstrap`-based `noble` chroot
+    with nothing preinstalled beyond the minimal base (no build tools, no `git`/`sudo`/`uv`, no apt
+    cache beyond the `main` component) and ran the installer inside it end-to-end. Passed all three
+    checks for both the latest release and the `v1.26.1` pin, and the update path (existing
+    `v1.26.1` install → re-run targeting latest) worked too. One genuine prerequisite surfaced:
+    `debootstrap`'s default `sources.list` only enables `main`, and `gcc-arm-none-eabi` (plus its
+    newlib packages) lives in `universe` — not a script bug, since every official Ubuntu 24.04
+    image ships with `universe` enabled already, but worth the explicit callout for anyone building
+    from a deliberately minimal base. Documented in `toolchain/README.md` and the root README.
   - **`update_and_install.txt` re-verified against current (2026) upstream docs — structurally
     still accurate, but missing one real, currently-relevant gotcha.** The three-separate-clones
     approach (`pico-sdk`, `picotool`, `micropython`), the `lib/mbedtls` submodule-init step, the
