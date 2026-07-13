@@ -68,6 +68,13 @@ refactor work itself starts:
 - **Centralized config**: all tooling config shall live in `pyproject.toml`, as **dev-tooling
   config only** (ruff/mypy/pytest/uv sections) — the shipped code stays frozen-bytecode-only, not
   restructured into an installable package.
+- **Unified CRC-based data-integrity checking**, generalized and kept as a standing feature, not a
+  one-off: `improved-quality/crc_checks.py`'s generic `CRC8`/`CRC16`/`CRC32` engine (with a
+  `CRC_Pass` no-op for when it's not needed) grew organically — first added for UART data
+  integrity, then applied to the I2C sensors' own documented CRC8 protocol (SCD30, SGP40), then
+  unified into one shared class, then extended to protect FRAM-stored chunks (error-log history,
+  SGP40 VOC-algorithm backup state) — and should keep being applied everywhere data integrity
+  matters, not left as an incidental byproduct of past feature work.
 
 ### Bus/sensor error-recovery robustness (owner-specified, not yet implemented)
 
@@ -144,6 +151,21 @@ hands-on field experience with the current deployed units:
   is believed to be the right general approach, but the refactor should specifically verify these
   locks truly cover the complete bus access with no gaps, and that they can't block each other
   (e.g. deadlock, or one long-held lock starving an unrelated bus user).
+  - **Concrete progress already visible**: `improved-quality/asy_scd30_driver.py`,
+    `asy_bmp3xx_driver.py`, and `asy_sgp40_driver.py` each introduced a `*_DeviceSession(Lockable)`
+    class — an outer per-sensor lock wrapping the whole multi-step transaction (write a command,
+    then read the reply), with an explicit `await asyncio.sleep(0)` yield between the write and
+    read phases so the underlying bus lock isn't held across a lock-then-forget gap. This is the
+    actual mechanism this audit item was asking for; treat it as the pattern to verify/extend
+    rather than starting the audit from scratch.
+
+  - **Open question surfaced by this pattern's rollout**: several low-level setter/getter
+    forwarding methods on these same Reader classes were changed from bare pass-through coroutines
+    to `try/except Exception: return False/None`. That satisfies "nothing may slip through
+    uncaught," but it wasn't verified whether the swallowed exception is still logged via
+    `self.pr` — if it silently becomes a `False`/`None` with no log trace, that's a silent-failure
+    risk that cuts against the robustness goal rather than fulfilling it. Needs checking before
+    this pattern is treated as settled.
 
 ### Code structure / style patterns for the refactor (owner-specified, not yet implemented)
 
@@ -155,11 +177,27 @@ patterns to hold the rest of the refactor to, not as new/unstarted work:
   hand-copied constants/logic repeated per device or per sensor (this is the same spirit as the
   existing config-duplication concern in "Deferred / explicitly out-of-scope work" below, now
   elevated to a general structural principle, not just a config-keys issue).
+  - **Concrete mechanism already emerging**: `asy_scd30_driver.py`/`asy_bmp3xx_driver.py`/
+    `asy_sgp40_driver.py` each define per-field config schema strings (`_VAL_*`, e.g. type/min/max/
+    default metadata) and expose `get_dict_cfg()`/`get_dict_data()` to export them. This is the
+    actual answer to the "config-duplication centralization" deferred item below — a single
+    per-driver schema that validation, storage, and (eventually) the REST/HTML layers can all read
+    from, instead of hand-keeping `_DEFAULT_CONFIG`, the REST handler, and the HTML form in sync.
+    Not fully wired end-to-end yet (see the "Findings" section below), but the mechanism itself is
+    the right direction to keep building on.
 - **Handle device / sensor / functional config storage separately** — already visible in
   `improved-quality/base_classes.py`'s `SensorReaderConfig`, which gives each sensor its own
   `config_<name>.cfg` file via a per-instance `ConfigManager`, rather than one monolithic
   device-wide config file (see also the "Config-schema data-loss risk" item above, which this
   directly supersedes for the refactor).
+  - **Target model, per the project owner**: every config value should end up **per-device,
+    per-feature, or explicitly global — but never implicitly coupled to something unrelated.**
+    Per-sensor config (via `SensorReaderConfig`) already satisfies the per-device/per-feature case.
+    What's not yet resolved is the *explicitly-global-but-detached* case: cross-cutting settings
+    like network/WiFi and the Neopixel LED currently still end up sharing one ad hoc top-level
+    `ConfigManager` instance in `sensortask-wozi.py` (itself confirmed to be an intentional
+    intermediate state, not finished) — that shared instance should become its own clearly-scoped
+    global config, not an implicit grab-bag, once this part of the refactor is picked back up.
 - **Reduce code size, improve readability, especially via inheritance** — e.g.
   `improved-quality/base_classes.py`'s `SensorReader`/`SensorReaderConfig` hierarchy, and
   `asy_fram_manager.py`'s `_AsyBaseFramChunk` base class with `AsyFramChunk`/
@@ -167,6 +205,11 @@ patterns to hold the rest of the refactor to, not as new/unstarted work:
 - **Generalized startup / error-recovery behavior** — e.g. `SensorReader._error_check()` in
   `base_classes.py` centralizes the increment/decrement-error-counter-and-decide-to-die logic that
   every current `sensortask-*.py` driver hand-rolls separately today.
+  - **Concrete mechanism**: each Reader implements a uniform `get_task_starters()`/
+    `get_timer_starters()` pair, which is how `system_service.py`'s generic task supervisor
+    discovers and starts each driver's tasks/timers without the device file needing to hardcode
+    method names — this is the specific interface that makes the generalization above actually
+    pluggable rather than just "shared code that still has to be wired up by hand."
 - **Trace-log error codes inside FRAM, surviving a reboot** — implemented via `PrintLogHistStore`
   (`print_log.py`), which persists an error/warning code history + count into a FRAM chunk,
   restored on `setup()`.
@@ -176,6 +219,25 @@ patterns to hold the rest of the refactor to, not as new/unstarted work:
 - **Handle FRAM more generically and consistently** — `improved-quality/asy_fram_manager.py`'s
   chunk-class hierarchy (see inheritance point above) plus `LockableBuffer`-based buffer types is
   the intended generalized model, vs. the current codebase's more ad hoc FRAM chunk handling.
+- **Prefer preallocated buffers and in-place writes over allocate-and-return, and bulk bus
+  transactions over per-byte loops** — a recurring embedded-resource-discipline pattern spotted
+  independently in multiple files, worth stating as its own principle rather than leaving it
+  implicit in each one: `asy_fram_driver.py`'s `get_values`/`set_values` moved from returning a
+  fresh `bytearray` per call to filling a caller-supplied buffer in place; `asy_fram_manager.py`'s
+  `LockableBuffer`-based chunk buffers are reused rather than reallocated per read/write; the FRAM
+  SPI driver's `_write()` moved from writing one byte at a time in a loop to a single bulk
+  `spidev.write(data)` inside one CS assertion; SGP40's command/CRC buffers write into slices of a
+  persistent buffer instead of building new lists per call. Directly supports the "no leaks, no
+  drift" final-goal requirement above (less heap churn, less GC pressure) and reduces per-call bus
+  transaction overhead — apply this pattern wherever a hot-path allocation or per-byte loop is
+  found elsewhere in the refactor, not just in the files it's already landed in.
+- **Generalize hardcoded constants into parameters when consolidating duplicated code, not just the
+  logic itself** — e.g. going from `base_classes_old.py` to the current `base_classes.py`, the old
+  `TimeCounterManager`'s baked-in 50-year-in-seconds wraparound cap became the new generic
+  `LockedCounter`'s `max_val` constructor parameter, with call sites (e.g. `system_service.py`)
+  now passing the bound explicitly (`LockedCounter(max_val=0xFFFFFFFF)`). When folding
+  similar/duplicated classes together elsewhere in the refactor, check whether they also embed a
+  constant that should become a parameter instead of being carried over as-is.
 - **Refactor identical/similar behavior into classes** — same evidence as the inheritance point
   above; this is a general principle to keep applying, not a one-off. **Scope it to what's
   genuinely common across drivers** (e.g. error-counter bookkeeping, FRAM chunk handling, config
@@ -206,6 +268,65 @@ refactor work actually begins:
    interpreter setup script, unit tests, GitLab CI including the firmware-build stage) — comes
    last since it's meaningfully easier to write tests and wire up CI against the settled
    post-refactor structure than against a moving target.
+
+## Findings from reviewing `improved-quality/` against this spec
+
+A file-by-file pass comparing every file in `improved-quality/` against its legacy equivalent (and,
+for files with no legacy equivalent, reading them cold), then matching the differences against
+everything else in this document. Confirms most of the "Code structure / style patterns" section
+above is genuinely underway, but surfaces some new items:
+
+- **Cross-file wiring is currently incomplete, but each instance turned out to be a known,
+  explainable WIP state, not a surprise regression** — confirmed by the project owner:
+  - `api_helpers.py`'s mismatch against `config_manager.py`'s current `get_dict`/`write_config`
+    signatures is exactly where the project owner paused this file's refactor — there's a `# TODO
+    what to do if...`-style comment marking the spot, left mid-thought for unrelated reasons. It's
+    the natural place to pick the refactor back up, not a bug that snuck in unnoticed.
+  - `neopixel_signal.py` simply **hasn't been refactored yet** — its wrong `async_manager` import
+    and `get_int_values`/`get_float_values` mixup are exactly what you'd expect from an
+    untouched-since-copy file sitting next to already-modernized siblings, not a defect.
+  - `sensortask-wozi.py`'s misplaced `ntp_force_sync()` call inside the recurring supervisor loop
+    was a **deliberate temporary fix for an NTP client bug**, made in-place during debugging and
+    never moved back to its proper one-time pre-loop position afterward — a known loose end to
+    revert, not an accidental regression. The other constructor-argument mismatches in this file
+    remain as-described: `sensortask-wozi.py` is confirmed to be in an intentional intermediate
+    state (see the config-model note below), not finished wiring.
+  - **Takeaway unchanged**: individual files being "far along" doesn't mean the subsystem works
+    end-to-end yet. An integration pass reconciling call sites against current signatures is still
+    needed before treating any of these files as done — but every gap found so far has a known,
+    benign explanation rather than being a mystery to root-cause.
+- **`improved-quality/microdot.py` fork — confirmed, not just decided**: the project owner
+  confirmed this was unintentional drift. **Action when refactor work resumes: revert
+  `improved-quality/microdot.py` to match the vendored upstream copy exactly** — no behavioral
+  additions of our own in this file, ever. Not changed now, since `improved-quality/` isn't to be
+  edited outside dedicated refactor work (see CLAUDE.md's hard rules).
+- **CRC integrity checking is confirmed as an intentional, evolving feature — promoted to a
+  final-goal requirement** (see "Final-goal requirements for the refactor" above for the actual
+  goal entry). History, per the project owner: originated as CRC-checking added for UART
+  functionality; then applied to the I2C sensors (SCD30/SGP40) once their own CRC8 protocol
+  requirement was noticed; then unified into one shared `crc_checks.py` class; then extended to
+  FRAM chunk integrity as well. Not an accidental byproduct — keep generalizing it as a goal, not
+  just something to leave alone.
+- **Timing-value changes are confirmed intentional, not drift**: the project owner tested and found
+  both changed delays — `asy_scd30_driver.py`'s `_read_register()` inter-command delay (0.005s →
+  0.05s) and `asy_sgp40_driver.py`'s initial serial-number-read delay (10ms → 3ms) — to produce
+  more stable operation. No further action needed; keep these values, and prefer measuring rather
+  than assuming when tuning similar delays elsewhere in the refactor.
+- **Confirmed real bug fixes already present in `improved-quality/`** (good evidence the refactor
+  is improving correctness, not just style) — worth knowing these exist so they aren't
+  accidentally reintroduced: a `NameError`-causing typo in the legacy FRAM driver's write-protect
+  pin setup (`_wp_pin` used instead of `self._wp_pin`); a legacy `BMP3XX_I2C.setup()` that uses
+  `await` inside a non-`async def` (a literal compile-breaking defect — worth confirming whether
+  this method is ever actually reached on deployed units, i.e. whether it's dead code today); a
+  legacy SGP40 VOC-algorithm FRAM serialization bug where `m_mox_model_sraw_std` was never
+  included in the packed/restored fields, so restore-from-FRAM silently never recovered that value;
+  and a handful of smaller `api_helpers.py`/`async_connect.py`/`captive_dns.py`/`asy_udp_socket.py`
+  fixes for `None`-guard crash paths and an unbound-local variable on an unhandled branch.
+- **Per-sensor vs. device-level config — not a contradiction, just an unfinished third tier**: see
+  the "Target model" note under "Handle device / sensor / functional config storage separately"
+  above — per-sensor config is done, the remaining gap is giving the currently-shared
+  network/Neopixel config in `sensortask-wozi.py` its own clearly-scoped global home instead of one
+  ad hoc `ConfigManager` instance.
 
 ## Decided for the refactor
 
@@ -358,6 +479,37 @@ from reading the code alone:
   MicroPython/pico-sdk/picotool rather than pinning to what's in the current handwritten notes;
   MicroPython's rp2 port depends on specific pico-sdk submodules (e.g. `lib/mbedtls`), which
   `update_and_install.txt` already gestures at.
+  - **`update_and_install.txt` re-verified against current (2026) upstream docs — structurally
+    still accurate, but missing one real, currently-relevant gotcha.** The three-separate-clones
+    approach (`pico-sdk`, `picotool`, `micropython`), the `lib/mbedtls` submodule-init step, the
+    `libusb-1.0-0-dev` dependency, and the picotool `cmake -DPICO_SDK_PATH=... && make && sudo make
+    install` steps are all still exactly right per current
+    [`picotool/BUILDING.md`](https://github.com/raspberrypi/picotool/blob/master/BUILDING.md) and
+    the MicroPython
+    [`ports/rp2/README.md`](https://github.com/micropython/micropython/blob/master/ports/rp2/README.md)
+    (`make -C mpy-cross` from the repo root, then `make BOARD=RPI_PICO_W submodules`/`clean`/build
+    from `ports/rp2`).
+    - **New requirement since pico-sdk 2.0.0, not covered by the current notes**: a standalone
+      `picotool` build must have a matching major.minor version to the pico-sdk it's built
+      against (enforced via install marker files, not just `PATH`) — a version mismatch now fails
+      the build outright with "Incompatible picotool installation found"
+      ([pico-sdk#1990](https://github.com/raspberrypi/pico-sdk/issues/1990)). **This already
+      applies today, not just at refactor time**: MicroPython 1.26 (the currently deployed pin)
+      bundles pico-sdk **2.1.1** as its internal submodule, so anyone rebuilding the toolchain from
+      `update_and_install.txt` right now needs the standalone `pico-sdk`/`picotool` clones checked
+      out at a matching `2.1.x` tag, or the build breaks. Whatever MicroPython version the refactor
+      eventually lands on will pin its own matching pico-sdk version — check it fresh at that time
+      rather than assuming `2.1.1` still applies.
+    - **Toolchain packages were never listed in the notes at all** (and still aren't a gap
+      introduced by drift, just a pre-existing one): `build-essential`, `cmake`, `pkg-config`,
+      `git`, and the ARM cross-compiler (`gcc-arm-none-eabi`, `libnewlib-arm-none-eabi`,
+      `libstdc++-arm-none-eabi-newlib` on Debian/Ubuntu) are all still required but were presumably
+      assumed pre-installed. Worth listing explicitly once this becomes a real setup script.
+    - **An official one-shot alternative exists**:
+      [`raspberrypi/pico-setup`](https://github.com/raspberrypi/pico-setup)'s `pico_setup.sh`
+      installs the toolchain, clones pico-sdk, and builds/installs picotool in one script — worth
+      considering as a base for the genericized setup script instead of hand-rolling the same
+      steps.
 - **No end-user reference for Neopixel LED colors/patterns exists.** The single physical LED does
   double duty (steady WiFi-status indicator + transient warning/external-command flash), confirmed
   intentional, but there's no legend anywhere (HTML UI, printed label) explaining what each

@@ -17,6 +17,14 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
     release at that time (MicroPython, pico-sdk, picotool, Microdot) and to actively use relevant
     improvements/new features those releases introduced — not just reproduce 1.26-era behavior
     under a newer version number. See BACKLOG.md's "Decided for the refactor" section.
+  - **MicroPython 1.26 already bundles pico-sdk 2.1.1 as its internal `ports/rp2` submodule** —
+    confirmed via web search, not training-data memory. Since pico-sdk 2.0.0, a standalone
+    `picotool` build must match the pico-sdk major.minor version it's used against (enforced via
+    marker files from `sudo make install`/`cmake --install`, not just having the binary on `PATH`)
+    or the build fails with "Incompatible picotool installation found." This means
+    `update_and_install.txt`'s standalone `pico-sdk`/`picotool` clones need to be checked out at a
+    matching `2.1.x` tag *today*, not just "whatever's current" — see BACKLOG.md's "Dev/build
+    environment setup" item for the full finding.
   - `machine.WDT` hard-caps at **8388ms** on RP2040. Current code uses `WDT(timeout=8000)` — only
     388ms of margin. Don't casually increase this without checking the cap still holds against
     current docs.
