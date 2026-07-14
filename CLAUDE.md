@@ -49,13 +49,16 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
 - **`src/` is where files land once they're fully reviewed and tested** — formula/logic
   correctness checked, input validation and exception-safety audited, unit tests written and
   passing (see "Code quality tooling" below and `tests/README.md`), unlike `improved-quality/`'s
-  WIP files above. `src/math_helpers.py` (moved from `improved-quality/math_helpers.py`) is the
-  first file to make this move; it is not yet re-wired into any driver's actual import path for a
-  real firmware build (`improved-quality/asy_bmp3xx_driver.py`/`asy_scd30_driver.py` still `import
-  math_helpers` unchanged — MicroPython's frozen-module namespace is flat, so this works
-  regardless of which directory the source file lives in during local dev-tooling checks, via
-  `pyproject.toml`'s `mypy_path`). Treat `src/` files as normal, freely-editable code, not as
-  read-only WIP context the way `improved-quality/` is.
+  WIP files above. **`src/README.md` is the full checklist** for what "fully reviewed and tested"
+  actually requires, distilled from the `math_helpers.py` review — use it for the next file too,
+  not just as a historical record. `src/math_helpers.py` (moved from
+  `improved-quality/math_helpers.py`) is the first file to make this move; it is not yet re-wired
+  into any driver's actual import path for a real firmware build
+  (`improved-quality/asy_bmp3xx_driver.py`/`asy_scd30_driver.py` still `import math_helpers`
+  unchanged — MicroPython's frozen-module namespace is flat, so this works regardless of which
+  directory the source file lives in during local dev-tooling checks, via `pyproject.toml`'s
+  `mypy_path`). Treat `src/` files as normal, freely-editable code, not as read-only WIP context
+  the way `improved-quality/` is.
 - **Do not "fix" `modules/_boot.py`'s `import sensortask.py`** (literal `.py` in the import
   statement) without testing on real hardware first. It works reliably today; MicroPython's
   documented freeze/import behavior says the module should be named `sensortask` with the
