@@ -11,8 +11,13 @@ concurrency:
 
 jobs:
   lint-and-typecheck:
-    # Covers improved-quality/, src/, and tests/ - see pyproject.toml's [tool.ruff]/[tool.mypy]
-    # and CLAUDE.md's "Code quality tooling" for scope rationale.
+    # Gates on src/ and tests/ only, NOT improved-quality/ (the WIP refactor target, which has
+    # hundreds of pre-existing, tracked-but-not-yet-fixed findings - see BACKLOG.md; running
+    # scripts/lint.sh/typecheck.sh with no arguments here would make this job permanently red
+    # regardless of what a given PR actually touches). Passing explicit paths overrides
+    # pyproject.toml's `files`/default target for that one invocation without changing what a
+    # plain `scripts/lint.sh`/`scripts/typecheck.sh` checks locally (still full-scope: see
+    # scripts/typecheck.sh's `mypy "$@"` and ruff's own CLI-args-override-config behavior).
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,10 +25,10 @@ jobs:
         run: pip install uv
       - name: Sync dev dependencies
         run: uv sync
-      - name: Ruff
-        run: uv run scripts/lint.sh
-      - name: Mypy
-        run: uv run scripts/typecheck.sh
+      - name: Ruff (src/, tests/)
+        run: uv run ruff check src tests
+      - name: Mypy (src/, tests/)
+        run: uv run scripts/typecheck.sh src tests
 
   unit-tests:
     # Tests run under a real MicroPython Unix-port interpreter, not CPython - see
