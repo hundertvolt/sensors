@@ -78,11 +78,13 @@ does, in order:
    caller's shell happens to have set — see "Environment isolation" below. This is what makes
    the versions derived in steps 1–4 the actual versions used, instead of being second-guessed
    by a stray environment variable or a shadowing binary.
-6. **Verify the result before declaring success**, every single run: build a standard firmware
-   image, build `mpy-cross`, cross-compile a sample file with it, then build the Unix port and
-   run a sample script on it (see "Verification" below). A `setup` that finishes without running
-   these checks would just be an assertion that the pieces are probably fine; running them is
-   what makes it a proof.
+6. **Verify the result before declaring success**, every single run, via a frozen-bytecode chain
+   rather than separate throwaway checks: freeze one small test module into both the Unix port
+   and the RP2 firmware, import it *by name* inside the Unix port binary and check its result,
+   clean up, then rebuild a vanilla Unix port as the standing test rig (see "Verification" below,
+   and `run_verification_sequence()`'s docstring in `setup_toolchain.py` for the exact step
+   order). A `setup` that finished without running this chain would just be an assertion that the
+   pieces are probably fine; running it is what makes it a proof.
 
 Step 6 is intentionally a mix of from-scratch and incremental: the firmware and Unix-port builds
 always wipe their build directories first, so "builds with zero errors/warnings" is a genuine
@@ -98,10 +100,11 @@ then proceeds through the normal build+verify flow — so it ends in the same st
 fresh install would.
 
 `test` is `setup` with steps 1–4 skipped: it assumes an install already exists at
-`--toolchain-dir` and just re-runs steps 5–6 against whatever is already checked out there. That
-split exists because steps 1–4 need network/apt access and can change what's installed, while
-steps 5–6 don't need either and are what you actually want to re-run repeatedly (locally, or
-eventually in CI — see "CI perspective" below) to confirm the toolchain still builds cleanly.
+`--toolchain-dir` and just re-runs step 6's verification chain against whatever is already
+checked out there. That split exists because steps 1–4 need network/apt access and can change
+what's installed, while the verification chain doesn't need either and is what you actually want
+to re-run repeatedly (locally, or eventually in CI — see "CI perspective" below) to confirm the
+toolchain still builds cleanly.
 
 ## Environment isolation
 
@@ -139,8 +142,11 @@ otherwise resolve to.
 ```
 <toolchain-dir>/          default: $PICO_TOOLCHAIN_DIR or ~/pico-toolchain
   micropython/             full clone, checked out at the pinned ref
-    ports/rp2/build-<board>/    firmware build output (firmware.uf2)
-    ports/unix/build-standard/  host-side interpreter build output (micropython)
+    ports/rp2/build-<board>/    transient - built once with the frozen test module (step 6 of
+                                 "Verification"), then removed in step 7; does not exist after a
+                                 completed setup/test run
+    ports/unix/build-standard/  host-side interpreter build output (micropython) - the one build
+                                 artifact kept as a standing deliverable (step 8)
     mpy-cross/build/            cross-compiler build output (mpy-cross)
   pico-sdk/                full clone, checked out at the ref MicroPython pins
   picotool/                full clone, checked out at the derived matching tag; built + `sudo make install`ed
@@ -152,24 +158,61 @@ is a first-class requirement here, not an afterthought.
 
 ## Verification
 
-Every `setup` or `test` run re-verifies the environment end-to-end before reporting success:
+Every `setup` or `test` run re-verifies the environment end-to-end via a single frozen-bytecode
+chain (`run_verification_sequence()` in `setup_toolchain.py`), each step gating the next — a
+`SetupError` from any step aborts the whole chain, so later steps never run against a broken
+earlier one:
 
-1. A standard, unchanged firmware image builds for the target board (default `RPI_PICO_W`)
-   with no compiler errors or warnings.
-2. `mpy-cross` (the cross-compiler) builds cleanly.
-3. `mpy-cross` successfully cross-compiles a throwaway sample `.py` file.
-4. The Unix port (`ports/unix`, "standard" variant) builds with no compiler errors or warnings,
-   and running a sample script on it produces the expected output — proving it's an actually
-   functional interpreter, not just a binary that exists. This is the host-side MicroPython
-   build that tests will eventually run under (see BACKLOG.md's "Self-contained venv via uv");
-   `build_unix_port()`/`run_unix_port_sample()` in `setup_toolchain.py`.
+1. Write a small test module (`frozen_verify_test.py`: arithmetic, a comprehension, exception
+   handling, a stdlib import, and a `RESULT` value to check).
+2. Build `mpy-cross` (the cross-compiler).
+3. Cross-compile the test module with `mpy-cross` directly — proves the cross-compiler itself
+   works, independently of the freeze/build pipeline exercised next.
+4. Build the Unix port (`ports/unix`, "standard" variant) with the test module frozen in via
+   `FROZEN_MANIFEST=`, with no compiler errors or warnings.
+5. Import the frozen module *by name* inside that Unix port binary — with no source `.py` file
+   anywhere on disk for the interpreter to find — and check its result. The only way this can
+   succeed is if the module was actually baked into the binary as frozen bytecode, not merely
+   compiled and left on disk. `mpy-cross` and the Unix port build are now both verified. This is
+   the host-side MicroPython build that tests will eventually run under (see BACKLOG.md's
+   "Self-contained venv via uv").
+6. Build the RP2 firmware for the target board (default `RPI_PICO_W`) with the same test module
+   frozen in, with no compiler errors or warnings. Build-only: there's no RP2 hardware here to
+   run it on, so a clean build is the whole check. Freezing extra bytecode is strictly additive
+   to a build — it can't make an otherwise-broken toolchain succeed — so this is a strict
+   superset of what a vanilla (no frozen module) RP2 build would have proven anyway; see
+   `run_verification_sequence()`'s docstring for why a separate vanilla RP2 build isn't also kept.
+7. Clean up the RP2 firmware and Unix port build directories from steps 4–6. `mpy-cross`'s and
+   `picotool`'s build output are *not* touched — both are real toolchain deliverables needed for
+   actual project work later, not verification-only artifacts.
+8. Rebuild a vanilla (non-frozen) Unix port. This becomes the standing test rig used for running
+   tests under the real interpreter later (see BACKLOG.md's "Self-contained venv via uv").
 
-Any failure aborts with a non-zero exit and the build log leading up to it.
+Any failure aborts with a non-zero exit and the build log leading up to it. Note this means a
+completed `setup`/`test` run does **not** leave a vanilla RP2 `firmware.uf2` anywhere — only the
+(also cleaned-up) frozen-module build from step 6, which existed purely to prove the toolchain
+works. The Unix port from step 8 is the only build artifact kept as a standing deliverable.
 
 ## Evidence this actually works
 
-Claims above that are checkable were checked, not just written down:
+Claims above that are checkable were checked, not just written down. The bullets mentioning a
+specific "three checks"/"four checks" count below predate the 8-step frozen-bytecode chain
+described in "Verification" above and refer to the simpler build-and-run-a-sample-script design
+that chain replaced — they're kept as evidence for the still-true claims in each bullet
+(clean-chroot install, the update path, environment isolation, the locale bug fix), not as a
+description of the current step count.
 
+- **Restructured into the 8-step frozen-bytecode chain**: re-ran `test` against an existing
+  `v1.28.0` toolchain twice while building the new `run_verification_sequence()`. The first pass
+  caught a real bug: `freeze(".")` in the generated manifests froze every `.py` file sitting next
+  to the test module, including the manifest files themselves (`MPY manifest_unix.py` showed up
+  in the build log where only `MPY frozen_verify_test.py` was expected) — harmless in practice but
+  sloppy, so the test module was moved into its own dedicated subdirectory
+  (`FROZEN_MODULE_SUBDIR`) that only ever contains that one file. Second pass confirmed the fix:
+  `frozen_verify_test.py` is the only extra frozen module in both the Unix port and RP2 builds,
+  the frozen import prints `FROZEN_VERIFY_OK: micropython` with no source file on disk, step 7
+  removes both `ports/rp2/build-RPI_PICO_W` and `ports/unix/build-standard`, and the final vanilla
+  Unix port rebuild's frozen-module list no longer includes `frozen_verify_test.py` anywhere.
 - **A genuinely clean Ubuntu 24.04 system, from scratch**: a `debootstrap`-built `noble` chroot
   with nothing preinstalled beyond the minimal base (no build tools, no `git`/`curl`/`sudo`, no
   `uv`, no apt cache beyond `main`) — the script installed every system dependency itself (after

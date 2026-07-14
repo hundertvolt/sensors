@@ -31,6 +31,13 @@ toolchain/README.md's "How it works":
     network_env), never the caller's raw shell — so a leftover CFLAGS, a shadowing ~/bin/cmake,
     or some other locally-installed thing can't silently change what gets built.
 
+Verification (run_verification_sequence()) proves the toolchain actually works, rather than just
+asserting the pieces are probably fine: it freezes one small test module as bytecode into both
+the Unix port and the RP2 firmware, then imports it inside the Unix port and checks the result —
+proof that the whole freeze pipeline (mpy-cross -> FROZEN_MANIFEST -> firmware) works end to end,
+not just that mpy-cross alone compiles something. See its docstring for the exact step order and
+toolchain/README.md's "Verification" section for the rationale.
+
 See toolchain/README.md for the full picture (what this does and does not cover).
 """
 
@@ -50,23 +57,13 @@ MICROPYTHON_URL = "https://github.com/micropython/micropython.git"
 PICO_SDK_URL = "https://github.com/raspberrypi/pico-sdk.git"
 PICOTOOL_URL = "https://github.com/raspberrypi/picotool.git"
 
-# Used by cross_compile_sample() below to check mpy-cross specifically: only needs to compile
-# without error, never actually runs anywhere, so it stays trivial on purpose.
-SAMPLE_PY = '''\
-def add(a, b):
-    return a + b
-
-
-print(add(2, 3))
-'''
-
-# Used by run_unix_port_sample() below - a separate, richer script from SAMPLE_PY above because
-# this one actually has to run (not just compile) to prove something: exercises enough of the
-# interpreter (arithmetic, comprehensions, exceptions, a stdlib module, sys.implementation) to
-# show the Unix port runs real Python, not just that the binary exists and doesn't immediately
-# crash. Not a project unit test (those stay out of scope until the improved-quality/ refactor,
-# per CLAUDE.md) - purely a smoke test of the interpreter itself.
-UNIX_PORT_SAMPLE_PY = '''\
+# The single module used throughout the frozen-bytecode verification chain (see
+# run_verification_sequence()): one source of truth compiled/frozen/imported everywhere, rather
+# than separate throwaway samples for "does mpy-cross work" vs. "does freezing work". Runs real
+# checks on import (arithmetic, a comprehension, exception handling, a stdlib module) and exposes
+# RESULT so callers can prove the import produced an actual value, not just that it didn't crash.
+FROZEN_VERIFY_MODULE = "frozen_verify_test"
+FROZEN_VERIFY_PY = '''\
 import sys
 import json
 
@@ -81,7 +78,7 @@ except ZeroDivisionError:
 else:
     raise SystemExit("expected ZeroDivisionError")
 
-print("MicroPython unix port OK:", sys.implementation.name, sys.implementation.version)
+RESULT = "FROZEN_VERIFY_OK: " + sys.implementation.name
 '''
 
 
@@ -314,13 +311,29 @@ def fetch_rp2_submodules(micropython_dir: Path, board: str) -> None:
     run(["make", f"BOARD={board}", "submodules"], cwd=rp2_dir, env=network_env())
 
 
-def build_firmware(micropython_dir: Path, board: str, jobs: int) -> Path:
+def fetch_unix_submodules(micropython_dir: Path) -> None:
+    log("Fetching submodules needed for the Unix port")
+    unix_dir = micropython_dir / "ports" / "unix"
+    # Unlike ports/rp2's "submodules" target, this one is pure git (axtls/berkeley-db/libffi
+    # submodule checkouts) with no internal cmake configure pass - network_env() is still the
+    # right choice (it fetches over git), just for a simpler reason than rp2's.
+    run(["make", "submodules"], cwd=unix_dir, env=network_env())
+
+
+def build_firmware(micropython_dir: Path, board: str, jobs: int, frozen_manifest: Path | None = None) -> Path:
+    """Builds the RP2 firmware. Pass frozen_manifest (an absolute path to a manifest.py written
+    by write_freeze_manifest()) to freeze an extra module in via FROZEN_MANIFEST=, which takes
+    precedence over the board's own default manifest; omit it for a vanilla build."""
     rp2_dir = micropython_dir / "ports" / "rp2"
-    log(f"Building standard, unchanged firmware for BOARD={board}")
+    label = "with the frozen verification module (build-only check)" if frozen_manifest else "standard, unchanged"
+    log(f"Building firmware for BOARD={board} ({label})")
     build_dir = rp2_dir / f"build-{board}"
     if build_dir.exists():
         shutil.rmtree(build_dir)
-    out = run(["make", f"BOARD={board}", f"-j{jobs}"], cwd=rp2_dir, env=build_env())
+    make_cmd = ["make", f"BOARD={board}", f"-j{jobs}"]
+    if frozen_manifest is not None:
+        make_cmd.append(f"FROZEN_MANIFEST={frozen_manifest}")
+    out = run(make_cmd, cwd=rp2_dir, env=build_env())
     if re.search(r"\berror:", out, re.IGNORECASE):
         raise SetupError("firmware build reported an error (see log above)")
     if re.search(r"\bwarning:", out, re.IGNORECASE):
@@ -332,26 +345,22 @@ def build_firmware(micropython_dir: Path, board: str, jobs: int) -> Path:
     return uf2
 
 
-def fetch_unix_submodules(micropython_dir: Path) -> None:
-    log("Fetching submodules needed for the Unix port")
-    unix_dir = micropython_dir / "ports" / "unix"
-    # Unlike ports/rp2's "submodules" target, this one is pure git (axtls/berkeley-db/libffi
-    # submodule checkouts) with no internal cmake configure pass - network_env() is still the
-    # right choice (it fetches over git), just for a simpler reason than rp2's.
-    run(["make", "submodules"], cwd=unix_dir, env=network_env())
-
-
-def build_unix_port(micropython_dir: Path, jobs: int) -> Path:
+def build_unix_port(micropython_dir: Path, jobs: int, frozen_manifest: Path | None = None) -> Path:
     """Builds the "standard" variant (the default, and the one with the most complete feature
     set) - see ports/unix/README.md. Requires mpy-cross to already be built (build_mpy_cross()
     must run first); the Makefile also depends on it directly, but re-checking a build that's
-    already current is a no-op, not wasted work."""
-    log("Building the MicroPython Unix port (host-side interpreter for running tests under)")
+    already current is a no-op, not wasted work. Pass frozen_manifest the same way as
+    build_firmware() above; omit it for a vanilla build."""
+    label = "with the frozen verification module" if frozen_manifest else "standard, unchanged"
+    log(f"Building the MicroPython Unix port ({label})")
     unix_dir = micropython_dir / "ports" / "unix"
     build_dir = unix_dir / "build-standard"
     if build_dir.exists():
         shutil.rmtree(build_dir)
-    out = run(["make", f"-j{jobs}"], cwd=unix_dir, env=build_env())
+    make_cmd = ["make", f"-j{jobs}"]
+    if frozen_manifest is not None:
+        make_cmd.append(f"FROZEN_MANIFEST={frozen_manifest}")
+    out = run(make_cmd, cwd=unix_dir, env=build_env())
     if re.search(r"\berror:", out, re.IGNORECASE):
         raise SetupError("Unix port build reported an error (see log above)")
     if re.search(r"\bwarning:", out, re.IGNORECASE):
@@ -363,17 +372,6 @@ def build_unix_port(micropython_dir: Path, jobs: int) -> Path:
     version_out = run([str(binary), "-c", "import sys; print(sys.implementation)"], env=build_env())
     print(f"Built: {version_out.strip()}")
     return binary
-
-
-def run_unix_port_sample(unix_binary: Path) -> None:
-    log("Running a sample script on the Unix port to verify it's actually functional")
-    with tempfile.TemporaryDirectory() as tmp:
-        sample_py = Path(tmp) / "unix_port_sample.py"
-        sample_py.write_text(UNIX_PORT_SAMPLE_PY)
-        out = run([str(unix_binary), str(sample_py)], env=build_env())
-        if "MicroPython unix port OK:" not in out:
-            raise SetupError("Unix port sample script did not produce the expected output (see log above)")
-        print(out.strip())
 
 
 def clean_build_dirs(toolchain_dir: Path, board: str) -> None:
@@ -400,16 +398,129 @@ def clean_build_dirs(toolchain_dir: Path, board: str) -> None:
             print(f"(nothing to clean at {target})")
 
 
-def cross_compile_sample(mpy_cross_binary: Path) -> None:
-    log("Cross-compiling a sample .py file to verify mpy-cross works")
+# The frozen test module lives in its own subdirectory of the tempdir created by
+# run_verification_sequence(), never directly alongside the generated manifest.py files - see
+# write_freeze_manifest() for why that separation matters.
+FROZEN_MODULE_SUBDIR = "frozen_module"
+
+
+def write_frozen_verify_test(test_dir: Path) -> Path:
+    """Step 1 of run_verification_sequence(): the one .py file cross-compiled/frozen/imported at
+    every later step - see FROZEN_VERIFY_PY."""
+    module_dir = test_dir / FROZEN_MODULE_SUBDIR
+    module_dir.mkdir()
+    test_file = module_dir / f"{FROZEN_VERIFY_MODULE}.py"
+    test_file.write_text(FROZEN_VERIFY_PY)
+    return test_file
+
+
+def cross_compile_frozen_verify_test(mpy_cross_binary: Path, test_file: Path) -> Path:
+    """Step 3: cross-compiles the test file standalone (invoking mpy-cross directly, not via a
+    manifest's freeze()) to prove mpy-cross itself works, independently of the freeze/build
+    pipeline exercised by steps 4 and 6."""
+    log("Cross-compiling the verification test file to prove mpy-cross works standalone")
+    run([str(mpy_cross_binary), str(test_file)], env=build_env())
+    compiled = test_file.with_suffix(".mpy")
+    if not compiled.exists() or compiled.stat().st_size == 0:
+        raise SetupError(f"mpy-cross did not produce a non-empty {compiled.name}")
+    print(f"Produced {compiled.name} ({compiled.stat().st_size} bytes)")
+    return compiled
+
+
+def write_freeze_manifest(manifest_path: Path, port_manifest_relpath: str) -> None:
+    """Mirrors this repo's own manifest convention (python/Manifest/manifest.py): include the
+    port's normal manifest, then freeze FROZEN_MODULE_SUBDIR. freeze() resolves its argument
+    relative to *this* manifest file's own directory - manifest_path is always written as a
+    sibling of FROZEN_MODULE_SUBDIR (never inside it), so freeze() only ever picks up the one
+    intended test module, never the manifest.py files generated alongside it (both this one and
+    the other port's, which also lives in the same tempdir - see run_verification_sequence())."""
+    manifest_path.write_text(
+        f'include("$(PORT_DIR)/{port_manifest_relpath}")\nfreeze("{FROZEN_MODULE_SUBDIR}")\n'
+    )
+
+
+def run_frozen_verify_on_unix(unix_binary: Path) -> None:
+    """Step 5: imports the frozen module *by name*, with no source .py file anywhere on disk for
+    the interpreter to find - the only way this can succeed is if the module was actually baked
+    into the binary as frozen bytecode, not merely compiled and left on disk somewhere."""
+    log("Importing the frozen verification module inside the Unix port and checking its result")
+    out = run(
+        [str(unix_binary), "-c", f"import {FROZEN_VERIFY_MODULE}; print({FROZEN_VERIFY_MODULE}.RESULT)"],
+        env=build_env(),
+    )
+    if "FROZEN_VERIFY_OK" not in out:
+        raise SetupError("frozen verification module did not produce the expected result (see log above)")
+    print(out.strip())
+
+
+def clean_frozen_verification_build_dirs(toolchain_dir: Path, board: str) -> None:
+    """Step 7: removes exactly the two build outputs the frozen-bytecode verification chain
+    (steps 4-6) leaves behind - the Unix port and RP2 firmware built with the frozen test module.
+    Neither is kept: the RP2 build is never repeated afterward (see run_verification_sequence()'s
+    docstring for why a build-only check is sufficient), and the Unix port gets rebuilt vanilla
+    in step 8. Deliberately does not touch mpy-cross/build or picotool - both are real toolchain
+    deliverables needed for actual project work later, not verification-only artifacts."""
+    log("Cleaning up the frozen-bytecode verification build artifacts")
+    targets = [
+        toolchain_dir / "micropython" / "ports" / "rp2" / f"build-{board}",
+        toolchain_dir / "micropython" / "ports" / "unix" / "build-standard",
+    ]
+    for target in targets:
+        if target.exists():
+            print(f"Removing {target}")
+            shutil.rmtree(target)
+        else:
+            print(f"(nothing to clean at {target})")
+
+
+def run_verification_sequence(micropython_dir: Path, toolchain_dir: Path, board: str, jobs: int) -> tuple[Path, Path]:
+    """The frozen-bytecode verification chain described in toolchain/README.md's "Verification" -
+    each step must succeed before the next starts (a SetupError from any run()/build_*() call
+    aborts the whole sequence, so this is enforced by the exception propagating, not by checking
+    a return code by hand):
+
+      1. create a test .py file
+      2. build mpy-cross
+      3. cross-compile the test file standalone (proves mpy-cross itself works)
+      4. build the Unix port with the test file frozen in
+      5. import the frozen module inside the Unix port and check its result
+         -> mpy-cross and the Unix port build are now both verified
+      6. build the RP2 port with the same test file frozen in (build-only: there's no RP2
+         hardware here to run it on, so a clean build is the whole check)
+      7. clean up everything steps 4-6 left behind
+      8. build a vanilla (non-frozen) Unix port - this becomes the standing test rig for
+         everything that follows (see BACKLOG.md's "Self-contained venv via uv")
+
+    Deliberately does not rebuild a vanilla RP2 firmware.uf2 afterward: nothing in this project
+    is ever actually flashed from a "vanilla, no project code" image, so step 6's from-scratch,
+    zero-errors/zero-warnings build with the frozen module already *is* the real proof that the
+    ARM toolchain/pico-sdk/picotool combination works - freezing extra bytecode only adds to a
+    build, it can't make an otherwise-broken one succeed, so this result is a strict superset of
+    what a vanilla build would have proven anyway.
+    """
     with tempfile.TemporaryDirectory() as tmp:
-        sample_py = Path(tmp) / "sample.py"
-        sample_py.write_text(SAMPLE_PY)
-        run([str(mpy_cross_binary), str(sample_py)], env=build_env())
-        sample_mpy = Path(tmp) / "sample.mpy"
-        if not sample_mpy.exists() or sample_mpy.stat().st_size == 0:
-            raise SetupError("mpy-cross did not produce a non-empty sample.mpy")
-        print(f"Produced {sample_mpy.name} ({sample_mpy.stat().st_size} bytes)")
+        test_dir = Path(tmp)
+
+        test_file = write_frozen_verify_test(test_dir)
+        mpy_cross_binary = build_mpy_cross(micropython_dir, jobs)
+        cross_compile_frozen_verify_test(mpy_cross_binary, test_file)
+
+        unix_manifest = test_dir / "manifest_unix.py"
+        write_freeze_manifest(unix_manifest, "variants/manifest.py")
+        unix_binary = build_unix_port(micropython_dir, jobs, frozen_manifest=unix_manifest)
+        run_frozen_verify_on_unix(unix_binary)
+
+        rp2_manifest = test_dir / "manifest_rp2.py"
+        write_freeze_manifest(rp2_manifest, f"boards/{board}/manifest.py")
+        build_firmware(micropython_dir, board, jobs, frozen_manifest=rp2_manifest)
+        # test_dir (the test module + both manifests) is removed automatically once this
+        # "with" block exits - nothing further to clean up for those.
+
+    clean_frozen_verification_build_dirs(toolchain_dir, board)
+
+    unix_binary = build_unix_port(micropython_dir, jobs)  # vanilla rebuild: the real test rig
+
+    return mpy_cross_binary, unix_binary
 
 
 def latest_stable_micropython_ref() -> str:
@@ -431,12 +542,14 @@ def latest_stable_micropython_ref() -> str:
     return candidates[-1][1]
 
 
-def print_verification_summary(board: str, uf2: Path, mpy_cross_binary: Path, unix_binary: Path) -> None:
+def print_verification_summary(board: str, mpy_cross_binary: Path, unix_binary: Path) -> int:
     log("All verification checks passed")
-    print(f"  1. Standard {board} firmware built with no errors/warnings: {uf2}")
-    print(f"  2. Cross-compiler built: {mpy_cross_binary}")
-    print("  3. Sample .py cross-compiled successfully")
-    print(f"  4. Unix port built and ran a sample script successfully: {unix_binary}")
+    print(f"  1-3. mpy-cross built and cross-compiled the verification test file standalone: {mpy_cross_binary}")
+    print("  4-5. Unix port built with the test file frozen in, and the frozen module ran with the expected result")
+    print(f"  6. {board} firmware built with the same test file frozen in (build-only, zero errors/warnings)")
+    print("  7. Frozen-bytecode verification build artifacts cleaned up")
+    print(f"  8. Vanilla Unix port rebuilt as the standing test rig: {unix_binary}")
+    return 0
 
 
 def run_setup(args: argparse.Namespace, versions_path: Path, versions: dict) -> int:
@@ -485,20 +598,17 @@ def run_setup(args: argparse.Namespace, versions_path: Path, versions: dict) -> 
 
     build_and_install_picotool(picotool_dir, pico_sdk_dir, args.jobs)
     fetch_rp2_submodules(micropython_dir, board)
-    mpy_cross_binary = build_mpy_cross(micropython_dir, args.jobs)
-    uf2 = build_firmware(micropython_dir, board, args.jobs)
-    cross_compile_sample(mpy_cross_binary)
     fetch_unix_submodules(micropython_dir)
-    unix_binary = build_unix_port(micropython_dir, args.jobs)
-    run_unix_port_sample(unix_binary)
 
-    print_verification_summary(board, uf2, mpy_cross_binary, unix_binary)
-    return 0
+    mpy_cross_binary, unix_binary = run_verification_sequence(micropython_dir, toolchain_dir, board, args.jobs)
+
+    return print_verification_summary(board, mpy_cross_binary, unix_binary)
 
 
 def run_test(args: argparse.Namespace, versions: dict) -> int:
-    """Just steps 5-6 of run_setup (build + verify), against whatever is already checked out —
-    see the module docstring and toolchain/README.md's "How it works" for why that split exists."""
+    """Re-verify an existing install, offline: just run_verification_sequence() again against
+    whatever is already checked out — see the module docstring and toolchain/README.md's "How it
+    works" for why apt/git network access is never needed here."""
     board = versions["toolchain"]["board"]
     toolchain_dir = args.toolchain_dir.expanduser().resolve()
     micropython_dir = toolchain_dir / "micropython"
@@ -517,17 +627,11 @@ def run_test(args: argparse.Namespace, versions: dict) -> int:
     # this re-verifies whatever is already checked out, so it's fast, reproducible, and
     # runnable offline. That's what makes it suitable as a standalone CI step later: `setup`
     # (or a restored cache of its --toolchain-dir) provisions the toolchain once, and `test`
-    # is the repeatable gate that checks it still builds cleanly.
-    mpy_cross_binary = build_mpy_cross(micropython_dir, args.jobs)
-    uf2 = build_firmware(micropython_dir, board, args.jobs)
-    cross_compile_sample(mpy_cross_binary)
-    # No fetch_unix_submodules() here, matching fetch_rp2_submodules() not being called either —
-    # test is offline-only; submodules are assumed already fetched by a prior `setup` run.
-    unix_binary = build_unix_port(micropython_dir, args.jobs)
-    run_unix_port_sample(unix_binary)
+    # is the repeatable gate that checks it still builds cleanly. Submodules are assumed
+    # already fetched by a prior `setup` run.
+    mpy_cross_binary, unix_binary = run_verification_sequence(micropython_dir, toolchain_dir, board, args.jobs)
 
-    print_verification_summary(board, uf2, mpy_cross_binary, unix_binary)
-    return 0
+    return print_verification_summary(board, mpy_cross_binary, unix_binary)
 
 
 def main() -> int:

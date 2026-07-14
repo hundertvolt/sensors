@@ -223,10 +223,10 @@ separate verification, not just the recipe above** — that recipe only exercise
 installing `git`/`curl`/`ca-certificates`/`python3`/`pip`/`uv`, no need for `python3-venv` this
 time), copy the working tree in the same way, then run `uv run toolchain/setup_toolchain.py`
 (a full build: ARM toolchain + firmware + `mpy-cross` + Unix port, several minutes, not seconds)
-instead of the lint/typecheck scripts. This is exactly how the Unix port addition was verified —
-see `toolchain/README.md`'s "Evidence this actually works" for what a passing run must show (all
-four checks, zero errors/warnings) and BACKLOG.md's "Self-contained venv via uv" for that specific
-verification's results.
+instead of the lint/typecheck scripts. This is exactly how the Unix port addition (and later the
+frozen-bytecode verification chain) was verified — see `toolchain/README.md`'s "Verification" for
+what a passing run must show and "Evidence this actually works" for what's already been checked,
+plus BACKLOG.md's "Self-contained venv via uv" for that specific verification's results.
 
 ## Pull request workflow
 

@@ -72,36 +72,29 @@ below for why that's a scoped exception, not a change in overall approach):
   - **How `uv` and the Unix port connect**: `uv sync` itself only manages the CPython-side tooling
     (pytest, ruff, mypy, etc.) — it can't install a compiled MicroPython binary. **Building/
     verifying the interpreter itself is done** — `toolchain/setup_toolchain.py`'s `setup`/`test`
-    now also build the Unix port (`ports/unix`, "standard" variant) from the same MicroPython
-    clone already used for the firmware build, and verify it with a 4th check (build with zero
-    errors/warnings, then run a sample script and check its output), alongside the existing
-    firmware/mpy-cross checks. Needs one additional apt package (`libffi-dev`, for the Unix
-    port's `ffi` module), now in `versions.toml`'s `apt_packages`. Verified end-to-end: a fresh
-    install (both the latest release and the deployed `v1.26.1` pin), the in-place update path
-    (`v1.26.1` → `v1.28.0`, sample script re-run and re-verified against both versions), `--clean`
-    (confirmed it wipes `ports/unix/build-standard` too), and a from-scratch run on a genuinely
-    clean Ubuntu 24.04 (`debootstrap` chroot, same rigor as the toolchain's existing "Evidence
-    this actually works") — see `toolchain/README.md` for details. **Still open**: this only
-    builds/verifies the Unix port binary, it isn't wired into `uv sync`/pytest yet (no automatic
-    "run this before tests" trigger) — that, the mocking boundary below, and the actual test
-    suite remain future work, blocked on CLAUDE.md's "No unit tests against the current codebase"
-    rule same as before.
-  - **Confirmed: frozen bytecode modules work on the Unix port, the same way as on the RP2
-    firmware.** Both ports build from the same MicroPython clone and share the same
-    `freeze()`/`FROZEN_MANIFEST` manifest mechanism this repo's own
-    `python/Manifest/manifest.py` already uses for the firmware — `mpy-cross`-compiled bytecode
-    is architecture-independent, so the same frozen module can be included in either build.
-    Verified directly, not just from docs: froze a test module into both a real RP2 firmware
-    build and a real Unix port build (each via a custom manifest that `include()`s that port's
-    normal default manifest, so it's "standard firmware plus one extra module," not a
-    different build) — both compiled with zero errors/warnings. Then, on the Unix port
-    specifically: deleted the module's `.py` source entirely and ran the built binary from a
-    directory with nothing else on disk — `import <module>` still worked and returned the
-    correct value, proving it's genuinely compiled into the executable, not read from a
-    filesystem path at runtime. Relevant if the test suite ever wants this project's own
-    drivers frozen into a Unix-port test build rather than run from loose `.py` files; nothing
-    currently in `setup_toolchain.py` does this by default — it was a one-off manual
-    verification, not a standing feature.
+    now verify the whole toolchain via an 8-step frozen-bytecode chain
+    (`run_verification_sequence()`), not a one-off manual check: freeze a small test module into
+    both the Unix port and the RP2 firmware (via the same `freeze()`/`FROZEN_MANIFEST` mechanism
+    this repo's own `python/Manifest/manifest.py` already uses — `mpy-cross`-compiled bytecode is
+    architecture-independent, so the same frozen module works in either build), import it *by
+    name* inside the built Unix port binary with no source `.py` file anywhere on disk (proving
+    it's genuinely compiled into the executable, not read from a filesystem path at runtime),
+    build the RP2 firmware the same way (build-only — there's no RP2 hardware here to run it on,
+    so a clean build with zero errors/warnings is the whole check), clean up both frozen-module
+    builds, then rebuild a vanilla Unix port as the standing test rig kept afterward. This is now
+    the standing, automatic verification every `setup`/`test` run performs — see
+    `toolchain/README.md`'s "Verification" for the exact step order. Relevant if the test suite
+    ever wants this project's own drivers frozen into a Unix-port test build rather than run from
+    loose `.py` files. Needs one additional apt package (`libffi-dev`, for the Unix port's `ffi`
+    module), now in `versions.toml`'s `apt_packages`. Verified end-to-end: a fresh install (both
+    the latest release and the deployed `v1.26.1` pin), the in-place update path (`v1.26.1` →
+    `v1.28.0`), `--clean` (confirmed it wipes `ports/unix/build-standard` too), a from-scratch run
+    on a genuinely clean Ubuntu 24.04 (`debootstrap` chroot, same rigor as the toolchain's existing
+    "Evidence this actually works") — see `toolchain/README.md` for details. **Still open**: this
+    only builds/verifies the Unix port binary, it isn't wired into `uv sync`/pytest yet (no
+    automatic "run this before tests" trigger) — that, the mocking boundary below, and the actual
+    test suite remain future work, blocked on CLAUDE.md's "No unit tests against the current
+    codebase" rule same as before.
   - **Mocking boundary**: mock only at the raw bus-transaction level (`machine.I2C`/`machine.SPI`
     read/write calls) — drivers, Reader classes, `ConfigManager`, and REST handlers should all run
     for real, unmocked, in tests. Mock higher up (e.g. whole driver classes) only if there's truly
@@ -535,11 +528,13 @@ from reading the code alone:
   string; fixed by syncing submodules first).
   - **This whole entry predates the Unix port build.** Everything below narrates the toolchain's
     development history at the time it happened, when there were only the three checks above (no
-    Unix port). A 4th check (build the Unix port, run a sample script on it) was added later —
-    see "Self-contained venv via uv" in "Final-goal requirements for the refactor" above for the
-    current, up-to-date description and its own verification evidence. Left as-is here rather than
-    rewritten, since it's a historical record of what was verified when — just don't read "three
-    checks" below as describing the toolchain's current state.
+    Unix port). Verification has since been restructured twice — first adding a 4th check (build
+    the Unix port, run a sample script on it), then replaced entirely by the 8-step frozen-bytecode
+    chain described in "Self-contained venv via uv" in "Final-goal requirements for the refactor"
+    above, which is the current, up-to-date description and has its own verification evidence.
+    Left as-is here rather than rewritten, since it's a historical record of what was verified
+    when — just don't read "three checks" (or "a 4th check") below as describing the toolchain's
+    current state.
   - **Still not done**: this only covers the generic toolchain, not this project's own firmware
     build. `build-*.sh`/`FROZEN_MANIFEST`'s hardcoded `/home/nico/rpi_pico/...` path and the
     `py-include` symlink wiring (see root README's "Build process") still need genericizing to
