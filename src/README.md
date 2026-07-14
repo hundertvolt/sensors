@@ -13,6 +13,18 @@ toolchain build — that's already done (see BACKLOG.md/`toolchain/README.md`) a
 project-level setup, not something each new file redoes. What follows is what changes, and what
 you check, per file.
 
+## 0. Understand the function's purpose first
+
+- [ ] Before judging correctness, be sure you actually understand what the function is *for* —
+      read it alongside its callers, its existing comments, and any adjacent context, not in
+      isolation. "It's mathematically consistent" isn't the same as "it does what it's meant to."
+- [ ] If the intended purpose, expected input domain, or a caller's actual expectations are
+      genuinely unclear after that, **ask up to 10 targeted clarifying questions** before
+      proceeding — don't guess, and don't ask more than the ambiguity actually warrants. This is
+      the same standing principle as CLAUDE.md's working agreement to flag genuinely ambiguous
+      decisions rather than guess; the cap is there so "asking" doesn't become its own way of
+      stalling.
+
 ## 1. Correctness, verified against real documentation
 
 - [ ] Identify the authoritative source for every non-obvious claim the code makes or depends on
@@ -23,6 +35,11 @@ you check, per file.
 - [ ] Verify the implementation actually matches that source (coefficients, sign, order of
       operations, argument order/units) — don't assume existing code is correct just because it's
       already deployed.
+- [ ] **If verifying against the authoritative source surfaces a discrepancy — the code doesn't
+      match the documented behavior/formula/range — do not silently change it to match.** Flag the
+      specific discrepancy to the project owner and ask before altering anything that changes real
+      output. (This is distinct from fixing an internal bug you introduced earlier in the very
+      same review, e.g. a typo in a range you just added — that doesn't need the same round-trip.)
 - [ ] Verify the coded validity range/domain matches the source's *actual* valid domain, not just
       whatever range the existing code happened to have. (Found a real bug this way:
       `wet_bulb_temperature`'s humidity lower bound was `0.5%`; Stull (2011) only validates down
@@ -123,7 +140,21 @@ is not a machine with memory or cycles to spare:
       type-checks can still have a path that returns something *technically* valid but
       semantically wrong (e.g. a clamped value that silently clips instead of signaling invalid).
 
-## 7. Readability / conciseness
+## 7. General improvement pass, without changing functionality
+
+- [ ] Beyond the required fixes above, look for opportunities to genuinely improve the function —
+      speed, resource usage, numerical accuracy, or reduced complexity — as long as the observable
+      behavior for every valid input stays identical. (The `math.sqrt(x)` vs. `math.pow(x, 0.5)`
+      swap in section 4 is this in practice: faster *and* more precise, zero behavior change.)
+- [ ] "Without changing functionality" is a hard constraint, not a suggestion: the full existing
+      test suite must still pass unchanged after the improvement, and if the improvement is
+      significant enough to want its own regression test, add one rather than relying on manual
+      spot-checking.
+- [ ] This is a genuine pass, not a rubber stamp — but also not a mandate to rewrite working code
+      for style. If nothing meaningfully improves speed/resources/accuracy/complexity, say so and
+      move on rather than manufacturing a change.
+
+## 8. Readability / conciseness
 
 - [ ] One-line "why" comment per function: cite the formula's name/source and its valid domain.
       Don't restate what the code already says.
@@ -132,7 +163,7 @@ is not a machine with memory or cycles to spare:
 - [ ] Keep the control flow simple and in a consistent order: `None`-check, then range-check
       (plain guard clause, no `try` needed if it can't raise), then the `try`-wrapped computation.
 
-## 8. Unit tests
+## 9. Unit tests
 
 - [ ] Tests must run in whatever environment the project's testing-architecture docs actually
       require (check first — e.g. this project requires the real target interpreter, not just a
@@ -154,14 +185,14 @@ is not a machine with memory or cycles to spare:
 - [ ] Do **not** write tests for scenarios the type system already rules out (see section 2) —
       keep the suite focused on what can actually happen, not padded with impossible cases.
 
-## 9. Wire into the existing pipeline
+## 10. Wire into the existing pipeline
 
 - [ ] Extend the lint/typecheck config's scope, and the CI job's explicit path arguments, to
       include the file's new location.
 - [ ] Add the file's tests to (or confirm they're picked up by) the existing manual test-runner
       script, so the exact same command works locally and in CI.
 
-## 10. Verify, don't assume
+## 11. Verify, don't assume
 
 - [ ] After every change, actually run lint/typecheck/tests locally and read the output — don't
       report success without having done so.
