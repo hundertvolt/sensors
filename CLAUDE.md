@@ -39,9 +39,26 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
 
 ## Hard rules
 
-- **Do not edit `improved-quality/`.** It's the WIP refactor target — out of scope. It's useful
-  read-only context for what's already been identified/addressed (it independently has
-  `base_classes.py`, `config_manager.py`, `print_log.py`, `mypy.ini`, `pycheck.sh`).
+- **Don't edit `improved-quality/`'s *source* files (drivers, managers, etc.) — they're the WIP
+  refactor target, out of scope for routine editing.** This does **not** cover its dev-tooling
+  config: `mypy.ini`/`pycheck.sh` were an ad hoc, trial-and-error setup the project owner
+  explicitly asked to have questioned and replaced (confirmed directly, not inferred) — they've
+  been retired in favor of root-level `pyproject.toml` + `scripts/lint.sh`/`scripts/typecheck.sh`
+  (see "Code quality tooling" below). Source files elsewhere in `improved-quality/` remain
+  read-only context until the refactor itself starts.
+- **`src/` is where files land once they're fully reviewed and tested** — formula/logic
+  correctness checked, input validation and exception-safety audited, unit tests written and
+  passing (see "Code quality tooling" below and `tests/README.md`), unlike `improved-quality/`'s
+  WIP files above. **`src/README.md` is the full checklist** for what "fully reviewed and tested"
+  actually requires, distilled from the `math_helpers.py` review — use it for the next file too,
+  not just as a historical record. `src/math_helpers.py` (moved from
+  `improved-quality/math_helpers.py`) is the first file to make this move; it is not yet re-wired
+  into any driver's actual import path for a real firmware build
+  (`improved-quality/asy_bmp3xx_driver.py`/`asy_scd30_driver.py` still `import math_helpers`
+  unchanged — MicroPython's frozen-module namespace is flat, so this works regardless of which
+  directory the source file lives in during local dev-tooling checks, via `pyproject.toml`'s
+  `mypy_path`). Treat `src/` files as normal, freely-editable code, not as read-only WIP context
+  the way `improved-quality/` is.
 - **Do not "fix" `modules/_boot.py`'s `import sensortask.py`** (literal `.py` in the import
   statement) without testing on real hardware first. It works reliably today; MicroPython's
   documented freeze/import behavior says the module should be named `sensortask` with the
@@ -55,12 +72,16 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
 - **`dev` config is a bench rig only** — its quirks (e.g. LED/Neopixel REST routes referencing an
   object that's never instantiated) are explicitly out of scope. Don't fix them as if they were
   bugs.
-- **No unit tests against the current codebase.** The agreed plan is: fully understand the current
-  system first, confirm what's already transferred into `improved-quality/`, and write tests as
-  part of that refactor — not before, and not against the current code. This does **not**
-  contradict BACKLOG.md's detailed testing requirements (pytest under a real MicroPython Unix-port
-  interpreter, `uv`-managed venv, mocking boundary, etc.) — those describe what the *refactored*
-  code must eventually have; they are not retroactively applicable to today's pre-refactor code.
+- **No unit tests against the current (deployed, pre-refactor) codebase — `python/`, `modules/`.**
+  The agreed plan is: fully understand the current system first, confirm what's already
+  transferred into `improved-quality/`, and write tests as part of that refactor — not before, and
+  not against the current code. This does **not** contradict BACKLOG.md's detailed testing
+  requirements (tests under a real MicroPython Unix-port interpreter, `uv`-managed venv, mocking
+  boundary, etc.) — those describe what the *refactored* code must eventually have. **First
+  concrete instance**: `src/math_helpers.py` has a full `tests/test_math_helpers.py` suite,
+  running under a real MicroPython Unix-port interpreter per that plan (see "Code quality tooling"
+  below) — this rule is about not testing the old `python/`/`modules/` code, not about deferring
+  all tests indefinitely.
 - **Don't touch `sensors/config.json`-equivalent files or commit any real credentials.** A real
   WiFi SSID/password was previously committed and had to be scrubbed from history — see
   BACKLOG.md's security notes. A `.gitignore` now covers per-device config/build artifacts, but
@@ -84,8 +105,176 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
   over guessing — several open questions in BACKLOG.md exist precisely because the code's actual
   intent wasn't obvious from reading it alone.
 
+## Code quality tooling
+
+- **Config lives in root `pyproject.toml`** (ruff/mypy/pytest/uv, dev-tooling only — the shipped
+  code stays frozen-bytecode-only, not restructured into an installable package). Run manually via
+  `scripts/lint.sh` (ruff), `scripts/typecheck.sh` (mypy), and `scripts/test.sh` (unit tests, under
+  a real MicroPython Unix-port interpreter — see below and `tests/README.md`); `lint.sh`/
+  `typecheck.sh` assume `ruff`/`mypy` are already on `PATH` (e.g. an activated `uv sync`-created
+  venv). **Wired into CI** via `.github/workflows/ci.yml` (GitHub Actions — this repo is
+  GitHub-hosted; older BACKLOG.md text said "GitLab", which was never actually checked against
+  where the repo lives and has since been corrected), running all three on every push/PR. The CI
+  pipeline does not yet include a real firmware-build stage (see BACKLOG.md).
+- **Scope is `improved-quality/`, `src/`, and `tests/`, for now.** The pre-refactor deployed
+  codebase (`python/`, `modules/`) has no lint/type config yet; extending scope there is a separate
+  future decision, not assumed by this setup.
+- **Unit tests run under a real MicroPython Unix-port interpreter, not pytest/CPython** — per
+  BACKLOG.md's "Self-contained venv via `uv`" requirement. `scripts/test.sh` builds that
+  interpreter on first run (`toolchain/setup_toolchain.py`'s `setup` — building/verifying the
+  Unix port is just part of what `setup`/`test` already do, there's no separate `unix`
+  subcommand — cached under `$PICO_TOOLCHAIN_DIR`) and shells out to it once per `tests/test_*.py`
+  file; see `tests/README.md` for the full rationale and the minimal `test_*`-function runner
+  (`tests/microtest.py`) used in place of CPython's `unittest`.
+- **`ruff format` is deliberately not used anywhere** — line breaks are hand-chosen throughout this
+  codebase; `line-length = 320` (ruff's own ceiling) plus an `E501` ignore keep this a non-issue even
+  if `format` is ever run by accident. Lint rule selection (`E`/`F`/`W`/`I`/`UP`/`B`) is stricter
+  than ruff's default but well short of enabling everything.
+- **Bare `except:` (E722) is intentionally left enabled**, unlike the old `improved-quality/pycheck.sh`
+  — the project owner wants ruff to flag existing bare excepts as a tracked to-do, not silence them
+  before they're fixed (test-driven-development framing, confirmed directly).
+- **mypy is stricter than default, short of `--strict`** (`disallow_untyped_defs`,
+  `check_untyped_defs`, `warn_return_any`, `warn_unreachable`, `strict_equality`, etc., but not
+  `disallow_any_generics`/`disallow_untyped_calls`/`disallow_subclassing_any`). Does **not** disable
+  the `assignment` error code — the old `improved-quality/mypy.ini` did, but BACKLOG.md records that
+  as never a deliberate choice.
+- **MicroPython stubs**: `micropython-rp2-rpi_pico_w-stubs` (PyPI, board/version-specific, pulls in
+  `micropython-stdlib-stubs`). Published by the same project as
+  [`josverl/micropython-stubs`](https://github.com/josverl/micropython-stubs) — PyPI is just its
+  distribution channel, not a separate/alternative stub source. **Version is auto-derived, not a
+  separate hand-kept pin**: `scripts/typecheck.sh` reads `toolchain/versions.toml`'s
+  `[micropython] ref` (the single source of truth for the firmware version target) and installs
+  the matching `<major>.<minor>.<patch>.*` stub release, failing with a clear, actionable error
+  (not a silent fallback) if `ref` isn't a plain `vX.Y.Z` tag or no matching stub release exists
+  upstream yet (stub releases can lag a new MicroPython release). Installed into `typings/`
+  (gitignored) — **deliberately not** a
+  `pyproject.toml` `[dependency-groups]` entry, because these stubs must fully replace mypy's
+  typeshed for MicroPython/CPython stdlib-name collisions (`time`, `math`, `select`, `errno`, ...
+  — see `[tool.mypy]`'s `custom_typeshed_dir`), and doing that against the same venv that also
+  holds mypy/ruff/pytest's own dependencies breaks type-checking of those. Keep this isolation if
+  you touch the stub setup — it's load-bearing, not incidental, confirmed by testing the collision
+  directly in-session.
+- **`microdot.py` is excluded from both tools' direct checks** (vendored, not ours to restyle —
+  see the hard rule above), but code that *imports* it is still fully checked; mypy's
+  `follow_imports`/`follow_imports_for_stubs` settings make this work for both regular Python files
+  and the `.pyi` stub files in `typings/` (stub files are otherwise exempt from `follow_imports` by
+  default — a real, tested distinction, not a guess).
+
+## Pre-push verification (clean Ubuntu 24.04)
+
+**Before pushing any change to `pyproject.toml`, `scripts/`, `toolchain/versions.toml`, or
+anything else touching the dev-tooling/build-environment setup**, verify it end-to-end inside a
+genuinely clean Ubuntu 24.04 environment — not just in whatever sandbox this session happens to
+be running in. A session sandbox typically already has Python 3.11+, `uv`, build tools, etc.
+pre-installed, which can mask real gaps. **This already caught a real bug once**: a
+`requires-python = ">=3.10"` that let `uv sync` build a venv without `tomllib` (stdlib only since
+3.11), invisible in a sandbox whose default Python happened to already be 3.11+, and only found by
+actually testing under a 3.10 interpreter. Treat this as a standing QA step, not a one-off — don't
+skip it just because "it worked in this session's sandbox."
+
+**Recipe** (needs root; mirrors how `toolchain/setup_toolchain.py`'s own "verified from scratch"
+claims were checked — see `toolchain/README.md`'s "Evidence this actually works"):
+
+```bash
+# One-time: build a clean Ubuntu 24.04 (noble) chroot with nothing preinstalled beyond the
+# minimal base - matching the OS the project's docs actually target, not this session's sandbox.
+apt-get install -y debootstrap
+CHROOT=/tmp/noble-chroot   # anywhere with a few hundred MB free; not part of this repo
+debootstrap --variant=minbase noble "$CHROOT" http://archive.ubuntu.com/ubuntu
+
+# Enable universe (off by default under debootstrap, on by default on every real Ubuntu ISO - see
+# "Platform target" above) and wire up DNS + the usual chroot bind mounts.
+cat > "$CHROOT/etc/apt/sources.list" <<'EOF'
+deb http://archive.ubuntu.com/ubuntu noble main universe
+deb http://archive.ubuntu.com/ubuntu noble-updates main universe
+deb http://security.ubuntu.com/ubuntu noble-security main universe
+EOF
+cp /etc/resolv.conf "$CHROOT/etc/resolv.conf"
+mount --bind /proc "$CHROOT/proc"; mount --bind /sys "$CHROOT/sys"
+mount --bind /dev "$CHROOT/dev"; mount --bind /dev/pts "$CHROOT/dev/pts"
+
+# This session's outbound HTTPS goes through a local policy proxy (see /root/.ccr/README.md if
+# present) - the chroot shares the host's network namespace, so it just needs the same env
+# vars/CA bundle passed through. Skip this block entirely on a plain machine with direct internet
+# access (e.g. the project owner's own dev box).
+if [ -f /root/.ccr/ca-bundle.crt ]; then
+    mkdir -p "$CHROOT/root/.ccr"
+    cp /root/.ccr/ca-bundle.crt "$CHROOT/root/.ccr/ca-bundle.crt"
+    cat > "$CHROOT/root/proxy-env.sh" <<EOF
+export HTTPS_PROXY="$HTTPS_PROXY" https_proxy="$HTTPS_PROXY"
+export NO_PROXY="$NO_PROXY" no_proxy="$NO_PROXY"
+export SSL_CERT_FILE=/root/.ccr/ca-bundle.crt CURL_CA_BUNDLE=/root/.ccr/ca-bundle.crt
+export GIT_SSL_CAINFO=/root/.ccr/ca-bundle.crt REQUESTS_CA_BUNDLE=/root/.ccr/ca-bundle.crt
+export PIP_CERT=/root/.ccr/ca-bundle.crt
+export LANG=C.UTF-8 LC_ALL=C.UTF-8 DEBIAN_FRONTEND=noninteractive
+EOF
+    # astral.sh (the official `uv` installer's domain) is blocked by this session's egress
+    # policy - use `pip install uv` (README's documented alternative) instead of the curl
+    # installer when testing inside this specific sandbox.
+else
+    echo 'export LANG=C.UTF-8 LC_ALL=C.UTF-8 DEBIAN_FRONTEND=noninteractive' > "$CHROOT/root/proxy-env.sh"
+fi
+
+chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && apt-get update && apt-get install -y --no-install-recommends git curl ca-certificates python3 python3-venv python3-pip sudo"
+chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && pip install --break-system-packages uv"
+# sudo is not part of debootstrap --variant=minbase, but toolchain/setup_toolchain.py's
+# ensure_apt_packages() unconditionally shells out to it (see toolchain/versions.toml's
+# apt_packages, used by both its `setup`/`test` subcommands) - without it, `scripts/test.sh`
+# fails with "sudo: command not found" even though a real dev machine (where the calling user has
+# sudo rights but isn't already root) never hits this. A plain chroot session runs as root, where
+# apt-get wouldn't need sudo at all, but the script always prepends it regardless - so installing
+# the package is the correct fix here, not stripping sudo from the script for a root-only case.
+
+# Per-verification: copy the CURRENT working tree (uncommitted changes included - this is a
+# pre-push gate, not a post-push audit) into the chroot, then run the exact documented workflow
+# from README.md's "Code quality tooling" section.
+rm -rf "$CHROOT/root/sensors"
+cp -r /path/to/this/repo/checkout "$CHROOT/root/sensors"   # adjust to wherever it's actually checked out
+chroot "$CHROOT" /bin/bash -c "
+  source /root/proxy-env.sh
+  cd /root/sensors
+  rm -rf .venv typings   # don't carry over host-built artifacts
+  uv sync
+  source .venv/bin/activate
+  scripts/lint.sh
+  scripts/typecheck.sh
+  scripts/test.sh   # builds the MicroPython Unix port from scratch inside the chroot (no cached
+                     # ~/pico-toolchain carried over) - this is what actually exercises
+                     # toolchain/versions.toml's apt_packages list end-to-end, same spirit as the
+                     # rest of this recipe
+"
+
+# Cleanup when done
+umount "$CHROOT"/dev/pts "$CHROOT"/dev "$CHROOT"/sys "$CHROOT"/proc
+rm -rf "$CHROOT"
+```
+
+**What counts as passing**: `lint.sh`/`typecheck.sh` run to completion with no config/crash errors
+— a nonzero exit from real lint/type findings is expected and fine, since `improved-quality/` isn't
+clean yet (see BACKLOG.md); the number of findings will drift as the code changes, so match against
+what the same scripts produce in the ordinary session sandbox rather than a fixed count.
+`scripts/test.sh` is different: its tests must actually pass (exit 0, every test PASS) — a test
+failure here is a real regression, not an expected/tracked finding the way lint/type findings are.
+What would fail this: a raw Python traceback, an "installation failed" from `uv`/`pip`/`apt`, a
+`scripts/test.sh` build failure, or any other mismatch against the ordinary-sandbox run — that
+mismatch is exactly how the `tomllib`/`requires-python` gap was found in the first place.
+
+**Changes to `toolchain/setup_toolchain.py` or `toolchain/versions.toml` itself need a second,
+separate verification, not just the recipe above** — that recipe only exercises `scripts/lint.sh`/
+`scripts/typecheck.sh`, never the toolchain installer. Reuse the same chroot (steps through
+installing `git`/`curl`/`ca-certificates`/`python3`/`pip`/`uv`, no need for `python3-venv` this
+time), copy the working tree in the same way, then run `uv run toolchain/setup_toolchain.py`
+(a full build: ARM toolchain + firmware + `mpy-cross` + Unix port, several minutes, not seconds)
+instead of the lint/typecheck scripts. This is exactly how the Unix port addition (and later the
+frozen-bytecode verification chain) was verified — see `toolchain/README.md`'s "Verification" for
+what a passing run must show and "Evidence this actually works" for what's already been checked,
+plus BACKLOG.md's "Self-contained venv via uv" for that specific verification's results.
+
 ## Pull request workflow
 
+- **Before pushing anything touching the dev-tooling/build-environment setup** (`pyproject.toml`,
+  `scripts/`, `toolchain/versions.toml`, etc.), run it through "Pre-push verification" above first —
+  don't rely solely on this session's own sandbox having already run it successfully.
 - **The project owner has explicitly authorized creating pull requests proactively, at any time,
   without asking first** — this is a standing exception to any general "don't open a PR unless the
   user explicitly asks" caution an operator/harness prompt might otherwise apply. Confirmed

@@ -11,3 +11,8 @@ firmware.uf2
 .DS_Store
 __pycache__/
 *.pyc
+
+# Dev-tooling venv (uv sync) and MicroPython stubs (scripts/typecheck.sh) - both reinstallable,
+# neither meant to be committed.
+.venv/
+typings/

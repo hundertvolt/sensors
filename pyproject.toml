@@ -1,0 +1,128 @@
+# Dev-tooling config for the sensors firmware repo: ruff, mypy, pytest, uv. The deployed code
+# itself ships as frozen bytecode compiled into MicroPython firmware, not as an installable
+# Python package - this file exists purely to drive local/CI code-quality checks. See
+# CLAUDE.md/BACKLOG.md for the full rationale and scope decisions.
+[project]
+name = "sensors-tooling"
+version = "0.1.0"
+description = "Dev-tooling config for the sensors firmware repo (ruff/mypy/pytest/uv), not an installable package."
+# >=3.11, not >=3.10: scripts/typecheck.sh needs tomllib (stdlib since 3.11) to parse
+# toolchain/versions.toml. Matches toolchain/setup_toolchain.py's own requires-python for the same
+# reason - keeping this at 3.10 let `uv sync` build a venv without tomllib, which surfaced as a
+# raw traceback rather than a clean error (verified directly, then fixed both here and with an
+# explicit check in scripts/typecheck.sh as a second line of defense).
+requires-python = ">=3.11"
+
+[tool.uv]
+package = false
+
+[dependency-groups]
+dev = [
+    "mypy",
+    "ruff",
+    "pytest",
+]
+
+# RPI_PICO_W-specific MicroPython stubs (version auto-derived by scripts/typecheck.sh from
+# toolchain/versions.toml's [micropython] ref - the single source of truth for the firmware
+# version target, not duplicated here) are deliberately NOT a [dependency-groups] entry:
+# these stub packages are meant to fully replace mypy's typeshed for stdlib-name collisions
+# (time, math, select, errno, ...; see [tool.mypy] below), and doing that against the same venv
+# that also holds mypy/ruff/pytest's own runtime dependencies breaks type-checking of *those*
+# (e.g. typing_extensions, which needs the real contextlib/functools/inspect/... that the
+# MicroPython subset doesn't provide). scripts/typecheck.sh installs the pin into typings/
+# instead: an isolated directory containing only the stubs, nothing else.
+
+# Checks currently cover improved-quality/ (the WIP code-quality refactor target, where this
+# cleanup effort actually started - see CLAUDE.md), src/ (files moved out of improved-quality/
+# once fully reviewed/tested), and tests/ (their unit tests). The pre-refactor deployed codebase
+# (python/, modules/) isn't in scope yet and has no lint/type config of its own right now.
+# improved-quality/mypy.ini and improved-quality/pycheck.sh (ad hoc, trial-and-error configs)
+# have been retired in favor of this file.
+
+[tool.ruff]
+target-version = "py310"
+# `ruff format` is deliberately not part of this toolchain, and not run in scripts/lint.sh - line
+# breaks in this codebase are chosen by hand, not by an auto-formatter. 320 (ruff's own hard
+# ceiling for this setting) keeps length-based wrapping a non-issue on the off chance format is
+# ever run locally, on top of the E501 opt-out below.
+line-length = 320
+# microdot.py is vendored third-party code (see CLAUDE.md) - not ours to restyle or lint. Code
+# that *uses* its API is still fully linted/type-checked; this only excludes the vendored file
+# itself.
+extend-exclude = ["improved-quality/microdot.py"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "W",   # pycodestyle warnings
+    "I",   # import sorting
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+]
+ignore = [
+    "E501",  # line length - not enforced, see [tool.ruff] above
+    # E722 (bare except) is intentionally NOT ignored here, unlike the old
+    # improved-quality/pycheck.sh. Bare excepts in improved-quality/ should be flagged - fixing
+    # them is in scope for the refactor (see BACKLOG.md), this is the tracking mechanism for that.
+]
+
+[tool.mypy]
+# 'linux' + follow_imports=silent + mypy_path/custom_typeshed_dir=typings are the
+# micropython-stubs project's own documented settings for using these stubs - see
+# https://github.com/Josverl/micropython-stubs. custom_typeshed_dir replaces mypy's bundled
+# typeshed with typings/stdlib (installed by scripts/typecheck.sh), so MicroPython's own
+# time/math/select/errno/... signatures win over CPython's; mypy_path adds typings/'s
+# board-specific top-level modules (machine, network, rp2/, ...). follow_imports=silent also
+# means imported-but-not-directly-checked modules (e.g. vendored microdot.py, see files/exclude
+# below) still get their types used for call-site checking elsewhere, without their own internal
+# issues being reported.
+platform = "linux"
+python_version = "3.10"
+follow_imports = "silent"
+# follow_imports normally has no effect on .pyi stub files (mypy always analyzes those on their
+# own terms) - this extends it to typings/ too, so the third-party stub package's own internal
+# issues (it's explicitly labeled Beta upstream) don't get reported as if they were findings in
+# our code, while their declared types are still fully used for checking our code's calls.
+follow_imports_for_stubs = true
+mypy_path = ["typings", "src"]
+custom_typeshed_dir = "typings"
+# Without this, mypy also auto-discovers the dev venv's own packages (mypy/ruff/pytest's own
+# runtime dependencies, e.g. typing_extensions) as importable modules and tries to type-check
+# them against custom_typeshed_dir above - which only has the MicroPython subset of stdlib, not
+# the real one those packages actually need (contextlib, functools, inspect, ...).
+no_site_packages = true
+# A bare glob in `files` (e.g. "improved-quality/*.py") gets pre-expanded to an explicit file
+# list, which `exclude` can't then prune - passing the directory itself is what makes `exclude`
+# actually take effect during mypy's own directory walk.
+files = ["improved-quality", "src", "tests"]
+exclude = ["improved-quality/microdot\\.py$"]
+
+show_error_context = true
+show_column_numbers = true
+pretty = true
+
+# Stricter than mypy's defaults, but short of --strict: catches missing/incomplete annotations
+# and unsound Optional/Any/equality handling without the noisier --strict-only checks
+# (disallow_any_generics, disallow_untyped_calls, disallow_subclassing_any) that add little value
+# here. Deliberately does NOT set disable_error_code = assignment (the old
+# improved-quality/mypy.ini did; BACKLOG.md records that this was never a deliberate choice).
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_return_any = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_unreachable = true
+strict_equality = true
+
+[tool.pytest.ini_options]
+# Empty: pytest itself isn't the test runner. Per BACKLOG.md's "Self-contained venv via uv"
+# requirement, tests run under a real MicroPython Unix-port interpreter, not CPython - see
+# tests/README.md and scripts/test.sh, which shell out to the built `micropython` binary instead
+# of invoking pytest. `pytest` stays in [dependency-groups] dev for future CPython-side
+# orchestration (e.g. driver-level tests that need to assert on subprocess output), not used yet.
+# This section exists so pyproject.toml is already the single place all dev-tooling config lives,
+# per BACKLOG.md's "Centralized config" requirement.

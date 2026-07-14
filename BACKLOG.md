@@ -4,11 +4,13 @@ Open questions and explicitly deferred work, with reasoning, so nothing here get
 from scratch in a future session. See README.md for orientation and CLAUDE.md for operating
 constraints.
 
-## Final-goal requirements for the refactor (owner-specified, not yet implemented)
+## Final-goal requirements for the refactor (owner-specified, mostly not yet implemented)
 
 These are additional requirements for what the `improved-quality/` refactor must eventually
-deliver. Recorded here as a target/spec — not implemented yet, not to be actioned until the
-refactor work itself starts:
+deliver. Recorded here as a target/spec — mostly not implemented yet, not to be actioned until the
+refactor work itself starts, **except where marked done below**: the manual-only ruff/mypy/stub
+tooling was deliberately pulled forward ahead of the refactor (see "Rough suggested sequencing"
+below for why that's a scoped exception, not a change in overall approach):
 
 - **Stability / robustness**: thorough error handling throughout — no error condition that can
   plausibly occur in real operation should lead to an uncaught exception; anything that might
@@ -16,47 +18,110 @@ refactor work itself starts:
   (e.g. undefined state after an electrical brownout, a MicroPython interpreter-level failure),
   not a routine recovery mechanism for expected error conditions.
   - **Bare `except:` is forbidden in the refactored code** — `except Exception:` (or a narrower/
-    specific exception type) is required everywhere. This is stricter than
-    `improved-quality/pycheck.sh`'s current ruff config, which ignores E722 (bare except); that
-    ignore should be dropped for the refactor.
+    specific exception type) is required everywhere. The current ruff config (root
+    `pyproject.toml`, see "Production-level code quality" below) already doesn't ignore E722 —
+    bare excepts still present in `improved-quality/` today show up as flagged findings rather
+    than being silenced. Actually eliminating them is still real refactor work, not a config
+    change; the old `improved-quality/pycheck.sh` (which did ignore E722) is gone, retired in
+    favor of this.
 - **No leaks, no drift**: the system should be able to theoretically run indefinitely without
   exhausting any resource (memory, handles, counters, etc.). **Verified via design discipline, not
   an automated soak test** — no dedicated long-running/memory-tracking test is required in CI for
   this; it's enforced through code review and patterns (bounded buffers, no unbounded growth),
   not a CI gate.
 - **Production-level code quality**: unit tests, mypy, and ruff shall all be available both as
-  shell command scripts and as a CI pipeline in GitLab, which **shall also attempt a real firmware
-  build** (running the equivalent of `build-*.sh`, with the full micropython/pico-sdk/picotool
-  toolchain) as a pipeline stage, not just lint/type-check/unit-test.
+  shell command scripts and as a CI pipeline, which **shall also attempt a real firmware build**
+  (running the equivalent of `build-*.sh`, with the full micropython/pico-sdk/picotool toolchain)
+  as a pipeline stage, not just lint/type-check/unit-test. **This repo is GitHub-hosted, not
+  GitLab** — earlier revisions of this doc said "GitLab CI"; that was never actually checked
+  against where the repo lives and has been corrected throughout to GitHub Actions.
+  - **Done**: root `pyproject.toml` + `scripts/lint.sh` + `scripts/typecheck.sh` +
+    `scripts/test.sh`, scoped to `improved-quality/`, `src/`, and `tests/` (see CLAUDE.md's "Code
+    quality tooling" section for the full rationale). `improved-quality/mypy.ini` and
+    `improved-quality/pycheck.sh` — an ad hoc, trial-and-error setup — have been retired in favor
+    of this. A GitHub Actions pipeline (`.github/workflows/ci.yml`) runs all three on every
+    push/PR. Unit tests exist for `src/math_helpers.py` (the first file moved out of
+    `improved-quality/`), running under a real MicroPython Unix-port interpreter built by
+    `toolchain/setup_toolchain.py`'s `setup`/`test` (no separate `unix` subcommand — building the
+    Unix port is just part of what those already do) — see "Self-contained venv via `uv`" below
+    and `tests/README.md`. **Still open**: the CI pipeline doesn't yet attempt a real firmware build
+    (still blocked on the `build-*.sh`/hardcoded-path genericization below), and scope hasn't
+    been extended to the pre-refactor codebase (`python/`, `modules/`) — CLAUDE.md's "No unit
+    tests against the current codebase" rule still applies there.
   - **This elevates the build/dev-environment setup item** (see "Deferred / explicitly
     out-of-scope work" below) **from someday-work to a real near-term prerequisite**: CI can't
     build firmware while `build-*.sh`/`update_and_install.txt` still assume a hardcoded
     `/home/nico/rpi_pico/...` layout. Genericizing that setup needs to happen before/alongside
     building this CI stage, not after.
-  - **MicroPython stubs**: install the published PyPI `micropython-stubs` package (or the relevant
-    board/port-specific variant, e.g. an rp2-flavored one) rather than hand-rolling stub files.
-  - **Ruff/mypy config**: stricter than default where it concerns actual code quality/correctness,
-    but **allow any line length and don't introduce line breaks** — ruff's `--format` step should
-    likely be omitted entirely rather than configured with a line-length; this is a deliberate
-    style choice, not an oversight.
-    - **mypy must NOT disable the `assignment` error code.** `improved-quality/mypy.ini` currently
-      has `disable_error_code = assignment`, but this was never a deliberate choice — mypy should
-      check type-incompatible assignments like everything else. Drop this exception when the
-      refactor's mypy config is actually built.
+  - **MicroPython stubs**: **done** — `micropython-rp2-rpi_pico_w-stubs` (PyPI, board/version
+    specific; pulls in `micropython-stdlib-stubs`), installed by `scripts/typecheck.sh` into a
+    gitignored `typings/` directory kept deliberately separate from the main dev venv (see
+    CLAUDE.md for why — it's load-bearing, not incidental). Version is auto-derived from
+    `toolchain/versions.toml`'s `[micropython] ref` (the single source of truth for the firmware
+    target — currently 1.28.0), not a second hand-kept pin; a mismatch (malformed `ref`, or no
+    published stub release yet for that firmware version) fails loudly with an actionable error
+    rather than silently falling back to something stale.
+  - **Ruff/mypy config**: **done** for the scope above — stricter than default where it concerns
+    actual code quality/correctness, but **allow any line length and don't introduce line
+    breaks** — ruff's `--format` step is omitted entirely rather than configured with a
+    line-length; this is a deliberate style choice, not an oversight.
+    - **mypy does NOT disable the `assignment` error code** (done — the old
+      `improved-quality/mypy.ini`'s `disable_error_code = assignment` was never a deliberate
+      choice and has been dropped in the new `pyproject.toml` config).
   - **No hard test-coverage percentage gate for now** — tests must exist and run in CI, but no
     specific minimum coverage threshold is enforced yet.
   - **PEP 604 union syntax** (`int | None`, already used in `improved-quality/base_classes.py`) is
-    fine to keep using for now as typing-only; whether it actually executes correctly at runtime on
-    the deployed MicroPython version is a separate concern to verify later, not urgent yet.
+    confirmed safe at runtime on MicroPython, including the deployed 1.26 pin and the refactor's
+    1.28.0 target: MicroPython's compiler parses but never evaluates annotation expressions (a
+    documented space-saving tradeoff, confirmed present as far back as the 1.15/1.16 docs, not a
+    new/version-specific behavior) — see "Syntax" in the MicroPython docs
+    (https://docs.micropython.org/en/latest/genrst/syntax.html). This means `float.__or__`/
+    `UnionType` support is irrelevant here; the `X | None` text is simply never executed. No
+    `from __future__ import annotations` needed either. Verified by web search against current
+    MicroPython docs during the `src/math_helpers.py` review — no longer an open question.
 - **Self-contained venv via `uv`**: testing shall be possible on a generic Linux machine inside a
   venv installable via `uv sync`. **Tests run under the real MicroPython interpreter** (e.g. a
   built Unix port), not CPython — "as close to the real environment as possible" means the actual
   MicroPython runtime, not just MicroPython-flavored stubs on top of CPython.
   - **How `uv` and the Unix port connect**: `uv sync` itself only manages the CPython-side tooling
-    (pytest, ruff, mypy, etc.) — it can't install a compiled MicroPython binary. The plan is a
-    setup script that builds/installs the MicroPython Unix port interpreter if it isn't already
-    present, ideally triggered automatically from `uv` (e.g. a `uv run` entry point or a hook), so
-    `uv sync` remains the single onboarding command even though it's delegating that one step out.
+    (pytest, ruff, mypy, etc.) — it can't install a compiled MicroPython binary. **Building/
+    verifying the interpreter itself is done** — `toolchain/setup_toolchain.py`'s `setup`/`test`
+    now verify the whole toolchain via an 8-step frozen-bytecode chain
+    (`run_verification_sequence()`), not a one-off manual check: freeze a small test module into
+    both the Unix port and the RP2 firmware (via the same `freeze()`/`FROZEN_MANIFEST` mechanism
+    this repo's own `python/Manifest/manifest.py` already uses — `mpy-cross`-compiled bytecode is
+    architecture-independent, so the same frozen module works in either build), import it *by
+    name* inside the built Unix port binary with no source `.py` file anywhere on disk (proving
+    it's genuinely compiled into the executable, not read from a filesystem path at runtime),
+    build the RP2 firmware the same way (build-only — there's no RP2 hardware here to run it on,
+    so a clean build with zero errors/warnings is the whole check), clean up both frozen-module
+    builds, then rebuild a vanilla Unix port as the standing test rig kept afterward. This is now
+    the standing, automatic verification every `setup`/`test` run performs — see
+    `toolchain/README.md`'s "Verification" for the exact step order. Relevant if the test suite
+    ever wants this project's own drivers frozen into a Unix-port test build rather than run from
+    loose `.py` files. Needs one additional apt package (`libffi-dev`, for the Unix port's `ffi`
+    module), now in `versions.toml`'s `apt_packages`. Verified end-to-end: a fresh install (both
+    the latest release and the deployed `v1.26.1` pin), the in-place update path (`v1.26.1` →
+    `v1.28.0`), `--clean` (confirmed it wipes `ports/unix/build-standard` too), a from-scratch run
+    on a genuinely clean Ubuntu 24.04 (`debootstrap` chroot, same rigor as the toolchain's existing
+    "Evidence this actually works") — see `toolchain/README.md` for details. **Still open**: this
+    only builds/verifies the Unix port binary, it isn't wired into `uv sync`/pytest yet (no
+    automatic "run this before tests" trigger) — that and the mocking boundary below remain future
+    work, blocked on CLAUDE.md's "No unit tests against the current codebase" rule same as before.
+  - **Wired into the actual test suite**: `scripts/test.sh` runs `toolchain/setup_toolchain.py`
+    (plain `setup`) automatically the first time it needs the Unix-port interpreter — there is no
+    separate `unix` subcommand; building/verifying the Unix port is just part of what `setup`/
+    `test` already do (see the bullet above) — then reuses the cached build (under
+    `$PICO_TOOLCHAIN_DIR`, default `~/pico-toolchain`, the same location and source checkout
+    `setup`/`test` use for the RP2040 build) on later runs, so a plain `scripts/test.sh` after
+    `uv sync` is still the complete onboarding path, matching this bullet's original "ideally
+    triggered automatically" goal. **First concrete test suite**: `tests/test_math_helpers.py`
+    (45 cases, see CLAUDE.md's `src/` hard rule) runs this way both manually and in CI
+    (`.github/workflows/ci.yml`'s `unit-tests` job) — the "blocked on CLAUDE.md's 'No unit tests
+    against the current codebase' rule" caveat this bullet previously had no longer applies to
+    `src/`, only to the pre-refactor `python/`/`modules/` code as that rule always intended (see
+    CLAUDE.md). **Still open**: the mocking boundary below and expanding test coverage beyond
+    `math_helpers.py` remain future work.
   - **Mocking boundary**: mock only at the raw bus-transaction level (`machine.I2C`/`machine.SPI`
     read/write calls) — drivers, Reader classes, `ConfigManager`, and REST handlers should all run
     for real, unmocked, in tests. Mock higher up (e.g. whole driver classes) only if there's truly
@@ -67,7 +132,7 @@ refactor work itself starts:
       way I2C/SPI get mocked at the hardware boundary.
 - **Centralized config**: all tooling config shall live in `pyproject.toml`, as **dev-tooling
   config only** (ruff/mypy/pytest/uv sections) — the shipped code stays frozen-bytecode-only, not
-  restructured into an installable package.
+  restructured into an installable package. **Done** — root `pyproject.toml`, see above.
 - **Unified CRC-based data-integrity checking**, generalized and kept as a standing feature, not a
   one-off: `improved-quality/crc_checks.py`'s generic `CRC8`/`CRC16`/`CRC32` engine (with a
   `CRC_Pass` no-op for when it's not needed) grew organically — first added for UART data
@@ -265,9 +330,19 @@ refactor work actually begins:
    defined-state recovery, timeout handling, lock-coverage audit) — depends on the structural
    pieces above existing to refactor *into*, rather than bolting robustness onto the old shape.
 4. **Tooling and CI** (mypy/ruff config, MicroPython stubs, the `uv`-managed venv + Unix-port
-   interpreter setup script, unit tests, GitLab CI including the firmware-build stage) — comes
-   last since it's meaningfully easier to write tests and wire up CI against the settled
-   post-refactor structure than against a moving target.
+   interpreter setup script, unit tests, GitHub Actions CI including the firmware-build stage) —
+   comes last since it's meaningfully easier to write tests and wire up CI against the settled
+   post-refactor structure than against a moving target. **Partial exception, done out of order**:
+   manual-only mypy/ruff config + MicroPython stubs (see "Production-level code quality" above)
+   were pulled forward ahead of this sequencing, scoped to `improved-quality/` as it stands today.
+   The Unix-port build (now just part of `setup_toolchain.py`'s `setup`/`test`, no separate
+   subcommand — see "Self-contained venv via `uv`" above), a first `src/`/`tests/` unit-test pair
+   (`math_helpers.py`), and a lint/type-check/unit-test GitHub Actions pipeline were similarly
+   pulled forward once `math_helpers.py` became the first file to reach the "fully reviewed" bar
+   `src/` requires (see "Production-level code quality" above) — scoped the same way, not a full
+   move-up of this whole sequencing item. **Still following this sequencing**: extending scope
+   beyond `math_helpers.py`, and the firmware-build CI stage (blocked on the `build-*.sh` path
+   genericization, same as before).
 
 ## Findings from reviewing `improved-quality/` against this spec
 
@@ -483,6 +558,15 @@ from reading the code alone:
   (including a real bug caught and fixed along the way — building `mpy-cross` before syncing
   submodules left stale submodule pins from the old version, producing a spurious "-dirty" version
   string; fixed by syncing submodules first).
+  - **This whole entry predates the Unix port build.** Everything below narrates the toolchain's
+    development history at the time it happened, when there were only the three checks above (no
+    Unix port). Verification has since been restructured twice — first adding a 4th check (build
+    the Unix port, run a sample script on it), then replaced entirely by the 8-step frozen-bytecode
+    chain described in "Self-contained venv via uv" in "Final-goal requirements for the refactor"
+    above, which is the current, up-to-date description and has its own verification evidence.
+    Left as-is here rather than rewritten, since it's a historical record of what was verified
+    when — just don't read "three checks" (or "a 4th check") below as describing the toolchain's
+    current state.
   - **Still not done**: this only covers the generic toolchain, not this project's own firmware
     build. `build-*.sh`/`FROZEN_MANIFEST`'s hardcoded `/home/nico/rpi_pico/...` path and the
     `py-include` symlink wiring (see root README's "Build process") still need genericizing to
@@ -539,9 +623,10 @@ from reading the code alone:
     its source hasn't changed (correct, deliberate behavior — the firmware build always wipes its
     own build dir first for the same reason, but `mpy-cross`'s is otherwise left alone to rebuild
     incrementally). `--clean` wipes every build-artifact directory (`picotool/build`,
-    `mpy-cross/build`, `ports/rp2/build-<board>`) without touching the git clones, then proceeds
-    through the normal build+verify flow — bringing the toolchain back to a from-scratch build
-    state on demand without re-cloning multi-gigabyte source trees. Verified: a fresh install,
+    `mpy-cross/build`, `ports/rp2/build-<board>`, and — since the Unix port build was added —
+    `ports/unix/build-standard`) without touching the git clones, then proceeds through the
+    normal build+verify flow — bringing the toolchain back to a from-scratch build state on
+    demand without re-cloning multi-gigabyte source trees. Verified: a fresh install,
     then a normal re-run (confirmed `mpy-cross` skips recompilation, matching the observed
     behavior), then `--clean` (confirmed it wipes the build dirs and `mpy-cross` fully recompiles
     again), all ending with all three checks passing.
