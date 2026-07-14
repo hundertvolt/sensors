@@ -1,3 +1,15 @@
+"""Derived meteorological quantities from raw sensor readings (wet-bulb temperature, dew point,
+barometric pressure correction, absolute/relative humidity conversions).
+
+Shared contract for every function here: returns None - never raises - if an input is None, is
+outside the formula's validated domain (see each function's own comment for its range and
+source), or if the computation fails for any other reason (e.g. a NaN slipping through a sensor
+read). Assumes callers pass the annotated types (float | None) - MicroPython doesn't enforce this
+at runtime, but mypy does at every call site, so this module doesn't duplicate that check itself.
+This is deliberate for unattended, long-running operation: a transient bad reading from a sensor
+must degrade to "no value this cycle," not take down the calling task.
+"""
+
 import math
 
 

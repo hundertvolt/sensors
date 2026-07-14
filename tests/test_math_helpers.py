@@ -58,6 +58,16 @@ def test_wet_bulb_no_exception_on_extreme_inputs() -> None:
     assert mh.wet_bulb_temperature(20.0, 1000.0) is None
 
 
+def test_wet_bulb_nan_and_inf_return_none() -> None:
+    nan = float("nan")
+    inf = float("inf")
+    assert mh.wet_bulb_temperature(nan, 50.0) is None
+    assert mh.wet_bulb_temperature(20.0, nan) is None
+    assert mh.wet_bulb_temperature(inf, 50.0) is None
+    assert mh.wet_bulb_temperature(-inf, 50.0) is None
+    assert mh.wet_bulb_temperature(20.0, inf) is None
+
+
 # ---------------------------------------------------------------------------
 # dew_point
 # ---------------------------------------------------------------------------
@@ -116,6 +126,15 @@ def test_dew_point_never_exceeds_air_temperature() -> None:
     assert result <= 30.0
 
 
+def test_dew_point_nan_and_inf_return_none() -> None:
+    nan = float("nan")
+    inf = float("inf")
+    assert mh.dew_point(nan, 50.0) is None
+    assert mh.dew_point(20.0, nan) is None
+    assert mh.dew_point(inf, 50.0) is None
+    assert mh.dew_point(20.0, -inf) is None
+
+
 # ---------------------------------------------------------------------------
 # altitude_baro
 # ---------------------------------------------------------------------------
@@ -172,6 +191,16 @@ def test_altitude_baro_no_exception_near_absolute_zero() -> None:
     assert mh.altitude_baro(1000.0, 100.0, -273.15) is None
 
 
+def test_altitude_baro_nan_and_inf_return_none() -> None:
+    nan = float("nan")
+    inf = float("inf")
+    assert mh.altitude_baro(nan, 0.0, 20.0) is None
+    assert mh.altitude_baro(1000.0, nan, 20.0) is None
+    assert mh.altitude_baro(1000.0, 0.0, nan) is None
+    assert mh.altitude_baro(-inf, 0.0, 20.0) is None
+    assert mh.altitude_baro(1000.0, inf, 20.0) is None
+
+
 # ---------------------------------------------------------------------------
 # abs_humidity / rel_humidity
 # ---------------------------------------------------------------------------
@@ -207,6 +236,15 @@ def test_abs_humidity_out_of_range_humidity() -> None:
 def test_abs_humidity_boundary_values_accepted() -> None:
     assert mh.abs_humidity(-30.0, 0.0) is not None
     assert mh.abs_humidity(40.0, 100.0) is not None
+
+
+def test_abs_humidity_nan_and_inf_return_none() -> None:
+    nan = float("nan")
+    inf = float("inf")
+    assert mh.abs_humidity(nan, 50.0) is None
+    assert mh.abs_humidity(20.0, nan) is None
+    assert mh.abs_humidity(inf, 50.0) is None
+    assert mh.abs_humidity(20.0, inf) is None
 
 
 def test_rel_humidity_none_inputs() -> None:
@@ -249,6 +287,15 @@ def test_rel_humidity_out_of_range_abs_hum() -> None:
 def test_rel_humidity_boundary_values_accepted() -> None:
     assert mh.rel_humidity(-30.0, 0.0) is not None
     assert mh.rel_humidity(40.0, 100.0) is not None
+
+
+def test_rel_humidity_nan_and_inf_return_none() -> None:
+    nan = float("nan")
+    inf = float("inf")
+    assert mh.rel_humidity(nan, 5.0) is None
+    assert mh.rel_humidity(20.0, nan) is None
+    assert mh.rel_humidity(inf, 5.0) is None
+    assert mh.rel_humidity(20.0, inf) is None
 
 
 if __name__ == "__main__":
