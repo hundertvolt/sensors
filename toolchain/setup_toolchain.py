@@ -50,6 +50,8 @@ MICROPYTHON_URL = "https://github.com/micropython/micropython.git"
 PICO_SDK_URL = "https://github.com/raspberrypi/pico-sdk.git"
 PICOTOOL_URL = "https://github.com/raspberrypi/picotool.git"
 
+# Used by cross_compile_sample() below to check mpy-cross specifically: only needs to compile
+# without error, never actually runs anywhere, so it stays trivial on purpose.
 SAMPLE_PY = '''\
 def add(a, b):
     return a + b
@@ -58,10 +60,12 @@ def add(a, b):
 print(add(2, 3))
 '''
 
-# Exercises enough of the interpreter (arithmetic, comprehensions, exceptions, a stdlib module,
-# sys.implementation) to actually prove the Unix port runs real Python, not just that the binary
-# exists and doesn't immediately crash. Not a project unit test (those stay out of scope until
-# the improved-quality/ refactor, per CLAUDE.md) - purely a smoke test of the interpreter itself.
+# Used by run_unix_port_sample() below - a separate, richer script from SAMPLE_PY above because
+# this one actually has to run (not just compile) to prove something: exercises enough of the
+# interpreter (arithmetic, comprehensions, exceptions, a stdlib module, sys.implementation) to
+# show the Unix port runs real Python, not just that the binary exists and doesn't immediately
+# crash. Not a project unit test (those stay out of scope until the improved-quality/ refactor,
+# per CLAUDE.md) - purely a smoke test of the interpreter itself.
 UNIX_PORT_SAMPLE_PY = '''\
 import sys
 import json

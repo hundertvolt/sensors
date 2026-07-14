@@ -205,7 +205,9 @@ detailed target.
 ## Code quality tooling
 
 Ruff and mypy checks, scoped to `improved-quality/` only for now (the pre-refactor codebase —
-`python/`, `modules/` — isn't covered yet), can already be run manually:
+`python/`, `modules/` — isn't covered yet), can already be run manually. Needs Python 3.11+
+(`tomllib`, stdlib only since 3.11 — `uv sync` enforces this automatically via `pyproject.toml`'s
+`requires-python`, so this only matters if `uv` has to fall back to whatever `python3` it finds):
 
 ```sh
 uv sync                    # one-time, and after pulling changes - installs ruff/mypy/pytest into .venv

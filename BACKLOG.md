@@ -86,6 +86,22 @@ below for why that's a scoped exception, not a change in overall approach):
     "run this before tests" trigger) — that, the mocking boundary below, and the actual test
     suite remain future work, blocked on CLAUDE.md's "No unit tests against the current codebase"
     rule same as before.
+  - **Confirmed: frozen bytecode modules work on the Unix port, the same way as on the RP2
+    firmware.** Both ports build from the same MicroPython clone and share the same
+    `freeze()`/`FROZEN_MANIFEST` manifest mechanism this repo's own
+    `python/Manifest/manifest.py` already uses for the firmware — `mpy-cross`-compiled bytecode
+    is architecture-independent, so the same frozen module can be included in either build.
+    Verified directly, not just from docs: froze a test module into both a real RP2 firmware
+    build and a real Unix port build (each via a custom manifest that `include()`s that port's
+    normal default manifest, so it's "standard firmware plus one extra module," not a
+    different build) — both compiled with zero errors/warnings. Then, on the Unix port
+    specifically: deleted the module's `.py` source entirely and ran the built binary from a
+    directory with nothing else on disk — `import <module>` still worked and returned the
+    correct value, proving it's genuinely compiled into the executable, not read from a
+    filesystem path at runtime. Relevant if the test suite ever wants this project's own
+    drivers frozen into a Unix-port test build rather than run from loose `.py` files; nothing
+    currently in `setup_toolchain.py` does this by default — it was a one-off manual
+    verification, not a standing feature.
   - **Mocking boundary**: mock only at the raw bus-transaction level (`machine.I2C`/`machine.SPI`
     read/write calls) — drivers, Reader classes, `ConfigManager`, and REST handlers should all run
     for real, unmocked, in tests. Mock higher up (e.g. whole driver classes) only if there's truly
@@ -297,9 +313,11 @@ refactor work actually begins:
    interpreter setup script, unit tests, GitLab CI including the firmware-build stage) — comes
    last since it's meaningfully easier to write tests and wire up CI against the settled
    post-refactor structure than against a moving target. **Partial exception, done out of order**:
-   manual-only mypy/ruff config + MicroPython stubs (see "Production-level code quality" above)
-   were pulled forward ahead of this sequencing, scoped to `improved-quality/` as it stands today —
-   CI wiring, unit tests, and extending scope still follow this sequencing.
+   manual-only mypy/ruff config + MicroPython stubs (see "Production-level code quality" above),
+   and the Unix-port interpreter setup script itself (see "Self-contained venv via uv" above),
+   were pulled forward ahead of this sequencing, scoped to `improved-quality/` as it stands
+   today — CI wiring, unit tests, the mocking boundary, and extending scope still follow this
+   sequencing.
 
 ## Findings from reviewing `improved-quality/` against this spec
 
@@ -515,6 +533,13 @@ from reading the code alone:
   (including a real bug caught and fixed along the way — building `mpy-cross` before syncing
   submodules left stale submodule pins from the old version, producing a spurious "-dirty" version
   string; fixed by syncing submodules first).
+  - **This whole entry predates the Unix port build.** Everything below narrates the toolchain's
+    development history at the time it happened, when there were only the three checks above (no
+    Unix port). A 4th check (build the Unix port, run a sample script on it) was added later —
+    see "Self-contained venv via uv" in "Final-goal requirements for the refactor" above for the
+    current, up-to-date description and its own verification evidence. Left as-is here rather than
+    rewritten, since it's a historical record of what was verified when — just don't read "three
+    checks" below as describing the toolchain's current state.
   - **Still not done**: this only covers the generic toolchain, not this project's own firmware
     build. `build-*.sh`/`FROZEN_MANIFEST`'s hardcoded `/home/nico/rpi_pico/...` path and the
     `py-include` symlink wiring (see root README's "Build process") still need genericizing to
@@ -571,9 +596,10 @@ from reading the code alone:
     its source hasn't changed (correct, deliberate behavior — the firmware build always wipes its
     own build dir first for the same reason, but `mpy-cross`'s is otherwise left alone to rebuild
     incrementally). `--clean` wipes every build-artifact directory (`picotool/build`,
-    `mpy-cross/build`, `ports/rp2/build-<board>`) without touching the git clones, then proceeds
-    through the normal build+verify flow — bringing the toolchain back to a from-scratch build
-    state on demand without re-cloning multi-gigabyte source trees. Verified: a fresh install,
+    `mpy-cross/build`, `ports/rp2/build-<board>`, and — since the Unix port build was added —
+    `ports/unix/build-standard`) without touching the git clones, then proceeds through the
+    normal build+verify flow — bringing the toolchain back to a from-scratch build state on
+    demand without re-cloning multi-gigabyte source trees. Verified: a fresh install,
     then a normal re-run (confirmed `mpy-cross` skips recompilation, matching the observed
     behavior), then `--clean` (confirmed it wipes the build dirs and `mpy-cross` fully recompiles
     again), all ending with all three checks passing.

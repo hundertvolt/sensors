@@ -217,6 +217,17 @@ this: a raw Python traceback, an "installation failed" from `uv`/`pip`, or any o
 against the ordinary-sandbox run — that mismatch is exactly how the `tomllib`/`requires-python`
 gap was found in the first place.
 
+**Changes to `toolchain/setup_toolchain.py` or `toolchain/versions.toml` itself need a second,
+separate verification, not just the recipe above** — that recipe only exercises `scripts/lint.sh`/
+`scripts/typecheck.sh`, never the toolchain installer. Reuse the same chroot (steps through
+installing `git`/`curl`/`ca-certificates`/`python3`/`pip`/`uv`, no need for `python3-venv` this
+time), copy the working tree in the same way, then run `uv run toolchain/setup_toolchain.py`
+(a full build: ARM toolchain + firmware + `mpy-cross` + Unix port, several minutes, not seconds)
+instead of the lint/typecheck scripts. This is exactly how the Unix port addition was verified —
+see `toolchain/README.md`'s "Evidence this actually works" for what a passing run must show (all
+four checks, zero errors/warnings) and BACKLOG.md's "Self-contained venv via uv" for that specific
+verification's results.
+
 ## Pull request workflow
 
 - **Before pushing anything touching the dev-tooling/build-environment setup** (`pyproject.toml`,
