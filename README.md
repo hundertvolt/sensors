@@ -31,14 +31,18 @@ python/
   IndividualDrivers/      only copied in if a given device config needs them
   Manifest/manifest.py    MicroPython freeze manifest used by the build
 improved-quality/        WIP refactor target (out of scope for day-to-day work; see CLAUDE.md)
+src/                     Files moved out of improved-quality/ once fully reviewed/tested
+tests/                   Unit tests for src/, run under a real MicroPython interpreter - see
+                          tests/README.md
 toolchain/               MicroPython/pico-sdk/picotool build-environment installer
   versions.toml             single source of truth for the target MicroPython version - see
                             "Toolchain setup" below for how everything else derives from it
-  setup_toolchain.py
+  setup_toolchain.py        `setup`/`test` - builds RP2040 firmware and the MicroPython Unix port (for tests/)
 build-{arzi,dev,neu,wozi}.sh   per-device build scripts
 update_and_install.txt   handwritten toolchain setup notes (MicroPython/pico-sdk/picotool)
 pyproject.toml           dev-tooling config (ruff/mypy/pytest/uv) - see "Code quality tooling" below
-scripts/                 lint.sh / typecheck.sh - manual code-quality check runners
+scripts/                 lint.sh / typecheck.sh / test.sh - manual code-quality check runners
+.github/workflows/       CI: runs lint.sh/typecheck.sh/test.sh on every push/PR
 ```
 
 ## Architecture at a glance
@@ -165,9 +169,10 @@ re-check — ~30s vs. minutes for `setup`):
 uv run toolchain/setup_toolchain.py test
 ```
 
-Meant to run manually today, with an eye toward becoming a CI step later (once this project has
-a CI pipeline at all — see BACKLOG.md): `setup` provisions the toolchain once, `test` is the
-repeatable, offline gate that checks it still builds cleanly.
+`setup` provisions the toolchain once, `test` is the repeatable, offline gate that checks it
+still builds cleanly. `scripts/test.sh` (see "Code quality tooling" below) relies on this
+directly: it runs `setup` automatically the first time it needs the Unix-port interpreter, then
+reuses the cached build on later runs — including in CI, via `.github/workflows/ci.yml`.
 
 **What a successful `setup` or `test` run proves**, every time:
 
@@ -198,30 +203,33 @@ done, see BACKLOG.md.
 The `improved-quality/` refactor (see "Repository layout" above) isn't just a cleanup — it targets
 the most recent *stable* MicroPython/pico-sdk/picotool/Microdot releases, expands error handling
 and bus/sensor fault recovery considerably beyond what's described above, and adds unit tests,
-mypy, ruff, and a GitLab CI pipeline (including a real firmware build) that don't exist for the
-current codebase at all. See BACKLOG.md's "Final-goal requirements for the refactor" for the full,
-detailed target.
+mypy, ruff, and a CI pipeline (including a real firmware build, eventually — the current pipeline
+covers lint/type-check/unit-tests only) that don't exist for the current codebase at all. Files
+move to `src/` once fully reviewed and tested against that bar — see `src/` and `tests/` in
+"Repository layout" above. See BACKLOG.md's "Final-goal requirements for the refactor" for the
+full, detailed target.
 
 ## Code quality tooling
 
-Ruff and mypy checks, scoped to `improved-quality/` only for now (the pre-refactor codebase —
-`python/`, `modules/` — isn't covered yet), can already be run manually. Needs Python 3.11+
-(`tomllib`, stdlib only since 3.11 — `uv sync` enforces this automatically via `pyproject.toml`'s
-`requires-python`, so this only matters if `uv` has to fall back to whatever `python3` it finds):
+Ruff and mypy checks, scoped to `improved-quality/`, `src/`, and `tests/` (the pre-refactor
+codebase — `python/`, `modules/` — isn't covered yet), plus unit tests for `src/`, can be run
+manually. Needs Python 3.11+ (`tomllib`, stdlib only since 3.11 — `uv sync` enforces this
+automatically via `pyproject.toml`'s `requires-python`, so this only matters if `uv` has to fall
+back to whatever `python3` it finds):
 
 ```sh
 uv sync                    # one-time, and after pulling changes - installs ruff/mypy/pytest into .venv
-source .venv/bin/activate  # scripts/*.sh assume ruff/mypy are already on PATH
+source .venv/bin/activate  # scripts/lint.sh and scripts/typecheck.sh assume ruff/mypy are already on PATH
 
 scripts/lint.sh            # ruff check
 scripts/typecheck.sh       # mypy, using MicroPython stubs matching toolchain/versions.toml (see above)
+scripts/test.sh            # unit tests, under a real MicroPython Unix-port interpreter - see tests/README.md
 ```
 
-Not wired into CI yet, and unit tests aren't in scope yet either (see CLAUDE.md's "No unit tests
-against the current codebase" rule) — see BACKLOG.md for the full plan. Config lives in the root
-`pyproject.toml`; see CLAUDE.md's "Code quality tooling" section for the full rationale (why
-`ruff format` isn't used, why the MicroPython stubs install into a separate `typings/` directory
-instead of the main dev venv, etc.).
+All three run in GitHub Actions CI (`.github/workflows/ci.yml`) on every push/PR. Config lives in
+the root `pyproject.toml`; see CLAUDE.md's "Code quality tooling" section for the full rationale
+(why `ruff format` isn't used, why the MicroPython stubs install into a separate `typings/`
+directory instead of the main dev venv, why tests don't run under pytest/CPython, etc.).
 
 ## Further reading
 

@@ -30,16 +30,24 @@ below for why that's a scoped exception, not a change in overall approach):
   this; it's enforced through code review and patterns (bounded buffers, no unbounded growth),
   not a CI gate.
 - **Production-level code quality**: unit tests, mypy, and ruff shall all be available both as
-  shell command scripts and as a CI pipeline in GitLab, which **shall also attempt a real firmware
-  build** (running the equivalent of `build-*.sh`, with the full micropython/pico-sdk/picotool
-  toolchain) as a pipeline stage, not just lint/type-check/unit-test.
-  - **Done (manual scripts only, not CI yet)**: root `pyproject.toml` + `scripts/lint.sh` +
-    `scripts/typecheck.sh`, scoped to `improved-quality/` only for now (see CLAUDE.md's "Code
+  shell command scripts and as a CI pipeline, which **shall also attempt a real firmware build**
+  (running the equivalent of `build-*.sh`, with the full micropython/pico-sdk/picotool toolchain)
+  as a pipeline stage, not just lint/type-check/unit-test. **This repo is GitHub-hosted, not
+  GitLab** — earlier revisions of this doc said "GitLab CI"; that was never actually checked
+  against where the repo lives and has been corrected throughout to GitHub Actions.
+  - **Done**: root `pyproject.toml` + `scripts/lint.sh` + `scripts/typecheck.sh` +
+    `scripts/test.sh`, scoped to `improved-quality/`, `src/`, and `tests/` (see CLAUDE.md's "Code
     quality tooling" section for the full rationale). `improved-quality/mypy.ini` and
     `improved-quality/pycheck.sh` — an ad hoc, trial-and-error setup — have been retired in favor
-    of this. **Still open**: wiring an equivalent GitLab CI pipeline, extending scope to the
-    pre-refactor codebase (`python/`, `modules/`), and unit tests (blocked on CLAUDE.md's "No unit
-    tests against the current codebase" rule and on the MicroPython Unix-port setup below).
+    of this. A GitHub Actions pipeline (`.github/workflows/ci.yml`) runs all three on every
+    push/PR. Unit tests exist for `src/math_helpers.py` (the first file moved out of
+    `improved-quality/`), running under a real MicroPython Unix-port interpreter built by
+    `toolchain/setup_toolchain.py`'s `setup`/`test` (no separate `unix` subcommand — building the
+    Unix port is just part of what those already do) — see "Self-contained venv via `uv`" below
+    and `tests/README.md`. **Still open**: the CI pipeline doesn't yet attempt a real firmware build
+    (still blocked on the `build-*.sh`/hardcoded-path genericization below), and scope hasn't
+    been extended to the pre-refactor codebase (`python/`, `modules/`) — CLAUDE.md's "No unit
+    tests against the current codebase" rule still applies there.
   - **This elevates the build/dev-environment setup item** (see "Deferred / explicitly
     out-of-scope work" below) **from someday-work to a real near-term prerequisite**: CI can't
     build firmware while `build-*.sh`/`update_and_install.txt` still assume a hardcoded
@@ -63,8 +71,14 @@ below for why that's a scoped exception, not a change in overall approach):
   - **No hard test-coverage percentage gate for now** — tests must exist and run in CI, but no
     specific minimum coverage threshold is enforced yet.
   - **PEP 604 union syntax** (`int | None`, already used in `improved-quality/base_classes.py`) is
-    fine to keep using for now as typing-only; whether it actually executes correctly at runtime on
-    the deployed MicroPython version is a separate concern to verify later, not urgent yet.
+    confirmed safe at runtime on MicroPython, including the deployed 1.26 pin and the refactor's
+    1.28.0 target: MicroPython's compiler parses but never evaluates annotation expressions (a
+    documented space-saving tradeoff, confirmed present as far back as the 1.15/1.16 docs, not a
+    new/version-specific behavior) — see "Syntax" in the MicroPython docs
+    (https://docs.micropython.org/en/latest/genrst/syntax.html). This means `float.__or__`/
+    `UnionType` support is irrelevant here; the `X | None` text is simply never executed. No
+    `from __future__ import annotations` needed either. Verified by web search against current
+    MicroPython docs during the `src/math_helpers.py` review — no longer an open question.
 - **Self-contained venv via `uv`**: testing shall be possible on a generic Linux machine inside a
   venv installable via `uv sync`. **Tests run under the real MicroPython interpreter** (e.g. a
   built Unix port), not CPython — "as close to the real environment as possible" means the actual
@@ -92,9 +106,22 @@ below for why that's a scoped exception, not a change in overall approach):
     on a genuinely clean Ubuntu 24.04 (`debootstrap` chroot, same rigor as the toolchain's existing
     "Evidence this actually works") — see `toolchain/README.md` for details. **Still open**: this
     only builds/verifies the Unix port binary, it isn't wired into `uv sync`/pytest yet (no
-    automatic "run this before tests" trigger) — that, the mocking boundary below, and the actual
-    test suite remain future work, blocked on CLAUDE.md's "No unit tests against the current
-    codebase" rule same as before.
+    automatic "run this before tests" trigger) — that and the mocking boundary below remain future
+    work, blocked on CLAUDE.md's "No unit tests against the current codebase" rule same as before.
+  - **Wired into the actual test suite**: `scripts/test.sh` runs `toolchain/setup_toolchain.py`
+    (plain `setup`) automatically the first time it needs the Unix-port interpreter — there is no
+    separate `unix` subcommand; building/verifying the Unix port is just part of what `setup`/
+    `test` already do (see the bullet above) — then reuses the cached build (under
+    `$PICO_TOOLCHAIN_DIR`, default `~/pico-toolchain`, the same location and source checkout
+    `setup`/`test` use for the RP2040 build) on later runs, so a plain `scripts/test.sh` after
+    `uv sync` is still the complete onboarding path, matching this bullet's original "ideally
+    triggered automatically" goal. **First concrete test suite**: `tests/test_math_helpers.py`
+    (40 cases, see CLAUDE.md's `src/` hard rule) runs this way both manually and in CI
+    (`.github/workflows/ci.yml`'s `unit-tests` job) — the "blocked on CLAUDE.md's 'No unit tests
+    against the current codebase' rule" caveat this bullet previously had no longer applies to
+    `src/`, only to the pre-refactor `python/`/`modules/` code as that rule always intended (see
+    CLAUDE.md). **Still open**: the mocking boundary below and expanding test coverage beyond
+    `math_helpers.py` remain future work.
   - **Mocking boundary**: mock only at the raw bus-transaction level (`machine.I2C`/`machine.SPI`
     read/write calls) — drivers, Reader classes, `ConfigManager`, and REST handlers should all run
     for real, unmocked, in tests. Mock higher up (e.g. whole driver classes) only if there's truly
@@ -303,14 +330,19 @@ refactor work actually begins:
    defined-state recovery, timeout handling, lock-coverage audit) — depends on the structural
    pieces above existing to refactor *into*, rather than bolting robustness onto the old shape.
 4. **Tooling and CI** (mypy/ruff config, MicroPython stubs, the `uv`-managed venv + Unix-port
-   interpreter setup script, unit tests, GitLab CI including the firmware-build stage) — comes
-   last since it's meaningfully easier to write tests and wire up CI against the settled
+   interpreter setup script, unit tests, GitHub Actions CI including the firmware-build stage) —
+   comes last since it's meaningfully easier to write tests and wire up CI against the settled
    post-refactor structure than against a moving target. **Partial exception, done out of order**:
-   manual-only mypy/ruff config + MicroPython stubs (see "Production-level code quality" above),
-   and the Unix-port interpreter setup script itself (see "Self-contained venv via uv" above),
-   were pulled forward ahead of this sequencing, scoped to `improved-quality/` as it stands
-   today — CI wiring, unit tests, the mocking boundary, and extending scope still follow this
-   sequencing.
+   manual-only mypy/ruff config + MicroPython stubs (see "Production-level code quality" above)
+   were pulled forward ahead of this sequencing, scoped to `improved-quality/` as it stands today.
+   The Unix-port build (now just part of `setup_toolchain.py`'s `setup`/`test`, no separate
+   subcommand — see "Self-contained venv via `uv`" above), a first `src/`/`tests/` unit-test pair
+   (`math_helpers.py`), and a lint/type-check/unit-test GitHub Actions pipeline were similarly
+   pulled forward once `math_helpers.py` became the first file to reach the "fully reviewed" bar
+   `src/` requires (see "Production-level code quality" above) — scoped the same way, not a full
+   move-up of this whole sequencing item. **Still following this sequencing**: extending scope
+   beyond `math_helpers.py`, and the firmware-build CI stage (blocked on the `build-*.sh` path
+   genericization, same as before).
 
 ## Findings from reviewing `improved-quality/` against this spec
 

@@ -33,8 +33,9 @@ dev = [
 # MicroPython subset doesn't provide). scripts/typecheck.sh installs the pin into typings/
 # instead: an isolated directory containing only the stubs, nothing else.
 
-# Checks currently cover improved-quality/ only - the WIP code-quality refactor target, where
-# this cleanup effort actually started (see CLAUDE.md). The pre-refactor deployed codebase
+# Checks currently cover improved-quality/ (the WIP code-quality refactor target, where this
+# cleanup effort actually started - see CLAUDE.md), src/ (files moved out of improved-quality/
+# once fully reviewed/tested), and tests/ (their unit tests). The pre-refactor deployed codebase
 # (python/, modules/) isn't in scope yet and has no lint/type config of its own right now.
 # improved-quality/mypy.ini and improved-quality/pycheck.sh (ad hoc, trial-and-error configs)
 # have been retired in favor of this file.
@@ -85,7 +86,7 @@ follow_imports = "silent"
 # issues (it's explicitly labeled Beta upstream) don't get reported as if they were findings in
 # our code, while their declared types are still fully used for checking our code's calls.
 follow_imports_for_stubs = true
-mypy_path = "typings"
+mypy_path = ["typings", "src"]
 custom_typeshed_dir = "typings"
 # Without this, mypy also auto-discovers the dev venv's own packages (mypy/ruff/pytest's own
 # runtime dependencies, e.g. typing_extensions) as importable modules and tries to type-check
@@ -95,7 +96,7 @@ no_site_packages = true
 # A bare glob in `files` (e.g. "improved-quality/*.py") gets pre-expanded to an explicit file
 # list, which `exclude` can't then prune - passing the directory itself is what makes `exclude`
 # actually take effect during mypy's own directory walk.
-files = ["improved-quality"]
+files = ["improved-quality", "src", "tests"]
 exclude = ["improved-quality/microdot\\.py$"]
 
 show_error_context = true
@@ -118,7 +119,10 @@ warn_unreachable = true
 strict_equality = true
 
 [tool.pytest.ini_options]
-# Empty for now. CLAUDE.md's "No unit tests against the current codebase" rule applies - tests
-# get written as part of the improved-quality/ refactor, once it's far enough along to run
-# against, not before (see BACKLOG.md). This section exists so pyproject.toml is already the
-# single place all dev-tooling config lives, per BACKLOG.md's "Centralized config" requirement.
+# Empty: pytest itself isn't the test runner. Per BACKLOG.md's "Self-contained venv via uv"
+# requirement, tests run under a real MicroPython Unix-port interpreter, not CPython - see
+# tests/README.md and scripts/test.sh, which shell out to the built `micropython` binary instead
+# of invoking pytest. `pytest` stays in [dependency-groups] dev for future CPython-side
+# orchestration (e.g. driver-level tests that need to assert on subprocess output), not used yet.
+# This section exists so pyproject.toml is already the single place all dev-tooling config lives,
+# per BACKLOG.md's "Centralized config" requirement.

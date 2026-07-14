@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-typecheck:
+    # Covers improved-quality/, src/, and tests/ - see pyproject.toml's [tool.ruff]/[tool.mypy]
+    # and CLAUDE.md's "Code quality tooling" for scope rationale.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        run: pip install uv
+      - name: Sync dev dependencies
+        run: uv sync
+      - name: Ruff
+        run: uv run scripts/lint.sh
+      - name: Mypy
+        run: uv run scripts/typecheck.sh
+
+  unit-tests:
+    # Tests run under a real MicroPython Unix-port interpreter, not CPython - see
+    # BACKLOG.md's "Self-contained venv via uv" testing requirement and tests/README.md.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        run: pip install uv
+      - name: Cache MicroPython Unix port build
+        uses: actions/cache@v4
+        with:
+          path: ~/pico-toolchain
+          key: unix-port-${{ runner.os }}-${{ hashFiles('toolchain/versions.toml') }}
+      - name: Run unit tests
+        run: scripts/test.sh
