@@ -2,6 +2,7 @@ import math
 
 
 def wet_bulb_temperature(temperature: float | None, humidity: float | None) -> float | None:
+    # Stull's empirical wet-bulb approximation; valid only within the range checked below.
     if (temperature is None) or (humidity is None):
         return None
     tw = None
@@ -17,6 +18,7 @@ def wet_bulb_temperature(temperature: float | None, humidity: float | None) -> f
 
 
 def dew_point(temperature: float | None, humidity: float | None) -> float | None:
+    # Magnus-Tetens dew-point approximation; coeff1/toffs pick the ice- vs water-phase constants.
     if (temperature is None) or (humidity is None):
         return None
     dp = None
@@ -38,6 +40,8 @@ def dew_point(temperature: float | None, humidity: float | None) -> float | None
 
 
 def altitude_baro(p0: float | None, dh: float | None, tmean: float | None) -> float | None:
+    # Barometric formula: pressure at height offset dh from the p0 reference (callers pass a
+    # negative dh to reduce a station reading to sea-level-equivalent pressure), not an altitude.
     if (p0 is None) or (dh is None) or (tmean is None):
         return None
     return p0 * math.exp(-dh * ((0.0289644 * 9.80665) / (8.31446261815324 * (tmean + 273.15))))
@@ -45,6 +49,7 @@ def altitude_baro(p0: float | None, dh: float | None, tmean: float | None) -> fl
 
 
 def abs_humidity(temperature: float | None, humidity: float | None) -> float | None:
+    # Magnus-type saturation-vapor-pressure formula; a/b pick the ice- vs water-phase constants.
     if (temperature is None) or (humidity is None):
         return None
     ah = None
@@ -65,6 +70,7 @@ def abs_humidity(temperature: float | None, humidity: float | None) -> float | N
 
 
 def rel_humidity(temperature: float | None, abs_hum: float | None) -> float | None:
+    # Inverse of abs_humidity's Magnus-type formula; result is clamped to the valid 0-100% range.
     if (temperature is None) or (abs_hum is None):
         return None
     rh = None
