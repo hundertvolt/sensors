@@ -28,7 +28,7 @@ def wet_bulb_temperature(temperature: float | None, humidity: float | None) -> f
             + 0.00391838 * humidity * math.sqrt(humidity) * math.atan(0.023101 * humidity)
             - 4.686035
         )
-    except (ValueError, ArithmeticError, ZeroDivisionError):
+    except (ValueError, ArithmeticError):
         return None
 
 
@@ -55,7 +55,7 @@ def dew_point(temperature: float | None, humidity: float | None) -> float | None
         loghum = math.log(humidity * 0.01)
         coeff2 = 1.0 / (toffs + temperature)
         return toffs * ((coeff1 * temperature) * coeff2 + loghum) / ((coeff1 * toffs) * coeff2 - loghum)
-    except (ValueError, ArithmeticError, ZeroDivisionError):
+    except (ValueError, ArithmeticError):
         return None
 
 
@@ -71,7 +71,7 @@ def altitude_baro(p0: float | None, dh: float | None, tmean: float | None) -> fl
         return None
     try:
         return p0 * math.exp(-dh * ((0.0289644 * 9.80665) / (8.31446261815324 * (tmean + 273.15))))
-    except (ValueError, ArithmeticError, ZeroDivisionError):
+    except (ValueError, ArithmeticError):
         return None
     # g = 9.80665; M = 0.0289644; T0 = 273.15; R = 8.31446261815324
 
@@ -90,7 +90,7 @@ def abs_humidity(temperature: float | None, humidity: float | None) -> float | N
         b = 240.7
     try:
         return 13.23454 * humidity / (temperature + 273.15) * math.pow(10.0, (a * temperature) / (b + temperature))
-    except (ValueError, ArithmeticError, ZeroDivisionError):
+    except (ValueError, ArithmeticError):
         return None
 
 
@@ -110,6 +110,6 @@ def rel_humidity(temperature: float | None, abs_hum: float | None) -> float | No
         b = 240.7
     try:
         rh = abs_hum * (temperature + 273.15) / (13.23454 * math.pow(10.0, (a * temperature) / (b + temperature)))
-    except (ValueError, ArithmeticError, ZeroDivisionError):
+    except (ValueError, ArithmeticError):
         return None
     return max(0.0, min(100.0, rh))

@@ -65,16 +65,8 @@ you check, per file.
   - any residual computational failure within the valid type contract (e.g. a near-boundary
     float edge case the range check didn't quite anticipate) — wrap only the actual computation
     in `try/except`, catching the *specific* exception types that can genuinely occur for that
-    domain (`ValueError`/`ArithmeticError`/`ZeroDivisionError` for the math formulas seen so far),
+    domain (`ValueError` for math domain errors, `ArithmeticError` for overflow/zero-division),
     never a bare `except:`.
-- [ ] Verify the exception list itself against *current* MicroPython docs/source — not training
-      memory, not CPython assumptions. MicroPython's actual behavior can differ from CPython's
-      (confirmed directly from `py/modmath.c`: MicroPython's `math` module raises `ValueError` for
-      *both* domain errors and overflow-to-infinity, e.g. `math.exp` on a too-large argument —
-      CPython raises `OverflowError` for the overflow case instead). When genuinely unsure whether
-      the set is exhaustive for a given function, catch a broader/more specific set rather than a
-      narrower one — a redundant, unreachable exception type in the tuple is harmless; a missed
-      one is an uncaught crash on a deployed unit.
 - [ ] **Do not defend against out-of-contract input (wrong types) at runtime** if static typing
       already enforces the contract at every call site in CI (mypy here). That's dead weight on
       a resource-constrained target for a scenario that provably can't occur — scope defensive
