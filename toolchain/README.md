@@ -2,7 +2,9 @@
 
 One command sets up (or updates) everything needed to build MicroPython firmware for the
 Raspberry Pi Pico W: MicroPython itself, a matching `pico-sdk`, a version-matched `picotool`,
-and the ARM cross-compiler.
+and the ARM cross-compiler — plus a host-side MicroPython Unix port build, used for running
+tests under the real interpreter later instead of just CPython with MicroPython-flavored stubs
+on top (see BACKLOG.md's "Self-contained venv via uv").
 
 ## Why this isn't just "apt install the toolchain"
 
@@ -77,21 +79,23 @@ does, in order:
    the versions derived in steps 1–4 the actual versions used, instead of being second-guessed
    by a stray environment variable or a shadowing binary.
 6. **Verify the result before declaring success**, every single run: build a standard firmware
-   image, build `mpy-cross`, and cross-compile a sample file with it (see "Verification" below).
-   A `setup` that finishes without running these checks would just be an assertion that the
-   pieces are probably fine; running them is what makes it a proof.
+   image, build `mpy-cross`, cross-compile a sample file with it, then build the Unix port and
+   run a sample script on it (see "Verification" below). A `setup` that finishes without running
+   these checks would just be an assertion that the pieces are probably fine; running them is
+   what makes it a proof.
 
-Step 6 is intentionally a mix of from-scratch and incremental: the firmware build always wipes
-`ports/rp2/build-<board>` first, so "builds with zero errors/warnings" is a genuine proof every
-run rather than a cached one, but `mpy-cross`'s build directory is otherwise left alone — if
-nothing in its source changed, it just relinks instead of recompiling. That's a deliberate,
-useful property (a `setup`/update re-run doesn't waste time re-verifying unchanged output), not
-an oversight — but it means there's normally no single command that forces *everything* back to
-a truly from-scratch build state without also re-cloning gigabytes of unchanged git history.
-`--clean` is that command: it wipes every build-artifact directory (`picotool/build`,
-`mpy-cross/build`, `ports/rp2/build-<board>`, via `clean_build_dirs()`) before the steps above
-run, without touching the git clones themselves, then proceeds through the normal build+verify
-flow — so it ends in the same state a genuinely fresh install would.
+Step 6 is intentionally a mix of from-scratch and incremental: the firmware and Unix-port builds
+always wipe their build directories first, so "builds with zero errors/warnings" is a genuine
+proof every run rather than a cached one, but `mpy-cross`'s build directory is otherwise left
+alone — if nothing in its source changed, it just relinks instead of recompiling. That's a
+deliberate, useful property (a `setup`/update re-run doesn't waste time re-verifying unchanged
+output), not an oversight — but it means there's normally no single command that forces
+*everything* back to a truly from-scratch build state without also re-cloning gigabytes of
+unchanged git history. `--clean` is that command: it wipes every build-artifact directory
+(`picotool/build`, `mpy-cross/build`, `ports/rp2/build-<board>`, `ports/unix/build-standard`, via
+`clean_build_dirs()`) before the steps above run, without touching the git clones themselves,
+then proceeds through the normal build+verify flow — so it ends in the same state a genuinely
+fresh install would.
 
 `test` is `setup` with steps 1–4 skipped: it assumes an install already exists at
 `--toolchain-dir` and just re-runs steps 5–6 against whatever is already checked out there. That
@@ -135,6 +139,9 @@ otherwise resolve to.
 ```
 <toolchain-dir>/          default: $PICO_TOOLCHAIN_DIR or ~/pico-toolchain
   micropython/             full clone, checked out at the pinned ref
+    ports/rp2/build-<board>/    firmware build output (firmware.uf2)
+    ports/unix/build-standard/  host-side interpreter build output (micropython)
+    mpy-cross/build/            cross-compiler build output (mpy-cross)
   pico-sdk/                full clone, checked out at the ref MicroPython pins
   picotool/                full clone, checked out at the derived matching tag; built + `sudo make install`ed
 ```
@@ -151,6 +158,11 @@ Every `setup` or `test` run re-verifies the environment end-to-end before report
    with no compiler errors or warnings.
 2. `mpy-cross` (the cross-compiler) builds cleanly.
 3. `mpy-cross` successfully cross-compiles a throwaway sample `.py` file.
+4. The Unix port (`ports/unix`, "standard" variant) builds with no compiler errors or warnings,
+   and running a sample script on it produces the expected output — proving it's an actually
+   functional interpreter, not just a binary that exists. This is the host-side MicroPython
+   build that tests will eventually run under (see BACKLOG.md's "Self-contained venv via uv");
+   `build_unix_port()`/`run_unix_port_sample()` in `setup_toolchain.py`.
 
 Any failure aborts with a non-zero exit and the build log leading up to it.
 
@@ -162,12 +174,24 @@ Claims above that are checkable were checked, not just written down:
   with nothing preinstalled beyond the minimal base (no build tools, no `git`/`curl`/`sudo`, no
   `uv`, no apt cache beyond `main`) — the script installed every system dependency itself (after
   enabling `universe`, see "Quick start" above) and passed all three checks in ~3 minutes, for
-  both the latest stable MicroPython release and the currently-deployed `v1.26.1` pin.
+  both the latest stable MicroPython release and the currently-deployed `v1.26.1` pin. **Re-run
+  after the Unix port build was added** (same from-scratch chroot recipe, `python3`/`pip`/`uv`
+  only — everything else, including `libffi-dev` for the Unix port's `ffi` module, installed by
+  the script itself): all four checks passed, including the Unix port build and its sample
+  script.
 - **The in-place update path**: existing `v1.26.1` install → re-run targeting the latest
   release. Existing clones are fetched and re-checked-out rather than re-cloned, the derived
-  pico-sdk/picotool versions bump automatically, and only the affected pieces rebuild.
+  pico-sdk/picotool versions bump automatically, and only the affected pieces rebuild. **Verified
+  with the Unix port specifically**: built and ran the sample script against `v1.26.1` first
+  (`sys.implementation` correctly reported `(1, 26, 1, '')`), then re-ran targeting `v1.28.0`
+  against the same `--toolchain-dir` — the Unix port rebuilt and the sample script re-ran
+  correctly against the new version (`(1, 28, 0, '')`), with no leftover state from the old
+  build.
 - **`test` in isolation**: run against a `setup`-provisioned install, it completed in ~30s
-  (vs. minutes for `setup`), touched no network or apt state, and passed all three checks.
+  (vs. minutes for `setup`), touched no network or apt state, and passed all three (now four)
+  checks. **`--clean` re-verified after the Unix port build was added**: confirmed it wipes
+  `ports/unix/build-standard` along with the other build-artifact directories, and a full
+  from-scratch rebuild afterward still passes all four checks.
 - **Environment isolation, adversarially**: ran both `setup` and `test` with a deliberately
   hostile ambient environment — `CC`/`CXX` pointed at `/bin/false`, garbage `CFLAGS`/`CXXFLAGS`/
   `LDFLAGS`/`MAKEFLAGS`, a bogus `PICO_SDK_PATH`/`PICO_BOARD`/`PYTHONPATH`/`CMAKE_INSTALL_PREFIX`/
@@ -181,8 +205,9 @@ Claims above that are checkable were checked, not just written down:
   actual Ubuntu 24.04 dev machine (German locale) showed `git`/`apt` output in German
   (`Klone nach`, `Submodul-Pfad ... ausgecheckt`) — meaning `LANG`/`LC_ALL` were still being
   passed through from the caller's shell at the time. That's a real problem, not just cosmetic:
-  `build_firmware()`/`build_mpy_cross()` detect failure by grepping build output for the literal
-  English `error:`/`warning:` (there's no other machine-readable signal from `make`/`gcc`), and
+  `build_firmware()`/`build_mpy_cross()`/`build_unix_port()` detect failure by grepping build
+  output for the literal English `error:`/`warning:` (there's no other machine-readable signal
+  from `make`/`gcc`), and
   GCC/binutils diagnostics *can* be translated via gettext catalogs on a system where the
   caller's locale has one installed — silently defeating that detection. Fixed by forcing
   `LANG=C.UTF-8`/`LC_ALL=C.UTF-8` in `build_env()` instead of allowlisting them through.
@@ -204,10 +229,12 @@ setup path. The source trees and build artifacts live in `--toolchain-dir` inste
 
 ## Not yet covered
 
-This installs the generic MicroPython/pico-sdk/picotool/cross-compiler toolchain and proves
-it builds and cross-compiles. It does **not** yet wire up `build-*.sh`'s hardcoded
-`/home/nico/rpi_pico/...` paths or the `py-include` symlink this project's own firmware
-builds expect — that's the next step (see BACKLOG.md).
+This installs the generic MicroPython/pico-sdk/picotool/cross-compiler toolchain (plus the Unix
+port) and proves it builds, cross-compiles, and runs real Python. It does **not** yet wire up
+`build-*.sh`'s hardcoded `/home/nico/rpi_pico/...` paths or the `py-include` symlink this
+project's own firmware builds expect — that's the next step (see BACKLOG.md). It also doesn't
+yet wire the Unix port build into `uv sync`/pytest — see BACKLOG.md's "Self-contained venv via
+uv" for that remaining piece; this only covers building/verifying the interpreter itself.
 
 ## CI perspective
 

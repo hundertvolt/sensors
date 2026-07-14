@@ -5,7 +5,10 @@
 # ///
 """
 Single-command installer/updater for the MicroPython RP2040/Pico W firmware build
-environment (MicroPython + matching pico-sdk + matching picotool + ARM cross-toolchain).
+environment (MicroPython + matching pico-sdk + matching picotool + ARM cross-toolchain), plus
+a host-side MicroPython Unix port build used for running tests under the real interpreter
+later (see BACKLOG.md's "Self-contained venv via uv" — this is the "setup script that builds/
+installs the MicroPython Unix port interpreter" it describes).
 
 Usage (from anywhere, via uv — no venv/pip setup needed):
 
@@ -53,6 +56,28 @@ def add(a, b):
 
 
 print(add(2, 3))
+'''
+
+# Exercises enough of the interpreter (arithmetic, comprehensions, exceptions, a stdlib module,
+# sys.implementation) to actually prove the Unix port runs real Python, not just that the binary
+# exists and doesn't immediately crash. Not a project unit test (those stay out of scope until
+# the improved-quality/ refactor, per CLAUDE.md) - purely a smoke test of the interpreter itself.
+UNIX_PORT_SAMPLE_PY = '''\
+import sys
+import json
+
+assert 2 + 3 == 5
+assert "-".join(str(x) for x in range(3)) == "0-1-2"
+assert json.dumps({"a": 1}) == '{"a": 1}'
+
+try:
+    1 / 0
+except ZeroDivisionError:
+    pass
+else:
+    raise SystemExit("expected ZeroDivisionError")
+
+print("MicroPython unix port OK:", sys.implementation.name, sys.implementation.version)
 '''
 
 
@@ -303,19 +328,65 @@ def build_firmware(micropython_dir: Path, board: str, jobs: int) -> Path:
     return uf2
 
 
+def fetch_unix_submodules(micropython_dir: Path) -> None:
+    log("Fetching submodules needed for the Unix port")
+    unix_dir = micropython_dir / "ports" / "unix"
+    # Unlike ports/rp2's "submodules" target, this one is pure git (axtls/berkeley-db/libffi
+    # submodule checkouts) with no internal cmake configure pass - network_env() is still the
+    # right choice (it fetches over git), just for a simpler reason than rp2's.
+    run(["make", "submodules"], cwd=unix_dir, env=network_env())
+
+
+def build_unix_port(micropython_dir: Path, jobs: int) -> Path:
+    """Builds the "standard" variant (the default, and the one with the most complete feature
+    set) - see ports/unix/README.md. Requires mpy-cross to already be built (build_mpy_cross()
+    must run first); the Makefile also depends on it directly, but re-checking a build that's
+    already current is a no-op, not wasted work."""
+    log("Building the MicroPython Unix port (host-side interpreter for running tests under)")
+    unix_dir = micropython_dir / "ports" / "unix"
+    build_dir = unix_dir / "build-standard"
+    if build_dir.exists():
+        shutil.rmtree(build_dir)
+    out = run(["make", f"-j{jobs}"], cwd=unix_dir, env=build_env())
+    if re.search(r"\berror:", out, re.IGNORECASE):
+        raise SetupError("Unix port build reported an error (see log above)")
+    if re.search(r"\bwarning:", out, re.IGNORECASE):
+        raise SetupError("Unix port build produced warnings (see log above)")
+
+    binary = build_dir / "micropython"
+    if not binary.exists():
+        raise SetupError(f"Unix port build did not produce {binary}")
+    version_out = run([str(binary), "-c", "import sys; print(sys.implementation)"], env=build_env())
+    print(f"Built: {version_out.strip()}")
+    return binary
+
+
+def run_unix_port_sample(unix_binary: Path) -> None:
+    log("Running a sample script on the Unix port to verify it's actually functional")
+    with tempfile.TemporaryDirectory() as tmp:
+        sample_py = Path(tmp) / "unix_port_sample.py"
+        sample_py.write_text(UNIX_PORT_SAMPLE_PY)
+        out = run([str(unix_binary), str(sample_py)], env=build_env())
+        if "MicroPython unix port OK:" not in out:
+            raise SetupError("Unix port sample script did not produce the expected output (see log above)")
+        print(out.strip())
+
+
 def clean_build_dirs(toolchain_dir: Path, board: str) -> None:
     """Wipe every build-artifact directory without touching the git clones themselves, so the
     setup that follows rebuilds everything from scratch -- as if freshly installed -- without
-    re-cloning multi-gigabyte source trees that haven't actually changed. build_firmware() and
-    build_and_install_picotool() already do this for their own build dirs on every run (that's
-    why the firmware step always fully recompiles while mpy-cross's build/ is normally left
-    alone and rebuilds incrementally); this is the same action made available on demand and
-    extended to mpy-cross's build/ too, the one directory nothing else ever clears."""
+    re-cloning multi-gigabyte source trees that haven't actually changed. build_firmware(),
+    build_unix_port(), and build_and_install_picotool() already do this for their own build dirs
+    on every run (that's why the firmware/Unix-port steps always fully recompile while
+    mpy-cross's build/ is normally left alone and rebuilds incrementally); this is the same
+    action made available on demand and extended to mpy-cross's build/ too, the one directory
+    nothing else ever clears."""
     log("Cleaning all build-artifact directories")
     targets = [
         toolchain_dir / "picotool" / "build",
         toolchain_dir / "micropython" / "mpy-cross" / "build",
         toolchain_dir / "micropython" / "ports" / "rp2" / f"build-{board}",
+        toolchain_dir / "micropython" / "ports" / "unix" / "build-standard",
     ]
     for target in targets:
         if target.exists():
@@ -356,11 +427,12 @@ def latest_stable_micropython_ref() -> str:
     return candidates[-1][1]
 
 
-def print_verification_summary(board: str, uf2: Path, mpy_cross_binary: Path) -> None:
+def print_verification_summary(board: str, uf2: Path, mpy_cross_binary: Path, unix_binary: Path) -> None:
     log("All verification checks passed")
     print(f"  1. Standard {board} firmware built with no errors/warnings: {uf2}")
     print(f"  2. Cross-compiler built: {mpy_cross_binary}")
     print("  3. Sample .py cross-compiled successfully")
+    print(f"  4. Unix port built and ran a sample script successfully: {unix_binary}")
 
 
 def run_setup(args: argparse.Namespace, versions_path: Path, versions: dict) -> int:
@@ -412,8 +484,11 @@ def run_setup(args: argparse.Namespace, versions_path: Path, versions: dict) -> 
     mpy_cross_binary = build_mpy_cross(micropython_dir, args.jobs)
     uf2 = build_firmware(micropython_dir, board, args.jobs)
     cross_compile_sample(mpy_cross_binary)
+    fetch_unix_submodules(micropython_dir)
+    unix_binary = build_unix_port(micropython_dir, args.jobs)
+    run_unix_port_sample(unix_binary)
 
-    print_verification_summary(board, uf2, mpy_cross_binary)
+    print_verification_summary(board, uf2, mpy_cross_binary, unix_binary)
     return 0
 
 
@@ -442,8 +517,12 @@ def run_test(args: argparse.Namespace, versions: dict) -> int:
     mpy_cross_binary = build_mpy_cross(micropython_dir, args.jobs)
     uf2 = build_firmware(micropython_dir, board, args.jobs)
     cross_compile_sample(mpy_cross_binary)
+    # No fetch_unix_submodules() here, matching fetch_rp2_submodules() not being called either —
+    # test is offline-only; submodules are assumed already fetched by a prior `setup` run.
+    unix_binary = build_unix_port(micropython_dir, args.jobs)
+    run_unix_port_sample(unix_binary)
 
-    print_verification_summary(board, uf2, mpy_cross_binary)
+    print_verification_summary(board, uf2, mpy_cross_binary, unix_binary)
     return 0
 
 
@@ -471,9 +550,9 @@ def main() -> int:
     setup_parser.add_argument(
         "--clean",
         action="store_true",
-        help="Wipe all build-artifact directories (picotool/build, mpy-cross/build, ports/rp2/build-<board>) "
-        "before building, without re-cloning the git sources -- brings the toolchain back to a "
-        "from-scratch build state",
+        help="Wipe all build-artifact directories (picotool/build, mpy-cross/build, ports/rp2/build-<board>, "
+        "ports/unix/build-standard) before building, without re-cloning the git sources -- brings the "
+        "toolchain back to a from-scratch build state",
     )
 
     subparsers.add_parser(

@@ -89,6 +89,9 @@ keep in sync:
 - The MicroPython type stubs `scripts/typecheck.sh` uses for `mypy` (see "Code quality tooling"
   below) — it reads this same `ref` and installs the matching stub release, failing with a clear
   error instead of silently drifting if no matching stub release exists upstream yet.
+- The Unix port build (`ports/unix`, used for running tests under the real interpreter later) —
+  it's built from the same MicroPython clone `setup_toolchain.py` already checks out at this
+  `ref`, not a separately-versioned artifact.
 
 Every build step runs in an explicitly constructed environment (fixed `PATH`, a small
 variable allowlist), not whatever happens to be ambient in your shell — a stray `CC`/`CFLAGS`,
@@ -111,7 +114,7 @@ environment (fake compilers/tools placed ahead in `PATH`, garbage build-flag env
 
 **Verified from scratch on a genuinely clean Ubuntu 24.04 system** (a `debootstrap`-built `noble`
 chroot with nothing preinstalled beyond the minimal base — no apt cache, no build tools, no `uv`):
-installs every dependency itself and passes all three checks below in ~3 minutes.
+installs every dependency itself and passes all four checks below in ~3 minutes.
 
 **Everyday usage:**
 
@@ -147,13 +150,13 @@ all if its source hasn't changed since last time (see below for when you don't w
 uv run toolchain/setup_toolchain.py --clean
 ```
 
-Normal `setup`/update runs are intentionally incremental where it's safe to be: the firmware
-build always fully recompiles (so "builds with zero errors/warnings" stays a genuine proof every
-run), but `mpy-cross`'s build directory is otherwise left alone and just rebuilds whatever
-actually changed. `--clean` wipes every build-artifact directory (`picotool/build`,
-`mpy-cross/build`, `ports/rp2/build-<board>`) before building, bringing the toolchain back to a
-from-scratch build state on demand — useful if you suspect a stale build artifact, or just want
-to confirm a truly clean build still succeeds.
+Normal `setup`/update runs are intentionally incremental where it's safe to be: the firmware and
+Unix-port builds always fully recompile (so "builds with zero errors/warnings" stays a genuine
+proof every run), but `mpy-cross`'s build directory is otherwise left alone and just rebuilds
+whatever actually changed. `--clean` wipes every build-artifact directory (`picotool/build`,
+`mpy-cross/build`, `ports/rp2/build-<board>`, `ports/unix/build-standard`) before building,
+bringing the toolchain back to a from-scratch build state on demand — useful if you suspect a
+stale build artifact, or just want to confirm a truly clean build still succeeds.
 
 **Testing** an already-installed toolchain (no `setup`/network/apt work, just a fast rebuild +
 re-check — ~30s vs. minutes for `setup`):
@@ -172,6 +175,9 @@ repeatable, offline gate that checks it still builds cleanly.
    errors/warnings.
 2. `mpy-cross` (the cross-compiler) builds cleanly.
 3. `mpy-cross` successfully cross-compiles a throwaway sample `.py` file.
+4. The MicroPython Unix port builds cleanly (zero errors/warnings) and runs a sample script
+   correctly — the host-side interpreter used for running tests under later, see "Code quality
+   tooling" below and BACKLOG.md's "Self-contained venv via uv".
 
 ### Building this project's firmware
 

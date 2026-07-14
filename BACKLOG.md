@@ -70,10 +70,22 @@ below for why that's a scoped exception, not a change in overall approach):
   built Unix port), not CPython — "as close to the real environment as possible" means the actual
   MicroPython runtime, not just MicroPython-flavored stubs on top of CPython.
   - **How `uv` and the Unix port connect**: `uv sync` itself only manages the CPython-side tooling
-    (pytest, ruff, mypy, etc.) — it can't install a compiled MicroPython binary. The plan is a
-    setup script that builds/installs the MicroPython Unix port interpreter if it isn't already
-    present, ideally triggered automatically from `uv` (e.g. a `uv run` entry point or a hook), so
-    `uv sync` remains the single onboarding command even though it's delegating that one step out.
+    (pytest, ruff, mypy, etc.) — it can't install a compiled MicroPython binary. **Building/
+    verifying the interpreter itself is done** — `toolchain/setup_toolchain.py`'s `setup`/`test`
+    now also build the Unix port (`ports/unix`, "standard" variant) from the same MicroPython
+    clone already used for the firmware build, and verify it with a 4th check (build with zero
+    errors/warnings, then run a sample script and check its output), alongside the existing
+    firmware/mpy-cross checks. Needs one additional apt package (`libffi-dev`, for the Unix
+    port's `ffi` module), now in `versions.toml`'s `apt_packages`. Verified end-to-end: a fresh
+    install (both the latest release and the deployed `v1.26.1` pin), the in-place update path
+    (`v1.26.1` → `v1.28.0`, sample script re-run and re-verified against both versions), `--clean`
+    (confirmed it wipes `ports/unix/build-standard` too), and a from-scratch run on a genuinely
+    clean Ubuntu 24.04 (`debootstrap` chroot, same rigor as the toolchain's existing "Evidence
+    this actually works") — see `toolchain/README.md` for details. **Still open**: this only
+    builds/verifies the Unix port binary, it isn't wired into `uv sync`/pytest yet (no automatic
+    "run this before tests" trigger) — that, the mocking boundary below, and the actual test
+    suite remain future work, blocked on CLAUDE.md's "No unit tests against the current codebase"
+    rule same as before.
   - **Mocking boundary**: mock only at the raw bus-transaction level (`machine.I2C`/`machine.SPI`
     read/write calls) — drivers, Reader classes, `ConfigManager`, and REST handlers should all run
     for real, unmocked, in tests. Mock higher up (e.g. whole driver classes) only if there's truly
