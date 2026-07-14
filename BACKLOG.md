@@ -116,7 +116,7 @@ below for why that's a scoped exception, not a change in overall approach):
     `setup`/`test` use for the RP2040 build) on later runs, so a plain `scripts/test.sh` after
     `uv sync` is still the complete onboarding path, matching this bullet's original "ideally
     triggered automatically" goal. **First concrete test suite**: `tests/test_math_helpers.py`
-    (40 cases, see CLAUDE.md's `src/` hard rule) runs this way both manually and in CI
+    (45 cases, see CLAUDE.md's `src/` hard rule) runs this way both manually and in CI
     (`.github/workflows/ci.yml`'s `unit-tests` job) — the "blocked on CLAUDE.md's 'No unit tests
     against the current codebase' rule" caveat this bullet previously had no longer applies to
     `src/`, only to the pre-refactor `python/`/`modules/` code as that rule always intended (see

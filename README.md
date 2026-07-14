@@ -118,7 +118,10 @@ environment (fake compilers/tools placed ahead in `PATH`, garbage build-flag env
 
 **Verified from scratch on a genuinely clean Ubuntu 24.04 system** (a `debootstrap`-built `noble`
 chroot with nothing preinstalled beyond the minimal base — no apt cache, no build tools, no `uv`):
-installs every dependency itself and passes all four checks below in ~3 minutes.
+installs every dependency itself and passes verification. (That specific clean-chroot run predates
+the 8-step chain below and covered the simpler design it replaced — see `toolchain/README.md`'s
+"Evidence this actually works" for exactly what's been re-verified since, and CLAUDE.md's "Pre-push
+verification" for when a fresh clean-chroot pass is required again.)
 
 **Everyday usage:**
 
@@ -174,15 +177,25 @@ still builds cleanly. `scripts/test.sh` (see "Code quality tooling" below) relie
 directly: it runs `setup` automatically the first time it needs the Unix-port interpreter, then
 reuses the cached build on later runs — including in CI, via `.github/workflows/ci.yml`.
 
-**What a successful `setup` or `test` run proves**, every time:
+**What a successful `setup` or `test` run proves**, every time — an 8-step frozen-bytecode
+verification chain (`run_verification_sequence()`), each step gating the next:
 
-1. A standard, unchanged firmware image builds for the target board with zero compiler
-   errors/warnings.
-2. `mpy-cross` (the cross-compiler) builds cleanly.
-3. `mpy-cross` successfully cross-compiles a throwaway sample `.py` file.
-4. The MicroPython Unix port builds cleanly (zero errors/warnings) and runs a sample script
-   correctly — the host-side interpreter used for running tests under later, see "Code quality
-   tooling" below and BACKLOG.md's "Self-contained venv via uv".
+1. Write a small test module.
+2. Build `mpy-cross` (the cross-compiler).
+3. Cross-compile the test module with `mpy-cross` directly.
+4. Build the MicroPython Unix port with the test module frozen in — zero compiler errors/warnings.
+5. Import the frozen module *by name* inside that Unix port binary (no source `.py` file anywhere
+   on disk) and check its result — proves `mpy-cross` and the Unix port build both actually work.
+   This is the host-side interpreter used for running tests later, see "Code quality tooling"
+   below and BACKLOG.md's "Self-contained venv via uv".
+6. Build the RP2 firmware for the target board with the same test module frozen in — zero
+   errors/warnings (build-only; there's no RP2 hardware here to run it on).
+7. Clean up the frozen-bytecode build artifacts from steps 4–6.
+8. Rebuild a vanilla (non-frozen) Unix port — the standing test rig `scripts/test.sh` runs tests
+   under.
+
+Full step-by-step rationale and verification evidence: `toolchain/README.md`'s "Verification" and
+"Evidence this actually works".
 
 ### Building this project's firmware
 
