@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-typecheck:
+    # Gates on src/ and tests/ only, NOT improved-quality/ (the WIP refactor target, which has
+    # hundreds of pre-existing, tracked-but-not-yet-fixed findings - see BACKLOG.md; running
+    # scripts/lint.sh/typecheck.sh with no arguments here would make this job permanently red
+    # regardless of what a given PR actually touches). Passing explicit paths overrides
+    # pyproject.toml's `files`/default target for that one invocation without changing what a
+    # plain `scripts/lint.sh`/`scripts/typecheck.sh` checks locally (still full-scope: see
+    # scripts/typecheck.sh's `mypy "$@"` and ruff's own CLI-args-override-config behavior).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        run: pip install uv
+      - name: Sync dev dependencies
+        run: uv sync
+      - name: Ruff (src/, tests/)
+        run: uv run ruff check src tests
+      - name: Mypy (src/, tests/)
+        run: uv run scripts/typecheck.sh src tests
+
+  unit-tests:
+    # Tests run under a real MicroPython Unix-port interpreter, not CPython - see
+    # BACKLOG.md's "Self-contained venv via uv" testing requirement and tests/README.md.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        run: pip install uv
+      - name: Cache MicroPython Unix port build
+        uses: actions/cache@v4
+        with:
+          path: ~/pico-toolchain
+          key: unix-port-${{ runner.os }}-${{ hashFiles('toolchain/versions.toml') }}
+      - name: Run unit tests
+        run: scripts/test.sh

@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
-# Runs mypy against improved-quality/ (see scripts/lint.sh / pyproject.toml for why that's the
-# only directory in scope right now). Assumes mypy is already installed and on PATH; uses `uv`
-# (assumed on PATH, same as toolchain/setup_toolchain.py) only to populate typings/, an isolated
-# directory holding just the MicroPython stub package - see pyproject.toml's [tool.mypy] comments
-# for why that has to stay separate from mypy's own venv.
+# Runs mypy against improved-quality/, src/, and tests/ (pyproject.toml's [tool.mypy] `files` -
+# see scripts/lint.sh for the same scope). Pass explicit paths (e.g. `scripts/typecheck.sh src
+# tests`) to check only those instead - used by CI's lint-and-typecheck job to gate on just src/
+# tests/ without improved-quality/'s pre-existing, tracked-but-not-yet-fixed findings failing
+# every run (see .github/workflows/ci.yml). Assumes mypy is already installed and on PATH; uses
+# `uv` (assumed on PATH, same as toolchain/setup_toolchain.py) only to populate typings/, an
+# isolated directory holding just the MicroPython stub package - see pyproject.toml's [tool.mypy]
+# comments for why that has to stay separate from mypy's own venv.
 #
 # The MicroPython firmware version lives in exactly one place: toolchain/versions.toml's
 # [micropython] ref. The stub package version below is derived from it, not a separate hand-kept
@@ -79,4 +82,7 @@ EOF
     exit 1
 fi
 
-mypy
+# Extra args (if any) override pyproject.toml's [tool.mypy] `files` for this invocation - e.g.
+# CI's lint-and-typecheck job passes `src tests` to gate on just that scope, without changing
+# what a plain `scripts/typecheck.sh` checks locally (see .github/workflows/ci.yml).
+mypy "$@"

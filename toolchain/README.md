@@ -38,8 +38,12 @@ uv run toolchain/setup_toolchain.py test                          # re-verify an
 
 No `pip install`/venv setup needed by hand for the script itself — `uv run` provisions an
 ephemeral, cached interpreter (see "Why not a full venv" below). There are two subcommands,
-`setup` and `test`; `setup` is the default if you omit it, so all of the invocations above
-except the last one are really `setup` in disguise.
+`setup` and `test`; `setup` is the default if you omit it, so all of the invocations above except
+the last one are really `setup` in disguise. Both also build and verify a MicroPython Unix-port
+interpreter at the same pinned ref (sharing the same `--toolchain-dir` checkout, just a different
+`ports/` subdirectory) alongside the RP2040 firmware — see "How it works" below, `../tests/README.md`
+for why the test suite runs under that instead of CPython/pytest, and `scripts/test.sh`, which
+runs `setup` automatically the first time it needs the interpreter.
 
 **Prerequisites:**
 
@@ -275,17 +279,26 @@ setup path. The source trees and build artifacts live in `--toolchain-dir` inste
 This installs the generic MicroPython/pico-sdk/picotool/cross-compiler toolchain (plus the Unix
 port) and proves it builds, cross-compiles, and runs real Python. It does **not** yet wire up
 `build-*.sh`'s hardcoded `/home/nico/rpi_pico/...` paths or the `py-include` symlink this
-project's own firmware builds expect — that's the next step (see BACKLOG.md). It also doesn't
-yet wire the Unix port build into `uv sync`/pytest — see BACKLOG.md's "Self-contained venv via
-uv" for that remaining piece; this only covers building/verifying the interpreter itself.
+project's own firmware builds expect — that's the next step (see BACKLOG.md). The Unix port build
+itself **is** wired into the actual test suite now (`scripts/test.sh` runs `setup` automatically
+the first time it needs the interpreter, see "Code quality tooling" in the root README and
+BACKLOG.md's "Self-contained venv via uv") — the remaining gap is the RP2040 firmware build, not
+the Unix port.
 
 ## CI perspective
 
-`test` is written with an eventual CI stage in mind (see BACKLOG.md's "Final-goal requirements
-for the refactor" — a real firmware build as a CI pipeline stage), even though no CI pipeline
-exists yet for this repo. The intended shape once that's built: a `setup` job provisions (or
-restores a cache of) `--toolchain-dir`, and a `test` job runs against it as the actual gate —
-offline, fast, and not dependent on GitHub/apt reachability at gate time. Nothing about `test`
-today assumes a specific CI system; it's just a plain script invocation with a clean exit code,
-so it should drop into whatever pipeline (GitHub Actions, GitLab CI, etc.) is set up later
-without changes.
+A CI pipeline now exists (`.github/workflows/ci.yml`, GitHub Actions — this repo is GitHub-hosted,
+despite some older BACKLOG.md text still saying "GitLab"), with two jobs: `lint-and-typecheck`
+(ruff/mypy) and `unit-tests`, which runs `scripts/test.sh` — building the toolchain (including the
+Unix port) via plain `setup` on a cache miss (keyed on `toolchain/versions.toml` in `ci.yml`) and
+reusing the cached `--toolchain-dir` on a hit. It does **not** yet include a real RP2040
+firmware-build stage. `test` (the offline re-verification subcommand) is still written with that
+eventual stage in mind (see BACKLOG.md's "Final-goal requirements for the refactor"): a `setup`
+job would provision (or restore a cache of) `--toolchain-dir` once, and a `test` job would run
+against it as the actual gate — offline, fast, and not dependent on GitHub/apt reachability at
+gate time. The `unit-tests` job actually running today already follows this same
+provision-then-cache shape, just using `setup` directly rather than a separate `setup`/`test`
+split (there's nothing to re-verify offline yet beyond what the test suite itself already
+exercises). Nothing about `setup`/`test` assumes a specific CI system; they're plain script
+invocations with a clean exit code, so either would drop into a different pipeline without
+changes if this repo ever moved off GitHub Actions.
