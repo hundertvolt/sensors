@@ -223,7 +223,8 @@ source .venv/bin/activate  # scripts/lint.sh and scripts/typecheck.sh assume ruf
 
 scripts/lint.sh            # ruff check
 scripts/typecheck.sh       # mypy, using MicroPython stubs matching toolchain/versions.toml (see above)
-scripts/test.sh            # unit tests, under a real MicroPython Unix-port interpreter - see tests/README.md
+scripts/test.sh            # runs every test in tests/, under a real MicroPython Unix-port interpreter -
+                            # builds that interpreter automatically on first run (see tests/README.md)
 ```
 
 All three run in GitHub Actions CI (`.github/workflows/ci.yml`) on every push/PR. Config lives in
