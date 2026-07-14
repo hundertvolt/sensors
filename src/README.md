@@ -124,23 +124,29 @@ is not a machine with memory or cycles to spare:
       convention for anything that could otherwise stall timing-sensitive work like the Neopixel
       animation. Never assume a one-off "it's probably fast enough."
 
-## 6. Always-defined return values
+## 6. Typing
+
+- [ ] Type-hint every parameter and return value.
+- [ ] Verify the annotation *syntax itself* is actually safe on the target runtime by checking
+      *current* official docs — don't reason from general Python knowledge alone. (Confirmed via
+      MicroPython's own docs that `X | None` annotations are parsed but never evaluated at
+      runtime, on every version checked — so they're safe regardless of whether the runtime
+      otherwise supports `X.__or__`/`UnionType`. This was a real open question on record before
+      being checked, not something to assume either way.)
+- [ ] "Reasonable" also means not over- or under-typing: no `Any` where a real type is knowable,
+      no unnecessarily narrow type that will make legitimate future callers fight the checker.
+
+## 7. Always-defined return values
 
 - [ ] Every code path returns explicitly and matches the declared return type — no falling off
       the end of a function into an implicit `None` that isn't in the annotated return type, no
       partially-initialized variable reaching a `return` on some path but not others.
-- [ ] Type-hint every parameter and return value, and verify the annotation *syntax itself* is
-      actually safe on the target runtime by checking *current* official docs — don't reason from
-      general Python knowledge alone. (Confirmed via MicroPython's own docs that `X | None`
-      annotations are parsed but never evaluated at runtime, on every version checked — so they're
-      safe regardless of whether the runtime otherwise supports `X.__or__`/`UnionType`. This was a
-      real open question on record before being checked.)
 - [ ] mypy's `warn_return_any`/`disallow_incomplete_defs` (already enabled, see pyproject.toml)
       catch most of this statically — but still read every `return` by eye; a function that
       type-checks can still have a path that returns something *technically* valid but
       semantically wrong (e.g. a clamped value that silently clips instead of signaling invalid).
 
-## 7. General improvement pass, without changing functionality
+## 8. General improvement pass, without changing functionality
 
 - [ ] Beyond the required fixes above, look for opportunities to genuinely improve the function —
       speed, resource usage, numerical accuracy, or reduced complexity — as long as the observable
@@ -154,7 +160,7 @@ is not a machine with memory or cycles to spare:
       for style. If nothing meaningfully improves speed/resources/accuracy/complexity, say so and
       move on rather than manufacturing a change.
 
-## 8. Readability / conciseness
+## 9. Readability / conciseness
 
 - [ ] One-line "why" comment per function: cite the formula's name/source and its valid domain.
       Don't restate what the code already says.
@@ -163,7 +169,7 @@ is not a machine with memory or cycles to spare:
 - [ ] Keep the control flow simple and in a consistent order: `None`-check, then range-check
       (plain guard clause, no `try` needed if it can't raise), then the `try`-wrapped computation.
 
-## 9. Unit tests
+## 10. Unit tests
 
 - [ ] Tests must run in whatever environment the project's testing-architecture docs actually
       require (check first — e.g. this project requires the real target interpreter, not just a
@@ -185,14 +191,14 @@ is not a machine with memory or cycles to spare:
 - [ ] Do **not** write tests for scenarios the type system already rules out (see section 2) —
       keep the suite focused on what can actually happen, not padded with impossible cases.
 
-## 10. Wire into the existing pipeline
+## 11. Wire into the existing pipeline
 
 - [ ] Extend the lint/typecheck config's scope, and the CI job's explicit path arguments, to
       include the file's new location.
 - [ ] Add the file's tests to (or confirm they're picked up by) the existing manual test-runner
       script, so the exact same command works locally and in CI.
 
-## 11. Verify, don't assume
+## 12. Verify, don't assume
 
 - [ ] After every change, actually run lint/typecheck/tests locally and read the output — don't
       report success without having done so.
