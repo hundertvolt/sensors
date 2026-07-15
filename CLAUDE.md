@@ -59,6 +59,15 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
   directory the source file lives in during local dev-tooling checks, via `pyproject.toml`'s
   `mypy_path`). Treat `src/` files as normal, freely-editable code, not as read-only WIP context
   the way `improved-quality/` is.
+- **Whenever a new file is promoted into `src/`, run a bird's-eye-view scan over the whole
+  content of `src/`** — not just the new file in isolation — to check that the coding guidelines
+  and `src/README.md`'s checklist (including its "API consistency, within a file and across the
+  project" and "Check against current MicroPython" items) actually hold consistently across every
+  file there, not just that the new file individually passes review on its own. **If the scan
+  surfaces a discrepancy — one file diverging from another, or from a guideline — do not silently
+  fix it.** Report it and discuss how to resolve it before changing anything, the same "flag, don't
+  silently change" treatment section 1 of `src/README.md` already gives formula/behavior
+  discrepancies, applied here to cross-file consistency instead.
 - **Do not "fix" `modules/_boot.py`'s `import sensortask.py`** (literal `.py` in the import
   statement) without testing on real hardware first. It works reliably today; MicroPython's
   documented freeze/import behavior says the module should be named `sensortask` with the
