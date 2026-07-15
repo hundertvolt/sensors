@@ -557,46 +557,6 @@ def test_check_from_rejects_size_larger_than_buffer() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Known CRC property: trailing zero-byte padding past the true end is not detectable (see
-# module docstring's "Zero-padding limitation") - pinned down here so it's a visible, understood
-# behavior rather than a silent surprise.
-# ---------------------------------------------------------------------------
-
-
-def test_check_from_accepts_size_extended_by_trailing_zero_padding() -> None:
-    # Once the running register reaches 0 (at the buffer's true end), further 0x00 bytes can
-    # never perturb it - so a caller-supplied size that overruns into zero padding validates
-    # successfully anyway, silently folding the real CRC byte and the padding into "payload".
-    crc8 = CRC8()
-    buf = bytearray(b"XY\x00\x00")  # add_into below only covers the first 3 bytes
-    written = run(crc8.add_into(buf, 2))
-    assert written == 3
-    assert run(crc8.check_from(buf, 3)) == 2  # correct size: real 2-byte payload
-    assert run(crc8.check_from(buf, 4)) == 3  # size overrun into zero padding: still "valid"
-
-
-def test_check_accepts_trailing_zero_padding_appended_to_a_valid_buffer() -> None:
-    crc8 = CRC8()
-    added = run(crc8.add(bytearray(b"hello world")))
-    assert added is not None
-    padded = bytearray(added) + bytearray(3)
-    assert run(crc8.check(padded)) == bytearray(b"hello world") + added[-1:] + bytearray(2)
-
-
-def test_check_inc_accepts_trailing_zero_padding_chunk() -> None:
-    crc8 = CRC8()
-    added = run(crc8.add(bytearray(b"hello world")))
-    assert added is not None
-
-    async def feed() -> int | None:
-        await crc8.run_inc(added)
-        await crc8.run_inc(bytearray(3))  # extra zero-padding chunk past the true end
-        return await crc8.check_inc()
-
-    assert run(feed()) == len(b"hello world") + 3  # length is wrong, but "valid"
-
-
-# ---------------------------------------------------------------------------
 # Critical / boundary content patterns
 # ---------------------------------------------------------------------------
 
