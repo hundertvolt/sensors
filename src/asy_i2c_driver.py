@@ -46,11 +46,9 @@ class I2C:
         frequency: int,
         timeout: int | None = None,
     ) -> None:
-        # Always deinit() any bus this instance previously held first, so re-init can't leak a
-        # claimed peripheral/pins. timeout=None (the default) omits the kwarg entirely rather
-        # than duplicating machine.I2C's own default value here - a genuine no-op until a
-        # caller actually needs a non-default timeout, not just a same-value passthrough that
-        # could silently drift from whatever machine.I2C's own default happens to be.
+        # deinit() first so re-init can't leak a claimed peripheral/pins. timeout=None omits the
+        # kwarg entirely instead of duplicating machine.I2C's own default, so it can't drift out
+        # of sync with whatever that default actually is.
         self.deinit()
         if timeout is None:
             self._i2c = _I2C(port_id, sda=Pin(sda_pin), scl=Pin(scl_pin), freq=frequency)
@@ -93,18 +91,15 @@ class I2C:
         end: int | None = None,
         stop: bool = True,
     ) -> int | None:
-        # machine.I2C.writeto(): returns the number of ACKs received. The str case is a
-        # convenience for plain single-byte-per-character (Latin-1) protocol strings, not
-        # general text - a real Unicode codepoint above 255 raised an uncaught ValueError here
-        # (confirmed directly: bytes([ord(x) for x in "aሴb"]) -> "bytes value out of range"),
-        # a genuine "never raises" gap for a value that's fully in-domain per the `str` type
-        # itself, not just a hypothetical.
+        # machine.I2C.writeto() return value is the ACK count. str input assumes Latin-1
+        # (single byte per char); a codepoint above 255 raises ValueError, caught below and
+        # turned into a None return instead of propagating.
         if self._i2c is None:
             return None
         if isinstance(buffer, str):
             try:
                 buffer = bytes([ord(x) for x in buffer])
-            except ValueError:  # a character outside 0-255, not representable as a single byte
+            except ValueError:  # character outside 0-255
                 return None
         if end is None:
             end = len(buffer)
@@ -122,19 +117,15 @@ class I2C:
         out_stop: bool = True,
         in_stop: bool = True,
     ) -> None:
-        # Not a native machine.I2C primitive - a write, then a read, built from this class's own
-        # writeto()/readfrom_into(). out_stop/in_stop are independent (this used to be one
-        # shared `stop` forced onto both legs, which could never express the standard
-        # repeated-start register-read pattern - a write *without* a stop, then a read that
-        # *does* stop - since a single flag can't hold two different values). Pass
-        # out_stop=False for a repeated start between the write and the read.
+        # Not a native machine.I2C primitive - a write then a read via this class's own
+        # writeto()/readfrom_into(). out_stop/in_stop are independent so a repeated-start read
+        # (write without a stop, then a read that does stop) is expressible; pass out_stop=False.
         self.writeto(address, buffer_out, out_start, out_end, stop=out_stop)
         self.readfrom_into(address, buffer_in, in_start, in_end, stop=in_stop)
 
     @staticmethod
     def _bitfield_range_ok(num_bits: int, start_bit: int, reg_width: int) -> bool:
-        # Shared range guard for get_bits()/set_bits(): num_bits/start_bit must describe a
-        # field that actually fits inside a reg_width-byte register.
+        # Shared range guard for get_bits()/set_bits(): field must fit inside reg_width bytes.
         return num_bits > 0 and start_bit >= 0 and reg_width > 0 and start_bit + num_bits <= reg_width * 8
 
     @staticmethod
@@ -143,8 +134,8 @@ class I2C:
 
     @staticmethod
     def _bytes_to_int(mem_value: bytes, lsb_first: bool) -> int:
-        # Shared byte-order reconstruction for get_bits()/set_bits(): lsb_first says whether the
-        # register's first byte (index 0) is the least- or most-significant.
+        # Shared byte-order reconstruction for get_bits()/set_bits(): lsb_first says whether
+        # mem_value[0] is the least- or most-significant byte.
         reg = 0
         order = range(len(mem_value) - 1, -1, -1) if lsb_first else range(len(mem_value))
         for i in order:
@@ -153,8 +144,7 @@ class I2C:
 
     @staticmethod
     def _readfrom_mem(bus: _I2C, address: int, reg_addr: int, nbytes: int, addrsize: int | None) -> bytes:
-        # addrsize=None (the default) omits the kwarg entirely rather than duplicating
-        # machine.I2C's own default (8) here - see init()'s timeout for the same reasoning.
+        # addrsize=None omits the kwarg instead of duplicating machine.I2C's own default (8).
         if addrsize is None:
             return bus.readfrom_mem(address, reg_addr, nbytes)
         return bus.readfrom_mem(address, reg_addr, nbytes, addrsize=addrsize)
@@ -195,18 +185,13 @@ class I2C:
         addrsize: int | None = None,
     ) -> None:
         # Read-modify-write counterpart of get_bits(). Byte order is derived from lsb_first
-        # alone (this used to also take a separate `endian` param for the write-back, which
-        # could silently disagree with lsb_first for reg_width > 1 - a single flag can't
-        # disagree with itself).
+        # alone. value is masked to num_bits before being shifted in, so an out-of-range value
+        # can't corrupt the bits just above the intended field.
         if self._i2c is None or not self._bitfield_range_ok(num_bits, start_bit, reg_width):
             return
         mem_value = self._readfrom_mem(self._i2c, address, reg_addr, reg_width, addrsize)
         reg = self._bytes_to_int(mem_value, lsb_first)
         reg &= ~self._bitmask(num_bits, start_bit)
-        # value is masked to num_bits before being shifted in - previously unmasked, so a value
-        # wider than num_bits silently corrupted the bits just above the intended field instead
-        # of being confined to it (a real, if latent, bug found during review; no current caller
-        # ever passes an out-of-range value, but nothing stopped a future one from doing so).
         reg |= (value & self._bitmask(num_bits, 0)) << start_bit
         self._writeto_mem(
             self._i2c, address, reg_addr, reg.to_bytes(reg_width, "little" if lsb_first else "big"), addrsize
@@ -215,11 +200,9 @@ class I2C:
     def get_register_struct(
         self, address: int, reg_addr: int, reg_format: str, addrsize: int | None = None
     ) -> int | float | bytes | None:
-        # struct-typed single-value register read; byte order comes entirely from reg_format's
-        # own prefix character (e.g. ">H"), matching set_register_struct. Return type excludes
-        # `bool`: confirmed directly against the real interpreter that MicroPython's struct
-        # module doesn't support the '?' typecode at all (raises ValueError), unlike CPython's -
-        # so struct.unpack here can never actually produce one.
+        # Byte order comes from reg_format's own prefix (e.g. ">H"). MicroPython's struct has no
+        # '?' typecode, so bool never appears in the return. A zero-field format ("" or "2x")
+        # unpacks to an empty tuple despite nonzero calcsize; the check below guards that.
         if self._i2c is None:
             return None
         try:
@@ -228,11 +211,6 @@ class I2C:
             return None
         raw = self._readfrom_mem(self._i2c, address, reg_addr, size, addrsize)
         try:
-            # struct.unpack declared to return Any, but int | float | bytes are possible. A
-            # zero-field format (e.g. "", or pad-bytes-only like "2x") unpacks to an empty
-            # tuple despite a nonzero calcsize - confirmed directly, not assumed - so indexing
-            # [0] unconditionally would raise IndexError; the emptiness check below avoids that
-            # rather than adding IndexError to this except clause.
             unpacked = struct.unpack(reg_format, memoryview(raw))
         except ValueError:  # malformed reg_format
             return None
@@ -251,28 +229,13 @@ class I2C:
         value: int | float | bytes | bytearray,
         addrsize: int | None = None,
     ) -> None:
-        # struct-typed single-value register write; byte order comes entirely from reg_format's
-        # own prefix character, matching get_register_struct (this used to instead take a
-        # separate `endian` param that could silently disagree with reg_format's own prefix).
-        # value's type mirrors get_register_struct()'s return type (this used to be int-only,
-        # which made it impossible to write back a bytes-format register at all, or to pass an
-        # actual fractional float rather than relying on int-to-float auto-coercion).
-        # Confirmed directly, an inherent MicroPython quirk rather than a bug here: unlike
-        # CPython's struct.error, struct.pack silently truncates a value that doesn't fit
-        # reg_format (e.g. pack("B", 999) -> b"\xe7"), and silently zero-pads/ignores a
-        # reg_format needing a different number of values than the one `value` this method ever
-        # supplies (e.g. pack(">HH", 5) -> b"\x00\x05\x00\x00", not an error). This method is
-        # deliberately single-value-only (see its name/signature); a multi-field reg_format was
-        # never a supported input, but silently writes a partially-zeroed register rather than
-        # erroring - worth knowing if this is ever extended to accept multiple values.
+        # Byte order comes from reg_format's own prefix, matching get_register_struct(). Unlike
+        # CPython, struct.pack here silently truncates/zero-pads a value that doesn't fit
+        # reg_format instead of raising; it raises TypeError (not ValueError) for a type
+        # mismatch (e.g. int value against a bytes-format like "4s") - both caught below.
         if self._i2c is None:
             return
         try:
-            # Confirmed directly: struct.pack raises TypeError (not ValueError) for a value
-            # whose type doesn't match what reg_format expects (e.g. an int value against a
-            # bytes-type format like "4s", or vice versa) - a real, reachable failure mode given
-            # value's now-widened type and reg_format being a runtime string mypy can't
-            # cross-check against it, not just a malformed reg_format on its own.
             packed = struct.pack(reg_format, value)
         except (ValueError, TypeError):
             return
@@ -297,8 +260,7 @@ class I2CDevice(Lockable):
         start: int = 0,
         end: int | None = None,
     ) -> None:
-        # end=None is passed straight through - I2C.readfrom_into() already defaults it to
-        # len(buf) itself, so resolving it here too would just be the same computation twice.
+        # end=None passes straight through; I2C.readfrom_into() already defaults it to len(buf).
         self.i2c.readfrom_into(self.device_address, buf, start=start, end=end)
 
     async def write(
