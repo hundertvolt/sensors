@@ -9,6 +9,14 @@ invalid input (bad init/poly, buffer too small, insufficient data).
 run_inc()/check_inc() share mutable state (inc_crc, inc_count) on the instance across an
 incremental sequence, so a single instance must not be used for more than one concurrent
 sequence - give each concurrent caller its own instance rather than sharing one.
+
+Zero-padding limitation, inherent to this class of CRC rather than specific to this
+implementation: once the running register reaches 0, any number of further 0x00 bytes leave it
+at 0 (XOR with 0 is a no-op, and an all-zero register never sets the MSB, so the
+polynomial-reduction step never fires). check()/check_from()/check_inc() therefore validate
+successfully even when the caller-supplied length runs past the buffer's true end into trailing
+zero bytes - they verify content integrity within the claimed length, not that the claimed
+length itself is correct. Callers are responsible for supplying an accurate size.
 """
 
 import asyncio

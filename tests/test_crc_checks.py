@@ -385,6 +385,329 @@ def test_num_bytes_negative_degrades_to_pass_mode() -> None:
     assert base.poly is None
 
 
+# ---------------------------------------------------------------------------
+# CRC16 - width-specific parity with CRC8's coverage above
+# ---------------------------------------------------------------------------
+
+
+def test_crc16_check_rejects_corrupted_data() -> None:
+    crc16 = CRC16()
+    added = run(crc16.add(bytearray(b"hello world")))
+    assert added is not None
+    corrupted = bytearray(added)
+    corrupted[0] ^= 0xFF
+    assert run(crc16.check(corrupted)) is None
+
+
+def test_crc16_check_rejects_data_no_longer_than_crc_itself() -> None:
+    crc16 = CRC16()  # num_bytes == 2
+    assert run(crc16.check(bytearray(2))) is None
+
+
+def test_crc16_check_boundary_just_above_crc_length_accepted() -> None:
+    crc16 = CRC16()
+    added = run(crc16.add(bytearray(b"x")))  # 1 payload byte + 2 CRC bytes = 3 bytes total
+    assert added is not None
+    assert len(added) == 3
+    assert run(crc16.check(added)) == bytearray(b"x")
+
+
+def test_crc16_add_into_check_from_round_trip() -> None:
+    crc16 = CRC16()
+    buf = bytearray(b"XY" + b"\x00\x00")
+    written = run(crc16.add_into(buf, 2))
+    assert written == 4
+    assert run(crc16.check_from(buf, 4)) == 2
+
+
+def test_crc16_incremental_round_trip_matches_bulk() -> None:
+    crc16 = CRC16()
+    data = bytearray(b"hello world")
+    added = run(crc16.add(data))
+    assert added is not None
+
+    async def feed() -> int | None:
+        assert await crc16.run_inc(added[0:5])
+        assert await crc16.run_inc(added[5:])
+        return await crc16.check_inc()
+
+    assert run(feed()) == len(data)
+
+
+# ---------------------------------------------------------------------------
+# CRC32 - width-specific parity with CRC8's coverage above
+# ---------------------------------------------------------------------------
+
+
+def test_crc32_check_rejects_corrupted_data() -> None:
+    crc32 = CRC32()
+    added = run(crc32.add(bytearray(b"hello world")))
+    assert added is not None
+    corrupted = bytearray(added)
+    corrupted[0] ^= 0xFF
+    assert run(crc32.check(corrupted)) is None
+
+
+def test_crc32_check_rejects_data_no_longer_than_crc_itself() -> None:
+    crc32 = CRC32()  # num_bytes == 4
+    assert run(crc32.check(bytearray(4))) is None
+
+
+def test_crc32_check_boundary_just_above_crc_length_accepted() -> None:
+    crc32 = CRC32()
+    added = run(crc32.add(bytearray(b"x")))  # 1 payload byte + 4 CRC bytes = 5 bytes total
+    assert added is not None
+    assert len(added) == 5
+    assert run(crc32.check(added)) == bytearray(b"x")
+
+
+def test_crc32_add_into_check_from_round_trip() -> None:
+    crc32 = CRC32()
+    buf = bytearray(b"XY" + b"\x00\x00\x00\x00")
+    written = run(crc32.add_into(buf, 2))
+    assert written == 6
+    assert run(crc32.check_from(buf, 6)) == 2
+
+
+def test_crc32_incremental_round_trip_matches_bulk() -> None:
+    crc32 = CRC32()
+    data = bytearray(b"hello world")
+    added = run(crc32.add(data))
+    assert added is not None
+
+    async def feed() -> int | None:
+        assert await crc32.run_inc(added[0:5])
+        assert await crc32.run_inc(added[5:])
+        return await crc32.check_inc()
+
+    assert run(feed()) == len(data)
+
+
+# ---------------------------------------------------------------------------
+# Incremental step counts: 1 call, and "many" small calls (2 calls is already covered above)
+# ---------------------------------------------------------------------------
+
+
+def test_incremental_single_call_matches_bulk() -> None:
+    crc32 = CRC32()
+    data = bytearray(b"hello world")
+    added = run(crc32.add(data))
+    assert added is not None
+
+    async def feed() -> int | None:
+        assert await crc32.run_inc(added)  # entire buffer fed in one call
+        return await crc32.check_inc()
+
+    assert run(feed()) == len(data)
+
+
+def test_incremental_many_single_byte_calls_matches_bulk() -> None:
+    crc32 = CRC32()
+    data = bytearray(range(50))  # 50 arbitrary payload bytes
+    added = run(crc32.add(data))
+    assert added is not None
+
+    async def feed() -> int | None:
+        for i in range(len(added)):
+            assert await crc32.run_inc(added[i : i + 1])  # one byte per call
+        return await crc32.check_inc()
+
+    assert run(feed()) == len(data)
+
+
+# ---------------------------------------------------------------------------
+# check_inc: threshold precision (exactly at vs. just above the CRC width)
+# ---------------------------------------------------------------------------
+
+
+def test_check_inc_rejects_exactly_crc_length_fed() -> None:
+    # inc_count == num_bytes (not > num_bytes) must be rejected regardless of content, since
+    # that leaves no room for any actual payload.
+    crc8 = CRC8()  # num_bytes == 1
+
+    async def feed() -> int | None:
+        await crc8.run_inc(bytearray(1))  # exactly num_bytes fed, zero payload bytes
+        return await crc8.check_inc()
+
+    assert run(feed()) is None
+
+
+def test_check_inc_accepts_minimal_one_byte_payload() -> None:
+    crc16 = CRC16()
+    added = run(crc16.add(bytearray(b"z")))  # 1 payload byte + 2 CRC bytes
+    assert added is not None
+
+    async def feed() -> int | None:
+        await crc16.run_inc(added)
+        return await crc16.check_inc()
+
+    assert run(feed()) == 1
+
+
+# ---------------------------------------------------------------------------
+# check_from: length mismatches against what add_into actually protected
+# ---------------------------------------------------------------------------
+
+
+def test_check_from_rejects_size_larger_than_buffer() -> None:
+    crc8 = CRC8()
+    buf = bytearray(b"XY\x00")
+    run(crc8.add_into(buf, 2))
+    assert run(crc8.check_from(buf, 10)) is None  # size beyond len(buf)
+
+
+# ---------------------------------------------------------------------------
+# Known CRC property: trailing zero-byte padding past the true end is not detectable (see
+# module docstring's "Zero-padding limitation") - pinned down here so it's a visible, understood
+# behavior rather than a silent surprise.
+# ---------------------------------------------------------------------------
+
+
+def test_check_from_accepts_size_extended_by_trailing_zero_padding() -> None:
+    # Once the running register reaches 0 (at the buffer's true end), further 0x00 bytes can
+    # never perturb it - so a caller-supplied size that overruns into zero padding validates
+    # successfully anyway, silently folding the real CRC byte and the padding into "payload".
+    crc8 = CRC8()
+    buf = bytearray(b"XY\x00\x00")  # add_into below only covers the first 3 bytes
+    written = run(crc8.add_into(buf, 2))
+    assert written == 3
+    assert run(crc8.check_from(buf, 3)) == 2  # correct size: real 2-byte payload
+    assert run(crc8.check_from(buf, 4)) == 3  # size overrun into zero padding: still "valid"
+
+
+def test_check_accepts_trailing_zero_padding_appended_to_a_valid_buffer() -> None:
+    crc8 = CRC8()
+    added = run(crc8.add(bytearray(b"hello world")))
+    assert added is not None
+    padded = bytearray(added) + bytearray(3)
+    assert run(crc8.check(padded)) == bytearray(b"hello world") + added[-1:] + bytearray(2)
+
+
+def test_check_inc_accepts_trailing_zero_padding_chunk() -> None:
+    crc8 = CRC8()
+    added = run(crc8.add(bytearray(b"hello world")))
+    assert added is not None
+
+    async def feed() -> int | None:
+        await crc8.run_inc(added)
+        await crc8.run_inc(bytearray(3))  # extra zero-padding chunk past the true end
+        return await crc8.check_inc()
+
+    assert run(feed()) == len(b"hello world") + 3  # length is wrong, but "valid"
+
+
+# ---------------------------------------------------------------------------
+# Critical / boundary content patterns
+# ---------------------------------------------------------------------------
+
+
+def test_add_check_round_trip_all_zero_bytes() -> None:
+    crc16 = CRC16()
+    data = bytearray(16)  # all 0x00
+    added = run(crc16.add(data))
+    assert added is not None
+    assert run(crc16.check(added)) == data
+
+
+def test_add_check_round_trip_all_ff_bytes() -> None:
+    crc32 = CRC32()
+    data = bytearray(b"\xff" * 16)
+    added = run(crc32.add(data))
+    assert added is not None
+    assert run(crc32.check(added)) == data
+
+
+def test_add_check_round_trip_single_byte_payload_all_widths() -> None:
+    for crc in (CRC8(), CRC16(), CRC32()):
+        data = bytearray(b"\x00")
+        added = run(crc.add(data))
+        assert added is not None
+        assert run(crc.check(added)) == data
+
+
+# ---------------------------------------------------------------------------
+# Forgotten/dangling incremental sequences
+# ---------------------------------------------------------------------------
+
+
+def test_forgotten_check_inc_continues_stale_sequence_instead_of_resetting() -> None:
+    # Documents a sharp edge in the API contract: if a caller starts feeding a new logical
+    # buffer via run_inc() without finalizing the previous sequence via check_inc() first, the
+    # old bytes are still folded into inc_crc/inc_count - it does NOT silently start fresh.
+    crc8 = CRC8()
+    first = run(crc8.add(bytearray(b"first")))
+    assert first is not None
+    run(crc8.run_inc(first))  # sequence left dangling - check_inc() never called
+
+    second = run(crc8.add(bytearray(b"second")))
+    assert second is not None
+
+    async def resume() -> int | None:
+        await crc8.run_inc(second)
+        return await crc8.check_inc()
+
+    assert run(resume()) is None  # "first"'s stale bytes corrupt this computation
+
+
+def test_run_inc_after_check_inc_starts_a_clean_new_sequence() -> None:
+    # The supported way to reuse one instance across back-to-back (non-concurrent) sequences:
+    # always finalize with check_inc() before starting the next one.
+    crc8 = CRC8()
+    first = run(crc8.add(bytearray(b"first")))
+    second = run(crc8.add(bytearray(b"second")))
+    assert first is not None
+    assert second is not None
+
+    async def two_sequences() -> tuple[int | None, int | None]:
+        await crc8.run_inc(first)
+        r1 = await crc8.check_inc()
+        await crc8.run_inc(second)
+        r2 = await crc8.check_inc()
+        return r1, r2
+
+    assert run(two_sequences()) == (len(b"first"), len(b"second"))
+
+
+def test_dangling_incremental_sequence_does_not_affect_adhoc_calls() -> None:
+    # run_inc()/check_inc()'s state is independent of add()/check(): leaving an incremental
+    # sequence unfinished must not break unrelated ad-hoc calls on the same instance.
+    crc8 = CRC8()
+    run(crc8.run_inc(bytearray(b"dangling")))  # never finalized
+    data = bytearray(b"unrelated ad-hoc call")
+    added = run(crc8.add(data))
+    assert added is not None
+    assert run(crc8.check(added)) == data
+
+
+def test_run_inc_empty_chunk_between_real_chunks_is_a_noop() -> None:
+    crc8 = CRC8()
+    added = run(crc8.add(bytearray(b"hello world")))
+    assert added is not None
+
+    async def feed() -> int | None:
+        assert await crc8.run_inc(added[0:5])
+        assert await crc8.run_inc(bytearray())  # empty chunk - must not disturb the sequence
+        assert await crc8.run_inc(added[5:])
+        return await crc8.check_inc()
+
+    assert run(feed()) == len(b"hello world")
+
+
+# ---------------------------------------------------------------------------
+# Empty-payload asymmetry between add() and check() - flagged, not silently fixed (see PR
+# discussion): add() happily encodes a zero-byte payload, but no check* method can ever verify
+# the result back, since all three require strictly more than num_bytes total.
+# ---------------------------------------------------------------------------
+
+
+def test_add_on_empty_payload_produces_buffer_check_cannot_verify() -> None:
+    crc8 = CRC8()
+    added = run(crc8.add(bytearray()))
+    assert added is not None
+    assert len(added) == crc8.num_bytes  # just the CRC, no payload bytes
+    assert run(crc8.check(added)) is None  # ...and check() can never validate it
+
+
 if __name__ == "__main__":
     import microtest
 
