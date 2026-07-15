@@ -122,12 +122,19 @@ class SPIDevice(Lockable):
         self.phase = phase
         self.bits = bits
         self.firstbit = firstbit
+        self.uninitialized = True  # cs_pin isn't configured as an output until setup() runs
 
     async def setup(self) -> None:
         self.cs_pin.init(self.cs_pin.OUT)
         self.cs_pin.value(not self.cs_active_value)
+        self.uninitialized = False
 
     async def __aenter__(self) -> "SPIDevice":
+        # Pin.value() writes the GPIO output register unconditionally regardless of direction
+        # (confirmed against ports/rp2/machine_pin.c) - without this guard, entering before
+        # setup() wouldn't raise, it would just silently fail to assert CS on real hardware.
+        if self.uninitialized:
+            raise RuntimeError("SPIDevice not set up - call setup() first")
         await super().__aenter__()
         # A failure below means __aenter__ itself raises, so `async with` never calls __aexit__ -
         # the lock and (if asserted) CS pin must be released here or they leak permanently.

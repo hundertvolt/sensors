@@ -24,8 +24,14 @@ def make_spi() -> SPI:
     return SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
 
 
-def make_device(spi: SPI, cs_pin: int = 1, cs_active_value: bool = False) -> SPIDevice:
-    return SPIDevice(spi, cs_pin, cs_active_value=cs_active_value)
+def make_device(spi: SPI, cs_pin: int = 1, cs_active_value: bool = False, call_setup: bool = True) -> SPIDevice:
+    # call_setup=True by default so every test gets a real-world-shaped device (every actual
+    # caller calls setup() before first use) without needing its own boilerplate; pass False for
+    # tests specifically about the pre-setup state or setup() itself.
+    device = SPIDevice(spi, cs_pin, cs_active_value=cs_active_value)
+    if call_setup:
+        run(device.setup())
+    return device
 
 
 def fake(spi: SPI) -> FakeSPI:
@@ -225,16 +231,38 @@ def test_device_shares_the_bus_lock() -> None:
 
 def test_setup_drives_cs_pin_to_inactive() -> None:
     spi = make_spi()
-    device = make_device(spi, cs_active_value=False)
+    device = make_device(spi, cs_active_value=False, call_setup=False)
+    assert device.uninitialized is True
     run(device.setup())
     assert device.cs_pin.value() == 1  # inactive = not cs_active_value = not False
+    assert device.uninitialized is False
 
 
 def test_setup_drives_cs_pin_to_inactive_active_high_variant() -> None:
     spi = make_spi()
-    device = make_device(spi, cs_active_value=True)
+    device = make_device(spi, cs_active_value=True, call_setup=False)
     run(device.setup())
     assert device.cs_pin.value() == 0  # inactive = not cs_active_value = not True
+
+
+def test_aenter_raises_if_setup_was_never_called() -> None:
+    # Real finding from the architecture-review pass: Pin.value() writes the GPIO output register
+    # unconditionally regardless of direction (confirmed against ports/rp2/machine_pin.c), so
+    # entering before setup() wouldn't crash on its own - it would silently fail to assert CS on
+    # real hardware. This guard converts that into a clear, immediate RuntimeError instead.
+    spi = make_spi()
+    device = make_device(spi, call_setup=False)
+
+    async def scenario() -> bool:
+        try:
+            async with device:
+                pass
+            return False
+        except RuntimeError:
+            return True
+
+    assert run(scenario())
+    assert not spi.async_lock.locked()  # never even attempted to acquire - fails before that
 
 
 def test_device_context_manager_acquires_and_releases_lock() -> None:

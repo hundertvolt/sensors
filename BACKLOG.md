@@ -686,8 +686,28 @@ above is genuinely underway, but surfaces some new items:
     `readinto()` have no fault path to inject at all, and the one real SPI exception
     (`write_readinto()`'s buffer-length `ValueError`) is deterministic from the buffers a test
     passes in, needing no injection mechanism to trigger.
-  - **40 tests added** (`tests/test_asy_spi_driver.py`; project-wide total climbs to 224 = 45
-    `math_helpers.py` + 62 `crc_checks.py` + 77 `asy_i2c_driver.py` + 40 `asy_spi_driver.py`),
+  - **Real bug found and fixed in a second, later architecture-review pass** (asked directly "is
+    this file in good shape / complete / reasonable / efficient / anything missing or badly
+    implemented" after the above had already landed and shipped, same open-ended-review pattern
+    the I2C file went through): `SPIDevice.__aenter__` had no guard against being reached before
+    `setup()` ever ran. `setup()` is what configures `cs_pin` as an output; before that, `Pin`'s
+    direction is whatever the hardware reset default is. Confirmed against `ports/rp2/
+    machine_pin.c` that `Pin.value(x)` calls `gpio_put()` **unconditionally**, regardless of the
+    pin's current direction - so entering before `setup()` wouldn't raise at all, it would just
+    silently fail to ever assert CS on real hardware (the output-latch register gets written, but
+    isn't electrically visible until direction is later set to `OUT`, which never happens without
+    `setup()`). Every real caller today (`asy_fram_driver.py`) already calls `setup()` first, so
+    this was a latent footgun, not an active bug - unlike the `__aenter__` lock/CS-leak bug above,
+    which did have live impact. `I2CDevice` has no equivalent gap (I2C's bus pins are configured
+    once in the bus constructor, not deferred to a separate per-device setup step), so this is
+    genuinely specific to SPI's two-step constructor/`setup()` split, not something inherited
+    unchanged from I2C's own review. Fixed by adding a `self.uninitialized` flag (reusing
+    `asy_fram_driver.py`'s own `FRAM_SPI.uninitialized` naming/pattern for consistency rather than
+    inventing a new convention), set `True` in `__init__` and `False` at the end of `setup()`,
+    checked at the very start of `__aenter__` with a clear `RuntimeError` before anything is
+    acquired - fails loudly instead of silently misbehaving.
+  - **41 tests added** (`tests/test_asy_spi_driver.py`; project-wide total climbs to 225 = 45
+    `math_helpers.py` + 62 `crc_checks.py` + 77 `asy_i2c_driver.py` + 41 `asy_spi_driver.py`),
     written before the refactor and run against the original file first (per the explicit
     tests-first instruction this pattern is based on) - which is how the `typing` import bug above
     was caught concretely, not just reasoned about. Covers: init/deinit and real-hardware-deinit
@@ -697,13 +717,13 @@ above is genuinely underway, but surfaces some new items:
     disconnected-wire/no-ACK case is genuinely undetectable (zero-filled data back, no exception,
     not just an untested claim), CS pin assert/deassert sequencing verified via real `Pin.value()`
     readback across every exit path (normal, exception inside session, double-exit/pre-released
-    lock, task cancellation, and now also `__aenter__` failure itself), `configure()` re-applied
-    fresh every session (confirmed correct behavior, not a bug, since the bus may be shared with a
-    differently-configured device - evaluated during the architecture-review pass and deliberately
-    left unchanged), deinit/reinit
+    lock, task cancellation, `__aenter__` failure itself, and now also entering before `setup()`),
+    `configure()` re-applied fresh every session (confirmed correct behavior, not a bug, since the
+    bus may be shared with a differently-configured device - evaluated during the
+    architecture-review pass and deliberately left unchanged), deinit/reinit
     mid-session, asyncio interlock (2 and 4 concurrent devices, plus the same device from two
-    concurrent tasks), reentrant-acquisition deadlock bounded by `wait_for`, and the lock/CS-leak
-    bug fix itself.
+    concurrent tasks), reentrant-acquisition deadlock bounded by `wait_for`, and both `__aenter__`
+    bug fixes (lock/CS-leak, and the setup()-ordering guard).
   - **Not fixed, flagged for a future pass**: `FRAM_SPI.set_write_protected()`/
     `get_write_protected()` (in `asy_fram_driver.py`, not itself promoted this session) have zero
     real callers today - same category as several of I2C's still-unused register-helper methods,
