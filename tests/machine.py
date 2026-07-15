@@ -88,10 +88,10 @@ class I2C:
         self._maybe_raise("readfrom_mem", address)
         stored = bytes(self.registers.get((address, memaddr), bytearray(nbytes)))
         data = (stored + bytes(nbytes))[:nbytes]  # always exactly nbytes, zero-padded/truncated like real hw
-        self.log.append(("readfrom_mem", address, memaddr, nbytes))
+        self.log.append(("readfrom_mem", address, memaddr, nbytes, addrsize))
         return data
 
     def writeto_mem(self, address: int, memaddr: int, buf: object, *, addrsize: int = 8) -> None:
         self._maybe_raise("writeto_mem", address)
         self.registers[(address, memaddr)] = bytearray(buf)  # type: ignore[call-overload]
-        self.log.append(("writeto_mem", address, memaddr, bytes(buf)))  # type: ignore[call-overload]
+        self.log.append(("writeto_mem", address, memaddr, bytes(buf), addrsize))  # type: ignore[call-overload]

@@ -503,6 +503,46 @@ above is genuinely underway, but surfaces some new items:
     `readinto`/`write`/`write_then_readinto` stopped redundantly pre-resolving `end=None` to
     `len(buffer)` themselves, since `I2C`'s own methods already do that same computation one call
     down.
+  - **Follow-up architecture review pass**: asked directly "is this file in good shape /
+    complete / reasonable / efficient / anything missing or badly implemented" after the above
+    landed. Found and fixed two more real issues, plus added two forward-compatible no-op
+    parameters:
+    - **Real bug, found and fixed**: `set_bits()` shifted `value` into the register without
+      masking it to `num_bits` width first (`reg |= value << start_bit`) — a caller passing a
+      `value` wider than the field silently corrupted the bits immediately above it instead of
+      being confined to the intended field. No current caller ever passes an out-of-range value
+      (same "unused by any migrated driver yet" category as the rest of the bit-field API), but
+      nothing prevented a future one from doing so. Fixed by masking `value` to `num_bits` before
+      the shift, reusing the existing `_bitmask()` helper.
+    - **Real design flaw, found and fixed**: `writeto_then_readfrom()`/`write_then_readinto()`
+      took one shared `stop` parameter applied to *both* legs of the transaction. This can
+      express "two fully separate transactions" (`stop=True` on both) or "neither leg ever
+      releases the bus" (`stop=False` on both, never useful) — but **not** the standard
+      repeated-start register-read pattern that most I2C sensors actually use (write the
+      register pointer *without* a stop, then read *with* one), since a single shared flag can't
+      set the two legs differently. Fixed by splitting into independent `out_stop`/`in_stop`
+      (matching the file's existing `out_start`/`out_end`/`in_start`/`in_end` naming), defaults
+      unchanged (`True`/`True`) so this is a pure capability addition, not a behavior change.
+      **Follow-up required, tracked here per the project owner's request**: no current caller
+      uses this method yet (same category as `get_bits`/`get_register_struct`), but any future
+      caller that adopts it for a real repeated-start sequence must pass `out_stop=False`
+      explicitly — the default remains two separate transactions, not a repeated start.
+    - **Two parameters added as pure no-ops for now**: `I2C.__init__()`/`init()` gained
+      `timeout: int | None = None`, and the register-level methods
+      (`get_bits`/`set_bits`/`get_register_struct`/`set_register_struct`, both on `I2C` and
+      `I2CDevice`) gained `addrsize: int | None = None` — both real parameters `machine.I2C`
+      itself exposes (`timeout` on the constructor, `addrsize` on `readfrom_mem`/`writeto_mem`)
+      that this driver didn't surface at all. `None` omits the kwarg entirely rather than
+      duplicating `machine.I2C`'s own default value in this code (which could silently drift if
+      upstream ever changed its own default) — genuinely zero behavior change until a caller
+      actually passes a value, via two small `_readfrom_mem()`/`_writeto_mem()` forwarding
+      helpers shared by all four register-level methods.
+    - **Considered and explicitly deferred, not forgotten**: `get_bits`/`set_bits`/
+      `get_register_struct` still call the allocating `machine.I2C.readfrom_mem()` rather than
+      the zero-copy `readfrom_mem_into()` that real `machine.I2C` also provides (relevant to
+      `src/README.md` section 4's buffer-reuse requirement) — flagged but not fixed this pass
+      since these methods have zero real callers today (only `asy_isl29125_driver.py`, not yet
+      migrated, would exercise them frequently). Worth doing before that migration, not before.
 - **Test infrastructure gap found and fixed, while adding `crc_checks.py`'s tests**:
   `scripts/test.sh`'s `MICROPYPATH="src:tests"` silently shadowed every frozen-Python stdlib
   module (`asyncio` included) for every test file — invisible until now because `math_helpers.py`

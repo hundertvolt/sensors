@@ -773,6 +773,101 @@ def test_out_of_range_address_is_transparently_forwarded_not_validated() -> None
     assert fake(i2c).log[-1][1] == 200
 
 
+# ---------------------------------------------------------------------------
+# timeout / addrsize - optional, forwarded only when given (no default drift)
+# ---------------------------------------------------------------------------
+
+
+def test_timeout_omitted_leaves_the_bus_default_untouched() -> None:
+    i2c = make_i2c()
+    assert fake(i2c).timeout == 50000  # the mock's (and real machine.I2C's) own default
+
+
+def test_timeout_explicit_value_is_forwarded() -> None:
+    i2c = I2C(0, scl_pin=1, sda_pin=0, frequency=100000, timeout=12345)
+    assert fake(i2c).timeout == 12345
+
+
+def test_addrsize_omitted_uses_the_bus_default() -> None:
+    i2c = make_i2c()
+    i2c.get_bits(0x50, 1, 0x10, 0, reg_width=1)
+    assert fake(i2c).log[-1] == ("readfrom_mem", 0x50, 0x10, 1, 8)  # 8 is machine.I2C's own default
+
+
+def test_addrsize_explicit_value_is_forwarded_through_get_set_bits() -> None:
+    i2c = make_i2c()
+    i2c.set_bits(0x50, 3, 0x10, 0, 0x5, reg_width=1, addrsize=16)
+    assert fake(i2c).log[0][-1] == 16  # readfrom_mem
+    assert fake(i2c).log[1][-1] == 16  # writeto_mem
+    i2c.get_bits(0x50, 3, 0x10, 0, reg_width=1, addrsize=16)
+    assert fake(i2c).log[-1][-1] == 16
+
+
+def test_addrsize_explicit_value_is_forwarded_through_register_struct() -> None:
+    i2c = make_i2c()
+    i2c.set_register_struct(0x50, 0x10, ">H", 0x1234, addrsize=16)
+    assert fake(i2c).log[-1][-1] == 16
+    i2c.get_register_struct(0x50, 0x10, ">H", addrsize=16)
+    assert fake(i2c).log[-1][-1] == 16
+
+
+def test_device_forwards_addrsize_for_bits_and_struct() -> None:
+    i2c = make_i2c()
+    device = I2CDevice(i2c, 0x50)
+    run(device.set_bits(3, 0x10, 0, 0x5, reg_width=1, addrsize=16))
+    assert fake(i2c).log[-1][-1] == 16
+    run(device.set_register_struct(0x20, ">H", 0x1234, addrsize=16))
+    assert fake(i2c).log[-1][-1] == 16
+
+
+# ---------------------------------------------------------------------------
+# writeto_then_readfrom / write_then_readinto - independent out_stop/in_stop
+# ---------------------------------------------------------------------------
+
+
+def test_out_stop_and_in_stop_are_independent() -> None:
+    # The real point of this method: a repeated-start register read (no stop between the write
+    # and the read) while still stopping normally after the read - previously inexpressible
+    # since one shared `stop` forced both legs to the same value.
+    i2c = make_i2c()
+    i2c.writeto_then_readfrom(0x50, b"reg", bytearray(2), out_stop=False, in_stop=True)
+    assert fake(i2c).log[0] == ("writeto", 0x50, b"reg", False)
+    assert fake(i2c).log[1][-1] is True
+
+
+def test_writeto_then_readfrom_defaults_are_unchanged() -> None:
+    # Both legs still default to stop=True (two separate transactions) - the fix only adds the
+    # ability to override each leg independently, it doesn't change default behavior.
+    i2c = make_i2c()
+    i2c.writeto_then_readfrom(0x50, b"cmd", bytearray(2))
+    assert fake(i2c).log[0][-1] is True
+    assert fake(i2c).log[1][-1] is True
+
+
+def test_device_write_then_readinto_forwards_out_stop_and_in_stop() -> None:
+    i2c = make_i2c()
+    device = I2CDevice(i2c, 0x50)
+    run(device.write_then_readinto(b"reg", bytearray(2), out_stop=False, in_stop=True))
+    assert fake(i2c).log[0] == ("writeto", 0x50, b"reg", False)
+    assert fake(i2c).log[1][-1] is True
+
+
+# ---------------------------------------------------------------------------
+# set_bits - an oversized value must be masked, not corrupt adjacent bits
+# ---------------------------------------------------------------------------
+
+
+def test_set_bits_masks_an_oversized_value_instead_of_corrupting_adjacent_bits() -> None:
+    # Found during review: value was previously shifted in unmasked, so a value wider than
+    # num_bits silently set bits above the intended field instead of being confined to it.
+    i2c = make_i2c()
+    fake(i2c).registers[(0x50, 0x10)] = bytearray([0b00000000])
+    i2c.set_bits(0x50, 3, 0x10, 2, 0xFF, reg_width=1)  # 0xFF is far wider than the 3-bit field
+    # Only bits 2-4 (the 3-bit field at start_bit=2) may be set; bits 5-7 must stay untouched.
+    assert fake(i2c).registers[(0x50, 0x10)] == bytearray([0b00011100])
+    assert i2c.get_bits(0x50, 3, 0x10, 2, reg_width=1) == 0x7  # field itself reads back all-ones
+
+
 if __name__ == "__main__":
     import microtest
 

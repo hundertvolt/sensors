@@ -19,16 +19,36 @@ from machine import Pin
 
 
 class I2C:
-    def __init__(self, port_id: int, scl_pin: int, sda_pin: int, frequency: int = 100000) -> None:
+    def __init__(
+        self,
+        port_id: int,
+        scl_pin: int,
+        sda_pin: int,
+        frequency: int = 100000,
+        timeout: int | None = None,
+    ) -> None:
         self._i2c: _I2C | None = None
         self.async_lock = asyncio.Lock()
-        self.init(port_id, scl_pin, sda_pin, frequency)
+        self.init(port_id, scl_pin, sda_pin, frequency, timeout)
 
-    def init(self, port_id: int, scl_pin: int, sda_pin: int, frequency: int) -> None:
+    def init(
+        self,
+        port_id: int,
+        scl_pin: int,
+        sda_pin: int,
+        frequency: int,
+        timeout: int | None = None,
+    ) -> None:
         # Always deinit() any bus this instance previously held first, so re-init can't leak a
-        # claimed peripheral/pins.
+        # claimed peripheral/pins. timeout=None (the default) omits the kwarg entirely rather
+        # than duplicating machine.I2C's own default value here - a genuine no-op until a
+        # caller actually needs a non-default timeout, not just a same-value passthrough that
+        # could silently drift from whatever machine.I2C's own default happens to be.
         self.deinit()
-        self._i2c = _I2C(port_id, sda=Pin(sda_pin), scl=Pin(scl_pin), freq=frequency)
+        if timeout is None:
+            self._i2c = _I2C(port_id, sda=Pin(sda_pin), scl=Pin(scl_pin), freq=frequency)
+        else:
+            self._i2c = _I2C(port_id, sda=Pin(sda_pin), scl=Pin(scl_pin), freq=frequency, timeout=timeout)
 
     def deinit(self) -> None:
         # machine.I2C.deinit() actually deactivates the hardware bus - not just dropping the
@@ -84,12 +104,17 @@ class I2C:
         out_end: int | None = None,
         in_start: int = 0,
         in_end: int | None = None,
-        stop: bool = True,
+        out_stop: bool = True,
+        in_stop: bool = True,
     ) -> None:
-        # Not a native machine.I2C primitive - a write, then a separate read (no repeated
-        # start), built from this class's own writeto()/readfrom_into().
-        self.writeto(address, buffer_out, out_start, out_end, stop=stop)
-        self.readfrom_into(address, buffer_in, in_start, in_end, stop=stop)
+        # Not a native machine.I2C primitive - a write, then a read, built from this class's own
+        # writeto()/readfrom_into(). out_stop/in_stop are independent (this used to be one
+        # shared `stop` forced onto both legs, which could never express the standard
+        # repeated-start register-read pattern - a write *without* a stop, then a read that
+        # *does* stop - since a single flag can't hold two different values). Pass
+        # out_stop=False for a repeated start between the write and the read.
+        self.writeto(address, buffer_out, out_start, out_end, stop=out_stop)
+        self.readfrom_into(address, buffer_in, in_start, in_end, stop=in_stop)
 
     @staticmethod
     def _bitfield_range_ok(num_bits: int, start_bit: int, reg_width: int) -> bool:
@@ -111,6 +136,21 @@ class I2C:
             reg = (reg << 8) | mem_value[i]
         return reg
 
+    @staticmethod
+    def _readfrom_mem(bus: _I2C, address: int, reg_addr: int, nbytes: int, addrsize: int | None) -> bytes:
+        # addrsize=None (the default) omits the kwarg entirely rather than duplicating
+        # machine.I2C's own default (8) here - see init()'s timeout for the same reasoning.
+        if addrsize is None:
+            return bus.readfrom_mem(address, reg_addr, nbytes)
+        return bus.readfrom_mem(address, reg_addr, nbytes, addrsize=addrsize)
+
+    @staticmethod
+    def _writeto_mem(bus: _I2C, address: int, reg_addr: int, buf: bytes, addrsize: int | None) -> None:
+        if addrsize is None:
+            bus.writeto_mem(address, reg_addr, buf)
+        else:
+            bus.writeto_mem(address, reg_addr, buf, addrsize=addrsize)
+
     def get_bits(
         self,
         address: int,
@@ -119,11 +159,12 @@ class I2C:
         start_bit: int,
         reg_width: int = 1,
         lsb_first: bool = True,
+        addrsize: int | None = None,
     ) -> int | None:
         # Reads an arbitrary bit-field out of a reg_width-byte register.
         if self._i2c is None or not self._bitfield_range_ok(num_bits, start_bit, reg_width):
             return None
-        mem_value = self._i2c.readfrom_mem(address, reg_addr, reg_width)
+        mem_value = self._readfrom_mem(self._i2c, address, reg_addr, reg_width, addrsize)
         reg = self._bytes_to_int(mem_value, lsb_first)
         return (reg & self._bitmask(num_bits, start_bit)) >> start_bit
 
@@ -136,6 +177,7 @@ class I2C:
         value: int,
         reg_width: int = 1,
         lsb_first: bool = True,
+        addrsize: int | None = None,
     ) -> None:
         # Read-modify-write counterpart of get_bits(). Byte order is derived from lsb_first
         # alone (this used to also take a separate `endian` param for the write-back, which
@@ -143,13 +185,21 @@ class I2C:
         # disagree with itself).
         if self._i2c is None or not self._bitfield_range_ok(num_bits, start_bit, reg_width):
             return
-        mem_value = self._i2c.readfrom_mem(address, reg_addr, reg_width)
+        mem_value = self._readfrom_mem(self._i2c, address, reg_addr, reg_width, addrsize)
         reg = self._bytes_to_int(mem_value, lsb_first)
         reg &= ~self._bitmask(num_bits, start_bit)
-        reg |= value << start_bit
-        self._i2c.writeto_mem(address, reg_addr, reg.to_bytes(reg_width, "little" if lsb_first else "big"))
+        # value is masked to num_bits before being shifted in - previously unmasked, so a value
+        # wider than num_bits silently corrupted the bits just above the intended field instead
+        # of being confined to it (a real, if latent, bug found during review; no current caller
+        # ever passes an out-of-range value, but nothing stopped a future one from doing so).
+        reg |= (value & self._bitmask(num_bits, 0)) << start_bit
+        self._writeto_mem(
+            self._i2c, address, reg_addr, reg.to_bytes(reg_width, "little" if lsb_first else "big"), addrsize
+        )
 
-    def get_register_struct(self, address: int, reg_addr: int, reg_format: str) -> int | float | bytes | None:
+    def get_register_struct(
+        self, address: int, reg_addr: int, reg_format: str, addrsize: int | None = None
+    ) -> int | float | bytes | None:
         # struct-typed single-value register read; byte order comes entirely from reg_format's
         # own prefix character (e.g. ">H"), matching set_register_struct. Return type excludes
         # `bool`: confirmed directly against the real interpreter that MicroPython's struct
@@ -161,7 +211,7 @@ class I2C:
             size = struct.calcsize(reg_format)
         except ValueError:  # malformed reg_format
             return None
-        raw = self._i2c.readfrom_mem(address, reg_addr, size)
+        raw = self._readfrom_mem(self._i2c, address, reg_addr, size, addrsize)
         try:
             # struct.unpack declared to return Any, but int | float | bytes are possible. A
             # zero-field format (e.g. "", or pad-bytes-only like "2x") unpacks to an empty
@@ -178,7 +228,9 @@ class I2C:
             return value
         return None
 
-    def set_register_struct(self, address: int, reg_addr: int, reg_format: str, value: int) -> None:
+    def set_register_struct(
+        self, address: int, reg_addr: int, reg_format: str, value: int, addrsize: int | None = None
+    ) -> None:
         # struct-typed single-value register write; byte order comes entirely from reg_format's
         # own prefix character, matching get_register_struct (this used to instead take a
         # separate `endian` param that could silently disagree with reg_format's own prefix).
@@ -197,7 +249,7 @@ class I2C:
             packed = struct.pack(reg_format, value)
         except ValueError:  # malformed reg_format
             return
-        self._i2c.writeto_mem(address, reg_addr, packed)
+        self._writeto_mem(self._i2c, address, reg_addr, packed, addrsize)
 
 
 class I2CDevice(Lockable):
@@ -238,6 +290,8 @@ class I2CDevice(Lockable):
         out_end: int | None = None,
         in_start: int = 0,
         in_end: int | None = None,
+        out_stop: bool = True,
+        in_stop: bool = True,
     ) -> None:
         self.i2c.writeto_then_readfrom(
             self.device_address,
@@ -247,6 +301,8 @@ class I2CDevice(Lockable):
             out_end=out_end,
             in_start=in_start,
             in_end=in_end,
+            out_stop=out_stop,
+            in_stop=in_stop,
         )
 
     async def get_bits(
@@ -256,8 +312,11 @@ class I2CDevice(Lockable):
         start_bit: int,
         reg_width: int = 1,
         lsb_first: bool = True,
+        addrsize: int | None = None,
     ) -> int | None:
-        return self.i2c.get_bits(self.device_address, num_bits, reg_addr, start_bit, reg_width, lsb_first)
+        return self.i2c.get_bits(
+            self.device_address, num_bits, reg_addr, start_bit, reg_width, lsb_first, addrsize
+        )
 
     async def set_bits(
         self,
@@ -267,6 +326,7 @@ class I2CDevice(Lockable):
         value: int,
         reg_width: int = 1,
         lsb_first: bool = True,
+        addrsize: int | None = None,
     ) -> None:
         self.i2c.set_bits(
             self.device_address,
@@ -276,13 +336,18 @@ class I2CDevice(Lockable):
             value,
             reg_width,
             lsb_first,
+            addrsize,
         )
 
-    async def get_register_struct(self, reg_addr: int, reg_format: str) -> int | float | bytes | None:
-        return self.i2c.get_register_struct(self.device_address, reg_addr, reg_format)
+    async def get_register_struct(
+        self, reg_addr: int, reg_format: str, addrsize: int | None = None
+    ) -> int | float | bytes | None:
+        return self.i2c.get_register_struct(self.device_address, reg_addr, reg_format, addrsize)
 
-    async def set_register_struct(self, reg_addr: int, reg_format: str, value: int) -> None:
-        self.i2c.set_register_struct(self.device_address, reg_addr, reg_format, value)
+    async def set_register_struct(
+        self, reg_addr: int, reg_format: str, value: int, addrsize: int | None = None
+    ) -> None:
+        self.i2c.set_register_struct(self.device_address, reg_addr, reg_format, value, addrsize)
 
     async def __probe_for_device(self) -> None:
         # Try to write zero bytes to the device address: an OSError means no device ACKed it.
