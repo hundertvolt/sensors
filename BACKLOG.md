@@ -686,18 +686,21 @@ above is genuinely underway, but surfaces some new items:
     `readinto()` have no fault path to inject at all, and the one real SPI exception
     (`write_readinto()`'s buffer-length `ValueError`) is deterministic from the buffers a test
     passes in, needing no injection mechanism to trigger.
-  - **39 tests added** (`tests/test_asy_spi_driver.py`; project-wide total climbs to 223 = 45
-    `math_helpers.py` + 62 `crc_checks.py` + 77 `asy_i2c_driver.py` + 39 `asy_spi_driver.py`),
+  - **40 tests added** (`tests/test_asy_spi_driver.py`; project-wide total climbs to 224 = 45
+    `math_helpers.py` + 62 `crc_checks.py` + 77 `asy_i2c_driver.py` + 40 `asy_spi_driver.py`),
     written before the refactor and run against the original file first (per the explicit
     tests-first instruction this pattern is based on) - which is how the `typing` import bug above
     was caught concretely, not just reasoned about. Covers: init/deinit and real-hardware-deinit
     idempotency, `configure()`'s two distinct `RuntimeError` branches, `write`/`readinto`/
-    `write_readinto` forwarding and the one real raise path (including zero-length buffers), CS pin
-    assert/deassert sequencing verified via real `Pin.value()` readback across every exit path
-    (normal, exception inside session, double-exit/pre-released lock, task cancellation, and now
-    also `__aenter__` failure itself), `configure()` re-applied fresh every session (confirmed
-    correct behavior, not a bug, since the bus may be shared with a differently-configured device -
-    evaluated during the architecture-review pass and deliberately left unchanged), deinit/reinit
+    `write_readinto` forwarding and the one real raise path (including zero-length buffers and
+    buffer-length mismatches in both directions), a dedicated regression test proving the
+    disconnected-wire/no-ACK case is genuinely undetectable (zero-filled data back, no exception,
+    not just an untested claim), CS pin assert/deassert sequencing verified via real `Pin.value()`
+    readback across every exit path (normal, exception inside session, double-exit/pre-released
+    lock, task cancellation, and now also `__aenter__` failure itself), `configure()` re-applied
+    fresh every session (confirmed correct behavior, not a bug, since the bus may be shared with a
+    differently-configured device - evaluated during the architecture-review pass and deliberately
+    left unchanged), deinit/reinit
     mid-session, asyncio interlock (2 and 4 concurrent devices, plus the same device from two
     concurrent tasks), reentrant-acquisition deadlock bounded by `wait_for`, and the lock/CS-leak
     bug fix itself.

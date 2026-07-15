@@ -130,9 +130,31 @@ def test_write_readinto_mismatched_buffer_lengths_returns_none_instead_of_raisin
     # here (confirmed against extmod/machine_spi.c's mp_machine_spi_write_readinto(), shared by
     # hardware and soft SPI) - caught and turned into a None return, matching this driver's
     # non-hardware-failure convention (see e.g. asy_i2c_driver.py's malformed-reg_format handling).
+    # Checked in both directions - the underlying check is symmetric (src.len != dest.len), but
+    # buffer_out longer than buffer_in and vice versa are both real, distinct caller mistakes.
     spi = make_spi()
-    spi.write_readinto(b"abc", bytearray(2))  # must not raise
+    spi.write_readinto(b"abc", bytearray(2))  # buffer_out longer - must not raise
     assert len(fake(spi).log) == 0  # rejected before ever touching the bus
+    spi.write_readinto(b"a", bytearray(2))  # buffer_out shorter - must not raise
+    assert len(fake(spi).log) == 0
+
+
+def test_disconnected_wire_is_undetectable_reads_whatever_is_on_the_bus_not_an_exception() -> None:
+    # Real, deliberately-not-simulated irregular condition: unlike I2C's NAK, SPI has no ACK, so a
+    # physically disconnected MISO/clock wire is invisible at this layer on real RP2040 hardware
+    # (confirmed: extmod/machine_spi.c's blocking transfer path has no error return at all once
+    # the bus is constructed - see the module docstring and BACKLOG.md's asy_spi_driver.py entry).
+    # This test proves that documented claim as a regression, not just a comment: with nothing
+    # primed in the fake's read_queue (modeling a device that never drives MISO), readinto() and
+    # write_readinto() still succeed and hand back zero-filled bytes instead of raising anything -
+    # exactly what "undetectable" means in practice, not an untestable absence.
+    spi = make_spi()
+    buf = bytearray(b"\xff\xff")
+    spi.readinto(buf)
+    assert buf == bytearray(2)  # zero-filled, not left as \xff\xff and not an exception
+    buffer_in = bytearray(b"\xff\xff")
+    spi.write_readinto(b"cd", buffer_in)
+    assert buffer_in == bytearray(2)
 
 
 def test_zero_length_buffer_operations_are_harmless() -> None:
