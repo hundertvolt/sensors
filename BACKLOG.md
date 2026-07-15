@@ -1,8 +1,10 @@
 # BACKLOG
 
-Open questions and explicitly deferred work, with reasoning, so nothing here gets re-litigated
-from scratch in a future session. See README.md for orientation and CLAUDE.md for operating
-constraints.
+The project's running knowledge base for the `improved-quality/` refactor and anything else worth
+recording so it doesn't get re-litigated from scratch in a future session: the refactor's
+final-goal requirements, decisions already made, functional clarifications, review findings, open
+questions, explicitly deferred work, and security notes — not just open questions and deferred
+work, despite the filename. See README.md for orientation and CLAUDE.md for operating constraints.
 
 ## Final-goal requirements for the refactor (owner-specified, mostly not yet implemented)
 
