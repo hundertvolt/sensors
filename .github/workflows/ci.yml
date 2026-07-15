@@ -47,8 +47,9 @@ jobs:
         run: scripts/test.sh
       # Coverage is a report, not a gate (see tests/README.md's "Coverage" section) - never let
       # it fail the job. The `Run unit tests` step above is the real pass/fail signal; this just
-      # re-runs the same suite under a second, sys.settrace-enabled interpreter to measure src/
-      # line coverage.
+      # re-runs the same suite under the same Unix port binary (always built with
+      # MICROPY_PY_SYS_SETTRACE=1 - see build_unix_port()), wrapped by tests/_coverage_runner.py
+      # this time, to measure src/ line coverage.
       - name: Run unit tests with coverage
         run: scripts/test.sh --coverage
         continue-on-error: true
