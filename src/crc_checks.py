@@ -5,6 +5,10 @@ CRC-32/MPEG-2. CRC_Pass is a zero-length no-op.
 
 Shared contract: every public method returns None (or False for run_inc) - never raises - for
 invalid input (bad init/poly, buffer too small, insufficient data).
+
+run_inc()/check_inc() share mutable state (inc_crc, inc_count) on the instance across an
+incremental sequence, so a single instance must not be used for more than one concurrent
+sequence - give each concurrent caller its own instance rather than sharing one.
 """
 
 import asyncio
