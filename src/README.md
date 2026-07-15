@@ -160,7 +160,37 @@ is not a machine with memory or cycles to spare:
       for style. If nothing meaningfully improves speed/resources/accuracy/complexity, say so and
       move on rather than manufacturing a change.
 
-## 9. API consistency, within a file and across the project
+## 9. Check against current MicroPython, not the version this code predates
+
+- [ ] Much of this codebase's history predates MicroPython 1.20; the project's own build target
+      has since moved forward to whatever's the latest *stable* release (see CLAUDE.md's "Platform
+      target" and `toolchain/versions.toml`'s `[micropython] ref`, currently v1.28.0). Don't assume
+      code written years ago still reflects the best way to do something on the current target —
+      check, every time a file goes through this review, not just once.
+- [ ] Check the MicroPython changelog/release notes
+      ([github.com/micropython/micropython/releases](https://github.com/micropython/micropython/releases))
+      between whatever version the code plausibly targeted and the current pin for anything
+      relevant to the file under review: new stdlib module features, simplified semantics,
+      interpreter-level performance work that changes what's worth hand-optimizing, deprecated
+      patterns replaced by better ones. Note findings even when nothing needs to change in the code
+      itself — that's still a useful outcome, not a wasted check. (`crc_checks.py`'s own heavy
+      bytearray/memoryview slicing already benefits for free from 1.26's "avoid heap-allocating
+      slices when subscripting bytearray/memoryview" interpreter change; nothing to rewrite there,
+      just confirmation of why it's already reasonably fast on the current target.)
+- [ ] Look specifically for the old `u`-prefixed module names (`uasyncio`, `ustruct`, `ujson`,
+      `ucollections`, ...) — MicroPython consolidated these to their plain names years ago; the
+      `u`-prefixed forms still work as aliases today but are the clearest tell that a file predates
+      that consolidation. (`crc_checks.py` already uses the modern `asyncio`/`struct` names; other
+      `improved-quality/` files — e.g. `base_classes.py`'s `from uasyncio import Lock` — still use
+      the old prefixed form, a real, present instance of this in the codebase today, not a
+      hypothetical concern.)
+- [ ] Same "without changing functionality" hard constraint as section 8 applies when a
+      modernization is purely a rewrite for currentness — the existing test suite must still pass
+      unchanged. If a newer API's *semantics* genuinely differ from what the old pattern did (not
+      just a rename or an interpreter-level speedup), treat that like any other behavior change
+      under section 1: flag it and ask before adopting it, don't silently swap it in.
+
+## 10. API consistency, within a file and across the project
 
 - [ ] Within a set of related functions/classes, give every member the same shape — same
       parameter names, same parameter order, same optionality, same return convention — even
@@ -184,7 +214,7 @@ is not a machine with memory or cycles to spare:
       problem in visibly different ways, that's a finding worth raising, not something to leave
       for a future session to notice.
 
-## 10. Readability / conciseness
+## 11. Readability / conciseness
 
 - [ ] One-line "why" comment per function: cite the formula's name/source and its valid domain.
       Don't restate what the code already says.
@@ -193,7 +223,7 @@ is not a machine with memory or cycles to spare:
 - [ ] Keep the control flow simple and in a consistent order: `None`-check, then range-check
       (plain guard clause, no `try` needed if it can't raise), then the `try`-wrapped computation.
 
-## 11. Unit tests
+## 12. Unit tests
 
 - [ ] Tests must run in whatever environment the project's testing-architecture docs actually
       require (check first — e.g. this project requires the real target interpreter, not just a
@@ -215,14 +245,14 @@ is not a machine with memory or cycles to spare:
 - [ ] Do **not** write tests for scenarios the type system already rules out (see section 2) —
       keep the suite focused on what can actually happen, not padded with impossible cases.
 
-## 12. Wire into the existing pipeline
+## 13. Wire into the existing pipeline
 
 - [ ] Extend the lint/typecheck config's scope, and the CI job's explicit path arguments, to
       include the file's new location.
 - [ ] Add the file's tests to (or confirm they're picked up by) the existing manual test-runner
       script, so the exact same command works locally and in CI.
 
-## 13. Verify, don't assume
+## 14. Verify, don't assume
 
 - [ ] After every change, actually run lint/typecheck/tests locally and read the output — don't
       report success without having done so.
