@@ -8,6 +8,13 @@ an out-of-range bit-field request, or a malformed reg_format for the struct-base
 real I2C bus/device failure (OSError - NAK, timeout, no such device) is never caught here; it
 propagates to the caller, matching every existing Reader class's own try/except around a full
 read/write sequence (see e.g. asy_scd30_driver.py's SCD30_Reader._read_scd).
+
+This contract applies to ongoing operational calls, not one-time setup: I2C.__init__()/init()
+(constructs real Pin/machine.I2C objects, which can raise ValueError for a bad pin/port number -
+confirmed against current MicroPython docs) and I2CDevice.setup()'s probe (raises ValueError/
+RuntimeError - see its own comment) are deliberately allowed to raise. A misconfigured bus should
+fail loudly once at boot, the same way setup()'s probe already does, not silently produce a
+permanently-nonfunctional driver that then degrades every later call to None.
 """
 
 import asyncio

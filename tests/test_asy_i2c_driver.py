@@ -249,6 +249,20 @@ def test_set_register_struct_accepts_an_actual_float_value() -> None:
     assert i2c.get_register_struct(0x50, 0x20, "f") == 3.25
 
 
+def test_set_get_register_struct_float_round_trips_nan_and_inf() -> None:
+    # Confirmed directly: struct.pack("f", ...) never raises for NaN/+-inf, unlike an
+    # out-of-range int against a float format - these are valid float bit patterns, and a real
+    # sensor fault could plausibly produce one (src/README.md section 12).
+    i2c = make_i2c()
+    i2c.set_register_struct(0x50, 0x20, "f", float("nan"))
+    result = i2c.get_register_struct(0x50, 0x20, "f")
+    assert isinstance(result, float) and result != result  # NaN != NaN is the standard check
+    i2c.set_register_struct(0x50, 0x20, "f", float("inf"))
+    assert i2c.get_register_struct(0x50, 0x20, "f") == float("inf")
+    i2c.set_register_struct(0x50, 0x20, "f", float("-inf"))
+    assert i2c.get_register_struct(0x50, 0x20, "f") == float("-inf")
+
+
 def test_set_get_register_struct_bytes_round_trip() -> None:
     # Found during review: value used to be typed int-only, making it impossible to write back
     # a bytes-format register at all, even though get_register_struct can read one - a real
