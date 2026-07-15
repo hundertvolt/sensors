@@ -120,12 +120,25 @@ below for why that's a scoped exception, not a change in overall approach):
     (`.github/workflows/ci.yml`'s `unit-tests` job) — the "blocked on CLAUDE.md's 'No unit tests
     against the current codebase' rule" caveat this bullet previously had no longer applies to
     `src/`, only to the pre-refactor `python/`/`modules/` code as that rule always intended (see
-    CLAUDE.md). **Still open**: the mocking boundary below and expanding test coverage beyond
-    `math_helpers.py` remain future work.
+    CLAUDE.md). **Still open**: expanding test coverage beyond `math_helpers.py`/`crc_checks.py`/
+    `asy_i2c_driver.py` remains future work.
   - **Mocking boundary**: mock only at the raw bus-transaction level (`machine.I2C`/`machine.SPI`
     read/write calls) — drivers, Reader classes, `ConfigManager`, and REST handlers should all run
     for real, unmocked, in tests. Mock higher up (e.g. whole driver classes) only if there's truly
-    no other way.
+    no other way. **First built and exercised, not just planned**: `tests/machine.py` (a fake
+    `I2C`/`Pin`, added for `asy_i2c_driver.py`'s own `src/` promotion — see the finding below) is
+    the concrete instance of this plan. It backs a real dict-of-registers store so
+    `get_bits`/`set_bits`/`get_register_struct`/`set_register_struct` round-trip through actual
+    `readfrom_mem`/`writeto_mem` calls instead of canned return values, and lets a test flag an
+    address as NAK'ing (`nak_addresses`) to exercise real `OSError` propagation. Confirmed
+    directly: the MicroPython Unix port's own built-in `machine` module (used by `scripts/test.sh`)
+    has no `I2C`/`SPI`/real `Pin` (only `PinBase`/`Signal`/`mem8`/`mem16`/`mem32`/`idle`/
+    `time_pulse_us`) and does not shadow a same-named module earlier on `MICROPYPATH` (verified: a
+    file-based `tests/machine.py` placed before `.frozen` on the path is what actually gets
+    imported) — so this mock is the only way any I2C/SPI-touching file can be tested at all under
+    this project's real-interpreter testing requirement. `asy_spi_driver.py`'s own future `src/`
+    promotion should extend this same file with a fake `SPI` class rather than inventing a second,
+    differently-shaped mock.
     - **`network`/CYW43 (WiFi) is in the same "mock it, no other way" tier as the physical
       buses** — the MicroPython Unix port has no real WiFi hardware at all, so `async_connect.py`'s
       WiFi-dependent logic needs `network` mocked to be testable in the automated suite, the same
@@ -395,6 +408,65 @@ above is genuinely underway, but surfaces some new items:
   is small buffers (2-3 byte sensor CRC8 checks, modest FRAM chunks), so the RAM cost (up to ~1KB
   for a CRC32 table) wasn't judged worth it against a gain that likely doesn't matter at this data
   volume — revisit if a future caller pushes meaningfully larger buffers through this engine.
+- **`asy_i2c_driver.py` moved to `src/`**: cleared the full `src/README.md` checklist, including its
+  new "raw bus-transaction calls may propagate `OSError`" carve-out (see that file's section 2) —
+  this is the first hardware-touching file to go through `src/` promotion, so several findings here
+  are new precedent, not just this-file fixes:
+  - **Real correctness fix, confirmed against current MicroPython docs**: `I2C.deinit()` never
+    called the actual `machine.I2C.deinit()` (confirmed to exist and deactivate the hardware bus) —
+    it only dropped the Python reference, in both the legacy `python/` driver and this file, unlike
+    `asy_spi_driver.py`'s `SPI.deinit()`, which already called the real thing. Fixed to match SPI's
+    existing pattern. `asy_spi_driver.py` itself was **not** touched (out of scope for this session,
+    per the project owner) but its own future review should drop its now-redundant
+    `try/except AttributeError` around the real `deinit()` call for the same reason this file's was
+    removed — a bound method on a real `machine.SPI`/`machine.I2C` object doesn't raise
+    `AttributeError`.
+  - **`scan()`/`writeto()` widened to return `None`** instead of a magic default (`[]`/`0`) when the
+    bus isn't initialized, matching the project's established "`None` = no data, never a disguised
+    magic value" convention (`crc_checks.py`, `math_helpers.py`). `get_register_struct()` already
+    followed this convention. **Follow-up needed, tracked here per the project owner's request**:
+    `I2CDevice` and the three sensor drivers (`asy_scd30_driver.py`, `asy_sgp40_driver.py`,
+    `asy_bmp3xx_driver.py`) don't currently check these return values at all (none of their current
+    callers depended on the old magic defaults either, so this was backward-compatible today) — a
+    future pass through those files should explicitly handle a `None` here rather than silently
+    relying on downstream code tolerating it by accident. Several methods stayed `-> None`
+    (`readfrom_into`, `set_bits`, `write_then_readinto`, `writeto_then_readfrom`) and so still can't
+    signal "did nothing, bus uninitialized" to a caller at all — same underlying gap, flagged rather
+    than silently redesigning further beyond what was asked this session.
+  - **Real latent bug fixed**: `set_bits()` took a separate `endian` parameter (independent of its
+    own `lsb_first` parameter) for the write-back, and `set_register_struct()` took a separate
+    `endian` parameter instead of deriving byte order from `reg_format`'s own prefix character (like
+    `get_register_struct()`'s `struct.unpack` already did) — both could silently disagree with the
+    read-side byte order for a multi-byte register. Neither was ever exercised by a real caller
+    (every current `get_bits`/`set_bits` call site uses `reg_width=1`, where byte order is moot;
+    `get_register_struct`/`set_register_struct` have no callers yet at all, only the not-yet-ported
+    `python/IndividualDrivers/asy_isl29125_driver.py`), but both are real API-contract bugs waiting
+    for `reg_width > 1`/a mismatched format string. Fixed by dropping the separate `endian`
+    parameter from both — `set_bits()` now derives byte order from `lsb_first` alone, and
+    `set_register_struct()` from `reg_format`'s own prefix via `struct.pack()` (symmetric with
+    `get_register_struct()`'s `struct.unpack()`).
+  - **`get_bits()`/`set_bits()` gained a range guard** (`num_bits`/`start_bit`/`reg_width`
+    sanity-checked before touching the bus) — previously unguarded, a genuine "no validity range
+    check at all" gap per `src/README.md` section 1, not just a hypothetical.
+  - **`import asyncio` + `from uasyncio import Lock` (both, redundantly) → `asyncio.Lock()`**, and
+    `from typing import Literal, List` dropped entirely (no `TYPE_CHECKING` guard needed — the
+    `endian` fix above removed the only `Literal` usage, and `List[int]` became the builtin
+    `list[int]`), leaving this file with no `typing` import at all.
+  - **`tests/base_classes.py` added: a minimal, behavior-faithful stand-in for
+    `improved-quality/base_classes.py`'s `Lockable`**, needed because `I2CDevice` subclasses it but
+    `base_classes.py` itself hasn't cleared its own `src/` promotion yet (and `improved-quality/`
+    isn't on the test `MICROPYPATH`, deliberately — see CLAUDE.md). Must be reconciled or deleted
+    once `base_classes.py` is itself promoted to `src/`. **Known, narrow, self-resolving side
+    effect**: while both files coexist, a plain unscoped `scripts/typecheck.sh` (no arguments) fails
+    with `Duplicate module named "base_classes"`, since mypy's default `files` scope
+    (`improved-quality`, `src`, `tests` together) finds two same-named top-level modules with
+    neither directory using `__init__.py`/namespace packages. **CI is unaffected**: its
+    `lint-and-typecheck` job passes `scripts/typecheck.sh src tests` explicitly (excluding
+    `improved-quality/` from the scan already, for unrelated pre-existing-findings reasons — see
+    `.github/workflows/ci.yml`), which resolves `base_classes` against the `tests/` stand-in cleanly
+    with no ambiguity. Not fixed via a `pyproject.toml` `exclude` (the `microdot.py` precedent)
+    because that would need the full "Pre-push verification" clean-chroot pass for a collision this
+    narrow and temporary; documented instead so a locally-run unscoped typecheck isn't mysterious.
 - **Test infrastructure gap found and fixed, while adding `crc_checks.py`'s tests**:
   `scripts/test.sh`'s `MICROPYPATH="src:tests"` silently shadowed every frozen-Python stdlib
   module (`asyncio` included) for every test file — invisible until now because `math_helpers.py`
