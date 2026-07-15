@@ -160,7 +160,31 @@ is not a machine with memory or cycles to spare:
       for style. If nothing meaningfully improves speed/resources/accuracy/complexity, say so and
       move on rather than manufacturing a change.
 
-## 9. Readability / conciseness
+## 9. API consistency, within a file and across the project
+
+- [ ] Within a set of related functions/classes, give every member the same shape — same
+      parameter names, same parameter order, same optionality, same return convention — even
+      where one member's shape looks initially unnecessary for that member alone. (`crc_checks.py`'s
+      `CRC_Pass`/`CRC8`/`CRC16`/`CRC32` all take `poly: int | None = <default>` and forward it to
+      `CRC_Base.__init__`, even though `CRC_Pass` can never actually use a `poly` — a caller or
+      future dispatch table can treat all four identically without special-casing one of them.)
+- [ ] Prefer the mechanism that makes the uniform shape *actually* consistent, not just
+      superficially matching — forwarding a parameter through to a shared base/helper and letting
+      *its* existing invariants do the work is more consistent than hardcoding a special case per
+      member. (`CRC_Pass` forwards `poly` to `CRC_Base` and relies on the base class's own
+      `num_bytes == 0` invariant to nullify it, rather than hardcoding `None` itself.)
+- [ ] Beyond the current file: check how comparable functions/classes elsewhere in the project
+      already express the same kind of thing — parameter naming, return-value conventions (e.g.
+      `None` for invalid/no-data, matching the module's own stated contract), guard-clause
+      ordering, comment style — and match them, rather than introducing a locally-plausible but
+      differently-shaped alternative. Where an existing file's convention is itself questionable,
+      flag it rather than silently diverging from it in the new file.
+- [ ] This is a deliberate, ongoing check across the whole project, not just "whatever pattern
+      happens to already be in the file you're editing" — if two files solve the same kind of
+      problem in visibly different ways, that's a finding worth raising, not something to leave
+      for a future session to notice.
+
+## 10. Readability / conciseness
 
 - [ ] One-line "why" comment per function: cite the formula's name/source and its valid domain.
       Don't restate what the code already says.
@@ -169,7 +193,7 @@ is not a machine with memory or cycles to spare:
 - [ ] Keep the control flow simple and in a consistent order: `None`-check, then range-check
       (plain guard clause, no `try` needed if it can't raise), then the `try`-wrapped computation.
 
-## 10. Unit tests
+## 11. Unit tests
 
 - [ ] Tests must run in whatever environment the project's testing-architecture docs actually
       require (check first — e.g. this project requires the real target interpreter, not just a
@@ -191,14 +215,14 @@ is not a machine with memory or cycles to spare:
 - [ ] Do **not** write tests for scenarios the type system already rules out (see section 2) —
       keep the suite focused on what can actually happen, not padded with impossible cases.
 
-## 11. Wire into the existing pipeline
+## 12. Wire into the existing pipeline
 
 - [ ] Extend the lint/typecheck config's scope, and the CI job's explicit path arguments, to
       include the file's new location.
 - [ ] Add the file's tests to (or confirm they're picked up by) the existing manual test-runner
       script, so the exact same command works locally and in CI.
 
-## 12. Verify, don't assume
+## 13. Verify, don't assume
 
 - [ ] After every change, actually run lint/typecheck/tests locally and read the output — don't
       report success without having done so.
