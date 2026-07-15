@@ -106,6 +106,15 @@ def test_writeto_returns_ack_count_and_accepts_str() -> None:
     assert fake(i2c).log[-1] == ("writeto", 0x50, b"abc", True)
 
 
+def test_writeto_str_buffer_beyond_latin1_returns_none_instead_of_raising() -> None:
+    # Found during review: the str convenience path assumes one byte per character
+    # (bytes([ord(x) for x in buffer])) - a real Unicode codepoint above 255 used to raise an
+    # uncaught ValueError here, even though `str` itself places no such restriction.
+    i2c = make_i2c()
+    assert i2c.writeto(0x50, "aሴb") is None
+    assert len(fake(i2c).log) == 0  # rejected before ever touching the bus
+
+
 def test_readfrom_into_and_writeto_respect_start_end_slice() -> None:
     i2c = make_i2c()
     buf = bytearray(b"\x00\x00\x00\x00")
@@ -229,6 +238,43 @@ def test_get_register_struct_float_format() -> None:
     i2c = make_i2c()
     fake(i2c).registers[(0x50, 0x20)] = bytearray(struct.pack("f", 1.5))
     assert i2c.get_register_struct(0x50, 0x20, "f") == 1.5
+
+
+def test_set_register_struct_accepts_an_actual_float_value() -> None:
+    # Found during review: value used to be typed int-only, so mypy would reject a real
+    # fractional float even though struct.pack itself handles it fine - not just an int that
+    # happens to auto-coerce.
+    i2c = make_i2c()
+    i2c.set_register_struct(0x50, 0x20, "f", 3.25)
+    assert i2c.get_register_struct(0x50, 0x20, "f") == 3.25
+
+
+def test_set_get_register_struct_bytes_round_trip() -> None:
+    # Found during review: value used to be typed int-only, making it impossible to write back
+    # a bytes-format register at all, even though get_register_struct can read one - a real
+    # read/write asymmetry, not just a type-annotation nicety.
+    i2c = make_i2c()
+    i2c.set_register_struct(0x50, 0x20, "4s", b"data")
+    assert fake(i2c).registers[(0x50, 0x20)] == bytearray(b"data")
+    assert i2c.get_register_struct(0x50, 0x20, "4s") == b"data"
+
+
+def test_set_register_struct_accepts_bytearray_for_bytes_formats() -> None:
+    i2c = make_i2c()
+    i2c.set_register_struct(0x50, 0x20, "4s", bytearray(b"data"))
+    assert i2c.get_register_struct(0x50, 0x20, "4s") == b"data"
+
+
+def test_set_register_struct_type_mismatch_returns_none_instead_of_raising() -> None:
+    # Found during review: struct.pack raises TypeError (not ValueError) when value's type
+    # doesn't match what reg_format expects - previously uncaught, a real "never raises"
+    # contract violation for an in-contract (correctly-typed per the old int-only signature)
+    # call, not an out-of-domain input the type system already excluded.
+    i2c = make_i2c()
+    i2c.set_register_struct(0x50, 0x20, "4s", 5)  # int value, bytes-type format
+    assert len(fake(i2c).log) == 0  # rejected before ever touching the bus
+    i2c.set_register_struct(0x50, 0x20, "f", b"x")  # bytes value, float-type format
+    assert len(fake(i2c).log) == 0
 
 
 # ---------------------------------------------------------------------------

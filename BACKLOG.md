@@ -543,6 +543,28 @@ above is genuinely underway, but surfaces some new items:
       `src/README.md` section 4's buffer-reuse requirement) — flagged but not fixed this pass
       since these methods have zero real callers today (only `asy_isl29125_driver.py`, not yet
       migrated, would exercise them frequently). Worth doing before that migration, not before.
+  - **Second follow-up pass, asked directly "any more bugs/unsecured conditions/surprises
+    overlooked" after the above**: found and fixed two more real, previously-uncaught exception
+    gaps, both confirmed empirically against the real interpreter rather than assumed:
+    - **`set_register_struct()`'s `value` was typed `int`-only, but `get_register_struct()`
+      returns `int | float | bytes` — a real read/write asymmetry, not just a type-annotation
+      nicety.** Confirmed directly: `struct.pack()` raises `TypeError` (not `ValueError`) for
+      any value/format type mismatch (e.g. an int against a bytes-type format like `"4s"`, or
+      vice versa) — previously uncaught, a genuine "never raises" violation for a call that *was*
+      in-contract under the old int-only signature. Also confirmed an actual fractional float
+      (not just an int auto-coerced to float, which already worked) was rejected by mypy despite
+      `struct.pack` handling it correctly at runtime. Fixed by widening `value` to
+      `int | float | bytes | bytearray` (the `bytearray` addition matches `writeto()`'s own
+      existing buffer-type convention) and catching `TypeError` alongside `ValueError`.
+    - **`writeto()`'s `str`-buffer convenience path (`bytes([ord(x) for x in buffer])`) raised an
+      uncaught `ValueError` for any real Unicode codepoint above 255** — confirmed directly
+      (`bytes([ord(x) for x in "aሴb"])` → `"bytes value out of range"`). The `str` type itself
+      places no such restriction, so this was reachable for fully in-domain input, not a
+      hypothetical. Fixed by catching the conversion's `ValueError` and returning `None`, the
+      established convention for a non-hardware failure.
+    - 5 new regression tests added (76 total for this file, project-wide 183). Neither method
+      has a real caller yet, so zero production impact, but both were genuinely reachable
+      exception gaps, not defensive coding against something that can't happen.
 - **Test infrastructure gap found and fixed, while adding `crc_checks.py`'s tests**:
   `scripts/test.sh`'s `MICROPYPATH="src:tests"` silently shadowed every frozen-Python stdlib
   module (`asyncio` included) for every test file — invisible until now because `math_helpers.py`

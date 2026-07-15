@@ -86,11 +86,19 @@ class I2C:
         end: int | None = None,
         stop: bool = True,
     ) -> int | None:
-        # machine.I2C.writeto(): returns the number of ACKs received.
+        # machine.I2C.writeto(): returns the number of ACKs received. The str case is a
+        # convenience for plain single-byte-per-character (Latin-1) protocol strings, not
+        # general text - a real Unicode codepoint above 255 raised an uncaught ValueError here
+        # (confirmed directly: bytes([ord(x) for x in "aሴb"]) -> "bytes value out of range"),
+        # a genuine "never raises" gap for a value that's fully in-domain per the `str` type
+        # itself, not just a hypothetical.
         if self._i2c is None:
             return None
         if isinstance(buffer, str):
-            buffer = bytes([ord(x) for x in buffer])
+            try:
+                buffer = bytes([ord(x) for x in buffer])
+            except ValueError:  # a character outside 0-255, not representable as a single byte
+                return None
         if end is None:
             end = len(buffer)
         return self._i2c.writeto(address, memoryview(buffer)[start:end], stop)
@@ -229,25 +237,37 @@ class I2C:
         return None
 
     def set_register_struct(
-        self, address: int, reg_addr: int, reg_format: str, value: int, addrsize: int | None = None
+        self,
+        address: int,
+        reg_addr: int,
+        reg_format: str,
+        value: int | float | bytes | bytearray,
+        addrsize: int | None = None,
     ) -> None:
         # struct-typed single-value register write; byte order comes entirely from reg_format's
         # own prefix character, matching get_register_struct (this used to instead take a
         # separate `endian` param that could silently disagree with reg_format's own prefix).
+        # value's type mirrors get_register_struct()'s return type (this used to be int-only,
+        # which made it impossible to write back a bytes-format register at all, or to pass an
+        # actual fractional float rather than relying on int-to-float auto-coercion).
         # Confirmed directly, an inherent MicroPython quirk rather than a bug here: unlike
         # CPython's struct.error, struct.pack silently truncates a value that doesn't fit
         # reg_format (e.g. pack("B", 999) -> b"\xe7"), and silently zero-pads/ignores a
         # reg_format needing a different number of values than the one `value` this method ever
-        # supplies (e.g. pack(">HH", 5) -> b"\x00\x05\x00\x00", not an error) - the try/except
-        # below only ever catches a genuinely malformed reg_format string itself. This method is
+        # supplies (e.g. pack(">HH", 5) -> b"\x00\x05\x00\x00", not an error). This method is
         # deliberately single-value-only (see its name/signature); a multi-field reg_format was
         # never a supported input, but silently writes a partially-zeroed register rather than
         # erroring - worth knowing if this is ever extended to accept multiple values.
         if self._i2c is None:
             return
         try:
+            # Confirmed directly: struct.pack raises TypeError (not ValueError) for a value
+            # whose type doesn't match what reg_format expects (e.g. an int value against a
+            # bytes-type format like "4s", or vice versa) - a real, reachable failure mode given
+            # value's now-widened type and reg_format being a runtime string mypy can't
+            # cross-check against it, not just a malformed reg_format on its own.
             packed = struct.pack(reg_format, value)
-        except ValueError:  # malformed reg_format
+        except (ValueError, TypeError):
             return
         self._writeto_mem(self._i2c, address, reg_addr, packed, addrsize)
 
@@ -345,7 +365,11 @@ class I2CDevice(Lockable):
         return self.i2c.get_register_struct(self.device_address, reg_addr, reg_format, addrsize)
 
     async def set_register_struct(
-        self, reg_addr: int, reg_format: str, value: int, addrsize: int | None = None
+        self,
+        reg_addr: int,
+        reg_format: str,
+        value: int | float | bytes | bytearray,
+        addrsize: int | None = None,
     ) -> None:
         self.i2c.set_register_struct(self.device_address, reg_addr, reg_format, value, addrsize)
 
