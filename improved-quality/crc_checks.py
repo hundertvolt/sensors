@@ -78,11 +78,9 @@ class CRC_Base:
     async def check_inc(self) -> int | None:
         if self.inc_crc is None:
             return None
-        if self.inc_crc == 0:
-            self.inc_crc = None
-            return self.inc_count - self.num_bytes
+        valid = self.poly is None or (self.inc_crc == 0 and self.inc_count > self.num_bytes)
         self.inc_crc = None
-        return None
+        return self.inc_count - self.num_bytes if valid else None
 
     async def add_into(self, buffer: bytearray, size: int, start: int = 0, init: int | None = None) -> int | None:
         if self.poly is None:  # uninitialized or "pass" mode
