@@ -38,3 +38,22 @@ env var replaces the interpreter's default `sys.path` rather than extending it, 
 path is what makes frozen-in modules (`asyncio` included) importable at all. `math_helpers.py`
 never surfaced this since it doesn't use `asyncio`; confirmed directly against the built
 interpreter for `crc_checks.py`, which does.
+
+## Hardware-touching files: mock at the raw bus-transaction level only
+
+For a `src/` file that talks to real hardware (`asy_i2c_driver.py` and, eventually,
+`asy_spi_driver.py`), the MicroPython Unix port's own `machine` module has no `I2C`/`SPI`/real
+`Pin` (confirmed directly: only `PinBase`/`Signal`/`mem8`/`mem16`/`mem32`/`idle`/`time_pulse_us`).
+`tests/machine.py` is a fake `machine` module, resolved ahead of any real one because `tests`
+comes before `.frozen` on `MICROPYPATH` — per BACKLOG.md's "Mocking boundary" plan, it mocks only
+the raw bus transactions (`readfrom_mem`/`writeto_mem`/`readfrom_into`/`writeto`/`scan`/`deinit`),
+backed by a real dict-of-registers store, so the driver's own logic (bit-packing, byte order,
+locking, error paths) runs for real against it. Extend this same file (don't add a second,
+differently-shaped mock) when `asy_spi_driver.py` goes through its own `src/` promotion.
+
+`tests/base_classes.py` is a separate, narrower case: a minimal stand-in for
+`improved-quality/base_classes.py`'s `Lockable`, needed only because that file hasn't cleared its
+own `src/` promotion yet and `improved-quality/` isn't on this test `MICROPYPATH`. See
+BACKLOG.md's `asy_i2c_driver.py` entry for why this exists and the narrow, self-resolving
+`scripts/typecheck.sh` (no arguments) collision it causes until `base_classes.py` is itself
+promoted and this stand-in is deleted.

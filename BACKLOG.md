@@ -120,12 +120,25 @@ below for why that's a scoped exception, not a change in overall approach):
     (`.github/workflows/ci.yml`'s `unit-tests` job) — the "blocked on CLAUDE.md's 'No unit tests
     against the current codebase' rule" caveat this bullet previously had no longer applies to
     `src/`, only to the pre-refactor `python/`/`modules/` code as that rule always intended (see
-    CLAUDE.md). **Still open**: the mocking boundary below and expanding test coverage beyond
-    `math_helpers.py` remain future work.
+    CLAUDE.md). **Still open**: expanding test coverage beyond `math_helpers.py`/`crc_checks.py`/
+    `asy_i2c_driver.py` remains future work.
   - **Mocking boundary**: mock only at the raw bus-transaction level (`machine.I2C`/`machine.SPI`
     read/write calls) — drivers, Reader classes, `ConfigManager`, and REST handlers should all run
     for real, unmocked, in tests. Mock higher up (e.g. whole driver classes) only if there's truly
-    no other way.
+    no other way. **First built and exercised, not just planned**: `tests/machine.py` (a fake
+    `I2C`/`Pin`, added for `asy_i2c_driver.py`'s own `src/` promotion — see the finding below) is
+    the concrete instance of this plan. It backs a real dict-of-registers store so
+    `get_bits`/`set_bits`/`get_register_struct`/`set_register_struct` round-trip through actual
+    `readfrom_mem`/`writeto_mem` calls instead of canned return values, and lets a test flag an
+    address as NAK'ing (`nak_addresses`) to exercise real `OSError` propagation. Confirmed
+    directly: the MicroPython Unix port's own built-in `machine` module (used by `scripts/test.sh`)
+    has no `I2C`/`SPI`/real `Pin` (only `PinBase`/`Signal`/`mem8`/`mem16`/`mem32`/`idle`/
+    `time_pulse_us`) and does not shadow a same-named module earlier on `MICROPYPATH` (verified: a
+    file-based `tests/machine.py` placed before `.frozen` on the path is what actually gets
+    imported) — so this mock is the only way any I2C/SPI-touching file can be tested at all under
+    this project's real-interpreter testing requirement. `asy_spi_driver.py`'s own future `src/`
+    promotion should extend this same file with a fake `SPI` class rather than inventing a second,
+    differently-shaped mock.
     - **`network`/CYW43 (WiFi) is in the same "mock it, no other way" tier as the physical
       buses** — the MicroPython Unix port has no real WiFi hardware at all, so `async_connect.py`'s
       WiFi-dependent logic needs `network` mocked to be testable in the automated suite, the same
@@ -169,13 +182,19 @@ hands-on field experience with the current deployed units:
 - **Sensor/bus-specific defined-state recovery should be as complete as possible**: sensor
   firmware/bus stacks can end up in an undefined state, and there are bus/sensor-specific ways to
   force a defined state again (e.g. clocking out a fixed number of cycles, reset sequences, reset
-  commands) — depends on the bus type and sensor. Some of this already exists (e.g.
-  `asy_spi_driver.py`'s `extra_clocks` parameter cycles the bus after CS deassert); the refactor
-  should make sure this is used as completely/consistently as possible across all buses and
-  sensors, not just where it happens to exist today.
-  - **I2C recovery is device-specific, not bus-generic**: unlike SPI's `extra_clocks`, I2C recovery
-    (retry + sensor reset commands) is expected to vary per device — check what each individual
-    driver already does before assuming a gap. If a genuinely generalizable I2C-side mechanism
+  commands) — depends on the bus type and sensor. **Correction (found while prepping the SPI
+  driver's own `src/` promotion): `extra_clocks` is not an existing mechanism.** It appears exactly
+  once, as an Adafruit CircuitPython `busdevice`-derived docstring line on
+  `python/IndividualDrivers/asy_spi_driver.py`'s constructor ("the minimum number of clock cycles
+  to cycle the bus after CS is high... Used for SD cards") — never a real constructor parameter,
+  never implemented, not even in the legacy driver, and not present at all in
+  `improved-quality/asy_spi_driver.py`. This was previously (incorrectly) cited here as an example
+  of already-existing bus-recovery cycling; it isn't. If SD-card-style post-deassert clock cycling
+  is still wanted for SPI, it needs to be designed and implemented from scratch, not "made more
+  consistent" from an existing example — there is no existing example.
+  - **I2C recovery is device-specific, not bus-generic**: I2C recovery (retry + sensor reset
+    commands) is expected to vary per device — check what each individual driver already does
+    before assuming a gap. If a genuinely generalizable I2C-side mechanism
     turns up (e.g. common to several sensors), it's fine to add to the shared bus driver; otherwise
     keep it device-specific. *(Follow-up needed: this session only read `asy_scd30_driver.py`'s
     reset path in depth — SGP40's `_reset()` and BMP3xx's reset command still need the same
@@ -395,6 +414,168 @@ above is genuinely underway, but surfaces some new items:
   is small buffers (2-3 byte sensor CRC8 checks, modest FRAM chunks), so the RAM cost (up to ~1KB
   for a CRC32 table) wasn't judged worth it against a gain that likely doesn't matter at this data
   volume — revisit if a future caller pushes meaningfully larger buffers through this engine.
+- **`asy_i2c_driver.py` moved to `src/`**: cleared the full `src/README.md` checklist, including its
+  new "raw bus-transaction calls may propagate `OSError`" carve-out (see that file's section 2) —
+  this is the first hardware-touching file to go through `src/` promotion, so several findings here
+  are new precedent, not just this-file fixes:
+  - **Real correctness fix, confirmed against current MicroPython docs**: `I2C.deinit()` never
+    called the actual `machine.I2C.deinit()` (confirmed to exist and deactivate the hardware bus) —
+    it only dropped the Python reference, in both the legacy `python/` driver and this file, unlike
+    `asy_spi_driver.py`'s `SPI.deinit()`, which already called the real thing. Fixed to match SPI's
+    existing pattern. `asy_spi_driver.py` itself was **not** touched (out of scope for this session,
+    per the project owner) but its own future review should drop its now-redundant
+    `try/except AttributeError` around the real `deinit()` call for the same reason this file's was
+    removed — a bound method on a real `machine.SPI`/`machine.I2C` object doesn't raise
+    `AttributeError`.
+  - **`scan()`/`writeto()` widened to return `None`** instead of a magic default (`[]`/`0`) when the
+    bus isn't initialized, matching the project's established "`None` = no data, never a disguised
+    magic value" convention (`crc_checks.py`, `math_helpers.py`). `get_register_struct()` already
+    followed this convention. **Follow-up needed, tracked here per the project owner's request**:
+    `I2CDevice` and the three sensor drivers (`asy_scd30_driver.py`, `asy_sgp40_driver.py`,
+    `asy_bmp3xx_driver.py`) don't currently check these return values at all (none of their current
+    callers depended on the old magic defaults either, so this was backward-compatible today) — a
+    future pass through those files should explicitly handle a `None` here rather than silently
+    relying on downstream code tolerating it by accident. Several methods stayed `-> None`
+    (`readfrom_into`, `set_bits`, `write_then_readinto`, `writeto_then_readfrom`) and so still can't
+    signal "did nothing, bus uninitialized" to a caller at all — same underlying gap, flagged rather
+    than silently redesigning further beyond what was asked this session.
+  - **Real latent bug fixed**: `set_bits()` took a separate `endian` parameter (independent of its
+    own `lsb_first` parameter) for the write-back, and `set_register_struct()` took a separate
+    `endian` parameter instead of deriving byte order from `reg_format`'s own prefix character (like
+    `get_register_struct()`'s `struct.unpack` already did) — both could silently disagree with the
+    read-side byte order for a multi-byte register. Neither was ever exercised by a real caller
+    (every current `get_bits`/`set_bits` call site uses `reg_width=1`, where byte order is moot;
+    `get_register_struct`/`set_register_struct` have no callers yet at all, only the not-yet-ported
+    `python/IndividualDrivers/asy_isl29125_driver.py`), but both are real API-contract bugs waiting
+    for `reg_width > 1`/a mismatched format string. Fixed by dropping the separate `endian`
+    parameter from both — `set_bits()` now derives byte order from `lsb_first` alone, and
+    `set_register_struct()` from `reg_format`'s own prefix via `struct.pack()` (symmetric with
+    `get_register_struct()`'s `struct.unpack()`).
+  - **`get_bits()`/`set_bits()` gained a range guard** (`num_bits`/`start_bit`/`reg_width`
+    sanity-checked before touching the bus) — previously unguarded, a genuine "no validity range
+    check at all" gap per `src/README.md` section 1, not just a hypothetical.
+  - **`import asyncio` + `from uasyncio import Lock` (both, redundantly) → `asyncio.Lock()`**, and
+    `from typing import Literal, List` dropped entirely (no `TYPE_CHECKING` guard needed — the
+    `endian` fix above removed the only `Literal` usage, and `List[int]` became the builtin
+    `list[int]`), leaving this file with no `typing` import at all.
+  - **`tests/base_classes.py` added: a minimal, behavior-faithful stand-in for
+    `improved-quality/base_classes.py`'s `Lockable`**, needed because `I2CDevice` subclasses it but
+    `base_classes.py` itself hasn't cleared its own `src/` promotion yet (and `improved-quality/`
+    isn't on the test `MICROPYPATH`, deliberately — see CLAUDE.md). Must be reconciled or deleted
+    once `base_classes.py` is itself promoted to `src/`. **Known, narrow, self-resolving side
+    effect**: while both files coexist, a plain unscoped `scripts/typecheck.sh` (no arguments) fails
+    with `Duplicate module named "base_classes"`, since mypy's default `files` scope
+    (`improved-quality`, `src`, `tests` together) finds two same-named top-level modules with
+    neither directory using `__init__.py`/namespace packages. **CI is unaffected**: its
+    `lint-and-typecheck` job passes `scripts/typecheck.sh src tests` explicitly (excluding
+    `improved-quality/` from the scan already, for unrelated pre-existing-findings reasons — see
+    `.github/workflows/ci.yml`), which resolves `base_classes` against the `tests/` stand-in cleanly
+    with no ambiguity. Not fixed via a `pyproject.toml` `exclude` (the `microdot.py` precedent)
+    because that would need the full "Pre-push verification" clean-chroot pass for a collision this
+    narrow and temporary; documented instead so a locally-run unscoped typecheck isn't mysterious.
+  - **Follow-up pass: deep asyncio/locking/bus-fault test coverage, a real bug found and fixed,
+    and the file simplified afterward** (all while genuinely green, not just planned). Extended
+    `tests/machine.py` with real RP2040 error codes (confirmed against
+    `ports/rp2/machine_i2c.c`: hardware I2C only ever raises `OSError(EIO)` for a NAK/general bus
+    fault or `OSError(ETIMEDOUT)` for a bus-busy/clock-stretch timeout — not the `ENODEV` this
+    mock originally guessed, which is a `SoftI2C`-specific code path this driver doesn't use),
+    per-operation fault injection (so one leg of a multi-step operation, e.g. the read half of
+    `writeto_then_readfrom`, can fail independently of the other — modeling a transfer
+    interrupted partway through), and exact-length `readfrom_mem` (real hardware always returns
+    precisely `nbytes`, never a short read). 31 new tests added (60 total for this file) covering
+    single- vs. multi-transfer sessions, asyncio interlock across concurrent tasks/devices
+    (`asyncio.gather` + a `max_concurrent` counter, confirmed always `1`), interrupted transfers
+    via both raised exceptions and real task cancellation (confirmed directly that MicroPython's
+    asyncio still runs `__aexit__` via `CancelledError` propagating through `async with`, same as
+    CPython), reentrant-acquisition deadlock bounded by `asyncio.wait_for` (confirmed this times
+    out with `TimeoutError` and still cleans up the lock afterward), deinit/reinit mid-session,
+    and buffer/slice edge cases. **Real bug found this way, not hypothetical**:
+    `get_register_struct("")` (or any zero-data-field format, e.g. pad-bytes-only `"2x"`, which
+    still has `calcsize() > 0`) raised an uncaught `IndexError` from indexing `struct.unpack()`'s
+    empty result tuple — a genuine "never raises" contract violation for a legitimate (if
+    degenerate) input, not excluded by the type contract. Fixed by checking the unpack result is
+    non-empty before indexing, rather than adding `IndexError` to the existing `except ValueError`
+    (clearer, and avoids conflating "malformed format" with "well-formed format, zero fields").
+    Also documented (comment + regression test, not silently changed) a related MicroPython-only
+    `struct.pack` quirk found via the same testing pass: it silently zero-pads/truncates a value
+    or argument-count mismatch instead of raising `struct.error` like CPython — relevant to
+    `set_register_struct`, which is deliberately single-value-only. With the expanded suite
+    genuinely passing, the file was then simplified with zero behavior change (verified by the
+    same suite staying green throughout): `get_bits()`/`set_bits()`'s duplicated byte-order
+    reconstruction loop and range-guard condition extracted into shared
+    `_bytes_to_int()`/`_bitfield_range_ok()`/`_bitmask()` helpers (the loop was the file's
+    trickiest algorithm and worth having in exactly one place, not two copies that could drift
+    the way the earlier `endian`/`lsb_first` split once did), and `I2CDevice`'s
+    `readinto`/`write`/`write_then_readinto` stopped redundantly pre-resolving `end=None` to
+    `len(buffer)` themselves, since `I2C`'s own methods already do that same computation one call
+    down.
+  - **Follow-up architecture review pass**: asked directly "is this file in good shape /
+    complete / reasonable / efficient / anything missing or badly implemented" after the above
+    landed. Found and fixed two more real issues, plus added two forward-compatible no-op
+    parameters:
+    - **Real bug, found and fixed**: `set_bits()` shifted `value` into the register without
+      masking it to `num_bits` width first (`reg |= value << start_bit`) — a caller passing a
+      `value` wider than the field silently corrupted the bits immediately above it instead of
+      being confined to the intended field. No current caller ever passes an out-of-range value
+      (same "unused by any migrated driver yet" category as the rest of the bit-field API), but
+      nothing prevented a future one from doing so. Fixed by masking `value` to `num_bits` before
+      the shift, reusing the existing `_bitmask()` helper.
+    - **Real design flaw, found and fixed**: `writeto_then_readfrom()`/`write_then_readinto()`
+      took one shared `stop` parameter applied to *both* legs of the transaction. This can
+      express "two fully separate transactions" (`stop=True` on both) or "neither leg ever
+      releases the bus" (`stop=False` on both, never useful) — but **not** the standard
+      repeated-start register-read pattern that most I2C sensors actually use (write the
+      register pointer *without* a stop, then read *with* one), since a single shared flag can't
+      set the two legs differently. Fixed by splitting into independent `out_stop`/`in_stop`
+      (matching the file's existing `out_start`/`out_end`/`in_start`/`in_end` naming), defaults
+      unchanged (`True`/`True`) so this is a pure capability addition, not a behavior change.
+      **Follow-up required, tracked here per the project owner's request**: no current caller
+      uses this method yet (same category as `get_bits`/`get_register_struct`), but any future
+      caller that adopts it for a real repeated-start sequence must pass `out_stop=False`
+      explicitly — the default remains two separate transactions, not a repeated start.
+    - **Two parameters added as pure no-ops for now**: `I2C.__init__()`/`init()` gained
+      `timeout: int | None = None`, and the register-level methods
+      (`get_bits`/`set_bits`/`get_register_struct`/`set_register_struct`, both on `I2C` and
+      `I2CDevice`) gained `addrsize: int | None = None` — both real parameters `machine.I2C`
+      itself exposes (`timeout` on the constructor, `addrsize` on `readfrom_mem`/`writeto_mem`)
+      that this driver didn't surface at all. `None` omits the kwarg entirely rather than
+      duplicating `machine.I2C`'s own default value in this code (which could silently drift if
+      upstream ever changed its own default) — genuinely zero behavior change until a caller
+      actually passes a value, via two small `_readfrom_mem()`/`_writeto_mem()` forwarding
+      helpers shared by all four register-level methods.
+    - **Considered and explicitly deferred, not forgotten**: `get_bits`/`set_bits`/
+      `get_register_struct` still call the allocating `machine.I2C.readfrom_mem()` rather than
+      the zero-copy `readfrom_mem_into()` that real `machine.I2C` also provides (relevant to
+      `src/README.md` section 4's buffer-reuse requirement) — flagged but not fixed this pass
+      since these methods have zero real callers today (only `asy_isl29125_driver.py`, not yet
+      migrated, would exercise them frequently). Worth doing before that migration, not before.
+  - **Second follow-up pass, asked directly "any more bugs/unsecured conditions/surprises
+    overlooked" after the above**: found and fixed two more real, previously-uncaught exception
+    gaps, both confirmed empirically against the real interpreter rather than assumed:
+    - **`set_register_struct()`'s `value` was typed `int`-only, but `get_register_struct()`
+      returns `int | float | bytes` — a real read/write asymmetry, not just a type-annotation
+      nicety.** Confirmed directly: `struct.pack()` raises `TypeError` (not `ValueError`) for
+      any value/format type mismatch (e.g. an int against a bytes-type format like `"4s"`, or
+      vice versa) — previously uncaught, a genuine "never raises" violation for a call that *was*
+      in-contract under the old int-only signature. Also confirmed an actual fractional float
+      (not just an int auto-coerced to float, which already worked) was rejected by mypy despite
+      `struct.pack` handling it correctly at runtime. Fixed by widening `value` to
+      `int | float | bytes | bytearray` (the `bytearray` addition matches `writeto()`'s own
+      existing buffer-type convention) and catching `TypeError` alongside `ValueError`.
+    - **`writeto()`'s `str`-buffer convenience path (`bytes([ord(x) for x in buffer])`) raised an
+      uncaught `ValueError` for any real Unicode codepoint above 255** — confirmed directly
+      (`bytes([ord(x) for x in "aሴb"])` → `"bytes value out of range"`). The `str` type itself
+      places no such restriction, so this was reachable for fully in-domain input, not a
+      hypothetical. Fixed by catching the conversion's `ValueError` and returning `None`, the
+      established convention for a non-hardware failure.
+    - 5 new regression tests added at the time (project-wide total climbed to 183). Neither method
+      has a real caller yet, so zero production impact, but both were genuinely reachable
+      exception gaps, not defensive coding against something that can't happen. **Current count as
+      of the file's most recent change (a comment-conciseness pass, no test/logic changes): 77
+      tests for this file, 184 project-wide** (`math_helpers.py` 45 + `crc_checks.py` 62 +
+      `asy_i2c_driver.py` 77) — one more than this bullet's original snapshot, from a test added in
+      a later pass than the one this bullet narrates. Treat this parenthetical, not the "76/183"
+      above, as the current figure; update it again the next time any test file's count changes.
 - **Test infrastructure gap found and fixed, while adding `crc_checks.py`'s tests**:
   `scripts/test.sh`'s `MICROPYPATH="src:tests"` silently shadowed every frozen-Python stdlib
   module (`asyncio` included) for every test file — invisible until now because `math_helpers.py`

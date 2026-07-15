@@ -81,6 +81,25 @@ you check, per file.
       (arithmetic, indexing, attribute access, external calls) is inside a `try` that catches it,
       or is provably unreachable given the guard clauses above. Not "probably fine" — walk the
       function line by line and account for each one.
+- [ ] **Specialty: raw hardware bus-transaction calls (`machine.I2C`/`machine.SPI` read/write/mem
+      operations) are the one deliberate exception to "never raises."** A real transaction failure
+      (`OSError` — NAK, timeout, device gone) is allowed to propagate uncaught out of a low-level
+      bus driver, rather than being swallowed into a `None` sentinel here — this matches the
+      legacy codebase's own existing pattern and is what every current Reader class (e.g.
+      `asy_scd30_driver.py`'s `SCD30_Reader._read_scd`) already expects: it wraps a *whole*
+      read/write sequence in its own `try/except Exception`, using the propagated exception itself
+      to detect and count a real hardware failure. Silently returning `None` at the bus-driver
+      layer instead would make that upstream detection invisible. This carve-out applies only to
+      the actual bus-transaction call; a bus driver's own non-hardware failures (an uninitialized
+      bus, a malformed caller-supplied format string) still get the normal `None`-sentinel
+      treatment from the bullets above.
+      **When reviewing a file that takes this carve-out, verify — don't assume — that every
+      upstream caller of it actually closes the gap**: confirm each call site sits inside a
+      `try/except` broad enough to catch what the low-level call can raise (typically `OSError`,
+      but check the specific driver), so a real bus fault degrades to the caller's own error
+      counting/self-healing path instead of ever reaching the top-level task supervisor and
+      crashing the main loop. If a call site doesn't already do this, that's a real finding to fix
+      or flag — don't take the carve-out as license to skip checking who actually catches it.
 
 ## 3. Stability for indefinite, unattended operation
 
