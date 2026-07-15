@@ -135,6 +135,19 @@ is not a machine with memory or cycles to spare:
       being checked, not something to assume either way.)
 - [ ] "Reasonable" also means not over- or under-typing: no `Any` where a real type is knowable,
       no unnecessarily narrow type that will make legitimate future callers fight the checker.
+- [ ] If a file needs typing-only utilities that aren't plain annotation syntax — `TypeVar`,
+      `Protocol`, `Generic`, `overload`, `TYPE_CHECKING` itself, ... — guard the import behind
+      `if TYPE_CHECKING:` with a `try/except ImportError: TYPE_CHECKING = False` fallback, rather
+      than importing `typing` unconditionally. Confirmed directly: `typing` is not an importable
+      module at all on the MicroPython Unix-port test interpreter (`tests/test_crc_checks.py`'s
+      `run()` helper needed this guard to use `Coroutine`/`TypeVar` for its generic return type).
+      Plain `X | None` annotations don't need this — the bullet above already established that
+      annotation expressions are never evaluated at runtime, so names inside them don't need to
+      resolve either — but a real runtime call like `TypeVar("T")` does. This is a live, present
+      gap across much of `improved-quality/` too (most files there do an unconditional `from
+      typing import ...`, untested against the real interpreter) — not something to fix
+      opportunistically in unrelated files during an unrelated review, but the pattern every new
+      `src/`/test file should use going forward.
 
 ## 7. Always-defined return values
 
@@ -216,10 +229,23 @@ is not a machine with memory or cycles to spare:
 
 ## 11. Readability / conciseness
 
-- [ ] One-line "why" comment per function: cite the formula's name/source and its valid domain.
-      Don't restate what the code already says.
+- [ ] One-line "why" comment per function — cite the formula's name/source and its valid domain
+      where that's the "why" (see section 1). For a file organized as a set of related
+      methods/classes around one shared algorithm rather than several independent formulas (e.g.
+      `crc_checks.py`), a comment on what that specific method does differently from its siblings
+      is enough — it doesn't need to re-cite the algorithm identity already stated once at module
+      level. Don't restate what the code already says.
+- [ ] Per-function/per-method explanations are always `#` comments, never docstrings — a
+      module-level docstring for the file's own shared contract is expected (see below), but don't
+      mix a docstring into an individual function within the same file. (Found and fixed a real
+      instance of this: `crc_checks.py`'s `run_inc` had both a comment above the `def` and a
+      docstring inside it saying much the same thing — keep to one, and make it a comment.)
 - [ ] State a shared contract once, at module level (e.g. "returns `None`, never raises, if ...")
-      instead of repeating it in every function's docstring/comment.
+      instead of repeating it in every function's docstring/comment — and this applies across
+      files too, not just within one: a principle already established once as a project-wide rule
+      elsewhere in this checklist (e.g. section 2's "trust the type contract, mypy already enforces
+      it at every call site") doesn't need independent restating in every file's own module
+      docstring just because an earlier file's docstring happened to spell it out locally.
 - [ ] Keep the control flow simple and in a consistent order: `None`-check, then range-check
       (plain guard clause, no `try` needed if it can't raise), then the `try`-wrapped computation.
 
