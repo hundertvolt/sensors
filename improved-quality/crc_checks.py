@@ -45,7 +45,7 @@ class CRC_Base:
         try:
             pack_into(self.fmt, crc_b, 0, crc)
             return bytearr + crc_b
-        except Exception:
+        except ValueError:
             return None
 
     async def check(self, bytearr: bytearray, init: int | None = None) -> bytearray | None:
@@ -97,7 +97,7 @@ class CRC_Base:
         try:
             pack_into(self.fmt, mv, size, crc)
             return size + self.num_bytes
-        except Exception:
+        except ValueError:
             return None
 
     async def check_from(
