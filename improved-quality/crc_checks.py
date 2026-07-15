@@ -12,7 +12,7 @@ from struct import pack_into
 
 
 class CRC_Base:
-    def __init__(self, num_bytes: int, poly: int | None, fmt: str):
+    def __init__(self, num_bytes: int, poly: int | None, fmt: str) -> None:
         self.num_bytes = 0 if poly is None or num_bytes < 0 else num_bytes
         self.all_set = 0 if self.num_bytes <= 0 else (1 << (self.num_bytes * 8)) - 1
         self.msb_set = 0 if self.num_bytes <= 0 else 1 << ((self.num_bytes * 8) - 1)
