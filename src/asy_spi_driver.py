@@ -1,29 +1,18 @@
-"""Async wrapper around machine.SPI: bus-level primitives (SPI) plus a per-device, lock-scoped
-wrapper (SPIDevice) used by this codebase's one current SPI consumer (asy_fram_driver.py's
-FRAM_SPI, one SPIDevice per FRAM chip's CS pin).
+"""Async wrapper around machine.SPI: SPI (bus primitives) plus SPIDevice (per-device, lock-scoped
+CS-pin wrapper). Sole consumer: asy_fram_driver.py's FRAM_SPI.
 
-Shared contract: a method returns None (or no-ops, for a None-typed method) only for a
-non-hardware failure - the bus not being initialized (self._spi is None, e.g. after deinit()) or
-a mismatched write_readinto() buffer pair. Unlike asy_i2c_driver.py's I2C, real RP2040 hardware
-SPI transfers have no OSError-raising fault path at all (confirmed against extmod/machine_spi.c:
-the blocking transfer HAL - spi_write_blocking()/spi_write_read_blocking(), reached via
-mp_machine_spi_transfer() - has no error return once the bus is constructed). SPI has no ACK/NAK
-concept the way I2C does, so a real bus fault such as a disconnected wire is invisible at this
-layer, not surfaced as an exception. write()/readinto() therefore genuinely never raise, full
-stop - not merely "in practice, let it propagate" the way I2C's OSError carve-out works.
-write_readinto() is the one exception: machine.SPI.write_readinto() itself raises ValueError if
-its two buffers differ in length (mp_machine_spi_write_readinto(), shared by hardware and soft
-SPI alike) - caught here and turned into a None return, matching this project's established
-"malformed non-hardware input -> None" convention (see asy_i2c_driver.py's
-get_register_struct()/set_register_struct() for the same shape against a malformed reg_format).
+Contract: a method returns None (or no-ops) only for a non-hardware failure - an uninitialized/
+deinitialized bus, or a mismatched write_readinto() buffer pair. Unlike I2C, real RP2040 SPI
+transfers have no error return at all once the bus is constructed (extmod/machine_spi.c) - no
+ACK/NAK concept, so write()/readinto() genuinely never raise. write_readinto() is the exception:
+machine.SPI.write_readinto() raises ValueError for mismatched buffer lengths, caught here and
+turned into None (mirrors asy_i2c_driver.py's malformed-reg_format handling).
 
-This contract applies to ongoing operational calls, not one-time setup: SPI.__init__()/init()
-(constructs real Pin/machine.SPI objects, which can raise ValueError for a bad pin/port number, or
-NotImplementedError if firstbit=SPI.LSB is ever requested - rp2 hardware SPI only implements MSB,
-confirmed against ports/rp2/machine_spi.c) is deliberately allowed to raise, the same "fail loudly
-once at boot" precedent asy_i2c_driver.py's own docstring establishes for its constructor.
-SPIDevice.configure()'s RuntimeError for being called without the bus lock held is the same kind
-of programmer-error guard, not a data-dependent operational failure.
+One-time setup is exempt from that contract and allowed to raise: SPI.__init__()/init() and
+SPIDevice.__init__() construct real Pin/machine.SPI objects (ValueError for a bad pin/port
+number); SPI.configure() can raise NotImplementedError for firstbit=SPI.LSB (rp2 only implements
+MSB, confirmed against ports/rp2/machine_spi.c) or RuntimeError if called on an uninitialized or
+unlocked bus - all programmer-error guards, not operational failures.
 """
 
 import asyncio
@@ -40,15 +29,13 @@ class SPI:
         self.init(port_id, sck_pin, mosi_pin, miso_pin)
 
     def init(self, port_id: int, sck_pin: int, mosi_pin: int, miso_pin: int) -> None:
-        # deinit() first so re-init can't leak a claimed peripheral/pins, matching I2C.init()'s
-        # own precedent.
+        # deinit() first so re-init can't leak a claimed peripheral/pins.
         self.deinit()
         self._spi = _SPI(port_id, sck=Pin(sck_pin), mosi=Pin(mosi_pin), miso=Pin(miso_pin))
 
     def deinit(self) -> None:
-        # machine.SPI.deinit() actually deactivates the hardware bus - a bound method on a real
-        # constructed _SPI object, so it can't raise AttributeError (confirmed, same reasoning as
-        # the identical asy_i2c_driver.py fix).
+        # Deactivates the real hardware bus; a bound method on a constructed object, so it
+        # can't raise AttributeError.
         if self._spi is not None:
             self._spi.deinit()
             self._spi = None
@@ -61,8 +48,8 @@ class SPI:
         bits: int = 8,
         firstbit: int = _SPI.MSB,
     ) -> None:
-        # Programmer-error guards, not operational failures: configure() is meant to be called
-        # only from within SPIDevice.__aenter__, on an initialized bus, after the lock is held.
+        # Programmer-error guards: only ever called from SPIDevice.__aenter__, on an
+        # initialized, lock-held bus.
         if self._spi is None:
             raise RuntimeError("SPI bus not initialized - call init() first")
         if not self.async_lock.locked():
@@ -87,14 +74,13 @@ class SPI:
         buffer_out: bytes | bytearray | memoryview,
         buffer_in: bytearray | memoryview,
     ) -> None:
-        # Full-duplex simultaneous transfer, not write-then-read: buffer_out/buffer_in must be
-        # the same length (real machine.SPI.write_readinto() raises ValueError otherwise, caught
-        # below and turned into this driver's usual non-hardware-failure None).
+        # Full-duplex simultaneous transfer: buffer_out/buffer_in must match length, or
+        # machine.SPI.write_readinto() raises ValueError, caught below and turned into None.
         if self._spi is None:
             return None
         try:
             self._spi.write_readinto(buffer_out, buffer_in)
-        except ValueError:  # buffer_out/buffer_in length mismatch
+        except ValueError:  # length mismatch
             return None
         return None
 
@@ -130,14 +116,12 @@ class SPIDevice(Lockable):
         self.uninitialized = False
 
     async def __aenter__(self) -> "SPIDevice":
-        # Pin.value() writes the GPIO output register unconditionally regardless of direction
-        # (confirmed against ports/rp2/machine_pin.c) - without this guard, entering before
-        # setup() wouldn't raise, it would just silently fail to assert CS on real hardware.
+        # Pin.value() writes the GPIO register unconditionally regardless of direction, so
+        # entering before setup() would silently fail to assert CS rather than raise.
         if self.uninitialized:
             raise RuntimeError("SPIDevice not set up - call setup() first")
         await super().__aenter__()
-        # A failure below means __aenter__ itself raises, so `async with` never calls __aexit__ -
-        # the lock and (if asserted) CS pin must be released here or they leak permanently.
+        # __aenter__ raising means `async with` never calls __aexit__, so clean up here too.
         try:
             self.spi.configure(
                 baudrate=self.baudrate,
@@ -149,15 +133,14 @@ class SPIDevice(Lockable):
             self.cs_pin.value(self.cs_active_value)
             await asyncio.sleep(0.001)
         except BaseException:
-            self.cs_pin.value(not self.cs_active_value)  # deassert if it was ever asserted; a no-op otherwise
+            self.cs_pin.value(not self.cs_active_value)  # deassert if asserted
             self.asy_lock.release()
             raise
         return self
 
     async def __aexit__(self, exc_type: object, exc_val: object, exc_tb: object) -> bool:
-        # object-typed to satisfy Liskov substitution against Lockable.__aexit__ (only forwarded
-        # below, never inspected). CS deassert + settle runs first, while the lock is still held -
-        # only then does super().__aexit__() release it (swallowing a pre-released RuntimeError).
+        # object-typed params satisfy Liskov substitution against Lockable.__aexit__ (only
+        # forwarded, never inspected). CS deassert runs first, while the lock is still held.
         self.cs_pin.value(not self.cs_active_value)
         await asyncio.sleep(0.001)
         return await super().__aexit__(exc_type, exc_val, exc_tb)
