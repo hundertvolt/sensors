@@ -1,7 +1,8 @@
 import asyncio
 
-from asy_spi_driver import SPI, SPIDevice
 from machine import SPI as FakeSPI
+
+from asy_spi_driver import SPI, SPIDevice
 
 try:
     from typing import TYPE_CHECKING
