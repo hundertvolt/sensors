@@ -747,6 +747,14 @@ above is genuinely underway, but surfaces some new items:
     session's start (unchanged from the count recorded at the end of the I2C session above,
     confirmed before touching anything), and 317 after this file's promotion - a net **decrease** of
     exactly the 3 pre-existing findings this file itself had, not a regression anywhere else.
+  - **Fourth pass, a full re-walk of `src/README.md`'s checklist after the PR was already open**:
+    found one real docstring inaccuracy, flagged and fixed on explicit direction rather than
+    silently - the module docstring attributed `configure()` to `SPIDevice` (it's an `SPI` method,
+    only ever called *from* `SPIDevice.__aenter__`) and attributed the `firstbit=SPI.LSB`
+    `NotImplementedError` to `SPI.__init__()/init()`, which take no `firstbit` parameter at all -
+    only `configure()` does. Also tightened the module docstring to essentials and capped every
+    function's comments at 3 lines, on request; zero behavior change, verified via a full
+    mypy/lint/test re-run before pushing.
 - **Test infrastructure gap found and fixed, while adding `crc_checks.py`'s tests**:
   `scripts/test.sh`'s `MICROPYPATH="src:tests"` silently shadowed every frozen-Python stdlib
   module (`asyncio` included) for every test file — invisible until now because `math_helpers.py`
