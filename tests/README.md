@@ -30,5 +30,11 @@ Builds the MicroPython Unix port on first run (via `uv run toolchain/setup_toolc
 reuses it afterwards. To run a single test file directly once the interpreter is built:
 
 ```
-MICROPYPATH="src:tests" ~/pico-toolchain/micropython/ports/unix/build-standard/micropython tests/test_math_helpers.py
+MICROPYPATH="src:tests:.frozen" ~/pico-toolchain/micropython/ports/unix/build-standard/micropython tests/test_math_helpers.py
 ```
+
+`.frozen` is required in `MICROPYPATH` (not just `src:tests`) because MicroPython's `MICROPYPATH`
+env var replaces the interpreter's default `sys.path` rather than extending it, and the default
+path is what makes frozen-in modules (`asyncio` included) importable at all. `math_helpers.py`
+never surfaced this since it doesn't use `asyncio`; confirmed directly against the built
+interpreter for `crc_checks.py`, which does.

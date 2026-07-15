@@ -41,6 +41,11 @@ dev = [
 # have been retired in favor of this file.
 
 [tool.ruff]
+# Deliberately 3.10, not >=3.11 like [project]'s requires-python above: this is the syntax floor
+# of the *checked* code (src/, tests/, improved-quality/ - MicroPython, not this dev-tooling
+# venv), independent of what interpreter runs ruff itself. The checked code's actual floor is PEP
+# 604 union syntax (3.10); >=3.11's tomllib requirement is specific to the dev-tooling scripts
+# (scripts/typecheck.sh), not something the checked code itself needs.
 target-version = "py310"
 # `ruff format` is deliberately not part of this toolchain, and not run in scripts/lint.sh - line
 # breaks in this codebase are chosen by hand, not by an auto-formatter. 320 (ruff's own hard
@@ -79,7 +84,8 @@ ignore = [
 # below) still get their types used for call-site checking elsewhere, without their own internal
 # issues being reported.
 platform = "linux"
-python_version = "3.10"
+python_version = "3.10"  # same reasoning as [tool.ruff]'s target-version above - the checked
+# code's syntax floor (MicroPython/PEP 604), not the interpreter mypy itself runs under
 follow_imports = "silent"
 # follow_imports normally has no effect on .pyi stub files (mypy always analyzes those on their
 # own terms) - this extends it to typings/ too, so the third-party stub package's own internal

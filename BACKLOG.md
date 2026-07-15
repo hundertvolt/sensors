@@ -340,9 +340,11 @@ refactor work actually begins:
    (`math_helpers.py`), and a lint/type-check/unit-test GitHub Actions pipeline were similarly
    pulled forward once `math_helpers.py` became the first file to reach the "fully reviewed" bar
    `src/` requires (see "Production-level code quality" above) — scoped the same way, not a full
-   move-up of this whole sequencing item. **Still following this sequencing**: extending scope
-   beyond `math_helpers.py`, and the firmware-build CI stage (blocked on the `build-*.sh` path
-   genericization, same as before).
+   move-up of this whole sequencing item. `crc_checks.py` cleared the same bar shortly after (see
+   "Findings" below) — extending `src/`'s scope to more files is now an ongoing, incremental part
+   of this pulled-forward work, not a one-off tied to a single file. **Still blocked on this
+   sequencing**: the firmware-build CI stage (blocked on the `build-*.sh` path genericization,
+   same as before).
 
 ## Findings from reviewing `improved-quality/` against this spec
 
@@ -382,6 +384,37 @@ above is genuinely underway, but surfaces some new items:
   requirement was noticed; then unified into one shared `crc_checks.py` class; then extended to
   FRAM chunk integrity as well. Not an accidental byproduct — keep generalizing it as a goal, not
   just something to leave alone.
+- **`crc_checks.py` moved to `src/`**: cleared the full `src/README.md` checklist — correctness
+  verified against Sensirion's own datasheet test vectors (already quoted in
+  `asy_sgp40_driver.py`'s docstring) plus the public CRC-16/CCITT-FALSE and CRC-32/MPEG-2
+  standards, exception handling narrowed to the specific MicroPython-confirmed failure mode
+  (`ValueError`, not a broad `except Exception:`), missing negative-value/length guards added,
+  `tests/test_crc_checks.py` added and passing under the real MicroPython Unix-port interpreter.
+  A table-driven (256-entry lookup table per width) CRC implementation was considered as a speed
+  optimization over the current bit-banged loop and explicitly declined for now: real usage here
+  is small buffers (2-3 byte sensor CRC8 checks, modest FRAM chunks), so the RAM cost (up to ~1KB
+  for a CRC32 table) wasn't judged worth it against a gain that likely doesn't matter at this data
+  volume — revisit if a future caller pushes meaningfully larger buffers through this engine.
+- **Test infrastructure gap found and fixed, while adding `crc_checks.py`'s tests**:
+  `scripts/test.sh`'s `MICROPYPATH="src:tests"` silently shadowed every frozen-Python stdlib
+  module (`asyncio` included) for every test file — invisible until now because `math_helpers.py`
+  (previously the only tested `src/` file) doesn't use `asyncio`. MicroPython's `MICROPYPATH` env
+  var *replaces* the interpreter's default `sys.path` rather than extending it, dropping the
+  `.frozen` path entry that resolves frozen-in modules. Fixed by adding `.frozen` to the path
+  (`MICROPYPATH="src:tests:.frozen"`), verified against the real interpreter with both
+  `test_crc_checks.py` and `test_math_helpers.py` passing, no regression. Separately confirmed but
+  explicitly **not** fixed (out of scope for this session): `typing` is not an importable module
+  on this same Unix-port build at all — most of `improved-quality/`'s files do an unconditional
+  `from typing import ...`, which would fail identically if actually executed under this
+  interpreter; only `print_log.py`/`base_classes.py` already guard part of their typing imports
+  behind `if TYPE_CHECKING:` (for a different reason — circular-import avoidance, not this gap).
+  This is a latent, codebase-wide issue worth addressing when those files go through their own
+  `src/` promotion, not something to patch piecemeal now. Also worth flagging for future sessions
+  in this same sandbox: the globally pre-installed `ruff`/`mypy` here were stale (0.15.8/1.19.1)
+  compared to what a fresh `uv sync` actually installs (0.15.21/2.3.0, matching CI) — the
+  chroot-based pre-push verification caught this via a mypy finding-count mismatch (146 vs. 144
+  errors in unrelated pre-existing `improved-quality/` files) that had nothing to do with the
+  actual change being verified.
 - **Timing-value changes are confirmed intentional, not drift**: the project owner tested and found
   both changed delays — `asy_scd30_driver.py`'s `_read_register()` inter-command delay (0.005s →
   0.05s) and `asy_sgp40_driver.py`'s initial serial-number-read delay (10ms → 3ms) — to produce

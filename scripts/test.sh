@@ -28,7 +28,11 @@ fi
 failed=0
 for test_file in tests/test_*.py; do
     echo "== Running $test_file"
-    if ! MICROPYPATH="src:tests" "$micropython_bin" "$test_file"; then
+    # .frozen must be included explicitly: MICROPYPATH replaces MicroPython's default sys.path
+    # rather than extending it, and the default path is what makes frozen-in modules (asyncio
+    # included) resolvable at all. Confirmed directly against the built interpreter - dropping
+    # this breaks `import asyncio` for any async src/ file with no import error pointing at why.
+    if ! MICROPYPATH="src:tests:.frozen" "$micropython_bin" "$test_file"; then
         failed=1
     fi
 done
