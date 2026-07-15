@@ -57,3 +57,41 @@ own `src/` promotion yet and `improved-quality/` isn't on this test `MICROPYPATH
 BACKLOG.md's `asy_i2c_driver.py` entry for why this exists and the narrow, self-resolving
 `scripts/typecheck.sh` (no arguments) collision it causes until `base_classes.py` is itself
 promoted and this stand-in is deleted.
+
+## Coverage
+
+```
+scripts/test.sh --coverage
+```
+
+Reports line coverage of `src/` only (not `tests/`'s own helper/mock modules). See
+`README.md`'s "Code quality tooling" for the usage example and output paths
+(`htmlcov/index.html`, `coverage.xml`, `coverage_summary.md`).
+
+Since `coverage.py` only runs under CPython and `src/` only ever runs under the real MicroPython
+Unix-port interpreter (see "Why not pytest" above), coverage collection and reporting are two
+separate stages, not one tool doing both:
+
+1. `tests/_coverage_runner.py` runs *inside* MicroPython, wrapping each `test_*.py` file with
+   `sys.settrace` — verified directly against a real build (not assumed from CPython
+   documentation): MicroPython's `sys.settrace` reports the same `(frame, event)` shape closely
+   enough that a CPython-style line tracer records exactly the executed-line set `coverage.py`
+   itself would expect. It records every line executed whose `co_filename` starts with `src/`
+   (so `tests/machine.py`, `tests/base_classes.py`, and the test files themselves are never
+   counted) and dumps the result as JSON.
+2. `scripts/_render_coverage.py` (a separate, self-contained `uv run` script, like
+   `toolchain/setup_toolchain.py`) runs under CPython afterwards, merges every test file's JSON
+   dump, feeds the result into `coverage.py` via its `CoverageData.add_lines()` API — a
+   documented integration point for exactly this "foreign coverage source" case — and lets
+   `coverage.py`'s own report engine render the HTML/XML/markdown output from data it never
+   collected first-hand.
+
+This needs a second MicroPython Unix port binary, built with `MICROPY_PY_SYS_SETTRACE=1` (off in
+the plain build the non-coverage `scripts/test.sh` run uses, since it adds tracing overhead never
+wanted otherwise): `uv run toolchain/setup_toolchain.py coverage` builds it into
+`ports/unix/build-coverage/`, alongside (not instead of) `build-standard/`.
+`scripts/test.sh --coverage` builds it automatically on first use, the same way the plain
+`build-standard/` binary is built automatically by plain `scripts/test.sh`.
+
+No coverage threshold is enforced anywhere — CI reports the numbers, it never fails the build
+over them.

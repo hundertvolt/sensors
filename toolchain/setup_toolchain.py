@@ -17,6 +17,8 @@ Usage (from anywhere, via uv — no venv/pip setup needed):
     uv run toolchain/setup_toolchain.py --micropython-ref v1.26.1
     uv run toolchain/setup_toolchain.py --clean           # wipe build dirs, then rebuild from scratch
     uv run toolchain/setup_toolchain.py test              # re-verify an existing install, offline
+    uv run toolchain/setup_toolchain.py coverage          # build a sys.settrace-enabled Unix port
+                                                           # for scripts/test.sh --coverage, offline
 
 Re-running this same command against an existing toolchain directory is how updates work:
 it fetches, checks out whatever ref is now pinned, re-derives the matching pico-sdk/picotool
@@ -374,6 +376,37 @@ def build_unix_port(micropython_dir: Path, jobs: int, frozen_manifest: Path | No
     return binary
 
 
+def build_unix_coverage_port(micropython_dir: Path, jobs: int) -> Path:
+    """Builds a second Unix port binary alongside build_unix_port()'s "standard" one, with
+    MICROPY_PY_SYS_SETTRACE=1 -- off by default even in the standard variant (see py/mpconfig.h),
+    since the tracing overhead it adds is never wanted on deployed firmware or in the plain
+    (non-coverage) test run. Kept in its own build-coverage/ directory precisely so it never
+    disturbs build-standard/. Backs scripts/test.sh --coverage: tests/_coverage_runner.py installs
+    a sys.settrace line tracer scoped to src/ before running each test file under this binary.
+    Verified directly during development (not assumed from CPython coverage.py docs): MicroPython's
+    sys.settrace reports the same (frame, event) shape closely enough that a CPython-style line
+    tracer run against this binary records exactly the executed-line set coverage.py itself expects
+    -- confirmed against all of tests/test_*.py, not just a toy example."""
+    log("Building the MicroPython Unix port (coverage-enabled, sys.settrace on)")
+    unix_dir = micropython_dir / "ports" / "unix"
+    build_dir = unix_dir / "build-coverage"
+    if build_dir.exists():
+        shutil.rmtree(build_dir)
+    make_cmd = ["make", f"-j{jobs}", "BUILD=build-coverage", "CFLAGS_EXTRA=-DMICROPY_PY_SYS_SETTRACE=1"]
+    out = run(make_cmd, cwd=unix_dir, env=build_env())
+    if re.search(r"\berror:", out, re.IGNORECASE):
+        raise SetupError("Unix port (coverage) build reported an error (see log above)")
+    if re.search(r"\bwarning:", out, re.IGNORECASE):
+        raise SetupError("Unix port (coverage) build produced warnings (see log above)")
+
+    binary = build_dir / "micropython"
+    if not binary.exists():
+        raise SetupError(f"Unix port (coverage) build did not produce {binary}")
+    version_out = run([str(binary), "-c", "import sys; print(sys.implementation)"], env=build_env())
+    print(f"Built: {version_out.strip()}")
+    return binary
+
+
 def clean_build_dirs(toolchain_dir: Path, board: str) -> None:
     """Wipe every build-artifact directory without touching the git clones themselves, so the
     setup that follows rebuilds everything from scratch -- as if freshly installed -- without
@@ -382,13 +415,16 @@ def clean_build_dirs(toolchain_dir: Path, board: str) -> None:
     on every run (that's why the firmware/Unix-port steps always fully recompile while
     mpy-cross's build/ is normally left alone and rebuilds incrementally); this is the same
     action made available on demand and extended to mpy-cross's build/ too, the one directory
-    nothing else ever clears."""
+    nothing else ever clears. Also wipes build-coverage/ (build_unix_coverage_port()'s output) --
+    `setup` itself never builds or touches that directory, but a from-scratch reset should still
+    clear it if a prior `coverage` subcommand run left one behind."""
     log("Cleaning all build-artifact directories")
     targets = [
         toolchain_dir / "picotool" / "build",
         toolchain_dir / "micropython" / "mpy-cross" / "build",
         toolchain_dir / "micropython" / "ports" / "rp2" / f"build-{board}",
         toolchain_dir / "micropython" / "ports" / "unix" / "build-standard",
+        toolchain_dir / "micropython" / "ports" / "unix" / "build-coverage",
     ]
     for target in targets:
         if target.exists():
@@ -634,6 +670,33 @@ def run_test(args: argparse.Namespace, versions: dict) -> int:
     return print_verification_summary(board, mpy_cross_binary, unix_binary)
 
 
+def run_coverage_build(args: argparse.Namespace, versions: dict) -> Path:
+    """`coverage` subcommand: builds build_unix_coverage_port()'s sys.settrace-enabled Unix port
+    binary for scripts/test.sh --coverage. Offline like `test` -- reuses whatever mpy-cross build
+    and submodule checkouts a prior `setup` already produced/fetched, it doesn't provision the
+    toolchain itself. Rebuilding mpy-cross here is cheap/a no-op if `setup` already built it
+    (build_mpy_cross()'s own build dir is left alone and only rebuilds what changed); this call is
+    just belt-and-braces in case `coverage` is ever run against a toolchain-dir where `setup`
+    stopped partway through mpy-cross but before the Unix port steps."""
+    board = versions["toolchain"]["board"]
+    toolchain_dir = args.toolchain_dir.expanduser().resolve()
+    micropython_dir = toolchain_dir / "micropython"
+    rp2_dir = micropython_dir / "ports" / "rp2"
+
+    if not (micropython_dir / "mpy-cross").is_dir() or not rp2_dir.is_dir():
+        raise SetupError(
+            f"no toolchain found at {toolchain_dir} — run `setup` first "
+            f"(e.g. `uv run toolchain/setup_toolchain.py setup`)"
+        )
+
+    log(f"Building coverage-enabled Unix port for board {board} (offline: no apt/git network access)")
+    mpy_cross_binary = build_mpy_cross(micropython_dir, args.jobs)
+    unix_binary = build_unix_coverage_port(micropython_dir, args.jobs)
+    print(f"mpy-cross: {mpy_cross_binary}")
+    print(f"Coverage-enabled Unix port: {unix_binary}")
+    return unix_binary
+
+
 def main() -> int:
     toolchain_dir_default = Path(os.environ.get("PICO_TOOLCHAIN_DIR", Path.home() / "pico-toolchain"))
 
@@ -659,8 +722,8 @@ def main() -> int:
         "--clean",
         action="store_true",
         help="Wipe all build-artifact directories (picotool/build, mpy-cross/build, ports/rp2/build-<board>, "
-        "ports/unix/build-standard) before building, without re-cloning the git sources -- brings the "
-        "toolchain back to a from-scratch build state",
+        "ports/unix/build-standard, ports/unix/build-coverage) before building, without re-cloning the git "
+        "sources -- brings the toolchain back to a from-scratch build state",
     )
 
     subparsers.add_parser(
@@ -669,10 +732,17 @@ def main() -> int:
         help="Re-verify an already-installed toolchain with no network/apt access — the CI-friendly check",
     )
 
+    subparsers.add_parser(
+        "coverage",
+        parents=[common],
+        help="Build a second, sys.settrace-enabled Unix port binary for scripts/test.sh --coverage "
+        "(offline, needs a prior `setup`)",
+    )
+
     # Backward/convenience compat: `setup_toolchain.py [--some-setup-flag ...]` (no subcommand)
     # still means "setup", so existing invocations and muscle memory keep working.
     argv = sys.argv[1:]
-    if argv and argv[0] not in ("setup", "test", "-h", "--help"):
+    if argv and argv[0] not in ("setup", "test", "coverage", "-h", "--help"):
         argv = ["setup", *argv]
     elif not argv:
         argv = ["setup"]
@@ -683,6 +753,9 @@ def main() -> int:
 
     if args.command == "test":
         return run_test(args, versions)
+    if args.command == "coverage":
+        run_coverage_build(args, versions)
+        return 0
     return run_setup(args, versions_path, versions)
 
 

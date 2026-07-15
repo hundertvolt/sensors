@@ -45,3 +45,31 @@ jobs:
           key: unix-port-${{ runner.os }}-${{ hashFiles('toolchain/versions.toml') }}
       - name: Run unit tests
         run: scripts/test.sh
+      # Coverage is a report, not a gate (see tests/README.md's "Coverage" section) - never let
+      # it fail the job. The `Run unit tests` step above is the real pass/fail signal; this just
+      # re-runs the same suite under a second, sys.settrace-enabled interpreter to measure src/
+      # line coverage.
+      - name: Run unit tests with coverage
+        run: scripts/test.sh --coverage
+        continue-on-error: true
+      - name: Add coverage summary to job summary
+        if: hashFiles('coverage_summary.md') != ''
+        run: cat coverage_summary.md >> "$GITHUB_STEP_SUMMARY"
+        continue-on-error: true
+      # Free for public repos; needs a CODECOV_TOKEN repo secret (or Codecov's tokenless PR-from-
+      # fork support) once this repo is registered at codecov.io - not something CI itself can set
+      # up. fail_ci_if_error keeps a missing/invalid token from ever failing the job either way.
+      - name: Upload coverage to Codecov
+        if: hashFiles('coverage.xml') != ''
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage.xml
+          fail_ci_if_error: false
+        continue-on-error: true
+      - name: Upload HTML coverage report artifact
+        if: hashFiles('htmlcov/index.html') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-html
+          path: htmlcov/
+        continue-on-error: true

@@ -10,8 +10,29 @@
 # building lives inside `setup`/`test` rather than a standalone subcommand. Set PICO_TOOLCHAIN_DIR
 # to relocate the cache, or SKIP_APT=1 if the required system packages (see
 # toolchain/versions.toml) are already present.
+#
+# --coverage: runs the same tests under a second, sys.settrace-enabled Unix port binary (built on
+# first use via `uv run toolchain/setup_toolchain.py coverage` - see
+# build_unix_coverage_port()) with tests/_coverage_runner.py wrapping each test file to record
+# which src/ lines actually executed, then hands the merged result to
+# scripts/_render_coverage.py (a separate, self-contained `uv run` script - coverage.py itself
+# only runs under CPython, never under MicroPython) to render an HTML report (htmlcov/), a
+# Cobertura XML report (coverage.xml, for e.g. Codecov), and a markdown summary
+# (coverage_summary.md). See README.md's "Code quality tooling" for a usage example and
+# tests/README.md for the full pipeline this is one stage of.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+coverage=0
+for arg in "$@"; do
+    case "$arg" in
+        --coverage) coverage=1 ;;
+        *)
+            echo "Unknown argument: $arg (only --coverage is supported)" >&2
+            exit 1
+            ;;
+    esac
+done
 
 toolchain_dir="${PICO_TOOLCHAIN_DIR:-$HOME/pico-toolchain}"
 micropython_bin="$toolchain_dir/micropython/ports/unix/build-standard/micropython"
@@ -25,6 +46,20 @@ if [ ! -x "$micropython_bin" ]; then
     uv run toolchain/setup_toolchain.py setup --toolchain-dir "$toolchain_dir" "${skip_apt_flag[@]}"
 fi
 
+run_bin="$micropython_bin"
+raw_dir=""
+
+if [ "$coverage" = "1" ]; then
+    coverage_bin="$toolchain_dir/micropython/ports/unix/build-coverage/micropython"
+    if [ ! -x "$coverage_bin" ]; then
+        echo "Coverage-enabled MicroPython Unix port not found at $coverage_bin - building it now" >&2
+        uv run toolchain/setup_toolchain.py coverage --toolchain-dir "$toolchain_dir"
+    fi
+    run_bin="$coverage_bin"
+    raw_dir="$(mktemp -d)"
+    trap 'rm -rf "$raw_dir"' EXIT
+fi
+
 failed=0
 for test_file in tests/test_*.py; do
     echo "== Running $test_file"
@@ -32,9 +67,21 @@ for test_file in tests/test_*.py; do
     # rather than extending it, and the default path is what makes frozen-in modules (asyncio
     # included) resolvable at all. Confirmed directly against the built interpreter - dropping
     # this breaks `import asyncio` for any async src/ file with no import error pointing at why.
-    if ! MICROPYPATH="src:tests:.frozen" "$micropython_bin" "$test_file"; then
-        failed=1
+    if [ "$coverage" = "1" ]; then
+        raw_out="$raw_dir/$(basename "$test_file" .py).json"
+        if ! MICROPYPATH="src:tests:.frozen" "$run_bin" tests/_coverage_runner.py "$test_file" "$raw_out"; then
+            failed=1
+        fi
+    else
+        if ! MICROPYPATH="src:tests:.frozen" "$run_bin" "$test_file"; then
+            failed=1
+        fi
     fi
 done
+
+if [ "$coverage" = "1" ]; then
+    echo "== Rendering coverage report"
+    uv run scripts/_render_coverage.py --raw-dir "$raw_dir" --src-dir src --html-dir htmlcov --xml-file coverage.xml --markdown-file coverage_summary.md
+fi
 
 exit "$failed"

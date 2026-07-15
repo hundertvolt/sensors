@@ -238,12 +238,41 @@ scripts/lint.sh            # ruff check
 scripts/typecheck.sh       # mypy, using MicroPython stubs matching toolchain/versions.toml (see above)
 scripts/test.sh            # runs every test in tests/, under a real MicroPython Unix-port interpreter -
                             # builds that interpreter automatically on first run (see tests/README.md)
+scripts/test.sh --coverage # same, plus a src/-only line coverage report (HTML/XML/markdown) - see below
 ```
 
-All three run in GitHub Actions CI (`.github/workflows/ci.yml`) on every push/PR. Config lives in
-the root `pyproject.toml`; see CLAUDE.md's "Code quality tooling" section for the full rationale
-(why `ruff format` isn't used, why the MicroPython stubs install into a separate `typings/`
-directory instead of the main dev venv, why tests don't run under pytest/CPython, etc.).
+All three (`lint.sh`/`typecheck.sh`/`test.sh`) run in GitHub Actions CI
+(`.github/workflows/ci.yml`) on every push/PR, plus `test.sh --coverage` as a non-gating extra
+step. Config lives in the root `pyproject.toml`; see CLAUDE.md's "Code quality tooling" section
+for the full rationale (why `ruff format` isn't used, why the MicroPython stubs install into a
+separate `typings/` directory instead of the main dev venv, why tests don't run under
+pytest/CPython, etc.).
+
+### Test coverage
+
+```sh
+scripts/test.sh --coverage
+```
+
+Reports line coverage of `src/` only, from the same `tests/test_*.py` suite `scripts/test.sh`
+already runs — no coverage threshold is enforced, this only reports numbers, it never fails the
+build over them. Since `coverage.py` itself only runs under CPython while `src/` only ever runs
+under the real MicroPython Unix-port interpreter, collection and reporting are two separate
+stages (`tests/_coverage_runner.py` inside MicroPython, `scripts/_render_coverage.py` under
+CPython via `uv run`) glued together through `coverage.py`'s own `CoverageData` API — see
+`tests/README.md`'s "Coverage" section for the full pipeline. Builds a second,
+`sys.settrace`-enabled Unix port binary on first use (`uv run toolchain/setup_toolchain.py
+coverage`, cached under `ports/unix/build-coverage/` alongside the plain `build-standard/` one),
+the same way plain `scripts/test.sh` builds `build-standard/` automatically.
+
+Produces, at the repo root (all gitignored, regenerated every run):
+
+- `htmlcov/index.html` — browsable line-by-line HTML report.
+- `coverage.xml` — Cobertura XML, uploaded to [Codecov](https://about.codecov.io/) in CI
+  (`.github/workflows/ci.yml`) for PR-level visualization; free for public repos.
+- `coverage_summary.md` — a markdown table, appended to the GitHub Actions run's Job Summary in
+  CI so the numbers show up on the GitHub site with no external service required, even if Codecov
+  itself isn't (yet) configured with a repo token.
 
 ## Further reading
 

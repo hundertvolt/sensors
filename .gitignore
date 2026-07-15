@@ -16,3 +16,10 @@ __pycache__/
 # neither meant to be committed.
 .venv/
 typings/
+
+# scripts/test.sh --coverage output (see tests/README.md) - regenerated every run, not meant to
+# be committed.
+htmlcov/
+coverage.xml
+coverage_summary.md
+.coverage
