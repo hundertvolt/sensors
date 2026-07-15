@@ -86,12 +86,14 @@ separate stages, not one tool doing both:
    `coverage.py`'s own report engine render the HTML/XML/markdown output from data it never
    collected first-hand.
 
-This needs a second MicroPython Unix port binary, built with `MICROPY_PY_SYS_SETTRACE=1` (off in
-the plain build the non-coverage `scripts/test.sh` run uses, since it adds tracing overhead never
-wanted otherwise): `uv run toolchain/setup_toolchain.py coverage` builds it into
-`ports/unix/build-coverage/`, alongside (not instead of) `build-standard/`.
-`scripts/test.sh --coverage` builds it automatically on first use, the same way the plain
-`build-standard/` binary is built automatically by plain `scripts/test.sh`.
+The one MicroPython Unix port binary (`ports/unix/build-standard/`) backs both plain
+`scripts/test.sh` and `scripts/test.sh --coverage` — it's always built with
+`MICROPY_PY_SYS_SETTRACE=1` (`build_unix_port()` in `toolchain/setup_toolchain.py`), so there's no
+separate coverage-only interpreter to build or cache. Compiling settrace support in adds an inert
+hook check in the bytecode dispatch loop when `sys.settrace()` is never called — a negligible,
+behavior-neutral cost for a plain (non-coverage) test run, confirmed directly by running the full
+suite both ways and comparing results. `ports/rp2`'s firmware build never gets this flag; it's
+dev/test tooling only, entirely separate from what ships to real hardware.
 
 No coverage threshold is enforced anywhere — CI reports the numbers, it never fails the build
 over them.

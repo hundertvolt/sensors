@@ -1,10 +1,10 @@
 # Runs one tests/test_*.py file under sys.settrace, recording every line executed in src/ (only
 # -- everything else, including this file itself and the test file's own body, is left untraced),
 # then dumps the recorded lines as JSON. Invoked by scripts/test.sh --coverage in place of running
-# a test file directly, under a MicroPython Unix port build_unix_coverage_port() (see
-# toolchain/setup_toolchain.py) built with MICROPY_PY_SYS_SETTRACE=1 -- off in the plain build the
-# non-coverage test run uses. Not a test_*.py file itself, so scripts/test.sh's glob never picks
-# it up directly.
+# a test file directly -- under the same MicroPython Unix port binary the non-coverage run uses,
+# since build_unix_port() (see toolchain/setup_toolchain.py) always compiles in
+# MICROPY_PY_SYS_SETTRACE=1 (an inert hook check when unused, not a behavior change). Not a
+# test_*.py file itself, so scripts/test.sh's glob never picks it up directly.
 #
 # coverage.py itself never runs here: it's a CPython tool and can't execute under MicroPython.
 # scripts/_render_coverage.py is the CPython-side counterpart that turns the raw JSON this file

@@ -5,9 +5,9 @@
 # ///
 """
 Merges the raw per-test-file line-hit JSON dumps written by tests/_coverage_runner.py (run under
-a MicroPython Unix port built with MICROPY_PY_SYS_SETTRACE=1 -- see
-toolchain/setup_toolchain.py's build_unix_coverage_port()) into a single coverage.py CoverageData
-file, then lets coverage.py itself render the HTML/XML/markdown reports from it.
+the MicroPython Unix port build_unix_port() always builds with MICROPY_PY_SYS_SETTRACE=1 --
+see toolchain/setup_toolchain.py) into a single coverage.py CoverageData file, then lets
+coverage.py itself render the HTML/XML/markdown reports from it.
 
 coverage.py never runs the code under test here -- it only runs under CPython, and src/ only ever
 runs under the real MicroPython Unix-port interpreter (see tests/README.md for why). This script

@@ -11,13 +11,13 @@
 # to relocate the cache, or SKIP_APT=1 if the required system packages (see
 # toolchain/versions.toml) are already present.
 #
-# --coverage: runs the same tests under a second, sys.settrace-enabled Unix port binary (built on
-# first use via `uv run toolchain/setup_toolchain.py coverage` - see
-# build_unix_coverage_port()) with tests/_coverage_runner.py wrapping each test file to record
-# which src/ lines actually executed, then hands the merged result to
-# scripts/_render_coverage.py (a separate, self-contained `uv run` script - coverage.py itself
-# only runs under CPython, never under MicroPython) to render an HTML report (htmlcov/), a
-# Cobertura XML report (coverage.xml, for e.g. Codecov), and a markdown summary
+# --coverage: runs the same tests, under the same Unix port binary (it's always built with
+# MICROPY_PY_SYS_SETTRACE=1 - see build_unix_port() - so there's no separate coverage-only
+# interpreter to build), but with tests/_coverage_runner.py wrapping each test file to install a
+# sys.settrace line tracer scoped to src/ and record which lines actually executed. The merged
+# result is handed to scripts/_render_coverage.py (a separate, self-contained `uv run` script -
+# coverage.py itself only runs under CPython, never under MicroPython) to render an HTML report
+# (htmlcov/), a Cobertura XML report (coverage.xml, for e.g. Codecov), and a markdown summary
 # (coverage_summary.md). See README.md's "Code quality tooling" for a usage example and
 # tests/README.md for the full pipeline this is one stage of.
 set -euo pipefail
@@ -46,16 +46,8 @@ if [ ! -x "$micropython_bin" ]; then
     uv run toolchain/setup_toolchain.py setup --toolchain-dir "$toolchain_dir" "${skip_apt_flag[@]}"
 fi
 
-run_bin="$micropython_bin"
 raw_dir=""
-
 if [ "$coverage" = "1" ]; then
-    coverage_bin="$toolchain_dir/micropython/ports/unix/build-coverage/micropython"
-    if [ ! -x "$coverage_bin" ]; then
-        echo "Coverage-enabled MicroPython Unix port not found at $coverage_bin - building it now" >&2
-        uv run toolchain/setup_toolchain.py coverage --toolchain-dir "$toolchain_dir"
-    fi
-    run_bin="$coverage_bin"
     raw_dir="$(mktemp -d)"
     trap 'rm -rf "$raw_dir"' EXIT
 fi
@@ -69,11 +61,11 @@ for test_file in tests/test_*.py; do
     # this breaks `import asyncio` for any async src/ file with no import error pointing at why.
     if [ "$coverage" = "1" ]; then
         raw_out="$raw_dir/$(basename "$test_file" .py).json"
-        if ! MICROPYPATH="src:tests:.frozen" "$run_bin" tests/_coverage_runner.py "$test_file" "$raw_out"; then
+        if ! MICROPYPATH="src:tests:.frozen" "$micropython_bin" tests/_coverage_runner.py "$test_file" "$raw_out"; then
             failed=1
         fi
     else
-        if ! MICROPYPATH="src:tests:.frozen" "$run_bin" "$test_file"; then
+        if ! MICROPYPATH="src:tests:.frozen" "$micropython_bin" "$test_file"; then
             failed=1
         fi
     fi

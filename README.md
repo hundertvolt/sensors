@@ -260,10 +260,10 @@ build over them. Since `coverage.py` itself only runs under CPython while `src/`
 under the real MicroPython Unix-port interpreter, collection and reporting are two separate
 stages (`tests/_coverage_runner.py` inside MicroPython, `scripts/_render_coverage.py` under
 CPython via `uv run`) glued together through `coverage.py`'s own `CoverageData` API — see
-`tests/README.md`'s "Coverage" section for the full pipeline. Builds a second,
-`sys.settrace`-enabled Unix port binary on first use (`uv run toolchain/setup_toolchain.py
-coverage`, cached under `ports/unix/build-coverage/` alongside the plain `build-standard/` one),
-the same way plain `scripts/test.sh` builds `build-standard/` automatically.
+`tests/README.md`'s "Coverage" section for the full pipeline. Uses the same Unix port binary as
+plain `scripts/test.sh` (it's always built with `MICROPY_PY_SYS_SETTRACE=1`, a negligible,
+behavior-neutral cost when unused — see `build_unix_port()` — so there's no second interpreter to
+build or cache); the RP2040 firmware build never gets this flag.
 
 Produces, at the repo root (all gitignored, regenerated every run):
 

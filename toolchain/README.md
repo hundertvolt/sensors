@@ -34,24 +34,20 @@ uv run toolchain/setup_toolchain.py --micropython-ref v1.26.1     # build a spec
 uv run toolchain/setup_toolchain.py --clean                       # wipe build dirs, then rebuild from scratch
 
 uv run toolchain/setup_toolchain.py test                          # re-verify an existing install, offline
-
-uv run toolchain/setup_toolchain.py coverage                      # build a sys.settrace-enabled Unix port, offline
 ```
 
 No `pip install`/venv setup needed by hand for the script itself — `uv run` provisions an
-ephemeral, cached interpreter (see "Why not a full venv" below). There are three subcommands,
-`setup`, `test`, and `coverage`; `setup` is the default if you omit it, so all of the invocations
-above except the last two are really `setup` in disguise. `setup`/`test` both build and verify a
-MicroPython Unix-port interpreter at the same pinned ref (sharing the same `--toolchain-dir`
-checkout, just a different `ports/` subdirectory) alongside the RP2040 firmware — see "How it
-works" below, `../tests/README.md` for why the test suite runs under that instead of
-CPython/pytest, and `scripts/test.sh`, which runs `setup` automatically the first time it needs
-the interpreter. `coverage` is a separate, offline-only subcommand (needs a prior `setup` already
-done — it never provisions the toolchain itself) that builds a *second* Unix port binary,
-`ports/unix/build-coverage/`, with `MICROPY_PY_SYS_SETTRACE=1` (off in the plain `build-standard/`
-binary, since it adds tracing overhead never wanted otherwise) — see `../tests/README.md`'s
-"Coverage" section and `scripts/test.sh --coverage`, which builds it automatically the first time
-it's needed the same way plain `scripts/test.sh` builds `build-standard/`.
+ephemeral, cached interpreter (see "Why not a full venv" below). There are two subcommands,
+`setup` and `test`; `setup` is the default if you omit it, so all of the invocations above except
+the last one are really `setup` in disguise. Both also build and verify a MicroPython Unix-port
+interpreter at the same pinned ref (sharing the same `--toolchain-dir` checkout, just a different
+`ports/` subdirectory) alongside the RP2040 firmware — see "How it works" below, `../tests/README.md`
+for why the test suite runs under that instead of CPython/pytest, and `scripts/test.sh`, which
+runs `setup` automatically the first time it needs the interpreter. That Unix-port binary is
+always built with `MICROPY_PY_SYS_SETTRACE=1` (an inert, behavior-neutral hook check when unused —
+see `build_unix_port()`), so the same binary backs both plain `scripts/test.sh` and
+`scripts/test.sh --coverage` (see `../tests/README.md`'s "Coverage" section) — no second Unix port
+build. The RP2040 firmware build never gets this flag; it's dev/test tooling only.
 
 **Prerequisites:**
 
