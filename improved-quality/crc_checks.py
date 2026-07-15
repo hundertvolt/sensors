@@ -8,7 +8,7 @@ class CRC_Base:
         self.all_set = 0 if self.num_bytes <= 0 else (1 << (self.num_bytes * 8)) - 1
         self.msb_set = 0 if self.num_bytes <= 0 else 1 << ((self.num_bytes * 8) - 1)
         self.crc_shift = 0 if self.num_bytes <= 0 else 8 * (self.num_bytes - 1)
-        self.poly = None if poly is None or self.num_bytes == 0 or poly > self.all_set else poly
+        self.poly = None if poly is None or self.num_bytes == 0 or not (0 <= poly <= self.all_set) else poly
         self.fmt = fmt
         self.inc_crc: int | None = None
         self.inc_count = 0
@@ -18,7 +18,7 @@ class CRC_Base:
 
     def _validate_init(self, init: int | None) -> int | None:
         init = self.all_set if init is None else init  # set default init value (all bits 1) if not specified
-        return init if init <= self.all_set else None  # init value must fit max int for byte number
+        return init if 0 <= init <= self.all_set else None  # init value must fit max int for byte number
 
     async def _crc(self, buf: bytearray | memoryview, crc: int) -> int:
         if self.poly is None:
