@@ -20,7 +20,7 @@ jobs:
     # scripts/typecheck.sh's `mypy "$@"` and ruff's own CLI-args-override-config behavior).
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install uv
         run: pip install uv
       - name: Sync dev dependencies
@@ -35,14 +35,21 @@ jobs:
     # BACKLOG.md's "Self-contained venv via uv" testing requirement and tests/README.md.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install uv
         run: pip install uv
       - name: Cache MicroPython Unix port build
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/pico-toolchain
-          key: unix-port-${{ runner.os }}-${{ hashFiles('toolchain/versions.toml') }}
+          # Must also hash toolchain/setup_toolchain.py, not just versions.toml: the Unix port's
+          # build flags (e.g. MICROPY_PY_SYS_SETTRACE=1 - see build_unix_port()) live in that
+          # script, not in versions.toml. Keying on versions.toml alone let a stale cached binary
+          # built before that flag existed survive untouched across this PR's own commits - a real
+          # bug, not hypothetical: it's exactly what caused `scripts/test.sh --coverage` to fail in
+          # CI with "module 'sys' has no attribute 'settrace'" while working locally, since a local
+          # run always starts from a genuinely fresh ~/pico-toolchain.
+          key: unix-port-${{ runner.os }}-${{ hashFiles('toolchain/versions.toml', 'toolchain/setup_toolchain.py') }}
       - name: Run unit tests
         run: scripts/test.sh
       # Coverage is a report, not a gate (see tests/README.md's "Coverage" section) - never let
@@ -62,14 +69,14 @@ jobs:
       # up. fail_ci_if_error keeps a missing/invalid token from ever failing the job either way.
       - name: Upload coverage to Codecov
         if: hashFiles('coverage.xml') != ''
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           files: coverage.xml
           fail_ci_if_error: false
         continue-on-error: true
       - name: Upload HTML coverage report artifact
         if: hashFiles('htmlcov/index.html') != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-html
           path: htmlcov/
