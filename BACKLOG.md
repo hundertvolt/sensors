@@ -706,24 +706,39 @@ above is genuinely underway, but surfaces some new items:
     inventing a new convention), set `True` in `__init__` and `False` at the end of `setup()`,
     checked at the very start of `__aenter__` with a clear `RuntimeError` before anything is
     acquired - fails loudly instead of silently misbehaving.
-  - **41 tests added** (`tests/test_asy_spi_driver.py`; project-wide total climbs to 225 = 45
-    `math_helpers.py` + 62 `crc_checks.py` + 77 `asy_i2c_driver.py` + 41 `asy_spi_driver.py`),
+  - **Third pass, asked directly "any more bugs/unsecured conditions/surprises overlooked" after
+    the above** (same explicit-second-look pattern the I2C file went through): found no further
+    driver bugs, but found two claims that were previously asserted only in prose/comments, never
+    actually proven by a test - closed both:
+    - The module docstring's claim that rp2 hardware SPI raises `NotImplementedError` for
+      `firstbit=SPI.LSB` (sourced from `ports/rp2/machine_spi.c`) was untestable as written: the
+      fake `SPI` in `tests/machine.py` silently accepted `LSB` regardless. Extended the fake's
+      `init()` to reject it the same way real hardware does, then added a regression test - so a
+      wrong citation here would now actually fail a test, not just look plausible in a comment.
+    - No test proved CS pins of two *different* devices sharing a bus are never simultaneously
+      asserted - the existing concurrency tests (`test_two_devices_sharing_a_bus_never_run_
+      concurrently` etc.) only checked an abstract `max_concurrent` counter, not the actual
+      hardware signal the whole locking scheme exists to protect. Added a test checking both
+      devices' real `Pin.value()` state directly during a concurrent `asyncio.gather`.
+  - **43 tests added** (`tests/test_asy_spi_driver.py`; project-wide total climbs to 227 = 45
+    `math_helpers.py` + 62 `crc_checks.py` + 77 `asy_i2c_driver.py` + 43 `asy_spi_driver.py`),
     written before the refactor and run against the original file first (per the explicit
     tests-first instruction this pattern is based on) - which is how the `typing` import bug above
     was caught concretely, not just reasoned about. Covers: init/deinit and real-hardware-deinit
-    idempotency, `configure()`'s two distinct `RuntimeError` branches, `write`/`readinto`/
-    `write_readinto` forwarding and the one real raise path (including zero-length buffers and
-    buffer-length mismatches in both directions), a dedicated regression test proving the
-    disconnected-wire/no-ACK case is genuinely undetectable (zero-filled data back, no exception,
-    not just an untested claim), CS pin assert/deassert sequencing verified via real `Pin.value()`
-    readback across every exit path (normal, exception inside session, double-exit/pre-released
-    lock, task cancellation, `__aenter__` failure itself, and now also entering before `setup()`),
-    `configure()` re-applied fresh every session (confirmed correct behavior, not a bug, since the
-    bus may be shared with a differently-configured device - evaluated during the
-    architecture-review pass and deliberately left unchanged), deinit/reinit
-    mid-session, asyncio interlock (2 and 4 concurrent devices, plus the same device from two
-    concurrent tasks), reentrant-acquisition deadlock bounded by `wait_for`, and both `__aenter__`
-    bug fixes (lock/CS-leak, and the setup()-ordering guard).
+    idempotency, `configure()`'s three distinct raise paths (`RuntimeError` x2, plus
+    `NotImplementedError` for `firstbit=LSB`), `write`/`readinto`/`write_readinto` forwarding and
+    the one real raise path (including zero-length buffers and buffer-length mismatches in both
+    directions), a dedicated regression test proving the disconnected-wire/no-ACK case is
+    genuinely undetectable (zero-filled data back, no exception, not just an untested claim), CS
+    pin assert/deassert sequencing verified via real `Pin.value()` readback across every exit path
+    (normal, exception inside session, double-exit/pre-released lock, task cancellation,
+    `__aenter__` failure itself, and now also entering before `setup()`), CS pins of two different
+    devices proven never simultaneously asserted, `configure()` re-applied fresh every session
+    (confirmed correct behavior, not a bug, since the bus may be shared with a
+    differently-configured device - evaluated during the architecture-review pass and deliberately
+    left unchanged), deinit/reinit mid-session, asyncio interlock (2 and 4 concurrent devices, plus
+    the same device from two concurrent tasks), reentrant-acquisition deadlock bounded by
+    `wait_for`, and both `__aenter__` bug fixes (lock/CS-leak, and the setup()-ordering guard).
   - **Not fixed, flagged for a future pass**: `FRAM_SPI.set_write_protected()`/
     `get_write_protected()` (in `asy_fram_driver.py`, not itself promoted this session) have zero
     real callers today - same category as several of I2C's still-unused register-helper methods,

@@ -218,6 +218,26 @@ def test_configure_succeeds_and_forwards_params_once_lock_is_held() -> None:
     assert fake(spi).log[-1] == ("init", 2000000, 1, 1, 8, 0)
 
 
+def test_configure_raises_not_implemented_for_lsb_firstbit() -> None:
+    # The module docstring claims rp2 hardware SPI only implements MSB-first, sourced from
+    # ports/rp2/machine_spi.c's machine_spi_init() - this test makes that claim testable rather
+    # than an assertion nothing would catch if it were ever wrong. FakeSPI.LSB mirrors the real
+    # constant value (1); no caller in this codebase passes firstbit=LSB today.
+    spi = make_spi()
+
+    async def scenario() -> bool:
+        await spi.async_lock.acquire()
+        try:
+            spi.configure(firstbit=FakeSPI.LSB)
+            return False
+        except NotImplementedError:
+            return True
+        finally:
+            spi.async_lock.release()
+
+    assert run(scenario())
+
+
 # ---------------------------------------------------------------------------
 # SPIDevice - CS binding, shared locking, setup
 # ---------------------------------------------------------------------------
@@ -565,6 +585,32 @@ def test_two_devices_sharing_a_bus_never_run_concurrently() -> None:
 
     run(scenario())
     assert max_concurrent == 1
+
+
+def test_two_devices_sharing_a_bus_never_have_cs_simultaneously_asserted() -> None:
+    # Companion to the max_concurrent check above, but at the actual hardware signal level: the
+    # lock prevents concurrent *sessions*, but this confirms what that actually guarantees
+    # physically - device_a's CS is provably deasserted (__aexit__ already ran, releasing the
+    # lock, before __aenter__ ever asserts device_b's CS) at every point device_b's CS is high.
+    spi = make_spi()
+    device_a = make_device(spi, cs_pin=1)
+    device_b = make_device(spi, cs_pin=6)
+    both_asserted_observed = False
+
+    async def worker(device: SPIDevice, other: SPIDevice) -> None:
+        nonlocal both_asserted_observed
+        async with device:
+            if device.cs_pin.value() == device.cs_active_value and other.cs_pin.value() == other.cs_active_value:
+                both_asserted_observed = True
+            await asyncio.sleep(0)
+
+    async def scenario() -> None:
+        await asyncio.gather(worker(device_a, device_b), worker(device_b, device_a))
+
+    run(scenario())
+    assert not both_asserted_observed
+    assert device_a.cs_pin.value() == 1  # both back to inactive afterward
+    assert device_b.cs_pin.value() == 1
 
 
 def test_four_concurrent_sessions_all_complete_and_stay_serialized() -> None:

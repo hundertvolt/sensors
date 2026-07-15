@@ -167,6 +167,10 @@ class SPI:
         # Real rp2 SPI.init(): -1/omitted args leave the current setting untouched (confirmed
         # against ports/rp2/machine_spi.c's allowed_args table - no "pins" kwarg accepted here,
         # only baudrate/polarity/phase/bits/firstbit).
+        if firstbit == self.LSB:
+            # Real rp2 hardware SPI only implements MSB-first (confirmed: machine_spi_init()'s
+            # own `if (self->firstbit == SPI_LSB_FIRST) mp_raise_NotImplementedError(...)`).
+            raise NotImplementedError("LSB")
         if baudrate != -1:
             self.baudrate = baudrate
         if polarity != -1:
