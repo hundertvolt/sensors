@@ -50,15 +50,15 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
   correctness checked, input validation and exception-safety audited, unit tests written and
   passing (see "Code quality tooling" below and `tests/README.md`), unlike `improved-quality/`'s
   WIP files above. **`src/README.md` is the full checklist** for what "fully reviewed and tested"
-  actually requires, distilled from the `math_helpers.py` review — use it for the next file too,
-  not just as a historical record. `src/math_helpers.py` (moved from
-  `improved-quality/math_helpers.py`) is the first file to make this move; it is not yet re-wired
-  into any driver's actual import path for a real firmware build
-  (`improved-quality/asy_bmp3xx_driver.py`/`asy_scd30_driver.py` still `import math_helpers`
-  unchanged — MicroPython's frozen-module namespace is flat, so this works regardless of which
-  directory the source file lives in during local dev-tooling checks, via `pyproject.toml`'s
-  `mypy_path`). Treat `src/` files as normal, freely-editable code, not as read-only WIP context
-  the way `improved-quality/` is.
+  actually requires — apply it to every file that makes this move, not just whichever ones already
+  have. Files in `src/` aren't automatically re-wired into any driver's actual import path for a
+  real firmware build just by moving there — `improved-quality/` files keep importing them by
+  their old unqualified name unchanged (e.g. `import math_helpers`, `from crc_checks import ...`),
+  which still resolves correctly both because MicroPython's frozen-module namespace is flat (it
+  doesn't matter which directory the source lives in once it's actually frozen into firmware) and,
+  for local dev-tooling checks today, because `pyproject.toml`'s `mypy_path` includes `src`. Treat
+  `src/` files as normal, freely-editable code, not as read-only WIP context the way
+  `improved-quality/` is.
 - **Whenever a new file is promoted into `src/`, run a bird's-eye-view scan over the whole
   content of `src/`** — not just the new file in isolation — to check that the coding guidelines
   and `src/README.md`'s checklist (including its "API consistency, within a file and across the

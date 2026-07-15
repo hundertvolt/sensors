@@ -340,9 +340,11 @@ refactor work actually begins:
    (`math_helpers.py`), and a lint/type-check/unit-test GitHub Actions pipeline were similarly
    pulled forward once `math_helpers.py` became the first file to reach the "fully reviewed" bar
    `src/` requires (see "Production-level code quality" above) — scoped the same way, not a full
-   move-up of this whole sequencing item. **Still following this sequencing**: extending scope
-   beyond `math_helpers.py`, and the firmware-build CI stage (blocked on the `build-*.sh` path
-   genericization, same as before).
+   move-up of this whole sequencing item. `crc_checks.py` cleared the same bar shortly after (see
+   "Findings" below) — extending `src/`'s scope to more files is now an ongoing, incremental part
+   of this pulled-forward work, not a one-off tied to a single file. **Still blocked on this
+   sequencing**: the firmware-build CI stage (blocked on the `build-*.sh` path genericization,
+   same as before).
 
 ## Findings from reviewing `improved-quality/` against this spec
 

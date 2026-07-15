@@ -1,9 +1,10 @@
 # src/
 
 Files land here once they've cleared the full **production-quality** bar below — moved out of
-`improved-quality/` (WIP refactor target, see CLAUDE.md) once they have. `math_helpers.py` is the
-first file to make this move; this checklist is distilled from that review, for reuse on the next
-one. "Production quality" here means concretely: correct against real documentation, never raises
+`improved-quality/` (WIP refactor target, see CLAUDE.md) once they have. This checklist keeps
+getting refined against whatever file is going through it next; apply the current version in full
+to every file making the move, not just whichever ones already have. "Production quality" here
+means concretely: correct against real documentation, never raises
 an uncaught exception, safe to run unattended and uninterrupted indefinitely, respectful of the
 RP2040's limited resources, never blocks, and always returns a well-defined value — each expanded
 below.
