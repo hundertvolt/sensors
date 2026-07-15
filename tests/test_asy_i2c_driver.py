@@ -61,6 +61,29 @@ def test_operations_after_deinit_return_none_or_noop() -> None:
     i2c.readfrom_into(0x50, bytearray(2))  # no-op, must not raise
     i2c.set_bits(0x50, 1, 0x00, 0, 1)  # no-op, must not raise
     i2c.set_register_struct(0x50, 0x00, ">H", 1)  # no-op, must not raise
+    i2c.writeto_then_readfrom(0x50, b"cmd", bytearray(2))  # no-op, must not raise
+
+
+def test_device_operations_on_an_already_deinitialized_bus_return_none_or_noop() -> None:
+    # Distinct from the mid-session case above: the bus is deinitialized *before* any session
+    # ever starts, and every I2CDevice method is exercised directly (not just readinto via a
+    # mid-session probe). There's no way to observe a *never-initialized* bus separately from
+    # this - I2C.__init__ always calls init() immediately, so "deinitialized" is the only
+    # externally-reachable uninitialized state.
+    i2c = make_i2c()
+    device = I2CDevice(i2c, 0x50)
+    i2c.deinit()
+
+    async def scenario() -> None:
+        await device.write(b"x")  # no-op, must not raise
+        await device.readinto(bytearray(2))  # no-op, must not raise
+        await device.write_then_readinto(b"cmd", bytearray(2))  # no-op, must not raise
+        await device.set_bits(1, 0x00, 0, 1)  # no-op, must not raise
+        assert await device.get_bits(1, 0x00, 0) is None
+        await device.set_register_struct(0x00, ">H", 1)  # no-op, must not raise
+        assert await device.get_register_struct(0x00, ">H") is None
+
+    run(scenario())
 
 
 # ---------------------------------------------------------------------------
