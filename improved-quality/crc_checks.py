@@ -1,5 +1,14 @@
-from struct import pack_into
+"""Generic bit-banged CRC engine (MSB-first, no reflection, no final XOR). CRC8 (poly 0x31, init
+0xFF) is Sensirion's documented CRC-8, verified against real datasheet test vectors; CRC16 (poly
+0x1021, init 0xFFFF) is CRC-16/CCITT-FALSE; CRC32 (poly 0x04C11DB7, init 0xFFFFFFFF) is
+CRC-32/MPEG-2. CRC_Pass is a zero-length no-op.
+
+Shared contract: every public method returns None (or False for run_inc) - never raises - for
+invalid input (bad init/poly, buffer too small, insufficient data).
+"""
+
 import asyncio
+from struct import pack_into
 
 
 class CRC_Base:
