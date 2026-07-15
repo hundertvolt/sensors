@@ -2,8 +2,19 @@ import asyncio
 
 from crc_checks import CRC8, CRC16, CRC32, CRC_Base, CRC_Pass
 
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing isn't available on the real MicroPython test interpreter
+    TYPE_CHECKING = False
 
-def run(coro):  # drives a coroutine to completion for these sync test_* functions
+if TYPE_CHECKING:
+    from collections.abc import Coroutine
+    from typing import Any, TypeVar
+
+    T = TypeVar("T")
+
+
+def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
     return asyncio.run(coro)
 
 
