@@ -119,19 +119,19 @@ class CRC_Base:
 
 class CRC_Pass(CRC_Base):
     def __init__(self, poly: int | None = None) -> None:
-        super().__init__(0, None, "x")
+        super().__init__(0, poly, "x")
 
 
 class CRC8(CRC_Base):
-    def __init__(self, poly: int = 0x31) -> None:
+    def __init__(self, poly: int | None = 0x31) -> None:
         super().__init__(1, poly, ">B")
 
 
 class CRC16(CRC_Base):
-    def __init__(self, poly: int = 0x1021) -> None:
+    def __init__(self, poly: int | None = 0x1021) -> None:
         super().__init__(2, poly, ">H")
 
 
 class CRC32(CRC_Base):
-    def __init__(self, poly: int = 0x04C11DB7) -> None:
+    def __init__(self, poly: int | None = 0x04C11DB7) -> None:
         super().__init__(4, poly, ">I")
