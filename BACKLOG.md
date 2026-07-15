@@ -1,8 +1,10 @@
 # BACKLOG
 
-Open questions and explicitly deferred work, with reasoning, so nothing here gets re-litigated
-from scratch in a future session. See README.md for orientation and CLAUDE.md for operating
-constraints.
+The project's running knowledge base for the `improved-quality/` refactor and anything else worth
+recording so it doesn't get re-litigated from scratch in a future session: the refactor's
+final-goal requirements, decisions already made, functional clarifications, review findings, open
+questions, explicitly deferred work, and security notes — not just open questions and deferred
+work, despite the filename. See README.md for orientation and CLAUDE.md for operating constraints.
 
 ## Final-goal requirements for the refactor (owner-specified, mostly not yet implemented)
 
@@ -580,6 +582,195 @@ above is genuinely underway, but surfaces some new items:
       `asy_i2c_driver.py` 77) — one more than this bullet's original snapshot, from a test added in
       a later pass than the one this bullet narrates. Treat this parenthetical, not the "76/183"
       above, as the current figure; update it again the next time any test file's count changes.
+- **`asy_spi_driver.py` moved to `src/`**: cleared the full `src/README.md` checklist, following the
+  same methodology as `asy_i2c_driver.py`'s promotion above (see the retired
+  `SPI_DRIVER_PROMOTION_PLAYBOOK.md`, which set up the process this entry executed) — but several
+  SPI-specific findings turned out **not** to transfer unchanged from the I2C session, confirmed
+  fresh against current MicroPython v1.28.0 source (`extmod/machine_spi.c`, `ports/rp2/
+  machine_spi.c`, `ports/rp2/machine_pin.c`) rather than assumed:
+  - **SPI's fault surface is materially different from I2C's, not just narrower**: real RP2040
+    hardware SPI transfers (`spi_write_blocking()`/`spi_write_read_blocking()`, reached via
+    `mp_machine_spi_transfer()`) have **no error return at all** once the bus is constructed - SPI
+    has no ACK/NAK concept, so `write()`/`readinto()` genuinely cannot raise, full stop, not merely
+    "in practice, let it propagate" the way I2C's `OSError` carve-out works. `write_readinto()` is
+    the one exception, and it's a different shape entirely: `machine.SPI.write_readinto()` itself
+    raises a real `ValueError` if its two buffers differ in length
+    (`mp_machine_spi_write_readinto()`, shared by hardware and soft SPI alike, confirmed reachable
+    from real hardware SPI's own method table, not just SoftSPI) - a caller-input mistake, not a
+    hardware fault, so it's caught and turned into `None` (this project's established
+    non-hardware-failure convention) rather than taking the `OSError` carve-out. **`src/README.md`
+    section 2 itself was written generically for "`machine.I2C`/`machine.SPI`" as if the same
+    NAK/timeout surface applies to both - flagged and, on explicit direction, updated with a
+    paragraph documenting this SPI-specific finding** rather than silently left to look uniform.
+  - **`write()`/`readinto()`'s declared return type was wrong, not just imprecise**: both were typed
+    `int | None`, but confirmed against `extmod/machine_spi.c` that `write()`/`readinto()`/
+    `write_readinto()` always return `mp_const_none` on this port (only WiPy differs) - narrowed to
+    plain `None`, a real correctness-vs-documentation fix even though the runtime value never
+    actually changed.
+  - **The original file was confirmed literally unimportable on the real MicroPython Unix-port test
+    interpreter** (`ImportError: no module named 'typing'`) before this session's fix - not a style
+    nit. Its unconditional `from typing import Type` plus a bare `try: from types import
+    TracebackType except Exception: pass` (exactly the anti-pattern `src/README.md` section 6 warns
+    against) both had to go. Resolved with zero typing-only imports needed in the final file at
+    all - `SPIDevice.__aexit__`'s override ended up typed `(self, exc_type: object, exc_val:
+    object, exc_tb: object) -> bool` instead of pulling in `Type`/`TracebackType`, since it only
+    ever forwards these three params to `super().__aexit__()` and never inspects them; `object` is
+    always Liskov-substitutable against whatever `Lockable.__aexit__` mypy resolves (the real
+    `base_classes.py` or `tests/base_classes.py`'s narrower stand-in), so this is strictly more
+    robust than importing precise types would have been, not just a workaround.
+  - **`deinit()`'s dead `except AttributeError`** - predicted by the I2C session's own finding entry
+    above, now confirmed and removed: `machine.SPI.deinit()` is a bound method on a real
+    constructed `_SPI` object, so it can't raise `AttributeError`. Unlike I2C's original bug (which
+    never called the real `machine.I2C.deinit()` at all), SPI's `deinit()` already called the real
+    thing; only the leftover `except` clause needed removing.
+  - **`SPIDevice` converted to subclass `Lockable`**, matching `I2CDevice`'s shape - a bigger
+    structural change here than I2C ever needed (`I2CDevice` already subclassed `Lockable` from day
+    one). `SPIDevice.__aenter__`/`__aexit__` now wrap `super().__aenter__()`/`super().__aexit__()`
+    around the extra CS-pin/`configure()` steps instead of hand-rolling the acquire/
+    release-with-`RuntimeError`-swallow logic `Lockable` already provides identically. Confirmed via
+    explicit sign-off given `SPIDevice` (unlike `I2CDevice`) has a live production caller
+    (`asy_fram_driver.py`'s `FRAM_SPI`).
+  - **Real bug found and fixed, the most severe finding of this promotion, with a live production
+    caller**: `SPIDevice.__aenter__` leaked the bus lock - and left the CS pin stuck asserted -
+    permanently, whenever it raised after acquiring the lock. This happens whenever `configure()`
+    raises because the bus was deinitialized since the last session, or via task cancellation during
+    the 1ms post-assert settle sleep: since `__aenter__` itself then raises, `async with` never
+    calls `__aexit__`, so nothing ever released what `__aenter__` had already acquired. Present in
+    the original file too (the hand-rolled version had the identical gap), not introduced by the
+    `Lockable` refactor. A stuck-asserted CS is worse than just this device being stuck - it blocks
+    every *other* device sharing the same physical SPI bus too, since CS is a shared-bus signal, not
+    a per-device one. Fixed by wrapping `__aenter__`'s post-lock-acquire steps in a
+    `try/except BaseException` that deasserts CS and releases the lock before re-raising. Two
+    regression tests added proving the fix: one via `configure()` raising on a deinitialized bus,
+    one via real task cancellation during the settle sleep (confirmed the lock and CS pin are both
+    released, not leaked, in both cases; confirmed a later session can still acquire the lock
+    afterward).
+  - **`configure()`'s `RuntimeError`-on-unlocked-call path kept as a programmer-error guard**, not
+    converted to a no-op/`None` - matching the precedent that one-time-setup/precondition violations
+    may raise while ongoing operational calls use the `None`-sentinel convention, confirmed via
+    explicit sign-off (`SPIDevice` has a live caller, unlike most of I2C's still-unused surface, so
+    this was re-asked rather than assumed). Split into two distinct messages (`"SPI bus not
+    initialized - call init() first"` vs. `"First acquire async lock!"`) since the original single
+    message was misleading for the bus-not-initialized branch - a pure diagnostics improvement, zero
+    behavior change.
+  - **`extra_clocks` stays unimplemented** - already corrected earlier in this document (see the
+    "Bus/sensor error-recovery robustness" section above): it was never a real mechanism even in the
+    legacy driver, just an aspirational docstring line, and this promotion didn't resurrect it -
+    holding to the same "quality/shape promotion, not a feature addition" constraint the I2C session
+    held to throughout.
+  - **No register/bit-field/struct helpers added** - confirmed SPI's actual shape at this bus-driver
+    layer is simpler than I2C's (raw `write`/`readinto`/`write_readinto` only, no
+    register/addressing concept), so no I2C-shaped `get_bits`/`set_bits`/`get_register_struct`/
+    `set_register_struct` equivalents were invented for it.
+  - **Protocol-driven asymmetries confirmed intentional, not inconsistencies to fix**:
+    `SPIDevice.setup()` has no `probe` parameter or ACK-based device-presence check (SPI has no
+    addressing/ACK concept, so no equivalent probe is possible at this layer, unlike
+    `I2CDevice.setup(probe=True)`); `I2CDevice` never overrides `__aenter__`/`__aexit__` at all while
+    `SPIDevice` must (CS-pin assert/deassert has no I2C equivalent); no `timeout`-equivalent
+    parameter was added to `SPI.__init__`/`init()` (confirmed via `ports/rp2/machine_spi.c`'s
+    constructor argument table: no timeout concept exists for SPI on this port at all, unlike I2C's
+    genuine `timeout` kwarg - nothing real to surface).
+  - **Cross-file naming inconsistency found in `asy_i2c_driver.py` itself during the bird's-eye scan
+    (`CLAUDE.md`'s hard rule), reported rather than silently fixed, then resolved on explicit
+    direction**: `I2C`'s bus-level methods (`readfrom_into`/`writeto`) used `buffer` while
+    `I2CDevice`'s device-level methods already used `buf`; separately, `I2CDevice.write_then_
+    readinto` used `out_buffer`/`in_buffer` (reversed word order) while the bus-level
+    `I2C.writeto_then_readfrom` it forwards to - and both of `asy_spi_driver.py`'s
+    `write_readinto` variants - already used `buffer_out`/`buffer_in`. Both files now consistently
+    use `buf` for a single buffer and `buffer_out`/`buffer_in` for the two-buffer case; no test
+    needed updating (none referenced the old names by keyword).
+  - **Mock: `tests/machine.py` extended with `class SPI`**, per the standing "extend, don't
+    replace" plan, plus `Pin.init()`/`.value()` readback support (previously a minimal I2C-only
+    SCL/SDA stand-in with no readback at all - confirmed against `ports/rp2/machine_pin.c` that real
+    rp2 `Pin.value()` does a genuine `gpio_get()` readback even for an OUT pin, so this is a
+    faithful mock, not a guess). Deliberately does **not** reuse `I2C`'s `inject_fault`/`busy`/
+    `nak_addresses` fault-injection shape: research confirmed real hardware SPI `write()`/
+    `readinto()` have no fault path to inject at all, and the one real SPI exception
+    (`write_readinto()`'s buffer-length `ValueError`) is deterministic from the buffers a test
+    passes in, needing no injection mechanism to trigger.
+  - **Real bug found and fixed in a second, later architecture-review pass** (asked directly "is
+    this file in good shape / complete / reasonable / efficient / anything missing or badly
+    implemented" after the above had already landed and shipped, same open-ended-review pattern
+    the I2C file went through): `SPIDevice.__aenter__` had no guard against being reached before
+    `setup()` ever ran. `setup()` is what configures `cs_pin` as an output; before that, `Pin`'s
+    direction is whatever the hardware reset default is. Confirmed against `ports/rp2/
+    machine_pin.c` that `Pin.value(x)` calls `gpio_put()` **unconditionally**, regardless of the
+    pin's current direction - so entering before `setup()` wouldn't raise at all, it would just
+    silently fail to ever assert CS on real hardware (the output-latch register gets written, but
+    isn't electrically visible until direction is later set to `OUT`, which never happens without
+    `setup()`). Every real caller today (`asy_fram_driver.py`) already calls `setup()` first, so
+    this was a latent footgun, not an active bug - unlike the `__aenter__` lock/CS-leak bug above,
+    which did have live impact. `I2CDevice` has no equivalent gap (I2C's bus pins are configured
+    once in the bus constructor, not deferred to a separate per-device setup step), so this is
+    genuinely specific to SPI's two-step constructor/`setup()` split, not something inherited
+    unchanged from I2C's own review. Fixed by adding a `self.uninitialized` flag (reusing
+    `asy_fram_driver.py`'s own `FRAM_SPI.uninitialized` naming/pattern for consistency rather than
+    inventing a new convention), set `True` in `__init__` and `False` at the end of `setup()`,
+    checked at the very start of `__aenter__` with a clear `RuntimeError` before anything is
+    acquired - fails loudly instead of silently misbehaving.
+  - **Third pass, asked directly "any more bugs/unsecured conditions/surprises overlooked" after
+    the above** (same explicit-second-look pattern the I2C file went through): found no further
+    driver bugs, but found two claims that were previously asserted only in prose/comments, never
+    actually proven by a test - closed both:
+    - The module docstring's claim that rp2 hardware SPI raises `NotImplementedError` for
+      `firstbit=SPI.LSB` (sourced from `ports/rp2/machine_spi.c`) was untestable as written: the
+      fake `SPI` in `tests/machine.py` silently accepted `LSB` regardless. Extended the fake's
+      `init()` to reject it the same way real hardware does, then added a regression test - so a
+      wrong citation here would now actually fail a test, not just look plausible in a comment.
+    - No test proved CS pins of two *different* devices sharing a bus are never simultaneously
+      asserted - the existing concurrency tests (`test_two_devices_sharing_a_bus_never_run_
+      concurrently` etc.) only checked an abstract `max_concurrent` counter, not the actual
+      hardware signal the whole locking scheme exists to protect. Added a test checking both
+      devices' real `Pin.value()` state directly during a concurrent `asyncio.gather`.
+  - **43 tests added** (`tests/test_asy_spi_driver.py`; project-wide total climbs to 227 = 45
+    `math_helpers.py` + 62 `crc_checks.py` + 77 `asy_i2c_driver.py` + 43 `asy_spi_driver.py`),
+    written before the refactor and run against the original file first (per the explicit
+    tests-first instruction this pattern is based on) - which is how the `typing` import bug above
+    was caught concretely, not just reasoned about. Covers: init/deinit and real-hardware-deinit
+    idempotency, `configure()`'s three distinct raise paths (`RuntimeError` x2, plus
+    `NotImplementedError` for `firstbit=LSB`), `write`/`readinto`/`write_readinto` forwarding and
+    the one real raise path (including zero-length buffers and buffer-length mismatches in both
+    directions), a dedicated regression test proving the disconnected-wire/no-ACK case is
+    genuinely undetectable (zero-filled data back, no exception, not just an untested claim), CS
+    pin assert/deassert sequencing verified via real `Pin.value()` readback across every exit path
+    (normal, exception inside session, double-exit/pre-released lock, task cancellation,
+    `__aenter__` failure itself, and now also entering before `setup()`), CS pins of two different
+    devices proven never simultaneously asserted, `configure()` re-applied fresh every session
+    (confirmed correct behavior, not a bug, since the bus may be shared with a
+    differently-configured device - evaluated during the architecture-review pass and deliberately
+    left unchanged), deinit/reinit mid-session, asyncio interlock (2 and 4 concurrent devices, plus
+    the same device from two concurrent tasks), reentrant-acquisition deadlock bounded by
+    `wait_for`, and both `__aenter__` bug fixes (lock/CS-leak, and the setup()-ordering guard).
+  - **Not fixed, flagged for a future pass**: `FRAM_SPI.set_write_protected()`/
+    `get_write_protected()` (in `asy_fram_driver.py`, not itself promoted this session) have zero
+    real callers today - same category as several of I2C's still-unused register-helper methods,
+    not touched.
+  - **Baseline verified, no regression**: `improved-quality/`'s lint finding count was 320 at this
+    session's start (unchanged from the count recorded at the end of the I2C session above,
+    confirmed before touching anything), and 317 after this file's promotion - a net **decrease** of
+    exactly the 3 pre-existing findings this file itself had, not a regression anywhere else.
+  - **Fourth pass, a full re-walk of `src/README.md`'s checklist after the PR was already open**:
+    found one real docstring inaccuracy, flagged and fixed on explicit direction rather than
+    silently - the module docstring attributed `configure()` to `SPIDevice` (it's an `SPI` method,
+    only ever called *from* `SPIDevice.__aenter__`) and attributed the `firstbit=SPI.LSB`
+    `NotImplementedError` to `SPI.__init__()/init()`, which take no `firstbit` parameter at all -
+    only `configure()` does. Also tightened the module docstring to essentials and capped every
+    function's comments at 3 lines, on request; zero behavior change, verified via a full
+    mypy/lint/test re-run before pushing.
+  - **Follow-up needed for the later refactor stages, as with `asy_i2c_driver.py` above**: this
+    file's own contract deliberately lets several methods raise rather than return `None` -
+    `SPI.__init__()`/`init()` (`ValueError` for a bad pin/port number), `SPIDevice.__init__()`
+    (same, via its own `Pin(cs_pin)`), and `configure()` (`RuntimeError` for an uninitialized or
+    unlocked bus, `NotImplementedError` for `firstbit=SPI.LSB`) - all deliberate "fail loudly"
+    programmer-error guards, not swallowed into `None`. Today's only caller
+    (`asy_fram_driver.py`'s `FRAM_SPI`) doesn't wrap any of these in a `try/except` - fine today
+    since none of these should ever trigger in correct, already-`setup()`'d production code, but
+    not verified against every call site the way `src/README.md` section 2 requires for the I2C
+    `OSError` carve-out. As the refactor adds more `SPIDevice` consumers, each one's own upstream
+    handling must be checked so a genuine one-time-setup failure fails loudly at boot (as intended)
+    rather than an unrelated later call somehow reaching one of these raises uncaught and crashing
+    the task supervisor - matching the same "nothing may ever silently slip through uncaught" hard
+    rule already recorded under "Bus/sensor error-recovery robustness" above.
 - **Test infrastructure gap found and fixed, while adding `crc_checks.py`'s tests**:
   `scripts/test.sh`'s `MICROPYPATH="src:tests"` silently shadowed every frozen-Python stdlib
   module (`asyncio` included) for every test file — invisible until now because `math_helpers.py`

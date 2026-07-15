@@ -31,7 +31,8 @@ python/
   IndividualDrivers/      only copied in if a given device config needs them
   Manifest/manifest.py    MicroPython freeze manifest used by the build
 improved-quality/        WIP refactor target (out of scope for day-to-day work; see CLAUDE.md)
-src/                     Files moved out of improved-quality/ once fully reviewed/tested
+src/                     Files moved out of improved-quality/ once fully reviewed/tested - see
+                          src/README.md for the promotion checklist
 tests/                   Unit tests for src/, run under a real MicroPython interpreter - see
                           tests/README.md
 toolchain/               MicroPython/pico-sdk/picotool build-environment installer
@@ -293,4 +294,5 @@ non-gating, `continue-on-error: true` steps:
 ## Further reading
 
 - **CLAUDE.md** — AI-session operating constraints and architecture reference.
-- **BACKLOG.md** — open questions and explicitly deferred work, with reasoning.
+- **BACKLOG.md** — the project's running knowledge base; see its own opening paragraph for the
+  full scope.

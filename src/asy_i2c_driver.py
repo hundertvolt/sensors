@@ -71,7 +71,7 @@ class I2C:
     def readfrom_into(
         self,
         address: int,
-        buffer: bytearray,
+        buf: bytearray,
         start: int = 0,
         end: int | None = None,
         stop: bool = True,
@@ -80,13 +80,13 @@ class I2C:
         if self._i2c is None:
             return
         if end is None:
-            end = len(buffer)
-        self._i2c.readfrom_into(address, memoryview(buffer)[start:end], stop)
+            end = len(buf)
+        self._i2c.readfrom_into(address, memoryview(buf)[start:end], stop)
 
     def writeto(
         self,
         address: int,
-        buffer: bytes | bytearray | str,
+        buf: bytes | bytearray | str,
         start: int = 0,
         end: int | None = None,
         stop: bool = True,
@@ -96,14 +96,14 @@ class I2C:
         # turned into a None return instead of propagating.
         if self._i2c is None:
             return None
-        if isinstance(buffer, str):
+        if isinstance(buf, str):
             try:
-                buffer = bytes([ord(x) for x in buffer])
+                buf = bytes([ord(x) for x in buf])
             except ValueError:  # character outside 0-255
                 return None
         if end is None:
-            end = len(buffer)
-        return self._i2c.writeto(address, memoryview(buffer)[start:end], stop)
+            end = len(buf)
+        return self._i2c.writeto(address, memoryview(buf)[start:end], stop)
 
     def writeto_then_readfrom(
         self,
@@ -273,8 +273,8 @@ class I2CDevice(Lockable):
 
     async def write_then_readinto(
         self,
-        out_buffer: bytes | bytearray,
-        in_buffer: bytearray,
+        buffer_out: bytes | bytearray,
+        buffer_in: bytearray,
         out_start: int = 0,
         out_end: int | None = None,
         in_start: int = 0,
@@ -284,8 +284,8 @@ class I2CDevice(Lockable):
     ) -> None:
         self.i2c.writeto_then_readfrom(
             self.device_address,
-            out_buffer,
-            in_buffer,
+            buffer_out,
+            buffer_in,
             out_start=out_start,
             out_end=out_end,
             in_start=in_start,

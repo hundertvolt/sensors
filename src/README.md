@@ -100,6 +100,17 @@ you check, per file.
       counting/self-healing path instead of ever reaching the top-level task supervisor and
       crashing the main loop. If a call site doesn't already do this, that's a real finding to fix
       or flag — don't take the carve-out as license to skip checking who actually catches it.
+      **The `OSError`-NAK/timeout fault surface this bullet describes is I2C-specific on this
+      port, confirmed during `asy_spi_driver.py`'s own `src/` promotion — don't assume it applies
+      identically to SPI.** SPI has no ACK/NAK concept, and real RP2040 hardware SPI transfers
+      (`extmod/machine_spi.c`'s blocking transfer path) have no error return at all once the bus
+      is constructed: `write()`/`readinto()` genuinely cannot raise, not merely "in practice, let
+      it propagate" the way this bullet frames I2C. `write_readinto()` is the one SPI exception,
+      and it's a different shape entirely — a real `ValueError` for mismatched buffer lengths
+      (`mp_machine_spi_write_readinto()`, shared by hardware and soft SPI), which is a caller-input
+      mistake, not a hardware fault, so `asy_spi_driver.py` catches it and returns `None` rather
+      than taking this carve-out. Check each bus's actual fault surface against current source
+      before assuming this bullet's I2C-derived shape transfers unchanged.
 
 ## 3. Stability for indefinite, unattended operation
 
