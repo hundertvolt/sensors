@@ -57,3 +57,43 @@ own `src/` promotion yet and `improved-quality/` isn't on this test `MICROPYPATH
 BACKLOG.md's `asy_i2c_driver.py` entry for why this exists and the narrow, self-resolving
 `scripts/typecheck.sh` (no arguments) collision it causes until `base_classes.py` is itself
 promoted and this stand-in is deleted.
+
+## Coverage
+
+```
+scripts/test.sh --coverage
+```
+
+Reports line coverage of `src/` only (not `tests/`'s own helper/mock modules). See
+`README.md`'s "Code quality tooling" for the usage example and output paths
+(`htmlcov/index.html`, `coverage.xml`, `coverage_summary.md`).
+
+Since `coverage.py` only runs under CPython and `src/` only ever runs under the real MicroPython
+Unix-port interpreter (see "Why not pytest" above), coverage collection and reporting are two
+separate stages, not one tool doing both:
+
+1. `tests/_coverage_runner.py` runs *inside* MicroPython, wrapping each `test_*.py` file with
+   `sys.settrace` — verified directly against a real build (not assumed from CPython
+   documentation): MicroPython's `sys.settrace` reports the same `(frame, event)` shape closely
+   enough that a CPython-style line tracer records exactly the executed-line set `coverage.py`
+   itself would expect. It records every line executed whose `co_filename` starts with `src/`
+   (so `tests/machine.py`, `tests/base_classes.py`, and the test files themselves are never
+   counted) and dumps the result as JSON.
+2. `scripts/_render_coverage.py` (a separate, self-contained `uv run` script, like
+   `toolchain/setup_toolchain.py`) runs under CPython afterwards, merges every test file's JSON
+   dump, feeds the result into `coverage.py` via its `CoverageData.add_lines()` API — a
+   documented integration point for exactly this "foreign coverage source" case — and lets
+   `coverage.py`'s own report engine render the HTML/XML/markdown output from data it never
+   collected first-hand.
+
+The one MicroPython Unix port binary (`ports/unix/build-standard/`) backs both plain
+`scripts/test.sh` and `scripts/test.sh --coverage` — it's always built with
+`MICROPY_PY_SYS_SETTRACE=1` (`build_unix_port()` in `toolchain/setup_toolchain.py`), so there's no
+separate coverage-only interpreter to build or cache. Compiling settrace support in adds an inert
+hook check in the bytecode dispatch loop when `sys.settrace()` is never called — a negligible,
+behavior-neutral cost for a plain (non-coverage) test run, confirmed directly by running the full
+suite both ways and comparing results. `ports/rp2`'s firmware build never gets this flag; it's
+dev/test tooling only, entirely separate from what ships to real hardware.
+
+No coverage threshold is enforced anywhere — CI reports the numbers, it never fails the build
+over them.

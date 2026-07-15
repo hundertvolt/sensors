@@ -43,7 +43,11 @@ the last one are really `setup` in disguise. Both also build and verify a MicroP
 interpreter at the same pinned ref (sharing the same `--toolchain-dir` checkout, just a different
 `ports/` subdirectory) alongside the RP2040 firmware — see "How it works" below, `../tests/README.md`
 for why the test suite runs under that instead of CPython/pytest, and `scripts/test.sh`, which
-runs `setup` automatically the first time it needs the interpreter.
+runs `setup` automatically the first time it needs the interpreter. That Unix-port binary is
+always built with `MICROPY_PY_SYS_SETTRACE=1` (an inert, behavior-neutral hook check when unused —
+see `build_unix_port()`), so the same binary backs both plain `scripts/test.sh` and
+`scripts/test.sh --coverage` (see `../tests/README.md`'s "Coverage" section) — no second Unix port
+build. The RP2040 firmware build never gets this flag; it's dev/test tooling only.
 
 **Prerequisites:**
 

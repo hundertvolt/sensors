@@ -238,12 +238,57 @@ scripts/lint.sh            # ruff check
 scripts/typecheck.sh       # mypy, using MicroPython stubs matching toolchain/versions.toml (see above)
 scripts/test.sh            # runs every test in tests/, under a real MicroPython Unix-port interpreter -
                             # builds that interpreter automatically on first run (see tests/README.md)
+scripts/test.sh --coverage # same, plus a src/-only line coverage report (HTML/XML/markdown) - see below
 ```
 
-All three run in GitHub Actions CI (`.github/workflows/ci.yml`) on every push/PR. Config lives in
-the root `pyproject.toml`; see CLAUDE.md's "Code quality tooling" section for the full rationale
-(why `ruff format` isn't used, why the MicroPython stubs install into a separate `typings/`
-directory instead of the main dev venv, why tests don't run under pytest/CPython, etc.).
+All three (`lint.sh`/`typecheck.sh`/`test.sh`) run in GitHub Actions CI
+(`.github/workflows/ci.yml`) on every push/PR, plus `test.sh --coverage` as a non-gating extra
+step. Config lives in the root `pyproject.toml`; see CLAUDE.md's "Code quality tooling" section
+for the full rationale (why `ruff format` isn't used, why the MicroPython stubs install into a
+separate `typings/` directory instead of the main dev venv, why tests don't run under
+pytest/CPython, etc.).
+
+### Test coverage
+
+```sh
+scripts/test.sh --coverage
+```
+
+Reports line coverage of `src/` only, from the same `tests/test_*.py` suite `scripts/test.sh`
+already runs — no coverage threshold is enforced, this only reports numbers, it never fails the
+build over them. Since `coverage.py` itself only runs under CPython while `src/` only ever runs
+under the real MicroPython Unix-port interpreter, collection and reporting are two separate
+stages (`tests/_coverage_runner.py` inside MicroPython, `scripts/_render_coverage.py` under
+CPython via `uv run`) glued together through `coverage.py`'s own `CoverageData` API — see
+`tests/README.md`'s "Coverage" section for the full pipeline. Uses the same Unix port binary as
+plain `scripts/test.sh` (it's always built with `MICROPY_PY_SYS_SETTRACE=1`, a negligible,
+behavior-neutral cost when unused — see `build_unix_port()` — so there's no second interpreter to
+build or cache); the RP2040 firmware build never gets this flag.
+
+Produces, at the repo root (all gitignored, regenerated every run):
+
+- `htmlcov/index.html` — browsable line-by-line HTML report.
+- `coverage.xml` — Cobertura XML.
+- `coverage_summary.md` — a markdown table.
+
+**Locally, `scripts/test.sh --coverage` does not open anything automatically** — it only prints
+the three paths above; open `htmlcov/index.html` yourself (e.g. `xdg-open htmlcov/index.html` on
+Linux, `open htmlcov/index.html` on macOS) to browse the HTML report.
+
+**On GitHub, there is no visualization on the repo's main page** — no README badge, no GitHub
+Pages. What CI (`.github/workflows/ci.yml`) actually does with each of the three files, all as
+non-gating, `continue-on-error: true` steps:
+
+- `coverage_summary.md` is appended to that workflow run's **Job Summary** — click into the
+  specific run under the repo's Actions tab, the table is at the bottom of that run's page. This
+  needs no external service and always works.
+- `htmlcov/` is uploaded as a **downloadable build artifact** on that same run's page — GitHub
+  doesn't render it inline; download the zip and open `index.html` locally to browse it.
+- `coverage.xml` is uploaded to [Codecov](https://about.codecov.io/) (free for public repos), which
+  can add PR comments/checks and its own hosted dashboard — but only once this repo is registered
+  at [codecov.io](https://about.codecov.io/) and either a `CODECOV_TOKEN` repo secret or Codecov's
+  OIDC/tokenless support is set up; that account-linking step hasn't been done yet, so today this
+  step just runs and silently produces nothing visible.
 
 ## Further reading
 

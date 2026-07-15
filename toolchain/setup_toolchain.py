@@ -8,7 +8,10 @@ Single-command installer/updater for the MicroPython RP2040/Pico W firmware buil
 environment (MicroPython + matching pico-sdk + matching picotool + ARM cross-toolchain), plus
 a host-side MicroPython Unix port build used for running tests under the real interpreter
 later (see BACKLOG.md's "Self-contained venv via uv" — this is the "setup script that builds/
-installs the MicroPython Unix port interpreter" it describes).
+installs the MicroPython Unix port interpreter" it describes). That Unix port binary is always
+built with MICROPY_PY_SYS_SETTRACE=1 (see build_unix_port()) so it backs both plain
+`scripts/test.sh` and `scripts/test.sh --coverage` — the RP2040 firmware build never gets this
+flag, it's dev/test tooling only.
 
 Usage (from anywhere, via uv — no venv/pip setup needed):
 
@@ -350,14 +353,25 @@ def build_unix_port(micropython_dir: Path, jobs: int, frozen_manifest: Path | No
     set) - see ports/unix/README.md. Requires mpy-cross to already be built (build_mpy_cross()
     must run first); the Makefile also depends on it directly, but re-checking a build that's
     already current is a no-op, not wasted work. Pass frozen_manifest the same way as
-    build_firmware() above; omit it for a vanilla build."""
+    build_firmware() above; omit it for a vanilla build.
+
+    Always built with MICROPY_PY_SYS_SETTRACE=1 -- off by default even in the standard variant
+    (see py/mpconfig.h) -- so this one binary backs both plain `scripts/test.sh` and
+    `scripts/test.sh --coverage` (tests/_coverage_runner.py installs a sys.settrace line tracer
+    scoped to src/ before running each test file). There is no separate coverage-only build:
+    compiling settrace support in adds an inert hook check in the bytecode dispatch loop when
+    sys.settrace() is never called, not a behavior change, and this Unix port is dev/test tooling
+    only, never what ships -- ports/rp2's build_firmware() never gets this flag, so the deployed
+    RP2040 firmware is entirely unaffected. Verified directly during development, not assumed:
+    running the full tests/test_*.py suite against a settrace-enabled build with sys.settrace
+    never actually invoked produced results identical to a plain build."""
     label = "with the frozen verification module" if frozen_manifest else "standard, unchanged"
     log(f"Building the MicroPython Unix port ({label})")
     unix_dir = micropython_dir / "ports" / "unix"
     build_dir = unix_dir / "build-standard"
     if build_dir.exists():
         shutil.rmtree(build_dir)
-    make_cmd = ["make", f"-j{jobs}"]
+    make_cmd = ["make", f"-j{jobs}", "CFLAGS_EXTRA=-DMICROPY_PY_SYS_SETTRACE=1"]
     if frozen_manifest is not None:
         make_cmd.append(f"FROZEN_MANIFEST={frozen_manifest}")
     out = run(make_cmd, cwd=unix_dir, env=build_env())
