@@ -135,6 +135,23 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
   subcommand — cached under `$PICO_TOOLCHAIN_DIR`) and shells out to it once per `tests/test_*.py`
   file; see `tests/README.md` for the full rationale and the minimal `test_*`-function runner
   (`tests/microtest.py`) used in place of CPython's `unittest`.
+- **`scripts/test.sh --coverage` reports `src/` line coverage; it never gates anything** — no
+  threshold is enforced anywhere, by design (confirmed directly, not a placeholder for a future
+  gate — see BACKLOG.md). Since `coverage.py` only runs under CPython while `src/` only ever runs
+  under the real MicroPython Unix-port interpreter, collection (`tests/_coverage_runner.py`,
+  `sys.settrace` inside MicroPython) and rendering (`scripts/_render_coverage.py`, a second
+  self-contained `uv run` script, under CPython) are two separate stages glued together through
+  `coverage.py`'s own `CoverageData` API — see `tests/README.md`'s "Coverage" section for the full
+  pipeline. The Unix port binary is always built with `MICROPY_PY_SYS_SETTRACE=1`
+  (`build_unix_port()` in `toolchain/setup_toolchain.py`) — an inert hook check when unused, not a
+  behavior change, confirmed directly — so plain `scripts/test.sh` and `--coverage` share one
+  binary; `ports/rp2`'s firmware build never gets this flag. CI
+  (`.github/workflows/ci.yml`) runs it as a non-gating step: a markdown summary goes to that run's
+  GitHub Actions Job Summary (not the repo's main page), the HTML report is a downloadable build
+  artifact (GitHub doesn't render it inline), and the Cobertura XML uploads to Codecov — which
+  needs this repo registered at codecov.io plus a token/OIDC setup that hasn't happened yet, so
+  that upload currently no-ops. Locally, `--coverage` only prints the output paths; nothing opens
+  automatically. See README.md's "Test coverage" section for the full user-facing rundown.
 - **`ruff format` is deliberately not used anywhere** — line breaks are hand-chosen throughout this
   codebase; `line-length = 320` (ruff's own ceiling) plus an `E501` ignore keep this a non-issue even
   if `format` is ever run by accident. Lint rule selection (`E`/`F`/`W`/`I`/`UP`/`B`) is stricter

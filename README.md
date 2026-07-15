@@ -268,11 +268,27 @@ build or cache); the RP2040 firmware build never gets this flag.
 Produces, at the repo root (all gitignored, regenerated every run):
 
 - `htmlcov/index.html` — browsable line-by-line HTML report.
-- `coverage.xml` — Cobertura XML, uploaded to [Codecov](https://about.codecov.io/) in CI
-  (`.github/workflows/ci.yml`) for PR-level visualization; free for public repos.
-- `coverage_summary.md` — a markdown table, appended to the GitHub Actions run's Job Summary in
-  CI so the numbers show up on the GitHub site with no external service required, even if Codecov
-  itself isn't (yet) configured with a repo token.
+- `coverage.xml` — Cobertura XML.
+- `coverage_summary.md` — a markdown table.
+
+**Locally, `scripts/test.sh --coverage` does not open anything automatically** — it only prints
+the three paths above; open `htmlcov/index.html` yourself (e.g. `xdg-open htmlcov/index.html` on
+Linux, `open htmlcov/index.html` on macOS) to browse the HTML report.
+
+**On GitHub, there is no visualization on the repo's main page** — no README badge, no GitHub
+Pages. What CI (`.github/workflows/ci.yml`) actually does with each of the three files, all as
+non-gating, `continue-on-error: true` steps:
+
+- `coverage_summary.md` is appended to that workflow run's **Job Summary** — click into the
+  specific run under the repo's Actions tab, the table is at the bottom of that run's page. This
+  needs no external service and always works.
+- `htmlcov/` is uploaded as a **downloadable build artifact** on that same run's page — GitHub
+  doesn't render it inline; download the zip and open `index.html` locally to browse it.
+- `coverage.xml` is uploaded to [Codecov](https://about.codecov.io/) (free for public repos), which
+  can add PR comments/checks and its own hosted dashboard — but only once this repo is registered
+  at [codecov.io](https://about.codecov.io/) and either a `CODECOV_TOKEN` repo secret or Codecov's
+  OIDC/tokenless support is set up; that account-linking step hasn't been done yet, so today this
+  step just runs and silently produces nothing visible.
 
 ## Further reading
 

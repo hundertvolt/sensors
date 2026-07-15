@@ -68,8 +68,12 @@ below for why that's a scoped exception, not a change in overall approach):
     - **mypy does NOT disable the `assignment` error code** (done — the old
       `improved-quality/mypy.ini`'s `disable_error_code = assignment` was never a deliberate
       choice and has been dropped in the new `pyproject.toml` config).
-  - **No hard test-coverage percentage gate for now** — tests must exist and run in CI, but no
-    specific minimum coverage threshold is enforced yet.
+  - **No hard test-coverage percentage gate** — **done**: `scripts/test.sh --coverage` and a
+    non-gating CI step (`.github/workflows/ci.yml`) report `src/` line coverage (HTML, Cobertura
+    XML uploaded to Codecov, and a markdown summary posted to the Job Summary) — see
+    `tests/README.md`'s "Coverage" section and README.md's "Test coverage". This was a deliberate
+    choice, confirmed directly, not a placeholder for a future gate: coverage is reported, never
+    enforced, and there's no plan to add a threshold later.
   - **PEP 604 union syntax** (`int | None`, already used in `improved-quality/base_classes.py`) is
     confirmed safe at runtime on MicroPython, including the deployed 1.26 pin and the refactor's
     1.28.0 target: MicroPython's compiler parses but never evaluates annotation expressions (a
