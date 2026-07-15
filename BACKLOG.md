@@ -467,6 +467,42 @@ above is genuinely underway, but surfaces some new items:
     with no ambiguity. Not fixed via a `pyproject.toml` `exclude` (the `microdot.py` precedent)
     because that would need the full "Pre-push verification" clean-chroot pass for a collision this
     narrow and temporary; documented instead so a locally-run unscoped typecheck isn't mysterious.
+  - **Follow-up pass: deep asyncio/locking/bus-fault test coverage, a real bug found and fixed,
+    and the file simplified afterward** (all while genuinely green, not just planned). Extended
+    `tests/machine.py` with real RP2040 error codes (confirmed against
+    `ports/rp2/machine_i2c.c`: hardware I2C only ever raises `OSError(EIO)` for a NAK/general bus
+    fault or `OSError(ETIMEDOUT)` for a bus-busy/clock-stretch timeout — not the `ENODEV` this
+    mock originally guessed, which is a `SoftI2C`-specific code path this driver doesn't use),
+    per-operation fault injection (so one leg of a multi-step operation, e.g. the read half of
+    `writeto_then_readfrom`, can fail independently of the other — modeling a transfer
+    interrupted partway through), and exact-length `readfrom_mem` (real hardware always returns
+    precisely `nbytes`, never a short read). 31 new tests added (60 total for this file) covering
+    single- vs. multi-transfer sessions, asyncio interlock across concurrent tasks/devices
+    (`asyncio.gather` + a `max_concurrent` counter, confirmed always `1`), interrupted transfers
+    via both raised exceptions and real task cancellation (confirmed directly that MicroPython's
+    asyncio still runs `__aexit__` via `CancelledError` propagating through `async with`, same as
+    CPython), reentrant-acquisition deadlock bounded by `asyncio.wait_for` (confirmed this times
+    out with `TimeoutError` and still cleans up the lock afterward), deinit/reinit mid-session,
+    and buffer/slice edge cases. **Real bug found this way, not hypothetical**:
+    `get_register_struct("")` (or any zero-data-field format, e.g. pad-bytes-only `"2x"`, which
+    still has `calcsize() > 0`) raised an uncaught `IndexError` from indexing `struct.unpack()`'s
+    empty result tuple — a genuine "never raises" contract violation for a legitimate (if
+    degenerate) input, not excluded by the type contract. Fixed by checking the unpack result is
+    non-empty before indexing, rather than adding `IndexError` to the existing `except ValueError`
+    (clearer, and avoids conflating "malformed format" with "well-formed format, zero fields").
+    Also documented (comment + regression test, not silently changed) a related MicroPython-only
+    `struct.pack` quirk found via the same testing pass: it silently zero-pads/truncates a value
+    or argument-count mismatch instead of raising `struct.error` like CPython — relevant to
+    `set_register_struct`, which is deliberately single-value-only. With the expanded suite
+    genuinely passing, the file was then simplified with zero behavior change (verified by the
+    same suite staying green throughout): `get_bits()`/`set_bits()`'s duplicated byte-order
+    reconstruction loop and range-guard condition extracted into shared
+    `_bytes_to_int()`/`_bitfield_range_ok()`/`_bitmask()` helpers (the loop was the file's
+    trickiest algorithm and worth having in exactly one place, not two copies that could drift
+    the way the earlier `endian`/`lsb_first` split once did), and `I2CDevice`'s
+    `readinto`/`write`/`write_then_readinto` stopped redundantly pre-resolving `end=None` to
+    `len(buffer)` themselves, since `I2C`'s own methods already do that same computation one call
+    down.
 - **Test infrastructure gap found and fixed, while adding `crc_checks.py`'s tests**:
   `scripts/test.sh`'s `MICROPYPATH="src:tests"` silently shadowed every frozen-Python stdlib
   module (`asyncio` included) for every test file — invisible until now because `math_helpers.py`

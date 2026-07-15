@@ -91,6 +91,26 @@ class I2C:
         self.writeto(address, buffer_out, out_start, out_end, stop=stop)
         self.readfrom_into(address, buffer_in, in_start, in_end, stop=stop)
 
+    @staticmethod
+    def _bitfield_range_ok(num_bits: int, start_bit: int, reg_width: int) -> bool:
+        # Shared range guard for get_bits()/set_bits(): num_bits/start_bit must describe a
+        # field that actually fits inside a reg_width-byte register.
+        return num_bits > 0 and start_bit >= 0 and reg_width > 0 and start_bit + num_bits <= reg_width * 8
+
+    @staticmethod
+    def _bitmask(num_bits: int, start_bit: int) -> int:
+        return ((1 << num_bits) - 1) << start_bit
+
+    @staticmethod
+    def _bytes_to_int(mem_value: bytes, lsb_first: bool) -> int:
+        # Shared byte-order reconstruction for get_bits()/set_bits(): lsb_first says whether the
+        # register's first byte (index 0) is the least- or most-significant.
+        reg = 0
+        order = range(len(mem_value) - 1, -1, -1) if lsb_first else range(len(mem_value))
+        for i in order:
+            reg = (reg << 8) | mem_value[i]
+        return reg
+
     def get_bits(
         self,
         address: int,
@@ -100,18 +120,12 @@ class I2C:
         reg_width: int = 1,
         lsb_first: bool = True,
     ) -> int | None:
-        # Reads an arbitrary bit-field out of a reg_width-byte register; lsb_first says whether
-        # the register's first byte (index 0) is the least- or most-significant.
-        if self._i2c is None:
-            return None
-        if num_bits <= 0 or start_bit < 0 or reg_width <= 0 or start_bit + num_bits > reg_width * 8:
+        # Reads an arbitrary bit-field out of a reg_width-byte register.
+        if self._i2c is None or not self._bitfield_range_ok(num_bits, start_bit, reg_width):
             return None
         mem_value = self._i2c.readfrom_mem(address, reg_addr, reg_width)
-        reg = 0
-        order = range(len(mem_value) - 1, -1, -1) if lsb_first else range(len(mem_value))
-        for i in order:
-            reg = (reg << 8) | mem_value[i]
-        return (reg & (((1 << num_bits) - 1) << start_bit)) >> start_bit
+        reg = self._bytes_to_int(mem_value, lsb_first)
+        return (reg & self._bitmask(num_bits, start_bit)) >> start_bit
 
     def set_bits(
         self,
@@ -127,16 +141,11 @@ class I2C:
         # alone (this used to also take a separate `endian` param for the write-back, which
         # could silently disagree with lsb_first for reg_width > 1 - a single flag can't
         # disagree with itself).
-        if self._i2c is None:
-            return
-        if num_bits <= 0 or start_bit < 0 or reg_width <= 0 or start_bit + num_bits > reg_width * 8:
+        if self._i2c is None or not self._bitfield_range_ok(num_bits, start_bit, reg_width):
             return
         mem_value = self._i2c.readfrom_mem(address, reg_addr, reg_width)
-        reg = 0
-        order = range(len(mem_value) - 1, -1, -1) if lsb_first else range(len(mem_value))
-        for i in order:
-            reg = (reg << 8) | mem_value[i]
-        reg &= ~(((1 << num_bits) - 1) << start_bit)
+        reg = self._bytes_to_int(mem_value, lsb_first)
+        reg &= ~self._bitmask(num_bits, start_bit)
         reg |= value << start_bit
         self._i2c.writeto_mem(address, reg_addr, reg.to_bytes(reg_width, "little" if lsb_first else "big"))
 
@@ -154,10 +163,17 @@ class I2C:
             return None
         raw = self._i2c.readfrom_mem(address, reg_addr, size)
         try:
-            # struct.unpack declared to return Any, but int | float | bytes are possible
-            value = struct.unpack(reg_format, memoryview(raw))[0]
+            # struct.unpack declared to return Any, but int | float | bytes are possible. A
+            # zero-field format (e.g. "", or pad-bytes-only like "2x") unpacks to an empty
+            # tuple despite a nonzero calcsize - confirmed directly, not assumed - so indexing
+            # [0] unconditionally would raise IndexError; the emptiness check below avoids that
+            # rather than adding IndexError to this except clause.
+            unpacked = struct.unpack(reg_format, memoryview(raw))
         except ValueError:  # malformed reg_format
             return None
+        if not unpacked:
+            return None
+        value = unpacked[0]
         if isinstance(value, (int, float, bytes)):
             return value
         return None
@@ -166,9 +182,15 @@ class I2C:
         # struct-typed single-value register write; byte order comes entirely from reg_format's
         # own prefix character, matching get_register_struct (this used to instead take a
         # separate `endian` param that could silently disagree with reg_format's own prefix).
-        # Confirmed directly: unlike CPython's struct.error, MicroPython's struct.pack silently
-        # truncates a value that doesn't fit reg_format (e.g. pack("B", 999) -> b"\xe7") rather
-        # than raising - the try/except below only ever catches a malformed reg_format itself.
+        # Confirmed directly, an inherent MicroPython quirk rather than a bug here: unlike
+        # CPython's struct.error, struct.pack silently truncates a value that doesn't fit
+        # reg_format (e.g. pack("B", 999) -> b"\xe7"), and silently zero-pads/ignores a
+        # reg_format needing a different number of values than the one `value` this method ever
+        # supplies (e.g. pack(">HH", 5) -> b"\x00\x05\x00\x00", not an error) - the try/except
+        # below only ever catches a genuinely malformed reg_format string itself. This method is
+        # deliberately single-value-only (see its name/signature); a multi-field reg_format was
+        # never a supported input, but silently writes a partially-zeroed register rather than
+        # erroring - worth knowing if this is ever extended to accept multiple values.
         if self._i2c is None:
             return
         try:
@@ -196,8 +218,8 @@ class I2CDevice(Lockable):
         start: int = 0,
         end: int | None = None,
     ) -> None:
-        if end is None:
-            end = len(buf)
+        # end=None is passed straight through - I2C.readfrom_into() already defaults it to
+        # len(buf) itself, so resolving it here too would just be the same computation twice.
         self.i2c.readfrom_into(self.device_address, buf, start=start, end=end)
 
     async def write(
@@ -206,8 +228,6 @@ class I2CDevice(Lockable):
         start: int = 0,
         end: int | None = None,
     ) -> None:
-        if end is None:
-            end = len(buf)
         self.i2c.writeto(self.device_address, buf, start=start, end=end)
 
     async def write_then_readinto(
@@ -219,11 +239,6 @@ class I2CDevice(Lockable):
         in_start: int = 0,
         in_end: int | None = None,
     ) -> None:
-        if out_end is None:
-            out_end = len(out_buffer)
-        if in_end is None:
-            in_end = len(in_buffer)
-
         self.i2c.writeto_then_readfrom(
             self.device_address,
             out_buffer,
