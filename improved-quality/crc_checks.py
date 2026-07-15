@@ -60,7 +60,7 @@ class CRC_Base:
             return bytearr[0 : len(bytearr) - self.num_bytes]
         return None
 
-    # first run check_inc until all chunks are done, then run check_inc once.
+    # Call run_inc once per chunk until all chunks are fed in, then call check_inc once to verify.
     async def run_inc(self, bytearr: bytearray | memoryview, init: int | None = None) -> bool:
         """Processes a chunk of data incrementally for CRC calculation."""
         if self.inc_crc is None:  # First call, initialize
