@@ -1,36 +1,52 @@
-from uasyncio import Lock
-from typing import Type, Any, Dict, NamedTuple, List, Tuple, Union, Callable, Coroutine, TypeVar, TYPE_CHECKING
-from config_manager import str_cfg, ConfigManager
+"""Shared base classes every other improved-quality/ driver/manager builds on: async-lock-guarded
+objects/buffers (Lockable, LockableBuffer), lock-protected scalars (LockedCounter, LockedFlag,
+LockedValue), and the shared sensor-driver base (SensorReader, SensorReaderConfig) that
+centralizes per-sensor error-count bookkeeping and (optionally) per-sensor JSON config storage.
+
+Shared contract: every method returns a well-defined value and never raises, except where noted
+per class below.
+
+SensorReader accepts an optional `fram`: when None (the path exercised for real by
+tests/test_base_classes.py), logging is pure in-memory (print_log.py's PrintLogHistory); when a
+real AsyFramManager is passed, logging persists into FRAM (PrintLogHistStore) instead - but
+asy_fram_manager.py hasn't itself cleared the src/ promotion checklist yet (see BACKLOG.md), so
+that path stays an untested backlog item here, same as print_log.py's own FRAM-backed methods.
+"""
+
+import asyncio
+
+from config_manager import ConfigManager, str_cfg
 from print_log import PrintLogHistory, PrintLogHistStore
 
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
+    TYPE_CHECKING = False
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Coroutine
+    from types import TracebackType
+    from typing import Any, NamedTuple, TypeVar
+
     from asy_fram_manager import AsyFramManager
 
-try:  # just for typing and unsupported from micropython yet
-    from types import TracebackType
-except Exception:
-    pass
+    LockableType = TypeVar("LockableType", bound="Lockable")
+    MeasDataType = TypeVar("MeasDataType", bound=tuple[int | float | None, ...])
 
 
 class Lockable:
-    LockableType = TypeVar("LockableType", bound="Lockable")
+    def __init__(self, asy_lock: asyncio.Lock | None = None) -> None:
+        self.asy_lock = asyncio.Lock() if asy_lock is None else asy_lock
 
-    def __init__(self, asy_lock: Lock | None = None) -> None:
-        if asy_lock is None:
-            self.asy_lock = Lock()
-        else:
-            self.asy_lock = asy_lock
-
-    async def __aenter__(self: LockableType) -> LockableType:
+    async def __aenter__(self: "LockableType") -> "LockableType":
         await self.asy_lock.acquire()
         return self
 
     async def __aexit__(
         self,
-        exc_type: Type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: TracebackType | None,
+        exc_type: "type[BaseException] | None",
+        exc_val: "BaseException | None",
+        exc_tb: "TracebackType | None",
     ) -> bool:
         try:
             self.asy_lock.release()
@@ -62,7 +78,7 @@ class LockableBuffer(Lockable):
 class LockedCounter:
     def __init__(self, init_value: int = 0x00, max_val: int = 0xFF) -> None:
         self.uptime = init_value
-        self.uptime_lock = Lock()
+        self.uptime_lock = asyncio.Lock()
         self.max_val = max_val
 
     async def set_counter(self, value: int) -> None:
@@ -92,7 +108,7 @@ class LockedCounter:
 class LockedFlag:
     def __init__(self, init_value: bool = False) -> None:
         self.flag = init_value
-        self.flag_lock = Lock()
+        self.flag_lock = asyncio.Lock()
 
     async def set_true(self) -> None:
         async with self.flag_lock:
@@ -111,7 +127,7 @@ class LockedFlag:
 class LockedValue:
     def __init__(self, init_value: int | float) -> None:
         self.value = init_value
-        self.value_lock = Lock()
+        self.value_lock = asyncio.Lock()
 
     async def set_value(self, value: int | float) -> None:
         async with self.value_lock:
@@ -124,13 +140,11 @@ class LockedValue:
 
 
 class SensorReader:
-    MeasDataType = TypeVar("MeasDataType", bound=Tuple[Union[int, float, None], ...])
-
     def __init__(
         self,
-        init_data: NamedTuple,
+        init_data: "NamedTuple",
         max_i2c_err: int,
-        fram: "AsyFramManager" | None = None,
+        fram: "AsyFramManager | None" = None,
         history_length: int = 10,
         debug: int | None = None,
     ) -> None:
@@ -141,14 +155,17 @@ class SensorReader:
             self.pr = PrintLogHistStore(fram, history_length, debug)
             self.pr.one("Init with FRAM logging.")
         self._datastruct = init_data
-        self._datalock = Lock()
+        self._datalock = asyncio.Lock()
         self.max_i2c_err = max_i2c_err
         self._err_cnt_internal = 0
 
     async def reset_error_counter(self) -> None:
         await self.pr.reset()
 
-    async def _error_check(self, results: MeasDataType, name: str, condition: bool = True) -> bool:
+    async def _error_check(self, results: "MeasDataType", name: str, condition: bool = True) -> bool:
+        # centralizes the increment/decrement-error-counter-and-decide-to-give-up logic every
+        # sensortask-*.py driver used to hand-roll separately; False tells the caller to give up
+        # (triggers the task supervisor's own reset), True to keep going.
         if any(res is None for res in results) and condition:
             self._err_cnt_internal += 1
             await self.pr.err_s(name + " Fehlerzähler erhöht auf", self._err_cnt_internal, errno=1)
@@ -161,31 +178,31 @@ class SensorReader:
                 self.pr.err(name + " Fehlerzähler zurück auf", self._err_cnt_internal)
         return True
 
-    async def _get_meas_data(self) -> NamedTuple:
+    async def _get_meas_data(self) -> "NamedTuple":
         async with self._datalock:
             return self._datastruct
 
-    async def _set_meas_data(self, data: NamedTuple) -> None:
+    async def _set_meas_data(self, data: "NamedTuple") -> None:
         async with self._datalock:
             self._datastruct = data
 
-    async def _get_mgr_cfg(self, cfg: List[str]) -> Dict[str, int | float | str | None] | None:
+    async def _get_mgr_cfg(self, cfg: list[str]) -> dict[str, int | float | str | None] | None:
         return {}
 
     async def _get_dict_cfg(
         self,
         name: str,
         cfgstring: str,
-        callback: Callable[[], Coroutine[Any, Any, Dict[str, int | float | str | None]]] | None = None,
-    ) -> Dict[str, Dict[str, int | float | str | None]]:
+        callback: "Callable[[], Coroutine[Any, Any, dict[str, int | float | str | None]]] | None" = None,
+    ) -> dict[str, dict[str, int | float | str | None]]:
         cfg = str_cfg(cfgstring)
-        ret: Dict[str, Dict[str, int | float | str | None]] = {name: {key: None for key in cfg}}
+        ret: dict[str, dict[str, int | float | str | None]] = {name: {key: None for key in cfg}}
 
         sensor_conf = await self._get_mgr_cfg(cfg)
         if sensor_conf is not None:
             try:
                 ret[name].update(sensor_conf)
-            except Exception as e:
+            except Exception as e:  # subclass override could legitimately misbehave; not statically ruled out
                 await self.pr.err_s("Error updating config dict:", e, errno=3)
 
         if callback is not None:
@@ -194,7 +211,7 @@ class SensorReader:
                 if not all(k in ret[name] for k in sensor_callback):
                     await self.pr.wrn_s("Warning: Sensor callback adds unknown keys to config dict!", wrnno=1)
                 ret[name].update(sensor_callback)
-            except Exception as e:
+            except Exception as e:  # callback is caller-supplied; its runtime behavior isn't statically known
                 await self.pr.err_s("Error reading config from sensor:", e, errno=4)
 
         return ret
@@ -203,12 +220,12 @@ class SensorReader:
 class SensorReaderConfig(SensorReader):
     def __init__(
         self,
-        init_data: NamedTuple,
+        init_data: "NamedTuple",
         max_i2c_err: int,
         name: str,
         default_vals: str,
         cfg_path: str = "",
-        fram: "AsyFramManager" | None = None,
+        fram: "AsyFramManager | None" = None,
         history_length: int = 10,
         debug: int | None = None,
     ) -> None:
@@ -219,5 +236,5 @@ class SensorReaderConfig(SensorReader):
             self.pr,
         )
 
-    async def _get_mgr_cfg(self, cfg: List[str]) -> Dict[str, int | float | str | None] | None:
+    async def _get_mgr_cfg(self, cfg: list[str]) -> dict[str, int | float | str | None] | None:
         return await self.cfgmgr.get_dict(cfg)

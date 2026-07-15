@@ -1,33 +1,54 @@
-import os
+"""Per-sensor JSON config storage. Each sensor gets its own `config_<name>.cfg` file (see
+base_classes.py's SensorReaderConfig), validated against a compact pipe-delimited schema string
+every driver defines as `_VAL_*` constants (e.g. asy_bmp3xx_driver.py's
+`_VAL_SI = '|"SampleInterv": {"def": 2, "type": "int", "min": 1, "max": 3600, "special": null}|'`)
+and concatenated for a multi-field schema.
+
+Shared contract: every public function/method here returns a documented "invalid" sentinel
+(`[]`/`""`/`{}`/`None`/`True` as noted per function) - never raises - for missing input,
+malformed schema strings, or a missing/corrupt/unreadable config file. Real file I/O (this file's
+only external boundary - no hardware) is fully exercised by tests/test_config_manager.py under
+the real MicroPython Unix-port interpreter, unlike the hardware-touching drivers.
+"""
+
+import asyncio
 import json
-from uasyncio import Lock
-from typing import Any, Dict, NamedTuple, List, Tuple, Literal
+import os
+
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    from typing import Any, Literal, NamedTuple
+
 from print_log import PrintLog
 
 
-def str_cfg(str_in: str) -> List[str]:  # extract field names from config string
+def str_cfg(str_in: str) -> "list[str]":  # extract field names from a "|...||...|"-wrapped schema string
     try:
         if len(str_in) < 2 or str_in[0] != "|" or str_in[-1] != "|":
             return []
-        val_list = str_in[1:-2].replace(": {", ":{").split("||")
+        val_list = str_in[1:-1].replace(": {", ":{").split("||")
         return [v.split(":{")[0].replace('"', "") for v in val_list]
     except Exception:
         pass
     return []
 
 
-def name_cfg(str_in: str) -> str:
+def name_cfg(str_in: str) -> str:  # single-field convenience wrapper around str_cfg
     str_list = str_cfg(str_in)
     if len(str_list) == 1:
         return str_list[0]
     return ""
 
 
-def cfg_from_str(cfg_vals: str) -> Dict[str, Dict[str, int | float | str | bool | None]]:
+def cfg_from_str(cfg_vals: str) -> "dict[str, dict[str, int | float | str | bool | None]]":  # parse a schema string into its full per-field default dicts
     try:
         if len(cfg_vals) < 2 or cfg_vals[0] != "|" or cfg_vals[-1] != "|":
             return {}
-        res = json.loads("{" + cfg_vals[1:-2].replace("||", ", ") + "}")
+        res = json.loads("{" + cfg_vals[1:-1].replace("||", ", ") + "}")
         if isinstance(res, dict):
             return res
     except Exception:
@@ -35,7 +56,7 @@ def cfg_from_str(cfg_vals: str) -> Dict[str, Dict[str, int | float | str | bool 
     return {}
 
 
-def make_dict(nt: NamedTuple) -> Dict[str, Dict[str, int | float | str | None]]:
+def make_dict(nt: "NamedTuple") -> "dict[str, dict[str, int | float | str | None]]":  # turn a measurement/data namedtuple into a {type_name: {field: value}} dict, via its own repr()
     try:
         [name, kvpairs] = repr(nt).split("(")[0:2]
         keys = [c.split("=")[0].strip() for c in kvpairs.replace(")", "").split(",")]
@@ -50,8 +71,8 @@ def make_dict(nt: NamedTuple) -> Dict[str, Dict[str, int | float | str | None]]:
 
 
 def type_or_range_error(
-    check_val: Any, defaults: Dict[str, int | float | str | bool | None], check_special: bool = True
-) -> bool:
+    check_val: "Any", defaults: "dict[str, int | float | str | bool | None]", check_special: bool = True
+) -> bool:  # True if check_val doesn't satisfy defaults' own type/min/max(/special) schema entry
     try:
         val_type = defaults.get("type", None)
         val_min = defaults.get("min", None)
@@ -78,7 +99,7 @@ def type_or_range_error(
                     return False
             if type(val_max) is float and type(val_min) is float and val_min <= check_val <= val_max:
                 return False
-        elif val_type == "str":  # check for float and length bounds
+        elif val_type == "str":  # check for str and length bounds
             if type(check_val) is not str:
                 return True
             if val_special is not None:
@@ -97,39 +118,43 @@ def type_or_range_error(
 
 
 def check_cfg_get_default(
-    defaults: Dict[str, int | float | str | bool | None],
-) -> Tuple[bool, int | float | str | bool | None]:
+    defaults: "dict[str, int | float | str | bool | None]",
+) -> "tuple[bool, int | float | str | bool | None]":
     try:  # returns flag if value is used for storage and if the default, if valid
         if sorted(defaults) != ["def", "max", "min", "special", "type"]:
             return True, None  # error (wrong or missing key) in definition
         def_val = defaults["def"]
         use_value = True
         # special case: if default is None and special has a value, this is used to ignore the value
-        # for storage, but uses the special value as mock-up current value for API use.
-        # the special value must fulfill the min-max-(length) criteria in that case.
+        # for storage, but uses the special value as mock-up current value for API use. The special
+        # value is an out-of-band sentinel (e.g. asy_scd30_driver.py's AmbPres uses 0 = "disabled"
+        # outside its 700-1400 hPa physical range), so it must NOT be forced through the ordinary
+        # min/max check here - check_special=True lets type_or_range_error's own "equals the special
+        # value" shortcut apply to it instead.
         if def_val is None and defaults["special"] is not None:
             def_val = defaults["special"]
             use_value = False
-        if type_or_range_error(def_val, defaults, check_special=use_value):
+        if type_or_range_error(def_val, defaults, check_special=True):
             return True, None  # self-check of defaults
         return use_value, def_val
     except Exception:  # dict read error
         return True, None
 
 
-WriteValidity = Dict[str, Literal["Invalid", "Unchanged", "Valid", "Failed"]]
+if TYPE_CHECKING:
+    WriteValidity = dict[str, Literal["Invalid", "Unchanged", "Valid", "Failed"]]
 
 
 class ConfigManager:
-    def __init__(self, filename: str, cfg_vals: str, logger: PrintLog) -> None:
+    def __init__(self, filename: str, cfg_vals: str, logger: "PrintLog") -> None:
         self.pr = logger
-        self.config_lock = Lock()
+        self.config_lock = asyncio.Lock()
         self.config_file = filename
         self.valid = False
-        data: Dict[str, Any] | None = None
+        data: dict[str, Any] | None = None
         try:
-            if (os.stat(self.config_file)[0] & 0x4000) == 0:  # file exists:
-                with open(self.config_file, "r") as f:
+            if (os.stat(self.config_file)[0] & 0x4000) == 0:  # not a directory (littlefs has no other node types)
+                with open(self.config_file) as f:
                     try:
                         data = json.load(f)  # parse to json
                         if isinstance(data, dict):  # parsing resulted in a dict
@@ -137,12 +162,12 @@ class ConfigManager:
                         else:  # generally valid json but not a dict
                             data = None
                             self.pr.wrn("Data in config file", self.config_file, "has wrong format.")
-                    except Exception as e:  # no valid json format at all
+                    except ValueError as e:  # malformed json
                         self.pr.wrn("JSON Data in config file", self.config_file, "is invalid:", e)
-            else:  # filename exists but is e.g. a directory and cannot be used
+            else:  # filename exists but is a directory and cannot be used
                 self.pr.err(self.config_file, "exists but is not a file, cannot write!")
                 return
-        except Exception as e:  # file does not exist at all
+        except OSError as e:  # file doesn't exist or can't be opened
             self.pr.wrn("Config file", self.config_file, "not found:", e)
 
         defaults = cfg_from_str(cfg_vals)
@@ -189,11 +214,11 @@ class ConfigManager:
             self.valid = True
             self.pr.one("Default data was written in", self.config_file, "- config is ready.")
             return
-        except Exception as e:
+        except OSError as e:
             self.pr.err("Error writing config", self.config_file, "- config is not valid:", e)
             return
 
-    async def get_dict(self, keys: List[str]) -> Dict[str, int | float | str | bool | None] | None:
+    async def get_dict(self, keys: "list[str]") -> "dict[str, int | float | str | bool | None] | None":
         if not self.valid:
             self.pr.err(self.config_file, "- Config is not valid, cannot read!")
             return None
@@ -201,7 +226,7 @@ class ConfigManager:
             ret_dict = {}
             self.pr.all(self.config_file, "- Reading config data into dict.")
             try:
-                with open(self.config_file, "r") as f:
+                with open(self.config_file) as f:
                     data = json.load(f)
                 if not isinstance(data, dict):
                     self.pr.err(self.config_file, "- Config parse error!")
@@ -209,11 +234,11 @@ class ConfigManager:
                 for key in keys:
                     ret_dict[key] = data[key]
                 return ret_dict
-            except Exception as e:  # mainly file errors, key errors
+            except (OSError, ValueError, KeyError) as e:  # file errors, malformed json, key errors
                 self.pr.err(self.config_file, "- Config read error:", e)
                 return None
 
-    async def _get_values(self, keys: str) -> List[Any] | None:
+    async def _get_values(self, keys: str) -> "list[Any] | None":
         if not self.valid:
             self.pr.err(self.config_file, "- Config is not valid, cannot read!")
             return None
@@ -221,7 +246,7 @@ class ConfigManager:
             ret_values = []
             self.pr.all(self.config_file, "- Reading config data into list.")
             try:
-                with open(self.config_file, "r") as f:
+                with open(self.config_file) as f:
                     data = json.load(f)
                 if not isinstance(data, dict):
                     self.pr.err(self.config_file, "- Config parse error!")
@@ -229,59 +254,55 @@ class ConfigManager:
                 for key in str_cfg(keys):
                     ret_values.append(data[key])
                 return ret_values
-            except Exception as e:  # mainly file errors, key errors
+            except (OSError, ValueError, KeyError) as e:  # file errors, malformed json, key errors
                 self.pr.err(self.config_file, "- Config read error:", e)
                 return None
 
-    async def get_int_values(self, keys: str) -> List[int] | None:
+    async def get_int_values(self, keys: str) -> "list[int] | None":
         values = await self._get_values(keys)
         if values is None:
             return None
         try:
-            ret_values = [int(v) for v in values]
-        except Exception:
-            ret_values = None
-        return ret_values
+            return [int(v) for v in values]
+        except (TypeError, ValueError):
+            return None
 
-    async def get_float_values(self, keys: str) -> List[float] | None:
+    async def get_float_values(self, keys: str) -> "list[float] | None":
         values = await self._get_values(keys)
         if values is None:
             return None
         try:
-            ret_values = [float(v) for v in values]
-        except Exception:
-            ret_values = None
-        return ret_values
+            return [float(v) for v in values]
+        except (TypeError, ValueError):
+            return None
 
-    async def get_str_values(self, keys: str) -> List[str] | None:
+    async def get_str_values(self, keys: str) -> "list[str] | None":
         values = await self._get_values(keys)
         if values is None:
             return None
         try:
-            ret_values = [str(v) for v in values]
-        except Exception:
-            ret_values = None
-        return ret_values
+            return [str(v) for v in values]
+        except (TypeError, ValueError):
+            return None
 
-    async def get_bool_values(self, keys: str) -> List[bool] | None:
+    async def get_bool_values(self, keys: str) -> "list[bool] | None":
         values = await self._get_values(keys)
         if values is None:
             return None
         try:
-            ret_values = [bool(v) for v in values]
-        except Exception:
-            ret_values = None
-        return ret_values
+            return [bool(v) for v in values]
+        except (TypeError, ValueError):
+            return None
 
     async def write_config(
-        self, data: Dict[str, int | float | str | bool | None], cfg_vals: str
-    ) -> Tuple[bool, WriteValidity]:
+        self, data: "dict[str, int | float | str | bool | None]", cfg_vals: str
+    ) -> "tuple[bool, WriteValidity]":
         if not self.valid:
             self.pr.err(self.config_file, "- Config is not valid, cannot write!")
             return False, {}
         async with self.config_lock:
             try:
-                with open(self.config_file, "r") as f:
+                with open(self.config_file) as f:
                     conf_data = json.load(f)
                 if not isinstance(conf_data, dict):
                     self.pr.err(self.config_file, "- Config parse error!")
@@ -323,6 +344,6 @@ class ConfigManager:
                     json.dump(conf_data, f)
                     self.pr.evt(self.config_file, "- Config data was written.")
                     return True, dict_results
-            except Exception as e:  # mainly file errors, key errors
+            except (OSError, ValueError) as e:  # file errors, malformed json
                 self.pr.err(self.config_file, "- Error writing config data:", e)
                 return False, {}

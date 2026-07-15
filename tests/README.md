@@ -41,22 +41,22 @@ interpreter for `crc_checks.py`, which does.
 
 ## Hardware-touching files: mock at the raw bus-transaction level only
 
-For a `src/` file that talks to real hardware (`asy_i2c_driver.py` and, eventually,
-`asy_spi_driver.py`), the MicroPython Unix port's own `machine` module has no `I2C`/`SPI`/real
-`Pin` (confirmed directly: only `PinBase`/`Signal`/`mem8`/`mem16`/`mem32`/`idle`/`time_pulse_us`).
-`tests/machine.py` is a fake `machine` module, resolved ahead of any real one because `tests`
-comes before `.frozen` on `MICROPYPATH` — per BACKLOG.md's "Mocking boundary" plan, it mocks only
-the raw bus transactions (`readfrom_mem`/`writeto_mem`/`readfrom_into`/`writeto`/`scan`/`deinit`),
-backed by a real dict-of-registers store, so the driver's own logic (bit-packing, byte order,
-locking, error paths) runs for real against it. Extend this same file (don't add a second,
-differently-shaped mock) when `asy_spi_driver.py` goes through its own `src/` promotion.
+For a `src/` file that talks to real hardware (`asy_i2c_driver.py` and `asy_spi_driver.py`), the
+MicroPython Unix port's own `machine` module has no `I2C`/`SPI`/real `Pin` (confirmed directly:
+only `PinBase`/`Signal`/`mem8`/`mem16`/`mem32`/`idle`/`time_pulse_us`). `tests/machine.py` is a
+fake `machine` module, resolved ahead of any real one because `tests` comes before `.frozen` on
+`MICROPYPATH` — per BACKLOG.md's "Mocking boundary" plan, it mocks only the raw bus transactions
+(`readfrom_mem`/`writeto_mem`/`readfrom_into`/`writeto`/`scan`/`deinit`), backed by a real
+dict-of-registers store, so the driver's own logic (bit-packing, byte order, locking, error paths)
+runs for real against it.
 
-`tests/base_classes.py` is a separate, narrower case: a minimal stand-in for
-`improved-quality/base_classes.py`'s `Lockable`, needed only because that file hasn't cleared its
-own `src/` promotion yet and `improved-quality/` isn't on this test `MICROPYPATH`. See
-BACKLOG.md's `asy_i2c_driver.py` entry for why this exists and the narrow, self-resolving
-`scripts/typecheck.sh` (no arguments) collision it causes until `base_classes.py` is itself
-promoted and this stand-in is deleted.
+`tests/base_classes.py` used to be a separate, narrower case: a minimal stand-in for `Lockable`,
+needed only because `base_classes.py` hadn't cleared its own `src/` promotion yet and
+`improved-quality/` wasn't on this test `MICROPYPATH`. Now that `base_classes.py` (along with its
+own dependencies, `config_manager.py` and `print_log.py`) is itself promoted to `src/`, that
+stand-in - and the narrow, self-resolving `scripts/typecheck.sh` (no arguments) collision it used
+to cause - is gone; `asy_i2c_driver.py`/`asy_spi_driver.py` resolve `Lockable` against the real
+`src/base_classes.py` like any other `src/` import.
 
 ## Coverage
 
@@ -77,8 +77,8 @@ separate stages, not one tool doing both:
    documentation): MicroPython's `sys.settrace` reports the same `(frame, event)` shape closely
    enough that a CPython-style line tracer records exactly the executed-line set `coverage.py`
    itself would expect. It records every line executed whose `co_filename` starts with `src/`
-   (so `tests/machine.py`, `tests/base_classes.py`, and the test files themselves are never
-   counted) and dumps the result as JSON.
+   (so `tests/machine.py` and the test files themselves are never counted) and dumps the result
+   as JSON.
 2. `scripts/_render_coverage.py` (a separate, self-contained `uv run` script, like
    `toolchain/setup_toolchain.py`) runs under CPython afterwards, merges every test file's JSON
    dump, feeds the result into `coverage.py` via its `CoverageData.add_lines()` API — a

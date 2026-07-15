@@ -479,6 +479,9 @@ above is genuinely underway, but surfaces some new items:
     with no ambiguity. Not fixed via a `pyproject.toml` `exclude` (the `microdot.py` precedent)
     because that would need the full "Pre-push verification" clean-chroot pass for a collision this
     narrow and temporary; documented instead so a locally-run unscoped typecheck isn't mysterious.
+    **Resolved**: `base_classes.py` (with its own runtime dependencies `config_manager.py` and
+    `print_log.py`) has since been promoted to `src/` in full - see its own entry below - so
+    `tests/base_classes.py` has been deleted and this collision no longer exists.
   - **Follow-up pass: deep asyncio/locking/bus-fault test coverage, a real bug found and fixed,
     and the file simplified afterward** (all while genuinely green, not just planned). Extended
     `tests/machine.py` with real RP2040 error codes (confirmed against
@@ -811,6 +814,97 @@ above is genuinely underway, but surfaces some new items:
   above — per-sensor config is done, the remaining gap is giving the currently-shared
   network/Neopixel config in `sensortask-wozi.py` its own clearly-scoped global home instead of one
   ad hoc `ConfigManager` instance.
+- **`base_classes.py`, `config_manager.py`, and `print_log.py` all moved to `src/` together**:
+  `base_classes.py` was the requested target, but its two runtime dependencies (not FRAM-related,
+  not `TYPE_CHECKING`-only - unlike its `AsyFramManager` reference) had to go through the same
+  checklist alongside it, on explicit direction from the project owner, or `SensorReader`/
+  `SensorReaderConfig` would only ever be testable against hand-written stand-ins for their own
+  logging/config storage. Resolves the "latent, codebase-wide `typing` import gap" flagged in this
+  same section above as future work for exactly these two files.
+  - **Two real, previously-undetected bugs found and fixed in `config_manager.py`** - both existed
+    unchanged in `base_classes_old.py` too, and neither had ever actually been exercised end-to-end
+    before this session's tests (see below for why):
+    1. `cfg_from_str()`/`str_cfg()`'s `cfg_vals[1:-2]` (should be `[1:-1]`) stripped one character
+       too many off the end of the `"|...|"`-wrapped schema string - `str_cfg()` never surfaced this
+       (it only ever reads the substring *before* the first `:{`, which the extra truncation never
+       reaches), but `cfg_from_str()` needs the full, well-formed JSON body: the truncation always
+       dropped the final `}`, so `json.loads()` always raised on malformed/unbalanced braces and
+       `cfg_from_str()` always returned `{}` - for every real schema string, not just an edge case.
+       Since `ConfigManager.__init__()` bails out immediately when `cfg_from_str()` returns empty
+       (`"- Defaults are empty, config is not valid!"`), this meant **`ConfigManager.valid` could
+       never become `True` for any real caller in current `improved-quality/` code** - every
+       `SensorReaderConfig`-based sensor's persistent config storage has been silently, completely
+       non-functional. Never noticed because nothing in `improved-quality/` runs on real hardware
+       end-to-end yet (see the "Cross-file wiring is currently incomplete" finding above) and no
+       tests existed against this file before now. Fixed by correcting both slices to `[1:-1]`
+       (verified by hand-reconstructing the JSON both ways - `[1:-2]` produces unbalanced braces,
+       `[1:-1]` parses correctly - and confirmed no observable behavior of `str_cfg()` changes,
+       since its truncation bug was already inert).
+    2. `check_cfg_get_default()`'s self-check of a schema's `"special"` sentinel value (used for
+       fields like `asy_scd30_driver.py`'s real `AmbPres`, `special: 0` outside its physical
+       `700-1400` hPa range, meaning "compensation disabled") called
+       `type_or_range_error(special_val, defaults, check_special=use_value)` with `use_value=False`
+       in exactly the case being checked - forcing the special value through the *full* min/max
+       range check instead of letting it take its own "equals the special sentinel, auto-valid"
+       shortcut. This made `check_cfg_get_default()` judge `AmbPres`'s real, already-in-use schema
+       constant as invalid, which (masked by bug #1 above always returning empty defaults first)
+       had never actually been reached either. **Confirmed with the project owner which side was
+       wrong** (the validation, not the schema - a special sentinel is deliberately meant to fall
+       outside the normal range, that's the whole point of having one) rather than guessing. Fixed
+       by always passing `check_special=True` to this self-check; the ordinary (non-special)
+       default-value path is unaffected since `type_or_range_error`'s special-bypass branch only
+       ever fires when the checked value actually equals the special sentinel.
+  - **The pre-existing, unconditional `from typing import ...` in all three files - including real
+    `TypeVar(...)` calls executed at class-body evaluation time in `base_classes.py`
+    (`Lockable.LockableType`, `SensorReader.MeasDataType`) - would have crashed immediately on
+    import under the real MicroPython interpreter**, confirmed the same way `asy_i2c_driver.py`'s
+    promotion first found this class of bug. Fixed with the same `try/except ImportError:
+    TYPE_CHECKING = False` + `if TYPE_CHECKING:` pattern already established there, extended to
+    cover module-level `TypeVar(...)` definitions (moved out of the `Lockable`/`SensorReader` class
+    bodies, since the actual value only matters to mypy, never at runtime) and `config_manager.py`'s
+    `WriteValidity` type alias (a real module-level assignment, not just an annotation, so it also
+    has to live inside `if TYPE_CHECKING:` rather than just being written with a string-quoted
+    annotation). Also modernized `from uasyncio import Lock` → `import asyncio` / `asyncio.Lock()`
+    throughout, matching `asy_i2c_driver.py`/`asy_spi_driver.py`'s precedent, and switched
+    `typing.Dict`/`List`/`Tuple` to the builtin generics (`dict`/`list`/`tuple`) per ruff's own
+    `UP006`/`UP035` rules, which are real, always-available runtime names needing no
+    `TYPE_CHECKING` guard at all (unlike `Any`/`Literal`/`NamedTuple`/`TypeVar`, which do).
+  - **Cross-file consequence of giving `Lockable.__aexit__` its first-ever precise real type**:
+    `asy_spi_driver.py`'s `SPIDevice.__aexit__` override was typed with loose `object` parameters,
+    specifically because `Lockable.__aexit__` previously only existed as `tests/base_classes.py`'s
+    narrow stand-in (see that entry above) - its own comment claimed this was Liskov-safe "either
+    way." Once the real, precisely-typed `Lockable.__aexit__` existed, forwarding those
+    `object`-typed locals into `super().__aexit__(...)` no longer type-checked. Found via this
+    session's own bird's-eye-view scan across `src/` (see CLAUDE.md's hard rule) and confirmed with
+    the project owner before touching a file this session wasn't otherwise reviewing. Fixed by
+    retyping `SPIDevice.__aexit__`'s three parameters to match `Lockable.__aexit__` exactly (same
+    `TYPE_CHECKING`-guarded `TracebackType` import pattern), zero behavior change.
+  - **FRAM stays the one deliberately-deferred boundary, as expected going in**: `asy_fram_manager.py`
+    hasn't itself cleared `src/` promotion, so `SensorReader`'s FRAM-backed path (a real
+    `AsyFramManager` passed in, switching `PrintLogHistStore` in for `PrintLogHistory`) and
+    `print_log.py`'s `PrintLogHistStore._write()`/`_read()` stay untested here - only the `fram=None`
+    in-memory path is exercised for real. mypy's scoped `src tests` CI run (which excludes
+    `improved-quality/`, so `asy_fram_manager` isn't on its search path) would otherwise newly fail
+    on this `TYPE_CHECKING`-only import; added a `[[tool.mypy.overrides]]` entry for module
+    `asy_fram_manager` with `ignore_missing_imports = true` in `pyproject.toml` rather than
+    suppressing the two call sites individually - the plain unscoped run already resolved it fine
+    (`improved-quality/` is walked directly), so this override only matters for the scoped case.
+    **This `pyproject.toml` change has not yet been run through the "Pre-push verification" clean-
+    Ubuntu-24.04-chroot recipe** (CLAUDE.md) - low risk (a single, well-documented mypy override,
+    no new dependencies or build-tool changes) but flagged here rather than silently skipped.
+  - **`tests/base_classes.py` (the `Lockable` stand-in) deleted**, its documented
+    `scripts/typecheck.sh`-with-no-arguments "Duplicate module" collision resolved along with it;
+    `asy_i2c_driver.py`/`asy_spi_driver.py` now resolve `Lockable` against the real
+    `src/base_classes.py`. `tests/test_base_classes.py`, `tests/test_config_manager.py`, and
+    `tests/test_print_log.py` added (84 tests total), all running under the real MicroPython
+    Unix-port interpreter alongside the existing suites - full repo run: 311 tests passing.
+  - **Baseline verified, no regression**: CI-scoped `scripts/typecheck.sh src tests` was already
+    fully clean before this session (0 issues, 12 files) and is fully clean after (0 issues, 17
+    files, with the override above); CI-scoped `scripts/lint.sh` (`ruff check src tests`) stays
+    fully clean. Unscoped `mypy`'s previously-blocking "Duplicate module named base_classes" crash
+    is gone; the unscoped `ruff check improved-quality src tests` finding count dropped from 317 to
+    265 - entirely attributable to these three files' lines leaving `improved-quality/`'s scan, not
+    to any fix within `improved-quality/` itself.
 
 ## Decided for the refactor
 

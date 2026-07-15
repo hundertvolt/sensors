@@ -124,6 +124,16 @@ warn_unused_ignores = true
 warn_unreachable = true
 strict_equality = true
 
+# src/base_classes.py and src/print_log.py both TYPE_CHECKING-import asy_fram_manager.AsyFramManager
+# for the FRAM-backed path they accept but don't (yet) exercise - asy_fram_manager.py itself
+# hasn't cleared its own src/ promotion (see BACKLOG.md), so it isn't on mypy_path under a scoped
+# `scripts/typecheck.sh src tests` run (CI's own invocation - see .github/workflows/ci.yml). A
+# plain unscoped run still resolves it fine (improved-quality/ is walked directly, adding its
+# directory to the search path), so this override only matters for the scoped CI case.
+[[tool.mypy.overrides]]
+module = "asy_fram_manager"
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 # Empty: pytest itself isn't the test runner. Per BACKLOG.md's "Self-contained venv via uv"
 # requirement, tests run under a real MicroPython Unix-port interpreter, not CPython - see
