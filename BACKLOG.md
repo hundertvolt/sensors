@@ -182,13 +182,19 @@ hands-on field experience with the current deployed units:
 - **Sensor/bus-specific defined-state recovery should be as complete as possible**: sensor
   firmware/bus stacks can end up in an undefined state, and there are bus/sensor-specific ways to
   force a defined state again (e.g. clocking out a fixed number of cycles, reset sequences, reset
-  commands) — depends on the bus type and sensor. Some of this already exists (e.g.
-  `asy_spi_driver.py`'s `extra_clocks` parameter cycles the bus after CS deassert); the refactor
-  should make sure this is used as completely/consistently as possible across all buses and
-  sensors, not just where it happens to exist today.
-  - **I2C recovery is device-specific, not bus-generic**: unlike SPI's `extra_clocks`, I2C recovery
-    (retry + sensor reset commands) is expected to vary per device — check what each individual
-    driver already does before assuming a gap. If a genuinely generalizable I2C-side mechanism
+  commands) — depends on the bus type and sensor. **Correction (found while prepping the SPI
+  driver's own `src/` promotion): `extra_clocks` is not an existing mechanism.** It appears exactly
+  once, as an Adafruit CircuitPython `busdevice`-derived docstring line on
+  `python/IndividualDrivers/asy_spi_driver.py`'s constructor ("the minimum number of clock cycles
+  to cycle the bus after CS is high... Used for SD cards") — never a real constructor parameter,
+  never implemented, not even in the legacy driver, and not present at all in
+  `improved-quality/asy_spi_driver.py`. This was previously (incorrectly) cited here as an example
+  of already-existing bus-recovery cycling; it isn't. If SD-card-style post-deassert clock cycling
+  is still wanted for SPI, it needs to be designed and implemented from scratch, not "made more
+  consistent" from an existing example — there is no existing example.
+  - **I2C recovery is device-specific, not bus-generic**: I2C recovery (retry + sensor reset
+    commands) is expected to vary per device — check what each individual driver already does
+    before assuming a gap. If a genuinely generalizable I2C-side mechanism
     turns up (e.g. common to several sensors), it's fine to add to the shared bus driver; otherwise
     keep it device-specific. *(Follow-up needed: this session only read `asy_scd30_driver.py`'s
     reset path in depth — SGP40's `_reset()` and BMP3xx's reset command still need the same
@@ -562,9 +568,14 @@ above is genuinely underway, but surfaces some new items:
       places no such restriction, so this was reachable for fully in-domain input, not a
       hypothetical. Fixed by catching the conversion's `ValueError` and returning `None`, the
       established convention for a non-hardware failure.
-    - 5 new regression tests added (76 total for this file, project-wide 183). Neither method
+    - 5 new regression tests added at the time (project-wide total climbed to 183). Neither method
       has a real caller yet, so zero production impact, but both were genuinely reachable
-      exception gaps, not defensive coding against something that can't happen.
+      exception gaps, not defensive coding against something that can't happen. **Current count as
+      of the file's most recent change (a comment-conciseness pass, no test/logic changes): 77
+      tests for this file, 184 project-wide** (`math_helpers.py` 45 + `crc_checks.py` 62 +
+      `asy_i2c_driver.py` 77) — one more than this bullet's original snapshot, from a test added in
+      a later pass than the one this bullet narrates. Treat this parenthetical, not the "76/183"
+      above, as the current figure; update it again the next time any test file's count changes.
 - **Test infrastructure gap found and fixed, while adding `crc_checks.py`'s tests**:
   `scripts/test.sh`'s `MICROPYPATH="src:tests"` silently shadowed every frozen-Python stdlib
   module (`asyncio` included) for every test file — invisible until now because `math_helpers.py`
