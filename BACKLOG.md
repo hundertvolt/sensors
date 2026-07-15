@@ -755,6 +755,20 @@ above is genuinely underway, but surfaces some new items:
     only `configure()` does. Also tightened the module docstring to essentials and capped every
     function's comments at 3 lines, on request; zero behavior change, verified via a full
     mypy/lint/test re-run before pushing.
+  - **Follow-up needed for the later refactor stages, as with `asy_i2c_driver.py` above**: this
+    file's own contract deliberately lets several methods raise rather than return `None` -
+    `SPI.__init__()`/`init()` (`ValueError` for a bad pin/port number), `SPIDevice.__init__()`
+    (same, via its own `Pin(cs_pin)`), and `configure()` (`RuntimeError` for an uninitialized or
+    unlocked bus, `NotImplementedError` for `firstbit=SPI.LSB`) - all deliberate "fail loudly"
+    programmer-error guards, not swallowed into `None`. Today's only caller
+    (`asy_fram_driver.py`'s `FRAM_SPI`) doesn't wrap any of these in a `try/except` - fine today
+    since none of these should ever trigger in correct, already-`setup()`'d production code, but
+    not verified against every call site the way `src/README.md` section 2 requires for the I2C
+    `OSError` carve-out. As the refactor adds more `SPIDevice` consumers, each one's own upstream
+    handling must be checked so a genuine one-time-setup failure fails loudly at boot (as intended)
+    rather than an unrelated later call somehow reaching one of these raises uncaught and crashing
+    the task supervisor - matching the same "nothing may ever silently slip through uncaught" hard
+    rule already recorded under "Bus/sensor error-recovery robustness" above.
 - **Test infrastructure gap found and fixed, while adding `crc_checks.py`'s tests**:
   `scripts/test.sh`'s `MICROPYPATH="src:tests"` silently shadowed every frozen-Python stdlib
   module (`asyncio` included) for every test file — invisible until now because `math_helpers.py`
