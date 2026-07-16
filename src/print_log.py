@@ -7,13 +7,20 @@ behavior otherwise).
 Shared contract: every method here returns a well-defined value and never raises - err_s()/wrn_s()
 both persist the error/warning code (in memory, and in FRAM for the Store variant) and still
 print() it; logging is additive to the existing console output, not a replacement for it.
+PrintLogHistStore's every FRAM-touching call (get_chunk() in __init__, get_buffer()/write_into()/
+read_into() in _write()/_read()) is wrapped broadly on purpose, since asy_fram_manager.py isn't
+itself promoted/audited yet (see BACKLOG.md) and offers no narrower documented failure contract to
+catch selectively - an unexpected raise there degrades to the same "operation failed" return every
+other caller here already handles (a None chunk, or _write()/_read() returning False), rather than
+propagating.
 
 PrintLogHistStore's FRAM-touching _write()/_read() are exercised by tests/test_print_log.py against
 tests/_fram_mock.py, a fake standing in for the narrow slice of asy_fram_manager.AsyFramManager's
 API this file actually calls (get_chunk(), then get_buffer()/write_into()/read_into() on the chunk
 it returns) - not the real asy_fram_manager.py, which hasn't itself cleared the src/ promotion
 checklist yet (see BACKLOG.md), and whose actual allocator/CRC/dual-copy-redundancy machinery this
-mock does not attempt to reproduce.
+mock does not attempt to reproduce. The mock can also simulate every FRAM failure mode this file
+guards against (raises, hardware-reported False) - see tests/_fram_mock.py's own docstring.
 """
 
 import struct
@@ -31,6 +38,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 if TYPE_CHECKING:
     from typing import Any, Protocol
 
+    from base_classes import LockableBuffer
     from crc_checks import CRC_Base
 
     # PrintLogHistStore only ever calls fram.get_chunk() and, on the chunk it gets back,
@@ -39,18 +47,17 @@ if TYPE_CHECKING:
     # AsyFramManager/AsyFramChunk classes (which would also drag in asy_fram_manager.py, itself not
     # promoted to src/ yet - see BACKLOG.md) - and let tests/_fram_mock.py's fake satisfy the type
     # by having the right shape, with no inheritance relationship to the real classes required.
-    class _FramBuffer(Protocol):
-        def get_buf(self) -> "bytearray | None": ...
-        def get_data_buf(self) -> "memoryview | None": ...
-
+    # get_buffer()'s return reuses the real, already-promoted LockableBuffer (base_classes.py) - both
+    # AsyFramChunkBuffer (real) and tests/_fram_mock.py's mock buffer are-a LockableBuffer, so no
+    # separate duck-type protocol is needed just to describe get_buf()/get_data_buf() again.
     class _FramChunk(Protocol):
-        def get_buffer(self) -> "_FramBuffer": ...
+        def get_buffer(self) -> "LockableBuffer": ...
         # buf is always whatever this same chunk's own get_buffer() just returned, fed straight
         # back in - real AsyFramChunk/tests/_fram_mock.py's _MockFramChunk each narrow this to
         # their own concrete buffer subtype, which is fine for get_buffer()'s covariant return but
         # would make write_into()/read_into()'s parameter contravariantly incompatible with a
-        # shared _FramBuffer protocol type here; Any sidesteps that mismatch since this file never
-        # inspects buf itself, only round-trips it.
+        # shared LockableBuffer protocol type here; Any sidesteps that mismatch since this file
+        # never inspects buf itself, only round-trips it.
         async def write_into(self, buf: "Any", override_pause: bool = False) -> bool: ...
         async def read_into(self, buf: "Any", override_pause: bool = False) -> bool: ...
 
@@ -142,7 +149,6 @@ class PrintLog:
 class PrintLogHistory(PrintLog):
     def __init__(self, history_length: int = 10, level: int | None = None) -> None:
         super().__init__(level=level)
-        self.hl = history_length
         self.history = deque([_NO_ERR] * history_length, history_length)
         self.err_count = 0
         self.initialized = False
@@ -212,7 +218,11 @@ class PrintLogHistory(PrintLog):
 class PrintLogHistStore(PrintLogHistory):
     def __init__(self, fram: "_FramManager", history_length: int = 10, level: int | None = None) -> None:
         super().__init__(history_length=history_length, level=level)
-        self.fram: _FramChunk | None = fram.get_chunk(struct.calcsize("H" + "B" * len(self.history)), crc=CRC8())
+        size = struct.calcsize("H" + "B" * len(self.history))
+        try:  # broad on purpose: asy_fram_manager.py isn't itself promoted/audited yet (see module docstring)
+            self.fram: _FramChunk | None = fram.get_chunk(size, crc=CRC8())
+        except Exception:
+            self.fram = None
         if self.fram is None and self.level > _LOG_OFF:
             print("PrintLog: FRAM allocation failed!")
 
@@ -229,9 +239,9 @@ class PrintLogHistStore(PrintLogHistory):
     async def _write(self) -> bool:
         if self.fram is None:
             return False
-        buf = self.fram.get_buffer()
-        dbuf = buf.get_data_buf()
         try:  # broad on purpose: asy_fram_manager.py isn't itself promoted/audited yet (see module docstring)
+            buf = self.fram.get_buffer()
+            dbuf = buf.get_data_buf()
             struct.pack_into("H", dbuf, 0, self.err_count)
             struct.pack_into("B" * len(self.history), dbuf, struct.calcsize("H"), *self.history)
             return bool(await self.fram.write_into(buf))
@@ -241,11 +251,11 @@ class PrintLogHistStore(PrintLogHistory):
     async def _read(self) -> bool:
         if self.fram is None:
             return False
-        buf = self.fram.get_buffer()
-        dbuf = buf.get_data_buf()
-        if not await self.fram.read_into(buf):
-            return False
         try:  # broad on purpose: asy_fram_manager.py isn't itself promoted/audited yet (see module docstring)
+            buf = self.fram.get_buffer()
+            dbuf = buf.get_data_buf()
+            if not await self.fram.read_into(buf):
+                return False
             self.err_count = struct.unpack_from("H", dbuf, 0)[0]
             self.history.extend(struct.unpack_from("B" * len(self.history), dbuf, struct.calcsize("H")))
             return True

@@ -1,6 +1,6 @@
 import asyncio
 
-from _fram_mock import MockAsyFramManager
+from _fram_mock import MockAsyFramManager, _MockFramChunk
 
 from print_log import PrintLog, PrintLogHistory, PrintLogHistStore
 
@@ -63,6 +63,13 @@ def test_logging_methods_never_raise_at_any_level() -> None:
         pr.one("o")
         pr.evt("v")
         pr.all("a", sep="-")  # kwargs forwarded through to print() too
+
+
+def test_set_level_exact_boundary_values_pass_through_unclamped() -> None:
+    pr = PrintLog(PrintLog.level_off())
+    assert pr.get_level() == PrintLog.level_off()
+    pr.set_level(PrintLog.level_info())
+    assert pr.get_level() == PrintLog.level_info()
 
 
 # ---------------------------------------------------------------------------
@@ -147,6 +154,49 @@ def test_get_log_classifies_error_warning_and_clear_entries() -> None:
     assert log == {"Sensor": {"ErrCount": 2, "ErrNum": [0, 5, 2], "ErrType": ["N", "E", "W"]}}
 
 
+def test_err_s_errno_at_exact_max_err_boundary_is_recorded() -> None:
+    hist = PrintLogHistory(history_length=2)
+    run(hist.err_s("e", errno=0x7F))  # _MAX_ERR itself - inclusive boundary
+    assert list(hist.history)[-1] == 0x7F
+
+
+def test_err_s_errno_one_past_max_err_boundary_is_not_recorded() -> None:
+    hist = PrintLogHistory(history_length=2)
+    run(hist.err_s("e", errno=0x80))  # one past _MAX_ERR - falls into the warning sub-range instead
+    assert hist.err_count == 1
+    assert list(hist.history) == [0, 0]
+
+
+def test_wrn_s_wrnno_at_exact_max_boundary_is_recorded() -> None:
+    hist = PrintLogHistory(history_length=2)
+    run(hist.wrn_s("w", wrnno=0x7F))  # _NO_WRN + 0x7F == _MAX_WRN, inclusive boundary
+    assert list(hist.history)[-1] == 0xFF
+
+
+def test_wrn_s_wrnno_one_past_max_boundary_is_not_recorded() -> None:
+    hist = PrintLogHistory(history_length=2)
+    run(hist.wrn_s("w", wrnno=0x80))  # _NO_WRN + 0x80 == 0x100, past _MAX_WRN (0xFF)
+    assert hist.err_count == 1
+    assert list(hist.history) == [0, 0]
+
+
+def test_err_count_increments_normally_right_below_the_cap() -> None:
+    hist = PrintLogHistory(history_length=2)
+    hist.err_count = 0xFFFE  # one below _MAX_CNT
+    run(hist.err_s("e", errno=1))
+    assert hist.err_count == 0xFFFF  # reaches the cap exactly, still a normal increment
+
+
+def test_history_length_zero_never_records_but_still_counts() -> None:
+    # An unusual but typed-valid construction: a zero-length bounded deque. Empirically confirmed
+    # under the real MicroPython interpreter that append()/extend() on it are silent no-ops, not
+    # a crash (see the deque investigation in this session).
+    hist = PrintLogHistory(history_length=0)
+    run(hist.err_s("e", errno=1))
+    assert hist.err_count == 1
+    assert list(hist.history) == []
+
+
 # ---------------------------------------------------------------------------
 # PrintLogHistStore - FRAM-backed persistence, against a mocked FRAM API
 # (tests/_fram_mock.py - see BACKLOG.md for why the real asy_fram_manager.py isn't used here yet)
@@ -202,6 +252,102 @@ def test_printloghiststore_reset_persists_cleared_state_across_a_reboot() -> Non
     run(rebooted_store.setup())
     assert rebooted_store.err_count == 0
     assert list(rebooted_store.history) == [0, 0, 0]
+
+
+# ---------------------------------------------------------------------------
+# PrintLogHistStore - every simulated FRAM failure mode (tests/_fram_mock.py's fault injection)
+# ---------------------------------------------------------------------------
+
+
+def test_printloghiststore_get_chunk_raising_leaves_fram_none() -> None:
+    store = PrintLogHistStore(MockAsyFramManager(raise_on_get_chunk=True), history_length=4)
+    assert store.fram is None
+    assert run(store._write()) is False
+    assert run(store._read()) is False
+
+
+def test_printloghiststore_get_buffer_raising_is_caught_by_write() -> None:
+    store = PrintLogHistStore(MockAsyFramManager(), history_length=4)
+    assert isinstance(store.fram, _MockFramChunk)  # whitebox: narrows the type to reach the mock's fault flags
+    store.fram.raise_on_get_buffer = True
+    assert run(store._write()) is False
+
+
+def test_printloghiststore_get_buffer_raising_is_caught_by_read() -> None:
+    store = PrintLogHistStore(MockAsyFramManager(), history_length=4)
+    assert isinstance(store.fram, _MockFramChunk)
+    store.fram.raise_on_get_buffer = True
+    assert run(store._read()) is False
+
+
+def test_printloghiststore_broken_buffer_is_caught_by_write() -> None:
+    # get_buffer() "succeeds" but returns a buffer whose get_data_buf() is None - struct.pack_into
+    # on that None then raises TypeError, which the widened try/except must still catch (this is
+    # the exact shape of bug this session's audit found and fixed: get_buffer()/get_data_buf() used
+    # to sit outside the try block entirely).
+    store = PrintLogHistStore(MockAsyFramManager(), history_length=4)
+    assert isinstance(store.fram, _MockFramChunk)
+    store.fram.broken_buffer = True
+    assert run(store._write()) is False
+
+
+def test_printloghiststore_broken_buffer_is_caught_by_read() -> None:
+    store = PrintLogHistStore(MockAsyFramManager(), history_length=4)
+    assert isinstance(store.fram, _MockFramChunk)
+    store.fram.broken_buffer = True
+    assert run(store._read()) is False
+
+
+def test_printloghiststore_write_into_raising_is_caught() -> None:
+    store = PrintLogHistStore(MockAsyFramManager(), history_length=4)
+    assert isinstance(store.fram, _MockFramChunk)
+    store.fram.raise_on_write = True
+    assert run(store._write()) is False
+
+
+def test_printloghiststore_write_into_returns_false_is_surfaced() -> None:
+    # Distinct from raising: a hardware-reported failure that write_into() itself already turns
+    # into a clean False return, without print_log.py needing to catch anything.
+    store = PrintLogHistStore(MockAsyFramManager(), history_length=4)
+    assert isinstance(store.fram, _MockFramChunk)
+    store.fram.write_returns_false = True
+    assert run(store._write()) is False
+
+
+def test_printloghiststore_read_into_raising_is_caught() -> None:
+    store = PrintLogHistStore(MockAsyFramManager(), history_length=4)
+    assert isinstance(store.fram, _MockFramChunk)
+    store.fram.raise_on_read = True
+    assert run(store._read()) is False
+
+
+def test_printloghiststore_read_into_returns_false_is_surfaced() -> None:
+    store = PrintLogHistStore(MockAsyFramManager(), history_length=4)
+    assert isinstance(store.fram, _MockFramChunk)
+    run(store._write())  # something real is persisted first
+    store.fram.read_returns_false = True
+    assert run(store._read()) is False
+
+
+def test_printloghiststore_setup_fails_cleanly_when_both_read_and_write_fail() -> None:
+    store = PrintLogHistStore(MockAsyFramManager(), history_length=4)
+    assert isinstance(store.fram, _MockFramChunk)
+    store.fram.read_returns_false = True
+    store.fram.write_returns_false = True
+    run(store.setup())
+    assert store.initialized is False
+
+
+def test_printloghiststore_err_s_survives_a_write_failure_without_raising() -> None:
+    # _store_err()'s own "if not await self._write(): print(...)" fallback must not itself raise
+    # even though the underlying write_into() does - in-memory state should still update.
+    store = PrintLogHistStore(MockAsyFramManager(), history_length=4)
+    assert isinstance(store.fram, _MockFramChunk)
+    run(store.setup())
+    store.fram.raise_on_write = True
+    run(store.err_s("boom", errno=3))
+    assert store.err_count == 1
+    assert list(store.history)[-1] == 3
 
 
 if __name__ == "__main__":

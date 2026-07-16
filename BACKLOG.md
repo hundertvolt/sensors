@@ -931,6 +931,68 @@ above is genuinely underway, but surfaces some new items:
       checklist** and a real, tested `AsyFramManager` becomes available under `tests/` instead - at
       that point the same tests should be re-pointed at the real class rather than kept alongside
       it.
+  - **A dedicated follow-up pass on `print_log.py` (structure/leanness/exception-safety review,
+    requested directly rather than moving straight to the next file) found and fixed a real
+    exception-safety gap, plus two leaner-but-safe simplifications**:
+    - **Real bug: `PrintLogHistStore._write()`/`_read()`'s `try:` block started too late.**
+      `get_buffer()`/`get_data_buf()` (both methods) and, in `_read()`, `read_into()` too, were all
+      called *before* the `try:` began - only the `struct.pack_into`/`struct.unpack_from`/
+      `write_into()` calls were actually protected. Since `asy_fram_manager.py` isn't itself
+      audited yet, a raise from any of those unprotected calls would have propagated straight out
+      of `_write()`/`_read()`, breaking the "never raises" contract these two methods exist
+      specifically to uphold. Found via a systematic, line-by-line audit of every call in the file
+      (not just the FRAM path - `PrintLog`/`PrintLogHistory`'s own methods were checked too; the
+      only other raise-shaped surface is `err`/`wrn`/`one`/`evt`/`all`/`err_s`/`wrn_s`'s
+      `print(*args, **kwargs)` forwarding, which can raise `TypeError` for a genuinely invalid
+      kwarg name - left as-is, since every real caller in this codebase passes only valid
+      `print()` kwargs and wrapping it would silently hide an actual caller bug rather than guard
+      against a reachable operational failure). Also found: `PrintLogHistStore.__init__`'s
+      `fram.get_chunk(...)` call was completely unguarded, the same unaudited-FRAM-boundary risk
+      at construction time. Fixed by widening `_write()`/`_read()`'s `try:` blocks to cover their
+      entire bodies and adding the same `try`/`except Exception` around `__init__`'s `get_chunk()`
+      call (an unexpected raise there now degrades to `self.fram = None`, same as the already-
+      handled "out of memory" `None` return). Verified via `tests/_fram_mock.py`'s new
+      `.broken_buffer` fault (a `get_buffer()` that "succeeds" but returns a buffer whose
+      `get_data_buf()` is `None`, making `struct.pack_into`/`struct.unpack_from` raise
+      `TypeError`) - this reproduces the exact bug shape and is now caught cleanly by both methods.
+    - **Simplification: `print_log.py`'s separate `_FramBuffer` Protocol was a redundant
+      duplicate of `base_classes.LockableBuffer`'s own two methods** (`get_buf()`/`get_data_buf()`).
+      Verified directly (not assumed) that importing `LockableBuffer` under `TYPE_CHECKING`
+      instead doesn't create a circular-import problem for mypy - scoped and unscoped runs both
+      stay clean, 0 new errors in either file. Folded away; `_FramChunk.get_buffer()` now returns
+      `LockableBuffer` directly.
+    - **Simplification: `PrintLogHistory.hl` (set from `history_length` in `__init__`) was dead
+      state** - nothing anywhere in the repo (including `base_classes_old.py`, where the same line
+      also exists unused) ever reads `self.hl`; every real use is `len(self.history)` instead.
+      Removed.
+    - **`tests/_fram_mock.py` gained fault injection for every simulated FRAM failure mode**:
+      `MockAsyFramManager(raise_on_get_chunk=...)` alongside the existing `out_of_memory=...`, and
+      per-chunk `.raise_on_get_buffer`/`.broken_buffer`/`.raise_on_write`/`.write_returns_false`/
+      `.raise_on_read`/`.read_returns_false` flags, settable directly on the `_MockFramChunk`
+      instance a `PrintLogHistStore` exposes as its own `.fram` (tests narrow `store.fram`'s type
+      from the production `_FramChunk` Protocol to the concrete mock via
+      `assert isinstance(store.fram, _MockFramChunk)`, keeping the tests themselves fully typed
+      rather than reaching for `# type: ignore`). A `.corrupt(bytes)` helper (write wrong-length
+      data directly, bypassing `write_into()`, to make a later `struct.unpack_from()` raise) was
+      designed, tried, and deliberately **not** kept: `get_buffer()` always hands back a
+      freshly-sized buffer derived from the same `len(history)` used to write it, so struct's own
+      length check can only ever fail via `get_buffer()` itself misbehaving - already covered by
+      `.broken_buffer` - never via what was previously persisted at that offset. Confirmed this
+      empirically (not just by reasoning about it) before removing it, and along the way confirmed
+      a genuine MicroPython/CPython behavioral difference worth recording: resizing a `bytearray`
+      via slice assignment while a `memoryview` is exported over it does **not** raise
+      `BufferError` on MicroPython's Unix port the way it does on CPython - it silently resizes,
+      leaving the existing `memoryview` referencing stale state. Not load-bearing for anything in
+      `src/` today, but worth keeping in mind for any future code that resizes a buffer with an
+      outstanding `memoryview` over it.
+    - Added 18 new tests (21 -> 39 in `tests/test_print_log.py`; 317 -> 335 tests repo-wide):
+      exact-boundary `errno`/`wrnno` values for both the error and warning sub-ranges (previously
+      only tested well past the boundary, not exactly at it), an `err_count` cap-transition test,
+      a `history_length=0` construction edge case (confirmed safe first via a standalone script
+      under the real MicroPython interpreter: bounded-`deque` `append()`/`extend()` never raise on
+      overflow, even at `maxlen=0`), and one test per FRAM fault-injection mode above, including
+      `setup()`'s both-paths-fail branch and an `err_s()`-survives-a-write-failure test proving
+      in-memory state still updates even when persistence silently fails underneath it.
   - **`tests/base_classes.py` (the `Lockable` stand-in) deleted**, its documented
     `scripts/typecheck.sh`-with-no-arguments "Duplicate module" collision resolved along with it;
     `asy_i2c_driver.py`/`asy_spi_driver.py` now resolve `Lockable` against the real

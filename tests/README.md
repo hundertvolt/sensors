@@ -73,6 +73,25 @@ as a real chip's contents would across a power cycle. Remove `tests/_fram_mock.p
 built on it in `tests/test_print_log.py`) once `asy_fram_manager.py` itself clears its own `src/`
 promotion checklist and a real `AsyFramManager` becomes available under `tests/` instead.
 
+The mock also supports fault injection covering every FRAM failure mode `print_log.py` guards
+against - `MockAsyFramManager(out_of_memory=...)`/`raise_on_get_chunk=...`, and per-chunk
+`.raise_on_get_buffer`/`.broken_buffer`/`.raise_on_write`/`.write_returns_false`/`.raise_on_read`/
+`.read_returns_false` flags settable directly on the `_MockFramChunk` a `PrintLogHistStore`
+instance exposes as its own `.fram` attribute (see `tests/_fram_mock.py`'s docstring for what each
+simulates). This was what caught a real gap during `print_log.py`'s own review: `_write()`/`_read()`
+originally called `get_buffer()`/`get_data_buf()` (and, in `_read()`, `read_into()`) *before* their
+`try:` block started, so a raise from any of those - plausible, since `asy_fram_manager.py` isn't
+itself audited yet - would have propagated uncaught instead of degrading to a clean `False` return
+like every other FRAM failure here already does. Fixed by widening both `try` blocks to cover the
+whole body; `.broken_buffer` (a `get_buffer()` that "succeeds" but returns an unusable, zero-length
+buffer) is the regression test for exactly this - it makes `struct.pack_into`/`struct.unpack_from`
+raise on the buffer's now-`None` `get_data_buf()`, which the widened `try` must catch. There's no
+"corrupt the persisted bytes to make struct.unpack_from() raise" fault mode: `get_buffer()` always
+hands back a freshly-sized buffer derived from the same `len(history)` used to write it, so a
+length mismatch in struct's own sense can only come from `get_buffer()` itself misbehaving -
+`.broken_buffer` already covers that; there's no way to reach it by varying what was previously
+read back.
+
 ## Coverage
 
 ```
