@@ -30,14 +30,14 @@ _REGISTER_CMD = const(0x7E)
 _OSR_SETTINGS = (1, 2, 4, 8, 16, 32)  # pressure and temperature oversampling settings
 _IIR_SETTINGS = (0, 2, 4, 8, 16, 32, 64, 128)  # IIR filter coefficients
 
-_VAL_SI = const('|"SampleInterv": {"def": 2, "type": "int", "min": 1, "max": 3600, "special": null}|')
-_VAL_POV = const('|"PressOvers": {"def": 1, "type": "int", "min": 0, "max": 5, "special": null}|')
-_VAL_TOV = const('|"TempOvers": {"def": 1, "type": "int", "min": 0, "max": 5, "special": null}|')
-_VAL_FC = const('|"FiltCoeff": {"def": 0, "type": "int", "min": 0, "max": 7, "special": null}|')
-_VAL_PO = const('|"PressOffset": {"def": 0.0, "type": "float", "min": -500.0, "max": 500.0, "special": null}|')
-_VAL_TO = const('|"TempOffset": {"def": 0.0, "type": "float", "min": -10.0, "max": 10.0, "special": null}|')
-_VAL_SLO = const('|"SeaLevelOffs": {"def": 0.0, "type": "float", "min": -1000.0, "max": 5000.0, "special": null}|')
-_VAL_ATM = const('|"MeanAtmTemp": {"def": 15.0, "type": "float", "min": -50.0, "max": 50.0, "special": null}|')
+_VAL_SI = const((("SampleInterv", "int", 2, 1, 3600, None),))
+_VAL_POV = const((("PressOvers", "int", 1, 0, 5, None),))
+_VAL_TOV = const((("TempOvers", "int", 1, 0, 5, None),))
+_VAL_FC = const((("FiltCoeff", "int", 0, 0, 7, None),))
+_VAL_PO = const((("PressOffset", "float", 0.0, -500.0, 500.0, None),))
+_VAL_TO = const((("TempOffset", "float", 0.0, -10.0, 10.0, None),))
+_VAL_SLO = const((("SeaLevelOffs", "float", 0.0, -1000.0, 5000.0, None),))
+_VAL_ATM = const((("MeanAtmTemp", "float", 15.0, -50.0, 50.0, None),))
 
 _NAME = const("BMP3XX")
 BMP3XX = namedtuple("BMP3XX", ("Pres", "Temp", "SLPres", "TS"))

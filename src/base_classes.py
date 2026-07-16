@@ -15,7 +15,7 @@ that path stays an untested backlog item here, same as print_log.py's own FRAM-b
 
 import asyncio
 
-from config_manager import ConfigManager, str_cfg
+from config_manager import ConfigManager, schema_names
 from print_log import PrintLogHistory, PrintLogHistStore
 
 try:
@@ -29,6 +29,8 @@ if TYPE_CHECKING:
     from typing import Any, NamedTuple, TypeVar
 
     from asy_fram_manager import AsyFramManager
+
+    from config_manager import ConfigSchema
 
     LockableType = TypeVar("LockableType", bound="Lockable")
     MeasDataType = TypeVar("MeasDataType", bound=tuple[int | float | None, ...])
@@ -192,10 +194,10 @@ class SensorReader:
     async def _get_dict_cfg(
         self,
         name: str,
-        cfgstring: str,
+        cfg_vals: "ConfigSchema",
         callback: "Callable[[], Coroutine[Any, Any, dict[str, int | float | str | None]]] | None" = None,
     ) -> dict[str, dict[str, int | float | str | None]]:
-        cfg = str_cfg(cfgstring)
+        cfg = schema_names(cfg_vals)
         ret: dict[str, dict[str, int | float | str | None]] = {name: {key: None for key in cfg}}
 
         sensor_conf = await self._get_mgr_cfg(cfg)
@@ -223,7 +225,7 @@ class SensorReaderConfig(SensorReader):
         init_data: "NamedTuple",
         max_i2c_err: int,
         name: str,
-        default_vals: str,
+        default_vals: "ConfigSchema",
         cfg_path: str = "",
         fram: "AsyFramManager | None" = None,
         history_length: int = 10,

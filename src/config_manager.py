@@ -1,12 +1,18 @@
 """Per-sensor JSON config storage. Each sensor gets its own `config_<name>.cfg` file (see
-base_classes.py's SensorReaderConfig), validated against a compact pipe-delimited schema string
-every driver defines as `_VAL_*` constants (e.g. asy_bmp3xx_driver.py's
-`_VAL_SI = '|"SampleInterv": {"def": 2, "type": "int", "min": 1, "max": 3600, "special": null}|'`)
-and concatenated for a multi-field schema.
+base_classes.py's SensorReaderConfig), validated against a schema every driver defines as
+`_VAL_*` `const()` tuples (e.g. asy_bmp3xx_driver.py's
+`_VAL_SI = const((("SampleInterv", "int", 2, 1, 3600, None),))` - one field per tuple: name, type,
+def, min, max, special) and concatenated for a multi-field schema (`_VAL_SI + _VAL_POV + ...`).
+Kept as real tuples rather than a hand-parsed string precisely because MicroPython (since v1.26,
+current pin v1.28) const()-folds a literal tuple of immutables the same way it already did plain
+string/int/float literals - a `const()`-wrapped, underscore-prefixed name costs no module-dict
+entry and is never rebuilt on reference, confirmed directly against the real interpreter (see
+BACKLOG.md), so this carries the same near-zero RAM footprint the old pipe-delimited-JSON-string
+encoding did, without its hand-rolled parser's fragility.
 
 Shared contract: every public function/method here returns a documented "invalid" sentinel
 (`[]`/`""`/`{}`/`None`/`True` as noted per function) - never raises - for missing input,
-malformed schema strings, or a missing/corrupt/unreadable config file. Real file I/O (this file's
+malformed schema tuples, or a missing/corrupt/unreadable config file. Real file I/O (this file's
 only external boundary - no hardware) is fully exercised by tests/test_config_manager.py under
 the real MicroPython Unix-port interpreter, unlike the hardware-touching drivers.
 """
@@ -23,37 +29,39 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 if TYPE_CHECKING:
     from typing import Any, Literal, NamedTuple
 
+    # One schema field: (name, type, def, min, max, special) - see module docstring.
+    FieldSchema = tuple[
+        str,
+        str,
+        "int | float | str | bool | None",
+        "int | float | None",
+        "int | float | None",
+        "int | float | str | None",
+    ]
+    ConfigSchema = tuple[FieldSchema, ...]
+
 from print_log import PrintLog
 
 
-def str_cfg(str_in: str) -> "list[str]":  # extract field names from a "|...||...|"-wrapped schema string; assumes "||" never occurs inside a field's own value
+def schema_names(schema: "ConfigSchema") -> "list[str]":  # field names, in schema order (duplicates preserved); malformed input -> []
     try:
-        if len(str_in) < 2 or str_in[0] != "|" or str_in[-1] != "|":
-            return []
-        val_list = str_in[1:-1].replace(": {", ":{").split("||")
-        return [v.split(":{")[0].replace('"', "") for v in val_list]
+        return [field[0] for field in schema]
     except Exception:
-        pass
-    return []
+        return []
 
 
-def name_cfg(str_in: str) -> str:  # single-field convenience wrapper around str_cfg
-    str_list = str_cfg(str_in)
-    if len(str_list) == 1:
-        return str_list[0]
+def name_cfg(schema: "ConfigSchema") -> str:  # single-field convenience wrapper around schema_names
+    names = schema_names(schema)
+    if len(names) == 1:
+        return names[0]
     return ""
 
 
-def cfg_from_str(cfg_vals: str) -> "dict[str, dict[str, int | float | str | bool | None]]":  # parse a schema string into its full per-field default dicts
+def schema_dict(schema: "ConfigSchema") -> "dict[str, FieldSchema]":  # {field_name: field_record}; duplicate names keep the last occurrence
     try:
-        if len(cfg_vals) < 2 or cfg_vals[0] != "|" or cfg_vals[-1] != "|":
-            return {}
-        res = json.loads("{" + cfg_vals[1:-1].replace("||", ", ") + "}")
-        if isinstance(res, dict):
-            return res
+        return {field[0]: field for field in schema}
     except Exception:
-        pass
-    return {}
+        return {}
 
 
 def make_dict(nt: "NamedTuple") -> "dict[str, dict[str, int | float | str | None]]":  # {type_name: {field: value}} via repr() - MicroPython namedtuples have no _fields/_asdict()
@@ -71,13 +79,10 @@ def make_dict(nt: "NamedTuple") -> "dict[str, dict[str, int | float | str | None
 
 
 def type_or_range_error(
-    check_val: "Any", defaults: "dict[str, int | float | str | bool | None]", check_special: bool = True
-) -> bool:  # True if check_val doesn't satisfy defaults' own type/min/max(/special) schema entry
+    check_val: "Any", field: "FieldSchema", check_special: bool = True
+) -> bool:  # True if check_val doesn't satisfy field's own type/min/max(/special) schema entry
     try:
-        val_type = defaults.get("type", None)
-        val_min = defaults.get("min", None)
-        val_max = defaults.get("max", None)
-        val_special = defaults.get("special", None)
+        _name, val_type, _def, val_min, val_max, val_special = field
 
         if val_type == "int":  # check for int and bounds
             if type(check_val) is not int:
@@ -118,12 +123,10 @@ def type_or_range_error(
 
 
 def check_cfg_get_default(
-    defaults: "dict[str, int | float | str | bool | None]",
+    field: "FieldSchema",
 ) -> "tuple[bool, int | float | str | bool | None]":
     try:  # returns flag if value is used for storage and if the default, if valid
-        if sorted(defaults) != ["def", "max", "min", "special", "type"]:
-            return True, None  # error (wrong or missing key) in definition
-        def_val = defaults["def"]
+        _name, _type, def_val, _min, _max, special_val = field  # wrong length/shape -> ValueError, caught below
         use_value = True
         # special case: if default is None and special has a value, this is used to ignore the value
         # for storage, but uses the special value as mock-up current value for API use. The special
@@ -131,13 +134,13 @@ def check_cfg_get_default(
         # outside its 700-1400 hPa physical range), so it must NOT be forced through the ordinary
         # min/max check here - check_special=True lets type_or_range_error's own "equals the special
         # value" shortcut apply to it instead.
-        if def_val is None and defaults["special"] is not None:
-            def_val = defaults["special"]
+        if def_val is None and special_val is not None:
+            def_val = special_val
             use_value = False
-        if type_or_range_error(def_val, defaults, check_special=True):
+        if type_or_range_error(def_val, field, check_special=True):
             return True, None  # self-check of defaults
         return use_value, def_val
-    except Exception:  # dict read error
+    except Exception:  # malformed field record
         return True, None
 
 
@@ -146,7 +149,7 @@ if TYPE_CHECKING:
 
 
 class ConfigManager:
-    def __init__(self, filename: str, cfg_vals: str, logger: "PrintLog") -> None:
+    def __init__(self, filename: str, cfg_vals: "ConfigSchema", logger: "PrintLog") -> None:
         self.pr = logger
         self.config_lock = asyncio.Lock()
         self.config_file = filename
@@ -170,15 +173,15 @@ class ConfigManager:
         except OSError as e:  # file doesn't exist or can't be opened
             self.pr.wrn("Config file", self.config_file, "not found:", e)
 
-        defaults = cfg_from_str(cfg_vals)
+        defaults = schema_dict(cfg_vals)
         if len(defaults) == 0:  # default config contains no values
             self.pr.err(self.config_file, "- Defaults are empty, config is not valid!")
             return
 
         rewrite = False  # don't write file unless required
         valid_cfg = {}  # create surely valid config
-        for key, default in defaults.items():  # iterate through default config
-            use_value, default_val = check_cfg_get_default(default)  # read and selfcheck
+        for key, field in defaults.items():  # iterate through default config
+            use_value, default_val = check_cfg_get_default(field)  # read and selfcheck
             if default_val is None:  # invalid config, no default or special-alone value
                 self.pr.err(self.config_file, "- Default Key", key, "Error or None, config is not valid!")
                 return
@@ -188,7 +191,7 @@ class ConfigManager:
                 new_cfg = default_val  # immediately take default value
             else:  # file exists and is valid
                 new_cfg = data.pop(key, None)  # remove all used and known keys from config
-                if type_or_range_error(new_cfg, default):  # if new_cfg is None or any other error
+                if type_or_range_error(new_cfg, field):  # if new_cfg is None or any other error
                     rewrite = True
                     new_cfg = default_val
                     self.pr.wrn(self.config_file, "- Key", key, "has error or is missing, using default!")
@@ -238,7 +241,7 @@ class ConfigManager:
                 self.pr.err(self.config_file, "- Config read error:", e)
                 return None
 
-    async def _get_values(self, keys: str) -> "list[Any] | None":
+    async def _get_values(self, keys: "ConfigSchema") -> "list[Any] | None":
         if not self.valid:
             self.pr.err(self.config_file, "- Config is not valid, cannot read!")
             return None
@@ -251,14 +254,14 @@ class ConfigManager:
                 if not isinstance(data, dict):
                     self.pr.err(self.config_file, "- Config parse error!")
                     return None
-                for key in str_cfg(keys):
+                for key in schema_names(keys):
                     ret_values.append(data[key])
                 return ret_values
             except (OSError, ValueError, KeyError) as e:  # file errors, malformed json, key errors
                 self.pr.err(self.config_file, "- Config read error:", e)
                 return None
 
-    async def get_int_values(self, keys: str) -> "list[int] | None":
+    async def get_int_values(self, keys: "ConfigSchema") -> "list[int] | None":
         values = await self._get_values(keys)
         if values is None:
             return None
@@ -267,7 +270,7 @@ class ConfigManager:
         except (TypeError, ValueError):
             return None
 
-    async def get_float_values(self, keys: str) -> "list[float] | None":
+    async def get_float_values(self, keys: "ConfigSchema") -> "list[float] | None":
         values = await self._get_values(keys)
         if values is None:
             return None
@@ -276,7 +279,7 @@ class ConfigManager:
         except (TypeError, ValueError):
             return None
 
-    async def get_str_values(self, keys: str) -> "list[str] | None":
+    async def get_str_values(self, keys: "ConfigSchema") -> "list[str] | None":
         values = await self._get_values(keys)
         if values is None:
             return None
@@ -285,7 +288,7 @@ class ConfigManager:
         except (TypeError, ValueError):
             return None
 
-    async def get_bool_values(self, keys: str) -> "list[bool] | None":
+    async def get_bool_values(self, keys: "ConfigSchema") -> "list[bool] | None":
         values = await self._get_values(keys)
         if values is None:
             return None
@@ -294,7 +297,7 @@ class ConfigManager:
         return values
 
     async def write_config(
-        self, data: "dict[str, int | float | str | bool | None]", cfg_vals: str
+        self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "ConfigSchema"
     ) -> "tuple[bool, WriteValidity]":
         if not self.valid:
             self.pr.err(self.config_file, "- Config is not valid, cannot write!")
@@ -307,7 +310,7 @@ class ConfigManager:
                     self.pr.err(self.config_file, "- Config parse error!")
                     return False, {}
                 changed = False
-                defaults = cfg_from_str(cfg_vals)
+                defaults = schema_dict(cfg_vals)
                 dict_results: WriteValidity = {}
                 for key, value in data.items():
                     if key not in defaults:

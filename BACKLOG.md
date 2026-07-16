@@ -1209,6 +1209,89 @@ above is genuinely underway, but surfaces some new items:
       "Invalid"), and out-of-range-and-not-the-sentinel (now correctly "Invalid"). 2 new tests net
       (82 -> 84 in `tests/test_config_manager.py`; 384 -> 386 repo-wide).
 
+- **`config_manager.py`'s schema representation replaced: pipe-delimited-JSON-string ->
+  `const()`-wrapped tuples.** The project owner had always found the old
+  `_VAL_SI = const('|"SampleInterv": {"def": 2, "type": "int", "min": 1, "max": 3600, "special":
+  null}|')` encoding (hand-rolled `str_cfg`/`cfg_from_str` parsing, string concatenation for
+  multi-field schemas) annoying for exactly the reasons surfaced during this session's checklist
+  review (the `"||"`-inside-a-string-value corruption quirk, the `str_cfg`/`cfg_from_str`
+  wrapper-check inconsistency, duplicate-field-name ambiguity) - it was written that way only to
+  get `const()`'s RAM-zero-cost property, back when `const()` couldn't fold anything but int
+  expressions. Prompted by the owner recalling that a later MicroPython release added float
+  support to `const()`, checked current docs (this refactor's v1.28.0 pin) directly rather than
+  from training-data memory:
+  - **v1.26.0's release notes** confirm: "Floats can now be folded (along with integers) in
+    arithmetic operations, and be part of `const` assignments" - not just floats though; the
+    **current v1.28.0 docs** (`docs/reference/constrained.rst`) go further: "such constant tuples
+    are optimised by the compiler so they do not need to be created at runtime each time they are
+    used," and frozen bytecode already places immutable literals (str/float/bytes/int/tuple-of-
+    immutables) in flash rather than RAM regardless of `const()`. Separately, `docs/library/
+    micropython.rst` confirms an underscore-prefixed `const()` name specifically "is not available
+    as a global variable, and does not take up any memory during execution" - stronger than a
+    plain const, and exactly the naming convention `_VAL_*` already used.
+  - **Verified empirically before changing anything** (real MicroPython Unix-port interpreter, ad
+    hoc probe in scratchpad, not asserted from the docs alone): an underscore-prefixed `const()`
+    tuple behaves identically to the existing `const()` string for the "at rest" cost that
+    mattered here - absent from `globals()` (same as the string), returns the *same object
+    identity* on every reference (`is` stays `True`, confirming it's never rebuilt), and shows ~0
+    heap delta across 2000 repeated references (matching the string's ~0 delta). The *only*
+    nonzero cost, for both representations equally, is concatenating multiple named consts at a
+    call site (`_VAL_A + _VAL_B`, not itself wrapped in `const()`) - neither representation folds
+    that at compile time (`is` is `False` on every call for both), and the one-time per-call
+    allocation cost is the same order of magnitude either way (~256 bytes for a 12-field tuple vs.
+    ~224 bytes for the equivalent string, for a toy 2-field example). This exactly matches the
+    existing call pattern (e.g. `asy_scd30_driver.py`'s `get_dict_cfg()` re-concatenates
+    `_VAL_TO + _VAL_MI + ...` on every REST-triggered call, already true before this change) - so
+    the refactor carries **zero additional memory cost**, at rest or at the existing concatenation
+    call sites, while deleting the fragile hand-rolled parser entirely.
+  - **New schema shape**: each field is a plain positional 6-tuple `(name, type, def, min, max,
+    special)`, e.g. `_VAL_SI = const((("SampleInterv", "int", 2, 1, 3600, None),))` - one field per
+    outer 1-tuple, concatenated with the same `_VAL_SI + _VAL_POV + ...` idiom as before (tuple
+    `+` instead of string `+`). `str_cfg` -> `schema_names` (list of field names, order and
+    duplicates preserved - unchanged from `str_cfg`'s own semantics) and `cfg_from_str` ->
+    `schema_dict` ({name: field-record}, dict-dedup last-wins - unchanged from `cfg_from_str`'s own
+    semantics); both are now a plain comprehension over the tuple with no string parsing at all.
+    `type_or_range_error`/`check_cfg_get_default` unpack the 6-tuple positionally instead of
+    dict `.get()` calls; `check_cfg_get_default` relies on the unpacking's own `ValueError` for a
+    wrong-length record (caught by the existing `except Exception`) rather than a separate
+    length-check, since with the tuple's precise static type an explicit `len(field) != 6` guard
+    is unreachable code as far as mypy can prove (real malformed records only ever reach it via
+    driver-authoring mistakes or deliberately-mistyped test input, both outside what the type
+    checker can rule out - relying on the natural unpack failure sidesteps the false "unreachable"
+    finding entirely rather than suppressing it). `make_dict` (namedtuple readouts, unrelated to
+    schemas) is untouched. `base_classes.py`'s `_get_dict_cfg`/`SensorReaderConfig.__init__` follow
+    the same rename (`cfgstring: str` -> `cfg_vals: ConfigSchema`, `str_cfg` -> `schema_names`).
+  - **Test suite rewritten, not just patched**: every schema literal in `tests/
+    test_config_manager.py` converted to the tuple shape; the two string-parser-specific quirk
+    tests (`"||"`-corrupts-a-value, `str_cfg("||")`/`cfg_from_str("||")` wrapper-check
+    inconsistency) removed since there's no longer a string to corrupt or a wrapper to
+    inconsistently check - replaced with a positive test proving a `"||"`-containing str default
+    now round-trips correctly, plus a couple of new malformed-shape/edge-case tests for the tuple
+    representation itself (non-tuple elements, a bare string passed by mistake - documented as
+    still not raising, just not meaningfully filtered, since nothing in the codebase relies on
+    rejecting that shape). Net 84 -> 86 in `tests/test_config_manager.py` (388 repo-wide:
+    77+43+29+86+62+45+46); `tests/test_base_classes.py`'s single `_VAL_SI` fixture converted too,
+    29/29 still passing unchanged. `scripts/lint.sh`/`scripts/typecheck.sh src tests` clean.
+  - **`improved-quality/` usages updated** (one-time scope exception explicitly granted by the
+    project owner for this refactor alone, not a standing change to the "don't edit
+    `improved-quality/` driver source" rule): `asy_bmp3xx_driver.py`, `asy_scd30_driver.py`,
+    `asy_sgp40_driver.py` each had their `_VAL_*` const definitions converted to the new tuple
+    shape (their concatenation/`name_cfg`/`get_dict_cfg` call sites needed no changes - the tuple
+    `+`/`schema_names`/`schema_dict` API is a drop-in replacement). **Two files that matched the
+    initial grep for `_VAL_`/`ConfigManager(`/`str_cfg`/`cfg_from_str`/`name_cfg` were investigated
+    and found NOT to be real usages of `src/config_manager.py`'s scheme, and deliberately left
+    untouched**: `base_classes_old.py` defines its own independent, self-contained
+    `str_cfg`/`name_cfg`/`cfg_from_str`/`ConfigManager` (the pre-extraction original this file
+    presumably predates `src/base_classes.py`/`src/config_manager.py`'s split from) and has zero
+    importers anywhere in the repo (confirmed via a repo-wide grep) - genuinely dead code, not a
+    live consumer; `sensortask-wozi.py` imports `ConfigManager` from `async_manager` (`from
+    async_manager import TimeCounterManager, LockedValue, ConfigManager`), which resolves to
+    `python/CommonDrivers/async_manager.py` - the current, pre-refactor **production** module (no
+    `async_manager.py` exists anywhere under `improved-quality/`), which is out of scope for any
+    editing per the standing "no changes against the current deployed codebase" rule and is an
+    entirely separate `ConfigManager` implementation from the one refactored here. Neither file
+    was changed.
+
 ## Decided for the refactor
 
 - **`modules/_boot.py`'s `import sensortask.py`** (see open question #1 below) will be addressed

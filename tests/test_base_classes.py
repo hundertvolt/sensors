@@ -2,6 +2,7 @@ import asyncio
 import os
 from collections import namedtuple
 
+import config_manager as cm
 from base_classes import (
     Lockable,
     LockableBuffer,
@@ -32,7 +33,7 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
 Meas = namedtuple("Meas", ["temp", "hum"])
 
 _TMP_DIR = "tests/_tmp"
-_VAL_SI = '|"SampleInterv": {"def": 2, "type": "int", "min": 1, "max": 3600, "special": null}|'
+_VAL_SI: "cm.ConfigSchema" = (("SampleInterv", "int", 2, 1, 3600, None),)
 
 
 def _tmp_path(name: str) -> str:

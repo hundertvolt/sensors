@@ -24,13 +24,14 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
 _TMP_DIR = "tests/_tmp"
 
 # One field of each schema "type" (int/float/str/bool), plus a special-only (not persisted) field,
-# concatenated the same way every real _VAL_* driver constant is (see asy_bmp3xx_driver.py).
-_VAL_INT = '|"Count": {"def": 5, "type": "int", "min": 0, "max": 10, "special": null}|'
-_VAL_FLOAT = '|"Offset": {"def": 1.5, "type": "float", "min": -10.0, "max": 10.0, "special": null}|'
-_VAL_STR = '|"Name": {"def": "abc", "type": "str", "min": 1, "max": 5, "special": null}|'
-_VAL_BOOL = '|"Enabled": {"def": true, "type": "bool", "min": null, "max": null, "special": null}|'
-_VAL_SPECIAL = '|"Special": {"def": null, "type": "int", "min": 0, "max": 10, "special": 99}|'
-_SCHEMA = _VAL_INT + _VAL_FLOAT + _VAL_STR + _VAL_BOOL + _VAL_SPECIAL
+# concatenated the same way every real _VAL_* driver constant is (see asy_bmp3xx_driver.py). Each
+# field record is (name, type, def, min, max, special).
+_VAL_INT: "cm.ConfigSchema" = (("Count", "int", 5, 0, 10, None),)
+_VAL_FLOAT: "cm.ConfigSchema" = (("Offset", "float", 1.5, -10.0, 10.0, None),)
+_VAL_STR: "cm.ConfigSchema" = (("Name", "str", "abc", 1, 5, None),)
+_VAL_BOOL: "cm.ConfigSchema" = (("Enabled", "bool", True, None, None, None),)
+_VAL_SPECIAL: "cm.ConfigSchema" = (("Special", "int", None, 0, 10, 99),)
+_SCHEMA: "cm.ConfigSchema" = _VAL_INT + _VAL_FLOAT + _VAL_STR + _VAL_BOOL + _VAL_SPECIAL
 
 
 def _tmp_path(name: str) -> str:
@@ -48,46 +49,70 @@ def _remove(path: str) -> None:
         pass  # already gone
 
 
-def _make(name: str, cfg_vals: str = _SCHEMA) -> "tuple[cm.ConfigManager, str]":
+def _make(name: str, cfg_vals: "cm.ConfigSchema" = _SCHEMA) -> "tuple[cm.ConfigManager, str]":
     path = _tmp_path(name)
     _remove(path)
     return cm.ConfigManager(path, cfg_vals, PrintLog()), path
 
 
 # ---------------------------------------------------------------------------
-# str_cfg / name_cfg / cfg_from_str / make_dict - pure string/schema parsing
+# schema_names / name_cfg / schema_dict / make_dict - pure schema parsing
 # ---------------------------------------------------------------------------
 
 
-def test_str_cfg_single_field() -> None:
-    assert cm.str_cfg(_VAL_INT) == ["Count"]
+def test_schema_names_single_field() -> None:
+    assert cm.schema_names(_VAL_INT) == ["Count"]
 
 
-def test_str_cfg_multi_field_concatenated() -> None:
-    assert cm.str_cfg(_SCHEMA) == ["Count", "Offset", "Name", "Enabled", "Special"]
+def test_schema_names_multi_field_concatenated() -> None:
+    assert cm.schema_names(_SCHEMA) == ["Count", "Offset", "Name", "Enabled", "Special"]
 
 
-def test_str_cfg_invalid_wrapper_returns_empty() -> None:
-    assert cm.str_cfg("") == []
-    assert cm.str_cfg("|") == []
-    assert cm.str_cfg("no pipes here") == []
-    assert cm.str_cfg('{"Count": 1}') == []
+def test_schema_names_malformed_input_returns_empty() -> None:
+    assert cm.schema_names(()) == []
+    assert cm.schema_names(None) == []  # type: ignore[arg-type]
+    assert cm.schema_names((1, 2, 3)) == []  # type: ignore[arg-type]  # elements aren't field-record tuples
+
+
+def test_schema_names_non_tuple_iterable_quirk() -> None:
+    # A bare string isn't a real ConfigSchema (no real caller ever passes one), but iterating it
+    # doesn't raise either - each character satisfies field[0] by returning itself. Documented, not
+    # guarded against: nothing in the codebase relies on rejecting this shape.
+    assert cm.schema_names("abc") == ["a", "b", "c"]  # type: ignore[arg-type]
 
 
 def test_name_cfg_single_vs_multi() -> None:
     assert cm.name_cfg(_VAL_INT) == "Count"
     assert cm.name_cfg(_SCHEMA) == ""  # more than one field - no single name to return
-    assert cm.name_cfg("") == ""
+    assert cm.name_cfg(()) == ""
 
 
-def test_cfg_from_str_valid() -> None:
-    defaults = cm.cfg_from_str(_VAL_INT)
-    assert defaults == {"Count": {"def": 5, "type": "int", "min": 0, "max": 10, "special": None}}
+def test_schema_dict_valid() -> None:
+    assert cm.schema_dict(_VAL_INT) == {"Count": ("Count", "int", 5, 0, 10, None)}
 
 
-def test_cfg_from_str_invalid_returns_empty() -> None:
-    assert cm.cfg_from_str("") == {}
-    assert cm.cfg_from_str("|not json|") == {}
+def test_schema_dict_malformed_input_returns_empty() -> None:
+    assert cm.schema_dict(()) == {}
+    assert cm.schema_dict(None) == {}  # type: ignore[arg-type]
+    assert cm.schema_dict((1, 2, 3)) == {}  # type: ignore[arg-type]
+
+
+def test_schema_names_and_schema_dict_agree_on_empty_schema() -> None:
+    assert cm.schema_names(()) == []
+    assert cm.schema_dict(()) == {}
+
+
+def test_schema_dict_str_value_containing_pipe_no_longer_corrupts() -> None:
+    # The old pipe-delimited-string encoding corrupted a str default containing "||" (see git
+    # history); a real tuple has no delimiter to corrupt, so this now just works.
+    field: cm.ConfigSchema = (("Name", "str", "a||b", 0, 5, None),)
+    assert cm.schema_dict(field)["Name"][2] == "a||b"
+
+
+def test_schema_names_and_schema_dict_duplicate_field_names() -> None:
+    dup = _VAL_INT + _VAL_INT
+    assert cm.schema_names(dup) == ["Count", "Count"]  # order-preserving, duplicates kept
+    assert cm.schema_dict(dup) == {"Count": ("Count", "int", 5, 0, 10, None)}  # dict dedups, last wins
 
 
 def test_make_dict_normal_namedtuple() -> None:
@@ -132,54 +157,30 @@ def test_make_dict_nested_tuple_field_silently_dropped_quirk() -> None:
     assert cm.make_dict(Nested((1, 2), 3)) == {"Nested": {"a": (1, 2)}}  # type: ignore[comparison-overlap]
 
 
-def test_str_cfg_empty_wrapped_schema_quirk() -> None:
-    # "||" satisfies str_cfg's own "|...|" wrapper check but its (empty) interior splits into one
-    # empty-string field name, unlike cfg_from_str("||") which parses to {} (see next test) - a
-    # latent inconsistency between the two parsers for this exact degenerate input, never hit by
-    # any real driver schema (every real schema has at least one field).
-    assert cm.str_cfg("||") == [""]
-    assert cm.cfg_from_str("||") == {}
-
-
-def test_cfg_from_str_pipe_inside_string_value_corrupts_default_quirk() -> None:
-    # Documented quirk (see str_cfg's own comment): cfg_from_str blindly replaces every "||" with
-    # ", " to join fields, so a str-type field whose own default value contains "||" gets that
-    # substring corrupted too, not just misparsed - "a||b" here becomes "a, b". Never hit by any
-    # current driver constant (hand-authored, none use "||" in a default value).
-    bad = '|"Name": {"def": "a||b", "type": "str", "min": 0, "max": 5, "special": null}|'
-    assert cm.cfg_from_str(bad)["Name"]["def"] == "a, b"
-
-
-def test_str_cfg_duplicate_field_names() -> None:
-    dup = _VAL_INT + _VAL_INT
-    assert cm.str_cfg(dup) == ["Count", "Count"]
-    assert cm.cfg_from_str(dup) == {"Count": {"def": 5, "type": "int", "min": 0, "max": 10, "special": None}}
-
-
 # ---------------------------------------------------------------------------
 # type_or_range_error / check_cfg_get_default
 # ---------------------------------------------------------------------------
 
 
 def test_type_or_range_error_int_in_and_out_of_range() -> None:
-    schema: dict[str, int | float | str | bool | None] = {"type": "int", "min": 0, "max": 10, "special": None}
-    assert cm.type_or_range_error(5, schema) is False
-    assert cm.type_or_range_error(0, schema) is False  # lower boundary accepted
-    assert cm.type_or_range_error(10, schema) is False  # upper boundary accepted
-    assert cm.type_or_range_error(-1, schema) is True
-    assert cm.type_or_range_error(11, schema) is True
-    assert cm.type_or_range_error(5.0, schema) is True  # wrong type (float, not int)
+    field: cm.FieldSchema = ("X", "int", None, 0, 10, None)
+    assert cm.type_or_range_error(5, field) is False
+    assert cm.type_or_range_error(0, field) is False  # lower boundary accepted
+    assert cm.type_or_range_error(10, field) is False  # upper boundary accepted
+    assert cm.type_or_range_error(-1, field) is True
+    assert cm.type_or_range_error(11, field) is True
+    assert cm.type_or_range_error(5.0, field) is True  # wrong type (float, not int)
 
 
 def test_type_or_range_error_special_value_bypasses_range() -> None:
-    schema: dict[str, int | float | str | bool | None] = {"type": "int", "min": 0, "max": 10, "special": 99}
-    assert cm.type_or_range_error(99, schema, check_special=True) is False
-    assert cm.type_or_range_error(99, schema, check_special=False) is True  # out of [0, 10], special not honored
+    field: cm.FieldSchema = ("X", "int", None, 0, 10, 99)
+    assert cm.type_or_range_error(99, field, check_special=True) is False
+    assert cm.type_or_range_error(99, field, check_special=False) is True  # out of [0, 10], special not honored
 
 
 def test_type_or_range_error_int_missing_or_wrong_typed_bounds_rejected() -> None:
-    assert cm.type_or_range_error(5, {"type": "int"}) is True  # no min/max at all
-    assert cm.type_or_range_error(5, {"type": "int", "min": "0", "max": "10"}) is True  # bounds wrong type
+    assert cm.type_or_range_error(5, ("X", "int", None, None, None, None)) is True  # no min/max at all
+    assert cm.type_or_range_error(5, ("X", "int", None, "0", "10", None)) is True  # type: ignore[arg-type]  # bounds wrong type
 
 
 def test_type_or_range_error_int_malformed_special_type_rejects_any_value() -> None:
@@ -187,115 +188,102 @@ def test_type_or_range_error_int_malformed_special_type_rejects_any_value() -> N
     # return True regardless of check_val or check_special - reachable in principle, but in
     # practice check_cfg_get_default's own self-check (see below) already rejects such a schema
     # before ConfigManager/write_config ever calls type_or_range_error against real data.
-    schema: dict[str, int | float | str | bool | None] = {"type": "int", "min": 0, "max": 10, "special": "99"}
-    assert cm.type_or_range_error(5, schema, check_special=True) is True
-    assert cm.type_or_range_error(5, schema, check_special=False) is True
+    field: cm.FieldSchema = ("X", "int", None, 0, 10, "99")
+    assert cm.type_or_range_error(5, field, check_special=True) is True
+    assert cm.type_or_range_error(5, field, check_special=False) is True
 
 
 def test_type_or_range_error_float_missing_or_wrong_typed_bounds_rejected() -> None:
-    assert cm.type_or_range_error(1.0, {"type": "float"}) is True  # no min/max at all
-    assert cm.type_or_range_error(1.0, {"type": "float", "min": 0, "max": 10}) is True  # bounds wrong type (int)
+    assert cm.type_or_range_error(1.0, ("X", "float", None, None, None, None)) is True  # no min/max at all
+    assert cm.type_or_range_error(1.0, ("X", "float", None, 0, 10, None)) is True  # bounds wrong type (int)
 
 
 def test_type_or_range_error_float_malformed_special_type_rejects_any_value() -> None:
-    schema: dict[str, int | float | str | bool | None] = {"type": "float", "min": 0.0, "max": 10.0, "special": 99}
-    assert cm.type_or_range_error(5.0, schema, check_special=True) is True
+    field: cm.FieldSchema = ("X", "float", None, 0.0, 10.0, 99)
+    assert cm.type_or_range_error(5.0, field, check_special=True) is True
 
 
 def test_type_or_range_error_str_check_special_combos() -> None:
-    schema: dict[str, int | float | str | bool | None] = {"type": "str", "min": 2, "max": 4, "special": "SPECIAL"}
-    assert cm.type_or_range_error("SPECIAL", schema, check_special=True) is False  # bypasses length bounds
-    assert cm.type_or_range_error("SPECIAL", schema, check_special=False) is True  # 7 chars, out of [2, 4]
+    field: cm.FieldSchema = ("X", "str", None, 2, 4, "SPECIAL")
+    assert cm.type_or_range_error("SPECIAL", field, check_special=True) is False  # bypasses length bounds
+    assert cm.type_or_range_error("SPECIAL", field, check_special=False) is True  # 7 chars, out of [2, 4]
 
 
 def test_type_or_range_error_str_malformed_special_type_rejects_any_value() -> None:
-    schema: dict[str, int | float | str | bool | None] = {"type": "str", "min": 1, "max": 5, "special": 1}
-    assert cm.type_or_range_error("abc", schema, check_special=True) is True
+    field: cm.FieldSchema = ("X", "str", None, 1, 5, 1)
+    assert cm.type_or_range_error("abc", field, check_special=True) is True
 
 
 def test_type_or_range_error_str_zero_length_boundary() -> None:
-    schema: dict[str, int | float | str | bool | None] = {"type": "str", "min": 0, "max": 4, "special": None}
-    assert cm.type_or_range_error("", schema) is False  # empty string accepted at the min=0 boundary
+    field: cm.FieldSchema = ("X", "str", None, 0, 4, None)
+    assert cm.type_or_range_error("", field) is False  # empty string accepted at the min=0 boundary
 
 
 def test_type_or_range_error_bool_additional_wrong_types() -> None:
-    schema: dict[str, int | float | str | bool | None] = {"type": "bool", "min": None, "max": None, "special": None}
-    assert cm.type_or_range_error(False, schema) is False
-    assert cm.type_or_range_error(0, schema) is True  # int, not bool
-    assert cm.type_or_range_error(1.0, schema) is True
-    assert cm.type_or_range_error("true", schema) is True
-    assert cm.type_or_range_error(None, schema) is True
+    field: cm.FieldSchema = ("X", "bool", None, None, None, None)
+    assert cm.type_or_range_error(False, field) is False
+    assert cm.type_or_range_error(0, field) is True  # int, not bool
+    assert cm.type_or_range_error(1.0, field) is True
+    assert cm.type_or_range_error("true", field) is True
+    assert cm.type_or_range_error(None, field) is True
 
 
 def test_type_or_range_error_float_nan_and_inf_rejected() -> None:
-    schema: dict[str, int | float | str | bool | None] = {
-        "type": "float",
-        "min": -10.0,
-        "max": 10.0,
-        "special": None,
-    }
+    field: cm.FieldSchema = ("X", "float", None, -10.0, 10.0, None)
     nan = float("nan")
     inf = float("inf")
-    assert cm.type_or_range_error(1.0, schema) is False
-    assert cm.type_or_range_error(nan, schema) is True
-    assert cm.type_or_range_error(inf, schema) is True
-    assert cm.type_or_range_error(-inf, schema) is True
+    assert cm.type_or_range_error(1.0, field) is False
+    assert cm.type_or_range_error(nan, field) is True
+    assert cm.type_or_range_error(inf, field) is True
+    assert cm.type_or_range_error(-inf, field) is True
 
 
 def test_type_or_range_error_str_length_bounds() -> None:
-    schema: dict[str, int | float | str | bool | None] = {"type": "str", "min": 2, "max": 4, "special": None}
-    assert cm.type_or_range_error("ab", schema) is False
-    assert cm.type_or_range_error("abcd", schema) is False
-    assert cm.type_or_range_error("a", schema) is True
-    assert cm.type_or_range_error("abcde", schema) is True
+    field: cm.FieldSchema = ("X", "str", None, 2, 4, None)
+    assert cm.type_or_range_error("ab", field) is False
+    assert cm.type_or_range_error("abcd", field) is False
+    assert cm.type_or_range_error("a", field) is True
+    assert cm.type_or_range_error("abcde", field) is True
 
 
 def test_type_or_range_error_bool() -> None:
-    schema: dict[str, int | float | str | bool | None] = {
-        "type": "bool",
-        "min": None,
-        "max": None,
-        "special": None,
-    }
-    assert cm.type_or_range_error(True, schema) is False
-    assert cm.type_or_range_error(1, schema) is True  # int, not bool - `type() is bool` rejects it
+    field: cm.FieldSchema = ("X", "bool", None, None, None, None)
+    assert cm.type_or_range_error(True, field) is False
+    assert cm.type_or_range_error(1, field) is True  # int, not bool - `type() is bool` rejects it
 
 
-def test_type_or_range_error_unknown_type_or_malformed_schema() -> None:
-    assert cm.type_or_range_error(1, {"type": "unknown"}) is True
-    assert cm.type_or_range_error(1, {}) is True  # missing "type" entirely
+def test_type_or_range_error_unknown_type_rejected() -> None:
+    assert cm.type_or_range_error(1, ("X", "unknown", None, None, None, None)) is True
+
+
+def test_type_or_range_error_wrong_length_field_rejected() -> None:
+    assert cm.type_or_range_error(1, ()) is True  # type: ignore[arg-type]  # nothing to unpack
+    assert cm.type_or_range_error(1, ("X", "int")) is True  # type: ignore[arg-type]  # too short
 
 
 def test_check_cfg_get_default_normal() -> None:
-    use_value, default = cm.check_cfg_get_default({"def": 5, "type": "int", "min": 0, "max": 10, "special": None})
+    use_value, default = cm.check_cfg_get_default(("Count", "int", 5, 0, 10, None))
     assert (use_value, default) == (True, 5)
 
 
 def test_check_cfg_get_default_special_only() -> None:
-    use_value, default = cm.check_cfg_get_default({"def": None, "type": "int", "min": 0, "max": 10, "special": 99})
+    use_value, default = cm.check_cfg_get_default(("AmbPres", "int", None, 0, 10, 99))
     assert (use_value, default) == (False, 99)
 
 
 def test_check_cfg_get_default_malformed_schema() -> None:
-    assert cm.check_cfg_get_default({}) == (True, None)
-    assert cm.check_cfg_get_default({"def": 5, "type": "int"}) == (True, None)  # missing min/max/special keys
+    assert cm.check_cfg_get_default(()) == (True, None)  # type: ignore[arg-type]
+    assert cm.check_cfg_get_default(("X", "int", 5)) == (True, None)  # type: ignore[arg-type]  # wrong length
 
 
 def test_check_cfg_get_default_default_fails_its_own_range() -> None:
     # self-check: the schema's own "def" must satisfy its own min/max, or this is an invalid schema
-    assert cm.check_cfg_get_default({"def": 50, "type": "int", "min": 0, "max": 10, "special": None}) == (True, None)
+    assert cm.check_cfg_get_default(("X", "int", 50, 0, 10, None)) == (True, None)
 
 
-def test_check_cfg_get_default_extra_key_rejected() -> None:
-    extra: dict[str, int | float | str | bool | None] = {
-        "def": 5,
-        "type": "int",
-        "min": 0,
-        "max": 10,
-        "special": None,
-        "descr": "unexpected",
-    }
-    assert cm.check_cfg_get_default(extra) == (True, None)
+def test_check_cfg_get_default_wrong_length_rejected() -> None:
+    extra = ("X", "int", 5, 0, 10, None, "extra")
+    assert cm.check_cfg_get_default(extra) == (True, None)  # type: ignore[arg-type]
 
 
 def test_check_cfg_get_default_both_default_and_special_present() -> None:
@@ -303,30 +291,18 @@ def test_check_cfg_get_default_both_default_and_special_present() -> None:
     # even though the field also declares a reachable special sentinel (mirrors the AmbPres shape,
     # but with a real default instead of null - a field that is both normally stored and later
     # writable to its special value via the check_special bypass in type_or_range_error).
-    schema: dict[str, int | float | str | bool | None] = {"def": 5, "type": "int", "min": 0, "max": 10, "special": 99}
-    assert cm.check_cfg_get_default(schema) == (True, 5)
+    field: cm.FieldSchema = ("X", "int", 5, 0, 10, 99)
+    assert cm.check_cfg_get_default(field) == (True, 5)
 
 
 def test_check_cfg_get_default_none_default_and_none_special_invalid() -> None:
-    schema: dict[str, int | float | str | bool | None] = {
-        "def": None,
-        "type": "int",
-        "min": 0,
-        "max": 10,
-        "special": None,
-    }
-    assert cm.check_cfg_get_default(schema) == (True, None)
+    field: cm.FieldSchema = ("X", "int", None, 0, 10, None)
+    assert cm.check_cfg_get_default(field) == (True, None)
 
 
 def test_check_cfg_get_default_bool_special_only() -> None:
-    schema: dict[str, int | float | str | bool | None] = {
-        "def": None,
-        "type": "bool",
-        "min": None,
-        "max": None,
-        "special": True,
-    }
-    assert cm.check_cfg_get_default(schema) == (False, True)
+    field: cm.FieldSchema = ("X", "bool", None, None, None, True)
+    assert cm.check_cfg_get_default(field) == (False, True)
 
 
 # ---------------------------------------------------------------------------
@@ -357,7 +333,7 @@ def test_configmanager_directory_path_is_invalid() -> None:
 
 
 def test_configmanager_empty_schema_is_invalid() -> None:
-    mgr, path = _make("emptyschema.cfg", cfg_vals="")
+    mgr, path = _make("emptyschema.cfg", cfg_vals=())
     try:
         assert mgr.valid is False
     finally:
@@ -672,20 +648,20 @@ def test_get_bool_values_wrong_stored_type_returns_none() -> None:
         _remove(path)
 
 
-def test_get_int_values_unknown_key_in_schema_string_returns_none() -> None:
+def test_get_int_values_unknown_key_in_schema_returns_none() -> None:
     mgr, path = _make("typedunknownkey.cfg")
     try:
-        bad_schema = '|"NoSuchKey": {"def": 1, "type": "int", "min": 0, "max": 10, "special": null}|'
+        bad_schema: cm.ConfigSchema = (("NoSuchKey", "int", 1, 0, 10, None),)
         assert run(mgr.get_int_values(bad_schema)) is None
     finally:
         _remove(path)
 
 
-def test_get_values_empty_schema_string_returns_empty_list_not_none() -> None:
+def test_get_values_empty_schema_returns_empty_list_not_none() -> None:
     mgr, path = _make("emptyschemaread.cfg")
     try:
-        assert run(mgr.get_int_values("")) == []
-        assert run(mgr.get_bool_values("")) == []
+        assert run(mgr.get_int_values(())) == []
+        assert run(mgr.get_bool_values(())) == []
     finally:
         _remove(path)
 
@@ -831,8 +807,8 @@ def test_write_config_malformed_schema_entry_aborts_whole_call() -> None:
     # nothing treatment of a malformed schema, not a partial-failure design.
     mgr, path = _make("malformedschema.cfg")
     try:
-        bad_schema = _VAL_INT + '|"Bad": {"def": 1, "type": "int", "min": 0, "max": 10}|'  # missing "special"
-        ok, results = run(mgr.write_config({"Count": 8, "Bad": 1}, bad_schema))
+        bad_schema = _VAL_INT + (("Bad", "int", 1, 0, 10),)  # missing "special" - wrong length
+        ok, results = run(mgr.write_config({"Count": 8, "Bad": 1}, bad_schema))  # type: ignore[arg-type]
         assert (ok, results) == (False, {})
         assert run(mgr.get_dict(["Count"])) == {"Count": 5}  # untouched - no partial write
     finally:

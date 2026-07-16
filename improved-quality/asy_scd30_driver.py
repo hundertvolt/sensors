@@ -26,12 +26,12 @@ _CMD_SET_TEMPERATURE_OFFSET = const(0x5403)
 _CMD_SET_ALTITUDE_COMPENSATION = const(0x5102)
 _CMD_SOFT_RESET = const(0xD304)
 
-_VAL_TO = const('|"TempOffs": {"def": null, "type": "float", "min": 0.0, "max": 655.35, "special": null}|')
-_VAL_MI = const('|"MeasInt": {"def": null, "type": "int", "min": 2, "max": 1800, "special": null}|')
-_VAL_AP = const('|"AmbPres": {"def": null, "type": "int", "min": 700, "max": 1400, "special": 0}|')
-_VAL_ALT = const('|"Altitude": {"def": null, "type": "int", "min": 0, "max": 65535, "special": null}|')
-_VAL_CAL = const('|"ForceCalRef": {"def": null, "type": "int", "min": 400, "max": 2000, "special": null}|')
-_VAL_SC = const('|"SelfCal": {"def": null, "type": "bool", "min": null, "max": null, "special": null}|')
+_VAL_TO = const((("TempOffs", "float", None, 0.0, 655.35, None),))
+_VAL_MI = const((("MeasInt", "int", None, 2, 1800, None),))
+_VAL_AP = const((("AmbPres", "int", None, 700, 1400, 0),))
+_VAL_ALT = const((("Altitude", "int", None, 0, 65535, None),))
+_VAL_CAL = const((("ForceCalRef", "int", None, 400, 2000, None),))
+_VAL_SC = const((("SelfCal", "bool", None, None, None, None),))
 # TODO: Stop Measurement command
 # no default value for config, params are stored on sensor
 
