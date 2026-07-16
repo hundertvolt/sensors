@@ -884,6 +884,54 @@ def test_get_dict_on_invalid_manager_returns_none() -> None:
         os.rmdir(path)
 
 
+def test_get_int_values_on_invalid_manager_returns_none() -> None:
+    path = _tmp_path("invalidmgr_int.cfg")
+    _remove(path)
+    os.mkdir(path)
+    try:
+        mgr = cm.ConfigManager(path, _SCHEMA, PrintLog())
+        assert mgr.valid is False
+        assert run(mgr.get_int_values(_VAL_INT)) is None
+    finally:
+        os.rmdir(path)
+
+
+def test_get_float_values_on_invalid_manager_returns_none() -> None:
+    path = _tmp_path("invalidmgr_float.cfg")
+    _remove(path)
+    os.mkdir(path)
+    try:
+        mgr = cm.ConfigManager(path, _SCHEMA, PrintLog())
+        assert mgr.valid is False
+        assert run(mgr.get_float_values(_VAL_FLOAT)) is None
+    finally:
+        os.rmdir(path)
+
+
+def test_get_str_values_on_invalid_manager_returns_none() -> None:
+    path = _tmp_path("invalidmgr_str.cfg")
+    _remove(path)
+    os.mkdir(path)
+    try:
+        mgr = cm.ConfigManager(path, _SCHEMA, PrintLog())
+        assert mgr.valid is False
+        assert run(mgr.get_str_values(_VAL_STR)) is None
+    finally:
+        os.rmdir(path)
+
+
+def test_get_bool_values_on_invalid_manager_returns_none() -> None:
+    path = _tmp_path("invalidmgr_bool.cfg")
+    _remove(path)
+    os.mkdir(path)
+    try:
+        mgr = cm.ConfigManager(path, _SCHEMA, PrintLog())
+        assert mgr.valid is False
+        assert run(mgr.get_bool_values(_VAL_BOOL)) is None
+    finally:
+        os.rmdir(path)
+
+
 def test_get_dict_unknown_key_returns_none() -> None:
     mgr, path = _make("unknownkey.cfg")
     try:

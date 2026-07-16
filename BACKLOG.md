@@ -1649,6 +1649,42 @@ above is genuinely underway, but surfaces some new items:
       types for free from the old classes' untyped `async_manager.py`/`base_classes_old.py`
       equivalents, not something introduced deliberately; every other line-number shift in the diff
       matched an unrelated pre-existing error 1:1, confirming no regression.
+  - **Coverage-driven completeness pass across all three files' test suites**, plus new
+    cross-file integration tests (project owner asked for both explicitly, not just more unit
+    tests). Used `scripts/test.sh --coverage`'s line-level miss report (not guesswork) to find real
+    gaps, then closed each one:
+    - `print_log.py` (89% → 90%; remaining 17 misses are the module-level `const()` assignments and
+      six trivial `@staticmethod` bodies - both confirmed to already be fully exercised by the
+      existing 39+ call sites across the test suite, so the miss is a settrace-based coverage
+      collector artifact for constant-folded/staticmethod lines, not an untested behavior): added
+      direct tests for `PrintLogHistory._read()`'s stub, `PrintLogHistStore.setup()` when
+      `fram is None` (early-return branch never hit before), and `setup()`'s idempotent-when-
+      already-initialized branch.
+    - `config_manager.py` (99% → 100%): `_get_values`'s own `if not self.valid` branch was only ever
+      exercised through `get_dict`, never through `get_int_values`/`get_float_values`/
+      `get_str_values`/`get_bool_values` themselves - added one test per accessor calling it on an
+      invalid `ConfigManager`.
+    - `base_classes.py` (97% → 100%): `_get_dict_cfg`'s defensive `except Exception` around
+      `ret[name].update(sensor_conf)` was never hit - added a test subclass whose `_get_mgr_cfg`
+      override returns a non-dict value despite its declared `dict[...] | None` return type (the
+      exact "subclass override could legitimately misbehave; not statically ruled out" scenario the
+      code's own comment describes). Also removed the FRAM-backed `SensorReader`/`SensorReaderConfig`
+      path's long-standing "untested backlog item" status (module docstring updated to match): added
+      `SensorReader(fram=MockAsyFramManager())` tests for construction, error-persistence-survives-
+      reboot (mirroring `print_log.py`'s own reboot test), skipping `setup()` (documents that real
+      drivers must call it themselves - `SensorReader.__init__` can't, being sync), and FRAM
+      allocation failure degrading to in-memory-only logging.
+    - **New cross-file integration tests**, all in `tests/test_base_classes.py` since that's where
+      `SensorReaderConfig` wires `config_manager.py` + `print_log.py` together for real (no mocking
+      of either): FRAM-backed logging with a real config file; a malformed/corrupted config file
+      repairing cleanly under a FRAM-backed logger (and confirming `ConfigManager`'s repair warnings
+      use the plain non-persisting `pr.wrn()`/`pr.err()`, never `wrn_s()`/`err_s()` - `err_count`
+      stays 0); FRAM allocation failure and a missing config file failing independently at the same
+      time without either derailing the other; a malformed (empty) schema's invalidity propagating
+      cleanly through `_get_dict_cfg`'s full call chain; and a `write_config` write reflected back
+      through `_get_dict_cfg` end to end.
+    - Full suite: 435 → 460 tests (77+43+47+137+62+45+49), all passing;
+      `scripts/lint.sh`/`scripts/typecheck.sh src tests` clean throughout.
 
 ## Decided for the refactor
 

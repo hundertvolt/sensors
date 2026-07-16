@@ -2,6 +2,8 @@ import asyncio
 import os
 from collections import namedtuple
 
+from _fram_mock import MockAsyFramManager
+
 import config_manager as cm
 from base_classes import (
     Lockable,
@@ -12,7 +14,7 @@ from base_classes import (
     SensorReader,
     SensorReaderConfig,
 )
-from print_log import PrintLogHistory
+from print_log import PrintLogHistory, PrintLogHistStore
 
 try:
     from typing import TYPE_CHECKING
@@ -273,8 +275,7 @@ def test_lockedvalue_roundtrip_int_and_float() -> None:
 
 
 # ---------------------------------------------------------------------------
-# SensorReader - fram=None path only (FRAM-backed PrintLogHistStore path is an
-# untested backlog item pending asy_fram_manager.py's own src/ promotion)
+# SensorReader - fram=None (in-memory logging) path
 # ---------------------------------------------------------------------------
 
 
@@ -355,6 +356,66 @@ def test_get_dict_cfg_callback_extra_key_is_still_merged() -> None:
     assert result == {"Sensor": {"SampleInterv": 5, "Unexpected": 1}}
 
 
+def test_get_dict_cfg_mgr_cfg_update_exception_is_caught() -> None:
+    # _get_mgr_cfg is an override point (dict[...] | None per its type contract, but that's not
+    # statically enforced on a runtime-misbehaving subclass) - a value that isn't actually
+    # dict-like must not let ret[name].update(sensor_conf) raise out of _get_dict_cfg.
+    class BadMgrCfgReader(SensorReader):
+        async def _get_mgr_cfg(self, cfg: "list[str]") -> "dict[str, int | float | str | None] | None":
+            return 42  # type: ignore[return-value]
+
+    reader = BadMgrCfgReader(Meas(20.0, 50), max_i2c_err=3)
+    result = run(reader._get_dict_cfg("Sensor", _VAL_SI))
+    assert result == {"Sensor": {"SampleInterv": None}}  # update(42) raised TypeError - falls back to all-None
+
+
+# ---------------------------------------------------------------------------
+# SensorReader - fram given (FRAM-backed PrintLogHistStore logging), using the
+# same tests/_fram_mock.py boundary print_log.py's own tests use. Integration
+# coverage across base_classes.py + print_log.py + the FRAM mock together.
+# ---------------------------------------------------------------------------
+
+
+def test_sensorreader_uses_fram_backed_logging_when_fram_is_given() -> None:
+    reader = SensorReader(Meas(20.0, 50), max_i2c_err=3, fram=MockAsyFramManager())
+    assert isinstance(reader.pr, PrintLogHistStore)
+
+
+def test_sensorreader_fram_backed_error_check_persists_and_survives_reboot() -> None:
+    manager = MockAsyFramManager()
+    reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=manager)
+    run(reader.pr.setup())
+    assert run(reader._error_check(Meas(None, 50), "temp")) is True
+    assert run(reader._error_check(Meas(None, 50), "temp")) is True
+    assert reader.pr.err_count == 2
+
+    # Simulate a reboot: a fresh SensorReader/manager pair sharing the same backing bytes, same
+    # as print_log.py's own test_printloghiststore_err_s_persists_and_survives_a_simulated_reboot.
+    rebooted = SensorReader(Meas(None, 50), max_i2c_err=5, fram=MockAsyFramManager(backing=manager.backing))
+    run(rebooted.pr.setup())
+    assert rebooted.pr.err_count == 2
+
+
+def test_sensorreader_fram_backed_error_check_without_setup_never_raises() -> None:
+    # Real drivers call `await self.pr.setup()` themselves as part of their own async init (e.g.
+    # asy_bmp3xx_driver.py's _init_bmp) - SensorReader.__init__ can't do this itself since it's
+    # sync. Skipping setup() must degrade cleanly (in-memory count/history still update per
+    # print_log.py's own contract; only the FRAM write is skipped), never raise.
+    reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=MockAsyFramManager())
+    assert reader.pr.initialized is False
+    assert run(reader._error_check(Meas(None, 50), "temp")) is True
+    assert reader.pr.err_count == 1
+
+
+def test_sensorreader_fram_allocation_failure_still_logs_in_memory_without_raising() -> None:
+    reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=MockAsyFramManager(out_of_memory=True))
+    assert isinstance(reader.pr, PrintLogHistStore)
+    assert reader.pr.fram is None
+    run(reader.pr.setup())  # no-op: nothing allocated, must not raise
+    assert run(reader._error_check(Meas(None, 50), "temp")) is True
+    assert reader.pr.err_count == 1  # in-memory count still tracked despite FRAM being unavailable
+
+
 # ---------------------------------------------------------------------------
 # SensorReaderConfig - real ConfigManager/file I/O, no mocking
 # ---------------------------------------------------------------------------
@@ -380,6 +441,107 @@ def test_sensorreaderconfig_get_dict_cfg_reads_real_config_file() -> None:
         assert result == {"Sensor": {"SampleInterv": 2}}  # the schema's own default
     finally:
         _remove(path_prefix + "config_temp2.cfg")
+
+
+def test_sensorreaderconfig_malformed_schema_propagates_none_through_get_dict_cfg() -> None:
+    # An empty default_vals schema makes ConfigManager itself invalid (see config_manager.py's
+    # own "Defaults are empty" check) - confirms that invalidity propagates cleanly all the way up
+    # through SensorReaderConfig's own public surface, not just when calling ConfigManager directly.
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_badschema.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "badschema", (), cfg_path=path_prefix)
+        assert reader.cfgmgr.valid is False
+        result = run(reader._get_dict_cfg("Sensor", ()))
+        assert result == {"Sensor": {}}
+    finally:
+        _remove(path_prefix + "config_badschema.cfg")
+
+
+# ---------------------------------------------------------------------------
+# SensorReaderConfig - integration across all three files at once: real
+# ConfigManager file I/O (config_manager.py), FRAM-backed logging via the
+# tests/_fram_mock.py boundary (print_log.py), and base_classes.py's own
+# wiring between the two.
+# ---------------------------------------------------------------------------
+
+
+def test_sensorreaderconfig_fram_backed_logging_with_real_config_file() -> None:
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_fram1.cfg")
+    try:
+        reader = SensorReaderConfig(
+            Meas(20.0, 50), 3, "fram1", _VAL_SI, cfg_path=path_prefix, fram=MockAsyFramManager()
+        )
+        assert isinstance(reader.pr, PrintLogHistStore)
+        assert reader.cfgmgr.valid is True
+        result = run(reader._get_dict_cfg("Sensor", _VAL_SI))
+        assert result == {"Sensor": {"SampleInterv": 2}}
+    finally:
+        _remove(path_prefix + "config_fram1.cfg")
+
+
+def test_sensorreaderconfig_malformed_config_file_repairs_cleanly_with_fram_backed_logger() -> None:
+    # ConfigManager logs repair warnings via the plain (non-persisting) pr.wrn()/pr.err(), never
+    # wrn_s()/err_s() - confirms a FRAM-backed logger's transient methods work under a real repair
+    # path without raising, and that nothing is persisted to FRAM by this (err_count stays 0).
+    path_prefix = _tmp_path("") + "/"
+    path = path_prefix + "config_fram2.cfg"
+    _remove(path)
+    with open(path, "w") as f:
+        f.write("{not valid json")
+    try:
+        reader = SensorReaderConfig(
+            Meas(20.0, 50), 3, "fram2", _VAL_SI, cfg_path=path_prefix, fram=MockAsyFramManager()
+        )
+        assert reader.cfgmgr.valid is True  # malformed file was repaired, not left invalid
+        assert reader.pr.err_count == 0  # repair warnings use pr.wrn()/pr.err(), never the _s() persisting variants
+        result = run(reader._get_dict_cfg("Sensor", _VAL_SI))
+        assert result == {"Sensor": {"SampleInterv": 2}}
+    finally:
+        _remove(path)
+
+
+def test_sensorreaderconfig_fram_allocation_failure_and_missing_config_file_together() -> None:
+    # Two independent subsystems degrading at once: FRAM allocation fails (pr.fram stays None) while
+    # the config file doesn't exist yet either (gets created with defaults) - neither failure may
+    # raise, nor may one derail the other.
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_fram3.cfg")
+    try:
+        reader = SensorReaderConfig(
+            Meas(20.0, 50),
+            3,
+            "fram3",
+            _VAL_SI,
+            cfg_path=path_prefix,
+            fram=MockAsyFramManager(out_of_memory=True),
+        )
+        assert isinstance(reader.pr, PrintLogHistStore)
+        assert reader.pr.fram is None
+        assert reader.cfgmgr.valid is True
+        result = run(reader._get_dict_cfg("Sensor", _VAL_SI))
+        assert result == {"Sensor": {"SampleInterv": 2}}
+    finally:
+        _remove(path_prefix + "config_fram3.cfg")
+
+
+def test_sensorreaderconfig_write_config_is_reflected_by_get_dict_cfg() -> None:
+    # Closes the loop on the read-only integration tests above: a write through the wired
+    # ConfigManager (config_manager.py) must be visible through SensorReaderConfig's own public
+    # surface (base_classes.py), with no error logged through the real PrintLogHistory (print_log.py).
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_writeback.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "writeback", _VAL_SI, cfg_path=path_prefix)
+        ok, results = run(reader.cfgmgr.write_config({"SampleInterv": 42}, _VAL_SI))
+        assert ok is True
+        assert results == {"SampleInterv": "Valid"}
+        assert reader.pr.err_count == 0
+        result = run(reader._get_dict_cfg("Sensor", _VAL_SI))
+        assert result == {"Sensor": {"SampleInterv": 42}}
+    finally:
+        _remove(path_prefix + "config_writeback.cfg")
 
 
 if __name__ == "__main__":

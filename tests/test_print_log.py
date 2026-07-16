@@ -90,6 +90,11 @@ def test_setup_marks_initialized() -> None:
     assert hist.initialized is True
 
 
+def test_read_stub_always_true_on_the_in_memory_class() -> None:
+    hist = PrintLogHistory()
+    assert run(hist._read()) is True  # no persistence to load in the pure in-memory case
+
+
 def test_err_s_increments_count_and_records_history() -> None:
     hist = PrintLogHistory(history_length=4)
     run(hist.err_s("boom", errno=3))
@@ -254,6 +259,24 @@ def test_printloghiststore_setup_first_time_falls_back_to_writing_defaults() -> 
     store = PrintLogHistStore(MockAsyFramManager(), history_length=4)
     run(store.setup())
     assert store.initialized is True
+
+
+def test_printloghiststore_setup_with_no_fram_returns_without_initializing() -> None:
+    store = PrintLogHistStore(MockAsyFramManager(out_of_memory=True), history_length=4)
+    assert store.fram is None
+    run(store.setup())
+    assert store.initialized is False  # nothing to set up - allocation already failed in __init__
+
+
+def test_printloghiststore_setup_is_idempotent_once_initialized() -> None:
+    store = PrintLogHistStore(MockAsyFramManager(), history_length=4)
+    run(store.setup())
+    assert store.initialized is True
+    run(store.err_s("boom", errno=1))
+    assert store.err_count == 1
+    run(store.setup())  # second call must be a no-op, not re-read stale state over the live count
+    assert store.initialized is True
+    assert store.err_count == 1
 
 
 def test_printloghiststore_err_s_persists_and_survives_a_simulated_reboot() -> None:

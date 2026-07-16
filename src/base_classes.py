@@ -7,11 +7,11 @@ error-count bookkeeping and (optionally) per-sensor JSON config storage.
 Shared contract: every method returns a well-defined value and never raises, except where noted
 per class below.
 
-SensorReader accepts an optional `fram`: when None (the path exercised for real by
-tests/test_base_classes.py), logging is pure in-memory (print_log.py's PrintLogHistory); when a
-real AsyFramManager is passed, logging persists into FRAM (PrintLogHistStore) instead - but
-asy_fram_manager.py hasn't itself cleared the src/ promotion checklist yet (see BACKLOG.md), so
-that path stays an untested backlog item here, same as print_log.py's own FRAM-backed methods.
+SensorReader accepts an optional `fram`: when None, logging is pure in-memory (print_log.py's
+PrintLogHistory); when a real AsyFramManager is passed, logging persists into FRAM
+(PrintLogHistStore) instead. asy_fram_manager.py itself hasn't cleared the src/ promotion checklist
+yet (see BACKLOG.md), so this path is tested here the same way print_log.py tests its own
+FRAM-backed methods: against tests/_fram_mock.py's mock, not the real allocator.
 """
 
 import asyncio
