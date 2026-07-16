@@ -30,6 +30,17 @@ _write(), or it would stomp real FRAM-persisted history with a freshly-construct
 in-memory default. (PrintLogHistory's own _write() is a no-op returning True regardless, so this
 only has a visible effect on the Store subclass - but the guard lives in the shared base method,
 so it must hold unconditionally.)
+
+PrintLogHistStore's on-the-wire struct format uses an explicit "<" (little-endian, no padding)
+prefix rather than a bare "H"/"B"*n format. Confirmed directly against the MicroPython 1.28.0 docs
+and the real Unix-port interpreter: a format string with *no* byte-order character defaults to "@"
+(native byte order *and* native alignment/padding) here, not "<" - unlike what CPython's own docs
+might suggest at a glance, and easy to miss since MicroPython's struct docs mostly describe
+themselves as "a subset of CPython's". For this file's specific field order (one "H" first, then
+all "B"s) the two happen to produce identical layouts - "H" is always aligned at offset 0, and "B"
+fields need no alignment - so this was never an actual bug, but relying on that coincidence was
+fragile: reordering the fields under the old bare format would have silently changed the on-disk
+layout via inserted padding. The explicit "<" removes that dependency entirely.
 """
 
 import struct
@@ -175,27 +186,34 @@ class PrintLogHistory(PrintLog):
     async def _read(self) -> bool:
         return True
 
+    def _diag(self, *args: "Any") -> None:  # internal-failure prints, gated on any logging being enabled at all
+        if self.level > _LOG_OFF:
+            print(*args)
+
     async def _store_err(self, min_e: int, max_e: int, errno: int) -> None:
+        # errno<=_NO_ERR (0) is the shared "nothing to record" sentinel for both err_s() (min_e=0)
+        # and wrn_s() (min_e=_NO_WRN); a real code is shifted by min_e into its own sub-range only
+        # once past that check, which is why the comparison below is always against the plain
+        # _NO_ERR constant rather than min_e itself.
         if self.err_count < _MAX_CNT:
             self.err_count += 1
-        elif self.level > _LOG_OFF:
-            print("PrintLog: Error count reached maximum value!")
+        else:
+            self._diag("PrintLog: Error count reached maximum value!")
         if errno <= _NO_ERR:
             return
         errno += min_e
         if errno <= max_e:
             self.history.append(errno)
-        elif self.level > _LOG_OFF:
-            print("PrintLog: Error number", errno - min_e, "is invalid!")
+        else:
+            self._diag("PrintLog: Error number", errno - min_e, "is invalid!")
         if not self.initialized:
             # The return must not depend on self.level: this guards against writing a stale
             # in-memory history to FRAM before setup()'s own _read() has loaded the persisted
             # state, regardless of whether the diagnostic print below is enabled.
-            if self.level > _LOG_OFF:
-                print("PrintLog: Uninitialized, call setup first!")
+            self._diag("PrintLog: Uninitialized, call setup first!")
             return
-        if not await self._write() and self.level > _LOG_OFF:
-            print("PrintLog: History write failed!")
+        if not await self._write():
+            self._diag("PrintLog: History write failed!")
 
     async def err_s(self, *args: "Any", errno: int = _NO_ERR, **kwargs: "Any") -> None:
         await self._store_err(_NO_ERR, _MAX_ERR, errno)
@@ -212,13 +230,15 @@ class PrintLogHistory(PrintLog):
         self.err_count = 0
         if not self.initialized:
             # Same "return regardless of self.level" reasoning as _store_err() above.
-            if self.level > _LOG_OFF:
-                print("PrintLog: Uninitialized, call setup first!")
+            self._diag("PrintLog: Uninitialized, call setup first!")
             return
-        if not await self._write() and self.level > _LOG_OFF:
-            print("PrintLog: History reset write failed!")
+        if not await self._write():
+            self._diag("PrintLog: History reset write failed!")
 
     async def get_log(self, name: str) -> dict[str, dict[str, int | list[int] | list[str]]]:
+        # Reverses _store_err()'s encoding: 0x00/0x80 are the "nothing recorded" sentinels, 0x01-0x7F
+        # are error codes (shifted back by _NO_ERR, a no-op), 0x81-0xFF are warning codes (shifted
+        # back by _NO_WRN).
         err_num = []
         err_type = []
         for errno in self.history:
@@ -235,15 +255,21 @@ class PrintLogHistory(PrintLog):
 
 
 class PrintLogHistStore(PrintLogHistory):
+    _HDR_FMT = "<H"  # explicit little-endian, no padding - see module docstring's struct byte-order note
+    _HDR_SIZE = struct.calcsize(_HDR_FMT)
+
     def __init__(self, fram: "_FramManager", history_length: int = 10, level: int | None = None) -> None:
         super().__init__(history_length=history_length, level=level)
-        size = struct.calcsize("H" + "B" * len(self.history))
+        # len(self.history) is fixed for this object's lifetime (deque maxlen never changes), so
+        # this format string is cached once here instead of being rebuilt on every _write()/_read().
+        self._hist_fmt = "B" * len(self.history)
+        size = self._HDR_SIZE + len(self.history)  # each "B" is exactly 1 byte
         try:  # broad on purpose: asy_fram_manager.py isn't itself promoted/audited yet (see module docstring)
             self.fram: _FramChunk | None = fram.get_chunk(size, crc=CRC8())
         except Exception:
             self.fram = None
-        if self.fram is None and self.level > _LOG_OFF:
-            print("PrintLog: FRAM allocation failed!")
+        if self.fram is None:
+            self._diag("PrintLog: FRAM allocation failed!")
 
     async def setup(self) -> None:
         if self.fram is None or self.initialized:
@@ -252,8 +278,8 @@ class PrintLogHistStore(PrintLogHistory):
             self.initialized = True
         elif await self._write():
             self.initialized = True
-        elif self.level > _LOG_OFF:
-            print("PrintLog: FRAM setup failed!")
+        else:
+            self._diag("PrintLog: FRAM setup failed!")
 
     async def _write(self) -> bool:
         if self.fram is None:
@@ -261,8 +287,8 @@ class PrintLogHistStore(PrintLogHistory):
         try:  # broad on purpose: asy_fram_manager.py isn't itself promoted/audited yet (see module docstring)
             buf = self.fram.get_buffer()
             dbuf = buf.get_data_buf()
-            struct.pack_into("H", dbuf, 0, self.err_count)
-            struct.pack_into("B" * len(self.history), dbuf, struct.calcsize("H"), *self.history)
+            struct.pack_into(self._HDR_FMT, dbuf, 0, self.err_count)
+            struct.pack_into(self._hist_fmt, dbuf, self._HDR_SIZE, *self.history)
             return bool(await self.fram.write_into(buf))
         except Exception:
             return False
@@ -275,8 +301,8 @@ class PrintLogHistStore(PrintLogHistory):
             dbuf = buf.get_data_buf()
             if not await self.fram.read_into(buf):
                 return False
-            self.err_count = struct.unpack_from("H", dbuf, 0)[0]
-            self.history.extend(struct.unpack_from("B" * len(self.history), dbuf, struct.calcsize("H")))
+            self.err_count = struct.unpack_from(self._HDR_FMT, dbuf, 0)[0]
+            self.history.extend(struct.unpack_from(self._hist_fmt, dbuf, self._HDR_SIZE))
             return True
         except Exception:
             return False

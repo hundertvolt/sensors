@@ -1049,6 +1049,51 @@ above is genuinely underway, but surfaces some new items:
       `_store_err`/`err_s`/`wrn_s`/`reset`/`get_log`, `PrintLogHistStore`'s `__init__`/`setup`/
       `_write`/`_read`) against both normal and boundary/malformed-but-typed input; nothing else
       surfaced.
+  - **A third pass, this time validating `print_log.py` paragraph-by-paragraph against
+    `src/README.md`'s full promotion checklist** (rather than a general "find bugs" sweep) surfaced
+    one more real, if latent, correctness finding under section 1 ("correct against real
+    documentation"), plus a couple of zero-behavior-change improvements under sections 4/8:
+    - **Real (if inert-until-now) finding: a bare `struct` format string (no byte-order prefix) does
+      not default to `"<"` on MicroPython.** Confirmed directly against both the MicroPython
+      1.28.0 docs and the real Unix-port interpreter: a no-prefix format string defaults to `"@"`
+      (native byte order **and** native alignment/padding) - `struct.calcsize("BH")` (no prefix) is
+      `4` (one padding byte inserted before `H`), matching `"@BH"`, not `"<BH"`'s `3`. This is easy
+      to miss since MicroPython's own struct docs mostly describe themselves as "a subset of
+      CPython's" without spelling out this default explicitly, and it also doesn't support `"="`
+      at all (`calcsize("=HBBB")` raises `ValueError: bad typecode`, unlike CPython). For
+      `print_log.py`'s own field order (one `"H"` first, then all `"B"`s), `"@"` vs `"<"` produced
+      byte-identical layouts either way - `"H"` is always aligned at offset `0`, and `"B"` fields
+      never need alignment - so this was never an actual bug in the shipped behavior, and nothing
+      real depends on today's exact bytes yet (`python/`'s currently-deployed codebase has no
+      equivalent FRAM-history feature at all; only `improved-quality/base_classes_old.py`, not yet
+      itself promoted, shares this exact pre-existing pattern). Still fixed to an explicit `"<H"`/
+      `"B"*n` (little-endian, no padding) rather than left as a coincidentally-safe implicit
+      default, since reordering the fields later (`"B"*n` before `"H"`, say) would have silently
+      introduced real padding under the old bare format. Added a dedicated regression test
+      asserting the exact on-the-wire byte layout after `_write()`.
+    - **Two zero-behavior-change improvements** (section 8: general improvement pass, section 4:
+      resource discipline): `"B" * len(self.history)` was rebuilt - a fresh string allocation - on
+      every single `_write()`/`_read()` call, even though `len(self.history)` never changes after
+      construction (`deque`'s `maxlen` is fixed for the object's lifetime); now cached once as
+      `self._hist_fmt` in `__init__`, alongside a `PrintLogHistStore`-level `_HDR_FMT`/`_HDR_SIZE`
+      pair (`"<H"`/`2`, computed once at class-definition time) replacing the repeated inline
+      `struct.calcsize("H")` calls. Separately, the eight identical `if self.level > _LOG_OFF:
+      print(...)` diagnostic gates scattered across `_store_err`/`reset`/`PrintLogHistStore.__init__`/
+      `PrintLogHistStore.setup` were folded into one `_diag()` helper on `PrintLogHistory` - purely
+      DRY, single source of truth for the gating threshold, verified behaviorally identical (full
+      suite passes unchanged) rather than assumed.
+    - **Confirmed, not just assumed, one subtlety while re-reading every `return` by eye (section
+      7)**: `_write()`'s `return bool(await self.fram.write_into(buf))` casts to `bool` explicitly,
+      while `_read()`'s equivalent `if not await self.fram.read_into(buf): return False` doesn't.
+      This is correct, not an inconsistency: `_write()` forwards `write_into()`'s raw return value
+      as its own, so the cast is what actually makes its `-> bool` contract hold given
+      `asy_fram_manager.py` isn't itself audited to guarantee a real `bool`; `_read()` never
+      forwards `read_into()`'s value directly (it always re-derives its own `True`/`False`), so
+      there's nothing to cast there.
+    - Added 1 new test (45 -> 46 in `tests/test_print_log.py`; 341 -> 342 repo-wide) for the
+      explicit byte-order layout above. Every other section of the checklist (0, 2-3, 5-6, 9-14)
+      was re-checked against the current file and confirmed already satisfied - typing, exception-
+      safety, non-blocking behavior, and test coverage needed no further changes this pass.
 
 ## Decided for the refactor
 

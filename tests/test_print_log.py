@@ -306,6 +306,21 @@ def test_printloghiststore_zero_length_history_survives_write_and_read() -> None
     assert run(store._read()) is True
 
 
+def test_printloghiststore_write_uses_explicit_little_endian_layout() -> None:
+    # Pins down the on-the-wire format explicitly now that print_log.py uses "<H"/"B"*n instead of
+    # a bare "H"/"B"*n format string - confirmed directly that MicroPython's struct defaults a
+    # no-prefix format to "@" (native alignment/padding), not "<", though it made no observable
+    # difference for this specific field order (see module docstring).
+    manager = MockAsyFramManager()
+    store = PrintLogHistStore(manager, history_length=2)
+    store.err_count = 0x1234
+    store.history.extend([5, 6])
+    run(store._write())
+    raw = manager.backing.read(0, 4)
+    assert raw is not None
+    assert list(raw) == [0x34, 0x12, 5, 6]  # little-endian u16, then 2 raw history bytes
+
+
 def test_printloghiststore_reset_persists_cleared_state_across_a_reboot() -> None:
     manager = MockAsyFramManager()
     store = PrintLogHistStore(manager, history_length=3)
