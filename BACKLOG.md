@@ -1560,6 +1560,17 @@ above is genuinely underway, but surfaces some new items:
       failure (not just a pre-existing corrupt file) leaves `_cache` untouched.
     - `scripts/lint.sh`/`scripts/typecheck.sh src tests` clean; 435 tests passing repo-wide
       (77+43+29+133+62+45+46).
+  - **New project-wide rule agreed directly with the project owner: documentation itself must stay
+    concise, not just correct** — a module docstring is a short header (purpose + shared contract +
+    a pointer to BACKLOG.md for the full rationale), never an essay, and per-function/inline
+    comments stay within 3 lines, fewer preferred. Codified in `src/README.md` section 11 (applies
+    to every future `src/` promotion, not just this file) and applied immediately to
+    `config_manager.py`: its module docstring was cut from 34 lines (which had grown to restate the
+    tuple-schema and cache-redesign rationale already fully recorded above) down to a 9-line header,
+    and four inline comment blocks (`check_cfg_get_default`'s special-value note, `__init__`'s
+    `MP_S_IFDIR` citation, `get_dict`'s cache-lock reasoning, `write_config`'s sentinel-validation
+    note — each previously 3-7 lines) trimmed to 2 lines each. Pure documentation change, verified
+    via `ruff`/`mypy`/the full suite — 435/435 tests still passing, zero behavior change.
 
 ## Decided for the refactor
 
