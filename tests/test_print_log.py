@@ -1,6 +1,8 @@
 import asyncio
 
-from print_log import PrintLog, PrintLogHistory
+from _fram_mock import MockAsyFramManager
+
+from print_log import PrintLog, PrintLogHistory, PrintLogHistStore
 
 try:
     from typing import TYPE_CHECKING
@@ -143,6 +145,63 @@ def test_get_log_classifies_error_warning_and_clear_entries() -> None:
     # remaining oldest slot is still the initial _NO_ERR -> "N", 0
     log = run(hist.get_log("Sensor"))
     assert log == {"Sensor": {"ErrCount": 2, "ErrNum": [0, 5, 2], "ErrType": ["N", "E", "W"]}}
+
+
+# ---------------------------------------------------------------------------
+# PrintLogHistStore - FRAM-backed persistence, against a mocked FRAM API
+# (tests/_fram_mock.py - see BACKLOG.md for why the real asy_fram_manager.py isn't used here yet)
+# ---------------------------------------------------------------------------
+
+
+def test_printloghiststore_allocates_a_chunk_from_the_fram_manager() -> None:
+    store = PrintLogHistStore(MockAsyFramManager(), history_length=4)
+    assert store.fram is not None
+
+
+def test_printloghiststore_out_of_memory_leaves_fram_none_and_never_raises() -> None:
+    store = PrintLogHistStore(MockAsyFramManager(out_of_memory=True), history_length=4)
+    assert store.fram is None
+    assert run(store._write()) is False
+    assert run(store._read()) is False
+
+
+def test_printloghiststore_read_before_any_write_fails_cleanly() -> None:
+    store = PrintLogHistStore(MockAsyFramManager(), history_length=4)
+    assert run(store._read()) is False  # chunk allocated but never written yet - not "all zero"
+
+
+def test_printloghiststore_setup_first_time_falls_back_to_writing_defaults() -> None:
+    store = PrintLogHistStore(MockAsyFramManager(), history_length=4)
+    run(store.setup())
+    assert store.initialized is True
+
+
+def test_printloghiststore_err_s_persists_and_survives_a_simulated_reboot() -> None:
+    manager = MockAsyFramManager()
+    store = PrintLogHistStore(manager, history_length=4)
+    run(store.setup())
+    run(store.err_s("boom", errno=3))
+    assert store.err_count == 1
+
+    # Simulate a reboot: a fresh manager/store pair, replaying the same get_chunk() call, wrapping
+    # the same backing bytes - same as a real chip's contents surviving a power cycle.
+    rebooted_store = PrintLogHistStore(MockAsyFramManager(backing=manager.backing), history_length=4)
+    run(rebooted_store.setup())
+    assert rebooted_store.err_count == 1
+    assert list(rebooted_store.history)[-1] == 3
+
+
+def test_printloghiststore_reset_persists_cleared_state_across_a_reboot() -> None:
+    manager = MockAsyFramManager()
+    store = PrintLogHistStore(manager, history_length=3)
+    run(store.setup())
+    run(store.err_s("e", errno=1))
+    run(store.reset())
+
+    rebooted_store = PrintLogHistStore(MockAsyFramManager(backing=manager.backing), history_length=3)
+    run(rebooted_store.setup())
+    assert rebooted_store.err_count == 0
+    assert list(rebooted_store.history) == [0, 0, 0]
 
 
 if __name__ == "__main__":

@@ -58,6 +58,21 @@ stand-in - and the narrow, self-resolving `scripts/typecheck.sh` (no arguments) 
 to cause - is gone; `asy_i2c_driver.py`/`asy_spi_driver.py` resolve `Lockable` against the real
 `src/base_classes.py` like any other `src/` import.
 
+`tests/_fram_mock.py` is a third instance of the same mocking boundary, for FRAM: `print_log.py`'s
+`PrintLogHistStore` only ever calls `AsyFramManager.get_chunk()` and, on the chunk it gets back,
+`get_buffer()`/`write_into()`/`read_into()` - not `asy_fram_manager.py`'s actual allocator/CRC/
+dual-copy-redundancy machinery, which isn't itself promoted to `src/` yet (see BACKLOG.md). Rather
+than a hand-written stand-in class, `print_log.py`'s own `_FramManager`/`_FramChunk` are
+`TYPE_CHECKING`-only `Protocol`s describing just that narrow surface, so `tests/_fram_mock.py`'s
+fake satisfies them structurally with no inheritance relationship to the real classes at all.
+`MockFramBacking` simulates the one behavior that actually matters for `PrintLogHistStore`'s
+"survives a reboot" purpose: constructing a second `MockAsyFramManager` around the same
+`MockFramBacking` instance and replaying the same `get_chunk()` call sequence lands on the same
+offsets (matching the real bump-pointer allocator), so previously-written data reads back exactly
+as a real chip's contents would across a power cycle. Remove `tests/_fram_mock.py` (and the tests
+built on it in `tests/test_print_log.py`) once `asy_fram_manager.py` itself clears its own `src/`
+promotion checklist and a real `AsyFramManager` becomes available under `tests/` instead.
+
 ## Coverage
 
 ```

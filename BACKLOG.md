@@ -879,19 +879,58 @@ above is genuinely underway, but surfaces some new items:
     the project owner before touching a file this session wasn't otherwise reviewing. Fixed by
     retyping `SPIDevice.__aexit__`'s three parameters to match `Lockable.__aexit__` exactly (same
     `TYPE_CHECKING`-guarded `TracebackType` import pattern), zero behavior change.
-  - **FRAM stays the one deliberately-deferred boundary, as expected going in**: `asy_fram_manager.py`
-    hasn't itself cleared `src/` promotion, so `SensorReader`'s FRAM-backed path (a real
-    `AsyFramManager` passed in, switching `PrintLogHistStore` in for `PrintLogHistory`) and
-    `print_log.py`'s `PrintLogHistStore._write()`/`_read()` stay untested here - only the `fram=None`
-    in-memory path is exercised for real. mypy's scoped `src tests` CI run (which excludes
+  - **FRAM stayed the one deliberately-deferred boundary at first pass, as expected going in**:
+    `asy_fram_manager.py` hasn't itself cleared `src/` promotion, so neither `SensorReader`'s
+    FRAM-backed path nor `print_log.py`'s `PrintLogHistStore._write()`/`_read()` were exercised for
+    real at first - only the in-memory paths were. mypy's scoped `src tests` CI run (which excludes
     `improved-quality/`, so `asy_fram_manager` isn't on its search path) would otherwise newly fail
-    on this `TYPE_CHECKING`-only import; added a `[[tool.mypy.overrides]]` entry for module
-    `asy_fram_manager` with `ignore_missing_imports = true` in `pyproject.toml` rather than
-    suppressing the two call sites individually - the plain unscoped run already resolved it fine
-    (`improved-quality/` is walked directly), so this override only matters for the scoped case.
-    **This `pyproject.toml` change has not yet been run through the "Pre-push verification" clean-
-    Ubuntu-24.04-chroot recipe** (CLAUDE.md) - low risk (a single, well-documented mypy override,
-    no new dependencies or build-tool changes) but flagged here rather than silently skipped.
+    on the `TYPE_CHECKING`-only `AsyFramManager` import both files had; added a
+    `[[tool.mypy.overrides]]` entry for module `asy_fram_manager` with `ignore_missing_imports =
+    true` in `pyproject.toml` rather than suppressing the call sites individually - the plain
+    unscoped run already resolved it fine (`improved-quality/` is walked directly), so this
+    override only matters for the scoped case. **This `pyproject.toml` change has not yet been run
+    through the "Pre-push verification" clean-Ubuntu-24.04-chroot recipe** (CLAUDE.md) - low risk
+    (a single, well-documented mypy override, no new dependencies or build-tool changes) but
+    flagged here rather than silently skipped.
+  - **`print_log.py`'s FRAM boundary since mocked and tested, as part of that file's own dedicated
+    review pass** (`base_classes.py`'s `SensorReader` FRAM-backed path is a separate file/pass and
+    stays deferred): `PrintLogHistStore` only ever calls `AsyFramManager.get_chunk()` and, on the
+    chunk it returns, `get_buffer()`/`write_into()`/`read_into()` - not the real allocator/CRC/
+    dual-copy-redundancy machinery `asy_fram_manager.py` actually implements underneath those calls.
+    `tests/_fram_mock.py` fakes just that narrow surface (see `tests/README.md` for the full
+    rationale), and `print_log.py`'s own `AsyFramManager` `TYPE_CHECKING` import was replaced with
+    two local `Protocol`s (`_FramManager`/`_FramChunk`) describing exactly that surface, so the mock
+    satisfies it structurally with no inheritance relationship to the real classes needed - this
+    also means `print_log.py` no longer needs the `asy_fram_manager` mypy override above at all
+    (only `base_classes.py` still does).
+    - **A genuine parameter-contravariance conflict surfaced while typing this, caught by running
+      the *unscoped* mypy pass (not just the scoped CI one) before considering this done**: the real
+      `AsyFramChunk.write_into()`/`read_into()` (in `asy_fram_manager.py`) each narrow their `buf`
+      parameter to that class's own concrete buffer subtype (`AsyFramChunkBuffer`), which is fine
+      for `get_buffer()`'s covariant *return* but makes the real class structurally incompatible
+      with a `_FramChunk` protocol whose `write_into`/`read_into` declared a shared, precise buffer
+      protocol type in *parameter* position (contravariant) - mypy correctly flagged this as a new,
+      real error in `base_classes.py`'s `SensorReader.__init__` (`PrintLogHistStore(fram, ...)`)
+      under the unscoped run only (scoped CI stayed green throughout, since `asy_fram_manager` isn't
+      resolved there at all). Fixed by typing `write_into`/`read_into`'s `buf` parameter as `Any` in
+      the protocol instead: this file never inspects `buf` itself, only round-trips whatever its own
+      `get_buffer()` call just returned, so the precise buffer type was never part of the real
+      contract worth enforcing there. Re-verified 0 new errors anywhere after the fix (unscoped
+      finding count dropped, from 157 to 149, entirely from `print_log.py` no longer being typed
+      against the real `AsyFramManager`/`AsyFramChunk` classes at all).
+    - **`MockFramBacking` (in `tests/_fram_mock.py`) deliberately simulates data surviving a reboot,
+      not just a single read/write round-trip**: it tracks which offsets have actually been written
+      (not just their bytes), and a test constructs a second `MockAsyFramManager` around the same
+      `MockFramBacking` instance, replaying the same `get_chunk()` call sequence - landing on the
+      same offsets, same as the real bump-pointer allocator would - to prove data set by one
+      `PrintLogHistStore` instance is recovered by a completely fresh one. This directly exercises
+      the feature's whole stated purpose ("Trace-log error codes inside FRAM, surviving a reboot",
+      above), not just that the mock's read/write plumbing works in isolation.
+    - **Remove `tests/_fram_mock.py` (and the `PrintLogHistStore` tests built on it in
+      `tests/test_print_log.py`) once `asy_fram_manager.py` itself clears its own `src/` promotion
+      checklist** and a real, tested `AsyFramManager` becomes available under `tests/` instead - at
+      that point the same tests should be re-pointed at the real class rather than kept alongside
+      it.
   - **`tests/base_classes.py` (the `Lockable` stand-in) deleted**, its documented
     `scripts/typecheck.sh`-with-no-arguments "Duplicate module" collision resolved along with it;
     `asy_i2c_driver.py`/`asy_spi_driver.py` now resolve `Lockable` against the real

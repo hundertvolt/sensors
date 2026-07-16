@@ -8,11 +8,12 @@ Shared contract: every method here returns a well-defined value and never raises
 both persist the error/warning code (in memory, and in FRAM for the Store variant) and still
 print() it; logging is additive to the existing console output, not a replacement for it.
 
-PrintLogHistStore's FRAM-touching _write()/_read() are the one part of this file not exercised by
-tests/test_print_log.py: asy_fram_manager.py (AsyFramManager) hasn't itself cleared the src/
-promotion checklist yet (see BACKLOG.md), so there's no real, tested FRAM implementation to run
-these against yet - only PrintLogHistory's in-memory path (setup()/_write()/_read() as inherited
-no-ops) is covered for real.
+PrintLogHistStore's FRAM-touching _write()/_read() are exercised by tests/test_print_log.py against
+tests/_fram_mock.py, a fake standing in for the narrow slice of asy_fram_manager.AsyFramManager's
+API this file actually calls (get_chunk(), then get_buffer()/write_into()/read_into() on the chunk
+it returns) - not the real asy_fram_manager.py, which hasn't itself cleared the src/ promotion
+checklist yet (see BACKLOG.md), and whose actual allocator/CRC/dual-copy-redundancy machinery this
+mock does not attempt to reproduce.
 """
 
 import struct
@@ -28,9 +29,35 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from typing import Any
+    from typing import Any, Protocol
 
-    from asy_fram_manager import AsyFramManager
+    from crc_checks import CRC_Base
+
+    # PrintLogHistStore only ever calls fram.get_chunk() and, on the chunk it gets back,
+    # get_buffer()/write_into()/read_into() - not the full asy_fram_manager.AsyFramManager API.
+    # Protocols express that narrower real dependency directly, instead of naming the concrete
+    # AsyFramManager/AsyFramChunk classes (which would also drag in asy_fram_manager.py, itself not
+    # promoted to src/ yet - see BACKLOG.md) - and let tests/_fram_mock.py's fake satisfy the type
+    # by having the right shape, with no inheritance relationship to the real classes required.
+    class _FramBuffer(Protocol):
+        def get_buf(self) -> "bytearray | None": ...
+        def get_data_buf(self) -> "memoryview | None": ...
+
+    class _FramChunk(Protocol):
+        def get_buffer(self) -> "_FramBuffer": ...
+        # buf is always whatever this same chunk's own get_buffer() just returned, fed straight
+        # back in - real AsyFramChunk/tests/_fram_mock.py's _MockFramChunk each narrow this to
+        # their own concrete buffer subtype, which is fine for get_buffer()'s covariant return but
+        # would make write_into()/read_into()'s parameter contravariantly incompatible with a
+        # shared _FramBuffer protocol type here; Any sidesteps that mismatch since this file never
+        # inspects buf itself, only round-trips it.
+        async def write_into(self, buf: "Any", override_pause: bool = False) -> bool: ...
+        async def read_into(self, buf: "Any", override_pause: bool = False) -> bool: ...
+
+    class _FramManager(Protocol):
+        def get_chunk(
+            self, size: int, crc: "CRC_Base | None" = None, verify: int = 0, check_length: int = 8
+        ) -> "_FramChunk | None": ...
 
 
 # defs for PrintLog
@@ -183,9 +210,9 @@ class PrintLogHistory(PrintLog):
 
 
 class PrintLogHistStore(PrintLogHistory):
-    def __init__(self, fram: "AsyFramManager", history_length: int = 10, level: int | None = None) -> None:
+    def __init__(self, fram: "_FramManager", history_length: int = 10, level: int | None = None) -> None:
         super().__init__(history_length=history_length, level=level)
-        self.fram = fram.get_chunk(struct.calcsize("H" + "B" * len(self.history)), crc=CRC8())
+        self.fram: _FramChunk | None = fram.get_chunk(struct.calcsize("H" + "B" * len(self.history)), crc=CRC8())
         if self.fram is None and self.level > _LOG_OFF:
             print("PrintLog: FRAM allocation failed!")
 
