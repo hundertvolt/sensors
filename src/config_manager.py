@@ -1,36 +1,13 @@
-"""Per-sensor JSON config storage. Each sensor gets its own `config_<name>.cfg` file (see
-base_classes.py's SensorReaderConfig), validated against a schema every driver defines as
-`_VAL_*` `const()` tuples (e.g. asy_bmp3xx_driver.py's
-`_VAL_SI = const((("SampleInterv", "int", 2, 1, 3600, None),))` - one field per tuple: name, type,
-def, min, max, special) and concatenated for a multi-field schema (`_VAL_SI + _VAL_POV + ...`).
-Kept as real tuples rather than a hand-parsed string precisely because MicroPython (since v1.26,
-current pin v1.28) const()-folds a literal tuple of immutables the same way it already did plain
-string/int/float literals - a `const()`-wrapped, underscore-prefixed name costs no module-dict
-entry and is never rebuilt on reference, confirmed directly against the real interpreter (see
-BACKLOG.md), so this carries the same near-zero RAM footprint the old pipe-delimited-JSON-string
-encoding did, without its hand-rolled parser's fragility.
+"""Per-sensor JSON config storage - each sensor gets its own `config_<name>.cfg` file (see
+base_classes.py's SensorReaderConfig), validated against a schema of `_VAL_*` `const()` tuples
+(e.g. asy_bmp3xx_driver.py's `_VAL_SI`) each driver defines: (name, type, def, min, max, special).
 
-Shared contract: every public function/method here returns a documented "invalid" sentinel
-(`[]`/`""`/`{}`/`None`/`True` as noted per function) - never raises - for missing input,
-malformed schema tuples, or a missing/corrupt/unreadable config file. Real file I/O (this file's
-only external boundary - no hardware) is fully exercised by tests/test_config_manager.py under
-the real MicroPython Unix-port interpreter, unlike the hardware-touching drivers.
+Shared contract: every public function/method returns a documented "invalid" sentinel
+(`[]`/`""`/`{}`/`None`/`True` per function) - never raises.
 
-`ConfigManager` reads the config file exactly once, at `__init__`, into an in-memory `_cache` dict
-- every `get_*`/`write_config` call after that reads/writes `_cache` directly, never re-opening the
-file, since a real driver's read path (e.g. asy_bmp3xx_driver.py's per-measurement-cycle
-`get_float_values()` call) runs for the device's entire uptime and MicroPython has no async-native
-file I/O to make a per-call re-read non-blocking. `write_config` still does a real (rare,
-manual-interaction-driven) file write, and only commits its changes into `_cache` *after* that
-write succeeds - so a failed write can't desync the two. Deliberate consequence: unlike the old
-always-re-read design, a read no longer detects the config file being deleted/corrupted out-of-band
-after a valid `__init__` - `_cache` is the sole source of truth for reads, and a subsequent write
-silently repairs (overwrites) an externally-corrupted file from `_cache` rather than detecting and
-failing on it. Acceptable here because this device is the file's only writer and manual-interaction
-writes are rare - see BACKLOG.md for the full reasoning. `_get_values`/`get_dict` no longer need
-`config_lock` at all: with no file I/O and no `await` in their bodies, there's no point at which
-another coroutine could observe a `_cache` mutation half-applied - only `write_config` still needs
-the lock, to serialize its own file write against a concurrent `write_config` call.
+`ConfigManager` reads the file once at `__init__` into `self._cache`; every `get_*`/`write_config`
+call after that reads/writes `_cache` directly, never re-opening the file. See BACKLOG.md for the
+full design rationale (why, the lock/cache-consistency reasoning, and the accepted trade-off).
 """
 
 import asyncio
@@ -147,12 +124,8 @@ def check_cfg_get_default(
     try:  # returns flag if value is used for storage and if the default, if valid
         _name, _type, def_val, _min, _max, special_val = field  # wrong length/shape -> ValueError, caught below
         use_value = True
-        # special case: if default is None and special has a value, this is used to ignore the value
-        # for storage, but uses the special value as mock-up current value for API use. The special
-        # value is an out-of-band sentinel (e.g. asy_scd30_driver.py's AmbPres uses 0 = "disabled"
-        # outside its 700-1400 hPa physical range), so it must NOT be forced through the ordinary
-        # min/max check here - check_special=True lets type_or_range_error's own "equals the special
-        # value" shortcut apply to it instead.
+        # special: def is None but special has a value -> use special as a non-stored mock default;
+        # check_special=True lets type_or_range_error's own special-equality shortcut accept it.
         if def_val is None and special_val is not None:
             def_val = special_val
             use_value = False
@@ -176,9 +149,8 @@ class ConfigManager:
         self._cache: dict[str, int | float | str | bool | None] = {}
         data: dict[str, Any] | None = None
         try:
-            if (os.stat(self.config_file)[0] & 0x4000) == 0:  # not a directory: 0x4000 is MP_S_IFDIR, MicroPython's
-                # own port-standardized stat-mode bit (extmod/vfs.h, confirmed current as of v1.28.0), applied
-                # uniformly across VFS backends including littlefs - not a POSIX-convention guess.
+            if (os.stat(self.config_file)[0] & 0x4000) == 0:  # 0x4000 = MP_S_IFDIR, MicroPython's own
+                # stat-mode bit (extmod/vfs.h), uniform across VFS backends incl. littlefs.
                 with open(self.config_file) as f:
                     try:
                         data = json.load(f)  # parse to json
@@ -246,10 +218,8 @@ class ConfigManager:
             return
 
     async def get_dict(self, keys: "list[str]") -> "dict[str, int | float | str | bool | None] | None":
-        # Reads _cache directly (see module docstring) - no file I/O, no lock: nothing else ever
-        # mutates _cache without also completing synchronously (write_config never awaits between
-        # updating _cache and releasing config_lock), so there's no partial state a concurrent
-        # caller could observe here even without holding the lock.
+        # Reads _cache directly - no lock needed (write_config never awaits mid-mutation, so no
+        # partial state is observable here; see module docstring for the cache design).
         if not self.valid:
             self.pr.err(self.config_file, "- Config is not valid, cannot read!")
             return None
@@ -318,9 +288,8 @@ class ConfigManager:
                     if default_val is None:
                         self.pr.err(self.config_file, "- Default Key", key, "Error or None, no data written!")
                         return False, {}
-                    # Validated the same way regardless of storage: the sentinel is always valid if it
-                    # matches its own definition (type_or_range_error's check_special bypass), independent
-                    # of the ordinary range check, which still applies to any non-sentinel submission.
+                    # Sentinel values are validated against their own definition (check_special bypass);
+                    # non-sentinel values still go through the ordinary range check.
                     if type_or_range_error(value, defaults[key]):
                         self.pr.err(self.config_file, "- Type / range error in", key, "- skipping!")
                         dict_results[key] = "Invalid"
