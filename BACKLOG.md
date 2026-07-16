@@ -1139,6 +1139,67 @@ above is genuinely underway, but surfaces some new items:
       regression test for the `get_bool_values` fix (a corrupted-on-disk-type case correctly returns
       `None`), plus `get_float_values`/`get_str_values` conversion-failure-path parity tests that
       `get_int_values` already had but its siblings didn't.
+  - **A dedicated follow-up pass expanding `config_manager.py`'s test coverage** (requested
+    directly: instantiation, validation, sentinel values, corrupted/missing config, file/I/O
+    errors, edge cases, parameter combinations) added 39 new tests (43 -> 82 in
+    `tests/test_config_manager.py`; 345 -> 384 repo-wide), all empirically verified against the
+    real MicroPython Unix-port interpreter before being written down (not assumed), covering:
+    - `type_or_range_error`/`check_cfg_get_default` parameter combinations previously untested:
+      missing/wrong-typed `min`/`max` bounds, a malformed (wrong-typed) `special` value poisoning
+      the check regardless of `check_special` (real behavior, but unreachable through either real
+      caller since `check_cfg_get_default`'s own self-check already rejects such a schema first),
+      `check_special=False` crossed with a well-typed `special`, the zero-length string boundary,
+      every additional `bool` wrong-type case, an extra/unexpected schema key, a field with both a
+      real `def` and a reachable `special` together, and a bool special-only field.
+    - Three confirmed-not-assumed parsing quirks, each pinned with a regression test showing the
+      *actual* (measured) behavior rather than an idealized one, per section 1's "document, don't
+      silently fix" for a non-bug quirk: `str_cfg("||")` returns `['']` while `cfg_from_str("||")`
+      returns `{}` for the same degenerate input; a duplicate schema field name is kept twice by
+      `str_cfg` but collapses to the last occurrence in `cfg_from_str`; and - a real, if
+      unreached, silent-data-corruption case - a str-type field whose own default value contains
+      literally `"||"` has that substring itself corrupted by `cfg_from_str`'s blind
+      `.replace("||", ", ")` (confirmed directly: `"a||b"` becomes `"a, b"` in the parsed default),
+      not just misparsed. Also pinned `make_dict`'s nested-tuple-field quirk (a field whose own
+      value's `repr()` contains `"("` silently drops every field after it, confirmed directly:
+      `Nested((1, 2), 3)` loses field `b` entirely, no exception).
+    - `ConfigManager.__init__` scenarios previously untested: a valid-JSON-but-non-dict file
+      (array, bare scalar), a genuinely empty (0-byte) file, a file that is a valid but completely
+      empty dict (every key missing at once, not just one), multiple simultaneously out-of-range
+      values (confirming each field defaults independently, not just the first), three flavors of
+      wrong-*type* stored value (string/list/`null`) as distinct from merely out-of-range, a stale
+      special-only key left behind by a schema change (confirmed it's caught by the "unexpected
+      keys remaining" cleanup, not by the per-key loop, since special-only keys are never popped
+      from `data`), an extraneous key and a missing key in the same file, and a nonexistent parent
+      directory (the one way to exercise both of `__init__`'s two separate `OSError` catches in a
+      single run - the initial `os.stat`/read failure and the fallback write failure - since every
+      other test's tmp directory already exists).
+    - `get_dict`/typed-getter scenarios previously untested: an empty `keys` list, multiple keys
+      where one is missing (confirmed: no partial result - the whole call returns `None`, not a
+      dict missing just the bad key), the file being deleted or corrupted *after* a valid
+      `ConfigManager` already exists (as opposed to every prior corruption test, which corrupted
+      the file *before* construction), an unknown key reaching a typed getter's `KeyError` path
+      (previously only exercised through `get_dict`, never through `get_int_values` etc.), and an
+      empty schema string correctly yielding `[]` rather than `None`.
+    - `write_config` scenarios previously untested: an empty `data` dict (a no-op success, not an
+      error), all four `WriteValidity` outcomes (`Valid`/`Unchanged`/`Invalid`/`Failed`) exercised
+      together in one call to confirm they don't interfere with each other and only the genuinely-
+      valid change persists, a malformed schema entry for one key hard-aborting the *entire* call
+      (confirmed: even an already-valid key's result is discarded, matching `__init__`'s own all-
+      or-nothing treatment of a malformed schema - not a partial-failure design), a stored value
+      that had drifted to an invalid type self-healing back to valid once a good value is written
+      through it, and the file being corrupted after a valid `ConfigManager` already exists (as
+      opposed to a bad file at construction time).
+    - **One real gap surfaced, flagged rather than silently fixed (genuinely ambiguous, not a
+      clear single-function bug)**: `write_config`'s special-only-key branch (`if not use_value:
+      dict_results[key] = "Valid"; continue`) never calls `type_or_range_error` on the submitted
+      value at all, unlike every normally-stored key - so a caller writing e.g.
+      `{"Special": "not even an int"}` for a special-only field gets back `"Valid"` unconditionally,
+      with no indication the value was nonsensical for that field's declared type. Pinned with
+      `test_write_config_special_only_value_skips_type_validation_quirk`. Not fixed here: whether a
+      special-only value *should* be type/range-checked even though it's never persisted depends on
+      how a future caller (`api_helpers.py`'s REST pipeline, not yet promoted to `src/` and still
+      using the old pre-refactor `ConfigManager`) is meant to interpret that "Valid" status for a
+      command-only key - needs the project owner's input, not a guess.
 
 ## Decided for the refactor
 
