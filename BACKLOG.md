@@ -1291,6 +1291,62 @@ above is genuinely underway, but surfaces some new items:
     editing per the standing "no changes against the current deployed codebase" rule and is an
     entirely separate `ConfigManager` implementation from the one refactored here. Neither file
     was changed.
+  - **Follow-up: mixed-type memory parity cross-checked, plus a much larger malformed-shape/
+    sentinel test matrix.** The project owner asked to specifically re-verify the zero-additional-
+    memory claim for schemas that *mix* int/float/str/bool fields (the original probe used mostly
+    single-type or generic 6-tuples), and to broaden test coverage to good/mixed/same-type schemas
+    of different sizes, sentinels for every type, and systematic malformed-field handling.
+    - **Empirical re-check** (real MicroPython Unix-port interpreter, ad hoc scratchpad probe):
+      individual per-field `const()` tuples of every type (int/float/str/bool) are each a stable
+      singleton with ~0 heap delta across 2000 references, exactly like the original single-type
+      finding - the type of the field's contents makes no difference to this property. The one
+      nonzero cost (concatenating named consts at a call site) scales with **total field count**,
+      not with how many distinct types are mixed in: an 8-field same-type (all-int) schema and an
+      8-field mixed-type (all 4 types, twice over) schema cost the *same* ~608 bytes to
+      concatenate, both roughly double the ~288 bytes a 4-field mixed schema costs - confirming
+      the cost model is "proportional to size," never "worse when types are mixed."
+    - **`tests/test_config_manager.py` expanded 86 -> 109 tests** (23 new), added only after
+      empirically verifying each non-obvious assertion first (a consolidated scratchpad probe
+      covering every new scenario, run once against the real interpreter before any assertion was
+      written):
+      - Sentinel round-trips through the *full* `ConfigManager`/`write_config` path (not just the
+        `check_cfg_get_default`/`type_or_range_error` unit level) for **every** type, not just the
+        pre-existing int case: `FloatSpecial`/`StrSpecial`/`BoolSpecial` special-only fixtures,
+        each with a "not persisted" test and matching-sentinel/wrong-type/out-of-range-and-not-
+        sentinel `write_config` tests. The bool case surfaced a genuine, worth-documenting
+        asymmetry (not a bug - see below): since a bool field has no range for a sentinel to
+        *bypass*, both `True` (the declared sentinel) and `False` (not the sentinel, but still a
+        structurally valid bool) come back `"Valid"` - `type_or_range_error`'s bool branch never
+        even inspects `special` for an ordinary bool `check_val`, unlike every other type.
+      - Composition/size coverage: a single-field schema, an 8-field same-type (all-int) schema,
+        and an 8-field mixed-type schema, each exercised through `ConfigManager` construction,
+        `get_dict`, and `write_config`, plus a `schema_names`/`schema_dict` sanity check on the
+        mixed 8-field case.
+      - Systematic malformed-field-shape coverage, all confirmed non-crashing:
+        - `"type"` itself wrong-typed (an int instead of a string) - no branch matches, falls
+          through to the same rejection an unrecognized type name gets.
+        - `"def"` mismatched from its own declared `"type"` (e.g. `type="int"`, `def=1.5`) -
+          caught by `check_cfg_get_default`'s existing self-check, same as an out-of-range default.
+        - A non-bool `"special"` on a bool field: rejected when it's substituted in as the
+          *default* (`check_cfg_get_default`'s self-check correctly fails it), but - documented,
+          not fixed, matching the already-settled non-bug from the earlier checklist review -
+          `type_or_range_error` alone doesn't reject an otherwise-valid bool `check_val` just
+          because that same field's `special` is wrong-typed, since the bool branch never reads
+          `special` at all.
+        - A non-string `"name"` (position 0): never rejected by `schema_names`/`schema_dict` (just
+          becomes a non-string dict key) - traced all the way through a real `ConfigManager`: init
+          succeeds, `json.dump` silently stringifies the int key on write (confirmed MicroPython's
+          `json` module does this the same way CPython's does), and a later read using the
+          schema's own (still-int) name safely `KeyError`s -> `None` instead of matching, because
+          JSON forces string keys. Never an unhandled exception at any point.
+        - A stray non-tuple element (e.g. a bare string) mixed in among otherwise-good field
+          records - tolerated the same lenient way a bare string schema on its own already was.
+        - One malformed field (wrong length) mixed in among several otherwise-valid ones -
+          invalidates the *whole* `ConfigManager` at `__init__`, matching `write_config`'s existing
+          all-or-nothing treatment of a malformed schema (previously only tested for `write_config`
+          itself, not `__init__`).
+    - `scripts/lint.sh`/`scripts/typecheck.sh src tests` clean; 411 tests passing repo-wide
+      (77+43+29+109+62+45+46).
 
 ## Decided for the refactor
 

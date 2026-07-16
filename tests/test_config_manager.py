@@ -33,6 +33,27 @@ _VAL_BOOL: "cm.ConfigSchema" = (("Enabled", "bool", True, None, None, None),)
 _VAL_SPECIAL: "cm.ConfigSchema" = (("Special", "int", None, 0, 10, 99),)
 _SCHEMA: "cm.ConfigSchema" = _VAL_INT + _VAL_FLOAT + _VAL_STR + _VAL_BOOL + _VAL_SPECIAL
 
+# One special-only field per remaining type (int's is _VAL_SPECIAL above), to cover the sentinel
+# mechanism end-to-end for every schema "type", not just int.
+_VAL_FLOAT_SPECIAL: "cm.ConfigSchema" = (("FloatSpecial", "float", None, 0.0, 10.0, 99.0),)
+_VAL_STR_SPECIAL: "cm.ConfigSchema" = (("StrSpecial", "str", None, 1, 5, "OFF"),)
+_VAL_BOOL_SPECIAL: "cm.ConfigSchema" = (("BoolSpecial", "bool", None, None, None, True),)
+
+# A same-type (8 int fields) and a mixed-type (4 types + 4 more int fields) schema larger than the
+# 1-5 field schemas used elsewhere, to check behavior doesn't change with field count or type mix.
+_VAL_I1: "cm.ConfigSchema" = (("I1", "int", 1, 0, 100, None),)
+_VAL_I2: "cm.ConfigSchema" = (("I2", "int", 2, 0, 100, None),)
+_VAL_I3: "cm.ConfigSchema" = (("I3", "int", 3, 0, 100, None),)
+_VAL_I4: "cm.ConfigSchema" = (("I4", "int", 4, 0, 100, None),)
+_VAL_I5: "cm.ConfigSchema" = (("I5", "int", 5, 0, 100, None),)
+_VAL_I6: "cm.ConfigSchema" = (("I6", "int", 6, 0, 100, None),)
+_VAL_I7: "cm.ConfigSchema" = (("I7", "int", 7, 0, 100, None),)
+_VAL_I8: "cm.ConfigSchema" = (("I8", "int", 8, 0, 100, None),)
+_LARGE_SAME_TYPE_SCHEMA: "cm.ConfigSchema" = (
+    _VAL_I1 + _VAL_I2 + _VAL_I3 + _VAL_I4 + _VAL_I5 + _VAL_I6 + _VAL_I7 + _VAL_I8
+)
+_LARGE_MIXED_SCHEMA: "cm.ConfigSchema" = _VAL_INT + _VAL_FLOAT + _VAL_STR + _VAL_BOOL + _VAL_I1 + _VAL_I2 + _VAL_I3 + _VAL_I4
+
 
 def _tmp_path(name: str) -> str:
     try:
@@ -305,6 +326,50 @@ def test_check_cfg_get_default_bool_special_only() -> None:
     assert cm.check_cfg_get_default(field) == (False, True)
 
 
+def test_type_or_range_error_type_field_wrong_type_rejected() -> None:
+    # "type" itself isn't a string (an authoring mistake) - no branch matches, same fallthrough
+    # result as an unrecognized type name.
+    assert cm.type_or_range_error(5, ("X", 123, None, 0, 10, None)) is True  # type: ignore[arg-type]
+
+
+def test_check_cfg_get_default_def_type_mismatched_from_declared_type_rejected() -> None:
+    # "def" doesn't match its own declared "type" (int declared, float default given) - a common
+    # authoring mistake, caught by the same self-check an out-of-range default is.
+    assert cm.check_cfg_get_default(("X", "int", 1.5, 0, 10, None)) == (True, None)
+
+
+def test_check_cfg_get_default_bool_malformed_special_type_rejected_when_used_as_default() -> None:
+    # A non-bool "special" (schema-authoring error) substituted in as the default (def=None) fails
+    # type_or_range_error's own bool type check the same way any other wrong-typed value would.
+    assert cm.check_cfg_get_default(("X", "bool", None, None, None, 1)) == (True, None)
+
+
+def test_type_or_range_error_bool_ignores_malformed_special_for_a_genuinely_valid_bool_quirk() -> None:
+    # Unlike int/float/str, the bool branch never inspects "special" at all - there's no range for
+    # a bool to bypass - so a wrong-typed special only ever surfaces via check_cfg_get_default's
+    # own self-check (previous test), never by rejecting an otherwise-valid bool value outright.
+    # Longstanding, deliberate asymmetry (see BACKLOG.md), not new to the tuple schema.
+    assert cm.type_or_range_error(True, ("X", "bool", None, None, None, 1)) is False
+
+
+def test_schema_dict_non_string_name_quirk() -> None:
+    # A non-string "name" (authoring mistake) isn't rejected by schema_dict/schema_names - it just
+    # becomes a non-string dict key. Never crashes; see the matching ConfigManager-level test below
+    # for what actually happens end-to-end (JSON forces the key to a string on write).
+    field = ((123, "int", 5, 0, 10, None),)
+    assert cm.schema_names(field) == [123]  # type: ignore[arg-type, comparison-overlap]
+    assert cm.schema_dict(field) == {123: (123, "int", 5, 0, 10, None)}  # type: ignore[arg-type, comparison-overlap]
+
+
+def test_schema_names_and_schema_dict_tolerate_a_non_tuple_element_among_good_ones() -> None:
+    # A stray non-tuple element (e.g. a bare string) mixed in with otherwise-valid field records
+    # doesn't raise - it's extracted/keyed the same lenient way test_schema_names_non_tuple_
+    # iterable_quirk documents for a bare string on its own.
+    mixed = _VAL_INT + ("not a field record",)
+    assert cm.schema_names(mixed) == ["Count", "n"]  # type: ignore[arg-type]
+    assert cm.schema_dict(mixed) == {"Count": ("Count", "int", 5, 0, 10, None), "n": "not a field record"}  # type: ignore[arg-type]
+
+
 # ---------------------------------------------------------------------------
 # ConfigManager - real file I/O under the Unix port, no mocking
 # ---------------------------------------------------------------------------
@@ -413,6 +478,127 @@ def test_configmanager_special_only_field_not_persisted() -> None:
         with open(path) as f:
             assert "Special" not in json.load(f)
         assert run(mgr.get_dict(["Special"])) is None  # never stored, so a KeyError -> None sentinel
+    finally:
+        _remove(path)
+
+
+def test_configmanager_float_special_only_field_not_persisted() -> None:
+    mgr, path = _make("floatspecial.cfg", cfg_vals=_VAL_FLOAT_SPECIAL)
+    try:
+        assert mgr.valid is True
+        with open(path) as f:
+            assert "FloatSpecial" not in json.load(f)
+        assert run(mgr.get_dict(["FloatSpecial"])) is None
+    finally:
+        _remove(path)
+
+
+def test_configmanager_str_special_only_field_not_persisted() -> None:
+    mgr, path = _make("strspecial.cfg", cfg_vals=_VAL_STR_SPECIAL)
+    try:
+        assert mgr.valid is True
+        with open(path) as f:
+            assert "StrSpecial" not in json.load(f)
+        assert run(mgr.get_dict(["StrSpecial"])) is None
+    finally:
+        _remove(path)
+
+
+def test_configmanager_bool_special_only_field_not_persisted() -> None:
+    mgr, path = _make("boolspecial.cfg", cfg_vals=_VAL_BOOL_SPECIAL)
+    try:
+        assert mgr.valid is True
+        with open(path) as f:
+            assert "BoolSpecial" not in json.load(f)
+        assert run(mgr.get_dict(["BoolSpecial"])) is None
+    finally:
+        _remove(path)
+
+
+def test_configmanager_single_field_schema() -> None:
+    mgr, path = _make("singlefield.cfg", cfg_vals=_VAL_INT)
+    try:
+        assert mgr.valid is True
+        assert run(mgr.get_dict(["Count"])) == {"Count": 5}
+        ok, results = run(mgr.write_config({"Count": 7}, _VAL_INT))
+        assert (ok, results) == (True, {"Count": "Valid"})
+    finally:
+        _remove(path)
+
+
+def test_configmanager_large_same_type_schema() -> None:
+    mgr, path = _make("largesame.cfg", cfg_vals=_LARGE_SAME_TYPE_SCHEMA)
+    try:
+        assert mgr.valid is True
+        assert run(mgr.get_dict(["I1", "I4", "I8"])) == {"I1": 1, "I4": 4, "I8": 8}
+        ok, results = run(mgr.write_config({"I3": 30}, _LARGE_SAME_TYPE_SCHEMA))
+        assert (ok, results) == (True, {"I3": "Valid"})
+        assert run(mgr.get_dict(["I3"])) == {"I3": 30}
+    finally:
+        _remove(path)
+
+
+def test_configmanager_large_mixed_type_schema() -> None:
+    mgr, path = _make("largemixed.cfg", cfg_vals=_LARGE_MIXED_SCHEMA)
+    try:
+        assert mgr.valid is True
+        assert run(mgr.get_dict(["Count", "Offset", "Name", "Enabled", "I1", "I4"])) == {
+            "Count": 5,
+            "Offset": 1.5,
+            "Name": "abc",
+            "Enabled": True,
+            "I1": 1,
+            "I4": 4,
+        }
+        ok, results = run(
+            mgr.write_config(
+                {"Count": 9, "Offset": 2.5, "Name": "xyz", "Enabled": False, "I1": 50}, _LARGE_MIXED_SCHEMA
+            )
+        )
+        assert ok is True
+        assert results == {
+            "Count": "Valid",
+            "Offset": "Valid",
+            "Name": "Valid",
+            "Enabled": "Valid",
+            "I1": "Valid",
+        }
+    finally:
+        _remove(path)
+
+
+def test_schema_names_and_schema_dict_on_large_mixed_schema() -> None:
+    assert cm.schema_names(_LARGE_MIXED_SCHEMA) == ["Count", "Offset", "Name", "Enabled", "I1", "I2", "I3", "I4"]
+    assert len(cm.schema_dict(_LARGE_MIXED_SCHEMA)) == 8
+
+
+def test_configmanager_one_malformed_field_among_valid_fields_invalidates_whole_config() -> None:
+    # A single malformed field (wrong length, missing "special") among otherwise-good fields fails
+    # check_cfg_get_default's self-check the same way write_config's per-key loop does - __init__
+    # aborts for the whole schema, not just the bad field.
+    bad_schema = _VAL_INT + (("Bad", "int", 1, 0, 10),)  # missing "special"
+    mgr, path = _make("onebadfield.cfg", cfg_vals=bad_schema)  # type: ignore[arg-type]
+    try:
+        assert mgr.valid is False
+    finally:
+        _remove(path)
+
+
+def test_configmanager_non_string_field_name_quirk() -> None:
+    # A non-string "name" (schema-authoring mistake) is never rejected - init succeeds and JSON
+    # silently stringifies the int key on write, but any later read using the schema's own
+    # (still-int) name then KeyErrors safely instead of matching, since JSON forces string keys.
+    # Never crashes either way; a real driver would never author a name like this.
+    bad_name_schema = ((123, "int", 5, 0, 10, None),)
+    path = _tmp_path("badname.cfg")
+    _remove(path)
+    try:
+        mgr = cm.ConfigManager(path, bad_name_schema, PrintLog())  # type: ignore[arg-type]
+        assert mgr.valid is True
+        with open(path) as f:
+            assert json.load(f) == {"123": 5}
+        assert run(mgr.get_dict([123])) is None  # type: ignore[list-item]  # int key never matches the JSON string key
+        assert run(mgr.get_dict(["123"])) == {"123": 5}
     finally:
         _remove(path)
 
@@ -870,6 +1056,84 @@ def test_write_config_special_only_value_out_of_range_and_not_sentinel_is_invali
     try:
         ok, results = run(mgr.write_config({"Special": 999}, _VAL_SPECIAL))  # neither in [0, 10] nor == 99
         assert (ok, results) == (True, {"Special": "Invalid"})
+    finally:
+        _remove(path)
+
+
+def test_write_config_float_special_sentinel_matching_is_valid() -> None:
+    mgr, path = _make("floatspecialsentinel.cfg", cfg_vals=_VAL_FLOAT_SPECIAL)
+    try:
+        ok, results = run(mgr.write_config({"FloatSpecial": 99.0}, _VAL_FLOAT_SPECIAL))
+        assert (ok, results) == (True, {"FloatSpecial": "Valid"})
+    finally:
+        _remove(path)
+
+
+def test_write_config_float_special_wrong_type_is_invalid() -> None:
+    mgr, path = _make("floatspecialwrongtype.cfg", cfg_vals=_VAL_FLOAT_SPECIAL)
+    try:
+        ok, results = run(mgr.write_config({"FloatSpecial": "not a float"}, _VAL_FLOAT_SPECIAL))
+        assert (ok, results) == (True, {"FloatSpecial": "Invalid"})
+    finally:
+        _remove(path)
+
+
+def test_write_config_float_special_out_of_range_and_not_sentinel_is_invalid() -> None:
+    mgr, path = _make("floatspecialoutofrange.cfg", cfg_vals=_VAL_FLOAT_SPECIAL)
+    try:
+        ok, results = run(mgr.write_config({"FloatSpecial": 500.0}, _VAL_FLOAT_SPECIAL))  # neither [0,10] nor 99.0
+        assert (ok, results) == (True, {"FloatSpecial": "Invalid"})
+    finally:
+        _remove(path)
+
+
+def test_write_config_str_special_sentinel_matching_is_valid() -> None:
+    mgr, path = _make("strspecialsentinel.cfg", cfg_vals=_VAL_STR_SPECIAL)
+    try:
+        ok, results = run(mgr.write_config({"StrSpecial": "OFF"}, _VAL_STR_SPECIAL))
+        assert (ok, results) == (True, {"StrSpecial": "Valid"})
+    finally:
+        _remove(path)
+
+
+def test_write_config_str_special_wrong_type_is_invalid() -> None:
+    mgr, path = _make("strspecialwrongtype.cfg", cfg_vals=_VAL_STR_SPECIAL)
+    try:
+        ok, results = run(mgr.write_config({"StrSpecial": 123}, _VAL_STR_SPECIAL))
+        assert (ok, results) == (True, {"StrSpecial": "Invalid"})
+    finally:
+        _remove(path)
+
+
+def test_write_config_str_special_out_of_range_and_not_sentinel_is_invalid() -> None:
+    mgr, path = _make("strspecialoutofrange.cfg", cfg_vals=_VAL_STR_SPECIAL)
+    try:
+        # 8 chars: outside [1, 5] and not "OFF"
+        ok, results = run(mgr.write_config({"StrSpecial": "toolong!"}, _VAL_STR_SPECIAL))
+        assert (ok, results) == (True, {"StrSpecial": "Invalid"})
+    finally:
+        _remove(path)
+
+
+def test_write_config_bool_special_any_valid_bool_is_valid() -> None:
+    # Unlike int/float/str, a bool field has no range to bypass - both True (the sentinel) and
+    # False (not the sentinel, but still a structurally valid bool) come back "Valid", since
+    # type_or_range_error's bool branch only ever checks type, never special, for either value.
+    mgr, path = _make("boolspecialsentinel.cfg", cfg_vals=_VAL_BOOL_SPECIAL)
+    try:
+        ok, results = run(mgr.write_config({"BoolSpecial": True}, _VAL_BOOL_SPECIAL))
+        assert (ok, results) == (True, {"BoolSpecial": "Valid"})
+        ok, results = run(mgr.write_config({"BoolSpecial": False}, _VAL_BOOL_SPECIAL))
+        assert (ok, results) == (True, {"BoolSpecial": "Valid"})
+    finally:
+        _remove(path)
+
+
+def test_write_config_bool_special_wrong_type_is_invalid() -> None:
+    mgr, path = _make("boolspecialwrongtype.cfg", cfg_vals=_VAL_BOOL_SPECIAL)
+    try:
+        ok, results = run(mgr.write_config({"BoolSpecial": 1}, _VAL_BOOL_SPECIAL))
+        assert (ok, results) == (True, {"BoolSpecial": "Invalid"})
     finally:
         _remove(path)
 
