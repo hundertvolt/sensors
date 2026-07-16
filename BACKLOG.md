@@ -1457,6 +1457,58 @@ above is genuinely underway, but surfaces some new items:
     - `scripts/lint.sh`/`scripts/typecheck.sh src tests` clean (verified directly on the touched
       files this time, not via the grep pattern that failed above); 433 tests passing repo-wide
       (77+43+29+131+62+45+46).
+  - **Full walkthrough of `src/README.md`'s promotion checklist, section by section, against
+    `config_manager.py`.** Two direct, safe fixes applied (verified via `ruff`/`mypy`/the real
+    interpreter afterward, 434 tests passing repo-wide with 2 new: 77+43+29+132+62+45+46):
+    - Section 1 (correctness vs. real docs): the `os.stat(...)[0] & 0x4000` directory check had no
+      source citation for the magic number. Checked MicroPython's actual v1.28.0 source
+      (`extmod/vfs.h`) and confirmed `0x4000` is `MP_S_IFDIR`, "MicroPython's own port-standardized
+      version of stat constants," applied uniformly across VFS backends including littlefs - not a
+      guessed POSIX convention. Added a citing comment; no behavior change (the value was already
+      correct).
+    - Section 8 (general improvement, no functional change): converted `get_dict`'s and
+      `_get_values`'s manual accumulate-into-`{}`/`[]` loops into dict/list comprehensions -
+      marginally fewer bytecode ops, identical behavior, confirmed via the full test suite.
+      Considered caching `schema_dict(cfg_vals)` at construction instead of recomputing it per
+      `write_config`/typed-getter call, but real call sites (e.g. `asy_bmp3xx_driver.py` reading
+      different field subsets via `get_int_values`/`get_float_values` at different points) rely on
+      passing different schema slices per call - caching would silently change behavior, so left
+      alone.
+    - Section 12 (unit tests): `check_special=True`/`False` was tested for `int` and `str` fields
+      but never `float` - added the missing combination test.
+    - Two items surfaced a genuine tension with the checklist's own stated philosophy and were
+      raised to the project owner rather than acted on unilaterally, per section 0's "ask rather
+      than guess" instruction:
+      - **Section 2/4's "don't defend against wrong-type input if mypy already enforces it at
+        every call site" vs. the 3 `TypeError`/`AttributeError` except-tuple broadenings from the
+        earlier uncaught-exception audit.** Traced every real (non-test) call site:
+        `ConfigManager.__init__`'s `filename` and `get_dict`'s/typed-getters' `keys` are always
+        statically-typed `str`/`ConfigSchema`/`list[str]` constants today, with no real caller
+        passing anything else - by the checklist's own literal rule these two catches are
+        currently dead weight. `write_config` is different: it isn't called from any real
+        (non-test) code yet - its eventual caller will be a not-yet-written REST layer built on
+        Microdot, and the pre-refactor equivalent (`api_helpers.py`) always funneled a real,
+        already-typed dict through several validating intermediate structures before ever reaching
+        `write_config`, never raw `request.json` directly, but that pattern isn't guaranteed to
+        carry over to the new schema's own not-yet-written REST layer. **Decision (confirmed
+        directly by the project owner): keep all 3 defenses as-is** - `write_config`'s specifically
+        because it will face Microdot's less-statically-controlled input once wired up, and the
+        other two are being kept alongside it rather than reverted. Revisit once the new REST layer
+        is actually written and the real call shape is knowable, per the project owner's "even
+        think about extending" follow-up - there wasn't a concrete additional exception type to add
+        speculatively today without a real call site to verify against.
+      - **Section 5's "never block" vs. `get_dict`/`_get_values`/`write_config`'s synchronous file
+        I/O.** These are all `async def`, but MicroPython has no async-native file I/O - the actual
+        `open()`/`json.load()`/`json.dump()` calls block the whole event loop for their duration
+        with zero yield points, the same "must coordinate via `async_connect.py`'s
+        `get_long_block_lock()`" concern CLAUDE.md's hard rules already generalize beyond the
+        original NTP-vs-Neopixel case. Not a new problem (same I/O shape predates this refactor),
+        but confirmed it's not purely a one-time boot cost: `asy_bmp3xx_driver.py`'s `read_loop()`
+        runs a `while True` loop for the device's entire uptime, calling `_store_bmp()` ->
+        `get_float_values()` on every trigger cycle (every `SampleInterv` seconds, default 2s), not
+        just at `_init_bmp()`'s one-time startup call. Raised to the project owner with this
+        corrected call-frequency finding; not yet resolved as of this writeup - see whichever
+        follow-up entry (if any) records the actual decision once made.
 
 ## Decided for the refactor
 

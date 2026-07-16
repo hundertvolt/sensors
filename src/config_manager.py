@@ -159,7 +159,9 @@ class ConfigManager:
         self.valid = False
         data: dict[str, Any] | None = None
         try:
-            if (os.stat(self.config_file)[0] & 0x4000) == 0:  # not a directory (littlefs has no other node types)
+            if (os.stat(self.config_file)[0] & 0x4000) == 0:  # not a directory: 0x4000 is MP_S_IFDIR, MicroPython's
+                # own port-standardized stat-mode bit (extmod/vfs.h, confirmed current as of v1.28.0), applied
+                # uniformly across VFS backends including littlefs - not a POSIX-convention guess.
                 with open(self.config_file) as f:
                     try:
                         data = json.load(f)  # parse to json
@@ -229,7 +231,6 @@ class ConfigManager:
             self.pr.err(self.config_file, "- Config is not valid, cannot read!")
             return None
         async with self.config_lock:
-            ret_dict = {}
             self.pr.all(self.config_file, "- Reading config data into dict.")
             try:
                 with open(self.config_file) as f:
@@ -237,9 +238,7 @@ class ConfigManager:
                 if not isinstance(data, dict):
                     self.pr.err(self.config_file, "- Config parse error!")
                     return None
-                for key in keys:
-                    ret_dict[key] = data[key]
-                return ret_dict
+                return {key: data[key] for key in keys}
             except (OSError, ValueError, KeyError, TypeError) as e:  # file errors, malformed json/keys param
                 self.pr.err(self.config_file, "- Config read error:", e)
                 return None
@@ -249,7 +248,6 @@ class ConfigManager:
             self.pr.err(self.config_file, "- Config is not valid, cannot read!")
             return None
         async with self.config_lock:
-            ret_values = []
             self.pr.all(self.config_file, "- Reading config data into list.")
             try:
                 with open(self.config_file) as f:
@@ -257,9 +255,7 @@ class ConfigManager:
                 if not isinstance(data, dict):
                     self.pr.err(self.config_file, "- Config parse error!")
                     return None
-                for key in schema_names(keys):
-                    ret_values.append(data[key])
-                return ret_values
+                return [data[key] for key in schema_names(keys)]
             except (OSError, ValueError, KeyError) as e:  # file errors, malformed json, key errors
                 self.pr.err(self.config_file, "- Config read error:", e)
                 return None

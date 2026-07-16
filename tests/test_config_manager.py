@@ -261,6 +261,14 @@ def test_type_or_range_error_float_malformed_special_type_rejects_any_value() ->
     assert cm.type_or_range_error(5.0, field, check_special=True) is True
 
 
+def test_type_or_range_error_float_check_special_combos() -> None:
+    # A genuinely valid float special, tested with both check_special values - the int/str
+    # equivalents of this were already covered; float itself wasn't, until now.
+    field: cm.FieldSchema = ("X", "float", None, 0.0, 10.0, 99.0)
+    assert cm.type_or_range_error(99.0, field, check_special=True) is False  # bypasses [0.0, 10.0]
+    assert cm.type_or_range_error(99.0, field, check_special=False) is True  # out of range, special not honored
+
+
 def test_type_or_range_error_str_check_special_combos() -> None:
     field: cm.FieldSchema = ("X", "str", None, 2, 4, "SPECIAL")
     assert cm.type_or_range_error("SPECIAL", field, check_special=True) is False  # bypasses length bounds
