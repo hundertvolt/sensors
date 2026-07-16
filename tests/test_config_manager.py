@@ -113,6 +113,15 @@ def test_name_cfg_malformed_input_returns_empty_string() -> None:
     assert cm.name_cfg(5) == ""  # type: ignore[arg-type]
 
 
+def test_name_cfg_single_field_literally_named_empty_string_quirk() -> None:
+    # Ambiguous but benign: a single field named "" (never a real driver's choice, but not rejected
+    # by schema_names/schema_dict either) returns the exact same "" a malformed/empty schema does -
+    # name_cfg can't distinguish "one field named empty string" from "no usable name" this way.
+    # Never crashes; nothing in the codebase relies on telling these two apart.
+    field: cm.ConfigSchema = (("", "int", 5, 0, 10, None),)
+    assert cm.name_cfg(field) == ""
+
+
 def test_schema_dict_valid() -> None:
     assert cm.schema_dict(_VAL_INT) == {"Count": ("Count", "int", 5, 0, 10, None)}
 
@@ -189,6 +198,21 @@ def test_make_dict_nested_tuple_field_silently_dropped_quirk() -> None:
 
     Nested = namedtuple("Nested", ["a", "b"])
     assert cm.make_dict(Nested((1, 2), 3)) == {"Nested": {"a": (1, 2)}}  # type: ignore[comparison-overlap]
+
+
+def test_make_dict_comma_in_nested_value_repr_falls_back_to_none_quirk() -> None:
+    # A different parsing fragility from the nested-tuple quirk above: here the initial
+    # [name, kvpairs] split works fine (no stray "(" in the values), but a list-valued field's own
+    # repr contains a comma (e.g. "items=[1, 2]"), which the naive comma-split on kvpairs mistakes
+    # for a field separator - producing a garbage extra "key" ("2]") alongside the two real ones.
+    # getattr(nt, "2]") then raises, and the outer except's fallback kicks in for ALL keys (not just
+    # the garbage one) - every value comes back None rather than the two real fields' actual values.
+    # Never raises either way, just silently loses data - same "document, don't fix" treatment as
+    # the nested-tuple quirk above.
+    from collections import namedtuple
+
+    Meas = namedtuple("Meas", ["items", "count"])
+    assert cm.make_dict(Meas([1, 2], 3)) == {"Meas": {"items": None, "2]": None, "count": None}}
 
 
 # ---------------------------------------------------------------------------
@@ -280,6 +304,55 @@ def test_type_or_range_error_str_length_bounds() -> None:
     assert cm.type_or_range_error("abcde", field) is True
 
 
+def test_type_or_range_error_min_greater_than_max_rejects_every_value() -> None:
+    # An authoring mistake (min/max swapped) makes `val_min <= check_val <= val_max` unsatisfiable
+    # for any int, including the boundary values themselves - not just "genuinely out of range"
+    # ones. Never crashes, just always returns True.
+    field: cm.FieldSchema = ("X", "int", None, 10, 0, None)
+    assert cm.type_or_range_error(5, field) is True
+    assert cm.type_or_range_error(10, field) is True
+    assert cm.type_or_range_error(0, field) is True
+
+
+def test_type_or_range_error_str_min_greater_than_max_rejects_every_value() -> None:
+    field: cm.FieldSchema = ("X", "str", None, 4, 2, None)
+    assert cm.type_or_range_error("ab", field) is True
+    assert cm.type_or_range_error("abc", field) is True
+
+
+def test_type_or_range_error_asymmetric_wrong_typed_bound_rejected() -> None:
+    # Only one of min/max wrong-typed (not both, unlike the existing "missing_or_wrong_typed_bounds"
+    # test) - the `type(val_max) is int and type(val_min) is int` guard requires both, so either one
+    # being wrong-typed alone is enough to reject a value that would otherwise be in range.
+    assert cm.type_or_range_error(5, ("X", "int", None, "0", 10, None)) is True  # type: ignore[arg-type]  # only min wrong
+    assert cm.type_or_range_error(5, ("X", "int", None, 0, "10", None)) is True  # type: ignore[arg-type]  # only max wrong
+
+
+def test_type_or_range_error_bool_ignores_nonsensical_min_max() -> None:
+    # A bool field has no range concept - min/max are simply never read, so garbage values there
+    # (an authoring mistake, e.g. copy-pasted from an int field) don't affect a genuinely valid bool.
+    field: cm.FieldSchema = ("X", "bool", None, 5, 10, None)
+    assert cm.type_or_range_error(True, field) is False
+    assert cm.type_or_range_error(False, field) is False
+
+
+def test_type_or_range_error_bool_value_against_int_field_rejected() -> None:
+    # `type(check_val) is not int` correctly distinguishes bool from int (unlike isinstance, which
+    # would treat True/False as ints too, since bool subclasses int) - the reverse direction of the
+    # existing "int value against a bool field" tests above.
+    field: cm.FieldSchema = ("X", "int", None, 0, 10, None)
+    assert cm.type_or_range_error(True, field) is True
+    assert cm.type_or_range_error(False, field) is True
+
+
+def test_type_or_range_error_str_length_counts_unicode_codepoints_not_bytes() -> None:
+    # Confirmed against the real interpreter (this build has Unicode-aware str support): a 4-char
+    # string with one multi-byte UTF-8 character has len() == 4, not the 5-byte UTF-8 encoding
+    # length - str length bounds are codepoint bounds, not byte bounds, on this MicroPython build.
+    field: cm.FieldSchema = ("X", "str", None, 4, 4, None)
+    assert cm.type_or_range_error("café", field) is False  # 4 codepoints, satisfies [4, 4]
+
+
 def test_type_or_range_error_bool() -> None:
     field: cm.FieldSchema = ("X", "bool", None, None, None, None)
     assert cm.type_or_range_error(True, field) is False
@@ -349,6 +422,16 @@ def test_check_cfg_get_default_def_type_mismatched_from_declared_type_rejected()
     # "def" doesn't match its own declared "type" (int declared, float default given) - a common
     # authoring mistake, caught by the same self-check an out-of-range default is.
     assert cm.check_cfg_get_default(("X", "int", 1.5, 0, 10, None)) == (True, None)
+
+
+def test_check_cfg_get_default_malformed_special_type_rejected_even_with_a_valid_default() -> None:
+    # A different code path from the "used as default" test below: here "def" is present and
+    # perfectly valid on its own (5, in [0, 10]), so the special-as-default substitution never
+    # triggers - but type_or_range_error's own val_special type-check still runs unconditionally
+    # whenever special is not None, rejecting the field regardless of check_val. Confirms a
+    # malformed special can't slip through just because the field also has a normal, valid default.
+    field: cm.FieldSchema = ("X", "int", 5, 0, 10, "99")  # special should be int, not str
+    assert cm.check_cfg_get_default(field) == (True, None)
 
 
 def test_check_cfg_get_default_bool_malformed_special_type_rejected_when_used_as_default() -> None:
@@ -548,6 +631,19 @@ def test_configmanager_bool_special_only_field_not_persisted() -> None:
         with open(path) as f:
             assert "BoolSpecial" not in json.load(f)
         assert run(mgr.get_dict(["BoolSpecial"])) is None
+    finally:
+        _remove(path)
+
+
+def test_configmanager_schema_entirely_special_only_is_valid_with_empty_file() -> None:
+    # A schema with zero storable fields (every field is special-only) is a valid, non-empty schema
+    # (len(defaults) != 0, so the "Defaults are empty" check doesn't trigger) - init still succeeds
+    # and writes an empty {} config file, rather than being treated as invalid.
+    mgr, path = _make("allspecial.cfg", cfg_vals=_VAL_SPECIAL)
+    try:
+        assert mgr.valid is True
+        with open(path) as f:
+            assert json.load(f) == {}
     finally:
         _remove(path)
 
@@ -862,6 +958,28 @@ def test_get_float_values_conversion_failure_returns_none() -> None:
         _remove(path)
 
 
+def test_get_int_values_duplicate_schema_field_name_returns_duplicated_value() -> None:
+    # schema_names() preserves duplicates (documented, tested at the schema level already) - here
+    # confirming that carries all the way through _get_values/get_int_values: the same stored value
+    # is read and appended once per occurrence, not deduplicated.
+    mgr, path = _make("duptypedread.cfg", cfg_vals=_VAL_INT)
+    try:
+        assert run(mgr.get_int_values(_VAL_INT + _VAL_INT)) == [5, 5]
+    finally:
+        _remove(path)
+
+
+def test_get_int_values_mixed_schema_one_field_fails_conversion_aborts_whole_call() -> None:
+    # All-or-nothing across a multi-field schema, matching get_dict's own "one missing key aborts
+    # the whole read" behavior: even though "Count" alone would convert fine, "Name" ("abc") failing
+    # int() conversion discards the entire result rather than returning a partial list.
+    mgr, path = _make("mixedconvertfail.cfg")
+    try:
+        assert run(mgr.get_int_values(_VAL_INT + _VAL_STR)) is None
+    finally:
+        _remove(path)
+
+
 def test_get_str_values_accepts_any_value() -> None:
     mgr, path = _make("strconvert.cfg")
     try:
@@ -984,6 +1102,35 @@ def test_write_config_key_missing_from_file_marked_failed() -> None:
         ok, results = run(mgr.write_config({"Count": 8}, _VAL_INT))
         assert ok is True
         assert results == {"Count": "Failed"}
+    finally:
+        _remove(path)
+
+
+def test_write_config_value_both_out_of_range_and_missing_from_file_marked_invalid_not_failed() -> None:
+    # The type/range check runs before the "is this key even present in conf_data" check, so
+    # "Invalid" always wins over "Failed" when a submitted value is both out of range AND the key
+    # has separately gone missing from the file - confirms the deterministic check ordering.
+    mgr, path = _make("invalidbeatsfailed.cfg")
+    try:
+        with open(path) as f:
+            data = json.load(f)
+        del data["Count"]  # simulate the file having lost a key out-of-band
+        with open(path, "w") as f:
+            json.dump(data, f)
+        ok, results = run(mgr.write_config({"Count": 999}, _VAL_INT))  # out of range, and also missing
+        assert ok is True
+        assert results == {"Count": "Invalid"}
+    finally:
+        _remove(path)
+
+
+def test_write_config_wrong_type_value_for_ordinary_bool_field_marked_invalid() -> None:
+    # Same "Invalid" outcome as the already-tested special-only bool field, but for a plain,
+    # non-special bool field - confirms the wrong-type rejection isn't special-sentinel-specific.
+    mgr, path = _make("boolwrongtype.cfg", cfg_vals=_VAL_BOOL)
+    try:
+        ok, results = run(mgr.write_config({"Enabled": 1}, _VAL_BOOL))
+        assert (ok, results) == (True, {"Enabled": "Invalid"})
     finally:
         _remove(path)
 

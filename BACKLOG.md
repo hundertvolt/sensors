@@ -1394,6 +1394,69 @@ above is genuinely underway, but surfaces some new items:
       with a `None`/non-iterable `cfg_vals`, typed getters with `keys=None`, `write_config` with a
       `None`/non-iterable `cfg_vals`) - `scripts/lint.sh`/`scripts/typecheck.sh src tests` clean;
       419 tests passing repo-wide (77+43+29+117+62+45+46).
+    - Follow-up lint failure caught by CI, not local review: a quoted local-variable annotation
+      (`bad_filenames: "list[Any]"` in the new test) tripped ruff's UP037 - quoting is only needed
+      for annotations actually evaluated at runtime (the module-level `ConfigSchema`/`FieldSchema`
+      aliases), never for a plain local variable. The real lesson: the local check that "confirmed"
+      this was clean beforehand had piped `scripts/lint.sh`'s output through a `grep -E
+      "^tests/test_config_manager.py"` anchored at line start, which can never match ruff's actual
+      `--> file:line:col` context-block output format - it silently found nothing every time,
+      regardless of whether there were real findings. Fixed by unquoting the annotation, and by
+      re-verifying with `ruff check <file>` directly on just the touched files (whose "All checks
+      passed!"/nonzero-exit-code output can't be misread the way a grep-filtered log can) for every
+      later verification pass in this file, instead of grepping broad repo-wide lint output.
+  - **Second full review pass over `src/config_manager.py`** (oversights/bugs/strange behavior/
+    untested conditions, beyond the wrong-parameter-type audit above): every function walked again
+    by hand, with ~15 additional candidate edge cases individually probed against the real
+    interpreter before deciding whether each was a real bug, an already-correct-but-untested
+    behavior, or a benign quirk. **None turned out to be an actual bug** - the code was already
+    correct in every case checked - but several were genuine coverage gaps, now closed with 14 new
+    tests:
+    - One candidate looked like it might be a real gap at first: does a malformed `special` value
+      slip past `check_cfg_get_default`'s self-check if the field also has a normal, valid `def`
+      (since the "substitute special in as the default" branch only triggers when `def is None`)?
+      Traced it through and confirmed it's already caught - `type_or_range_error`'s own
+      `val_special`-type check runs unconditionally whenever `special is not None`, independent of
+      whatever `check_val` is being validated, so a malformed special is rejected even while
+      validating an unrelated, perfectly valid default. Different code path from the already-tested
+      "special used as default" case; added a dedicated test for it since it wasn't covered before.
+    - `type_or_range_error`: min/max swapped (an authoring mistake) makes the range check
+      unsatisfiable for every value, not just "genuinely out of range" ones, for both `int` and
+      `str` fields - confirmed, not a crash, just an always-reject field. Also confirmed only one of
+      min/max being wrong-typed (not both, which was already tested) is independently sufficient to
+      reject. Also confirmed the `bool` branch ignores `min`/`max` entirely (no range concept),
+      confirmed `type() is not int` correctly rejects a `bool` value against an `int`-typed field
+      (the reverse direction of the already-tested int-against-bool-field case - avoids the
+      classic `isinstance(True, int) is True` Python gotcha), and confirmed (against this build's
+      real interpreter, not assumed) that `str` length bounds count Unicode codepoints, not UTF-8
+      bytes - `len("café") == 4`, not the encoding's 5 bytes.
+    - `make_dict`: found a second repr()-parsing fragility beyond the already-documented
+      nested-tuple-drops-later-fields quirk - a list-valued field (e.g. `items=[1, 2]`) has a comma
+      *inside* its own repr, which the naive comma-split over `kvpairs` mistakes for a field
+      separator, producing a garbage extra "key" (`"2]"`). `getattr` on that garbage key raises,
+      and the *whole* dict falls back to all-`None` values (not just the corrupted field) - never
+      crashes, same "document, don't silently fix" treatment as the existing nested-tuple quirk.
+    - `name_cfg`: a schema with exactly one field literally named `""` returns the same `""` a
+      malformed/empty schema does - benign ambiguity (real driver code never names a field this
+      way), documented with a test rather than "fixed" (there's nothing to distinguish without
+      changing the return type).
+    - Confirmed `get_int_values`/`get_float_values`/etc. inherit `schema_names`'s duplicate-name-
+      preserving behavior end-to-end: a schema with the same field name twice reads and returns that
+      field's value twice, not deduplicated - and confirmed a mixed multi-field schema where only
+      one field fails its type conversion discards the *entire* result (all-or-nothing), matching
+      `get_dict`'s already-documented "one missing key aborts the whole read" precedent.
+    - `ConfigManager.__init__`: confirmed a schema where every field is special-only (zero storable
+      fields) is still accepted as valid - `len(defaults) != 0` since the field count alone doesn't
+      distinguish "no fields" from "no storable fields" - and results in a valid manager backed by
+      an empty `{}` config file on disk.
+    - `write_config`: confirmed the check ordering - type/range validation happens before the
+      "is this key present in the on-disk file" check - so a value that's simultaneously out of
+      range *and* missing from the file is reported `"Invalid"`, never `"Failed"`. Also added the
+      missing symmetric case for the wrong-type rejection: an ordinary (non-special) `bool` field
+      given a non-bool value is `"Invalid"`, the same as the already-tested special-only bool case.
+    - `scripts/lint.sh`/`scripts/typecheck.sh src tests` clean (verified directly on the touched
+      files this time, not via the grep pattern that failed above); 433 tests passing repo-wide
+      (77+43+29+131+62+45+46).
 
 ## Decided for the refactor
 
