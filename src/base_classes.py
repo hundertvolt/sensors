@@ -1,7 +1,8 @@
 """Shared base classes every other improved-quality/ driver/manager builds on: async-lock-guarded
 objects/buffers (Lockable, LockableBuffer), lock-protected scalars (LockedCounter, LockedFlag,
-LockedValue), and the shared sensor-driver base (SensorReader, SensorReaderConfig) that
-centralizes per-sensor error-count bookkeeping and (optionally) per-sensor JSON config storage.
+LockedValue - a common get_value/set_value shape, each adding its own specialty on top), and the
+shared sensor-driver base (SensorReader, SensorReaderConfig) that centralizes per-sensor
+error-count bookkeeping and (optionally) per-sensor JSON config storage.
 
 Shared contract: every method returns a well-defined value and never raises, except where noted
 per class below.
@@ -63,7 +64,10 @@ class LockableBuffer(Lockable):
         self.data_start = data_start
         data_length = size - data_start if data_length is None else data_length
         self.data_end = data_start + data_length
-        if self.data_end > size:
+        # A negative size/data_start/data_length is a caller mistake, not a hardware fault - guard
+        # it the same way as an oversized region (buf=None) instead of letting bytearray(negative)
+        # raise MemoryError or silently wrapping around to a wrong-offset slice.
+        if size < 0 or data_start < 0 or data_length < 0 or self.data_end > size:
             self.buf = None
         else:
             self.buf = bytearray(size)
@@ -78,51 +82,58 @@ class LockableBuffer(Lockable):
 
 
 class LockedCounter:
-    def __init__(self, init_value: int = 0x00, max_val: int = 0xFF) -> None:
-        self.uptime = init_value
-        self.uptime_lock = asyncio.Lock()
+    def __init__(self, init_value: int | None = 0x00, max_val: int = 0xFF) -> None:
         self.max_val = max_val
+        self.value = self._clamp(init_value)
+        self.value_lock = asyncio.Lock()
 
-    async def set_counter(self, value: int) -> None:
-        async with self.uptime_lock:
-            self.uptime = value if value <= self.max_val else self.max_val
+    def _clamp(self, value: int | None) -> int | None:  # None = "never happened" sentinel; real values clamp into [0, max_val]
+        if value is None:
+            return None
+        return min(max(value, 0), self.max_val)
 
-    async def get_counter(self) -> int:
-        async with self.uptime_lock:
-            ret = self.uptime
+    async def set_value(self, value: int | None) -> None:
+        async with self.value_lock:
+            self.value = self._clamp(value)
+
+    async def get_value(self) -> int | None:
+        async with self.value_lock:
+            ret = self.value
         return ret
 
-    async def increment(self) -> int:
-        async with self.uptime_lock:
-            if self.uptime < self.max_val:
-                self.uptime += 1
-            ret = self.uptime
-        return ret
+    async def increment(self) -> int:  # None counts as 0 - first increment turns "never happened" into a real count
+        async with self.value_lock:
+            current = 0 if self.value is None else self.value
+            if current < self.max_val:
+                current += 1
+            self.value = current
+        return current
 
     async def decrement(self) -> int:
-        async with self.uptime_lock:
-            if self.uptime > 0:
-                self.uptime -= 1
-            ret = self.uptime
-        return ret
+        async with self.value_lock:
+            current = 0 if self.value is None else self.value
+            if current > 0:
+                current -= 1
+            self.value = current
+        return current
 
 
 class LockedFlag:
     def __init__(self, init_value: bool = False) -> None:
-        self.flag = init_value
-        self.flag_lock = asyncio.Lock()
+        self.value = init_value
+        self.value_lock = asyncio.Lock()
 
     async def set_true(self) -> None:
-        async with self.flag_lock:
-            self.flag = True
+        async with self.value_lock:
+            self.value = True
 
     async def set_false(self) -> None:
-        async with self.flag_lock:
-            self.flag = False
+        async with self.value_lock:
+            self.value = False
 
     async def get_value(self) -> bool:
-        async with self.flag_lock:
-            ret = self.flag
+        async with self.value_lock:
+            ret = self.value
         return ret
 
 

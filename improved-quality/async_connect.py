@@ -8,7 +8,8 @@ from asy_udp_socket import AsyUDPSocket
 from captive_dns import DNSServer
 from machine import Pin, Timer, RTC
 from micropython import const
-from async_manager import TimeCounterManager, LockedFlag, ConfigManager
+from async_manager import ConfigManager
+from base_classes import LockedCounter, LockedFlag
 from typing import Tuple
 from collections import namedtuple
 
@@ -58,8 +59,8 @@ class asy_conn_time:
         self.wifi_refresh_sec = wifi_refresh_sec
         self.hotspot_time = 60000 * hotspot_time_min  # convert to ms
         self.conn_fail_to_hotspot = conn_fail_to_hotspot
-        self.wifi_uptime = TimeCounterManager()
-        self.last_ntp_sync = TimeCounterManager(init_value=-1)
+        self.wifi_uptime = LockedCounter(max_val=0xFFFFFFFF)
+        self.last_ntp_sync = LockedCounter(init_value=None, max_val=0xFFFFFFFF)  # None = never synced yet
         self.ntp_sec_count = 0
         self.ntp_retries = 0
         self.ntp_synced = LockedFlag(init_value=False)
@@ -179,19 +180,20 @@ class asy_conn_time:
         return await self.ntp_synced.get_value()
 
     async def get_wifi_uptime(self) -> int:
-        return await self.wifi_uptime.get_counter()
+        value = await self.wifi_uptime.get_value()  # never None: never constructed/set with a None sentinel
+        return 0 if value is None else value
 
     async def ntp_force_sync(self) -> None:
         await self.ntp_synced.set_false()
-        await self.last_ntp_sync.set_counter(-1)
+        await self.last_ntp_sync.set_value(None)
         self.ntp_retry_timer.deinit()
         self.ntp_retries = 0
         self.ntp_sync_trigger_event.set()
         if self.debug:
             print("NTP Force Resync triggered!")
 
-    async def get_last_ntp_sync(self) -> int:
-        return await self.last_ntp_sync.get_counter()
+    async def get_last_ntp_sync(self) -> int | None:  # None = never synced yet
+        return await self.last_ntp_sync.get_value()
 
     async def _flash_led_off(self) -> None:
         while True:
@@ -219,7 +221,7 @@ class asy_conn_time:
             if self.debug:
                 print("Wifi off")
             await asyncio.sleep(1)
-            await self.wifi_uptime.set_counter(0)
+            await self.wifi_uptime.set_value(0)
             self.wlan = network.WLAN(mode)
             if self.debug:
                 print("Wifi mode set")
@@ -511,7 +513,7 @@ class asy_conn_time:
 
     async def asy_ntp_time(self) -> None:  # Funktion: Zeit per NTP holen
         await self.ntp_synced.set_false()
-        await self.last_ntp_sync.set_counter(-1)
+        await self.last_ntp_sync.set_value(None)
         while True:
             await self.ntp_sync_trigger_event.wait()
             if self.debug:
@@ -597,7 +599,7 @@ class asy_conn_time:
                                 print("Received NTP time:", ntp_time)
                             tm = time.gmtime(ntp_time)
                             RTC().datetime((tm[0], tm[1], tm[2], tm[6] + 1, tm[3], tm[4], tm[5], 0))
-                            await self.last_ntp_sync.set_counter(0)
+                            await self.last_ntp_sync.set_value(0)
                             await self.ntp_synced.set_true()
                             if self.debug:
                                 print("RTC set to:", tm)
@@ -662,8 +664,8 @@ class asy_conn_time:
         return None
 
     async def time_counter(self) -> None:
-        await self.wifi_uptime.set_counter(0)
-        await self.last_ntp_sync.set_counter(-1)
+        await self.wifi_uptime.set_value(0)
+        await self.last_ntp_sync.set_value(None)
         while True:
             await self.time_counter_trigger_event.wait()
             await self.wifi_mode_lock.acquire()
@@ -671,7 +673,7 @@ class asy_conn_time:
                 if self.wlan.status() == network.STAT_GOT_IP:
                     await self.wifi_uptime.increment()
                 else:
-                    await self.wifi_uptime.set_counter(0)
+                    await self.wifi_uptime.set_value(0)
             finally:
                 try:
                     self.wifi_mode_lock.release()
@@ -681,4 +683,4 @@ class asy_conn_time:
             if await self.ntp_synced.get_value():
                 await self.last_ntp_sync.increment()
             else:
-                await self.last_ntp_sync.set_counter(-1)
+                await self.last_ntp_sync.set_value(None)

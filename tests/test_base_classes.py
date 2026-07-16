@@ -148,6 +148,24 @@ def test_lockablebuffer_oversized_region_yields_none() -> None:
     assert buf.get_data_buf() is None
 
 
+def test_lockablebuffer_negative_size_yields_none() -> None:
+    buf = LockableBuffer(-1)  # bytearray(-1) would raise MemoryError on real MicroPython if unguarded
+    assert buf.get_buf() is None
+    assert buf.get_data_buf() is None
+
+
+def test_lockablebuffer_negative_data_start_yields_none() -> None:
+    buf = LockableBuffer(10, data_start=-3)  # would otherwise silently wrap to a wrong-offset slice
+    assert buf.get_buf() is None
+    assert buf.get_data_buf() is None
+
+
+def test_lockablebuffer_negative_data_length_yields_none() -> None:
+    buf = LockableBuffer(10, data_start=2, data_length=-5)  # data_end (-3) doesn't trip data_end > size alone
+    assert buf.get_buf() is None
+    assert buf.get_data_buf() is None
+
+
 def test_lockablebuffer_is_still_lockable() -> None:
     buf = LockableBuffer(4)
 
@@ -167,7 +185,7 @@ def test_lockablebuffer_is_still_lockable() -> None:
 
 def test_lockedcounter_defaults() -> None:
     counter = LockedCounter()
-    assert run(counter.get_counter()) == 0
+    assert run(counter.get_value()) == 0
     assert counter.max_val == 0xFF
 
 
@@ -184,12 +202,42 @@ def test_lockedcounter_decrement_floors_at_zero() -> None:
     assert run(counter.decrement()) == 0  # floored, does not go negative
 
 
-def test_lockedcounter_set_counter_clamps_to_max() -> None:
+def test_lockedcounter_set_value_clamps_to_max() -> None:
     counter = LockedCounter(max_val=10)
-    run(counter.set_counter(999))
-    assert run(counter.get_counter()) == 10
-    run(counter.set_counter(3))
-    assert run(counter.get_counter()) == 3
+    run(counter.set_value(999))
+    assert run(counter.get_value()) == 10
+    run(counter.set_value(3))
+    assert run(counter.get_value()) == 3
+
+
+def test_lockedcounter_set_value_clamps_negative_to_zero() -> None:
+    counter = LockedCounter(max_val=10)
+    run(counter.set_value(-7))
+    assert run(counter.get_value()) == 0
+
+
+def test_lockedcounter_init_value_is_clamped_same_as_set_value() -> None:
+    counter = LockedCounter(init_value=999, max_val=10)
+    assert run(counter.get_value()) == 10
+    counter = LockedCounter(init_value=-7, max_val=10)
+    assert run(counter.get_value()) == 0
+
+
+def test_lockedcounter_none_is_a_distinct_never_happened_sentinel() -> None:
+    counter = LockedCounter(init_value=None, max_val=10)
+    assert run(counter.get_value()) is None
+    run(counter.set_value(None))
+    assert run(counter.get_value()) is None
+
+
+def test_lockedcounter_increment_from_none_starts_at_one() -> None:
+    counter = LockedCounter(init_value=None, max_val=10)
+    assert run(counter.increment()) == 1
+
+
+def test_lockedcounter_decrement_from_none_stays_at_zero() -> None:
+    counter = LockedCounter(init_value=None, max_val=10)
+    assert run(counter.decrement()) == 0
 
 
 def test_lockedcounter_concurrent_increments_are_not_lost() -> None:
@@ -199,7 +247,7 @@ def test_lockedcounter_concurrent_increments_are_not_lost() -> None:
         await asyncio.gather(*(counter.increment() for _ in range(50)))
 
     run(scenario())
-    assert run(counter.get_counter()) == 50
+    assert run(counter.get_value()) == 50
 
 
 def test_lockedflag_transitions() -> None:

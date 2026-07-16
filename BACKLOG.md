@@ -1571,6 +1571,84 @@ above is genuinely underway, but surfaces some new items:
     `MP_S_IFDIR` citation, `get_dict`'s cache-lock reasoning, `write_config`'s sentinel-validation
     note — each previously 3-7 lines) trimmed to 2 lines each. Pure documentation change, verified
     via `ruff`/`mypy`/the full suite — 435/435 tests still passing, zero behavior change.
+  - **`src/README.md` checklist review pass over `base_classes.py`, one real bug found and fixed,
+    plus a `Locked*`-family harmonization** (approved by the project owner):
+    - **Real bug**: `LockableBuffer.__init__` only guarded `data_end > size`; a negative `size`,
+      `data_start`, or `data_length` wasn't checked at all. Confirmed directly against the real
+      MicroPython Unix-port interpreter that `bytearray(-1)` doesn't raise `ValueError` like CPython
+      but `MemoryError` (negative wraps to a huge unsigned allocation request) — a negative `size`
+      reached `bytearray(size)` uncaught. A negative `data_start`/`data_length` that individually
+      goes negative without tripping `data_end > size` (e.g. `data_start=2, data_length=-5` on
+      `size=10`) didn't crash either — Python's negative-index slice wraparound silently returned a
+      wrong-offset, wrong-length slice instead of `None`. Fixed by guarding all three for negative
+      values the same way `data_end > size` already was (→ `self.buf = None`), matching the file's
+      own "never raises" contract. All real call sites (`asy_fram_manager.py`'s chunk buffer
+      classes) only ever pass non-negative literals, so this never fired in practice, but the class
+      is meant to be a safe generic primitive with zero prior test coverage for negative input.
+    - **`LockedCounter`/`LockedFlag`/`LockedValue` harmonized to a common `get_value`/`set_value`
+      shape** (previously `LockedCounter` alone used `get_counter`/`set_counter`), each still adding
+      its own specialty on top (`LockedCounter`: `increment`/`decrement`; `LockedFlag`:
+      `set_true`/`set_false`). Internal field names also unified to `self.value`/`self.value_lock`
+      across all three (`LockedFlag` previously used `self.flag`/`self.flag_lock` — confirmed no
+      external code read these fields directly before renaming). True inheritance-based
+      deduplication was considered and rejected: MicroPython has no `typing.Generic` at runtime (see
+      "Typing" below), and the three classes' value domains genuinely differ (`int | None` for
+      `LockedCounter`, `bool` for `LockedFlag`, `int | float` for `LockedValue`), so a shared base
+      class's `set_value`/`get_value` signature can't be narrowed in a subclass without violating
+      Liskov substitutability — confirmed this isn't just theoretical: broadening `LockedValue`'s
+      type to cover all three would have introduced a real new mypy error at its one existing
+      caller (`asy_bmp3xx_driver.py`'s `trigger_period`, compared against a plain `int`). Three
+      small, independently-typed classes sharing only a naming convention is the correct outcome
+      here, not an unfinished consolidation.
+    - **`LockedCounter`'s "never happened" sentinel changed from a magic `-1` to `None`, with
+      correct `[0, max_val]` clamping restored end to end**: `set_counter`'s old asymmetric clamp
+      (upper bound only, never floored at 0) turned out to be intentional, not an oversight — traced
+      to `base_classes_old.py`/`python/CommonDrivers/async_manager.py`'s `TimeCounterManager` (the
+      pre-refactor class `LockedCounter` is meant to replace), whose identical asymmetry is actively
+      relied on by `improved-quality/async_connect.py`'s `last_ntp_sync.set_counter(-1)` ("never
+      synced yet"). Rather than leave that quirk as an undocumented trap for a future "fix," replaced
+      the magic `-1` with an explicit `None`, which also lets `set_value`'s clamp become fully
+      symmetric (`[0, max_val]`) with no special case. `increment`/`decrement` treat a `None` value
+      as `0` (first `increment()` turns "never happened" into a real count starting at 1).
+      `__init__`'s failure to apply the same clamp as `set_value` (so an out-of-range `init_value`
+      would sit unclamped until the first `set_value`/`increment`/`decrement` call) was confirmed to
+      be a genuine oversight, not relied on anywhere (`system_service.py`'s `LockedCounter(max_val=
+      0xFFFFFFFF)` never passes `init_value`; no other call site did either) — fixed by clamping in
+      `__init__` too.
+    - **Every real consumer of the old `-1`/unbounded-cap pattern migrated, not just `base_classes.py`
+      itself** (the project owner explicitly authorized touching these otherwise-out-of-scope
+      `improved-quality/` files for this, without moving them into `src/`): `async_connect.py`'s
+      `wifi_uptime`/`last_ntp_sync` and `ntp_synced` moved off the old `async_manager.TimeCounterManager`/
+      `LockedFlag` onto the new `base_classes.LockedCounter`/`LockedFlag` (`ConfigManager` stays
+      imported from `async_manager` unchanged — that migration is separate, out of scope here);
+      `get_last_ntp_sync()`'s return type changed from `int` (magic `-1`) to `int | None` (real
+      `None`), which is also a strictly better REST contract (JSON `null` needs no magic-number
+      convention on the client side). `neopixel_signal.py`'s `override_secs` migrated the same way,
+      which also let `set_override_led`'s hand-rolled 3-way clamp collapse into a single `set_value`
+      call (`LockedCounter` now clamps itself). `sensortask-wozi.py`'s `task_error_counter` migrated
+      too (was `TimeCounterManager()`'s implicit ~50-year cap; now explicit `max_val=0xFFFFFFFF`,
+      matching `system_service.py`'s own established convention for practically-unbounded counters).
+      Every migrated `get_*` accessor whose value is known to never actually be `None` (`wifi_uptime`,
+      `override_secs`, `system_service.py`'s `uptime`, `task_error_counter`) keeps its public `-> int`
+      return type via a one-line `0 if value is None else value` coercion, rather than leaking the
+      generic `int | None` outward where callers don't need it.
+    - **Found but deliberately not touched**: `sensortask-wozi.py`'s `last_task_err = LockedValue(-1)`
+      is the exact same "-1 as never-happened sentinel" idiom, one level over in a different class.
+      Converting it to `None` the same way would require broadening `LockedValue`'s type to
+      `int | float | None` — which (per the rejected-inheritance point above) breaks
+      `asy_bmp3xx_driver.py`'s `trigger_period` comparison against a plain `int`. Flagged rather than
+      silently fixed or silently left inconsistent; needs a decision (e.g. a separate narrow
+      `LockedValue[int | None]`-shaped instance type, or leaving `LockedValue` as-is and accepting the
+      `-1` convention there) before touching it.
+    - Verified via `ruff`, `scripts/typecheck.sh src tests` (18 files clean), and the full suite
+      (443/443, +8 new tests: 4 for `LockableBuffer`'s negative-input guard, 4 for `LockedCounter`'s
+      `None` sentinel/clamp behavior). Also diffed `scripts/typecheck.sh`'s unscoped
+      `improved-quality`-inclusive run before/after touching the four `improved-quality/` consumer
+      files: 149 → 145 errors, a net *improvement* — three `Any`-returning accessors
+      (`async_connect.py`'s `ntp_issynced`/`get_wifi_uptime`/`get_last_ntp_sync`) picked up real
+      types for free from the old classes' untyped `async_manager.py`/`base_classes_old.py`
+      equivalents, not something introduced deliberately; every other line-number shift in the diff
+      matched an unrelated pre-existing error 1:1, confirming no regression.
 
 ## Decided for the refactor
 

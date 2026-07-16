@@ -101,7 +101,8 @@ class SystemService:
                 )
 
     async def get_uptime(self) -> int:
-        return await self.uptime.get_counter()
+        value = await self.uptime.get_value()  # never None: only ever set_value(0)/increment(), never a None sentinel
+        return 0 if value is None else value
 
     async def get_boot_signature(self) -> int:
         # unique number. UTC timestamp if NTP synced, random number otherwise after wait time# unique number.
@@ -110,7 +111,7 @@ class SystemService:
         return int(res)
 
     async def status_counter(self) -> None:
-        await self.uptime.set_counter(0)
+        await self.uptime.set_value(0)
         await self.boot_signature.set_value(-1)
         while True:
             await self.uptime_event.wait()
