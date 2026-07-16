@@ -20,9 +20,10 @@ permanently-nonfunctional driver that then degrades every later call to None.
 import asyncio
 import struct
 
-from base_classes import Lockable
 from machine import I2C as _I2C
 from machine import Pin
+
+from base_classes import Lockable
 
 
 class I2C:
