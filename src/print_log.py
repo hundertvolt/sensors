@@ -1,46 +1,9 @@
-"""Leveled console logging (PrintLog) plus a bounded in-memory error/warning history
-(PrintLogHistory) and its optional FRAM-backed persistence (PrintLogHistStore), so a history of
-recent error/warning codes survives a reboot (see base_classes.py's SensorReader, which uses
-PrintLogHistStore only when constructed with a real fram, and PrintLogHistory's pure in-memory
-behavior otherwise).
+"""Leveled console logging (PrintLog), a bounded in-memory error/warning history (PrintLogHistory),
+and its optional FRAM-backed persistence (PrintLogHistStore), surviving a reboot.
 
-Shared contract: every method here returns a well-defined value and never raises - err_s()/wrn_s()
-both persist the error/warning code (in memory, and in FRAM for the Store variant) and still
-print() it; logging is additive to the existing console output, not a replacement for it.
-PrintLogHistStore's every FRAM-touching call (get_chunk() in __init__, get_buffer()/write_into()/
-read_into() in _write()/_read()) is wrapped broadly on purpose, since asy_fram_manager.py isn't
-itself promoted/audited yet (see BACKLOG.md) and offers no narrower documented failure contract to
-catch selectively - an unexpected raise there degrades to the same "operation failed" return every
-other caller here already handles (a None chunk, or _write()/_read() returning False), rather than
-propagating.
-
-PrintLogHistStore's FRAM-touching _write()/_read() are exercised by tests/test_print_log.py against
-tests/_fram_mock.py, a fake standing in for the narrow slice of asy_fram_manager.AsyFramManager's
-API this file actually calls (get_chunk(), then get_buffer()/write_into()/read_into() on the chunk
-it returns) - not the real asy_fram_manager.py, which hasn't itself cleared the src/ promotion
-checklist yet (see BACKLOG.md), and whose actual allocator/CRC/dual-copy-redundancy machinery this
-mock does not attempt to reproduce. The mock can also simulate every FRAM failure mode this file
-guards against (raises, hardware-reported False) - see tests/_fram_mock.py's own docstring.
-
-PrintLogHistory/PrintLogHistStore's "initialized" guard in _store_err()/reset(): the *return* on
-"not initialized yet" must never depend on self.level - only whether the diagnostic print fires
-does. This matters specifically for PrintLogHistStore: err_s()/wrn_s()/reset() called before
-setup() has actually loaded (or established) the persisted state must never fall through to
-_write(), or it would stomp real FRAM-persisted history with a freshly-constructed, not-yet-loaded
-in-memory default. (PrintLogHistory's own _write() is a no-op returning True regardless, so this
-only has a visible effect on the Store subclass - but the guard lives in the shared base method,
-so it must hold unconditionally.)
-
-PrintLogHistStore's on-the-wire struct format uses an explicit "<" (little-endian, no padding)
-prefix rather than a bare "H"/"B"*n format. Confirmed directly against the MicroPython 1.28.0 docs
-and the real Unix-port interpreter: a format string with *no* byte-order character defaults to "@"
-(native byte order *and* native alignment/padding) here, not "<" - unlike what CPython's own docs
-might suggest at a glance, and easy to miss since MicroPython's struct docs mostly describe
-themselves as "a subset of CPython's". For this file's specific field order (one "H" first, then
-all "B"s) the two happen to produce identical layouts - "H" is always aligned at offset 0, and "B"
-fields need no alignment - so this was never an actual bug, but relying on that coincidence was
-fragile: reordering the fields under the old bare format would have silently changed the on-disk
-layout via inserted padding. The explicit "<" removes that dependency entirely.
+Contract: every method returns a well-defined value and never raises. PrintLogHistStore's FRAM
+calls are wrapped broadly since asy_fram_manager.py isn't itself audited yet (see BACKLOG.md);
+tests/_fram_mock.py mocks that boundary and every failure mode.
 """
 
 import struct
@@ -61,23 +24,12 @@ if TYPE_CHECKING:
     from base_classes import LockableBuffer
     from crc_checks import CRC_Base
 
-    # PrintLogHistStore only ever calls fram.get_chunk() and, on the chunk it gets back,
-    # get_buffer()/write_into()/read_into() - not the full asy_fram_manager.AsyFramManager API.
-    # Protocols express that narrower real dependency directly, instead of naming the concrete
-    # AsyFramManager/AsyFramChunk classes (which would also drag in asy_fram_manager.py, itself not
-    # promoted to src/ yet - see BACKLOG.md) - and let tests/_fram_mock.py's fake satisfy the type
-    # by having the right shape, with no inheritance relationship to the real classes required.
-    # get_buffer()'s return reuses the real, already-promoted LockableBuffer (base_classes.py) - both
-    # AsyFramChunkBuffer (real) and tests/_fram_mock.py's mock buffer are-a LockableBuffer, so no
-    # separate duck-type protocol is needed just to describe get_buf()/get_data_buf() again.
+    # Narrow structural Protocols for the FRAM slice this file actually calls, avoiding a hard
+    # dependency on asy_fram_manager.py (not yet promoted to src/ - see BACKLOG.md).
     class _FramChunk(Protocol):
         def get_buffer(self) -> "LockableBuffer": ...
-        # buf is always whatever this same chunk's own get_buffer() just returned, fed straight
-        # back in - real AsyFramChunk/tests/_fram_mock.py's _MockFramChunk each narrow this to
-        # their own concrete buffer subtype, which is fine for get_buffer()'s covariant return but
-        # would make write_into()/read_into()'s parameter contravariantly incompatible with a
-        # shared LockableBuffer protocol type here; Any sidesteps that mismatch since this file
-        # never inspects buf itself, only round-trips it.
+        # Any: real chunk classes narrow buf's type in a way that's contravariantly incompatible
+        # with a shared Protocol type here; this file only round-trips buf, never inspects it.
         async def write_into(self, buf: "Any", override_pause: bool = False) -> bool: ...
         async def read_into(self, buf: "Any", override_pause: bool = False) -> bool: ...
 
@@ -169,9 +121,8 @@ class PrintLog:
 class PrintLogHistory(PrintLog):
     def __init__(self, history_length: int = 10, level: int | None = None) -> None:
         super().__init__(level=level)
-        # deque(maxlen=...) raises ValueError on a negative maxlen (confirmed directly against the
-        # real MicroPython Unix-port interpreter) - clamp instead of propagating, matching
-        # set_level()'s own "clamp, don't reject" convention for out-of-range int input.
+        # deque(maxlen=...) raises ValueError on a negative maxlen - clamp instead of propagating,
+        # matching set_level()'s own "clamp, don't reject" convention.
         history_length = max(history_length, 0)
         self.history = deque([_NO_ERR] * history_length, history_length)
         self.err_count = 0
@@ -191,10 +142,8 @@ class PrintLogHistory(PrintLog):
             print(*args)
 
     async def _store_err(self, min_e: int, max_e: int, errno: int) -> None:
-        # errno<=_NO_ERR (0) is the shared "nothing to record" sentinel for both err_s() (min_e=0)
-        # and wrn_s() (min_e=_NO_WRN); a real code is shifted by min_e into its own sub-range only
-        # once past that check, which is why the comparison below is always against the plain
-        # _NO_ERR constant rather than min_e itself.
+        # errno<=_NO_ERR (0) is the shared "nothing to record" sentinel for err_s()/wrn_s() alike;
+        # a real code is only shifted into its own sub-range by min_e past this check.
         if self.err_count < _MAX_CNT:
             self.err_count += 1
         else:
@@ -207,9 +156,7 @@ class PrintLogHistory(PrintLog):
         else:
             self._diag("PrintLog: Error number", errno - min_e, "is invalid!")
         if not self.initialized:
-            # The return must not depend on self.level: this guards against writing a stale
-            # in-memory history to FRAM before setup()'s own _read() has loaded the persisted
-            # state, regardless of whether the diagnostic print below is enabled.
+            # Return regardless of logging level - don't write stale state to FRAM before setup().
             self._diag("PrintLog: Uninitialized, call setup first!")
             return
         if not await self._write():
@@ -236,9 +183,8 @@ class PrintLogHistory(PrintLog):
             self._diag("PrintLog: History reset write failed!")
 
     async def get_log(self, name: str) -> dict[str, dict[str, int | list[int] | list[str]]]:
-        # Reverses _store_err()'s encoding: 0x00/0x80 are the "nothing recorded" sentinels, 0x01-0x7F
-        # are error codes (shifted back by _NO_ERR, a no-op), 0x81-0xFF are warning codes (shifted
-        # back by _NO_WRN).
+        # Reverses _store_err()'s encoding: 0x00/0x80 are "nothing recorded"; else shift back by
+        # _NO_ERR/_NO_WRN to recover the original error/warning code.
         err_num = []
         err_type = []
         for errno in self.history:
