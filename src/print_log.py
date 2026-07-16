@@ -21,6 +21,15 @@ it returns) - not the real asy_fram_manager.py, which hasn't itself cleared the 
 checklist yet (see BACKLOG.md), and whose actual allocator/CRC/dual-copy-redundancy machinery this
 mock does not attempt to reproduce. The mock can also simulate every FRAM failure mode this file
 guards against (raises, hardware-reported False) - see tests/_fram_mock.py's own docstring.
+
+PrintLogHistory/PrintLogHistStore's "initialized" guard in _store_err()/reset(): the *return* on
+"not initialized yet" must never depend on self.level - only whether the diagnostic print fires
+does. This matters specifically for PrintLogHistStore: err_s()/wrn_s()/reset() called before
+setup() has actually loaded (or established) the persisted state must never fall through to
+_write(), or it would stomp real FRAM-persisted history with a freshly-constructed, not-yet-loaded
+in-memory default. (PrintLogHistory's own _write() is a no-op returning True regardless, so this
+only has a visible effect on the Store subclass - but the guard lives in the shared base method,
+so it must hold unconditionally.)
 """
 
 import struct
@@ -149,6 +158,10 @@ class PrintLog:
 class PrintLogHistory(PrintLog):
     def __init__(self, history_length: int = 10, level: int | None = None) -> None:
         super().__init__(level=level)
+        # deque(maxlen=...) raises ValueError on a negative maxlen (confirmed directly against the
+        # real MicroPython Unix-port interpreter) - clamp instead of propagating, matching
+        # set_level()'s own "clamp, don't reject" convention for out-of-range int input.
+        history_length = max(history_length, 0)
         self.history = deque([_NO_ERR] * history_length, history_length)
         self.err_count = 0
         self.initialized = False
@@ -174,8 +187,12 @@ class PrintLogHistory(PrintLog):
             self.history.append(errno)
         elif self.level > _LOG_OFF:
             print("PrintLog: Error number", errno - min_e, "is invalid!")
-        if not self.initialized and self.level > _LOG_OFF:
-            print("PrintLog: Uninitialized, call setup first!")
+        if not self.initialized:
+            # The return must not depend on self.level: this guards against writing a stale
+            # in-memory history to FRAM before setup()'s own _read() has loaded the persisted
+            # state, regardless of whether the diagnostic print below is enabled.
+            if self.level > _LOG_OFF:
+                print("PrintLog: Uninitialized, call setup first!")
             return
         if not await self._write() and self.level > _LOG_OFF:
             print("PrintLog: History write failed!")
@@ -193,8 +210,10 @@ class PrintLogHistory(PrintLog):
     async def reset(self) -> None:
         self.history.extend([_NO_ERR] * len(self.history))
         self.err_count = 0
-        if not self.initialized and self.level > _LOG_OFF:
-            print("PrintLog: Uninitialized, call setup first!")
+        if not self.initialized:
+            # Same "return regardless of self.level" reasoning as _store_err() above.
+            if self.level > _LOG_OFF:
+                print("PrintLog: Uninitialized, call setup first!")
             return
         if not await self._write() and self.level > _LOG_OFF:
             print("PrintLog: History reset write failed!")

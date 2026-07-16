@@ -1006,6 +1006,49 @@ above is genuinely underway, but surfaces some new items:
     is gone; the unscoped `ruff check improved-quality src tests` finding count dropped from 317 to
     265 - entirely attributable to these three files' lines leaving `improved-quality/`'s scan, not
     to any fix within `improved-quality/` itself.
+  - **A second, requested-directly re-review pass on `print_log.py`** ("any oversights, bugs,
+    strange or unexpected behaviors, uncaught exceptions or conditions with yet no unit test")
+    found and fixed two more real gaps, neither an exception this time - both logic bugs:
+    - **Real bug: `_store_err()`/`reset()`'s "not initialized yet" guard's `return` was
+      conditioned on `self.level`, not just on `self.initialized`.** The code read
+      `if not self.initialized and self.level > _LOG_OFF: print(...); return` - a single `if`, so
+      with logging *off* (`self.level == _LOG_OFF`, the common production default) the condition
+      is `False` even when genuinely uninitialized, and execution fell through to `_write()`
+      anyway. For `PrintLogHistory` this is harmless (`_write()` is a no-op returning `True`), but
+      for `PrintLogHistStore` it meant calling `err_s()`/`wrn_s()`/`reset()` before `setup()` had
+      loaded (or established) the persisted state would silently overwrite real FRAM-persisted
+      history with a freshly-constructed, not-yet-loaded in-memory default - exactly backwards from
+      the guard's own intent, and only masked by logging being off. Confirmed reachable in this
+      repo's own real caller: `base_classes.py`'s `SensorReader.__init__` never calls
+      `self.pr.setup()` itself (by design - `__init__` can't be `async`); the required call lives in
+      each sensor driver's own async setup routine (e.g.
+      `improved-quality/asy_sgp40_driver.py:113`'s `await self.pr.setup()  # required for all logged
+      warnings and errors`) - a driver author forgetting that call would previously have failed
+      silently whenever `level` was off instead of every time, an inconsistent, log-level-dependent
+      failure mode. Fixed by splitting the `return` out from the `print`, so the guard now always
+      returns when uninitialized regardless of `self.level`; only the diagnostic message is
+      level-gated. Verified directly against the mock FRAM backing (`manager.backing._written_offsets`
+      stays empty across an unset-up `err_s()`/`reset()` call, where it previously gained an entry).
+    - **Real bug: `PrintLogHistory.__init__` didn't clamp `history_length`.** A negative value (a
+      valid `int`, so within what `set_level()`'s own "clamp, don't reject" convention elsewhere in
+      this same file already treats as normal input) reaches `deque([_NO_ERR] * history_length,
+      history_length)` - confirmed directly against the real MicroPython Unix-port interpreter that
+      a negative `maxlen` raises `ValueError` there (`deque([], -1)` also raises), breaking the
+      constructor for a typed-valid input the file's own sibling method already knows how to handle
+      gracefully. Fixed by clamping `history_length = max(history_length, 0)` before first use,
+      matching `set_level()`'s convention.
+    - **6 new tests** (39 -> 45 in `tests/test_print_log.py`; 335 -> 341 repo-wide): a
+      negative-`history_length`-is-clamped test; an `err_s()`/`reset()`-before-`setup()`-with-
+      logging-off test at the `PrintLogHistory` level (in-memory counting/recording still happens);
+      the same two scenarios again at the `PrintLogHistStore` level, asserting nothing reaches the
+      mocked FRAM backing; and a `history_length=0` construction test through the full FRAM
+      write/read round-trip (confirmed directly this doesn't crash `get_buffer()`/`pack_into`/
+      `unpack_from` at either end - the struct format collapses to just `"H"`).
+    - No other uncaught-exception or untested-branch gaps found on this pass: re-walked every
+      method again (`PrintLog`'s five logging methods, `set_level`, `PrintLogHistory`'s `setup`/
+      `_store_err`/`err_s`/`wrn_s`/`reset`/`get_log`, `PrintLogHistStore`'s `__init__`/`setup`/
+      `_write`/`_read`) against both normal and boundary/malformed-but-typed input; nothing else
+      surfaced.
 
 ## Decided for the refactor
 

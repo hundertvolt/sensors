@@ -197,6 +197,36 @@ def test_history_length_zero_never_records_but_still_counts() -> None:
     assert list(hist.history) == []
 
 
+def test_history_length_negative_is_clamped_to_zero_not_a_raise() -> None:
+    # deque(maxlen=...) raises ValueError on a negative maxlen (confirmed directly against the real
+    # MicroPython interpreter) - a typed-valid but unusual int input the constructor must clamp
+    # rather than propagate, matching set_level()'s own clamping convention.
+    hist = PrintLogHistory(history_length=-5)
+    assert list(hist.history) == []
+    run(hist.err_s("e", errno=1))
+    assert hist.err_count == 1
+
+
+def test_err_s_before_setup_does_not_write_even_with_logging_off() -> None:
+    # The "not initialized" guard's *return* must not depend on self.level - only the diagnostic
+    # print does. PrintLogHistory's own _write() is a no-op either way, but this pins the contract
+    # down at the base-class level too (PrintLogHistStore's own FRAM-visible version follows below).
+    hist = PrintLogHistory(history_length=4, level=PrintLog.level_off())
+    assert hist.initialized is False
+    run(hist.err_s("e", errno=1))
+    assert hist.err_count == 1  # counting still happens
+    assert list(hist.history)[-1] == 1  # in-memory recording still happens
+
+
+def test_reset_before_setup_does_not_write_even_with_logging_off() -> None:
+    hist = PrintLogHistory(history_length=3, level=PrintLog.level_off())
+    run(hist.err_s("e", errno=1))
+    assert hist.initialized is False
+    run(hist.reset())
+    assert hist.err_count == 0
+    assert list(hist.history) == [0, 0, 0]
+
+
 # ---------------------------------------------------------------------------
 # PrintLogHistStore - FRAM-backed persistence, against a mocked FRAM API
 # (tests/_fram_mock.py - see BACKLOG.md for why the real asy_fram_manager.py isn't used here yet)
@@ -239,6 +269,41 @@ def test_printloghiststore_err_s_persists_and_survives_a_simulated_reboot() -> N
     run(rebooted_store.setup())
     assert rebooted_store.err_count == 1
     assert list(rebooted_store.history)[-1] == 3
+
+
+def test_printloghiststore_err_s_before_setup_does_not_touch_fram() -> None:
+    # Regression test for a real bug: _store_err()'s "not initialized" guard used to only return
+    # early when self.level > _LOG_OFF, so with logging off (the common production case) calling
+    # err_s() before setup() had loaded (or established) the persisted state fell through to
+    # _write() anyway - overwriting real FRAM-persisted history with a freshly-constructed,
+    # not-yet-loaded default. Fixed so the return no longer depends on self.level.
+    manager = MockAsyFramManager()
+    store = PrintLogHistStore(manager, history_length=4, level=None)  # level=None -> _LOG_OFF
+    assert store.initialized is False
+    run(store.err_s("boom", errno=3))
+    assert store.err_count == 1  # in-memory state still updates
+    assert manager.backing._written_offsets == set()  # but nothing was ever written to FRAM
+
+
+def test_printloghiststore_reset_before_setup_does_not_touch_fram() -> None:
+    manager = MockAsyFramManager()
+    store = PrintLogHistStore(manager, history_length=4, level=None)
+    assert store.initialized is False
+    run(store.reset())
+    assert manager.backing._written_offsets == set()
+
+
+def test_printloghiststore_zero_length_history_survives_write_and_read() -> None:
+    # An unusual but typed-valid construction (struct format collapses to just "H") - confirmed
+    # directly this doesn't crash get_buffer()/pack_into/unpack_from at either end.
+    manager = MockAsyFramManager()
+    store = PrintLogHistStore(manager, history_length=0)
+    run(store.setup())
+    assert store.initialized is True
+    run(store.err_s("e", errno=1))
+    assert store.err_count == 1
+    assert list(store.history) == []
+    assert run(store._read()) is True
 
 
 def test_printloghiststore_reset_persists_cleared_state_across_a_reboot() -> None:
