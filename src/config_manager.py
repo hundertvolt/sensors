@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 from print_log import PrintLog
 
 
-def str_cfg(str_in: str) -> "list[str]":  # extract field names from a "|...||...|"-wrapped schema string
+def str_cfg(str_in: str) -> "list[str]":  # extract field names from a "|...||...|"-wrapped schema string; assumes "||" never occurs inside a field's own value
     try:
         if len(str_in) < 2 or str_in[0] != "|" or str_in[-1] != "|":
             return []
@@ -56,7 +56,7 @@ def cfg_from_str(cfg_vals: str) -> "dict[str, dict[str, int | float | str | bool
     return {}
 
 
-def make_dict(nt: "NamedTuple") -> "dict[str, dict[str, int | float | str | None]]":  # turn a measurement/data namedtuple into a {type_name: {field: value}} dict, via its own repr()
+def make_dict(nt: "NamedTuple") -> "dict[str, dict[str, int | float | str | None]]":  # {type_name: {field: value}} via repr() - MicroPython namedtuples have no _fields/_asdict()
     try:
         [name, kvpairs] = repr(nt).split("(")[0:2]
         keys = [c.split("=")[0].strip() for c in kvpairs.replace(")", "").split(",")]
@@ -289,10 +289,9 @@ class ConfigManager:
         values = await self._get_values(keys)
         if values is None:
             return None
-        try:
-            return [bool(v) for v in values]
-        except (TypeError, ValueError):
+        if any(not isinstance(v, bool) for v in values):  # bool(v) never raises, unlike int()/float()/str() - must reject wrong types explicitly
             return None
+        return values
 
     async def write_config(
         self, data: "dict[str, int | float | str | bool | None]", cfg_vals: str

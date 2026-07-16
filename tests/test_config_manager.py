@@ -338,6 +338,34 @@ def test_get_int_values_conversion_failure_returns_none() -> None:
         _remove(path)
 
 
+def test_get_float_values_conversion_failure_returns_none() -> None:
+    mgr, path = _make("badconvertfloat.cfg")
+    try:
+        assert run(mgr.get_float_values(_VAL_STR)) is None  # float("abc") can't convert
+    finally:
+        _remove(path)
+
+
+def test_get_str_values_accepts_any_value() -> None:
+    mgr, path = _make("strconvert.cfg")
+    try:
+        assert run(mgr.get_str_values(_VAL_INT)) == ["5"]  # str(v) never fails, unlike int()/float()
+    finally:
+        _remove(path)
+
+
+def test_get_bool_values_wrong_stored_type_returns_none() -> None:
+    # bool(v) never raises (unlike int()/float()/str()), so a corrupted/wrong-typed on-disk value
+    # must be rejected by explicit isinstance check instead of relying on a conversion exception.
+    mgr, path = _make("badconvertbool.cfg")
+    try:
+        with open(path, "w") as f:
+            json.dump({"Count": 5, "Offset": 1.5, "Name": "abc", "Enabled": "notabool"}, f)
+        assert run(mgr.get_bool_values(_VAL_BOOL)) is None
+    finally:
+        _remove(path)
+
+
 # ---------------------------------------------------------------------------
 # write_config
 # ---------------------------------------------------------------------------

@@ -1094,6 +1094,51 @@ above is genuinely underway, but surfaces some new items:
       explicit byte-order layout above. Every other section of the checklist (0, 2-3, 5-6, 9-14)
       was re-checked against the current file and confirmed already satisfied - typing, exception-
       safety, non-blocking behavior, and test coverage needed no further changes this pass.
+  - **A paragraph-by-paragraph pass validating `config_manager.py` against `src/README.md`'s full
+    checklist** surfaced one real bug (section 2/10) and confirmed several suspects as non-issues:
+    - **Real finding: `get_bool_values()`'s conversion-failure detection was silently broken.**
+      `get_int_values`/`get_float_values`/`get_str_values` all rely on `int()`/`float()`/`str()`
+      raising on a genuinely wrong-typed stored value, caught by the surrounding `try/except` to
+      return `None` - but `bool(v)` **never raises for any input** (`bool("notabool")` is `True`,
+      no exception), so a corrupted/wrong-typed on-disk value for a `bool` field (e.g. from a
+      partial write) silently coerced to `True`/`False` instead of correctly signaling invalid data
+      like its three siblings. Fixed by replacing the `bool(v)` comprehension with an explicit
+      `isinstance(v, bool)` guard clause (no `try` needed - `isinstance` can't raise, matching
+      section 11's preferred guard-clause-over-try shape) that rejects the whole read if any stored
+      value isn't actually a `bool`. Zero behavior change for any correctly-typed value already in
+      a config file - only the previously-mishandled corruption case changes, from silent wrong data
+      to the correctly-signaled `None`.
+    - **Confirmed, not assumed: `make_dict()`'s repr()-string parsing is the *only* option here, not
+      an avoidable hack.** Tested directly against the real MicroPython Unix-port interpreter:
+      `namedtuple` instances have neither `_fields` nor `_asdict()` (both raise `AttributeError`) on
+      MicroPython, unlike CPython - so parsing `repr(nt)` for field names is required, not a fragile
+      shortcut that should be replaced.
+    - **Confirmed, not assumed: local variable annotations referencing `TYPE_CHECKING`-only names
+      are safe unquoted at runtime.** `data: dict[str, Any] | None = ...` and
+      `dict_results: WriteValidity = ...` both reference names that only exist when `TYPE_CHECKING`
+      is `True` (always `False` at runtime) - verified directly on the real interpreter that
+      MicroPython does not evaluate local variable annotations at runtime (unlike CPython's module/
+      class-level annotations), so this doesn't raise `NameError`, extending section 6's existing
+      "annotations aren't evaluated" finding (previously confirmed only for parameter/return
+      position) to local variable annotations too.
+    - **Considered and ruled out as non-issues**: `type_or_range_error`'s `bool` branch has no
+      `special`-sentinel handling, unlike `int`/`float`/`str` - looked like an inconsistency, but
+      `special` exists to bypass an otherwise-enforced min/max range, and a 2-valued `bool` has no
+      "outside the range" concept to escape, so this is architecturally sound (and unreached by any
+      current driver schema: only `asy_scd30_driver.py`'s `SelfCal` bool field exists, with
+      `special: null`). Also considered `ConfigManager.__init__`'s `json.dump` catching only
+      `OSError` while `write_config`'s catches `(OSError, ValueError)` for the same underlying call
+      - not a gap: `write_config`'s broader tuple is there because `json.load` shares that function's
+      *same* try block, while `__init__`'s write-only try block genuinely only needs `OSError`.
+    - **Documented two inherent quirks with a one-line comment each (section 1's "document, don't
+      silently fix" for a non-bug quirk), previously unstated**: `str_cfg`/`cfg_from_str`'s schema
+      parsing assumes `"||"` never appears inside a field's own value (true for every current driver
+      schema); `make_dict`'s repr-parsing assumes no field's own `repr()` contains `"("` (true while
+      every real namedtuple field is a scalar).
+    - Added 3 new tests (40 -> 43 in `tests/test_config_manager.py`; 342 -> 345 repo-wide): a
+      regression test for the `get_bool_values` fix (a corrupted-on-disk-type case correctly returns
+      `None`), plus `get_float_values`/`get_str_values` conversion-failure-path parity tests that
+      `get_int_values` already had but its siblings didn't.
 
 ## Decided for the refactor
 
