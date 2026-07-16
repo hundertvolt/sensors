@@ -1189,17 +1189,25 @@ above is genuinely underway, but surfaces some new items:
       that had drifted to an invalid type self-healing back to valid once a good value is written
       through it, and the file being corrupted after a valid `ConfigManager` already exists (as
       opposed to a bad file at construction time).
-    - **One real gap surfaced, flagged rather than silently fixed (genuinely ambiguous, not a
-      clear single-function bug)**: `write_config`'s special-only-key branch (`if not use_value:
-      dict_results[key] = "Valid"; continue`) never calls `type_or_range_error` on the submitted
-      value at all, unlike every normally-stored key - so a caller writing e.g.
-      `{"Special": "not even an int"}` for a special-only field gets back `"Valid"` unconditionally,
-      with no indication the value was nonsensical for that field's declared type. Pinned with
-      `test_write_config_special_only_value_skips_type_validation_quirk`. Not fixed here: whether a
-      special-only value *should* be type/range-checked even though it's never persisted depends on
-      how a future caller (`api_helpers.py`'s REST pipeline, not yet promoted to `src/` and still
-      using the old pre-refactor `ConfigManager`) is meant to interpret that "Valid" status for a
-      command-only key - needs the project owner's input, not a guess.
+    - **One real gap surfaced, then resolved with the project owner's explicit input**:
+      `write_config`'s special-only-key branch (`if not use_value: dict_results[key] = "Valid";
+      continue`) never called `type_or_range_error` on the submitted value at all, unlike every
+      normally-stored key - so a caller writing e.g. `{"Special": "not even an int"}` for a
+      special-only field got back `"Valid"` unconditionally, with no indication the value was
+      nonsensical. Confirmed directly with the project owner: "the sentinel value shall always be
+      valid if it matches its definition [...] independent from any range and value checks" - i.e.
+      `type_or_range_error`'s existing `check_special` bypass (submitted value equals the declared
+      `special` sentinel -> automatically valid regardless of min/max) is exactly the intended
+      behavior, it just needs to actually run for special-only keys too, not be skipped. Fixed by
+      moving the `type_or_range_error(value, defaults[key])` call before the `not use_value`
+      branch, so it now applies uniformly to every key - a special-only submission matching its
+      sentinel is "Valid" (via the bypass), a non-sentinel value still gets the ordinary type/range
+      check (so e.g. a genuinely in-range non-sentinel value like `3` for a field whose sentinel is
+      `99` still reads "Valid" too - only wrong-typed or genuinely out-of-bounds-and-not-the-
+      sentinel values now read "Invalid", which they previously never did). Replaced the pinned
+      quirk test with three: sentinel match (bypasses range), wrong type (now correctly
+      "Invalid"), and out-of-range-and-not-the-sentinel (now correctly "Invalid"). 2 new tests net
+      (82 -> 84 in `tests/test_config_manager.py`; 384 -> 386 repo-wide).
 
 ## Decided for the refactor
 

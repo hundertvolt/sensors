@@ -868,15 +868,32 @@ def test_write_config_file_corrupted_after_valid_init_returns_false() -> None:
         _remove(path)
 
 
-def test_write_config_special_only_value_skips_type_validation_quirk() -> None:
-    # Flagging, not silently changing: a special-only (never-persisted) key's submitted value is
-    # marked "Valid" unconditionally - type_or_range_error is never consulted for it at all, unlike
-    # every normally-stored key. A caller submitting a nonsensical value for a special-only field
-    # (wrong type, out of its own declared range) gets no indication anything was wrong.
-    mgr, path = _make("specialnovalidate.cfg")
+def test_write_config_special_only_value_matching_sentinel_is_valid() -> None:
+    # The sentinel is always valid if it matches its own definition, independent of the ordinary
+    # min/max range check (99 is outside _VAL_SPECIAL's declared [0, 10]) - type_or_range_error's
+    # own check_special bypass is what makes this so, applied here just like any other key.
+    mgr, path = _make("specialsentinel.cfg")
+    try:
+        ok, results = run(mgr.write_config({"Special": 99}, _VAL_SPECIAL))
+        assert (ok, results) == (True, {"Special": "Valid"})
+    finally:
+        _remove(path)
+
+
+def test_write_config_special_only_value_wrong_type_is_invalid() -> None:
+    mgr, path = _make("specialwrongtype.cfg")
     try:
         ok, results = run(mgr.write_config({"Special": "not even an int"}, _VAL_SPECIAL))
-        assert (ok, results) == (True, {"Special": "Valid"})
+        assert (ok, results) == (True, {"Special": "Invalid"})
+    finally:
+        _remove(path)
+
+
+def test_write_config_special_only_value_out_of_range_and_not_sentinel_is_invalid() -> None:
+    mgr, path = _make("specialoutofrange.cfg")
+    try:
+        ok, results = run(mgr.write_config({"Special": 999}, _VAL_SPECIAL))  # neither in [0, 10] nor == 99
+        assert (ok, results) == (True, {"Special": "Invalid"})
     finally:
         _remove(path)
 

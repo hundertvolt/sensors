@@ -318,6 +318,13 @@ class ConfigManager:
                     if default_val is None:
                         self.pr.err(self.config_file, "- Default Key", key, "Error or None, no data written!")
                         return False, {}
+                    # Validated the same way regardless of storage: the sentinel is always valid if it
+                    # matches its own definition (type_or_range_error's check_special bypass), independent
+                    # of the ordinary range check, which still applies to any non-sentinel submission.
+                    if type_or_range_error(value, defaults[key]):
+                        self.pr.err(self.config_file, "- Type / range error in", key, "- skipping!")
+                        dict_results[key] = "Invalid"
+                        continue
                     if not use_value:
                         dict_results[key] = "Valid"
                         self.pr.evt(self.config_file, "- Key", key, "is valid but not in storage, skipping.")
@@ -325,10 +332,6 @@ class ConfigManager:
                     if key not in conf_data:
                         dict_results[key] = "Failed"
                         self.pr.err(self.config_file, "- Key", key, "not found in config file, ignoring!")
-                        continue
-                    if type_or_range_error(value, defaults[key]):
-                        self.pr.err(self.config_file, "- Type / range error in", key, "- skipping!")
-                        dict_results[key] = "Invalid"
                         continue
                     if conf_data[key] != value:
                         conf_data[key] = value
