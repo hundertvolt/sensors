@@ -1347,6 +1347,20 @@ above is genuinely underway, but surfaces some new items:
           itself, not `__init__`).
     - `scripts/lint.sh`/`scripts/typecheck.sh src tests` clean; 411 tests passing repo-wide
       (77+43+29+109+62+45+46).
+  - **`get_int_values`/`get_float_values`/`get_str_values` collapsed into one generic
+    `_get_converted_values(keys, converter)` helper** (`get_bool_values` stays separate - see
+    below). Each of the three public methods is now a one-line call passing `int`/`float`/`str`
+    itself as the `converter` argument; a `TypeVar("T", int, float, str)` lets mypy infer the
+    correct `list[int] | None` / `list[float] | None` / `list[str] | None` per call site from
+    *which builtin was passed*, with no `@overload` boilerplate and no `Any` in the public
+    signatures. Confirmed this is purely a DRY change, not a behavior change: `int`/`float`/`str`
+    as callables do exactly what the old per-function bodies already did
+    (`[int(v) for v in values]` etc.), including their existing permissive-coercion quirks -
+    checked directly against the real interpreter that `int(5.7) == 5` (silently truncates, not
+    rejected) and `int(True) == 1` (bool silently coerced), neither of which raises. `get_bool_
+    values` couldn't join this helper for the same reason it needed its own explicit `isinstance`
+    check in the first place: `bool(v)` never raises for *any* input, so there's no constructor
+    call that could ever signal "wrong type" via an exception the way `int`/`float`/`str` do.
 
 ## Decided for the refactor
 

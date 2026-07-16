@@ -27,7 +27,10 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from typing import Any, Literal, NamedTuple
+    from collections.abc import Callable
+    from typing import Any, Literal, NamedTuple, TypeVar
+
+    T = TypeVar("T", int, float, str)
 
     # One schema field: (name, type, def, min, max, special) - see module docstring.
     FieldSchema = tuple[
@@ -261,32 +264,23 @@ class ConfigManager:
                 self.pr.err(self.config_file, "- Config read error:", e)
                 return None
 
-    async def get_int_values(self, keys: "ConfigSchema") -> "list[int] | None":
+    async def _get_converted_values(self, keys: "ConfigSchema", converter: "Callable[[Any], T]") -> "list[T] | None":
         values = await self._get_values(keys)
         if values is None:
             return None
         try:
-            return [int(v) for v in values]
+            return [converter(v) for v in values]
         except (TypeError, ValueError):
             return None
+
+    async def get_int_values(self, keys: "ConfigSchema") -> "list[int] | None":
+        return await self._get_converted_values(keys, int)
 
     async def get_float_values(self, keys: "ConfigSchema") -> "list[float] | None":
-        values = await self._get_values(keys)
-        if values is None:
-            return None
-        try:
-            return [float(v) for v in values]
-        except (TypeError, ValueError):
-            return None
+        return await self._get_converted_values(keys, float)
 
     async def get_str_values(self, keys: "ConfigSchema") -> "list[str] | None":
-        values = await self._get_values(keys)
-        if values is None:
-            return None
-        try:
-            return [str(v) for v in values]
-        except (TypeError, ValueError):
-            return None
+        return await self._get_converted_values(keys, str)
 
     async def get_bool_values(self, keys: "ConfigSchema") -> "list[bool] | None":
         values = await self._get_values(keys)
