@@ -173,7 +173,7 @@ class ConfigManager:
             else:  # filename exists but is a directory and cannot be used
                 self.pr.err(self.config_file, "exists but is not a file, cannot write!")
                 return
-        except OSError as e:  # file doesn't exist or can't be opened
+        except (OSError, TypeError) as e:  # file doesn't exist/can't be opened, or filename isn't a string
             self.pr.wrn("Config file", self.config_file, "not found:", e)
 
         defaults = schema_dict(cfg_vals)
@@ -220,7 +220,7 @@ class ConfigManager:
             self.valid = True
             self.pr.one("Default data was written in", self.config_file, "- config is ready.")
             return
-        except OSError as e:
+        except (OSError, TypeError) as e:  # write failed, or filename isn't a string
             self.pr.err("Error writing config", self.config_file, "- config is not valid:", e)
             return
 
@@ -240,7 +240,7 @@ class ConfigManager:
                 for key in keys:
                     ret_dict[key] = data[key]
                 return ret_dict
-            except (OSError, ValueError, KeyError) as e:  # file errors, malformed json, key errors
+            except (OSError, ValueError, KeyError, TypeError) as e:  # file errors, malformed json/keys param
                 self.pr.err(self.config_file, "- Config read error:", e)
                 return None
 
@@ -343,6 +343,6 @@ class ConfigManager:
                     json.dump(conf_data, f)
                     self.pr.evt(self.config_file, "- Config data was written.")
                     return True, dict_results
-            except (OSError, ValueError) as e:  # file errors, malformed json
+            except (OSError, ValueError, AttributeError) as e:  # file errors, malformed json, non-dict data param
                 self.pr.err(self.config_file, "- Error writing config data:", e)
                 return False, {}

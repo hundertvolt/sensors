@@ -1361,6 +1361,39 @@ above is genuinely underway, but surfaces some new items:
     values` couldn't join this helper for the same reason it needed its own explicit `isinstance`
     check in the first place: `bool(v)` never raises for *any* input, so there's no constructor
     call that could ever signal "wrong type" via an exception the way `int`/`float`/`str` do.
+  - **Uncaught-exception audit of `src/config_manager.py`**: every function/method walked by hand
+    and, for anything non-obvious, empirically probed against the real MicroPython Unix-port
+    interpreter with deliberately wrong-typed parameters (not just malformed-but-correctly-shaped
+    schema data, which was already exhaustively covered by the earlier test expansion). Found and
+    fixed 3 real gaps, all in the public API surface, all previously letting an exception escape
+    the module's own "never raises" contract:
+    - `ConfigManager.__init__`: a non-string `filename` (e.g. `None`, an `int`, a `list`) makes
+      `os.stat()`/`open()` raise `TypeError` ("can't convert 'X' object to str implicitly") on this
+      interpreter, not `OSError` - both of `__init__`'s existing `except OSError` clauses (initial
+      read, fallback write) only caught the latter. Fixed by adding `TypeError` to both.
+    - `get_dict`: a non-iterable `keys` (e.g. `None`, an `int`, a `float`, a `bool`) makes
+      `for key in keys` raise `TypeError` ("'X' object isn't iterable"), uncaught by the existing
+      `except (OSError, ValueError, KeyError)`. Fixed by adding `TypeError` there too. (An
+      unhashable element *inside* an iterable `keys`, e.g. a list, was already safe - confirmed
+      this MicroPython's dict `__getitem__` raises `KeyError` for an unhashable/mismatched key on a
+      lookup miss, not `TypeError` the way CPython's `__setitem__` does, and a miss is exactly what
+      always happens here since real config keys are always JSON string keys.)
+    - `write_config`: a non-dict `data` (e.g. `None`, an `int`, a `str`, a `list`) makes
+      `data.items()` raise `AttributeError`, uncaught by the existing `except (OSError, ValueError)`.
+      Fixed by adding `AttributeError` there too.
+    - Each fix's broadened `except` tuple was checked against the rest of its `try` block to
+      confirm it can't silently mask an unrelated real bug - the only remaining source of each
+      newly-caught exception type in that block is the wrong-parameter case being fixed (see
+      inline comments at each site for the specific reasoning per function).
+    - Everything else in the file (`schema_names`, `name_cfg`, `schema_dict`, `make_dict`,
+      `type_or_range_error`, `check_cfg_get_default`, `_get_values`/`_get_converted_values`/typed
+      getters) was already exception-safe for wrong-typed input, confirmed by probing each
+      directly rather than assuming the existing broad `except Exception` guards were sufficient.
+    - 8 new tests added covering the 3 fixes plus the previously-untested wrong-parameter paths
+      surfaced along the way (`name_cfg`/`make_dict` with `None`/scalar input, `ConfigManager`
+      with a `None`/non-iterable `cfg_vals`, typed getters with `keys=None`, `write_config` with a
+      `None`/non-iterable `cfg_vals`) - `scripts/lint.sh`/`scripts/typecheck.sh src tests` clean;
+      419 tests passing repo-wide (77+43+29+117+62+45+46).
 
 ## Decided for the refactor
 

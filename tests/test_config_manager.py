@@ -108,6 +108,11 @@ def test_name_cfg_single_vs_multi() -> None:
     assert cm.name_cfg(()) == ""
 
 
+def test_name_cfg_malformed_input_returns_empty_string() -> None:
+    assert cm.name_cfg(None) == ""  # type: ignore[arg-type]  # schema_names(None) -> [], len 0 -> ""
+    assert cm.name_cfg(5) == ""  # type: ignore[arg-type]
+
+
 def test_schema_dict_valid() -> None:
     assert cm.schema_dict(_VAL_INT) == {"Count": ("Count", "int", 5, 0, 10, None)}
 
@@ -152,6 +157,14 @@ def test_make_dict_zero_field_namedtuple() -> None:
 
 def test_make_dict_non_namedtuple_returns_empty() -> None:
     assert cm.make_dict(object()) == {}  # type: ignore[arg-type]
+
+
+def test_make_dict_none_and_scalar_inputs_return_empty() -> None:
+    # None/int/str all have a repr() with no "(" at all, so the unpack into [name, kvpairs] fails
+    # the same way object()'s does above - never raises, regardless of the input's actual type.
+    assert cm.make_dict(None) == {}  # type: ignore[arg-type]
+    assert cm.make_dict(5) == {}  # type: ignore[arg-type]
+    assert cm.make_dict("str") == {}  # type: ignore[arg-type]
 
 
 def test_make_dict_single_field_namedtuple() -> None:
@@ -399,6 +412,30 @@ def test_configmanager_directory_path_is_invalid() -> None:
 
 def test_configmanager_empty_schema_is_invalid() -> None:
     mgr, path = _make("emptyschema.cfg", cfg_vals=())
+    try:
+        assert mgr.valid is False
+    finally:
+        _remove(path)
+
+
+def test_configmanager_non_string_filename_returns_invalid_not_uncaught() -> None:
+    # os.stat()/open() raise TypeError (not OSError) for a non-string path on this interpreter -
+    # __init__ must treat that the same as "file not found" rather than letting it propagate.
+    bad_filenames: "list[Any]" = [None, 123, ["x"], {}, 12.5]
+    for bad_filename in bad_filenames:
+        mgr = cm.ConfigManager(bad_filename, _VAL_INT, PrintLog())
+        assert mgr.valid is False
+
+
+def test_configmanager_none_or_non_iterable_schema_is_invalid() -> None:
+    # schema_dict() already tolerates these (returns {}); __init__ must fail the same way an
+    # explicitly empty schema (()) does, not just avoid crashing.
+    mgr, path = _make("noneschema.cfg", cfg_vals=None)  # type: ignore[arg-type]
+    try:
+        assert mgr.valid is False
+    finally:
+        _remove(path)
+    mgr, path = _make("intschema.cfg", cfg_vals=5)  # type: ignore[arg-type]
     try:
         assert mgr.valid is False
     finally:
@@ -776,6 +813,17 @@ def test_get_dict_file_deleted_after_valid_init_returns_none() -> None:
         _remove(path)
 
 
+def test_get_dict_non_iterable_keys_returns_none_not_uncaught() -> None:
+    # `for key in keys` raises TypeError for None/int/float/bool (non-iterable) - must come back
+    # as the ordinary "read failed" None sentinel, not propagate.
+    mgr, path = _make("noniterkeys.cfg")
+    try:
+        for bad_keys in (None, 5, 12.5, True):
+            assert run(mgr.get_dict(bad_keys)) is None  # type: ignore[arg-type]
+    finally:
+        _remove(path)
+
+
 def test_get_dict_file_corrupted_after_valid_init_returns_none() -> None:
     mgr, path = _make("corruptedafterinit.cfg")
     try:
@@ -852,6 +900,20 @@ def test_get_values_empty_schema_returns_empty_list_not_none() -> None:
         _remove(path)
 
 
+def test_get_typed_values_none_keys_returns_empty_list_not_uncaught() -> None:
+    # keys=None goes through schema_names(None) -> [] (already-tested malformed-input behavior),
+    # so this takes the same "empty schema" path as the test above rather than raising or
+    # returning None - never crashes regardless of which typed getter is used.
+    mgr, path = _make("nonekeystyped.cfg")
+    try:
+        assert run(mgr.get_int_values(None)) == []  # type: ignore[arg-type]
+        assert run(mgr.get_float_values(None)) == []  # type: ignore[arg-type]
+        assert run(mgr.get_str_values(None)) == []  # type: ignore[arg-type]
+        assert run(mgr.get_bool_values(None)) == []  # type: ignore[arg-type]
+    finally:
+        _remove(path)
+
+
 # ---------------------------------------------------------------------------
 # write_config
 # ---------------------------------------------------------------------------
@@ -922,6 +984,31 @@ def test_write_config_key_missing_from_file_marked_failed() -> None:
         ok, results = run(mgr.write_config({"Count": 8}, _VAL_INT))
         assert ok is True
         assert results == {"Count": "Failed"}
+    finally:
+        _remove(path)
+
+
+def test_write_config_non_dict_data_returns_false_not_uncaught() -> None:
+    # data.items() raises AttributeError for anything that isn't dict-like - must come back as the
+    # ordinary "write failed" (False, {}) sentinel, not propagate.
+    mgr, path = _make("nondictdata.cfg")
+    try:
+        for bad_data in (None, 5, 12.5, "abc", ["Count", 1]):
+            ok, results = run(mgr.write_config(bad_data, _VAL_INT))  # type: ignore[arg-type]
+            assert (ok, results) == (False, {})
+        assert run(mgr.get_dict(["Count"])) == {"Count": 5}  # untouched by any of the above
+    finally:
+        _remove(path)
+
+
+def test_write_config_none_or_non_iterable_cfg_vals_marks_all_keys_invalid() -> None:
+    # schema_dict(None) -> {} the same as an explicitly empty schema, so every key in data is
+    # simply "not found" - the call still succeeds overall, nothing crashes or gets written.
+    mgr, path = _make("noneschemawrite.cfg")
+    try:
+        ok, results = run(mgr.write_config({"Count": 1}, None))  # type: ignore[arg-type]
+        assert (ok, results) == (True, {"Count": "Invalid"})
+        assert run(mgr.get_dict(["Count"])) == {"Count": 5}  # untouched
     finally:
         _remove(path)
 
