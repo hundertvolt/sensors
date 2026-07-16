@@ -421,7 +421,7 @@ def test_configmanager_empty_schema_is_invalid() -> None:
 def test_configmanager_non_string_filename_returns_invalid_not_uncaught() -> None:
     # os.stat()/open() raise TypeError (not OSError) for a non-string path on this interpreter -
     # __init__ must treat that the same as "file not found" rather than letting it propagate.
-    bad_filenames: "list[Any]" = [None, 123, ["x"], {}, 12.5]
+    bad_filenames: list[Any] = [None, 123, ["x"], {}, 12.5]
     for bad_filename in bad_filenames:
         mgr = cm.ConfigManager(bad_filename, _VAL_INT, PrintLog())
         assert mgr.valid is False
