@@ -159,6 +159,21 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
 - **Bare `except:` (E722) is intentionally left enabled**, unlike the old `improved-quality/pycheck.sh`
   — the project owner wants ruff to flag existing bare excepts as a tracked to-do, not silence them
   before they're fixed (test-driven-development framing, confirmed directly).
+- **Union type annotations: always PEP 604 `X | Y` (and `X | None`), never `typing.Union[...]`.**
+  Confirmed safe at runtime on both the deployed 1.26 pin and the refactor's 1.28.0 target by
+  testing directly against the pinned Unix-port interpreter (`int | None` in an unquoted, executed
+  annotation works with no import needed) — MicroPython parses but never evaluates annotation
+  expressions at all (also documented in BACKLOG.md's PEP 604 entry, verified against current
+  MicroPython docs), so this isn't even a runtime-support question, just a style one. `typing.Union`
+  needs `from typing import Union`, which isn't guarded by `TYPE_CHECKING` in every file that still
+  uses it and would raise `ImportError` on-device if actually reached at runtime — one more reason
+  `|` is strictly better here, not just newer. This is already machine-enforced: ruff's `UP007` rule
+  (part of the enabled `UP` selection) flags every `Union[...]` as a finding. `src/` and `tests/`
+  are already 100% `|`-style with zero `Union[...]` occurrences. The `Union[...]` usages that do
+  exist today are confined to `python/` (deployed, frozen, no lint config at all) and pre-existing
+  `improved-quality/` WIP files (in ruff's checked scope, already showing up as tracked `UP007`
+  findings in the lint baseline) — leave those alone under the usual out-of-scope-editing hard rule;
+  don't drive-by "fix" `Union` → `|` in a file you're not otherwise promoting/refactoring.
 - **mypy is stricter than default, short of `--strict`** (`disallow_untyped_defs`,
   `check_untyped_defs`, `warn_return_any`, `warn_unreachable`, `strict_equality`, etc., but not
   `disallow_any_generics`/`disallow_untyped_calls`/`disallow_subclassing_any`). Does **not** disable
