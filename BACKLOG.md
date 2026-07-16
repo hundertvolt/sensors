@@ -1509,6 +1509,57 @@ above is genuinely underway, but surfaces some new items:
         just at `_init_bmp()`'s one-time startup call. Raised to the project owner with this
         corrected call-frequency finding; not yet resolved as of this writeup - see whichever
         follow-up entry (if any) records the actual decision once made.
+  - **Resolution of the blocking-file-I/O finding above, decided directly by the project owner**:
+    the per-cycle blocking reads have never actually been observed to cause a problem in practice
+    (always fast enough), but rather than leave it at "note and move on," the owner asked for a
+    general redesign - read the config file exactly once at `__init__`, cache it in memory, and
+    serve every subsequent read from that cache, "as a scheme for all" (i.e. one change to the
+    shared `ConfigManager` class, not a per-driver fix) - conditional on the memory cost being low.
+    Implemented in `src/config_manager.py`:
+    - `__init__` now populates `self._cache` (same dict it already built transiently as `valid_cfg`
+      to decide whether the file needed rewriting - now just retained instead of discarded) once
+      the config is confirmed valid.
+    - `get_dict`/`_get_values` (and therefore `get_int_values`/`get_float_values`/`get_str_values`/
+      `get_bool_values`) now read `self._cache` directly - no file I/O, and no `config_lock` either:
+      with no `await` anywhere in their bodies, there's no point at which a concurrent coroutine
+      could observe a `_cache` mutation half-applied (MicroPython's asyncio only switches tasks at
+      actual `await` points, and `write_config`'s own cache mutation has none in the middle of it).
+    - `write_config` now reads `self._cache` instead of re-opening the file first (eliminating that
+      read entirely), builds its changes into a working copy (`new_cache = dict(self._cache)`), and
+      only assigns `self._cache = new_cache` *after* the file write actually succeeds - confirmed
+      directly (parent directory removed after a valid init, forcing a genuine `OSError` on write)
+      that a real write failure leaves `_cache` completely unchanged, not partially updated. Still
+      holds `config_lock`, since it's still real file I/O and still needs to serialize against a
+      concurrent `write_config` call - `test_concurrent_writes_are_serialized_not_lost` continues to
+      pass unchanged, since the lock now serializes cache mutations instead of file re-reads, same
+      "not lost" guarantee either way.
+    - Memory cost verified empirically (not assumed) before treating this as approved: for an
+      8-field schema (`asy_bmp3xx_driver.py`'s size, the largest of the three real driver files),
+      the persisted cache costs ~256 bytes via `gc.mem_alloc()` delta - negligible against the
+      RP2040's 264KB SRAM even across every sensor driver's own `ConfigManager` instance.
+    - **Deliberate consequence, called out explicitly rather than silently accepted**: reads no
+      longer detect the config file being deleted/corrupted out-of-band after a valid `__init__` -
+      `_cache` is now the sole source of truth for every read, and a subsequent `write_config` call
+      silently *repairs* (overwrites) an externally-corrupted file from `_cache` rather than
+      detecting and failing on it, the reverse of the pre-cache design's behavior. Accepted given
+      this device is the file's only writer and manual-interaction writes are rare (per the
+      project owner's own already-established stance on write atomicity, from an earlier session).
+    - 7 existing tests whose asserted behavior depended on the old always-re-read design were
+      updated (not silently deleted) to assert the new, intentional behavior instead, each with a
+      comment explaining why it changed: `test_configmanager_non_string_field_name_quirk` (the
+      int-vs-string-key lookup result is now the *opposite* of before, since `_cache` keeps the
+      schema's own original key rather than JSON's forced-string one), the two file-deleted/
+      corrupted-after-init `get_dict` tests (now serve the cached value instead of `None`), one
+      `write_config` "Failed" test and the combined-outcomes test (both simulate cache drift by
+      poking `_cache` directly now, since file drift alone no longer has any effect),
+      `test_get_bool_values_wrong_stored_type_returns_none` (same - now pokes `_cache` directly,
+      since __init__/write_config both already validate before ever caching a value, so a real
+      driver can't actually get a wrong-typed value into it; this is now a pure defense-in-depth
+      test), and the corrupted-file `write_config` test (now demonstrates the silent-repair
+      behavior, `True`, in place of the old `False`). Added 1 new test confirming a genuine write
+      failure (not just a pre-existing corrupt file) leaves `_cache` untouched.
+    - `scripts/lint.sh`/`scripts/typecheck.sh src tests` clean; 435 tests passing repo-wide
+      (77+43+29+133+62+45+46).
 
 ## Decided for the refactor
 

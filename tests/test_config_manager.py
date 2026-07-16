@@ -726,10 +726,13 @@ def test_configmanager_one_malformed_field_among_valid_fields_invalidates_whole_
 
 
 def test_configmanager_non_string_field_name_quirk() -> None:
-    # A non-string "name" (schema-authoring mistake) is never rejected - init succeeds and JSON
-    # silently stringifies the int key on write, but any later read using the schema's own
-    # (still-int) name then KeyErrors safely instead of matching, since JSON forces string keys.
-    # Never crashes either way; a real driver would never author a name like this.
+    # A non-string "name" (schema-authoring mistake) is never rejected - init succeeds, and the
+    # on-disk file has its int key silently stringified by json.dump. But get_dict/etc. now read
+    # from _cache (see module docstring), which is keyed by the schema's own original (still-int)
+    # name - never round-tripped through JSON - so a read using that same int key now succeeds,
+    # not the reverse: the "123" string key that's actually on disk no longer matches anything,
+    # since _cache is never rebuilt from the file after __init__. Never crashes either way; a real
+    # driver would never author a name like this.
     bad_name_schema = ((123, "int", 5, 0, 10, None),)
     path = _tmp_path("badname.cfg")
     _remove(path)
@@ -738,8 +741,8 @@ def test_configmanager_non_string_field_name_quirk() -> None:
         assert mgr.valid is True
         with open(path) as f:
             assert json.load(f) == {"123": 5}
-        assert run(mgr.get_dict([123])) is None  # type: ignore[list-item]  # int key never matches the JSON string key
-        assert run(mgr.get_dict(["123"])) == {"123": 5}
+        assert run(mgr.get_dict([123])) == {123: 5}  # type: ignore[list-item, comparison-overlap]  # matches _cache's own int key
+        assert run(mgr.get_dict(["123"])) is None  # the on-disk string key was never the cache's key
     finally:
         _remove(path)
 
@@ -907,12 +910,15 @@ def test_get_dict_multiple_keys_one_missing_aborts_whole_read() -> None:
         _remove(path)
 
 
-def test_get_dict_file_deleted_after_valid_init_returns_none() -> None:
+def test_get_dict_serves_cached_value_even_if_file_deleted_after_init() -> None:
+    # Deliberate consequence of _cache (see module docstring): get_dict never re-opens the file, so
+    # deleting it out-of-band after a valid __init__ has no effect on subsequent reads at all -
+    # unlike the pre-cache design, which re-read (and so would have failed) here.
     mgr, path = _make("deletedafterinit.cfg")
     try:
         assert mgr.valid is True
         os.remove(path)
-        assert run(mgr.get_dict(["Count"])) is None
+        assert run(mgr.get_dict(["Count"])) == {"Count": 5}
     finally:
         _remove(path)
 
@@ -928,13 +934,14 @@ def test_get_dict_non_iterable_keys_returns_none_not_uncaught() -> None:
         _remove(path)
 
 
-def test_get_dict_file_corrupted_after_valid_init_returns_none() -> None:
+def test_get_dict_serves_cached_value_even_if_file_corrupted_after_init() -> None:
+    # Same reasoning as the deleted-file case above: _cache is the sole source of truth for reads.
     mgr, path = _make("corruptedafterinit.cfg")
     try:
         assert mgr.valid is True
         with open(path, "w") as f:
             f.write("{not valid json")
-        assert run(mgr.get_dict(["Count"])) is None
+        assert run(mgr.get_dict(["Count"])) == {"Count": 5}
     finally:
         _remove(path)
 
@@ -996,13 +1003,15 @@ def test_get_str_values_accepts_any_value() -> None:
         _remove(path)
 
 
-def test_get_bool_values_wrong_stored_type_returns_none() -> None:
-    # bool(v) never raises (unlike int()/float()/str()), so a corrupted/wrong-typed on-disk value
-    # must be rejected by explicit isinstance check instead of relying on a conversion exception.
+def test_get_bool_values_wrong_cached_type_returns_none() -> None:
+    # bool(v) never raises (unlike int()/float()/str()), so a wrong-typed cached value must be
+    # rejected by explicit isinstance check instead of relying on a conversion exception. __init__
+    # and write_config both validate before ever storing into _cache, so a real driver can't
+    # actually get a wrong-typed value in there - poke _cache directly to exercise this
+    # defense-in-depth path (reads must still reject it if it's ever there).
     mgr, path = _make("badconvertbool.cfg")
     try:
-        with open(path, "w") as f:
-            json.dump({"Count": 5, "Offset": 1.5, "Name": "abc", "Enabled": "notabool"}, f)
+        mgr._cache["Enabled"] = "notabool"
         assert run(mgr.get_bool_values(_VAL_BOOL)) is None
     finally:
         _remove(path)
@@ -1099,14 +1108,12 @@ def test_write_config_special_only_key_reported_valid_but_not_stored() -> None:
         _remove(path)
 
 
-def test_write_config_key_missing_from_file_marked_failed() -> None:
+def test_write_config_key_missing_from_cache_marked_failed() -> None:
+    # write_config's "key not in <the current state>" check now reads _cache (see module
+    # docstring), not the file - simulate the drift by poking _cache directly instead of the file.
     mgr, path = _make("writefailed.cfg")
     try:
-        with open(path) as f:
-            data = json.load(f)
-        del data["Count"]  # simulate the file having lost a key out-of-band
-        with open(path, "w") as f:
-            json.dump(data, f)
+        del mgr._cache["Count"]  # simulate _cache having lost a key out-of-band
         ok, results = run(mgr.write_config({"Count": 8}, _VAL_INT))
         assert ok is True
         assert results == {"Count": "Failed"}
@@ -1194,11 +1201,7 @@ def test_write_config_multiple_keys_mixed_outcomes_in_one_call() -> None:
     # interfere with each other and only the genuinely-valid change actually gets persisted.
     mgr, path = _make("mixedoutcomes.cfg")
     try:
-        with open(path) as f:
-            data = json.load(f)
-        del data["Enabled"]  # simulate drift, for the "Failed" case below
-        with open(path, "w") as f:
-            json.dump(data, f)
+        del mgr._cache["Enabled"]  # simulate _cache drift, for the "Failed" case below
 
         ok, results = run(
             mgr.write_config(
@@ -1206,7 +1209,7 @@ def test_write_config_multiple_keys_mixed_outcomes_in_one_call() -> None:
                     "Count": 8,  # valid, changed
                     "Offset": 1.5,  # valid, unchanged (matches existing default)
                     "Name": "toolong",  # invalid - exceeds max length 5
-                    "Enabled": False,  # failed - key missing from the file
+                    "Enabled": False,  # failed - key missing from _cache
                     "Ghost": 1,  # invalid - not in the schema at all
                 },
                 _SCHEMA,
@@ -1225,6 +1228,7 @@ def test_write_config_multiple_keys_mixed_outcomes_in_one_call() -> None:
         assert on_disk["Count"] == 8
         assert on_disk["Name"] == "abc"  # untouched
         assert "Enabled" not in on_disk  # still missing, not resurrected
+        assert mgr._cache["Count"] == 8  # cache and file agree after the write
     finally:
         _remove(path)
 
@@ -1260,16 +1264,51 @@ def test_write_config_self_heals_corrupted_stored_value() -> None:
         _remove(path)
 
 
-def test_write_config_file_corrupted_after_valid_init_returns_false() -> None:
+def test_write_config_repairs_a_file_corrupted_after_valid_init() -> None:
+    # Deliberate consequence of _cache (see module docstring): write_config no longer reads the
+    # file first, only writes it - so an externally-corrupted file doesn't block a write, it gets
+    # silently overwritten (repaired) from _cache instead of the pre-cache design's "detect and
+    # fail" behavior.
     mgr, path = _make("writecorrupted.cfg")
     try:
         assert mgr.valid is True
         with open(path, "w") as f:
             f.write("{not valid json")
         ok, results = run(mgr.write_config({"Count": 1}, _VAL_INT))
-        assert (ok, results) == (False, {})
+        assert (ok, results) == (True, {"Count": "Valid"})
+        with open(path) as f:
+            assert json.load(f)["Count"] == 1  # file is valid json again, repaired by the write
     finally:
         _remove(path)
+
+
+def test_write_config_genuine_write_failure_leaves_cache_unchanged() -> None:
+    # A real write failure (not just a pre-existing corrupt file, which the test above shows gets
+    # silently repaired) - here the parent directory itself is removed after a valid init, so
+    # open(path, "w") genuinely raises OSError. _cache must only ever be committed to *after* a
+    # successful write (see write_config's own comment) - confirms it's still the old, unchanged
+    # value afterwards, not left half-updated.
+    subdir = _TMP_DIR + "/writefail_subdir"
+    try:
+        os.mkdir(subdir)
+    except OSError:
+        pass  # already exists
+    path = subdir + "/writefail.cfg"
+    _remove(path)
+    mgr = cm.ConfigManager(path, _VAL_INT, PrintLog())
+    try:
+        assert mgr.valid is True
+        os.remove(path)
+        os.rmdir(subdir)  # parent directory gone - the write below will genuinely fail
+        ok, results = run(mgr.write_config({"Count": 8}, _VAL_INT))
+        assert (ok, results) == (False, {})
+        assert mgr._cache == {"Count": 5}  # untouched - still the original default
+    finally:
+        _remove(path)
+        try:
+            os.rmdir(subdir)
+        except OSError:
+            pass  # already gone
 
 
 def test_write_config_special_only_value_matching_sentinel_is_valid() -> None:

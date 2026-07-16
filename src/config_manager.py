@@ -15,6 +15,22 @@ Shared contract: every public function/method here returns a documented "invalid
 malformed schema tuples, or a missing/corrupt/unreadable config file. Real file I/O (this file's
 only external boundary - no hardware) is fully exercised by tests/test_config_manager.py under
 the real MicroPython Unix-port interpreter, unlike the hardware-touching drivers.
+
+`ConfigManager` reads the config file exactly once, at `__init__`, into an in-memory `_cache` dict
+- every `get_*`/`write_config` call after that reads/writes `_cache` directly, never re-opening the
+file, since a real driver's read path (e.g. asy_bmp3xx_driver.py's per-measurement-cycle
+`get_float_values()` call) runs for the device's entire uptime and MicroPython has no async-native
+file I/O to make a per-call re-read non-blocking. `write_config` still does a real (rare,
+manual-interaction-driven) file write, and only commits its changes into `_cache` *after* that
+write succeeds - so a failed write can't desync the two. Deliberate consequence: unlike the old
+always-re-read design, a read no longer detects the config file being deleted/corrupted out-of-band
+after a valid `__init__` - `_cache` is the sole source of truth for reads, and a subsequent write
+silently repairs (overwrites) an externally-corrupted file from `_cache` rather than detecting and
+failing on it. Acceptable here because this device is the file's only writer and manual-interaction
+writes are rare - see BACKLOG.md for the full reasoning. `_get_values`/`get_dict` no longer need
+`config_lock` at all: with no file I/O and no `await` in their bodies, there's no point at which
+another coroutine could observe a `_cache` mutation half-applied - only `write_config` still needs
+the lock, to serialize its own file write against a concurrent `write_config` call.
 """
 
 import asyncio
@@ -157,6 +173,7 @@ class ConfigManager:
         self.config_lock = asyncio.Lock()
         self.config_file = filename
         self.valid = False
+        self._cache: dict[str, int | float | str | bool | None] = {}
         data: dict[str, Any] | None = None
         try:
             if (os.stat(self.config_file)[0] & 0x4000) == 0:  # not a directory: 0x4000 is MP_S_IFDIR, MicroPython's
@@ -184,7 +201,7 @@ class ConfigManager:
             return
 
         rewrite = False  # don't write file unless required
-        valid_cfg = {}  # create surely valid config
+        valid_cfg: dict[str, int | float | str | bool | None] = {}  # create surely valid config
         for key, field in defaults.items():  # iterate through default config
             use_value, default_val = check_cfg_get_default(field)  # read and selfcheck
             if default_val is None:  # invalid config, no default or special-alone value
@@ -208,6 +225,7 @@ class ConfigManager:
             self.pr.wrn(self.config_file, "- Removed invalid keys from config file!")
 
         if not rewrite:
+            self._cache = valid_cfg
             self.valid = True
             self.pr.one("Valid configuration data found in", self.config_file, "- config is ready.")
             return
@@ -219,6 +237,7 @@ class ConfigManager:
         try:
             with open(self.config_file, "w") as f:
                 json.dump(valid_cfg, f)
+            self._cache = valid_cfg
             self.valid = True
             self.pr.one("Default data was written in", self.config_file, "- config is ready.")
             return
@@ -227,38 +246,30 @@ class ConfigManager:
             return
 
     async def get_dict(self, keys: "list[str]") -> "dict[str, int | float | str | bool | None] | None":
+        # Reads _cache directly (see module docstring) - no file I/O, no lock: nothing else ever
+        # mutates _cache without also completing synchronously (write_config never awaits between
+        # updating _cache and releasing config_lock), so there's no partial state a concurrent
+        # caller could observe here even without holding the lock.
         if not self.valid:
             self.pr.err(self.config_file, "- Config is not valid, cannot read!")
             return None
-        async with self.config_lock:
-            self.pr.all(self.config_file, "- Reading config data into dict.")
-            try:
-                with open(self.config_file) as f:
-                    data = json.load(f)
-                if not isinstance(data, dict):
-                    self.pr.err(self.config_file, "- Config parse error!")
-                    return None
-                return {key: data[key] for key in keys}
-            except (OSError, ValueError, KeyError, TypeError) as e:  # file errors, malformed json/keys param
-                self.pr.err(self.config_file, "- Config read error:", e)
-                return None
+        self.pr.all(self.config_file, "- Reading config data into dict.")
+        try:
+            return {key: self._cache[key] for key in keys}
+        except (KeyError, TypeError) as e:  # unknown key, or a non-iterable/malformed keys param
+            self.pr.err(self.config_file, "- Config read error:", e)
+            return None
 
     async def _get_values(self, keys: "ConfigSchema") -> "list[Any] | None":
         if not self.valid:
             self.pr.err(self.config_file, "- Config is not valid, cannot read!")
             return None
-        async with self.config_lock:
-            self.pr.all(self.config_file, "- Reading config data into list.")
-            try:
-                with open(self.config_file) as f:
-                    data = json.load(f)
-                if not isinstance(data, dict):
-                    self.pr.err(self.config_file, "- Config parse error!")
-                    return None
-                return [data[key] for key in schema_names(keys)]
-            except (OSError, ValueError, KeyError) as e:  # file errors, malformed json, key errors
-                self.pr.err(self.config_file, "- Config read error:", e)
-                return None
+        self.pr.all(self.config_file, "- Reading config data into list.")
+        try:
+            return [self._cache[key] for key in schema_names(keys)]
+        except KeyError as e:  # unknown key
+            self.pr.err(self.config_file, "- Config read error:", e)
+            return None
 
     async def _get_converted_values(self, keys: "ConfigSchema", converter: "Callable[[Any], T]") -> "list[T] | None":
         values = await self._get_values(keys)
@@ -294,11 +305,7 @@ class ConfigManager:
             return False, {}
         async with self.config_lock:
             try:
-                with open(self.config_file) as f:
-                    conf_data = json.load(f)
-                if not isinstance(conf_data, dict):
-                    self.pr.err(self.config_file, "- Config parse error!")
-                    return False, {}
+                new_cache = dict(self._cache)  # working copy - only committed to _cache after a successful write
                 changed = False
                 defaults = schema_dict(cfg_vals)
                 dict_results: WriteValidity = {}
@@ -322,12 +329,12 @@ class ConfigManager:
                         dict_results[key] = "Valid"
                         self.pr.evt(self.config_file, "- Key", key, "is valid but not in storage, skipping.")
                         continue  # not used for storage
-                    if key not in conf_data:
+                    if key not in new_cache:
                         dict_results[key] = "Failed"
                         self.pr.err(self.config_file, "- Key", key, "not found in config file, ignoring!")
                         continue
-                    if conf_data[key] != value:
-                        conf_data[key] = value
+                    if new_cache[key] != value:
+                        new_cache[key] = value
                         dict_results[key] = "Valid"
                         changed = True
                     else:
@@ -336,9 +343,10 @@ class ConfigManager:
                     self.pr.evt(self.config_file, "- No new / unchanged config data.")
                     return True, dict_results
                 with open(self.config_file, "w") as f:
-                    json.dump(conf_data, f)
-                    self.pr.evt(self.config_file, "- Config data was written.")
-                    return True, dict_results
+                    json.dump(new_cache, f)
+                self._cache = new_cache  # only commit once the write has actually succeeded
+                self.pr.evt(self.config_file, "- Config data was written.")
+                return True, dict_results
             except (OSError, ValueError, AttributeError) as e:  # file errors, malformed json, non-dict data param
                 self.pr.err(self.config_file, "- Error writing config data:", e)
                 return False, {}
