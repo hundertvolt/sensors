@@ -93,7 +93,12 @@ class LockableBuffer(Lockable):
 
 class LockedCounter:
     def __init__(self, init_value: int | None = 0x00, max_val: int = 0xFF) -> None:
-        self.max_val = max_val
+        # A negative max_val is a dev-time-typo risk, not a real call-site input (every real caller
+        # passes a fixed positive literal) - clamped to 0 rather than left as-is, so the counter's
+        # own [0, max_val] invariant holds for every value, not just non-negative ones. Without this,
+        # _clamp's min(max(value, 0), max_val) would collapse every value to the negative max_val
+        # itself instead of ever reaching 0.
+        self.max_val = max(max_val, 0)
         self.value = self._clamp(init_value)
         self.value_lock = asyncio.Lock()
 
@@ -180,6 +185,11 @@ class SensorReader:
         self._err_cnt_internal = 0
 
     async def reset_error_counter(self) -> None:
+        # Resets both counters this file tracks, not just pr's persisted history/err_count: leaving
+        # _err_cnt_internal (the consecutive-failure streak driving _error_check's give-up decision)
+        # untouched would mean a caller resetting "the" error counter after a task reset still starts
+        # the next run partway toward giving up again.
+        self._err_cnt_internal = 0
         await self.pr.reset()
 
     async def _error_check(self, results: "MeasDataType", name: str, condition: bool = True) -> bool:

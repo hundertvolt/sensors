@@ -283,19 +283,20 @@ def test_lockedcounter_max_val_zero_stays_clamped_to_zero() -> None:
     assert run(counter.decrement()) == 0
 
 
-def test_lockedcounter_negative_max_val_clamps_everything_to_max_val() -> None:
+def test_lockedcounter_negative_max_val_is_clamped_to_zero_at_construction() -> None:
     # A negative max_val is never passed by any real call site (system_service.py/async_connect.py/
     # neopixel_signal.py all pass a fixed positive literal) - a dev-time-typo risk, not a value ever
-    # computed at runtime. _clamp's min(max(value, 0), max_val) still can't raise for it, but the
-    # result is worth pinning down: max(x, 0) floors at 0, then min(0-or-higher, max_val) always
-    # picks the negative max_val, so every value - regardless of delta direction - collapses to the
-    # same fixed negative number rather than ever reaching 0.
+    # computed at runtime. Clamped to 0 in __init__ so the counter's own [0, max_val] invariant holds
+    # for every value, the same way it already does for max_val=0: without this, _clamp's
+    # min(max(value, 0), max_val) would collapse every value to the negative max_val itself instead
+    # of ever reaching 0.
     counter = LockedCounter(init_value=3, max_val=-5)
-    assert run(counter.get_value()) == -5
-    assert run(counter.increment()) == -5
-    assert run(counter.decrement()) == -5
-    run(counter.set_value(0))
-    assert run(counter.get_value()) == -5
+    assert counter.max_val == 0
+    assert run(counter.get_value()) == 0
+    assert run(counter.increment()) == 0
+    assert run(counter.decrement()) == 0
+    run(counter.set_value(-7))
+    assert run(counter.get_value()) == 0
 
 
 def test_lockedcounter_concurrent_increments_are_not_lost() -> None:
@@ -400,6 +401,18 @@ def test_sensorreader_reset_error_counter_clears_history() -> None:
     assert reader.pr.err_count == 1
     run(reader.reset_error_counter())
     assert reader.pr.err_count == 0
+
+
+def test_sensorreader_reset_error_counter_also_clears_the_consecutive_failure_streak() -> None:
+    # reset_error_counter() must reset both counters this file tracks, not just pr's persisted
+    # history/err_count: a caller resetting "the" error counter after a task reset shouldn't have
+    # the next run start partway toward giving up again via the untouched internal streak.
+    reader = SensorReader(Meas(None, 50), max_i2c_err=5)
+    run(reader._error_check(Meas(None, 50), "temp"))
+    run(reader._error_check(Meas(None, 50), "temp"))
+    assert reader._err_cnt_internal == 2
+    run(reader.reset_error_counter())
+    assert reader._err_cnt_internal == 0
 
 
 def test_error_check_no_failure_keeps_going_and_decays_counter() -> None:

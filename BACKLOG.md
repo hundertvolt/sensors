@@ -1843,35 +1843,31 @@ above is genuinely underway, but surfaces some new items:
       check, given its own `wrnno=2` (not reusing the callback path's `wrnno=1`) so the persisted
       warning code stays distinguishable between "callback added a key" and "config manager added a
       key" rather than conflating two different causes under one number.
-    - **Investigated and ruled out three other candidate issues, deliberately left as-is**:
+    - **Investigated three other candidate issues, initially left as-is, then fixed on explicit
+      request in a fifth pass immediately after** (see below) - documented here as originally found:
       - `LockedCounter` with a negative `max_val`: `_clamp`'s `min(max(value, 0), max_val)` can't
         raise for it, but does collapse every value (any `init_value`, any `increment`/`decrement`/
         `set_value`) to the fixed negative `max_val` itself, never `0` - confirmed by direct testing,
         not just reasoning about the formula. No real call site ever passes a negative `max_val`
         (`system_service.py`/`async_connect.py`/`neopixel_signal.py` all use fixed positive
         literals) - same "dev-time-typo risk, not a live input" category as `max_i2c_err`/original
-        `history_length` literals, so left unguarded, but now pinned down by
-        `test_lockedcounter_negative_max_val_clamps_everything_to_max_val` instead of staying an
-        untested corner.
+        `history_length` literals.
       - `SensorReader.reset_error_counter()` only resets `self.pr`'s persisted history/`err_count`,
         not `self._err_cnt_internal` (the separate consecutive-failure streak counter driving
         `_error_check`'s give-up decision) - confirmed by diffing against
         `improved-quality/base_classes_old.py`'s byte-identical `reset_error_counter`/
         `_error_check` pair that this is preserved pre-refactor behavior, not something this
-        refactor introduced or an oversight to fix here. The two counters track genuinely different
-        things (lifetime historical count vs. current consecutive-failure streak) despite the
-        similar naming - flagged here for visibility, not changed.
+        refactor introduced. The two counters track genuinely different things (lifetime historical
+        count vs. current consecutive-failure streak) despite the similar naming.
       - `config_manager.py`'s `ConfigManager.__init__` wraps its file I/O in `except (OSError,
         TypeError)` for both the read and write paths, but not `MemoryError` - a `json.load()`/
         `json.dump()` call against a pathologically large or corrupt config file could in principle
         raise `MemoryError` uncaught, propagating out of `SensorReaderConfig.__init__` (which calls
         `ConfigManager(...)` with no try/except of its own, since `config_manager.py`'s own
-        constructor is documented as "never raises"). Real config files are small and locally
-        written, so this is a much lower-likelihood path than the `history_length`/`LockableBuffer`
-        cases above, and it lives inside `config_manager.py` itself (a different file, already
-        promoted/tested on its own) rather than in `base_classes.py`'s own logic - flagged here as a
-        dependency-level finding rather than silently patched in this `base_classes.py`-scoped pass;
-        needs its own decision (e.g. whether to catch `MemoryError` there too) before being touched.
+        constructor is documented as "never raises"). Lives inside `config_manager.py` itself (a
+        different file, already promoted/tested on its own) rather than in `base_classes.py`'s own
+        logic, so was flagged as a dependency-level finding rather than silently patched in this
+        `base_classes.py`-scoped pass.
     - New tests in `tests/test_base_classes.py` (67 → 70): `test_get_dict_cfg_mgr_cfg_extra_key_is_still_merged_and_warned`
       and `test_get_dict_cfg_mgr_cfg_expected_keys_only_do_not_warn` (the new warning path's positive
       and negative cases), `test_lockedcounter_negative_max_val_clamps_everything_to_max_val`, and an
@@ -1882,6 +1878,38 @@ above is genuinely underway, but surfaces some new items:
     - Verified: `scripts/lint.sh` (265, unchanged baseline), `scripts/typecheck.sh src tests` (18
       files clean), full suite 481 → 484, all passing; `base_classes.py` stayed at 100% coverage (146
       stmts, up from 144 - the new warning branch is exercised by both new tests).
+  - **Fifth pass: fixed all three candidate issues from the pass above** (project owner's explicit
+    follow-up ask, after seeing them flagged rather than fixed):
+    - **`LockedCounter.__init__` now clamps `max_val` itself to `max(max_val, 0)`** rather than
+      storing a negative bound as-is. Restores the class's `[0, max_val]` invariant for every input,
+      including a negative `max_val` (still never passed by any real call site - this is a
+      robustness fix for the class itself, not something any current caller needed). Renamed test to
+      `test_lockedcounter_negative_max_val_is_clamped_to_zero_at_construction`, asserting
+      `counter.max_val == 0` and that every operation now floors at `0` instead of collapsing to the
+      negative input.
+    - **`SensorReader.reset_error_counter()` now also resets `self._err_cnt_internal` to `0`**,
+      alongside the pre-existing `await self.pr.reset()`. This is a deliberate behavior change from
+      `base_classes_old.py`'s preserved-but-reconsidered original: "reset the error counter" reading
+      as resetting only one of the two counters this file tracks was judged confusing enough to fix
+      once flagged, even though nothing currently relies on the old asymmetry (no `improved-quality/`
+      driver is wired onto `src/base_classes.py`'s `SensorReader` yet - see the module docstring).
+      New test: `test_sensorreader_reset_error_counter_also_clears_the_consecutive_failure_streak`.
+    - **`config_manager.py`: added `MemoryError` to all three `except` clauses that wrap
+      `json.load()`/`json.dump()`** - `ConfigManager.__init__`'s read path and write-defaults path,
+      and `write_config()`'s own write path (a fourth call site with the identical risk, found while
+      fixing the two `__init__` ones - not called out in the pass above, but the same gap). No new
+      test added for this one: forcing a genuine `MemoryError` out of `json.load`/`json.dump`
+      deterministically would need either a multi-gigabyte on-disk file (impractical/unsafe to write
+      as part of a test) or monkeypatching `cm.json`, which this test file has never done anywhere
+      else (its whole design is real file I/O, no stdlib mocking, unlike `print_log.py`'s explicit
+      FRAM mock boundary) - left honestly uncovered by a dedicated test, same reasoning as
+      `print_log.py`'s own honestly-uncovered `except MemoryError` fallback branch from the pass
+      above. `coverage.py` still reports both files at 100% since widening an existing `except`
+      tuple's type list doesn't add a new line/branch - the `except` bodies were already exercised
+      by the real-`OSError` tests.
+    - Verified: `scripts/lint.sh` (265, unchanged baseline), `scripts/typecheck.sh src tests` (18
+      files clean), full suite 484 → 485, all passing; `base_classes.py` and `config_manager.py` both
+      stayed at 100% coverage.
 
 ## Decided for the refactor
 
