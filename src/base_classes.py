@@ -6,6 +6,9 @@ optional JSON config storage.
 Shared contract: every method returns a well-defined value and never raises. SensorReader's
 optional `fram` selects in-memory vs. FRAM-backed logging (print_log.py); FRAM tests use
 tests/_fram_mock.py, not the real allocator - see BACKLOG.md.
+
+__init__ never calls `self.pr.setup()` (it's sync, setup() isn't) - the caller's own async setup
+must, or FRAM persistence stays inert; in-memory counting still works either way.
 """
 
 import asyncio
@@ -203,17 +206,17 @@ class SensorReader:
         async with self._datalock:
             self._datastruct = data
 
-    async def _get_mgr_cfg(self, cfg: list[str]) -> dict[str, int | float | str | None] | None:
+    async def _get_mgr_cfg(self, cfg: list[str]) -> dict[str, int | float | str | bool | None] | None:
         return {}
 
     async def _get_dict_cfg(
         self,
         name: str,
         cfg_vals: "ConfigSchema",
-        callback: "Callable[[], Coroutine[Any, Any, dict[str, int | float | str | None]]] | None" = None,
-    ) -> dict[str, dict[str, int | float | str | None]]:
+        callback: "Callable[[], Coroutine[Any, Any, dict[str, int | float | str | bool | None]]] | None" = None,
+    ) -> dict[str, dict[str, int | float | str | bool | None]]:
         cfg = schema_names(cfg_vals)
-        ret: dict[str, dict[str, int | float | str | None]] = {name: {key: None for key in cfg}}
+        ret: dict[str, dict[str, int | float | str | bool | None]] = {name: {key: None for key in cfg}}
 
         try:  # _get_mgr_cfg is an overridable extension point - the call itself, not just its result, could misbehave
             sensor_conf = await self._get_mgr_cfg(cfg)
@@ -255,5 +258,5 @@ class SensorReaderConfig(SensorReader):
             self.pr,
         )
 
-    async def _get_mgr_cfg(self, cfg: list[str]) -> dict[str, int | float | str | None] | None:
+    async def _get_mgr_cfg(self, cfg: list[str]) -> dict[str, int | float | str | bool | None] | None:
         return await self.cfgmgr.get_dict(cfg)

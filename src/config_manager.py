@@ -319,7 +319,8 @@ class ConfigManager:
                 self._cache = new_cache  # only commit once the write has actually succeeded
                 self.pr.evt(self.config_file, "- Config data was written.")
                 return True, dict_results
-            except (MemoryError, OSError, ValueError, AttributeError) as e:  # file errors, malformed
-                # json, non-dict data param, or json.dump() exhausting the heap on a large new_cache
+            except (MemoryError, OSError, ValueError, AttributeError) as e:  # file errors, a non-dict
+                # `data` param (AttributeError on .items()), or json.dump() exhausting the heap;
+                # ValueError is defensive since dump() no longer reads/reparses json here.
                 self.pr.err(self.config_file, "- Error writing config data:", e)
                 return False, {}

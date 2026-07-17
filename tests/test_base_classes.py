@@ -36,6 +36,7 @@ Meas = namedtuple("Meas", ["temp", "hum"])
 
 _TMP_DIR = "tests/_tmp"
 _VAL_SI: "cm.ConfigSchema" = (("SampleInterv", "int", 2, 1, 3600, None),)
+_VAL_BOOL: "cm.ConfigSchema" = (("SelfCal", "bool", False, None, None, None),)
 
 
 def _tmp_path(name: str) -> str:
@@ -659,6 +660,20 @@ def test_sensorreaderconfig_is_a_sensorreader_with_a_real_mgr_cfg_override() -> 
         assert run(reader._get_mgr_cfg(["SampleInterv"])) == {"SampleInterv": 2}
     finally:
         _remove(path_prefix + "config_isa.cfg")
+
+
+def test_sensorreaderconfig_get_dict_cfg_round_trips_a_real_bool_field() -> None:
+    # asy_scd30_driver.py's SelfCal is a real "bool"-schema field flowing through this exact path -
+    # confirms the dict actually carries a bool (not a stringified/int-coerced stand-in).
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_boolfield.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "boolfield", _VAL_BOOL, cfg_path=path_prefix)
+        result = run(reader._get_dict_cfg("Sensor", _VAL_BOOL))
+        assert result == {"Sensor": {"SelfCal": False}}
+        assert type(result["Sensor"]["SelfCal"]) is bool
+    finally:
+        _remove(path_prefix + "config_boolfield.cfg")
 
 
 def test_sensorreaderconfig_shares_the_same_logger_instance_with_its_configmanager() -> None:

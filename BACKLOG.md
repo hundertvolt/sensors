@@ -1993,6 +1993,89 @@ above is genuinely underway, but surfaces some new items:
     Zero behavior change - verified via `scripts/lint.sh` (265, unchanged), `scripts/typecheck.sh
     src tests` (18 files clean), full suite still 488/488 passing, `base_classes.py` still 100%
     coverage.
+  - **A whole-integration pass across all three promoted files together** (`base_classes.py`,
+    `config_manager.py`, `print_log.py` - project owner's explicit ask, checking how they're set up
+    *together*, not just each file's own checklist compliance again) found and fixed four real,
+    if individually small, cross-file issues, and confirmed several suspects as non-issues via
+    direct interpreter testing rather than assumption:
+    - **Real bug: a stale doc cross-reference.** `print_log.py`'s `_HDR_FMT` comment said "see
+      module docstring's struct byte-order note" - but that paragraph was removed by the very
+      commit that trimmed the docstring down to a short header (`d5fa0d0`), leaving the pointer
+      referencing content that no longer exists. Re-pointed to BACKLOG.md, where the full byte-order
+      rationale still lives (this file's own earlier entry on the subject). Swept all three files
+      for the same "module docstring" cross-reference shape; the other four (two in
+      `config_manager.py`, two in `print_log.py`) still point at content that's actually still
+      there.
+    - **Real, if long-stale, comment inaccuracy: `config_manager.py`'s `write_config()` except
+      clause still said "malformed json"** as one of the reasons for catching `ValueError`, a
+      leftover from before the caching refactor (`83c08ae`) removed the `json.load()` call this
+      function used to make on every write. Nothing in the current function can raise `ValueError`
+      from parsing anymore (`write_config()` never reads/reparses `json` now, only dumps) - fixed
+      the comment to describe what's actually still live: `AttributeError` for a non-dict `data`
+      param, `MemoryError` for `json.dump()` exhausting the heap, and `ValueError` kept purely
+      defensively now rather than for a reason that's still real.
+    - **Real documentation gap: nothing in `base_classes.py` stated that `self.pr.setup()` must be
+      called by the caller.** `SensorReader.__init__` never calls it (confirmed: `__init__` is sync,
+      `setup()` isn't) - every real `improved-quality/` driver (`asy_bmp3xx_driver.py`,
+      `asy_scd30_driver.py`, `asy_sgp40_driver.py`, `system_service.py`, `asy_fram_manager.py`) calls
+      `await self.pr.setup()` itself as part of its own async setup, by convention, with the same
+      `# required for all logged warnings and errors` comment repeated at every call site - but nothing
+      in `base_classes.py` itself said so; a `src/`-only reader would have no way to know FRAM
+      persistence stays inert without it. This was already correctly implemented and already tested
+      (`tests/test_base_classes.py`'s `test_sensorreader_fram_backed_error_check_without_setup_never_raises`
+      already documents and asserts exactly this), just never stated at the module level, where
+      section 11 says a shared contract like this belongs. Added two lines to the module docstring.
+    - **Real, if mypy-invisible, type-accuracy gap: `base_classes.py`'s `_get_mgr_cfg`/
+      `_get_dict_cfg` typed config values as `int | float | str | None`, omitting `bool`**, while
+      `config_manager.py`'s `get_dict()` (which `SensorReaderConfig._get_mgr_cfg` returns directly)
+      is correctly typed `int | float | str | bool | None` - `bool` is a real, distinct schema field
+      type (`asy_scd30_driver.py`'s `SelfCal` field is exactly this: `("SelfCal", "bool", None,
+      None, None, None)`), so a bool-schema sensor's config dict genuinely flows through this exact
+      path with a type the signature didn't admit. mypy never caught it because `bool` is a subtype
+      of `int` in Python's type system, not because it was actually correct - confirmed by reading
+      the schema field, not by a mypy failure. Fixed all four occurrences in `base_classes.py` to
+      match `config_manager.py`'s own union exactly (section 10's "match how a comparable member
+      elsewhere in the project already expresses the same kind of thing"). Added
+      `test_sensorreaderconfig_get_dict_cfg_round_trips_a_real_bool_field` in
+      `tests/test_base_classes.py`, exercising a real `"bool"`-schema field through the full
+      `SensorReaderConfig` → `ConfigManager` → `_get_dict_cfg` path and asserting `type(...) is
+      bool` on the result, not just equality (`True == 1` in Python, so an equality-only assertion
+      wouldn't have caught a silent int-coercion).
+    - **Confirmed as non-issues, via direct testing against the pinned Unix-port interpreter rather
+      than assumption:**
+      - A config file containing invalid UTF-8 bytes makes `json.load()` raise `UnicodeError` during
+        decode - already safely caught, because `UnicodeError` **is** a `ValueError` subclass on this
+        MicroPython build (confirmed directly: `isinstance(UnicodeError(), ValueError)` is `True`),
+        and `ConfigManager.__init__`'s read path already catches `ValueError` around exactly that
+        call. No gap.
+      - A JSON string containing an unpaired UTF-16 surrogate (`"\ud800"`, which MicroPython's
+        `json.load()` *does* accept, unlike a stricter parser) round-trips through `json.dump()`
+        without raising - confirmed directly: MicroPython's `json.dump()` doesn't do CPython's
+        strict UTF-8 validation on write, it emits a CESU-8-style byte sequence instead
+        (`\xed\xa0\x80` on disk) and reloads it back to the identical string. So the `ValueError`
+        defensiveness in `write_config()`'s except clause was never reachable for this reason either
+        - consistent with the comment fix above.
+      - `PrintLogHistory`/`PrintLogHistStore`'s in-memory state (`err_count`, `history`) has no
+        `asyncio.Lock` protecting it, unlike `ConfigManager.config_lock` - checked whether concurrent
+        `err_s()`/`wrn_s()`/`reset()`/`get_log()` calls could interleave and corrupt it. They can't:
+        every mutation (`err_count += 1`, `history.append(...)`) completes synchronously before the
+        method's own single `await self._write()` yield point, and MicroPython/CPython coroutines
+        run uninterrupted between yield points - so no other coroutine can ever observe or interleave
+        with a half-applied mutation. A lock here would be inert complexity, not a real fix for a
+        real race.
+      - `write_config()`'s open-filename-with-embedded-NUL edge case (a `ValueError` on CPython):
+        confirmed MicroPython's `open()` instead silently truncates the filename at the NUL byte
+        rather than raising - academically a behavior difference, but not a reachable one, since
+        `config_file` is always built from dev-authored string literals (`cfg_path + "config_" +
+        name + ".cfg"`), never externally-influenced input.
+    - Verified: `scripts/lint.sh` (265, unchanged baseline), `scripts/typecheck.sh src tests` (18
+      files clean), `scripts/typecheck.sh` full-scope (160, unchanged baseline - the `SensorReader`
+      `fram` parameter mismatches against `MockAsyFramManager` are pre-existing and untouched), full
+      suite 488 → 489, all passing; `base_classes.py`/`config_manager.py` both stayed at 100%
+      coverage, `print_log.py` unchanged at 89% (the gap is a pre-existing `micropython.const()`
+      line-tracing artifact - `sys.settrace` never sees a line whose value gets folded to an
+      immediate at compile time - not a real untested branch; confirmed unchanged before/after this
+      pass via `git stash`).
 
 ## Decided for the refactor
 

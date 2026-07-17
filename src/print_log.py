@@ -121,15 +121,9 @@ class PrintLog:
 class PrintLogHistory(PrintLog):
     def __init__(self, history_length: int = 10, level: int | None = None) -> None:
         super().__init__(level=level)
-        # deque(maxlen=...) raises ValueError on a negative maxlen - clamp instead of propagating,
-        # matching set_level()'s own "clamp, don't reject" convention. Also cap the upper end at
-        # _MAX_CNT (err_count's own uint16 range - a bound already meaningful for "how much history
-        # is ever useful" here): confirmed directly against the pinned Unix-port interpreter that
-        # `[x] * n` (what building this deque does internally) doesn't fail cleanly at every size -
-        # below ~2**61 it raises a catchable MemoryError, at 2**63 and above a catchable
-        # OverflowError, but in between it segfaults the whole interpreter, which no try/except can
-        # catch. Clamping the input keeps allocation size far below that entire danger zone instead
-        # of trying to catch a failure mode that isn't always catchable.
+        # Clamp to [0, _MAX_CNT] (err_count's own uint16 range) before allocating: `[x] * n` can
+        # segfault the interpreter uncatchably in a size range bytearray()'s own guards don't cover
+        # - see BACKLOG.md for the measured failure-size boundaries.
         history_length = min(max(history_length, 0), _MAX_CNT)
         try:  # still reachable well below the overflow boundary on a genuinely memory-constrained device
             self.history = deque([_NO_ERR] * history_length, history_length)
@@ -212,7 +206,7 @@ class PrintLogHistory(PrintLog):
 
 
 class PrintLogHistStore(PrintLogHistory):
-    _HDR_FMT = "<H"  # explicit little-endian, no padding - see module docstring's struct byte-order note
+    _HDR_FMT = "<H"  # explicit little-endian, no padding - bare format defaults to "@" here, not "<"; see BACKLOG.md
     _HDR_SIZE = struct.calcsize(_HDR_FMT)
 
     def __init__(self, fram: "_FramManager", history_length: int = 10, level: int | None = None) -> None:
