@@ -176,6 +176,15 @@ def test_lockablebuffer_huge_size_yields_none_not_memoryerror() -> None:
     assert buf.get_data_buf() is None
 
 
+def test_lockablebuffer_astronomical_size_yields_none_not_overflowerror() -> None:
+    # A second, distinct failure mode above the first: confirmed directly that bytearray(n) raises
+    # OverflowError instead of MemoryError once n hits the signed-64-bit machine-word boundary
+    # (2**63) - both must degrade the same way, not just the smaller-magnitude one.
+    buf = LockableBuffer(2**63)
+    assert buf.get_buf() is None
+    assert buf.get_data_buf() is None
+
+
 def test_lockablebuffer_zero_length_data_region_is_valid() -> None:
     # data_start == size is a legitimate boundary, not an oversized region: data_length defaults to
     # 0, so data_end (== size) is not > size.

@@ -212,6 +212,19 @@ def test_history_length_negative_is_clamped_to_zero_not_a_raise() -> None:
     assert hist.err_count == 1
 
 
+def test_history_length_huge_is_capped_instead_of_crashing_the_interpreter() -> None:
+    # A typed-valid but wildly unusual int input: confirmed directly against the pinned Unix-port
+    # interpreter that `[x] * n` (what building this deque does internally) segfaults the whole
+    # process for some huge-but-representable n (no catchable exception at all - MemoryError only
+    # covers smaller sizes, OverflowError only covers n at/above the machine-word boundary, and
+    # there's an uncatchable gap in between). The fix caps the input before ever attempting the
+    # allocation - this pins that the cap actually holds, not just that construction "doesn't raise".
+    hist = PrintLogHistory(history_length=2**62)
+    assert len(hist.history) <= 0xFFFF
+    run(hist.err_s("e", errno=1))
+    assert hist.err_count == 1
+
+
 def test_err_s_before_setup_does_not_write_even_with_logging_off() -> None:
     # The "not initialized" guard's *return* must not depend on self.level - only the diagnostic
     # print does. PrintLogHistory's own _write() is a no-op either way, but this pins the contract

@@ -1764,6 +1764,69 @@ above is genuinely underway, but surfaces some new items:
     - Verified: `scripts/lint.sh` (265, unchanged baseline), `scripts/typecheck.sh src tests` (18
       files clean), full suite 460 → 479 tests, all passing; `base_classes.py` back at 100% coverage
       (the new `MemoryError`-guard line is exercised by the huge-size test).
+  - **Third pass: fixed `print_log.py`'s flagged `history_length` gap, then swept `src/`+
+    `improved-quality/` for the same shape of bug - and found the swept-for shape was worse than
+    expected.** Confirmed directly against the pinned Unix-port interpreter: `[x] * n` (a plain list
+    repeat - what building `PrintLogHistory`'s `deque` does internally, since `deque([x] * n, n)`
+    builds the list first) has **three** distinct outcomes by size, not two:
+    - `n` up to roughly `2**61`: raises a clean, catchable `MemoryError` (same as `bytearray`).
+    - `n` at/above `2**63`: raises a clean, catchable `OverflowError` (the size overflows a signed
+      64-bit machine word during conversion, caught *before* any allocation is attempted).
+    - **`n` in between (roughly `2**61`–`2**63`): segfaults the entire interpreter process.** No
+      `try/except` of any kind can catch this - confirmed by reproducing it directly
+      (`[0] * (2**62)` crashes with SIGSEGV, exit code 139). The likely cause: list-repeat computes
+      an internal `n * sizeof(pointer)` byte count for the allocation, and that intermediate
+      multiplication itself overflows before the result is ever bounds-checked, unlike `bytearray`
+      (element size 1, so no such intermediate multiplication - hence no gap between its two clean
+      failure modes at any size tested up to `2**200`).
+    - **Fix for `PrintLogHistory.__init__`**: clamp `history_length` to `[0, _MAX_CNT]` (`_MAX_CNT` =
+      `0xFFFF`, already `err_count`'s own cap, reused rather than inventing a second constant)
+      *before* ever attempting the allocation, instead of reactively catching a failure that isn't
+      always catchable. `except MemoryError` is kept below the clamp as defense-in-depth for a
+      genuinely memory-constrained real device failing at a much smaller, still-representable size;
+      `except OverflowError` is not added there since the clamp makes that branch unreachable by
+      construction (would be defending against a scenario that can no longer happen) - `bytearray`'s
+      call sites keep only the exceptions each can genuinely still hit, not the union of every
+      exception this whole investigation surfaced.
+    - **Fix for `LockableBuffer.__init__` (the previous pass's fix, now found incomplete)**: widened
+      `except MemoryError` to `except (MemoryError, OverflowError)`. `bytearray(2**63)` - a value
+      this class's own `size: int` parameter has no upper bound preventing - was still raising
+      `OverflowError` uncaught, since the earlier fix only anticipated the `MemoryError` case found
+      at the time. No segfault-shaped gap applies here (`bytearray`'s two failure modes are both
+      clean, as above), so no proactive clamp is needed, just the wider `except`.
+    - **Swept the rest of `src/` for the same two dangerous shapes** (`deque(...)`/list-repeat driven
+      by a param, and any other unguarded `bytearray(param)`) and found nothing else live:
+      `crc_checks.py`'s `bytearray(self.num_bytes)` is safe - `num_bytes` is always a hardcoded `0`/
+      `1`/`2`/`4` via `CRC_Pass`/`CRC8`/`CRC16`/`CRC32`, `CRC_Base` is never constructed directly with
+      a caller-supplied width outside `tests/test_crc_checks.py`. `asy_i2c_driver.py`/
+      `asy_spi_driver.py` do no Python-level buffer allocation from a param at all (bus reads/writes
+      go straight to `machine.I2C`/`machine.SPI`, outside this codebase's own allocation code).
+      `print_log.py`'s own second list-repeat (`reset()`'s `[_NO_ERR] * len(self.history)`) is safe
+      transitively - `len(self.history)` is already bounded by the same `_MAX_CNT` cap.
+    - **Found the identical list-repeat-then-bytearray shape in `improved-quality/asy_fram_manager.py`
+      (`bytearray([_STATUS_UNINIT] * (self.size + self.crc.length()))`) and dead code carrying the
+      pre-fix version of this exact bug (`improved-quality/base_classes_old.py`'s own
+      `PrintLogHistory.__init__`, unused - nothing imports `base_classes_old`, confirmed by grep;
+      superseded by this file's already-fixed class under the plain `base_classes` module name)** -
+      both flagged, neither touched: `self.size` in the live one is a real FRAM chunk size, bounded
+      in every real call site by actual hardware capacity (small, hardcoded via `get_chunk(...)`
+      calls), same "dev-time literal, not a live attack surface" reasoning as `max_i2c_err`/`max_val`
+      above, and both files are `improved-quality/` source, out of scope for routine editing per the
+      hard rule.
+    - New regression tests: `tests/test_print_log.py`'s
+      `test_history_length_huge_is_capped_instead_of_crashing_the_interpreter` (`history_length=2**62`
+      - the exact segfault-zone value - now cleanly capped to `≤0xFFFF`) and
+      `tests/test_base_classes.py`'s `test_lockablebuffer_astronomical_size_yields_none_not_overflowerror`
+      (`size=2**63`, the `OverflowError` boundary). Both were run directly against the fix and
+      confirmed to no longer crash before being committed as tests.
+    - Verified: `scripts/lint.sh` (265, unchanged), `scripts/typecheck.sh src tests` (18 files clean),
+      full suite 479 → 481, all passing; `base_classes.py` stayed at 100% coverage. `print_log.py`
+      picked up one new, honestly-uncovered branch (the `except MemoryError` fallback inside the new
+      clamp) - not a tooling artifact like the `const()`/`@staticmethod` misses elsewhere in this
+      file, but a real path that isn't practically triggerable in this test environment (there's no
+      way to force a genuine `MemoryError` at ≤65535 list elements without a much lower, dedicated
+      heap-size limit for just that one test) - left honestly uncovered rather than forcing an
+      artificial trigger, consistent with `--coverage` never gating anything.
 
 ## Decided for the refactor
 

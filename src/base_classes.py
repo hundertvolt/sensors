@@ -73,9 +73,13 @@ class LockableBuffer(Lockable):
             # (asy_fram_manager.py's AsyFramChunkBuffer) are allocated fresh on every read/write over
             # an indefinite uptime, so a fragmentation-driven MemoryError here is a real operational
             # risk, not just a caller-mistake corner case. Degrade the same way as the guards above.
+            # OverflowError is caught too: confirmed directly against the pinned Unix-port
+            # interpreter that bytearray(n) raises OverflowError instead of MemoryError once n hits
+            # the signed-64-bit machine-word boundary (2**63) - a second, distinct exception type
+            # for the same "can't actually allocate this" outcome, not a caller-mistake case either.
             try:
                 self.buf = bytearray(size)
-            except MemoryError:
+            except (MemoryError, OverflowError):
                 self.buf = None
 
     def get_buf(self) -> bytearray | None:
