@@ -164,10 +164,9 @@ class ConfigManager:
             else:  # filename exists but is a directory and cannot be used
                 self.pr.err(self.config_file, "exists but is not a file, cannot write!")
                 return
-        except (MemoryError, OSError, TypeError) as e:  # file doesn't exist/can't be opened/parsed,
-            # filename isn't a string, or a pathologically large/corrupt file exhausts the heap
-            # while json.load() parses it - same "degrade cleanly, don't propagate" treatment as the
-            # other two, not a caller-mistake case either.
+        except (MemoryError, OSError, TypeError) as e:  # missing/unreadable file, bad filename type,
+            # or json.load() exhausting the heap on a huge/corrupt file - same "degrade, don't
+            # propagate" treatment as the other two causes.
             self.pr.wrn("Config file", self.config_file, "not found:", e)
 
         defaults = schema_dict(cfg_vals)

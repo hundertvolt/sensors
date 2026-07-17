@@ -547,6 +547,44 @@ def test_configmanager_corrupt_json_falls_back_to_defaults() -> None:
         _remove(path)
 
 
+def test_configmanager_raw_nan_token_treated_as_corrupt_not_a_raise() -> None:
+    # MicroPython's json module can write NaN/inf (json.dumps(float("nan")) -> "nan", no exception)
+    # but can't read that same token back (json.loads("nan") raises ValueError) - confirmed directly
+    # against the pinned interpreter, an asymmetry CPython doesn't have (it round-trips both ways).
+    # A file containing this token (however it got there) must still take the same "corrupt file,
+    # rebuild from defaults" path as any other malformed JSON, not raise.
+    path = _tmp_path("nantoken.cfg")
+    _remove(path)
+    with open(path, "w") as f:
+        f.write('{"Offset": nan}')
+    try:
+        mgr = cm.ConfigManager(path, _VAL_FLOAT, PrintLog())
+        assert mgr.valid is True
+        assert run(mgr.get_dict(["Offset"])) == {"Offset": 1.5}  # rebuilt from the schema default
+    finally:
+        _remove(path)
+
+
+def test_configmanager_value_omitted_json_quirk_self_heals() -> None:
+    # A genuine MicroPython v1.28.0 json.load() leniency, confirmed directly against the pinned
+    # interpreter and distinct from the already-tested "unterminated" case (fixed upstream in 2025,
+    # commit 9ef16b466 - that fix only covers a missing closing brace/bracket). A value omitted
+    # before a comma/closing brace doesn't raise here - it desyncs the parser into a wrong/mangled
+    # dict instead (e.g. `{"Count": , "Offset": 1.5}` silently parses to `{"Count": "Offset"}`).
+    # Not a bug in this file: every mangled key/value still goes through the normal per-key
+    # type/range check and falls back to its own default, same as any other corrupt value.
+    path = _tmp_path("mangled.cfg")
+    _remove(path)
+    with open(path, "w") as f:
+        f.write('{"Count": , "Offset": 1.5, "Name": "abc", "Enabled": true}')
+    try:
+        mgr = cm.ConfigManager(path, _SCHEMA, PrintLog())
+        assert mgr.valid is True
+        assert run(mgr.get_dict(["Count"])) == {"Count": 5}  # rebuilt from the schema default
+    finally:
+        _remove(path)
+
+
 def test_configmanager_valid_existing_non_default_value_preserved() -> None:
     path = _tmp_path("preserved.cfg")
     _remove(path)
@@ -1130,6 +1168,21 @@ def test_write_config_out_of_range_marked_invalid_but_call_succeeds() -> None:
         assert ok is True
         assert results == {"Count": "Invalid"}
         assert run(mgr.get_dict(["Count"])) == {"Count": 5}  # untouched
+    finally:
+        _remove(path)
+
+
+def test_write_config_nan_and_inf_rejected_end_to_end() -> None:
+    # type_or_range_error's standalone NaN/inf rejection (tested above) must hold through the full
+    # write_config path too: NaN/inf comparisons are always False, so they can never satisfy
+    # val_min <= x <= val_max and are correctly marked Invalid, never persisted to _cache or disk.
+    mgr, path = _make("writenan.cfg", cfg_vals=_VAL_FLOAT)
+    try:
+        for bad in (float("nan"), float("inf"), float("-inf")):
+            ok, results = run(mgr.write_config({"Offset": bad}, _VAL_FLOAT))
+            assert ok is True
+            assert results == {"Offset": "Invalid"}
+        assert run(mgr.get_dict(["Offset"])) == {"Offset": 1.5}  # untouched, still the default
     finally:
         _remove(path)
 

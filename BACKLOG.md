@@ -1910,6 +1910,75 @@ above is genuinely underway, but surfaces some new items:
     - Verified: `scripts/lint.sh` (265, unchanged baseline), `scripts/typecheck.sh src tests` (18
       files clean), full suite 484 → 485, all passing; `base_classes.py` and `config_manager.py` both
       stayed at 100% coverage.
+  - **Full re-validation of `config_manager.py` against every `src/README.md` checklist section**
+    (project owner's explicit ask, "target production quality code" - this file had already been
+    through one full walkthrough (see the earlier entry above) plus the tuple-schema rewrite,
+    exception-hardening audit, and the cache-elimination redesign since, so this was a genuine
+    re-check against the *current* file, not a rerun of old notes). Re-verified `0x4000 == MP_S_IFDIR`
+    fresh against the actual pinned `v1.28.0` source (`extmod/vfs.h`, via the real upstream repo, not
+    memory of the earlier check) - still correct, no drift. Empirically re-probed `json.load`/
+    `json.dump`/dict-lookup edge cases directly against the pinned Unix-port interpreter rather than
+    trusting the prior audit's conclusions unverified, and found two genuinely new things:
+    - **Section 11 (readability): the `MemoryError`-catch comment added to `ConfigManager.__init__`'s
+      read-path `except` earlier this session ran 4 lines, over this file's own established (and
+      previously self-enforced) "≤3 lines, prefer fewer" inline-comment limit.** Trimmed to 3 lines,
+      same content, no behavior change.
+    - **Sections 1/2/12: a genuine MicroPython `v1.28.0` `json` module quirk, not present in any
+      existing test.** Confirmed directly against the pinned interpreter that `json.load()` doesn't
+      raise for a value omitted before a comma/closing brace (e.g. `{"Count": , "Offset": 1.5}`) -
+      instead of raising like CPython would, it desyncs the parser and silently returns a wrong,
+      mangled dict (`{"Count": , "Offset": 1.5}` → `{"Count": "Offset"}`). Checked this isn't the same
+      thing as the already-tested "unterminated" malformed-JSON case (missing closing brace/bracket) -
+      that one *was* fixed upstream (commit `9ef16b466`, "Detect unterminated composite entities",
+      landed before `v1.28.0`, confirmed by checking the pinned repo's own git history) but is a
+      narrower fix that doesn't touch this separate leniency. Traced the full `ConfigManager.__init__`
+      path by hand and then confirmed empirically (not just by reasoning) that this degrades safely -
+      every mangled key/value still goes through the normal per-key `type_or_range_error`
+      check-then-default-fallback, the same as any other corrupt value, so this is a quirk to
+      document per section 1's "quirk, not a bug" guidance, not a fix. Also checked the adjacent
+      question section 2 explicitly calls out (NaN/inf): confirmed `type_or_range_error`'s existing
+      NaN/inf rejection (already unit-tested standalone) was never actually exercised end-to-end
+      through `write_config`, and found a related asymmetry while testing it - `json.dumps(float("nan"))`
+      succeeds (writes the non-standard token `nan`) but `json.loads("nan")` raises `ValueError`,
+      so a file containing that token can't be read back the normal way. Confirmed (not assumed) this
+      already can't happen via any live write path (`type_or_range_error`'s always-`False` NaN/inf
+      comparisons reject it before it ever reaches `_cache`/`json.dump`, both directly in
+      `write_config` and via `check_cfg_get_default`'s self-check of a schema's own literal default),
+      but added the missing regression coverage for both the write-rejection and the corrupted-file
+      read-recovery side, not just the schema-authoring side already covered by
+      `check_cfg_get_default`'s tests. Three new tests in `tests/test_config_manager.py` (137 → 140):
+      `test_write_config_nan_and_inf_rejected_end_to_end`,
+      `test_configmanager_raw_nan_token_treated_as_corrupt_not_a_raise`, and
+      `test_configmanager_value_omitted_json_quirk_self_heals` - each verified directly against the
+      real interpreter before being committed as a test, not just reasoned about.
+    - **One item flagged, not silently resolved, per section 0/1's "ask rather than guess"**:
+      section 5's "never block" explicitly says not to assume a blocking operation is "probably fast
+      enough" without checking. The cache-elimination redesign (see the entry above) closed the
+      per-cycle blocking-read concern that was raised and left open in the earlier checklist pass
+      (`get_dict`/`_get_values` no longer touch disk at all), but `write_config`'s own file write
+      was never separately re-assessed afterward - it's still synchronous `open()`+`json.dump()`
+      inside an `async def` with no yield point, same as before the redesign, just now on a rarer
+      (user/REST-triggered config change, not a sampling-loop) call path rather than a per-cycle one.
+      Whether a real RP2040 littlefs write of a small (order ~100s of bytes) config file is fast
+      enough to not need `async_connect.py`'s `get_long_block_lock()` coordination the way NTP's
+      `socket.getaddrinfo()` does is a real hardware-timing question this environment can't verify
+      (no real device access) - raised here rather than either silently wiring in the lock (an
+      unrequested behavior/architecture change) or silently declaring it fine (exactly the
+      "probably fast enough" assumption the checklist forbids).
+    - Everything else re-checked clean against the current file with no further findings: sections 3/4
+      (no unbounded growth or unnecessary hot-path allocation - `_cache`'s key set is fixed at
+      `__init__`, never grows), 6 (typing - confirmed the file's `Any` usages, e.g. `_get_values`'s
+      return type, are load-bearing for `get_bool_values`'s static return type rather than lazy
+      under-typing, by test-removing one and watching mypy fail), 7 (every path returns explicitly,
+      matches its declared type), 9 (no stale `u`-prefixed imports; the write-then-`os.rename()`
+      atomic-write question was already raised and explicitly declined by the project owner in an
+      earlier session, not re-litigated here), 10 (the `get_dict`-vs-typed-getters `keys` parameter
+      shape asymmetry - `list[str]` vs. full `ConfigSchema` - is a deliberate, caller-ergonomics-driven
+      difference, not an accidental inconsistency, confirmed by checking what each side's real call
+      sites actually have on hand), 13/14 (already fully wired into `scripts/lint.sh`/
+      `scripts/typecheck.sh`/`scripts/test.sh` and CI from its original `src/` promotion).
+    - Verified: `scripts/lint.sh` (265, unchanged baseline), `scripts/typecheck.sh src tests` (18
+      files clean), full suite 485 → 488, all passing; `config_manager.py` stayed at 100% coverage.
 
 ## Decided for the refactor
 
@@ -2036,6 +2105,14 @@ from reading the code alone:
     steps (reference concentration, exposure conditions/timing, how often it's done) still need to
     be captured from the project owner and documented — currently only the REST field itself exists
     in code with no procedure attached.
+13. **Does `config_manager.py`'s `write_config()` need `get_long_block_lock()` coordination?**
+    Surfaced during a `src/README.md` section 5 re-check: `write_config()`'s `open()`+`json.dump()`
+    is still fully synchronous with no yield point (same shape `__init__`'s read path had before the
+    cache-elimination redesign closed *that* blocking concern - see "Refactor progress log"). Whether
+    a real RP2040 littlefs write of a small config file is fast enough to not matter for
+    Neopixel-timing purposes, the way `__init__`'s one-time boot cost apparently was, is a hardware
+    timing question this dev environment can't verify (no real device access) — needs either a
+    measurement on real hardware or a project-owner call on whether it's worth wiring in proactively.
 
 ## Deferred / explicitly out-of-scope work (with reasoning)
 
