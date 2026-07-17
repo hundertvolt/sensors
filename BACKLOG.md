@@ -1979,6 +1979,20 @@ above is genuinely underway, but surfaces some new items:
       `scripts/typecheck.sh`/`scripts/test.sh` and CI from its original `src/` promotion).
     - Verified: `scripts/lint.sh` (265, unchanged baseline), `scripts/typecheck.sh src tests` (18
       files clean), full suite 485 → 488, all passing; `config_manager.py` stayed at 100% coverage.
+  - **`base_classes.py`: applied the same section-11 "≤3 lines, prefer fewer" inline-comment limit
+    just re-enforced on `config_manager.py`, project owner's explicit follow-up ask.** Four blocks
+    had drifted over it across the session's earlier fixes (comment length wasn't rechecked at the
+    time each fix landed): the module docstring (13 lines including blank lines, 3 paragraphs, down
+    to 8 with 2), `LockableBuffer.__init__`'s `MemoryError`/`OverflowError` comment (8 lines → 3),
+    `LockedCounter.__init__`'s negative-`max_val` comment (5 lines → 3), and
+    `SensorReader.reset_error_counter`'s comment (4 lines → 3). Pure trims - the full rationale for
+    each isn't lost, it's already recorded in this file's own earlier entries (the segfault
+    investigation, the three-fixes-on-request pass), which is exactly what section 11 asks for:
+    point to BACKLOG.md instead of restating the detail in the source file. No other block in the
+    file exceeded 3 lines; every function/method already used `#` comments only, never a docstring.
+    Zero behavior change - verified via `scripts/lint.sh` (265, unchanged), `scripts/typecheck.sh
+    src tests` (18 files clean), full suite still 488/488 passing, `base_classes.py` still 100%
+    coverage.
 
 ## Decided for the refactor
 

@@ -1,16 +1,11 @@
-"""Shared base classes every other improved-quality/ driver/manager builds on: async-lock-guarded
-objects/buffers (Lockable, LockableBuffer), lock-protected scalars (LockedCounter, LockedFlag,
-LockedValue - a common get_value/set_value shape, each adding its own specialty on top), and the
-shared sensor-driver base (SensorReader, SensorReaderConfig) that centralizes per-sensor
-error-count bookkeeping and (optionally) per-sensor JSON config storage.
+"""Shared base classes for improved-quality/ drivers: async-lock-guarded objects/buffers
+(Lockable, LockableBuffer), lock-protected scalars (LockedCounter, LockedFlag, LockedValue), and
+the sensor-driver base (SensorReader, SensorReaderConfig) with per-sensor error bookkeeping and
+optional JSON config storage.
 
-Shared contract: every method returns a well-defined value and never raises.
-
-SensorReader accepts an optional `fram`: when None, logging is pure in-memory (print_log.py's
-PrintLogHistory); when a real AsyFramManager is passed, logging persists into FRAM
-(PrintLogHistStore) instead. asy_fram_manager.py itself hasn't cleared the src/ promotion checklist
-yet (see BACKLOG.md), so this path is tested here the same way print_log.py tests its own
-FRAM-backed methods: against tests/_fram_mock.py's mock, not the real allocator.
+Shared contract: every method returns a well-defined value and never raises. SensorReader's
+optional `fram` selects in-memory vs. FRAM-backed logging (print_log.py); FRAM tests use
+tests/_fram_mock.py, not the real allocator - see BACKLOG.md.
 """
 
 import asyncio
@@ -69,14 +64,9 @@ class LockableBuffer(Lockable):
         if size < 0 or data_start < 0 or data_length < 0 or self.data_end > size:
             self.buf = None
         else:
-            # A valid, non-negative size can still exhaust RP2040's heap - real FRAM chunk buffers
-            # (asy_fram_manager.py's AsyFramChunkBuffer) are allocated fresh on every read/write over
-            # an indefinite uptime, so a fragmentation-driven MemoryError here is a real operational
-            # risk, not just a caller-mistake corner case. Degrade the same way as the guards above.
-            # OverflowError is caught too: confirmed directly against the pinned Unix-port
-            # interpreter that bytearray(n) raises OverflowError instead of MemoryError once n hits
-            # the signed-64-bit machine-word boundary (2**63) - a second, distinct exception type
-            # for the same "can't actually allocate this" outcome, not a caller-mistake case either.
+            # A valid size can still exhaust heap (real FRAM chunk buffers allocate fresh on every
+            # read/write over an indefinite uptime) or overflow bytearray's internal size conversion
+            # at 2**63 - both degrade the same way as the guards above, not a caller mistake either.
             try:
                 self.buf = bytearray(size)
             except (MemoryError, OverflowError):
@@ -93,11 +83,9 @@ class LockableBuffer(Lockable):
 
 class LockedCounter:
     def __init__(self, init_value: int | None = 0x00, max_val: int = 0xFF) -> None:
-        # A negative max_val is a dev-time-typo risk, not a real call-site input (every real caller
-        # passes a fixed positive literal) - clamped to 0 rather than left as-is, so the counter's
-        # own [0, max_val] invariant holds for every value, not just non-negative ones. Without this,
-        # _clamp's min(max(value, 0), max_val) would collapse every value to the negative max_val
-        # itself instead of ever reaching 0.
+        # A negative max_val is a dev-time-typo risk, never a real call-site input - clamped to 0
+        # here so the counter's own [0, max_val] invariant holds for every value, rather than letting
+        # _clamp collapse every value to the negative max_val itself.
         self.max_val = max(max_val, 0)
         self.value = self._clamp(init_value)
         self.value_lock = asyncio.Lock()
@@ -185,10 +173,9 @@ class SensorReader:
         self._err_cnt_internal = 0
 
     async def reset_error_counter(self) -> None:
-        # Resets both counters this file tracks, not just pr's persisted history/err_count: leaving
-        # _err_cnt_internal (the consecutive-failure streak driving _error_check's give-up decision)
-        # untouched would mean a caller resetting "the" error counter after a task reset still starts
-        # the next run partway toward giving up again.
+        # Resets both counters this file tracks, not just pr's persisted history/err_count -
+        # _err_cnt_internal is the separate consecutive-failure streak _error_check's give-up
+        # decision relies on, and must not survive a reset the caller expects to be total.
         self._err_cnt_internal = 0
         await self.pr.reset()
 
