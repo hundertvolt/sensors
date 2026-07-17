@@ -34,9 +34,8 @@ below for why that's a scoped exception, not a change in overall approach):
 - **Production-level code quality**: unit tests, mypy, and ruff shall all be available both as
   shell command scripts and as a CI pipeline, which **shall also attempt a real firmware build**
   (running the equivalent of `build-*.sh`, with the full micropython/pico-sdk/picotool toolchain)
-  as a pipeline stage, not just lint/type-check/unit-test. **This repo is GitHub-hosted, not
-  GitLab** — earlier revisions of this doc said "GitLab CI"; that was never actually checked
-  against where the repo lives and has been corrected throughout to GitHub Actions.
+  as a pipeline stage, not just lint/type-check/unit-test. This repo is GitHub-hosted; CI runs via
+  GitHub Actions.
   - **Done**: root `pyproject.toml` + `scripts/lint.sh` + `scripts/typecheck.sh` +
     `scripts/test.sh`, scoped to `improved-quality/`, `src/`, and `tests/` (see CLAUDE.md's "Code
     quality tooling" section for the full rationale). `improved-quality/mypy.ini` and
@@ -2106,6 +2105,21 @@ above is genuinely underway, but surfaces some new items:
     to mock away. Left as-is - `tests/microtest.py` is intentionally minimal (see its own docstring)
     and adding stdout capture there to quiet this would be scope creep for a cosmetic log-reading
     annoyance, not a correctness fix.
+  - **Test-count tally in this log had drifted from the actual repo state; traced and reconciled.**
+    This section's running "N tests passing repo-wide" figures stopped being updated after 489
+    (`77+43+72+140+62+45+50` = `math_helpers.py`/`crc_checks.py`/`asy_i2c_driver.py`/
+    `asy_spi_driver.py`/`base_classes.py`/`config_manager.py`/`print_log.py`, in the order first
+    introduced above), but a direct count against the actual `tests/test_*.py` files
+    (`grep -c '^def test_'`) shows **`crc_checks.py` at 66, not 62 — a +4 drift, 493 total** with
+    every other file unchanged. Traced via `git log`/`git show` to commit `eb67ea7` ("Close
+    crc_checks.py test-coverage gaps in check()/check_from() init validation"): `check()`'s and
+    `check_from()`'s init/size/start rejection paths mirrored `add()`'s/`add_into()`'s
+    already-tested validation but were themselves never exercised, leaving `crc_checks.py` at 94%
+    line coverage; that commit adds the 4 missing tests and, separately, documents
+    `tests/README.md`'s "Reading the numbers" section (the `const()`-folding and
+    `@staticmethod`/decorator-line tracer artifacts, plus the provably-unreachable `except`
+    branches) — a real, useful commit that simply never touched this file's own tally. No further
+    action needed; recorded here so the number itself doesn't look like unexplained drift again.
 
 ## Decided for the refactor
 
@@ -2342,6 +2356,17 @@ from reading the code alone:
     then a normal re-run (confirmed `mpy-cross` skips recompilation, matching the observed
     behavior), then `--clean` (confirmed it wipes the build dirs and `mpy-cross` fully recompiles
     again), all ending with all three checks passing.
+  - **CI cache-key bug found and fixed**: `.github/workflows/ci.yml`'s `unit-tests` job originally
+    keyed its `~/pico-toolchain` cache on `toolchain/versions.toml` alone, on the assumption that a
+    cache miss only needed to happen when the MicroPython version pin changed. That missed that
+    `build_unix_port()`'s own build flags (e.g. `MICROPY_PY_SYS_SETTRACE=1`, added for
+    `scripts/test.sh --coverage`) live in `toolchain/setup_toolchain.py`, not `versions.toml` — a
+    stale cached binary built before that flag existed survived untouched across later commits that
+    didn't touch `versions.toml`, surfacing as `scripts/test.sh --coverage` failing in CI with
+    `"module 'sys' has no attribute 'settrace'"` while passing locally (a local run always starts
+    from a genuinely fresh `~/pico-toolchain`, so it never hit the stale-cache case). Fixed by
+    hashing both `toolchain/versions.toml` and `toolchain/setup_toolchain.py` into the cache key —
+    see `toolchain/README.md`'s "CI perspective" and `ci.yml`'s own cache-step comment.
   - **`update_and_install.txt` re-verified against current (2026) upstream docs — structurally
     still accurate, but missing one real, currently-relevant gotcha.** The three-separate-clones
     approach (`pico-sdk`, `picotool`, `micropython`), the `lib/mbedtls` submodule-init step, the

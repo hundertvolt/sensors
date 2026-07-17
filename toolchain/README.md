@@ -291,11 +291,16 @@ the Unix port.
 
 ## CI perspective
 
-A CI pipeline now exists (`.github/workflows/ci.yml`, GitHub Actions — this repo is GitHub-hosted,
-despite some older BACKLOG.md text still saying "GitLab"), with two jobs: `lint-and-typecheck`
-(ruff/mypy) and `unit-tests`, which runs `scripts/test.sh` — building the toolchain (including the
-Unix port) via plain `setup` on a cache miss (keyed on `toolchain/versions.toml` in `ci.yml`) and
-reusing the cached `--toolchain-dir` on a hit. It does **not** yet include a real RP2040
+A CI pipeline now exists (`.github/workflows/ci.yml`, GitHub Actions), with two jobs:
+`lint-and-typecheck` (ruff/mypy) and `unit-tests`, which runs `scripts/test.sh` — building the
+toolchain (including the Unix port) via plain `setup` on a cache miss and reusing the cached
+`--toolchain-dir` on a hit. The cache key hashes **both** `toolchain/versions.toml` and
+`toolchain/setup_toolchain.py`, not just the former — keying on `versions.toml` alone let a stale
+cached binary built before `build_unix_port()` gained `MICROPY_PY_SYS_SETTRACE=1` survive
+untouched across later commits, a real bug (surfaced as `scripts/test.sh --coverage` failing in CI
+with `"module 'sys' has no attribute 'settrace'"` while passing locally, where a fresh
+`~/pico-toolchain` always picks up the current flags) rather than a hypothetical one; see
+`ci.yml`'s own cache-step comment. It does **not** yet include a real RP2040
 firmware-build stage. `test` (the offline re-verification subcommand) is still written with that
 eventual stage in mind (see BACKLOG.md's "Final-goal requirements for the refactor"): a `setup`
 job would provision (or restore a cache of) `--toolchain-dir` once, and a `test` job would run
