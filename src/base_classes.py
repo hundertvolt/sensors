@@ -221,6 +221,8 @@ class SensorReader:
         try:  # _get_mgr_cfg is an overridable extension point - the call itself, not just its result, could misbehave
             sensor_conf = await self._get_mgr_cfg(cfg)
             if sensor_conf is not None:
+                if not all(k in ret[name] for k in sensor_conf):
+                    await self.pr.wrn_s("Warning: Sensor config manager adds unknown keys to config dict!", wrnno=2)
                 ret[name].update(sensor_conf)
         except Exception as e:  # subclass override could legitimately misbehave; not statically ruled out
             await self.pr.err_s("Error updating config dict:", e, errno=3)

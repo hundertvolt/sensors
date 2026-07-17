@@ -1827,6 +1827,61 @@ above is genuinely underway, but surfaces some new items:
       way to force a genuine `MemoryError` at ≤65535 list elements without a much lower, dedicated
       heap-size limit for just that one test) - left honestly uncovered rather than forcing an
       artificial trigger, consistent with `--coverage` never gating anything.
+  - **Fourth pass: full re-review of `base_classes.py`'s local logic and its integration with
+    `print_log.py`/`config_manager.py`** (project owner's explicit ask, after the segfault-class fix
+    above), looking specifically for oversights, strange behavior, uncaught exceptions, and
+    still-untested conditions rather than assuming the previous three passes were exhaustive:
+    - **Fixed a real asymmetry in `_get_dict_cfg`**: the `callback` merge path already warned
+      (`wrn_s(..., wrnno=1)`) when the callback returned keys outside the requested schema, but the
+      `_get_mgr_cfg` merge path - documented one line above it as "an overridable extension point"
+      that "could misbehave," the exact same class of caller-supplied risk as `callback` - silently
+      merged any extra keys with no warning at all. `SensorReaderConfig._get_mgr_cfg`'s one real
+      override (`self.cfgmgr.get_dict(cfg)`) can never actually trigger this (`get_dict` only ever
+      returns the keys it was asked for), so this was latent, not currently observable - but a
+      future override could silently inject unrequested keys into a config dict with no trace in the
+      error/warning history. Added the same `if not all(k in ret[name] for k in sensor_conf): wrn_s(...)`
+      check, given its own `wrnno=2` (not reusing the callback path's `wrnno=1`) so the persisted
+      warning code stays distinguishable between "callback added a key" and "config manager added a
+      key" rather than conflating two different causes under one number.
+    - **Investigated and ruled out three other candidate issues, deliberately left as-is**:
+      - `LockedCounter` with a negative `max_val`: `_clamp`'s `min(max(value, 0), max_val)` can't
+        raise for it, but does collapse every value (any `init_value`, any `increment`/`decrement`/
+        `set_value`) to the fixed negative `max_val` itself, never `0` - confirmed by direct testing,
+        not just reasoning about the formula. No real call site ever passes a negative `max_val`
+        (`system_service.py`/`async_connect.py`/`neopixel_signal.py` all use fixed positive
+        literals) - same "dev-time-typo risk, not a live input" category as `max_i2c_err`/original
+        `history_length` literals, so left unguarded, but now pinned down by
+        `test_lockedcounter_negative_max_val_clamps_everything_to_max_val` instead of staying an
+        untested corner.
+      - `SensorReader.reset_error_counter()` only resets `self.pr`'s persisted history/`err_count`,
+        not `self._err_cnt_internal` (the separate consecutive-failure streak counter driving
+        `_error_check`'s give-up decision) - confirmed by diffing against
+        `improved-quality/base_classes_old.py`'s byte-identical `reset_error_counter`/
+        `_error_check` pair that this is preserved pre-refactor behavior, not something this
+        refactor introduced or an oversight to fix here. The two counters track genuinely different
+        things (lifetime historical count vs. current consecutive-failure streak) despite the
+        similar naming - flagged here for visibility, not changed.
+      - `config_manager.py`'s `ConfigManager.__init__` wraps its file I/O in `except (OSError,
+        TypeError)` for both the read and write paths, but not `MemoryError` - a `json.load()`/
+        `json.dump()` call against a pathologically large or corrupt config file could in principle
+        raise `MemoryError` uncaught, propagating out of `SensorReaderConfig.__init__` (which calls
+        `ConfigManager(...)` with no try/except of its own, since `config_manager.py`'s own
+        constructor is documented as "never raises"). Real config files are small and locally
+        written, so this is a much lower-likelihood path than the `history_length`/`LockableBuffer`
+        cases above, and it lives inside `config_manager.py` itself (a different file, already
+        promoted/tested on its own) rather than in `base_classes.py`'s own logic - flagged here as a
+        dependency-level finding rather than silently patched in this `base_classes.py`-scoped pass;
+        needs its own decision (e.g. whether to catch `MemoryError` there too) before being touched.
+    - New tests in `tests/test_base_classes.py` (67 → 70): `test_get_dict_cfg_mgr_cfg_extra_key_is_still_merged_and_warned`
+      and `test_get_dict_cfg_mgr_cfg_expected_keys_only_do_not_warn` (the new warning path's positive
+      and negative cases), `test_lockedcounter_negative_max_val_clamps_everything_to_max_val`, and an
+      `err_count == 1` assertion added to the existing
+      `test_get_dict_cfg_callback_extra_key_is_still_merged` (confirmed the pre-existing callback
+      warning path actually persists into the error history, not just that the dict merge itself
+      looked right).
+    - Verified: `scripts/lint.sh` (265, unchanged baseline), `scripts/typecheck.sh src tests` (18
+      files clean), full suite 481 → 484, all passing; `base_classes.py` stayed at 100% coverage (146
+      stmts, up from 144 - the new warning branch is exercised by both new tests).
 
 ## Decided for the refactor
 

@@ -283,6 +283,21 @@ def test_lockedcounter_max_val_zero_stays_clamped_to_zero() -> None:
     assert run(counter.decrement()) == 0
 
 
+def test_lockedcounter_negative_max_val_clamps_everything_to_max_val() -> None:
+    # A negative max_val is never passed by any real call site (system_service.py/async_connect.py/
+    # neopixel_signal.py all pass a fixed positive literal) - a dev-time-typo risk, not a value ever
+    # computed at runtime. _clamp's min(max(value, 0), max_val) still can't raise for it, but the
+    # result is worth pinning down: max(x, 0) floors at 0, then min(0-or-higher, max_val) always
+    # picks the negative max_val, so every value - regardless of delta direction - collapses to the
+    # same fixed negative number rather than ever reaching 0.
+    counter = LockedCounter(init_value=3, max_val=-5)
+    assert run(counter.get_value()) == -5
+    assert run(counter.increment()) == -5
+    assert run(counter.decrement()) == -5
+    run(counter.set_value(0))
+    assert run(counter.get_value()) == -5
+
+
 def test_lockedcounter_concurrent_increments_are_not_lost() -> None:
     counter = LockedCounter(init_value=0, max_val=1000)
 
@@ -441,6 +456,30 @@ def test_get_dict_cfg_callback_extra_key_is_still_merged() -> None:
 
     result = run(reader._get_dict_cfg("Sensor", _VAL_SI, callback=callback))
     assert result == {"Sensor": {"SampleInterv": 5, "Unexpected": 1}}
+    assert reader.pr.err_count == 1  # the "unknown keys" path goes through wrn_s(), not silently
+
+
+def test_get_dict_cfg_mgr_cfg_extra_key_is_still_merged_and_warned() -> None:
+    # Mirrors test_get_dict_cfg_callback_extra_key_is_still_merged: _get_mgr_cfg is the same kind of
+    # overridable extension point as callback, so an override returning unrequested keys must be
+    # merged-and-warned the same way, not silently swallowed just because it's the other code path.
+    class ExtraKeyMgrCfgReader(SensorReader):
+        async def _get_mgr_cfg(self, cfg: "list[str]") -> "dict[str, int | float | str | None] | None":
+            return {"SampleInterv": 5, "Unexpected": 1}
+
+    reader = ExtraKeyMgrCfgReader(Meas(20.0, 50), max_i2c_err=3)
+    result = run(reader._get_dict_cfg("Sensor", _VAL_SI))
+    assert result == {"Sensor": {"SampleInterv": 5, "Unexpected": 1}}
+    assert reader.pr.err_count == 1
+
+
+def test_get_dict_cfg_mgr_cfg_expected_keys_only_do_not_warn() -> None:
+    # Negative case for the above: an override that only ever returns requested keys (the real
+    # SensorReaderConfig._get_mgr_cfg's actual shape) must not trip the new warning path.
+    reader = SensorReader(Meas(20.0, 50), max_i2c_err=3)
+    result = run(reader._get_dict_cfg("Sensor", _VAL_SI))
+    assert result == {"Sensor": {"SampleInterv": None}}
+    assert reader.pr.err_count == 0
 
 
 def test_get_dict_cfg_mgr_cfg_update_exception_is_caught() -> None:
