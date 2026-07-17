@@ -8,12 +8,14 @@ never needs to defend against itself.
 Data-integrity recovery (CRC, dual-copy redundancy) lives one layer up in asy_fram_manager.py, not
 here - raw RP2040 SPI write()/readinto() genuinely cannot report a transfer fault (see
 asy_spi_driver.py), so this file can only ever detect faults it can observe by other means:
-mismatched device identification (setup()/verify_present()) and a write-enable latch that didn't
-actually set/clear as commanded (_write()). Both self-heal back to a safe, well-defined state -
-uninitialized=True (every other method already refuses cleanly) or a failed write reported as
-False - without raising, so a caller can retry via a fresh setup() the same way every sensor
-driver's task-death-and-respawn already works, without this file needing to know about that
-policy itself.
+mismatched device identification (setup()/verify_present()), a write-enable latch that didn't
+actually set/clear as commanded (_write()/set_write_protected()), and a stale write-protect
+assumption (setup() re-syncs _wp from the real, nonvolatile status register instead of trusting the
+constructor's wp= guess - WPEN/BP0/BP1 are FRAM-backed and survive a power cycle, unlike WEL). All
+three self-heal back to a safe, well-defined state - uninitialized=True (every other method already
+refuses cleanly) or a failed write/protect-change reported as False - without raising, so a caller
+can retry via a fresh setup() the same way every sensor driver's task-death-and-respawn already
+works, without this file needing to know about that policy itself.
 
 Contract: every method returns a well-defined value (bool/None/int) and never raises, except three
 deliberately-allowed paths, all inherited from or mirroring asy_spi_driver.py's own established
@@ -44,6 +46,8 @@ set_write_protected()'s write-enable-latch verification), not by an exception fr
 itself.
 """
 
+import asyncio
+
 from machine import Pin
 from micropython import const
 
@@ -73,6 +77,13 @@ _SR_WP_MASK = const(0x8C)  # WPEN | BP1 | BP0
 _SR_WP_SET = const(0x8C)
 _SR_WP_CLEAR = const(0x00)
 
+# Not const()-wrapped (unlike the datasheet-fixed values above) so a test can monkeypatch this
+# module attribute to shorten the wait - see verify_present(). A real SPI transaction here
+# (RDID or a status-register round trip) completes in low-single-digit ms, so this is generous
+# headroom for legitimate contention, while still bounding an accidental lock-reentry to a finite
+# wait instead of hanging the calling task forever.
+_VERIFY_PRESENT_LOCK_TIMEOUT_S = 1.0
+
 
 class FRAM_SPI(Lockable):
     def __init__(
@@ -96,11 +107,13 @@ class FRAM_SPI(Lockable):
         await self._spidev.setup()
         if not await self._check_device_id():
             raise OSError("FRAM SPI device not found.")
+        # WPEN/BP0/BP1 are nonvolatile (datasheet), unlike WEL - re-sync _wp from hardware rather
+        # than trusting the constructor's wp=, which is only ever a guess about a prior session.
+        self._wp = (await self._read_status() & _SR_WP_MASK) == _SR_WP_SET
         if self._wp_pin is not None:
             self._wp_pin.init(self._wp_pin.OUT)
-            # WP is active-low (datasheet "WRITING PROTECT" table): WP=0 is what additionally
-            # locks the status register itself while WPEN=1, matching this class's own
-            # protect=True intent - so the pin is driven to the logical inverse of _wp throughout.
+            # WP is active-low (datasheet "WRITING PROTECT" table): WP=0 additionally locks the
+            # status register itself while WPEN=1, matching this class's own protect=True intent.
             self._wp_pin.value(not self._wp)
         self.uninitialized = False
         self.pr.one("SPI FRAM Driver Setup complete")
@@ -117,10 +130,20 @@ class FRAM_SPI(Lockable):
         if self.uninitialized:
             self.pr.err("FRAM not initialized, run setup first!")
             return False
-        async with self:
+        # asyncio.Lock isn't reentrant - a bare `async with self:` would hang forever if a caller
+        # invoked this from inside its own `async with fram:` block. Bounding the wait turns that
+        # hang into the same well-defined False every sibling guard already returns. See BACKLOG.md.
+        try:
+            await asyncio.wait_for(self.asy_lock.acquire(), _VERIFY_PRESENT_LOCK_TIMEOUT_S)
+        except asyncio.TimeoutError:
+            self.pr.err("FRAM verify_present: lock busy, giving up.")
+            return False
+        try:
             present = await self._check_device_id()
             if not present:
                 self.uninitialized = True
+        finally:
+            self.asy_lock.release()
         return present
 
     async def _check_device_id(self) -> bool:
@@ -233,6 +256,11 @@ class FRAM_SPI(Lockable):
         if not await self._enable_write():
             self.pr.wrn("FRAM write enable latch did not set, write protection not changed.")
             return False
+        if self._wp_pin is not None:
+            # Deassert WP first: per the datasheet's WRITING PROTECT table, WEL=1,WPEN=1,WP=0
+            # makes the status register itself unwritable, so a pin left low from an earlier
+            # protect=True would otherwise block this very WRSR - including the one clearing it.
+            self._wp_pin.value(True)
         async with self._spidev as spidev:
             await spidev.write(bytearray([_SPI_OPCODE_WRSR, target]))
         # Read back rather than trusting the write blindly - the one WRSR transaction is the only
@@ -241,6 +269,8 @@ class FRAM_SPI(Lockable):
         ok = (await self._read_status() & _SR_WP_MASK) == target
         await self._disable_write()
         if not ok:
+            if self._wp_pin is not None:
+                self._wp_pin.value(not self._wp)  # unchanged - restore the pin to match reality
             self.pr.err("FRAM write protection readback mismatch, not applied!")
             return False
         self._wp = value
@@ -250,6 +280,9 @@ class FRAM_SPI(Lockable):
         return True
 
     def _setup_addr_buffer(self, addr: int, opcode: int) -> bytearray:
+        # max_size is trusted as set up by the caller - this class's RDID check is hardwired to
+        # one real 8KB chip (0x0000-0x1FFF); a wrong, too-large max_size here would validate
+        # addresses beyond that and let them silently alias on real hardware. See BACKLOG.md.
         if self._max_size > 0xFFFF:  # > 16bit address
             buffer = bytearray(4)
             buffer[1] = (addr >> 16) & 0xFF

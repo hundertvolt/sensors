@@ -869,6 +869,82 @@ files first (max is 8), so this is additive, not a behavior change for any exist
 suite re-run to confirm: `test_asy_i2c_driver.py` 77/77, `test_asy_spi_driver.py` 43/43, both
 unchanged from before this addition.
 
+**Post-promotion re-audit against the datasheet (owner-requested second pass, after CI first went
+green): three real bugs found and fixed, plus a deliberate scope note.**
+
+1. **Write-protection self-lock when `wp_pin` is used.** The datasheet's WRITING PROTECT table
+   (`WEL=1, WPEN=1, WP=0` → Status Register itself Protected) means a `WP` pin left low from an
+   earlier `set_write_protected(True)` silently blocked *every* later `WRSR` — including the one
+   meant to turn protection back off — because the old driver only updated `_wp_pin` *after* a
+   successful write, so the WRSR was always attempted while the *previous* pin level was still in
+   effect. First enable always worked (old `WPEN=0` made the SR unconditionally writable); nothing
+   after that ever could. Currently dormant (`asy_fram_manager.py` never passes `wp_pin` today,
+   see line ~515), but a real, dormant one-way lockout the moment it's used. Fixed by driving `WP`
+   high (deasserted) once `WREN` has already succeeded but *before* the `WRSR` itself —
+   guaranteeing the SR is writable regardless of the still-current `WPEN` bit — and only
+   re-driving it to the real target after the write is readback-confirmed (restoring the prior
+   level on failure; a failed `WREN` never touches the pin at all, since nothing's changed yet).
+   This also exposed a **mock fidelity gap**: `tests/_fram_chip_fake.py`'s `WRSR` handler only ever gated on
+   `WEL`, never modeling the `WP`-pin+`WPEN` status-register lock at all — so the existing
+   `test_wp_pin_get_write_protected_reads_active_low_pin_correctly` (a True→False round trip)
+   passed as a false positive against the buggy driver. Fixed the fake too (a `wp_pin` attribute a
+   test wires post-construction via `chip.wp_pin = fram._wp_pin`, since the pin object doesn't
+   exist until `FRAM_SPI.__init__` runs); regression test:
+   `test_wp_pin_protection_can_be_toggled_off_again_after_being_enabled` (four round trips, not
+   just one).
+2. **`setup()` never re-synced `_wp` from real hardware, but `WPEN`/`BP0`/`BP1` are nonvolatile.**
+   The datasheet explicitly documents these three bits as "composed of nonvolatile memories
+   (FRAM)", unlike `WEL`, which the same table documents as reset at power-on. The constructor's
+   `wp=` parameter was trusted blindly forever; a stale assumption from a previous session (or
+   anything else that ever wrote the status register) would never self-correct, and
+   `get_write_protected()` without a `wp_pin` would keep echoing the wrong cached value
+   indefinitely, since "Protected Blocks: Protected" holds in *every* row of the WRITING PROTECT
+   table regardless of `WEL`/`WPEN`. Fixed: `setup()` now issues an `RDSR` and derives `_wp` from
+   the real status register (`== _SR_WP_SET` exactly, matching this driver's own binary all-or-
+   nothing write model — it never partially represents `BP0`/`BP1`/`WPEN` independently) instead of
+   trusting the constructor parameter. **Behavioral consequence, not a bug**: `wp=` at construction
+   is now purely a pre-`setup()` placeholder with no lasting effect once `setup()` succeeds —
+   always overwritten by hardware truth. Regression test:
+   `test_setup_resyncs_wp_from_nonvolatile_hardware_state_over_a_stale_constructor_guess` (both
+   directions — stale-protected and stale-unprotected). This also required updating two existing
+   tests whose assumptions this fix correctly overturns
+   (`test_wp_and_wp_pin_combinations_all_construct_and_setup_cleanly`,
+   `test_multiple_invalid_edge_values_combined_still_degrade_safely`) to seed `chip.status` to the
+   intended hardware state before `setup()`, rather than expecting the constructor `wp=` to survive
+   unchanged.
+3. **`verify_present()` could hang forever, not just fail.** It self-acquires `FRAM_SPI`'s own
+   outer `Lockable` lock (`async with self:`), unlike `get_values()`/`set_values()`, which require
+   the *caller* to already hold it (by design — so a caller can compose several bus operations
+   atomically under one `async with fram:`). A future caller invoking `verify_present()` from
+   inside such a block would hang the task indefinitely, since MicroPython's `asyncio.Lock` isn't
+   reentrant (confirmed directly against `extmod/asyncio/lock.py`'s `Lock.acquire()` — no owner
+   tracking at all) — a silent violation of the module's own "always returns a well-defined value,
+   never raises" contract (it wouldn't raise, it just wouldn't ever return). Considered a true
+   reentrant lock for `Lockable` (shared across the whole project, e.g. `SPIDevice`) but rejected
+   as disproportionate for one call site in one file. Fixed narrowly instead:
+   `verify_present()` now does `asyncio.wait_for(self.asy_lock.acquire(), _VERIFY_PRESENT_LOCK_TIMEOUT_S)`
+   and treats a `TimeoutError` as the same clean `False` every sibling guard already returns.
+   Confirmed directly against `extmod/asyncio/{lock,funcs}.py` (the real MicroPython 1.28.0 source,
+   not assumed) that `wait_for`'s timeout-driven cancellation of a still-*waiting* `acquire()` is
+   safe — the queued task is cleanly removed without corrupting `Lock.state`, matching this exact
+   use case. `_VERIFY_PRESENT_LOCK_TIMEOUT_S` (1.0s — generous headroom over the low-single-digit-ms
+   real transaction cost, per `SPIDevice`'s own two 1ms settle sleeps) is deliberately *not*
+   `const()`-wrapped, unlike every datasheet-fixed value in this file, specifically so a test can
+   monkeypatch the module attribute to shorten the wait (`const()` values are inlined at compile
+   time and can't be reassigned at runtime) — see
+   `test_verify_present_bounded_wait_returns_false_instead_of_hanging_when_lock_already_held`.
+4. **Scope note, not a bug**: `_setup_addr_buffer`'s `max_size > 0xFFFF` (4-byte address) branch is
+   dead code for this specific chip — the `RDID` check is hardwired to one real 8KB part
+   (`0x0000`-`0x1FFF`), so a correctly-`setup()` instance can never legitimately need it. Owner
+   decision: trust that `max_size` is set correctly by the caller rather than validating/clamping
+   it in the driver; added a short comment at the call site instead (`_setup_addr_buffer`) flagging
+   that a wrong, too-large `max_size` would let `get_values()`/`set_values()` validate addresses
+   beyond the real chip capacity and silently alias/wrap on real hardware.
+
+Test count after this pass: `asy_fram_driver.py` 44 (41 → 44: three new regression tests, one per
+fix above; finding #4 didn't get its own test since it's an explicit "trust the caller" decision,
+not a behavior change).
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`

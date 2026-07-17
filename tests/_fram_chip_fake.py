@@ -28,9 +28,24 @@ being permanently unreachable now that the normal case already clears WEL before
 payload bytes of a WRITE (not an opcode/latch), which is genuinely undetectable at this layer by
 design - opcodes/latches/identity are the only things FRAM_SPI itself can verify; payload-level
 data integrity is asy_fram_manager.py's CRC/dual-copy-redundancy job, one layer up.
+
+`wp_pin` (set by a test after construction, e.g. `chip.wp_pin = fram._wp_pin`, since the pin
+object doesn't exist until FRAM_SPI.__init__ runs) models the datasheet's WRITING PROTECT table:
+a WRSR is only actually accepted by real hardware when WEL=1 and (WPEN=0 or WP=1) - i.e. the
+status register itself becomes unwritable once WPEN=1 and WP is driven low. None (no pin wired)
+models WP tied permanently high (unprotected), matching the assumption the driver itself already
+makes when constructed without a wp_pin.
 """
 
 from machine import SPI as FakeSPI
+
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    from machine import Pin
 
 _OPCODE_WREN = 0x06
 _OPCODE_WRDI = 0x04
@@ -53,6 +68,7 @@ class FakeMB85RS64V(FakeSPI):
         self.disturb_write_autoclear = False  # simulate the chip's own WRITE-completion WEL auto-clear not firing
         self.disturb_wrsr_autoclear = False  # simulate the chip's own WRSR-completion WEL auto-clear not firing
         self.corrupt_next_write_data: bytes | None = None  # what actually lands, if not the real payload
+        self.wp_pin: Pin | None = None  # set by the test after FRAM_SPI construction - see module docstring
         self._pending_op: int | None = None
         self._pending_addr: int | None = None
 
@@ -89,8 +105,12 @@ class FakeMB85RS64V(FakeSPI):
         elif opcode == _OPCODE_WRSR:
             # Requires WEL set first, exactly like WRITE (datasheet: WEL "indicates if FRAM
             # array and status register are writable"); WRSR can't write bit 1 (WEL) itself, so
-            # the current WEL bit is preserved through this assignment regardless.
-            if self.wel and not self.drop_wrsr:
+            # the current WEL bit is preserved through this assignment regardless. Also requires
+            # the status register itself to be unlocked (WRITING PROTECT table): WPEN=0, or
+            # WP=1 if wired - checked against the *current* WPEN/WP, not the value being written.
+            wp_level = 1 if self.wp_pin is None else self.wp_pin.value()
+            sr_unlocked = not (self.status & 0x80) or wp_level == 1
+            if self.wel and not self.drop_wrsr and sr_unlocked:
                 self.status = (data[1] & ~0x02) | (self.status & 0x02)
             if not self.disturb_wrsr_autoclear:
                 self.status &= ~0x02  # WEL auto-clears at the CS rising edge after WRSR recognition

@@ -2,6 +2,7 @@ import asyncio
 
 from _fram_chip_fake import FakeMB85RS64V
 
+import asy_fram_driver
 import asy_spi_driver
 from asy_fram_driver import FRAM_SPI
 from asy_spi_driver import SPI
@@ -40,6 +41,7 @@ def make_fram(
     fram = FRAM_SPI(bus, 1, logger=PrintLog(), wp=wp, wp_pin=wp_pin, max_size=max_size)
     chip = fram._spidev.spi._spi
     assert isinstance(chip, FakeMB85RS64V)
+    chip.wp_pin = fram._wp_pin  # lets the fake model the datasheet's WP-pin status-register lock
     return fram, chip
 
 
@@ -277,6 +279,30 @@ def test_write_reports_data_written_even_if_wrdi_stays_stuck_after_retry() -> No
 # ---------------------------------------------------------------------------
 
 
+def test_setup_resyncs_wp_from_nonvolatile_hardware_state_over_a_stale_constructor_guess() -> None:
+    # Regression for a real bug: WPEN/BP0/BP1 are nonvolatile FRAM cells (unlike WEL, which resets
+    # at power-on), so real hardware can already be write-protected from a previous session before
+    # this object even exists. setup() must trust the real status register over the constructor's
+    # wp= guess in both directions - a stale "assumed protected" and a stale "assumed unprotected".
+    fram, chip = make_fram(wp=False)
+    chip.status = 0x8C  # hardware was actually left protected by an earlier session
+
+    async def get() -> bool:
+        return await fram.get_write_protected()
+
+    run(setup_fram(fram))
+    assert run(get()) is True
+
+    fram2, chip2 = make_fram(wp=True)
+    chip2.status = 0x00  # hardware was actually left unprotected
+
+    async def get2() -> bool:
+        return await fram2.get_write_protected()
+
+    run(setup_fram(fram2))
+    assert run(get2()) is False
+
+
 def test_write_protected_verified_round_trip() -> None:
     fram, chip = make_fram()
     run(setup_fram(fram))
@@ -375,6 +401,25 @@ def test_wp_pin_get_write_protected_reads_active_low_pin_correctly() -> None:
     assert unprotected is False
 
 
+def test_wp_pin_protection_can_be_toggled_off_again_after_being_enabled() -> None:
+    # Regression for a real bug: per the datasheet's WRITING PROTECT table, WEL=1,WPEN=1,WP=0
+    # makes the status register itself unwritable - so a wp_pin left low from an earlier
+    # protect=True call used to silently block every later WRSR, including the one meant to turn
+    # protection back off, permanently locking this driver into protected mode. Multiple round
+    # trips here (not just one) prove it's not a one-shot fluke.
+    fram, chip = make_fram(wp_pin=7)
+    run(setup_fram(fram))
+
+    async def toggle(value: bool) -> bool:
+        return await fram.set_write_protected(value)
+
+    for value in (True, False, True, False):
+        assert run(toggle(value)) is True
+        assert fram._wp_pin is not None
+        assert fram._wp_pin.value() == (0 if value else 1)  # WP active-low
+        assert (chip.status & 0x8C) == (0x8C if value else 0x00)
+
+
 # ---------------------------------------------------------------------------
 # verify_present() - the post-setup re-probe / self-healing entry point
 # ---------------------------------------------------------------------------
@@ -418,6 +463,28 @@ def test_setup_again_after_verify_present_failure_recovers() -> None:
 
     run(setup_fram(fram))  # the same task-death-and-respawn "fresh setup()" pattern every driver uses
     assert fram.uninitialized is False
+
+
+def test_verify_present_bounded_wait_returns_false_instead_of_hanging_when_lock_already_held() -> None:
+    # verify_present() self-acquires the outer Lockable lock, unlike get_values()/set_values()
+    # (which require the caller to already hold it) - calling it from inside an existing
+    # `async with fram:` block would otherwise hang the task forever, since asyncio.Lock isn't
+    # reentrant. Timeout patched down so the test doesn't have to wait out the real default.
+    fram, _chip = make_fram()
+    run(setup_fram(fram))
+    asy_fram_driver._VERIFY_PRESENT_LOCK_TIMEOUT_S = 0.01
+
+    async def scenario() -> bool:
+        async with fram:
+            nested = await fram.verify_present()
+        return nested
+
+    try:
+        result = run(scenario())
+    finally:
+        asy_fram_driver._VERIFY_PRESENT_LOCK_TIMEOUT_S = 1.0
+    assert result is False
+    assert fram.uninitialized is False  # a lock-busy timeout isn't a device-identification failure
 
 
 # ---------------------------------------------------------------------------
@@ -468,9 +535,14 @@ def test_wp_and_wp_pin_combinations_all_construct_and_setup_cleanly() -> None:
     # All 4 combinations of the two independent wp/wp_pin parameters - each on its own is already
     # covered elsewhere; this locks in that every pairing (not just each parameter in isolation)
     # constructs and sets up without error, with the pin left in the datasheet-correct state.
+    # setup() re-syncs _wp from the real (nonvolatile) status register rather than trusting the
+    # constructor's wp= guess (see test_setup_resyncs_wp_from_nonvolatile_hardware_state_*), so
+    # `wp` here is what the simulated hardware is seeded to already hold, not just a constructor
+    # passthrough.
     for wp in (False, True):
         for wp_pin in (None, 7):
-            fram, _chip = make_fram(wp=wp, wp_pin=wp_pin)
+            fram, chip = make_fram(wp=wp, wp_pin=wp_pin)
+            chip.status = 0x8C if wp else 0x00
             run(setup_fram(fram))
             assert fram.uninitialized is False
             if wp_pin is None:
@@ -511,8 +583,11 @@ def test_max_size_zero_or_negative_degrades_to_always_rejecting_access_not_a_cra
 def test_multiple_invalid_edge_values_combined_still_degrade_safely() -> None:
     # Several edge values together (not just one at a time): a nonsensical max_size alongside a
     # real wp/wp_pin configuration - each independent code path still behaves exactly as it does
-    # in isolation, with no interaction/crash between them.
-    fram, _chip = make_fram(max_size=-1, wp=True, wp_pin=7)
+    # in isolation, with no interaction/crash between them. Hardware is seeded to already be
+    # protected (see test_wp_and_wp_pin_combinations_all_construct_and_setup_cleanly) since
+    # setup() now syncs _wp from the real status register, not the wp= constructor guess.
+    fram, chip = make_fram(max_size=-1, wp=True, wp_pin=7)
+    chip.status = 0x8C
     run(setup_fram(fram))
     assert fram.uninitialized is False
     assert fram._wp_pin is not None
