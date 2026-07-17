@@ -74,7 +74,10 @@ class FRAM_SPI(Lockable):
             raise OSError("FRAM SPI device not found.")
         if self._wp_pin is not None:
             self._wp_pin.init(self._wp_pin.OUT)
-            self._wp_pin.value(self._wp)
+            # WP is active-low (datasheet "WRITING PROTECT" table): WP=0 is what additionally
+            # locks the status register itself while WPEN=1, matching this class's own
+            # protect=True intent - so the pin is driven to the logical inverse of _wp throughout.
+            self._wp_pin.value(not self._wp)
         self.uninitialized = False
         self.pr.one("SPI FRAM Driver Setup complete")
 
@@ -105,7 +108,7 @@ class FRAM_SPI(Lockable):
         if self.uninitialized:
             self.pr.err("FRAM not initialized, run setup first!")
             return False
-        return self._wp if self._wp_pin is None else bool(self._wp_pin.value())
+        return self._wp if self._wp_pin is None else not bool(self._wp_pin.value())  # WP active-low
 
     async def get_size(self) -> int:
         return self._max_size
@@ -200,7 +203,7 @@ class FRAM_SPI(Lockable):
             return False
         self._wp = value
         if self._wp_pin is not None:
-            self._wp_pin.value(value)
+            self._wp_pin.value(not value)  # WP active-low, see setup()
         self.pr.evt("FRAM Write Protection set to", value)
         return True
 

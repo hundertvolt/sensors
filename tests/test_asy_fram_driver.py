@@ -355,8 +355,24 @@ def test_wp_pin_drives_real_pin_and_get_reads_pin_not_cache() -> None:
 
     pin_value, ok = run(scenario())
     assert ok is True
-    assert pin_value == 1
+    assert pin_value == 0  # WP is active-low: protect=True drives the pin LOW to lock the status register
     assert chip.status & 0x8C == 0x8C  # hardware register still verified/updated too
+
+
+def test_wp_pin_get_write_protected_reads_active_low_pin_correctly() -> None:
+    fram, _chip = make_fram(wp_pin=7)
+    run(setup_fram(fram))
+
+    async def scenario() -> tuple[bool, bool]:
+        await fram.set_write_protected(True)
+        protected = await fram.get_write_protected()
+        await fram.set_write_protected(False)
+        unprotected = await fram.get_write_protected()
+        return protected, unprotected
+
+    protected, unprotected = run(scenario())
+    assert protected is True
+    assert unprotected is False
 
 
 # ---------------------------------------------------------------------------

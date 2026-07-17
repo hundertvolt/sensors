@@ -744,25 +744,27 @@ before the explicit `WRDI` even runs. No driver code changes needed; the explici
 were already correct (if now confirmed usually redundant in the non-fault path) and are kept as
 that defense-in-depth. 27/27 tests still pass with the corrected fake.
 
-**Second open item raised by the same datasheet read, flagged rather than fixed**: the real
+**Second finding from the same datasheet read, fixed after owner confirmation**: the real
 `WP` pin is active-low per the "WRITING PROTECT" table (`WP=0` is what makes the status register
 itself additionally locked when `WPEN=1`; `WP=1` leaves it changeable) - the same active-low
-convention as `CS`/`HOLD` on this chip. `FRAM_SPI`'s `wp_pin` handling drives
-`self._wp_pin.value(value)` directly (`value=True` -> pin driven `HIGH`), which - if the class's
-own stated intent ("enables hardware-level protection" when a `wp_pin` is supplied) means
-physically locking the status register when block-protection is turned on - looks backwards from
-what the datasheet's table says is needed for that lock effect. Zero real callers exist to infer
-intent from either way (same as the rest of this method's history). Not changed pending owner
-input: verify the intended semantics before altering, per `src/README.md` section 1.
+convention as `CS`/`HOLD` on this chip. `FRAM_SPI`'s `wp_pin` handling drove
+`self._wp_pin.value(value)` directly (`value=True` -> pin driven `HIGH`), backwards from what the
+datasheet's table says is needed to actually lock the status register. Owner confirmed the fix:
+`setup()`/`set_write_protected()` now drive the pin to `not value`, and `get_write_protected()`
+reads `not bool(self._wp_pin.value())`, so `value=True` (protect) now genuinely drives `WP` low
+and locks the status register, matching the class's own stated "enables hardware-level
+protection" intent. Zero real callers existed either way, so this is a pure correctness fix, not
+a behavior change for any real caller.
 
 Testing: a fourth mocking-boundary instance, `tests/_fram_chip_fake.py` - a stateful fake MB85RS64V
 sitting on top of `tests/machine.py`'s dumb fake SPI bus, interpreting the exact opcode/CS-session
 shapes `FRAM_SPI` itself produces (RDID/RDSR/WRSR/WREN/WRDI/READ/WRITE), with fault-injection knobs
-(`drop_wren`/`drop_next_wrdi`/`drop_wrsr`/`rdid_response`) for simulating a disturbance eating one
-specific transaction's effect. 27 tests in `tests/test_asy_fram_driver.py`, including direct
-regressions for the RDID byte-order/`and`-vs-`or` bug and the new WEL/write-protect verification
-paths. No `pyproject.toml`/CI changes needed - both already scope by directory (`src`, `tests`), not
-an explicit file list.
+(`drop_wren`/`drop_next_wrdi`/`drop_wrsr`/`disturb_write_autoclear`/`disturb_wrsr_autoclear`/
+`rdid_response`) for simulating a disturbance eating one specific transaction's effect. 28 tests in
+`tests/test_asy_fram_driver.py`, including direct regressions for the RDID byte-order/`and`-vs-`or`
+bug, the new WEL/write-protect verification paths, and the `WP`-pin-polarity fix. No
+`pyproject.toml`/CI changes needed - both already scope by directory (`src`, `tests`), not an
+explicit file list.
 
 ### Coverage-driven completeness pass
 
@@ -778,7 +780,7 @@ and a missing config file failing independently without either derailing the oth
 ### Current test counts (verify via `grep -c '^def test_' tests/test_*.py` if this looks stale)
 
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
-`base_classes.py` 72, `config_manager.py` 140, `print_log.py` 50, `asy_fram_driver.py` 27 — **520
+`base_classes.py` 72, `config_manager.py` 140, `print_log.py` 50, `asy_fram_driver.py` 28 — **521
 total**.
 
 ## Decided for the refactor
