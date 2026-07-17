@@ -1639,7 +1639,10 @@ above is genuinely underway, but surfaces some new items:
       `asy_bmp3xx_driver.py`'s `trigger_period` comparison against a plain `int`. Flagged rather than
       silently fixed or silently left inconsistent; needs a decision (e.g. a separate narrow
       `LockedValue[int | None]`-shaped instance type, or leaving `LockedValue` as-is and accepting the
-      `-1` convention there) before touching it.
+      `-1` convention there) before touching it. **Deferred, not forgotten**: explicitly deferred to
+      the future functional-level refactor of `sensortask-*.py` itself (task supervisor, per-device
+      driver wiring) rather than decided piecemeal here as a `base_classes.py`-only change — confirmed
+      directly by the project owner. Revisit `last_task_err` alongside that pass, not before it.
     - Verified via `ruff`, `scripts/typecheck.sh src tests` (18 files clean), and the full suite
       (443/443, +8 new tests: 4 for `LockableBuffer`'s negative-input guard, 4 for `LockedCounter`'s
       `None` sentinel/clamp behavior). Also diffed `scripts/typecheck.sh`'s unscoped
@@ -1685,6 +1688,23 @@ above is genuinely underway, but surfaces some new items:
       through `_get_dict_cfg` end to end.
     - Full suite: 435 → 460 tests (77+43+47+137+62+45+49), all passing;
       `scripts/lint.sh`/`scripts/typecheck.sh src tests` clean throughout.
+  - **Follow-up structural pass** (project owner asked directly: "is the structure lean, is there
+    room for simplification, is anything missing"), two small changes made:
+    - `LockedCounter.increment`/`decrement` were near-duplicate ~5-line blocks (lock, coerce `None`
+      to `0`, bound-check, store, return), differing only in step direction. Collapsed into a
+      shared private `_step(self, delta: int) -> int`, using `min(max(current + delta, 0),
+      self.max_val)` instead of the old one-sided conditional - behaviorally identical (verified:
+      `base_classes.py` stayed at 100% coverage with no test changes needed, full suite still
+      460/460).
+    - Module docstring's "...never raises, except where noted per class below" trimmed to "...never
+      raises." - no class actually documented an exception it raises, so the clause was dead/
+      misleading text, not a real carve-out.
+    - Two lower-priority gaps were surfaced but deliberately left alone: neither
+      `SensorReader.max_i2c_err` nor `LockedCounter.max_val` guards against a non-positive caller
+      value the way `LockableBuffer` now guards negative sizes. Unlike the buffer case, every real
+      call site passes a fixed positive literal (`_MAX_I2C_ERR`, `0xFFFFFFFF`,
+      `_MAX_OVERRIDE_TIME`), so this is a dev-time-typo risk, not a runtime/config-driven hazard -
+      not worth guarding preemptively without a concrete need.
 
 ## Decided for the refactor
 

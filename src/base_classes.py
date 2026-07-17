@@ -4,8 +4,7 @@ LockedValue - a common get_value/set_value shape, each adding its own specialty 
 shared sensor-driver base (SensorReader, SensorReaderConfig) that centralizes per-sensor
 error-count bookkeeping and (optionally) per-sensor JSON config storage.
 
-Shared contract: every method returns a well-defined value and never raises, except where noted
-per class below.
+Shared contract: every method returns a well-defined value and never raises.
 
 SensorReader accepts an optional `fram`: when None, logging is pure in-memory (print_log.py's
 PrintLogHistory); when a real AsyFramManager is passed, logging persists into FRAM
@@ -102,18 +101,15 @@ class LockedCounter:
         return ret
 
     async def increment(self) -> int:  # None counts as 0 - first increment turns "never happened" into a real count
-        async with self.value_lock:
-            current = 0 if self.value is None else self.value
-            if current < self.max_val:
-                current += 1
-            self.value = current
-        return current
+        return await self._step(1)
 
     async def decrement(self) -> int:
+        return await self._step(-1)
+
+    async def _step(self, delta: int) -> int:
         async with self.value_lock:
             current = 0 if self.value is None else self.value
-            if current > 0:
-                current -= 1
+            current = min(max(current + delta, 0), self.max_val)
             self.value = current
         return current
 
