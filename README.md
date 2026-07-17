@@ -20,6 +20,8 @@ sharing the `neu` build (same sensors, different GPIO wiring). `dev` is a bench/
 ## Repository layout
 
 ```
+datasheets/              Real datasheet PDFs for the chips this codebase drives - see CLAUDE.md
+  bmp3xx/, fram/, pico w/, scd30/, sgp40/
 html_raw/               Hand-written HTML/CSS/JS for the web UI, per device config
   arzi/, dev/, wozi/       device-specific pages
   general/                 shared assets (style.css, functions.js, favicon.ico, nettimeconfig.html)

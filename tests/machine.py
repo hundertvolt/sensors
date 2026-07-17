@@ -33,6 +33,15 @@ class Pin:
     OUT = 1
 
     def __init__(self, id: int, mode: int = -1) -> None:
+        # Real rp2 Pin() raises for a genuinely invalid id (confirmed against ports/rp2/
+        # machine_pin.c: TypeError for a non-int identifier, ValueError for one outside the
+        # RP2040's real GPIO0-28 range) - validated here (previously not at all) since this is a
+        # real, documented "one-time setup, allowed to raise" contract multiple drivers'
+        # docstrings claim, that had no test anywhere actually exercising it.
+        if not isinstance(id, int):
+            raise TypeError("Pin id must be an int")
+        if not (0 <= id <= 28):
+            raise ValueError("invalid pin")
         self.id = id
         self.mode = mode
         self._value = 0
