@@ -91,10 +91,9 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
   running under a real MicroPython Unix-port interpreter per that plan (see "Code quality tooling"
   below) — this rule is about not testing the old `python/`/`modules/` code, not about deferring
   all tests indefinitely.
-- **Don't touch `sensors/config.json`-equivalent files or commit any real credentials.** A real
-  WiFi SSID/password was previously committed and had to be scrubbed from history — see
-  BACKLOG.md's security notes. A `.gitignore` now covers per-device config/build artifacts, but
-  still be deliberate about what you stage.
+- **Don't touch `sensors/config.json`-equivalent files or commit any real credentials.** A
+  `.gitignore` covers per-device config/build artifacts, but still be deliberate about what you
+  stage — see BACKLOG.md's security notes for the one known real credential in this repo.
 - **Long-blocking operations must not stall timing-sensitive work.** Any new code that blocks the
   event loop for a noticeable time (e.g. `socket.getaddrinfo()`) must not do so while
   timing-sensitive work like the Neopixel animation needs to run — either avoid the block, or
@@ -121,10 +120,9 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
   `scripts/lint.sh` (ruff), `scripts/typecheck.sh` (mypy), and `scripts/test.sh` (unit tests, under
   a real MicroPython Unix-port interpreter — see below and `tests/README.md`); `lint.sh`/
   `typecheck.sh` assume `ruff`/`mypy` are already on `PATH` (e.g. an activated `uv sync`-created
-  venv). **Wired into CI** via `.github/workflows/ci.yml` (GitHub Actions — this repo is
-  GitHub-hosted; older BACKLOG.md text said "GitLab", which was never actually checked against
-  where the repo lives and has since been corrected), running all three on every push/PR. The CI
-  pipeline does not yet include a real firmware-build stage (see BACKLOG.md).
+  venv). **Wired into CI** via `.github/workflows/ci.yml` (GitHub Actions), running all three on
+  every push/PR. The CI pipeline does not yet include a real firmware-build stage (see
+  BACKLOG.md).
 - **Scope is `improved-quality/`, `src/`, and `tests/`, for now.** The pre-refactor deployed
   codebase (`python/`, `modules/`) has no lint/type config yet; extending scope there is a separate
   future decision, not assumed by this setup.
@@ -195,11 +193,18 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
   holds mypy/ruff/pytest's own dependencies breaks type-checking of those. Keep this isolation if
   you touch the stub setup — it's load-bearing, not incidental, confirmed by testing the collision
   directly in-session.
-- **`microdot.py` is excluded from both tools' direct checks** (vendored, not ours to restyle —
-  see the hard rule above), but code that *imports* it is still fully checked; mypy's
-  `follow_imports`/`follow_imports_for_stubs` settings make this work for both regular Python files
-  and the `.pyi` stub files in `typings/` (stub files are otherwise exempt from `follow_imports` by
-  default — a real, tested distinction, not a guess).
+- **`improved-quality/microdot.py` — not `python/CommonDrivers/microdot.py` from the hard rule
+  above — is excluded from both tools' direct checks** (`pyproject.toml`'s `extend-exclude`/
+  `exclude`): it's the only one of the two copies ruff/mypy ever look at in the first place, since
+  `python/` isn't in either tool's scope at all (see "Scope" above) — there's nothing to exclude
+  for the `python/CommonDrivers/` copy. Code that *imports* the `improved-quality/` copy is still
+  fully checked; mypy's `follow_imports`/`follow_imports_for_stubs` settings make this work for
+  both regular Python files and the `.pyi` stub files in `typings/` (stub files are otherwise
+  exempt from `follow_imports` by default — a real, tested distinction, not a guess). Unlike the
+  vendored `python/` copy, this `improved-quality/` copy is a confirmed *unintentional* fork (see
+  BACKLOG.md's "`improved-quality/microdot.py` fork" finding) slated for reversion during the
+  refactor — the exclude just keeps it out of lint/type findings until then, it isn't an
+  endorsement of the drift.
 
 ## Pre-push verification (clean Ubuntu 24.04)
 
