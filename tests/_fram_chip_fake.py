@@ -9,17 +9,21 @@ Transaction tracking is deliberately narrow, not a general SPI-FRAM emulator: it
 the exact call shapes FRAM_SPI itself produces (a WRITE's address header and data payload arrive
 as two separate write() calls with the bus lock held throughout, matching real CS staying
 asserted across both; every other opcode is a single write(), optionally followed by one
-readinto()). WEL is only ever changed by an explicit WREN (sets) or WRDI (clears) - deliberately
-not auto-cleared on a completed WRITE/WRSR the way some similar SPI EEPROM/FRAM parts document,
-since that specific behavior wasn't independently re-confirmed against this chip's own datasheet
-this session; this conservative modeling keeps FRAM_SPI's own explicit WRDI-verification/retry
-path exercised by a real fault instead of silently unreachable.
+readinto()). WEL semantics match the datasheet exactly (DS501-00015-4v0-E, "STATUS REGISTER" ->
+WEL): WREN sets it; it's reset after WRDI recognition, at the CS rising edge after WRSR
+recognition, and at the CS rising edge after WRITE recognition (confirmed directly against the
+real datasheet PDF, not inferred from a similar part).
 
-Fault-injection knobs (`drop_wren`/`drop_next_wrdi`/`drop_wrsr`/`rdid_response`) simulate a bus
-disturbance eating one specific transaction's real effect while every other byte still moves
-normally - not "unplug the whole bus" (tests/machine.py's own
+Fault-injection knobs (`drop_wren`/`drop_next_wrdi`/`drop_wrsr`/`disturb_write_autoclear`/
+`disturb_wrsr_autoclear`/`rdid_response`) simulate a bus disturbance eating one specific
+transaction's real effect while every other byte still moves normally - not "unplug the whole
+bus" (tests/machine.py's own
 test_disconnected_wire_is_undetectable_reads_whatever_is_on_the_bus_not_an_exception already
-covers that undetectable case at the raw-SPI layer).
+covers that undetectable case at the raw-SPI layer). `disturb_write_autoclear`/
+`disturb_wrsr_autoclear` suppress the datasheet's own auto-clear specifically so
+FRAM_SPI's explicit WRDI-verification/retry path (defense-in-depth against that exact
+auto-clear mechanism itself glitching) stays exercised by a real simulated fault instead of
+being permanently unreachable now that the normal case already clears WEL before WRDI even runs.
 """
 
 from machine import SPI as FakeSPI
@@ -42,6 +46,8 @@ class FakeMB85RS64V(FakeSPI):
         self.drop_wren = False  # simulate WREN's opcode transfer getting corrupted on the wire
         self.drop_next_wrdi = 0  # simulate N consecutive WRDI transfers getting corrupted
         self.drop_wrsr = False  # simulate WRSR's status-byte transfer getting corrupted
+        self.disturb_write_autoclear = False  # simulate the chip's own WRITE-completion WEL auto-clear not firing
+        self.disturb_wrsr_autoclear = False  # simulate the chip's own WRSR-completion WEL auto-clear not firing
         self._pending_op: int | None = None
         self._pending_addr: int | None = None
 
@@ -55,15 +61,12 @@ class FakeMB85RS64V(FakeSPI):
     def write(self, buf: object) -> None:
         data = bytes(buf)  # type: ignore[call-overload]
         if self._pending_op == _OPCODE_WRITE and self._pending_addr is not None:
-            # data phase of a previously-opened WRITE (opcode+address arrived in the prior call).
-            # WEL is left as-is here (only WREN/WRDI ever change it) - conservative on purpose:
-            # this chip family's datasheet wasn't independently re-confirmed this session on
-            # whether a completed WRITE/WRSR cycle also auto-clears WEL (a common convention on
-            # similar SPI EEPROM/FRAM parts), so the fake doesn't assume it - which also keeps
-            # FRAM_SPI's own explicit WRDI-verification path meaningful to test.
+            # data phase of a previously-opened WRITE (opcode+address arrived in the prior call)
             if self.wel:
                 end = self._pending_addr + len(data)
                 self.memory[self._pending_addr : end] = data
+            if not self.disturb_write_autoclear:
+                self.status &= ~0x02  # WEL auto-clears at the CS rising edge after WRITE recognition
             self._pending_op = None
             self._pending_addr = None
             return
@@ -78,11 +81,12 @@ class FakeMB85RS64V(FakeSPI):
                 self.status &= ~0x02
         elif opcode == _OPCODE_WRSR:
             # Requires WEL set first, exactly like WRITE (datasheet: WEL "indicates if FRAM
-            # array and status register are writable") - preserves the current WEL bit rather
-            # than the written byte's own (always-0) bit 1, for the same auto-clear-uncertainty
-            # reason as the WRITE case above.
+            # array and status register are writable"); WRSR can't write bit 1 (WEL) itself, so
+            # the current WEL bit is preserved through this assignment regardless.
             if self.wel and not self.drop_wrsr:
                 self.status = (data[1] & ~0x02) | (self.status & 0x02)
+            if not self.disturb_wrsr_autoclear:
+                self.status &= ~0x02  # WEL auto-clears at the CS rising edge after WRSR recognition
         elif opcode == _OPCODE_WRITE:
             self._pending_op = _OPCODE_WRITE
             self._pending_addr = self._decode_addr(data)

@@ -3,6 +3,19 @@
 Operating constraints and architecture reference for AI sessions working in this repo. See
 README.md for human-facing orientation and BACKLOG.md for the open-questions/deferred-work list.
 
+## Datasheets
+
+- **The `datasheets/` folder (root of the repo) holds real datasheet PDFs the project owner has
+  collected for the sensors/chips this codebase drives** (currently: `bmp3xx/`, `fram/`, `pico w/`,
+  `scd30/`, `sgp40/`) — read the actual PDF from here first for any hardware-interaction claim
+  (register layout, opcodes, timing, electrical characteristics), rather than reconstructing it
+  from training memory or web search. Read tools can open PDFs directly.
+- **If a datasheet you need isn't in this folder and you can't download it yourself** (blocked
+  fetch, paywall, dead link, etc.), **say so explicitly and immediately** rather than silently
+  falling back to web search summaries or training memory for a claim the real datasheet would
+  settle — the project owner will add it to `datasheets/` if you tell them what's missing (exact
+  part number / document number is enough, a specific URL isn't required).
+
 ## Platform target
 
 - Deployed units run **MicroPython 1.26** on **Raspberry Pi Pico W (1st gen / RP2040)**. Code

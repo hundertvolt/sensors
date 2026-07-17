@@ -726,13 +726,34 @@ docstrings" convention (`src/README.md` section 11) - condensed into a `#` comme
 post-promotion bird's-eye scan across `src/` this file's own addition triggered (per CLAUDE.md's
 hard rule); no other cross-file discrepancy found.
 
-**Open item, not resolved this session**: whether a completed `WRITE`/`WRSR` cycle also
-auto-clears `WEL` on real hardware (documented convention on some similar SPI EEPROM/FRAM parts)
-wasn't independently re-confirmed against this chip's own datasheet - WebSearch/WebFetch hit this
-session's rate limit mid-verification. `tests/_fram_chip_fake.py` deliberately models the
-conservative case (only `WREN`/`WRDI` ever change `WEL`), which is also what keeps `_write()`'s own
-explicit `WRDI`-verification/retry path exercised by a real simulated fault rather than provably
-unreachable dead code either way - real hardware confirmation is a good follow-up, not a blocker.
+**Resolved in a follow-up session**, once the project owner added the real datasheet PDF to the
+new `datasheets/fram/` folder (see CLAUDE.md's "Datasheets" section - this file's own promotion is
+what prompted adding it, after the original session hit a WebSearch/WebFetch rate limit trying to
+fetch it from the web): confirmed directly from DS501-00015-4v0-E's "STATUS REGISTER" section, WEL
+bit description - "WEL is reset after the following operations. After power ON. After WRDI command
+recognition. At the rising edge of CS after WRSR command recognition. At the rising edge of CS
+after WRITE command recognition." So yes, both a completed `WRITE` and a completed `WRSR` auto-clear
+`WEL`, not just `WRDI`. `tests/_fram_chip_fake.py` updated to model this exactly; the previously
+conservative fake (only `WREN`/`WRDI` changed `WEL`) is now accurate by default, with two new
+opt-in fault-injection flags (`disturb_write_autoclear`/`disturb_wrsr_autoclear`) that suppress the
+auto-clear specifically so `_write()`'s/`set_write_protected()`'s own explicit `WRDI`-verification/
+retry path - genuine defense-in-depth against that auto-clear mechanism itself glitching, not
+merely "the only thing that clears WEL" as originally believed - stays exercised by a real
+simulated fault instead of becoming unreachable now that the normal case already clears `WEL`
+before the explicit `WRDI` even runs. No driver code changes needed; the explicit `WRDI` calls
+were already correct (if now confirmed usually redundant in the non-fault path) and are kept as
+that defense-in-depth. 27/27 tests still pass with the corrected fake.
+
+**Second open item raised by the same datasheet read, flagged rather than fixed**: the real
+`WP` pin is active-low per the "WRITING PROTECT" table (`WP=0` is what makes the status register
+itself additionally locked when `WPEN=1`; `WP=1` leaves it changeable) - the same active-low
+convention as `CS`/`HOLD` on this chip. `FRAM_SPI`'s `wp_pin` handling drives
+`self._wp_pin.value(value)` directly (`value=True` -> pin driven `HIGH`), which - if the class's
+own stated intent ("enables hardware-level protection" when a `wp_pin` is supplied) means
+physically locking the status register when block-protection is turned on - looks backwards from
+what the datasheet's table says is needed for that lock effect. Zero real callers exist to infer
+intent from either way (same as the rest of this method's history). Not changed pending owner
+input: verify the intended semantics before altering, per `src/README.md` section 1.
 
 Testing: a fourth mocking-boundary instance, `tests/_fram_chip_fake.py` - a stateful fake MB85RS64V
 sitting on top of `tests/machine.py`'s dumb fake SPI bus, interpreting the exact opcode/CS-session

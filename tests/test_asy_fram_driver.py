@@ -236,6 +236,9 @@ def test_write_succeeds_normally_when_wrdi_is_not_disturbed() -> None:
 def test_write_retries_wrdi_once_and_recovers_when_first_wrdi_is_disturbed() -> None:
     fram, chip = make_fram()
     run(setup_fram(fram))
+    # WRITE's own datasheet-confirmed WEL auto-clear is disturbed too, so the first (disturbed)
+    # WRDI genuinely has something to fail to clear, and the retry genuinely has something to fix.
+    chip.disturb_write_autoclear = True
     chip.drop_next_wrdi = 1  # first WRDI attempt is disturbed, the retry is not
 
     async def scenario() -> bool:
@@ -255,6 +258,7 @@ def test_write_reports_data_written_even_if_wrdi_stays_stuck_after_retry() -> No
     # failed write (see asy_fram_driver.py's _write()).
     fram, chip = make_fram()
     run(setup_fram(fram))
+    chip.disturb_write_autoclear = True  # so WEL genuinely has something to still be stuck at
     chip.drop_next_wrdi = 2  # both the original WRDI and the one retry are disturbed
 
     async def scenario() -> bool:
