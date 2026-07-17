@@ -285,7 +285,7 @@ def test_write_protected_verified_round_trip() -> None:
         return set_true, get_true, set_false, get_false
 
     set_true, get_true, set_false, get_false = run(scenario())
-    assert (set_true, get_true, set_false, get_false) == (True, True, False, False)
+    assert (set_true, get_true, set_false, get_false) == (True, True, True, False)
     assert chip.status == 0x00  # WPEN/BP0/BP1 cleared, and WRSR's own WEL side effect cleared too
 
 

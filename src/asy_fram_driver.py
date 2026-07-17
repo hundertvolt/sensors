@@ -179,13 +179,23 @@ class FRAM_SPI(Lockable):
             self.pr.err("FRAM not initialized, run setup first!")
             return False
         target = _SR_WP_SET if value else _SR_WP_CLEAR
-        write_buffer = bytearray([_SPI_OPCODE_WRSR, target])
         async with self._spidev as spidev:
-            await spidev.write(write_buffer)
+            await spidev.write(bytearray([_SPI_OPCODE_WREN]))
+        if not bool(await self._read_status() & _SR_WEL):
+            # WRSR needs WEL set first, exactly like WRITE - the status register is only
+            # writable while the latch is set (datasheet: WEL "indicates if FRAM array and
+            # status register are writable").
+            self.pr.wrn("FRAM write enable latch did not set, write protection not changed.")
+            return False
+        async with self._spidev as spidev:
+            await spidev.write(bytearray([_SPI_OPCODE_WRSR, target]))
         # Read back rather than trusting the write blindly - the one WRSR transaction is the only
         # way this chip's write-protect state can actually change, so this is what catches it if
         # that specific transfer got corrupted by a bus disturbance.
-        if (await self._read_status() & _SR_WP_MASK) != target:
+        ok = (await self._read_status() & _SR_WP_MASK) == target
+        async with self._spidev as spidev:  # never leave WEL asserted, regardless of outcome
+            await spidev.write(bytearray([_SPI_OPCODE_WRDI]))
+        if not ok:
             self.pr.err("FRAM write protection readback mismatch, not applied!")
             return False
         self._wp = value

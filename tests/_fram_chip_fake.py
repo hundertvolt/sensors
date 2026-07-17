@@ -9,9 +9,11 @@ Transaction tracking is deliberately narrow, not a general SPI-FRAM emulator: it
 the exact call shapes FRAM_SPI itself produces (a WRITE's address header and data payload arrive
 as two separate write() calls with the bus lock held throughout, matching real CS staying
 asserted across both; every other opcode is a single write(), optionally followed by one
-readinto()). WEL semantics follow the datasheet's documented reset conditions (WREN sets it;
-WRDI, a completed WRITE, or a completed WRSR clear it) - modeled so FRAM_SPI's own WRDI-retry path
-has something real to observe.
+readinto()). WEL is only ever changed by an explicit WREN (sets) or WRDI (clears) - deliberately
+not auto-cleared on a completed WRITE/WRSR the way some similar SPI EEPROM/FRAM parts document,
+since that specific behavior wasn't independently re-confirmed against this chip's own datasheet
+this session; this conservative modeling keeps FRAM_SPI's own explicit WRDI-verification/retry
+path exercised by a real fault instead of silently unreachable.
 
 Fault-injection knobs (`drop_wren`/`drop_next_wrdi`/`drop_wrsr`/`rdid_response`) simulate a bus
 disturbance eating one specific transaction's real effect while every other byte still moves
@@ -53,11 +55,15 @@ class FakeMB85RS64V(FakeSPI):
     def write(self, buf: object) -> None:
         data = bytes(buf)  # type: ignore[call-overload]
         if self._pending_op == _OPCODE_WRITE and self._pending_addr is not None:
-            # data phase of a previously-opened WRITE (opcode+address arrived in the prior call)
+            # data phase of a previously-opened WRITE (opcode+address arrived in the prior call).
+            # WEL is left as-is here (only WREN/WRDI ever change it) - conservative on purpose:
+            # this chip family's datasheet wasn't independently re-confirmed this session on
+            # whether a completed WRITE/WRSR cycle also auto-clears WEL (a common convention on
+            # similar SPI EEPROM/FRAM parts), so the fake doesn't assume it - which also keeps
+            # FRAM_SPI's own explicit WRDI-verification path meaningful to test.
             if self.wel:
                 end = self._pending_addr + len(data)
                 self.memory[self._pending_addr : end] = data
-            self.status &= ~0x02  # a completed WRITE clears WEL, per datasheet
             self._pending_op = None
             self._pending_addr = None
             return
@@ -71,9 +77,12 @@ class FakeMB85RS64V(FakeSPI):
             else:
                 self.status &= ~0x02
         elif opcode == _OPCODE_WRSR:
+            # Requires WEL set first, exactly like WRITE (datasheet: WEL "indicates if FRAM
+            # array and status register are writable") - preserves the current WEL bit rather
+            # than the written byte's own (always-0) bit 1, for the same auto-clear-uncertainty
+            # reason as the WRITE case above.
             if self.wel and not self.drop_wrsr:
-                self.status = data[1] & 0xFF
-            self.status &= ~0x02  # a completed WRSR clears WEL, per datasheet
+                self.status = (data[1] & ~0x02) | (self.status & 0x02)
         elif opcode == _OPCODE_WRITE:
             self._pending_op = _OPCODE_WRITE
             self._pending_addr = self._decode_addr(data)

@@ -693,7 +693,17 @@ were added, both per owner's explicit "whatever is required in this scope" direc
   so it doesn't fail the write.
 - `set_write_protected()` (kept - see below) now reads back the status register after `WRSR` and
   reports failure if it doesn't match, since that one transaction is the only way this chip's
-  write-protect state can actually change, and is otherwise unverified.
+  write-protect state can actually change, and is otherwise unverified. **Second real bug found
+  this way, by the CI run of this same promotion's own new tests**: the pre-existing
+  `set_write_protected()` never issued `WREN` before `WRSR` at all - present since the legacy
+  driver, invisible until now because this method had zero real callers (see below). The status
+  register's own `WEL` bit is documented as gating writes to "FRAM array and status register" both
+  - i.e. `WRSR` needs `WEL` set first, exactly like `WRITE` does - so every call to this method
+  would have silently no-op'd on real hardware. Fixed: `WREN` + the same `WEL`-verification `_write()`
+  already does, before `WRSR`; an unconditional `WRDI` after, regardless of outcome, so `WEL` is
+  never left asserted. (The new readback check itself is what caught this - it turned "silently
+  does nothing" into a loud, reproducible test failure instead of a bug that could have shipped
+  unnoticed a second time.)
 - New `verify_present()`: a re-probe entry point (reuses the fixed RDID check) for a future
   health-check/retry policy to call after suspecting a disturbance - cheaper than a full `setup()`
   (skips `wp_pin` re-init), and on failure reverts `uninitialized = True` so every other method
@@ -715,6 +725,14 @@ via `grep`, so this is a pure signature strengthening, not a breaking change.
 docstrings" convention (`src/README.md` section 11) - condensed into a `#` comment during the
 post-promotion bird's-eye scan across `src/` this file's own addition triggered (per CLAUDE.md's
 hard rule); no other cross-file discrepancy found.
+
+**Open item, not resolved this session**: whether a completed `WRITE`/`WRSR` cycle also
+auto-clears `WEL` on real hardware (documented convention on some similar SPI EEPROM/FRAM parts)
+wasn't independently re-confirmed against this chip's own datasheet - WebSearch/WebFetch hit this
+session's rate limit mid-verification. `tests/_fram_chip_fake.py` deliberately models the
+conservative case (only `WREN`/`WRDI` ever change `WEL`), which is also what keeps `_write()`'s own
+explicit `WRDI`-verification/retry path exercised by a real simulated fault rather than provably
+unreachable dead code either way - real hardware confirmation is a good follow-up, not a blocker.
 
 Testing: a fourth mocking-boundary instance, `tests/_fram_chip_fake.py` - a stateful fake MB85RS64V
 sitting on top of `tests/machine.py`'s dumb fake SPI bus, interpreting the exact opcode/CS-session
