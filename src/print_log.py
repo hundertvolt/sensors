@@ -1,7 +1,7 @@
 """Leveled console logging (PrintLog), a bounded in-memory error/warning history (PrintLogHistory),
-and its optional FRAM-backed persistence (PrintLogHistStore), surviving a reboot.
+and its optional FRAM-backed persistence (PrintLogHistoryStore), surviving a reboot.
 
-Contract: every method returns a well-defined value and never raises. PrintLogHistStore's FRAM
+Contract: every method returns a well-defined value and never raises. PrintLogHistoryStore's FRAM
 calls are wrapped broadly since asy_fram_manager.py isn't itself audited yet (see BACKLOG.md);
 tests/_fram_mock.py mocks that boundary and every failure mode.
 """
@@ -205,7 +205,7 @@ class PrintLogHistory(PrintLog):
         return {name: {"ErrCount": self.err_count, "ErrNum": err_num, "ErrType": err_type}}
 
 
-class PrintLogHistStore(PrintLogHistory):
+class PrintLogHistoryStore(PrintLogHistory):
     _HDR_FMT = "<H"  # explicit little-endian, no padding - bare format defaults to "@" here, not "<"; see BACKLOG.md
     _HDR_SIZE = struct.calcsize(_HDR_FMT)
 
@@ -213,7 +213,7 @@ class PrintLogHistStore(PrintLogHistory):
         super().__init__(history_length=history_length, level=level)
         # len(self.history) is fixed for this object's lifetime (deque maxlen never changes), so
         # this format string is cached once here instead of being rebuilt on every _write()/_read().
-        self._hist_fmt = "B" * len(self.history)
+        self._history_fmt = "B" * len(self.history)
         size = self._HDR_SIZE + len(self.history)  # each "B" is exactly 1 byte
         try:  # broad on purpose: asy_fram_manager.py isn't itself promoted/audited yet (see module docstring)
             self.fram: _FramChunk | None = fram.get_chunk(size, crc=CRC8())
@@ -239,7 +239,7 @@ class PrintLogHistStore(PrintLogHistory):
             buf = self.fram.get_buffer()
             dbuf = buf.get_data_buf()
             struct.pack_into(self._HDR_FMT, dbuf, 0, self.err_count)
-            struct.pack_into(self._hist_fmt, dbuf, self._HDR_SIZE, *self.history)
+            struct.pack_into(self._history_fmt, dbuf, self._HDR_SIZE, *self.history)
             return bool(await self.fram.write_into(buf))
         except Exception:
             return False
@@ -253,7 +253,7 @@ class PrintLogHistStore(PrintLogHistory):
             if not await self.fram.read_into(buf):
                 return False
             self.err_count = struct.unpack_from(self._HDR_FMT, dbuf, 0)[0]
-            self.history.extend(struct.unpack_from(self._hist_fmt, dbuf, self._HDR_SIZE))
+            self.history.extend(struct.unpack_from(self._history_fmt, dbuf, self._HDR_SIZE))
             return True
         except Exception:
             return False

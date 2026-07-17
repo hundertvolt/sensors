@@ -2,7 +2,7 @@ import asyncio
 
 from _fram_mock import MockAsyFramManager, _MockFramChunk
 
-from print_log import PrintLog, PrintLogHistory, PrintLogHistStore
+from print_log import PrintLog, PrintLogHistory, PrintLogHistoryStore
 
 try:
     from typing import TYPE_CHECKING
@@ -228,7 +228,7 @@ def test_history_length_huge_is_capped_instead_of_crashing_the_interpreter() -> 
 def test_err_s_before_setup_does_not_write_even_with_logging_off() -> None:
     # The "not initialized" guard's *return* must not depend on self.level - only the diagnostic
     # print does. PrintLogHistory's own _write() is a no-op either way, but this pins the contract
-    # down at the base-class level too (PrintLogHistStore's own FRAM-visible version follows below).
+    # down at the base-class level too (PrintLogHistoryStore's own FRAM-visible version follows below).
     hist = PrintLogHistory(history_length=4, level=PrintLog.level_off())
     assert hist.initialized is False
     run(hist.err_s("e", errno=1))
@@ -246,43 +246,43 @@ def test_reset_before_setup_does_not_write_even_with_logging_off() -> None:
 
 
 # ---------------------------------------------------------------------------
-# PrintLogHistStore - FRAM-backed persistence, against a mocked FRAM API
+# PrintLogHistoryStore - FRAM-backed persistence, against a mocked FRAM API
 # (tests/_fram_mock.py - see BACKLOG.md for why the real asy_fram_manager.py isn't used here yet)
 # ---------------------------------------------------------------------------
 
 
-def test_printloghiststore_allocates_a_chunk_from_the_fram_manager() -> None:
-    store = PrintLogHistStore(MockAsyFramManager(), history_length=4)
+def test_printloghistorystore_allocates_a_chunk_from_the_fram_manager() -> None:
+    store = PrintLogHistoryStore(MockAsyFramManager(), history_length=4)
     assert store.fram is not None
 
 
-def test_printloghiststore_out_of_memory_leaves_fram_none_and_never_raises() -> None:
-    store = PrintLogHistStore(MockAsyFramManager(out_of_memory=True), history_length=4)
+def test_printloghistorystore_out_of_memory_leaves_fram_none_and_never_raises() -> None:
+    store = PrintLogHistoryStore(MockAsyFramManager(out_of_memory=True), history_length=4)
     assert store.fram is None
     assert run(store._write()) is False
     assert run(store._read()) is False
 
 
-def test_printloghiststore_read_before_any_write_fails_cleanly() -> None:
-    store = PrintLogHistStore(MockAsyFramManager(), history_length=4)
+def test_printloghistorystore_read_before_any_write_fails_cleanly() -> None:
+    store = PrintLogHistoryStore(MockAsyFramManager(), history_length=4)
     assert run(store._read()) is False  # chunk allocated but never written yet - not "all zero"
 
 
-def test_printloghiststore_setup_first_time_falls_back_to_writing_defaults() -> None:
-    store = PrintLogHistStore(MockAsyFramManager(), history_length=4)
+def test_printloghistorystore_setup_first_time_falls_back_to_writing_defaults() -> None:
+    store = PrintLogHistoryStore(MockAsyFramManager(), history_length=4)
     run(store.setup())
     assert store.initialized is True
 
 
-def test_printloghiststore_setup_with_no_fram_returns_without_initializing() -> None:
-    store = PrintLogHistStore(MockAsyFramManager(out_of_memory=True), history_length=4)
+def test_printloghistorystore_setup_with_no_fram_returns_without_initializing() -> None:
+    store = PrintLogHistoryStore(MockAsyFramManager(out_of_memory=True), history_length=4)
     assert store.fram is None
     run(store.setup())
     assert store.initialized is False  # nothing to set up - allocation already failed in __init__
 
 
-def test_printloghiststore_setup_is_idempotent_once_initialized() -> None:
-    store = PrintLogHistStore(MockAsyFramManager(), history_length=4)
+def test_printloghistorystore_setup_is_idempotent_once_initialized() -> None:
+    store = PrintLogHistoryStore(MockAsyFramManager(), history_length=4)
     run(store.setup())
     assert store.initialized is True
     run(store.err_s("boom", errno=1))
@@ -292,48 +292,48 @@ def test_printloghiststore_setup_is_idempotent_once_initialized() -> None:
     assert store.err_count == 1
 
 
-def test_printloghiststore_err_s_persists_and_survives_a_simulated_reboot() -> None:
+def test_printloghistorystore_err_s_persists_and_survives_a_simulated_reboot() -> None:
     manager = MockAsyFramManager()
-    store = PrintLogHistStore(manager, history_length=4)
+    store = PrintLogHistoryStore(manager, history_length=4)
     run(store.setup())
     run(store.err_s("boom", errno=3))
     assert store.err_count == 1
 
     # Simulate a reboot: a fresh manager/store pair, replaying the same get_chunk() call, wrapping
     # the same backing bytes - same as a real chip's contents surviving a power cycle.
-    rebooted_store = PrintLogHistStore(MockAsyFramManager(backing=manager.backing), history_length=4)
+    rebooted_store = PrintLogHistoryStore(MockAsyFramManager(backing=manager.backing), history_length=4)
     run(rebooted_store.setup())
     assert rebooted_store.err_count == 1
     assert list(rebooted_store.history)[-1] == 3
 
 
-def test_printloghiststore_err_s_before_setup_does_not_touch_fram() -> None:
+def test_printloghistorystore_err_s_before_setup_does_not_touch_fram() -> None:
     # Regression test for a real bug: _store_err()'s "not initialized" guard used to only return
     # early when self.level > _LOG_OFF, so with logging off (the common production case) calling
     # err_s() before setup() had loaded (or established) the persisted state fell through to
     # _write() anyway - overwriting real FRAM-persisted history with a freshly-constructed,
     # not-yet-loaded default. Fixed so the return no longer depends on self.level.
     manager = MockAsyFramManager()
-    store = PrintLogHistStore(manager, history_length=4, level=None)  # level=None -> _LOG_OFF
+    store = PrintLogHistoryStore(manager, history_length=4, level=None)  # level=None -> _LOG_OFF
     assert store.initialized is False
     run(store.err_s("boom", errno=3))
     assert store.err_count == 1  # in-memory state still updates
     assert manager.backing._written_offsets == set()  # but nothing was ever written to FRAM
 
 
-def test_printloghiststore_reset_before_setup_does_not_touch_fram() -> None:
+def test_printloghistorystore_reset_before_setup_does_not_touch_fram() -> None:
     manager = MockAsyFramManager()
-    store = PrintLogHistStore(manager, history_length=4, level=None)
+    store = PrintLogHistoryStore(manager, history_length=4, level=None)
     assert store.initialized is False
     run(store.reset())
     assert manager.backing._written_offsets == set()
 
 
-def test_printloghiststore_zero_length_history_survives_write_and_read() -> None:
+def test_printloghistorystore_zero_length_history_survives_write_and_read() -> None:
     # An unusual but typed-valid construction (struct format collapses to just "H") - confirmed
     # directly this doesn't crash get_buffer()/pack_into/unpack_from at either end.
     manager = MockAsyFramManager()
-    store = PrintLogHistStore(manager, history_length=0)
+    store = PrintLogHistoryStore(manager, history_length=0)
     run(store.setup())
     assert store.initialized is True
     run(store.err_s("e", errno=1))
@@ -342,13 +342,13 @@ def test_printloghiststore_zero_length_history_survives_write_and_read() -> None
     assert run(store._read()) is True
 
 
-def test_printloghiststore_write_uses_explicit_little_endian_layout() -> None:
+def test_printloghistorystore_write_uses_explicit_little_endian_layout() -> None:
     # Pins down the on-the-wire format explicitly now that print_log.py uses "<H"/"B"*n instead of
     # a bare "H"/"B"*n format string - confirmed directly that MicroPython's struct defaults a
     # no-prefix format to "@" (native alignment/padding), not "<", though it made no observable
     # difference for this specific field order (see module docstring).
     manager = MockAsyFramManager()
-    store = PrintLogHistStore(manager, history_length=2)
+    store = PrintLogHistoryStore(manager, history_length=2)
     store.err_count = 0x1234
     store.history.extend([5, 6])
     run(store._write())
@@ -357,96 +357,96 @@ def test_printloghiststore_write_uses_explicit_little_endian_layout() -> None:
     assert list(raw) == [0x34, 0x12, 5, 6]  # little-endian u16, then 2 raw history bytes
 
 
-def test_printloghiststore_reset_persists_cleared_state_across_a_reboot() -> None:
+def test_printloghistorystore_reset_persists_cleared_state_across_a_reboot() -> None:
     manager = MockAsyFramManager()
-    store = PrintLogHistStore(manager, history_length=3)
+    store = PrintLogHistoryStore(manager, history_length=3)
     run(store.setup())
     run(store.err_s("e", errno=1))
     run(store.reset())
 
-    rebooted_store = PrintLogHistStore(MockAsyFramManager(backing=manager.backing), history_length=3)
+    rebooted_store = PrintLogHistoryStore(MockAsyFramManager(backing=manager.backing), history_length=3)
     run(rebooted_store.setup())
     assert rebooted_store.err_count == 0
     assert list(rebooted_store.history) == [0, 0, 0]
 
 
 # ---------------------------------------------------------------------------
-# PrintLogHistStore - every simulated FRAM failure mode (tests/_fram_mock.py's fault injection)
+# PrintLogHistoryStore - every simulated FRAM failure mode (tests/_fram_mock.py's fault injection)
 # ---------------------------------------------------------------------------
 
 
-def test_printloghiststore_get_chunk_raising_leaves_fram_none() -> None:
-    store = PrintLogHistStore(MockAsyFramManager(raise_on_get_chunk=True), history_length=4)
+def test_printloghistorystore_get_chunk_raising_leaves_fram_none() -> None:
+    store = PrintLogHistoryStore(MockAsyFramManager(raise_on_get_chunk=True), history_length=4)
     assert store.fram is None
     assert run(store._write()) is False
     assert run(store._read()) is False
 
 
-def test_printloghiststore_get_buffer_raising_is_caught_by_write() -> None:
-    store = PrintLogHistStore(MockAsyFramManager(), history_length=4)
+def test_printloghistorystore_get_buffer_raising_is_caught_by_write() -> None:
+    store = PrintLogHistoryStore(MockAsyFramManager(), history_length=4)
     assert isinstance(store.fram, _MockFramChunk)  # whitebox: narrows the type to reach the mock's fault flags
     store.fram.raise_on_get_buffer = True
     assert run(store._write()) is False
 
 
-def test_printloghiststore_get_buffer_raising_is_caught_by_read() -> None:
-    store = PrintLogHistStore(MockAsyFramManager(), history_length=4)
+def test_printloghistorystore_get_buffer_raising_is_caught_by_read() -> None:
+    store = PrintLogHistoryStore(MockAsyFramManager(), history_length=4)
     assert isinstance(store.fram, _MockFramChunk)
     store.fram.raise_on_get_buffer = True
     assert run(store._read()) is False
 
 
-def test_printloghiststore_broken_buffer_is_caught_by_write() -> None:
+def test_printloghistorystore_broken_buffer_is_caught_by_write() -> None:
     # get_buffer() "succeeds" but returns a buffer whose get_data_buf() is None - struct.pack_into
     # on that None then raises TypeError, which the widened try/except must still catch (this is
     # the exact shape of bug this session's audit found and fixed: get_buffer()/get_data_buf() used
     # to sit outside the try block entirely).
-    store = PrintLogHistStore(MockAsyFramManager(), history_length=4)
+    store = PrintLogHistoryStore(MockAsyFramManager(), history_length=4)
     assert isinstance(store.fram, _MockFramChunk)
     store.fram.broken_buffer = True
     assert run(store._write()) is False
 
 
-def test_printloghiststore_broken_buffer_is_caught_by_read() -> None:
-    store = PrintLogHistStore(MockAsyFramManager(), history_length=4)
+def test_printloghistorystore_broken_buffer_is_caught_by_read() -> None:
+    store = PrintLogHistoryStore(MockAsyFramManager(), history_length=4)
     assert isinstance(store.fram, _MockFramChunk)
     store.fram.broken_buffer = True
     assert run(store._read()) is False
 
 
-def test_printloghiststore_write_into_raising_is_caught() -> None:
-    store = PrintLogHistStore(MockAsyFramManager(), history_length=4)
+def test_printloghistorystore_write_into_raising_is_caught() -> None:
+    store = PrintLogHistoryStore(MockAsyFramManager(), history_length=4)
     assert isinstance(store.fram, _MockFramChunk)
     store.fram.raise_on_write = True
     assert run(store._write()) is False
 
 
-def test_printloghiststore_write_into_returns_false_is_surfaced() -> None:
+def test_printloghistorystore_write_into_returns_false_is_surfaced() -> None:
     # Distinct from raising: a hardware-reported failure that write_into() itself already turns
     # into a clean False return, without print_log.py needing to catch anything.
-    store = PrintLogHistStore(MockAsyFramManager(), history_length=4)
+    store = PrintLogHistoryStore(MockAsyFramManager(), history_length=4)
     assert isinstance(store.fram, _MockFramChunk)
     store.fram.write_returns_false = True
     assert run(store._write()) is False
 
 
-def test_printloghiststore_read_into_raising_is_caught() -> None:
-    store = PrintLogHistStore(MockAsyFramManager(), history_length=4)
+def test_printloghistorystore_read_into_raising_is_caught() -> None:
+    store = PrintLogHistoryStore(MockAsyFramManager(), history_length=4)
     assert isinstance(store.fram, _MockFramChunk)
     store.fram.raise_on_read = True
     assert run(store._read()) is False
 
 
-def test_printloghiststore_read_into_returns_false_is_surfaced() -> None:
-    store = PrintLogHistStore(MockAsyFramManager(), history_length=4)
+def test_printloghistorystore_read_into_returns_false_is_surfaced() -> None:
+    store = PrintLogHistoryStore(MockAsyFramManager(), history_length=4)
     assert isinstance(store.fram, _MockFramChunk)
     run(store._write())  # something real is persisted first
     store.fram.read_returns_false = True
     assert run(store._read()) is False
 
 
-def test_printloghiststore_setup_fails_cleanly_when_both_read_and_write_fail() -> None:
-    store = PrintLogHistStore(MockAsyFramManager(), history_length=4)
+def test_printloghistorystore_setup_fails_cleanly_when_both_read_and_write_fail() -> None:
+    store = PrintLogHistoryStore(MockAsyFramManager(), history_length=4)
     assert isinstance(store.fram, _MockFramChunk)
     store.fram.read_returns_false = True
     store.fram.write_returns_false = True
@@ -454,10 +454,10 @@ def test_printloghiststore_setup_fails_cleanly_when_both_read_and_write_fail() -
     assert store.initialized is False
 
 
-def test_printloghiststore_err_s_survives_a_write_failure_without_raising() -> None:
+def test_printloghistorystore_err_s_survives_a_write_failure_without_raising() -> None:
     # _store_err()'s own "if not await self._write(): print(...)" fallback must not itself raise
     # even though the underlying write_into() does - in-memory state should still update.
-    store = PrintLogHistStore(MockAsyFramManager(), history_length=4)
+    store = PrintLogHistoryStore(MockAsyFramManager(), history_length=4)
     assert isinstance(store.fram, _MockFramChunk)
     run(store.setup())
     store.fram.raise_on_write = True

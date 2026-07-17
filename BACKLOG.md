@@ -2076,6 +2076,36 @@ above is genuinely underway, but surfaces some new items:
       line-tracing artifact - `sys.settrace` never sees a line whose value gets folded to an
       immediate at compile time - not a real untested branch; confirmed unchanged before/after this
       pass via `git stash`).
+  - **Renamed `PrintLogHistStore` → `PrintLogHistoryStore`** (project owner's catch, reviewing CI
+    test output): every other reference to "history" in `print_log.py` spells it out in full
+    (`PrintLogHistory`, `self.history`, `history_length`, "History write failed") - `PrintLogHistStore`
+    was the one abbreviation anywhere in the file, inherited unchanged from
+    `improved-quality/base_classes_old.py` at this file's original promotion rather than introduced
+    this session. Renamed across `src/print_log.py`, `src/base_classes.py`, `tests/test_print_log.py`,
+    `tests/test_base_classes.py`, `tests/_fram_mock.py`, `tests/README.md` (including the private
+    `_hist_fmt` attribute → `_history_fmt`, and every `test_printloghiststore_*` test function name →
+    `test_printloghistorystore_*`). Confirmed zero impact on `improved-quality/`'s own
+    `system_service.py`/`base_classes_old.py`: those still `from base_classes import
+    PrintLogHistStore`, resolving to their own separate, unrefactored `base_classes_old.py` copy
+    (MicroPython's flat frozen-module namespace means the two same-named-but-different `base_classes`
+    files never interact until the refactor formally rewires those imports - see CLAUDE.md's
+    `src/README.md` hard rule) - left untouched, out of scope. Older entries above this one in this
+    file still say `PrintLogHistStore`, describing the code as it was at the time; only this file's
+    prose is historical, the class itself no longer has that name anywhere in `src/`/`tests/`. Zero
+    behavior change - verified via `scripts/lint.sh` (265, unchanged), `scripts/typecheck.sh src
+    tests` (18 files clean), full suite still 489/489 passing, coverage numbers unchanged for all
+    three files.
+  - **Investigated the single-character stdout lines (`e`, `e`, `w`, `o`, `v`, `a`) the project owner
+    spotted interleaved with `PASS`/`FAIL` lines in the GitHub Actions test log - not a bug.**
+    `tests/test_print_log.py`'s `test_logging_methods_never_raise_at_any_level` deliberately calls
+    `pr.err("e")`/`pr.wrn("w")`/`pr.one("o")`/`pr.evt("v")`/`pr.all("a", sep="-")` at multiple logging
+    levels specifically to confirm the print-forwarding methods never raise - the single characters
+    are that test's own real `print()` output, landing on the same stdout stream as
+    `tests/microtest.py`'s `PASS`/`FAIL` lines. `PrintLog.err()`'s job is literally "call `print()`,"
+    so exercising it for real is the only way to confirm the "never raises" contract, not something
+    to mock away. Left as-is - `tests/microtest.py` is intentionally minimal (see its own docstring)
+    and adding stdout capture there to quiet this would be scope creep for a cosmetic log-reading
+    annoyance, not a correctness fix.
 
 ## Decided for the refactor
 

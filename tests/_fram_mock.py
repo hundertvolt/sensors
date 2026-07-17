@@ -1,4 +1,4 @@
-"""Fake for the narrow FRAM API surface print_log.py's PrintLogHistStore actually calls:
+"""Fake for the narrow FRAM API surface print_log.py's PrintLogHistoryStore actually calls:
 AsyFramManager.get_chunk() -> a chunk exposing get_buffer()/write_into()/read_into(). Mirrors
 tests/README.md's "mocking boundary" precedent (tests/machine.py mocks only the raw bus
 transactions, real driver logic runs against it): this mocks only the raw chunk-storage

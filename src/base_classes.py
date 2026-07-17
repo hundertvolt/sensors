@@ -14,7 +14,7 @@ must, or FRAM persistence stays inert; in-memory counting still works either way
 import asyncio
 
 from config_manager import ConfigManager, schema_names
-from print_log import PrintLogHistory, PrintLogHistStore
+from print_log import PrintLogHistory, PrintLogHistoryStore
 
 try:
     from typing import TYPE_CHECKING
@@ -168,7 +168,7 @@ class SensorReader:
             self.pr = PrintLogHistory(history_length, debug)
             self.pr.one("Init with memory logging.")
         else:
-            self.pr = PrintLogHistStore(fram, history_length, debug)
+            self.pr = PrintLogHistoryStore(fram, history_length, debug)
             self.pr.one("Init with FRAM logging.")
         self._datastruct = init_data
         self._datalock = asyncio.Lock()

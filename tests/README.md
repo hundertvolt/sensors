@@ -59,13 +59,13 @@ to cause - is gone; `asy_i2c_driver.py`/`asy_spi_driver.py` resolve `Lockable` a
 `src/base_classes.py` like any other `src/` import.
 
 `tests/_fram_mock.py` is a third instance of the same mocking boundary, for FRAM: `print_log.py`'s
-`PrintLogHistStore` only ever calls `AsyFramManager.get_chunk()` and, on the chunk it gets back,
+`PrintLogHistoryStore` only ever calls `AsyFramManager.get_chunk()` and, on the chunk it gets back,
 `get_buffer()`/`write_into()`/`read_into()` - not `asy_fram_manager.py`'s actual allocator/CRC/
 dual-copy-redundancy machinery, which isn't itself promoted to `src/` yet (see BACKLOG.md). Rather
 than a hand-written stand-in class, `print_log.py`'s own `_FramManager`/`_FramChunk` are
 `TYPE_CHECKING`-only `Protocol`s describing just that narrow surface, so `tests/_fram_mock.py`'s
 fake satisfies them structurally with no inheritance relationship to the real classes at all.
-`MockFramBacking` simulates the one behavior that actually matters for `PrintLogHistStore`'s
+`MockFramBacking` simulates the one behavior that actually matters for `PrintLogHistoryStore`'s
 "survives a reboot" purpose: constructing a second `MockAsyFramManager` around the same
 `MockFramBacking` instance and replaying the same `get_chunk()` call sequence lands on the same
 offsets (matching the real bump-pointer allocator), so previously-written data reads back exactly
@@ -76,7 +76,7 @@ promotion checklist and a real `AsyFramManager` becomes available under `tests/`
 The mock also supports fault injection covering every FRAM failure mode `print_log.py` guards
 against - `MockAsyFramManager(out_of_memory=...)`/`raise_on_get_chunk=...`, and per-chunk
 `.raise_on_get_buffer`/`.broken_buffer`/`.raise_on_write`/`.write_returns_false`/`.raise_on_read`/
-`.read_returns_false` flags settable directly on the `_MockFramChunk` a `PrintLogHistStore`
+`.read_returns_false` flags settable directly on the `_MockFramChunk` a `PrintLogHistoryStore`
 instance exposes as its own `.fram` attribute (see `tests/_fram_mock.py`'s docstring for what each
 simulates). This was what caught a real gap during `print_log.py`'s own review: `_write()`/`_read()`
 originally called `get_buffer()`/`get_data_buf()` (and, in `_read()`, `read_into()`) *before* their

@@ -14,7 +14,7 @@ from base_classes import (
     SensorReader,
     SensorReaderConfig,
 )
-from print_log import PrintLog, PrintLogHistory, PrintLogHistStore
+from print_log import PrintLog, PrintLogHistory, PrintLogHistoryStore
 
 try:
     from typing import TYPE_CHECKING
@@ -510,7 +510,7 @@ def test_get_dict_cfg_mgr_cfg_update_exception_is_caught() -> None:
 
 
 # ---------------------------------------------------------------------------
-# SensorReader - fram given (FRAM-backed PrintLogHistStore logging), using the
+# SensorReader - fram given (FRAM-backed PrintLogHistoryStore logging), using the
 # same tests/_fram_mock.py boundary print_log.py's own tests use. Integration
 # coverage across base_classes.py + print_log.py + the FRAM mock together.
 # ---------------------------------------------------------------------------
@@ -518,7 +518,7 @@ def test_get_dict_cfg_mgr_cfg_update_exception_is_caught() -> None:
 
 def test_sensorreader_uses_fram_backed_logging_when_fram_is_given() -> None:
     reader = SensorReader(Meas(20.0, 50), max_i2c_err=3, fram=MockAsyFramManager())
-    assert isinstance(reader.pr, PrintLogHistStore)
+    assert isinstance(reader.pr, PrintLogHistoryStore)
 
 
 def test_sensorreader_fram_backed_error_check_persists_and_survives_reboot() -> None:
@@ -530,7 +530,7 @@ def test_sensorreader_fram_backed_error_check_persists_and_survives_reboot() -> 
     assert reader.pr.err_count == 2
 
     # Simulate a reboot: a fresh SensorReader/manager pair sharing the same backing bytes, same
-    # as print_log.py's own test_printloghiststore_err_s_persists_and_survives_a_simulated_reboot.
+    # as print_log.py's own test_printloghistorystore_err_s_persists_and_survives_a_simulated_reboot.
     rebooted = SensorReader(Meas(None, 50), max_i2c_err=5, fram=MockAsyFramManager(backing=manager.backing))
     run(rebooted.pr.setup())
     assert rebooted.pr.err_count == 2
@@ -549,7 +549,7 @@ def test_sensorreader_fram_backed_error_check_without_setup_never_raises() -> No
 
 def test_sensorreader_fram_allocation_failure_still_logs_in_memory_without_raising() -> None:
     reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=MockAsyFramManager(out_of_memory=True))
-    assert isinstance(reader.pr, PrintLogHistStore)
+    assert isinstance(reader.pr, PrintLogHistoryStore)
     assert reader.pr.fram is None
     run(reader.pr.setup())  # no-op: nothing allocated, must not raise
     assert run(reader._error_check(Meas(None, 50), "temp")) is True
@@ -566,7 +566,7 @@ def test_sensorreader_fram_allocation_failure_still_logs_in_memory_without_raisi
 
 def test_sensorreader_fram_raise_on_get_chunk_never_raises_at_construction() -> None:
     reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=MockAsyFramManager(raise_on_get_chunk=True))
-    assert isinstance(reader.pr, PrintLogHistStore)
+    assert isinstance(reader.pr, PrintLogHistoryStore)
     assert reader.pr.fram is None
     assert run(reader._error_check(Meas(None, 50), "temp")) is True
     assert reader.pr.err_count == 1
@@ -574,7 +574,7 @@ def test_sensorreader_fram_raise_on_get_chunk_never_raises_at_construction() -> 
 
 def test_sensorreader_fram_get_buffer_raising_is_caught_during_error_check() -> None:
     reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=MockAsyFramManager())
-    assert isinstance(reader.pr, PrintLogHistStore)  # narrows reader.pr's type so .fram is visible
+    assert isinstance(reader.pr, PrintLogHistoryStore)  # narrows reader.pr's type so .fram is visible
     assert isinstance(reader.pr.fram, _MockFramChunk)  # whitebox: narrows further to reach the mock's fault flags
     run(reader.pr.setup())
     reader.pr.fram.raise_on_get_buffer = True
@@ -584,7 +584,7 @@ def test_sensorreader_fram_get_buffer_raising_is_caught_during_error_check() -> 
 
 def test_sensorreader_fram_broken_buffer_is_caught_during_error_check() -> None:
     reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=MockAsyFramManager())
-    assert isinstance(reader.pr, PrintLogHistStore)
+    assert isinstance(reader.pr, PrintLogHistoryStore)
     assert isinstance(reader.pr.fram, _MockFramChunk)
     run(reader.pr.setup())
     reader.pr.fram.broken_buffer = True
@@ -594,7 +594,7 @@ def test_sensorreader_fram_broken_buffer_is_caught_during_error_check() -> None:
 
 def test_sensorreader_fram_raise_on_write_is_caught_during_error_check() -> None:
     reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=MockAsyFramManager())
-    assert isinstance(reader.pr, PrintLogHistStore)
+    assert isinstance(reader.pr, PrintLogHistoryStore)
     assert isinstance(reader.pr.fram, _MockFramChunk)
     run(reader.pr.setup())
     reader.pr.fram.raise_on_write = True
@@ -604,7 +604,7 @@ def test_sensorreader_fram_raise_on_write_is_caught_during_error_check() -> None
 
 def test_sensorreader_fram_write_returns_false_is_surfaced_during_error_check() -> None:
     reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=MockAsyFramManager())
-    assert isinstance(reader.pr, PrintLogHistStore)
+    assert isinstance(reader.pr, PrintLogHistoryStore)
     assert isinstance(reader.pr.fram, _MockFramChunk)
     run(reader.pr.setup())
     reader.pr.fram.write_returns_false = True
@@ -614,7 +614,7 @@ def test_sensorreader_fram_write_returns_false_is_surfaced_during_error_check() 
 
 def test_sensorreader_fram_raise_on_read_falls_back_to_write_during_setup() -> None:
     reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=MockAsyFramManager())
-    assert isinstance(reader.pr, PrintLogHistStore)
+    assert isinstance(reader.pr, PrintLogHistoryStore)
     assert isinstance(reader.pr.fram, _MockFramChunk)
     reader.pr.fram.raise_on_read = True
     run(reader.pr.setup())  # first-time setup: _read() fails, falls back to _write() succeeding
@@ -623,7 +623,7 @@ def test_sensorreader_fram_raise_on_read_falls_back_to_write_during_setup() -> N
 
 def test_sensorreader_fram_setup_fails_cleanly_when_both_read_and_write_fail() -> None:
     reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=MockAsyFramManager())
-    assert isinstance(reader.pr, PrintLogHistStore)
+    assert isinstance(reader.pr, PrintLogHistoryStore)
     assert isinstance(reader.pr.fram, _MockFramChunk)
     reader.pr.fram.read_returns_false = True
     reader.pr.fram.write_returns_false = True
@@ -730,7 +730,7 @@ def test_sensorreaderconfig_fram_backed_logging_with_real_config_file() -> None:
         reader = SensorReaderConfig(
             Meas(20.0, 50), 3, "fram1", _VAL_SI, cfg_path=path_prefix, fram=MockAsyFramManager()
         )
-        assert isinstance(reader.pr, PrintLogHistStore)
+        assert isinstance(reader.pr, PrintLogHistoryStore)
         assert reader.cfgmgr.valid is True
         result = run(reader._get_dict_cfg("Sensor", _VAL_SI))
         assert result == {"Sensor": {"SampleInterv": 2}}
@@ -774,7 +774,7 @@ def test_sensorreaderconfig_fram_allocation_failure_and_missing_config_file_toge
             cfg_path=path_prefix,
             fram=MockAsyFramManager(out_of_memory=True),
         )
-        assert isinstance(reader.pr, PrintLogHistStore)
+        assert isinstance(reader.pr, PrintLogHistoryStore)
         assert reader.pr.fram is None
         assert reader.cfgmgr.valid is True
         result = run(reader._get_dict_cfg("Sensor", _VAL_SI))
