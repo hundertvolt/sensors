@@ -461,8 +461,10 @@ own two methods — folded away. `PrintLogHistory.hl` was dead state (nothing re
 `"B" * len(self.history)` was rebuilt on every `_write()`/`_read()` call despite never changing
 after construction — cached once as `self._history_fmt`. Eight identical diagnostic-print gates
 folded into one `_diag()` helper. Renamed `PrintLogHistStore` → `PrintLogHistoryStore` project-wide
-(the one abbreviation in an otherwise fully-spelled-out file) — **note: `pyproject.toml`'s own
-mypy-override comment still uses the old name, missed by this rename.**
+(the one abbreviation in an otherwise fully-spelled-out file). `pyproject.toml`'s own mypy-override
+comment initially missed this rename (caught and fixed during a later documentation audit); the old
+name still appears in untouched `improved-quality/system_service.py`/`base_classes_old.py`, both
+out of routine-editing scope until their own refactor work reaches them.
 
 `tests/_fram_mock.py` supports fault injection for every FRAM failure mode `print_log.py` guards
 against (`raise_on_get_chunk`, `out_of_memory`, per-chunk `raise_on_get_buffer`/`broken_buffer`/
