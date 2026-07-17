@@ -1,7 +1,9 @@
 """Async SPI driver for one Fujitsu MB85RS64V FRAM chip (Adafruit's 8KB SPI FRAM breakout):
 raw byte-addressed get_values()/set_values() plus write protection. Source: Fujitsu MB85RS64V
 datasheet (DS501-00015), cross-checked against Adafruit's own Adafruit_FRAM_SPI reference driver
-for the same chip.
+for the same chip. The chip pulls its own CS pin up internally (~50k ohm), so a disconnected CS
+wire reads deselected on real hardware, not floating-asserted - one bus disturbance this file
+never needs to defend against itself.
 
 Data-integrity recovery (CRC, dual-copy redundancy) lives one layer up in asy_fram_manager.py, not
 here - raw RP2040 SPI write()/readinto() genuinely cannot report a transfer fault (see
@@ -140,7 +142,7 @@ class FRAM_SPI(Lockable):
 
     async def _read_address(self, address: int, read_buffer: bytearray | memoryview) -> None:
         async with self._spidev as spidev:
-            await spidev.write(self.setup_addr_buffer(address, _SPI_OPCODE_READ))
+            await spidev.write(self._setup_addr_buffer(address, _SPI_OPCODE_READ))
             await spidev.readinto(read_buffer)
 
     async def _read_status(self) -> int:
@@ -150,28 +152,46 @@ class FRAM_SPI(Lockable):
             await spidev.readinto(read_buffer)
         return read_buffer[0]
 
+    async def _send_opcode(self, opcode: int) -> None:
+        # WREN/WRDI are each a complete, standalone one-byte command (datasheet timing diagrams
+        # show CS low only for the opcode) - the only two opcodes this driver ever sends alone.
+        async with self._spidev as spidev:
+            await spidev.write(bytearray([opcode]))
+
+    async def _wel_is_set(self) -> bool:
+        return bool(await self._read_status() & _SR_WEL)
+
+    async def _enable_write(self) -> bool:
+        # Shared WREN-and-verify preamble: WRITE and WRSR both require WEL set first (datasheet:
+        # WEL "indicates if FRAM array and status register are writable"). Verifying via RDSR
+        # instead of trusting WREN blindly catches a corrupted/disturbed WREN transfer, which the
+        # chip would otherwise silently ignore the following WRITE/WRSR for.
+        await self._send_opcode(_SPI_OPCODE_WREN)
+        return await self._wel_is_set()
+
+    async def _disable_write(self) -> None:
+        # Shared WRDI-and-verify epilogue for WRITE and WRSR. WEL already auto-clears at the CS
+        # rising edge after either completes (datasheet), so this is defense-in-depth against
+        # that auto-clear mechanism itself glitching, not the only thing keeping WEL in check -
+        # hence one cheap, idempotent retry before just warning rather than failing the caller's
+        # already-completed operation over leftover housekeeping.
+        await self._send_opcode(_SPI_OPCODE_WRDI)
+        if await self._wel_is_set():
+            await self._send_opcode(_SPI_OPCODE_WRDI)
+            if await self._wel_is_set():
+                self.pr.wrn("FRAM write enable latch did not clear after WRDI retry.")
+
     async def _write(self, start_address: int, data: bytes | bytearray | memoryview) -> bool:
-        wp = await self.get_write_protected()
-        if wp:
+        if await self.get_write_protected():
             self.pr.wrn("FRAM currently write protected.")
             return False
-        async with self._spidev as spidev:
-            await spidev.write(bytearray([_SPI_OPCODE_WREN]))
-        if not bool(await self._read_status() & _SR_WEL):
-            # WREN didn't actually latch - a corrupted/disturbed opcode transfer would look
-            # exactly like this, and the chip would otherwise silently ignore the WRITE below.
+        if not await self._enable_write():
             self.pr.wrn("FRAM write enable latch did not set, aborting write.")
             return False
         async with self._spidev as spidev:
-            await spidev.write(self.setup_addr_buffer(start_address, _SPI_OPCODE_WRITE))
+            await spidev.write(self._setup_addr_buffer(start_address, _SPI_OPCODE_WRITE))
             await spidev.write(data)
-        async with self._spidev as spidev:
-            await spidev.write(bytearray([_SPI_OPCODE_WRDI]))
-        if bool(await self._read_status() & _SR_WEL):
-            async with self._spidev as spidev:  # one cheap, idempotent retry before just warning
-                await spidev.write(bytearray([_SPI_OPCODE_WRDI]))
-            if bool(await self._read_status() & _SR_WEL):
-                self.pr.wrn("FRAM write enable latch did not clear after WRDI retry.")
+        await self._disable_write()
         return True
 
     async def set_write_protected(self, value: bool) -> bool:
@@ -182,12 +202,7 @@ class FRAM_SPI(Lockable):
             self.pr.err("FRAM not initialized, run setup first!")
             return False
         target = _SR_WP_SET if value else _SR_WP_CLEAR
-        async with self._spidev as spidev:
-            await spidev.write(bytearray([_SPI_OPCODE_WREN]))
-        if not bool(await self._read_status() & _SR_WEL):
-            # WRSR needs WEL set first, exactly like WRITE - the status register is only
-            # writable while the latch is set (datasheet: WEL "indicates if FRAM array and
-            # status register are writable").
+        if not await self._enable_write():
             self.pr.wrn("FRAM write enable latch did not set, write protection not changed.")
             return False
         async with self._spidev as spidev:
@@ -196,8 +211,7 @@ class FRAM_SPI(Lockable):
         # way this chip's write-protect state can actually change, so this is what catches it if
         # that specific transfer got corrupted by a bus disturbance.
         ok = (await self._read_status() & _SR_WP_MASK) == target
-        async with self._spidev as spidev:  # never leave WEL asserted, regardless of outcome
-            await spidev.write(bytearray([_SPI_OPCODE_WRDI]))
+        await self._disable_write()
         if not ok:
             self.pr.err("FRAM write protection readback mismatch, not applied!")
             return False
@@ -207,7 +221,7 @@ class FRAM_SPI(Lockable):
         self.pr.evt("FRAM Write Protection set to", value)
         return True
 
-    def setup_addr_buffer(self, addr: int, opcode: int) -> bytearray:
+    def _setup_addr_buffer(self, addr: int, opcode: int) -> bytearray:
         if self._max_size > 0xFFFF:  # > 16bit address
             buffer = bytearray(4)
             buffer[1] = (addr >> 16) & 0xFF

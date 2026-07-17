@@ -760,11 +760,37 @@ Testing: a fourth mocking-boundary instance, `tests/_fram_chip_fake.py` - a stat
 sitting on top of `tests/machine.py`'s dumb fake SPI bus, interpreting the exact opcode/CS-session
 shapes `FRAM_SPI` itself produces (RDID/RDSR/WRSR/WREN/WRDI/READ/WRITE), with fault-injection knobs
 (`drop_wren`/`drop_next_wrdi`/`drop_wrsr`/`disturb_write_autoclear`/`disturb_wrsr_autoclear`/
-`rdid_response`) for simulating a disturbance eating one specific transaction's effect. 28 tests in
+`rdid_response`) for simulating a disturbance eating one specific transaction's effect. 29 tests in
 `tests/test_asy_fram_driver.py`, including direct regressions for the RDID byte-order/`and`-vs-`or`
 bug, the new WEL/write-protect verification paths, and the `WP`-pin-polarity fix. No
 `pyproject.toml`/CI changes needed - both already scope by directory (`src`, `tests`), not an
 explicit file list.
+
+**Follow-up leanness pass** (owner-requested structure/simplification review): `_write()` and
+`set_write_protected()` had near-duplicate WREN-verify/WRDI-verify-retry sequences, and
+`set_write_protected()`'s trailing WRDI never checked or warned on a stuck `WEL` the way
+`_write()`'s did - an inconsistency, not just duplication. Extracted shared
+`_send_opcode()`/`_wel_is_set()`/`_enable_write()`/`_disable_write()` helpers; both methods now use
+the same preamble/epilogue, and a stuck `WEL` after `set_write_protected()` is warned the same way
+(status: still returns success - a stuck latch is a housekeeping issue, not a "did the protection
+change happen" issue, same reasoning as `_write()`'s own stuck-WEL case). Also renamed
+`setup_addr_buffer` -> `_setup_addr_buffer`: it had zero external callers (confirmed via grep) and
+was the one public-looking method with no real external API role, inconsistent with every other
+internal helper in the file being `_`-prefixed. Added one line to the module docstring noting the
+chip's own internal CS pull-up (a disconnected CS wire reads deselected on real hardware, not
+floating-asserted - a bus-disturbance case this file never needs to defend against itself).
+
+**Noted, not changed**: `get_size()` also has zero callers anywhere in the codebase today (checked
+via grep - `AsyFramChunk`/`AsyFramTimestampedChunk` have their own same-named but unrelated
+`get_size()`). Unlike `setup_addr_buffer`, left as public API surface rather than flagged as dead
+code - a trivial, obviously-useful capacity getter for any future consumer of this
+byte-addressed-storage abstraction, not something with an ambiguous "should this even exist"
+question the way the write-protect methods had. `get_values()`/`set_values()` also don't reject a
+zero-length `buf` (a no-op read/write) - deliberately not restricted: real callers
+(`asy_fram_manager.py`) never pass one, the datasheet doesn't document 0-byte `WRITE` behavior
+either way, and rejecting a domain no real caller ever exercises would be defensive code for a
+case that isn't known to actually be invalid (see `src/README.md` section 4's "don't add checks
+just in case").
 
 ### Coverage-driven completeness pass
 

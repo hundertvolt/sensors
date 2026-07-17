@@ -421,20 +421,42 @@ def test_setup_again_after_verify_present_failure_recovers() -> None:
 
 
 # ---------------------------------------------------------------------------
-# setup_addr_buffer - pure function, both address-width branches
+# _setup_addr_buffer - pure function, both address-width branches
 # ---------------------------------------------------------------------------
 
 
 def test_setup_addr_buffer_two_byte_address() -> None:
     fram, _chip = make_fram(max_size=0x2000)
-    buf = fram.setup_addr_buffer(0x1234, 0x03)
+    buf = fram._setup_addr_buffer(0x1234, 0x03)
     assert buf == bytearray([0x03, 0x12, 0x34])
 
 
 def test_setup_addr_buffer_three_byte_address_for_larger_chips() -> None:
     fram, _chip = make_fram(max_size=0x20000)
-    buf = fram.setup_addr_buffer(0x012345, 0x03)
+    buf = fram._setup_addr_buffer(0x012345, 0x03)
     assert buf == bytearray([0x03, 0x01, 0x23, 0x45])
+
+
+# ---------------------------------------------------------------------------
+# set_write_protected() - shares _write()'s WEL-stuck-after-retry housekeeping
+# ---------------------------------------------------------------------------
+
+
+def test_write_protected_still_reports_success_even_if_wel_stays_stuck_after_retry() -> None:
+    # Mirrors test_write_reports_data_written_even_if_wrdi_stays_stuck_after_retry: a stuck WEL
+    # is a housekeeping problem, not a "did the protection change happen" problem.
+    fram, chip = make_fram()
+    run(setup_fram(fram))
+    chip.disturb_wrsr_autoclear = True
+    chip.drop_next_wrdi = 2  # both the original WRDI and the one retry are disturbed
+
+    async def scenario() -> bool:
+        return await fram.set_write_protected(True)
+
+    ok = run(scenario())
+    assert ok is True
+    assert chip.status & 0x8C == 0x8C  # protection itself was still applied and verified
+    assert chip.wel is True  # left stuck, but reported (not silently dropped)
 
 
 if __name__ == "__main__":
