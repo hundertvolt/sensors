@@ -1,49 +1,21 @@
 """Async SPI driver for one Fujitsu MB85RS64V FRAM chip (Adafruit's 8KB SPI FRAM breakout):
 raw byte-addressed get_values()/set_values() plus write protection. Source: Fujitsu MB85RS64V
-datasheet (DS501-00015), cross-checked against Adafruit's own Adafruit_FRAM_SPI reference driver
-for the same chip. The chip pulls its own CS pin up internally (~50k ohm), so a disconnected CS
-wire reads deselected on real hardware, not floating-asserted - one bus disturbance this file
-never needs to defend against itself.
+datasheet (DS501-00015), cross-checked against Adafruit's own Adafruit_FRAM_SPI reference driver.
 
-Data-integrity recovery (CRC, dual-copy redundancy) lives one layer up in asy_fram_manager.py, not
-here - raw RP2040 SPI write()/readinto() genuinely cannot report a transfer fault (see
-asy_spi_driver.py), so this file can only ever detect faults it can observe by other means:
-mismatched device identification (setup()/verify_present()), a write-enable latch that didn't
-actually set/clear as commanded (_write()/set_write_protected()), and a stale write-protect
-assumption (setup() re-syncs _wp from the real, nonvolatile status register instead of trusting the
-constructor's wp= guess - WPEN/BP0/BP1 are FRAM-backed and survive a power cycle, unlike WEL). All
-three self-heal back to a safe, well-defined state - uninitialized=True (every other method already
-refuses cleanly) or a failed write/protect-change reported as False - without raising, so a caller
-can retry via a fresh setup() the same way every sensor driver's task-death-and-respawn already
-works, without this file needing to know about that policy itself.
+Data-integrity recovery (CRC, dual-copy redundancy) lives one layer up in asy_fram_manager.py -
+raw SPI write()/readinto() can't report a transfer fault, so this file only detects what it can
+observe directly: device-ID mismatch, a write-enable latch that didn't set/clear as commanded,
+and a stale write-protect assumption. All three self-heal to a safe state (uninitialized=True, or
+a failed write/protect-change reported as False) without raising, so a caller can recover via a
+fresh setup(), the same task-death-and-respawn pattern every sensor driver already relies on.
 
-Contract: every method returns a well-defined value (bool/None/int) and never raises, except three
-deliberately-allowed paths, all inherited from or mirroring asy_spi_driver.py's own established
-"one-time setup/programmer-error, not operational failure" carve-outs (see its own docstring and
-BACKLOG.md) - never silently caught here, by design, so upstream callers see them and must handle
-them explicitly (see BACKLOG.md's note on asy_fram_manager.py):
-1. __init__() constructs real SPIDevice/Pin objects (ValueError for a bad pin/port number) - a
-   one-time, at-boot misconfiguration that should fail loudly, not degrade into a permanently
-   nonfunctional driver every later call silently no-ops on.
-2. setup() deliberately raises OSError if device identification fails - mirroring how an I2C
-   driver's setup() naturally raises OSError on a NAK; SPI has no such signal, so this is the
-   deliberate substitute.
-3. Every other public method that touches the SPI bus (get_values()/set_values()/
-   get_write_protected()/set_write_protected()/verify_present()) guards `uninitialized` first and
-   returns a clean False/error-logged sentinel instead of ever reaching SPIDevice's own
-   "not set up" RuntimeError - so that RuntimeError is only reachable by calling one of these
-   before the first setup() ever succeeds (a genuine caller-ordering bug, not a runtime fault) or
-   if the underlying bus is deinitialized by something else out from under an in-flight operation
-   (also not a "hardware disturbance": a real electrical disturbance never touches this Python-level
-   lifecycle state, confirmed in asy_spi_driver.py - it only fires if code elsewhere explicitly
-   calls .deinit()/.init() on the shared bus while this driver might still be using it). Neither is
-   caught here, matching asy_spi_driver.py's own already-signed-off precedent that this class of
-   RuntimeError is the caller's responsibility, not this driver's.
-Every raw SPI transaction call itself (write()/readinto()) cannot raise on this port at all, per
-asy_spi_driver.py's own contract - the only way this file ever detects a fault is by the means
-above (setup()/verify_present()'s device-identification check, and _write()/
-set_write_protected()'s write-enable-latch verification), not by an exception from the transfer
-itself.
+Contract: every method returns a well-defined value and never raises, except three deliberately-
+allowed paths mirroring asy_spi_driver.py's own carve-outs, never silently caught here so upstream
+callers must handle them: __init__()'s ValueError for a bad pin/port (one-time, at-boot
+misconfiguration); setup()'s OSError for failed device identification (SPI's substitute for an
+I2C NAK); and SPIDevice's "not set up"/deinitialized-bus RuntimeError, only reachable via a
+caller-ordering bug or something else deinitializing the shared bus mid-operation. See BACKLOG.md
+for the full rationale and history behind each.
 """
 
 import asyncio
@@ -77,11 +49,9 @@ _SR_WP_MASK = const(0x8C)  # WPEN | BP1 | BP0
 _SR_WP_SET = const(0x8C)
 _SR_WP_CLEAR = const(0x00)
 
-# Not const()-wrapped (unlike the datasheet-fixed values above) so a test can monkeypatch this
-# module attribute to shorten the wait - see verify_present(). A real SPI transaction here
-# (RDID or a status-register round trip) completes in low-single-digit ms, so this is generous
-# headroom for legitimate contention, while still bounding an accidental lock-reentry to a finite
-# wait instead of hanging the calling task forever.
+# Not const()-wrapped, unlike the datasheet-fixed values above - so a test can monkeypatch this
+# to shorten the wait (see verify_present()). Generous headroom over a real transaction's
+# low-single-digit-ms cost, while still bounding an accidental lock-reentry to a finite wait.
 _VERIFY_PRESENT_LOCK_TIMEOUT_S = 1.0
 
 
@@ -119,14 +89,9 @@ class FRAM_SPI(Lockable):
         self.pr.one("SPI FRAM Driver Setup complete")
 
     async def verify_present(self) -> bool:
-        # Re-probe entry point for a caller (e.g. a future health-check/retry policy) that
-        # suspects a bus disturbance: cheaper than a full setup() (skips wp_pin re-init) and, on
-        # failure, reverts to uninitialized=True so every other method safely refuses until a
-        # fresh setup() succeeds - the same self-healing state setup()'s own OSError already
-        # relies on. Guards `uninitialized` first, same as every other public method here - found
-        # missing this guard during an exception-safety review: without it, calling this before
-        # the first setup() ever succeeded would let SPIDevice's own "not set up" RuntimeError
-        # leak out uncaught instead of degrading to the same clean False every sibling gives.
+        # Re-probe entry point for a caller that suspects a bus disturbance: cheaper than a full
+        # setup() (skips wp_pin re-init), and on failure reverts to uninitialized=True so every
+        # other method safely refuses until a fresh setup() succeeds. See BACKLOG.md.
         if self.uninitialized:
             self.pr.err("FRAM not initialized, run setup first!")
             return False
@@ -213,19 +178,16 @@ class FRAM_SPI(Lockable):
         return bool(await self._read_status() & _SR_WEL)
 
     async def _enable_write(self) -> bool:
-        # Shared WREN-and-verify preamble: WRITE and WRSR both require WEL set first (datasheet:
-        # WEL "indicates if FRAM array and status register are writable"). Verifying via RDSR
-        # instead of trusting WREN blindly catches a corrupted/disturbed WREN transfer, which the
+        # Shared WREN-and-verify preamble for WRITE/WRSR (datasheet: WEL gates both). Verifying
+        # via RDSR instead of trusting WREN blindly catches a corrupted WREN transfer, which the
         # chip would otherwise silently ignore the following WRITE/WRSR for.
         await self._send_opcode(_SPI_OPCODE_WREN)
         return await self._wel_is_set()
 
     async def _disable_write(self) -> None:
-        # Shared WRDI-and-verify epilogue for WRITE and WRSR. WEL already auto-clears at the CS
-        # rising edge after either completes (datasheet), so this is defense-in-depth against
-        # that auto-clear mechanism itself glitching, not the only thing keeping WEL in check -
-        # hence one cheap, idempotent retry before just warning rather than failing the caller's
-        # already-completed operation over leftover housekeeping.
+        # Shared WRDI-and-verify epilogue: WEL auto-clears after WRITE/WRSR anyway (datasheet), so
+        # this is defense-in-depth against that mechanism itself glitching - one cheap retry, then
+        # only a warning, since a stuck latch doesn't undo the already-completed operation.
         await self._send_opcode(_SPI_OPCODE_WRDI)
         if await self._wel_is_set():
             await self._send_opcode(_SPI_OPCODE_WRDI)
