@@ -15,15 +15,19 @@ recognition, and at the CS rising edge after WRITE recognition (confirmed direct
 real datasheet PDF, not inferred from a similar part).
 
 Fault-injection knobs (`drop_wren`/`drop_next_wrdi`/`drop_wrsr`/`disturb_write_autoclear`/
-`disturb_wrsr_autoclear`/`rdid_response`) simulate a bus disturbance eating one specific
-transaction's real effect while every other byte still moves normally - not "unplug the whole
-bus" (tests/machine.py's own
+`disturb_wrsr_autoclear`/`rdid_response`/`corrupt_next_write_data`) simulate a bus disturbance
+eating one specific transaction's real effect while every other byte still moves normally - not
+"unplug the whole bus" (tests/machine.py's own
 test_disconnected_wire_is_undetectable_reads_whatever_is_on_the_bus_not_an_exception already
 covers that undetectable case at the raw-SPI layer). `disturb_write_autoclear`/
 `disturb_wrsr_autoclear` suppress the datasheet's own auto-clear specifically so
 FRAM_SPI's explicit WRDI-verification/retry path (defense-in-depth against that exact
 auto-clear mechanism itself glitching) stays exercised by a real simulated fault instead of
 being permanently unreachable now that the normal case already clears WEL before WRDI even runs.
+`corrupt_next_write_data` is different in kind: it simulates a disturbance landing on the actual
+payload bytes of a WRITE (not an opcode/latch), which is genuinely undetectable at this layer by
+design - opcodes/latches/identity are the only things FRAM_SPI itself can verify; payload-level
+data integrity is asy_fram_manager.py's CRC/dual-copy-redundancy job, one layer up.
 """
 
 from machine import SPI as FakeSPI
@@ -48,6 +52,7 @@ class FakeMB85RS64V(FakeSPI):
         self.drop_wrsr = False  # simulate WRSR's status-byte transfer getting corrupted
         self.disturb_write_autoclear = False  # simulate the chip's own WRITE-completion WEL auto-clear not firing
         self.disturb_wrsr_autoclear = False  # simulate the chip's own WRSR-completion WEL auto-clear not firing
+        self.corrupt_next_write_data: bytes | None = None  # what actually lands, if not the real payload
         self._pending_op: int | None = None
         self._pending_addr: int | None = None
 
@@ -63,8 +68,10 @@ class FakeMB85RS64V(FakeSPI):
         if self._pending_op == _OPCODE_WRITE and self._pending_addr is not None:
             # data phase of a previously-opened WRITE (opcode+address arrived in the prior call)
             if self.wel:
-                end = self._pending_addr + len(data)
-                self.memory[self._pending_addr : end] = data
+                stored = data if self.corrupt_next_write_data is None else self.corrupt_next_write_data
+                end = self._pending_addr + len(stored)
+                self.memory[self._pending_addr : end] = stored
+                self.corrupt_next_write_data = None
             if not self.disturb_write_autoclear:
                 self.status &= ~0x02  # WEL auto-clears at the CS rising edge after WRITE recognition
             self._pending_op = None

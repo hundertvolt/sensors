@@ -792,6 +792,83 @@ either way, and rejecting a domain no real caller ever exercises would be defens
 case that isn't known to actually be invalid (see `src/README.md` section 4's "don't add checks
 just in case").
 
+**Exception-safety audit** (owner-requested: find every place that could raise, uncaught, either
+directly or via a called function; apply the existing "deliberately allowed" scheme consistently
+rather than eliminating it). Walked every method and every function it calls (`asy_spi_driver.py`,
+`base_classes.py`, `print_log.py`, `machine.Pin`) line by line. Found and fixed one real gap:
+`verify_present()` was the one public method that didn't guard `uninitialized` before touching
+`self._spidev` - every sibling method (`get_values`/`set_values`/`get_write_protected`/
+`set_write_protected`) already checks this first and returns a clean `False`, but `verify_present()`
+would have let `SPIDevice.__aenter__`'s own "not set up" `RuntimeError` leak out uncaught if called
+before the first `setup()` ever succeeded. Fixed to match every sibling's contract.
+
+Beyond that one gap, confirmed the exception surface is exactly three deliberately-allowed paths,
+all inherited from or mirroring `asy_spi_driver.py`'s own already-established carve-outs (see its
+docstring/BACKLOG.md entry) - rewrote this file's own module docstring to enumerate them precisely
+instead of only mentioning `setup()`'s `OSError`:
+1. `__init__()` constructs real `SPIDevice`/`Pin` objects - `ValueError` for a bad pin/port number,
+   one-time at-boot construction, allowed to fail loudly (matches `asy_i2c_driver.py`'s/
+   `asy_spi_driver.py`'s own stated philosophy: a misconfigured bus should fail loudly once at
+   boot, not silently degrade every later call).
+2. `setup()`'s deliberate `raise OSError` on failed device identification (unchanged from before -
+   see above).
+3. `SPIDevice.__aenter__`'s "not set up" `RuntimeError` - now only reachable by calling a method
+   before the first `setup()` ever succeeded (a caller-ordering bug, closed for every method in
+   this file per the `verify_present()` fix above) or if something else deinitializes the shared
+   SPI bus out from under an in-flight operation. **Confirmed, not assumed**: a real electrical bus
+   disturbance never touches this Python-level lifecycle state at all (only an explicit
+   `.deinit()`/`.init()` call elsewhere does) - this is a software-lifecycle concern, categorically
+   different from the undetectable-at-this-layer electrical-disturbance case the CRC/dual-copy
+   layer exists for. Matches `asy_spi_driver.py`'s own already-signed-off precedent that this
+   `RuntimeError` is the caller's responsibility, not this driver's - not caught here, on purpose.
+
+**`asy_fram_manager.py`'s own exception handling around `FRAM_SPI`, reviewed (not itself in
+refactor scope - read-only)**: confirmed adequate, not just assumed, per `src/README.md` section
+2's "verify - don't assume - that every upstream caller of it actually closes the gap" requirement.
+`AsyFramManager.setup()` wraps `self.fram.setup()` in `try: except Exception`, catching `setup()`'s
+`OSError` (and, incidentally, anything else). `_write_chunk()`/`_read_chunk()`/`_clear_chunk()`
+each wrap their entire body - including every `fram.get_values()`/`fram.set_values()` call, direct
+and via `_handle_status_bytes()`/`_set_check_sb()` - in their own broad `try: except Exception`
+inside the `async with self.fram as fram:` block, which would also catch the inherited
+`SPIDevice`-`RuntimeError` path above if it were ever actually reached in production (it shouldn't
+be, given call ordering, but the safety net is there regardless). `AsyFramManager.__init__()`
+constructing `FRAM_SPI(...)` (and transitively `SPIDevice`/`Pin`) is *not* wrapped - consistent
+with the same "fail loud once at boot for a misconfigured pin" convention used for every other
+bus/sensor driver's own construction in this codebase, not a gap.
+**Flagged for upstream, kept in the backlog per owner's request**: `get_write_protected()`/
+`set_write_protected()`/`verify_present()` have zero callers in `asy_fram_manager.py` today, so
+none of this existing exception-handling discipline currently applies to them. Whoever eventually
+wires these in (part of the still-open "FRAM's SPI bus gets the same bus-recovery treatment as
+sensor buses" item under "Bus/sensor error-recovery robustness" above) must apply the same
+`try/except Exception` wrapping already used for `setup()`/`get_values()`/`set_values()` - this
+driver deliberately does not catch its own inherited `RuntimeError` path, by design, so the
+upstream caller is exactly where that responsibility has to land.
+
+**Test expansion** (owner-requested: configuration matrix, integration tests with real
+dependencies, mocked SPI success/error paths derived from the datasheet, module and integration
+level). 41 tests now (up from 29): a configuration matrix (all `wp`/`wp_pin` pairings; `max_size`
+boundary values at the exact 2-byte/3-byte address-header transition; degenerate `max_size`
+values - 0, negative - proven to degrade to "reject every access" rather than crash; several
+degenerate values combined at once, not just one at a time); the `verify_present()` fix locked in
+by a regression test; both deliberately-allowed exception paths turned into real, passing tests
+(construction with an out-of-range pin, and mid-operation bus `.deinit()`); a proof (not just
+prose) that a corrupted *payload* byte during `WRITE` is undetectable at this layer by design,
+motivating the CRC/dual-copy layer above it; and integration tests against the real
+`print_log.PrintLogHistory` (production's actual logger type, not the bare `PrintLog` most other
+tests use) plus `FRAM_SPI`'s own outer `Lockable` lock's concurrency and task-cancellation safety
+(mirroring `test_asy_spi_driver.py`'s own bus-level versions of the same properties, now proven one
+level up).
+
+**`tests/machine.py` (shared fixture) change, not scoped to this file alone**: its fake `Pin`
+never validated `id` at all, so "construction with an invalid pin raises" - a real, multi-file-
+documented contract (`asy_spi_driver.py`'s and `asy_i2c_driver.py`'s own docstrings both claim it) -
+had no test anywhere actually exercising it, in any of the three driver test suites. Added minimal
+validation (`TypeError` for a non-int, `ValueError` outside the real RP2040's GPIO0-28 range,
+confirmed against `ports/rp2/machine_pin.c`) - checked every pin number used across all three test
+files first (max is 8), so this is additive, not a behavior change for any existing test. Full
+suite re-run to confirm: `test_asy_i2c_driver.py` 77/77, `test_asy_spi_driver.py` 43/43, both
+unchanged from before this addition.
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
@@ -806,7 +883,7 @@ and a missing config file failing independently without either derailing the oth
 ### Current test counts (verify via `grep -c '^def test_' tests/test_*.py` if this looks stale)
 
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
-`base_classes.py` 72, `config_manager.py` 140, `print_log.py` 50, `asy_fram_driver.py` 28 — **521
+`base_classes.py` 72, `config_manager.py` 140, `print_log.py` 50, `asy_fram_driver.py` 41 — **534
 total**.
 
 ## Decided for the refactor

@@ -15,11 +15,33 @@ False - without raising, so a caller can retry via a fresh setup() the same way 
 driver's task-death-and-respawn already works, without this file needing to know about that
 policy itself.
 
-Contract: every method returns a well-defined value (bool/None) and never raises, except setup()
-- which deliberately raises OSError if device identification fails, mirroring how an I2C driver's
-setup() naturally raises OSError on a NAK; SPI has no such signal, so this is the deliberate
-substitute - and the raw SPI transaction calls themselves, which per asy_spi_driver.py's own
-contract cannot raise on this port.
+Contract: every method returns a well-defined value (bool/None/int) and never raises, except three
+deliberately-allowed paths, all inherited from or mirroring asy_spi_driver.py's own established
+"one-time setup/programmer-error, not operational failure" carve-outs (see its own docstring and
+BACKLOG.md) - never silently caught here, by design, so upstream callers see them and must handle
+them explicitly (see BACKLOG.md's note on asy_fram_manager.py):
+1. __init__() constructs real SPIDevice/Pin objects (ValueError for a bad pin/port number) - a
+   one-time, at-boot misconfiguration that should fail loudly, not degrade into a permanently
+   nonfunctional driver every later call silently no-ops on.
+2. setup() deliberately raises OSError if device identification fails - mirroring how an I2C
+   driver's setup() naturally raises OSError on a NAK; SPI has no such signal, so this is the
+   deliberate substitute.
+3. Every other public method that touches the SPI bus (get_values()/set_values()/
+   get_write_protected()/set_write_protected()/verify_present()) guards `uninitialized` first and
+   returns a clean False/error-logged sentinel instead of ever reaching SPIDevice's own
+   "not set up" RuntimeError - so that RuntimeError is only reachable by calling one of these
+   before the first setup() ever succeeds (a genuine caller-ordering bug, not a runtime fault) or
+   if the underlying bus is deinitialized by something else out from under an in-flight operation
+   (also not a "hardware disturbance": a real electrical disturbance never touches this Python-level
+   lifecycle state, confirmed in asy_spi_driver.py - it only fires if code elsewhere explicitly
+   calls .deinit()/.init() on the shared bus while this driver might still be using it). Neither is
+   caught here, matching asy_spi_driver.py's own already-signed-off precedent that this class of
+   RuntimeError is the caller's responsibility, not this driver's.
+Every raw SPI transaction call itself (write()/readinto()) cannot raise on this port at all, per
+asy_spi_driver.py's own contract - the only way this file ever detects a fault is by the means
+above (setup()/verify_present()'s device-identification check, and _write()/
+set_write_protected()'s write-enable-latch verification), not by an exception from the transfer
+itself.
 """
 
 from machine import Pin
@@ -88,7 +110,13 @@ class FRAM_SPI(Lockable):
         # suspects a bus disturbance: cheaper than a full setup() (skips wp_pin re-init) and, on
         # failure, reverts to uninitialized=True so every other method safely refuses until a
         # fresh setup() succeeds - the same self-healing state setup()'s own OSError already
-        # relies on. Must not be called before the first setup() (SPIDevice itself isn't ready).
+        # relies on. Guards `uninitialized` first, same as every other public method here - found
+        # missing this guard during an exception-safety review: without it, calling this before
+        # the first setup() ever succeeded would let SPIDevice's own "not set up" RuntimeError
+        # leak out uncaught instead of degrading to the same clean False every sibling gives.
+        if self.uninitialized:
+            self.pr.err("FRAM not initialized, run setup first!")
+            return False
         async with self:
             present = await self._check_device_id()
             if not present:
