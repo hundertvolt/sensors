@@ -4,7 +4,8 @@ import asyncio
 from uasyncio import Lock, ThreadSafeFlag, Event
 from machine import Pin
 from micropython import const
-from async_manager import TimeCounterManager, ConfigManager
+from async_manager import ConfigManager
+from base_classes import LockedCounter
 from typing import Callable, Any, List, Coroutine
 from collections import namedtuple
 from async_connect import GMTimeStruct
@@ -61,7 +62,7 @@ class Neopixel_Signal:
         self.led_overl_on = False
         self.neopixel_freq = neopixel_freq
         self.neopixel_dt = 1.0 / neopixel_freq
-        self.override_secs = TimeCounterManager()
+        self.override_secs = LockedCounter(max_val=_MAX_OVERRIDE_TIME)
         self.debug = debug
         self.local_time_callback = (
             asy_local_time_callback  # expects gmtime formatted for local time
@@ -94,15 +95,11 @@ class Neopixel_Signal:
         return evtloop.create_task(self._led_ext_signal_starter())
 
     async def set_override_led(self, secs: int) -> None:
-        if secs < 0:
-            await self.override_secs.set_counter(0)
-        elif secs > _MAX_OVERRIDE_TIME:
-            await self.override_secs.set_counter(_MAX_OVERRIDE_TIME)
-        else:
-            await self.override_secs.set_counter(secs)
+        await self.override_secs.set_value(secs)  # LockedCounter clamps into [0, _MAX_OVERRIDE_TIME] itself
 
     async def get_override_led(self) -> int:
-        return await self.override_secs.get_counter()
+        value = await self.override_secs.get_value()  # never None: never constructed/set with a None sentinel
+        return 0 if value is None else value
 
     def led_signal(self, r: int, g: int, b: int, t: int) -> bool:
         if self.debug:

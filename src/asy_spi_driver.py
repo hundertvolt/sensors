@@ -17,9 +17,18 @@ unlocked bus - all programmer-error guards, not operational failures.
 
 import asyncio
 
-from base_classes import Lockable
 from machine import SPI as _SPI
 from machine import Pin
+
+from base_classes import Lockable
+
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    from types import TracebackType
 
 
 class SPI:
@@ -138,9 +147,14 @@ class SPIDevice(Lockable):
             raise
         return self
 
-    async def __aexit__(self, exc_type: object, exc_val: object, exc_tb: object) -> bool:
-        # object-typed params satisfy Liskov substitution against Lockable.__aexit__ (only
-        # forwarded, never inspected). CS deassert runs first, while the lock is still held.
+    async def __aexit__(
+        self,
+        exc_type: "type[BaseException] | None",
+        exc_val: "BaseException | None",
+        exc_tb: "TracebackType | None",
+    ) -> bool:
+        # params are only forwarded to super().__aexit__(), never inspected. CS deassert runs
+        # first, while the lock is still held.
         self.cs_pin.value(not self.cs_active_value)
         await asyncio.sleep(0.001)
         return await super().__aexit__(exc_type, exc_val, exc_tb)

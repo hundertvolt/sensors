@@ -479,6 +479,9 @@ above is genuinely underway, but surfaces some new items:
     with no ambiguity. Not fixed via a `pyproject.toml` `exclude` (the `microdot.py` precedent)
     because that would need the full "Pre-push verification" clean-chroot pass for a collision this
     narrow and temporary; documented instead so a locally-run unscoped typecheck isn't mysterious.
+    **Resolved**: `base_classes.py` (with its own runtime dependencies `config_manager.py` and
+    `print_log.py`) has since been promoted to `src/` in full - see its own entry below - so
+    `tests/base_classes.py` has been deleted and this collision no longer exists.
   - **Follow-up pass: deep asyncio/locking/bus-fault test coverage, a real bug found and fixed,
     and the file simplified afterward** (all while genuinely green, not just planned). Extended
     `tests/machine.py` with real RP2040 error codes (confirmed against
@@ -811,6 +814,1298 @@ above is genuinely underway, but surfaces some new items:
   above — per-sensor config is done, the remaining gap is giving the currently-shared
   network/Neopixel config in `sensortask-wozi.py` its own clearly-scoped global home instead of one
   ad hoc `ConfigManager` instance.
+- **`base_classes.py`, `config_manager.py`, and `print_log.py` all moved to `src/` together**:
+  `base_classes.py` was the requested target, but its two runtime dependencies (not FRAM-related,
+  not `TYPE_CHECKING`-only - unlike its `AsyFramManager` reference) had to go through the same
+  checklist alongside it, on explicit direction from the project owner, or `SensorReader`/
+  `SensorReaderConfig` would only ever be testable against hand-written stand-ins for their own
+  logging/config storage. Resolves the "latent, codebase-wide `typing` import gap" flagged in this
+  same section above as future work for exactly these two files.
+  - **Two real, previously-undetected bugs found and fixed in `config_manager.py`** - both existed
+    unchanged in `base_classes_old.py` too, and neither had ever actually been exercised end-to-end
+    before this session's tests (see below for why):
+    1. `cfg_from_str()`/`str_cfg()`'s `cfg_vals[1:-2]` (should be `[1:-1]`) stripped one character
+       too many off the end of the `"|...|"`-wrapped schema string - `str_cfg()` never surfaced this
+       (it only ever reads the substring *before* the first `:{`, which the extra truncation never
+       reaches), but `cfg_from_str()` needs the full, well-formed JSON body: the truncation always
+       dropped the final `}`, so `json.loads()` always raised on malformed/unbalanced braces and
+       `cfg_from_str()` always returned `{}` - for every real schema string, not just an edge case.
+       Since `ConfigManager.__init__()` bails out immediately when `cfg_from_str()` returns empty
+       (`"- Defaults are empty, config is not valid!"`), this meant **`ConfigManager.valid` could
+       never become `True` for any real caller in current `improved-quality/` code** - every
+       `SensorReaderConfig`-based sensor's persistent config storage has been silently, completely
+       non-functional. Never noticed because nothing in `improved-quality/` runs on real hardware
+       end-to-end yet (see the "Cross-file wiring is currently incomplete" finding above) and no
+       tests existed against this file before now. Fixed by correcting both slices to `[1:-1]`
+       (verified by hand-reconstructing the JSON both ways - `[1:-2]` produces unbalanced braces,
+       `[1:-1]` parses correctly - and confirmed no observable behavior of `str_cfg()` changes,
+       since its truncation bug was already inert).
+    2. `check_cfg_get_default()`'s self-check of a schema's `"special"` sentinel value (used for
+       fields like `asy_scd30_driver.py`'s real `AmbPres`, `special: 0` outside its physical
+       `700-1400` hPa range, meaning "compensation disabled") called
+       `type_or_range_error(special_val, defaults, check_special=use_value)` with `use_value=False`
+       in exactly the case being checked - forcing the special value through the *full* min/max
+       range check instead of letting it take its own "equals the special sentinel, auto-valid"
+       shortcut. This made `check_cfg_get_default()` judge `AmbPres`'s real, already-in-use schema
+       constant as invalid, which (masked by bug #1 above always returning empty defaults first)
+       had never actually been reached either. **Confirmed with the project owner which side was
+       wrong** (the validation, not the schema - a special sentinel is deliberately meant to fall
+       outside the normal range, that's the whole point of having one) rather than guessing. Fixed
+       by always passing `check_special=True` to this self-check; the ordinary (non-special)
+       default-value path is unaffected since `type_or_range_error`'s special-bypass branch only
+       ever fires when the checked value actually equals the special sentinel.
+  - **The pre-existing, unconditional `from typing import ...` in all three files - including real
+    `TypeVar(...)` calls executed at class-body evaluation time in `base_classes.py`
+    (`Lockable.LockableType`, `SensorReader.MeasDataType`) - would have crashed immediately on
+    import under the real MicroPython interpreter**, confirmed the same way `asy_i2c_driver.py`'s
+    promotion first found this class of bug. Fixed with the same `try/except ImportError:
+    TYPE_CHECKING = False` + `if TYPE_CHECKING:` pattern already established there, extended to
+    cover module-level `TypeVar(...)` definitions (moved out of the `Lockable`/`SensorReader` class
+    bodies, since the actual value only matters to mypy, never at runtime) and `config_manager.py`'s
+    `WriteValidity` type alias (a real module-level assignment, not just an annotation, so it also
+    has to live inside `if TYPE_CHECKING:` rather than just being written with a string-quoted
+    annotation). Also modernized `from uasyncio import Lock` → `import asyncio` / `asyncio.Lock()`
+    throughout, matching `asy_i2c_driver.py`/`asy_spi_driver.py`'s precedent, and switched
+    `typing.Dict`/`List`/`Tuple` to the builtin generics (`dict`/`list`/`tuple`) per ruff's own
+    `UP006`/`UP035` rules, which are real, always-available runtime names needing no
+    `TYPE_CHECKING` guard at all (unlike `Any`/`Literal`/`NamedTuple`/`TypeVar`, which do).
+  - **Cross-file consequence of giving `Lockable.__aexit__` its first-ever precise real type**:
+    `asy_spi_driver.py`'s `SPIDevice.__aexit__` override was typed with loose `object` parameters,
+    specifically because `Lockable.__aexit__` previously only existed as `tests/base_classes.py`'s
+    narrow stand-in (see that entry above) - its own comment claimed this was Liskov-safe "either
+    way." Once the real, precisely-typed `Lockable.__aexit__` existed, forwarding those
+    `object`-typed locals into `super().__aexit__(...)` no longer type-checked. Found via this
+    session's own bird's-eye-view scan across `src/` (see CLAUDE.md's hard rule) and confirmed with
+    the project owner before touching a file this session wasn't otherwise reviewing. Fixed by
+    retyping `SPIDevice.__aexit__`'s three parameters to match `Lockable.__aexit__` exactly (same
+    `TYPE_CHECKING`-guarded `TracebackType` import pattern), zero behavior change.
+  - **FRAM stayed the one deliberately-deferred boundary at first pass, as expected going in**:
+    `asy_fram_manager.py` hasn't itself cleared `src/` promotion, so neither `SensorReader`'s
+    FRAM-backed path nor `print_log.py`'s `PrintLogHistStore._write()`/`_read()` were exercised for
+    real at first - only the in-memory paths were. mypy's scoped `src tests` CI run (which excludes
+    `improved-quality/`, so `asy_fram_manager` isn't on its search path) would otherwise newly fail
+    on the `TYPE_CHECKING`-only `AsyFramManager` import both files had; added a
+    `[[tool.mypy.overrides]]` entry for module `asy_fram_manager` with `ignore_missing_imports =
+    true` in `pyproject.toml` rather than suppressing the call sites individually - the plain
+    unscoped run already resolved it fine (`improved-quality/` is walked directly), so this
+    override only matters for the scoped case. **This `pyproject.toml` change has not yet been run
+    through the "Pre-push verification" clean-Ubuntu-24.04-chroot recipe** (CLAUDE.md) - low risk
+    (a single, well-documented mypy override, no new dependencies or build-tool changes) but
+    flagged here rather than silently skipped.
+  - **`print_log.py`'s FRAM boundary since mocked and tested, as part of that file's own dedicated
+    review pass** (`base_classes.py`'s `SensorReader` FRAM-backed path is a separate file/pass and
+    stays deferred): `PrintLogHistStore` only ever calls `AsyFramManager.get_chunk()` and, on the
+    chunk it returns, `get_buffer()`/`write_into()`/`read_into()` - not the real allocator/CRC/
+    dual-copy-redundancy machinery `asy_fram_manager.py` actually implements underneath those calls.
+    `tests/_fram_mock.py` fakes just that narrow surface (see `tests/README.md` for the full
+    rationale), and `print_log.py`'s own `AsyFramManager` `TYPE_CHECKING` import was replaced with
+    two local `Protocol`s (`_FramManager`/`_FramChunk`) describing exactly that surface, so the mock
+    satisfies it structurally with no inheritance relationship to the real classes needed - this
+    also means `print_log.py` no longer needs the `asy_fram_manager` mypy override above at all
+    (only `base_classes.py` still does).
+    - **A genuine parameter-contravariance conflict surfaced while typing this, caught by running
+      the *unscoped* mypy pass (not just the scoped CI one) before considering this done**: the real
+      `AsyFramChunk.write_into()`/`read_into()` (in `asy_fram_manager.py`) each narrow their `buf`
+      parameter to that class's own concrete buffer subtype (`AsyFramChunkBuffer`), which is fine
+      for `get_buffer()`'s covariant *return* but makes the real class structurally incompatible
+      with a `_FramChunk` protocol whose `write_into`/`read_into` declared a shared, precise buffer
+      protocol type in *parameter* position (contravariant) - mypy correctly flagged this as a new,
+      real error in `base_classes.py`'s `SensorReader.__init__` (`PrintLogHistStore(fram, ...)`)
+      under the unscoped run only (scoped CI stayed green throughout, since `asy_fram_manager` isn't
+      resolved there at all). Fixed by typing `write_into`/`read_into`'s `buf` parameter as `Any` in
+      the protocol instead: this file never inspects `buf` itself, only round-trips whatever its own
+      `get_buffer()` call just returned, so the precise buffer type was never part of the real
+      contract worth enforcing there. Re-verified 0 new errors anywhere after the fix (unscoped
+      finding count dropped, from 157 to 149, entirely from `print_log.py` no longer being typed
+      against the real `AsyFramManager`/`AsyFramChunk` classes at all).
+    - **`MockFramBacking` (in `tests/_fram_mock.py`) deliberately simulates data surviving a reboot,
+      not just a single read/write round-trip**: it tracks which offsets have actually been written
+      (not just their bytes), and a test constructs a second `MockAsyFramManager` around the same
+      `MockFramBacking` instance, replaying the same `get_chunk()` call sequence - landing on the
+      same offsets, same as the real bump-pointer allocator would - to prove data set by one
+      `PrintLogHistStore` instance is recovered by a completely fresh one. This directly exercises
+      the feature's whole stated purpose ("Trace-log error codes inside FRAM, surviving a reboot",
+      above), not just that the mock's read/write plumbing works in isolation.
+    - **Remove `tests/_fram_mock.py` (and the `PrintLogHistStore` tests built on it in
+      `tests/test_print_log.py`) once `asy_fram_manager.py` itself clears its own `src/` promotion
+      checklist** and a real, tested `AsyFramManager` becomes available under `tests/` instead - at
+      that point the same tests should be re-pointed at the real class rather than kept alongside
+      it.
+  - **A dedicated follow-up pass on `print_log.py` (structure/leanness/exception-safety review,
+    requested directly rather than moving straight to the next file) found and fixed a real
+    exception-safety gap, plus two leaner-but-safe simplifications**:
+    - **Real bug: `PrintLogHistStore._write()`/`_read()`'s `try:` block started too late.**
+      `get_buffer()`/`get_data_buf()` (both methods) and, in `_read()`, `read_into()` too, were all
+      called *before* the `try:` began - only the `struct.pack_into`/`struct.unpack_from`/
+      `write_into()` calls were actually protected. Since `asy_fram_manager.py` isn't itself
+      audited yet, a raise from any of those unprotected calls would have propagated straight out
+      of `_write()`/`_read()`, breaking the "never raises" contract these two methods exist
+      specifically to uphold. Found via a systematic, line-by-line audit of every call in the file
+      (not just the FRAM path - `PrintLog`/`PrintLogHistory`'s own methods were checked too; the
+      only other raise-shaped surface is `err`/`wrn`/`one`/`evt`/`all`/`err_s`/`wrn_s`'s
+      `print(*args, **kwargs)` forwarding, which can raise `TypeError` for a genuinely invalid
+      kwarg name - left as-is, since every real caller in this codebase passes only valid
+      `print()` kwargs and wrapping it would silently hide an actual caller bug rather than guard
+      against a reachable operational failure). Also found: `PrintLogHistStore.__init__`'s
+      `fram.get_chunk(...)` call was completely unguarded, the same unaudited-FRAM-boundary risk
+      at construction time. Fixed by widening `_write()`/`_read()`'s `try:` blocks to cover their
+      entire bodies and adding the same `try`/`except Exception` around `__init__`'s `get_chunk()`
+      call (an unexpected raise there now degrades to `self.fram = None`, same as the already-
+      handled "out of memory" `None` return). Verified via `tests/_fram_mock.py`'s new
+      `.broken_buffer` fault (a `get_buffer()` that "succeeds" but returns a buffer whose
+      `get_data_buf()` is `None`, making `struct.pack_into`/`struct.unpack_from` raise
+      `TypeError`) - this reproduces the exact bug shape and is now caught cleanly by both methods.
+    - **Simplification: `print_log.py`'s separate `_FramBuffer` Protocol was a redundant
+      duplicate of `base_classes.LockableBuffer`'s own two methods** (`get_buf()`/`get_data_buf()`).
+      Verified directly (not assumed) that importing `LockableBuffer` under `TYPE_CHECKING`
+      instead doesn't create a circular-import problem for mypy - scoped and unscoped runs both
+      stay clean, 0 new errors in either file. Folded away; `_FramChunk.get_buffer()` now returns
+      `LockableBuffer` directly.
+    - **Simplification: `PrintLogHistory.hl` (set from `history_length` in `__init__`) was dead
+      state** - nothing anywhere in the repo (including `base_classes_old.py`, where the same line
+      also exists unused) ever reads `self.hl`; every real use is `len(self.history)` instead.
+      Removed.
+    - **`tests/_fram_mock.py` gained fault injection for every simulated FRAM failure mode**:
+      `MockAsyFramManager(raise_on_get_chunk=...)` alongside the existing `out_of_memory=...`, and
+      per-chunk `.raise_on_get_buffer`/`.broken_buffer`/`.raise_on_write`/`.write_returns_false`/
+      `.raise_on_read`/`.read_returns_false` flags, settable directly on the `_MockFramChunk`
+      instance a `PrintLogHistStore` exposes as its own `.fram` (tests narrow `store.fram`'s type
+      from the production `_FramChunk` Protocol to the concrete mock via
+      `assert isinstance(store.fram, _MockFramChunk)`, keeping the tests themselves fully typed
+      rather than reaching for `# type: ignore`). A `.corrupt(bytes)` helper (write wrong-length
+      data directly, bypassing `write_into()`, to make a later `struct.unpack_from()` raise) was
+      designed, tried, and deliberately **not** kept: `get_buffer()` always hands back a
+      freshly-sized buffer derived from the same `len(history)` used to write it, so struct's own
+      length check can only ever fail via `get_buffer()` itself misbehaving - already covered by
+      `.broken_buffer` - never via what was previously persisted at that offset. Confirmed this
+      empirically (not just by reasoning about it) before removing it, and along the way confirmed
+      a genuine MicroPython/CPython behavioral difference worth recording: resizing a `bytearray`
+      via slice assignment while a `memoryview` is exported over it does **not** raise
+      `BufferError` on MicroPython's Unix port the way it does on CPython - it silently resizes,
+      leaving the existing `memoryview` referencing stale state. Not load-bearing for anything in
+      `src/` today, but worth keeping in mind for any future code that resizes a buffer with an
+      outstanding `memoryview` over it.
+    - Added 18 new tests (21 -> 39 in `tests/test_print_log.py`; 317 -> 335 tests repo-wide):
+      exact-boundary `errno`/`wrnno` values for both the error and warning sub-ranges (previously
+      only tested well past the boundary, not exactly at it), an `err_count` cap-transition test,
+      a `history_length=0` construction edge case (confirmed safe first via a standalone script
+      under the real MicroPython interpreter: bounded-`deque` `append()`/`extend()` never raise on
+      overflow, even at `maxlen=0`), and one test per FRAM fault-injection mode above, including
+      `setup()`'s both-paths-fail branch and an `err_s()`-survives-a-write-failure test proving
+      in-memory state still updates even when persistence silently fails underneath it.
+  - **`tests/base_classes.py` (the `Lockable` stand-in) deleted**, its documented
+    `scripts/typecheck.sh`-with-no-arguments "Duplicate module" collision resolved along with it;
+    `asy_i2c_driver.py`/`asy_spi_driver.py` now resolve `Lockable` against the real
+    `src/base_classes.py`. `tests/test_base_classes.py`, `tests/test_config_manager.py`, and
+    `tests/test_print_log.py` added (84 tests total), all running under the real MicroPython
+    Unix-port interpreter alongside the existing suites - full repo run: 311 tests passing.
+  - **Baseline verified, no regression**: CI-scoped `scripts/typecheck.sh src tests` was already
+    fully clean before this session (0 issues, 12 files) and is fully clean after (0 issues, 17
+    files, with the override above); CI-scoped `scripts/lint.sh` (`ruff check src tests`) stays
+    fully clean. Unscoped `mypy`'s previously-blocking "Duplicate module named base_classes" crash
+    is gone; the unscoped `ruff check improved-quality src tests` finding count dropped from 317 to
+    265 - entirely attributable to these three files' lines leaving `improved-quality/`'s scan, not
+    to any fix within `improved-quality/` itself.
+  - **A second, requested-directly re-review pass on `print_log.py`** ("any oversights, bugs,
+    strange or unexpected behaviors, uncaught exceptions or conditions with yet no unit test")
+    found and fixed two more real gaps, neither an exception this time - both logic bugs:
+    - **Real bug: `_store_err()`/`reset()`'s "not initialized yet" guard's `return` was
+      conditioned on `self.level`, not just on `self.initialized`.** The code read
+      `if not self.initialized and self.level > _LOG_OFF: print(...); return` - a single `if`, so
+      with logging *off* (`self.level == _LOG_OFF`, the common production default) the condition
+      is `False` even when genuinely uninitialized, and execution fell through to `_write()`
+      anyway. For `PrintLogHistory` this is harmless (`_write()` is a no-op returning `True`), but
+      for `PrintLogHistStore` it meant calling `err_s()`/`wrn_s()`/`reset()` before `setup()` had
+      loaded (or established) the persisted state would silently overwrite real FRAM-persisted
+      history with a freshly-constructed, not-yet-loaded in-memory default - exactly backwards from
+      the guard's own intent, and only masked by logging being off. Confirmed reachable in this
+      repo's own real caller: `base_classes.py`'s `SensorReader.__init__` never calls
+      `self.pr.setup()` itself (by design - `__init__` can't be `async`); the required call lives in
+      each sensor driver's own async setup routine (e.g.
+      `improved-quality/asy_sgp40_driver.py:113`'s `await self.pr.setup()  # required for all logged
+      warnings and errors`) - a driver author forgetting that call would previously have failed
+      silently whenever `level` was off instead of every time, an inconsistent, log-level-dependent
+      failure mode. Fixed by splitting the `return` out from the `print`, so the guard now always
+      returns when uninitialized regardless of `self.level`; only the diagnostic message is
+      level-gated. Verified directly against the mock FRAM backing (`manager.backing._written_offsets`
+      stays empty across an unset-up `err_s()`/`reset()` call, where it previously gained an entry).
+    - **Real bug: `PrintLogHistory.__init__` didn't clamp `history_length`.** A negative value (a
+      valid `int`, so within what `set_level()`'s own "clamp, don't reject" convention elsewhere in
+      this same file already treats as normal input) reaches `deque([_NO_ERR] * history_length,
+      history_length)` - confirmed directly against the real MicroPython Unix-port interpreter that
+      a negative `maxlen` raises `ValueError` there (`deque([], -1)` also raises), breaking the
+      constructor for a typed-valid input the file's own sibling method already knows how to handle
+      gracefully. Fixed by clamping `history_length = max(history_length, 0)` before first use,
+      matching `set_level()`'s convention.
+    - **6 new tests** (39 -> 45 in `tests/test_print_log.py`; 335 -> 341 repo-wide): a
+      negative-`history_length`-is-clamped test; an `err_s()`/`reset()`-before-`setup()`-with-
+      logging-off test at the `PrintLogHistory` level (in-memory counting/recording still happens);
+      the same two scenarios again at the `PrintLogHistStore` level, asserting nothing reaches the
+      mocked FRAM backing; and a `history_length=0` construction test through the full FRAM
+      write/read round-trip (confirmed directly this doesn't crash `get_buffer()`/`pack_into`/
+      `unpack_from` at either end - the struct format collapses to just `"H"`).
+    - No other uncaught-exception or untested-branch gaps found on this pass: re-walked every
+      method again (`PrintLog`'s five logging methods, `set_level`, `PrintLogHistory`'s `setup`/
+      `_store_err`/`err_s`/`wrn_s`/`reset`/`get_log`, `PrintLogHistStore`'s `__init__`/`setup`/
+      `_write`/`_read`) against both normal and boundary/malformed-but-typed input; nothing else
+      surfaced.
+  - **A third pass, this time validating `print_log.py` paragraph-by-paragraph against
+    `src/README.md`'s full promotion checklist** (rather than a general "find bugs" sweep) surfaced
+    one more real, if latent, correctness finding under section 1 ("correct against real
+    documentation"), plus a couple of zero-behavior-change improvements under sections 4/8:
+    - **Real (if inert-until-now) finding: a bare `struct` format string (no byte-order prefix) does
+      not default to `"<"` on MicroPython.** Confirmed directly against both the MicroPython
+      1.28.0 docs and the real Unix-port interpreter: a no-prefix format string defaults to `"@"`
+      (native byte order **and** native alignment/padding) - `struct.calcsize("BH")` (no prefix) is
+      `4` (one padding byte inserted before `H`), matching `"@BH"`, not `"<BH"`'s `3`. This is easy
+      to miss since MicroPython's own struct docs mostly describe themselves as "a subset of
+      CPython's" without spelling out this default explicitly, and it also doesn't support `"="`
+      at all (`calcsize("=HBBB")` raises `ValueError: bad typecode`, unlike CPython). For
+      `print_log.py`'s own field order (one `"H"` first, then all `"B"`s), `"@"` vs `"<"` produced
+      byte-identical layouts either way - `"H"` is always aligned at offset `0`, and `"B"` fields
+      never need alignment - so this was never an actual bug in the shipped behavior, and nothing
+      real depends on today's exact bytes yet (`python/`'s currently-deployed codebase has no
+      equivalent FRAM-history feature at all; only `improved-quality/base_classes_old.py`, not yet
+      itself promoted, shares this exact pre-existing pattern). Still fixed to an explicit `"<H"`/
+      `"B"*n` (little-endian, no padding) rather than left as a coincidentally-safe implicit
+      default, since reordering the fields later (`"B"*n` before `"H"`, say) would have silently
+      introduced real padding under the old bare format. Added a dedicated regression test
+      asserting the exact on-the-wire byte layout after `_write()`.
+    - **Two zero-behavior-change improvements** (section 8: general improvement pass, section 4:
+      resource discipline): `"B" * len(self.history)` was rebuilt - a fresh string allocation - on
+      every single `_write()`/`_read()` call, even though `len(self.history)` never changes after
+      construction (`deque`'s `maxlen` is fixed for the object's lifetime); now cached once as
+      `self._hist_fmt` in `__init__`, alongside a `PrintLogHistStore`-level `_HDR_FMT`/`_HDR_SIZE`
+      pair (`"<H"`/`2`, computed once at class-definition time) replacing the repeated inline
+      `struct.calcsize("H")` calls. Separately, the eight identical `if self.level > _LOG_OFF:
+      print(...)` diagnostic gates scattered across `_store_err`/`reset`/`PrintLogHistStore.__init__`/
+      `PrintLogHistStore.setup` were folded into one `_diag()` helper on `PrintLogHistory` - purely
+      DRY, single source of truth for the gating threshold, verified behaviorally identical (full
+      suite passes unchanged) rather than assumed.
+    - **Confirmed, not just assumed, one subtlety while re-reading every `return` by eye (section
+      7)**: `_write()`'s `return bool(await self.fram.write_into(buf))` casts to `bool` explicitly,
+      while `_read()`'s equivalent `if not await self.fram.read_into(buf): return False` doesn't.
+      This is correct, not an inconsistency: `_write()` forwards `write_into()`'s raw return value
+      as its own, so the cast is what actually makes its `-> bool` contract hold given
+      `asy_fram_manager.py` isn't itself audited to guarantee a real `bool`; `_read()` never
+      forwards `read_into()`'s value directly (it always re-derives its own `True`/`False`), so
+      there's nothing to cast there.
+    - Added 1 new test (45 -> 46 in `tests/test_print_log.py`; 341 -> 342 repo-wide) for the
+      explicit byte-order layout above. Every other section of the checklist (0, 2-3, 5-6, 9-14)
+      was re-checked against the current file and confirmed already satisfied - typing, exception-
+      safety, non-blocking behavior, and test coverage needed no further changes this pass.
+  - **A paragraph-by-paragraph pass validating `config_manager.py` against `src/README.md`'s full
+    checklist** surfaced one real bug (section 2/10) and confirmed several suspects as non-issues:
+    - **Real finding: `get_bool_values()`'s conversion-failure detection was silently broken.**
+      `get_int_values`/`get_float_values`/`get_str_values` all rely on `int()`/`float()`/`str()`
+      raising on a genuinely wrong-typed stored value, caught by the surrounding `try/except` to
+      return `None` - but `bool(v)` **never raises for any input** (`bool("notabool")` is `True`,
+      no exception), so a corrupted/wrong-typed on-disk value for a `bool` field (e.g. from a
+      partial write) silently coerced to `True`/`False` instead of correctly signaling invalid data
+      like its three siblings. Fixed by replacing the `bool(v)` comprehension with an explicit
+      `isinstance(v, bool)` guard clause (no `try` needed - `isinstance` can't raise, matching
+      section 11's preferred guard-clause-over-try shape) that rejects the whole read if any stored
+      value isn't actually a `bool`. Zero behavior change for any correctly-typed value already in
+      a config file - only the previously-mishandled corruption case changes, from silent wrong data
+      to the correctly-signaled `None`.
+    - **Confirmed, not assumed: `make_dict()`'s repr()-string parsing is the *only* option here, not
+      an avoidable hack.** Tested directly against the real MicroPython Unix-port interpreter:
+      `namedtuple` instances have neither `_fields` nor `_asdict()` (both raise `AttributeError`) on
+      MicroPython, unlike CPython - so parsing `repr(nt)` for field names is required, not a fragile
+      shortcut that should be replaced.
+    - **Confirmed, not assumed: local variable annotations referencing `TYPE_CHECKING`-only names
+      are safe unquoted at runtime.** `data: dict[str, Any] | None = ...` and
+      `dict_results: WriteValidity = ...` both reference names that only exist when `TYPE_CHECKING`
+      is `True` (always `False` at runtime) - verified directly on the real interpreter that
+      MicroPython does not evaluate local variable annotations at runtime (unlike CPython's module/
+      class-level annotations), so this doesn't raise `NameError`, extending section 6's existing
+      "annotations aren't evaluated" finding (previously confirmed only for parameter/return
+      position) to local variable annotations too.
+    - **Considered and ruled out as non-issues**: `type_or_range_error`'s `bool` branch has no
+      `special`-sentinel handling, unlike `int`/`float`/`str` - looked like an inconsistency, but
+      `special` exists to bypass an otherwise-enforced min/max range, and a 2-valued `bool` has no
+      "outside the range" concept to escape, so this is architecturally sound (and unreached by any
+      current driver schema: only `asy_scd30_driver.py`'s `SelfCal` bool field exists, with
+      `special: null`). Also considered `ConfigManager.__init__`'s `json.dump` catching only
+      `OSError` while `write_config`'s catches `(OSError, ValueError)` for the same underlying call
+      - not a gap: `write_config`'s broader tuple is there because `json.load` shares that function's
+      *same* try block, while `__init__`'s write-only try block genuinely only needs `OSError`.
+    - **Documented two inherent quirks with a one-line comment each (section 1's "document, don't
+      silently fix" for a non-bug quirk), previously unstated**: `str_cfg`/`cfg_from_str`'s schema
+      parsing assumes `"||"` never appears inside a field's own value (true for every current driver
+      schema); `make_dict`'s repr-parsing assumes no field's own `repr()` contains `"("` (true while
+      every real namedtuple field is a scalar).
+    - Added 3 new tests (40 -> 43 in `tests/test_config_manager.py`; 342 -> 345 repo-wide): a
+      regression test for the `get_bool_values` fix (a corrupted-on-disk-type case correctly returns
+      `None`), plus `get_float_values`/`get_str_values` conversion-failure-path parity tests that
+      `get_int_values` already had but its siblings didn't.
+  - **A dedicated follow-up pass expanding `config_manager.py`'s test coverage** (requested
+    directly: instantiation, validation, sentinel values, corrupted/missing config, file/I/O
+    errors, edge cases, parameter combinations) added 39 new tests (43 -> 82 in
+    `tests/test_config_manager.py`; 345 -> 384 repo-wide), all empirically verified against the
+    real MicroPython Unix-port interpreter before being written down (not assumed), covering:
+    - `type_or_range_error`/`check_cfg_get_default` parameter combinations previously untested:
+      missing/wrong-typed `min`/`max` bounds, a malformed (wrong-typed) `special` value poisoning
+      the check regardless of `check_special` (real behavior, but unreachable through either real
+      caller since `check_cfg_get_default`'s own self-check already rejects such a schema first),
+      `check_special=False` crossed with a well-typed `special`, the zero-length string boundary,
+      every additional `bool` wrong-type case, an extra/unexpected schema key, a field with both a
+      real `def` and a reachable `special` together, and a bool special-only field.
+    - Three confirmed-not-assumed parsing quirks, each pinned with a regression test showing the
+      *actual* (measured) behavior rather than an idealized one, per section 1's "document, don't
+      silently fix" for a non-bug quirk: `str_cfg("||")` returns `['']` while `cfg_from_str("||")`
+      returns `{}` for the same degenerate input; a duplicate schema field name is kept twice by
+      `str_cfg` but collapses to the last occurrence in `cfg_from_str`; and - a real, if
+      unreached, silent-data-corruption case - a str-type field whose own default value contains
+      literally `"||"` has that substring itself corrupted by `cfg_from_str`'s blind
+      `.replace("||", ", ")` (confirmed directly: `"a||b"` becomes `"a, b"` in the parsed default),
+      not just misparsed. Also pinned `make_dict`'s nested-tuple-field quirk (a field whose own
+      value's `repr()` contains `"("` silently drops every field after it, confirmed directly:
+      `Nested((1, 2), 3)` loses field `b` entirely, no exception).
+    - `ConfigManager.__init__` scenarios previously untested: a valid-JSON-but-non-dict file
+      (array, bare scalar), a genuinely empty (0-byte) file, a file that is a valid but completely
+      empty dict (every key missing at once, not just one), multiple simultaneously out-of-range
+      values (confirming each field defaults independently, not just the first), three flavors of
+      wrong-*type* stored value (string/list/`null`) as distinct from merely out-of-range, a stale
+      special-only key left behind by a schema change (confirmed it's caught by the "unexpected
+      keys remaining" cleanup, not by the per-key loop, since special-only keys are never popped
+      from `data`), an extraneous key and a missing key in the same file, and a nonexistent parent
+      directory (the one way to exercise both of `__init__`'s two separate `OSError` catches in a
+      single run - the initial `os.stat`/read failure and the fallback write failure - since every
+      other test's tmp directory already exists).
+    - `get_dict`/typed-getter scenarios previously untested: an empty `keys` list, multiple keys
+      where one is missing (confirmed: no partial result - the whole call returns `None`, not a
+      dict missing just the bad key), the file being deleted or corrupted *after* a valid
+      `ConfigManager` already exists (as opposed to every prior corruption test, which corrupted
+      the file *before* construction), an unknown key reaching a typed getter's `KeyError` path
+      (previously only exercised through `get_dict`, never through `get_int_values` etc.), and an
+      empty schema string correctly yielding `[]` rather than `None`.
+    - `write_config` scenarios previously untested: an empty `data` dict (a no-op success, not an
+      error), all four `WriteValidity` outcomes (`Valid`/`Unchanged`/`Invalid`/`Failed`) exercised
+      together in one call to confirm they don't interfere with each other and only the genuinely-
+      valid change persists, a malformed schema entry for one key hard-aborting the *entire* call
+      (confirmed: even an already-valid key's result is discarded, matching `__init__`'s own all-
+      or-nothing treatment of a malformed schema - not a partial-failure design), a stored value
+      that had drifted to an invalid type self-healing back to valid once a good value is written
+      through it, and the file being corrupted after a valid `ConfigManager` already exists (as
+      opposed to a bad file at construction time).
+    - **One real gap surfaced, then resolved with the project owner's explicit input**:
+      `write_config`'s special-only-key branch (`if not use_value: dict_results[key] = "Valid";
+      continue`) never called `type_or_range_error` on the submitted value at all, unlike every
+      normally-stored key - so a caller writing e.g. `{"Special": "not even an int"}` for a
+      special-only field got back `"Valid"` unconditionally, with no indication the value was
+      nonsensical. Confirmed directly with the project owner: "the sentinel value shall always be
+      valid if it matches its definition [...] independent from any range and value checks" - i.e.
+      `type_or_range_error`'s existing `check_special` bypass (submitted value equals the declared
+      `special` sentinel -> automatically valid regardless of min/max) is exactly the intended
+      behavior, it just needs to actually run for special-only keys too, not be skipped. Fixed by
+      moving the `type_or_range_error(value, defaults[key])` call before the `not use_value`
+      branch, so it now applies uniformly to every key - a special-only submission matching its
+      sentinel is "Valid" (via the bypass), a non-sentinel value still gets the ordinary type/range
+      check (so e.g. a genuinely in-range non-sentinel value like `3` for a field whose sentinel is
+      `99` still reads "Valid" too - only wrong-typed or genuinely out-of-bounds-and-not-the-
+      sentinel values now read "Invalid", which they previously never did). Replaced the pinned
+      quirk test with three: sentinel match (bypasses range), wrong type (now correctly
+      "Invalid"), and out-of-range-and-not-the-sentinel (now correctly "Invalid"). 2 new tests net
+      (82 -> 84 in `tests/test_config_manager.py`; 384 -> 386 repo-wide).
+
+- **`config_manager.py`'s schema representation replaced: pipe-delimited-JSON-string ->
+  `const()`-wrapped tuples.** The project owner had always found the old
+  `_VAL_SI = const('|"SampleInterv": {"def": 2, "type": "int", "min": 1, "max": 3600, "special":
+  null}|')` encoding (hand-rolled `str_cfg`/`cfg_from_str` parsing, string concatenation for
+  multi-field schemas) annoying for exactly the reasons surfaced during this session's checklist
+  review (the `"||"`-inside-a-string-value corruption quirk, the `str_cfg`/`cfg_from_str`
+  wrapper-check inconsistency, duplicate-field-name ambiguity) - it was written that way only to
+  get `const()`'s RAM-zero-cost property, back when `const()` couldn't fold anything but int
+  expressions. Prompted by the owner recalling that a later MicroPython release added float
+  support to `const()`, checked current docs (this refactor's v1.28.0 pin) directly rather than
+  from training-data memory:
+  - **v1.26.0's release notes** confirm: "Floats can now be folded (along with integers) in
+    arithmetic operations, and be part of `const` assignments" - not just floats though; the
+    **current v1.28.0 docs** (`docs/reference/constrained.rst`) go further: "such constant tuples
+    are optimised by the compiler so they do not need to be created at runtime each time they are
+    used," and frozen bytecode already places immutable literals (str/float/bytes/int/tuple-of-
+    immutables) in flash rather than RAM regardless of `const()`. Separately, `docs/library/
+    micropython.rst` confirms an underscore-prefixed `const()` name specifically "is not available
+    as a global variable, and does not take up any memory during execution" - stronger than a
+    plain const, and exactly the naming convention `_VAL_*` already used.
+  - **Verified empirically before changing anything** (real MicroPython Unix-port interpreter, ad
+    hoc probe in scratchpad, not asserted from the docs alone): an underscore-prefixed `const()`
+    tuple behaves identically to the existing `const()` string for the "at rest" cost that
+    mattered here - absent from `globals()` (same as the string), returns the *same object
+    identity* on every reference (`is` stays `True`, confirming it's never rebuilt), and shows ~0
+    heap delta across 2000 repeated references (matching the string's ~0 delta). The *only*
+    nonzero cost, for both representations equally, is concatenating multiple named consts at a
+    call site (`_VAL_A + _VAL_B`, not itself wrapped in `const()`) - neither representation folds
+    that at compile time (`is` is `False` on every call for both), and the one-time per-call
+    allocation cost is the same order of magnitude either way (~256 bytes for a 12-field tuple vs.
+    ~224 bytes for the equivalent string, for a toy 2-field example). This exactly matches the
+    existing call pattern (e.g. `asy_scd30_driver.py`'s `get_dict_cfg()` re-concatenates
+    `_VAL_TO + _VAL_MI + ...` on every REST-triggered call, already true before this change) - so
+    the refactor carries **zero additional memory cost**, at rest or at the existing concatenation
+    call sites, while deleting the fragile hand-rolled parser entirely.
+  - **New schema shape**: each field is a plain positional 6-tuple `(name, type, def, min, max,
+    special)`, e.g. `_VAL_SI = const((("SampleInterv", "int", 2, 1, 3600, None),))` - one field per
+    outer 1-tuple, concatenated with the same `_VAL_SI + _VAL_POV + ...` idiom as before (tuple
+    `+` instead of string `+`). `str_cfg` -> `schema_names` (list of field names, order and
+    duplicates preserved - unchanged from `str_cfg`'s own semantics) and `cfg_from_str` ->
+    `schema_dict` ({name: field-record}, dict-dedup last-wins - unchanged from `cfg_from_str`'s own
+    semantics); both are now a plain comprehension over the tuple with no string parsing at all.
+    `type_or_range_error`/`check_cfg_get_default` unpack the 6-tuple positionally instead of
+    dict `.get()` calls; `check_cfg_get_default` relies on the unpacking's own `ValueError` for a
+    wrong-length record (caught by the existing `except Exception`) rather than a separate
+    length-check, since with the tuple's precise static type an explicit `len(field) != 6` guard
+    is unreachable code as far as mypy can prove (real malformed records only ever reach it via
+    driver-authoring mistakes or deliberately-mistyped test input, both outside what the type
+    checker can rule out - relying on the natural unpack failure sidesteps the false "unreachable"
+    finding entirely rather than suppressing it). `make_dict` (namedtuple readouts, unrelated to
+    schemas) is untouched. `base_classes.py`'s `_get_dict_cfg`/`SensorReaderConfig.__init__` follow
+    the same rename (`cfgstring: str` -> `cfg_vals: ConfigSchema`, `str_cfg` -> `schema_names`).
+  - **Test suite rewritten, not just patched**: every schema literal in `tests/
+    test_config_manager.py` converted to the tuple shape; the two string-parser-specific quirk
+    tests (`"||"`-corrupts-a-value, `str_cfg("||")`/`cfg_from_str("||")` wrapper-check
+    inconsistency) removed since there's no longer a string to corrupt or a wrapper to
+    inconsistently check - replaced with a positive test proving a `"||"`-containing str default
+    now round-trips correctly, plus a couple of new malformed-shape/edge-case tests for the tuple
+    representation itself (non-tuple elements, a bare string passed by mistake - documented as
+    still not raising, just not meaningfully filtered, since nothing in the codebase relies on
+    rejecting that shape). Net 84 -> 86 in `tests/test_config_manager.py` (388 repo-wide:
+    77+43+29+86+62+45+46); `tests/test_base_classes.py`'s single `_VAL_SI` fixture converted too,
+    29/29 still passing unchanged. `scripts/lint.sh`/`scripts/typecheck.sh src tests` clean.
+  - **`improved-quality/` usages updated** (one-time scope exception explicitly granted by the
+    project owner for this refactor alone, not a standing change to the "don't edit
+    `improved-quality/` driver source" rule): `asy_bmp3xx_driver.py`, `asy_scd30_driver.py`,
+    `asy_sgp40_driver.py` each had their `_VAL_*` const definitions converted to the new tuple
+    shape (their concatenation/`name_cfg`/`get_dict_cfg` call sites needed no changes - the tuple
+    `+`/`schema_names`/`schema_dict` API is a drop-in replacement). **Two files that matched the
+    initial grep for `_VAL_`/`ConfigManager(`/`str_cfg`/`cfg_from_str`/`name_cfg` were investigated
+    and found NOT to be real usages of `src/config_manager.py`'s scheme, and deliberately left
+    untouched**: `base_classes_old.py` defines its own independent, self-contained
+    `str_cfg`/`name_cfg`/`cfg_from_str`/`ConfigManager` (the pre-extraction original this file
+    presumably predates `src/base_classes.py`/`src/config_manager.py`'s split from) and has zero
+    importers anywhere in the repo (confirmed via a repo-wide grep) - genuinely dead code, not a
+    live consumer; `sensortask-wozi.py` imports `ConfigManager` from `async_manager` (`from
+    async_manager import TimeCounterManager, LockedValue, ConfigManager`), which resolves to
+    `python/CommonDrivers/async_manager.py` - the current, pre-refactor **production** module (no
+    `async_manager.py` exists anywhere under `improved-quality/`), which is out of scope for any
+    editing per the standing "no changes against the current deployed codebase" rule and is an
+    entirely separate `ConfigManager` implementation from the one refactored here. Neither file
+    was changed.
+  - **Follow-up: mixed-type memory parity cross-checked, plus a much larger malformed-shape/
+    sentinel test matrix.** The project owner asked to specifically re-verify the zero-additional-
+    memory claim for schemas that *mix* int/float/str/bool fields (the original probe used mostly
+    single-type or generic 6-tuples), and to broaden test coverage to good/mixed/same-type schemas
+    of different sizes, sentinels for every type, and systematic malformed-field handling.
+    - **Empirical re-check** (real MicroPython Unix-port interpreter, ad hoc scratchpad probe):
+      individual per-field `const()` tuples of every type (int/float/str/bool) are each a stable
+      singleton with ~0 heap delta across 2000 references, exactly like the original single-type
+      finding - the type of the field's contents makes no difference to this property. The one
+      nonzero cost (concatenating named consts at a call site) scales with **total field count**,
+      not with how many distinct types are mixed in: an 8-field same-type (all-int) schema and an
+      8-field mixed-type (all 4 types, twice over) schema cost the *same* ~608 bytes to
+      concatenate, both roughly double the ~288 bytes a 4-field mixed schema costs - confirming
+      the cost model is "proportional to size," never "worse when types are mixed."
+    - **`tests/test_config_manager.py` expanded 86 -> 109 tests** (23 new), added only after
+      empirically verifying each non-obvious assertion first (a consolidated scratchpad probe
+      covering every new scenario, run once against the real interpreter before any assertion was
+      written):
+      - Sentinel round-trips through the *full* `ConfigManager`/`write_config` path (not just the
+        `check_cfg_get_default`/`type_or_range_error` unit level) for **every** type, not just the
+        pre-existing int case: `FloatSpecial`/`StrSpecial`/`BoolSpecial` special-only fixtures,
+        each with a "not persisted" test and matching-sentinel/wrong-type/out-of-range-and-not-
+        sentinel `write_config` tests. The bool case surfaced a genuine, worth-documenting
+        asymmetry (not a bug - see below): since a bool field has no range for a sentinel to
+        *bypass*, both `True` (the declared sentinel) and `False` (not the sentinel, but still a
+        structurally valid bool) come back `"Valid"` - `type_or_range_error`'s bool branch never
+        even inspects `special` for an ordinary bool `check_val`, unlike every other type.
+      - Composition/size coverage: a single-field schema, an 8-field same-type (all-int) schema,
+        and an 8-field mixed-type schema, each exercised through `ConfigManager` construction,
+        `get_dict`, and `write_config`, plus a `schema_names`/`schema_dict` sanity check on the
+        mixed 8-field case.
+      - Systematic malformed-field-shape coverage, all confirmed non-crashing:
+        - `"type"` itself wrong-typed (an int instead of a string) - no branch matches, falls
+          through to the same rejection an unrecognized type name gets.
+        - `"def"` mismatched from its own declared `"type"` (e.g. `type="int"`, `def=1.5`) -
+          caught by `check_cfg_get_default`'s existing self-check, same as an out-of-range default.
+        - A non-bool `"special"` on a bool field: rejected when it's substituted in as the
+          *default* (`check_cfg_get_default`'s self-check correctly fails it), but - documented,
+          not fixed, matching the already-settled non-bug from the earlier checklist review -
+          `type_or_range_error` alone doesn't reject an otherwise-valid bool `check_val` just
+          because that same field's `special` is wrong-typed, since the bool branch never reads
+          `special` at all.
+        - A non-string `"name"` (position 0): never rejected by `schema_names`/`schema_dict` (just
+          becomes a non-string dict key) - traced all the way through a real `ConfigManager`: init
+          succeeds, `json.dump` silently stringifies the int key on write (confirmed MicroPython's
+          `json` module does this the same way CPython's does), and a later read using the
+          schema's own (still-int) name safely `KeyError`s -> `None` instead of matching, because
+          JSON forces string keys. Never an unhandled exception at any point.
+        - A stray non-tuple element (e.g. a bare string) mixed in among otherwise-good field
+          records - tolerated the same lenient way a bare string schema on its own already was.
+        - One malformed field (wrong length) mixed in among several otherwise-valid ones -
+          invalidates the *whole* `ConfigManager` at `__init__`, matching `write_config`'s existing
+          all-or-nothing treatment of a malformed schema (previously only tested for `write_config`
+          itself, not `__init__`).
+    - `scripts/lint.sh`/`scripts/typecheck.sh src tests` clean; 411 tests passing repo-wide
+      (77+43+29+109+62+45+46).
+  - **`get_int_values`/`get_float_values`/`get_str_values` collapsed into one generic
+    `_get_converted_values(keys, converter)` helper** (`get_bool_values` stays separate - see
+    below). Each of the three public methods is now a one-line call passing `int`/`float`/`str`
+    itself as the `converter` argument; a `TypeVar("T", int, float, str)` lets mypy infer the
+    correct `list[int] | None` / `list[float] | None` / `list[str] | None` per call site from
+    *which builtin was passed*, with no `@overload` boilerplate and no `Any` in the public
+    signatures. Confirmed this is purely a DRY change, not a behavior change: `int`/`float`/`str`
+    as callables do exactly what the old per-function bodies already did
+    (`[int(v) for v in values]` etc.), including their existing permissive-coercion quirks -
+    checked directly against the real interpreter that `int(5.7) == 5` (silently truncates, not
+    rejected) and `int(True) == 1` (bool silently coerced), neither of which raises. `get_bool_
+    values` couldn't join this helper for the same reason it needed its own explicit `isinstance`
+    check in the first place: `bool(v)` never raises for *any* input, so there's no constructor
+    call that could ever signal "wrong type" via an exception the way `int`/`float`/`str` do.
+  - **Uncaught-exception audit of `src/config_manager.py`**: every function/method walked by hand
+    and, for anything non-obvious, empirically probed against the real MicroPython Unix-port
+    interpreter with deliberately wrong-typed parameters (not just malformed-but-correctly-shaped
+    schema data, which was already exhaustively covered by the earlier test expansion). Found and
+    fixed 3 real gaps, all in the public API surface, all previously letting an exception escape
+    the module's own "never raises" contract:
+    - `ConfigManager.__init__`: a non-string `filename` (e.g. `None`, an `int`, a `list`) makes
+      `os.stat()`/`open()` raise `TypeError` ("can't convert 'X' object to str implicitly") on this
+      interpreter, not `OSError` - both of `__init__`'s existing `except OSError` clauses (initial
+      read, fallback write) only caught the latter. Fixed by adding `TypeError` to both.
+    - `get_dict`: a non-iterable `keys` (e.g. `None`, an `int`, a `float`, a `bool`) makes
+      `for key in keys` raise `TypeError` ("'X' object isn't iterable"), uncaught by the existing
+      `except (OSError, ValueError, KeyError)`. Fixed by adding `TypeError` there too. (An
+      unhashable element *inside* an iterable `keys`, e.g. a list, was already safe - confirmed
+      this MicroPython's dict `__getitem__` raises `KeyError` for an unhashable/mismatched key on a
+      lookup miss, not `TypeError` the way CPython's `__setitem__` does, and a miss is exactly what
+      always happens here since real config keys are always JSON string keys.)
+    - `write_config`: a non-dict `data` (e.g. `None`, an `int`, a `str`, a `list`) makes
+      `data.items()` raise `AttributeError`, uncaught by the existing `except (OSError, ValueError)`.
+      Fixed by adding `AttributeError` there too.
+    - Each fix's broadened `except` tuple was checked against the rest of its `try` block to
+      confirm it can't silently mask an unrelated real bug - the only remaining source of each
+      newly-caught exception type in that block is the wrong-parameter case being fixed (see
+      inline comments at each site for the specific reasoning per function).
+    - Everything else in the file (`schema_names`, `name_cfg`, `schema_dict`, `make_dict`,
+      `type_or_range_error`, `check_cfg_get_default`, `_get_values`/`_get_converted_values`/typed
+      getters) was already exception-safe for wrong-typed input, confirmed by probing each
+      directly rather than assuming the existing broad `except Exception` guards were sufficient.
+    - 8 new tests added covering the 3 fixes plus the previously-untested wrong-parameter paths
+      surfaced along the way (`name_cfg`/`make_dict` with `None`/scalar input, `ConfigManager`
+      with a `None`/non-iterable `cfg_vals`, typed getters with `keys=None`, `write_config` with a
+      `None`/non-iterable `cfg_vals`) - `scripts/lint.sh`/`scripts/typecheck.sh src tests` clean;
+      419 tests passing repo-wide (77+43+29+117+62+45+46).
+    - Follow-up lint failure caught by CI, not local review: a quoted local-variable annotation
+      (`bad_filenames: "list[Any]"` in the new test) tripped ruff's UP037 - quoting is only needed
+      for annotations actually evaluated at runtime (the module-level `ConfigSchema`/`FieldSchema`
+      aliases), never for a plain local variable. The real lesson: the local check that "confirmed"
+      this was clean beforehand had piped `scripts/lint.sh`'s output through a `grep -E
+      "^tests/test_config_manager.py"` anchored at line start, which can never match ruff's actual
+      `--> file:line:col` context-block output format - it silently found nothing every time,
+      regardless of whether there were real findings. Fixed by unquoting the annotation, and by
+      re-verifying with `ruff check <file>` directly on just the touched files (whose "All checks
+      passed!"/nonzero-exit-code output can't be misread the way a grep-filtered log can) for every
+      later verification pass in this file, instead of grepping broad repo-wide lint output.
+  - **Second full review pass over `src/config_manager.py`** (oversights/bugs/strange behavior/
+    untested conditions, beyond the wrong-parameter-type audit above): every function walked again
+    by hand, with ~15 additional candidate edge cases individually probed against the real
+    interpreter before deciding whether each was a real bug, an already-correct-but-untested
+    behavior, or a benign quirk. **None turned out to be an actual bug** - the code was already
+    correct in every case checked - but several were genuine coverage gaps, now closed with 14 new
+    tests:
+    - One candidate looked like it might be a real gap at first: does a malformed `special` value
+      slip past `check_cfg_get_default`'s self-check if the field also has a normal, valid `def`
+      (since the "substitute special in as the default" branch only triggers when `def is None`)?
+      Traced it through and confirmed it's already caught - `type_or_range_error`'s own
+      `val_special`-type check runs unconditionally whenever `special is not None`, independent of
+      whatever `check_val` is being validated, so a malformed special is rejected even while
+      validating an unrelated, perfectly valid default. Different code path from the already-tested
+      "special used as default" case; added a dedicated test for it since it wasn't covered before.
+    - `type_or_range_error`: min/max swapped (an authoring mistake) makes the range check
+      unsatisfiable for every value, not just "genuinely out of range" ones, for both `int` and
+      `str` fields - confirmed, not a crash, just an always-reject field. Also confirmed only one of
+      min/max being wrong-typed (not both, which was already tested) is independently sufficient to
+      reject. Also confirmed the `bool` branch ignores `min`/`max` entirely (no range concept),
+      confirmed `type() is not int` correctly rejects a `bool` value against an `int`-typed field
+      (the reverse direction of the already-tested int-against-bool-field case - avoids the
+      classic `isinstance(True, int) is True` Python gotcha), and confirmed (against this build's
+      real interpreter, not assumed) that `str` length bounds count Unicode codepoints, not UTF-8
+      bytes - `len("café") == 4`, not the encoding's 5 bytes.
+    - `make_dict`: found a second repr()-parsing fragility beyond the already-documented
+      nested-tuple-drops-later-fields quirk - a list-valued field (e.g. `items=[1, 2]`) has a comma
+      *inside* its own repr, which the naive comma-split over `kvpairs` mistakes for a field
+      separator, producing a garbage extra "key" (`"2]"`). `getattr` on that garbage key raises,
+      and the *whole* dict falls back to all-`None` values (not just the corrupted field) - never
+      crashes, same "document, don't silently fix" treatment as the existing nested-tuple quirk.
+    - `name_cfg`: a schema with exactly one field literally named `""` returns the same `""` a
+      malformed/empty schema does - benign ambiguity (real driver code never names a field this
+      way), documented with a test rather than "fixed" (there's nothing to distinguish without
+      changing the return type).
+    - Confirmed `get_int_values`/`get_float_values`/etc. inherit `schema_names`'s duplicate-name-
+      preserving behavior end-to-end: a schema with the same field name twice reads and returns that
+      field's value twice, not deduplicated - and confirmed a mixed multi-field schema where only
+      one field fails its type conversion discards the *entire* result (all-or-nothing), matching
+      `get_dict`'s already-documented "one missing key aborts the whole read" precedent.
+    - `ConfigManager.__init__`: confirmed a schema where every field is special-only (zero storable
+      fields) is still accepted as valid - `len(defaults) != 0` since the field count alone doesn't
+      distinguish "no fields" from "no storable fields" - and results in a valid manager backed by
+      an empty `{}` config file on disk.
+    - `write_config`: confirmed the check ordering - type/range validation happens before the
+      "is this key present in the on-disk file" check - so a value that's simultaneously out of
+      range *and* missing from the file is reported `"Invalid"`, never `"Failed"`. Also added the
+      missing symmetric case for the wrong-type rejection: an ordinary (non-special) `bool` field
+      given a non-bool value is `"Invalid"`, the same as the already-tested special-only bool case.
+    - `scripts/lint.sh`/`scripts/typecheck.sh src tests` clean (verified directly on the touched
+      files this time, not via the grep pattern that failed above); 433 tests passing repo-wide
+      (77+43+29+131+62+45+46).
+  - **Full walkthrough of `src/README.md`'s promotion checklist, section by section, against
+    `config_manager.py`.** Two direct, safe fixes applied (verified via `ruff`/`mypy`/the real
+    interpreter afterward, 434 tests passing repo-wide with 2 new: 77+43+29+132+62+45+46):
+    - Section 1 (correctness vs. real docs): the `os.stat(...)[0] & 0x4000` directory check had no
+      source citation for the magic number. Checked MicroPython's actual v1.28.0 source
+      (`extmod/vfs.h`) and confirmed `0x4000` is `MP_S_IFDIR`, "MicroPython's own port-standardized
+      version of stat constants," applied uniformly across VFS backends including littlefs - not a
+      guessed POSIX convention. Added a citing comment; no behavior change (the value was already
+      correct).
+    - Section 8 (general improvement, no functional change): converted `get_dict`'s and
+      `_get_values`'s manual accumulate-into-`{}`/`[]` loops into dict/list comprehensions -
+      marginally fewer bytecode ops, identical behavior, confirmed via the full test suite.
+      Considered caching `schema_dict(cfg_vals)` at construction instead of recomputing it per
+      `write_config`/typed-getter call, but real call sites (e.g. `asy_bmp3xx_driver.py` reading
+      different field subsets via `get_int_values`/`get_float_values` at different points) rely on
+      passing different schema slices per call - caching would silently change behavior, so left
+      alone.
+    - Section 12 (unit tests): `check_special=True`/`False` was tested for `int` and `str` fields
+      but never `float` - added the missing combination test.
+    - Two items surfaced a genuine tension with the checklist's own stated philosophy and were
+      raised to the project owner rather than acted on unilaterally, per section 0's "ask rather
+      than guess" instruction:
+      - **Section 2/4's "don't defend against wrong-type input if mypy already enforces it at
+        every call site" vs. the 3 `TypeError`/`AttributeError` except-tuple broadenings from the
+        earlier uncaught-exception audit.** Traced every real (non-test) call site:
+        `ConfigManager.__init__`'s `filename` and `get_dict`'s/typed-getters' `keys` are always
+        statically-typed `str`/`ConfigSchema`/`list[str]` constants today, with no real caller
+        passing anything else - by the checklist's own literal rule these two catches are
+        currently dead weight. `write_config` is different: it isn't called from any real
+        (non-test) code yet - its eventual caller will be a not-yet-written REST layer built on
+        Microdot, and the pre-refactor equivalent (`api_helpers.py`) always funneled a real,
+        already-typed dict through several validating intermediate structures before ever reaching
+        `write_config`, never raw `request.json` directly, but that pattern isn't guaranteed to
+        carry over to the new schema's own not-yet-written REST layer. **Decision (confirmed
+        directly by the project owner): keep all 3 defenses as-is** - `write_config`'s specifically
+        because it will face Microdot's less-statically-controlled input once wired up, and the
+        other two are being kept alongside it rather than reverted. Revisit once the new REST layer
+        is actually written and the real call shape is knowable, per the project owner's "even
+        think about extending" follow-up - there wasn't a concrete additional exception type to add
+        speculatively today without a real call site to verify against.
+      - **Section 5's "never block" vs. `get_dict`/`_get_values`/`write_config`'s synchronous file
+        I/O.** These are all `async def`, but MicroPython has no async-native file I/O - the actual
+        `open()`/`json.load()`/`json.dump()` calls block the whole event loop for their duration
+        with zero yield points, the same "must coordinate via `async_connect.py`'s
+        `get_long_block_lock()`" concern CLAUDE.md's hard rules already generalize beyond the
+        original NTP-vs-Neopixel case. Not a new problem (same I/O shape predates this refactor),
+        but confirmed it's not purely a one-time boot cost: `asy_bmp3xx_driver.py`'s `read_loop()`
+        runs a `while True` loop for the device's entire uptime, calling `_store_bmp()` ->
+        `get_float_values()` on every trigger cycle (every `SampleInterv` seconds, default 2s), not
+        just at `_init_bmp()`'s one-time startup call. Raised to the project owner with this
+        corrected call-frequency finding; not yet resolved as of this writeup - see whichever
+        follow-up entry (if any) records the actual decision once made.
+  - **Resolution of the blocking-file-I/O finding above, decided directly by the project owner**:
+    the per-cycle blocking reads have never actually been observed to cause a problem in practice
+    (always fast enough), but rather than leave it at "note and move on," the owner asked for a
+    general redesign - read the config file exactly once at `__init__`, cache it in memory, and
+    serve every subsequent read from that cache, "as a scheme for all" (i.e. one change to the
+    shared `ConfigManager` class, not a per-driver fix) - conditional on the memory cost being low.
+    Implemented in `src/config_manager.py`:
+    - `__init__` now populates `self._cache` (same dict it already built transiently as `valid_cfg`
+      to decide whether the file needed rewriting - now just retained instead of discarded) once
+      the config is confirmed valid.
+    - `get_dict`/`_get_values` (and therefore `get_int_values`/`get_float_values`/`get_str_values`/
+      `get_bool_values`) now read `self._cache` directly - no file I/O, and no `config_lock` either:
+      with no `await` anywhere in their bodies, there's no point at which a concurrent coroutine
+      could observe a `_cache` mutation half-applied (MicroPython's asyncio only switches tasks at
+      actual `await` points, and `write_config`'s own cache mutation has none in the middle of it).
+    - `write_config` now reads `self._cache` instead of re-opening the file first (eliminating that
+      read entirely), builds its changes into a working copy (`new_cache = dict(self._cache)`), and
+      only assigns `self._cache = new_cache` *after* the file write actually succeeds - confirmed
+      directly (parent directory removed after a valid init, forcing a genuine `OSError` on write)
+      that a real write failure leaves `_cache` completely unchanged, not partially updated. Still
+      holds `config_lock`, since it's still real file I/O and still needs to serialize against a
+      concurrent `write_config` call - `test_concurrent_writes_are_serialized_not_lost` continues to
+      pass unchanged, since the lock now serializes cache mutations instead of file re-reads, same
+      "not lost" guarantee either way.
+    - Memory cost verified empirically (not assumed) before treating this as approved: for an
+      8-field schema (`asy_bmp3xx_driver.py`'s size, the largest of the three real driver files),
+      the persisted cache costs ~256 bytes via `gc.mem_alloc()` delta - negligible against the
+      RP2040's 264KB SRAM even across every sensor driver's own `ConfigManager` instance.
+    - **Deliberate consequence, called out explicitly rather than silently accepted**: reads no
+      longer detect the config file being deleted/corrupted out-of-band after a valid `__init__` -
+      `_cache` is now the sole source of truth for every read, and a subsequent `write_config` call
+      silently *repairs* (overwrites) an externally-corrupted file from `_cache` rather than
+      detecting and failing on it, the reverse of the pre-cache design's behavior. Accepted given
+      this device is the file's only writer and manual-interaction writes are rare (per the
+      project owner's own already-established stance on write atomicity, from an earlier session).
+    - 7 existing tests whose asserted behavior depended on the old always-re-read design were
+      updated (not silently deleted) to assert the new, intentional behavior instead, each with a
+      comment explaining why it changed: `test_configmanager_non_string_field_name_quirk` (the
+      int-vs-string-key lookup result is now the *opposite* of before, since `_cache` keeps the
+      schema's own original key rather than JSON's forced-string one), the two file-deleted/
+      corrupted-after-init `get_dict` tests (now serve the cached value instead of `None`), one
+      `write_config` "Failed" test and the combined-outcomes test (both simulate cache drift by
+      poking `_cache` directly now, since file drift alone no longer has any effect),
+      `test_get_bool_values_wrong_stored_type_returns_none` (same - now pokes `_cache` directly,
+      since __init__/write_config both already validate before ever caching a value, so a real
+      driver can't actually get a wrong-typed value into it; this is now a pure defense-in-depth
+      test), and the corrupted-file `write_config` test (now demonstrates the silent-repair
+      behavior, `True`, in place of the old `False`). Added 1 new test confirming a genuine write
+      failure (not just a pre-existing corrupt file) leaves `_cache` untouched.
+    - `scripts/lint.sh`/`scripts/typecheck.sh src tests` clean; 435 tests passing repo-wide
+      (77+43+29+133+62+45+46).
+  - **New project-wide rule agreed directly with the project owner: documentation itself must stay
+    concise, not just correct** — a module docstring is a short header (purpose + shared contract +
+    a pointer to BACKLOG.md for the full rationale), never an essay, and per-function/inline
+    comments stay within 3 lines, fewer preferred. Codified in `src/README.md` section 11 (applies
+    to every future `src/` promotion, not just this file) and applied immediately to
+    `config_manager.py`: its module docstring was cut from 34 lines (which had grown to restate the
+    tuple-schema and cache-redesign rationale already fully recorded above) down to a 9-line header,
+    and four inline comment blocks (`check_cfg_get_default`'s special-value note, `__init__`'s
+    `MP_S_IFDIR` citation, `get_dict`'s cache-lock reasoning, `write_config`'s sentinel-validation
+    note — each previously 3-7 lines) trimmed to 2 lines each. Pure documentation change, verified
+    via `ruff`/`mypy`/the full suite — 435/435 tests still passing, zero behavior change.
+  - **`src/README.md` checklist review pass over `base_classes.py`, one real bug found and fixed,
+    plus a `Locked*`-family harmonization** (approved by the project owner):
+    - **Real bug**: `LockableBuffer.__init__` only guarded `data_end > size`; a negative `size`,
+      `data_start`, or `data_length` wasn't checked at all. Confirmed directly against the real
+      MicroPython Unix-port interpreter that `bytearray(-1)` doesn't raise `ValueError` like CPython
+      but `MemoryError` (negative wraps to a huge unsigned allocation request) — a negative `size`
+      reached `bytearray(size)` uncaught. A negative `data_start`/`data_length` that individually
+      goes negative without tripping `data_end > size` (e.g. `data_start=2, data_length=-5` on
+      `size=10`) didn't crash either — Python's negative-index slice wraparound silently returned a
+      wrong-offset, wrong-length slice instead of `None`. Fixed by guarding all three for negative
+      values the same way `data_end > size` already was (→ `self.buf = None`), matching the file's
+      own "never raises" contract. All real call sites (`asy_fram_manager.py`'s chunk buffer
+      classes) only ever pass non-negative literals, so this never fired in practice, but the class
+      is meant to be a safe generic primitive with zero prior test coverage for negative input.
+    - **`LockedCounter`/`LockedFlag`/`LockedValue` harmonized to a common `get_value`/`set_value`
+      shape** (previously `LockedCounter` alone used `get_counter`/`set_counter`), each still adding
+      its own specialty on top (`LockedCounter`: `increment`/`decrement`; `LockedFlag`:
+      `set_true`/`set_false`). Internal field names also unified to `self.value`/`self.value_lock`
+      across all three (`LockedFlag` previously used `self.flag`/`self.flag_lock` — confirmed no
+      external code read these fields directly before renaming). True inheritance-based
+      deduplication was considered and rejected: MicroPython has no `typing.Generic` at runtime (see
+      "Typing" below), and the three classes' value domains genuinely differ (`int | None` for
+      `LockedCounter`, `bool` for `LockedFlag`, `int | float` for `LockedValue`), so a shared base
+      class's `set_value`/`get_value` signature can't be narrowed in a subclass without violating
+      Liskov substitutability — confirmed this isn't just theoretical: broadening `LockedValue`'s
+      type to cover all three would have introduced a real new mypy error at its one existing
+      caller (`asy_bmp3xx_driver.py`'s `trigger_period`, compared against a plain `int`). Three
+      small, independently-typed classes sharing only a naming convention is the correct outcome
+      here, not an unfinished consolidation.
+    - **`LockedCounter`'s "never happened" sentinel changed from a magic `-1` to `None`, with
+      correct `[0, max_val]` clamping restored end to end**: `set_counter`'s old asymmetric clamp
+      (upper bound only, never floored at 0) turned out to be intentional, not an oversight — traced
+      to `base_classes_old.py`/`python/CommonDrivers/async_manager.py`'s `TimeCounterManager` (the
+      pre-refactor class `LockedCounter` is meant to replace), whose identical asymmetry is actively
+      relied on by `improved-quality/async_connect.py`'s `last_ntp_sync.set_counter(-1)` ("never
+      synced yet"). Rather than leave that quirk as an undocumented trap for a future "fix," replaced
+      the magic `-1` with an explicit `None`, which also lets `set_value`'s clamp become fully
+      symmetric (`[0, max_val]`) with no special case. `increment`/`decrement` treat a `None` value
+      as `0` (first `increment()` turns "never happened" into a real count starting at 1).
+      `__init__`'s failure to apply the same clamp as `set_value` (so an out-of-range `init_value`
+      would sit unclamped until the first `set_value`/`increment`/`decrement` call) was confirmed to
+      be a genuine oversight, not relied on anywhere (`system_service.py`'s `LockedCounter(max_val=
+      0xFFFFFFFF)` never passes `init_value`; no other call site did either) — fixed by clamping in
+      `__init__` too.
+    - **Every real consumer of the old `-1`/unbounded-cap pattern migrated, not just `base_classes.py`
+      itself** (the project owner explicitly authorized touching these otherwise-out-of-scope
+      `improved-quality/` files for this, without moving them into `src/`): `async_connect.py`'s
+      `wifi_uptime`/`last_ntp_sync` and `ntp_synced` moved off the old `async_manager.TimeCounterManager`/
+      `LockedFlag` onto the new `base_classes.LockedCounter`/`LockedFlag` (`ConfigManager` stays
+      imported from `async_manager` unchanged — that migration is separate, out of scope here);
+      `get_last_ntp_sync()`'s return type changed from `int` (magic `-1`) to `int | None` (real
+      `None`), which is also a strictly better REST contract (JSON `null` needs no magic-number
+      convention on the client side). `neopixel_signal.py`'s `override_secs` migrated the same way,
+      which also let `set_override_led`'s hand-rolled 3-way clamp collapse into a single `set_value`
+      call (`LockedCounter` now clamps itself). `sensortask-wozi.py`'s `task_error_counter` migrated
+      too (was `TimeCounterManager()`'s implicit ~50-year cap; now explicit `max_val=0xFFFFFFFF`,
+      matching `system_service.py`'s own established convention for practically-unbounded counters).
+      Every migrated `get_*` accessor whose value is known to never actually be `None` (`wifi_uptime`,
+      `override_secs`, `system_service.py`'s `uptime`, `task_error_counter`) keeps its public `-> int`
+      return type via a one-line `0 if value is None else value` coercion, rather than leaking the
+      generic `int | None` outward where callers don't need it.
+    - **Found but deliberately not touched**: `sensortask-wozi.py`'s `last_task_err = LockedValue(-1)`
+      is the exact same "-1 as never-happened sentinel" idiom, one level over in a different class.
+      Converting it to `None` the same way would require broadening `LockedValue`'s type to
+      `int | float | None` — which (per the rejected-inheritance point above) breaks
+      `asy_bmp3xx_driver.py`'s `trigger_period` comparison against a plain `int`. Flagged rather than
+      silently fixed or silently left inconsistent; needs a decision (e.g. a separate narrow
+      `LockedValue[int | None]`-shaped instance type, or leaving `LockedValue` as-is and accepting the
+      `-1` convention there) before touching it. **Deferred, not forgotten**: explicitly deferred to
+      the future functional-level refactor of `sensortask-*.py` itself (task supervisor, per-device
+      driver wiring) rather than decided piecemeal here as a `base_classes.py`-only change — confirmed
+      directly by the project owner. Revisit `last_task_err` alongside that pass, not before it.
+    - Verified via `ruff`, `scripts/typecheck.sh src tests` (18 files clean), and the full suite
+      (443/443, +8 new tests: 4 for `LockableBuffer`'s negative-input guard, 4 for `LockedCounter`'s
+      `None` sentinel/clamp behavior). Also diffed `scripts/typecheck.sh`'s unscoped
+      `improved-quality`-inclusive run before/after touching the four `improved-quality/` consumer
+      files: 149 → 145 errors, a net *improvement* — three `Any`-returning accessors
+      (`async_connect.py`'s `ntp_issynced`/`get_wifi_uptime`/`get_last_ntp_sync`) picked up real
+      types for free from the old classes' untyped `async_manager.py`/`base_classes_old.py`
+      equivalents, not something introduced deliberately; every other line-number shift in the diff
+      matched an unrelated pre-existing error 1:1, confirming no regression.
+  - **Coverage-driven completeness pass across all three files' test suites**, plus new
+    cross-file integration tests (project owner asked for both explicitly, not just more unit
+    tests). Used `scripts/test.sh --coverage`'s line-level miss report (not guesswork) to find real
+    gaps, then closed each one:
+    - `print_log.py` (89% → 90%; remaining 17 misses are the module-level `const()` assignments and
+      six trivial `@staticmethod` bodies - both confirmed to already be fully exercised by the
+      existing 39+ call sites across the test suite, so the miss is a settrace-based coverage
+      collector artifact for constant-folded/staticmethod lines, not an untested behavior): added
+      direct tests for `PrintLogHistory._read()`'s stub, `PrintLogHistStore.setup()` when
+      `fram is None` (early-return branch never hit before), and `setup()`'s idempotent-when-
+      already-initialized branch.
+    - `config_manager.py` (99% → 100%): `_get_values`'s own `if not self.valid` branch was only ever
+      exercised through `get_dict`, never through `get_int_values`/`get_float_values`/
+      `get_str_values`/`get_bool_values` themselves - added one test per accessor calling it on an
+      invalid `ConfigManager`.
+    - `base_classes.py` (97% → 100%): `_get_dict_cfg`'s defensive `except Exception` around
+      `ret[name].update(sensor_conf)` was never hit - added a test subclass whose `_get_mgr_cfg`
+      override returns a non-dict value despite its declared `dict[...] | None` return type (the
+      exact "subclass override could legitimately misbehave; not statically ruled out" scenario the
+      code's own comment describes). Also removed the FRAM-backed `SensorReader`/`SensorReaderConfig`
+      path's long-standing "untested backlog item" status (module docstring updated to match): added
+      `SensorReader(fram=MockAsyFramManager())` tests for construction, error-persistence-survives-
+      reboot (mirroring `print_log.py`'s own reboot test), skipping `setup()` (documents that real
+      drivers must call it themselves - `SensorReader.__init__` can't, being sync), and FRAM
+      allocation failure degrading to in-memory-only logging.
+    - **New cross-file integration tests**, all in `tests/test_base_classes.py` since that's where
+      `SensorReaderConfig` wires `config_manager.py` + `print_log.py` together for real (no mocking
+      of either): FRAM-backed logging with a real config file; a malformed/corrupted config file
+      repairing cleanly under a FRAM-backed logger (and confirming `ConfigManager`'s repair warnings
+      use the plain non-persisting `pr.wrn()`/`pr.err()`, never `wrn_s()`/`err_s()` - `err_count`
+      stays 0); FRAM allocation failure and a missing config file failing independently at the same
+      time without either derailing the other; a malformed (empty) schema's invalidity propagating
+      cleanly through `_get_dict_cfg`'s full call chain; and a `write_config` write reflected back
+      through `_get_dict_cfg` end to end.
+    - Full suite: 435 → 460 tests (77+43+47+137+62+45+49), all passing;
+      `scripts/lint.sh`/`scripts/typecheck.sh src tests` clean throughout.
+  - **Follow-up structural pass** (project owner asked directly: "is the structure lean, is there
+    room for simplification, is anything missing"), two small changes made:
+    - `LockedCounter.increment`/`decrement` were near-duplicate ~5-line blocks (lock, coerce `None`
+      to `0`, bound-check, store, return), differing only in step direction. Collapsed into a
+      shared private `_step(self, delta: int) -> int`, using `min(max(current + delta, 0),
+      self.max_val)` instead of the old one-sided conditional - behaviorally identical (verified:
+      `base_classes.py` stayed at 100% coverage with no test changes needed, full suite still
+      460/460).
+    - Module docstring's "...never raises, except where noted per class below" trimmed to "...never
+      raises." - no class actually documented an exception it raises, so the clause was dead/
+      misleading text, not a real carve-out.
+    - Two lower-priority gaps were surfaced but deliberately left alone: neither
+      `SensorReader.max_i2c_err` nor `LockedCounter.max_val` guards against a non-positive caller
+      value the way `LockableBuffer` now guards negative sizes. Unlike the buffer case, every real
+      call site passes a fixed positive literal (`_MAX_I2C_ERR`, `0xFFFFFFFF`,
+      `_MAX_OVERRIDE_TIME`), so this is a dev-time-typo risk, not a runtime/config-driven hazard -
+      not worth guarding preemptively without a concrete need.
+  - **Second uncaught-exception audit** (project owner asked directly to re-check the whole file for
+    anything - by itself or via a called function - that could still raise uncaught), traced every
+    call `base_classes.py` makes into `print_log.py`/`config_manager.py` again against their current
+    (already-hardened) source, not just re-reading old review notes. Two real gaps found and fixed:
+    - `LockableBuffer.__init__`: a valid, non-negative `size` could still exhaust RP2040's heap -
+      confirmed directly (`bytearray(2**62)` raises `MemoryError` on the pinned Unix-port
+      interpreter). Unlike `max_i2c_err`/`max_val` above, this *is* a real operational risk, not a
+      dev-time-typo one: `asy_fram_manager.py`'s `AsyFramChunkBuffer`/`AsyFramChunkTimestampedBuffer`
+      allocate a fresh `LockableBuffer` on every single FRAM read/write over an indefinite uptime, so
+      heap fragmentation making a normally-small allocation fail is a realistic long-run scenario,
+      not a hypothetical one. Wrapped the `bytearray(size)` call in `try/except MemoryError`,
+      degrading to `buf = None` the same way the existing negative-input guards do.
+    - `SensorReader._get_dict_cfg`: `await self._get_mgr_cfg(cfg)` sat *outside* its own try/except -
+      only the subsequent `ret[name].update(sensor_conf)` was guarded. `_get_mgr_cfg` is documented
+      as an overridable extension point ("subclass override could legitimately misbehave; not
+      statically ruled out" - the comment on the `except` right next to it), exactly like the
+      `callback` parameter one block below, which *does* wrap its call and its processing in one
+      try. No real override raises today (`SensorReaderConfig`'s only calls the already-hardened
+      `ConfigManager.get_dict`), but the class's own "never raises" contract shouldn't depend on
+      today's only override happening to be safe. Moved the call inside the same try block, matching
+      `callback`'s symmetry.
+    - One out-of-file candidate was surfaced but deliberately not touched: `print_log.py`'s
+      `PrintLogHistory.__init__` builds `deque([_NO_ERR] * history_length, history_length)`
+      unguarded against a huge `history_length` causing the same class of `MemoryError`. Lower
+      priority than the buffer case: `history_length` is a one-time startup allocation (not a
+      per-read/write repeated one) and every real call site either omits it (default `10`) or passes
+      a small hardcoded literal - flagged, not fixed, since `print_log.py` wasn't otherwise in this
+      pass's editing scope.
+  - **Comprehensive parameter/inheritance/cross-dependency/FRAM-fault-matrix test pass** (project
+    owner's explicit ask: every configuration, inheritance levels, cross-dependencies, all possible
+    FRAM errors, unusual-but-typed content). `tests/test_base_classes.py`: 47 → 66 tests:
+    - `LockableBuffer`: the new `MemoryError` guard (`LockableBuffer(2**62)`), a `data_start == size`
+      zero-length-data-region boundary, and an explicit `isinstance(buf, Lockable)` inheritance check.
+    - `LockedCounter`: `max_val=0` (a counter that can never hold a nonzero value - clamps cleanly,
+      doesn't misbehave at this degenerate boundary). `LockedValue`: `inf`/`nan` round-trip (unusual
+      but typed-valid float content; `LockedValue` does no range clamping, so these pass through
+      unchanged).
+    - `SensorReader` config matrix: `debug=` forwarded to the logger's level (and `None` leaving it
+      at `level_off()`), `history_length=0` forwarded and still counting errors with nothing to hold,
+      `max_i2c_err=0` giving up on the very first real failure (zero tolerance is a legitimate config
+      value, unlike a negative one), and a duplicate-field-name schema collapsing to one key in
+      `_get_dict_cfg` instead of misbehaving.
+    - **Full FRAM fault matrix, driven through `SensorReader`'s own API** (`_error_check`,
+      `reset_error_counter`, `.setup()`) rather than `print_log.py`'s methods directly -
+      `test_print_log.py` already covers each fault mode exhaustively at that level; this is new
+      integration coverage confirming the same matrix still degrades cleanly through this file's
+      wiring: `raise_on_get_chunk` (fails at construction), `raise_on_get_buffer`, `broken_buffer`,
+      `raise_on_write`, `write_returns_false` (all four caught/surfaced during `_error_check`),
+      `raise_on_read` (falls back to a successful first-time write during `setup()`), and
+      `read_returns_false` + `write_returns_false` together (setup stays uninitialized, in-memory
+      counting still works).
+    - `SensorReaderConfig` inheritance/cross-dependency: an explicit `isinstance(reader,
+      SensorReader)` check alongside confirming `_get_mgr_cfg`'s override actually replaces the base
+      class's always-`{}` stub, and `reader.cfgmgr.pr is reader.pr` - the exact same logger instance,
+      not an equal-but-separate one, is shared between sensor-error logging and config-manager
+      logging.
+    - Verified: `scripts/lint.sh` (265, unchanged baseline), `scripts/typecheck.sh src tests` (18
+      files clean), full suite 460 → 479 tests, all passing; `base_classes.py` back at 100% coverage
+      (the new `MemoryError`-guard line is exercised by the huge-size test).
+  - **Third pass: fixed `print_log.py`'s flagged `history_length` gap, then swept `src/`+
+    `improved-quality/` for the same shape of bug - and found the swept-for shape was worse than
+    expected.** Confirmed directly against the pinned Unix-port interpreter: `[x] * n` (a plain list
+    repeat - what building `PrintLogHistory`'s `deque` does internally, since `deque([x] * n, n)`
+    builds the list first) has **three** distinct outcomes by size, not two:
+    - `n` up to roughly `2**61`: raises a clean, catchable `MemoryError` (same as `bytearray`).
+    - `n` at/above `2**63`: raises a clean, catchable `OverflowError` (the size overflows a signed
+      64-bit machine word during conversion, caught *before* any allocation is attempted).
+    - **`n` in between (roughly `2**61`–`2**63`): segfaults the entire interpreter process.** No
+      `try/except` of any kind can catch this - confirmed by reproducing it directly
+      (`[0] * (2**62)` crashes with SIGSEGV, exit code 139). The likely cause: list-repeat computes
+      an internal `n * sizeof(pointer)` byte count for the allocation, and that intermediate
+      multiplication itself overflows before the result is ever bounds-checked, unlike `bytearray`
+      (element size 1, so no such intermediate multiplication - hence no gap between its two clean
+      failure modes at any size tested up to `2**200`).
+    - **Fix for `PrintLogHistory.__init__`**: clamp `history_length` to `[0, _MAX_CNT]` (`_MAX_CNT` =
+      `0xFFFF`, already `err_count`'s own cap, reused rather than inventing a second constant)
+      *before* ever attempting the allocation, instead of reactively catching a failure that isn't
+      always catchable. `except MemoryError` is kept below the clamp as defense-in-depth for a
+      genuinely memory-constrained real device failing at a much smaller, still-representable size;
+      `except OverflowError` is not added there since the clamp makes that branch unreachable by
+      construction (would be defending against a scenario that can no longer happen) - `bytearray`'s
+      call sites keep only the exceptions each can genuinely still hit, not the union of every
+      exception this whole investigation surfaced.
+    - **Fix for `LockableBuffer.__init__` (the previous pass's fix, now found incomplete)**: widened
+      `except MemoryError` to `except (MemoryError, OverflowError)`. `bytearray(2**63)` - a value
+      this class's own `size: int` parameter has no upper bound preventing - was still raising
+      `OverflowError` uncaught, since the earlier fix only anticipated the `MemoryError` case found
+      at the time. No segfault-shaped gap applies here (`bytearray`'s two failure modes are both
+      clean, as above), so no proactive clamp is needed, just the wider `except`.
+    - **Swept the rest of `src/` for the same two dangerous shapes** (`deque(...)`/list-repeat driven
+      by a param, and any other unguarded `bytearray(param)`) and found nothing else live:
+      `crc_checks.py`'s `bytearray(self.num_bytes)` is safe - `num_bytes` is always a hardcoded `0`/
+      `1`/`2`/`4` via `CRC_Pass`/`CRC8`/`CRC16`/`CRC32`, `CRC_Base` is never constructed directly with
+      a caller-supplied width outside `tests/test_crc_checks.py`. `asy_i2c_driver.py`/
+      `asy_spi_driver.py` do no Python-level buffer allocation from a param at all (bus reads/writes
+      go straight to `machine.I2C`/`machine.SPI`, outside this codebase's own allocation code).
+      `print_log.py`'s own second list-repeat (`reset()`'s `[_NO_ERR] * len(self.history)`) is safe
+      transitively - `len(self.history)` is already bounded by the same `_MAX_CNT` cap.
+    - **Found the identical list-repeat-then-bytearray shape in `improved-quality/asy_fram_manager.py`
+      (`bytearray([_STATUS_UNINIT] * (self.size + self.crc.length()))`) and dead code carrying the
+      pre-fix version of this exact bug (`improved-quality/base_classes_old.py`'s own
+      `PrintLogHistory.__init__`, unused - nothing imports `base_classes_old`, confirmed by grep;
+      superseded by this file's already-fixed class under the plain `base_classes` module name)** -
+      both flagged, neither touched: `self.size` in the live one is a real FRAM chunk size, bounded
+      in every real call site by actual hardware capacity (small, hardcoded via `get_chunk(...)`
+      calls), same "dev-time literal, not a live attack surface" reasoning as `max_i2c_err`/`max_val`
+      above, and both files are `improved-quality/` source, out of scope for routine editing per the
+      hard rule.
+    - New regression tests: `tests/test_print_log.py`'s
+      `test_history_length_huge_is_capped_instead_of_crashing_the_interpreter` (`history_length=2**62`
+      - the exact segfault-zone value - now cleanly capped to `≤0xFFFF`) and
+      `tests/test_base_classes.py`'s `test_lockablebuffer_astronomical_size_yields_none_not_overflowerror`
+      (`size=2**63`, the `OverflowError` boundary). Both were run directly against the fix and
+      confirmed to no longer crash before being committed as tests.
+    - Verified: `scripts/lint.sh` (265, unchanged), `scripts/typecheck.sh src tests` (18 files clean),
+      full suite 479 → 481, all passing; `base_classes.py` stayed at 100% coverage. `print_log.py`
+      picked up one new, honestly-uncovered branch (the `except MemoryError` fallback inside the new
+      clamp) - not a tooling artifact like the `const()`/`@staticmethod` misses elsewhere in this
+      file, but a real path that isn't practically triggerable in this test environment (there's no
+      way to force a genuine `MemoryError` at ≤65535 list elements without a much lower, dedicated
+      heap-size limit for just that one test) - left honestly uncovered rather than forcing an
+      artificial trigger, consistent with `--coverage` never gating anything.
+  - **Fourth pass: full re-review of `base_classes.py`'s local logic and its integration with
+    `print_log.py`/`config_manager.py`** (project owner's explicit ask, after the segfault-class fix
+    above), looking specifically for oversights, strange behavior, uncaught exceptions, and
+    still-untested conditions rather than assuming the previous three passes were exhaustive:
+    - **Fixed a real asymmetry in `_get_dict_cfg`**: the `callback` merge path already warned
+      (`wrn_s(..., wrnno=1)`) when the callback returned keys outside the requested schema, but the
+      `_get_mgr_cfg` merge path - documented one line above it as "an overridable extension point"
+      that "could misbehave," the exact same class of caller-supplied risk as `callback` - silently
+      merged any extra keys with no warning at all. `SensorReaderConfig._get_mgr_cfg`'s one real
+      override (`self.cfgmgr.get_dict(cfg)`) can never actually trigger this (`get_dict` only ever
+      returns the keys it was asked for), so this was latent, not currently observable - but a
+      future override could silently inject unrequested keys into a config dict with no trace in the
+      error/warning history. Added the same `if not all(k in ret[name] for k in sensor_conf): wrn_s(...)`
+      check, given its own `wrnno=2` (not reusing the callback path's `wrnno=1`) so the persisted
+      warning code stays distinguishable between "callback added a key" and "config manager added a
+      key" rather than conflating two different causes under one number.
+    - **Investigated three other candidate issues, initially left as-is, then fixed on explicit
+      request in a fifth pass immediately after** (see below) - documented here as originally found:
+      - `LockedCounter` with a negative `max_val`: `_clamp`'s `min(max(value, 0), max_val)` can't
+        raise for it, but does collapse every value (any `init_value`, any `increment`/`decrement`/
+        `set_value`) to the fixed negative `max_val` itself, never `0` - confirmed by direct testing,
+        not just reasoning about the formula. No real call site ever passes a negative `max_val`
+        (`system_service.py`/`async_connect.py`/`neopixel_signal.py` all use fixed positive
+        literals) - same "dev-time-typo risk, not a live input" category as `max_i2c_err`/original
+        `history_length` literals.
+      - `SensorReader.reset_error_counter()` only resets `self.pr`'s persisted history/`err_count`,
+        not `self._err_cnt_internal` (the separate consecutive-failure streak counter driving
+        `_error_check`'s give-up decision) - confirmed by diffing against
+        `improved-quality/base_classes_old.py`'s byte-identical `reset_error_counter`/
+        `_error_check` pair that this is preserved pre-refactor behavior, not something this
+        refactor introduced. The two counters track genuinely different things (lifetime historical
+        count vs. current consecutive-failure streak) despite the similar naming.
+      - `config_manager.py`'s `ConfigManager.__init__` wraps its file I/O in `except (OSError,
+        TypeError)` for both the read and write paths, but not `MemoryError` - a `json.load()`/
+        `json.dump()` call against a pathologically large or corrupt config file could in principle
+        raise `MemoryError` uncaught, propagating out of `SensorReaderConfig.__init__` (which calls
+        `ConfigManager(...)` with no try/except of its own, since `config_manager.py`'s own
+        constructor is documented as "never raises"). Lives inside `config_manager.py` itself (a
+        different file, already promoted/tested on its own) rather than in `base_classes.py`'s own
+        logic, so was flagged as a dependency-level finding rather than silently patched in this
+        `base_classes.py`-scoped pass.
+    - New tests in `tests/test_base_classes.py` (67 → 70): `test_get_dict_cfg_mgr_cfg_extra_key_is_still_merged_and_warned`
+      and `test_get_dict_cfg_mgr_cfg_expected_keys_only_do_not_warn` (the new warning path's positive
+      and negative cases), `test_lockedcounter_negative_max_val_clamps_everything_to_max_val`, and an
+      `err_count == 1` assertion added to the existing
+      `test_get_dict_cfg_callback_extra_key_is_still_merged` (confirmed the pre-existing callback
+      warning path actually persists into the error history, not just that the dict merge itself
+      looked right).
+    - Verified: `scripts/lint.sh` (265, unchanged baseline), `scripts/typecheck.sh src tests` (18
+      files clean), full suite 481 → 484, all passing; `base_classes.py` stayed at 100% coverage (146
+      stmts, up from 144 - the new warning branch is exercised by both new tests).
+  - **Fifth pass: fixed all three candidate issues from the pass above** (project owner's explicit
+    follow-up ask, after seeing them flagged rather than fixed):
+    - **`LockedCounter.__init__` now clamps `max_val` itself to `max(max_val, 0)`** rather than
+      storing a negative bound as-is. Restores the class's `[0, max_val]` invariant for every input,
+      including a negative `max_val` (still never passed by any real call site - this is a
+      robustness fix for the class itself, not something any current caller needed). Renamed test to
+      `test_lockedcounter_negative_max_val_is_clamped_to_zero_at_construction`, asserting
+      `counter.max_val == 0` and that every operation now floors at `0` instead of collapsing to the
+      negative input.
+    - **`SensorReader.reset_error_counter()` now also resets `self._err_cnt_internal` to `0`**,
+      alongside the pre-existing `await self.pr.reset()`. This is a deliberate behavior change from
+      `base_classes_old.py`'s preserved-but-reconsidered original: "reset the error counter" reading
+      as resetting only one of the two counters this file tracks was judged confusing enough to fix
+      once flagged, even though nothing currently relies on the old asymmetry (no `improved-quality/`
+      driver is wired onto `src/base_classes.py`'s `SensorReader` yet - see the module docstring).
+      New test: `test_sensorreader_reset_error_counter_also_clears_the_consecutive_failure_streak`.
+    - **`config_manager.py`: added `MemoryError` to all three `except` clauses that wrap
+      `json.load()`/`json.dump()`** - `ConfigManager.__init__`'s read path and write-defaults path,
+      and `write_config()`'s own write path (a fourth call site with the identical risk, found while
+      fixing the two `__init__` ones - not called out in the pass above, but the same gap). No new
+      test added for this one: forcing a genuine `MemoryError` out of `json.load`/`json.dump`
+      deterministically would need either a multi-gigabyte on-disk file (impractical/unsafe to write
+      as part of a test) or monkeypatching `cm.json`, which this test file has never done anywhere
+      else (its whole design is real file I/O, no stdlib mocking, unlike `print_log.py`'s explicit
+      FRAM mock boundary) - left honestly uncovered by a dedicated test, same reasoning as
+      `print_log.py`'s own honestly-uncovered `except MemoryError` fallback branch from the pass
+      above. `coverage.py` still reports both files at 100% since widening an existing `except`
+      tuple's type list doesn't add a new line/branch - the `except` bodies were already exercised
+      by the real-`OSError` tests.
+    - Verified: `scripts/lint.sh` (265, unchanged baseline), `scripts/typecheck.sh src tests` (18
+      files clean), full suite 484 → 485, all passing; `base_classes.py` and `config_manager.py` both
+      stayed at 100% coverage.
+  - **Full re-validation of `config_manager.py` against every `src/README.md` checklist section**
+    (project owner's explicit ask, "target production quality code" - this file had already been
+    through one full walkthrough (see the earlier entry above) plus the tuple-schema rewrite,
+    exception-hardening audit, and the cache-elimination redesign since, so this was a genuine
+    re-check against the *current* file, not a rerun of old notes). Re-verified `0x4000 == MP_S_IFDIR`
+    fresh against the actual pinned `v1.28.0` source (`extmod/vfs.h`, via the real upstream repo, not
+    memory of the earlier check) - still correct, no drift. Empirically re-probed `json.load`/
+    `json.dump`/dict-lookup edge cases directly against the pinned Unix-port interpreter rather than
+    trusting the prior audit's conclusions unverified, and found two genuinely new things:
+    - **Section 11 (readability): the `MemoryError`-catch comment added to `ConfigManager.__init__`'s
+      read-path `except` earlier this session ran 4 lines, over this file's own established (and
+      previously self-enforced) "≤3 lines, prefer fewer" inline-comment limit.** Trimmed to 3 lines,
+      same content, no behavior change.
+    - **Sections 1/2/12: a genuine MicroPython `v1.28.0` `json` module quirk, not present in any
+      existing test.** Confirmed directly against the pinned interpreter that `json.load()` doesn't
+      raise for a value omitted before a comma/closing brace (e.g. `{"Count": , "Offset": 1.5}`) -
+      instead of raising like CPython would, it desyncs the parser and silently returns a wrong,
+      mangled dict (`{"Count": , "Offset": 1.5}` → `{"Count": "Offset"}`). Checked this isn't the same
+      thing as the already-tested "unterminated" malformed-JSON case (missing closing brace/bracket) -
+      that one *was* fixed upstream (commit `9ef16b466`, "Detect unterminated composite entities",
+      landed before `v1.28.0`, confirmed by checking the pinned repo's own git history) but is a
+      narrower fix that doesn't touch this separate leniency. Traced the full `ConfigManager.__init__`
+      path by hand and then confirmed empirically (not just by reasoning) that this degrades safely -
+      every mangled key/value still goes through the normal per-key `type_or_range_error`
+      check-then-default-fallback, the same as any other corrupt value, so this is a quirk to
+      document per section 1's "quirk, not a bug" guidance, not a fix. Also checked the adjacent
+      question section 2 explicitly calls out (NaN/inf): confirmed `type_or_range_error`'s existing
+      NaN/inf rejection (already unit-tested standalone) was never actually exercised end-to-end
+      through `write_config`, and found a related asymmetry while testing it - `json.dumps(float("nan"))`
+      succeeds (writes the non-standard token `nan`) but `json.loads("nan")` raises `ValueError`,
+      so a file containing that token can't be read back the normal way. Confirmed (not assumed) this
+      already can't happen via any live write path (`type_or_range_error`'s always-`False` NaN/inf
+      comparisons reject it before it ever reaches `_cache`/`json.dump`, both directly in
+      `write_config` and via `check_cfg_get_default`'s self-check of a schema's own literal default),
+      but added the missing regression coverage for both the write-rejection and the corrupted-file
+      read-recovery side, not just the schema-authoring side already covered by
+      `check_cfg_get_default`'s tests. Three new tests in `tests/test_config_manager.py` (137 → 140):
+      `test_write_config_nan_and_inf_rejected_end_to_end`,
+      `test_configmanager_raw_nan_token_treated_as_corrupt_not_a_raise`, and
+      `test_configmanager_value_omitted_json_quirk_self_heals` - each verified directly against the
+      real interpreter before being committed as a test, not just reasoned about.
+    - **One item flagged, not silently resolved, per section 0/1's "ask rather than guess"**:
+      section 5's "never block" explicitly says not to assume a blocking operation is "probably fast
+      enough" without checking. The cache-elimination redesign (see the entry above) closed the
+      per-cycle blocking-read concern that was raised and left open in the earlier checklist pass
+      (`get_dict`/`_get_values` no longer touch disk at all), but `write_config`'s own file write
+      was never separately re-assessed afterward - it's still synchronous `open()`+`json.dump()`
+      inside an `async def` with no yield point, same as before the redesign, just now on a rarer
+      (user/REST-triggered config change, not a sampling-loop) call path rather than a per-cycle one.
+      Whether a real RP2040 littlefs write of a small (order ~100s of bytes) config file is fast
+      enough to not need `async_connect.py`'s `get_long_block_lock()` coordination the way NTP's
+      `socket.getaddrinfo()` does is a real hardware-timing question this environment can't verify
+      (no real device access) - raised here rather than either silently wiring in the lock (an
+      unrequested behavior/architecture change) or silently declaring it fine (exactly the
+      "probably fast enough" assumption the checklist forbids).
+    - Everything else re-checked clean against the current file with no further findings: sections 3/4
+      (no unbounded growth or unnecessary hot-path allocation - `_cache`'s key set is fixed at
+      `__init__`, never grows), 6 (typing - confirmed the file's `Any` usages, e.g. `_get_values`'s
+      return type, are load-bearing for `get_bool_values`'s static return type rather than lazy
+      under-typing, by test-removing one and watching mypy fail), 7 (every path returns explicitly,
+      matches its declared type), 9 (no stale `u`-prefixed imports; the write-then-`os.rename()`
+      atomic-write question was already raised and explicitly declined by the project owner in an
+      earlier session, not re-litigated here), 10 (the `get_dict`-vs-typed-getters `keys` parameter
+      shape asymmetry - `list[str]` vs. full `ConfigSchema` - is a deliberate, caller-ergonomics-driven
+      difference, not an accidental inconsistency, confirmed by checking what each side's real call
+      sites actually have on hand), 13/14 (already fully wired into `scripts/lint.sh`/
+      `scripts/typecheck.sh`/`scripts/test.sh` and CI from its original `src/` promotion).
+    - Verified: `scripts/lint.sh` (265, unchanged baseline), `scripts/typecheck.sh src tests` (18
+      files clean), full suite 485 → 488, all passing; `config_manager.py` stayed at 100% coverage.
+  - **`base_classes.py`: applied the same section-11 "≤3 lines, prefer fewer" inline-comment limit
+    just re-enforced on `config_manager.py`, project owner's explicit follow-up ask.** Four blocks
+    had drifted over it across the session's earlier fixes (comment length wasn't rechecked at the
+    time each fix landed): the module docstring (13 lines including blank lines, 3 paragraphs, down
+    to 8 with 2), `LockableBuffer.__init__`'s `MemoryError`/`OverflowError` comment (8 lines → 3),
+    `LockedCounter.__init__`'s negative-`max_val` comment (5 lines → 3), and
+    `SensorReader.reset_error_counter`'s comment (4 lines → 3). Pure trims - the full rationale for
+    each isn't lost, it's already recorded in this file's own earlier entries (the segfault
+    investigation, the three-fixes-on-request pass), which is exactly what section 11 asks for:
+    point to BACKLOG.md instead of restating the detail in the source file. No other block in the
+    file exceeded 3 lines; every function/method already used `#` comments only, never a docstring.
+    Zero behavior change - verified via `scripts/lint.sh` (265, unchanged), `scripts/typecheck.sh
+    src tests` (18 files clean), full suite still 488/488 passing, `base_classes.py` still 100%
+    coverage.
+  - **A whole-integration pass across all three promoted files together** (`base_classes.py`,
+    `config_manager.py`, `print_log.py` - project owner's explicit ask, checking how they're set up
+    *together*, not just each file's own checklist compliance again) found and fixed four real,
+    if individually small, cross-file issues, and confirmed several suspects as non-issues via
+    direct interpreter testing rather than assumption:
+    - **Real bug: a stale doc cross-reference.** `print_log.py`'s `_HDR_FMT` comment said "see
+      module docstring's struct byte-order note" - but that paragraph was removed by the very
+      commit that trimmed the docstring down to a short header (`d5fa0d0`), leaving the pointer
+      referencing content that no longer exists. Re-pointed to BACKLOG.md, where the full byte-order
+      rationale still lives (this file's own earlier entry on the subject). Swept all three files
+      for the same "module docstring" cross-reference shape; the other four (two in
+      `config_manager.py`, two in `print_log.py`) still point at content that's actually still
+      there.
+    - **Real, if long-stale, comment inaccuracy: `config_manager.py`'s `write_config()` except
+      clause still said "malformed json"** as one of the reasons for catching `ValueError`, a
+      leftover from before the caching refactor (`83c08ae`) removed the `json.load()` call this
+      function used to make on every write. Nothing in the current function can raise `ValueError`
+      from parsing anymore (`write_config()` never reads/reparses `json` now, only dumps) - fixed
+      the comment to describe what's actually still live: `AttributeError` for a non-dict `data`
+      param, `MemoryError` for `json.dump()` exhausting the heap, and `ValueError` kept purely
+      defensively now rather than for a reason that's still real.
+    - **Real documentation gap: nothing in `base_classes.py` stated that `self.pr.setup()` must be
+      called by the caller.** `SensorReader.__init__` never calls it (confirmed: `__init__` is sync,
+      `setup()` isn't) - every real `improved-quality/` driver (`asy_bmp3xx_driver.py`,
+      `asy_scd30_driver.py`, `asy_sgp40_driver.py`, `system_service.py`, `asy_fram_manager.py`) calls
+      `await self.pr.setup()` itself as part of its own async setup, by convention, with the same
+      `# required for all logged warnings and errors` comment repeated at every call site - but nothing
+      in `base_classes.py` itself said so; a `src/`-only reader would have no way to know FRAM
+      persistence stays inert without it. This was already correctly implemented and already tested
+      (`tests/test_base_classes.py`'s `test_sensorreader_fram_backed_error_check_without_setup_never_raises`
+      already documents and asserts exactly this), just never stated at the module level, where
+      section 11 says a shared contract like this belongs. Added two lines to the module docstring.
+    - **Real, if mypy-invisible, type-accuracy gap: `base_classes.py`'s `_get_mgr_cfg`/
+      `_get_dict_cfg` typed config values as `int | float | str | None`, omitting `bool`**, while
+      `config_manager.py`'s `get_dict()` (which `SensorReaderConfig._get_mgr_cfg` returns directly)
+      is correctly typed `int | float | str | bool | None` - `bool` is a real, distinct schema field
+      type (`asy_scd30_driver.py`'s `SelfCal` field is exactly this: `("SelfCal", "bool", None,
+      None, None, None)`), so a bool-schema sensor's config dict genuinely flows through this exact
+      path with a type the signature didn't admit. mypy never caught it because `bool` is a subtype
+      of `int` in Python's type system, not because it was actually correct - confirmed by reading
+      the schema field, not by a mypy failure. Fixed all four occurrences in `base_classes.py` to
+      match `config_manager.py`'s own union exactly (section 10's "match how a comparable member
+      elsewhere in the project already expresses the same kind of thing"). Added
+      `test_sensorreaderconfig_get_dict_cfg_round_trips_a_real_bool_field` in
+      `tests/test_base_classes.py`, exercising a real `"bool"`-schema field through the full
+      `SensorReaderConfig` → `ConfigManager` → `_get_dict_cfg` path and asserting `type(...) is
+      bool` on the result, not just equality (`True == 1` in Python, so an equality-only assertion
+      wouldn't have caught a silent int-coercion).
+    - **Confirmed as non-issues, via direct testing against the pinned Unix-port interpreter rather
+      than assumption:**
+      - A config file containing invalid UTF-8 bytes makes `json.load()` raise `UnicodeError` during
+        decode - already safely caught, because `UnicodeError` **is** a `ValueError` subclass on this
+        MicroPython build (confirmed directly: `isinstance(UnicodeError(), ValueError)` is `True`),
+        and `ConfigManager.__init__`'s read path already catches `ValueError` around exactly that
+        call. No gap.
+      - A JSON string containing an unpaired UTF-16 surrogate (`"\ud800"`, which MicroPython's
+        `json.load()` *does* accept, unlike a stricter parser) round-trips through `json.dump()`
+        without raising - confirmed directly: MicroPython's `json.dump()` doesn't do CPython's
+        strict UTF-8 validation on write, it emits a CESU-8-style byte sequence instead
+        (`\xed\xa0\x80` on disk) and reloads it back to the identical string. So the `ValueError`
+        defensiveness in `write_config()`'s except clause was never reachable for this reason either
+        - consistent with the comment fix above.
+      - `PrintLogHistory`/`PrintLogHistStore`'s in-memory state (`err_count`, `history`) has no
+        `asyncio.Lock` protecting it, unlike `ConfigManager.config_lock` - checked whether concurrent
+        `err_s()`/`wrn_s()`/`reset()`/`get_log()` calls could interleave and corrupt it. They can't:
+        every mutation (`err_count += 1`, `history.append(...)`) completes synchronously before the
+        method's own single `await self._write()` yield point, and MicroPython/CPython coroutines
+        run uninterrupted between yield points - so no other coroutine can ever observe or interleave
+        with a half-applied mutation. A lock here would be inert complexity, not a real fix for a
+        real race.
+      - `write_config()`'s open-filename-with-embedded-NUL edge case (a `ValueError` on CPython):
+        confirmed MicroPython's `open()` instead silently truncates the filename at the NUL byte
+        rather than raising - academically a behavior difference, but not a reachable one, since
+        `config_file` is always built from dev-authored string literals (`cfg_path + "config_" +
+        name + ".cfg"`), never externally-influenced input.
+    - Verified: `scripts/lint.sh` (265, unchanged baseline), `scripts/typecheck.sh src tests` (18
+      files clean), `scripts/typecheck.sh` full-scope (160, unchanged baseline - the `SensorReader`
+      `fram` parameter mismatches against `MockAsyFramManager` are pre-existing and untouched), full
+      suite 488 → 489, all passing; `base_classes.py`/`config_manager.py` both stayed at 100%
+      coverage, `print_log.py` unchanged at 89% (the gap is a pre-existing `micropython.const()`
+      line-tracing artifact - `sys.settrace` never sees a line whose value gets folded to an
+      immediate at compile time - not a real untested branch; confirmed unchanged before/after this
+      pass via `git stash`).
+  - **Renamed `PrintLogHistStore` → `PrintLogHistoryStore`** (project owner's catch, reviewing CI
+    test output): every other reference to "history" in `print_log.py` spells it out in full
+    (`PrintLogHistory`, `self.history`, `history_length`, "History write failed") - `PrintLogHistStore`
+    was the one abbreviation anywhere in the file, inherited unchanged from
+    `improved-quality/base_classes_old.py` at this file's original promotion rather than introduced
+    this session. Renamed across `src/print_log.py`, `src/base_classes.py`, `tests/test_print_log.py`,
+    `tests/test_base_classes.py`, `tests/_fram_mock.py`, `tests/README.md` (including the private
+    `_hist_fmt` attribute → `_history_fmt`, and every `test_printloghiststore_*` test function name →
+    `test_printloghistorystore_*`). Confirmed zero impact on `improved-quality/`'s own
+    `system_service.py`/`base_classes_old.py`: those still `from base_classes import
+    PrintLogHistStore`, resolving to their own separate, unrefactored `base_classes_old.py` copy
+    (MicroPython's flat frozen-module namespace means the two same-named-but-different `base_classes`
+    files never interact until the refactor formally rewires those imports - see CLAUDE.md's
+    `src/README.md` hard rule) - left untouched, out of scope. Older entries above this one in this
+    file still say `PrintLogHistStore`, describing the code as it was at the time; only this file's
+    prose is historical, the class itself no longer has that name anywhere in `src/`/`tests/`. Zero
+    behavior change - verified via `scripts/lint.sh` (265, unchanged), `scripts/typecheck.sh src
+    tests` (18 files clean), full suite still 489/489 passing, coverage numbers unchanged for all
+    three files.
+  - **Investigated the single-character stdout lines (`e`, `e`, `w`, `o`, `v`, `a`) the project owner
+    spotted interleaved with `PASS`/`FAIL` lines in the GitHub Actions test log - not a bug.**
+    `tests/test_print_log.py`'s `test_logging_methods_never_raise_at_any_level` deliberately calls
+    `pr.err("e")`/`pr.wrn("w")`/`pr.one("o")`/`pr.evt("v")`/`pr.all("a", sep="-")` at multiple logging
+    levels specifically to confirm the print-forwarding methods never raise - the single characters
+    are that test's own real `print()` output, landing on the same stdout stream as
+    `tests/microtest.py`'s `PASS`/`FAIL` lines. `PrintLog.err()`'s job is literally "call `print()`,"
+    so exercising it for real is the only way to confirm the "never raises" contract, not something
+    to mock away. Left as-is - `tests/microtest.py` is intentionally minimal (see its own docstring)
+    and adding stdout capture there to quiet this would be scope creep for a cosmetic log-reading
+    annoyance, not a correctness fix.
 
 ## Decided for the refactor
 
@@ -937,6 +2232,14 @@ from reading the code alone:
     steps (reference concentration, exposure conditions/timing, how often it's done) still need to
     be captured from the project owner and documented — currently only the REST field itself exists
     in code with no procedure attached.
+13. **Does `config_manager.py`'s `write_config()` need `get_long_block_lock()` coordination?**
+    Surfaced during a `src/README.md` section 5 re-check: `write_config()`'s `open()`+`json.dump()`
+    is still fully synchronous with no yield point (same shape `__init__`'s read path had before the
+    cache-elimination redesign closed *that* blocking concern - see "Refactor progress log"). Whether
+    a real RP2040 littlefs write of a small config file is fast enough to not matter for
+    Neopixel-timing purposes, the way `__init__`'s one-time boot cost apparently was, is a hardware
+    timing question this dev environment can't verify (no real device access) — needs either a
+    measurement on real hardware or a project-owner call on whether it's worth wiring in proactively.
 
 ## Deferred / explicitly out-of-scope work (with reasoning)
 

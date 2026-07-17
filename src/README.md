@@ -279,6 +279,14 @@ is not a machine with memory or cycles to spare:
       docstring just because an earlier file's docstring happened to spell it out locally.
 - [ ] Keep the control flow simple and in a consistent order: `None`-check, then range-check
       (plain guard clause, no `try` needed if it can't raise), then the `try`-wrapped computation.
+- [ ] **Keep documentation itself concise — a module docstring is a short header, not an essay.**
+      State the file's purpose and shared contract in a few short paragraphs and point to
+      BACKLOG.md for the full design rationale/history, rather than duplicating that rationale in
+      the file. Per-function/inline comments stay within **3 lines, prefer fewer** — a block
+      running longer than that is a sign the detail belongs in BACKLOG.md instead, not in the file
+      itself. (`config_manager.py`'s module docstring was cut from 34 lines to a 9-line header this
+      way, and four inline comment blocks from 4-7 lines down to 2, with zero behavior change — see
+      BACKLOG.md for the full cache/schema design rationale this trim moved out of the file.)
 
 ## 12. Unit tests
 

@@ -124,6 +124,20 @@ warn_unused_ignores = true
 warn_unreachable = true
 strict_equality = true
 
+# src/base_classes.py TYPE_CHECKING-imports asy_fram_manager.AsyFramManager for the FRAM-backed
+# path SensorReader accepts but doesn't (yet) exercise - asy_fram_manager.py itself hasn't cleared
+# its own src/ promotion (see BACKLOG.md), so it isn't on mypy_path under a scoped
+# `scripts/typecheck.sh src tests` run (CI's own invocation - see .github/workflows/ci.yml). A
+# plain unscoped run still resolves it fine (improved-quality/ is walked directly, adding its
+# directory to the search path), so this override only matters for the scoped CI case.
+# src/print_log.py used to import AsyFramManager the same way, but no longer needs to: its own
+# review replaced that with a local, TYPE_CHECKING-only Protocol (_FramManager/_FramChunk) covering
+# just the narrow slice of the real API PrintLogHistStore actually calls, which tests/_fram_mock.py
+# now satisfies structurally without needing this override at all (see BACKLOG.md).
+[[tool.mypy.overrides]]
+module = "asy_fram_manager"
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 # Empty: pytest itself isn't the test runner. Per BACKLOG.md's "Self-contained venv via uv"
 # requirement, tests run under a real MicroPython Unix-port interpreter, not CPython - see

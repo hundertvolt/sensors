@@ -12,7 +12,8 @@ from asy_sgp40_driver import SGP40_Reader
 from asy_bmp3xx_driver import BMP3xx_Reader
 from neopixel_signal import Neopixel_Signal
 from async_connect import asy_conn_time
-from async_manager import TimeCounterManager, LockedValue, ConfigManager
+from async_manager import LockedValue, ConfigManager
+from base_classes import LockedCounter
 from microdot import Microdot, send_file, Request, Response
 from machine import Timer, WDT
 from micropython import const
@@ -103,9 +104,7 @@ pixel = Neopixel_Signal(
     debug=debug,
 )
 conn.set_ext_led(pixel)  # callback for wifi led
-task_error_counter = (
-    TimeCounterManager()
-)  # use inherently limited counter here as overall error counter
+task_error_counter = LockedCounter(max_val=0xFFFFFFFF)  # overall task-restart counter, practically unbounded
 last_task_err = LockedValue(-1)
 timers_running = ThreadSafeFlag()
 
@@ -581,7 +580,8 @@ async def system_status(request: Request):
     SCD30_ErrCnt = await scd_reader.get_error_counter()
     SGP40_ErrCnt = await sgp_reader.get_error_counter()
     BMP388_ErrCnt = await bmp_reader.get_error_counter()
-    Task_ErrCnt = await task_error_counter.get_counter()
+    _task_err_cnt_val = await task_error_counter.get_value()  # never None: only ever incremented from its 0 default
+    Task_ErrCnt = 0 if _task_err_cnt_val is None else _task_err_cnt_val
     ErrorStatus = (
         (sgp_fram_crit > 0)
         or (sgp_fram_uncrit > 0)

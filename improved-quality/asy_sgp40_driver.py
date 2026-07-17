@@ -20,9 +20,9 @@ from voc_algorithm import VOCAlgorithm
 _FRAM_VERIFY_MINS = const(60)
 _MAX_NTP_WAITTIME = const(600)  # 600s = 10min
 
-_VAL_BP = const('|"BackupPeriod": {"def": 1, "type": "int", "min": 0, "max": 1440, "special": null}|')
-_VAL_BMAX = const('|"BackupMaxAge": {"def": 7200, "type": "int", "min": 0, "max": 10080, "special": null}|')
-_VAL_WT = const('|"WaitTimeNTP": {"def": 30, "type": "int", "min": 0, "max": 600, "special": null}|')
+_VAL_BP = const((("BackupPeriod", "int", 1, 0, 1440, None),))
+_VAL_BMAX = const((("BackupMaxAge", "int", 7200, 0, 10080, None),))
+_VAL_WT = const((("WaitTimeNTP", "int", 30, 0, 600, None),))
 
 _NAME = const("SGP40")
 SGP40 = namedtuple("SGP40", ("VOC", "Raw", "TS"))
