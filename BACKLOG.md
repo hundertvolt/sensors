@@ -444,6 +444,11 @@ the same backing, replaying the same `get_chunk()` sequence, to prove persistenc
 - Segfault-class bug (see "Dangerous allocation shapes" below): `history_length` clamped to
   `[0, 0xFFFF]` before allocation, not just caught reactively.
 
+Confirmed non-issue: unlike `ConfigManager.config_lock`, `PrintLogHistoryStore`'s in-memory state
+(`err_count`, `history`) has no `asyncio.Lock` — checked and confirmed safe, since every mutation
+(`err_s()`/`wrn_s()`/`reset()`/`get_log()`) completes synchronously before its one `await` point, so
+concurrent calls can't interleave mid-mutation; a lock here would be inert complexity.
+
 Simplifications: `_FramBuffer` Protocol was a redundant duplicate of `base_classes.LockableBuffer`'s
 own two methods — folded away. `PrintLogHistory.hl` was dead state (nothing read it) — removed.
 `"B" * len(self.history)` was rebuilt on every `_write()`/`_read()` call despite never changing
@@ -501,7 +506,10 @@ CPython's strict UTF-8 validation on write). Invalid UTF-8 in a config file rais
 already safely caught since `UnicodeError` **is** a `ValueError` subclass on this build. A
 filename containing an embedded NUL byte gets silently truncated by MicroPython's `open()` rather
 than raising — academically a behavior difference, not reachable (`config_file` is always built
-from string literals).
+from string literals). `json.dumps(float("nan"))` succeeds (writes the non-standard token `nan`),
+but `json.loads("nan")` raises `ValueError` — a real read/write asymmetry, but unreachable via any
+live write path since `type_or_range_error()` already rejects NaN/Inf before a value ever reaches
+`_cache`/`json.dump()`.
 
 **Schema representation replaced**: pipe-delimited-JSON-string `const()` →
 `const()`-wrapped-tuple `const()`. The old `_VAL_SI = const('|"SampleInterv": {...}|')` encoding
