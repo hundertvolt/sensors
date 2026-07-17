@@ -91,7 +91,12 @@ From hands-on field experience with deployed units:
     generalize only if a mechanism turns out to be genuinely common. *(Only `asy_scd30_driver.py`'s
     reset path reviewed so far — SGP40's `_reset()` and BMP3xx's reset command still need the same
     review.)*
-  - FRAM's SPI bus gets the same bus-recovery treatment as sensor buses.
+  - FRAM's SPI bus gets the same bus-recovery treatment as sensor buses. **Partially done**:
+    `asy_fram_driver.py`'s own `src/` promotion (see "`asy_fram_driver.py` → `src/`" below) fixed a
+    real device-identification bug and added write-enable-latch/write-protect verification - the
+    detection this file itself can do. Still open: an actual periodic/triggered re-probe policy
+    (calling the new `verify_present()`) and task-death-and-respawn wiring both live in
+    `asy_fram_manager.py`/a task supervisor, neither promoted yet.
   - Keep error handling per-driver, not a shared generic retry/backoff/reset framework — sensors
     differ enough that a forced common abstraction was explicitly rejected. Only generalize what's
     genuinely common to *all* drivers (e.g. error-counter bookkeeping in
@@ -327,8 +332,10 @@ during concurrent `asyncio.gather`). A module-docstring inaccuracy was later fix
 is an `SPI` method (not `SPIDevice`'s), and only `configure()` takes `firstbit` (not
 `SPI.__init__()`/`init()`).
 
-Deferred, flagged not fixed: `FRAM_SPI.set_write_protected()`/`get_write_protected()` (in
-`asy_fram_driver.py`, not itself promoted) have zero real callers. Several methods deliberately
+Deferred, flagged not fixed at the time: `FRAM_SPI.set_write_protected()`/`get_write_protected()`
+(in `asy_fram_driver.py`, not itself promoted yet) had zero real callers. **Resolved during
+`asy_fram_driver.py`'s own `src/` promotion** (see below): owner confirmed keeping them, brought to
+the same quality bar as the rest of the file. Several methods deliberately
 raise rather than return `None` (`SPI.__init__()`/`init()`'s `ValueError`, `SPIDevice.__init__()`'s
 same via `Pin(cs_pin)`, `configure()`'s `RuntimeError`/`NotImplementedError`) — today's only caller
 doesn't wrap any in `try/except` (fine today since correctly-`setup()`'d production code never
@@ -647,6 +654,77 @@ identical shape in `improved-quality/asy_fram_manager.py`'s `bytearray([_STATUS_
 + ...))` (bounded by real hardware capacity at every call site — dev-time-literal, not a live attack
 surface) and dead code carrying the pre-fix version in unused `base_classes_old.py`.
 
+### `asy_fram_driver.py` → `src/`
+
+Driver for the actual FRAM chip (Fujitsu MB85RS64V, Adafruit's 8KB SPI FRAM breakout) sitting under
+`asy_fram_manager.py` (not itself promoted yet - see above). Verified against the real datasheet
+(DS501-00015) and cross-checked against Adafruit's own `Adafruit_FRAM_SPI` reference driver for the
+same chip, per owner request to specifically check hardware-interaction correctness and
+bus-disturbance recovery, not just style.
+
+**Real bug found and fixed, with a live production caller**: `setup()`'s RDID device-identification
+check had two compounding bugs, present since the legacy driver (not introduced by any promotion).
+The datasheet's RDID response order is Manufacturer ID / continuation code / Product ID 1st byte
+(more significant) / Product ID 2nd byte - confirmed as `0x04, 0x7F, 0x03, 0x02` for this chip from
+two independent sources (the datasheet text and Adafruit's own driver's `getDeviceID()` byte
+handling). The old code computed `prod_id = (read_buffer[3] << 8) + read_buffer[2]` - the two
+product-ID bytes swapped - so `prod_id` could never actually equal `_SPI_PROD_ID` (0x0302) against
+real hardware. That alone would have made every `setup()` call fail - except the surrounding
+check was `if (manf_id_wrong) and (prod_id_wrong): raise`, using `and` where it should have used
+`or`. Since the manufacturer byte (0x04) genuinely does match, the `and` short-circuited and the
+(already-broken) product-ID comparison never actually gated anything: `setup()` silently accepted
+any device whose first RDID byte was 0x04, regardless of the rest of the response - including a
+corrupted RDID transfer from a bus disturbance right at startup, the exact failure mode owner asked
+this review to harden against. Fixed: correct byte order, `and` → `or`, and added a check on the
+continuation-code byte (0x7F, also fixed for this chip) for a third independent field. Owner
+confirmed the fix before it was applied (this changes real accept/reject behavior, per
+`src/README.md` section 1's discrepancy-flagging rule).
+
+**Bus-disturbance recovery added, scoped to what this file can actually observe**: raw RP2040 SPI
+`write()`/`readinto()` genuinely cannot report a transfer fault (no ACK/NAK, confirmed in
+`asy_spi_driver.py`'s own promotion) - data-integrity recovery (CRC, dual-copy redundancy) already
+lives one layer up in `asy_fram_manager.py`, out of scope here. Two things this file *can* observe
+were added, both per owner's explicit "whatever is required in this scope" direction:
+- `_write()` now reads the status register (RDSR) after `WREN` to confirm the write-enable latch
+  actually set before proceeding to `WRITE` - a disturbed `WREN` opcode would otherwise be silently
+  ignored by the chip, and the subsequent `WRITE` would silently no-op too. Also re-checks after
+  `WRDI`, retrying once (cheap, idempotent) before only warning if `WEL` is still stuck - a stuck
+  `WEL` leaves the chip continuously writable, not itself a "did the payload write happen" failure,
+  so it doesn't fail the write.
+- `set_write_protected()` (kept - see below) now reads back the status register after `WRSR` and
+  reports failure if it doesn't match, since that one transaction is the only way this chip's
+  write-protect state can actually change, and is otherwise unverified.
+- New `verify_present()`: a re-probe entry point (reuses the fixed RDID check) for a future
+  health-check/retry policy to call after suspecting a disturbance - cheaper than a full `setup()`
+  (skips `wp_pin` re-init), and on failure reverts `uninitialized = True` so every other method
+  safely refuses until a fresh `setup()` succeeds, same self-healing state `setup()`'s own `OSError`
+  already relies on. Wiring an actual periodic/triggered call to this into `asy_fram_manager.py` or
+  a task supervisor is future work (needs `asy_fram_manager.py` promoted first) - this file only
+  exposes the primitive.
+
+**Kept, brought to full quality bar (owner-confirmed, previously "zero real callers" per the
+`asy_spi_driver.py` promotion writeup above)**: `get_write_protected()`/`set_write_protected()` -
+real hardware feature (BP0/BP1 block-protect + WPEN in the status register), plausible future use.
+`set_write_protected()`'s return type changed `None` → `bool` (matches `set_values()`'s own
+success/failure convention - a real API-consistency gap, `src/README.md` section 10) now that it
+does real verification worth reporting. Zero existing callers anywhere in the codebase, confirmed
+via `grep`, so this is a pure signature strengthening, not a breaking change.
+
+**Also fixed** (style-only, no behavior change): a stray CircuitPython-style docstring on
+`get_write_protected()` - inconsistent with every other `src/` file's "comments, never per-method
+docstrings" convention (`src/README.md` section 11) - condensed into a `#` comment during the
+post-promotion bird's-eye scan across `src/` this file's own addition triggered (per CLAUDE.md's
+hard rule); no other cross-file discrepancy found.
+
+Testing: a fourth mocking-boundary instance, `tests/_fram_chip_fake.py` - a stateful fake MB85RS64V
+sitting on top of `tests/machine.py`'s dumb fake SPI bus, interpreting the exact opcode/CS-session
+shapes `FRAM_SPI` itself produces (RDID/RDSR/WRSR/WREN/WRDI/READ/WRITE), with fault-injection knobs
+(`drop_wren`/`drop_next_wrdi`/`drop_wrsr`/`rdid_response`) for simulating a disturbance eating one
+specific transaction's effect. 27 tests in `tests/test_asy_fram_driver.py`, including direct
+regressions for the RDID byte-order/`and`-vs-`or` bug and the new WEL/write-protect verification
+paths. No `pyproject.toml`/CI changes needed - both already scope by directory (`src`, `tests`), not
+an explicit file list.
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
@@ -661,7 +739,8 @@ and a missing config file failing independently without either derailing the oth
 ### Current test counts (verify via `grep -c '^def test_' tests/test_*.py` if this looks stale)
 
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
-`base_classes.py` 72, `config_manager.py` 140, `print_log.py` 50 — **493 total**.
+`base_classes.py` 72, `config_manager.py` 140, `print_log.py` 50, `asy_fram_driver.py` 27 — **520
+total**.
 
 ## Decided for the refactor
 
