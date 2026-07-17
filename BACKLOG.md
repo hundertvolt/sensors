@@ -773,13 +773,7 @@ exists — see git history if the original reasoning is needed.)*
 
 ## Security notes
 
-- A real WiFi SSID/password (and a location-revealing hostname) were committed in
-  `modules/config.json` in this project's original initial commit in a *previous* copy of this
-  repo; the password was confirmed already stale/rotated, and that prior repo's history was
-  scrubbed — this repo was imported fresh specifically to leave the incident behind. A full sweep
-  of this repo's working tree found no other API keys/tokens/private keys/email addresses beyond
-  the item below.
-- The one remaining real credential is the hardcoded hotspot fallback password (open question #9,
-  accepted risk — only exploitable by someone in physical WiFi range of a unit that's already lost
-  its real WiFi), present in both `python/CommonDrivers/async_connect.py` and
+- The one real credential in this repo is the hardcoded hotspot fallback password (open question
+  #9, accepted risk — only exploitable by someone in physical WiFi range of a unit that's already
+  lost its real WiFi), present in both `python/CommonDrivers/async_connect.py` and
   `improved-quality/async_connect.py`.

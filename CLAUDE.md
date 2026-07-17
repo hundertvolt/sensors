@@ -91,10 +91,9 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
   running under a real MicroPython Unix-port interpreter per that plan (see "Code quality tooling"
   below) — this rule is about not testing the old `python/`/`modules/` code, not about deferring
   all tests indefinitely.
-- **Don't touch `sensors/config.json`-equivalent files or commit any real credentials.** A real
-  WiFi SSID/password was previously committed and had to be scrubbed from history — see
-  BACKLOG.md's security notes. A `.gitignore` now covers per-device config/build artifacts, but
-  still be deliberate about what you stage.
+- **Don't touch `sensors/config.json`-equivalent files or commit any real credentials.** A
+  `.gitignore` covers per-device config/build artifacts, but still be deliberate about what you
+  stage — see BACKLOG.md's security notes for the one known real credential in this repo.
 - **Long-blocking operations must not stall timing-sensitive work.** Any new code that blocks the
   event loop for a noticeable time (e.g. `socket.getaddrinfo()`) must not do so while
   timing-sensitive work like the Neopixel animation needs to run — either avoid the block, or
