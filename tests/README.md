@@ -131,3 +131,42 @@ dev/test tooling only, entirely separate from what ships to real hardware.
 
 No coverage threshold is enforced anywhere — CI reports the numbers, it never fails the build
 over them.
+
+### Reading the numbers: two systematic false-negative patterns, not missed test cases
+
+A below-100% file isn't automatically a missed-test hint - two patterns recur across every
+`src/` file's "missed" line list and are artifacts of this specific tracing pipeline, confirmed
+directly against a real build (`sys.settrace` during both class-body execution and a plain
+function call, dumping the traced `(lineno, co_name)` pairs):
+
+- **`micropython.const(...)` assignments are compiled away entirely** — MicroPython folds the
+  named constant into every place it's used at compile time, so the assignment statement itself
+  never becomes bytecode and never fires a `line` trace event, e.g. `print_log.py`'s
+  `_LOG_OFF = const(0)` block. `coverage.py`'s own static analysis (run separately, under CPython,
+  by `scripts/_render_coverage.py`) still lists these as executable source lines, so they always
+  show as 0-hit misses despite being fully "exercised" in the only sense that's meaningful for a
+  folded constant.
+- **A decorated function's traced `line` event lands on the decorator line, not the `def` line
+  underneath it** — confirmed by tracing a class body's own execution (where a bare `def foo():`
+  correctly traces as its own `def`-line hit, but a `@staticmethod`-decorated one traces the
+  `@staticmethod` line instead). `coverage.py`'s CPython-based line map still expects a hit on the
+  `def` line (matching Python's own `ast` module), so every `@staticmethod`/`@classmethod`
+  definition's `def` line shows as missed even when the method is called throughout the suite -
+  see e.g. `print_log.py`'s `level_off()`/`level_err()`/etc. or `asy_i2c_driver.py`'s
+  `_bitfield_range_ok()`/`_bitmask()`/`_bytes_to_int()`/`_readfrom_mem()`/`_writeto_mem()`. The
+  method's own body line (e.g. the `return` statement) is traced normally and shows as covered.
+
+Separately (not a tracer artifact, but also not a missed-test hint): several `except` branches
+across `src/` guard against outcomes that are provably unreachable given the guarantees the rest
+of the same function already establishes before reaching them - e.g. `crc_checks.py`'s
+`add()`/`add_into()` wrap `pack_into()` in a `try` for a `ValueError` that can't fire because the
+CRC value is always masked (`crc &= self.all_set`) into exactly the range `self.fmt` encodes, or
+`_crc()`'s own `if self.poly is None: return crc` guard, which every current caller already
+checks for before ever calling `_crc()`. Writing a test to reach one of these would mean
+monkeypatching `struct.pack_into`/an internal method to lie about its own success - testing the
+mock, not the driver - so these are left as documented dead code (defense-in-depth against a
+future caller violating today's invariants) rather than chased for a coverage number.
+`math_helpers.py`'s five `except (ValueError, ArithmeticError)` blocks are the same category: each
+function's own domain guard (checked *before* the `try`) already rejects every input - including
+NaN/Inf, per `tests/test_math_helpers.py`'s own `*_nan_and_inf_return_none` tests - that could
+otherwise reach a math-domain error inside it.

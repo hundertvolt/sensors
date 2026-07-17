@@ -363,6 +363,16 @@ def test_init_boundary_values_accepted() -> None:
     assert run(crc8.add(bytearray(b"x"), init=crc8.all_set)) is not None
 
 
+def test_check_rejects_invalid_init() -> None:
+    # check()'s own init validation, mirroring add()'s coverage above - a corrupt-looking init
+    # must be rejected before any CRC computation runs, not just for add()/add_into().
+    crc8 = CRC8()
+    added = run(crc8.add(bytearray(b"hello world")))
+    assert added is not None
+    assert run(crc8.check(added, init=-1)) is None
+    assert run(crc8.check(added, init=crc8.all_set + 1)) is None
+
+
 # ---------------------------------------------------------------------------
 # poly validation
 # ---------------------------------------------------------------------------
@@ -554,6 +564,31 @@ def test_check_from_rejects_size_larger_than_buffer() -> None:
     buf = bytearray(b"XY\x00")
     run(crc8.add_into(buf, 2))
     assert run(crc8.check_from(buf, 10)) is None  # size beyond len(buf)
+
+
+def test_check_from_rejects_invalid_init() -> None:
+    # check_from()'s own init/size/start validation, mirroring add_into()'s coverage above -
+    # none of these three sub-conditions were previously exercised for check_from() at all.
+    crc8 = CRC8()
+    buf = bytearray(b"XY\x00")
+    run(crc8.add_into(buf, 2))
+    assert run(crc8.check_from(buf, 3, init=-1)) is None
+    assert run(crc8.check_from(buf, 3, init=crc8.all_set + 1)) is None
+
+
+def test_check_from_rejects_non_positive_size() -> None:
+    crc8 = CRC8()
+    buf = bytearray(b"XY\x00")
+    run(crc8.add_into(buf, 2))
+    assert run(crc8.check_from(buf, 0)) is None
+    assert run(crc8.check_from(buf, -1)) is None
+
+
+def test_check_from_rejects_negative_start() -> None:
+    crc8 = CRC8()
+    buf = bytearray(b"XY\x00")
+    run(crc8.add_into(buf, 2))
+    assert run(crc8.check_from(buf, 3, start=-1)) is None
 
 
 # ---------------------------------------------------------------------------
