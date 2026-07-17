@@ -945,6 +945,50 @@ Test count after this pass: `asy_fram_driver.py` 44 (41 → 44: three new regres
 fix above; finding #4 didn't get its own test since it's an explicit "trust the caller" decision,
 not a behavior change).
 
+**Third re-audit (owner-requested): `src/README.md`'s checklist walked section-by-section against
+the current file, re-verified against the real datasheet PDF again, and cross-checked against
+Adafruit's own `Adafruit_FRAM_SPI` reference driver (fetched fresh from GitHub, not assumed from
+the first promotion's earlier read of it). No new bugs found - confirms the three fixes above hold
+up, not just that they compiled and passed CI once.**
+- Opcodes/SPI mode/address-width threshold cross-checked against `Adafruit_FRAM_SPI.h`/`.cpp`
+  directly: `WREN`/`WRDI`/`RDSR`/`WRSR`/`READ`/`WRITE`/`RDID` all match exactly; SPI mode 0,
+  MSB-first, matches `SPIDevice`'s defaults; Adafruit's own 2-byte-vs-3-byte address switch is at
+  64KB (`0xFFFF`), the same boundary `_setup_addr_buffer` uses - independent confirmation that the
+  4-byte-header branch really is dead code for this 8KB chip, not a guess. Adafruit's driver has no
+  WP-pin hardware control at all, so nothing to cross-check there; that part is sourced from the
+  Fujitsu datasheet alone, as already documented above.
+- Re-verified every SPI transaction shape (single vs. multi-`write()` CS session) against the
+  datasheet's own command diagrams: `RDSR`/`RDID`/`READ` (opcode+addr then data, one CS-low
+  session, supporting the chip's auto-increment continuous read/write) and `WRITE` (opcode+addr and
+  payload as two `write()` calls but one CS session) all match.
+- Re-verified the `WRITING PROTECT` table's ordering requirement directly: `set_write_protected()`
+  deasserts `WP` before entering the `WRSR`'s `async with self._spidev` block and doesn't touch the
+  pin again until after readback confirmation, so `WP`'s level is provably fixed for the entire
+  `WRSR` command sequence and beyond - satisfies "the `WP` signal level shall be fixed before
+  performing the `WRSR` command, and do not change the `WP` signal level until the end of command
+  sequence" with margin to spare.
+- Re-confirmed `verify_present()`'s `asyncio.wait_for`/`Lock` fix directly against
+  `/root/pico-toolchain/micropython/extmod/asyncio/{core,funcs,lock}.py` (the real pinned v1.28.0
+  source, re-read fresh rather than trusted from the prior session's notes): `asyncio.TimeoutError`
+  is `core.TimeoutError`, a plain `Exception` re-exported via `core.py`'s unrestricted `from .core
+  import *` (no `__all__`) - distinct from the builtin `TimeoutError`/`OSError` family, so the
+  `except asyncio.TimeoutError` catch is precise, not accidentally broad. `wait_for()` promotes the
+  lock's `acquire()` into its own task and cancels *that* task on timeout, which propagates
+  `CancelledError` into `Lock.acquire()`'s `yield` point - exactly the branch `Lock.acquire()`
+  itself handles by re-queuing the next waiter if needed, confirming lock state can't be corrupted
+  by this timeout path.
+- Walked `src/README.md` sections 0-14 explicitly: no exception-safety gap beyond the ones already
+  fixed (re-verified `FRAM_SPI`'s outer lock vs. `SPIDevice`'s bus lock are genuinely two different
+  `asyncio.Lock` objects, so `verify_present()`'s self-acquire of the outer lock can't deadlock
+  against a nested bus-lock acquisition inside `_check_device_id()`); no API-consistency gap against
+  `asy_i2c_driver.py`/`asy_spi_driver.py` (I2C's ACK-based `__probe_for_device()` vs. this file's
+  RDID-based `verify_present()`/`setup()` is an inherent SPI-has-no-ACK protocol difference, already
+  documented in section 2's I2C-vs-SPI carve-out, not a design inconsistency to fix); lint/typecheck
+  clean, full suite green (537/537, `asy_fram_driver.py` 44/44).
+- **One stale fact fixed**: this file's own "Current test counts" summary (below) still said
+  `asy_fram_driver.py 41` / `534 total`, not updated when the previous pass's own count changed to
+  44/537 - corrected now, per CLAUDE.md's "update stale facts in the same session" agreement.
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
@@ -959,7 +1003,7 @@ and a missing config file failing independently without either derailing the oth
 ### Current test counts (verify via `grep -c '^def test_' tests/test_*.py` if this looks stale)
 
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
-`base_classes.py` 72, `config_manager.py` 140, `print_log.py` 50, `asy_fram_driver.py` 41 — **534
+`base_classes.py` 72, `config_manager.py` 140, `print_log.py` 50, `asy_fram_driver.py` 44 — **537
 total**.
 
 ## Decided for the refactor
