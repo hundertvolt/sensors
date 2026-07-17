@@ -930,11 +930,18 @@ green): three real bugs found and fixed, plus a deliberate scope note.**
    not assumed) that `wait_for`'s timeout-driven cancellation of a still-*waiting* `acquire()` is
    safe — the queued task is cleanly removed without corrupting `Lock.state`, matching this exact
    use case. `_VERIFY_PRESENT_LOCK_TIMEOUT_S` (1.0s — generous headroom over the low-single-digit-ms
-   real transaction cost, per `SPIDevice`'s own two 1ms settle sleeps) is deliberately *not*
-   `const()`-wrapped, unlike every datasheet-fixed value in this file, specifically so a test can
-   monkeypatch the module attribute to shorten the wait (`const()` values are inlined at compile
-   time and can't be reassigned at runtime) — see
-   `test_verify_present_bounded_wait_returns_false_instead_of_hanging_when_lock_already_held`.
+   real transaction cost, per `SPIDevice`'s own two 1ms settle sleeps) is now `const()`-wrapped
+   (owner-requested follow-up, previously left as a plain module global specifically so
+   `test_verify_present_bounded_wait_returns_false_instead_of_hanging_when_lock_already_held` could
+   monkeypatch it down to 0.01s). Confirmed directly against the real pinned Unix-port interpreter,
+   not assumed from the docs' wording alone: `const()` inlines the value at every use site within
+   the module *regardless of the underscore prefix* — a non-underscore `const()` still exposes the
+   name as a readable module attribute (per the docs), but reassigning that attribute from outside
+   has zero effect on the module's own internal reads either way, since those were already replaced
+   with the literal at compile time. So there was never a variant of this constant that could stay
+   both a real `const()` and test-monkeypatchable; the test now simply sits out the real ~1s
+   timeout (full suite wall time: 2.075s → 2.960s, +~0.9s, matching the removed 0.01s-vs-1.0s
+   delta almost exactly) rather than shortening it.
 4. **Scope note, not a bug**: `_setup_addr_buffer`'s `max_size > 0xFFFF` (4-byte address) branch is
    dead code for this specific chip — the `RDID` check is hardwired to one real 8KB part
    (`0x0000`-`0x1FFF`), so a correctly-`setup()` instance can never legitimately need it. Owner
@@ -990,6 +997,18 @@ up, not just that they compiled and passed CI once.**
 - **One stale fact fixed**: this file's own "Current test counts" summary (below) still said
   `asy_fram_driver.py 41` / `534 total`, not updated when the previous pass's own count changed to
   44/537 - corrected now, per CLAUDE.md's "update stale facts in the same session" agreement.
+
+**Fourth pass (owner-requested): `_VERIFY_PRESENT_LOCK_TIMEOUT_S` made a real `const()`, and three
+functions' comments re-trimmed to the repo's ≤3-lines-total-per-function convention.** `setup()`
+(was 4 comment lines across two blocks), `verify_present()` (was 6 across two blocks), and
+`set_write_protected()` (was 9 across three blocks) all now sit at or under 3 total, condensed
+without dropping the underlying rationale - each point either fits in a shorter inline comment or
+was already covered by this file's own entries above (e.g. the `WP`-deassert-ordering and
+readback-verification reasoning). See the `const()`-conversion entry earlier in this section for
+why the previously-monkeypatchable timeout is now a fixed ~1s cost in
+`test_verify_present_bounded_wait_returns_false_instead_of_hanging_when_lock_already_held` instead.
+Lint/typecheck (scoped `src tests`, matching CI) clean; full suite still 537/537
+(`asy_fram_driver.py` 44/44), just ~0.9s slower wall time from the one now-unpatched wait.
 
 ### Coverage-driven completeness pass
 

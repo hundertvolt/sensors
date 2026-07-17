@@ -49,10 +49,10 @@ _SR_WP_MASK = const(0x8C)  # WPEN | BP1 | BP0
 _SR_WP_SET = const(0x8C)
 _SR_WP_CLEAR = const(0x00)
 
-# Not const()-wrapped, unlike the datasheet-fixed values above - so a test can monkeypatch this
-# to shorten the wait (see verify_present()). Generous headroom over a real transaction's
-# low-single-digit-ms cost, while still bounding an accidental lock-reentry to a finite wait.
-_VERIFY_PRESENT_LOCK_TIMEOUT_S = 1.0
+# Generous headroom over a real transaction's low-single-digit-ms cost, while still bounding an
+# accidental lock-reentry to a finite wait. Not test-monkeypatchable: MicroPython inlines const()
+# at every use site regardless of name (verified directly), so the one test needing this waits it out.
+_VERIFY_PRESENT_LOCK_TIMEOUT_S = const(1.0)
 
 
 class FRAM_SPI(Lockable):
@@ -77,27 +77,21 @@ class FRAM_SPI(Lockable):
         await self._spidev.setup()
         if not await self._check_device_id():
             raise OSError("FRAM SPI device not found.")
-        # WPEN/BP0/BP1 are nonvolatile (datasheet), unlike WEL - re-sync _wp from hardware rather
-        # than trusting the constructor's wp=, which is only ever a guess about a prior session.
+        # WPEN/BP0/BP1 are nonvolatile (datasheet) - re-sync _wp from hardware, not the ctor's wp=.
         self._wp = (await self._read_status() & _SR_WP_MASK) == _SR_WP_SET
         if self._wp_pin is not None:
             self._wp_pin.init(self._wp_pin.OUT)
-            # WP is active-low (datasheet "WRITING PROTECT" table): WP=0 additionally locks the
-            # status register itself while WPEN=1, matching this class's own protect=True intent.
-            self._wp_pin.value(not self._wp)
+            self._wp_pin.value(not self._wp)  # WP is active-low (datasheet), see BACKLOG.md
         self.uninitialized = False
         self.pr.one("SPI FRAM Driver Setup complete")
 
     async def verify_present(self) -> bool:
-        # Re-probe entry point for a caller that suspects a bus disturbance: cheaper than a full
-        # setup() (skips wp_pin re-init), and on failure reverts to uninitialized=True so every
-        # other method safely refuses until a fresh setup() succeeds. See BACKLOG.md.
+        # Re-probe entry point (cheaper than a full setup()); reverts to uninitialized=True on
+        # failure. Wait is bounded, not a bare `async with self:`, since asyncio.Lock isn't
+        # reentrant and a caller nesting this inside its own `async with fram:` would else hang.
         if self.uninitialized:
             self.pr.err("FRAM not initialized, run setup first!")
             return False
-        # asyncio.Lock isn't reentrant - a bare `async with self:` would hang forever if a caller
-        # invoked this from inside its own `async with fram:` block. Bounding the wait turns that
-        # hang into the same well-defined False every sibling guard already returns. See BACKLOG.md.
         try:
             await asyncio.wait_for(self.asy_lock.acquire(), _VERIFY_PRESENT_LOCK_TIMEOUT_S)
         except asyncio.TimeoutError:
@@ -208,9 +202,7 @@ class FRAM_SPI(Lockable):
         return True
 
     async def set_write_protected(self, value: bool) -> bool:
-        # While it is possible to protect block ranges on the SPI chip,
-        # it seems superfluous to do so. So, block protection always protects
-        # the entire memory (BP0 and BP1).
+        # Always protects the entire array (BP0+BP1) - per-block ranges are unused. See BACKLOG.md.
         if self.uninitialized:
             self.pr.err("FRAM not initialized, run setup first!")
             return False
@@ -219,16 +211,10 @@ class FRAM_SPI(Lockable):
             self.pr.wrn("FRAM write enable latch did not set, write protection not changed.")
             return False
         if self._wp_pin is not None:
-            # Deassert WP first: per the datasheet's WRITING PROTECT table, WEL=1,WPEN=1,WP=0
-            # makes the status register itself unwritable, so a pin left low from an earlier
-            # protect=True would otherwise block this very WRSR - including the one clearing it.
-            self._wp_pin.value(True)
+            self._wp_pin.value(True)  # deassert WP first - WP=0 would else block this WRSR too
         async with self._spidev as spidev:
             await spidev.write(bytearray([_SPI_OPCODE_WRSR, target]))
-        # Read back rather than trusting the write blindly - the one WRSR transaction is the only
-        # way this chip's write-protect state can actually change, so this is what catches it if
-        # that specific transfer got corrupted by a bus disturbance.
-        ok = (await self._read_status() & _SR_WP_MASK) == target
+        ok = (await self._read_status() & _SR_WP_MASK) == target  # verify the one way this can change
         await self._disable_write()
         if not ok:
             if self._wp_pin is not None:

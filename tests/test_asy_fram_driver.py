@@ -2,7 +2,6 @@ import asyncio
 
 from _fram_chip_fake import FakeMB85RS64V
 
-import asy_fram_driver
 import asy_spi_driver
 from asy_fram_driver import FRAM_SPI
 from asy_spi_driver import SPI
@@ -469,20 +468,17 @@ def test_verify_present_bounded_wait_returns_false_instead_of_hanging_when_lock_
     # verify_present() self-acquires the outer Lockable lock, unlike get_values()/set_values()
     # (which require the caller to already hold it) - calling it from inside an existing
     # `async with fram:` block would otherwise hang the task forever, since asyncio.Lock isn't
-    # reentrant. Timeout patched down so the test doesn't have to wait out the real default.
+    # reentrant. _VERIFY_PRESENT_LOCK_TIMEOUT_S is a real const() (verified un-monkeypatchable,
+    # see asy_fram_driver.py), so this test sits out the real ~1s timeout rather than shortening it.
     fram, _chip = make_fram()
     run(setup_fram(fram))
-    asy_fram_driver._VERIFY_PRESENT_LOCK_TIMEOUT_S = 0.01
 
     async def scenario() -> bool:
         async with fram:
             nested = await fram.verify_present()
         return nested
 
-    try:
-        result = run(scenario())
-    finally:
-        asy_fram_driver._VERIFY_PRESENT_LOCK_TIMEOUT_S = 1.0
+    result = run(scenario())
     assert result is False
     assert fram.uninitialized is False  # a lock-busy timeout isn't a device-identification failure
 
