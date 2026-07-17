@@ -2,7 +2,7 @@ import asyncio
 import os
 from collections import namedtuple
 
-from _fram_mock import MockAsyFramManager
+from _fram_mock import MockAsyFramManager, _MockFramChunk
 
 import config_manager as cm
 from base_classes import (
@@ -14,7 +14,7 @@ from base_classes import (
     SensorReader,
     SensorReaderConfig,
 )
-from print_log import PrintLogHistory, PrintLogHistStore
+from print_log import PrintLog, PrintLogHistory, PrintLogHistStore
 
 try:
     from typing import TYPE_CHECKING
@@ -168,6 +168,26 @@ def test_lockablebuffer_negative_data_length_yields_none() -> None:
     assert buf.get_data_buf() is None
 
 
+def test_lockablebuffer_huge_size_yields_none_not_memoryerror() -> None:
+    # A valid, non-negative size can still exhaust the heap - confirmed directly against the real
+    # MicroPython interpreter that bytearray(2**62) raises MemoryError, not a negative-input error.
+    buf = LockableBuffer(2**62)
+    assert buf.get_buf() is None
+    assert buf.get_data_buf() is None
+
+
+def test_lockablebuffer_zero_length_data_region_is_valid() -> None:
+    # data_start == size is a legitimate boundary, not an oversized region: data_length defaults to
+    # 0, so data_end (== size) is not > size.
+    buf = LockableBuffer(4, data_start=4)
+    raw = buf.get_buf()
+    data = buf.get_data_buf()
+    assert raw is not None
+    assert len(raw) == 4
+    assert data is not None
+    assert len(data) == 0
+
+
 def test_lockablebuffer_is_still_lockable() -> None:
     buf = LockableBuffer(4)
 
@@ -178,6 +198,10 @@ def test_lockablebuffer_is_still_lockable() -> None:
         return locked_inside
 
     assert run(scenario())
+
+
+def test_lockablebuffer_is_a_lockable_instance() -> None:
+    assert isinstance(LockableBuffer(4), Lockable)
 
 
 # ---------------------------------------------------------------------------
@@ -242,6 +266,14 @@ def test_lockedcounter_decrement_from_none_stays_at_zero() -> None:
     assert run(counter.decrement()) == 0
 
 
+def test_lockedcounter_max_val_zero_stays_clamped_to_zero() -> None:
+    # An unusual but typed-valid config: a counter that can never hold a nonzero value.
+    counter = LockedCounter(init_value=5, max_val=0)
+    assert run(counter.get_value()) == 0
+    assert run(counter.increment()) == 0
+    assert run(counter.decrement()) == 0
+
+
 def test_lockedcounter_concurrent_increments_are_not_lost() -> None:
     counter = LockedCounter(init_value=0, max_val=1000)
 
@@ -274,6 +306,16 @@ def test_lockedvalue_roundtrip_int_and_float() -> None:
     assert run(value.get_value()) == 3.5
 
 
+def test_lockedvalue_roundtrip_inf_and_nan() -> None:
+    # Unusual but typed-valid float content: LockedValue does no range clamping (unlike
+    # LockedCounter), so these must simply round-trip untouched.
+    value = LockedValue(0.0)
+    run(value.set_value(float("inf")))
+    assert run(value.get_value()) == float("inf")
+    run(value.set_value(float("nan")))
+    assert run(value.get_value()) != run(value.get_value())  # nan != nan is the only valid check
+
+
 # ---------------------------------------------------------------------------
 # SensorReader - fram=None (in-memory logging) path
 # ---------------------------------------------------------------------------
@@ -282,6 +324,42 @@ def test_lockedvalue_roundtrip_int_and_float() -> None:
 def test_sensorreader_uses_in_memory_logging_when_fram_is_none() -> None:
     reader = SensorReader(Meas(20.0, 50), max_i2c_err=3)
     assert isinstance(reader.pr, PrintLogHistory)
+
+
+def test_sensorreader_debug_level_is_forwarded_to_the_logger() -> None:
+    reader = SensorReader(Meas(20.0, 50), max_i2c_err=3, debug=PrintLog.level_err())
+    assert reader.pr.get_level() == PrintLog.level_err()
+
+
+def test_sensorreader_debug_none_leaves_logger_at_off() -> None:
+    reader = SensorReader(Meas(20.0, 50), max_i2c_err=3, debug=None)
+    assert reader.pr.get_level() == PrintLog.level_off()
+
+
+def test_sensorreader_history_length_zero_is_forwarded_and_never_raises() -> None:
+    reader = SensorReader(Meas(None, 50), max_i2c_err=3, history_length=0)
+    assert run(reader._error_check(Meas(None, 50), "temp")) is True
+    assert reader.pr.err_count == 1
+    assert list(reader.pr.history) == []  # nothing to hold, but the count still tracked
+
+
+def test_error_check_max_i2c_err_zero_gives_up_on_first_failure() -> None:
+    # Zero tolerance is a legitimate, if unusual, config value - not a caller mistake to guard
+    # against like a negative max_i2c_err would be (see BACKLOG.md's structural-pass note).
+    reader = SensorReader(Meas(None, 50), max_i2c_err=0)
+    assert run(reader._error_check(Meas(None, 50), "temp")) is False
+
+
+def test_get_dict_cfg_duplicate_schema_names_collapse_to_one_key() -> None:
+    # schema_names() documents "duplicates preserved" - _get_dict_cfg's own dict comprehension must
+    # still behave sanely (last write wins, no raise) rather than assuming names are unique.
+    dup_schema: cm.ConfigSchema = (
+        ("SampleInterv", "int", 2, 1, 3600, None),
+        ("SampleInterv", "int", 9, 1, 3600, None),
+    )
+    reader = SensorReader(Meas(20.0, 50), max_i2c_err=3)
+    result = run(reader._get_dict_cfg("Sensor", dup_schema))
+    assert result == {"Sensor": {"SampleInterv": None}}
 
 
 def test_sensorreader_meas_data_roundtrip() -> None:
@@ -417,6 +495,83 @@ def test_sensorreader_fram_allocation_failure_still_logs_in_memory_without_raisi
 
 
 # ---------------------------------------------------------------------------
+# SensorReader - every simulated FRAM failure mode (tests/_fram_mock.py's fault injection),
+# driven through SensorReader's own API (_error_check/reset_error_counter/setup) rather than
+# print_log.py's methods directly - test_print_log.py already covers each mode exhaustively at
+# that level; this confirms the same fault matrix still degrades cleanly through this file's wiring.
+# ---------------------------------------------------------------------------
+
+
+def test_sensorreader_fram_raise_on_get_chunk_never_raises_at_construction() -> None:
+    reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=MockAsyFramManager(raise_on_get_chunk=True))
+    assert isinstance(reader.pr, PrintLogHistStore)
+    assert reader.pr.fram is None
+    assert run(reader._error_check(Meas(None, 50), "temp")) is True
+    assert reader.pr.err_count == 1
+
+
+def test_sensorreader_fram_get_buffer_raising_is_caught_during_error_check() -> None:
+    reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=MockAsyFramManager())
+    assert isinstance(reader.pr, PrintLogHistStore)  # narrows reader.pr's type so .fram is visible
+    assert isinstance(reader.pr.fram, _MockFramChunk)  # whitebox: narrows further to reach the mock's fault flags
+    run(reader.pr.setup())
+    reader.pr.fram.raise_on_get_buffer = True
+    assert run(reader._error_check(Meas(None, 50), "temp")) is True
+    assert reader.pr.err_count == 1  # FRAM write failed silently; in-memory count still tracked
+
+
+def test_sensorreader_fram_broken_buffer_is_caught_during_error_check() -> None:
+    reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=MockAsyFramManager())
+    assert isinstance(reader.pr, PrintLogHistStore)
+    assert isinstance(reader.pr.fram, _MockFramChunk)
+    run(reader.pr.setup())
+    reader.pr.fram.broken_buffer = True
+    assert run(reader._error_check(Meas(None, 50), "temp")) is True
+    assert reader.pr.err_count == 1
+
+
+def test_sensorreader_fram_raise_on_write_is_caught_during_error_check() -> None:
+    reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=MockAsyFramManager())
+    assert isinstance(reader.pr, PrintLogHistStore)
+    assert isinstance(reader.pr.fram, _MockFramChunk)
+    run(reader.pr.setup())
+    reader.pr.fram.raise_on_write = True
+    assert run(reader._error_check(Meas(None, 50), "temp")) is True
+    assert reader.pr.err_count == 1
+
+
+def test_sensorreader_fram_write_returns_false_is_surfaced_during_error_check() -> None:
+    reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=MockAsyFramManager())
+    assert isinstance(reader.pr, PrintLogHistStore)
+    assert isinstance(reader.pr.fram, _MockFramChunk)
+    run(reader.pr.setup())
+    reader.pr.fram.write_returns_false = True
+    assert run(reader._error_check(Meas(None, 50), "temp")) is True
+    assert reader.pr.err_count == 1
+
+
+def test_sensorreader_fram_raise_on_read_falls_back_to_write_during_setup() -> None:
+    reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=MockAsyFramManager())
+    assert isinstance(reader.pr, PrintLogHistStore)
+    assert isinstance(reader.pr.fram, _MockFramChunk)
+    reader.pr.fram.raise_on_read = True
+    run(reader.pr.setup())  # first-time setup: _read() fails, falls back to _write() succeeding
+    assert reader.pr.initialized is True
+
+
+def test_sensorreader_fram_setup_fails_cleanly_when_both_read_and_write_fail() -> None:
+    reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=MockAsyFramManager())
+    assert isinstance(reader.pr, PrintLogHistStore)
+    assert isinstance(reader.pr.fram, _MockFramChunk)
+    reader.pr.fram.read_returns_false = True
+    reader.pr.fram.write_returns_false = True
+    run(reader.pr.setup())
+    assert reader.pr.initialized is False
+    assert run(reader._error_check(Meas(None, 50), "temp")) is True  # still tracks in-memory
+    assert reader.pr.err_count == 1
+
+
+# ---------------------------------------------------------------------------
 # SensorReaderConfig - real ConfigManager/file I/O, no mocking
 # ---------------------------------------------------------------------------
 
@@ -430,6 +585,32 @@ def test_sensorreaderconfig_wires_a_real_configmanager() -> None:
         assert reader.cfgmgr.valid is True
     finally:
         _remove(path_prefix + "config_temp.cfg")
+
+
+def test_sensorreaderconfig_is_a_sensorreader_with_a_real_mgr_cfg_override() -> None:
+    # Inheritance-level check: SensorReaderConfig IS-A SensorReader, and _get_mgr_cfg's override
+    # actually replaces the base class's always-{} stub rather than just adding cfgmgr alongside it.
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_isa.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "isa", _VAL_SI, cfg_path=path_prefix)
+        assert isinstance(reader, SensorReader)
+        assert run(reader._get_mgr_cfg(["SampleInterv"])) == {"SampleInterv": 2}
+    finally:
+        _remove(path_prefix + "config_isa.cfg")
+
+
+def test_sensorreaderconfig_shares_the_same_logger_instance_with_its_configmanager() -> None:
+    # Cross-dependency check: SensorReaderConfig.__init__ passes self.pr into ConfigManager - it must
+    # be the exact same object, not an equal-but-separate one, or sensor errors and config
+    # errors/warnings would silently split across two independent histories.
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_shared.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "shared", _VAL_SI, cfg_path=path_prefix)
+        assert reader.cfgmgr.pr is reader.pr
+    finally:
+        _remove(path_prefix + "config_shared.cfg")
 
 
 def test_sensorreaderconfig_get_dict_cfg_reads_real_config_file() -> None:

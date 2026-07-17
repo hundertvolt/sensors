@@ -1705,6 +1705,65 @@ above is genuinely underway, but surfaces some new items:
       call site passes a fixed positive literal (`_MAX_I2C_ERR`, `0xFFFFFFFF`,
       `_MAX_OVERRIDE_TIME`), so this is a dev-time-typo risk, not a runtime/config-driven hazard -
       not worth guarding preemptively without a concrete need.
+  - **Second uncaught-exception audit** (project owner asked directly to re-check the whole file for
+    anything - by itself or via a called function - that could still raise uncaught), traced every
+    call `base_classes.py` makes into `print_log.py`/`config_manager.py` again against their current
+    (already-hardened) source, not just re-reading old review notes. Two real gaps found and fixed:
+    - `LockableBuffer.__init__`: a valid, non-negative `size` could still exhaust RP2040's heap -
+      confirmed directly (`bytearray(2**62)` raises `MemoryError` on the pinned Unix-port
+      interpreter). Unlike `max_i2c_err`/`max_val` above, this *is* a real operational risk, not a
+      dev-time-typo one: `asy_fram_manager.py`'s `AsyFramChunkBuffer`/`AsyFramChunkTimestampedBuffer`
+      allocate a fresh `LockableBuffer` on every single FRAM read/write over an indefinite uptime, so
+      heap fragmentation making a normally-small allocation fail is a realistic long-run scenario,
+      not a hypothetical one. Wrapped the `bytearray(size)` call in `try/except MemoryError`,
+      degrading to `buf = None` the same way the existing negative-input guards do.
+    - `SensorReader._get_dict_cfg`: `await self._get_mgr_cfg(cfg)` sat *outside* its own try/except -
+      only the subsequent `ret[name].update(sensor_conf)` was guarded. `_get_mgr_cfg` is documented
+      as an overridable extension point ("subclass override could legitimately misbehave; not
+      statically ruled out" - the comment on the `except` right next to it), exactly like the
+      `callback` parameter one block below, which *does* wrap its call and its processing in one
+      try. No real override raises today (`SensorReaderConfig`'s only calls the already-hardened
+      `ConfigManager.get_dict`), but the class's own "never raises" contract shouldn't depend on
+      today's only override happening to be safe. Moved the call inside the same try block, matching
+      `callback`'s symmetry.
+    - One out-of-file candidate was surfaced but deliberately not touched: `print_log.py`'s
+      `PrintLogHistory.__init__` builds `deque([_NO_ERR] * history_length, history_length)`
+      unguarded against a huge `history_length` causing the same class of `MemoryError`. Lower
+      priority than the buffer case: `history_length` is a one-time startup allocation (not a
+      per-read/write repeated one) and every real call site either omits it (default `10`) or passes
+      a small hardcoded literal - flagged, not fixed, since `print_log.py` wasn't otherwise in this
+      pass's editing scope.
+  - **Comprehensive parameter/inheritance/cross-dependency/FRAM-fault-matrix test pass** (project
+    owner's explicit ask: every configuration, inheritance levels, cross-dependencies, all possible
+    FRAM errors, unusual-but-typed content). `tests/test_base_classes.py`: 47 → 66 tests:
+    - `LockableBuffer`: the new `MemoryError` guard (`LockableBuffer(2**62)`), a `data_start == size`
+      zero-length-data-region boundary, and an explicit `isinstance(buf, Lockable)` inheritance check.
+    - `LockedCounter`: `max_val=0` (a counter that can never hold a nonzero value - clamps cleanly,
+      doesn't misbehave at this degenerate boundary). `LockedValue`: `inf`/`nan` round-trip (unusual
+      but typed-valid float content; `LockedValue` does no range clamping, so these pass through
+      unchanged).
+    - `SensorReader` config matrix: `debug=` forwarded to the logger's level (and `None` leaving it
+      at `level_off()`), `history_length=0` forwarded and still counting errors with nothing to hold,
+      `max_i2c_err=0` giving up on the very first real failure (zero tolerance is a legitimate config
+      value, unlike a negative one), and a duplicate-field-name schema collapsing to one key in
+      `_get_dict_cfg` instead of misbehaving.
+    - **Full FRAM fault matrix, driven through `SensorReader`'s own API** (`_error_check`,
+      `reset_error_counter`, `.setup()`) rather than `print_log.py`'s methods directly -
+      `test_print_log.py` already covers each fault mode exhaustively at that level; this is new
+      integration coverage confirming the same matrix still degrades cleanly through this file's
+      wiring: `raise_on_get_chunk` (fails at construction), `raise_on_get_buffer`, `broken_buffer`,
+      `raise_on_write`, `write_returns_false` (all four caught/surfaced during `_error_check`),
+      `raise_on_read` (falls back to a successful first-time write during `setup()`), and
+      `read_returns_false` + `write_returns_false` together (setup stays uninitialized, in-memory
+      counting still works).
+    - `SensorReaderConfig` inheritance/cross-dependency: an explicit `isinstance(reader,
+      SensorReader)` check alongside confirming `_get_mgr_cfg`'s override actually replaces the base
+      class's always-`{}` stub, and `reader.cfgmgr.pr is reader.pr` - the exact same logger instance,
+      not an equal-but-separate one, is shared between sensor-error logging and config-manager
+      logging.
+    - Verified: `scripts/lint.sh` (265, unchanged baseline), `scripts/typecheck.sh src tests` (18
+      files clean), full suite 460 → 479 tests, all passing; `base_classes.py` back at 100% coverage
+      (the new `MemoryError`-guard line is exercised by the huge-size test).
 
 ## Decided for the refactor
 

@@ -69,7 +69,14 @@ class LockableBuffer(Lockable):
         if size < 0 or data_start < 0 or data_length < 0 or self.data_end > size:
             self.buf = None
         else:
-            self.buf = bytearray(size)
+            # A valid, non-negative size can still exhaust RP2040's heap - real FRAM chunk buffers
+            # (asy_fram_manager.py's AsyFramChunkBuffer) are allocated fresh on every read/write over
+            # an indefinite uptime, so a fragmentation-driven MemoryError here is a real operational
+            # risk, not just a caller-mistake corner case. Degrade the same way as the guards above.
+            try:
+                self.buf = bytearray(size)
+            except MemoryError:
+                self.buf = None
 
     def get_buf(self) -> bytearray | None:
         return self.buf
@@ -207,12 +214,12 @@ class SensorReader:
         cfg = schema_names(cfg_vals)
         ret: dict[str, dict[str, int | float | str | None]] = {name: {key: None for key in cfg}}
 
-        sensor_conf = await self._get_mgr_cfg(cfg)
-        if sensor_conf is not None:
-            try:
+        try:  # _get_mgr_cfg is an overridable extension point - the call itself, not just its result, could misbehave
+            sensor_conf = await self._get_mgr_cfg(cfg)
+            if sensor_conf is not None:
                 ret[name].update(sensor_conf)
-            except Exception as e:  # subclass override could legitimately misbehave; not statically ruled out
-                await self.pr.err_s("Error updating config dict:", e, errno=3)
+        except Exception as e:  # subclass override could legitimately misbehave; not statically ruled out
+            await self.pr.err_s("Error updating config dict:", e, errno=3)
 
         if callback is not None:
             try:
