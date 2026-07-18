@@ -298,6 +298,10 @@ class _AsyBaseFramChunk:
 
                 while position < total_size:
                     chunk_size = min(len(buf), total_size - position)
+                    if chunk_size <= 0:  # a zero-length buf (e.g. check_length=0) would never advance
+                        await self.pr.err_s("Zero-length read buffer in _read_chunk!", errno=48)
+                        await cb(None, None, num_iterations)
+                        return False, 0
                     buf_slice = (0, chunk_size)  # Fill from start of buffer
                     global_slice = (position, position + chunk_size)
                     if not await fram.get_values(mv[buf_slice[0] : buf_slice[1]], addr + position):

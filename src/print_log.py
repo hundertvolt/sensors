@@ -218,7 +218,8 @@ class PrintLogHistoryStore(PrintLogHistory):
         # this format string is cached once here instead of being rebuilt on every _write()/_read().
         self._history_fmt = "B" * len(self.history)
         size = self._HDR_SIZE + len(self.history)  # each "B" is exactly 1 byte
-        try:  # broad on purpose: asy_fram_manager.py isn't itself promoted/audited yet (see module docstring)
+        try:  # broad on purpose: defense-in-depth against the Protocol in the abstract, not this one
+            # concrete, audited-to-never-raise implementation (see module docstring)
             self.fram: _FramChunk | None = fram.get_chunk(size, crc=CRC8())
         except Exception:
             self.fram = None
@@ -238,7 +239,8 @@ class PrintLogHistoryStore(PrintLogHistory):
     async def _write(self) -> bool:
         if self.fram is None:
             return False
-        try:  # broad on purpose: asy_fram_manager.py isn't itself promoted/audited yet (see module docstring)
+        try:  # broad on purpose: defense-in-depth against the Protocol in the abstract, not this one
+            # concrete, audited-to-never-raise implementation (see module docstring)
             buf = self.fram.get_buffer()
             dbuf = buf.get_data_buf()
             struct.pack_into(self._HDR_FMT, dbuf, 0, self.err_count)
@@ -250,7 +252,8 @@ class PrintLogHistoryStore(PrintLogHistory):
     async def _read(self) -> bool:
         if self.fram is None:
             return False
-        try:  # broad on purpose: asy_fram_manager.py isn't itself promoted/audited yet (see module docstring)
+        try:  # broad on purpose: defense-in-depth against the Protocol in the abstract, not this one
+            # concrete, audited-to-never-raise implementation (see module docstring)
             buf = self.fram.get_buffer()
             dbuf = buf.get_data_buf()
             if not await self.fram.read_into(buf):

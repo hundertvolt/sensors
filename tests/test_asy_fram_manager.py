@@ -564,6 +564,24 @@ def test_compare_with_huge_check_length_self_heals_instead_of_crashing() -> None
     assert run(scenario()) == bytearray(b"data")  # no crash, and still recovers real data
 
 
+def test_compare_with_zero_check_length_fails_cleanly_instead_of_hanging_forever() -> None:
+    # Regression for a real bug found in review: _read_chunk's streaming loop computes
+    # chunk_size = min(len(buf), total_size - position) - with check_length=0, len(buf) is
+    # always 0, so chunk_size is always 0, position never advances, and the loop runs forever
+    # (confirmed directly: it hung past a bounded wait before this fix). asyncio.wait_for here
+    # means a real regression fails this test with a clear timeout, not a frozen test run.
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(4, crc=CRC_Pass(), check_length=0)
+    assert chunk is not None
+    run(chunk.write(b"data"))
+
+    async def scenario() -> bytearray | None:
+        return await asyncio.wait_for(chunk.read(), timeout=5)
+
+    assert run(scenario()) == bytearray(b"data")  # block 1 unverifiable -> healed from block 0
+
+
 def test_compare_with_huge_check_length_during_write_verification_degrades_safely() -> None:
     # Same guard, exercised via _write()'s own verify path instead of _read()'s cross-check -
     # verify treats "couldn't verify" the same as "verification failed", so the write reports

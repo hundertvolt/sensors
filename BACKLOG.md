@@ -1156,6 +1156,59 @@ full suite 559/559 (`asy_fram_manager.py` 28/28 new; `print_log.py` 50→46 and 
 72→70 as the four now-unreachable get_buffer/broken-buffer mock scenarios were dropped rather than
 replaced, while every reachable fault mode gained a real chip-level equivalent).
 
+**Follow-up re-review (owner-requested, structure/setup/completeness/correctness pass against the
+now-promoted file): one more real bug found and fixed, plus three findings flagged rather than
+silently changed.**
+
+- **Real bug, confirmed by reproduction, not just code-reading**: `get_chunk(..., check_length=0)`
+  hangs `_read_chunk`'s streaming loop forever. `chunk_size = min(len(buf), total_size - position)`
+  is always `0` when `len(buf)` (== `check_length`, via `_compare_with`'s scratch buffer) is `0`, so
+  `position` never advances and `while position < total_size:` never exits - confirmed directly by
+  running a real read against the Unix-port interpreter with a 5s bound, which timed out before the
+  fix. Only reachable through `_compare_with` (the only caller that can pass a `buf` shorter than
+  `total_size`) - `_read_into`'s own `buf` always exactly matches `total_size` by construction. Not
+  the same shape as the earlier `(MemoryError, OverflowError)` guard: `check_length=0` allocates a
+  perfectly valid empty `bytearray`, no exception at all. Fixed: `_read_chunk`'s loop now checks
+  `chunk_size <= 0` and fails cleanly (`errno=48`) instead of looping. Regression test
+  (`test_compare_with_zero_check_length_fails_cleanly_instead_of_hanging_forever`) wraps the read in
+  `asyncio.wait_for(..., timeout=5)` so a reintroduction fails the test with a clear timeout, not a
+  frozen suite run.
+- **Found, flagged, not changed**: a `size=0` chunk (an `AsyFramChunk` with `crc=CRC_Pass()`, so
+  `total_size == 0`) reads back a spurious "CRC error" instead of a trivially-valid empty read - the
+  streaming loop never runs at all (`0 < 0` is `False`), so `self.crc.check_inc()` sees
+  `inc_crc is None` (never set by a `run_inc()` call) and reports failure. Safe (returns `False`/
+  `None` cleanly, doesn't hang) but semantically wrong for a genuinely valid degenerate input. Not
+  fixed: no real caller ever requests a 0-byte chunk (every actual chunk owner has a real payload),
+  and a correct fix touches three methods' shared iteration-counting state
+  (`_read_chunk`'s CRC-skip, plus `_read_into`'s and `_compare_with`'s own `n_iter` conditions,
+  which also implicitly assume at least one streaming iteration) - real risk of a new bug for an
+  edge case nothing currently exercises. Flagged per `src/README.md` section 1 rather than
+  guessed at.
+- **Found, flagged, not changed**: `get_chunk()`/`get_timestamped_chunk()`'s "FRAM out of memory"
+  path logs via `self.pr.err(...)` (console-only), not `self.pr.err_s(...)` (the persisting,
+  `errno`-tracked variant every other failure in this file uses) - an allocation failure never
+  shows up in `get_error_counter()`'s history/count. Not an oversight: both methods are
+  deliberately synchronous (so a driver's own sync `__init__` can call `get_chunk()` without an
+  event loop), and `err_s()` is `async`. A real fix needs either a new sync-safe counter-bump path
+  in `print_log.py` (a locked-down, already-promoted file, out of scope here) or making
+  `get_chunk()`/`get_timestamped_chunk()` `async` (a breaking signature change for every real
+  caller). Flagged rather than unilaterally redesigning the allocator's sync/async boundary.
+- **Found, flagged, not changed**: `AsyFramTimestampedChunk.write()`/`write_into()` return
+  `(ntp_synced, utc, success)` - the actual write-succeeded flag is the *third* tuple element, not
+  the first, unlike every bool-returning method elsewhere in this file. Confirmed this is inherited
+  from the original deployed `python/IndividualDrivers/asy_fram_manager.py`, not introduced by any
+  promotion - `asy_sgp40_driver.py` (the one real caller) already unpacks it in this order. A real,
+  used API shape; reordering now would be a silent breaking change to that caller. Flagged as a
+  known API-consistency gap (`src/README.md` section 10), not fixed.
+- Two comments in `print_log.py` (`__init__`/`_write`/`_read`'s broad `try:` blocks) were still
+  reading "asy_fram_manager.py isn't itself promoted/audited yet" after this file's own promotion -
+  missed in the original documentation pass (which only updated the module docstring, not these
+  three inline comments). Fixed: reworded to state the real, current reason for the broad catch
+  (Protocol-level defense-in-depth, not distrust of this now-audited concrete class).
+
+Full suite re-verified after these fixes: 560/560 (`asy_fram_manager.py` 29/29). Lint/typecheck
+still clean.
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
@@ -1171,7 +1224,7 @@ and a missing config file failing independently without either derailing the oth
 
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 44,
-`asy_fram_manager.py` 28 — **559 total**. (`base_classes.py`/`print_log.py` counts shifted from
+`asy_fram_manager.py` 29 — **560 total**. (`base_classes.py`/`print_log.py` counts shifted from
 their FRAM-mock-era numbers when `tests/_fram_mock.py` was retired in favor of the real
 `AsyFramManager` - see "`asy_fram_manager.py` → `src/`" below.)
 
