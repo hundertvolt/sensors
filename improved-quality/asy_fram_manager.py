@@ -1,12 +1,38 @@
+"""Chunk-based storage manager for the FRAM chip (asy_fram_driver.py): dual-copy redundancy plus
+CRC gives each chunk resilience against a torn write (a status-byte busy/idle protocol detects a
+write interrupted by power loss) and silent bit rot (CRC-checked on every read, self-healing the
+other copy when only one is invalid). AsyFramManager is a bump-pointer allocator - get_chunk()/
+get_timestamped_chunk() carve out fixed offsets in call order, so every device's *instantiation
+order* of these calls is that device's on-chip layout and must stay identical across firmware
+versions for existing stored data to still decode correctly.
+
+Contract: every method returns a well-defined value (False/None, or an all-None/False tuple for
+the timestamped variant) - never raises. All chunks allocated from one AsyFramManager share that
+manager's own PrintLogHistory instance (passed as each chunk's `logger`), so error/warning codes
+threaded through `errno`/`wrnno` must stay unique across this whole file, not just per class - see
+BACKLOG.md for the full chunk-layout and error-numbering rationale, and for why "both copies valid
+but different" (an interrupted 2-copy write, no generation counter to say which is newer) is a
+deliberate hard failure rather than a guessed fallback.
+"""
+
 import struct
 import time
 import asyncio
-from base_classes import PrintLogHistory, LockableBuffer
+from base_classes import LockableBuffer
 from crc_checks import CRC_Base, CRC_Pass
 from micropython import const
 from asy_spi_driver import SPI
 from asy_fram_driver import FRAM_SPI
-from typing import Callable, Any, Tuple, Coroutine, Dict, List
+from print_log import PrintLogHistory
+
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Coroutine
+    from typing import Any
 
 _STATUS_UNINIT = const(0x00)
 _STATUS_IDLE = const(0x01)
@@ -26,7 +52,7 @@ class _AsyBaseFramChunk:
         fram: FRAM_SPI,
         base_addr: int,
         size: int,
-        mempause: Callable[[], bool],
+        mempause: "Callable[[], bool]",
         crc: CRC_Base,
         logger: PrintLogHistory,
         verify: int = 0,
@@ -38,6 +64,11 @@ class _AsyBaseFramChunk:
         self.size = size
         self.verify = verify
         self.verify_counter = 0
+        # crc_checks.py requires one instance per concurrent incremental (run_inc/check_inc)
+        # sequence; safe to share here because every method touching self.crc runs inside
+        # `async with self.fram as fram:`, and self.fram is one lock shared by every chunk this
+        # manager allocates - so at most one _read_chunk/_write_chunk/_clear_chunk body (on any
+        # chunk) ever runs at a time.
         self.crc = crc
         self.check_length = check_length
         self.block_addr = (base_addr, base_addr + self.size + self.crc.length() + _NUM_STATUS_BYTES)
@@ -125,6 +156,9 @@ class _AsyBaseFramChunk:
             self.pr.all("Data read successfully from block 0")
             return True
         if not match:
+            # Deliberate: no generation counter records which block is newer, so a write torn
+            # between finishing block 0 and starting block 1 leaves two self-consistent but
+            # differing copies with no safe way to pick one - reported as failure, not guessed.
             await self.pr.err_s("Both blocks valid but different data", errno=73)
             return False
         self.pr.all("Both blocks valid and data verified")
@@ -144,11 +178,11 @@ class _AsyBaseFramChunk:
     async def get_pause(self) -> bool:
         return self.mempause()
 
-    async def _read_into(self, buf: bytearray, addr: int) -> Tuple[bool, bool]:
+    async def _read_into(self, buf: bytearray, addr: int) -> tuple[bool, bool]:
         valid = True
         n_iter = 0
 
-        async def cb(bs: Tuple[int, int] | None, gs: Tuple[int, int] | None, ni: int) -> None:
+        async def cb(bs: tuple[int, int] | None, gs: tuple[int, int] | None, ni: int) -> None:
             nonlocal valid, n_iter
             n_iter = ni
             valid = valid and not (bs is None or gs is None)
@@ -157,14 +191,17 @@ class _AsyBaseFramChunk:
         valid = valid and valid_bytes == self.size and n_iter == 1
         return valid, uninit
 
-    async def _compare_with(self, buf: bytearray, addr: int) -> Tuple[bool, bool, bool]:
-        temp = bytearray(self.check_length)
+    async def _compare_with(self, buf: bytearray, addr: int) -> tuple[bool, bool, bool]:
+        try:  # check_length is a caller-supplied int (get_chunk's own param), not hardware-bounded
+            temp = bytearray(self.check_length)
+        except (MemoryError, OverflowError):
+            return False, False, False
         mvt = memoryview(temp)
         mvb = memoryview(buf)
         valid = match = True
         n_iter = 0
 
-        async def cb(bs: Tuple[int, int] | None, gs: Tuple[int, int] | None, ni: int) -> None:
+        async def cb(bs: tuple[int, int] | None, gs: tuple[int, int] | None, ni: int) -> None:
             nonlocal valid, match, n_iter, mvt, mvb
             n_iter = ni
             if bs is None or gs is None:
@@ -235,8 +272,8 @@ class _AsyBaseFramChunk:
         self,
         buf: bytearray,
         addr: int,
-        cb: Callable[[Tuple[int, int] | None, Tuple[int, int] | None, int], Coroutine[Any, Any, None]],
-    ) -> Tuple[bool, int]:
+        cb: "Callable[[tuple[int, int] | None, tuple[int, int] | None, int], Coroutine[Any, Any, None]]",
+    ) -> tuple[bool, int]:
         # callback: buf_slice, global_slice, num_iterations, return: uninitialized, crc_valid_bytes
         async with self.fram as fram:
             try:
@@ -290,8 +327,6 @@ class _AsyBaseFramChunk:
                 await self.pr.err_s("General read error in _read_chunk:", e, errno=47)
                 await cb(None, None, 0)
                 return False, 0
-        await cb(None, None, 0)
-        return False, 0
 
     async def _clear_chunk(self, addr: int) -> bool:
         async with self.fram as fram:
@@ -299,7 +334,11 @@ class _AsyBaseFramChunk:
                 # _handle_status_bytes may set err to err + 6
                 if await self._handle_status_bytes(fram, addr, _STATUS_UNINIT, False, 50) is None:
                     return False
-                res = await fram.set_values(bytearray([_STATUS_UNINIT] * (self.size + self.crc.length())), addr)
+                # bytearray(n) zero-fills directly - _STATUS_UNINIT is 0x00, so this is the same
+                # content as `[_STATUS_UNINIT] * n`, without building that list first: the [x] * n
+                # shape can segfault the interpreter uncatchably for n in the ~2**61-2**63 range
+                # (see BACKLOG.md), a class of bug bytearray(n) doesn't have.
+                res = await fram.set_values(bytearray(self.size + self.crc.length()), addr)
                 if not res:
                     await self.pr.err_s("FRAM write failed in _clear_chunk!", errno=57)
                     return False
@@ -326,7 +365,7 @@ class AsyFramChunk(_AsyBaseFramChunk):
         fram: FRAM_SPI,
         base_addr: int,
         size: int,
-        mempause: Callable[[], bool],
+        mempause: "Callable[[], bool]",
         crc: CRC_Base,
         logger: PrintLogHistory,
         verify: int = 0,
@@ -346,7 +385,8 @@ class AsyFramChunk(_AsyBaseFramChunk):
         if databuf is None:
             return False
         if len(data) > len(databuf):
-            await self.pr.err_s("Data size", len(data), "larger than buffer size", len(databuf), "!", errno=80)
+            # 84, not 80: 80 is _AsyBaseFramChunk.clear()'s own errno, sharing this chunk's logger
+            await self.pr.err_s("Data size", len(data), "larger than buffer size", len(databuf), "!", errno=84)
             return False
         databuf[0 : len(data)] = data
         del data  # free memory after using preallocated buffer
@@ -396,8 +436,8 @@ class AsyFramTimestampedChunk(_AsyBaseFramChunk):
         fram: FRAM_SPI,
         base_addr: int,
         size: int,
-        mempause: Callable[[], bool],
-        ntp_sync_callback: Callable[[], Coroutine[Any, Any, bool]],
+        mempause: "Callable[[], bool]",
+        ntp_sync_callback: "Callable[[], Coroutine[Any, Any, bool]]",
         crc: CRC_Base,
         logger: PrintLogHistory,
         verify: int = 0,
@@ -425,7 +465,7 @@ class AsyFramTimestampedChunk(_AsyBaseFramChunk):
 
     async def write(
         self, data: bytes | bytearray, require_ntp: bool = False, override_pause: bool = False
-    ) -> Tuple[bool, int | None, bool]:
+    ) -> tuple[bool, int | None, bool]:
         buf = self.get_buffer()  # preallocate buffer for payload and crc length
         dbuf = buf.get_data_buf()
         if dbuf is None:
@@ -442,13 +482,22 @@ class AsyFramTimestampedChunk(_AsyBaseFramChunk):
         buf: AsyFramChunkTimestampedBuffer,
         require_ntp: bool = False,
         override_pause: bool = False,
-    ) -> Tuple[bool, int | None, bool]:
-        ntp_synced = await self.ntp_sync_callback()
+    ) -> tuple[bool, int | None, bool]:
+        try:  # caller-supplied callback (async_connect.py, not itself promoted/audited) - could legitimately misbehave
+            ntp_synced = await self.ntp_sync_callback()
+        except Exception as e:
+            await self.pr.err_s("NTP sync callback failed:", e, errno=85)
+            ntp_synced = False
         utc = _TS_UNINIT[0]
         if ntp_synced:
-            utc = time.mktime(time.gmtime())  # type: ignore[call-arg]
-            self.pr.evt("FRAM write timestamp is valid")
-        else:
+            try:
+                utc = time.mktime(time.gmtime())  # type: ignore[call-arg]
+                self.pr.evt("FRAM write timestamp is valid")
+            except (OverflowError, OSError) as e:  # rp2's mktime() raises OverflowError past its ~2037 32-bit epoch range
+                await self.pr.err_s("Computing write timestamp failed:", e, errno=86)
+                utc = _TS_UNINIT[0]
+                ntp_synced = False
+        if not ntp_synced:
             self.pr.evt("FRAM write timestamp not valid")
             if require_ntp:
                 return False, None, False
@@ -466,7 +515,7 @@ class AsyFramTimestampedChunk(_AsyBaseFramChunk):
         res = await self._write(bbuf, override_pause=override_pause)
         return ntp_synced, utc, res
 
-    async def read(self, override_pause: bool = False) -> Tuple[int | None, int | None, bytearray | None]:
+    async def read(self, override_pause: bool = False) -> tuple[int | None, int | None, bytearray | None]:
         buf = self.get_buffer()  # preallocate buffer for payload and crc length
         valid, ts, age = await self.read_into(buf, override_pause=override_pause)
         if not valid:
@@ -478,7 +527,7 @@ class AsyFramTimestampedChunk(_AsyBaseFramChunk):
 
     async def read_into(
         self, buf: AsyFramChunkTimestampedBuffer, override_pause: bool = False
-    ) -> Tuple[bool, int | None, int | None]:
+    ) -> tuple[bool, int | None, int | None]:
         bbuf = buf.get_buf()
         if bbuf is None:
             return False, None, None
@@ -497,10 +546,17 @@ class AsyFramTimestampedChunk(_AsyBaseFramChunk):
             ts = None
         else:
             self.pr.evt("FRAM read data timestamp is valid")
-            ntp_synced = await self.ntp_sync_callback()
+            try:  # caller-supplied callback (async_connect.py, not itself promoted/audited) - could legitimately misbehave
+                ntp_synced = await self.ntp_sync_callback()
+            except Exception as e:
+                await self.pr.err_s("NTP sync callback failed:", e, errno=87)
+                ntp_synced = False
             if ntp_synced:
-                self.pr.evt("FRAM read current time is valid")
-                age = time.mktime(time.gmtime()) - ts  # type: ignore[call-arg]
+                try:
+                    age = time.mktime(time.gmtime()) - ts  # type: ignore[call-arg]
+                    self.pr.evt("FRAM read current time is valid")
+                except (OverflowError, OSError) as e:  # rp2's mktime() raises OverflowError past its ~2037 32-bit epoch range
+                    await self.pr.err_s("Computing read age failed:", e, errno=88)
         return True, ts, age
 
 
@@ -523,7 +579,7 @@ class AsyFramManager:
             return False
         return True
 
-    async def get_error_counter(self) -> Dict[str, Dict[str, int | List[int] | List[str]]]:
+    async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
         return await self.pr.get_log("FRAM")
 
     async def reset_error_counter(self) -> None:
@@ -573,7 +629,7 @@ class AsyFramManager:
     def get_timestamped_chunk(
         self,
         size: int,
-        ntp_sync_callback: Callable[[], Coroutine[Any, Any, bool]],
+        ntp_sync_callback: "Callable[[], Coroutine[Any, Any, bool]]",
         crc: CRC_Base | None = None,
         verify: int = 0,
         check_length: int = 8,
