@@ -1414,6 +1414,396 @@ def test_get_chunk_zero_size_still_needs_status_byte_overhead_at_the_capacity_bo
     assert manager.get_chunk(0, crc=CRC_Pass()) is None
 
 
+# ---------------------------------------------------------------------------
+# Remaining reachable coverage gaps - each isolates one specific untested branch
+# ---------------------------------------------------------------------------
+
+
+def test_write_fails_cleanly_when_block_1s_write_itself_fails() -> None:
+    # _write()'s own block-1-write-failure path, distinct from block 0's (different errno) -
+    # isolated the same way the self-heal write-failure tests are, by patching _write_chunk
+    # per-address so only block 1's own write call fails.
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(4, crc=CRC8())
+    assert chunk is not None
+    _addr0, addr1 = chunk.block_addr
+    original_write_chunk = chunk._write_chunk
+
+    async def failing_write_chunk(buf: bytearray, addr: int) -> bool:
+        if addr == addr1:
+            return False
+        return await original_write_chunk(buf, addr)
+
+    chunk._write_chunk = failing_write_chunk  # type: ignore[method-assign]
+
+    async def scenario() -> tuple[bool, dict]:
+        ok = await chunk.write(b"data")
+        errs = await manager.get_error_counter()
+        return ok, errs
+
+    ok, errs = run(scenario())
+    assert ok is False
+    assert 62 in errs["FRAM"]["ErrNum"]  # _write(): "Writing block 1 failed!"
+
+
+def test_read_self_heals_block_1_when_it_reads_back_as_uninitialized() -> None:
+    # Mirrors the corrupted-block-1 self-heal tests, but for the "never written" case (both status
+    # bytes UNINIT, not corrupted) rather than invalid data - a distinct branch (_read()'s own
+    # uninit=True path) previously unexercised.
+    manager, chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    assert chunk is not None
+    run(chunk.write(b"good"))
+    _addr0, addr1 = chunk.block_addr
+    chip.memory[addr1 + 4] = _STATUS_UNINIT
+    chip.memory[addr1 + 5] = _STATUS_UNINIT
+
+    async def scenario() -> bytearray | None:
+        return await chunk.read()
+
+    result = run(scenario())
+    assert result == bytearray(b"good")  # block 0 stays authoritative
+    assert bytes(chip.memory[addr1 : addr1 + 4]) == b"good"  # block 1 healed from it
+    assert chip.memory[addr1 + 4] == _STATUS_IDLE  # healed to IDLE, not left UNINIT
+
+
+def test_handle_status_bytes_fails_cleanly_when_only_the_second_byte_write_fails() -> None:
+    # _set_check_sb's two calls (status byte 1, then byte 2) were previously only ever exercised
+    # failing on byte 1 - byte 2 failing on its own needs an address-selective patch on
+    # set_values() itself, since both bytes normally succeed or fail together under drop_wren.
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    assert chunk is not None
+    addr0, _addr1 = chunk.block_addr
+    byte2_addr = addr0 + chunk.size + chunk.crc.length() + 1
+    original_set_values = chunk.fram.set_values
+
+    async def failing_set_values(buf: bytes | bytearray | memoryview, addr_start: int) -> bool:
+        if addr_start == byte2_addr:
+            return False
+        return await original_set_values(buf, addr_start)
+
+    chunk.fram.set_values = failing_set_values  # type: ignore[method-assign]
+
+    async def scenario() -> tuple[bool, dict]:
+        ok = await chunk.write(b"data")
+        errs = await manager.get_error_counter()
+        return ok, errs
+
+    ok, errs = run(scenario())
+    assert ok is False
+    assert 11 in errs["FRAM"]["ErrNum"]  # _set_check_sb: "Write status byte failed!" for byte 2 (10+1)
+
+
+def test_write_chunk_fails_cleanly_when_crc_computation_itself_fails() -> None:
+    # add_into() returning None (a real, if rare, CRC-computation failure) - the CRC objects in
+    # normal use never fail on a well-formed buffer, so this patches the chunk's own crc instance
+    # directly rather than contriving a real failing computation.
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(4, crc=CRC8())
+    assert chunk is not None
+
+    async def failing_add_into(buffer: bytearray, size: int, start: int = 0, init: int | None = None) -> int | None:
+        return None
+
+    chunk.crc.add_into = failing_add_into  # type: ignore[method-assign]
+
+    async def scenario() -> tuple[bool, dict]:
+        ok = await chunk.write(b"data")
+        errs = await manager.get_error_counter()
+        return ok, errs
+
+    ok, errs = run(scenario())
+    assert ok is False
+    assert 17 in errs["FRAM"]["ErrNum"]  # _write_chunk: "CRC computation failed!"
+
+
+def test_write_chunk_fails_cleanly_when_the_payload_write_itself_fails() -> None:
+    # The payload set_values() call sits at a different address than the status-byte writes
+    # around it - forcing it to fail in isolation needed its own address-selective patch.
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(4, crc=CRC8())
+    assert chunk is not None
+    addr0, _addr1 = chunk.block_addr
+    original_set_values = chunk.fram.set_values
+
+    async def failing_set_values(buf: bytes | bytearray | memoryview, addr_start: int) -> bool:
+        if addr_start == addr0:
+            return False
+        return await original_set_values(buf, addr_start)
+
+    chunk.fram.set_values = failing_set_values  # type: ignore[method-assign]
+
+    async def scenario() -> tuple[bool, dict]:
+        ok = await chunk.write(b"data")
+        errs = await manager.get_error_counter()
+        return ok, errs
+
+    ok, errs = run(scenario())
+    assert ok is False
+    assert 18 in errs["FRAM"]["ErrNum"]  # _write_chunk: "_write_chunk failed!" (the payload write)
+
+
+def test_read_chunk_self_heals_from_block_1_when_block_0s_payload_read_itself_fails() -> None:
+    # A genuine FRAM communication failure on the payload read (distinct from status-byte or
+    # CRC-level corruption) needed its own address-selective patch on get_values() to isolate,
+    # since block 0's status-byte reads use a different address entirely.
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(4, crc=CRC8())
+    assert chunk is not None
+    run(chunk.write(b"good"))
+    addr0, _addr1 = chunk.block_addr
+    original_get_values = chunk.fram.get_values
+
+    async def failing_get_values(buf: bytearray | memoryview, addr_start: int = 0) -> bool:
+        if addr_start == addr0:
+            return False
+        return await original_get_values(buf, addr_start)
+
+    chunk.fram.get_values = failing_get_values  # type: ignore[method-assign]
+
+    async def scenario() -> tuple[bytearray | None, dict]:
+        result = await chunk.read()
+        errs = await manager.get_error_counter()
+        return result, errs
+
+    result, errs = run(scenario())
+    assert result == bytearray(b"good")  # self-heals from block 1
+    assert 37 in errs["FRAM"]["ErrNum"]  # _read_chunk: "FRAM read error in _read_chunk!"
+
+
+def test_read_chunk_fails_cleanly_when_incremental_crc_update_itself_fails() -> None:
+    # run_inc() returning False mid-stream (distinct from the final check_inc() CRC-mismatch case)
+    # was never exercised - patches the chunk's own crc instance the same way as the add_into test.
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(4, crc=CRC8())
+    assert chunk is not None
+    run(chunk.write(b"good"))
+
+    async def failing_run_inc(bytearr: bytearray | memoryview, init: int | None = None) -> bool:
+        return False
+
+    chunk.crc.run_inc = failing_run_inc  # type: ignore[method-assign]
+
+    async def scenario() -> tuple[bytearray | None, dict]:
+        result = await chunk.read()
+        errs = await manager.get_error_counter()
+        return result, errs
+
+    result, errs = run(scenario())
+    assert result is None  # both blocks share the same patched crc, so neither can self-heal
+    assert 38 in errs["FRAM"]["ErrNum"]  # _read_chunk: "Incremental CRC failed in _read_chunk!"
+
+
+def test_read_chunk_fails_cleanly_when_the_final_idle_status_write_itself_fails() -> None:
+    # The read-idle-set step (after a successful streaming read) has its own "write status byte
+    # failed" branch - reaching it specifically after a full successful read (not the busy-set at
+    # the start of the same read, which writes the *same* status-byte address) needs a call
+    # counter, not just an address match: the 1st write to this address is the busy-set, the 2nd
+    # is the idle-set this test targets.
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(4, crc=CRC8())
+    assert chunk is not None
+    run(chunk.write(b"good"))
+    addr0, _addr1 = chunk.block_addr
+    status_byte1_addr = addr0 + chunk.size + chunk.crc.length()
+    original_set_values = chunk.fram.set_values
+    call_count = 0
+
+    async def failing_set_values(buf: bytes | bytearray | memoryview, addr_start: int) -> bool:
+        nonlocal call_count
+        if addr_start == status_byte1_addr:
+            call_count += 1
+            if call_count == 2:
+                return False
+        return await original_set_values(buf, addr_start)
+
+    chunk.fram.set_values = failing_set_values  # type: ignore[method-assign]
+
+    async def scenario() -> tuple[bytearray | None, dict]:
+        result = await chunk.read()
+        errs = await manager.get_error_counter()
+        return result, errs
+
+    result, errs = run(scenario())
+    assert result == bytearray(b"good")  # self-heals from block 1 (block 0's own heal-write succeeds too)
+    assert 39 in errs["FRAM"]["ErrNum"]  # _read_chunk: read-idle-set "write status byte failed"
+
+
+def test_clear_chunk_fails_cleanly_when_the_data_wipe_write_itself_fails() -> None:
+    # The data-wipe set_values() call is distinct from clear()'s own status-byte write around it.
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(4, crc=CRC8())
+    assert chunk is not None
+    run(chunk.write(b"good"))
+    addr0, _addr1 = chunk.block_addr
+    original_set_values = chunk.fram.set_values
+
+    async def failing_set_values(buf: bytes | bytearray | memoryview, addr_start: int) -> bool:
+        if addr_start == addr0:
+            return False
+        return await original_set_values(buf, addr_start)
+
+    chunk.fram.set_values = failing_set_values  # type: ignore[method-assign]
+
+    async def scenario() -> tuple[bool, dict]:
+        ok = await chunk.clear()
+        errs = await manager.get_error_counter()
+        return ok, errs
+
+    ok, errs = run(scenario())
+    assert ok is False
+    assert 57 in errs["FRAM"]["ErrNum"]  # _clear_chunk: "FRAM write failed in _clear_chunk!"
+
+
+def test_write_into_called_directly_with_an_unallocated_buffer_returns_false() -> None:
+    # write_into()'s own guard, only reachable when called directly (bypassing write()'s own
+    # pre-check) - the real production call shape print_log.py's PrintLogHistoryStore actually uses.
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(-4, crc=CRC_Pass())  # negative size - buffer allocation fails
+    assert chunk is not None
+    buf = chunk.get_buffer()
+
+    async def scenario() -> bool:
+        return await chunk.write_into(buf)
+
+    assert run(scenario()) is False
+
+
+def test_timestamped_write_returns_false_tuple_for_a_negative_size_chunk() -> None:
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_timestamped_chunk(-4, _synced, crc=CRC_Pass())
+    assert chunk is not None
+
+    async def scenario() -> tuple[bool, int | None, bool]:
+        return await chunk.write(b"data")
+
+    assert run(scenario()) == (False, None, False)
+
+
+def test_timestamped_write_data_larger_than_buffer_fails_with_errno_81() -> None:
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_timestamped_chunk(2, _synced, crc=CRC_Pass())
+    assert chunk is not None
+
+    async def scenario() -> tuple[tuple[bool, int | None, bool], dict]:
+        result = await chunk.write(b"toolong")
+        errs = await manager.get_error_counter()
+        return result, errs
+
+    result, errs = run(scenario())
+    assert result == (False, None, False)
+    assert 81 in errs["FRAM"]["ErrNum"]
+
+
+def test_timestamped_write_into_called_directly_with_an_unallocated_buffer_returns_false() -> None:
+    # Same direct-call shape as the plain chunk's own write_into() test above, for the timestamped
+    # variant's tbuf-None guard (also exercises get_ts_buf()'s own None-check as a side effect).
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_timestamped_chunk(-4, _synced, crc=CRC_Pass())
+    assert chunk is not None
+    buf = chunk.get_buffer()
+
+    async def scenario() -> tuple[bool, int | None, bool]:
+        return await chunk.write_into(buf)
+
+    assert run(scenario()) == (False, None, False)
+
+
+def test_timestamped_read_returns_none_tuple_for_a_negative_size_chunk() -> None:
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_timestamped_chunk(-4, _synced, crc=CRC_Pass())
+    assert chunk is not None
+
+    async def scenario() -> tuple[int | None, int | None, bytearray | None]:
+        return await chunk.read()
+
+    assert run(scenario()) == (None, None, None)
+
+
+def test_timestamped_read_ntp_callback_failure_during_age_computation_is_caught() -> None:
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_timestamped_chunk(4, _synced, crc=CRC_Pass())
+    assert chunk is not None
+    run(chunk.write(b"data"))
+    chunk.ntp_sync_callback = _raising_callback  # swap for the read-side NTP check only
+
+    async def scenario() -> tuple[int | None, int | None, bytearray | None]:
+        return await chunk.read()
+
+    ts, age, data = run(scenario())
+    assert ts is not None  # timestamp itself decoded fine
+    assert age is None  # NTP check failed, so age can't be computed
+    assert data == bytearray(b"data")
+
+
+def test_timestamped_read_age_computation_overflow_degrades_cleanly() -> None:
+    # Mirrors test_mktime_overflow_degrades_to_uninit_timestamp_instead_of_propagating, but for
+    # read_into()'s own age computation rather than write_into()'s timestamp computation.
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_timestamped_chunk(4, _synced, crc=CRC_Pass())
+    assert chunk is not None
+    run(chunk.write(b"data"))  # real timestamp via real time, so read() has a valid ts to age
+
+    class _OverflowingTime:
+        @staticmethod
+        def gmtime() -> tuple[int, ...]:
+            return (2038, 1, 1, 0, 0, 0, 0, 1)
+
+        @staticmethod
+        def mktime(_t: tuple[int, ...]) -> int:
+            raise OverflowError("simulated rp2 epoch overflow")
+
+    original_time = asy_fram_manager.time
+    asy_fram_manager.time = _OverflowingTime  # type: ignore[assignment]
+    try:
+
+        async def scenario() -> tuple[int | None, int | None, bytearray | None]:
+            return await chunk.read()
+
+        ts, age, data = run(scenario())
+    finally:
+        asy_fram_manager.time = original_time
+
+    assert ts is not None  # timestamp itself decoded fine
+    assert age is None  # age computation failed cleanly, not propagated
+    assert data == bytearray(b"data")
+
+
+def test_manager_reset_error_counter_clears_history() -> None:
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    assert chunk is not None
+
+    async def scenario() -> tuple[dict, dict]:
+        await chunk.write(b"toolongdata")  # errno=84, oversized - just to populate some history
+        before = await manager.get_error_counter()
+        await manager.reset_error_counter()
+        after = await manager.get_error_counter()
+        return before, after
+
+    before, after = run(scenario())
+    assert before["FRAM"]["ErrCount"] > 0
+    assert after["FRAM"]["ErrCount"] == 0
+
+
 if __name__ == "__main__":
     import microtest
 
