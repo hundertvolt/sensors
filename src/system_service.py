@@ -21,7 +21,7 @@ from machine import bootloader as system_bootloader
 from machine import reset as system_reset
 from micropython import const
 
-from base_classes import LockedCounter, LockedValue
+from base_classes import LockedCounter
 from print_log import PrintLogHistory, PrintLogHistoryStore
 
 try:
@@ -70,7 +70,9 @@ class SystemService:
         self.storage_timer = Timer()
         self.ntp_is_synced = asy_ntp_callback
         self.start_time_set = False
-        self.boot_signature = LockedValue(1)
+        # None until status_counter() resolves it (observers watch for None -> a real value, then
+        # for that value changing, as the reboot signal - never re-resolved once set, see below).
+        self.boot_signature = LockedCounter(init_value=None, max_val=0xFFFFFFFF)
         self.watchdog = watchdog
         # Set only if a reboot's own reset_timer.init() couldn't be armed (alarm-pool exhaustion) -
         # start_and_check_tasks() then stops feeding the watchdog so it resets us anyway, the same
@@ -143,10 +145,11 @@ class SystemService:
         value = await self.uptime.get_value()  # never None: only ever set_value(0)/increment(), never a None sentinel
         return 0 if value is None else value
 
-    async def get_boot_signature(self) -> int:
-        # unique number: UTC timestamp if NTP synced, random number otherwise after _NTP_WAIT_TIME
-        res = await self.boot_signature.get_value()
-        return int(res)
+    async def get_boot_signature(self) -> int | None:
+        # None until resolved (observer-facing "not ready yet", distinct from any real value);
+        # then a UTC timestamp if NTP synced, random number otherwise after _NTP_WAIT_TIME - stable
+        # for the rest of this boot either way, so a change always means a reboot happened.
+        return await self.boot_signature.get_value()
 
     async def _ntp_boot_signature(self) -> int | None:
         # None: not synced yet, or the sync callback/timestamp computation itself failed - caller
@@ -166,7 +169,7 @@ class SystemService:
 
     async def status_counter(self) -> None:
         await self.uptime.set_value(0)
-        await self.boot_signature.set_value(-1)
+        await self.boot_signature.set_value(None)
         while True:
             await self.uptime_event.wait()
             uptime = await self.uptime.increment()
@@ -179,6 +182,9 @@ class SystemService:
                 self.pr.one("System boot signature set by NTP.")
                 self.start_time_set = True
             elif uptime >= _NTP_WAIT_TIME:
+                # random auto-seeds from get_rand_32() on first use (confirmed against rp2's
+                # mpconfigport.h + pico-sdk's pico_rand), backed by real ring-oscillator entropy on
+                # RP2040 - a genuine per-boot-unique fallback, not a fixed or repeatable seed.
                 await self.boot_signature.set_value(random.getrandbits(32))
                 self.pr.one("System boot signature set by random number.")
                 self.start_time_set = True

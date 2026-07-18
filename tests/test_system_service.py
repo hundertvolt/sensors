@@ -158,7 +158,7 @@ def test_get_uptime_initial_value_is_zero_before_status_counter_runs() -> None:
 
 def test_get_boot_signature_initial_value_before_status_counter_runs() -> None:
     svc = make_service()
-    assert run(svc.get_boot_signature()) == 1  # LockedValue(1)'s own constructor default
+    assert run(svc.get_boot_signature()) is None  # LockedCounter(init_value=None)'s own default
 
 
 # ---------------------------------------------------------------------------
@@ -243,7 +243,7 @@ def test_status_counter_sets_boot_signature_via_ntp_once_synced() -> None:
     ntp, _calls = make_ntp_stub(synced=True)
     svc = make_service(ntp)
 
-    async def scenario() -> "tuple[bool, int]":
+    async def scenario() -> "tuple[bool, int | None]":
         task = asyncio.create_task(svc.status_counter())
         await _pump(svc.uptime_event, 1)
         signature = await svc.get_boot_signature()
@@ -256,6 +256,7 @@ def test_status_counter_sets_boot_signature_via_ntp_once_synced() -> None:
 
     start_time_set, signature = run(scenario())
     assert start_time_set is True
+    assert signature is not None
     assert signature > 1_700_000_000
 
 
@@ -263,7 +264,7 @@ def test_status_counter_before_wait_time_never_synced_leaves_boot_signature_unre
     ntp, _calls = make_ntp_stub(synced=False)
     svc = make_service(ntp)
 
-    async def scenario() -> "tuple[bool, int]":
+    async def scenario() -> "tuple[bool, int | None]":
         task = asyncio.create_task(svc.status_counter())
         await _pump(svc.uptime_event, 5)  # well below _NTP_WAIT_TIME (120)
         signature = await svc.get_boot_signature()
@@ -276,14 +277,14 @@ def test_status_counter_before_wait_time_never_synced_leaves_boot_signature_unre
 
     start_time_set, signature = run(scenario())
     assert start_time_set is False
-    assert signature == -1  # status_counter's own "not yet resolved" sentinel
+    assert signature is None  # status_counter's own "not yet resolved" sentinel
 
 
 def test_status_counter_falls_back_to_random_after_wait_time_when_never_synced() -> None:
     ntp, _calls = make_ntp_stub(synced=False)
     svc = make_service(ntp)
 
-    async def scenario() -> "tuple[bool, int]":
+    async def scenario() -> "tuple[bool, int | None]":
         task = asyncio.create_task(svc.status_counter())
         await _pump(svc.uptime_event, 120)  # exactly _NTP_WAIT_TIME - boundary is accepted, not rejected
         signature = await svc.get_boot_signature()
@@ -296,14 +297,14 @@ def test_status_counter_falls_back_to_random_after_wait_time_when_never_synced()
 
     start_time_set, signature = run(scenario())
     assert start_time_set is True
-    assert signature != -1
+    assert signature is not None
 
 
 def test_status_counter_callback_exception_is_treated_as_not_synced_and_still_falls_back() -> None:
     ntp, calls = make_ntp_stub(raise_exc=RuntimeError("ntp callback exploded"))
     svc = make_service(ntp)
 
-    async def scenario() -> "tuple[bool, int]":
+    async def scenario() -> "tuple[bool, int | None]":
         task = asyncio.create_task(svc.status_counter())
         await _pump(svc.uptime_event, 120)
         signature = await svc.get_boot_signature()
@@ -316,7 +317,7 @@ def test_status_counter_callback_exception_is_treated_as_not_synced_and_still_fa
 
     start_time_set, signature = run(scenario())
     assert start_time_set is True
-    assert signature != -1
+    assert signature is not None
     assert calls[0] == 120  # every tick retried the callback until the wait-time fallback resolved it
     assert svc.pr.err_count == 120  # each retry logged its own failure - bounded by print_log.py's own history/count caps
 
@@ -336,6 +337,31 @@ def test_status_counter_stops_checking_ntp_once_start_time_is_set() -> None:
         return calls[0]
 
     assert run(scenario()) == 1  # resolved on tick 1, never rechecked on ticks 2-4
+
+
+def test_status_counter_boot_signature_never_changes_again_once_resolved() -> None:
+    # The whole point of the resolve-once design: an outside observer watches get_boot_signature()
+    # for a change to detect a reboot, so the value must stay perfectly stable for the rest of this
+    # boot once resolved - never re-picked, never "upgraded" from random to NTP or vice versa.
+    ntp, _calls = make_ntp_stub(synced=True)
+    svc = make_service(ntp)
+
+    async def scenario() -> "list[int | None]":
+        task = asyncio.create_task(svc.status_counter())
+        await _pump(svc.uptime_event, 1)
+        seen = [await svc.get_boot_signature()]
+        await _pump(svc.uptime_event, 10)
+        seen.append(await svc.get_boot_signature())
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        return seen
+
+    first, second = run(scenario())
+    assert first is not None
+    assert first == second  # unchanged across 10 further ticks - no spurious "reboot" signal
 
 
 # ---------------------------------------------------------------------------

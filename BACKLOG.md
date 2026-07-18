@@ -985,6 +985,64 @@ mutates the real attribute at runtime). Confirmed directly with a minimal repro 
 two asserts plus a mutating call in between. Fixed by dropping the redundant "before" assertion
 (the "after" assertion is what the test actually needs) rather than fighting the narrower.
 
+#### Third pass: boot signature's `-1`/`1` sentinel replaced with `None` (owner-confirmed design)
+
+A further review flagged `get_boot_signature()`'s bare-`int`-with-`-1`/`1`-sentinel contract as a
+discussion point (see the second-pass entry above). Owner clarified the actual design intent, which
+this codebase-review process hadn't previously had recorded anywhere: **the field exists purely so
+an outside observer can detect that *this* device rebooted**, by polling and watching for the value
+to change once it's left its "not ready yet" state - not for cross-device correlation, and not as a
+real timestamp (the NTP-vs-random ambiguity flagged in the second pass doesn't matter for this use).
+The `-1` sentinel's job was specifically to let that observer distinguish "uninitialized" from
+"valid, now watch for changes" - a deliberate, load-bearing design detail, not an oversight.
+
+This ruled out the second pass's own first suggestion (seed a random value immediately at boot,
+then possibly overwrite it with the NTP timestamp once resolved): owner correctly pointed out that
+overwriting a provisional random value with a timestamp *is itself an observable change*, which
+would look exactly like a spurious reboot to the observer. The existing resolve-once logic (NTP if
+it arrives in time, else a random fallback after `_NTP_WAIT_TIME`, latched via `start_time_set` and
+never revisited) was already correct for this purpose - only the sentinel's *representation*
+needed to change, not the resolution logic itself.
+
+Fix: `self.boot_signature` moved from `LockedValue(1)` to `LockedCounter(init_value=None,
+max_val=0xFFFFFFFF)` - reusing the exact same class and `max_val` already used for `self.uptime`
+rather than adding a new primitive, since `LockedCounter` already has the needed "`None` = not yet
+resolved, otherwise clamped into range" behavior built in and tested (`increment()`/`decrement()`
+now go unused for this field, which is harmless). `status_counter()`'s initial
+`set_value(-1)` became `set_value(None)`; `get_boot_signature()` simplified from a cast-returning
+`-> int` to `-> int | None`, dropping the now-unnecessary `int(res)` cast entirely. `None` needs no
+special handling to "propagate through the JSON API" (owner's own requirement) - it's Python's/
+JSON's native "no value" representation (`null`), unlike the old sentinel which shared the plain
+`int` type with real signatures.
+
+Before finalizing, the owner raised a sharper version of the same concern from a different angle:
+could `random.getrandbits(32)`'s *seed itself* be predictable/repeating across reboots (a pattern
+seen on some platforms/configs), defeating the fallback's own uniqueness? Verified directly against
+real source rather than assumed: `ports/rp2/mpconfigport.h` sets `MICROPY_PY_RANDOM_SEED_INIT_FUNC
+(get_rand_32())` and rp2's ROM level makes `MICROPY_MODULE_BUILTIN_INIT` true, so MicroPython's
+`random` module auto-seeds from `get_rand_32()` on first import, every boot - it does not fall back
+to `extmod/modrandom.c`'s fixed compile-time constants (`0xeda4baba`/`69`/`233`), which is the
+actual failure mode being worried about, on a port that doesn't wire up that seed function. Pico
+SDK's `pico_rand` (`get_rand_32()`'s real implementation) seeds its own 128-bit PRNG state primarily
+from the Ring Oscillator's physical "random bit" (`PICO_RAND_ENTROPY_SRC_ROSC`, default-on on
+RP2040 since it has no hardware TRNG - that's RP2350-only), mixed with a hash of leftover RAM
+content and the microsecond timer - genuine physical entropy, not a deterministic function of
+uptime-since-power-on alone. Confirmed as a real, sourced fact and cited directly in a code comment
+at the call site, not left as an assumption. (Separately explained for the owner: *if* the seed
+really were fixed, the failure mode isn't "low odds of a repeat" - a fixed seed with the same call
+sequence produces the exact same first draw with 100% certainty, since there's no entropy at all in
+that hypothetical; contrast the real, properly-seeded case, where the odds of two *consecutive*
+32-bit draws coinciding are 1-in-2³² ≈ 1-in-4.29-billion - a simple pairwise check, not a
+birthday-paradox calculation, since only consecutive values matter for this observer's purpose.)
+
+New test: `test_status_counter_boot_signature_never_changes_again_once_resolved` - proves the
+signature stays byte-for-byte identical across many further ticks post-resolution, the specific
+property this whole design depends on (a change ⟺ a reboot, never a false positive from internal
+resolution). The four existing `status_counter()` tests checking the sentinel value were updated
+from `== -1`/`!= -1` to `is None`/`is not None`, plus their `scenario()` return-type annotations
+from `tuple[bool, int]` to `tuple[bool, int | None]`. Suite now 50 tests / 95% coverage (unchanged -
+the 9 remaining misses are still exactly the same documented tracer artifacts).
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
@@ -1000,7 +1058,7 @@ and a missing config file failing independently without either derailing the oth
 
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
-`asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 49 — **681 total**.
+`asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 50 — **682 total**.
 
 ## Decided for the refactor
 
