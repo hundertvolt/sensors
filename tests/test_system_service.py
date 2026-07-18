@@ -88,6 +88,19 @@ class _FastAsyncSleep:
         asyncio.sleep = self._real_sleep
 
 
+class _RaiseOnArm:
+    # Toggles tests/machine.py's Timer.raise_on_arm (a shared class attribute, not per-instance) for
+    # the duration of the `with` block - simulates real rp2 alarm-pool exhaustion (OSError(ENOMEM)
+    # from Timer.init()/a full Timer(period=..., ...) construction), restoring it on exit regardless
+    # of how the block exits.
+    def __enter__(self) -> "_RaiseOnArm":
+        Timer.raise_on_arm = True
+        return self
+
+    def __exit__(self, *exc_info: "Any") -> None:
+        Timer.raise_on_arm = False
+
+
 # ---------------------------------------------------------------------------
 # __init__
 # ---------------------------------------------------------------------------
@@ -391,6 +404,25 @@ def test_timer_sequencer_starter_exception_is_logged_and_sequencing_continues() 
     assert run(scenario())  # must not raise despite bad_starter's exception
 
 
+def test_timer_sequencer_cannot_arm_next_step_still_unblocks_start_timers() -> None:
+    # Real rp2 Timer(period=..., ...) can raise OSError(ENOMEM) under alarm-pool exhaustion
+    # (confirmed against ports/rp2/machine_timer.c) - without this fallback, start_timers()'s own
+    # `await self.timers_running.wait()` would hang forever since nothing would ever call `.set()`.
+    svc = make_service()
+    Timer.all_timers.clear()
+    started: list[int] = []
+    starters = [lambda: started.append(1), lambda: started.append(2)]
+
+    async def scenario() -> bool:
+        with _RaiseOnArm():
+            await svc.start_timers(starters)  # must not hang despite the chain timer failing to arm
+        return True
+
+    assert run(scenario())
+    assert started == [1]  # only the first starter ever ran - sequencing stopped, not crashed
+    assert Timer.all_timers == []  # the chain timer never actually got constructed
+
+
 # ---------------------------------------------------------------------------
 # reboot_system / reboot_bootloader / pause_permanent_storage
 # ---------------------------------------------------------------------------
@@ -424,6 +456,25 @@ def test_reboot_system_cancels_any_pending_storage_unpause_timer() -> None:
     assert svc.storage_timer.deinit_called is False
     svc.reboot_system()
     assert svc.storage_timer.deinit_called is True
+
+
+def test_reboot_system_falls_back_to_watchdog_starve_when_reset_timer_cannot_be_armed() -> None:
+    # Real rp2 Timer.init() can raise OSError(ENOMEM) under alarm-pool exhaustion (confirmed
+    # against ports/rp2/machine_timer.c) - reboot_system() must degrade instead of raising, since
+    # it's the system's own last-resort failsafe (called from start_and_check_tasks()'s give-up path).
+    svc = make_service()
+    machine.reset_count = 0
+    with _RaiseOnArm():
+        svc.reboot_system()  # must not raise despite the timer failing to arm
+    assert svc._force_watchdog_starve is True
+    assert machine.reset_count == 0  # never armed, so it can never fire on its own
+
+
+def test_reboot_bootloader_falls_back_to_watchdog_starve_when_reset_timer_cannot_be_armed() -> None:
+    svc = make_service()
+    with _RaiseOnArm():
+        svc.reboot_bootloader()  # must not raise despite the timer failing to arm
+    assert svc._force_watchdog_starve is True
 
 
 def test_reboot_bootloader_arms_reset_timer_and_fires_machine_bootloader() -> None:
@@ -487,6 +538,17 @@ def test_pause_permanent_storage_valid_duration_pauses_then_auto_unpauses_when_t
     assert svc.storage_timer.period == 60 * 1000
     svc.storage_timer.trigger()
     assert manager.get_pause() is False
+
+
+def test_pause_permanent_storage_aborts_the_pause_when_the_unpause_timer_cannot_be_armed() -> None:
+    # Real rp2 Timer.init() can raise OSError(ENOMEM) under alarm-pool exhaustion (confirmed
+    # against ports/rp2/machine_timer.c) - without this fallback, storage would be left paused
+    # forever with no way to auto-resume, worse than just failing the pause request outright.
+    manager, _chip = make_fram_manager()
+    svc = make_service(fram=manager)
+    with _RaiseOnArm():
+        svc.pause_permanent_storage(60)  # must not raise despite the timer failing to arm
+    assert manager.get_pause() is False  # aborted, not left stuck paused
 
 
 # ---------------------------------------------------------------------------
@@ -616,6 +678,36 @@ def test_start_and_check_tasks_feeds_the_watchdog_while_tasks_stay_alive() -> No
         for _ in range(10):
             await asyncio.sleep(0)
         assert wdt.feed_count >= 1
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    with _FastAsyncSleep():
+        run(scenario())
+
+
+def test_start_and_check_tasks_stops_feeding_the_watchdog_once_force_watchdog_starve_is_set() -> None:
+    # _force_watchdog_starve is set by reboot_system()/reboot_bootloader() when they can't arm
+    # their own reset timer (alarm-pool exhaustion) - the supervisor loop must then stop feeding
+    # the watchdog even while task_errors is well under _TASK_FAIL_MAX, so the hardware watchdog
+    # becomes the actual reset mechanism instead.
+    wdt = machine.WDT()
+    svc = make_service(watchdog=wdt)
+    svc._force_watchdog_starve = True
+
+    def long_lived_starter() -> "asyncio.Task[None]":
+        async def _c() -> None:
+            await asyncio.sleep(3600)
+
+        return asyncio.create_task(_c())
+
+    async def scenario() -> None:
+        task = asyncio.create_task(svc.start_and_check_tasks([long_lived_starter]))
+        for _ in range(10):
+            await asyncio.sleep(0)
+        assert wdt.feed_count == 0  # never fed despite tasks staying alive and under the fail budget
         task.cancel()
         try:
             await task

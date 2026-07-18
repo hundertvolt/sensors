@@ -72,6 +72,11 @@ class SystemService:
         self.start_time_set = False
         self.boot_signature = LockedValue(1)
         self.watchdog = watchdog
+        # Set only if a reboot's own reset_timer.init() couldn't be armed (alarm-pool exhaustion) -
+        # start_and_check_tasks() then stops feeding the watchdog so it resets us anyway, the same
+        # backstop it already relies on past _TASK_FAIL_MAX. One-way: never cleared once set, since
+        # the whole point is forcing a reset within the watchdog's own timeout.
+        self._force_watchdog_starve = False
 
     def start_asy_uptime_counter(self) -> asyncio.Task[None]:
         evtloop = asyncio.get_event_loop()
@@ -89,44 +94,50 @@ class SystemService:
     def get_timer_starters(self) -> "list[Callable[[], None]]":
         return [self.start_uptime_timer]
 
-    def reboot_system(self) -> None:
+    def _reboot(self, message: str, action: "Callable[[], None]") -> None:
         self.reset_timer.deinit()
         self.storage_timer.deinit()
-        self.pr.evt("Reboot triggered")
+        self.pr.evt(message)
         if self.storage_pause is not None:
             self.storage_pause(True)
             self.pr.evt("Storage paused")
-        self.reset_timer.init(period=_RESET_DELAY * 1000, mode=Timer.ONE_SHOT, callback=lambda b: system_reset())
+        try:
+            self.reset_timer.init(period=_RESET_DELAY * 1000, mode=Timer.ONE_SHOT, callback=lambda b: action())
+        except OSError as e:  # alarm-pool exhaustion (confirmed: ports/rp2/machine_timer.c's ENOMEM
+            # path) - can't arm the delayed reset, so fall back to the same backstop
+            # start_and_check_tasks() already relies on past _TASK_FAIL_MAX: stop feeding the
+            # watchdog and let it reset us within its own timeout instead.
+            self.pr.err("Could not arm reset timer, stopping watchdog feed instead:", e)
+            self._force_watchdog_starve = True
+
+    def reboot_system(self) -> None:
+        self._reboot("Reboot triggered", system_reset)
 
     def reboot_bootloader(self) -> None:
-        self.reset_timer.deinit()
-        self.storage_timer.deinit()
-        self.pr.evt("Reboot into bootloader triggered")
-        if self.storage_pause is not None:
-            self.storage_pause(True)
-            self.pr.evt("Storage paused")
-        self.reset_timer.init(period=_RESET_DELAY * 1000, mode=Timer.ONE_SHOT, callback=lambda b: system_bootloader())
+        self._reboot("Reboot into bootloader triggered", system_bootloader)
 
     def pause_permanent_storage(self, duration: int) -> None:
         if self.storage_pause is not None:
-            if duration <= 0:
-                duration = 0
-            elif duration > _MAX_STORAGE_PAUSE:
-                duration = _MAX_STORAGE_PAUSE
+            duration = min(max(duration, 0), _MAX_STORAGE_PAUSE)
+            self.storage_timer.deinit()
             if duration == 0:
-                self.storage_timer.deinit()
                 self.pr.evt("Storage immediately unpaused.")
                 self.storage_pause(False)
             else:
-                self.storage_timer.deinit()
                 self.pr.evt("Storage paused for", duration, "seconds.")
                 self.storage_pause(True)
                 storage_pause = self.storage_pause  # local capture: mypy can't narrow a closed-over self attribute
-                self.storage_timer.init(
-                    period=duration * 1000,
-                    mode=Timer.ONE_SHOT,
-                    callback=lambda b: storage_pause(False),
-                )
+                try:
+                    self.storage_timer.init(
+                        period=duration * 1000,
+                        mode=Timer.ONE_SHOT,
+                        callback=lambda b: storage_pause(False),
+                    )
+                except OSError as e:  # alarm-pool exhaustion (confirmed: ports/rp2/machine_timer.c's
+                    # ENOMEM path) - without the auto-unpause timer armed, storage would stay paused
+                    # forever; safer to abort the pause than risk that.
+                    self.pr.err("Could not arm auto-unpause timer, aborting pause:", e)
+                    storage_pause(False)
 
     async def get_uptime(self) -> int:
         value = await self.uptime.get_value()  # never None: only ever set_value(0)/increment(), never a None sentinel
@@ -185,15 +196,20 @@ class SystemService:
         counter += 1
         if counter < len(timers):
             delay = int(_TIMER_BASE_PERIOD / (len(timers) + 1))
-            # one delay after each start, also (virtually) for last one
-            Timer(
-                period=delay,
-                mode=Timer.ONE_SHOT,
-                callback=lambda b: self._timer_sequencer(timers, counter=counter),
-            )
-        else:
-            self.pr.one("All timers running.")
-            self.timers_running.set()
+            try:
+                # one delay after each start, also (virtually) for last one
+                Timer(
+                    period=delay,
+                    mode=Timer.ONE_SHOT,
+                    callback=lambda b: self._timer_sequencer(timers, counter=counter),
+                )
+                return
+            except OSError as e:  # alarm-pool exhaustion (confirmed: ports/rp2/machine_timer.c's
+                # ENOMEM path) - stop sequencing further timers rather than leaving start_timers()
+                # waiting on timers_running forever.
+                self.pr.err("Could not schedule the next timer starter, stopping early:", e)
+        self.pr.one("All timers running.")
+        self.timers_running.set()
 
     async def start_timers(self, timers: "list[Callable[[], None]]") -> None:
         self._timer_sequencer(timers, counter=0)
@@ -238,7 +254,7 @@ class SystemService:
                     self.pr.evt("Task Fehlerzähler reduziert auf", task_errors)
 
             if task_errors <= _TASK_FAIL_MAX:
-                if self.watchdog is not None:
+                if self.watchdog is not None and not self._force_watchdog_starve:
                     self.watchdog.feed()
             else:
                 await self.pr.err_s("Task Fehlerzähler über", _TASK_FAIL_MAX, "- Reboot ausgelöst!", errno=4)

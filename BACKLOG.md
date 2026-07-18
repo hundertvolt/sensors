@@ -920,6 +920,71 @@ real FRAM-backed integration path via `AsyFramManager`), and the task supervisor
 feed, no-watchdog, a dead task restarting, a starter that can't even start, and the full
 give-up-and-reboot path).
 
+#### Second pass: `machine.Timer`/`machine.WDT` verified directly against real rp2 source, not assumed
+
+A follow-up quality review (structure/simplification/completeness/error-handling questions, not just
+the initial promotion checklist) surfaced that the first pass never actually verified whether
+`machine.Timer`/`machine.WDT` calls can raise - it treated them as safe by assumption. Fetched
+`ports/rp2/machine_timer.c` and `ports/rp2/machine_wdt.c` directly from the v1.28.0 tag (matching
+`toolchain/versions.toml`'s pin) rather than trusting a summarized web search:
+
+- Bare `Timer()` (no args) never allocates anything - `machine_timer_make_new()` only calls the
+  init helper `if (n_args > 0 || n_kw > 0)` - confirmed safe, matches `__init__`'s three bare
+  `Timer()` calls.
+- `Timer.deinit()` is safe unconditionally, any prior state (checks `alarm_id != ALARM_ID_INVALID`
+  before cancelling) - confirmed safe, matches the unconditional `deinit()` calls already in
+  `reboot_system()`/`reboot_bootloader()`.
+- **`Timer.init()` (and any full `Timer(period=..., callback=...)` construction) calls
+  `alarm_pool_add_alarm_in_us()` and raises `OSError(MP_ENOMEM)` if the alarm pool is exhausted** -
+  a real, confirmed raise path, not hypothetical. This was unguarded in three places:
+  - `_timer_sequencer()`'s own chained `Timer(...)` call (schedules the next startup step) - since
+    this runs inside a Timer IRQ callback, MicroPython's own `mp_irq_dispatch()` swallows an
+    uncaught exception silently and never re-fires that timer, meaning `timers_running` would never
+    get `.set()` and `start_timers()` would hang forever. Fixed: wrapped in `try`/`except OSError`,
+    falls through to `self.timers_running.set()` on failure instead of leaving the caller hanging.
+  - `pause_permanent_storage()`'s auto-unpause `.init()` call - if this raises, storage stays paused
+    with no way to auto-resume. Fixed: catches `OSError` and immediately undoes the pause
+    (`storage_pause(False)`) rather than leaving it stuck.
+  - `reboot_system()`/`reboot_bootloader()`'s `.init()` call - if this raises, it propagates
+    uncaught, including through `start_and_check_tasks()`'s own give-up-and-reboot path, meaning
+    the system's last-resort failsafe could itself crash instead of rebooting. Fixed (owner-
+    confirmed: reuse the *existing* stop-feeding-the-watchdog mechanism, not a new one): a new
+    `self._force_watchdog_starve` flag, set on this failure, checked alongside the existing
+    `task_errors <= _TASK_FAIL_MAX` condition in `start_and_check_tasks()`'s feed step - once set,
+    the watchdog is never fed again regardless of task health, so it resets the device within its
+    own timeout the same way exceeding `_TASK_FAIL_MAX` already does. One-way by design, matching
+    the existing give-up path's own one-way `return`.
+- `WDT.feed()` (`mp_machine_wdt_feed()`) is a bare `watchdog_update()` register write - confirmed
+  it genuinely cannot raise, no guard needed.
+
+Also from this pass: `reboot_system()`/`reboot_bootloader()` were byte-for-byte identical except for
+one log string and the final callback - collapsed into a shared `_reboot(message, action)` helper.
+`pause_permanent_storage()`'s duration clamp (`if <=0: 0, elif >MAX: MAX`) simplified to
+`min(max(duration, 0), _MAX_STORAGE_PAUSE)`, matching the exact clamp idiom `base_classes.py`'s
+`LockedCounter` already established elsewhere in this codebase; its duplicated `storage_timer.deinit()`
+call (present in both the zero-duration and real-duration branches) hoisted above the branch.
+`get_boot_signature()`'s bare-`int`-with-`-1`/`1`-sentinel contract (no separate "is this resolved
+yet" boolean exposed) was flagged as a discussion point, not changed - it matches the pre-existing
+legacy behavior exactly and is deliberately treated as an opaque "unique ID," not a live status field.
+
+`tests/machine.py`'s `Timer` fake extended with `raise_on_arm` (a shared class attribute, toggled via
+a `_RaiseOnArm` context manager in the test file) to simulate this exact `OSError(ENOMEM)` path -
+modeled precisely on the real gate: a bare `Timer()` with no kwargs never calls `init()` internally
+and so can never raise, matching `machine_timer_make_new()`'s own `n_args/n_kw` check; any kwargs
+(or an explicit `.init()` call) routes through the same raising path. 7 new tests cover all three
+fixed call sites plus the dedup/simplification; total now 49
+(`grep -c '^def test_' tests/test_system_service.py`).
+
+One MicroPython/mypy interaction hit while writing these: `assert svc._force_watchdog_starve is
+False` followed later by `assert svc._force_watchdog_starve is True` across an intervening method
+call that mutates it made mypy report the *next* statement as unreachable - a known mypy narrowing
+limitation (attribute narrowing from an `is False`/`is True` identity assert isn't invalidated by an
+arbitrary method call in between, so mypy computes the intersection of `Literal[False]` and
+`Literal[True]` as `Never` and treats anything after as dead code, even though the call legitimately
+mutates the real attribute at runtime). Confirmed directly with a minimal repro isolating just the
+two asserts plus a mutating call in between. Fixed by dropping the redundant "before" assertion
+(the "after" assertion is what the test actually needs) rather than fighting the narrower.
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
@@ -935,7 +1000,7 @@ and a missing config file failing independently without either derailing the oth
 
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
-`asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 42 — **674 total**.
+`asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 49 — **681 total**.
 
 ## Decided for the refactor
 

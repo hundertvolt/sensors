@@ -44,6 +44,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from typing import Any
 
 
 class Pin:
@@ -247,17 +248,27 @@ class Timer:
     # (all_timers.clear()) since it otherwise persists across a whole test file's process lifetime.
     all_timers: "list[Timer]" = []
 
-    def __init__(
-        self, id: int = -1, *, period: int = -1, mode: int = PERIODIC, callback: "Callable[[Timer], None] | None" = None
-    ) -> None:
+    # Test-only fault injection, off by default: real rp2 Timer.init() calls
+    # alarm_pool_add_alarm_in_us() and raises OSError(ENOMEM) if the alarm pool is exhausted
+    # (confirmed directly against ports/rp2/machine_timer.c, v1.28.0) - a bare Timer() with no
+    # args never hits this path at all (real machine_timer_make_new() only calls the init helper
+    # when args/kwargs are actually given), matching the `if kwargs` gate below. Tests must reset
+    # this to False afterward - it's a shared class attribute, not per-instance.
+    raise_on_arm = False
+
+    def __init__(self, id: int = -1, **kwargs: "Any") -> None:
         self.id = id
-        self.period = period
-        self.mode = mode
-        self.callback = callback
+        self.period = -1
+        self.mode = self.PERIODIC
+        self.callback: Callable[[Timer], None] | None = None
         self.deinit_called = False
+        if kwargs:
+            self.init(**kwargs)  # may raise OSError - propagates before this instance is registered
         Timer.all_timers.append(self)
 
     def init(self, *, period: int = -1, mode: int = PERIODIC, callback: "Callable[[Timer], None] | None" = None) -> None:
+        if Timer.raise_on_arm:
+            raise OSError(errno.ENOMEM, "alarm pool exhausted")
         self.period = period
         self.mode = mode
         self.callback = callback
