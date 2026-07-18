@@ -301,6 +301,29 @@ def test_crc8_detects_corrupted_payload_byte_and_falls_back_to_other_block() -> 
     assert run(scenario()) == bytearray(b"good")  # recovered from block 1, CRC caught block 0
 
 
+def test_crc8_detects_corrupted_trailer_byte_itself_not_just_payload() -> None:
+    # Every other CRC fault-injection test flips a payload byte - this flips the CRC's own on-chip
+    # trailer byte (stored right after the payload, before the status bytes) instead, to prove the
+    # checksum genuinely covers its own storage, not only the data it protects.
+    manager, chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(4, crc=CRC8())
+    assert chunk is not None
+    run(chunk.write(b"good"))
+    addr0, _addr1 = chunk.block_addr
+    crc_byte_addr = addr0 + chunk.size + chunk.crc.length() - 1  # the trailer byte itself
+    chip.memory[crc_byte_addr] ^= 0xFF
+
+    async def scenario() -> tuple[bytearray | None, dict]:
+        result = await chunk.read()
+        errs = await manager.get_error_counter()
+        return result, errs
+
+    result, errs = run(scenario())
+    assert result == bytearray(b"good")  # recovered from block 1
+    assert 46 in errs["FRAM"]["ErrNum"]  # _read_chunk: "CRC error in _read_chunk!" - same path as payload corruption
+
+
 def test_read_reports_failure_when_both_blocks_valid_but_hold_different_data() -> None:
     # Simulates a write torn between finishing block 0 and starting block 1: both blocks
     # independently look fine (CRC_Pass never checks payload content, status bytes are IDLE) but
@@ -485,6 +508,52 @@ def test_timestamped_write_with_ntp_sync_stores_and_reads_back_valid_timestamp()
     assert ts == utc
     assert age is not None and age >= 0
     assert data == bytearray(b"data")
+
+
+def test_timestamped_corrupted_timestamp_byte_self_heals_when_crc_protected() -> None:
+    # The CRC covers the whole buffer, including the embedded 8-byte timestamp prefix, not just
+    # the user payload - corrupting a timestamp byte directly (not the data, not tested elsewhere)
+    # must be caught the same way any other corruption in the block is.
+    manager, chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_timestamped_chunk(4, _synced, crc=CRC8())
+    assert chunk is not None
+    run(chunk.write(b"data"))
+    addr0, _addr1 = chunk.block_addr
+    chip.memory[addr0] ^= 0xFF  # first byte of the on-chip timestamp field itself
+
+    async def scenario() -> tuple[int | None, bytearray | None, dict]:
+        ts, _age, data = await chunk.read()
+        errs = await manager.get_error_counter()
+        return ts, data, errs
+
+    ts, data, errs = run(scenario())
+    assert ts is not None and data == bytearray(b"data")  # recovered from block 1
+    assert 46 in errs["FRAM"]["ErrNum"]  # _read_chunk: "CRC error in _read_chunk!" - same path as payload corruption
+
+
+def test_timestamped_corrupted_timestamp_byte_hard_fails_without_crc() -> None:
+    # With crc=CRC_Pass() (no checksum at all), a single corrupted copy is still caught - not by
+    # any CRC, but by the independent cross-block byte comparison every read() already does: block
+    # 0 "looks fine" on its own (CRC_Pass never inspects content), but now disagrees with block 1,
+    # which is exactly the "no generation counter to say which is right" hard-failure case, not a
+    # silently-wrong timestamp being returned.
+    manager, chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_timestamped_chunk(4, _synced, crc=CRC_Pass())
+    assert chunk is not None
+    run(chunk.write(b"data"))
+    addr0, _addr1 = chunk.block_addr
+    chip.memory[addr0] ^= 0xFF
+
+    async def scenario() -> tuple[int | None, int | None, bytearray | None, dict]:
+        ts, age, data = await chunk.read()
+        errs = await manager.get_error_counter()
+        return ts, age, data, errs
+
+    ts, age, data, errs = run(scenario())
+    assert (ts, age, data) == (None, None, None)  # hard fail, not a silently wrong timestamp
+    assert 73 in errs["FRAM"]["ErrNum"]  # _read(): "Both blocks valid but different data"
 
 
 def test_timestamped_read_skips_age_when_currently_not_synced() -> None:

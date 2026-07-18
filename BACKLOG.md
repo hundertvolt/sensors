@@ -753,7 +753,10 @@ write torn by power loss. Every other FRAM-touching file (`print_log.py`'s `Prin
   failure, not a guess - there's no generation counter to say which block is newer, so a write torn
   between blocks must be reported as corruption. Sharing one `CRC` instance per chunk is safe
   because `fram`'s lock already guarantees only one chunk's `_read_chunk`/`_write_chunk`/
-  `_clear_chunk` body runs at a time.
+  `_clear_chunk` body runs at a time. This also means the cross-block byte comparison is a second,
+  CRC-independent corruption detector: even with `crc=CRC_Pass()`, a single corrupted copy still
+  hits this same hard-failure path rather than reading back silently wrong - confirmed directly by
+  corrupting a raw on-chip byte with no CRC in play at all.
 - `AsyFramTimestampedChunk.write()`/`write_into()` return `(ntp_synced, utc, success)` - `success`
   is the third element, not first, unlike every other bool-returning method in this file. This is
   the real, in-use shape (`asy_sgp40_driver.py` already unpacks it this way) - not to be silently
@@ -810,7 +813,7 @@ write torn by power loss. Every other FRAM-touching file (`print_log.py`'s `Prin
   `get_data_buf()` already made unreachable). None of the above is chased further (owner-confirmed:
   no trouble with less than 100% coverage as long as nothing left uncovered is a real gap).
 
-86 tests (`tests/test_asy_fram_manager.py`) + 6 (`tests/test_fram_integration.py`, full-stack
+89 tests (`tests/test_asy_fram_manager.py`) + 6 (`tests/test_fram_integration.py`, full-stack
 integration down to the simulated raw SPI bus, including two `SensorReader`s sharing one manager
 and the same manager backing two structurally different chunk types across a simulated reboot; its
 40-cycle stress test needs an explicit `gc.collect()` per cycle - a Unix-port test-binary
@@ -832,7 +835,7 @@ and a missing config file failing independently without either derailing the oth
 
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
-`asy_fram_manager.py` 86, `test_fram_integration.py` 6 — **625 total**.
+`asy_fram_manager.py` 89, `test_fram_integration.py` 6 — **628 total**.
 
 ## Decided for the refactor
 
