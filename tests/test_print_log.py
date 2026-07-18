@@ -1,8 +1,14 @@
 import asyncio
 
-from _fram_mock import MockAsyFramManager, _MockFramChunk
+from _fram_chip_fake import FakeMB85RS64V
 
+import asy_spi_driver
+from asy_fram_manager import AsyFramChunk, AsyFramManager
+from asy_spi_driver import SPI
 from print_log import PrintLog, PrintLogHistory, PrintLogHistoryStore
+
+# Same one-process-per-test-file swap as test_asy_fram_driver.py/test_asy_fram_manager.py.
+asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
 
 try:
     from typing import TYPE_CHECKING
@@ -13,11 +19,61 @@ if TYPE_CHECKING:
     from collections.abc import Coroutine
     from typing import Any, TypeVar
 
+    from base_classes import LockableBuffer
+    from crc_checks import CRC_Base
+
     T = TypeVar("T")
 
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
     return asyncio.run(coro)
+
+
+def make_fram_manager(max_size: int = 0x2000) -> "tuple[AsyFramManager, FakeMB85RS64V]":
+    bus = SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
+    manager = AsyFramManager(bus, 1, max_size=max_size)
+    chip = manager.fram._spidev.spi._spi
+    assert isinstance(chip, FakeMB85RS64V)
+    return manager, chip
+
+
+class _RaisingFramChunk:
+    # A minimal local fake, not a full FRAM simulation: proves PrintLogHistoryStore's own
+    # defense-in-depth against the general _FramManager/_FramChunk Protocol contract still holds,
+    # independent of what the concrete AsyFramManager currently guarantees (its own _write_chunk/
+    # _read_chunk wrap their entire bodies in try/except - confirmed by asy_fram_manager.py's own
+    # src/ promotion audit - so write_into()/read_into() can no longer actually raise through it).
+    def __init__(self, raise_on_write: bool = False, raise_on_read: bool = False) -> None:
+        self.raise_on_write = raise_on_write
+        self.raise_on_read = raise_on_read
+
+    def get_buffer(self) -> "LockableBuffer":
+        from base_classes import LockableBuffer
+
+        return LockableBuffer(6, data_start=0, data_length=6)
+
+    async def write_into(self, buf: "Any", override_pause: bool = False) -> bool:
+        if self.raise_on_write:
+            raise RuntimeError("simulated write failure")
+        return True
+
+    async def read_into(self, buf: "Any", override_pause: bool = False) -> bool:
+        if self.raise_on_read:
+            raise RuntimeError("simulated read failure")
+        return True
+
+
+class _RaisingFramManager:
+    def __init__(self, chunk: "_RaisingFramChunk | None", raise_on_get_chunk: bool = False) -> None:
+        self._chunk = chunk
+        self.raise_on_get_chunk = raise_on_get_chunk
+
+    def get_chunk(
+        self, size: int, crc: "CRC_Base | None" = None, verify: int = 0, check_length: int = 8
+    ) -> "_RaisingFramChunk | None":
+        if self.raise_on_get_chunk:
+            raise RuntimeError("simulated allocation failure")
+        return self._chunk
 
 
 # ---------------------------------------------------------------------------
@@ -246,43 +302,53 @@ def test_reset_before_setup_does_not_write_even_with_logging_off() -> None:
 
 
 # ---------------------------------------------------------------------------
-# PrintLogHistoryStore - FRAM-backed persistence, against a mocked FRAM API
-# (tests/_fram_mock.py - see BACKLOG.md for why the real asy_fram_manager.py isn't used here yet)
+# PrintLogHistoryStore - FRAM-backed persistence, against the real, now-promoted AsyFramManager
+# driven by tests/_fram_chip_fake.py's simulated MB85RS64V chip (see BACKLOG.md - tests/_fram_mock.py
+# and its flat, non-redundant abstraction are retired now that asy_fram_manager.py itself is in src/).
 # ---------------------------------------------------------------------------
 
 
 def test_printloghistorystore_allocates_a_chunk_from_the_fram_manager() -> None:
-    store = PrintLogHistoryStore(MockAsyFramManager(), history_length=4)
+    manager, _chip = make_fram_manager()
+    store = PrintLogHistoryStore(manager, history_length=4)
     assert store.fram is not None
 
 
 def test_printloghistorystore_out_of_memory_leaves_fram_none_and_never_raises() -> None:
-    store = PrintLogHistoryStore(MockAsyFramManager(out_of_memory=True), history_length=4)
+    manager, _chip = make_fram_manager(max_size=1)  # too small for any real chunk
+    store = PrintLogHistoryStore(manager, history_length=4)
     assert store.fram is None
     assert run(store._write()) is False
     assert run(store._read()) is False
 
 
 def test_printloghistorystore_read_before_any_write_fails_cleanly() -> None:
-    store = PrintLogHistoryStore(MockAsyFramManager(), history_length=4)
+    manager, _chip = make_fram_manager()
+    run(manager.setup())
+    store = PrintLogHistoryStore(manager, history_length=4)
     assert run(store._read()) is False  # chunk allocated but never written yet - not "all zero"
 
 
 def test_printloghistorystore_setup_first_time_falls_back_to_writing_defaults() -> None:
-    store = PrintLogHistoryStore(MockAsyFramManager(), history_length=4)
+    manager, _chip = make_fram_manager()
+    run(manager.setup())
+    store = PrintLogHistoryStore(manager, history_length=4)
     run(store.setup())
     assert store.initialized is True
 
 
 def test_printloghistorystore_setup_with_no_fram_returns_without_initializing() -> None:
-    store = PrintLogHistoryStore(MockAsyFramManager(out_of_memory=True), history_length=4)
+    manager, _chip = make_fram_manager(max_size=1)
+    store = PrintLogHistoryStore(manager, history_length=4)
     assert store.fram is None
     run(store.setup())
     assert store.initialized is False  # nothing to set up - allocation already failed in __init__
 
 
 def test_printloghistorystore_setup_is_idempotent_once_initialized() -> None:
-    store = PrintLogHistoryStore(MockAsyFramManager(), history_length=4)
+    manager, _chip = make_fram_manager()
+    run(manager.setup())
+    store = PrintLogHistoryStore(manager, history_length=4)
     run(store.setup())
     assert store.initialized is True
     run(store.err_s("boom", errno=1))
@@ -293,15 +359,20 @@ def test_printloghistorystore_setup_is_idempotent_once_initialized() -> None:
 
 
 def test_printloghistorystore_err_s_persists_and_survives_a_simulated_reboot() -> None:
-    manager = MockAsyFramManager()
+    manager, chip = make_fram_manager()
+    run(manager.setup())
     store = PrintLogHistoryStore(manager, history_length=4)
     run(store.setup())
     run(store.err_s("boom", errno=3))
     assert store.err_count == 1
 
-    # Simulate a reboot: a fresh manager/store pair, replaying the same get_chunk() call, wrapping
-    # the same backing bytes - same as a real chip's contents surviving a power cycle.
-    rebooted_store = PrintLogHistoryStore(MockAsyFramManager(backing=manager.backing), history_length=4)
+    # Simulate a reboot: a fresh manager/store pair attached to the SAME underlying chip memory,
+    # replaying the same get_chunk() call sequence - genuinely round-trips through the real
+    # dual-copy+CRC on-chip format, the same as a real chip's contents surviving a power cycle.
+    manager2, _chip2 = make_fram_manager()
+    manager2.fram._spidev.spi._spi = chip
+    run(manager2.setup())
+    rebooted_store = PrintLogHistoryStore(manager2, history_length=4)
     run(rebooted_store.setup())
     assert rebooted_store.err_count == 1
     assert list(rebooted_store.history)[-1] == 3
@@ -313,26 +384,29 @@ def test_printloghistorystore_err_s_before_setup_does_not_touch_fram() -> None:
     # err_s() before setup() had loaded (or established) the persisted state fell through to
     # _write() anyway - overwriting real FRAM-persisted history with a freshly-constructed,
     # not-yet-loaded default. Fixed so the return no longer depends on self.level.
-    manager = MockAsyFramManager()
+    manager, chip = make_fram_manager()
+    run(manager.setup())
     store = PrintLogHistoryStore(manager, history_length=4, level=None)  # level=None -> _LOG_OFF
     assert store.initialized is False
     run(store.err_s("boom", errno=3))
     assert store.err_count == 1  # in-memory state still updates
-    assert manager.backing._written_offsets == set()  # but nothing was ever written to FRAM
+    assert chip.memory == bytearray(len(chip.memory))  # but nothing was ever written to FRAM
 
 
 def test_printloghistorystore_reset_before_setup_does_not_touch_fram() -> None:
-    manager = MockAsyFramManager()
+    manager, chip = make_fram_manager()
+    run(manager.setup())
     store = PrintLogHistoryStore(manager, history_length=4, level=None)
     assert store.initialized is False
     run(store.reset())
-    assert manager.backing._written_offsets == set()
+    assert chip.memory == bytearray(len(chip.memory))
 
 
 def test_printloghistorystore_zero_length_history_survives_write_and_read() -> None:
     # An unusual but typed-valid construction (struct format collapses to just "H") - confirmed
     # directly this doesn't crash get_buffer()/pack_into/unpack_from at either end.
-    manager = MockAsyFramManager()
+    manager, _chip = make_fram_manager()
+    run(manager.setup())
     store = PrintLogHistoryStore(manager, history_length=0)
     run(store.setup())
     assert store.initialized is True
@@ -347,120 +421,116 @@ def test_printloghistorystore_write_uses_explicit_little_endian_layout() -> None
     # a bare "H"/"B"*n format string - confirmed directly that MicroPython's struct defaults a
     # no-prefix format to "@" (native alignment/padding), not "<", though it made no observable
     # difference for this specific field order (see module docstring).
-    manager = MockAsyFramManager()
+    manager, chip = make_fram_manager()
+    run(manager.setup())
     store = PrintLogHistoryStore(manager, history_length=2)
     store.err_count = 0x1234
     store.history.extend([5, 6])
     run(store._write())
-    raw = manager.backing.read(0, 4)
-    assert raw is not None
+    assert isinstance(store.fram, AsyFramChunk)  # whitebox: narrows to the real chunk's own block layout
+    addr0 = store.fram.block_addr[0]
+    raw = bytes(chip.memory[addr0 : addr0 + 4])
     assert list(raw) == [0x34, 0x12, 5, 6]  # little-endian u16, then 2 raw history bytes
 
 
 def test_printloghistorystore_reset_persists_cleared_state_across_a_reboot() -> None:
-    manager = MockAsyFramManager()
+    manager, chip = make_fram_manager()
+    run(manager.setup())
     store = PrintLogHistoryStore(manager, history_length=3)
     run(store.setup())
     run(store.err_s("e", errno=1))
     run(store.reset())
 
-    rebooted_store = PrintLogHistoryStore(MockAsyFramManager(backing=manager.backing), history_length=3)
+    manager2, _chip2 = make_fram_manager()
+    manager2.fram._spidev.spi._spi = chip
+    run(manager2.setup())
+    rebooted_store = PrintLogHistoryStore(manager2, history_length=3)
     run(rebooted_store.setup())
     assert rebooted_store.err_count == 0
     assert list(rebooted_store.history) == [0, 0, 0]
 
 
 # ---------------------------------------------------------------------------
-# PrintLogHistoryStore - every simulated FRAM failure mode (tests/_fram_mock.py's fault injection)
+# PrintLogHistoryStore - real FRAM failure modes, injected at the simulated-chip level
+# (tests/_fram_chip_fake.py's fault-injection knobs - see test_asy_fram_driver.py for their own
+# dedicated coverage), plus the two Protocol-level defensive-contract proofs that no longer have a
+# real-class equivalent (see _RaisingFramChunk/_RaisingFramManager above).
 # ---------------------------------------------------------------------------
 
 
 def test_printloghistorystore_get_chunk_raising_leaves_fram_none() -> None:
-    store = PrintLogHistoryStore(MockAsyFramManager(raise_on_get_chunk=True), history_length=4)
+    # AsyFramManager.get_chunk() never actually raises (confirmed by its own src/ promotion
+    # audit) - this proves PrintLogHistoryStore's defensive catch still holds against the general
+    # _FramManager Protocol contract, not just this one concrete, well-behaved implementation.
+    store = PrintLogHistoryStore(_RaisingFramManager(None, raise_on_get_chunk=True), history_length=4)
     assert store.fram is None
     assert run(store._write()) is False
     assert run(store._read()) is False
 
 
-def test_printloghistorystore_get_buffer_raising_is_caught_by_write() -> None:
-    store = PrintLogHistoryStore(MockAsyFramManager(), history_length=4)
-    assert isinstance(store.fram, _MockFramChunk)  # whitebox: narrows the type to reach the mock's fault flags
-    store.fram.raise_on_get_buffer = True
-    assert run(store._write()) is False
-
-
-def test_printloghistorystore_get_buffer_raising_is_caught_by_read() -> None:
-    store = PrintLogHistoryStore(MockAsyFramManager(), history_length=4)
-    assert isinstance(store.fram, _MockFramChunk)
-    store.fram.raise_on_get_buffer = True
-    assert run(store._read()) is False
-
-
-def test_printloghistorystore_broken_buffer_is_caught_by_write() -> None:
-    # get_buffer() "succeeds" but returns a buffer whose get_data_buf() is None - struct.pack_into
-    # on that None then raises TypeError, which the widened try/except must still catch (this is
-    # the exact shape of bug this session's audit found and fixed: get_buffer()/get_data_buf() used
-    # to sit outside the try block entirely).
-    store = PrintLogHistoryStore(MockAsyFramManager(), history_length=4)
-    assert isinstance(store.fram, _MockFramChunk)
-    store.fram.broken_buffer = True
-    assert run(store._write()) is False
-
-
-def test_printloghistorystore_broken_buffer_is_caught_by_read() -> None:
-    store = PrintLogHistoryStore(MockAsyFramManager(), history_length=4)
-    assert isinstance(store.fram, _MockFramChunk)
-    store.fram.broken_buffer = True
-    assert run(store._read()) is False
-
-
 def test_printloghistorystore_write_into_raising_is_caught() -> None:
-    store = PrintLogHistoryStore(MockAsyFramManager(), history_length=4)
-    assert isinstance(store.fram, _MockFramChunk)
-    store.fram.raise_on_write = True
-    assert run(store._write()) is False
-
-
-def test_printloghistorystore_write_into_returns_false_is_surfaced() -> None:
-    # Distinct from raising: a hardware-reported failure that write_into() itself already turns
-    # into a clean False return, without print_log.py needing to catch anything.
-    store = PrintLogHistoryStore(MockAsyFramManager(), history_length=4)
-    assert isinstance(store.fram, _MockFramChunk)
-    store.fram.write_returns_false = True
+    # asy_fram_manager.py's _write_chunk wraps its entire body in try/except (confirmed by its own
+    # src/ promotion audit), so write_into() can no longer actually raise through the real class -
+    # this is the same Protocol-level defense-in-depth proof as the get_chunk case above.
+    chunk = _RaisingFramChunk(raise_on_write=True)
+    store = PrintLogHistoryStore(_RaisingFramManager(chunk), history_length=4)
     assert run(store._write()) is False
 
 
 def test_printloghistorystore_read_into_raising_is_caught() -> None:
-    store = PrintLogHistoryStore(MockAsyFramManager(), history_length=4)
-    assert isinstance(store.fram, _MockFramChunk)
-    store.fram.raise_on_read = True
+    chunk = _RaisingFramChunk(raise_on_read=True)
+    store = PrintLogHistoryStore(_RaisingFramManager(chunk), history_length=4)
     assert run(store._read()) is False
 
 
+def test_printloghistorystore_write_into_returns_false_is_surfaced() -> None:
+    # A real hardware-reported failure (not a raise): WREN never latches, so every write the real
+    # chunk attempts fails cleanly - write_into() already turns this into a clean False return,
+    # without print_log.py needing to catch anything.
+    manager, chip = make_fram_manager()
+    run(manager.setup())
+    store = PrintLogHistoryStore(manager, history_length=4)
+    chip.drop_wren = True
+    assert run(store._write()) is False
+
+
 def test_printloghistorystore_read_into_returns_false_is_surfaced() -> None:
-    store = PrintLogHistoryStore(MockAsyFramManager(), history_length=4)
-    assert isinstance(store.fram, _MockFramChunk)
+    # A real double-fault: both of the chunk's own redundant blocks are corrupted (torn-write
+    # status left BUSY on each), so the real dual-copy self-healing has nothing left to recover
+    # from - a stronger proof than a flat "read fails" flag, since it shows print_log.py degrades
+    # cleanly even after asy_fram_manager.py's own redundancy is genuinely exhausted.
+    manager, chip = make_fram_manager()
+    run(manager.setup())
+    store = PrintLogHistoryStore(manager, history_length=4)
     run(store._write())  # something real is persisted first
-    store.fram.read_returns_false = True
+    assert isinstance(store.fram, AsyFramChunk)  # whitebox: narrows to the real chunk's own block layout
+    addr0, addr1 = store.fram.block_addr
+    status_offset = 2 + len(store.history) + 1  # _HDR_SIZE("<H") + history bytes + CRC8's 1 byte
+    for addr in (addr0, addr1):
+        chip.memory[addr + status_offset] = 0x02  # _STATUS_BUSY, mirrors a torn write on both copies
+        chip.memory[addr + status_offset + 1] = 0x02
     assert run(store._read()) is False
 
 
 def test_printloghistorystore_setup_fails_cleanly_when_both_read_and_write_fail() -> None:
-    store = PrintLogHistoryStore(MockAsyFramManager(), history_length=4)
-    assert isinstance(store.fram, _MockFramChunk)
-    store.fram.read_returns_false = True
-    store.fram.write_returns_false = True
+    manager, chip = make_fram_manager()
+    run(manager.setup())
+    store = PrintLogHistoryStore(manager, history_length=4)
+    # Nothing written yet, so _read() naturally fails (chunk reads back as uninitialized); WREN
+    # never latching makes the fallback _write() of defaults fail too.
+    chip.drop_wren = True
     run(store.setup())
     assert store.initialized is False
 
 
 def test_printloghistorystore_err_s_survives_a_write_failure_without_raising() -> None:
     # _store_err()'s own "if not await self._write(): print(...)" fallback must not itself raise
-    # even though the underlying write_into() does - in-memory state should still update.
-    store = PrintLogHistoryStore(MockAsyFramManager(), history_length=4)
-    assert isinstance(store.fram, _MockFramChunk)
+    # even though the underlying persist-write now fails - in-memory state should still update.
+    manager, chip = make_fram_manager()
+    run(manager.setup())
+    store = PrintLogHistoryStore(manager, history_length=4)
     run(store.setup())
-    store.fram.raise_on_write = True
+    chip.drop_wren = True
     run(store.err_s("boom", errno=3))
     assert store.err_count == 1
     assert list(store.history)[-1] == 3

@@ -4,8 +4,9 @@ the sensor-driver base (SensorReader, SensorReaderConfig) with per-sensor error 
 optional JSON config storage.
 
 Shared contract: every method returns a well-defined value and never raises. SensorReader's
-optional `fram` selects in-memory vs. FRAM-backed logging (print_log.py); FRAM tests use
-tests/_fram_mock.py, not the real allocator - see BACKLOG.md.
+optional `fram` selects in-memory vs. FRAM-backed logging (print_log.py); FRAM tests use the real
+AsyFramManager (asy_fram_manager.py) against tests/_fram_chip_fake.py's simulated chip - see
+BACKLOG.md.
 
 __init__ never calls `self.pr.setup()` (it's sync, setup() isn't) - the caller's own async setup
 must, or FRAM persistence stays inert; in-memory counting still works either way.
@@ -27,7 +28,6 @@ if TYPE_CHECKING:
     from typing import Any, NamedTuple, TypeVar
 
     from asy_fram_manager import AsyFramManager
-
     from config_manager import ConfigSchema
 
     LockableType = TypeVar("LockableType", bound="Lockable")

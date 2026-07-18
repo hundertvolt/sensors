@@ -58,39 +58,36 @@ stand-in - and the narrow, self-resolving `scripts/typecheck.sh` (no arguments) 
 to cause - is gone; `asy_i2c_driver.py`/`asy_spi_driver.py` resolve `Lockable` against the real
 `src/base_classes.py` like any other `src/` import.
 
-`tests/_fram_mock.py` is a third instance of the same mocking boundary, for FRAM: `print_log.py`'s
+`tests/test_print_log.py`/`tests/test_base_classes.py` are a third instance of the same mocking
+boundary, for FRAM: they now drive `print_log.py`'s `PrintLogHistoryStore` (and, through it,
+`base_classes.py`'s `SensorReader`) against the real `AsyFramManager` (`asy_fram_manager.py`, now
+itself promoted to `src/`), running against `tests/_fram_chip_fake.py`'s simulated MB85RS64V chip
+- the same fake `asy_fram_driver.py`'s own tests use, driven by `tests/machine.py`'s fake SPI.
 `PrintLogHistoryStore` only ever calls `AsyFramManager.get_chunk()` and, on the chunk it gets back,
-`get_buffer()`/`write_into()`/`read_into()` - not `asy_fram_manager.py`'s actual allocator/CRC/
-dual-copy-redundancy machinery, which isn't itself promoted to `src/` yet (see BACKLOG.md). Rather
-than a hand-written stand-in class, `print_log.py`'s own `_FramManager`/`_FramChunk` are
-`TYPE_CHECKING`-only `Protocol`s describing just that narrow surface, so `tests/_fram_mock.py`'s
-fake satisfies them structurally with no inheritance relationship to the real classes at all.
-`MockFramBacking` simulates the one behavior that actually matters for `PrintLogHistoryStore`'s
-"survives a reboot" purpose: constructing a second `MockAsyFramManager` around the same
-`MockFramBacking` instance and replaying the same `get_chunk()` call sequence lands on the same
-offsets (matching the real bump-pointer allocator), so previously-written data reads back exactly
-as a real chip's contents would across a power cycle. Remove `tests/_fram_mock.py` (and the tests
-built on it in `tests/test_print_log.py`) once `asy_fram_manager.py` itself clears its own `src/`
-promotion checklist and a real `AsyFramManager` becomes available under `tests/` instead.
+`get_buffer()`/`write_into()`/`read_into()`; `print_log.py`'s own `_FramManager`/`_FramChunk` stay
+`TYPE_CHECKING`-only `Protocol`s describing just that narrow surface (kept even now that the real
+class is promoted, to avoid a runtime import cycle and stay decoupled from its concrete shape - see
+`print_log.py`'s own module docstring). "Survives a reboot" is proven by constructing a second
+`AsyFramManager` whose underlying `FRAM_SPI` is pointed at the *same* `FakeMB85RS64V` instance and
+replaying the same `get_chunk()` call sequence - genuinely round-tripping through the real
+dual-copy+CRC on-chip format, the same as a real chip's contents surviving a power cycle.
 
-The mock also supports fault injection covering every FRAM failure mode `print_log.py` guards
-against - `MockAsyFramManager(out_of_memory=...)`/`raise_on_get_chunk=...`, and per-chunk
-`.raise_on_get_buffer`/`.broken_buffer`/`.raise_on_write`/`.write_returns_false`/`.raise_on_read`/
-`.read_returns_false` flags settable directly on the `_MockFramChunk` a `PrintLogHistoryStore`
-instance exposes as its own `.fram` attribute (see `tests/_fram_mock.py`'s docstring for what each
-simulates). This was what caught a real gap during `print_log.py`'s own review: `_write()`/`_read()`
-originally called `get_buffer()`/`get_data_buf()` (and, in `_read()`, `read_into()`) *before* their
-`try:` block started, so a raise from any of those - plausible, since `asy_fram_manager.py` isn't
-itself audited yet - would have propagated uncaught instead of degrading to a clean `False` return
+Real chip-level fault injection (`tests/_fram_chip_fake.py`'s `drop_wren` etc., and directly poking
+simulated on-chip bytes to model a torn write or exhausted dual-copy redundancy) covers every FRAM
+failure mode still reachable through the real, audited `AsyFramManager` - a hardware-reported
+failure `write_into()`/`read_into()` already turn into a clean `False`, no catch needed. Two
+Protocol-level scenarios no longer have a real-class equivalent at all: `asy_fram_manager.py`'s own
+`src/` promotion audit confirmed `get_chunk()` never raises and `_write_chunk()`/`_read_chunk()`
+wrap their entire bodies in `try`/`except`, so `write_into()`/`read_into()` can no longer actually
+raise through it. Those two are still proven via a minimal local `_RaisingFramChunk`/
+`_RaisingFramManager` fake (structurally satisfying the same Protocol, not inheriting from the real
+classes) in each test file - defense-in-depth against the Protocol contract in the abstract, not
+against what this one concrete implementation currently guarantees. This was what caught a real gap
+during `print_log.py`'s own review: `_write()`/`_read()` originally called `get_buffer()`/
+`get_data_buf()` (and, in `_read()`, `read_into()`) *before* their `try:` block started, so a raise
+from any of those would have propagated uncaught instead of degrading to a clean `False` return
 like every other FRAM failure here already does. Fixed by widening both `try` blocks to cover the
-whole body; `.broken_buffer` (a `get_buffer()` that "succeeds" but returns an unusable, zero-length
-buffer) is the regression test for exactly this - it makes `struct.pack_into`/`struct.unpack_from`
-raise on the buffer's now-`None` `get_data_buf()`, which the widened `try` must catch. There's no
-"corrupt the persisted bytes to make struct.unpack_from() raise" fault mode: `get_buffer()` always
-hands back a freshly-sized buffer derived from the same `len(history)` used to write it, so a
-length mismatch in struct's own sense can only come from `get_buffer()` itself misbehaving -
-`.broken_buffer` already covers that; there's no way to reach it by varying what was previously
-read back.
+whole body.
 
 ## Coverage
 

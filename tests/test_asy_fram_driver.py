@@ -336,6 +336,24 @@ def test_write_protected_readback_mismatch_returns_false_and_does_not_update_cac
     assert run(get()) is False  # cached _wp correctly still reflects the failed attempt, not True
 
 
+def test_set_write_protected_fails_cleanly_when_wren_is_disturbed() -> None:
+    fram, chip = make_fram()
+    run(setup_fram(fram))
+    chip.drop_wren = True  # simulated bus disturbance: WREN opcode never actually latches
+
+    async def scenario() -> bool:
+        return await fram.set_write_protected(True)
+
+    ok = run(scenario())
+    assert ok is False
+    assert (chip.status & 0x8C) == 0x00  # WRSR never even attempted - hardware untouched
+
+    async def get() -> bool:
+        return await fram.get_write_protected()
+
+    assert run(get()) is False  # cached _wp correctly still reflects the failed attempt
+
+
 def test_write_protected_blocks_subsequent_writes() -> None:
     fram, chip = make_fram()
     run(setup_fram(fram))
@@ -417,6 +435,31 @@ def test_wp_pin_protection_can_be_toggled_off_again_after_being_enabled() -> Non
         assert fram._wp_pin is not None
         assert fram._wp_pin.value() == (0 if value else 1)  # WP active-low
         assert (chip.status & 0x8C) == (0x8C if value else 0x00)
+
+
+def test_wp_pin_restored_to_prior_asserted_level_when_wrsr_readback_fails() -> None:
+    # Regression: set_write_protected() deasserts WP before attempting WRSR (so the register's
+    # own WP-pin lock doesn't block that very WRSR) and must restore the pin on failure, not leave
+    # it deasserted - which would silently unlock a status register that's actually still
+    # protected. Starts from an already-protected state so the restore has an observable effect.
+    fram, chip = make_fram(wp_pin=7)
+    run(setup_fram(fram))
+
+    async def protect() -> bool:
+        return await fram.set_write_protected(True)
+
+    assert run(protect()) is True
+    assert fram._wp_pin is not None
+    assert fram._wp_pin.value() == 0  # WP asserted (active-low) - protection genuinely in effect
+    chip.drop_wrsr = True  # simulated bus disturbance: WRSR's status byte never actually lands
+
+    async def unprotect() -> bool:
+        return await fram.set_write_protected(False)
+
+    ok = run(unprotect())
+    assert ok is False
+    assert fram._wp_pin.value() == 0  # restored to asserted - matches hardware still being protected
+    assert (chip.status & 0x8C) == 0x8C  # hardware genuinely still protected
 
 
 # ---------------------------------------------------------------------------

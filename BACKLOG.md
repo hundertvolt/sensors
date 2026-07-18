@@ -95,8 +95,10 @@ From hands-on field experience with deployed units:
     `asy_fram_driver.py`'s own `src/` promotion (see "`asy_fram_driver.py` → `src/`" below) fixed a
     real device-identification bug and added write-enable-latch/write-protect verification - the
     detection this file itself can do. Still open: an actual periodic/triggered re-probe policy
-    (calling the new `verify_present()`) and task-death-and-respawn wiring both live in
-    `asy_fram_manager.py`/a task supervisor, neither promoted yet.
+    (calling `verify_present()`, still zero callers anywhere - see "`asy_fram_manager.py` → `src/`"
+    below) and task-death-and-respawn wiring both live in `asy_fram_manager.py`/a task supervisor;
+    `asy_fram_manager.py` is now promoted (its own audit didn't add this wiring, out of scope for a
+    quality-audit pass) but a task supervisor for FRAM specifically still isn't.
   - Keep error handling per-driver, not a shared generic retry/backoff/reset framework — sensors
     differ enough that a forced common abstraction was explicitly rejected. Only generalize what's
     genuinely common to *all* drivers (e.g. error-counter bookkeeping in
@@ -422,8 +424,18 @@ conflict surfaced running the *unscoped* mypy pass: the real `AsyFramChunk.write
 Protocol declaring a shared precise type in parameter position — fixed by typing the Protocol's
 `buf` as `Any` (this file never inspects it). `MockFramBacking` deliberately simulates data
 surviving a reboot (tracks written offsets; a test constructs a second `MockAsyFramManager` around
-the same backing, replaying the same `get_chunk()` sequence, to prove persistence). **Remove
-`tests/_fram_mock.py` once `asy_fram_manager.py` itself clears `src/` promotion.**
+the same backing, replaying the same `get_chunk()` sequence, to prove persistence).
+
+**Resolved in a follow-up session**: `asy_fram_manager.py` has since cleared its own `src/`
+promotion (see "`asy_fram_manager.py` → `src/`" below) - `tests/_fram_mock.py` is removed, and
+`tests/test_print_log.py`/`tests/test_base_classes.py` now drive `PrintLogHistoryStore`/
+`SensorReader`'s FRAM-backed paths against the real `AsyFramManager` running on
+`tests/_fram_chip_fake.py`'s simulated chip, including real chip-level fault injection. The
+`_FramManager`/`_FramChunk` `Protocol`s stayed (not reverted to a concrete import) - deliberate,
+not just a promotion-ordering artifact: they still avoid a real runtime import cycle
+(`asy_fram_manager.py` imports `PrintLogHistory` from `print_log.py`) and keep this file decoupled
+from the concrete chunk classes' shapes. The now-dead `pyproject.toml` mypy override for module
+`asy_fram_manager` was removed along with it.
 
 **`print_log.py` bugs found and fixed** (across several dedicated review passes):
 - `PrintLogHistoryStore._write()`/`_read()`'s `try:` block started too late — `get_buffer()`/
@@ -651,364 +663,165 @@ since the clamp makes that branch unreachable). `LockableBuffer.__init__`'s exis
 guard widened to `(MemoryError, OverflowError)`. Swept rest of `src/` — nothing else live
 (`crc_checks.py`'s `bytearray(self.num_bytes)` only ever gets hardcoded 0/1/2/4;
 `asy_i2c_driver.py`/`asy_spi_driver.py` do no Python-level buffer allocation from a param at all).
-**Found, not touched** (both `improved-quality/` source, out of routine-editing scope): the
-identical shape in `improved-quality/asy_fram_manager.py`'s `bytearray([_STATUS_UNINIT] * (self.size
-+ ...))` (bounded by real hardware capacity at every call site — dev-time-literal, not a live attack
-surface) and dead code carrying the pre-fix version in unused `base_classes_old.py`.
+`src/asy_fram_manager.py`'s `_clear_chunk` uses `bytearray(n)` directly (`_STATUS_UNINIT == 0x00`,
+so identical content to the list-repeat form, without the segfault risk). `base_classes_old.py`
+still carries the pre-fix list-repeat shape — dead code, out of scope (unused file).
 
 ### `asy_fram_driver.py` → `src/`
 
-Driver for the actual FRAM chip (Fujitsu MB85RS64V, Adafruit's 8KB SPI FRAM breakout) sitting under
-`asy_fram_manager.py` (not itself promoted yet - see above). Verified against the real datasheet
-(DS501-00015) and cross-checked against Adafruit's own `Adafruit_FRAM_SPI` reference driver for the
-same chip, per owner request to specifically check hardware-interaction correctness and
-bus-disturbance recovery, not just style.
+Driver for the FRAM chip (Fujitsu MB85RS64V, Adafruit's 8KB SPI FRAM breakout), sitting under
+`asy_fram_manager.py` (below). Verified against the real datasheet (DS501-00015,
+`datasheets/fram/`) and cross-checked against Adafruit's own `Adafruit_FRAM_SPI` reference driver.
 
-**Real bug found and fixed, with a live production caller**: `setup()`'s RDID device-identification
-check had two compounding bugs, present since the legacy driver (not introduced by any promotion).
-The datasheet's RDID response order is Manufacturer ID / continuation code / Product ID 1st byte
-(more significant) / Product ID 2nd byte - confirmed as `0x04, 0x7F, 0x03, 0x02` for this chip from
-two independent sources (the datasheet text and Adafruit's own driver's `getDeviceID()` byte
-handling). The old code computed `prod_id = (read_buffer[3] << 8) + read_buffer[2]` - the two
-product-ID bytes swapped - so `prod_id` could never actually equal `_SPI_PROD_ID` (0x0302) against
-real hardware. That alone would have made every `setup()` call fail - except the surrounding
-check was `if (manf_id_wrong) and (prod_id_wrong): raise`, using `and` where it should have used
-`or`. Since the manufacturer byte (0x04) genuinely does match, the `and` short-circuited and the
-(already-broken) product-ID comparison never actually gated anything: `setup()` silently accepted
-any device whose first RDID byte was 0x04, regardless of the rest of the response - including a
-corrupted RDID transfer from a bus disturbance right at startup, the exact failure mode owner asked
-this review to harden against. Fixed: correct byte order, `and` → `or`, and added a check on the
-continuation-code byte (0x7F, also fixed for this chip) for a third independent field. Owner
-confirmed the fix before it was applied (this changes real accept/reject behavior, per
-`src/README.md` section 1's discrepancy-flagging rule).
+**Current behavior/invariants:**
+- `setup()`'s RDID check validates three independent fields against real hardware: manufacturer ID
+  (`0x04`), continuation code (`0x7F`), and product ID (`0x0302`, correct byte order) — any
+  mismatch raises `OSError`. Opcodes (`WREN`/`WRDI`/`RDSR`/`WRSR`/`READ`/`WRITE`/`RDID`), SPI mode
+  0, MSB-first, and the 2-byte/3-byte address-width switch at 64KB all match Adafruit's reference
+  driver; the 4-byte-address branch is dead code for this 8KB chip (`_setup_addr_buffer` trusts a
+  caller-supplied `max_size` rather than validating/clamping it).
+- `_write()` confirms the write-enable latch (`WEL`) actually set via `RDSR` after `WREN` before
+  issuing `WRITE`, and re-verifies after `WRDI`, retrying once before only warning (not failing) on
+  a stuck `WEL`. `set_write_protected()` does the same around `WRSR`, plus reads back the status
+  register to confirm the write landed. `WEL` auto-clears after a completed `WRITE`/`WRSR`, not
+  only after `WRDI` (per datasheet) — the explicit `WRDI`-verify-retry is defense-in-depth against
+  that auto-clear itself glitching, not the only mechanism relied on.
+- `WP` pin is active-low (`value=True` drives it low = protected). `set_write_protected()`
+  deasserts `WP` before every `WRSR` and only restores the target level after readback-confirmed
+  success, so a leftover-low `WP` from an earlier protect call can never self-lock a later unprotect
+  call.
+- `WPEN`/`BP0`/`BP1` are nonvolatile; `setup()` re-syncs `_wp` from a real `RDSR` rather than
+  trusting the constructor's `wp=` (which is only a pre-`setup()` placeholder, always overwritten
+  once `setup()` succeeds).
+- `verify_present()` (a cheap re-probe reusing the RDID check, for a future health-check/retry
+  policy) bounds its own lock-wait with `asyncio.wait_for(..., _VERIFY_PRESENT_LOCK_TIMEOUT_S)`
+  (`const()`, 1.0s), degrading to `False` instead of hanging if `FRAM_SPI`'s outer `Lockable` lock
+  is already held elsewhere.
+- `get_values()`/`set_values()` accept a zero-length `buf` as a no-op — not rejected, since no real
+  caller passes one and neither the datasheet nor real usage rules it out.
+- Exception contract — exactly three deliberately-allowed raise paths, everything else returns
+  `False`/`None`: `__init__`'s `ValueError` for a bad pin/port (fail loud once at boot); `setup()`'s
+  `OSError` on failed device identification; `SPIDevice.__aenter__`'s "not set up" `RuntimeError`
+  (a caller-ordering bug only — unreachable through this file's own methods, all of which check
+  `uninitialized` first).
 
-**Bus-disturbance recovery added, scoped to what this file can actually observe**: raw RP2040 SPI
-`write()`/`readinto()` genuinely cannot report a transfer fault (no ACK/NAK, confirmed in
-`asy_spi_driver.py`'s own promotion) - data-integrity recovery (CRC, dual-copy redundancy) already
-lives one layer up in `asy_fram_manager.py`, out of scope here. Two things this file *can* observe
-were added, both per owner's explicit "whatever is required in this scope" direction:
-- `_write()` now reads the status register (RDSR) after `WREN` to confirm the write-enable latch
-  actually set before proceeding to `WRITE` - a disturbed `WREN` opcode would otherwise be silently
-  ignored by the chip, and the subsequent `WRITE` would silently no-op too. Also re-checks after
-  `WRDI`, retrying once (cheap, idempotent) before only warning if `WEL` is still stuck - a stuck
-  `WEL` leaves the chip continuously writable, not itself a "did the payload write happen" failure,
-  so it doesn't fail the write.
-- `set_write_protected()` (kept - see below) now reads back the status register after `WRSR` and
-  reports failure if it doesn't match, since that one transaction is the only way this chip's
-  write-protect state can actually change, and is otherwise unverified. **Second real bug found
-  this way, by the CI run of this same promotion's own new tests**: the pre-existing
-  `set_write_protected()` never issued `WREN` before `WRSR` at all - present since the legacy
-  driver, invisible until now because this method had zero real callers (see below). The status
-  register's own `WEL` bit is documented as gating writes to "FRAM array and status register" both
-  - i.e. `WRSR` needs `WEL` set first, exactly like `WRITE` does - so every call to this method
-  would have silently no-op'd on real hardware. Fixed: `WREN` + the same `WEL`-verification `_write()`
-  already does, before `WRSR`; an unconditional `WRDI` after, regardless of outcome, so `WEL` is
-  never left asserted. (The new readback check itself is what caught this - it turned "silently
-  does nothing" into a loud, reproducible test failure instead of a bug that could have shipped
-  unnoticed a second time.)
-- New `verify_present()`: a re-probe entry point (reuses the fixed RDID check) for a future
-  health-check/retry policy to call after suspecting a disturbance - cheaper than a full `setup()`
-  (skips `wp_pin` re-init), and on failure reverts `uninitialized = True` so every other method
-  safely refuses until a fresh `setup()` succeeds, same self-healing state `setup()`'s own `OSError`
-  already relies on. Wiring an actual periodic/triggered call to this into `asy_fram_manager.py` or
-  a task supervisor is future work (needs `asy_fram_manager.py` promoted first) - this file only
-  exposes the primitive.
+**Known gaps, kept for future use, not chased further (owner-confirmed):**
+- `get_write_protected()`/`set_write_protected()`/`verify_present()` have zero callers in
+  `asy_fram_manager.py` today. Whoever wires up FRAM's own bus-recovery/re-probe policy (see "Bus/
+  sensor error-recovery robustness" above) must wrap them in the same `try/except Exception`
+  discipline `asy_fram_manager.py` already applies to `setup()`/`get_values()`/`set_values()` — this
+  driver deliberately doesn't catch its own inherited `RuntimeError` path itself.
+- `get_size()` has zero callers anywhere (kept as public API — a plausible future capacity getter).
+- Coverage (via `scripts/test.sh --coverage`): 90% (16/163 lines missed) — 14 are `const()`-folding
+  tracer artifacts (see `tests/README.md`), 1 is `get_size()`'s zero-caller status above. The stuck-
+  `WEL` warning path and the post-failure `WP`-pin restore in `set_write_protected()` are now
+  covered.
 
-**Kept, brought to full quality bar (owner-confirmed, previously "zero real callers" per the
-`asy_spi_driver.py` promotion writeup above)**: `get_write_protected()`/`set_write_protected()` -
-real hardware feature (BP0/BP1 block-protect + WPEN in the status register), plausible future use.
-`set_write_protected()`'s return type changed `None` → `bool` (matches `set_values()`'s own
-success/failure convention - a real API-consistency gap, `src/README.md` section 10) now that it
-does real verification worth reporting. Zero existing callers anywhere in the codebase, confirmed
-via `grep`, so this is a pure signature strengthening, not a breaking change.
+46 tests (`tests/test_asy_fram_driver.py`).
 
-**Also fixed** (style-only, no behavior change): a stray CircuitPython-style docstring on
-`get_write_protected()` - inconsistent with every other `src/` file's "comments, never per-method
-docstrings" convention (`src/README.md` section 11) - condensed into a `#` comment during the
-post-promotion bird's-eye scan across `src/` this file's own addition triggered (per CLAUDE.md's
-hard rule); no other cross-file discrepancy found.
+### `asy_fram_manager.py` → `src/`
 
-**Resolved in a follow-up session**, once the project owner added the real datasheet PDF to the
-new `datasheets/fram/` folder (see CLAUDE.md's "Datasheets" section - this file's own promotion is
-what prompted adding it, after the original session hit a WebSearch/WebFetch rate limit trying to
-fetch it from the web): confirmed directly from DS501-00015-4v0-E's "STATUS REGISTER" section, WEL
-bit description - "WEL is reset after the following operations. After power ON. After WRDI command
-recognition. At the rising edge of CS after WRSR command recognition. At the rising edge of CS
-after WRITE command recognition." So yes, both a completed `WRITE` and a completed `WRSR` auto-clear
-`WEL`, not just `WRDI`. `tests/_fram_chip_fake.py` updated to model this exactly; the previously
-conservative fake (only `WREN`/`WRDI` changed `WEL`) is now accurate by default, with two new
-opt-in fault-injection flags (`disturb_write_autoclear`/`disturb_wrsr_autoclear`) that suppress the
-auto-clear specifically so `_write()`'s/`set_write_protected()`'s own explicit `WRDI`-verification/
-retry path - genuine defense-in-depth against that auto-clear mechanism itself glitching, not
-merely "the only thing that clears WEL" as originally believed - stays exercised by a real
-simulated fault instead of becoming unreachable now that the normal case already clears `WEL`
-before the explicit `WRDI` even runs. No driver code changes needed; the explicit `WRDI` calls
-were already correct (if now confirmed usually redundant in the non-fault path) and are kept as
-that defense-in-depth. 27/27 tests still pass with the corrected fake.
+Central FRAM storage manager: a bump-pointer chunk allocator (`get_chunk()`/
+`get_timestamped_chunk()`) on top of `asy_fram_driver.py`'s `FRAM_SPI`, giving each chunk dual-copy
+redundancy, CRC-checked self-healing reads, and a status-byte busy/idle protocol that detects a
+write torn by power loss. Every other FRAM-touching file (`print_log.py`'s `PrintLogHistoryStore`,
+`base_classes.py`'s `SensorReader`) exercises this surface for real via
+`tests/_fram_chip_fake.py`'s simulated chip - see `tests/README.md`.
 
-**Second finding from the same datasheet read, fixed after owner confirmation**: the real
-`WP` pin is active-low per the "WRITING PROTECT" table (`WP=0` is what makes the status register
-itself additionally locked when `WPEN=1`; `WP=1` leaves it changeable) - the same active-low
-convention as `CS`/`HOLD` on this chip. `FRAM_SPI`'s `wp_pin` handling drove
-`self._wp_pin.value(value)` directly (`value=True` -> pin driven `HIGH`), backwards from what the
-datasheet's table says is needed to actually lock the status register. Owner confirmed the fix:
-`setup()`/`set_write_protected()` now drive the pin to `not value`, and `get_write_protected()`
-reads `not bool(self._wp_pin.value())`, so `value=True` (protect) now genuinely drives `WP` low
-and locks the status register, matching the class's own stated "enables hardware-level
-protection" intent. Zero real callers existed either way, so this is a pure correctness fix, not
-a behavior change for any real caller.
+**Current behavior/invariants:**
+- Contract: never raises; every method returns `False`/`None` (or an all-`None`/`False` tuple for
+  the timestamped variant).
+- Chunk layout: `[Data 0][Status 0-1][Status 0-2][Data 1][Status 1-1][Status 1-2]`.
+  `get_chunk()`/`get_timestamped_chunk()` are a bump allocator - a device's own lifetime call order
+  fixes its on-chip layout, which must stay identical across firmware versions for existing stored
+  data to keep decoding.
+- Every chunk from one manager shares that manager's own `PrintLogHistory`, so `errno`/`wrnno`
+  values must stay unique across the whole file, not just per class. Current registry: the four
+  `check_idle=False` status-byte call sites (write-busy 10-11, write-idle 19-20, read-idle 39-40,
+  clear-uninit 50-51) use only their 2 reachable numbers each; the one `check_idle=True` site
+  (`_read_chunk`'s initial busy-set, err=30) keeps the full 7-number spread (30-36), since its two
+  status bytes can genuinely disagree. `AsyFramChunk.write`'s oversized-data check is errno=84
+  (distinct from the base class `clear()`'s errno=80); the externally-guarded paths are 85-88
+  (`ntp_sync_callback`, and `time.mktime(time.gmtime())` - which raises `OverflowError` past rp2's
+  ~2037 32-bit epoch limit, not hypothetical for a device meant to run unattended for years).
+- Locking: `_op_lock` (one `asyncio.Lock` per chunk) serializes that chunk's own
+  `write()`/`read()`/`clear()` end to end - two calls into the same chunk can never interleave.
+  `fram`'s own lock (shared by every chunk on one manager) only serializes one block operation at a
+  time, released between a chunk's own block 0 and block 1 - so different chunks' block operations
+  may still interleave in that gap, though a single chunk's own operations cannot.
+- Deliberate, owner-confirmed design points: "both blocks valid but different data" is a hard
+  failure, not a guess - there's no generation counter to say which block is newer, so a write torn
+  between blocks must be reported as corruption. Sharing one `CRC` instance per chunk is safe
+  because `fram`'s lock already guarantees only one chunk's `_read_chunk`/`_write_chunk`/
+  `_clear_chunk` body runs at a time. This also means the cross-block byte comparison is a second,
+  CRC-independent corruption detector: even with `crc=CRC_Pass()`, a single corrupted copy still
+  hits this same hard-failure path rather than reading back silently wrong - confirmed directly by
+  corrupting a raw on-chip byte with no CRC in play at all.
+- `AsyFramTimestampedChunk.write()`/`write_into()` return `(ntp_synced, utc, success)` - `success`
+  is the third element, not first, unlike every other bool-returning method in this file. This is
+  the real, in-use shape (`asy_sgp40_driver.py` already unpacks it this way) - not to be silently
+  reordered.
+- `AsyFramManager.__init__`'s `FRAM_SPI(...)` construction is not itself caught - consistent with
+  `asy_fram_driver.py`'s fail-loud-once-at-boot exception contract for a misconfigured pin.
+- SGP40 FRAM backup "0 = disabled" semantics: see Functional Clarifications above.
+- `set_pause()`/`get_pause()`/`override_pause`: owner-confirmed intent is "finish all ongoing ops,
+  reject new ones" - correctly what the code does, since the pause check sits *after* `_op_lock`
+  acquisition, so nothing already mid-flight is interrupted. Real legacy callers (`system_service.py`,
+  unchanged in `improved-quality/`) are `reboot_system()`/`reboot_bootloader()` (pause right before
+  a deliberate reset, then a 5s delay before the reset actually fires - ample margin over a real
+  operation's low-single-digit-ms cost) and a REST `systemCmd` `"mempause"` command (operator-
+  triggered pause for up to `_MAX_STORAGE_PAUSE`=3600s via a hardware `Timer` auto-unpause, for safe
+  physical access to the chip). `src/` itself has zero callers yet - part of the still-open
+  task-supervisor/system-service wiring, not `asy_fram_manager.py`'s own scope.
+- The busy/idle protocol brackets *reads* too (not just writes), owner-confirmed deliberate:
+  MB85RS64V reads are destructively read internally (confirmed in the datasheet's own endurance
+  footnote), so a power loss mid-read is as real a risk as mid-write; board-level bulk capacitance
+  is sized against the datasheet's power-supply falling-time (`tf`) spec as the primary mitigation,
+  with this software protocol as the second layer.
+- `get_chunk()`/`get_timestamped_chunk()`'s "out of memory" failure logs via `self.pr.err()`
+  (console-only), deliberately not the persisting `err_s()` - owner-confirmed: an out-of-FRAM error
+  can't sensibly be logged into that very FRAM, so this one path stays console-only by design, not
+  an oversight.
+- `get_chunk()`/`get_timestamped_chunk()` reject `size == 0` unconditionally, before any CRC or
+  capacity logic runs - a chunk storing nothing is never a sensible request, regardless of which
+  `crc` would've been used (owner-confirmed: reject generally at the top, not as a CRC-specific or
+  timestamp-specific special case). Replaces the previous behavior, where a `size=0` chunk with
+  `crc=CRC_Pass()` allocated successfully but then read back a spurious CRC error on every
+  subsequent read (the streaming loop never ran, so the CRC engine never received a `run_inc()`
+  call) - that quirk no longer exists; the request is refused outright instead.
 
-Testing: a fourth mocking-boundary instance, `tests/_fram_chip_fake.py` - a stateful fake MB85RS64V
-sitting on top of `tests/machine.py`'s dumb fake SPI bus, interpreting the exact opcode/CS-session
-shapes `FRAM_SPI` itself produces (RDID/RDSR/WRSR/WREN/WRDI/READ/WRITE), with fault-injection knobs
-(`drop_wren`/`drop_next_wrdi`/`drop_wrsr`/`disturb_write_autoclear`/`disturb_wrsr_autoclear`/
-`rdid_response`) for simulating a disturbance eating one specific transaction's effect. 29 tests in
-`tests/test_asy_fram_driver.py`, including direct regressions for the RDID byte-order/`and`-vs-`or`
-bug, the new WEL/write-protect verification paths, and the `WP`-pin-polarity fix. No
-`pyproject.toml`/CI changes needed - both already scope by directory (`src`, `tests`), not an
-explicit file list.
+**Known gaps, kept for future use, not chased further (owner-confirmed):**
+- `get_crc_buf()` (both buffer classes) and `get_size()` (both chunk classes) have zero callers
+  anywhere in `src/`, `tests/`, or `improved-quality/` - the same zero-real-callers category
+  `asy_fram_driver.py` tracks for its own write-protect methods, just one layer up.
+  `_AsyBaseFramChunk.get_pause()` (the async coroutine, distinct from `AsyFramManager.get_pause()`,
+  which is used) is likewise never called.
+- `asy_fram_driver.py`'s `verify_present()`/`get_write_protected()`/`set_write_protected()` still
+  have zero callers from this manager - see that file's own "Known gaps" above.
+- Coverage (via `scripts/test.sh --coverage`): 94% (27/463 lines missed) - every genuinely
+  reachable branch is covered. What remains: 8 `const()`-folding tracer artifacts; the
+  intentionally-unreachable `return False, 0` at the end of `_read_chunk` (mypy requires it; every
+  real path above already returns); the zero-caller dead-code getters above; and, confirmed
+  empirically against the real interpreter (not assumed), four more provably-unreachable
+  defense-in-depth branches - `AsyFramTimestampedChunk.write_into()`'s `struct.pack_into` `except`
+  (this build silently wraps out-of-range/negative ints for an unsigned format instead of raising,
+  and `utc` is always a plain `int` per the type contract, so only a type violation mypy already
+  rules out could ever trigger it) and `read_into()`'s `struct.unpack_from` `except` (the timestamp
+  slice is always exactly 8 bytes when reached, and unpacking any 8 raw bytes as `"<Q"` can't fail),
+  plus two `LockableBuffer`-backed `None`-guards downstream of an already-passed identical check
+  earlier in the same call (`read()`'s and `write_into()`'s own copies of a check `read_into()`/
+  `get_data_buf()` already made unreachable). None of the above is chased further (owner-confirmed:
+  no trouble with less than 100% coverage as long as nothing left uncovered is a real gap).
 
-**Follow-up leanness pass** (owner-requested structure/simplification review): `_write()` and
-`set_write_protected()` had near-duplicate WREN-verify/WRDI-verify-retry sequences, and
-`set_write_protected()`'s trailing WRDI never checked or warned on a stuck `WEL` the way
-`_write()`'s did - an inconsistency, not just duplication. Extracted shared
-`_send_opcode()`/`_wel_is_set()`/`_enable_write()`/`_disable_write()` helpers; both methods now use
-the same preamble/epilogue, and a stuck `WEL` after `set_write_protected()` is warned the same way
-(status: still returns success - a stuck latch is a housekeeping issue, not a "did the protection
-change happen" issue, same reasoning as `_write()`'s own stuck-WEL case). Also renamed
-`setup_addr_buffer` -> `_setup_addr_buffer`: it had zero external callers (confirmed via grep) and
-was the one public-looking method with no real external API role, inconsistent with every other
-internal helper in the file being `_`-prefixed. Added one line to the module docstring noting the
-chip's own internal CS pull-up (a disconnected CS wire reads deselected on real hardware, not
-floating-asserted - a bus-disturbance case this file never needs to defend against itself).
-
-**Noted, not changed**: `get_size()` also has zero callers anywhere in the codebase today (checked
-via grep - `AsyFramChunk`/`AsyFramTimestampedChunk` have their own same-named but unrelated
-`get_size()`). Unlike `setup_addr_buffer`, left as public API surface rather than flagged as dead
-code - a trivial, obviously-useful capacity getter for any future consumer of this
-byte-addressed-storage abstraction, not something with an ambiguous "should this even exist"
-question the way the write-protect methods had. `get_values()`/`set_values()` also don't reject a
-zero-length `buf` (a no-op read/write) - deliberately not restricted: real callers
-(`asy_fram_manager.py`) never pass one, the datasheet doesn't document 0-byte `WRITE` behavior
-either way, and rejecting a domain no real caller ever exercises would be defensive code for a
-case that isn't known to actually be invalid (see `src/README.md` section 4's "don't add checks
-just in case").
-
-**Exception-safety audit** (owner-requested: find every place that could raise, uncaught, either
-directly or via a called function; apply the existing "deliberately allowed" scheme consistently
-rather than eliminating it). Walked every method and every function it calls (`asy_spi_driver.py`,
-`base_classes.py`, `print_log.py`, `machine.Pin`) line by line. Found and fixed one real gap:
-`verify_present()` was the one public method that didn't guard `uninitialized` before touching
-`self._spidev` - every sibling method (`get_values`/`set_values`/`get_write_protected`/
-`set_write_protected`) already checks this first and returns a clean `False`, but `verify_present()`
-would have let `SPIDevice.__aenter__`'s own "not set up" `RuntimeError` leak out uncaught if called
-before the first `setup()` ever succeeded. Fixed to match every sibling's contract.
-
-Beyond that one gap, confirmed the exception surface is exactly three deliberately-allowed paths,
-all inherited from or mirroring `asy_spi_driver.py`'s own already-established carve-outs (see its
-docstring/BACKLOG.md entry) - rewrote this file's own module docstring to enumerate them precisely
-instead of only mentioning `setup()`'s `OSError`:
-1. `__init__()` constructs real `SPIDevice`/`Pin` objects - `ValueError` for a bad pin/port number,
-   one-time at-boot construction, allowed to fail loudly (matches `asy_i2c_driver.py`'s/
-   `asy_spi_driver.py`'s own stated philosophy: a misconfigured bus should fail loudly once at
-   boot, not silently degrade every later call).
-2. `setup()`'s deliberate `raise OSError` on failed device identification (unchanged from before -
-   see above).
-3. `SPIDevice.__aenter__`'s "not set up" `RuntimeError` - now only reachable by calling a method
-   before the first `setup()` ever succeeded (a caller-ordering bug, closed for every method in
-   this file per the `verify_present()` fix above) or if something else deinitializes the shared
-   SPI bus out from under an in-flight operation. **Confirmed, not assumed**: a real electrical bus
-   disturbance never touches this Python-level lifecycle state at all (only an explicit
-   `.deinit()`/`.init()` call elsewhere does) - this is a software-lifecycle concern, categorically
-   different from the undetectable-at-this-layer electrical-disturbance case the CRC/dual-copy
-   layer exists for. Matches `asy_spi_driver.py`'s own already-signed-off precedent that this
-   `RuntimeError` is the caller's responsibility, not this driver's - not caught here, on purpose.
-
-**`asy_fram_manager.py`'s own exception handling around `FRAM_SPI`, reviewed (not itself in
-refactor scope - read-only)**: confirmed adequate, not just assumed, per `src/README.md` section
-2's "verify - don't assume - that every upstream caller of it actually closes the gap" requirement.
-`AsyFramManager.setup()` wraps `self.fram.setup()` in `try: except Exception`, catching `setup()`'s
-`OSError` (and, incidentally, anything else). `_write_chunk()`/`_read_chunk()`/`_clear_chunk()`
-each wrap their entire body - including every `fram.get_values()`/`fram.set_values()` call, direct
-and via `_handle_status_bytes()`/`_set_check_sb()` - in their own broad `try: except Exception`
-inside the `async with self.fram as fram:` block, which would also catch the inherited
-`SPIDevice`-`RuntimeError` path above if it were ever actually reached in production (it shouldn't
-be, given call ordering, but the safety net is there regardless). `AsyFramManager.__init__()`
-constructing `FRAM_SPI(...)` (and transitively `SPIDevice`/`Pin`) is *not* wrapped - consistent
-with the same "fail loud once at boot for a misconfigured pin" convention used for every other
-bus/sensor driver's own construction in this codebase, not a gap.
-**Flagged for upstream, kept in the backlog per owner's request**: `get_write_protected()`/
-`set_write_protected()`/`verify_present()` have zero callers in `asy_fram_manager.py` today, so
-none of this existing exception-handling discipline currently applies to them. Whoever eventually
-wires these in (part of the still-open "FRAM's SPI bus gets the same bus-recovery treatment as
-sensor buses" item under "Bus/sensor error-recovery robustness" above) must apply the same
-`try/except Exception` wrapping already used for `setup()`/`get_values()`/`set_values()` - this
-driver deliberately does not catch its own inherited `RuntimeError` path, by design, so the
-upstream caller is exactly where that responsibility has to land.
-
-**Test expansion** (owner-requested: configuration matrix, integration tests with real
-dependencies, mocked SPI success/error paths derived from the datasheet, module and integration
-level). 41 tests now (up from 29): a configuration matrix (all `wp`/`wp_pin` pairings; `max_size`
-boundary values at the exact 2-byte/3-byte address-header transition; degenerate `max_size`
-values - 0, negative - proven to degrade to "reject every access" rather than crash; several
-degenerate values combined at once, not just one at a time); the `verify_present()` fix locked in
-by a regression test; both deliberately-allowed exception paths turned into real, passing tests
-(construction with an out-of-range pin, and mid-operation bus `.deinit()`); a proof (not just
-prose) that a corrupted *payload* byte during `WRITE` is undetectable at this layer by design,
-motivating the CRC/dual-copy layer above it; and integration tests against the real
-`print_log.PrintLogHistory` (production's actual logger type, not the bare `PrintLog` most other
-tests use) plus `FRAM_SPI`'s own outer `Lockable` lock's concurrency and task-cancellation safety
-(mirroring `test_asy_spi_driver.py`'s own bus-level versions of the same properties, now proven one
-level up).
-
-**`tests/machine.py` (shared fixture) change, not scoped to this file alone**: its fake `Pin`
-never validated `id` at all, so "construction with an invalid pin raises" - a real, multi-file-
-documented contract (`asy_spi_driver.py`'s and `asy_i2c_driver.py`'s own docstrings both claim it) -
-had no test anywhere actually exercising it, in any of the three driver test suites. Added minimal
-validation (`TypeError` for a non-int, `ValueError` outside the real RP2040's GPIO0-28 range,
-confirmed against `ports/rp2/machine_pin.c`) - checked every pin number used across all three test
-files first (max is 8), so this is additive, not a behavior change for any existing test. Full
-suite re-run to confirm: `test_asy_i2c_driver.py` 77/77, `test_asy_spi_driver.py` 43/43, both
-unchanged from before this addition.
-
-**Post-promotion re-audit against the datasheet (owner-requested second pass, after CI first went
-green): three real bugs found and fixed, plus a deliberate scope note.**
-
-1. **Write-protection self-lock when `wp_pin` is used.** The datasheet's WRITING PROTECT table
-   (`WEL=1, WPEN=1, WP=0` → Status Register itself Protected) means a `WP` pin left low from an
-   earlier `set_write_protected(True)` silently blocked *every* later `WRSR` — including the one
-   meant to turn protection back off — because the old driver only updated `_wp_pin` *after* a
-   successful write, so the WRSR was always attempted while the *previous* pin level was still in
-   effect. First enable always worked (old `WPEN=0` made the SR unconditionally writable); nothing
-   after that ever could. Currently dormant (`asy_fram_manager.py` never passes `wp_pin` today,
-   see line ~515), but a real, dormant one-way lockout the moment it's used. Fixed by driving `WP`
-   high (deasserted) once `WREN` has already succeeded but *before* the `WRSR` itself —
-   guaranteeing the SR is writable regardless of the still-current `WPEN` bit — and only
-   re-driving it to the real target after the write is readback-confirmed (restoring the prior
-   level on failure; a failed `WREN` never touches the pin at all, since nothing's changed yet).
-   This also exposed a **mock fidelity gap**: `tests/_fram_chip_fake.py`'s `WRSR` handler only ever gated on
-   `WEL`, never modeling the `WP`-pin+`WPEN` status-register lock at all — so the existing
-   `test_wp_pin_get_write_protected_reads_active_low_pin_correctly` (a True→False round trip)
-   passed as a false positive against the buggy driver. Fixed the fake too (a `wp_pin` attribute a
-   test wires post-construction via `chip.wp_pin = fram._wp_pin`, since the pin object doesn't
-   exist until `FRAM_SPI.__init__` runs); regression test:
-   `test_wp_pin_protection_can_be_toggled_off_again_after_being_enabled` (four round trips, not
-   just one).
-2. **`setup()` never re-synced `_wp` from real hardware, but `WPEN`/`BP0`/`BP1` are nonvolatile.**
-   The datasheet explicitly documents these three bits as "composed of nonvolatile memories
-   (FRAM)", unlike `WEL`, which the same table documents as reset at power-on. The constructor's
-   `wp=` parameter was trusted blindly forever; a stale assumption from a previous session (or
-   anything else that ever wrote the status register) would never self-correct, and
-   `get_write_protected()` without a `wp_pin` would keep echoing the wrong cached value
-   indefinitely, since "Protected Blocks: Protected" holds in *every* row of the WRITING PROTECT
-   table regardless of `WEL`/`WPEN`. Fixed: `setup()` now issues an `RDSR` and derives `_wp` from
-   the real status register (`== _SR_WP_SET` exactly, matching this driver's own binary all-or-
-   nothing write model — it never partially represents `BP0`/`BP1`/`WPEN` independently) instead of
-   trusting the constructor parameter. **Behavioral consequence, not a bug**: `wp=` at construction
-   is now purely a pre-`setup()` placeholder with no lasting effect once `setup()` succeeds —
-   always overwritten by hardware truth. Regression test:
-   `test_setup_resyncs_wp_from_nonvolatile_hardware_state_over_a_stale_constructor_guess` (both
-   directions — stale-protected and stale-unprotected). This also required updating two existing
-   tests whose assumptions this fix correctly overturns
-   (`test_wp_and_wp_pin_combinations_all_construct_and_setup_cleanly`,
-   `test_multiple_invalid_edge_values_combined_still_degrade_safely`) to seed `chip.status` to the
-   intended hardware state before `setup()`, rather than expecting the constructor `wp=` to survive
-   unchanged.
-3. **`verify_present()` could hang forever, not just fail.** It self-acquires `FRAM_SPI`'s own
-   outer `Lockable` lock (`async with self:`), unlike `get_values()`/`set_values()`, which require
-   the *caller* to already hold it (by design — so a caller can compose several bus operations
-   atomically under one `async with fram:`). A future caller invoking `verify_present()` from
-   inside such a block would hang the task indefinitely, since MicroPython's `asyncio.Lock` isn't
-   reentrant (confirmed directly against `extmod/asyncio/lock.py`'s `Lock.acquire()` — no owner
-   tracking at all) — a silent violation of the module's own "always returns a well-defined value,
-   never raises" contract (it wouldn't raise, it just wouldn't ever return). Considered a true
-   reentrant lock for `Lockable` (shared across the whole project, e.g. `SPIDevice`) but rejected
-   as disproportionate for one call site in one file. Fixed narrowly instead:
-   `verify_present()` now does `asyncio.wait_for(self.asy_lock.acquire(), _VERIFY_PRESENT_LOCK_TIMEOUT_S)`
-   and treats a `TimeoutError` as the same clean `False` every sibling guard already returns.
-   Confirmed directly against `extmod/asyncio/{lock,funcs}.py` (the real MicroPython 1.28.0 source,
-   not assumed) that `wait_for`'s timeout-driven cancellation of a still-*waiting* `acquire()` is
-   safe — the queued task is cleanly removed without corrupting `Lock.state`, matching this exact
-   use case. `_VERIFY_PRESENT_LOCK_TIMEOUT_S` (1.0s — generous headroom over the low-single-digit-ms
-   real transaction cost, per `SPIDevice`'s own two 1ms settle sleeps) is now `const()`-wrapped
-   (owner-requested follow-up, previously left as a plain module global specifically so
-   `test_verify_present_bounded_wait_returns_false_instead_of_hanging_when_lock_already_held` could
-   monkeypatch it down to 0.01s). Confirmed directly against the real pinned Unix-port interpreter,
-   not assumed from the docs' wording alone: `const()` inlines the value at every use site within
-   the module *regardless of the underscore prefix* — a non-underscore `const()` still exposes the
-   name as a readable module attribute (per the docs), but reassigning that attribute from outside
-   has zero effect on the module's own internal reads either way, since those were already replaced
-   with the literal at compile time. So there was never a variant of this constant that could stay
-   both a real `const()` and test-monkeypatchable; the test now simply sits out the real ~1s
-   timeout (full suite wall time: 2.075s → 2.960s, +~0.9s, matching the removed 0.01s-vs-1.0s
-   delta almost exactly) rather than shortening it.
-4. **Scope note, not a bug**: `_setup_addr_buffer`'s `max_size > 0xFFFF` (4-byte address) branch is
-   dead code for this specific chip — the `RDID` check is hardwired to one real 8KB part
-   (`0x0000`-`0x1FFF`), so a correctly-`setup()` instance can never legitimately need it. Owner
-   decision: trust that `max_size` is set correctly by the caller rather than validating/clamping
-   it in the driver; added a short comment at the call site instead (`_setup_addr_buffer`) flagging
-   that a wrong, too-large `max_size` would let `get_values()`/`set_values()` validate addresses
-   beyond the real chip capacity and silently alias/wrap on real hardware.
-
-Test count after this pass: `asy_fram_driver.py` 44 (41 → 44: three new regression tests, one per
-fix above; finding #4 didn't get its own test since it's an explicit "trust the caller" decision,
-not a behavior change).
-
-**Third re-audit (owner-requested): `src/README.md`'s checklist walked section-by-section against
-the current file, re-verified against the real datasheet PDF again, and cross-checked against
-Adafruit's own `Adafruit_FRAM_SPI` reference driver (fetched fresh from GitHub, not assumed from
-the first promotion's earlier read of it). No new bugs found - confirms the three fixes above hold
-up, not just that they compiled and passed CI once.**
-- Opcodes/SPI mode/address-width threshold cross-checked against `Adafruit_FRAM_SPI.h`/`.cpp`
-  directly: `WREN`/`WRDI`/`RDSR`/`WRSR`/`READ`/`WRITE`/`RDID` all match exactly; SPI mode 0,
-  MSB-first, matches `SPIDevice`'s defaults; Adafruit's own 2-byte-vs-3-byte address switch is at
-  64KB (`0xFFFF`), the same boundary `_setup_addr_buffer` uses - independent confirmation that the
-  4-byte-header branch really is dead code for this 8KB chip, not a guess. Adafruit's driver has no
-  WP-pin hardware control at all, so nothing to cross-check there; that part is sourced from the
-  Fujitsu datasheet alone, as already documented above.
-- Re-verified every SPI transaction shape (single vs. multi-`write()` CS session) against the
-  datasheet's own command diagrams: `RDSR`/`RDID`/`READ` (opcode+addr then data, one CS-low
-  session, supporting the chip's auto-increment continuous read/write) and `WRITE` (opcode+addr and
-  payload as two `write()` calls but one CS session) all match.
-- Re-verified the `WRITING PROTECT` table's ordering requirement directly: `set_write_protected()`
-  deasserts `WP` before entering the `WRSR`'s `async with self._spidev` block and doesn't touch the
-  pin again until after readback confirmation, so `WP`'s level is provably fixed for the entire
-  `WRSR` command sequence and beyond - satisfies "the `WP` signal level shall be fixed before
-  performing the `WRSR` command, and do not change the `WP` signal level until the end of command
-  sequence" with margin to spare.
-- Re-confirmed `verify_present()`'s `asyncio.wait_for`/`Lock` fix directly against
-  `/root/pico-toolchain/micropython/extmod/asyncio/{core,funcs,lock}.py` (the real pinned v1.28.0
-  source, re-read fresh rather than trusted from the prior session's notes): `asyncio.TimeoutError`
-  is `core.TimeoutError`, a plain `Exception` re-exported via `core.py`'s unrestricted `from .core
-  import *` (no `__all__`) - distinct from the builtin `TimeoutError`/`OSError` family, so the
-  `except asyncio.TimeoutError` catch is precise, not accidentally broad. `wait_for()` promotes the
-  lock's `acquire()` into its own task and cancels *that* task on timeout, which propagates
-  `CancelledError` into `Lock.acquire()`'s `yield` point - exactly the branch `Lock.acquire()`
-  itself handles by re-queuing the next waiter if needed, confirming lock state can't be corrupted
-  by this timeout path.
-- Walked `src/README.md` sections 0-14 explicitly: no exception-safety gap beyond the ones already
-  fixed (re-verified `FRAM_SPI`'s outer lock vs. `SPIDevice`'s bus lock are genuinely two different
-  `asyncio.Lock` objects, so `verify_present()`'s self-acquire of the outer lock can't deadlock
-  against a nested bus-lock acquisition inside `_check_device_id()`); no API-consistency gap against
-  `asy_i2c_driver.py`/`asy_spi_driver.py` (I2C's ACK-based `__probe_for_device()` vs. this file's
-  RDID-based `verify_present()`/`setup()` is an inherent SPI-has-no-ACK protocol difference, already
-  documented in section 2's I2C-vs-SPI carve-out, not a design inconsistency to fix); lint/typecheck
-  clean, full suite green (537/537, `asy_fram_driver.py` 44/44).
-- **One stale fact fixed**: this file's own "Current test counts" summary (below) still said
-  `asy_fram_driver.py 41` / `534 total`, not updated when the previous pass's own count changed to
-  44/537 - corrected now, per CLAUDE.md's "update stale facts in the same session" agreement.
-
-**Fourth pass (owner-requested): `_VERIFY_PRESENT_LOCK_TIMEOUT_S` made a real `const()`, and three
-functions' comments re-trimmed to the repo's ≤3-lines-total-per-function convention.** `setup()`
-(was 4 comment lines across two blocks), `verify_present()` (was 6 across two blocks), and
-`set_write_protected()` (was 9 across three blocks) all now sit at or under 3 total, condensed
-without dropping the underlying rationale - each point either fits in a shorter inline comment or
-was already covered by this file's own entries above (e.g. the `WP`-deassert-ordering and
-readback-verification reasoning). See the `const()`-conversion entry earlier in this section for
-why the previously-monkeypatchable timeout is now a fixed ~1s cost in
-`test_verify_present_bounded_wait_returns_false_instead_of_hanging_when_lock_already_held` instead.
-Lint/typecheck (scoped `src tests`, matching CI) clean; full suite still 537/537
-(`asy_fram_driver.py` 44/44), just ~0.9s slower wall time from the one now-unpatched wait.
+89 tests (`tests/test_asy_fram_manager.py`) + 10 (`tests/test_fram_integration.py`, full-stack
+integration down to the simulated raw SPI bus, including two `SensorReader`s sharing one manager,
+the same manager backing two structurally different chunk types across a simulated reboot, and -
+per `src/README.md` section 12's standing rule that module-level tests alone aren't enough for a
+file that composes into a real chain - the torn-write/CRC/timestamp/pause failure modes above,
+each reproven through the real `SensorReader` → `PrintLogHistoryStore` → chunk → `FRAM_SPI` chain
+rather than by calling this file's own methods directly. Its 40-cycle stress test needs an explicit
+`gc.collect()` per cycle - a Unix-port test-binary heap-timing artifact under a tight allocate-heavy
+loop, not a leak in this file - don't remove it as apparent cargo-culting).
 
 ### Coverage-driven completeness pass
 
@@ -1024,8 +837,8 @@ and a missing config file failing independently without either derailing the oth
 ### Current test counts (verify via `grep -c '^def test_' tests/test_*.py` if this looks stale)
 
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
-`base_classes.py` 72, `config_manager.py` 140, `print_log.py` 50, `asy_fram_driver.py` 44 — **537
-total**.
+`base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
+`asy_fram_manager.py` 89, `test_fram_integration.py` 10 — **632 total**.
 
 ## Decided for the refactor
 
