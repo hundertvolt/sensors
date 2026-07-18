@@ -15,14 +15,16 @@ but different" (an interrupted 2-copy write, no generation counter to say which 
 deliberate hard failure rather than a guessed fallback.
 """
 
+import asyncio
 import struct
 import time
-import asyncio
+
+from micropython import const
+
+from asy_fram_driver import FRAM_SPI
+from asy_spi_driver import SPI
 from base_classes import LockableBuffer
 from crc_checks import CRC_Base, CRC_Pass
-from micropython import const
-from asy_spi_driver import SPI
-from asy_fram_driver import FRAM_SPI
 from print_log import PrintLogHistory
 
 try:
@@ -64,11 +66,9 @@ class _AsyBaseFramChunk:
         self.size = size
         self.verify = verify
         self.verify_counter = 0
-        # crc_checks.py requires one instance per concurrent incremental (run_inc/check_inc)
-        # sequence; safe to share here because every method touching self.crc runs inside
-        # `async with self.fram as fram:`, and self.fram is one lock shared by every chunk this
-        # manager allocates - so at most one _read_chunk/_write_chunk/_clear_chunk body (on any
-        # chunk) ever runs at a time.
+        # crc_checks.py needs one instance per concurrent sequence; safe here since every chunk
+        # shares fram's own lock, so at most one _read_chunk/_write_chunk/_clear_chunk body (on
+        # any chunk this manager allocates) ever runs at a time.
         self.crc = crc
         self.check_length = check_length
         self.block_addr = (base_addr, base_addr + self.size + self.crc.length() + _NUM_STATUS_BYTES)
@@ -208,7 +208,10 @@ class _AsyBaseFramChunk:
                 valid = False
                 match = False
             else:
-                for bsi, gsi in zip(range(bs[0], bs[1]), range(gs[0], gs[1])):
+                # No strict= (ruff B905): confirmed against the real MicroPython interpreter that
+                # zip() rejects it (CPython 3.10+-only). bs/gs always span the same chunk_size by
+                # construction (see _read_chunk) anyway, so there's no truncation risk.
+                for bsi, gsi in zip(range(bs[0], bs[1]), range(gs[0], gs[1])):  # noqa: B905
                     match = match and (mvt[bsi] == mvb[gsi])
 
         uninit, valid_bytes = await self._read_chunk(temp, addr, cb)
@@ -327,6 +330,10 @@ class _AsyBaseFramChunk:
                 await self.pr.err_s("General read error in _read_chunk:", e, errno=47)
                 await cb(None, None, 0)
                 return False, 0
+        # Unreachable in practice (every path above returns; Lockable.__aexit__ always returns
+        # False, never suppresses) - kept because mypy's `-> bool` on __aexit__ can't statically
+        # rule that out, so it treats falling through the `async with` as live.
+        return False, 0
 
     async def _clear_chunk(self, addr: int) -> bool:
         async with self.fram as fram:
@@ -334,10 +341,9 @@ class _AsyBaseFramChunk:
                 # _handle_status_bytes may set err to err + 6
                 if await self._handle_status_bytes(fram, addr, _STATUS_UNINIT, False, 50) is None:
                     return False
-                # bytearray(n) zero-fills directly - _STATUS_UNINIT is 0x00, so this is the same
-                # content as `[_STATUS_UNINIT] * n`, without building that list first: the [x] * n
-                # shape can segfault the interpreter uncatchably for n in the ~2**61-2**63 range
-                # (see BACKLOG.md), a class of bug bytearray(n) doesn't have.
+                # bytearray(n) zero-fills directly, same content as `[_STATUS_UNINIT] * n`
+                # (0x00) without building that list first - the [x] * n shape can segfault the
+                # interpreter uncatchably for large n (see BACKLOG.md); bytearray(n) can't.
                 res = await fram.set_values(bytearray(self.size + self.crc.length()), addr)
                 if not res:
                     await self.pr.err_s("FRAM write failed in _clear_chunk!", errno=57)
@@ -491,7 +497,7 @@ class AsyFramTimestampedChunk(_AsyBaseFramChunk):
         utc = _TS_UNINIT[0]
         if ntp_synced:
             try:
-                utc = time.mktime(time.gmtime())  # type: ignore[call-arg]
+                utc = time.mktime(time.gmtime())
                 self.pr.evt("FRAM write timestamp is valid")
             except (OverflowError, OSError) as e:  # rp2's mktime() raises OverflowError past its ~2037 32-bit epoch range
                 await self.pr.err_s("Computing write timestamp failed:", e, errno=86)
@@ -537,6 +543,7 @@ class AsyFramTimestampedChunk(_AsyBaseFramChunk):
         tbuf = buf.get_ts_buf()
         if tbuf is None:
             return False, None, None
+        ts: int | None
         try:
             ts = int(struct.unpack_from(_TS_FMT, tbuf, 0)[0])
         except Exception:
@@ -553,7 +560,7 @@ class AsyFramTimestampedChunk(_AsyBaseFramChunk):
                 ntp_synced = False
             if ntp_synced:
                 try:
-                    age = time.mktime(time.gmtime()) - ts  # type: ignore[call-arg]
+                    age = time.mktime(time.gmtime()) - ts
                     self.pr.evt("FRAM read current time is valid")
                 except (OverflowError, OSError) as e:  # rp2's mktime() raises OverflowError past its ~2037 32-bit epoch range
                     await self.pr.err_s("Computing read age failed:", e, errno=88)

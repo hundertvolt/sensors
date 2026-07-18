@@ -2,8 +2,10 @@
 and its optional FRAM-backed persistence (PrintLogHistoryStore), surviving a reboot.
 
 Contract: every method returns a well-defined value and never raises. PrintLogHistoryStore's FRAM
-calls are wrapped broadly since asy_fram_manager.py isn't itself audited yet (see BACKLOG.md);
-tests/_fram_mock.py mocks that boundary and every failure mode.
+calls are wrapped broadly, matching asy_fram_manager.py's own "never raises" contract (see
+BACKLOG.md) plus defense-in-depth against the general _FramManager/_FramChunk Protocol below;
+tests/test_print_log.py exercises this against the real AsyFramManager (tests/_fram_chip_fake.py's
+simulated chip) and every failure mode still reachable through it.
 """
 
 import struct
@@ -24,8 +26,9 @@ if TYPE_CHECKING:
     from base_classes import LockableBuffer
     from crc_checks import CRC_Base
 
-    # Narrow structural Protocols for the FRAM slice this file actually calls, avoiding a hard
-    # dependency on asy_fram_manager.py (not yet promoted to src/ - see BACKLOG.md).
+    # Narrow structural Protocols for the FRAM slice this file calls - kept even now that
+    # asy_fram_manager.py is promoted to src/, avoiding a real runtime import cycle (it imports
+    # PrintLogHistory from here) and decoupling from its concrete chunk shapes - see BACKLOG.md.
     class _FramChunk(Protocol):
         def get_buffer(self) -> "LockableBuffer": ...
         # Any: real chunk classes narrow buf's type in a way that's contravariantly incompatible

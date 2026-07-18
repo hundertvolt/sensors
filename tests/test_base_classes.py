@@ -2,9 +2,12 @@ import asyncio
 import os
 from collections import namedtuple
 
-from _fram_mock import MockAsyFramManager, _MockFramChunk
+from _fram_chip_fake import FakeMB85RS64V
 
+import asy_spi_driver
 import config_manager as cm
+from asy_fram_manager import AsyFramManager
+from asy_spi_driver import SPI
 from base_classes import (
     Lockable,
     LockableBuffer,
@@ -16,6 +19,9 @@ from base_classes import (
 )
 from print_log import PrintLog, PrintLogHistory, PrintLogHistoryStore
 
+# Same one-process-per-test-file swap as test_asy_fram_driver.py/test_asy_fram_manager.py.
+asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
+
 try:
     from typing import TYPE_CHECKING
 except ImportError:  # typing isn't available on the real MicroPython test interpreter
@@ -25,11 +31,61 @@ if TYPE_CHECKING:
     from collections.abc import Coroutine
     from typing import Any, TypeVar
 
+    from base_classes import LockableBuffer as _LockableBufferType
+    from crc_checks import CRC_Base
+
     T = TypeVar("T")
 
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
     return asyncio.run(coro)
+
+
+def make_fram_manager(max_size: int = 0x2000) -> "tuple[AsyFramManager, FakeMB85RS64V]":
+    bus = SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
+    manager = AsyFramManager(bus, 1, max_size=max_size)
+    chip = manager.fram._spidev.spi._spi
+    assert isinstance(chip, FakeMB85RS64V)
+    return manager, chip
+
+
+class _RaisingFramChunk:
+    # Minimal local fake (mirrors tests/test_print_log.py's own) proving SensorReader's FRAM-backed
+    # path stays exception-safe against the general _FramManager/_FramChunk Protocol contract, not
+    # just the concrete AsyFramManager - whose own _write_chunk/_read_chunk wrap their entire
+    # bodies in try/except (confirmed by asy_fram_manager.py's own src/ promotion audit), so
+    # write_into()/read_into() can no longer actually raise through it.
+    def __init__(self, raise_on_write: bool = False, raise_on_read: bool = False) -> None:
+        self.raise_on_write = raise_on_write
+        self.raise_on_read = raise_on_read
+
+    def get_buffer(self) -> "_LockableBufferType":
+        from base_classes import LockableBuffer as _LB
+
+        return _LB(6, data_start=0, data_length=6)
+
+    async def write_into(self, buf: "Any", override_pause: bool = False) -> bool:
+        if self.raise_on_write:
+            raise RuntimeError("simulated write failure")
+        return True
+
+    async def read_into(self, buf: "Any", override_pause: bool = False) -> bool:
+        if self.raise_on_read:
+            raise RuntimeError("simulated read failure")
+        return True
+
+
+class _RaisingFramManager:
+    def __init__(self, chunk: "_RaisingFramChunk | None", raise_on_get_chunk: bool = False) -> None:
+        self._chunk = chunk
+        self.raise_on_get_chunk = raise_on_get_chunk
+
+    def get_chunk(
+        self, size: int, crc: "CRC_Base | None" = None, verify: int = 0, check_length: int = 8
+    ) -> "_RaisingFramChunk | None":
+        if self.raise_on_get_chunk:
+            raise RuntimeError("simulated allocation failure")
+        return self._chunk
 
 
 Meas = namedtuple("Meas", ["temp", "hum"])
@@ -510,28 +566,33 @@ def test_get_dict_cfg_mgr_cfg_update_exception_is_caught() -> None:
 
 
 # ---------------------------------------------------------------------------
-# SensorReader - fram given (FRAM-backed PrintLogHistoryStore logging), using the
-# same tests/_fram_mock.py boundary print_log.py's own tests use. Integration
-# coverage across base_classes.py + print_log.py + the FRAM mock together.
+# SensorReader - fram given (FRAM-backed PrintLogHistoryStore logging), using the real,
+# now-promoted AsyFramManager driven by tests/_fram_chip_fake.py's simulated MB85RS64V chip.
+# Integration coverage across base_classes.py + print_log.py + asy_fram_manager.py together.
 # ---------------------------------------------------------------------------
 
 
 def test_sensorreader_uses_fram_backed_logging_when_fram_is_given() -> None:
-    reader = SensorReader(Meas(20.0, 50), max_i2c_err=3, fram=MockAsyFramManager())
+    manager, _chip = make_fram_manager()
+    reader = SensorReader(Meas(20.0, 50), max_i2c_err=3, fram=manager)
     assert isinstance(reader.pr, PrintLogHistoryStore)
 
 
 def test_sensorreader_fram_backed_error_check_persists_and_survives_reboot() -> None:
-    manager = MockAsyFramManager()
+    manager, chip = make_fram_manager()
+    run(manager.setup())
     reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=manager)
     run(reader.pr.setup())
     assert run(reader._error_check(Meas(None, 50), "temp")) is True
     assert run(reader._error_check(Meas(None, 50), "temp")) is True
     assert reader.pr.err_count == 2
 
-    # Simulate a reboot: a fresh SensorReader/manager pair sharing the same backing bytes, same
-    # as print_log.py's own test_printloghistorystore_err_s_persists_and_survives_a_simulated_reboot.
-    rebooted = SensorReader(Meas(None, 50), max_i2c_err=5, fram=MockAsyFramManager(backing=manager.backing))
+    # Simulate a reboot: a fresh SensorReader/manager pair attached to the same underlying chip,
+    # same as print_log.py's own test_printloghistorystore_err_s_persists_and_survives_a_simulated_reboot.
+    manager2, _chip2 = make_fram_manager()
+    manager2.fram._spidev.spi._spi = chip
+    run(manager2.setup())
+    rebooted = SensorReader(Meas(None, 50), max_i2c_err=5, fram=manager2)
     run(rebooted.pr.setup())
     assert rebooted.pr.err_count == 2
 
@@ -541,14 +602,16 @@ def test_sensorreader_fram_backed_error_check_without_setup_never_raises() -> No
     # asy_bmp3xx_driver.py's _init_bmp) - SensorReader.__init__ can't do this itself since it's
     # sync. Skipping setup() must degrade cleanly (in-memory count/history still update per
     # print_log.py's own contract; only the FRAM write is skipped), never raise.
-    reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=MockAsyFramManager())
+    manager, _chip = make_fram_manager()
+    reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=manager)
     assert reader.pr.initialized is False
     assert run(reader._error_check(Meas(None, 50), "temp")) is True
     assert reader.pr.err_count == 1
 
 
 def test_sensorreader_fram_allocation_failure_still_logs_in_memory_without_raising() -> None:
-    reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=MockAsyFramManager(out_of_memory=True))
+    manager, _chip = make_fram_manager(max_size=1)  # too small for any real chunk
+    reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=manager)
     assert isinstance(reader.pr, PrintLogHistoryStore)
     assert reader.pr.fram is None
     run(reader.pr.setup())  # no-op: nothing allocated, must not raise
@@ -557,76 +620,70 @@ def test_sensorreader_fram_allocation_failure_still_logs_in_memory_without_raisi
 
 
 # ---------------------------------------------------------------------------
-# SensorReader - every simulated FRAM failure mode (tests/_fram_mock.py's fault injection),
-# driven through SensorReader's own API (_error_check/reset_error_counter/setup) rather than
-# print_log.py's methods directly - test_print_log.py already covers each mode exhaustively at
-# that level; this confirms the same fault matrix still degrades cleanly through this file's wiring.
+# SensorReader - real FRAM failure modes injected at the simulated-chip level, plus the two
+# Protocol-level defensive-contract proofs that no longer have a real-class equivalent (see
+# _RaisingFramChunk/_RaisingFramManager above) - driven through SensorReader's own API
+# (_error_check/setup) rather than print_log.py's methods directly; test_print_log.py already
+# covers each mode exhaustively at that level, this confirms the same fault matrix still degrades
+# cleanly through this file's own base_classes.py wiring.
 # ---------------------------------------------------------------------------
 
 
 def test_sensorreader_fram_raise_on_get_chunk_never_raises_at_construction() -> None:
-    reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=MockAsyFramManager(raise_on_get_chunk=True))
+    # AsyFramManager.get_chunk() never actually raises (confirmed by its own src/ promotion
+    # audit) - this proves SensorReader/PrintLogHistoryStore's defensive catch still holds
+    # against the general _FramManager Protocol contract, not just this one well-behaved class.
+    fake_manager = _RaisingFramManager(None, raise_on_get_chunk=True)
+    reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=fake_manager)  # type: ignore[arg-type]
     assert isinstance(reader.pr, PrintLogHistoryStore)
     assert reader.pr.fram is None
     assert run(reader._error_check(Meas(None, 50), "temp")) is True
     assert reader.pr.err_count == 1
 
 
-def test_sensorreader_fram_get_buffer_raising_is_caught_during_error_check() -> None:
-    reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=MockAsyFramManager())
-    assert isinstance(reader.pr, PrintLogHistoryStore)  # narrows reader.pr's type so .fram is visible
-    assert isinstance(reader.pr.fram, _MockFramChunk)  # whitebox: narrows further to reach the mock's fault flags
+def test_sensorreader_fram_write_into_raising_is_caught_during_error_check() -> None:
+    # asy_fram_manager.py's _write_chunk wraps its entire body in try/except (confirmed by its
+    # own src/ promotion audit), so write_into() can no longer actually raise through the real
+    # class - the same Protocol-level defense-in-depth proof as the get_chunk case above.
+    chunk = _RaisingFramChunk(raise_on_write=True)
+    fake_manager = _RaisingFramManager(chunk)
+    # history_length=4 matches _RaisingFramChunk.get_buffer()'s hardcoded 6-byte buffer (2-byte
+    # header + 4 history bytes) - a mismatch here makes struct.pack_into/unpack_from fail on
+    # buffer size instead of exercising the intended raise_on_write path.
+    reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=fake_manager, history_length=4)  # type: ignore[arg-type]
+    assert isinstance(reader.pr, PrintLogHistoryStore)
     run(reader.pr.setup())
-    reader.pr.fram.raise_on_get_buffer = True
     assert run(reader._error_check(Meas(None, 50), "temp")) is True
     assert reader.pr.err_count == 1  # FRAM write failed silently; in-memory count still tracked
 
 
-def test_sensorreader_fram_broken_buffer_is_caught_during_error_check() -> None:
-    reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=MockAsyFramManager())
-    assert isinstance(reader.pr, PrintLogHistoryStore)
-    assert isinstance(reader.pr.fram, _MockFramChunk)
-    run(reader.pr.setup())
-    reader.pr.fram.broken_buffer = True
-    assert run(reader._error_check(Meas(None, 50), "temp")) is True
-    assert reader.pr.err_count == 1
-
-
-def test_sensorreader_fram_raise_on_write_is_caught_during_error_check() -> None:
-    reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=MockAsyFramManager())
-    assert isinstance(reader.pr, PrintLogHistoryStore)
-    assert isinstance(reader.pr.fram, _MockFramChunk)
-    run(reader.pr.setup())
-    reader.pr.fram.raise_on_write = True
-    assert run(reader._error_check(Meas(None, 50), "temp")) is True
-    assert reader.pr.err_count == 1
-
-
 def test_sensorreader_fram_write_returns_false_is_surfaced_during_error_check() -> None:
-    reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=MockAsyFramManager())
-    assert isinstance(reader.pr, PrintLogHistoryStore)
-    assert isinstance(reader.pr.fram, _MockFramChunk)
+    # A real hardware-reported failure (not a raise): WREN never latches, so every write the real
+    # chunk attempts fails cleanly.
+    manager, chip = make_fram_manager()
+    run(manager.setup())
+    reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=manager)
     run(reader.pr.setup())
-    reader.pr.fram.write_returns_false = True
+    chip.drop_wren = True
     assert run(reader._error_check(Meas(None, 50), "temp")) is True
     assert reader.pr.err_count == 1
 
 
-def test_sensorreader_fram_raise_on_read_falls_back_to_write_during_setup() -> None:
-    reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=MockAsyFramManager())
-    assert isinstance(reader.pr, PrintLogHistoryStore)
-    assert isinstance(reader.pr.fram, _MockFramChunk)
-    reader.pr.fram.raise_on_read = True
+def test_sensorreader_fram_read_into_raising_falls_back_to_write_during_setup() -> None:
+    chunk = _RaisingFramChunk(raise_on_read=True)
+    fake_manager = _RaisingFramManager(chunk)
+    reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=fake_manager, history_length=4)  # type: ignore[arg-type]
     run(reader.pr.setup())  # first-time setup: _read() fails, falls back to _write() succeeding
     assert reader.pr.initialized is True
 
 
 def test_sensorreader_fram_setup_fails_cleanly_when_both_read_and_write_fail() -> None:
-    reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=MockAsyFramManager())
-    assert isinstance(reader.pr, PrintLogHistoryStore)
-    assert isinstance(reader.pr.fram, _MockFramChunk)
-    reader.pr.fram.read_returns_false = True
-    reader.pr.fram.write_returns_false = True
+    manager, chip = make_fram_manager()
+    run(manager.setup())
+    reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=manager)
+    # Nothing written yet, so _read() naturally fails (chunk reads back as uninitialized); WREN
+    # never latching makes the fallback _write() of defaults fail too.
+    chip.drop_wren = True
     run(reader.pr.setup())
     assert reader.pr.initialized is False
     assert run(reader._error_check(Meas(None, 50), "temp")) is True  # still tracks in-memory
@@ -716,10 +773,9 @@ def test_sensorreaderconfig_malformed_schema_propagates_none_through_get_dict_cf
 
 
 # ---------------------------------------------------------------------------
-# SensorReaderConfig - integration across all three files at once: real
-# ConfigManager file I/O (config_manager.py), FRAM-backed logging via the
-# tests/_fram_mock.py boundary (print_log.py), and base_classes.py's own
-# wiring between the two.
+# SensorReaderConfig - integration across all three files at once: real ConfigManager file I/O
+# (config_manager.py), FRAM-backed logging via the real AsyFramManager (print_log.py +
+# asy_fram_manager.py), and base_classes.py's own wiring between the two.
 # ---------------------------------------------------------------------------
 
 
@@ -727,9 +783,8 @@ def test_sensorreaderconfig_fram_backed_logging_with_real_config_file() -> None:
     path_prefix = _tmp_path("") + "/"
     _remove(path_prefix + "config_fram1.cfg")
     try:
-        reader = SensorReaderConfig(
-            Meas(20.0, 50), 3, "fram1", _VAL_SI, cfg_path=path_prefix, fram=MockAsyFramManager()
-        )
+        manager, _chip = make_fram_manager()
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "fram1", _VAL_SI, cfg_path=path_prefix, fram=manager)
         assert isinstance(reader.pr, PrintLogHistoryStore)
         assert reader.cfgmgr.valid is True
         result = run(reader._get_dict_cfg("Sensor", _VAL_SI))
@@ -748,9 +803,8 @@ def test_sensorreaderconfig_malformed_config_file_repairs_cleanly_with_fram_back
     with open(path, "w") as f:
         f.write("{not valid json")
     try:
-        reader = SensorReaderConfig(
-            Meas(20.0, 50), 3, "fram2", _VAL_SI, cfg_path=path_prefix, fram=MockAsyFramManager()
-        )
+        manager, _chip = make_fram_manager()
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "fram2", _VAL_SI, cfg_path=path_prefix, fram=manager)
         assert reader.cfgmgr.valid is True  # malformed file was repaired, not left invalid
         assert reader.pr.err_count == 0  # repair warnings use pr.wrn()/pr.err(), never the _s() persisting variants
         result = run(reader._get_dict_cfg("Sensor", _VAL_SI))
@@ -766,13 +820,14 @@ def test_sensorreaderconfig_fram_allocation_failure_and_missing_config_file_toge
     path_prefix = _tmp_path("") + "/"
     _remove(path_prefix + "config_fram3.cfg")
     try:
+        manager, _chip = make_fram_manager(max_size=1)  # too small for any real chunk
         reader = SensorReaderConfig(
             Meas(20.0, 50),
             3,
             "fram3",
             _VAL_SI,
             cfg_path=path_prefix,
-            fram=MockAsyFramManager(out_of_memory=True),
+            fram=manager,
         )
         assert isinstance(reader.pr, PrintLogHistoryStore)
         assert reader.pr.fram is None
