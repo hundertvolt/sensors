@@ -1163,9 +1163,6 @@ without first knowing both were already considered and declined, for a documente
 `OSError` guard and its associated tests) are unaffected and remain. Suite back to 58 tests / 95%
 coverage.
 
-Suite now 59 tests / 95% coverage (one more `const()` line added to the standard tracer-artifact
-miss count; the new `except asyncio.TimeoutError:` branch itself is fully exercised).
-
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
