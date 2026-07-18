@@ -761,13 +761,20 @@ write torn by power loss. Every other FRAM-touching file (`print_log.py`'s `Prin
 - `AsyFramManager.__init__`'s `FRAM_SPI(...)` construction is not itself caught - consistent with
   `asy_fram_driver.py`'s fail-loud-once-at-boot exception contract for a misconfigured pin.
 - SGP40 FRAM backup "0 = disabled" semantics: see Functional Clarifications above.
-- `set_pause()`/`get_pause()`/`override_pause`: real legacy callers (`system_service.py`, unchanged
-  in `improved-quality/`) are `reboot_system()`/`reboot_bootloader()` (pause right before a
-  deliberate reset, so no write is left mid-flight) and a REST `systemCmd` `"mempause"` command
-  (operator-triggered pause for up to `_MAX_STORAGE_PAUSE`=3600s via a hardware `Timer`
-  auto-unpause - almost certainly to allow safe physical access to the chip). `src/` itself has
-  zero callers yet - part of the still-open task-supervisor/system-service wiring, not `asy_fram_
-  manager.py`'s own scope.
+- `set_pause()`/`get_pause()`/`override_pause`: owner-confirmed intent is "finish all ongoing ops,
+  reject new ones" - correctly what the code does, since the pause check sits *after* `_op_lock`
+  acquisition, so nothing already mid-flight is interrupted. Real legacy callers (`system_service.py`,
+  unchanged in `improved-quality/`) are `reboot_system()`/`reboot_bootloader()` (pause right before
+  a deliberate reset, then a 5s delay before the reset actually fires - ample margin over a real
+  operation's low-single-digit-ms cost) and a REST `systemCmd` `"mempause"` command (operator-
+  triggered pause for up to `_MAX_STORAGE_PAUSE`=3600s via a hardware `Timer` auto-unpause, for safe
+  physical access to the chip). `src/` itself has zero callers yet - part of the still-open
+  task-supervisor/system-service wiring, not `asy_fram_manager.py`'s own scope.
+- The busy/idle protocol brackets *reads* too (not just writes), owner-confirmed deliberate:
+  MB85RS64V reads are destructively read internally (confirmed in the datasheet's own endurance
+  footnote), so a power loss mid-read is as real a risk as mid-write; board-level bulk capacitance
+  is sized against the datasheet's power-supply falling-time (`tf`) spec as the primary mitigation,
+  with this software protocol as the second layer.
 - `get_chunk()`/`get_timestamped_chunk()`'s "out of memory" failure logs via `self.pr.err()`
   (console-only), deliberately not the persisting `err_s()` - owner-confirmed: an out-of-FRAM error
   can't sensibly be logged into that very FRAM, so this one path stays console-only by design, not
