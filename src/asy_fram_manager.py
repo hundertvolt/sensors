@@ -61,15 +61,15 @@ class _AsyBaseFramChunk:
         check_length: int = 8,
     ) -> None:
         self.pr = logger
-        self.mempause = mempause
+        self._mempause = mempause
         self.fram = fram
         self.size = size
-        self.verify = verify
+        self._verify = verify
         self.verify_counter = 0
         # crc_checks.py needs one instance per concurrent sequence - safe since fram's lock limits
         # this manager to one _read_chunk/_write_chunk/_clear_chunk body running at a time.
         self.crc = crc
-        self.check_length = check_length
+        self._check_length = check_length
         self.block_addr = (base_addr, base_addr + self.size + self.crc.length() + _NUM_STATUS_BYTES)
         # fram's lock only serializes one block at a time (released between block 0 and block 1);
         # this one serializes this chunk's own write()/read()/clear() end to end, across both blocks.
@@ -78,14 +78,14 @@ class _AsyBaseFramChunk:
     async def set_verify(self, value: int) -> None:
         self.pr.evt("FRAM verification set to", value, "write cycles.")
         self.verify_counter = 0
-        self.verify = value
+        self._verify = value
 
     async def get_verify(self) -> int:
-        return self.verify
+        return self._verify
 
     async def _write(self, buf: bytearray, override_pause: bool = False) -> bool:
         async with self._op_lock:  # serializes this chunk's own writes/reads/clears end to end
-            if (not override_pause) and (self.mempause()):
+            if (not override_pause) and (self._mempause()):
                 await self.pr.wrn_s("FRAM communication paused, not writing FRAM!", wrnno=60)
                 return False
             if len(buf) != self.size + self.crc.length():
@@ -101,9 +101,9 @@ class _AsyBaseFramChunk:
             if not res:
                 await self.pr.err_s("Writing block 1 failed!", errno=62)
                 return False
-            if self.verify > 0:
+            if self._verify > 0:
                 self.verify_counter += 1
-                if self.verify_counter >= self.verify:
+                if self.verify_counter >= self._verify:
                     self.verify_counter = 0
                     self.pr.evt("Verifying written data")
                     for n in range(len(self.block_addr)):
@@ -116,7 +116,7 @@ class _AsyBaseFramChunk:
 
     async def _read(self, buf: bytearray, override_pause: bool = False) -> bool:
         async with self._op_lock:  # serializes this chunk's own writes/reads/clears end to end
-            if (not override_pause) and (self.mempause()):
+            if (not override_pause) and (self._mempause()):
                 await self.pr.wrn_s("FRAM communication paused, not reading FRAM!", wrnno=70)
                 return False
             if len(buf) != self.size + self.crc.length():
@@ -169,7 +169,7 @@ class _AsyBaseFramChunk:
 
     async def clear(self, override_pause: bool = False) -> bool:
         async with self._op_lock:  # serializes this chunk's own writes/reads/clears end to end
-            if (not override_pause) and (self.mempause()):
+            if (not override_pause) and (self._mempause()):
                 await self.pr.wrn_s("FRAM communication paused, not clearing FRAM!", wrnno=80)
                 return False
             for n in range(len(self.block_addr)):
@@ -180,7 +180,7 @@ class _AsyBaseFramChunk:
             return True
 
     async def get_pause(self) -> bool:
-        return self.mempause()
+        return self._mempause()
 
     async def _read_into(self, buf: bytearray, addr: int) -> tuple[bool, bool]:
         valid = True
@@ -197,7 +197,7 @@ class _AsyBaseFramChunk:
 
     async def _compare_with(self, buf: bytearray, addr: int) -> tuple[bool, bool, bool]:
         try:  # check_length is a caller-supplied int (get_chunk's own param), not hardware-bounded
-            temp = bytearray(self.check_length)
+            temp = bytearray(self._check_length)
         except (MemoryError, OverflowError):
             return False, False, False
         mvt = memoryview(temp)
@@ -367,12 +367,12 @@ class _AsyBaseFramChunk:
 class AsyFramChunkBuffer(LockableBuffer):
     def __init__(self, data_size: int, crc_size: int) -> None:
         super().__init__(data_size + crc_size, data_start=0, data_length=data_size)
-        self.crc_size = crc_size
+        self._crc_size = crc_size
 
     def get_crc_buf(self) -> memoryview | None:
         if self.buf is None:
             return None
-        return memoryview(self.buf)[self.data_end : self.data_end + self.crc_size]
+        return memoryview(self.buf)[self.data_end : self.data_end + self._crc_size]
 
 
 class AsyFramChunk(_AsyBaseFramChunk):
@@ -433,7 +433,7 @@ class AsyFramChunk(_AsyBaseFramChunk):
 class AsyFramChunkTimestampedBuffer(LockableBuffer):
     def __init__(self, ts_size: int, data_size: int, crc_size: int) -> None:
         super().__init__(ts_size + data_size + crc_size, data_start=ts_size, data_length=data_size)
-        self.crc_size = crc_size
+        self._crc_size = crc_size
 
     def get_ts_buf(self) -> memoryview | None:
         if self.buf is None:
@@ -443,7 +443,7 @@ class AsyFramChunkTimestampedBuffer(LockableBuffer):
     def get_crc_buf(self) -> memoryview | None:
         if self.buf is None:
             return None
-        return memoryview(self.buf)[self.data_end : self.data_end + self.crc_size]
+        return memoryview(self.buf)[self.data_end : self.data_end + self._crc_size]
 
 
 class AsyFramTimestampedChunk(_AsyBaseFramChunk):
@@ -584,7 +584,7 @@ class AsyFramManager:
         self.pr = PrintLogHistory(history_length, debug)
         self.size = max_size
         self.allocated_size = 0
-        self.pause = False
+        self._pause = False
         self.fram = FRAM_SPI(spi_bus, spi_cs, max_size=self.size, logger=self.pr)
 
     async def setup(self) -> bool:
@@ -604,10 +604,10 @@ class AsyFramManager:
 
     def set_pause(self, value: bool) -> None:
         self.pr.evt("Storage pause set to", value)
-        self.pause = value
+        self._pause = value
 
     def get_pause(self) -> bool:
-        return self.pause
+        return self._pause
 
     def get_chunk(
         self, size: int, crc: CRC_Base | None = None, verify: int = 0, check_length: int = 8
