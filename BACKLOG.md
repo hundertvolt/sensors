@@ -1353,6 +1353,55 @@ where a real failure is observable, and there's no lower seam to add.
 Full suite re-verified: 597/597 (`asy_fram_manager.py` 60/60, `test_fram_integration.py` 6/6).
 Lint/typecheck still clean.
 
+### Fourth follow-up pass: errno-registry cross-check + a genuine concurrency finding
+
+Owner-requested fresh pass, specifically hunting for oversights/bugs/strange behavior/unhandled
+exceptions or conditions with no unit test yet - done by systematically cross-checking every errno
+this file's source can produce against every errno actually asserted anywhere in the test suite
+(not just re-reading the code), which surfaced two real, previously completely-untested reachable branches,
+plus one genuinely unplanned condition found by deliberately constructing it rather than by reading
+alone:
+
+- **errno=36 ("Read status uninit bytes inconsistent!"), zero prior coverage.** Reachable exactly
+  once in the whole file: `_read_chunk`'s initial busy-set step is the *only* call to
+  `_handle_status_bytes` with `check_idle=True` (every other call site hardcodes `uninit=False` for
+  both status bytes, so they can never disagree) - a block's two status bytes individually holding
+  valid-looking values (one `UNINIT`, one `IDLE`) that nonetheless disagree with each other is its
+  own distinct failure the "not idle, not uninit" errno=31/34 checks can't catch, since each byte
+  looks fine in isolation. Confirmed by construction (direct `chip.memory` poke, not inspection) and
+  proven to self-heal exactly like any other invalid block 0. Also strengthened the existing
+  corrupted-block0-status test with an explicit errno=31 assertion - it was already functionally
+  exercised there but never actually checked for.
+- **errno=64 ("Block 1 write verification error!"), zero prior coverage** - `_write()`'s verify loop
+  (`errno=63+n`) always short-circuits on the *first* failing block, so every existing test (which
+  corrupts something before either block succeeds) could only ever reach `n=0`/errno=63; isolating
+  block 1's own verification failure needed the same per-address `_compare_with` monkeypatch
+  technique already used for the self-heal-write-failure tests, since block 0 must genuinely
+  succeed first for the loop to ever reach `n=1` at all.
+- **A genuinely unplanned condition, found by deliberately constructing it, not by code reading**:
+  `_write()` does not hold `fram`'s lock continuously across both blocks - `_write_chunk` acquires
+  and releases it once *per block* - so two tasks calling `write()` on the *same* chunk concurrently
+  can interleave between blocks, each individually reporting success, while leaving one task's
+  payload in block 0 and the other's in block 1. A plain `asyncio.gather()` of two writers did *not*
+  reliably reproduce this on its own (confirmed directly - natural scheduling just doesn't race at
+  this exact boundary in practice), so it was forced deterministically via an `asyncio.Event`
+  handshake pausing one writer between its own block 0 and block 1. Not treated as a bug to fix -
+  concurrent writers to one chunk were never a designed-for use case, and fixing the lock granularity
+  is a real design decision (holding the lock across both blocks changes contention/latency
+  characteristics for every caller, not just this one), not a quick patch. What the test actually
+  proves: the *existing* CRC/dual-copy hard-fail safety net (the same "both blocks valid but
+  different data" path already tested for the single-writer torn-write case) catches the resulting
+  inconsistency cleanly - a subsequent read never returns silently mixed/wrong bytes, only the
+  correct payload or a safe `None`. Flagged here for visibility rather than silently changing the
+  locking scheme.
+- Two smaller confirmations added while at it: `AsyFramManager.setup()` is idempotent when called
+  twice (harmless re-verification, not previously tested); a manager with genuinely zero bytes left
+  refuses even a `size=0` chunk request (a 0-byte payload still needs `2*_NUM_STATUS_BYTES=4` bytes
+  of real status-byte overhead, not a free allocation).
+
+5 more tests in `tests/test_asy_fram_manager.py` (60 → 65) plus the one strengthened existing
+assertion. Full suite re-verified: 602/602. Lint/typecheck still clean.
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
@@ -1368,11 +1417,12 @@ and a missing config file failing independently without either derailing the oth
 
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 44,
-`asy_fram_manager.py` 60, `test_fram_integration.py` 6 — **597 total**. (`base_classes.py`/
+`asy_fram_manager.py` 65, `test_fram_integration.py` 6 — **602 total**. (`base_classes.py`/
 `print_log.py` counts shifted from their FRAM-mock-era numbers when `tests/_fram_mock.py` was
 retired in favor of the real `AsyFramManager` - see "`asy_fram_manager.py` → `src/`" below;
-`asy_fram_manager.py`'s own count went 29 → 52 → 60 across the "Second"/"Third follow-up pass"
-sections documented there, and `test_fram_integration.py` is a new file added in the third.)
+`asy_fram_manager.py`'s own count went 29 → 52 → 60 → 65 across the "Second"/"Third"/"Fourth
+follow-up pass" sections documented there, and `test_fram_integration.py` is a new file added in
+the third.)
 
 ## Decided for the refactor
 

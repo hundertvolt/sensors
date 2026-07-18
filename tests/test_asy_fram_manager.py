@@ -215,17 +215,20 @@ def test_corrupted_block0_status_falls_back_to_block1_and_self_heals_block0() ->
     chunk = manager.get_chunk(4, crc=CRC_Pass())
     assert chunk is not None
 
-    async def scenario() -> bytearray | None:
+    async def scenario() -> tuple[bytearray | None, dict]:
         await chunk.write(b"good")
         addr0, _addr1 = chunk.block_addr
         # Simulate power loss mid-write: block 0 left with status BUSY (never reached the final
         # "set IDLE" step) - the same on-chip state a real torn write leaves behind.
         chip.memory[addr0 + 4] = _STATUS_BUSY
         chip.memory[addr0 + 5] = _STATUS_BUSY
-        return await chunk.read()
+        result = await chunk.read()
+        errs = await manager.get_error_counter()
+        return result, errs
 
-    result = run(scenario())
+    result, errs = run(scenario())
     assert result == bytearray(b"good")  # recovered from block 1
+    assert 31 in errs["FRAM"]["ErrNum"]  # _set_check_sb: "Read status byte is not IDLE but X" (err=30+1)
     addr0, _addr1 = chunk.block_addr
     assert chip.memory[addr0 + 4] == _STATUS_IDLE  # block 0 healed back to IDLE...
     assert bytes(chip.memory[addr0 : addr0 + 4]) == b"good"  # ...with the correct data
@@ -1277,6 +1280,150 @@ def test_multiple_invalid_parameters_combined_still_degrade_safely() -> None:
     write_ok, data = run(scenario())
     assert write_ok is False
     assert data is None
+
+
+# ---------------------------------------------------------------------------
+# Fresh-eyes re-audit: previously-unreached status-byte/verify branches, and a genuinely
+# unplanned concurrency condition found by construction, not by inspection alone.
+# ---------------------------------------------------------------------------
+
+
+def test_disagreeing_status_bytes_within_one_block_are_treated_as_invalid_and_self_healed() -> None:
+    # _handle_status_bytes checks its two status bytes' "uninit" results *agree* before trusting
+    # either - status byte 1 = UNINIT and status byte 2 = IDLE are each individually a normal,
+    # valid value on their own (neither triggers the "not idle, not uninit" errno=31 path), but
+    # disagreeing with each other is its own distinct failure the base/errno=31 checks can't
+    # catch - only reachable via _read_chunk's initial busy-set step (check_idle=True is the only
+    # call site where the "uninit" flag isn't hardcoded False), confirmed empirically, previously
+    # completely untested.
+    manager, chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    assert chunk is not None
+    run(chunk.write(b"good"))
+    addr0, _addr1 = chunk.block_addr
+    chip.memory[addr0 + 4] = _STATUS_UNINIT
+    chip.memory[addr0 + 5] = _STATUS_IDLE
+
+    async def scenario() -> tuple[bytearray | None, dict]:
+        result = await chunk.read()
+        errs = await manager.get_error_counter()
+        return result, errs
+
+    result, errs = run(scenario())
+    assert result == bytearray(b"good")  # falls back to block 1 and self-heals, like any other invalid block 0
+    assert 36 in errs["FRAM"]["ErrNum"]  # _handle_status_bytes: "Read status uninit bytes inconsistent!" (30+6)
+
+
+def test_write_verify_reports_the_distinct_errno_when_only_block_1_fails_verification() -> None:
+    # The verify loop's `errno=63+n` was only ever exercised for n=0 (block 0 failing first always
+    # short-circuits the loop before n=1 is tried) - isolating block 1's own verification failure
+    # needs a per-address patch, the same technique already used for the self-heal-write-failure
+    # tests, since block 0 must genuinely succeed for the loop to ever reach n=1 at all.
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(4, crc=CRC_Pass(), verify=1)
+    assert chunk is not None
+    _addr0, addr1 = chunk.block_addr
+    original_compare_with = chunk._compare_with
+
+    async def failing_compare_with(buf: bytearray, addr: int) -> tuple[bool, bool, bool]:
+        if addr == addr1:
+            return False, False, False
+        return await original_compare_with(buf, addr)
+
+    chunk._compare_with = failing_compare_with  # type: ignore[method-assign]
+
+    async def scenario() -> tuple[bool, dict]:
+        write_ok = await chunk.write(b"data")
+        errs = await manager.get_error_counter()
+        return write_ok, errs
+
+    write_ok, errs = run(scenario())
+    assert write_ok is False
+    assert 64 in errs["FRAM"]["ErrNum"]  # "Block 1 write verification error!" (63+1), not 63
+
+
+def test_concurrent_writes_to_the_same_chunk_never_produce_silently_corrupted_data() -> None:
+    # A genuinely unplanned condition found by construction, not by inspection: _write() only
+    # holds fram's lock separately for each block (_write_chunk acquires/releases it once per
+    # block), not continuously across the whole logical write - so two tasks writing the same
+    # chunk concurrently can interleave *between* blocks, each reporting success, while leaving
+    # one task's data in block 0 and the other's in block 1. Deterministically forced here via an
+    # asyncio.Event handshake (natural scheduling in a plain asyncio.gather() doesn't reliably
+    # interleave at this exact boundary - confirmed directly, it usually just doesn't race) rather
+    # than hoping a race manifests on its own. The point isn't that this is "fixed" - concurrent
+    # writers to one chunk were never a designed-for use case - it's that the existing CRC/dual-copy
+    # hard-fail safety net (the same "both blocks valid but different data" path already tested
+    # for the single-writer torn-write case) catches the inconsistency cleanly: a subsequent read
+    # never returns silently mixed/wrong bytes, only a clean payload or a safe None.
+    manager, chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(4, crc=CRC8())
+    assert chunk is not None
+    addr0, addr1 = chunk.block_addr
+    original_write_chunk = chunk._write_chunk
+
+    block0_written = asyncio.Event()
+    let_a_finish = asyncio.Event()
+
+    async def a_patched_write_chunk(buf: bytearray, addr: int) -> bool:
+        res = await original_write_chunk(buf, addr)
+        if addr == addr0:
+            block0_written.set()
+            await let_a_finish.wait()  # pause task A right between its own block 0 and block 1 writes
+        return res
+
+    async def writer_a() -> bool:
+        chunk._write_chunk = a_patched_write_chunk  # type: ignore[method-assign]
+        return await chunk.write(b"AAAA")
+
+    async def writer_b() -> bool:
+        await block0_written.wait()  # let A finish block 0 first
+        chunk._write_chunk = original_write_chunk  # type: ignore[method-assign]
+        ok = await chunk.write(b"BBBB")  # B fully completes both of its own blocks
+        let_a_finish.set()  # now let A resume and finish its own block 1 write, last
+        return ok
+
+    async def scenario() -> tuple[list[bool], bytearray | None]:
+        results = await asyncio.gather(writer_a(), writer_b())
+        read_result = await chunk.read()
+        return results, read_result
+
+    results, read_result = run(scenario())
+    assert results == [True, True]  # neither individual write call can see the other's interference
+    assert bytes(chip.memory[addr0 : addr0 + 4]) == b"BBBB"  # proves the interleave actually happened
+    assert bytes(chip.memory[addr1 : addr1 + 4]) == b"AAAA"
+    assert read_result is None  # the safety net refuses to guess, never returns a mixed/wrong payload
+
+
+def test_manager_setup_is_idempotent_when_called_twice() -> None:
+    manager, _chip = make_manager()
+    ok1 = run(manager.setup())
+    ok2 = run(manager.setup())
+    assert ok1 is True
+    assert ok2 is True
+    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    assert chunk is not None
+
+    async def scenario() -> tuple[bool, bytearray | None]:
+        write_ok = await chunk.write(b"data")
+        data = await chunk.read()
+        return write_ok, data
+
+    write_ok, data = run(scenario())
+    assert write_ok is True
+    assert data == bytearray(b"data")
+
+
+def test_get_chunk_zero_size_still_needs_status_byte_overhead_at_the_capacity_boundary() -> None:
+    # Even a 0-byte payload chunk needs 2*_NUM_STATUS_BYTES=4 bytes of real overhead - a manager
+    # with genuinely zero bytes left must refuse a size=0 request too, not special-case it as free.
+    manager, _chip = make_manager(max_size=12)
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(4, crc=CRC_Pass())  # exact fit, uses all 12 bytes
+    assert chunk is not None
+    assert manager.get_chunk(0, crc=CRC_Pass()) is None
 
 
 if __name__ == "__main__":
