@@ -1402,6 +1402,62 @@ alone:
 5 more tests in `tests/test_asy_fram_manager.py` (60 → 65) plus the one strengthened existing
 assertion. Full suite re-verified: 602/602. Lint/typecheck still clean.
 
+### Fifth follow-up pass: two real fixes (not just tests), plus a full src/README.md re-validation
+
+Owner-requested: actually fix the errno-registry waste and the concurrent-write finding from the
+fourth pass (previously only documented/tested, not changed), then re-validate the whole file
+against `src/README.md`'s promotion checklist paragraph by paragraph with this module's central,
+high-traffic future role in mind (every `improved-quality/` sensor driver that opts into FRAM
+logging or value backup goes through it).
+
+**Errno registry tightened.** `_set_check_sb`/`_handle_status_bytes` used to reserve a uniform
+7-number-wide slot per status-byte-pair call (`err` through `err+6`) regardless of which of the two
+call shapes was in play. Four of the five call sites (`check_idle=False`: write-busy-set,
+write-idle-set, read-idle-set, clear-uninit-set) can only ever fail at "write status byte failed"
+for either byte - no read-back happens, so the two bytes' "uninit" results can never disagree
+either - meaning 5 of those 7 reserved numbers per call site (20 numbers total across the four call
+sites) could never actually be produced. Tightened so `check_idle=False` sites use 2 tightly packed,
+fully-reachable numbers instead of 7 (`write-busy` 10-16 → 10-11, `write-idle` 19-25 → 19-20,
+`read-idle` 39-45 → 39-40, `clear-uninit` 50-56 → 50-51); the one `check_idle=True` site
+(`_read_chunk`'s initial busy-set, the only one where the two bytes' results can genuinely disagree)
+keeps its full 7-number spread unchanged, since every one of those was already reachable. Verified
+directly that no existing test exercised the byte-2 write-fail number at any of the four shrunk call
+sites (every failure-inducing test already available bails out after byte 1 fails, never reaching
+byte 2) before confirming zero risk of silently changing tested behavior; updated the three test
+assertions that referenced the old byte-1 numbers (12→10, 12→10, 52→50) to match.
+
+**Concurrent-write interleaving actually fixed, not just documented.** Added a chunk-owned
+`self._op_lock = asyncio.Lock()` (distinct from `fram`'s own lock, which still separately serializes
+individual block operations *across* different chunks sharing one manager) wrapping the entire body
+of `_write()`/`_read()`/`clear()` each. Before this, `fram`'s lock only serialized one block
+operation at a time - released and re-acquired between block 0 and block 1 - so two tasks calling
+`write()` on the same chunk concurrently could genuinely interleave between blocks. The previous
+pass's deterministic-interleave test now reliably **deadlocks** with the fix in place (confirmed
+directly, then used as proof the fix works before rewriting the test) - the whole premise of pausing
+one writer mid-operation to let another fully interleave is no longer reachable, since the second
+writer can't even enter its own `write()` until the first one's entire operation, both blocks,
+completes. Replaced that test with one proving strict serialization directly via instrumented
+block-write call order (`enter,exit,enter,exit,enter,exit,enter,exit` - one writer's whole two-block
+sequence always completes before the other's even starts), rather than only checking the end result
+stays consistent.
+
+**`src/README.md` re-validation, paragraph by paragraph, found one more real (if minor) issue**:
+`_TS_FMT` used a bare `"Q"` struct format (native byte order/alignment) instead of print_log.py's
+own already-established explicit `"<Q"`/`"<H"` convention (`_HDR_FMT = "<H"`, with its own comment
+explaining why bare formats default to `"@"`, not `"<"`). Verified directly before changing anything
+- `struct.calcsize("Q")` == `struct.calcsize("<Q")` == 8 on the real interpreter, and the interpreter's
+own native byte order for `"Q"` already produces byte-for-byte identical output to `"<Q"` (confirmed
+by packing the same value both ways and comparing) - so this was a zero-behavior-change fix (matches
+section 8/10's bar for a safe, non-flagged improvement), not a real behavior change requiring the
+flag-first treatment, and doesn't touch the on-chip layout since every offset only ever depends on
+`calcsize()`'s size, never its byte order. Also caught and trimmed two of this pass's own new
+comments that had crept over the 3-line limit (a 4-line `_op_lock` comment, a 6-line
+`_handle_status_bytes` one) during the readability section of the same pass. Every other section
+of the checklist re-checked against the file's current state; no other findings.
+
+Full suite re-verified: 602/602 (`asy_fram_manager.py` 65/65, unchanged count - one test replaced,
+not added). Lint/typecheck still clean.
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`

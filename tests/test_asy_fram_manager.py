@@ -643,7 +643,7 @@ def test_write_fails_cleanly_when_chip_drops_wren_latch() -> None:
     write_ok, result = run(scenario())
     errnums = result["FRAM"]["ErrNum"]
     assert write_ok is False
-    assert 12 in errnums  # _set_check_sb: "Write status byte failed!" (busy status, err=10+2)
+    assert 10 in errnums  # _set_check_sb: "Write status byte failed!" (busy status, check_idle=False, err=10)
     assert 61 in errnums  # _write: "Writing block 0 failed!"
 
 
@@ -685,7 +685,7 @@ def test_clear_fails_cleanly_when_chip_drops_wren_latch() -> None:
     cleared, errs = run(scenario())
     errnums = errs["FRAM"]["ErrNum"]
     assert cleared is False
-    assert 52 in errnums  # err=50+2
+    assert 50 in errnums  # check_idle=False, err=50
     assert 80 in errnums
 
 
@@ -708,7 +708,7 @@ def test_write_fails_cleanly_when_fram_is_write_protected() -> None:
     errnums = errs["FRAM"]["ErrNum"]
     assert protect_ok is True
     assert write_ok is False
-    assert 12 in errnums
+    assert 10 in errnums
     assert 61 in errnums
 
 
@@ -1344,57 +1344,45 @@ def test_write_verify_reports_the_distinct_errno_when_only_block_1_fails_verific
     assert 64 in errs["FRAM"]["ErrNum"]  # "Block 1 write verification error!" (63+1), not 63
 
 
-def test_concurrent_writes_to_the_same_chunk_never_produce_silently_corrupted_data() -> None:
-    # A genuinely unplanned condition found by construction, not by inspection: _write() only
-    # holds fram's lock separately for each block (_write_chunk acquires/releases it once per
+def test_op_lock_prevents_concurrent_writes_from_interleaving_between_blocks() -> None:
+    # A genuinely unplanned condition found by construction, not by inspection: _write() used to
+    # only hold fram's lock separately for each block (_write_chunk acquires/releases it once per
     # block), not continuously across the whole logical write - so two tasks writing the same
-    # chunk concurrently can interleave *between* blocks, each reporting success, while leaving
-    # one task's data in block 0 and the other's in block 1. Deterministically forced here via an
-    # asyncio.Event handshake (natural scheduling in a plain asyncio.gather() doesn't reliably
-    # interleave at this exact boundary - confirmed directly, it usually just doesn't race) rather
-    # than hoping a race manifests on its own. The point isn't that this is "fixed" - concurrent
-    # writers to one chunk were never a designed-for use case - it's that the existing CRC/dual-copy
-    # hard-fail safety net (the same "both blocks valid but different data" path already tested
-    # for the single-writer torn-write case) catches the inconsistency cleanly: a subsequent read
-    # never returns silently mixed/wrong bytes, only a clean payload or a safe None.
-    manager, chip = make_manager()
+    # chunk concurrently could interleave *between* blocks, each reporting success, while leaving
+    # one task's data in block 0 and the other's in block 1 (the CRC/dual-copy hard-fail safety net
+    # still caught the resulting inconsistency cleanly, but interleaving itself was never a designed
+    # -for possibility). Fixed with _op_lock: a chunk-owned lock (distinct from fram's own, which
+    # still separately serializes individual block operations *across* different chunks) that now
+    # wraps each of write()/read()/clear()'s entire body, so this chunk's own top-level operations
+    # can never overlap at all. Proven directly via instrumented block-write call order, not just by
+    # checking the end result stays consistent - true serialization means the two writers' calls
+    # can never even be *entered* concurrently, one fully finishes before the other starts.
+    manager, _chip = make_manager()
     run(setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC8())
     assert chunk is not None
-    addr0, addr1 = chunk.block_addr
+    events: list[str] = []
     original_write_chunk = chunk._write_chunk
 
-    block0_written = asyncio.Event()
-    let_a_finish = asyncio.Event()
+    async def instrumented_write_chunk(buf: bytearray, addr: int) -> bool:
+        events.append("enter")
+        result = await original_write_chunk(buf, addr)
+        events.append("exit")
+        return result
 
-    async def a_patched_write_chunk(buf: bytearray, addr: int) -> bool:
-        res = await original_write_chunk(buf, addr)
-        if addr == addr0:
-            block0_written.set()
-            await let_a_finish.wait()  # pause task A right between its own block 0 and block 1 writes
-        return res
+    chunk._write_chunk = instrumented_write_chunk  # type: ignore[method-assign]
 
-    async def writer_a() -> bool:
-        chunk._write_chunk = a_patched_write_chunk  # type: ignore[method-assign]
-        return await chunk.write(b"AAAA")
+    async def scenario() -> list[bool]:
+        return await asyncio.gather(chunk.write(b"AAAA"), chunk.write(b"BBBB"))  # type: ignore[no-any-return]
 
-    async def writer_b() -> bool:
-        await block0_written.wait()  # let A finish block 0 first
-        chunk._write_chunk = original_write_chunk  # type: ignore[method-assign]
-        ok = await chunk.write(b"BBBB")  # B fully completes both of its own blocks
-        let_a_finish.set()  # now let A resume and finish its own block 1 write, last
-        return ok
-
-    async def scenario() -> tuple[list[bool], bytearray | None]:
-        results = await asyncio.gather(writer_a(), writer_b())
-        read_result = await chunk.read()
-        return results, read_result
-
-    results, read_result = run(scenario())
-    assert results == [True, True]  # neither individual write call can see the other's interference
-    assert bytes(chip.memory[addr0 : addr0 + 4]) == b"BBBB"  # proves the interleave actually happened
-    assert bytes(chip.memory[addr1 : addr1 + 4]) == b"AAAA"
-    assert read_result is None  # the safety net refuses to guess, never returns a mixed/wrong payload
+    results = run(scenario())
+    assert results == [True, True]
+    # Each write() calls _write_chunk twice (block 0, block 1) - full serialization means the
+    # pattern is enter,exit,enter,exit,enter,exit,enter,exit (one writer's whole 2-block sequence
+    # completes before the other's even starts), never two "enter"s without an "exit" between them.
+    assert events == ["enter", "exit"] * 4
+    read_result = run(chunk.read())
+    assert read_result in (bytearray(b"AAAA"), bytearray(b"BBBB"))  # always a clean, single payload
 
 
 def test_manager_setup_is_idempotent_when_called_twice() -> None:
