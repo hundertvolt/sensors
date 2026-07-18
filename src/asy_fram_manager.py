@@ -612,6 +612,9 @@ class AsyFramManager:
     def get_chunk(
         self, size: int, crc: CRC_Base | None = None, verify: int = 0, check_length: int = 8
     ) -> AsyFramChunk | None:
+        if size == 0:  # a chunk storing nothing is never a sensible request, regardless of crc
+            self.pr.err("Zero-size chunk requested, rejected!")
+            return None
         crc = CRC_Pass() if crc is None else crc
         full_size = 2 * (size + crc.length() + _NUM_STATUS_BYTES)
         # memsize + crc bytes + status bytes, 1-redundant
@@ -651,6 +654,9 @@ class AsyFramManager:
         verify: int = 0,
         check_length: int = 8,
     ) -> AsyFramTimestampedChunk | None:
+        if size == 0:  # a chunk storing nothing is never a sensible request, regardless of crc
+            self.pr.err("Zero-size chunk requested, rejected!")
+            return None
         crc = CRC_Pass() if crc is None else crc
         full_size = 2 * (struct.calcsize(_TS_FMT) + size + crc.length() + _NUM_STATUS_BYTES)
         # timestamp + memsize + crc bytes + status bytes, 1-redundant

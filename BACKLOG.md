@@ -765,13 +765,15 @@ write torn by power loss. Every other FRAM-touching file (`print_log.py`'s `Prin
   (console-only), deliberately not the persisting `err_s()` - owner-confirmed: an out-of-FRAM error
   can't sensibly be logged into that very FRAM, so this one path stays console-only by design, not
   an oversight.
+- `get_chunk()`/`get_timestamped_chunk()` reject `size == 0` unconditionally, before any CRC or
+  capacity logic runs - a chunk storing nothing is never a sensible request, regardless of which
+  `crc` would've been used (owner-confirmed: reject generally at the top, not as a CRC-specific or
+  timestamp-specific special case). Replaces the previous behavior, where a `size=0` chunk with
+  `crc=CRC_Pass()` allocated successfully but then read back a spurious CRC error on every
+  subsequent read (the streaming loop never ran, so the CRC engine never received a `run_inc()`
+  call) - that quirk no longer exists; the request is refused outright instead.
 
 **Known gaps, kept for future use, not chased further (owner-confirmed):**
-- A `size=0` chunk still costs `2*_NUM_STATUS_BYTES=4` bytes of allocator overhead (not free), and
-  reads back a spurious CRC error instead of a trivially-valid empty read (the streaming loop never
-  runs, so `crc.check_inc()` sees no `run_inc()` call). Safe (returns cleanly, never hangs) but
-  semantically wrong; not fixed - no real caller requests one, and a correct fix touches shared
-  iteration-counting state in three methods at once.
 - `get_crc_buf()` (both buffer classes) and `get_size()` (both chunk classes) have zero callers
   anywhere in `src/`, `tests/`, or `improved-quality/` - the same zero-real-callers category
   `asy_fram_driver.py` tracks for its own write-protect methods, just one layer up.
@@ -779,8 +781,8 @@ write torn by power loss. Every other FRAM-touching file (`print_log.py`'s `Prin
   which is used) is likewise never called.
 - `asy_fram_driver.py`'s `verify_present()`/`get_write_protected()`/`set_write_protected()` still
   have zero callers from this manager - see that file's own "Known gaps" above.
-- Coverage (via `scripts/test.sh --coverage`): 94% (27/457 lines missed) - every genuinely
-  reachable branch is now covered. What remains: 8 `const()`-folding tracer artifacts; the
+- Coverage (via `scripts/test.sh --coverage`): 94% (27/463 lines missed) - every genuinely
+  reachable branch is covered. What remains: 8 `const()`-folding tracer artifacts; the
   intentionally-unreachable `return False, 0` at the end of `_read_chunk` (mypy requires it; every
   real path above already returns); the zero-caller dead-code getters above; and, confirmed
   empirically against the real interpreter (not assumed), four more provably-unreachable
@@ -791,9 +793,10 @@ write torn by power loss. Every other FRAM-touching file (`print_log.py`'s `Prin
   slice is always exactly 8 bytes when reached, and unpacking any 8 raw bytes as `"<Q"` can't fail),
   plus two `LockableBuffer`-backed `None`-guards downstream of an already-passed identical check
   earlier in the same call (`read()`'s and `write_into()`'s own copies of a check `read_into()`/
-  `get_data_buf()` already made unreachable).
+  `get_data_buf()` already made unreachable). None of the above is chased further (owner-confirmed:
+  no trouble with less than 100% coverage as long as nothing left uncovered is a real gap).
 
-82 tests (`tests/test_asy_fram_manager.py`) + 6 (`tests/test_fram_integration.py`, full-stack
+84 tests (`tests/test_asy_fram_manager.py`) + 6 (`tests/test_fram_integration.py`, full-stack
 integration down to the simulated raw SPI bus, including two `SensorReader`s sharing one manager
 and the same manager backing two structurally different chunk types across a simulated reboot; its
 40-cycle stress test needs an explicit `gc.collect()` per cycle - a Unix-port test-binary
@@ -815,7 +818,7 @@ and a missing config file failing independently without either derailing the oth
 
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
-`asy_fram_manager.py` 82, `test_fram_integration.py` 6 — **621 total**.
+`asy_fram_manager.py` 84, `test_fram_integration.py` 6 — **623 total**.
 
 ## Decided for the refactor
 

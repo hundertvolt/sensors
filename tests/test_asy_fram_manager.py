@@ -1044,26 +1044,38 @@ def test_timestamped_chunk_write_with_verify_enabled_succeeds() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_zero_size_chunk_documents_the_flagged_spurious_crc_error_on_read() -> None:
-    # Locks down a known, deliberately-not-fixed quirk (see BACKLOG.md): a 0-byte chunk's CRC
-    # engine never receives a single run_inc() call (_read_chunk's streaming loop's `while
-    # position < total_size` never executes when total_size is 0), so check_inc() reports
-    # "invalid" even though nothing was ever actually wrong - write() succeeds but read() then
-    # reports failure. Confirmed directly against the real interpreter; this test locks down that
-    # documented, discussed behavior so it can't silently change, not a new bug being introduced.
+def test_get_chunk_rejects_zero_size_regardless_of_crc() -> None:
+    # A chunk storing nothing is never a sensible request - rejected unconditionally at the top
+    # of get_chunk(), before any CRC/capacity logic runs, not just for the CRC_Pass() case that
+    # used to reproduce the old spurious-CRC-error-on-read quirk (see BACKLOG.md - that quirk is
+    # gone now, replaced by an outright rejection independent of which crc would've been used).
     manager, _chip = make_manager()
     run(setup_manager(manager))
-    chunk = manager.get_chunk(0, crc=CRC_Pass())
-    assert chunk is not None
+    assert manager.get_chunk(0, crc=CRC_Pass()) is None
+    assert manager.get_chunk(0, crc=CRC8()) is None
+    assert manager.get_chunk(0) is None  # default crc
 
-    async def scenario() -> tuple[bool, bytearray | None]:
-        write_ok = await chunk.write(b"")
-        data = await chunk.read()
-        return write_ok, data
 
-    write_ok, data = run(scenario())
-    assert write_ok is True
-    assert data is None  # spurious CRC "error" on read - see BACKLOG.md, not fixed here
+def test_get_timestamped_chunk_rejects_zero_size_regardless_of_crc() -> None:
+    # Mirrors get_chunk()'s own rejection - the timestamped variant never actually reproduced the
+    # old quirk itself (the 8-byte timestamp header always keeps total_size > 0 regardless of
+    # payload size), but a zero-payload request is just as senseless here, so it's rejected the
+    # same way for consistency, not left as a quirk-free special case.
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    assert manager.get_timestamped_chunk(0, _synced, crc=CRC_Pass()) is None
+    assert manager.get_timestamped_chunk(0, _synced, crc=CRC8()) is None
+    assert manager.get_timestamped_chunk(0, _synced) is None  # default crc
+
+
+def test_get_chunk_rejects_zero_size_even_with_abundant_remaining_capacity() -> None:
+    # Confirms the rejection isn't a side effect of the capacity check (e.g. some accidental
+    # zero-cost-allocation math) - it happens unconditionally, even on a freshly constructed
+    # manager with its entire 8KB untouched, and doesn't disturb the allocator's own bookkeeping.
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    assert manager.get_chunk(0, crc=CRC_Pass()) is None
+    assert manager.allocated_size == 0  # rejected before touching the bump pointer
 
 
 def test_all_zero_and_all_0xff_payloads_round_trip_without_sentinel_collision() -> None:
@@ -1404,14 +1416,14 @@ def test_manager_setup_is_idempotent_when_called_twice() -> None:
     assert data == bytearray(b"data")
 
 
-def test_get_chunk_zero_size_still_needs_status_byte_overhead_at_the_capacity_boundary() -> None:
-    # Even a 0-byte payload chunk needs 2*_NUM_STATUS_BYTES=4 bytes of real overhead - a manager
-    # with genuinely zero bytes left must refuse a size=0 request too, not special-case it as free.
-    manager, _chip = make_manager(max_size=12)
+def test_get_chunk_size_1_still_needs_status_byte_overhead_at_the_capacity_boundary() -> None:
+    # The smallest valid (nonzero) payload still needs 2*_NUM_STATUS_BYTES=4 bytes of real
+    # overhead on top of it - a manager with no room left must refuse even the smallest request.
+    manager, _chip = make_manager(max_size=6)
     run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRC_Pass())  # exact fit, uses all 12 bytes
+    chunk = manager.get_chunk(1, crc=CRC_Pass())  # full_size = 2*(1+0+2) = 6, exact fit
     assert chunk is not None
-    assert manager.get_chunk(0, crc=CRC_Pass()) is None
+    assert manager.get_chunk(1, crc=CRC_Pass()) is None  # no room left, even for another tiny chunk
 
 
 # ---------------------------------------------------------------------------
