@@ -66,15 +66,13 @@ class _AsyBaseFramChunk:
         self.size = size
         self.verify = verify
         self.verify_counter = 0
-        # crc_checks.py needs one instance per concurrent sequence; safe here since every chunk
-        # shares fram's own lock, so at most one _read_chunk/_write_chunk/_clear_chunk body (on
-        # any chunk this manager allocates) ever runs at a time.
+        # crc_checks.py needs one instance per concurrent sequence - safe since fram's lock limits
+        # this manager to one _read_chunk/_write_chunk/_clear_chunk body running at a time.
         self.crc = crc
         self.check_length = check_length
         self.block_addr = (base_addr, base_addr + self.size + self.crc.length() + _NUM_STATUS_BYTES)
-        # fram's own lock only serializes one block at a time, not a whole write()/read()/clear()
-        # (each block re-acquires it separately) - this one serializes this chunk's own top-level
-        # operations end to end, so concurrent callers can't interleave between its two blocks.
+        # fram's lock only serializes one block at a time (released between block 0 and block 1);
+        # this one serializes this chunk's own write()/read()/clear() end to end, across both blocks.
         self._op_lock = asyncio.Lock()
 
     async def set_verify(self, value: int) -> None:
@@ -162,9 +160,8 @@ class _AsyBaseFramChunk:
                 self.pr.all("Data read successfully from block 0")
                 return True
             if not match:
-                # Deliberate: no generation counter records which block is newer, so a write torn
-                # between finishing block 0 and starting block 1 leaves two self-consistent but
-                # differing copies with no safe way to pick one - reported as failure, not guessed.
+                # Deliberate: no generation counter says which block is newer, so a write torn between
+                # blocks leaves two self-consistent but differing copies - a hard failure, not a guess.
                 await self.pr.err_s("Both blocks valid but different data", errno=73)
                 return False
             self.pr.all("Both blocks valid and data verified")
@@ -215,9 +212,8 @@ class _AsyBaseFramChunk:
                 valid = False
                 match = False
             else:
-                # No strict= (ruff B905): confirmed against the real MicroPython interpreter that
-                # zip() rejects it (CPython 3.10+-only). bs/gs always span the same chunk_size by
-                # construction (see _read_chunk) anyway, so there's no truncation risk.
+                # No strict= (ruff B905): MicroPython's zip() rejects it (CPython 3.10+-only); bs/gs
+                # always span the same chunk_size by construction (see _read_chunk), so no truncation risk.
                 for bsi, gsi in zip(range(bs[0], bs[1]), range(gs[0], gs[1])):  # noqa: B905
                     match = match and (mvt[bsi] == mvb[gsi])
 
@@ -237,9 +233,8 @@ class _AsyBaseFramChunk:
                     await self.pr.err_s("Read status byte is not", _STATUS_IDLE, "but", stat[0], errno=err + 1)
                     return None
                 uninit = True  # no error yet
-        # set byte to desired value - check_idle=False has no read-back to fail against above, so
-        # it has nothing to reserve err/err+1 for; only check_idle=True's callers need the 3-wide
-        # spread (see _handle_status_bytes' own matching gap).
+        # set byte to desired value - check_idle=False has no read-back above, so it needs no
+        # err/err+1 reserved; only check_idle=True needs the 3-wide spread (matches the gap below).
         write_errno = err + 2 if check_idle else err
         if not await fram.set_values(bytearray([val]), st_addr):
             await self.pr.err_s("Write status byte failed!", errno=write_errno)
@@ -250,9 +245,8 @@ class _AsyBaseFramChunk:
         self, fram: FRAM_SPI, addr: int, val: int, check_idle: bool, err: int
     ) -> bool | None:
         st_addr = addr + self.size + self.crc.length()
-        # check_idle=False can only ever fail at "write status byte failed", so it only needs 2
-        # tightly packed errnos; check_idle=True (only _read_chunk's busy-set) can also disagree
-        # between bytes, so it keeps the full spread - see BACKLOG.md for the errno-width rationale.
+        # check_idle=False only needs 2 tightly packed errnos (one failure mode); check_idle=True
+        # (only _read_chunk's busy-set) can also disagree between bytes, so it keeps the full spread.
         gap = 3 if check_idle else 1
         uninit0 = await self._set_check_sb(fram, st_addr + _ADDR_STATUS_1, val, check_idle, err)
         if uninit0 is None:
@@ -348,9 +342,8 @@ class _AsyBaseFramChunk:
                 await self.pr.err_s("General read error in _read_chunk:", e, errno=47)
                 await cb(None, None, 0)
                 return False, 0
-        # Unreachable in practice (every path above returns; Lockable.__aexit__ always returns
-        # False, never suppresses) - kept because mypy's `-> bool` on __aexit__ can't statically
-        # rule that out, so it treats falling through the `async with` as live.
+        # Unreachable in practice (every path above returns; __aexit__ never suppresses) - kept
+        # because mypy can't statically rule that out and treats the fall-through as live.
         return False, 0
 
     async def _clear_chunk(self, addr: int) -> bool:
@@ -359,9 +352,8 @@ class _AsyBaseFramChunk:
                 # check_idle=False here, so _handle_status_bytes may only set err to err + 1
                 if await self._handle_status_bytes(fram, addr, _STATUS_UNINIT, False, 50) is None:
                     return False
-                # bytearray(n) zero-fills directly, same content as `[_STATUS_UNINIT] * n`
-                # (0x00) without building that list first - the [x] * n shape can segfault the
-                # interpreter uncatchably for large n (see BACKLOG.md); bytearray(n) can't.
+                # bytearray(n) zero-fills directly (same content as `[_STATUS_UNINIT] * n`) without
+                # building that list first - `[x] * n` can segfault uncatchably for large n (see BACKLOG.md).
                 res = await fram.set_values(bytearray(self.size + self.crc.length()), addr)
                 if not res:
                     await self.pr.err_s("FRAM write failed in _clear_chunk!", errno=57)
