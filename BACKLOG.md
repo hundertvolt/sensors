@@ -1276,6 +1276,83 @@ confirmed via throwaway scratch scripts, not guessed):
 
 Full suite re-verified: 583/583 (`asy_fram_manager.py` 52/52). Lint/typecheck still clean.
 
+### Third follow-up pass: exhaustive configuration coverage + full-stack integration tests
+
+Owner-requested, going further than the second pass: (1) every configuration - valid parameters
+plus single and multiple invalid-but-still-typed recombinations; (2) integration tests across every
+upstream/downstream dependency (checked via this file's own imports), covering both successful
+interaction and every error type reachable from there - deliberately-allowed exceptions as well as
+already-pre-handled return values; (3) mocked down to actual SPI bus interaction, both successful
+and erroneous; (4) TDD-style free thinking about what else is worth testing, informed by reading
+`improved-quality/`'s real (not-yet-promoted) callers for realistic future usage shapes.
+
+**8 more tests in `tests/test_asy_fram_manager.py` (52 → 60)**, covering two categories:
+- **Deliberately-allowed exceptions propagating through this file's own composition points**
+  (`asy_fram_driver.py`'s own test suite already proves these exceptions happen in isolation; these
+  tests confirm the *other* half of the contract - what happens one layer up, through
+  `AsyFramManager`'s own constructor/`setup()`/chunk operations): a bad `spi_cs` raising `ValueError`
+  straight out of `AsyFramManager.__init__` (never caught, matching the documented one-time-at-boot
+  carve-out); a real device-ID mismatch (`FRAM_SPI.setup()`'s `OSError`) turned into a clean
+  `False` + errno=83 by `AsyFramManager.setup()`'s own try/except; and - the most useful of the
+  three - a mid-operation bus `deinit()` (a real, uncaught `RuntimeError` at the driver layer per
+  `asy_fram_driver.py`'s own already-signed-off test) getting cleanly caught by this file's broad
+  `except Exception` in `_write_chunk`/`_read_chunk`/`_clear_chunk`, confirmed for all three
+  operations in one test with the exact errno chain each produces.
+- **Configuration edge values, single and combined, always staying inside each parameter's typed
+  `int`**: negative `size` (degrades to an unusable-but-non-crashing chunk via
+  `base_classes.py`'s existing negative-size guard); negative `verify` (a genuinely surprising,
+  confirmed-not-a-bug behavior - the `>=` comparison after incrementing means verification runs on
+  *every* write, not never); negative `check_length` (reaches the same `MemoryError`-degrades path
+  as the already-tested huge value, via a different mechanism - `bytearray(negative_int)` gets
+  reinterpreted as a huge unsigned allocation request on this interpreter, confirmed directly, not
+  assumed); negative manager `max_size` (always reports out of memory); and all of the above
+  combined in one chunk at once, proving they don't interact to produce anything worse than each
+  individually.
+
+**New file `tests/test_fram_integration.py` (6 tests)**: the first tests in this repo mocked down to
+raw SPI bus interaction for `asy_fram_manager.py` specifically - nothing faked above
+`tests/_fram_chip_fake.py`'s simulated chip (itself a stateful subclass of `tests/machine.py`'s raw
+fake `machine.SPI`), exercising the real chain through `asy_spi_driver.py`/`asy_fram_driver.py`/
+`asy_fram_manager.py` up into `print_log.py`/`base_classes.py`'s real consumer (`SensorReader`).
+Explicitly documented as *not* modeling a raw-SPI-bus-level fault: confirmed via
+`asy_spi_driver.py`'s and `tests/machine.py`'s own docstrings that real RP2040 SPI `write()`/
+`readinto()` genuinely cannot raise or report a fault once constructed (unlike I2C's NAK/timeout
+surface) - so `tests/_fram_chip_fake.py`'s opcode/latch/identity knobs already are the lowest layer
+where a real failure is observable, and there's no lower seam to add.
+- Real production topology from `improved-quality/sensortask-wozi.py` (one shared
+  `AsyFramManager` backing both a driver's own `PrintLogHistoryStore` chunk and a separate
+  value-backup chunk, matching `improved-quality/asy_sgp40_driver.py`'s real `CRC32()` `ts_storage`
+  choice) - proven non-overlapping and independently functional.
+- A real `chip.drop_wren` fault reaching through the full `SensorReader` → `PrintLogHistoryStore` →
+  `AsyFramChunk` → `FRAM_SPI` chain, confirming `print_log.py`'s "in-memory count/history updates
+  regardless of persistence success" contract holds under a genuine hardware fault, not just the
+  Protocol-level fakes `tests/test_print_log.py`/`tests/test_base_classes.py` already use.
+- A device booting with a dead/missing FRAM chip (`manager.setup()` failing on a real RDID
+  mismatch) still letting a real `SensorReader(fram=manager)` construct and run in degraded mode -
+  `reader.pr.fram` is a real chunk (allocation bookkeeping doesn't need `setup()` to have
+  succeeded), just one permanently backed by hardware that never came up; every operation through
+  it still degrades cleanly.
+- Two independent `SensorReader`s sharing one manager keep fully separate error histories despite
+  hitting the same simulated physical chip.
+- The simulated-reboot pattern (already used in `tests/test_print_log.py`/
+  `tests/test_base_classes.py`) applied for the first time to *two* structurally different chunk
+  types allocated in the same run (a `PrintLogHistoryStore` chunk and a separate `CRC32` value
+  chunk) - both correctly decode after fresh manager/reader objects reattach to the same underlying
+  chip in the same instantiation order, the actual invariant this whole module exists to preserve.
+- 40 sequential `write`/`read` cycles with `CRC32`+`verify=1` (matching
+  `asy_sgp40_driver.py`'s real periodic-backup shape) to catch any state leak a 1-2-cycle test
+  wouldn't. **Found and diagnosed a real effect, but not a code bug**: without periodic
+  `gc.collect()`, this specific tight allocate-heavy loop reproducibly exhausts the MicroPython
+  Unix-port *test binary's* heap after ~7 cycles with a plain `MemoryError` - confirmed directly by
+  adding `gc.collect()` per cycle (fixes it completely, 40/40 pass) that this is a test-environment
+  GC-timing artifact of the Unix-port build under a tight loop, not a leak in
+  `asy_fram_manager.py` itself (real firmware's own GC runs the same way every other MicroPython
+  driver already relies on). Documented in the test itself so a future reader doesn't mistake the
+  `gc.collect()` call for cargo-culting.
+
+Full suite re-verified: 597/597 (`asy_fram_manager.py` 60/60, `test_fram_integration.py` 6/6).
+Lint/typecheck still clean.
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
@@ -1291,10 +1368,11 @@ and a missing config file failing independently without either derailing the oth
 
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 44,
-`asy_fram_manager.py` 52 — **583 total**. (`base_classes.py`/`print_log.py` counts shifted from
-their FRAM-mock-era numbers when `tests/_fram_mock.py` was retired in favor of the real
-`AsyFramManager` - see "`asy_fram_manager.py` → `src/`" below; `asy_fram_manager.py`'s own count
-went 29 → 52 in the "Second follow-up pass" documented there.)
+`asy_fram_manager.py` 60, `test_fram_integration.py` 6 — **597 total**. (`base_classes.py`/
+`print_log.py` counts shifted from their FRAM-mock-era numbers when `tests/_fram_mock.py` was
+retired in favor of the real `AsyFramManager` - see "`asy_fram_manager.py` → `src/`" below;
+`asy_fram_manager.py`'s own count went 29 → 52 → 60 across the "Second"/"Third follow-up pass"
+sections documented there, and `test_fram_integration.py` is a new file added in the third.)
 
 ## Decided for the refactor
 

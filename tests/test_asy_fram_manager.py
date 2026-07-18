@@ -1126,6 +1126,159 @@ def test_epoch_zero_timestamp_reads_back_as_uninitialized_sentinel_collision() -
     assert run(read_back()) is None  # collides with the "never written" sentinel
 
 
+# ---------------------------------------------------------------------------
+# Deliberately-allowed exceptions propagating through this file's own composition points -
+# confirms the "caught here" / "allowed to raise" boundary asy_fram_driver.py's own docstring
+# documents actually holds one layer up, through AsyFramManager's public API, not just in
+# asy_fram_driver.py's own already-thorough test suite in isolation.
+# ---------------------------------------------------------------------------
+
+
+def test_construction_raises_uncaught_valueerror_for_an_out_of_range_spi_cs() -> None:
+    # AsyFramManager.__init__ constructs FRAM_SPI(...) with no try/except around it - a bad
+    # spi_cs is a one-time, at-boot misconfiguration allowed to raise loudly rather than silently
+    # produce a permanently nonfunctional manager (asy_fram_driver.py's own already-tested
+    # carve-out, confirmed here to still hold through this file's own constructor).
+    bus = make_bus()
+    try:
+        AsyFramManager(bus, 99, max_size=0x2000)
+        raised = False
+    except ValueError:
+        raised = True
+    assert raised
+
+
+def test_setup_fails_cleanly_when_device_id_does_not_match() -> None:
+    # Real device-not-found path (asy_fram_driver.py's FRAM_SPI.setup() raises OSError) - caught
+    # by AsyFramManager.setup()'s own try/except, turned into a clean False + errno=83, not left
+    # to propagate. A different, driver-owned RDID mismatch, not a caller misconfiguration.
+    manager, chip = make_manager()
+    chip.rdid_response = bytes([0xFF, 0xFF, 0xFF, 0xFF])
+
+    async def scenario() -> tuple[bool, dict]:
+        ok = await manager.setup()
+        errs = await manager.get_error_counter()
+        return ok, errs
+
+    ok, errs = run(scenario())
+    assert ok is False
+    assert 83 in errs["FRAM"]["ErrNum"]
+
+
+def test_chunk_operations_fail_cleanly_when_the_underlying_bus_is_deinitialized_mid_run() -> None:
+    # asy_spi_driver.py's own contract says a mid-operation bus deinit raises an uncaught
+    # RuntimeError at that layer (asy_fram_driver.py's own test suite already proves this in
+    # isolation) - this confirms the *other* half of that same contract: one layer up, this
+    # file's broad `except Exception` in _write_chunk/_read_chunk/_clear_chunk catches it cleanly,
+    # rather than letting it propagate out of AsyFramChunk's own public write()/read()/clear().
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    assert chunk is not None
+    run(chunk.write(b"good"))
+    manager.fram._spidev.spi.deinit()
+
+    async def scenario() -> tuple[bool, bytearray | None, bool, dict]:
+        write_ok = await chunk.write(b"data")
+        read_result = await chunk.read()
+        cleared = await chunk.clear()
+        errs = await manager.get_error_counter()
+        return write_ok, read_result, cleared, errs
+
+    write_ok, read_result, cleared, errs = run(scenario())
+    errnums = errs["FRAM"]["ErrNum"]
+    assert write_ok is False
+    assert read_result is None
+    assert cleared is False
+    assert 26 in errnums  # "General write error in _write_chunk:" - the caught RuntimeError
+    assert 47 in errnums  # "General read error in _read_chunk:"
+    assert 58 in errnums  # "General write error in _clear_chunk:"
+
+
+# ---------------------------------------------------------------------------
+# Configuration edge values - within-type but unusual/invalid inputs (negative, zero, huge),
+# single and combined, staying inside every parameter's declared int type throughout.
+# ---------------------------------------------------------------------------
+
+
+def test_get_chunk_negative_size_degrades_to_an_unusable_but_non_crashing_chunk() -> None:
+    # A negative size flows straight into AsyFramChunkBuffer/LockableBuffer, whose own guard
+    # (base_classes.py) already turns any negative size into buf=None - confirmed here at this
+    # file's own boundary that the degradation is clean end to end, not just at that lower layer.
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(-4, crc=CRC_Pass())
+    assert chunk is not None  # allocation bookkeeping itself doesn't reject a negative size
+
+    async def scenario() -> tuple[bool, bytearray | None]:
+        write_ok = await chunk.write(b"data")
+        data = await chunk.read()
+        return write_ok, data
+
+    write_ok, data = run(scenario())
+    assert write_ok is False
+    assert data is None
+
+
+def test_get_chunk_negative_verify_triggers_verification_on_every_single_write() -> None:
+    # Surprising but harmless: verify_counter starts at 0 and is compared with `>=` against
+    # `verify` *after* incrementing - a negative verify makes that comparison (1 >= negative) true
+    # on the very first write, so verification runs (and the counter resets to 0) every time,
+    # unlike verify=0 (never verifies) or verify=N>0 (every Nth write). Locked down as real,
+    # non-crashing, if unusual, behavior - not something this pass changes.
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(4, crc=CRC_Pass(), verify=-5)
+    assert chunk is not None
+
+    async def scenario() -> bool:
+        return await chunk.write(b"data")
+
+    assert run(scenario()) is True
+    assert chunk.verify_counter == 0  # verification ran and reset the counter, not left at 1
+
+
+def test_get_chunk_negative_check_length_self_heals_instead_of_crashing() -> None:
+    # Same MemoryError-degrades-to-"not verifiably valid" guard as the huge-check_length
+    # regression test, reached via a different input class: bytearray(negative_int) raises
+    # MemoryError on this interpreter (confirmed directly - the negative count gets reinterpreted
+    # as a huge unsigned allocation request), not a distinct crash mode of its own.
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(4, crc=CRC_Pass(), check_length=-1)
+    assert chunk is not None
+    run(chunk.write(b"data"))
+
+    async def scenario() -> bytearray | None:
+        return await chunk.read()
+
+    assert run(scenario()) == bytearray(b"data")
+
+
+def test_manager_negative_max_size_degrades_to_always_out_of_memory() -> None:
+    manager, _chip = make_manager(max_size=-100)
+    assert manager.get_chunk(4) is None
+    assert manager.get_timestamped_chunk(4, _synced) is None
+
+
+def test_multiple_invalid_parameters_combined_still_degrade_safely() -> None:
+    # negative size + negative verify + negative check_length together, all in one chunk - none
+    # of these interact to produce anything worse than each one's own individual degradation.
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(-4, crc=CRC_Pass(), verify=-1, check_length=-1)
+    assert chunk is not None
+
+    async def scenario() -> tuple[bool, bytearray | None]:
+        write_ok = await chunk.write(b"data")
+        data = await chunk.read()
+        return write_ok, data
+
+    write_ok, data = run(scenario())
+    assert write_ok is False
+    assert data is None
+
+
 if __name__ == "__main__":
     import microtest
 
