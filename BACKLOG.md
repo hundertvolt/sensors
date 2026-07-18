@@ -813,12 +813,15 @@ write torn by power loss. Every other FRAM-touching file (`print_log.py`'s `Prin
   `get_data_buf()` already made unreachable). None of the above is chased further (owner-confirmed:
   no trouble with less than 100% coverage as long as nothing left uncovered is a real gap).
 
-89 tests (`tests/test_asy_fram_manager.py`) + 6 (`tests/test_fram_integration.py`, full-stack
-integration down to the simulated raw SPI bus, including two `SensorReader`s sharing one manager
-and the same manager backing two structurally different chunk types across a simulated reboot; its
-40-cycle stress test needs an explicit `gc.collect()` per cycle - a Unix-port test-binary
-heap-timing artifact under a tight allocate-heavy loop, not a leak in this file - don't remove it
-as apparent cargo-culting).
+89 tests (`tests/test_asy_fram_manager.py`) + 10 (`tests/test_fram_integration.py`, full-stack
+integration down to the simulated raw SPI bus, including two `SensorReader`s sharing one manager,
+the same manager backing two structurally different chunk types across a simulated reboot, and -
+per `src/README.md` section 12's standing rule that module-level tests alone aren't enough for a
+file that composes into a real chain - the torn-write/CRC/timestamp/pause failure modes above,
+each reproven through the real `SensorReader` → `PrintLogHistoryStore` → chunk → `FRAM_SPI` chain
+rather than by calling this file's own methods directly. Its 40-cycle stress test needs an explicit
+`gc.collect()` per cycle - a Unix-port test-binary heap-timing artifact under a tight allocate-heavy
+loop, not a leak in this file - don't remove it as apparent cargo-culting).
 
 ### Coverage-driven completeness pass
 
@@ -835,7 +838,7 @@ and a missing config file failing independently without either derailing the oth
 
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
-`asy_fram_manager.py` 89, `test_fram_integration.py` 6 — **628 total**.
+`asy_fram_manager.py` 89, `test_fram_integration.py` 10 — **632 total**.
 
 ## Decided for the refactor
 

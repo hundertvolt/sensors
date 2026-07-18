@@ -309,6 +309,14 @@ is not a machine with memory or cycles to spare:
     behavior at the clamp's own bounds)
 - [ ] Do **not** write tests for scenarios the type system already rules out (see section 2) —
       keep the suite focused on what can actually happen, not padded with impossible cases.
+- [ ] **If this file is one layer in a larger real call chain** (a driver under a manager, a
+      manager under a real consumer), module-level tests alone are not enough, even ones that
+      mock only the raw bus transaction. Also add integration tests that drive the same
+      good-and-failure scenarios through the actual real chain up to the real consumer, not by
+      calling this file's own methods directly. (Established for `asy_fram_manager.py`:
+      `tests/test_fram_integration.py` proves the same self-heal/hard-fail/pause outcomes already
+      covered in `tests/test_asy_fram_manager.py`'s own tests still hold when driven through the
+      real `SensorReader` → `PrintLogHistoryStore` → chunk → `FRAM_SPI` chain instead.)
 
 ## 13. Wire into the existing pipeline
 
