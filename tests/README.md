@@ -129,9 +129,9 @@ dev/test tooling only, entirely separate from what ships to real hardware.
 No coverage threshold is enforced anywhere — CI reports the numbers, it never fails the build
 over them.
 
-### Reading the numbers: two systematic false-negative patterns, not missed test cases
+### Reading the numbers: three systematic false-negative patterns, not missed test cases
 
-A below-100% file isn't automatically a missed-test hint - two patterns recur across every
+A below-100% file isn't automatically a missed-test hint - three patterns recur across every
 `src/` file's "missed" line list and are artifacts of this specific tracing pipeline, confirmed
 directly against a real build (`sys.settrace` during both class-body execution and a plain
 function call, dumping the traced `(lineno, co_name)` pairs):
@@ -152,6 +152,13 @@ function call, dumping the traced `(lineno, co_name)` pairs):
   see e.g. `print_log.py`'s `level_off()`/`level_err()`/etc. or `asy_i2c_driver.py`'s
   `_bitfield_range_ok()`/`_bitmask()`/`_bytes_to_int()`/`_readfrom_mem()`/`_writeto_mem()`. The
   method's own body line (e.g. the `return` statement) is traced normally and shows as covered.
+- **A bare `while True:` header never fires its own `line` trace event, at any iteration** —
+  confirmed directly (a minimal repro traced every other statement in the loop body across four
+  iterations, but never once traced the `while True:` line itself): the always-true condition is
+  folded away at compile time into an unconditional jump, the same spirit as the `const()` folding
+  above but for a control-flow statement rather than an assignment. Found via `system_service.py`'s
+  own `src/` promotion (`status_counter()`'s and `start_and_check_tasks()`'s outer loops), both
+  otherwise fully exercised by `tests/test_system_service.py`.
 
 Separately (not a tracer artifact, but also not a missed-test hint): several `except` branches
 across `src/` guard against outcomes that are provably unreachable given the guarantees the rest

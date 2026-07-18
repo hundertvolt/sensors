@@ -3,9 +3,19 @@ I2C/SPI bus-transaction level (readfrom_mem/writeto_mem/readfrom_into/writeto/sc
 I2C; write/readinto/write_readinto/deinit for SPI), so asy_i2c_driver.py's/asy_spi_driver.py's
 own logic (bit-packing, byte order, buffer slicing, locking, error paths, CS-pin sequencing) runs
 for real against this fake instead of unavailable real hardware - the MicroPython Unix port's own
-`machine` module has no I2C/SPI/real Pin (confirmed directly: PinBase/Signal/mem8/mem16/mem32/
-idle/time_pulse_us only). Only implements what these two drivers' own imports need; not a
-general-purpose machine stub.
+`machine` module has no I2C/SPI/real Pin, Timer, or WDT (confirmed directly: PinBase/Signal/
+mem8/mem16/mem32/idle/time_pulse_us only). Only implements what these drivers' (and
+system_service.py's) own imports need; not a general-purpose machine stub.
+
+Timer/WDT/reset/bootloader (added for system_service.py): real rp2 Timers are software-scheduled
+virtual timers that fire their callback from an IRQ context whenever their period elapses, with no
+fixed count and no real return from a callback chain the test can observe mid-flight. This fake
+never fires a callback on its own - there is no real elapsed time to schedule against - instead
+every constructed instance self-registers into `Timer.all_timers` (cleared per test) so test code
+can reach and manually `.trigger()` even an unstored, fire-and-forget instance (e.g.
+system_service.py's own `_timer_sequencer`, which never keeps a reference to the Timer it chains
+through). `reset()`/`bootloader()` real MCU calls never return at all; this fake just records that
+they were invoked instead of actually terminating the test process.
 
 Real RP2040 I2C error codes (confirmed against ports/rp2/machine_i2c.c, not guessed): the
 hardware I2C driver only ever raises OSError(errno.EIO) - covers a NAK/no response and any other
@@ -26,6 +36,14 @@ test passes in, not something that needs fault injection to trigger.
 """
 
 import errno
+
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 class Pin:
@@ -217,3 +235,66 @@ class SPI:
         data = self._next_read_bytes(len(buffer_in))
         buffer_in[:] = data
         self.log.append(("write_readinto", bytes(buffer_out)))  # type: ignore[call-overload]
+
+
+class Timer:
+    ONE_SHOT = 0
+    PERIODIC = 1
+
+    # Class-level registry, not per-instance: system_service.py's own _timer_sequencer never keeps
+    # a reference to the Timer it chains through (fire-and-forget, matching real hardware), so this
+    # is the only way test code can reach and fire it. Tests must clear this between test functions
+    # (all_timers.clear()) since it otherwise persists across a whole test file's process lifetime.
+    all_timers: "list[Timer]" = []
+
+    def __init__(
+        self, id: int = -1, *, period: int = -1, mode: int = PERIODIC, callback: "Callable[[Timer], None] | None" = None
+    ) -> None:
+        self.id = id
+        self.period = period
+        self.mode = mode
+        self.callback = callback
+        self.deinit_called = False
+        Timer.all_timers.append(self)
+
+    def init(self, *, period: int = -1, mode: int = PERIODIC, callback: "Callable[[Timer], None] | None" = None) -> None:
+        self.period = period
+        self.mode = mode
+        self.callback = callback
+        self.deinit_called = False
+
+    def deinit(self) -> None:
+        self.callback = None
+        self.deinit_called = True
+
+    def trigger(self) -> None:
+        # No real-hardware equivalent - lets test code fire a callback deterministically instead of
+        # waiting on this fake's `period` (which is never actually scheduled against real time).
+        if self.callback is not None:
+            self.callback(self)
+
+
+class WDT:
+    def __init__(self, id: int = 0, timeout: int = 5000) -> None:
+        self.id = id
+        self.timeout = timeout
+        self.feed_count = 0
+
+    def feed(self) -> None:
+        self.feed_count += 1
+
+
+# Real machine.reset()/machine.bootloader() reset the MCU and never return at all - this fake just
+# records the call so a test can assert a reboot was triggered, instead of ending the test process.
+reset_count = 0
+bootloader_count = 0
+
+
+def reset() -> None:
+    global reset_count
+    reset_count += 1
+
+
+def bootloader() -> None:
+    global bootloader_count
+    bootloader_count += 1

@@ -83,7 +83,7 @@ i2c0 = asy_i2c_driver.I2C(0, 13, 12, frequency=50000)
 i2c1 = asy_i2c_driver.I2C(1, 19, 18, frequency=50000)
 spi0 = asy_spi_driver.SPI(0, 2, 3, 4)
 fram = AsyFramManager(spi0, 1, max_size=0x2000, debug=debug)
-sysfunct = SystemService(conn.ntp_issynced, storage_pause=fram.set_pause, debug=debug)
+sysfunct = SystemService(conn.ntp_issynced, watchdog=watchdog, fram=fram, debug=debug)
 sgp_backup = fram.get_timestamped_chunk(SGP40_Reader.get_params_memsize(), conn.ntp_issynced)
 sgp_reader = SGP40_Reader(
     i2c1,

@@ -475,8 +475,9 @@ after construction — cached once as `self._history_fmt`. Eight identical diagn
 folded into one `_diag()` helper. Renamed `PrintLogHistStore` → `PrintLogHistoryStore` project-wide
 (the one abbreviation in an otherwise fully-spelled-out file). `pyproject.toml`'s own mypy-override
 comment initially missed this rename (caught and fixed during a later documentation audit); the old
-name still appears in untouched `improved-quality/system_service.py`/`base_classes_old.py`, both
-out of routine-editing scope until their own refactor work reaches them.
+name still appeared in `improved-quality/system_service.py` until that file's own `src/` promotion
+picked up the rename too (see "`system_service.py` → `src/`" below) - `base_classes_old.py` still
+has it, out of routine-editing scope until its own refactor work reaches it.
 
 `tests/_fram_mock.py` supports fault injection for every FRAM failure mode `print_log.py` guards
 against (`raise_on_get_chunk`, `out_of_memory`, per-chunk `raise_on_get_buffer`/`broken_buffer`/
@@ -766,13 +767,15 @@ write torn by power loss. Every other FRAM-touching file (`print_log.py`'s `Prin
 - SGP40 FRAM backup "0 = disabled" semantics: see Functional Clarifications above.
 - `set_pause()`/`get_pause()`/`override_pause`: owner-confirmed intent is "finish all ongoing ops,
   reject new ones" - correctly what the code does, since the pause check sits *after* `_op_lock`
-  acquisition, so nothing already mid-flight is interrupted. Real legacy callers (`system_service.py`,
-  unchanged in `improved-quality/`) are `reboot_system()`/`reboot_bootloader()` (pause right before
-  a deliberate reset, then a 5s delay before the reset actually fires - ample margin over a real
-  operation's low-single-digit-ms cost) and a REST `systemCmd` `"mempause"` command (operator-
-  triggered pause for up to `_MAX_STORAGE_PAUSE`=3600s via a hardware `Timer` auto-unpause, for safe
-  physical access to the chip). `src/` itself has zero callers yet - part of the still-open
-  task-supervisor/system-service wiring, not `asy_fram_manager.py`'s own scope.
+  acquisition, so nothing already mid-flight is interrupted. Real callers are `system_service.py`'s
+  own `reboot_system()`/`reboot_bootloader()` (pause right before a deliberate reset, then a 4s
+  `_RESET_DELAY` before the reset actually fires - ample margin over a real operation's
+  low-single-digit-ms cost) and a REST `systemCmd` `"mempause"` command (operator-triggered pause
+  for up to `_MAX_STORAGE_PAUSE`=3600s via a hardware `Timer` auto-unpause, for safe physical access
+  to the chip). `system_service.py` is now itself promoted to `src/` (see "`system_service.py` →
+  `src/`" below); the still-open task-supervisor/system-service wiring this note used to flag is
+  which `sensortask-*.py` device files actually call `start_and_check_tasks()`/`get_task_starters()`
+  end-to-end, not whether `asy_fram_manager.py`'s own pause plumbing works.
 - The busy/idle protocol brackets *reads* too (not just writes), owner-confirmed deliberate:
   MB85RS64V reads are destructively read internally (confirmed in the datasheet's own endurance
   footnote), so a power loss mid-read is as real a risk as mid-write; board-level bulk capacitance
@@ -823,6 +826,100 @@ rather than by calling this file's own methods directly. Its 40-cycle stress tes
 `gc.collect()` per cycle - a Unix-port test-binary heap-timing artifact under a tight allocate-heavy
 loop, not a leak in this file - don't remove it as apparent cargo-culting).
 
+### `system_service.py` → `src/`
+
+Generic system-housekeeping service shared by every `sensortask-*.py` device file (uptime, boot
+signature, reboot/reboot-to-bootloader, storage pause, the staggered timer-startup sequence, and
+the task supervisor loop). Its constructor had already moved, before this session, from the legacy
+`(asy_ntp_callback, storage_pause=None, debug=False)` shape to `(asy_ntp_callback, watchdog=None,
+fram=None, history_length=10, debug=None)`, matching `SensorReader`'s own `fram`/`history_length`/
+`debug` shape - kept as-is (owner-confirmed), not reconciled backward.
+
+Imports fixed to match already-promoted `src/`: `from base_classes import PrintLogHistory,
+PrintLogHistStore, ...` → `from print_log import PrintLogHistory, PrintLogHistoryStore` (both moved
+out of `base_classes.py` during its own promotion, and `PrintLogHistStore` was renamed
+`PrintLogHistoryStore` then - see `print_log.py`'s own entry above) + `from base_classes import
+LockedCounter, LockedValue` (those two did stay). `from uasyncio import ThreadSafeFlag` → `import
+asyncio`/`asyncio.ThreadSafeFlag()` - confirmed directly against the built Unix-port interpreter
+that `asyncio`/`uasyncio` are two import names for the *same* underlying classes (`ThreadSafeFlag`,
+`Lock`, `get_event_loop` all identity-equal across both names, even though the two module objects
+themselves are `is`-distinct) - safe to mix with any code elsewhere still importing from
+`uasyncio`. `typing.Callable`/`Any`/`Coroutine`/`List`/`Dict` moved behind the established
+`TYPE_CHECKING` guard, `List`/`Dict` → builtin `list`/`dict` generics; `AsyFramManager` import moved
+`TYPE_CHECKING`-only too (never needed at runtime, only for `fram is None`).
+
+Real gaps found and fixed (all four owner-confirmed before fixing, not guessed):
+
+- `status_counter()`'s NTP-synced branch called `time.mktime(time.gmtime())` completely unguarded -
+  `asy_fram_manager.py`'s own promotion already documented that this raises `OverflowError` past
+  rp2's ~2037 32-bit epoch range. Extracted into a new `_ntp_boot_signature()` helper wrapping both
+  the NTP callback and the `mktime()` call; on either failure, falls back to the same
+  random-signature-after-`_NTP_WAIT_TIME` path as "never synced" (owner-confirmed: treat a failure
+  like not-synced rather than retrying forever).
+- The caller-supplied `ntp_is_synced()` callback and every driver-supplied task/timer starter
+  (`get_task_starters()`/`get_timer_starters()`) were called with no exception guard at all - a
+  single misbehaving driver could kill the whole status/supervisor task. Wrapped in `try`/`except
+  Exception`, matching `base_classes.py`'s own `_get_dict_cfg` callback-guarding pattern
+  (owner-confirmed to guard both the same way).
+- `_timer_sequencer()` indexed `timers[counter]` with no bounds check - an empty timer-starter list
+  (`start_timers([])`) raised `IndexError` on the very first call, a real "never raises" gap with no
+  prior guard at all. Fixed: `start_timers()` now short-circuits straight to
+  `self.timers_running.set()` for an empty list instead of ever calling `_timer_sequencer()`.
+- `start_and_check_tasks()`'s per-task `starter()` call (both at startup and on every restart) was
+  the same unguarded-caller-supplied-callable category as the second bullet above - extracted into
+  `_start_task()`, guarded the same way, so a starter that can't even construct a `Task` degrades to
+  a `None` slot (retried next cycle, same as a task that died) instead of crashing the supervisor.
+
+`tests/machine.py` extended with fake `Timer`/`WDT`/`reset()`/`bootloader()` (previously only had
+`Pin`/`I2C`/`SPI` for the two bus drivers - the Unix port's real `machine` module has none of these
+either). The `Timer` fake never fires a callback on its own (no real elapsed time in a test); every
+constructed instance self-registers into a class-level `Timer.all_timers` list so test code can
+reach and manually `.trigger()` even an unstored, fire-and-forget instance - needed because
+`_timer_sequencer()`'s own recursive chain timer is never kept as a reference, matching real
+hardware's fire-and-forget IRQ pattern. `reset()`/`bootloader()` just record that they were called
+instead of ending the test process, since the real calls never return at all.
+
+Four MicroPython-specific gotchas hit while writing `tests/test_system_service.py`, each confirmed
+directly against the built Unix-port interpreter rather than assumed:
+
+- `micropython.const()` values are compiled away and unavailable as module attributes at runtime
+  (see `tests/README.md`'s coverage-artifacts section for the same finding) - `_RESET_DELAY`
+  (4s)/`_MAX_STORAGE_PAUSE` (3600s) are hardcoded in the tests rather than imported, the same
+  treatment `test_asy_fram_manager.py` already gives real on-chip constants.
+- MicroPython's real `time` module is a read-only builtin - `time.mktime = fake` raises
+  `AttributeError` directly (confirmed), unlike a plain Python-level module's mutable namespace. The
+  mktime-overflow test instead reassigns `system_service`'s own module-level `time` *name* to a fake
+  object (a regular, mutable module global, unlike the builtin it normally points to).
+- Bound-method identity isn't guaranteed - `obj.method is obj.method` can legitimately be `False`
+  even for the same underlying method (each attribute access can mint a fresh bound-method object).
+  The storage-pause-wiring test asserts by calling `svc.storage_pause` and checking the FRAM
+  manager's own resulting pause state, not by comparing it `is manager.set_pause`.
+- Cancelling a task while it's suspended inside `asyncio.sleep(N)` resolves immediately regardless
+  of `N` (confirmed directly, 0ms measured) - most `start_and_check_tasks()` tests just cancel
+  rather than waiting out real `_TASK_CHECK_TIME`=2s cycles. The one test that must let the
+  supervisor run to completion (crossing `_TASK_FAIL_MAX` to actually trigger a reboot) instead
+  monkeypatches `asyncio.sleep` itself for its duration, since both relevant consts are
+  `micropython.const()`-folded and can't be shortened directly.
+
+`improved-quality/sensortask-wozi.py`'s own `SystemService(...)` call site was still passing the
+legacy `storage_pause=`/`debug=` keywords - already broken against this file's already-updated
+constructor before this session started, unrelated to anything changed here. Patched (owner-
+confirmed) to `SystemService(conn.ntp_issynced, watchdog=watchdog, fram=fram, debug=debug)`. Left
+alone (out of scope, pre-existing, separate issues): that file's hand-rolled task-supervisor loop in
+`main()` still never calls the real `start_and_check_tasks()`/`get_task_starters()` at all, and its
+own `sysfunct.start_timers(timer_starters, 1000)` call passes a second positional argument
+`start_timers()` has never accepted.
+
+42 tests (`tests/test_system_service.py`): `__init__` (in-memory vs. FRAM-backed logging,
+debug/history_length/watchdog forwarding), uptime/boot-signature (including all four
+`_ntp_boot_signature()` branches: synced-success, callback-exception, mktime-overflow, never-synced,
+plus the full `status_counter()` loop driven via repeated `ThreadSafeFlag.set()` + `sleep(0)`
+pumping instead of real elapsed time), the timer-startup stagger sequence (empty/single/multi-timer,
+and a starter-exception mid-sequence), reboot/reboot-to-bootloader/storage-pause (including the
+real FRAM-backed integration path via `AsyFramManager`), and the task supervisor loop (watchdog
+feed, no-watchdog, a dead task restarting, a starter that can't even start, and the full
+give-up-and-reboot path).
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
@@ -838,7 +935,7 @@ and a missing config file failing independently without either derailing the oth
 
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
-`asy_fram_manager.py` 89, `test_fram_integration.py` 10 — **632 total**.
+`asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 42 — **674 total**.
 
 ## Decided for the refactor
 
