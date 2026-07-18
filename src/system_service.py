@@ -39,7 +39,6 @@ _RESET_DELAY = const(4)  # seconds between reset command and execution (keep < w
 _MAX_STORAGE_PAUSE = const(3600)  # one hour max pause for FRAM
 _NTP_WAIT_TIME = const(120)  # 2 mins until random boot signature is used
 _TIMER_BASE_PERIOD = const(1000)  # milliseconds for sensor triggers base period
-_TIMER_SEQUENCE_TIMEOUT = const(5)  # seconds - 5x margin over _TIMER_BASE_PERIOD's ~1s nominal budget
 _TASK_CHECK_TIME = const(2)  # seconds period to check running tasks (keep << watchdog timeout!)
 _TASK_FAIL_INCREMENT = const(100)  # absolute value important for decrease time,...
 _TASK_FAIL_MAX = const(300)  # ...ratio important for triggering reset (multiple errors)
@@ -227,20 +226,7 @@ class SystemService:
 
     async def start_timers(self, timers: "list[Callable[[], None]]") -> None:
         self._timer_sequencer(timers, counter=0)
-        try:
-            await asyncio.wait_for(self.timers_running.wait(), _TIMER_SEQUENCE_TIMEOUT)
-        except asyncio.TimeoutError:
-            # Every Timer here is soft (no hard=True), so its callback is delivered via
-            # MicroPython's own scheduler queue (mp_sched_schedule(), a small fixed-depth ring
-            # buffer shared by every soft timer/IRQ on the device - confirmed against
-            # py/scheduler.c/shared/runtime/mpirq.c) - if that queue is full at the instant one of
-            # _timer_sequencer()'s chained one-shot timers fires, its callback is silently dropped
-            # (no exception raised anywhere) and the whole chain stops for good, which would
-            # otherwise hang this await forever. No software-level detection is possible for that
-            # drop, so this bounded wait is the only guard - on timeout, force a real reset via the
-            # watchdog rather than let the device never finish booting.
-            await self.pr.err_s("Timer sequencing did not complete in time, forcing watchdog starve", errno=5)
-            self._force_watchdog_starve = True
+        await self.timers_running.wait()
 
     async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
         return await self.pr.get_log("Tasks")

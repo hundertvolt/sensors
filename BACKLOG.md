@@ -1125,31 +1125,43 @@ different, already-guarded failure mode from a *failure to later deliver*), and
 from `main()` during device boot, before any sensor/task loop starts - hangs forever: the device
 never finishes booting, with nothing to log or catch).
 
-Flagged both to the owner rather than silently fixing, since the right response differs in kind
-per site and isn't obvious from the code alone:
+Flagged both to the owner rather than silently fixing, since the right response wasn't obvious
+from the code alone - and **both ended up rejected, for the same underlying reason.**
 
-- **`reboot_system()`/`reboot_bootloader()`: left as-is, by owner's explicit choice.** The
-  candidate fix (unconditionally set `_force_watchdog_starve = True` on every reboot request, not
-  only when the timer fails to *arm*) was rejected as **"brittle wrt. wdt timeout settings"** -
-  tying every reboot's completion time to whatever `machine.WDT(timeout=...)` a given deployment
-  happens to have configured, rather than this file's own deterministic `_RESET_DELAY`, was judged
-  worse than the low-probability, already-understood risk being defended against. Recorded here so
-  a future session doesn't silently reintroduce this "fix" without knowing it was already
-  considered and declined.
-- **`start_timers()`: fixed, by owner's explicit choice - "never hang, and when one of the modules
-  permanently does not start, trigger watchdog starve."** `await self.timers_running.wait()` is now
-  wrapped in `asyncio.wait_for(..., _TIMER_SEQUENCE_TIMEOUT)` (new `const(5)`, a 5x margin over
-  `_TIMER_BASE_PERIOD`'s ~1s nominal chain-completion budget, independent of whatever watchdog
-  timeout a given deployment has armed). On `asyncio.TimeoutError`: log via `pr.err_s(errno=5)` and
-  set `_force_watchdog_starve = True` - unlike the reboot case, an unbounded hang here is
-  catastrophic (the whole device never finishes booting), not merely a missed one-off request, so
-  the owner drew the line differently between these two structurally-identical failure modes.
-  New test `test_start_timers_forces_watchdog_starve_when_sequencing_never_completes_in_time`
-  fakes `asyncio.wait_for` itself to raise the timeout deterministically and near-instantly -
-  `extmod/asyncio/funcs.py`'s real `wait_for(aw, timeout, sleep=core.sleep)` binds its `sleep`
-  parameter directly to `core.sleep` once, at that module's own load time, so patching
-  `asyncio.sleep` (this suite's existing `_FastAsyncSleep` trick, used for every other timing in
-  this file) never reaches it - the only way to exercise this branch without a genuinely slow test.
+An initial fix was drafted and briefly landed for `start_timers()`: wrap
+`await self.timers_running.wait()` in `asyncio.wait_for(..., 5)` (a new hardcoded-seconds
+`const()`), logging and setting `_force_watchdog_starve = True` on `asyncio.TimeoutError`. On
+reflection (owner's explicit call), this was reverted along with its test and is **not** part of
+the current file:
+
+- **In the productive system, arming a real `machine.WDT` is one of the very first things every
+  device does - always, not situationally.** A hardcoded software timeout here would just be a
+  second, independent clock racing the real watchdog with no coordination between the two - "no
+  hardcoded 5s brittleness vs. the WDT timeout," in the owner's words. Whichever fires first is
+  arbitrary and deployment-dependent (it depends on how much wall-clock time already elapsed before
+  `start_timers()` was even reached, which this file has no visibility into); the software timeout
+  doesn't reliably arrive *before* the hardware one the way `_RESET_DELAY < watchdog timeout` is
+  deliberately guaranteed elsewhere in this same file.
+- **The scenario the fix was defending against (no watchdog configured at all) is a test-only
+  configuration, not a real one.** `SystemService(watchdog=None)` exists so unit tests can exercise
+  the class without a real `WDT`; every real deployment always arms one. Adding a bounded-timeout/
+  `_force_watchdog_starve` mechanism whose entire justification is "what if there's no watchdog"
+  is solving for a case that doesn't occur in production - complexity with no real payoff, per the
+  same "don't design for a hypothetical" principle this repo already applies elsewhere.
+- This is the exact same shape of rejection already recorded above for
+  `reboot_system()`/`reboot_bootloader()`'s analogous candidate fix ("brittle wrt. wdt timeout
+  settings") - both call sites share one root cause (a silently-droppable soft-Timer callback,
+  verified from source, not hypothetical) and both were judged not worth guarding against in
+  software once a real watchdog is a given, rather than a maybe.
+
+The underlying finding (silently-droppable soft-Timer callback delivery, confirmed against real
+`py/scheduler.c`/`shared/runtime/mpirq.c`/`ports/rp2/machine_timer.c` source) stays recorded here
+precisely so a future session that rediscovers the same mechanism doesn't re-add either mitigation
+without first knowing both were already considered and declined, for a documented reason.
+`start_timers()` itself is back to its pre-this-pass shape (plain, unbounded
+`await self.timers_running.wait()`); the fourth pass's independent fixes (`start_uptime_timer()`'s
+`OSError` guard and its associated tests) are unaffected and remain. Suite back to 58 tests / 95%
+coverage.
 
 Suite now 59 tests / 95% coverage (one more `const()` line added to the standard tracer-artifact
 miss count; the new `except asyncio.TimeoutError:` branch itself is fully exercised).
@@ -1169,7 +1181,7 @@ and a missing config file failing independently without either derailing the oth
 
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
-`asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 59 — **691 total**.
+`asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 58 — **690 total**.
 
 ## Decided for the refactor
 
