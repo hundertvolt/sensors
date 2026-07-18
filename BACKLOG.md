@@ -1209,6 +1209,73 @@ silently changed.**
 Full suite re-verified after these fixes: 560/560 (`asy_fram_manager.py` 29/29). Lint/typecheck
 still clean.
 
+### Second follow-up pass: exception re-audit + exhaustive configuration/fault-injection tests
+
+Owner-requested: (1) a fresh line-by-line pass over `src/asy_fram_manager.py` and every function it
+calls (`crc_checks.py`, `asy_fram_driver.py`, `base_classes.py`, `print_log.py`) specifically
+hunting for any remaining uncaught-exception path; (2) tests for every configuration
+(params/inheritance/cross-dependencies), mocking all possible FRAM errors down to real chip
+behaviour, and unusual-content edge cases - trusting the typing (no new guards for
+type-incorrect calls, only for genuine runtime failure modes).
+
+**Exception re-audit result: no new gaps found.** Every FRAM/CRC call this file makes into an
+already-promoted, "never raises" module (`crc_checks.py`'s `CRC_Base`, `asy_fram_driver.py`'s
+`FRAM_SPI.get_values`/`set_values`) is confirmed safe by re-reading those files' own contracts.
+The one candidate considered - `_write_chunk`/`_read_chunk`/`_clear_chunk`'s `async with self.fram
+as fram:` acquires the lock *before* entering their own `try:` block, so a raise from
+`Lockable.__aenter__` (`asyncio.Lock.acquire()`) would propagate uncaught - is not a gap specific
+to this file: it's the same shape every `async with <lock>` in this codebase already has
+(`base_classes.py`'s `LockedCounter`/`LockedFlag`/`LockedValue`, `SensorReader`'s `_datalock`,
+etc.), and the only realistic exception there is task cancellation, which is meant to propagate,
+not be swallowed. `AsyFramManager.__init__`'s `FRAM_SPI(...)` construction can still raise
+`ValueError` for a bad pin/port per `asy_fram_driver.py`'s own documented contract - also not a new
+gap, since that's an intentional one-time-at-boot-misconfiguration carve-out the driver's own
+docstring already says upstream callers must handle, and `AsyFramManager.__init__` not catching it
+is consistent with that, not an oversight.
+
+**23 new tests added to `tests/test_asy_fram_manager.py` (29 → 52)**, all empirically verified
+against the real MicroPython Unix-port interpreter before being written (exact errno sequences
+confirmed via throwaway scratch scripts, not guessed):
+- **Real chip-level fault injection** (previously this file only ever corrupted `chip.memory[...]`
+  directly, never exercised `tests/_fram_chip_fake.py`'s actual fault-injection knobs): `drop_wren`
+  breaking write/read/clear each in a distinct, confirmed errno shape (read fails differently from
+  write/clear, since reading needs its own BUSY-status write too); `set_write_protected(True)`
+  producing the same failure shape as `drop_wren`; `fram.uninitialized = True` mid-run (chip
+  "goes away" after a successful `setup()`) failing all three operations cleanly, with reads
+  failing at a *different* errno than the `drop_wren` case (the read-side status-byte *read* itself
+  refuses immediately, vs. only the subsequent status *write* failing under `drop_wren`) - a real,
+  now-documented distinction. (`corrupt_next_write_data` was tried but dropped: it's a one-shot
+  knob consumed by whichever physical SPI data-phase write happens *next*, which for a chunk write
+  is the BUSY-status write, not the payload write as intended - reliably isolating just the payload
+  transfer would need extra choreography not worth the fragility given the existing memory-poke
+  tests already exercise the same downstream CRC-detection behavior.)
+- **Previously-unexercised `_read()` branches**: both blocks CRC-invalid (total read failure, not
+  just one-copy fallback); block 1 corrupted while block 0 stays valid (the mirror of the
+  already-existing block-0-corrupted test - a distinct code path, `_compare_with`'s cross-check
+  inside the "block 0 already valid" branch); the self-heal write itself failing for each block
+  (isolated by monkeypatching `chunk._write_chunk` per-address rather than write-protect, since
+  write-protect would also block the BUSY-status write every read needs just to start); `read_into`
+  buffer-size mismatch (mirrors the existing `write_into` test); `clear()` while paused, and
+  `clear(override_pause=True)`.
+- **Configuration/inheritance/cross-dependency coverage**: `CRC16`/`CRC32` round trips (block
+  offset math with 2-byte/4-byte CRCs, previously only `CRC8`/`CRC_Pass` were exercised);
+  `check_length=1` proving the streaming loop still verifies the *whole* chunk correctly across
+  many small iterations, not just that it doesn't crash on an oversized buffer; `verify_counter`'s
+  actual per-write increment/reset behavior across two writes with `verify=2`; exact-capacity
+  allocation boundary (`full_size == remaining` succeeds, not just one-byte-over failing);
+  `AsyFramTimestampedChunk` exercising `clear()`/pause+override/`verify` - the shared
+  `_AsyBaseFramChunk` behavior these three concerns share with `AsyFramChunk` had never actually
+  been driven through the timestamped subclass before, only assumed to work "by inheritance."
+- **Unusual content**: a `size=0` chunk's write-then-read round trip, locking down (not fixing) the
+  already-flagged spurious-CRC-error quirk above with a real regression test; all-zero and
+  all-`0xFF` payloads round-tripping correctly (no accidental collision with the separate
+  status-byte address range, where `0x00` is a real sentinel value); a timestamp of exactly UTC
+  epoch 0 reading back as `None` (indistinguishable from "never written") - confirmed directly and
+  locked down as real, inherited, already-documented behavior, not something this pass introduced
+  or fixed.
+
+Full suite re-verified: 583/583 (`asy_fram_manager.py` 52/52). Lint/typecheck still clean.
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
@@ -1224,9 +1291,10 @@ and a missing config file failing independently without either derailing the oth
 
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 44,
-`asy_fram_manager.py` 29 — **560 total**. (`base_classes.py`/`print_log.py` counts shifted from
+`asy_fram_manager.py` 52 — **583 total**. (`base_classes.py`/`print_log.py` counts shifted from
 their FRAM-mock-era numbers when `tests/_fram_mock.py` was retired in favor of the real
-`AsyFramManager` - see "`asy_fram_manager.py` → `src/`" below.)
+`AsyFramManager` - see "`asy_fram_manager.py` → `src/`" below; `asy_fram_manager.py`'s own count
+went 29 → 52 in the "Second follow-up pass" documented there.)
 
 ## Decided for the refactor
 
