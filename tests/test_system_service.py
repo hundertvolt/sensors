@@ -88,6 +88,25 @@ class _FastAsyncSleep:
         asyncio.sleep = self._real_sleep
 
 
+class _ImmediateTimerSequenceTimeout:
+    # start_timers()'s asyncio.wait_for(..., _TIMER_SEQUENCE_TIMEOUT) sleeps via extmod/asyncio/
+    # funcs.py's own `sleep=core.sleep` default argument - bound once, directly to core.sleep, when
+    # that module first loads, so patching asyncio.sleep (like _FastAsyncSleep above) never reaches
+    # it. Faking asyncio.wait_for itself instead of waiting out a real 5-second timeout is the only
+    # way to exercise the timeout branch without a genuinely slow test.
+    def __enter__(self) -> "_ImmediateTimerSequenceTimeout":
+        self._real_wait_for = asyncio.wait_for
+
+        async def _fake(_aw: "Any", _timeout: float) -> None:
+            raise asyncio.TimeoutError
+
+        asyncio.wait_for = _fake  # type: ignore[assignment]  # deliberate monkeypatch, not a real caller mismatch
+        return self
+
+    def __exit__(self, *exc_info: "Any") -> None:
+        asyncio.wait_for = self._real_wait_for
+
+
 class _RaiseOnArm:
     # Toggles tests/machine.py's Timer.raise_on_arm (a shared class attribute, not per-instance) for
     # the duration of the `with` block - simulates real rp2 alarm-pool exhaustion (OSError(ENOMEM)
@@ -500,6 +519,32 @@ def test_timer_sequencer_cannot_arm_next_step_still_unblocks_start_timers() -> N
     assert run(scenario())
     assert started == [1]  # only the first starter ever ran - sequencing stopped, not crashed
     assert Timer.all_timers == []  # the chain timer never actually got constructed
+
+
+def test_start_timers_forces_watchdog_starve_when_sequencing_never_completes_in_time() -> None:
+    # Real rp2 soft Timers (no hard=True, the only kind this file ever constructs) deliver their
+    # callback via MicroPython's own scheduler queue (mp_sched_schedule(), a small fixed-depth ring
+    # buffer shared by every soft timer/IRQ on the device - confirmed against py/scheduler.c and
+    # shared/runtime/mpirq.c) - if that queue is ever full at the instant a chained one-shot timer
+    # fires, its callback is silently dropped with no exception anywhere, and sequencing would stop
+    # for good. From start_timers()'s own perspective, an unfired chain timer (simulated here by
+    # simply never calling .trigger() on it) and a silently-dropped one are indistinguishable, so
+    # not triggering it is a faithful reproduction of that failure mode. Without a bounded timeout
+    # this would hang start_timers() - and therefore the device's entire boot sequence - forever.
+    svc = make_service()
+    Timer.all_timers.clear()
+    started: list[int] = []
+    starters = [lambda: started.append(1), lambda: started.append(2)]
+
+    async def scenario() -> bool:
+        with _ImmediateTimerSequenceTimeout():
+            await svc.start_timers(starters)  # must not hang despite sequencing never completing
+        return True
+
+    assert run(scenario())
+    assert started == [1]  # only the first starter ever ran - the chain never continued
+    assert svc._force_watchdog_starve is True
+    assert svc.pr.err_count == 1
 
 
 # ---------------------------------------------------------------------------

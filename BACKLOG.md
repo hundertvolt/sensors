@@ -1096,6 +1096,64 @@ the fallback itself succeeds). Suite now 58 tests / 95% coverage (unchanged miss
 `try`/`except` lines are fully exercised; the 9 remaining misses are still the same documented
 tracer artifacts).
 
+#### Fifth pass: a silently-dropped soft-Timer callback can hang `start_timers()` forever with zero exception
+
+A follow-up review, prompted explicitly by the owner's "these are last-resort functions - no
+exceptions, no hangs" framing, went past synchronous-exception auditing (the fourth pass above)
+into whether a Timer *callback*, not just its *arming*, could fail silently. Verified directly
+against the real MicroPython/pico-sdk C source (not assumed): every `Timer` this file constructs
+omits `hard=True` (`ports/rp2/machine_timer.c`'s `machine_timer_init_helper()` defaults
+`self->ishard` to `false`), so `alarm_callback()`'s firing dispatches through
+`mp_irq_dispatch(..., ishard=false)` (`shared/runtime/mpirq.c`), which for a soft callback just
+calls `mp_sched_schedule(handler, parent)` - **and never checks its boolean return value**.
+`mp_sched_schedule()` itself (`py/scheduler.c`) returns `false` and silently drops the callback if
+MicroPython's own scheduler queue is already full - a small, fixed-depth ring buffer
+(`MICROPY_SCHEDULER_DEPTH = 8` on rp2, `ports/rp2/mpconfigport.h`) shared by *every* soft
+timer/IRQ callback on the whole device, not something this file (or any single file) controls.
+The underlying alarm still considers itself "handled" regardless (a periodic timer reschedules its
+next tick either way, self-healing after one dropped tick; a one-shot timer does not - it simply
+never fires again). No exception is raised anywhere in this chain; there is no way for Python code
+to detect that a specific scheduled callback was dropped rather than merely not-yet-run.
+
+Two call sites in this file rely on a scheduled callback eventually running with no other
+safeguard: `reboot_system()`/`reboot_bootloader()`'s one-shot `reset_timer` (drop ⟹ the requested
+reboot silently never happens, and `_force_watchdog_starve` is never set either, since
+`reset_timer.init()` itself didn't raise - that would only fire from a *failure to arm*, a
+different, already-guarded failure mode from a *failure to later deliver*), and
+`_timer_sequencer()`'s chained one-shot timers via `start_timers()`'s
+`await self.timers_running.wait()` (drop ⟹ sequencing stops permanently and this `wait()` - called
+from `main()` during device boot, before any sensor/task loop starts - hangs forever: the device
+never finishes booting, with nothing to log or catch).
+
+Flagged both to the owner rather than silently fixing, since the right response differs in kind
+per site and isn't obvious from the code alone:
+
+- **`reboot_system()`/`reboot_bootloader()`: left as-is, by owner's explicit choice.** The
+  candidate fix (unconditionally set `_force_watchdog_starve = True` on every reboot request, not
+  only when the timer fails to *arm*) was rejected as **"brittle wrt. wdt timeout settings"** -
+  tying every reboot's completion time to whatever `machine.WDT(timeout=...)` a given deployment
+  happens to have configured, rather than this file's own deterministic `_RESET_DELAY`, was judged
+  worse than the low-probability, already-understood risk being defended against. Recorded here so
+  a future session doesn't silently reintroduce this "fix" without knowing it was already
+  considered and declined.
+- **`start_timers()`: fixed, by owner's explicit choice - "never hang, and when one of the modules
+  permanently does not start, trigger watchdog starve."** `await self.timers_running.wait()` is now
+  wrapped in `asyncio.wait_for(..., _TIMER_SEQUENCE_TIMEOUT)` (new `const(5)`, a 5x margin over
+  `_TIMER_BASE_PERIOD`'s ~1s nominal chain-completion budget, independent of whatever watchdog
+  timeout a given deployment has armed). On `asyncio.TimeoutError`: log via `pr.err_s(errno=5)` and
+  set `_force_watchdog_starve = True` - unlike the reboot case, an unbounded hang here is
+  catastrophic (the whole device never finishes booting), not merely a missed one-off request, so
+  the owner drew the line differently between these two structurally-identical failure modes.
+  New test `test_start_timers_forces_watchdog_starve_when_sequencing_never_completes_in_time`
+  fakes `asyncio.wait_for` itself to raise the timeout deterministically and near-instantly -
+  `extmod/asyncio/funcs.py`'s real `wait_for(aw, timeout, sleep=core.sleep)` binds its `sleep`
+  parameter directly to `core.sleep` once, at that module's own load time, so patching
+  `asyncio.sleep` (this suite's existing `_FastAsyncSleep` trick, used for every other timing in
+  this file) never reaches it - the only way to exercise this branch without a genuinely slow test.
+
+Suite now 59 tests / 95% coverage (one more `const()` line added to the standard tracer-artifact
+miss count; the new `except asyncio.TimeoutError:` branch itself is fully exercised).
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
@@ -1111,7 +1169,7 @@ and a missing config file failing independently without either derailing the oth
 
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
-`asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 58 — **690 total**.
+`asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 59 — **691 total**.
 
 ## Decided for the refactor
 
