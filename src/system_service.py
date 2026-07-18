@@ -85,7 +85,14 @@ class SystemService:
         return evtloop.create_task(self.status_counter())
 
     def start_uptime_timer(self) -> None:
-        self.uptime_timer.init(period=1000, mode=Timer.PERIODIC, callback=lambda b: self.uptime_event.set())
+        try:
+            self.uptime_timer.init(period=1000, mode=Timer.PERIODIC, callback=lambda b: self.uptime_event.set())
+        except OSError as e:  # alarm-pool exhaustion (confirmed: ports/rp2/machine_timer.c's ENOMEM
+            # path) - unlike _reboot()'s reset_timer (where rebooting was already the intent), there's
+            # a safe way to keep running: sensors, the REST API and every other timer/task are
+            # unaffected. Only uptime/boot-signature stay unresolved for the rest of this boot -
+            # degraded observability, not a reason to force a reboot (owner-confirmed design).
+            self.pr.err("Could not arm uptime timer:", e)
 
     def stop_uptime_timer(self) -> None:
         self.uptime_timer.deinit()

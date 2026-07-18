@@ -146,6 +146,35 @@ def test_init_without_watchdog_defaults_to_none() -> None:
     assert svc.watchdog is None
 
 
+def test_init_zero_history_length_is_accepted_in_memory() -> None:
+    # Unusual-but-typing-valid content: 0 is a legal int, not just the documented default of 10.
+    svc = make_service(history_length=0)
+    assert len(svc.pr.history) == 0
+    run(svc.pr.setup())
+    run(svc.pr.err_s("boom", errno=1))  # must not raise despite there being nowhere to store it
+    assert svc.pr.err_count == 1
+
+
+def test_init_negative_history_length_is_clamped_to_zero() -> None:
+    # Unusual-but-typing-valid content: print_log.py's own PrintLogHistory clamps this internally;
+    # confirms system_service.py passes it through unmodified rather than re-validating/rejecting it.
+    svc = make_service(history_length=-5)
+    assert len(svc.pr.history) == 0
+
+
+def test_init_all_constructor_params_combined_wire_correctly() -> None:
+    # Cross-dependency: fram + watchdog + history_length + debug all set together, not just each in
+    # isolation - confirms none of the four constructor params interferes with wiring the others.
+    manager, _chip = make_fram_manager()
+    wdt = machine.WDT()
+    svc = make_service(fram=manager, watchdog=wdt, history_length=4, debug=PrintLog.level_info())
+    assert isinstance(svc.pr, PrintLogHistoryStore)
+    assert svc.storage_pause is not None
+    assert svc.watchdog is wdt
+    assert len(svc.pr.history) == 4
+    assert svc.pr.get_level() == PrintLog.level_info()
+
+
 # ---------------------------------------------------------------------------
 # get_uptime / get_boot_signature - before status_counter ever runs
 # ---------------------------------------------------------------------------
@@ -209,6 +238,30 @@ def test_ntp_boot_signature_mktime_overflow_returns_none_and_logs_once() -> None
     svc = make_service(ntp)
     original_time = system_service.time
     system_service.time = _OverflowingTime()  # type: ignore[assignment]  # deliberate monkeypatch, not a real caller mismatch
+    try:
+        result = run(svc._ntp_boot_signature())
+    finally:
+        system_service.time = original_time
+    assert result is None
+    assert svc.pr.err_count == 1
+
+
+class _RaisingGmtime:
+    # Same monkeypatch technique as _OverflowingTime above, but faulting the other call inside the
+    # same try block (time.gmtime() itself) instead of mktime() - both calls share one try/except,
+    # so this proves the guard isn't accidentally only reachable from the mktime() half of the line.
+    def gmtime(self) -> "Any":
+        raise OSError("RTC read failed")
+
+    def mktime(self, _t: "Any") -> int:
+        raise AssertionError("must not be reached - gmtime() itself already raised")
+
+
+def test_ntp_boot_signature_gmtime_raising_returns_none_and_logs_once() -> None:
+    ntp, _calls = make_ntp_stub(synced=True)
+    svc = make_service(ntp)
+    original_time = system_service.time
+    system_service.time = _RaisingGmtime()  # type: ignore[assignment]  # deliberate monkeypatch, not a real caller mismatch
     try:
         result = run(svc._ntp_boot_signature())
     finally:
@@ -484,6 +537,18 @@ def test_reboot_system_cancels_any_pending_storage_unpause_timer() -> None:
     assert svc.storage_timer.deinit_called is True
 
 
+def test_reboot_system_with_fram_falls_back_to_watchdog_starve_when_reset_timer_cannot_be_armed() -> None:
+    # Cross-dependency: fram + OSError-on-arm together, not just each in isolation - confirms
+    # storage still gets paused (the step before the failing timer.init() call) even though the
+    # reset timer itself then fails to arm and falls back to the watchdog-starve backstop.
+    manager, _chip = make_fram_manager()
+    svc = make_service(fram=manager)
+    with _RaiseOnArm():
+        svc.reboot_system()  # must not raise despite the timer failing to arm
+    assert manager.get_pause() is True  # storage pause already happened before the failing init()
+    assert svc._force_watchdog_starve is True
+
+
 def test_reboot_system_falls_back_to_watchdog_starve_when_reset_timer_cannot_be_armed() -> None:
     # Real rp2 Timer.init() can raise OSError(ENOMEM) under alarm-pool exhaustion (confirmed
     # against ports/rp2/machine_timer.c) - reboot_system() must degrade instead of raising, since
@@ -566,6 +631,21 @@ def test_pause_permanent_storage_valid_duration_pauses_then_auto_unpauses_when_t
     assert manager.get_pause() is False
 
 
+def test_pause_permanent_storage_second_call_rearms_over_the_first_pending_unpause_timer() -> None:
+    # Cross-dependency/re-entrancy: a second call before the first auto-unpause timer ever fires
+    # must fully replace it (deinit() the old one before init()-ing the new duration/callback), not
+    # stack two competing auto-unpause callbacks. Triggering afterward must reflect only the second
+    # call's state, never a leftover from the first.
+    manager, _chip = make_fram_manager()
+    svc = make_service(fram=manager)
+    svc.pause_permanent_storage(60)
+    svc.pause_permanent_storage(120)
+    assert svc.storage_timer.period == 120 * 1000  # re-armed with the new duration, not the first
+    assert manager.get_pause() is True
+    svc.storage_timer.trigger()  # only one callback can possibly fire - the current, second one
+    assert manager.get_pause() is False
+
+
 def test_pause_permanent_storage_aborts_the_pause_when_the_unpause_timer_cannot_be_armed() -> None:
     # Real rp2 Timer.init() can raise OSError(ENOMEM) under alarm-pool exhaustion (confirmed
     # against ports/rp2/machine_timer.c) - without this fallback, storage would be left paused
@@ -615,6 +695,19 @@ def test_get_timer_starters_starter_arms_the_uptime_timer() -> None:
     assert svc.uptime_timer.period == 1000
 
 
+def test_start_uptime_timer_logs_and_continues_when_it_cannot_be_armed() -> None:
+    # Real rp2 Timer.init() can raise OSError(ENOMEM) under alarm-pool exhaustion (confirmed
+    # against ports/rp2/machine_timer.c) - owner-confirmed design: unlike reboot_system()'s own
+    # reset_timer guard, this degrades gracefully instead of forcing a reboot, since sensors, the
+    # REST API and every other timer/task keep working fine without uptime/boot-signature.
+    svc = make_service()
+    with _RaiseOnArm():
+        svc.start_uptime_timer()  # must not raise despite the timer failing to arm
+    assert svc.pr.err_count == 0  # start_uptime_timer() logs via the non-persisting pr.err(), not err_s()
+    assert svc._force_watchdog_starve is False  # graceful degradation, not a forced reboot
+    assert svc.uptime_timer.period == -1  # never actually armed
+
+
 # ---------------------------------------------------------------------------
 # get_error_counter / reset_error_counter
 # ---------------------------------------------------------------------------
@@ -625,6 +718,20 @@ def test_get_error_counter_reflects_logged_errors_and_reset_clears_them() -> Non
     # the entries actually written - a length-1 history is what makes "just one error" also
     # produce a length-1 ErrNum/ErrType, matching this test's single err_s() call exactly.
     svc = make_service(history_length=1)
+    run(svc.pr.setup())
+    run(svc.pr.err_s("boom", errno=1))
+    result = run(svc.get_error_counter())
+    assert result == {"Tasks": {"ErrCount": 1, "ErrNum": [1], "ErrType": ["E"]}}
+    run(svc.reset_error_counter())
+    assert svc.pr.err_count == 0
+
+
+def test_get_error_counter_and_reset_work_when_fram_backed() -> None:
+    # Cross-dependency: system_service.py's own get_error_counter()/reset_error_counter() just
+    # proxy to self.pr - confirms that still works correctly when self.pr is the FRAM-backed
+    # PrintLogHistoryStore (constructed via fram=...), not only the plain in-memory PrintLogHistory.
+    manager, _chip = make_fram_manager()
+    svc = make_service(fram=manager, history_length=1)
     run(svc.pr.setup())
     run(svc.pr.err_s("boom", errno=1))
     result = run(svc.get_error_counter())

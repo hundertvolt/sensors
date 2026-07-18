@@ -1043,6 +1043,59 @@ from `== -1`/`!= -1` to `is None`/`is not None`, plus their `scenario()` return-
 from `tuple[bool, int]` to `tuple[bool, int | None]`. Suite now 50 tests / 95% coverage (unchanged -
 the 9 remaining misses are still exactly the same documented tracer artifacts).
 
+#### Fourth pass: uncaught-exception audit found one real gap, plus broader test-configuration coverage
+
+A dedicated pass re-checked every call `system_service.py` makes into another module (or into
+`machine`) for a possible uncaught exception, verifying each against the actual callee source
+rather than assuming: `base_classes.py`'s `LockedCounter`/`asyncio.Lock`/`asyncio.ThreadSafeFlag`
+construction, `print_log.py`'s `PrintLogHistory`/`PrintLogHistoryStore` (deque `MemoryError`
+already guarded to a length-0 fallback, FRAM `get_chunk()` already wrapped), `asy_fram_manager.py`'s
+`set_pause()` (trivial - a `pr.evt()` call plus a bool assignment, confirmed never raises, unlike
+the arbitrary caller-supplied callbacks this file already treats defensively), and
+`extmod/asyncio/core.py`'s real `get_event_loop()`/`create_task()` (checked directly from the
+cached toolchain source at `~/pico-toolchain/micropython/extmod/asyncio/core.py` - `get_event_loop()`
+just returns the `Loop` class, and `create_task()`'s only raise path, `TypeError` for a non-coroutine
+argument, is unreachable here since `self.status_counter()` is always a real coroutine object).
+
+That audit found exactly one real, previously-missed gap: **`start_uptime_timer()`'s
+`self.uptime_timer.init(...)` was the one Timer-arming call site in this file (of four total) with
+no `OSError` guard** - `_reboot()`'s `reset_timer.init()`, `pause_permanent_storage()`'s
+`storage_timer.init()`, and `_timer_sequencer()`'s chained `Timer(...)` construction were all
+already guarded against real rp2 alarm-pool exhaustion (`ports/rp2/machine_timer.c`'s `ENOMEM`
+path, per the second pass above); this one wasn't. In practice it never actually crashed past this
+file's boundary - its only real caller today, `_timer_sequencer()`, already wraps every starter
+call in a broad `except Exception` - but the method violated its own module docstring's "every
+method returns a well-defined value and never raises" contract if ever called directly, and was
+inconsistent with the other three identical-failure-mode guards already in this exact file.
+
+Fixing the guard raised a real design question with no obviously-correct answer from the code
+alone: what should happen on failure? Flagged to the owner rather than guessed, since this file
+already has two different, equally-established precedents for "a Timer can't be armed" -
+`_reboot()`'s force a watchdog-starve reboot (rebooting was already the intent; there's no safe
+substitute action), while `pause_permanent_storage()` just aborts the action and keeps running
+normally (a fully safe substitute exists: "unpaused" is exactly "never paused"). Owner chose the
+`pause_permanent_storage()`-style graceful degradation: log via the non-persisting `pr.err()` and
+keep running - sensors, the REST API, and every other timer/task are unaffected; only
+uptime/boot-signature stay unresolved for the rest of this boot, which is a real but non-critical
+observability loss, not a reason to force a reboot for what is ultimately a resource hiccup in a
+non-essential subsystem.
+
+Separately, broadened test coverage per the same review pass beyond just the new guard: an
+`_ntp_boot_signature()` fault-injection test for `time.gmtime()` itself raising (not just
+`mktime()` - both calls share one `try`/`except`, and only `mktime()` raising had a test before);
+constructor edge cases (`history_length=0`, `history_length=-5` clamping) and one test combining
+all four constructor params (`fram`+`watchdog`+`history_length`+`debug`) together, since they'd
+previously only ever been tested pairwise; a FRAM-backed variant of the existing
+`get_error_counter()`/`reset_error_counter()` test (previously only exercised against the in-memory
+`PrintLogHistory` path, never the `PrintLogHistoryStore` one `system_service.py` itself also wires
+up); a `pause_permanent_storage()` re-entrancy test (a second call before the first pending
+auto-unpause timer ever fires must fully replace it, not stack two competing callbacks); and a
+`reboot_system()` cross-dependency test combining FRAM presence with the reset-timer `OSError`
+fallback (storage must still get paused before the failing `init()` call, independent of whether
+the fallback itself succeeds). Suite now 58 tests / 95% coverage (unchanged miss count - the new
+`try`/`except` lines are fully exercised; the 9 remaining misses are still the same documented
+tracer artifacts).
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
@@ -1058,7 +1111,7 @@ and a missing config file failing independently without either derailing the oth
 
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
-`asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 50 — **682 total**.
+`asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 58 — **690 total**.
 
 ## Decided for the refactor
 
