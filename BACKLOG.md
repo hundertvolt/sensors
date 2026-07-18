@@ -761,6 +761,13 @@ write torn by power loss. Every other FRAM-touching file (`print_log.py`'s `Prin
 - `AsyFramManager.__init__`'s `FRAM_SPI(...)` construction is not itself caught - consistent with
   `asy_fram_driver.py`'s fail-loud-once-at-boot exception contract for a misconfigured pin.
 - SGP40 FRAM backup "0 = disabled" semantics: see Functional Clarifications above.
+- `set_pause()`/`get_pause()`/`override_pause`: real legacy callers (`system_service.py`, unchanged
+  in `improved-quality/`) are `reboot_system()`/`reboot_bootloader()` (pause right before a
+  deliberate reset, so no write is left mid-flight) and a REST `systemCmd` `"mempause"` command
+  (operator-triggered pause for up to `_MAX_STORAGE_PAUSE`=3600s via a hardware `Timer`
+  auto-unpause - almost certainly to allow safe physical access to the chip). `src/` itself has
+  zero callers yet - part of the still-open task-supervisor/system-service wiring, not `asy_fram_
+  manager.py`'s own scope.
 - `get_chunk()`/`get_timestamped_chunk()`'s "out of memory" failure logs via `self.pr.err()`
   (console-only), deliberately not the persisting `err_s()` - owner-confirmed: an out-of-FRAM error
   can't sensibly be logged into that very FRAM, so this one path stays console-only by design, not
@@ -796,7 +803,7 @@ write torn by power loss. Every other FRAM-touching file (`print_log.py`'s `Prin
   `get_data_buf()` already made unreachable). None of the above is chased further (owner-confirmed:
   no trouble with less than 100% coverage as long as nothing left uncovered is a real gap).
 
-84 tests (`tests/test_asy_fram_manager.py`) + 6 (`tests/test_fram_integration.py`, full-stack
+86 tests (`tests/test_asy_fram_manager.py`) + 6 (`tests/test_fram_integration.py`, full-stack
 integration down to the simulated raw SPI bus, including two `SensorReader`s sharing one manager
 and the same manager backing two structurally different chunk types across a simulated reboot; its
 40-cycle stress test needs an explicit `gc.collect()` per cycle - a Unix-port test-binary
@@ -818,7 +825,7 @@ and a missing config file failing independently without either derailing the oth
 
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
-`asy_fram_manager.py` 84, `test_fram_integration.py` 6 — **623 total**.
+`asy_fram_manager.py` 86, `test_fram_integration.py` 6 — **625 total**.
 
 ## Decided for the refactor
 

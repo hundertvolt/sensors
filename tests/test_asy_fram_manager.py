@@ -254,6 +254,35 @@ def test_corrupted_block1_status_leaves_block0_valid_and_self_heals_block1() -> 
     assert bytes(chip.memory[addr1 : addr1 + 4]) == b"good"
 
 
+def test_status_byte_holding_an_unrecognized_garbage_value_is_treated_the_same_as_busy() -> None:
+    # _set_check_sb's read-side check is only ever `!= IDLE` then `!= UNINIT` (confirmed by reading
+    # the source - _STATUS_BUSY is only ever *written*, never compared against on read), so a
+    # genuinely arbitrary corrupted byte (not one of the three defined sentinel values at all) must
+    # take the exact same "invalid, self-heal" path as a real torn-write BUSY - not a separate,
+    # untested failure mode. Locks that down explicitly rather than trusting it followed from the
+    # BUSY-specific tests above by coincidence.
+    garbage = 0x7A  # deliberately not _STATUS_UNINIT/_STATUS_IDLE/_STATUS_BUSY
+    assert garbage not in (_STATUS_UNINIT, _STATUS_IDLE, _STATUS_BUSY)
+    manager, chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    assert chunk is not None
+    run(chunk.write(b"good"))
+    addr0, _addr1 = chunk.block_addr
+    chip.memory[addr0 + 4] = garbage
+    chip.memory[addr0 + 5] = garbage
+
+    async def scenario() -> tuple[bytearray | None, dict]:
+        result = await chunk.read()
+        errs = await manager.get_error_counter()
+        return result, errs
+
+    result, errs = run(scenario())
+    assert result == bytearray(b"good")  # recovered from block 1, same as the BUSY case
+    assert 31 in errs["FRAM"]["ErrNum"]  # same errno the BUSY case produces - no special-casing
+    assert chip.memory[addr0 + 4] == _STATUS_IDLE  # healed back to a real, recognized state
+
+
 def test_crc8_detects_corrupted_payload_byte_and_falls_back_to_other_block() -> None:
     manager, chip = make_manager()
     run(setup_manager(manager))
@@ -334,6 +363,19 @@ def test_write_with_verify_enabled_succeeds_for_correct_data() -> None:
 # ---------------------------------------------------------------------------
 # pause / override_pause
 # ---------------------------------------------------------------------------
+
+
+def test_manager_get_pause_reflects_set_pause_directly() -> None:
+    # The plain getter itself, not just its effect on chunk operations (real legacy callers: a
+    # deliberate reboot pauses storage right before resetting so no write is left mid-flight, and
+    # an operator-triggered REST "mempause" command pauses writes for a bounded maintenance
+    # window - see BACKLOG.md).
+    manager, _chip = make_manager()
+    assert manager.get_pause() is False
+    manager.set_pause(True)
+    assert manager.get_pause() is True
+    manager.set_pause(False)
+    assert manager.get_pause() is False
 
 
 def test_manager_pause_blocks_chunk_operations_without_override() -> None:
