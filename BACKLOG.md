@@ -366,8 +366,10 @@ A `NameError` typo in the legacy FRAM driver's write-protect pin setup (`_wp_pin
 compile-breaking defect — worth confirming whether this method is ever reached on deployed units);
 a legacy SGP40 VOC-algorithm FRAM serialization bug where `m_mox_model_sraw_std` was never included
 in the packed/restored fields, so restore-from-FRAM silently never recovered it; several smaller
-`api_helpers.py`/`async_connect.py`/`captive_dns.py`/`asy_udp_socket.py` fixes for `None`-guard
-crash paths and an unbound-local variable.
+`api_helpers.py`/`async_connect.py`/`captive_dns.py` fixes for `None`-guard crash paths and an
+unbound-local variable. **Correction, found during `asy_udp_socket.py`'s own `src/` promotion:**
+that file's own `None`-guards were *not* a clean instance of this pattern - see the dedicated
+write-up below for what was actually wrong with them.
 
 ### Timing values confirmed intentional, not drift
 
@@ -1213,6 +1215,77 @@ was tightened to at most 2, and the module docstring itself condensed from two 5
 to two 3-4-line ones - same "purpose, then the never-raises contract" shape, less prose. Zero
 behavior change (comment/docstring text only); re-verified lint/typecheck/58-tests-58-passing/95%
 coverage identical to before this trim.
+
+### `asy_udp_socket.py` → `src/`
+
+Async, non-blocking UDP wrapper around one `socket.socket` (cooperative `select.poll` loop, since
+MicroPython's `asyncio` has no built-in UDP-readiness primitive). Two callers, both still WIP
+`improved-quality/` (out of scope to edit): `async_connect.py`'s one-shot-per-attempt NTP client
+and `captive_dns.py`'s long-lived `DNSServer`.
+
+Real bugs found and fixed (all owner-confirmed before fixing):
+
+- **The class could not actually send or receive anything.** `sendto()`/`write()`/`recvfrom()`
+  each started with `if self.sock is None: return None` - but `self.sock` is only ever created
+  inside `_connect()`, which is only ever called from `ready()`, which each of those three methods
+  called *after* that guard. On a fresh object `self.sock` is always `None` at that point, so every
+  call short-circuited before `ready()`/`_connect()` ever ran, permanently. This is the "real bug
+  fix" the note above (wrongly) credited - the deployed `python/CommonDrivers/asy_udp_socket.py`
+  calls `ready()` first with no such guard, and does work. Fixed by removing the premature checks;
+  each method now calls `ready()` first and narrows `self.sock is not None` only right before the
+  real socket call (satisfies mypy; provably always true there, since `ready()` returning `True`
+  implies `_connect()` already set `self.sock`).
+- `write_and_recvfrom(msg, buf, timeout_ms, tries)`'s `for _ in range(tries): ...; return ...`
+  returned unconditionally after the first iteration - `tries` never actually retried, on either
+  success or failure. Neither current caller passes `tries>1`, so this was latent, not an observed
+  production symptom. Fixed to loop until a response arrives or `tries` is exhausted.
+- `_connect()`'s retry budget (`conn_tries`) was a one-shot, whole-object-lifetime thing, not a
+  per-call thing: the entire method (socket creation *and* the retry loop) was gated behind a
+  single `if self.sock is None:`, so once `conn_tries` was exhausted, every future call permanently
+  short-circuited to "not connected" - no retry, no self-heal. Only `captive_dns.py`'s `DNSServer`
+  is actually exposed to this (one `AsyUDPSocket` built in `__init__`, reused for the device's
+  entire uptime); `async_connect.py`'s NTP client dodges it by constructing a fresh object every
+  sync attempt. Fixed: if `conn_tries` is exhausted, `_connect()` now calls `disconnect()` on
+  itself, tearing the failed socket down so the *next* call gets a genuinely fresh attempt.
+- `sendto()` was typed `-> None` while actually returning `self.sock.sendto()`'s real `int` byte
+  count at runtime - a pure annotation bug (no caller uses the return value today). Retyped
+  `-> int | None`, matching `write()`'s already-correct shape.
+
+Also, matching every other `src/` file: `from typing import Literal, Tuple` (unconditional -
+`typing` has no runtime presence on the Unix-port interpreter, confirmed) moved behind the
+established `TYPE_CHECKING` guard, `Tuple` → builtin `tuple`; every `except Exception:` narrowed to
+`except OSError:` (confirmed via current MicroPython docs that socket-layer failures are always
+`OSError`, never `socket.error`/`socket.timeout`) - this file takes none of `asy_i2c_driver.py`'s
+bus-driver carve-out, since a network fault is an expected, recoverable condition here, not a
+hardware bug to surface upward.
+
+10 tests (`tests/test_asy_udp_socket.py`), all against real loopback (`127.0.0.1`) UDP sockets
+under the Unix-port interpreter rather than mocking `socket`/`select` (owner-directed, matching the
+`asy_spi_driver.py`/`asy_i2c_driver.py` precedent that hand-written stand-ins weren't acceptable
+where the point of the file is its interaction with a real module) - covers the fixed lazy-connect
+path, `sendto()`'s corrected return type, `recvfrom()`'s timeout sentinel, the fixed retry loop
+(a reply dropped once then delivered, and a genuinely-exhausted-tries case), `conn_tries` retrying
+within one `_connect()` call and the cross-call self-heal after exhaustion, `disconnect()`
+idempotency and object reuse after it, and that `asyncio` task cancellation during a pending
+`recvfrom()` isn't swallowed (confirmed directly: MicroPython's `CancelledError` subclasses
+`BaseException`, not `Exception`, so none of this file's `except OSError` blocks can catch it).
+
+One MicroPython-Unix-port-specific gotcha hit while writing the tests, unrelated to any real
+driver bug: the Unix port's "standard" build rejects a plain `(host, port)` tuple in
+`bind()`/`connect()`/`sendto()` outright with `TypeError: object with buffer protocol required` -
+a known, long-standing Unix-port-only limitation (`micropython/micropython#6924`, open since
+v1.14, still present at v1.28.0), *not* present on the real rp2 target (confirmed against the
+installed `RPI_PICO_W` stub: `bind()`/`connect()` are typed to accept `tuple[str, int]` directly,
+matching both real callers' actual usage - `captive_dns.py`'s literal `("0.0.0.0", 53)` and
+`async_connect.py`'s already-`getaddrinfo()`-resolved NTP address). Tests work around this by
+resolving loopback addresses via `socket.getaddrinfo()` before constructing an `AsyUDPSocket`,
+purely to satisfy the test binary - `asy_udp_socket.py` itself never calls `getaddrinfo()`, by
+design (matching CLAUDE.md's long-blocking-operation rule: DNS resolution is the caller's job,
+coordinated through `async_connect.py`'s `get_long_block_lock()`).
+
+Baseline check (section 14): full-scope `scripts/lint.sh` 228→219 errors, `scripts/typecheck.sh`
+130→129 errors in 10→9 files - both drops are exactly this file's own pre-existing findings; zero
+new findings elsewhere.
 
 ### Coverage-driven completeness pass
 
