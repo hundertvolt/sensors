@@ -1410,6 +1410,9 @@ the Linux kernel does, whether its UDP receive-queue/truncation/connected-socket
 matches exactly, is **not verified against real hardware or rp2-specific MicroPython documentation
 in this session** - no rp2 hardware was available to test against. If a deployed unit ever shows
 UDP behavior diverging from what's documented/tested here, this gap is the first place to look.
+*(Considered closing this via a standalone on-device verification script during the sixth pass -
+owner judged it too hypothetical to be worth pursuing as a real issue. Remains open, not being
+actively chased; still the first place to look if real behavior ever diverges.)*
 
 8 new tests (23 total in `tests/test_asy_udp_socket.py`), most driven through a new
 `AdversarialPeer` test fixture - a genuine independent `socket.socket()`, never an `AsyUDPSocket`,
@@ -1719,6 +1722,66 @@ entry point callers actually use; `write_and_recvfrom()`'s `tries` fix verified 
 values (`None`, a `str`, a `list`). Re-verified: full-scope `scripts/lint.sh`/`scripts/typecheck.sh`
 still unchanged (219/129), 62/62 passing here, zero regressions across the rest of `tests/`
 (`scripts/test.sh`, all 12 files green, 752 tests total).
+
+#### `captive_dns.py` (`improved-quality/`, not promoted): source-subnet filtering fix
+
+Owner-directed follow-up to the `asy_udp_socket.py` sixth pass's two remaining open items: the real-
+hardware verification gap was judged too hypothetical to chase (dropped, not pursued); this one -
+`captive_dns.py`'s `mode="server"` socket receiving from anyone with no source-address check at all
+(originally flagged in the third pass, restated in the fourth) - was judged worth fixing, **with
+explicit owner sign-off to touch `improved-quality/` source files for it**, an exception to the
+standing hard rule against routine edits there (see CLAUDE.md).
+
+Fix: `DNSServer.run()` now takes a `netmask` parameter alongside `server_ip`, computes the AP's own
+network prefix once (`_ipv4_to_int(server_ip) & _ipv4_to_int(netmask)`), and rejects (silently
+`continue`s past, no response sent) any request whose source address doesn't fall in that same
+subnet - a captive-portal DNS server has no legitimate reason to answer a query from off its own AP.
+`async_connect.py`'s one real call site (`self.dns_server.run(own_ip)`, hotspot startup) updated to
+`self.wlan.ifconfig()[:2]` (confirmed via current MicroPython docs: `ifconfig()` returns `(ip,
+subnet_mask, gateway, dns)`, in that order) and pass both. `_ipv4_to_int()` is a small, dependency-
+free dotted-quad-to-int helper (no `ipaddress` module needed/assumed on MicroPython).
+
+**A real bug surfaced during verification, not just reasoned about - confirmed directly then fixed
+before this was considered done:** the first version's guard only caught `(TypeError, ValueError)`
+around the new subnet-membership check. Empirically driving the real `DNSServer.run()` loop (routed
+around this Unix-port test build's separate, already-documented plain-tuple-`bind()` limitation by
+substituting a `getaddrinfo()`-resolved `AsyUDPSocket`, same technique `tests/test_asy_udp_socket.py`
+already uses) surfaced a second, distinct Unix-port-only quirk: a socket bound via a resolved
+sockaddr returns an *opaque raw sockaddr* from `recvfrom()` here too, not a `(host, port)` tuple -
+`addr[0]` was a raw `int` (a sockaddr struct byte), not a string, and calling `.split(".")` on an
+`int` raises `AttributeError`, not `TypeError`/`ValueError` as first assumed. This escaped the narrow
+guard entirely and fell through to the loop's own broad `except Exception: ... await
+asyncio.sleep(3)` - not a crash, but a real, avoidable 3-second stall of the *entire* DNS server (and
+every other client waiting on it) per malformed packet. Fixed by adding `AttributeError` to the
+guard's tuple, verified via `sys.print_exception()` to pin down the exact exception type rather than
+guessing from the message alone. This is real, reproducible code behavior in this test environment,
+not the hypothetical "any `await` could theoretically raise" class of issue - matches the owner's own
+stated bar from the `asy_udp_socket.py` sixth pass for when this kind of hardening is actually worth
+it. (On real rp2 hardware, `addr[0]` is expected to always be a genuine string host per the installed
+stub - this guard is defense-in-depth there, not expected to ever actually fire.)
+
+**Verification, not a permanent test file**: `captive_dns.py` stays in `improved-quality/`, not
+promoted to `src/`, so this repo's established "tests belong once code is promoted" convention (see
+`src/README.md`, CLAUDE.md's hard rules) means no `tests/test_captive_dns.py` was added - matching
+how this fix was made (a targeted robustness patch, not a promotion). Verified instead via throwaway
+repro scripts (`/tmp/.../scratchpad/`, not committed): `_ipv4_to_int()` correctness against several
+realistic on-subnet/off-subnet/self/broadcast addresses; the real `DNSServer.run()` loop driven
+end-to-end confirming the subnet-check math functions inside the actual receive loop and that a
+malformed source address is silently ignored rather than crashing or stalling; and a full
+on-subnet/off-subnet/malformed-address decision-logic pass through the real `run()` coroutine (a fake
+`recvfrom()` feeding pre-shaped `(host: str, port: int)` tuples, since this Unix-port test
+environment can never itself produce that shape for this specific socket configuration) confirming
+exactly one of three requests gets answered - the on-subnet one - and the other two are cleanly
+ignored with zero replies sent and zero crashes. Re-verified: full-scope `scripts/lint.sh` 219→220
+(exactly one new finding - the new code's own `.format()` call, matching this file's pre-existing
+style rather than introducing f-strings inconsistently; not a regression elsewhere),
+`scripts/typecheck.sh` unchanged at 129, `scripts/test.sh` all 12 files green (752 tests, unaffected -
+`captive_dns.py` isn't imported by any of them).
+
+This resolves the third pass's "`captive_dns.py` doesn't check `addr` on the packets it receives
+today - flagged as out of scope for this transport-only module to fix" note and the fourth pass's
+parallel reference to the same gap - both were about `captive_dns.py`, not `asy_udp_socket.py` itself,
+and are closed by this fix rather than needing any further change in `asy_udp_socket.py`.
 
 ### Coverage-driven completeness pass
 

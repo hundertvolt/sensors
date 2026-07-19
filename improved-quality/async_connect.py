@@ -334,10 +334,10 @@ class asy_conn_time:
                                 self.wlan.config(essid=wifi_cfg[1], password="12345678")
                                 self.wlan.active(True)
                                 self.wlan.config(pm=0xA11140)  # Stromsparmodus ausschalten
-                                own_ip = self.wlan.ifconfig()[0]
+                                own_ip, own_netmask = self.wlan.ifconfig()[:2]
                                 evtloop = asyncio.get_event_loop()
-                                self.dns_server_task = evtloop.create_task(self.dns_server.run(own_ip))
-                                del evtloop, own_ip
+                                self.dns_server_task = evtloop.create_task(self.dns_server.run(own_ip, own_netmask))
+                                del evtloop, own_ip, own_netmask
                                 if self.debug:
                                     print("WLAN Hotspot wurde gestartet")
                             del wifi_cfg, wifi_led
