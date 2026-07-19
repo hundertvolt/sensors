@@ -10,6 +10,19 @@ Shared contract: every public method returns its documented None-shaped sentinel
 failure (OSError) - never raises. Unlike the I2C/SPI bus-driver carve-out in src/README.md, no
 raw OSError is ever allowed to propagate here: network faults (unreachable host, a transient
 route/DNS failure) are expected, recoverable conditions, not hardware bugs to surface upward.
+
+Content-agnostic transport: this module moves bytes and never inspects them - a datagram's
+header/length validity (NTP, DNS, or otherwise) is entirely the caller's concern. Two POSIX-level
+UDP properties this module relies on rather than reimplements, confirmed directly against this
+project's MicroPython Unix-port build: (1) a datagram larger than the recv buffer is silently
+truncated to that size with no error and no truncation signal (MSG_TRUNC/recvmsg() aren't exposed
+by MicroPython's socket module) - callers needing to detect this must size their buffer
+generously or add their own length-prefixed framing; (2) a connect()ed client socket has datagrams
+from any address other than the connected peer filtered at the kernel level before they're ever
+delivered - this is what makes mode="client" safe against off-path/spoofed senders without this
+module doing any address checking of its own. mode="server" sockets are unconnected and receive
+from anyone; source-address trust decisions there are the caller's (captive_dns.py checks nothing
+today - out of scope for this transport-only module to fix).
 """
 
 import asyncio
@@ -94,7 +107,7 @@ class AsyUDPSocket:
             if not self.connected:
                 await self.disconnect()
 
-    async def ready(self, mask: int, timeout_ms: int = -1, wait_time_ms: int = 0) -> bool:
+    async def ready(self, mask: int, timeout_ms: int = -1, wait_time_ms: int = 20) -> bool:
         # Connects lazily, then busy-polls ipoll(0) (allocation-free, non-blocking) and yields via
         # asyncio.sleep_ms(wait_time_ms) each cycle until mask (or a real POLLERR/POLLHUP - always
         # reported regardless of the registered mask, per POSIX poll() semantics) is satisfied, or
@@ -103,6 +116,13 @@ class AsyUDPSocket:
         # and surface (and correctly convert) the actual OSError, instead of waiting out the full
         # timeout for an error that already happened - confirmed directly: a connected UDP socket
         # with a pending ICMP port-unreachable reports POLLERR without ever setting POLLIN.
+        #
+        # wait_time_ms defaults to 20, not 0: confirmed directly that 0 busy-polls ipoll(0)+
+        # sleep_ms(0) ~9000x/sec while idle (~180x the rate at 20ms) - pure CPU churn on RP2040's
+        # single core competing with other cooperative tasks (e.g. Neopixel timing) whenever a
+        # caller waits a long time for a reply, which neither real caller overrides today (
+        # captive_dns.py's persistent recvfrom() waits forever for the next query; async_connect.py's
+        # NTP request waits out its full timeout on every dropped/lost packet).
         await self._connect()
         if not self.connected or self.poller is None:
             return False

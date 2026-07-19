@@ -1350,6 +1350,80 @@ manual repro that found the bug, asserting `recvfrom()` returns in under 1s inst
 lint/typecheck counts unchanged (219/129, still exactly this file's own remaining findings), all
 15/15 tests passing here, zero regressions across the rest of `tests/`.
 
+#### Third pass: real-world robustness against a genuine UDP peer, not just this module's own logic
+
+Owner-directed: UDP is exposed to uncontrolled external input in ways the rest of `src/` isn't
+(failure at init/mid-transfer/while idle, good and bad content, wrong/spoofed sources, timing that
+actually matters) - researched official/public UDP best practice (POSIX `recvfrom()`/`sendto()`
+semantics, Beej's Guide, connected-vs-unconnected-socket error delivery) and verified every claim
+directly against this project's own MicroPython Unix-port build rather than trusting general
+networking lore, per repro scripts under `/tmp/.../scratchpad/repro_udp_edge_cases.py` (not
+committed - throwaway). Findings:
+
+- **`ready()`'s `wait_time_ms` defaulted to 0, and neither real caller overrides it** -
+  `captive_dns.py`'s `DNSServer` waits *forever* for the next query with this default, and
+  `async_connect.py`'s NTP client waits out its full timeout on every dropped packet. Confirmed
+  directly: 0 busy-polls `poller.ipoll(0)` + `asyncio.sleep_ms(0)` ~9000×/sec while idle vs ~50×/sec
+  at 20ms - ~180× the CPU churn on RP2040's single cooperative core, competing with other tasks
+  (e.g. Neopixel timing) for scheduler turns, for as long as the DNS server sits idle (most of its
+  life). Owner-confirmed fix: default changed to `20` - adds at most 20ms latency per poll cycle to
+  both real callers (neither passes this param today), imperceptible for NTP sync / DNS response.
+  Verified via a monkeypatch of `asy_udp_socket`'s own module-level `asyncio` name (same read-only-
+  builtin technique as the `socket` fake above) recording every `sleep_ms()` argument, proving the
+  new default is what `ready()` actually calls, not just what's documented.
+- **Datagram truncation is real and silent - confirmed directly, not assumed.** A datagram larger
+  than the `recvfrom()` buffer is truncated to that size with zero error and zero signal that
+  truncation happened (repro: sent 500 bytes, `recvfrom(10)` returned exactly 10, no exception).
+  MicroPython's `socket` module doesn't expose `recvmsg()`/`MSG_TRUNC`, so this module has no way to
+  detect it even if it wanted to. **Not fixed - documented as a load-bearing contract in the module
+  docstring** instead: callers needing to detect truncation must size their buffer generously (both
+  real callers already do: NTP uses 1024 for a 48-byte packet, DNS uses 4096) or add their own
+  length-prefixed framing. Matches this module's existing "content-agnostic transport" framing -
+  payload validity is the caller's job, not this file's.
+- **Connected (`mode="client"`) sockets get kernel-level source filtering for free - confirmed
+  directly, not assumed.** A genuine third, independent `socket.socket()` (not `AsyUDPSocket`)
+  sending to a connected client's address from an unconnected/unexpected source is never delivered
+  - `recvfrom()` raises `EAGAIN`, `poll()` never reports `POLLIN` - even though it targets the exact
+  same local port the real connected peer uses. This is a real security property this module relies
+  on rather than reimplements, now called out explicitly in the docstring: `mode="server"` sockets
+  are unconnected and get no such filtering (`captive_dns.py` doesn't check `addr` on the packets it
+  receives today - flagged as out of scope for this transport-only module to fix, not silently
+  patched in).
+- Zero-length datagrams (RFC 768 explicitly permits them) and oversized outgoing sends (>65507
+  bytes, the IPv4 UDP payload ceiling) were both already handled correctly by the existing contract
+  - confirmed directly (`recvfrom()` returns `(b"", addr)`, distinguishable from the `(None, None)`
+  timeout sentinel; `sendto()`/`write()` catch the real `OSError(EMSGSIZE)` and return `None` like
+  every other socket failure) - no code change, added as regression tests since neither case had
+  one before.
+
+Explicitly out of scope, confirmed via architecture, not silently assumed: payload-level validation
+(malformed NTP headers, corrupt DNS queries) belongs to `async_connect.py`/`captive_dns.py`, not
+this transport module - it never inspects content by design (see the docstring's "content-agnostic
+transport" paragraph, added this pass).
+
+**Real-hardware verification gap, flagged rather than silently generalized (per CLAUDE.md's
+datasheet/platform-target rule):** every empirical claim above - the `POLLERR`/`POLLHUP` fix from
+the second pass included - is verified against the MicroPython Unix-port build's socket
+implementation, which shares nothing with the real rp2 target's lwIP-based TCP/IP stack beyond the
+same Python-level API surface. Whether lwIP delivers ICMP port-unreachable to `poll()` the same way
+the Linux kernel does, whether its UDP receive-queue/truncation/connected-socket-filtering behavior
+matches exactly, is **not verified against real hardware or rp2-specific MicroPython documentation
+in this session** - no rp2 hardware was available to test against. If a deployed unit ever shows
+UDP behavior diverging from what's documented/tested here, this gap is the first place to look.
+
+8 new tests (23 total in `tests/test_asy_udp_socket.py`), most driven through a new
+`AdversarialPeer` test fixture - a genuine independent `socket.socket()`, never an `AsyUDPSocket`,
+bound to its own real loopback address, used to fire real packets at the module under test rather
+than mocking anything: oversized-datagram truncation, zero-length datagrams, an outgoing payload
+over the UDP size ceiling, arbitrary/non-UTF8 binary content round-tripping untouched, connected-
+mode source filtering against a genuine off-path sender (address discovered through a real packet
+exchange, not introspection - `getsockname()` isn't available on this Unix-port build *or* the real
+rp2 stub), a burst of 5 queued datagrams draining in order, a realistically-delayed genuine reply
+arriving inside vs. after the timeout window, and the fixed `wait_time_ms` default verified via the
+`asyncio`-recording monkeypatch. Re-verified: full-scope `scripts/lint.sh`/`scripts/typecheck.sh`
+unchanged (219/129, still exactly this file's own pre-existing findings), all 23/23 passing here,
+zero regressions across the rest of `tests/` (`scripts/test.sh`, all 12 files green).
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
@@ -1365,7 +1439,9 @@ and a missing config file failing independently without either derailing the oth
 
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
-`asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 58 — **690 total**.
+`asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 58,
+`asy_udp_socket.py` 23 — **713 total**. (Previous count of 690 across 11 files predated
+`asy_udp_socket.py`'s promotion and was never updated to include it — corrected here.)
 
 ## Decided for the refactor
 

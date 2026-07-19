@@ -158,6 +158,271 @@ def test_write_and_recvfrom_exhausts_tries_and_returns_none_sentinel() -> None:
 # ---------------------------------------------------------------------------
 
 
+class AdversarialPeer:
+    # A genuine, independent UDP endpoint - a real socket.socket(), never an AsyUDPSocket - used
+    # to drive real-world edge-case traffic (oversized/zero-length/delayed/burst/off-path
+    # datagrams) at an AsyUDPSocket under test over actual loopback packets, not mocks.
+    def __init__(self, addr: tuple[str, int]) -> None:
+        self.addr = addr
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.sock.bind(addr)
+        self.sock.setblocking(False)
+
+    async def send_after(self, target: tuple[str, int], data: bytes, delay_ms: int = 0) -> None:
+        if delay_ms:
+            await asyncio.sleep_ms(delay_ms)
+        self.sock.sendto(data, target)
+
+    async def recv(self, bufsize: int, timeout_ms: int = 1000) -> tuple[bytes, tuple[str, int]]:
+        poller = select.poll()
+        poller.register(self.sock, select.POLLIN)
+        t0 = time.ticks_ms()
+        while True:
+            if poller.ipoll(0):
+                return self.sock.recvfrom(bufsize)
+            if time.ticks_diff(time.ticks_ms(), t0) > timeout_ms:
+                raise OSError("AdversarialPeer.recv() timed out")
+            await asyncio.sleep_ms(5)
+
+    def close(self) -> None:
+        self.sock.close()
+
+
+# ---------------------------------------------------------------------------
+# Real-world UDP edge cases: truncation, zero-length datagrams, oversized sends, kernel-level
+# source filtering, burst ordering, and realistically delayed replies - against a genuine
+# independent peer, not just "nobody ever responds".
+# ---------------------------------------------------------------------------
+
+
+def test_recvfrom_silently_truncates_an_oversized_datagram() -> None:
+    # POSIX UDP behavior, confirmed directly against this project's MicroPython Unix-port build:
+    # a datagram larger than the recv buffer is truncated to buf bytes with no error and no
+    # signal that truncation happened (MSG_TRUNC/recvmsg() aren't exposed by MicroPython's socket
+    # module) - this module can't detect or prevent it. Documented in the module docstring, not
+    # "fixed" - this proves the actual (not assumed) contract callers must design around.
+    addr = make_addr()
+    peer_addr = make_addr()
+    oversized = b"X" * 500
+
+    async def scenario() -> bytes | None:
+        server = AsyUDPSocket(addr, mode="server")
+        peer = AdversarialPeer(peer_addr)
+        try:
+            await server._connect()
+            peer.sock.sendto(oversized, addr)
+            data, _ = await server.recvfrom(10, timeout_ms=500)
+            return data
+        finally:
+            peer.close()
+            await server.disconnect()
+
+    assert run(scenario()) == b"X" * 10  # truncated, not the full 500 bytes, no exception
+
+
+def test_recvfrom_treats_a_zero_length_datagram_as_a_real_reply_not_a_timeout() -> None:
+    # UDP explicitly allows zero-length payloads (RFC 768). recvfrom() must return (b"", addr) -
+    # distinguishable from the (None, None) timeout/error sentinel, since `data is not None` is
+    # exactly what write_and_recvfrom() checks to decide a reply arrived.
+    addr = make_addr()
+    peer_addr = make_addr()
+
+    async def scenario() -> bytes | None:
+        server = AsyUDPSocket(addr, mode="server")
+        peer = AdversarialPeer(peer_addr)
+        try:
+            await server._connect()
+            peer.sock.sendto(b"", addr)
+            data, _ = await server.recvfrom(64, timeout_ms=500)
+            return data
+        finally:
+            peer.close()
+            await server.disconnect()
+
+    data = run(scenario())
+    assert data == b""
+    assert data is not None
+
+
+def test_sendto_returns_none_sentinel_for_a_too_large_outgoing_payload() -> None:
+    # Confirmed directly: sendto() with a payload over the ~65507-byte max IPv4 UDP payload
+    # raises OSError (EMSGSIZE) - must be caught and converted like every other socket failure.
+    addr = make_addr()
+    huge = b"X" * 70000
+
+    async def scenario() -> int | None:
+        client = AsyUDPSocket(addr, mode="client")
+        try:
+            return await client.sendto(huge, addr)
+        finally:
+            await client.disconnect()
+
+    assert run(scenario()) is None
+
+
+def test_arbitrary_binary_content_round_trips_untouched() -> None:
+    # This module is a content-agnostic transport - a datagram with invalid/non-UTF8 bytes, bogus
+    # "header" values, etc. must still be delivered byte-for-byte. Validating payload structure
+    # (NTP header, DNS query) is the caller's job, not this module's.
+    addr = make_addr()
+    garbage = bytes(range(256)) + b"\xff\xfe\x00\x00" + bytes([0xDE, 0xAD, 0xBE, 0xEF]) * 10
+
+    async def scenario() -> bytes | None:
+        server = AsyUDPSocket(addr, mode="server")
+        client = AsyUDPSocket(addr, mode="client")
+        try:
+            await server._connect()
+            task = asyncio.create_task(server.recvfrom(1024))
+            await client.write(garbage)
+            data, _ = await task
+            return data  # type: ignore[no-any-return]  # asyncio.Task's stub loses recvfrom()'s precise return type
+        finally:
+            await client.disconnect()
+            await server.disconnect()
+
+    assert run(scenario()) == garbage
+
+
+def test_client_mode_filters_datagrams_from_unexpected_sources() -> None:
+    # connect() on the client socket isn't just a convenience - the kernel refuses to deliver
+    # datagrams from any address other than the connected peer. Prove this directly with a
+    # genuine third, independent UDP endpoint acting as an off-path/spoofed sender: it must never
+    # be seen by the client, even though it targets the exact same port.
+    peer_addr = make_addr()
+    attacker_addr = make_addr()
+
+    async def scenario() -> tuple[bytes | None, bytes | None]:
+        peer = AdversarialPeer(peer_addr)
+        attacker = AdversarialPeer(attacker_addr)
+        client = AsyUDPSocket(peer_addr, mode="client")
+        try:
+            await client._connect()
+            await client.write(b"hello")  # lets peer discover the client's real ephemeral address
+            _, client_addr = await peer.recv(64)
+            assert client_addr is not None
+
+            attacker.sock.sendto(b"spoofed", client_addr)
+            spoofed_result, _ = await client.recvfrom(64, timeout_ms=150)
+
+            peer.sock.sendto(b"legit", client_addr)
+            legit_result, _ = await client.recvfrom(64, timeout_ms=500)
+            return spoofed_result, legit_result
+        finally:
+            peer.close()
+            attacker.close()
+            await client.disconnect()
+
+    spoofed_result, legit_result = run(scenario())
+    assert spoofed_result is None  # filtered at the kernel level, never delivered
+    assert legit_result == b"legit"
+
+
+def test_recvfrom_drains_a_burst_of_queued_datagrams_in_order() -> None:
+    # A flood/burst of datagrams queued before the server ever drains them must come out in the
+    # order they were sent, with none lost or merged.
+    addr = make_addr()
+    peer_addr = make_addr()
+
+    async def scenario() -> list[bytes | None]:
+        server = AsyUDPSocket(addr, mode="server")
+        peer = AdversarialPeer(peer_addr)
+        try:
+            await server._connect()
+            for i in range(5):
+                peer.sock.sendto(f"pkt-{i}".encode(), addr)
+            await asyncio.sleep(0.05)  # let the kernel queue all 5 before draining starts
+            results = []
+            for _ in range(5):
+                data, _ = await server.recvfrom(64, timeout_ms=200)
+                results.append(data)
+            return results
+        finally:
+            peer.close()
+            await server.disconnect()
+
+    assert run(scenario()) == [b"pkt-0", b"pkt-1", b"pkt-2", b"pkt-3", b"pkt-4"]
+
+
+def test_recvfrom_respects_timeout_against_a_realistically_delayed_genuine_reply() -> None:
+    # Not just "nobody ever responds" - a genuine independent peer that actually replies, but
+    # late. Proves timeout correctness under realistic network-like latency: a reply comfortably
+    # inside the window is delivered; one arriving after the window already closed is not.
+    peer_addr = make_addr()
+
+    async def scenario() -> tuple[bytes | None, bytes | None]:
+        client = AsyUDPSocket(peer_addr, mode="client")
+        peer = AdversarialPeer(peer_addr)
+        try:
+            await client._connect()
+            await client.write(b"hello")  # lets peer discover the client's real ephemeral address
+            _, client_addr = await peer.recv(64)
+            assert client_addr is not None
+
+            asyncio.create_task(peer.send_after(client_addr, b"in-time", delay_ms=40))
+            in_time, _ = await client.recvfrom(64, timeout_ms=300)
+
+            too_late_sender = asyncio.create_task(peer.send_after(client_addr, b"too-late", delay_ms=300))
+            too_late, _ = await client.recvfrom(64, timeout_ms=100)
+            await too_late_sender  # let the delayed send actually happen before teardown
+            return in_time, too_late
+        finally:
+            peer.close()
+            await client.disconnect()
+
+    in_time, too_late = run(scenario())
+    assert in_time == b"in-time"
+    assert too_late is None
+
+
+# ---------------------------------------------------------------------------
+# ready()'s default wait_time_ms must not busy-spin
+# ---------------------------------------------------------------------------
+
+
+class _RecordingAsyncio:
+    # asyncio is a read-only builtin/frozen module on MicroPython (same reason
+    # _RaisingSocketModule below replaces asy_udp_socket's own module-level `socket` name instead
+    # of monkeypatching the real module) - wraps the real module, recording every sleep_ms()
+    # duration while still actually sleeping, so ready()'s own timeout/loop logic keeps working.
+    def __init__(self, real: "Any") -> None:
+        self._real = real
+        self.sleep_ms_calls: list[int] = []
+
+    def sleep_ms(self, ms: int) -> "Any":
+        self.sleep_ms_calls.append(ms)
+        return self._real.sleep_ms(ms)
+
+    def __getattr__(self, name: str) -> "Any":
+        return getattr(self._real, name)
+
+
+def test_ready_default_wait_time_ms_does_not_busy_spin() -> None:
+    # Bug: wait_time_ms defaulted to 0 - confirmed directly this busy-polls ipoll(0)+sleep_ms(0)
+    # ~9000x/sec while idle (~180x the rate at 20ms), pure CPU churn on RP2040's single core, for
+    # the two real callers (captive_dns.py, async_connect.py) that never override it. Prove the
+    # fixed default (20ms) is what ready() actually uses, not just what's documented.
+    addr = make_addr()
+    recorder = _RecordingAsyncio(asy_udp_socket.asyncio)
+    asy_udp_socket.asyncio = recorder  # type: ignore[assignment]
+    try:
+        sock = AsyUDPSocket(addr, mode="server")
+        try:
+            run(sock.ready(select.POLLIN, timeout_ms=80))  # nothing ever arrives
+        finally:
+            run(sock.disconnect())
+    finally:
+        asy_udp_socket.asyncio = recorder._real
+
+    assert len(recorder.sleep_ms_calls) > 0
+    assert all(ms == 20 for ms in recorder.sleep_ms_calls)
+
+
+# ---------------------------------------------------------------------------
+# _connect() retry/self-heal
+# ---------------------------------------------------------------------------
+
+
 def unbindable_addr() -> tuple[str, int]:
     # 10.255.255.254 is never a local interface address in this environment (confirmed directly:
     # bind() there raises OSError(EADDRNOTAVAIL)) - a deterministic way to force a real bind()
