@@ -1528,6 +1528,131 @@ def test_write_and_recvfrom_tries_zero_returns_immediately() -> None:
     assert run(scenario()) == (None, None)
 
 
+# ---------------------------------------------------------------------------
+# Sixth pass: ready()'s own mask/timeout_ms/wait_time_ms parameters, and write_and_recvfrom()'s
+# own tries parameter, were never guarded against a malformed caller-supplied value - confirmed
+# directly these raised an uncaught TypeError that bypassed every method's except clause, since
+# the raise happened inside ready()/write_and_recvfrom() itself, not inside the real socket call
+# those clauses wrap. sendto()/write()/recvfrom() call `await self.ready(...)` *before* their own
+# try block even starts, so ready()'s own crash was never caught by them either.
+# ---------------------------------------------------------------------------
+
+
+def test_ready_returns_false_sentinel_for_a_malformed_timeout_ms() -> None:
+    # Bug: `if (timeout_ms > 0) and ...` inside ready()'s poll loop raised an uncaught TypeError
+    # for e.g. timeout_ms=None - confirmed directly. Only reachable once the loop's first ipoll(0)
+    # finds nothing already matching mask (a fresh, never-sent-to server socket polled for POLLIN),
+    # since a matching first iteration returns True before ever touching timeout_ms.
+    addr = make_addr()
+
+    async def scenario() -> bool:
+        sock = AsyUDPSocket(addr, mode="server")
+        try:
+            await sock._connect()
+            return await sock.ready(select.POLLIN, timeout_ms=None)  # type: ignore[arg-type]
+        finally:
+            await sock.disconnect()
+
+    assert run(scenario()) is False
+
+
+def test_ready_returns_false_sentinel_for_a_malformed_wait_time_ms() -> None:
+    # Bug: `await asyncio.sleep_ms(wait_time_ms)` raised an uncaught TypeError for e.g.
+    # wait_time_ms=None (surfaced from inside asyncio's own sleep_ms() implementation) -
+    # confirmed directly.
+    addr = make_addr()
+
+    async def scenario() -> bool:
+        sock = AsyUDPSocket(addr, mode="server")
+        try:
+            await sock._connect()
+            return await sock.ready(select.POLLIN, timeout_ms=200, wait_time_ms=None)  # type: ignore[arg-type]
+        finally:
+            await sock.disconnect()
+
+    assert run(scenario()) is False
+
+
+def test_ready_returns_false_sentinel_for_a_malformed_mask() -> None:
+    # Bug: `event & (mask | select.POLLERR | select.POLLHUP)` raised an uncaught TypeError for
+    # e.g. mask=None - confirmed directly. Uses a fresh server socket (immediately POLLOUT-ready,
+    # so ipoll(0)'s very first result is non-empty) to reach the `event & (mask | ...)` expression
+    # on the first iteration, rather than needing a real pending datagram.
+    addr = make_addr()
+
+    async def scenario() -> bool:
+        sock = AsyUDPSocket(addr, mode="server")
+        try:
+            await sock._connect()
+            return await sock.ready(None, timeout_ms=200)  # type: ignore[arg-type]
+        finally:
+            await sock.disconnect()
+
+    assert run(scenario()) is False
+
+
+def test_ready_cancellation_still_propagates_through_the_new_try_except() -> None:
+    # The fix above wraps ready()'s whole per-iteration loop body (including its
+    # asyncio.sleep_ms() await point) in try/except (OSError, MemoryError, TypeError) - must not
+    # accidentally start swallowing asyncio.CancelledError too (a BaseException subclass, not an
+    # Exception, and not in that tuple - but worth confirming directly rather than assuming).
+    addr = make_addr()
+
+    async def scenario() -> bool:
+        sock = AsyUDPSocket(addr, mode="server")
+        try:
+            await sock._connect()
+            task = asyncio.create_task(sock.ready(select.POLLIN, timeout_ms=-1, wait_time_ms=20))  # waits forever
+            await asyncio.sleep(0.1)  # let it enter the sleep_ms() inside the new try block
+            task.cancel()
+            try:
+                await task
+                return False  # should never get here
+            except asyncio.CancelledError:
+                return True
+        finally:
+            await sock.disconnect()
+
+    assert run(scenario())
+
+
+def test_recvfrom_propagates_readys_false_sentinel_for_a_malformed_timeout_ms() -> None:
+    # The bug above wasn't just reachable through ready() directly - sendto()/write()/recvfrom()
+    # each call `await self.ready(..., timeout_ms=timeout_ms)` *before* their own try block starts,
+    # so ready()'s crash bypassed their except clauses entirely. Confirm the real public entry
+    # point callers actually use (recvfrom(), not ready() directly) is fixed too. Nothing must be
+    # sent here: a genuinely pending datagram would make ready()'s very first ipoll(0) already
+    # match POLLIN, returning True before timeout_ms is ever compared - only the "still waiting"
+    # path actually reaches the buggy comparison.
+    addr = make_addr()
+
+    async def scenario() -> tuple[bytes | None, tuple[str, int] | None]:
+        server = AsyUDPSocket(addr, mode="server")
+        try:
+            await server._connect()
+            return await server.recvfrom(64, timeout_ms=None)  # type: ignore[arg-type]
+        finally:
+            await server.disconnect()
+
+    assert run(scenario()) == (None, None)
+
+
+def test_write_and_recvfrom_returns_none_sentinel_for_a_malformed_tries() -> None:
+    # Bug: `for _ in range(tries):` raised an uncaught TypeError for e.g. tries=None or tries="3" -
+    # confirmed directly, and write_and_recvfrom() had no try/except of its own to catch it.
+    addr = make_addr()
+
+    async def scenario(bad_tries: "Any") -> tuple[bytes | None, tuple[str, int] | None]:
+        sock = AsyUDPSocket(addr, mode="client")
+        try:
+            return await sock.write_and_recvfrom(b"x", 64, timeout_ms=50, tries=bad_tries)
+        finally:
+            await sock.disconnect()
+
+    for bad_tries in (None, "3", [1]):
+        assert run(scenario(bad_tries)) == (None, None)
+
+
 if __name__ == "__main__":
     import microtest
 

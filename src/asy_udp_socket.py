@@ -182,13 +182,24 @@ class AsyUDPSocket:
         while True:
             if self.poller is None:  # a concurrent disconnect() on this same instance can null
                 return False  # type: ignore[unreachable]  # this mid-loop - confirmed directly (AttributeError otherwise); mypy's static narrowing can't see the mutation
-            res = self.poller.ipoll(0)
-            for _, event in res:
-                if event & (mask | select.POLLERR | select.POLLHUP):
-                    return True
-            if (timeout_ms > 0) and (time.ticks_diff(time.ticks_ms(), t0) > timeout_ms):
+            try:
+                res = self.poller.ipoll(0)
+                for _, event in res:
+                    if event & (mask | select.POLLERR | select.POLLHUP):
+                        return True
+                if (timeout_ms > 0) and (time.ticks_diff(time.ticks_ms(), t0) > timeout_ms):
+                    return False
+                await asyncio.sleep_ms(wait_time_ms)
+            except (OSError, MemoryError, TypeError):
+                # TypeError: a malformed mask/timeout_ms/wait_time_ms argument (confirmed directly -
+                # e.g. timeout_ms=None raises from `timeout_ms > 0`, wait_time_ms=None raises from
+                # inside asyncio.sleep_ms() itself, mask=None raises from `mask | select.POLLERR`) -
+                # none of these are caught by sendto()/write()/recvfrom()'s own except clauses, since
+                # those only wrap the real socket call, not this await self.ready(...) call itself.
+                # OSError/MemoryError caught here too for the same defense-in-depth reason as
+                # elsewhere in this file, even though empirical testing against this project's
+                # MicroPython Unix-port build found no case where ipoll() itself actually raises.
                 return False
-            await asyncio.sleep_ms(wait_time_ms)
 
     async def sendto(
         self,
@@ -228,7 +239,14 @@ class AsyUDPSocket:
     ) -> tuple[bytes | None, tuple[str, int] | None]:
         # Retries the full write+response round trip up to `tries` times, returning as soon as a
         # response arrives (used by async_connect.py's one-shot NTP request/response exchange).
-        for _ in range(tries):
+        # range(tries) itself is guarded: a malformed tries (e.g. None or a str) raises TypeError
+        # from range() before the loop ever starts - confirmed directly, and not caught by write()/
+        # recvfrom()'s own except clauses since it never reaches either of them.
+        try:
+            tries_range = range(tries)
+        except TypeError:
+            return None, None
+        for _ in tries_range:
             await self.write(msg, timeout_ms=timeout_ms)
             data, addr = await self.recvfrom(buf, timeout_ms=timeout_ms)
             if data is not None:

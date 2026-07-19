@@ -1629,6 +1629,89 @@ already-correct boundary behaviors above. Re-verified: full-scope `scripts/lint.
 `scripts/typecheck.sh` still unchanged (219/129), all 56/56 passing here, zero regressions across
 the rest of `tests/` (`scripts/test.sh`, all 12 files green).
 
+#### Sixth pass: ready()'s own polling-loop parameters, write_and_recvfrom()'s own tries parameter, and a documentation/spec re-check
+
+Owner-directed re-audit: go through the file's own module docstring paragraph by paragraph and
+re-verify each documented claim against current MicroPython 1.28.0 documentation (the refactor's
+actual pinned target per `toolchain/versions.toml` - not the deployed 1.26 pin), general POSIX UDP
+semantics, `asyncio` behavior, `select.poll` event-flag definitions, processing load, and the "never
+raises" contract, specifically hunting for exception paths still without a test. Two real,
+previously-undiscovered bugs found - both the same shape as the fifth pass's mutation-bypass
+findings (a comparison/construct on a caller-supplied parameter sitting outside every method's own
+`try`/`except`), just on different parameters:
+
+**`ready()`'s own `mask`/`timeout_ms`/`wait_time_ms` parameters were completely unguarded.**
+Confirmed directly: `timeout_ms=None` (or any non-numeric type) raised an uncaught `TypeError` from
+`if (timeout_ms > 0) and ...` inside the poll loop; `wait_time_ms=None` raised from inside
+`asyncio.sleep_ms()`'s own implementation; `mask=None` raised from `event & (mask | select.POLLERR |
+select.POLLHUP)`. None of these were reachable through `sendto()`/`write()`/`recvfrom()`'s own
+`except (OSError, MemoryError, TypeError)` clauses, since those only wrap the *real socket call* -
+`await self.ready(...)` is called *before* that `try` block even starts, so a crash inside `ready()`
+propagated straight out of every public I/O method, violating this file's own explicitly documented
+"never raises" contract. Fixed by wrapping the poll loop's entire per-iteration body (the `ipoll()`
+call, the event check, the timeout comparison, and the `sleep_ms()` await) in the same
+`except (OSError, MemoryError, TypeError)` tuple used everywhere else in this file, returning `False`
+- matching `ready()`'s own contract instead of adding a separate validation layer. Verified this
+doesn't swallow cancellation: `asyncio.CancelledError` is a `BaseException` subclass, not in that
+tuple, and cancelling a task mid-`sleep_ms()` inside the new `try` still propagates correctly
+(confirmed directly, not assumed, given the fifth pass's lock-cancellation work already established
+this file needs that kind of check taken seriously). `OSError`/`MemoryError` were included in the
+same wrap for defense-in-depth consistency with the rest of the file, even though empirical testing
+(registering a socket, closing it without unregistering, then calling `ipoll(0)`) found no case where
+`ipoll()` itself actually raises on this project's MicroPython Unix-port build - it returns event
+value `32` (Linux's `POLLNVAL`, though this `select` module doesn't expose that name as a constant at
+all - confirmed via `dir(select)`) instead of raising, and that value doesn't match any bit this
+file's own `mask | POLLERR | POLLHUP` check looks for, so an unregistered-but-still-closed fd would
+just poll silently until timeout rather than crash or falsely report readiness - not a live bug since
+`self.sock`/`self.poller` are only ever nulled together via `_disconnect_locked()`, but confirmed
+rather than assumed.
+
+**`write_and_recvfrom()`'s own `tries` parameter had the same shape of bug.** `for _ in
+range(tries):` raised an uncaught `TypeError` for `tries=None` or a non-numeric `tries` (e.g. a
+`str`) directly from `range()`'s own construction, and this method has no `try`/`except` of its own
+around that loop at all. (Aside, confirmed while investigating: this build's `range()` is more lenient
+than CPython's - `range(1.5)` doesn't raise `TypeError: 'float' object cannot be interpreted as an
+integer` the way CPython does, it silently iterates by comparing the float bound directly, yielding
+two iterations for `range(1.5)` - a MicroPython looseness, not a bug in this file, but worth knowing
+if `tries` or similar loop-bound parameters are ever handed a float elsewhere in this codebase.) Fixed
+the same way as the fifth pass's other parameter-mutation fixes: `range(tries)` is now constructed in
+its own `try`/`except TypeError`, returning the method's own `(None, None)` sentinel on failure,
+before the loop ever starts.
+
+**Everything else survived re-verification with no code change needed, each checked directly rather
+than assumed:** `micropython.const(0.5)` (a float, despite current MicroPython docs stating `const()`
+constant-folding is scoped to integer expressions only) compiles cleanly with this project's pinned
+`mpy-cross` and round-trips correctly through a real `.mpy` load - not a bug, just docs describing the
+guaranteed/recommended surface more narrowly than what this compiler build actually accepts; a
+negative `recvfrom(buf)` (e.g. `buf=-1`) already surfaces as a `MemoryError` from the underlying C
+allocator (a huge `size_t` wraparound), which this file already catches - no new gap; a battery of
+malformed `sendto()` addresses (out-of-range port, negative port, `None`, `()`, an embedded-NUL
+hostname) and malformed `msg` values (`int`, `None`) all already convert cleanly to the `None`
+sentinel via the existing `except (OSError, MemoryError, TypeError)`; `select.poll.register()`/
+`unregister()`/`ipoll()`'s documented semantics (unsolicited `POLLERR`/`POLLHUP` reported regardless
+of the requested eventmask, `ipoll()` allocation-free iteration, `unregister()` being a no-op rather
+than an error for an already-unregistered stream) all match this file's actual usage; a hypothesized
+"sticky POLLERR" risk (current MicroPython docs warn that `POLLERR`/`POLLHUP` "must be acted on...
+otherwise subsequent calls will keep returning immediately with these flags set for that stream")
+turned out not to reproduce on this build - consuming the pending error once (via the real
+`recvfrom()` call raising and being caught, exactly what this file already does) clears it, confirmed
+by polling again afterward and observing a normal, non-instant timeout, then a fresh send/receive
+cycle working normally; MicroPython 1.28.0's `asyncio` still has no built-in UDP-readiness primitive
+(`open_connection()`/`start_server()` remain TCP-only per current upstream discussion), and
+`asyncio.Lock` remains documented as non-reentrant with the exact acquire/release semantics this
+file's design already assumes - both matching what the module docstring already claims. The existing
+`asy_udp_socket.py`↔real-rp2/lwIP-hardware verification gap flagged in the fourth pass (everything
+here is Unix-port-verified, not verified against real hardware's TCP/IP stack) remains open and
+unchanged - re-confirmed still accurate, not newly discovered.
+
+6 new tests (62 total): `ready()`'s three parameter fixes (`mask`, `timeout_ms`, `wait_time_ms`) each
+verified directly, plus one confirming the new `try`/`except` still lets cancellation through;
+`recvfrom()` (not just `ready()` in isolation) verified to surface the fix through the real public
+entry point callers actually use; `write_and_recvfrom()`'s `tries` fix verified across three malformed
+values (`None`, a `str`, a `list`). Re-verified: full-scope `scripts/lint.sh`/`scripts/typecheck.sh`
+still unchanged (219/129), 62/62 passing here, zero regressions across the rest of `tests/`
+(`scripts/test.sh`, all 12 files green, 752 tests total).
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
@@ -1645,10 +1728,11 @@ and a missing config file failing independently without either derailing the oth
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
 `asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 58,
-`asy_udp_socket.py` 56 — **746 total**. (Previous count of 690 across 11 files predated
+`asy_udp_socket.py` 62 — **752 total**. (Previous count of 690 across 11 files predated
 `asy_udp_socket.py`'s promotion and was never updated to include it — corrected during its
 third pass; the 23→42 jump was its fourth pass's uncaught-exception/configuration/integration
-test additions; 42→56 is its fifth pass's mutation-bypass/concurrency/cancellation-safety tests.)
+test additions; 42→56 is its fifth pass's mutation-bypass/concurrency/cancellation-safety tests;
+56→62 is its sixth pass's ready()/write_and_recvfrom() parameter-guard tests.)
 
 ## Decided for the refactor
 
