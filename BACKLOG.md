@@ -366,8 +366,10 @@ A `NameError` typo in the legacy FRAM driver's write-protect pin setup (`_wp_pin
 compile-breaking defect — worth confirming whether this method is ever reached on deployed units);
 a legacy SGP40 VOC-algorithm FRAM serialization bug where `m_mox_model_sraw_std` was never included
 in the packed/restored fields, so restore-from-FRAM silently never recovered it; several smaller
-`api_helpers.py`/`async_connect.py`/`captive_dns.py`/`asy_udp_socket.py` fixes for `None`-guard
-crash paths and an unbound-local variable.
+`api_helpers.py`/`async_connect.py`/`captive_dns.py` fixes for `None`-guard crash paths and an
+unbound-local variable. **Correction, found during `asy_udp_socket.py`'s own `src/` promotion:**
+that file's own `None`-guards were *not* a clean instance of this pattern - see the dedicated
+write-up below for what was actually wrong with them.
 
 ### Timing values confirmed intentional, not drift
 
@@ -1214,6 +1216,615 @@ to two 3-4-line ones - same "purpose, then the never-raises contract" shape, les
 behavior change (comment/docstring text only); re-verified lint/typecheck/58-tests-58-passing/95%
 coverage identical to before this trim.
 
+### `asy_udp_socket.py` → `src/`
+
+Async, non-blocking UDP wrapper around one `socket.socket` (cooperative `select.poll` loop, since
+MicroPython's `asyncio` has no built-in UDP-readiness primitive). Two callers, both still WIP
+`improved-quality/` (out of scope to edit): `async_connect.py`'s one-shot-per-attempt NTP client
+and `captive_dns.py`'s long-lived `DNSServer`.
+
+Real bugs found and fixed (all owner-confirmed before fixing):
+
+- **The class could not actually send or receive anything.** `sendto()`/`write()`/`recvfrom()`
+  each started with `if self.sock is None: return None` - but `self.sock` is only ever created
+  inside `_connect()`, which is only ever called from `ready()`, which each of those three methods
+  called *after* that guard. On a fresh object `self.sock` is always `None` at that point, so every
+  call short-circuited before `ready()`/`_connect()` ever ran, permanently. This is the "real bug
+  fix" the note above (wrongly) credited - the deployed `python/CommonDrivers/asy_udp_socket.py`
+  calls `ready()` first with no such guard, and does work. Fixed by removing the premature checks;
+  each method now calls `ready()` first and narrows `self.sock is not None` only right before the
+  real socket call (satisfies mypy; provably always true there, since `ready()` returning `True`
+  implies `_connect()` already set `self.sock`).
+- `write_and_recvfrom(msg, buf, timeout_ms, tries)`'s `for _ in range(tries): ...; return ...`
+  returned unconditionally after the first iteration - `tries` never actually retried, on either
+  success or failure. Neither current caller passes `tries>1`, so this was latent, not an observed
+  production symptom. Fixed to loop until a response arrives or `tries` is exhausted.
+- `_connect()`'s retry budget (`conn_tries`) was a one-shot, whole-object-lifetime thing, not a
+  per-call thing: the entire method (socket creation *and* the retry loop) was gated behind a
+  single `if self.sock is None:`, so once `conn_tries` was exhausted, every future call permanently
+  short-circuited to "not connected" - no retry, no self-heal. Only `captive_dns.py`'s `DNSServer`
+  is actually exposed to this (one `AsyUDPSocket` built in `__init__`, reused for the device's
+  entire uptime); `async_connect.py`'s NTP client dodges it by constructing a fresh object every
+  sync attempt. Fixed: if `conn_tries` is exhausted, `_connect()` now calls `disconnect()` on
+  itself, tearing the failed socket down so the *next* call gets a genuinely fresh attempt.
+- `sendto()` was typed `-> None` while actually returning `self.sock.sendto()`'s real `int` byte
+  count at runtime - a pure annotation bug (no caller uses the return value today). Retyped
+  `-> int | None`, matching `write()`'s already-correct shape.
+
+Also, matching every other `src/` file: `from typing import Literal, Tuple` (unconditional -
+`typing` has no runtime presence on the Unix-port interpreter, confirmed) moved behind the
+established `TYPE_CHECKING` guard, `Tuple` → builtin `tuple`; every `except Exception:` narrowed to
+`except OSError:` (confirmed via current MicroPython docs that socket-layer failures are always
+`OSError`, never `socket.error`/`socket.timeout`) - this file takes none of `asy_i2c_driver.py`'s
+bus-driver carve-out, since a network fault is an expected, recoverable condition here, not a
+hardware bug to surface upward.
+
+10 tests (`tests/test_asy_udp_socket.py`), all against real loopback (`127.0.0.1`) UDP sockets
+under the Unix-port interpreter rather than mocking `socket`/`select` (owner-directed, matching the
+`asy_spi_driver.py`/`asy_i2c_driver.py` precedent that hand-written stand-ins weren't acceptable
+where the point of the file is its interaction with a real module) - covers the fixed lazy-connect
+path, `sendto()`'s corrected return type, `recvfrom()`'s timeout sentinel, the fixed retry loop
+(a reply dropped once then delivered, and a genuinely-exhausted-tries case), `conn_tries` retrying
+within one `_connect()` call and the cross-call self-heal after exhaustion, `disconnect()`
+idempotency and object reuse after it, and that `asyncio` task cancellation during a pending
+`recvfrom()` isn't swallowed (confirmed directly: MicroPython's `CancelledError` subclasses
+`BaseException`, not `Exception`, so none of this file's `except OSError` blocks can catch it).
+
+One MicroPython-Unix-port-specific gotcha hit while writing the tests, unrelated to any real
+driver bug: the Unix port's "standard" build rejects a plain `(host, port)` tuple in
+`bind()`/`connect()`/`sendto()` outright with `TypeError: object with buffer protocol required` -
+a known, long-standing Unix-port-only limitation (`micropython/micropython#6924`, open since
+v1.14, still present at v1.28.0), *not* present on the real rp2 target (confirmed against the
+installed `RPI_PICO_W` stub: `bind()`/`connect()` are typed to accept `tuple[str, int]` directly,
+matching both real callers' actual usage - `captive_dns.py`'s literal `("0.0.0.0", 53)` and
+`async_connect.py`'s already-`getaddrinfo()`-resolved NTP address). Tests work around this by
+resolving loopback addresses via `socket.getaddrinfo()` before constructing an `AsyUDPSocket`,
+purely to satisfy the test binary - `asy_udp_socket.py` itself never calls `getaddrinfo()`, by
+design (matching CLAUDE.md's long-blocking-operation rule: DNS resolution is the caller's job,
+coordinated through `async_connect.py`'s `get_long_block_lock()`).
+
+Baseline check (section 14): full-scope `scripts/lint.sh` 228→219 errors, `scripts/typecheck.sh`
+130→129 errors in 10→9 files - both drops are exactly this file's own pre-existing findings; zero
+new findings elsewhere.
+
+#### Second pass: structure/completeness/error-handling questions, not just the initial checklist
+
+A follow-up owner review (same "structure/simplification/completeness/error-handling" framing as
+`system_service.py`'s own second pass above) surfaced four more real gaps, none caught by the first
+promotion pass:
+
+- **The class could still hang or waste a full timeout on a real, already-known connection
+  failure.** `ready()` only checked `event & mask`, ignoring `select.POLLERR`/`POLLHUP` entirely.
+  Confirmed empirically (not just reasoned about) against the built Unix-port binary: a connected
+  UDP client socket with a pending ICMP port-unreachable reports `POLLOUT|POLLERR` - **never
+  `POLLIN`** - even though `recvfrom()` immediately raises `ECONNREFUSED` if called. Since POSIX
+  `poll()` always reports `POLLERR`/`POLLHUP` regardless of the registered mask, `ready()` now also
+  treats them as "ready", letting the caller's real socket call run and surface (and correctly
+  convert) the actual `OSError` through the exception handling that already existed - instead of
+  waiting out the full `timeout_ms` for a failure the kernel already knew about. Harmless-in-practice
+  for both current callers today (the NTP client has a finite timeout; `captive_dns.py`'s bound,
+  never-`connect()`ed server socket isn't exposed to this specific ICMP-refused shape) but a real
+  contract violation - any future `mode="client"` caller with `timeout_ms<=0` would have hung
+  forever on an error the OS already reported.
+- **`_connect()`'s own setup code had zero exception handling - violated this file's own "never
+  raises" contract.** `socket.socket()`/`setsockopt()`/`select.poll()`/`poller.register()` all ran
+  *before* the retry loop's `try`/`except OSError`. A failure there (e.g. `ENOMEM` under real
+  resource exhaustion - not hypothetical for a device meant to run years unattended) would have
+  propagated uncaught past this file, and left any partially-created socket unclosed (a real fd
+  leak). Fixed: wrapped the whole one-time setup in its own `try`/`except OSError`, sharing the same
+  self-heal (`disconnect()`) and backoff as a connect/bind failure - now pulled into a
+  `_RETRY_BACKOFF_S = const(0.5)` module constant used by both, so a persistent setup failure can't
+  busy-loop either.
+- **`wait_time_ms` was silently treated as seconds, not milliseconds.** `ready()` called
+  `asyncio.sleep(wait_time_ms)` - but `asyncio.sleep()` takes seconds; MicroPython's millisecond
+  variant is the separate `asyncio.sleep_ms()` (confirmed against current docs). The `_ms` suffix
+  promises milliseconds, right next to `timeout_ms` which correctly *is* milliseconds already.
+  Masked today only because no caller ever overrides the `wait_time_ms=0` default (unit-agnostic at
+  zero) - present unchanged in the original deployed code too. Fixed to call `asyncio.sleep_ms()`.
+- **Missing `async with` support**, added (`__aenter__` returns `self`, `__aexit__` calls
+  `disconnect()`, returns `False` - same shape as `base_classes.py`'s `Lockable.__aexit__`, though
+  `AsyUDPSocket` doesn't inherit `Lockable` since it isn't lock-based). Purely additive, zero
+  behavior change to existing paths - but it's the exact acquire/use/release-in-finally shape
+  `async_connect.py`'s NTP client already hand-rolls via `try`/`finally`, matching the established
+  `SPIDevice` convention for this pattern.
+
+Considered and explicitly rejected: collapsing `sendto()`/`write()` (and their `ready()`+narrow
+preamble) into a shared helper - `sendto()`/`write()` call genuinely different underlying
+primitives (the rp2 stub is explicit: `sendto()` "should not be connected", `write()` requires a
+connected socket), so a generic helper would need either a closure (a real allocation on
+MicroPython) or would lose mypy's `self.sock is not None` narrowing at the call site. Also left
+alone: `SO_REUSEADDR` is applied unconditionally including for `mode="client"` sockets that never
+`bind()` (harmless but purposeless there); `timeout_ms=0` behaves identically to "wait forever"
+rather than "check once" (pre-existing, unexercised, inherited unchanged); no structural guard
+against calling `sendto()` on a client-mode object or `write()` on a server-mode one (both real
+callers already use the API correctly; guarding against a misuse that doesn't happen would just add
+complexity).
+
+5 more tests (15 total): `wait_time_ms` actually completing in tens of milliseconds rather than
+multiple real seconds; `_connect()`'s setup phase not raising when `socket.socket()` itself fails
+(monkeypatching `asy_udp_socket`'s own module-level `socket` name, same read-only-builtin technique
+`test_system_service.py`'s time-module fakes already established) and self-healing once the fault
+clears; the POLLERR fix, driven through a real ICMP-refused loopback connection exactly like the
+manual repro that found the bug, asserting `recvfrom()` returns in under 1s instead of waiting out a
+5s timeout; and `async with` disconnecting on both normal exit and exception. Re-verified: full-scope
+lint/typecheck counts unchanged (219/129, still exactly this file's own remaining findings), all
+15/15 tests passing here, zero regressions across the rest of `tests/`.
+
+#### Third pass: real-world robustness against a genuine UDP peer, not just this module's own logic
+
+Owner-directed: UDP is exposed to uncontrolled external input in ways the rest of `src/` isn't
+(failure at init/mid-transfer/while idle, good and bad content, wrong/spoofed sources, timing that
+actually matters) - researched official/public UDP best practice (POSIX `recvfrom()`/`sendto()`
+semantics, Beej's Guide, connected-vs-unconnected-socket error delivery) and verified every claim
+directly against this project's own MicroPython Unix-port build rather than trusting general
+networking lore, per repro scripts under `/tmp/.../scratchpad/repro_udp_edge_cases.py` (not
+committed - throwaway). Findings:
+
+- **`ready()`'s `wait_time_ms` defaulted to 0, and neither real caller overrides it** -
+  `captive_dns.py`'s `DNSServer` waits *forever* for the next query with this default, and
+  `async_connect.py`'s NTP client waits out its full timeout on every dropped packet. Confirmed
+  directly: 0 busy-polls `poller.ipoll(0)` + `asyncio.sleep_ms(0)` ~9000×/sec while idle vs ~50×/sec
+  at 20ms - ~180× the CPU churn on RP2040's single cooperative core, competing with other tasks
+  (e.g. Neopixel timing) for scheduler turns, for as long as the DNS server sits idle (most of its
+  life). Owner-confirmed fix: default changed to `20` - adds at most 20ms latency per poll cycle to
+  both real callers (neither passes this param today), imperceptible for NTP sync / DNS response.
+  Verified via a monkeypatch of `asy_udp_socket`'s own module-level `asyncio` name (same read-only-
+  builtin technique as the `socket` fake above) recording every `sleep_ms()` argument, proving the
+  new default is what `ready()` actually calls, not just what's documented.
+- **Datagram truncation is real and silent - confirmed directly, not assumed.** A datagram larger
+  than the `recvfrom()` buffer is truncated to that size with zero error and zero signal that
+  truncation happened (repro: sent 500 bytes, `recvfrom(10)` returned exactly 10, no exception).
+  MicroPython's `socket` module doesn't expose `recvmsg()`/`MSG_TRUNC`, so this module has no way to
+  detect it even if it wanted to. **Not fixed - documented as a load-bearing contract in the module
+  docstring** instead: callers needing to detect truncation must size their buffer generously (both
+  real callers already do: NTP uses 1024 for a 48-byte packet, DNS uses 4096) or add their own
+  length-prefixed framing. Matches this module's existing "content-agnostic transport" framing -
+  payload validity is the caller's job, not this file's.
+- **Connected (`mode="client"`) sockets get kernel-level source filtering for free - confirmed
+  directly, not assumed.** A genuine third, independent `socket.socket()` (not `AsyUDPSocket`)
+  sending to a connected client's address from an unconnected/unexpected source is never delivered
+  - `recvfrom()` raises `EAGAIN`, `poll()` never reports `POLLIN` - even though it targets the exact
+  same local port the real connected peer uses. This is a real security property this module relies
+  on rather than reimplements, now called out explicitly in the docstring: `mode="server"` sockets
+  are unconnected and get no such filtering (`captive_dns.py` doesn't check `addr` on the packets it
+  receives today - flagged as out of scope for this transport-only module to fix, not silently
+  patched in).
+- Zero-length datagrams (RFC 768 explicitly permits them) and oversized outgoing sends (>65507
+  bytes, the IPv4 UDP payload ceiling) were both already handled correctly by the existing contract
+  - confirmed directly (`recvfrom()` returns `(b"", addr)`, distinguishable from the `(None, None)`
+  timeout sentinel; `sendto()`/`write()` catch the real `OSError(EMSGSIZE)` and return `None` like
+  every other socket failure) - no code change, added as regression tests since neither case had
+  one before.
+
+Explicitly out of scope, confirmed via architecture, not silently assumed: payload-level validation
+(malformed NTP headers, corrupt DNS queries) belongs to `async_connect.py`/`captive_dns.py`, not
+this transport module - it never inspects content by design (see the docstring's "content-agnostic
+transport" paragraph, added this pass).
+
+**Real-hardware verification gap, flagged rather than silently generalized (per CLAUDE.md's
+datasheet/platform-target rule):** every empirical claim above - the `POLLERR`/`POLLHUP` fix from
+the second pass included - is verified against the MicroPython Unix-port build's socket
+implementation, which shares nothing with the real rp2 target's lwIP-based TCP/IP stack beyond the
+same Python-level API surface. Whether lwIP delivers ICMP port-unreachable to `poll()` the same way
+the Linux kernel does, whether its UDP receive-queue/truncation/connected-socket-filtering behavior
+matches exactly, is **not verified against real hardware or rp2-specific MicroPython documentation
+in this session** - no rp2 hardware was available to test against. If a deployed unit ever shows
+UDP behavior diverging from what's documented/tested here, this gap is the first place to look.
+*(Considered closing this via a standalone on-device verification script during the sixth pass -
+owner judged it too hypothetical to be worth pursuing as a real issue. Remains open, not being
+actively chased; still the first place to look if real behavior ever diverges.)*
+
+8 new tests (23 total in `tests/test_asy_udp_socket.py`), most driven through a new
+`AdversarialPeer` test fixture - a genuine independent `socket.socket()`, never an `AsyUDPSocket`,
+bound to its own real loopback address, used to fire real packets at the module under test rather
+than mocking anything: oversized-datagram truncation, zero-length datagrams, an outgoing payload
+over the UDP size ceiling, arbitrary/non-UTF8 binary content round-tripping untouched, connected-
+mode source filtering against a genuine off-path sender (address discovered through a real packet
+exchange, not introspection - `getsockname()` isn't available on this Unix-port build *or* the real
+rp2 stub), a burst of 5 queued datagrams draining in order, a realistically-delayed genuine reply
+arriving inside vs. after the timeout window, and the fixed `wait_time_ms` default verified via the
+`asyncio`-recording monkeypatch. Re-verified: full-scope `scripts/lint.sh`/`scripts/typecheck.sh`
+unchanged (219/129, still exactly this file's own pre-existing findings), all 23/23 passing here,
+zero regressions across the rest of `tests/` (`scripts/test.sh`, all 12 files green).
+
+#### Fourth pass: uncaught-exception audit, constructor configuration matrix, integration tests
+
+Owner-directed: a systematic, code-first audit of every place in the file (or a function it calls)
+that could raise something not already handled, followed by a full constructor-configuration test
+matrix (valid and invalid parameter combinations) and integration-level tests mirroring the current
+real upstream callers' exact usage. Every suspected gap below was **confirmed empirically against
+the built Unix-port interpreter before being called a real finding** - repro scripts under
+`/tmp/.../scratchpad/repro_exception_audit.py` and `repro_mode_hang.py` (not committed - throwaway)
+- and **re-confirmed fixed the same way afterward**, not just reasoned about or trusted from the
+fix's own diff.
+
+Six real findings, all owner-approved before fixing:
+
+- **An invalid `mode` caused a genuine, unrecoverable lockup - the most severe finding of this
+  session.** `_connect()`'s retry loop's `else` branch (dead code for the two real, correct mode
+  values) set `self.connected = False` but never incremented `tries` or awaited anything, so
+  `while (not self.connected) and (tries < self.conn_tries):` spun forever with **zero yield
+  points**. Confirmed directly: the process required a hard `kill`, even under
+  `asyncio.wait_for()` - the offending coroutine never yields control back to the scheduler for
+  any timeout to fire. Since MicroPython's asyncio on RP2040 is single-core cooperative, this
+  would starve *every* other task sharing the loop, including whatever feeds `machine.WDT` - the
+  device would eventually hard-reset via watchdog (self-healing, but masking a config typo as a
+  random reboot instead of a clear error). Fixed: `mode` is now validated eagerly in `__init__`,
+  raising `ValueError` immediately - impossible to reach the old lockup at all anymore.
+- **A malformed `addr` (right tuple shape, wrong element types - e.g. an `int` host) raised an
+  uncaught `TypeError`** from `sock.connect()`/`sock.bind()`, bypassing every `except OSError:` in
+  the file. Confirmed directly. Fixed: validated eagerly in `__init__` too - but see below, this
+  needed a second iteration once it broke the existing test suite.
+- **A wrong-typed `conn_tries` (e.g. `None`) raised an uncaught `TypeError`** from
+  `tries < self.conn_tries`. Confirmed directly. Fixed the same way.
+- **`MemoryError` is not an `OSError` subclass in MicroPython** - confirmed directly
+  (`issubclass(MemoryError, OSError)` is `False`), so every existing `except OSError:` in the file
+  (setup, connect/bind, `sendto`/`write`/`recvfrom`, `disconnect`) was blind to allocation
+  failure - a realistic condition on RP2040's 264KB SRAM for a device meant to run unattended for
+  years, not a hypothetical. Fixed: every one of those `except` clauses now catches
+  `(OSError, MemoryError)`.
+- **`disconnect()` could get permanently stuck mid-teardown.** The whole method was one
+  `try`/`except OSError`; if `poller.unregister()` raised, the exception aborted the block before
+  `sock.close()`/`self.sock = None`/`self.connected = False` ever ran. Confirmed directly: the
+  object was left with `sock` and `poller` both still set and `connected` still `True`, forever -
+  a real fd leak with no self-heal, unlike every other failure path in this file. Fixed: `disconnect()`
+  now eagerly clears `self.sock`/`self.poller`/`self.connected` *before* attempting
+  `unregister()`/`close()`, each independently guarded - a failure in either step can no longer
+  leave the object in a broken state.
+- **`ready()`'s poll loop wasn't safe against a concurrent `disconnect()` on the same instance.**
+  It only checked `self.poller is None` once, before the loop; a `disconnect()` call from another
+  coroutine mid-loop (nothing in the file enforced or even documented single-caller-at-a-time)
+  would null `self.poller`, and the next `self.poller.ipoll(0)` crashed with `AttributeError`.
+  Confirmed directly. Fixed defensively: `ready()` now re-checks every iteration and returns
+  `False` instead of crashing - matching this file's own "never raises" contract instead of
+  relying on callers to never race it.
+
+**A real conflict surfaced mid-fix, resolved by re-deriving the actual constraint instead of
+guessing:** the first version of the `addr` validation (`isinstance(addr, tuple)`, strict) broke
+every single existing test, because `make_addr()`'s established Unix-port workaround (see the third
+pass above) returns `getaddrinfo()`'s resolved object - on this build, an opaque `bytearray`, not a
+tuple. Verified directly that a genuine plain tuple still fails against this build's
+`connect()`/`bind()` (`TypeError: object with buffer protocol required`, the same long-standing
+Unix-port bug from the first pass) - so there was no single value that could satisfy both a strict
+tuple check *and* actually work at the socket-syscall level in this test environment. Resolved by
+validating tuple *contents* only when `addr` actually is a tuple (the documented, real-hardware
+case), while accepting `bytes`/`bytearray` as an opaque, already-resolved sockaddr this file has no
+business inspecting (matching the docstring's existing "passes addr through untouched" framing) -
+correct for both real hardware (always a tuple) and this test environment (always the resolved
+opaque object) without special-casing the test environment inside production code.
+
+Explicitly scoped to the constructor: "every configuration" here means `AsyUDPSocket(addr, mode,
+conn_tries)`'s own parameter space, not every argument of every method (`sendto()`'s `msg`,
+`write_and_recvfrom()`'s `tries`, etc.) - those stay within this project's existing convention of
+trusting mypy-checked call sites rather than adding runtime validation for scenarios neither real
+caller can produce.
+*(Partially revisited by the sixth pass below: `ready()`'s `mask`/`timeout_ms`/`wait_time_ms` and
+`write_and_recvfrom()`'s own `tries` turned out to have a real, reproducible crash - not a
+hypothetical "neither real caller can produce" scenario, but a concrete uncaught `TypeError`
+bypassing this file's own except clauses - so those two got fixed. This doesn't reopen the general
+"don't validate every method argument" scope decision itself; `sendto()`'s `msg`/`addr` and
+`recvfrom()`'s `buf` remain deliberately unvalidated at entry, relying on the real socket call's own
+`except (OSError, MemoryError, TypeError)` to convert whatever they raise - that part of this
+decision still stands.)*
+
+19 new tests (42 total): a full valid-combination sweep (`mode` × `conn_tries` including the `0`/
+negative edge case) plus a pre-resolved-`bytes`-addr acceptance test; rejection tests for each of
+`mode`/`addr`/`conn_tries` individually invalid (multiple values each) and three combinations of
+*multiple* invalid parameters together; the `MemoryError`-catching fix exercised at every one of
+its four sites (`_connect()`'s setup, `write()`, `sendto()`, `recvfrom()` - the last via a genuine
+pending datagram from a real peer, so it actually reaches the real `recvfrom()` call instead of
+timing out inside `ready()` first); the `disconnect()` partial-failure fix (a poller whose
+`unregister()` raises); and the `ready()` concurrency fix (a poller that nulls the owning object's
+`self.poller` mid-loop, simulating a genuine concurrent `disconnect()`).
+
+**Integration-level tests**, informed by (not importing - `improved-quality/` stays out of scope
+per CLAUDE.md's hard rule) the current real upstream callers, mirroring each one's exact documented
+call shape rather than a snapshot of its WIP implementation (owner-directed: "take the upstream
+callers as a knowledge extension of what are real use cases", resolving an explicit conflict with
+the standing "tests belong once code is promoted to `src/`" convention in favor of testing the
+*contract* these callers rely on):
+
+- **NTP client pattern** (`async_connect.py`): `AsyUDPSocket(addr, mode="client")` +
+  `write_and_recvfrom()` with the real 48-byte-request/1024-byte-buffer shape, `disconnect()`
+  called once on success *and* unconditionally again in `finally` (proving that exact double-call
+  is safe, not just idempotency in isolation) - a success round trip against a genuine responder, a
+  genuinely unreachable server (proving `msg` ends up `None`, matching the real `if msg is None:`
+  branch, without ever needing the caller's broad `except Exception` backstop), and a responder
+  that replies with outright garbage (proving content-agnostic delivery through the exact real call
+  shape, not just the generic binary-content test from the third pass).
+- **DNS server pattern** (`captive_dns.py`): `AsyUDPSocket(("0.0.0.0", port), mode="server")` +
+  `recvfrom(4096)` + conditional `sendto()`, including the real any-interface-bind-then-receive-
+  via-127.0.0.1-targeted-traffic path (every other test in this file binds and targets `127.0.0.1`
+  directly, never exercising a real `0.0.0.0` bind end-to-end). Also confirmed a real integration
+  contract: `captive_dns.py`'s exact guard is `if data is not None and addr is not None:`, assuming
+  the pair is always both-set or both-`None` together - proved directly that `recvfrom()` never
+  returns a mismatched pair, in either the timeout or success path.
+- **Fault propagation through the DNS server's processing path**: `captive_dns.py` discards
+  `sendto()`'s return value entirely - a failed reply is silently swallowed one level above this
+  module, never observed or logged by the real caller today. Flagged here as a real gap (not fixed
+  - `captive_dns.py` is out of scope), and proved the part that *is* this module's responsibility:
+  a failed `sendto()` (targeting a genuinely unreachable address) cannot corrupt the server socket
+  for the next, unrelated query in the same long-lived `DNSServer` loop.
+- **"Future, still to be refactored upstream modules"**: since no such code exists yet to import or
+  drive, coverage here is provided by the constructor-configuration matrix and the uncaught-
+  exception fixes above - a robust, well-defined public contract protects whatever calls into it
+  next, current or future, rather than something that could only be proven against code that
+  doesn't exist yet.
+
+Re-verified: full-scope `scripts/lint.sh`/`scripts/typecheck.sh` still unchanged (219/129), all
+42/42 passing here, zero regressions across the rest of `tests/` (`scripts/test.sh`, all 12 files
+green).
+
+#### Fifth pass: mutation-bypass, connect/disconnect concurrency, cancellation-safety of the new lock
+
+Owner-directed follow-up audit: re-check the whole file once more for oversights, strange
+behaviors, and unhandled/untested conditions - specifically targeting what the fourth pass's fix
+*didn't* close. Every finding below was reproduced empirically first (repro scripts under
+`/tmp/.../scratchpad/`, not committed), fixed, then re-verified the same way.
+
+**The fourth pass's `__init__` validation only runs once, at construction - a direct
+post-construction mutation of a public attribute reintroduces the exact same uncaught-exception
+bugs through a different door.** Confirmed directly at four call sites: `self.addr` mutated to a
+malformed tuple → uncaught `TypeError` from `sock.connect()`/`sock.bind()`; `self.conn_tries`
+mutated to `None` → uncaught `TypeError`, but from an unexpected place - `tries < self.conn_tries`
+is the retry loop's own *condition*, evaluated before the inner per-attempt `try` is ever entered,
+so only the *outer* setup `try`/`except` covers it, and that one hadn't been widened yet either
+(found by testing the fix, not just the bug - the first fix attempt still failed this exact case);
+`sendto()`'s own per-call `addr` argument malformed → the same uncaught `TypeError`; `recvfrom()`'s
+`buf` argument wrong-typed → uncaught `TypeError`, but only confirmed once a genuinely pending
+datagram let `ready()` actually reach the real `recvfrom()` call (a first attempt at this specific
+test was inconclusive - nothing was ever sent, so the timeout path returned before ever touching
+the buggy call). Owner-decided fix (two options were presented - widen exception handling
+further, or add validating property setters - the owner chose a hybrid): `addr`/`mode`/`conn_tries`
+are now stored as `_addr`/`_mode`/`_conn_tries` (private-by-convention, signaling "not meant to be
+reassigned from outside" - Python doesn't truly enforce this, so it's a naming signal, not a
+guarantee), *and* every touching `except` clause (both of `_connect()`'s try blocks, plus
+`sendto()`/`write()`/`recvfrom()`) now also catches `TypeError`, so the object self-heals into "never
+connects" instead of crashing regardless of how it got into a bad state. Mutating `_mode` was
+separately confirmed *not* to be a crash risk - `_connect()`'s branch is a plain `if/else` (client
+vs. everything else) since `__init__` already guarantees only the two real values reach it, so a
+corrupted `_mode` just falls through to the `bind()` path rather than hitting the old three-way
+branch's dead `else`; documented and tested as defined (if surprising) behavior, not fixed further.
+
+**A second, more severe related bug surfaced while investigating the first: a `disconnect()` call
+concurrent with another coroutine's in-flight `_connect()` retry crashed with an uncaught
+`AttributeError`.** `disconnect()` had no coordination with `_connect()` at all - a concurrent
+`disconnect()` could null `self.sock`/`self.poller` while `_connect()`'s retry loop was still
+mid-flight, so the loop's next `self.sock.connect()`/`bind()` call hit `'NoneType' object has no
+attribute 'bind'`. Confirmed directly. This is the same underlying gap as the owner's separately-
+approved fix for concurrent callers: **a coroutine calling a public method while another
+coroutine's `_connect()` is mid-retry-backoff on the same instance got a spurious "not ready" `None`
+instead of joining the in-flight attempt** (confirmed directly in the fourth pass's own write-up
+above, revisited here since the owner chose to actually fix it this pass rather than just document
+it). Both are closed by the same mechanism: a new per-instance `asyncio.Lock` (`self._connect_lock`)
+serializes `_connect()`'s entire setup/retry phase against both itself (join semantics: a second
+caller now waits for and benefits from the first's in-flight attempt, confirmed directly - a
+`sendto()` call made while another coroutine's retry is still resolving now returns the real result
+once that retry succeeds, not a premature `None`) and against `disconnect()` (confirmed directly: a
+concurrent `disconnect()` now waits for the in-flight attempt to finish - bounded by
+`conn_tries × the retry backoff` - instead of tearing it down mid-flight). `_connect()`'s own
+internal self-heal call had to move to a new `_disconnect_locked()` helper (the actual teardown
+logic, assuming the lock is already held) rather than calling the public `disconnect()` directly,
+since `asyncio.Lock` isn't reentrant - `_connect()` calling `disconnect()` while already holding the
+lock would have deadlocked. Caught and fixed before it ever shipped, by tracing through the
+non-reentrancy question during design rather than after a test failure.
+
+**Locks plus cancellation are a classic deadlock source, so this wasn't assumed safe just because
+it worked in the non-cancelled case - verified directly, both directions:** cancelling a task while
+it *holds* the lock (mid-retry-backoff) still correctly propagates `CancelledError` and releases the
+lock (`async with`'s `__aexit__` runs on any exception unwind, including `BaseException` subclasses
+like `CancelledError` - confirmed empirically, not just cited from the language spec); cancelling a
+task while it's *waiting* to acquire the lock (not holding it) also propagates cleanly and leaves the
+lock's internal state healthy for the next caller. Both were real risks worth checking given this
+file just gained its first lock, and both came back clean - no new bug found here, but confirmed
+rather than assumed, and locked in as regression tests given how easily this class of change goes
+wrong.
+
+**Also confirmed already-correct (no code change), previously untested boundary/misuse behaviors:**
+`write()` called on a bound-but-unconnected `mode="server"` socket (a caller misuse this file
+deliberately doesn't structurally guard against, per the second pass's "considered and rejected" -
+that reasoning was never actually verified non-crashing until now) returns the `None` sentinel via
+the real `OSError` it triggers, exactly like any other socket failure; zero-length outgoing sends
+(`sendto(b"", ...)`) succeed, symmetric to the zero-length *receive* case from the third pass;
+`recvfrom(buf=0)` against a genuinely pending datagram returns `(b"", addr)` - an extreme instance
+of the already-documented truncation contract, not new behavior; `disconnect()` on a fresh,
+never-`_connect()`-ed object is a clean no-op; `write_and_recvfrom(..., tries=0)` returns
+`(None, None)` immediately, no crash.
+
+14 new tests (56 total): the four mutation/malformed-argument fixes (each self-heals instead of
+crashing, verified directly); the `disconnect()`-during-in-flight-retry fix (with a timing
+assertion proving it genuinely waited for the retry cycle rather than either crashing or hanging
+forever); the concurrent-caller-joins-the-attempt fix (B's call genuinely succeeds once A's retry
+succeeds, not a redundant retry of its own); both lock-cancellation-safety proofs; and the five
+already-correct boundary behaviors above. Re-verified: full-scope `scripts/lint.sh`/
+`scripts/typecheck.sh` still unchanged (219/129), all 56/56 passing here, zero regressions across
+the rest of `tests/` (`scripts/test.sh`, all 12 files green).
+
+#### Sixth pass: ready()'s own polling-loop parameters, write_and_recvfrom()'s own tries parameter, and a documentation/spec re-check
+
+Owner-directed re-audit: go through the file's own module docstring paragraph by paragraph and
+re-verify each documented claim against current MicroPython 1.28.0 documentation (the refactor's
+actual pinned target per `toolchain/versions.toml` - not the deployed 1.26 pin), general POSIX UDP
+semantics, `asyncio` behavior, `select.poll` event-flag definitions, processing load, and the "never
+raises" contract, specifically hunting for exception paths still without a test. Two real,
+previously-undiscovered bugs found - both the same shape as the fifth pass's mutation-bypass
+findings (a comparison/construct on a caller-supplied parameter sitting outside every method's own
+`try`/`except`), just on different parameters:
+
+**`ready()`'s own `mask`/`timeout_ms`/`wait_time_ms` parameters were completely unguarded.**
+Confirmed directly: `timeout_ms=None` (or any non-numeric type) raised an uncaught `TypeError` from
+`if (timeout_ms > 0) and ...` inside the poll loop; `wait_time_ms=None` raised from inside
+`asyncio.sleep_ms()`'s own implementation; `mask=None` raised from `event & (mask | select.POLLERR |
+select.POLLHUP)`. None of these were reachable through `sendto()`/`write()`/`recvfrom()`'s own
+`except (OSError, MemoryError, TypeError)` clauses, since those only wrap the *real socket call* -
+`await self.ready(...)` is called *before* that `try` block even starts, so a crash inside `ready()`
+propagated straight out of every public I/O method, violating this file's own explicitly documented
+"never raises" contract. Fixed by wrapping the poll loop's entire per-iteration body (the `ipoll()`
+call, the event check, the timeout comparison, and the `sleep_ms()` await) in the same
+`except (OSError, MemoryError, TypeError)` tuple used everywhere else in this file, returning `False`
+- matching `ready()`'s own contract instead of adding a separate validation layer. Verified this
+doesn't swallow cancellation: `asyncio.CancelledError` is a `BaseException` subclass, not in that
+tuple, and cancelling a task mid-`sleep_ms()` inside the new `try` still propagates correctly
+(confirmed directly, not assumed, given the fifth pass's lock-cancellation work already established
+this file needs that kind of check taken seriously). `OSError`/`MemoryError` were included in the
+same wrap for defense-in-depth consistency with the rest of the file, even though empirical testing
+(registering a socket, closing it without unregistering, then calling `ipoll(0)`) found no case where
+`ipoll()` itself actually raises on this project's MicroPython Unix-port build - it returns event
+value `32` (Linux's `POLLNVAL`, though this `select` module doesn't expose that name as a constant at
+all - confirmed via `dir(select)`) instead of raising, and that value doesn't match any bit this
+file's own `mask | POLLERR | POLLHUP` check looks for, so an unregistered-but-still-closed fd would
+just poll silently until timeout rather than crash or falsely report readiness - not a live bug since
+`self.sock`/`self.poller` are only ever nulled together via `_disconnect_locked()`, but confirmed
+rather than assumed.
+
+**`write_and_recvfrom()`'s own `tries` parameter had the same shape of bug.** `for _ in
+range(tries):` raised an uncaught `TypeError` for `tries=None` or a non-numeric `tries` (e.g. a
+`str`) directly from `range()`'s own construction, and this method has no `try`/`except` of its own
+around that loop at all. (Aside, confirmed while investigating: this build's `range()` is more lenient
+than CPython's - `range(1.5)` doesn't raise `TypeError: 'float' object cannot be interpreted as an
+integer` the way CPython does, it silently iterates by comparing the float bound directly, yielding
+two iterations for `range(1.5)` - a MicroPython looseness, not a bug in this file, but worth knowing
+if `tries` or similar loop-bound parameters are ever handed a float elsewhere in this codebase.) Fixed
+the same way as the fifth pass's other parameter-mutation fixes: `range(tries)` is now constructed in
+its own `try`/`except TypeError`, returning the method's own `(None, None)` sentinel on failure,
+before the loop ever starts.
+
+**Everything else survived re-verification with no code change needed, each checked directly rather
+than assumed:** `micropython.const(0.5)` (a float, despite current MicroPython docs stating `const()`
+constant-folding is scoped to integer expressions only) compiles cleanly with this project's pinned
+`mpy-cross` and round-trips correctly through a real `.mpy` load - not a bug, just docs describing the
+guaranteed/recommended surface more narrowly than what this compiler build actually accepts; a
+negative `recvfrom(buf)` (e.g. `buf=-1`) already surfaces as a `MemoryError` from the underlying C
+allocator (a huge `size_t` wraparound), which this file already catches - no new gap; a battery of
+malformed `sendto()` addresses (out-of-range port, negative port, `None`, `()`, an embedded-NUL
+hostname) and malformed `msg` values (`int`, `None`) all already convert cleanly to the `None`
+sentinel via the existing `except (OSError, MemoryError, TypeError)`; `select.poll.register()`/
+`unregister()`/`ipoll()`'s documented semantics (unsolicited `POLLERR`/`POLLHUP` reported regardless
+of the requested eventmask, `ipoll()` allocation-free iteration, `unregister()` being a no-op rather
+than an error for an already-unregistered stream) all match this file's actual usage; a hypothesized
+"sticky POLLERR" risk (current MicroPython docs warn that `POLLERR`/`POLLHUP` "must be acted on...
+otherwise subsequent calls will keep returning immediately with these flags set for that stream")
+turned out not to reproduce on this build - consuming the pending error once (via the real
+`recvfrom()` call raising and being caught, exactly what this file already does) clears it, confirmed
+by polling again afterward and observing a normal, non-instant timeout, then a fresh send/receive
+cycle working normally; MicroPython 1.28.0's `asyncio` still has no built-in UDP-readiness primitive
+(`open_connection()`/`start_server()` remain TCP-only per current upstream discussion), and
+`asyncio.Lock` remains documented as non-reentrant with the exact acquire/release semantics this
+file's design already assumes - both matching what the module docstring already claims. The existing
+`asy_udp_socket.py`↔real-rp2/lwIP-hardware verification gap flagged in the fourth pass (everything
+here is Unix-port-verified, not verified against real hardware's TCP/IP stack) remains open and
+unchanged - re-confirmed still accurate, not newly discovered.
+
+6 new tests (62 total): `ready()`'s three parameter fixes (`mask`, `timeout_ms`, `wait_time_ms`) each
+verified directly, plus one confirming the new `try`/`except` still lets cancellation through;
+`recvfrom()` (not just `ready()` in isolation) verified to surface the fix through the real public
+entry point callers actually use; `write_and_recvfrom()`'s `tries` fix verified across three malformed
+values (`None`, a `str`, a `list`). Re-verified: full-scope `scripts/lint.sh`/`scripts/typecheck.sh`
+still unchanged (219/129), 62/62 passing here, zero regressions across the rest of `tests/`
+(`scripts/test.sh`, all 12 files green, 752 tests total).
+
+#### `captive_dns.py` (`improved-quality/`, not promoted): source-subnet filtering fix
+
+Owner-directed follow-up to the `asy_udp_socket.py` sixth pass's two remaining open items: the real-
+hardware verification gap was judged too hypothetical to chase (dropped, not pursued); this one -
+`captive_dns.py`'s `mode="server"` socket receiving from anyone with no source-address check at all
+(originally flagged in the third pass, restated in the fourth) - was judged worth fixing, **with
+explicit owner sign-off to touch `improved-quality/` source files for it**, an exception to the
+standing hard rule against routine edits there (see CLAUDE.md).
+
+Fix: `DNSServer.run()` now takes a `netmask` parameter alongside `server_ip`, computes the AP's own
+network prefix once (`_ipv4_to_int(server_ip) & _ipv4_to_int(netmask)`), and rejects (silently
+`continue`s past, no response sent) any request whose source address doesn't fall in that same
+subnet - a captive-portal DNS server has no legitimate reason to answer a query from off its own AP.
+`async_connect.py`'s one real call site (`self.dns_server.run(own_ip)`, hotspot startup) updated to
+`self.wlan.ifconfig()[:2]` (confirmed via current MicroPython docs: `ifconfig()` returns `(ip,
+subnet_mask, gateway, dns)`, in that order) and pass both. `_ipv4_to_int()` is a small, dependency-
+free dotted-quad-to-int helper (no `ipaddress` module needed/assumed on MicroPython).
+
+**A real bug surfaced during verification, not just reasoned about - confirmed directly then fixed
+before this was considered done:** the first version's guard only caught `(TypeError, ValueError)`
+around the new subnet-membership check. Empirically driving the real `DNSServer.run()` loop (routed
+around this Unix-port test build's separate, already-documented plain-tuple-`bind()` limitation by
+substituting a `getaddrinfo()`-resolved `AsyUDPSocket`, same technique `tests/test_asy_udp_socket.py`
+already uses) surfaced a second, distinct Unix-port-only quirk: a socket bound via a resolved
+sockaddr returns an *opaque raw sockaddr* from `recvfrom()` here too, not a `(host, port)` tuple -
+`addr[0]` was a raw `int` (a sockaddr struct byte), not a string, and calling `.split(".")` on an
+`int` raises `AttributeError`, not `TypeError`/`ValueError` as first assumed. This escaped the narrow
+guard entirely and fell through to the loop's own broad `except Exception: ... await
+asyncio.sleep(3)` - not a crash, but a real, avoidable 3-second stall of the *entire* DNS server (and
+every other client waiting on it) per malformed packet. Fixed by adding `AttributeError` to the
+guard's tuple, verified via `sys.print_exception()` to pin down the exact exception type rather than
+guessing from the message alone. This is real, reproducible code behavior in this test environment,
+not the hypothetical "any `await` could theoretically raise" class of issue - matches the owner's own
+stated bar from the `asy_udp_socket.py` sixth pass for when this kind of hardening is actually worth
+it. (On real rp2 hardware, `addr[0]` is expected to always be a genuine string host per the installed
+stub - this guard is defense-in-depth there, not expected to ever actually fire.)
+
+**Verification, not a permanent test file**: `captive_dns.py` stays in `improved-quality/`, not
+promoted to `src/`, so this repo's established "tests belong once code is promoted" convention (see
+`src/README.md`, CLAUDE.md's hard rules) means no `tests/test_captive_dns.py` was added - matching
+how this fix was made (a targeted robustness patch, not a promotion). Verified instead via throwaway
+repro scripts (`/tmp/.../scratchpad/`, not committed): `_ipv4_to_int()` correctness against several
+realistic on-subnet/off-subnet/self/broadcast addresses; the real `DNSServer.run()` loop driven
+end-to-end confirming the subnet-check math functions inside the actual receive loop and that a
+malformed source address is silently ignored rather than crashing or stalling; and a full
+on-subnet/off-subnet/malformed-address decision-logic pass through the real `run()` coroutine (a fake
+`recvfrom()` feeding pre-shaped `(host: str, port: int)` tuples, since this Unix-port test
+environment can never itself produce that shape for this specific socket configuration) confirming
+exactly one of three requests gets answered - the on-subnet one - and the other two are cleanly
+ignored with zero replies sent and zero crashes. Re-verified: full-scope `scripts/lint.sh` 219→220
+(exactly one new finding - the new code's own `.format()` call, matching this file's pre-existing
+style rather than introducing f-strings inconsistently; not a regression elsewhere),
+`scripts/typecheck.sh` unchanged at 129, `scripts/test.sh` all 12 files green (752 tests, unaffected -
+`captive_dns.py` isn't imported by any of them).
+
+This resolves the third pass's "`captive_dns.py` doesn't check `addr` on the packets it receives
+today - flagged as out of scope for this transport-only module to fix" note and the fourth pass's
+parallel reference to the same gap - both were about `captive_dns.py`, not `asy_udp_socket.py` itself,
+and are closed by this fix rather than needing any further change in `asy_udp_socket.py`.
+
+#### `captive_dns.py`: `DNSQuery` unguarded against truncated/malformed query data
+
+Owner-directed bird's-eye follow-up pass over the whole file after the subnet-filtering fix above,
+looking specifically for more oversights of the same kind rather than assuming that fix was the only
+one. Found one: `DNSQuery.__init__` parses the raw datagram (`data[2]` for the opcode nibble, then
+walks length-prefixed labels starting at `data[12]`) with no bounds checking and no exception
+handling at all - a datagram shorter than 3 bytes, shorter than 13 bytes, or truncated/malformed
+mid-label all raise an uncaught `IndexError`; a label containing bytes that aren't valid UTF-8 raises
+`UnicodeError`. `DNSQuery(data, ...)` is constructed inside `DNSServer.run()`'s own try block, *after*
+the subnet-membership check, so any on-subnet client - not necessarily malicious, just a flaky Wi-Fi
+client, a stray port-scanner, or a buggy resolver - reaching this with a short or malformed packet
+falls through to the loop's broad `except Exception: ... await asyncio.sleep(3)`, stalling the entire
+DNS server (every other client waiting on it too) for 3 seconds per bad packet. Same class of bug as
+the `addr[0]`/`AttributeError` one found while verifying the subnet-filter fix, just in the
+query-parsing path instead of the address-parsing path - and by the same "concrete, reproducible, not
+hypothetical" bar the owner set during the `asy_udp_socket.py` sixth pass, this one clears it too:
+
+```
+MICROPYPATH="improved-quality:src:.:/root/pico-toolchain/micropython/extmod" micropython repro.py
+0 RAISED IndexError bytes index out of range   # b""
+1 RAISED IndexError bytes index out of range   # b"\x00"
+2 RAISED IndexError bytes index out of range   # b"\x00\x00"
+3 RAISED IndexError bytes index out of range   # 3 bytes, tipo==0 but len<13
+4 RAISED IndexError bytes index out of range   # exactly 12 bytes
+5 RAISED IndexError bytes index out of range   # length byte with no bytes following
+6 RAISED IndexError bytes index out of range   # one label then truncated
+7 RAISED UnicodeError                          # label containing an invalid UTF-8 byte (0xff)
+```
+
+Fix: wrapped the opcode-extraction-through-label-walk block in `try: ... except (IndexError,
+UnicodeError): self.domain = ""`. Reuses the file's own existing sentinel rather than inventing a new
+one - `self.domain == ""` was already how a non-standard-query (`tipo != 0`) says "don't respond"
+(`response()`'s `if self.domain:` gate). Re-ran the same 8 malformed inputs after the fix: all resolve
+to `domain == ""` instead of raising; a well-formed query (`"a.io"`) still parses to `"a.io."` and
+still produces a valid response packet, confirming the fix doesn't change legitimate-query behavior.
+
+Verified the same way as the subnet-filter fix - no permanent test file (`captive_dns.py` still isn't
+promoted to `src/`), throwaway scratchpad repro scripts only. Re-ran full-scope
+`scripts/lint.sh`/`scripts/typecheck.sh`/`scripts/test.sh`: 220/129 unchanged (no new findings from
+this fix), all 12 `tests/` files green, 752 tests total, unaffected (`captive_dns.py` isn't imported
+by any of them).
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
@@ -1229,7 +1840,12 @@ and a missing config file failing independently without either derailing the oth
 
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
-`asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 58 — **690 total**.
+`asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 58,
+`asy_udp_socket.py` 62 — **752 total**. (Previous count of 690 across 11 files predated
+`asy_udp_socket.py`'s promotion and was never updated to include it — corrected during its
+third pass; the 23→42 jump was its fourth pass's uncaught-exception/configuration/integration
+test additions; 42→56 is its fifth pass's mutation-bypass/concurrency/cancellation-safety tests;
+56→62 is its sixth pass's ready()/write_and_recvfrom() parameter-guard tests.)
 
 ## Decided for the refactor
 
@@ -1248,6 +1864,28 @@ and a missing config file failing independently without either derailing the oth
 - Neopixel warning-flash sequencing and the task-supervisor error-budget counter are both
   behaviorally correct and intentional as designed, but flagged by owner as implementable more
   efficiently — worth a cleaner implementation in the refactor without changing observed behavior.
+- **Standing scope convention for exception-handling audits**: wrapping every `asyncio` primitive
+  call (`asyncio.sleep()`, `Lock.acquire()`, etc.) in `try`/`except` against a theoretical internal
+  `MemoryError` is overkill and outside good code standard as a blanket policy — don't chase this
+  class of issue project-wide. Only worth closing when a concrete, non-hypothetical threat exists in
+  a specific context (e.g. a real caller-supplied value reaching an unguarded comparison/construct,
+  as the `asy_udp_socket.py` sixth pass's two actual fixes were), not just "any `await` could
+  theoretically raise." Confirmed by owner directly, prompted by `asy_udp_socket.py`'s open question
+  #14 (see below).
+- **Mypy shall be configured to not accept `Any` types** (owner-specified). The closest existing
+  mypy option is `disallow_any_explicit` (flags explicit `Any` annotations); `[tool.mypy]` in
+  `pyproject.toml` currently deliberately stops short of it and the other `--strict`-only checks
+  (`disallow_any_generics`, `disallow_untyped_calls`, `disallow_subclassing_any` — see that
+  section's own comment). Not yet implemented — noted here as a decision, not done. **Blast radius
+  check before flipping it**: as of the `asy_udp_socket.py` sixth pass, `Any` appears ~29 times
+  across `src/` and in all 12 `tests/test_*.py` files (20 of those in `tests/test_asy_udp_socket.py`
+  alone) — almost entirely in test-file monkeypatch/wrapper classes that duck-type a real
+  MicroPython object (e.g. `_MemoryErrorSocketWrapper.__getattr__(self, name: str) -> "Any"`,
+  `*a: "Any", **k: "Any"` passthrough signatures) rather than reimplementing its full interface.
+  Turning this on will surface real findings across most/all of `tests/`, not just a couple of
+  files — likely needs a real typing strategy for these wrappers (e.g. `Protocol` classes matching
+  just the methods each wrapper actually overrides, plus `__getattr__` delegation) worked out
+  first, not just a mechanical flag flip.
 
 ## Functional clarifications (confirmed by owner, not obvious from code alone)
 
@@ -1296,12 +1934,16 @@ and a missing config file failing independently without either derailing the oth
     small config file is fast enough not to matter is a hardware-timing question this dev
     environment can't verify — needs either a real-hardware measurement or an owner call on wiring
     it in proactively.
-
 *(Questions #2–7, #9, #10 were resolved during earlier sessions — SGP40 FRAM backup semantics,
 no external schematics exist, arzi/neu's static `AmbPres` is accepted, Adafruit-derived code is
 refactor-fair-game, `get_long_block_lock()` is now a general convention, `neu` reusing arzi's HTML
 is fine, the hardcoded fallback-hotspot password risk is accepted for now, and `.gitignore` now
-exists — see git history if the original reasoning is needed.)*
+exists — see git history if the original reasoning is needed. Question #14 — `asy_udp_socket.py`'s
+`_connect()`/`disconnect()` calling bare `asyncio.sleep()`/`Lock.acquire()` with no `try`/`except` of
+their own — was resolved the same session it was raised: **decided not worth closing.** Wrapping
+every `asyncio` primitive call in `try`/`except` against a theoretical internal `MemoryError` is
+overkill and outside good practice as a blanket policy; not pursued further unless a concrete,
+non-hypothetical threat in a specific context justifies it. Accepted as residual risk.)*
 
 ## Deferred / explicitly out-of-scope work
 
