@@ -6,10 +6,22 @@ write_and_recvfrom()) and captive_dns.py's DNSServer (mode="server", one long-li
 bind() then a persistent recvfrom()/sendto() loop). Also usable as `async with AsyUDPSocket(...)
 as sock:`, matching async_connect.py's actual acquire/use/release-in-finally usage.
 
-Shared contract: every public method returns its documented None-shaped sentinel on any socket
-failure (OSError) - never raises. Unlike the I2C/SPI bus-driver carve-out in src/README.md, no
-raw OSError is ever allowed to propagate here: network faults (unreachable host, a transient
-route/DNS failure) are expected, recoverable conditions, not hardware bugs to surface upward.
+Shared contract: every public I/O method (ready, sendto, write, recvfrom, write_and_recvfrom,
+disconnect) returns its documented None-shaped sentinel on any socket failure (OSError) or
+allocation failure (MemoryError - confirmed directly it is NOT an OSError subclass in
+MicroPython, and realistic on RP2040's 264KB SRAM for a device meant to run unattended for years)
+- neither is ever allowed to propagate from these methods. Unlike the I2C/SPI bus-driver carve-out
+in src/README.md, no raw failure escapes here: network faults (unreachable host, a transient
+route/DNS failure) and allocation pressure are expected, recoverable conditions, not hardware bugs
+to surface upward.
+
+The one deliberate exception is __init__ itself: mode/addr/conn_tries are validated eagerly and
+raise ValueError/TypeError for a structurally invalid value - a bad constructor argument is a
+programmer error, not a runtime network condition. Confirmed directly: an invalid mode used to
+busy-loop forever with zero await points (a genuine unrecoverable lockup, not just a slow path -
+the underlying coroutine never yields, so nothing else in the whole event loop can run either),
+and a malformed addr/conn_tries used to raise an uncaught TypeError from deep inside _connect(),
+bypassing every except clause in this file.
 
 Content-agnostic transport: this module moves bytes and never inspects them - a datagram's
 header/length validity (NTP, DNS, or otherwise) is entirely the caller's concern. Two POSIX-level
@@ -51,6 +63,25 @@ class AsyUDPSocket:
         mode: 'Literal["client", "server"]' = "client",
         conn_tries: int = 1,
     ) -> None:
+        # Fail fast here rather than deep inside async code later - see the module docstring's
+        # "one deliberate exception" paragraph for why this is the one place in the file allowed
+        # to raise.
+        if mode not in ("client", "server"):
+            raise ValueError(f"mode must be 'client' or 'server', got {mode!r}")
+        # addr is only validated when given as the documented tuple[str, int] shape - this file
+        # only ever passes addr through untouched to socket.connect()/bind()/sendto() (see module
+        # docstring), and a pre-resolved opaque sockaddr (bytes/bytearray - what some platforms'
+        # socket.getaddrinfo() actually returns, confirmed directly on this project's own
+        # MicroPython Unix-port test build) is just as legitimate as a plain tuple; this file has
+        # no business inspecting its internals.
+        if isinstance(addr, tuple):
+            if not (len(addr) == 2 and isinstance(addr[0], str) and isinstance(addr[1], int)):
+                raise TypeError(f"addr tuple must be (host: str, port: int), got {addr!r}")
+        elif not isinstance(addr, (bytes, bytearray)):  # type: ignore[unreachable]  # mypy sees addr: tuple[str, int] and considers this branch unreachable; it's real at runtime for the reason above
+            raise TypeError(f"addr must be a (host: str, port: int) tuple or a pre-resolved sockaddr, got {addr!r}")
+        if not isinstance(conn_tries, int):
+            raise TypeError(f"conn_tries must be an int, got {conn_tries!r}")
+
         self.addr = addr
         self.sock: socket.socket | None = None
         self.poller: select.poll | None = None
@@ -74,7 +105,10 @@ class AsyUDPSocket:
         # Lazy, one-shot-per-socket setup. Self-heals via disconnect() below on any failure -
         # setup itself (e.g. resource exhaustion) or every conn_tries attempt exhausted - so the
         # next call gets a fresh attempt instead of a permanently no-op _connect() or an uncaught
-        # exception, matching this file's own "never raises" contract.
+        # exception, matching this file's own "never raises" contract. MemoryError is caught
+        # alongside OSError throughout this method (see module docstring) - mode is guaranteed to
+        # already be "client" or "server" by __init__'s validation, so the retry loop only needs
+        # the two real branches.
         if self.sock is None:
             try:
                 self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -88,17 +122,14 @@ class AsyUDPSocket:
                     try:
                         if self.mode == "client":
                             self.sock.connect(self.addr)
-                            self.connected = True
-                        elif self.mode == "server":
-                            self.sock.bind(self.addr)
-                            self.connected = True
                         else:
-                            self.connected = False  # type: ignore[unreachable]
-                    except OSError:
+                            self.sock.bind(self.addr)
+                        self.connected = True
+                    except (OSError, MemoryError):
                         tries += 1
                         await asyncio.sleep(_RETRY_BACKOFF_S)
                         self.connected = False
-            except OSError:
+            except (OSError, MemoryError):
                 # socket()/setsockopt()/poll()/register() itself failed - same backoff as a
                 # connect/bind failure, so a persistent failure (e.g. resource exhaustion) can't
                 # busy-loop either.
@@ -128,6 +159,8 @@ class AsyUDPSocket:
             return False
         t0 = time.ticks_ms()
         while True:
+            if self.poller is None:  # a concurrent disconnect() on this same instance can null
+                return False  # type: ignore[unreachable]  # this mid-loop - confirmed directly (AttributeError otherwise); mypy's static narrowing can't see the mutation
             res = self.poller.ipoll(0)
             for _, event in res:
                 if event & (mask | select.POLLERR | select.POLLHUP):
@@ -145,7 +178,7 @@ class AsyUDPSocket:
         if await self.ready(select.POLLOUT, timeout_ms=timeout_ms) and self.sock is not None:
             try:
                 return self.sock.sendto(msg, addr)
-            except OSError:
+            except (OSError, MemoryError):
                 pass
         return None
 
@@ -153,7 +186,7 @@ class AsyUDPSocket:
         if await self.ready(select.POLLOUT, timeout_ms=timeout_ms) and self.sock is not None:
             try:
                 return self.sock.write(msg)
-            except OSError:
+            except (OSError, MemoryError):
                 pass
         return None
 
@@ -161,7 +194,7 @@ class AsyUDPSocket:
         if await self.ready(select.POLLIN, timeout_ms=timeout_ms) and self.sock is not None:
             try:
                 return self.sock.recvfrom(buf)
-            except OSError:
+            except (OSError, MemoryError):
                 pass
         return None, None
 
@@ -182,13 +215,22 @@ class AsyUDPSocket:
         return None, None
 
     async def disconnect(self) -> None:
+        # Eagerly clears this object's own state before attempting the actual teardown calls, so
+        # a failure partway through can no longer leave it stuck in a broken half-connected state
+        # forever - confirmed directly: a raising unregister() used to leave self.sock/
+        # self.poller/self.connected exactly as they were, permanently, since the exception
+        # aborted the rest of this method before sock.close()/self.sock = None ever ran.
         if self.sock is not None:
+            sock, poller = self.sock, self.poller
+            self.sock = None
+            self.poller = None
+            self.connected = False
             try:
-                if self.poller is not None:
-                    self.poller.unregister(self.sock)
-                    self.poller = None
-                self.sock.close()
-                self.connected = False
-                self.sock = None
-            except OSError:
+                if poller is not None:
+                    poller.unregister(sock)
+            except (OSError, MemoryError):
+                pass
+            try:
+                sock.close()
+            except (OSError, MemoryError):
                 pass

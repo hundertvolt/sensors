@@ -41,6 +41,118 @@ def make_addr() -> tuple[str, int]:  # a fresh loopback port per call, so tests 
     return socket.getaddrinfo(_HOST, _next_port)[0][-1]  # type: ignore[return-value]
 
 
+def make_port() -> int:  # a fresh port number only, for tests that build their own addr tuples
+    global _next_port
+    _next_port += 1
+    return _next_port
+
+
+def resolve_addr(host: str, port: int) -> tuple[str, int]:
+    # Same Unix-port-only workaround as make_addr() above, for a test-chosen (host, port) - e.g.
+    # "0.0.0.0", or a deliberately unreachable address - rather than a fresh loopback port.
+    return socket.getaddrinfo(host, port)[0][-1]  # type: ignore[return-value]
+
+
+# ---------------------------------------------------------------------------
+# __init__ configuration: every valid combination, single and multiple invalid parameter
+# recombinations. These only construct the object - no real socket call happens until _connect()
+# runs, so a plain (unresolved) tuple is safe here even though it can't be handed to this
+# project's own MicroPython Unix-port build's connect()/bind()/sendto() (see make_addr() above).
+# ---------------------------------------------------------------------------
+
+
+def test_init_accepts_every_valid_mode_and_conn_tries_combination() -> None:
+    for mode in ("client", "server"):
+        for conn_tries in (1, 3, 0, -1):  # 0/negative are valid, degenerate "never even try" values
+            sock = AsyUDPSocket(("127.0.0.1", 12345), mode=mode, conn_tries=conn_tries)
+            assert sock.mode == mode
+            assert sock.conn_tries == conn_tries
+            assert sock.connected is False
+            assert sock.sock is None
+
+
+def test_init_accepts_a_pre_resolved_bytes_like_addr() -> None:
+    # Some platforms' socket.getaddrinfo() returns an opaque sockaddr (bytes/bytearray), not a
+    # tuple - confirmed directly on this project's own MicroPython Unix-port test build. This
+    # file only ever passes addr through untouched, so construction must accept this shape too,
+    # not just the documented tuple[str, int] shape real hardware always uses.
+    resolved = socket.getaddrinfo("127.0.0.1", 51500)[0][-1]
+    sock = AsyUDPSocket(resolved, mode="server")  # type: ignore[arg-type]
+    assert sock.addr == resolved
+
+
+def test_init_rejects_invalid_mode() -> None:
+    # Bug: an invalid mode used to busy-loop forever inside _connect() with zero await points -
+    # a genuine unrecoverable lockup (confirmed directly: the process had to be hard-killed even
+    # under asyncio.wait_for(), since the offending coroutine never yields control back to the
+    # scheduler for the timeout to fire). Fixed: validated eagerly here instead, so the bad value
+    # is rejected before _connect() is ever reachable.
+    for bad_mode in ("bogus", "", "CLIENT", "client ", None, 123):
+        try:
+            AsyUDPSocket(("127.0.0.1", 12345), mode=bad_mode)  # type: ignore[arg-type]
+            raise AssertionError(f"expected ValueError for mode={bad_mode!r}")
+        except ValueError:
+            pass
+
+
+def test_init_rejects_malformed_addr_tuple() -> None:
+    # Bug: a malformed addr tuple (right shape, wrong element types) used to raise an uncaught
+    # TypeError from deep inside _connect()'s sock.connect()/bind() call - confirmed directly,
+    # bypassing every except OSError clause in the file. Fixed: validated eagerly here.
+    for bad_addr in (
+        (12345, 80),  # host not a str
+        ("127.0.0.1", "80"),  # port not an int
+        ("127.0.0.1",),  # wrong length
+        ("127.0.0.1", 80, 0, 0),  # wrong length
+        (),
+    ):
+        try:
+            AsyUDPSocket(bad_addr, mode="client")  # type: ignore[arg-type]
+            raise AssertionError(f"expected TypeError for addr={bad_addr!r}")
+        except TypeError:
+            pass
+
+
+def test_init_rejects_addr_of_the_wrong_type_entirely() -> None:
+    for bad_addr in (None, 12345, "127.0.0.1", ["127.0.0.1", 80], 3.14):
+        try:
+            AsyUDPSocket(bad_addr, mode="client")  # type: ignore[arg-type]
+            raise AssertionError(f"expected TypeError for addr={bad_addr!r}")
+        except TypeError:
+            pass
+
+
+def test_init_rejects_non_int_conn_tries() -> None:
+    for bad_conn_tries in (None, "3", 1.5, [1]):
+        try:
+            AsyUDPSocket(("127.0.0.1", 12345), mode="client", conn_tries=bad_conn_tries)  # type: ignore[arg-type]
+            raise AssertionError(f"expected TypeError for conn_tries={bad_conn_tries!r}")
+        except TypeError:
+            pass
+
+
+def test_init_rejects_multiple_invalid_parameters_at_once() -> None:
+    # Multiple invalid parameters together must still fail cleanly - not silently succeed, not
+    # crash with something other than ValueError/TypeError.
+    try:
+        AsyUDPSocket(("bad", "addr", "shape"), mode="bogus", conn_tries=None)  # type: ignore[arg-type]
+        raise AssertionError("expected an exception for all-invalid parameters")
+    except (ValueError, TypeError):
+        pass
+
+    try:
+        AsyUDPSocket(12345, mode="client", conn_tries="nope")  # type: ignore[arg-type]
+        raise AssertionError("expected an exception for addr+conn_tries both invalid")
+    except (ValueError, TypeError):
+        pass
+
+    try:
+        AsyUDPSocket(None, mode=42, conn_tries=1.5)  # type: ignore[arg-type]
+        raise AssertionError("expected an exception for addr+mode+conn_tries all invalid")
+    except (ValueError, TypeError):
+        pass
+
+
 # ---------------------------------------------------------------------------
 # Lazy connect + basic client/server round trip
 # ---------------------------------------------------------------------------
@@ -419,6 +531,208 @@ def test_ready_default_wait_time_ms_does_not_busy_spin() -> None:
 
 
 # ---------------------------------------------------------------------------
+# MemoryError must be caught everywhere OSError is - confirmed directly it is NOT an OSError
+# subclass in MicroPython, and RP2040's 264KB SRAM makes allocation failure realistic.
+# ---------------------------------------------------------------------------
+
+
+class _MemoryErrorOnceSocketModule:
+    # Same monkeypatch technique as _RaisingSocketModule below - socket() itself raises
+    # MemoryError instead of OSError, proving _connect()'s outer try/except catches it too.
+    AF_INET = socket.AF_INET
+    SOCK_DGRAM = socket.SOCK_DGRAM
+    SOL_SOCKET = socket.SOL_SOCKET
+    SO_REUSEADDR = socket.SO_REUSEADDR
+
+    def socket(self, af: int, type: int) -> "Any":
+        raise MemoryError("simulated allocation failure")
+
+
+def test_connect_setup_memoryerror_self_heals_instead_of_raising() -> None:
+    addr = make_addr()
+    sock = AsyUDPSocket(addr, mode="server")
+    original_socket = asy_udp_socket.socket
+    asy_udp_socket.socket = _MemoryErrorOnceSocketModule()  # type: ignore[assignment]
+    try:
+        run(sock._connect())  # must not raise despite socket() raising MemoryError
+    finally:
+        asy_udp_socket.socket = original_socket
+
+    assert sock.connected is False
+    assert sock.sock is None
+
+    try:
+        run(sock._connect())  # the fault is gone now - should self-heal and succeed
+        assert sock.connected is True
+    finally:
+        run(sock.disconnect())
+
+
+class _MemoryErrorSocketWrapper:
+    # Wraps a real, already-connected/bound socket - sendto()/write()/recvfrom() all raise
+    # MemoryError instead of doing real I/O, proving each public method's except clause catches
+    # it too, not just OSError. Everything else (close(), used by disconnect()) falls through to
+    # the real socket via __getattr__.
+    def __init__(self, real: "Any") -> None:
+        self._real = real
+
+    def sendto(self, *a: "Any", **k: "Any") -> "Any":
+        raise MemoryError("simulated allocation failure")
+
+    def write(self, *a: "Any", **k: "Any") -> "Any":
+        raise MemoryError("simulated allocation failure")
+
+    def recvfrom(self, *a: "Any", **k: "Any") -> "Any":
+        raise MemoryError("simulated allocation failure")
+
+    def __getattr__(self, name: str) -> "Any":
+        return getattr(self._real, name)
+
+
+def test_write_returns_none_sentinel_on_memoryerror() -> None:
+    addr = make_addr()
+
+    async def scenario() -> int | None:
+        client = AsyUDPSocket(addr, mode="client")
+        try:
+            await client._connect()
+            assert client.sock is not None
+            client.sock = _MemoryErrorSocketWrapper(client.sock)  # type: ignore[assignment]
+            return await client.write(b"x")
+        finally:
+            await client.disconnect()
+
+    assert run(scenario()) is None
+
+
+def test_sendto_returns_none_sentinel_on_memoryerror() -> None:
+    addr = make_addr()
+
+    async def scenario() -> int | None:
+        server = AsyUDPSocket(addr, mode="server")
+        try:
+            await server._connect()
+            assert server.sock is not None
+            server.sock = _MemoryErrorSocketWrapper(server.sock)  # type: ignore[assignment]
+            return await server.sendto(b"x", addr)
+        finally:
+            await server.disconnect()
+
+    assert run(scenario()) is None
+
+
+def test_recvfrom_returns_none_sentinel_on_memoryerror() -> None:
+    addr = make_addr()
+    peer_addr = make_addr()
+
+    async def scenario() -> tuple[bytes | None, tuple[str, int] | None]:
+        server = AsyUDPSocket(addr, mode="server")
+        peer = AdversarialPeer(peer_addr)
+        try:
+            await server._connect()
+            peer.sock.sendto(b"data", addr)
+            await asyncio.sleep(0.05)  # a genuinely pending datagram, so recvfrom() actually
+            # reaches sock.recvfrom() instead of timing out inside ready() first
+            assert server.sock is not None
+            server.sock = _MemoryErrorSocketWrapper(server.sock)  # type: ignore[assignment]
+            return await server.recvfrom(64, timeout_ms=200)
+        finally:
+            peer.close()
+            await server.disconnect()
+
+    assert run(scenario()) == (None, None)
+
+
+# ---------------------------------------------------------------------------
+# disconnect() must clear its own state even when unregister()/close() themselves fail
+# ---------------------------------------------------------------------------
+
+
+class _RaisingUnregisterPoller:
+    # unregister() raises - register()/ipoll() still delegate to the real poller so the rest of
+    # the object's lifecycle (which already ran before this gets swapped in) is unaffected.
+    def __init__(self, real: "Any") -> None:
+        self._real = real
+
+    def unregister(self, sock: "Any") -> None:
+        raise OSError("simulated unregister failure")
+
+    def register(self, *a: "Any", **k: "Any") -> "Any":
+        return self._real.register(*a, **k)
+
+    def ipoll(self, *a: "Any", **k: "Any") -> "Any":
+        return self._real.ipoll(*a, **k)
+
+
+def test_disconnect_clears_state_even_when_unregister_raises() -> None:
+    # Bug: disconnect()'s single try/except wrapped unregister()+close()+state-clearing together
+    # - a raising unregister() aborted the whole block before self.sock/self.poller/self.connected
+    # were ever reset, confirmed directly: the object was left stuck in a broken half-connected
+    # state forever, with no self-heal (unlike every other failure path in this file).
+    addr = make_addr()
+
+    async def scenario() -> tuple[bool, bool, bool]:
+        sock = AsyUDPSocket(addr, mode="server")
+        await sock._connect()
+        assert sock.connected
+        real_poller = sock.poller
+        sock.poller = _RaisingUnregisterPoller(real_poller)  # type: ignore[assignment]
+        await sock.disconnect()
+        return sock.sock is None, sock.poller is None, sock.connected is False
+
+    sock_cleared, poller_cleared, not_connected = run(scenario())
+    assert sock_cleared and poller_cleared and not_connected
+
+
+# ---------------------------------------------------------------------------
+# ready() must survive a concurrent disconnect() on the same instance
+# ---------------------------------------------------------------------------
+
+
+class _DisconnectingPoller:
+    # Wraps a real poller but nulls the owning AsyUDPSocket's self.poller the first time ipoll()
+    # is called - simulates disconnect() firing concurrently on the same instance from another
+    # coroutine while ready()'s poll loop is still in flight.
+    def __init__(self, owner: "AsyUDPSocket", real: "Any") -> None:
+        self.owner = owner
+        self._real = real
+        self.fired = False
+
+    def register(self, *a: "Any", **k: "Any") -> "Any":
+        return self._real.register(*a, **k)
+
+    def ipoll(self, *a: "Any", **k: "Any") -> "Any":
+        if not self.fired:
+            self.fired = True
+            self.owner.poller = None
+        return self._real.ipoll(*a, **k)
+
+
+def test_ready_survives_a_concurrent_disconnect_mid_poll_loop() -> None:
+    # Bug: ready()'s poll loop only checked `self.poller is None` once, before the loop - if
+    # another coroutine called disconnect() on the same instance mid-loop, the next
+    # self.poller.ipoll(0) crashed with AttributeError ('NoneType' has no attribute 'ipoll'),
+    # confirmed directly. Neither real caller does this today (both use one AsyUDPSocket from a
+    # single coroutine at a time), but nothing in this file enforced or even documented that
+    # constraint - fixed defensively instead: ready() now re-checks every iteration and returns
+    # False, matching this file's own "never raises" contract instead of relying on callers to
+    # never race it.
+    addr = make_addr()
+
+    async def scenario() -> bool:
+        sock = AsyUDPSocket(addr, mode="server")
+        try:
+            await sock._connect()
+            real_poller = sock.poller
+            sock.poller = _DisconnectingPoller(sock, real_poller)  # type: ignore[assignment]
+            return await sock.ready(select.POLLIN, timeout_ms=200, wait_time_ms=10)
+        finally:
+            await sock.disconnect()
+
+    assert run(scenario()) is False
+
+
+# ---------------------------------------------------------------------------
 # _connect() retry/self-heal
 # ---------------------------------------------------------------------------
 
@@ -687,6 +1001,212 @@ def test_async_context_manager_disconnects_even_on_exception() -> None:
     sock = run(scenario())
     assert sock.sock is None
     assert sock.connected is False
+
+
+# ---------------------------------------------------------------------------
+# Integration-level: exact real-world call patterns, informed by (not importing - improved-
+# quality/ stays out of scope per CLAUDE.md) the current upstream callers async_connect.py's NTP
+# client and captive_dns.py's DNSServer, plus how a real UDP fault propagates up through each
+# processing path. These mirror each caller's documented, stable call shape (mode, buffer sizes,
+# timeout/tries, acquire-use-release pattern) rather than importing WIP implementation details
+# that could change during the refactor - proving the *contract* is robust protects any future
+# refactored caller too, not just today's.
+# ---------------------------------------------------------------------------
+
+
+def test_ntp_client_pattern_end_to_end_success() -> None:
+    # Mirrors async_connect.py's exact NTP call shape: AsyUDPSocket(addr, mode="client"),
+    # write_and_recvfrom(48-byte NTP request, 1024-byte buffer, timeout_ms=...), disconnect()
+    # called once on the success path AND unconditionally again in finally - proving that
+    # double-disconnect() (already proven idempotent in isolation) is genuinely safe in this
+    # exact real usage shape too, and that the caller's broad `except Exception` backstop is
+    # never actually needed.
+    server_addr = make_addr()
+    ntp_request = b"\x1b" + bytearray(47)
+    ntp_reply = b"\x1c" + bytearray(47)  # a realistic 48-byte NTP-shaped reply
+
+    async def responder(peer: AdversarialPeer) -> None:
+        _, from_addr = await peer.recv(1024, timeout_ms=1000)
+        assert from_addr is not None
+        peer.sock.sendto(ntp_reply, from_addr)
+
+    async def scenario() -> tuple[bytes | None, bool]:
+        peer = AdversarialPeer(server_addr)
+        exception_hit = False
+        cli = None
+        msg: bytes | None = None
+        try:
+            responder_task = asyncio.create_task(responder(peer))
+            cli = AsyUDPSocket(server_addr, mode="client")
+            msg, add = await cli.write_and_recvfrom(ntp_request, 1024, timeout_ms=1000)
+            del add
+            await cli.disconnect()
+            await responder_task
+        except Exception:
+            cli = msg = None
+            exception_hit = True
+        finally:
+            if cli is not None:
+                await cli.disconnect()
+            peer.close()
+        return msg, exception_hit
+
+    msg, exception_hit = run(scenario())
+    assert msg == ntp_reply
+    assert exception_hit is False  # asy_udp_socket.py's own contract never needed this backstop
+
+
+def test_ntp_client_pattern_no_server_reachable() -> None:
+    # Mirrors the exact same call shape against an address nobody listens on (a real network
+    # fault: ICMP port-unreachable, exactly like a genuinely offline NTP server) - proving msg
+    # ends up None (matching the real "if msg is None: retry" branch downstream) without ever
+    # needing the caller's broad except Exception backstop.
+    server_addr = make_addr()  # nobody ever binds/listens here
+    ntp_request = b"\x1b" + bytearray(47)
+
+    async def scenario() -> tuple[bytes | None, bool]:
+        exception_hit = False
+        cli = None
+        msg: bytes | None = None
+        try:
+            cli = AsyUDPSocket(server_addr, mode="client")
+            msg, add = await cli.write_and_recvfrom(ntp_request, 1024, timeout_ms=500)
+            del add
+            await cli.disconnect()
+        except Exception:
+            cli = msg = None
+            exception_hit = True
+        finally:
+            if cli is not None:
+                await cli.disconnect()
+        return msg, exception_hit
+
+    msg, exception_hit = run(scenario())
+    assert msg is None
+    assert exception_hit is False
+
+
+def test_ntp_client_pattern_garbage_reply_is_delivered_not_rejected() -> None:
+    # Content-agnostic transport, exercised through the exact real call shape: a "server" that
+    # replies with garbage (not a valid 48-byte NTP packet at all) must still be delivered
+    # faithfully - validating NTP structure is async_connect.py's own job, not this module's.
+    server_addr = make_addr()
+    ntp_request = b"\x1b" + bytearray(47)
+    garbage_reply = b"\x00\x01\x02not-an-ntp-packet-at-all" * 3
+
+    async def responder(peer: AdversarialPeer) -> None:
+        _, from_addr = await peer.recv(1024, timeout_ms=1000)
+        assert from_addr is not None
+        peer.sock.sendto(garbage_reply, from_addr)
+
+    async def scenario() -> bytes | None:
+        peer = AdversarialPeer(server_addr)
+        cli = AsyUDPSocket(server_addr, mode="client")
+        try:
+            responder_task = asyncio.create_task(responder(peer))
+            msg, _ = await cli.write_and_recvfrom(ntp_request, 1024, timeout_ms=1000)
+            await responder_task
+            return msg
+        finally:
+            await cli.disconnect()
+            peer.close()
+
+    assert run(scenario()) == garbage_reply
+
+
+def test_dns_server_pattern_bound_to_all_interfaces_end_to_end() -> None:
+    # Mirrors captive_dns.py's exact DNSServer call shape: AsyUDPSocket(("0.0.0.0", port),
+    # mode="server"), recvfrom(4096), conditional sendto(response, addr) - including the real
+    # 0.0.0.0-bind-then-receive-via-127.0.0.1-targeted-traffic path (every other test in this
+    # file binds and targets 127.0.0.1 directly, never exercising a real "any interface" bind).
+    port = make_port()
+    server_addr = resolve_addr("0.0.0.0", port)
+    client_target_addr = resolve_addr("127.0.0.1", port)
+    query = b"\x00\x01fake-dns-query"
+    response = b"\x00\x01fake-dns-response"
+
+    async def scenario() -> tuple[bytes | None, tuple[str, int] | None, bytes]:
+        server = AsyUDPSocket(server_addr, mode="server")
+        client = AdversarialPeer(make_addr())
+        try:
+            await server._connect()
+            client.sock.sendto(query, client_target_addr)
+            data, addr = await server.recvfrom(4096, timeout_ms=1000)
+            if data is not None and addr is not None:  # captive_dns.py's exact guard
+                await server.sendto(response, addr)
+            reply, _ = await client.recv(4096, timeout_ms=1000)
+            return data, addr, reply
+        finally:
+            client.close()
+            await server.disconnect()
+
+    data, addr, reply = run(scenario())
+    assert data == query
+    # addr's exact representation is platform-opaque on this Unix-port build too (recvfrom()'s
+    # returned address is a raw bytearray sockaddr here, not a (host, port) tuple - the same
+    # quirk make_addr()/resolve_addr() already work around for getaddrinfo()) - only its
+    # existence (used to route the reply below) is this test's concern, not its shape.
+    assert addr is not None
+    assert reply == response
+
+
+def test_dns_server_pattern_recvfrom_never_returns_a_mismatched_pair() -> None:
+    # captive_dns.py's exact guard is `if data is not None and addr is not None:` - implicitly
+    # assuming these are always both-set or both-None together. Confirm that assumption actually
+    # holds: recvfrom() never returns (bytes, None) or (None, tuple) in either the timeout or the
+    # success path.
+    addr = make_addr()
+    peer_addr = make_addr()
+
+    async def scenario() -> tuple[tuple[bytes | None, tuple[str, int] | None], tuple[bytes | None, tuple[str, int] | None]]:
+        server = AsyUDPSocket(addr, mode="server")
+        peer = AdversarialPeer(peer_addr)
+        try:
+            await server._connect()
+            timeout_result = await server.recvfrom(64, timeout_ms=100)  # nobody sends - timeout path
+            peer.sock.sendto(b"real query", addr)
+            success_result = await server.recvfrom(64, timeout_ms=500)  # success path
+            return timeout_result, success_result
+        finally:
+            peer.close()
+            await server.disconnect()
+
+    timeout_result, success_result = run(scenario())
+    assert timeout_result == (None, None)
+    assert (success_result[0] is None) == (success_result[1] is None)  # always paired, never mismatched
+    assert success_result[0] == b"real query"
+
+
+def test_dns_server_pattern_sendto_failure_does_not_corrupt_subsequent_serving() -> None:
+    # captive_dns.py discards sendto()'s return value entirely (`await self.udps.sendto(packet,
+    # addr)`) - a failed reply (e.g. the resolving client's route disappearing mid-response) is
+    # silently swallowed one level above this module, never observed or logged by the real caller
+    # today (flagged in BACKLOG.md - out of scope to fix inside captive_dns.py itself). What this
+    # module IS responsible for: proving that failure can't corrupt the *server socket* for the
+    # next, unrelated query in the same long-lived DNSServer loop - this is exactly "how a real
+    # UDP fault could propagate up through the processing path" for this caller's shape.
+    addr = make_addr()
+    unreachable_client_addr = resolve_addr("10.255.255.254", 12345)  # never routable in this environment
+    real_peer_addr = make_addr()
+
+    async def scenario() -> bytes | None:
+        server = AsyUDPSocket(addr, mode="server")
+        peer = AdversarialPeer(real_peer_addr)
+        try:
+            await server._connect()
+            await server.sendto(b"reply to nobody", unreachable_client_addr)  # never raises either way
+
+            peer.sock.sendto(b"next real query", addr)
+            data, from_addr = await server.recvfrom(64, timeout_ms=500)
+            assert from_addr is not None
+            await server.sendto(b"real reply", from_addr)
+            reply, _ = await peer.recv(64, timeout_ms=500)
+            return reply
+        finally:
+            peer.close()
+            await server.disconnect()
+
+    assert run(scenario()) == b"real reply"  # the server socket kept working for the next query
 
 
 if __name__ == "__main__":
