@@ -1751,6 +1751,20 @@ test additions; 42→56 is its fifth pass's mutation-bypass/concurrency/cancella
 - Neopixel warning-flash sequencing and the task-supervisor error-budget counter are both
   behaviorally correct and intentional as designed, but flagged by owner as implementable more
   efficiently — worth a cleaner implementation in the refactor without changing observed behavior.
+- **Mypy shall be configured to not accept `Any` types** (owner-specified). The closest existing
+  mypy option is `disallow_any_explicit` (flags explicit `Any` annotations); `[tool.mypy]` in
+  `pyproject.toml` currently deliberately stops short of it and the other `--strict`-only checks
+  (`disallow_any_generics`, `disallow_untyped_calls`, `disallow_subclassing_any` — see that
+  section's own comment). Not yet implemented — noted here as a decision, not done. **Blast radius
+  check before flipping it**: as of the `asy_udp_socket.py` sixth pass, `Any` appears ~29 times
+  across `src/` and in all 12 `tests/test_*.py` files (20 of those in `tests/test_asy_udp_socket.py`
+  alone) — almost entirely in test-file monkeypatch/wrapper classes that duck-type a real
+  MicroPython object (e.g. `_MemoryErrorSocketWrapper.__getattr__(self, name: str) -> "Any"`,
+  `*a: "Any", **k: "Any"` passthrough signatures) rather than reimplementing its full interface.
+  Turning this on will surface real findings across most/all of `tests/`, not just a couple of
+  files — likely needs a real typing strategy for these wrappers (e.g. `Protocol` classes matching
+  just the methods each wrapper actually overrides, plus `__getattr__` delegation) worked out
+  first, not just a mechanical flag flip.
 
 ## Functional clarifications (confirmed by owner, not obvious from code alone)
 
@@ -1799,6 +1813,24 @@ test additions; 42→56 is its fifth pass's mutation-bypass/concurrency/cancella
     small config file is fast enough not to matter is a hardware-timing question this dev
     environment can't verify — needs either a real-hardware measurement or an owner call on wiring
     it in proactively.
+14. `asy_udp_socket.py`: three spots still call an `asyncio` primitive (not a socket call) with no
+    `try`/`except` of their own, found during the sixth pass but deliberately not fixed - flagging
+    rather than guessing since it's a real scope question, not a clear-cut bug: `_connect()`'s outer
+    except handler's own backoff `await asyncio.sleep(_RETRY_BACKOFF_S)` (not nested inside any
+    further `try`, unlike the inner retry loop's identical-looking sleep, which is incidentally
+    covered by the outer `try` around it), and both `async with self._connect_lock:` acquire points
+    (in `_connect()` and `disconnect()`). If `asyncio.sleep()` or `Lock.acquire()` itself ever raised
+    (e.g. a `MemoryError` from the scheduler's own internal bookkeeping under extreme RP2040
+    allocation pressure - not the socket buffers this file already defends), it would propagate all
+    the way out of `_connect()`/`disconnect()`/`ready()` and every public I/O method, violating this
+    file's own "never raises" contract the same way the sixth pass's two fixed bugs did. Every
+    `await` in this file is technically exposed to the same theoretical risk to some degree; these
+    three are called out specifically because they sit inside the file's own resource-exhaustion-
+    resilience machinery, where "never raises" is the whole point. Needs an owner call: worth closing
+    (and if so, with what returned sentinel - `_connect()` already self-heals to "not connected" on
+    any outer-try failure, so wrapping its two spots the same way is straightforward; `disconnect()`
+    has no natural non-raising fallback if the lock itself can't be acquired) or accepted as
+    residual, extremely-low-probability risk not worth the added complexity.
 
 *(Questions #2–7, #9, #10 were resolved during earlier sessions — SGP40 FRAM backup semantics,
 no external schematics exist, arzi/neu's static `AmbPres` is accepted, Adafruit-derived code is
