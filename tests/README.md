@@ -27,7 +27,9 @@ scripts/test.sh
 Builds the MicroPython Unix port on first run (via `uv run toolchain/setup_toolchain.py`'s
 `setup` — building/verifying the Unix port is just part of what `setup`/`test` already do, see
 `toolchain/README.md` — cached under `$PICO_TOOLCHAIN_DIR`, default `~/pico-toolchain`) and
-reuses it afterwards. To run a single test file directly once the interpreter is built:
+reuses it afterwards. `SKIP_APT=1 scripts/test.sh` skips that first-run apt-get install if the
+required system packages (see `toolchain/versions.toml`) are already present. To run a single
+test file directly once the interpreter is built:
 
 ```
 MICROPYPATH="src:tests:.frozen" ~/pico-toolchain/micropython/ports/unix/build-standard/micropython tests/test_math_helpers.py
