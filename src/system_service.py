@@ -1,15 +1,11 @@
-"""Generic system-housekeeping service shared by every sensortask-*.py device file: uptime
-counting, a one-per-boot "boot signature" (NTP timestamp once synced, else a random fallback after
-a wait), reboot/reboot-to-bootloader with FRAM storage-pause coordination, timed storage pause (the
-REST `mempause` command), a staggered generic startup sequence driven by each driver's own
-get_task_starters()/get_timer_starters(), and the top-level task supervisor loop (restart dead
-tasks, decay/accumulate a failure counter, feed the watchdog, reboot past the failure budget).
+"""Generic system-housekeeping service shared by every sensortask-*.py device: uptime, a one-per-
+boot boot signature (NTP or random fallback), reboot/reboot-to-bootloader with FRAM storage-pause
+coordination, timed storage pause, the staggered driver-startup sequence, and the task supervisor
+loop (restart dead tasks, decay a failure counter, feed the watchdog, reboot past budget).
 
-Contract: every method returns a well-defined value and never raises - including the caller-
-supplied ntp_is_synced callback and every driver-supplied task/timer starter, none of which this
-file controls. reboot_system()/reboot_bootloader() deliberately trigger a real
-machine.reset()/machine.bootloader() after _RESET_DELAY; that's the intended effect, not a failure
-to guard against.
+Contract: every method returns a well-defined value and never raises - including caller-supplied
+callbacks/starters this file doesn't control. reboot_system()/reboot_bootloader() deliberately
+trigger a real reset after _RESET_DELAY; that's the intent, not a failure to guard against.
 """
 
 import asyncio
@@ -70,13 +66,11 @@ class SystemService:
         self.storage_timer = Timer()
         self.ntp_is_synced = asy_ntp_callback
         self.start_time_set = False
-        # None until status_counter() resolves it (observers watch for None -> a real value, then
-        # for that value changing, as the reboot signal - never re-resolved once set, see below).
+        # None until status_counter() resolves it - a later change to this value signals a reboot happened.
         self.boot_signature = LockedCounter(init_value=None, max_val=0xFFFFFFFF)
         self.watchdog = watchdog
-        # Set when _reboot()'s own reset_timer can't be armed - start_and_check_tasks() then stops
-        # feeding the watchdog so it resets us anyway (see BACKLOG.md). One-way: never cleared once
-        # set, since the goal is forcing a reset within the watchdog's own timeout.
+        # Set when _reboot()'s reset_timer can't be armed, so the supervisor loop stops feeding the
+        # watchdog and lets it reset us instead (one-way, see BACKLOG.md).
         self._force_watchdog_starve = False
 
     def start_asy_uptime_counter(self) -> asyncio.Task[None]:
@@ -86,9 +80,8 @@ class SystemService:
     def start_uptime_timer(self) -> None:
         try:
             self.uptime_timer.init(period=1000, mode=Timer.PERIODIC, callback=lambda b: self.uptime_event.set())
-        except OSError as e:  # alarm-pool exhaustion (ports/rp2/machine_timer.c ENOMEM) - degrades
-            # gracefully instead of forcing a reboot: only uptime/boot-signature stay unresolved this
-            # boot, everything else keeps running (owner-confirmed design, see BACKLOG.md).
+        except OSError as e:  # alarm-pool exhaustion (ENOMEM) - degrades gracefully rather than rebooting;
+            # only uptime/boot-signature stay unresolved this boot (see BACKLOG.md).
             self.pr.err("Could not arm uptime timer:", e)
 
     def stop_uptime_timer(self) -> None:
@@ -109,9 +102,8 @@ class SystemService:
             self.pr.evt("Storage paused")
         try:
             self.reset_timer.init(period=_RESET_DELAY * 1000, mode=Timer.ONE_SHOT, callback=lambda b: action())
-        except OSError as e:  # alarm-pool exhaustion (ports/rp2/machine_timer.c ENOMEM) - can't arm
-            # the delayed reset, so fall back to the same watchdog-starve backstop
-            # start_and_check_tasks() already relies on past _TASK_FAIL_MAX (see BACKLOG.md).
+        except OSError as e:  # alarm-pool exhaustion (ENOMEM) - falls back to the same watchdog-starve
+            # backstop start_and_check_tasks() already uses past _TASK_FAIL_MAX (see BACKLOG.md).
             self.pr.err("Could not arm reset timer, stopping watchdog feed instead:", e)
             self._force_watchdog_starve = True
 
@@ -138,9 +130,8 @@ class SystemService:
                         mode=Timer.ONE_SHOT,
                         callback=lambda b: storage_pause(False),
                     )
-                except OSError as e:  # alarm-pool exhaustion (confirmed: ports/rp2/machine_timer.c's
-                    # ENOMEM path) - without the auto-unpause timer armed, storage would stay paused
-                    # forever; safer to abort the pause than risk that.
+                except OSError as e:  # alarm-pool exhaustion (ENOMEM) - without the auto-unpause timer,
+                    # storage would stay paused forever; safer to abort the pause than risk that.
                     self.pr.err("Could not arm auto-unpause timer, aborting pause:", e)
                     storage_pause(False)
 
@@ -149,14 +140,12 @@ class SystemService:
         return 0 if value is None else value
 
     async def get_boot_signature(self) -> int | None:
-        # None until resolved (observer-facing "not ready yet", distinct from any real value);
-        # then a UTC timestamp if NTP synced, random number otherwise after _NTP_WAIT_TIME - stable
-        # for the rest of this boot either way, so a change always means a reboot happened.
+        # None until resolved; then a UTC timestamp if NTP synced, else random after _NTP_WAIT_TIME -
+        # stable for the rest of this boot, so a later change means a reboot happened.
         return await self.boot_signature.get_value()
 
     async def _ntp_boot_signature(self) -> int | None:
-        # None: not synced yet, or the sync callback/timestamp computation itself failed - caller
-        # falls back to a random signature after _NTP_WAIT_TIME either way.
+        # None if not synced yet or the sync/mktime computation itself failed; caller falls back to random after _NTP_WAIT_TIME.
         try:
             synced = await self.ntp_is_synced()
         except Exception as e:  # caller-supplied callback (async_connect.py, not itself promoted/audited) - could legitimately misbehave
@@ -185,9 +174,8 @@ class SystemService:
                 self.pr.one("System boot signature set by NTP.")
                 self.start_time_set = True
             elif uptime >= _NTP_WAIT_TIME:
-                # random auto-seeds from get_rand_32() on first use (confirmed against rp2's
-                # mpconfigport.h + pico-sdk's pico_rand), backed by real ring-oscillator entropy on
-                # RP2040 - a genuine per-boot-unique fallback, not a fixed or repeatable seed.
+                # get_rand_32()-seeded (pico-sdk pico_rand, real ring-oscillator entropy) - unique
+                # per boot, not a fixed/repeatable seed.
                 await self.boot_signature.set_value(random.getrandbits(32))
                 self.pr.one("System boot signature set by random number.")
                 self.start_time_set = True
@@ -196,9 +184,8 @@ class SystemService:
         try:
             timers[counter]()
         except Exception as e:
-            # driver-supplied starter (get_timer_starters()) - could legitimately misbehave; this
-            # runs in a sync Timer-callback context (no event loop here), so only the non-persisting
-            # pr.err() is usable, not the async err_s().
+            # driver-supplied starter - could misbehave; sync Timer-callback context (no event loop),
+            # so only pr.err() is usable, not the async err_s().
             self.pr.err("Timer starter", counter, "failed:", e)
         else:
             self.pr.evt("Timer started:", counter)
@@ -213,9 +200,8 @@ class SystemService:
                     callback=lambda b: self._timer_sequencer(timers, counter=counter),
                 )
                 return
-            except OSError as e:  # alarm-pool exhaustion (confirmed: ports/rp2/machine_timer.c's
-                # ENOMEM path) - stop sequencing further timers rather than leaving start_timers()
-                # waiting on timers_running forever.
+            except OSError as e:  # alarm-pool exhaustion (ENOMEM) - stop sequencing rather than
+                # leaving start_timers() waiting on timers_running forever.
                 self.pr.err("Could not schedule the next timer starter, stopping early:", e)
         self.pr.one("All timers running.")
         self.timers_running.set()

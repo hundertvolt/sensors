@@ -1207,6 +1207,13 @@ Suite still 58 tests (the empty-list test was strengthened in place, not added t
 (one more line covered by the new explicit guard; miss count unchanged - still the same documented
 tracer artifacts).
 
+A follow-up owner request went further than the ≤3-line cap already applied above: every remaining
+multi-line comment in the file (including ones already at exactly 3 lines, technically compliant)
+was tightened to at most 2, and the module docstring itself condensed from two 5-6-line paragraphs
+to two 3-4-line ones - same "purpose, then the never-raises contract" shape, less prose. Zero
+behavior change (comment/docstring text only); re-verified lint/typecheck/58-tests-58-passing/95%
+coverage identical to before this trim.
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
