@@ -21,7 +21,23 @@ programmer error, not a runtime network condition. Confirmed directly: an invali
 busy-loop forever with zero await points (a genuine unrecoverable lockup, not just a slow path -
 the underlying coroutine never yields, so nothing else in the whole event loop can run either),
 and a malformed addr/conn_tries used to raise an uncaught TypeError from deep inside _connect(),
-bypassing every except clause in this file.
+bypassing every except clause in this file. Stored as _addr/_mode/_conn_tries (private) rather
+than public attributes - __init__'s validation only runs once, at construction, so a direct
+post-construction mutation of a public attribute would silently reintroduce the exact same
+uncaught-TypeError risk through a different door (confirmed directly). The method-level except
+clauses that touch these (see below) still widen to catch TypeError too, as a second line of
+defense against whatever reaches them regardless of how it got there - not a reason to skip the
+naming signal that these aren't meant to be reassigned from outside.
+
+Concurrent calls into the same instance from multiple coroutines are supported for connect/
+disconnect specifically: a per-instance asyncio.Lock serializes _connect()'s setup/retry phase
+and disconnect()'s teardown against each other, so a second coroutine calling in while a first is
+mid-retry joins/waits for that attempt instead of observing a premature "not ready" (confirmed
+directly: without this, a concurrent caller got a spurious None while the first coroutine's retry
+was still in progress), and a concurrent disconnect() can no longer yank self.sock/self.poller out
+from under an in-flight retry (confirmed directly: this used to crash with an uncaught
+AttributeError). The lock does not cover ready()'s own polling loop after a successful connect -
+that phase is protected separately (see ready()'s own comment).
 
 Content-agnostic transport: this module moves bytes and never inspects them - a datagram's
 header/length validity (NTP, DNS, or otherwise) is entirely the caller's concern. Two POSIX-level
@@ -82,12 +98,13 @@ class AsyUDPSocket:
         if not isinstance(conn_tries, int):
             raise TypeError(f"conn_tries must be an int, got {conn_tries!r}")
 
-        self.addr = addr
+        self._addr = addr
         self.sock: socket.socket | None = None
         self.poller: select.poll | None = None
-        self.mode = mode
+        self._mode = mode
         self.connected = False
-        self.conn_tries = conn_tries
+        self._conn_tries = conn_tries
+        self._connect_lock = asyncio.Lock()
 
     async def __aenter__(self) -> "AsyUDPSocket":
         return self
@@ -102,41 +119,45 @@ class AsyUDPSocket:
         return False
 
     async def _connect(self) -> None:
-        # Lazy, one-shot-per-socket setup. Self-heals via disconnect() below on any failure -
-        # setup itself (e.g. resource exhaustion) or every conn_tries attempt exhausted - so the
-        # next call gets a fresh attempt instead of a permanently no-op _connect() or an uncaught
-        # exception, matching this file's own "never raises" contract. MemoryError is caught
-        # alongside OSError throughout this method (see module docstring) - mode is guaranteed to
-        # already be "client" or "server" by __init__'s validation, so the retry loop only needs
-        # the two real branches.
-        if self.sock is None:
-            try:
-                self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                self.sock.setblocking(False)
-                self.poller = select.poll()
-                self.poller.register(self.sock, select.POLLIN | select.POLLOUT)
+        # Lazy, one-shot-per-socket setup, serialized against both concurrent _connect() callers
+        # and disconnect() via self._connect_lock (see module docstring) - self-heals via
+        # _disconnect_locked() below on any failure (setup itself, e.g. resource exhaustion, or
+        # every conn_tries attempt exhausted) so the next call gets a fresh attempt instead of a
+        # permanently no-op _connect() or an uncaught exception, matching this file's own "never
+        # raises" contract. MemoryError/TypeError are caught alongside OSError throughout this
+        # method (see module docstring) - mode is guaranteed to already be "client" or "server" by
+        # __init__'s validation, so the retry loop only needs the two real branches.
+        async with self._connect_lock:
+            if self.sock is None:
+                try:
+                    self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                    self.sock.setblocking(False)
+                    self.poller = select.poll()
+                    self.poller.register(self.sock, select.POLLIN | select.POLLOUT)
 
-                tries = 0
-                while (not self.connected) and (tries < self.conn_tries):
-                    try:
-                        if self.mode == "client":
-                            self.sock.connect(self.addr)
-                        else:
-                            self.sock.bind(self.addr)
-                        self.connected = True
-                    except (OSError, MemoryError):
-                        tries += 1
-                        await asyncio.sleep(_RETRY_BACKOFF_S)
-                        self.connected = False
-            except (OSError, MemoryError):
-                # socket()/setsockopt()/poll()/register() itself failed - same backoff as a
-                # connect/bind failure, so a persistent failure (e.g. resource exhaustion) can't
-                # busy-loop either.
-                await asyncio.sleep(_RETRY_BACKOFF_S)
+                    tries = 0
+                    while (not self.connected) and (tries < self._conn_tries):
+                        try:
+                            if self._mode == "client":
+                                self.sock.connect(self._addr)
+                            else:
+                                self.sock.bind(self._addr)
+                            self.connected = True
+                        except (OSError, MemoryError, TypeError):
+                            tries += 1
+                            await asyncio.sleep(_RETRY_BACKOFF_S)
+                            self.connected = False
+                except (OSError, MemoryError, TypeError):
+                    # socket()/setsockopt()/poll()/register() itself failed (OSError/MemoryError),
+                    # or `tries < self._conn_tries` itself raised (TypeError - confirmed directly:
+                    # the while loop's own condition is inside this try, not the inner one, so a
+                    # non-int self._conn_tries raises here, not inside the per-attempt try below) -
+                    # same backoff either way, so a persistent failure can't busy-loop.
+                    await asyncio.sleep(_RETRY_BACKOFF_S)
 
-            if not self.connected:
-                await self.disconnect()
+                if not self.connected:
+                    await self._disconnect_locked()
 
     async def ready(self, mask: int, timeout_ms: int = -1, wait_time_ms: int = 20) -> bool:
         # Connects lazily, then busy-polls ipoll(0) (allocation-free, non-blocking) and yields via
@@ -178,7 +199,7 @@ class AsyUDPSocket:
         if await self.ready(select.POLLOUT, timeout_ms=timeout_ms) and self.sock is not None:
             try:
                 return self.sock.sendto(msg, addr)
-            except (OSError, MemoryError):
+            except (OSError, MemoryError, TypeError):  # TypeError: a malformed addr/msg (confirmed directly), not just this instance's own _addr
                 pass
         return None
 
@@ -186,7 +207,7 @@ class AsyUDPSocket:
         if await self.ready(select.POLLOUT, timeout_ms=timeout_ms) and self.sock is not None:
             try:
                 return self.sock.write(msg)
-            except (OSError, MemoryError):
+            except (OSError, MemoryError, TypeError):  # TypeError: a malformed msg, matching sendto()'s reasoning
                 pass
         return None
 
@@ -194,7 +215,7 @@ class AsyUDPSocket:
         if await self.ready(select.POLLIN, timeout_ms=timeout_ms) and self.sock is not None:
             try:
                 return self.sock.recvfrom(buf)
-            except (OSError, MemoryError):
+            except (OSError, MemoryError, TypeError):  # TypeError: a malformed buf (confirmed directly, e.g. a str)
                 pass
         return None, None
 
@@ -215,11 +236,22 @@ class AsyUDPSocket:
         return None, None
 
     async def disconnect(self) -> None:
-        # Eagerly clears this object's own state before attempting the actual teardown calls, so
-        # a failure partway through can no longer leave it stuck in a broken half-connected state
-        # forever - confirmed directly: a raising unregister() used to leave self.sock/
-        # self.poller/self.connected exactly as they were, permanently, since the exception
-        # aborted the rest of this method before sock.close()/self.sock = None ever ran.
+        # Serialized against _connect() via the same self._connect_lock (see module docstring) -
+        # confirmed directly: without this, a disconnect() concurrent with another coroutine's
+        # in-flight _connect() retry could null self.sock/self.poller out from under it, crashing
+        # that retry with an uncaught AttributeError on its next connect()/bind() call.
+        async with self._connect_lock:
+            await self._disconnect_locked()
+
+    async def _disconnect_locked(self) -> None:
+        # The actual teardown, assuming self._connect_lock is already held - split out so
+        # _connect()'s own self-heal path can call this directly instead of through disconnect()
+        # (which would deadlock re-acquiring the same non-reentrant lock). Eagerly clears this
+        # object's own state before attempting the actual teardown calls, so a failure partway
+        # through can no longer leave it stuck in a broken half-connected state forever -
+        # confirmed directly: a raising unregister() used to leave self.sock/self.poller/
+        # self.connected exactly as they were, permanently, since the exception aborted the rest
+        # of this method before sock.close()/self.sock = None ever ran.
         if self.sock is not None:
             sock, poller = self.sock, self.poller
             self.sock = None

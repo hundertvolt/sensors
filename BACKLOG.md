@@ -1544,6 +1544,91 @@ Re-verified: full-scope `scripts/lint.sh`/`scripts/typecheck.sh` still unchanged
 42/42 passing here, zero regressions across the rest of `tests/` (`scripts/test.sh`, all 12 files
 green).
 
+#### Fifth pass: mutation-bypass, connect/disconnect concurrency, cancellation-safety of the new lock
+
+Owner-directed follow-up audit: re-check the whole file once more for oversights, strange
+behaviors, and unhandled/untested conditions - specifically targeting what the fourth pass's fix
+*didn't* close. Every finding below was reproduced empirically first (repro scripts under
+`/tmp/.../scratchpad/`, not committed), fixed, then re-verified the same way.
+
+**The fourth pass's `__init__` validation only runs once, at construction - a direct
+post-construction mutation of a public attribute reintroduces the exact same uncaught-exception
+bugs through a different door.** Confirmed directly at four call sites: `self.addr` mutated to a
+malformed tuple → uncaught `TypeError` from `sock.connect()`/`sock.bind()`; `self.conn_tries`
+mutated to `None` → uncaught `TypeError`, but from an unexpected place - `tries < self.conn_tries`
+is the retry loop's own *condition*, evaluated before the inner per-attempt `try` is ever entered,
+so only the *outer* setup `try`/`except` covers it, and that one hadn't been widened yet either
+(found by testing the fix, not just the bug - the first fix attempt still failed this exact case);
+`sendto()`'s own per-call `addr` argument malformed → the same uncaught `TypeError`; `recvfrom()`'s
+`buf` argument wrong-typed → uncaught `TypeError`, but only confirmed once a genuinely pending
+datagram let `ready()` actually reach the real `recvfrom()` call (a first attempt at this specific
+test was inconclusive - nothing was ever sent, so the timeout path returned before ever touching
+the buggy call). Owner-decided fix (two options were presented - widen exception handling
+further, or add validating property setters - the owner chose a hybrid): `addr`/`mode`/`conn_tries`
+are now stored as `_addr`/`_mode`/`_conn_tries` (private-by-convention, signaling "not meant to be
+reassigned from outside" - Python doesn't truly enforce this, so it's a naming signal, not a
+guarantee), *and* every touching `except` clause (both of `_connect()`'s try blocks, plus
+`sendto()`/`write()`/`recvfrom()`) now also catches `TypeError`, so the object self-heals into "never
+connects" instead of crashing regardless of how it got into a bad state. Mutating `_mode` was
+separately confirmed *not* to be a crash risk - `_connect()`'s branch is a plain `if/else` (client
+vs. everything else) since `__init__` already guarantees only the two real values reach it, so a
+corrupted `_mode` just falls through to the `bind()` path rather than hitting the old three-way
+branch's dead `else`; documented and tested as defined (if surprising) behavior, not fixed further.
+
+**A second, more severe related bug surfaced while investigating the first: a `disconnect()` call
+concurrent with another coroutine's in-flight `_connect()` retry crashed with an uncaught
+`AttributeError`.** `disconnect()` had no coordination with `_connect()` at all - a concurrent
+`disconnect()` could null `self.sock`/`self.poller` while `_connect()`'s retry loop was still
+mid-flight, so the loop's next `self.sock.connect()`/`bind()` call hit `'NoneType' object has no
+attribute 'bind'`. Confirmed directly. This is the same underlying gap as the owner's separately-
+approved fix for concurrent callers: **a coroutine calling a public method while another
+coroutine's `_connect()` is mid-retry-backoff on the same instance got a spurious "not ready" `None`
+instead of joining the in-flight attempt** (confirmed directly in the fourth pass's own write-up
+above, revisited here since the owner chose to actually fix it this pass rather than just document
+it). Both are closed by the same mechanism: a new per-instance `asyncio.Lock` (`self._connect_lock`)
+serializes `_connect()`'s entire setup/retry phase against both itself (join semantics: a second
+caller now waits for and benefits from the first's in-flight attempt, confirmed directly - a
+`sendto()` call made while another coroutine's retry is still resolving now returns the real result
+once that retry succeeds, not a premature `None`) and against `disconnect()` (confirmed directly: a
+concurrent `disconnect()` now waits for the in-flight attempt to finish - bounded by
+`conn_tries × the retry backoff` - instead of tearing it down mid-flight). `_connect()`'s own
+internal self-heal call had to move to a new `_disconnect_locked()` helper (the actual teardown
+logic, assuming the lock is already held) rather than calling the public `disconnect()` directly,
+since `asyncio.Lock` isn't reentrant - `_connect()` calling `disconnect()` while already holding the
+lock would have deadlocked. Caught and fixed before it ever shipped, by tracing through the
+non-reentrancy question during design rather than after a test failure.
+
+**Locks plus cancellation are a classic deadlock source, so this wasn't assumed safe just because
+it worked in the non-cancelled case - verified directly, both directions:** cancelling a task while
+it *holds* the lock (mid-retry-backoff) still correctly propagates `CancelledError` and releases the
+lock (`async with`'s `__aexit__` runs on any exception unwind, including `BaseException` subclasses
+like `CancelledError` - confirmed empirically, not just cited from the language spec); cancelling a
+task while it's *waiting* to acquire the lock (not holding it) also propagates cleanly and leaves the
+lock's internal state healthy for the next caller. Both were real risks worth checking given this
+file just gained its first lock, and both came back clean - no new bug found here, but confirmed
+rather than assumed, and locked in as regression tests given how easily this class of change goes
+wrong.
+
+**Also confirmed already-correct (no code change), previously untested boundary/misuse behaviors:**
+`write()` called on a bound-but-unconnected `mode="server"` socket (a caller misuse this file
+deliberately doesn't structurally guard against, per the second pass's "considered and rejected" -
+that reasoning was never actually verified non-crashing until now) returns the `None` sentinel via
+the real `OSError` it triggers, exactly like any other socket failure; zero-length outgoing sends
+(`sendto(b"", ...)`) succeed, symmetric to the zero-length *receive* case from the third pass;
+`recvfrom(buf=0)` against a genuinely pending datagram returns `(b"", addr)` - an extreme instance
+of the already-documented truncation contract, not new behavior; `disconnect()` on a fresh,
+never-`_connect()`-ed object is a clean no-op; `write_and_recvfrom(..., tries=0)` returns
+`(None, None)` immediately, no crash.
+
+14 new tests (56 total): the four mutation/malformed-argument fixes (each self-heals instead of
+crashing, verified directly); the `disconnect()`-during-in-flight-retry fix (with a timing
+assertion proving it genuinely waited for the retry cycle rather than either crashing or hanging
+forever); the concurrent-caller-joins-the-attempt fix (B's call genuinely succeeds once A's retry
+succeeds, not a redundant retry of its own); both lock-cancellation-safety proofs; and the five
+already-correct boundary behaviors above. Re-verified: full-scope `scripts/lint.sh`/
+`scripts/typecheck.sh` still unchanged (219/129), all 56/56 passing here, zero regressions across
+the rest of `tests/` (`scripts/test.sh`, all 12 files green).
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
@@ -1560,10 +1645,10 @@ and a missing config file failing independently without either derailing the oth
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
 `asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 58,
-`asy_udp_socket.py` 42 — **732 total**. (Previous count of 690 across 11 files predated
+`asy_udp_socket.py` 56 — **746 total**. (Previous count of 690 across 11 files predated
 `asy_udp_socket.py`'s promotion and was never updated to include it — corrected during its
-third pass; the 23→42 jump here is its fourth pass's uncaught-exception/configuration/
-integration test additions.)
+third pass; the 23→42 jump was its fourth pass's uncaught-exception/configuration/integration
+test additions; 42→56 is its fifth pass's mutation-bypass/concurrency/cancellation-safety tests.)
 
 ## Decided for the refactor
 
