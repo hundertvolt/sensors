@@ -1287,6 +1287,69 @@ Baseline check (section 14): full-scope `scripts/lint.sh` 228→219 errors, `scr
 130→129 errors in 10→9 files - both drops are exactly this file's own pre-existing findings; zero
 new findings elsewhere.
 
+#### Second pass: structure/completeness/error-handling questions, not just the initial checklist
+
+A follow-up owner review (same "structure/simplification/completeness/error-handling" framing as
+`system_service.py`'s own second pass above) surfaced four more real gaps, none caught by the first
+promotion pass:
+
+- **The class could still hang or waste a full timeout on a real, already-known connection
+  failure.** `ready()` only checked `event & mask`, ignoring `select.POLLERR`/`POLLHUP` entirely.
+  Confirmed empirically (not just reasoned about) against the built Unix-port binary: a connected
+  UDP client socket with a pending ICMP port-unreachable reports `POLLOUT|POLLERR` - **never
+  `POLLIN`** - even though `recvfrom()` immediately raises `ECONNREFUSED` if called. Since POSIX
+  `poll()` always reports `POLLERR`/`POLLHUP` regardless of the registered mask, `ready()` now also
+  treats them as "ready", letting the caller's real socket call run and surface (and correctly
+  convert) the actual `OSError` through the exception handling that already existed - instead of
+  waiting out the full `timeout_ms` for a failure the kernel already knew about. Harmless-in-practice
+  for both current callers today (the NTP client has a finite timeout; `captive_dns.py`'s bound,
+  never-`connect()`ed server socket isn't exposed to this specific ICMP-refused shape) but a real
+  contract violation - any future `mode="client"` caller with `timeout_ms<=0` would have hung
+  forever on an error the OS already reported.
+- **`_connect()`'s own setup code had zero exception handling - violated this file's own "never
+  raises" contract.** `socket.socket()`/`setsockopt()`/`select.poll()`/`poller.register()` all ran
+  *before* the retry loop's `try`/`except OSError`. A failure there (e.g. `ENOMEM` under real
+  resource exhaustion - not hypothetical for a device meant to run years unattended) would have
+  propagated uncaught past this file, and left any partially-created socket unclosed (a real fd
+  leak). Fixed: wrapped the whole one-time setup in its own `try`/`except OSError`, sharing the same
+  self-heal (`disconnect()`) and backoff as a connect/bind failure - now pulled into a
+  `_RETRY_BACKOFF_S = const(0.5)` module constant used by both, so a persistent setup failure can't
+  busy-loop either.
+- **`wait_time_ms` was silently treated as seconds, not milliseconds.** `ready()` called
+  `asyncio.sleep(wait_time_ms)` - but `asyncio.sleep()` takes seconds; MicroPython's millisecond
+  variant is the separate `asyncio.sleep_ms()` (confirmed against current docs). The `_ms` suffix
+  promises milliseconds, right next to `timeout_ms` which correctly *is* milliseconds already.
+  Masked today only because no caller ever overrides the `wait_time_ms=0` default (unit-agnostic at
+  zero) - present unchanged in the original deployed code too. Fixed to call `asyncio.sleep_ms()`.
+- **Missing `async with` support**, added (`__aenter__` returns `self`, `__aexit__` calls
+  `disconnect()`, returns `False` - same shape as `base_classes.py`'s `Lockable.__aexit__`, though
+  `AsyUDPSocket` doesn't inherit `Lockable` since it isn't lock-based). Purely additive, zero
+  behavior change to existing paths - but it's the exact acquire/use/release-in-finally shape
+  `async_connect.py`'s NTP client already hand-rolls via `try`/`finally`, matching the established
+  `SPIDevice` convention for this pattern.
+
+Considered and explicitly rejected: collapsing `sendto()`/`write()` (and their `ready()`+narrow
+preamble) into a shared helper - `sendto()`/`write()` call genuinely different underlying
+primitives (the rp2 stub is explicit: `sendto()` "should not be connected", `write()` requires a
+connected socket), so a generic helper would need either a closure (a real allocation on
+MicroPython) or would lose mypy's `self.sock is not None` narrowing at the call site. Also left
+alone: `SO_REUSEADDR` is applied unconditionally including for `mode="client"` sockets that never
+`bind()` (harmless but purposeless there); `timeout_ms=0` behaves identically to "wait forever"
+rather than "check once" (pre-existing, unexercised, inherited unchanged); no structural guard
+against calling `sendto()` on a client-mode object or `write()` on a server-mode one (both real
+callers already use the API correctly; guarding against a misuse that doesn't happen would just add
+complexity).
+
+5 more tests (15 total): `wait_time_ms` actually completing in tens of milliseconds rather than
+multiple real seconds; `_connect()`'s setup phase not raising when `socket.socket()` itself fails
+(monkeypatching `asy_udp_socket`'s own module-level `socket` name, same read-only-builtin technique
+`test_system_service.py`'s time-module fakes already established) and self-healing once the fault
+clears; the POLLERR fix, driven through a real ICMP-refused loopback connection exactly like the
+manual repro that found the bug, asserting `recvfrom()` returns in under 1s instead of waiting out a
+5s timeout; and `async with` disconnecting on both normal exit and exception. Re-verified: full-scope
+lint/typecheck counts unchanged (219/129, still exactly this file's own remaining findings), all
+15/15 tests passing here, zero regressions across the rest of `tests/`.
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`

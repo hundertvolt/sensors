@@ -1,6 +1,9 @@
 import asyncio
+import select
 import socket
+import time
 
+import asy_udp_socket
 from asy_udp_socket import AsyUDPSocket
 
 try:
@@ -283,6 +286,142 @@ def test_cancellation_propagates_out_of_recvfrom() -> None:
             await server.disconnect()
 
     assert run(scenario())
+
+
+# ---------------------------------------------------------------------------
+# ready()'s wait_time_ms must be milliseconds, not seconds
+# ---------------------------------------------------------------------------
+
+
+def test_ready_wait_time_ms_is_milliseconds_not_seconds() -> None:
+    # Bug: ready() used to call asyncio.sleep(wait_time_ms) (seconds), not asyncio.sleep_ms() -
+    # a wait_time_ms=10 would sleep 10 real seconds per poll cycle instead of 10ms. Prove a
+    # bounded-timeout call actually completes in tens of milliseconds, not multiple real seconds.
+    addr = make_addr()
+
+    async def scenario() -> int:
+        sock = AsyUDPSocket(addr, mode="server")
+        try:
+            t0 = time.ticks_ms()
+            result = await sock.ready(select.POLLIN, timeout_ms=50, wait_time_ms=10)
+            assert result is False  # nothing ever arrives
+            return time.ticks_diff(time.ticks_ms(), t0)
+        finally:
+            await sock.disconnect()
+
+    elapsed = run(scenario())
+    assert elapsed < 2000  # generously below the 10000ms+ the old seconds-interpretation bug would take
+
+
+# ---------------------------------------------------------------------------
+# _connect()'s own setup code (socket()/setsockopt()/poll()/register()) must not raise
+# ---------------------------------------------------------------------------
+
+
+class _RaisingSocketModule:
+    # MicroPython's real `socket` module is a read-only builtin (same reason
+    # test_system_service.py's own time-module fakes exist - see that file) - can't monkeypatch
+    # an attribute onto it, so this replaces asy_udp_socket's own module-level `socket` name
+    # instead. Mirrors the real module's constants asy_udp_socket.py references, but socket()
+    # itself always raises - simulates a resource-exhaustion failure (e.g. out of file
+    # descriptors) at the very first setup step, before the connect/bind retry loop ever runs.
+    AF_INET = socket.AF_INET
+    SOCK_DGRAM = socket.SOCK_DGRAM
+    SOL_SOCKET = socket.SOL_SOCKET
+    SO_REUSEADDR = socket.SO_REUSEADDR
+
+    def socket(self, af: int, type: int) -> "Any":
+        raise OSError("simulated resource exhaustion")
+
+
+def test_connect_setup_failure_self_heals_instead_of_raising() -> None:
+    # Bug: socket()/setsockopt()/poll()/register() ran with zero exception handling - violated
+    # this file's own "never raises" contract, and would have leaked a half-initialized socket.
+    addr = make_addr()
+    sock = AsyUDPSocket(addr, mode="server")
+    original_socket = asy_udp_socket.socket
+    asy_udp_socket.socket = _RaisingSocketModule()  # type: ignore[assignment]  # deliberate monkeypatch, not a real caller mismatch
+    try:
+        run(sock._connect())  # must not raise despite socket() failing
+    finally:
+        asy_udp_socket.socket = original_socket
+
+    assert sock.connected is False
+    assert sock.sock is None
+
+    try:
+        run(sock._connect())  # the fault is gone now - should self-heal and succeed
+        assert sock.connected is True
+    finally:
+        run(sock.disconnect())
+
+
+# ---------------------------------------------------------------------------
+# ready() must notice POLLERR/POLLHUP, not just its own requested mask
+# ---------------------------------------------------------------------------
+
+
+def test_recvfrom_detects_pollerr_instead_of_waiting_out_the_full_timeout() -> None:
+    # Confirmed empirically (not just reasoned about): a connected UDP client socket with a
+    # pending ICMP port-unreachable reports POLLOUT|POLLERR, never POLLIN - ready(POLLIN) used to
+    # check only `event & mask` and would ignore POLLERR entirely, waiting out the full timeout
+    # for a failure the kernel already knew about. Connect to an address nobody listens on, send,
+    # then prove recvfrom() returns promptly (well under its timeout) instead of stalling.
+    addr = make_addr()  # nobody ever binds/listens on this address
+
+    async def scenario() -> tuple[bytes | None, int]:
+        client = AsyUDPSocket(addr, mode="client")
+        try:
+            sent = await client.write(b"ping")
+            assert sent == 4
+            await asyncio.sleep(0.2)  # let the kernel deliver the ICMP unreachable
+            t0 = time.ticks_ms()
+            data, _ = await client.recvfrom(64, timeout_ms=5000)  # generously long if the old bug were still present
+            return data, time.ticks_diff(time.ticks_ms(), t0)
+        finally:
+            await client.disconnect()
+
+    data, elapsed = run(scenario())
+    assert data is None  # recvfrom() itself still raises OSError, correctly converted to the sentinel
+    assert elapsed < 1000  # detected via POLLERR promptly, not by waiting out the 5000ms timeout
+
+
+# ---------------------------------------------------------------------------
+# async with support
+# ---------------------------------------------------------------------------
+
+
+def test_async_context_manager_disconnects_on_exit() -> None:
+    addr = make_addr()
+
+    async def scenario() -> tuple[bool, AsyUDPSocket]:
+        async with AsyUDPSocket(addr, mode="server") as sock:
+            await sock._connect()
+            still_connected_inside = sock.connected
+        return still_connected_inside, sock
+
+    still_connected_inside, sock = run(scenario())
+    assert still_connected_inside is True
+    assert sock.sock is None
+    assert sock.connected is False
+
+
+def test_async_context_manager_disconnects_even_on_exception() -> None:
+    addr = make_addr()
+
+    async def scenario() -> AsyUDPSocket:
+        sock = AsyUDPSocket(addr, mode="server")
+        try:
+            async with sock:
+                await sock._connect()
+                raise ValueError("boom")
+        except ValueError:
+            pass
+        return sock
+
+    sock = run(scenario())
+    assert sock.sock is None
+    assert sock.connected is False
 
 
 if __name__ == "__main__":
