@@ -1495,6 +1495,14 @@ conn_tries)`'s own parameter space, not every argument of every method (`sendto(
 `write_and_recvfrom()`'s `tries`, etc.) - those stay within this project's existing convention of
 trusting mypy-checked call sites rather than adding runtime validation for scenarios neither real
 caller can produce.
+*(Partially revisited by the sixth pass below: `ready()`'s `mask`/`timeout_ms`/`wait_time_ms` and
+`write_and_recvfrom()`'s own `tries` turned out to have a real, reproducible crash - not a
+hypothetical "neither real caller can produce" scenario, but a concrete uncaught `TypeError`
+bypassing this file's own except clauses - so those two got fixed. This doesn't reopen the general
+"don't validate every method argument" scope decision itself; `sendto()`'s `msg`/`addr` and
+`recvfrom()`'s `buf` remain deliberately unvalidated at entry, relying on the real socket call's own
+`except (OSError, MemoryError, TypeError)` to convert whatever they raise - that part of this
+decision still stands.)*
 
 19 new tests (42 total): a full valid-combination sweep (`mode` × `conn_tries` including the `0`/
 negative edge case) plus a pre-resolved-`bytes`-addr acceptance test; rejection tests for each of
@@ -1751,6 +1759,14 @@ test additions; 42→56 is its fifth pass's mutation-bypass/concurrency/cancella
 - Neopixel warning-flash sequencing and the task-supervisor error-budget counter are both
   behaviorally correct and intentional as designed, but flagged by owner as implementable more
   efficiently — worth a cleaner implementation in the refactor without changing observed behavior.
+- **Standing scope convention for exception-handling audits**: wrapping every `asyncio` primitive
+  call (`asyncio.sleep()`, `Lock.acquire()`, etc.) in `try`/`except` against a theoretical internal
+  `MemoryError` is overkill and outside good code standard as a blanket policy — don't chase this
+  class of issue project-wide. Only worth closing when a concrete, non-hypothetical threat exists in
+  a specific context (e.g. a real caller-supplied value reaching an unguarded comparison/construct,
+  as the `asy_udp_socket.py` sixth pass's two actual fixes were), not just "any `await` could
+  theoretically raise." Confirmed by owner directly, prompted by `asy_udp_socket.py`'s open question
+  #14 (see below).
 - **Mypy shall be configured to not accept `Any` types** (owner-specified). The closest existing
   mypy option is `disallow_any_explicit` (flags explicit `Any` annotations); `[tool.mypy]` in
   `pyproject.toml` currently deliberately stops short of it and the other `--strict`-only checks
@@ -1813,30 +1829,16 @@ test additions; 42→56 is its fifth pass's mutation-bypass/concurrency/cancella
     small config file is fast enough not to matter is a hardware-timing question this dev
     environment can't verify — needs either a real-hardware measurement or an owner call on wiring
     it in proactively.
-14. `asy_udp_socket.py`: three spots still call an `asyncio` primitive (not a socket call) with no
-    `try`/`except` of their own, found during the sixth pass but deliberately not fixed - flagging
-    rather than guessing since it's a real scope question, not a clear-cut bug: `_connect()`'s outer
-    except handler's own backoff `await asyncio.sleep(_RETRY_BACKOFF_S)` (not nested inside any
-    further `try`, unlike the inner retry loop's identical-looking sleep, which is incidentally
-    covered by the outer `try` around it), and both `async with self._connect_lock:` acquire points
-    (in `_connect()` and `disconnect()`). If `asyncio.sleep()` or `Lock.acquire()` itself ever raised
-    (e.g. a `MemoryError` from the scheduler's own internal bookkeeping under extreme RP2040
-    allocation pressure - not the socket buffers this file already defends), it would propagate all
-    the way out of `_connect()`/`disconnect()`/`ready()` and every public I/O method, violating this
-    file's own "never raises" contract the same way the sixth pass's two fixed bugs did. Every
-    `await` in this file is technically exposed to the same theoretical risk to some degree; these
-    three are called out specifically because they sit inside the file's own resource-exhaustion-
-    resilience machinery, where "never raises" is the whole point. Needs an owner call: worth closing
-    (and if so, with what returned sentinel - `_connect()` already self-heals to "not connected" on
-    any outer-try failure, so wrapping its two spots the same way is straightforward; `disconnect()`
-    has no natural non-raising fallback if the lock itself can't be acquired) or accepted as
-    residual, extremely-low-probability risk not worth the added complexity.
-
 *(Questions #2–7, #9, #10 were resolved during earlier sessions — SGP40 FRAM backup semantics,
 no external schematics exist, arzi/neu's static `AmbPres` is accepted, Adafruit-derived code is
 refactor-fair-game, `get_long_block_lock()` is now a general convention, `neu` reusing arzi's HTML
 is fine, the hardcoded fallback-hotspot password risk is accepted for now, and `.gitignore` now
-exists — see git history if the original reasoning is needed.)*
+exists — see git history if the original reasoning is needed. Question #14 — `asy_udp_socket.py`'s
+`_connect()`/`disconnect()` calling bare `asyncio.sleep()`/`Lock.acquire()` with no `try`/`except` of
+their own — was resolved the same session it was raised: **decided not worth closing.** Wrapping
+every `asyncio` primitive call in `try`/`except` against a theoretical internal `MemoryError` is
+overkill and outside good practice as a blanket policy; not pursued further unless a concrete,
+non-hypothetical threat in a specific context justifies it. Accepted as residual risk.)*
 
 ## Deferred / explicitly out-of-scope work
 
