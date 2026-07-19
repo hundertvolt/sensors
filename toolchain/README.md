@@ -32,9 +32,17 @@ uv run toolchain/setup_toolchain.py                              # install/updat
 uv run toolchain/setup_toolchain.py --latest                      # pin + install newest stable MicroPython
 uv run toolchain/setup_toolchain.py --micropython-ref v1.26.1     # build a specific ref instead
 uv run toolchain/setup_toolchain.py --clean                       # wipe build dirs, then rebuild from scratch
+uv run toolchain/setup_toolchain.py --skip-apt                    # skip apt-get install (packages already present)
+uv run toolchain/setup_toolchain.py --jobs 4                      # override parallel make jobs (default: os.cpu_count())
+uv run toolchain/setup_toolchain.py --toolchain-dir /path/to/dir  # install somewhere other than ~/pico-toolchain
 
 uv run toolchain/setup_toolchain.py test                          # re-verify an existing install, offline
 ```
+
+`--toolchain-dir`/`--jobs` also apply to `test` (both `setup` and `test` take them, via a shared
+parent parser); `--micropython-ref`/`--latest`/`--skip-apt`/`--clean` are `setup`-only.
+`scripts/test.sh` exposes `--skip-apt` as `SKIP_APT=1` (see its own header comment) for the
+`setup` call it makes on a cache miss.
 
 No `pip install`/venv setup needed by hand for the script itself — `uv run` provisions an
 ephemeral, cached interpreter (see "Why not a full venv" below). There are two subcommands,

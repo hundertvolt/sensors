@@ -475,8 +475,9 @@ after construction — cached once as `self._history_fmt`. Eight identical diagn
 folded into one `_diag()` helper. Renamed `PrintLogHistStore` → `PrintLogHistoryStore` project-wide
 (the one abbreviation in an otherwise fully-spelled-out file). `pyproject.toml`'s own mypy-override
 comment initially missed this rename (caught and fixed during a later documentation audit); the old
-name still appears in untouched `improved-quality/system_service.py`/`base_classes_old.py`, both
-out of routine-editing scope until their own refactor work reaches them.
+name still appeared in `improved-quality/system_service.py` until that file's own `src/` promotion
+picked up the rename too (see "`system_service.py` → `src/`" below) - `base_classes_old.py` still
+has it, out of routine-editing scope until its own refactor work reaches it.
 
 `tests/_fram_mock.py` supports fault injection for every FRAM failure mode `print_log.py` guards
 against (`raise_on_get_chunk`, `out_of_memory`, per-chunk `raise_on_get_buffer`/`broken_buffer`/
@@ -766,13 +767,15 @@ write torn by power loss. Every other FRAM-touching file (`print_log.py`'s `Prin
 - SGP40 FRAM backup "0 = disabled" semantics: see Functional Clarifications above.
 - `set_pause()`/`get_pause()`/`override_pause`: owner-confirmed intent is "finish all ongoing ops,
   reject new ones" - correctly what the code does, since the pause check sits *after* `_op_lock`
-  acquisition, so nothing already mid-flight is interrupted. Real legacy callers (`system_service.py`,
-  unchanged in `improved-quality/`) are `reboot_system()`/`reboot_bootloader()` (pause right before
-  a deliberate reset, then a 5s delay before the reset actually fires - ample margin over a real
-  operation's low-single-digit-ms cost) and a REST `systemCmd` `"mempause"` command (operator-
-  triggered pause for up to `_MAX_STORAGE_PAUSE`=3600s via a hardware `Timer` auto-unpause, for safe
-  physical access to the chip). `src/` itself has zero callers yet - part of the still-open
-  task-supervisor/system-service wiring, not `asy_fram_manager.py`'s own scope.
+  acquisition, so nothing already mid-flight is interrupted. Real callers are `system_service.py`'s
+  own `reboot_system()`/`reboot_bootloader()` (pause right before a deliberate reset, then a 4s
+  `_RESET_DELAY` before the reset actually fires - ample margin over a real operation's
+  low-single-digit-ms cost) and a REST `systemCmd` `"mempause"` command (operator-triggered pause
+  for up to `_MAX_STORAGE_PAUSE`=3600s via a hardware `Timer` auto-unpause, for safe physical access
+  to the chip). `system_service.py` is now itself promoted to `src/` (see "`system_service.py` →
+  `src/`" below); the still-open task-supervisor/system-service wiring this note used to flag is
+  which `sensortask-*.py` device files actually call `start_and_check_tasks()`/`get_task_starters()`
+  end-to-end, not whether `asy_fram_manager.py`'s own pause plumbing works.
 - The busy/idle protocol brackets *reads* too (not just writes), owner-confirmed deliberate:
   MB85RS64V reads are destructively read internally (confirmed in the datasheet's own endurance
   footnote), so a power loss mid-read is as real a risk as mid-write; board-level bulk capacitance
@@ -823,6 +826,394 @@ rather than by calling this file's own methods directly. Its 40-cycle stress tes
 `gc.collect()` per cycle - a Unix-port test-binary heap-timing artifact under a tight allocate-heavy
 loop, not a leak in this file - don't remove it as apparent cargo-culting).
 
+### `system_service.py` → `src/`
+
+Generic system-housekeeping service shared by every `sensortask-*.py` device file (uptime, boot
+signature, reboot/reboot-to-bootloader, storage pause, the staggered timer-startup sequence, and
+the task supervisor loop). Its constructor had already moved, before this session, from the legacy
+`(asy_ntp_callback, storage_pause=None, debug=False)` shape to `(asy_ntp_callback, watchdog=None,
+fram=None, history_length=10, debug=None)`, matching `SensorReader`'s own `fram`/`history_length`/
+`debug` shape - kept as-is (owner-confirmed), not reconciled backward.
+
+Imports fixed to match already-promoted `src/`: `from base_classes import PrintLogHistory,
+PrintLogHistStore, ...` → `from print_log import PrintLogHistory, PrintLogHistoryStore` (both moved
+out of `base_classes.py` during its own promotion, and `PrintLogHistStore` was renamed
+`PrintLogHistoryStore` then - see `print_log.py`'s own entry above) + `from base_classes import
+LockedCounter, LockedValue` (those two did stay). `from uasyncio import ThreadSafeFlag` → `import
+asyncio`/`asyncio.ThreadSafeFlag()` - confirmed directly against the built Unix-port interpreter
+that `asyncio`/`uasyncio` are two import names for the *same* underlying classes (`ThreadSafeFlag`,
+`Lock`, `get_event_loop` all identity-equal across both names, even though the two module objects
+themselves are `is`-distinct) - safe to mix with any code elsewhere still importing from
+`uasyncio`. `typing.Callable`/`Any`/`Coroutine`/`List`/`Dict` moved behind the established
+`TYPE_CHECKING` guard, `List`/`Dict` → builtin `list`/`dict` generics; `AsyFramManager` import moved
+`TYPE_CHECKING`-only too (never needed at runtime, only for `fram is None`).
+
+Real gaps found and fixed (all four owner-confirmed before fixing, not guessed):
+
+- `status_counter()`'s NTP-synced branch called `time.mktime(time.gmtime())` completely unguarded -
+  `asy_fram_manager.py`'s own promotion already documented that this raises `OverflowError` past
+  rp2's ~2037 32-bit epoch range. Extracted into a new `_ntp_boot_signature()` helper wrapping both
+  the NTP callback and the `mktime()` call; on either failure, falls back to the same
+  random-signature-after-`_NTP_WAIT_TIME` path as "never synced" (owner-confirmed: treat a failure
+  like not-synced rather than retrying forever).
+- The caller-supplied `ntp_is_synced()` callback and every driver-supplied task/timer starter
+  (`get_task_starters()`/`get_timer_starters()`) were called with no exception guard at all - a
+  single misbehaving driver could kill the whole status/supervisor task. Wrapped in `try`/`except
+  Exception`, matching `base_classes.py`'s own `_get_dict_cfg` callback-guarding pattern
+  (owner-confirmed to guard both the same way).
+- `_timer_sequencer()` indexed `timers[counter]` with no bounds check - an empty timer-starter list
+  (`start_timers([])`) raised `IndexError` on the very first call, a real "never raises" gap with no
+  prior guard at all. Fixed: `start_timers()` now short-circuits straight to
+  `self.timers_running.set()` for an empty list instead of ever calling `_timer_sequencer()`.
+- `start_and_check_tasks()`'s per-task `starter()` call (both at startup and on every restart) was
+  the same unguarded-caller-supplied-callable category as the second bullet above - extracted into
+  `_start_task()`, guarded the same way, so a starter that can't even construct a `Task` degrades to
+  a `None` slot (retried next cycle, same as a task that died) instead of crashing the supervisor.
+
+`tests/machine.py` extended with fake `Timer`/`WDT`/`reset()`/`bootloader()` (previously only had
+`Pin`/`I2C`/`SPI` for the two bus drivers - the Unix port's real `machine` module has none of these
+either). The `Timer` fake never fires a callback on its own (no real elapsed time in a test); every
+constructed instance self-registers into a class-level `Timer.all_timers` list so test code can
+reach and manually `.trigger()` even an unstored, fire-and-forget instance - needed because
+`_timer_sequencer()`'s own recursive chain timer is never kept as a reference, matching real
+hardware's fire-and-forget IRQ pattern. `reset()`/`bootloader()` just record that they were called
+instead of ending the test process, since the real calls never return at all.
+
+Four MicroPython-specific gotchas hit while writing `tests/test_system_service.py`, each confirmed
+directly against the built Unix-port interpreter rather than assumed:
+
+- `micropython.const()` values are compiled away and unavailable as module attributes at runtime
+  (see `tests/README.md`'s coverage-artifacts section for the same finding) - `_RESET_DELAY`
+  (4s)/`_MAX_STORAGE_PAUSE` (3600s) are hardcoded in the tests rather than imported, the same
+  treatment `test_asy_fram_manager.py` already gives real on-chip constants.
+- MicroPython's real `time` module is a read-only builtin - `time.mktime = fake` raises
+  `AttributeError` directly (confirmed), unlike a plain Python-level module's mutable namespace. The
+  mktime-overflow test instead reassigns `system_service`'s own module-level `time` *name* to a fake
+  object (a regular, mutable module global, unlike the builtin it normally points to).
+- Bound-method identity isn't guaranteed - `obj.method is obj.method` can legitimately be `False`
+  even for the same underlying method (each attribute access can mint a fresh bound-method object).
+  The storage-pause-wiring test asserts by calling `svc.storage_pause` and checking the FRAM
+  manager's own resulting pause state, not by comparing it `is manager.set_pause`.
+- Cancelling a task while it's suspended inside `asyncio.sleep(N)` resolves immediately regardless
+  of `N` (confirmed directly, 0ms measured) - most `start_and_check_tasks()` tests just cancel
+  rather than waiting out real `_TASK_CHECK_TIME`=2s cycles. The one test that must let the
+  supervisor run to completion (crossing `_TASK_FAIL_MAX` to actually trigger a reboot) instead
+  monkeypatches `asyncio.sleep` itself for its duration, since both relevant consts are
+  `micropython.const()`-folded and can't be shortened directly.
+
+`improved-quality/sensortask-wozi.py`'s own `SystemService(...)` call site was still passing the
+legacy `storage_pause=`/`debug=` keywords - already broken against this file's already-updated
+constructor before this session started, unrelated to anything changed here. Patched (owner-
+confirmed) to `SystemService(conn.ntp_issynced, watchdog=watchdog, fram=fram, debug=debug)`. Left
+alone (out of scope, pre-existing, separate issues): that file's hand-rolled task-supervisor loop in
+`main()` still never calls the real `start_and_check_tasks()`/`get_task_starters()` at all, and its
+own `sysfunct.start_timers(timer_starters, 1000)` call passes a second positional argument
+`start_timers()` has never accepted.
+
+42 tests (`tests/test_system_service.py`): `__init__` (in-memory vs. FRAM-backed logging,
+debug/history_length/watchdog forwarding), uptime/boot-signature (including all four
+`_ntp_boot_signature()` branches: synced-success, callback-exception, mktime-overflow, never-synced,
+plus the full `status_counter()` loop driven via repeated `ThreadSafeFlag.set()` + `sleep(0)`
+pumping instead of real elapsed time), the timer-startup stagger sequence (empty/single/multi-timer,
+and a starter-exception mid-sequence), reboot/reboot-to-bootloader/storage-pause (including the
+real FRAM-backed integration path via `AsyFramManager`), and the task supervisor loop (watchdog
+feed, no-watchdog, a dead task restarting, a starter that can't even start, and the full
+give-up-and-reboot path).
+
+#### Second pass: `machine.Timer`/`machine.WDT` verified directly against real rp2 source, not assumed
+
+A follow-up quality review (structure/simplification/completeness/error-handling questions, not just
+the initial promotion checklist) surfaced that the first pass never actually verified whether
+`machine.Timer`/`machine.WDT` calls can raise - it treated them as safe by assumption. Fetched
+`ports/rp2/machine_timer.c` and `ports/rp2/machine_wdt.c` directly from the v1.28.0 tag (matching
+`toolchain/versions.toml`'s pin) rather than trusting a summarized web search:
+
+- Bare `Timer()` (no args) never allocates anything - `machine_timer_make_new()` only calls the
+  init helper `if (n_args > 0 || n_kw > 0)` - confirmed safe, matches `__init__`'s three bare
+  `Timer()` calls.
+- `Timer.deinit()` is safe unconditionally, any prior state (checks `alarm_id != ALARM_ID_INVALID`
+  before cancelling) - confirmed safe, matches the unconditional `deinit()` calls already in
+  `reboot_system()`/`reboot_bootloader()`.
+- **`Timer.init()` (and any full `Timer(period=..., callback=...)` construction) calls
+  `alarm_pool_add_alarm_in_us()` and raises `OSError(MP_ENOMEM)` if the alarm pool is exhausted** -
+  a real, confirmed raise path, not hypothetical. This was unguarded in three places:
+  - `_timer_sequencer()`'s own chained `Timer(...)` call (schedules the next startup step) - since
+    this runs inside a Timer IRQ callback, MicroPython's own `mp_irq_dispatch()` swallows an
+    uncaught exception silently and never re-fires that timer, meaning `timers_running` would never
+    get `.set()` and `start_timers()` would hang forever. Fixed: wrapped in `try`/`except OSError`,
+    falls through to `self.timers_running.set()` on failure instead of leaving the caller hanging.
+  - `pause_permanent_storage()`'s auto-unpause `.init()` call - if this raises, storage stays paused
+    with no way to auto-resume. Fixed: catches `OSError` and immediately undoes the pause
+    (`storage_pause(False)`) rather than leaving it stuck.
+  - `reboot_system()`/`reboot_bootloader()`'s `.init()` call - if this raises, it propagates
+    uncaught, including through `start_and_check_tasks()`'s own give-up-and-reboot path, meaning
+    the system's last-resort failsafe could itself crash instead of rebooting. Fixed (owner-
+    confirmed: reuse the *existing* stop-feeding-the-watchdog mechanism, not a new one): a new
+    `self._force_watchdog_starve` flag, set on this failure, checked alongside the existing
+    `task_errors <= _TASK_FAIL_MAX` condition in `start_and_check_tasks()`'s feed step - once set,
+    the watchdog is never fed again regardless of task health, so it resets the device within its
+    own timeout the same way exceeding `_TASK_FAIL_MAX` already does. One-way by design, matching
+    the existing give-up path's own one-way `return`.
+- `WDT.feed()` (`mp_machine_wdt_feed()`) is a bare `watchdog_update()` register write - confirmed
+  it genuinely cannot raise, no guard needed.
+
+Also from this pass: `reboot_system()`/`reboot_bootloader()` were byte-for-byte identical except for
+one log string and the final callback - collapsed into a shared `_reboot(message, action)` helper.
+`pause_permanent_storage()`'s duration clamp (`if <=0: 0, elif >MAX: MAX`) simplified to
+`min(max(duration, 0), _MAX_STORAGE_PAUSE)`, matching the exact clamp idiom `base_classes.py`'s
+`LockedCounter` already established elsewhere in this codebase; its duplicated `storage_timer.deinit()`
+call (present in both the zero-duration and real-duration branches) hoisted above the branch.
+`get_boot_signature()`'s bare-`int`-with-`-1`/`1`-sentinel contract (no separate "is this resolved
+yet" boolean exposed) was flagged as a discussion point, not changed - it matches the pre-existing
+legacy behavior exactly and is deliberately treated as an opaque "unique ID," not a live status field.
+
+`tests/machine.py`'s `Timer` fake extended with `raise_on_arm` (a shared class attribute, toggled via
+a `_RaiseOnArm` context manager in the test file) to simulate this exact `OSError(ENOMEM)` path -
+modeled precisely on the real gate: a bare `Timer()` with no kwargs never calls `init()` internally
+and so can never raise, matching `machine_timer_make_new()`'s own `n_args/n_kw` check; any kwargs
+(or an explicit `.init()` call) routes through the same raising path. 7 new tests cover all three
+fixed call sites plus the dedup/simplification; total now 49
+(`grep -c '^def test_' tests/test_system_service.py`).
+
+One MicroPython/mypy interaction hit while writing these: `assert svc._force_watchdog_starve is
+False` followed later by `assert svc._force_watchdog_starve is True` across an intervening method
+call that mutates it made mypy report the *next* statement as unreachable - a known mypy narrowing
+limitation (attribute narrowing from an `is False`/`is True` identity assert isn't invalidated by an
+arbitrary method call in between, so mypy computes the intersection of `Literal[False]` and
+`Literal[True]` as `Never` and treats anything after as dead code, even though the call legitimately
+mutates the real attribute at runtime). Confirmed directly with a minimal repro isolating just the
+two asserts plus a mutating call in between. Fixed by dropping the redundant "before" assertion
+(the "after" assertion is what the test actually needs) rather than fighting the narrower.
+
+#### Third pass: boot signature's `-1`/`1` sentinel replaced with `None` (owner-confirmed design)
+
+A further review flagged `get_boot_signature()`'s bare-`int`-with-`-1`/`1`-sentinel contract as a
+discussion point (see the second-pass entry above). Owner clarified the actual design intent, which
+this codebase-review process hadn't previously had recorded anywhere: **the field exists purely so
+an outside observer can detect that *this* device rebooted**, by polling and watching for the value
+to change once it's left its "not ready yet" state - not for cross-device correlation, and not as a
+real timestamp (the NTP-vs-random ambiguity flagged in the second pass doesn't matter for this use).
+The `-1` sentinel's job was specifically to let that observer distinguish "uninitialized" from
+"valid, now watch for changes" - a deliberate, load-bearing design detail, not an oversight.
+
+This ruled out the second pass's own first suggestion (seed a random value immediately at boot,
+then possibly overwrite it with the NTP timestamp once resolved): owner correctly pointed out that
+overwriting a provisional random value with a timestamp *is itself an observable change*, which
+would look exactly like a spurious reboot to the observer. The existing resolve-once logic (NTP if
+it arrives in time, else a random fallback after `_NTP_WAIT_TIME`, latched via `start_time_set` and
+never revisited) was already correct for this purpose - only the sentinel's *representation*
+needed to change, not the resolution logic itself.
+
+Fix: `self.boot_signature` moved from `LockedValue(1)` to `LockedCounter(init_value=None,
+max_val=0xFFFFFFFF)` - reusing the exact same class and `max_val` already used for `self.uptime`
+rather than adding a new primitive, since `LockedCounter` already has the needed "`None` = not yet
+resolved, otherwise clamped into range" behavior built in and tested (`increment()`/`decrement()`
+now go unused for this field, which is harmless). `status_counter()`'s initial
+`set_value(-1)` became `set_value(None)`; `get_boot_signature()` simplified from a cast-returning
+`-> int` to `-> int | None`, dropping the now-unnecessary `int(res)` cast entirely. `None` needs no
+special handling to "propagate through the JSON API" (owner's own requirement) - it's Python's/
+JSON's native "no value" representation (`null`), unlike the old sentinel which shared the plain
+`int` type with real signatures.
+
+Before finalizing, the owner raised a sharper version of the same concern from a different angle:
+could `random.getrandbits(32)`'s *seed itself* be predictable/repeating across reboots (a pattern
+seen on some platforms/configs), defeating the fallback's own uniqueness? Verified directly against
+real source rather than assumed: `ports/rp2/mpconfigport.h` sets `MICROPY_PY_RANDOM_SEED_INIT_FUNC
+(get_rand_32())` and rp2's ROM level makes `MICROPY_MODULE_BUILTIN_INIT` true, so MicroPython's
+`random` module auto-seeds from `get_rand_32()` on first import, every boot - it does not fall back
+to `extmod/modrandom.c`'s fixed compile-time constants (`0xeda4baba`/`69`/`233`), which is the
+actual failure mode being worried about, on a port that doesn't wire up that seed function. Pico
+SDK's `pico_rand` (`get_rand_32()`'s real implementation) seeds its own 128-bit PRNG state primarily
+from the Ring Oscillator's physical "random bit" (`PICO_RAND_ENTROPY_SRC_ROSC`, default-on on
+RP2040 since it has no hardware TRNG - that's RP2350-only), mixed with a hash of leftover RAM
+content and the microsecond timer - genuine physical entropy, not a deterministic function of
+uptime-since-power-on alone. Confirmed as a real, sourced fact and cited directly in a code comment
+at the call site, not left as an assumption. (Separately explained for the owner: *if* the seed
+really were fixed, the failure mode isn't "low odds of a repeat" - a fixed seed with the same call
+sequence produces the exact same first draw with 100% certainty, since there's no entropy at all in
+that hypothetical; contrast the real, properly-seeded case, where the odds of two *consecutive*
+32-bit draws coinciding are 1-in-2³² ≈ 1-in-4.29-billion - a simple pairwise check, not a
+birthday-paradox calculation, since only consecutive values matter for this observer's purpose.)
+
+New test: `test_status_counter_boot_signature_never_changes_again_once_resolved` - proves the
+signature stays byte-for-byte identical across many further ticks post-resolution, the specific
+property this whole design depends on (a change ⟺ a reboot, never a false positive from internal
+resolution). The four existing `status_counter()` tests checking the sentinel value were updated
+from `== -1`/`!= -1` to `is None`/`is not None`, plus their `scenario()` return-type annotations
+from `tuple[bool, int]` to `tuple[bool, int | None]`. Suite now 50 tests / 95% coverage (unchanged -
+the 9 remaining misses are still exactly the same documented tracer artifacts).
+
+#### Fourth pass: uncaught-exception audit found one real gap, plus broader test-configuration coverage
+
+A dedicated pass re-checked every call `system_service.py` makes into another module (or into
+`machine`) for a possible uncaught exception, verifying each against the actual callee source
+rather than assuming: `base_classes.py`'s `LockedCounter`/`asyncio.Lock`/`asyncio.ThreadSafeFlag`
+construction, `print_log.py`'s `PrintLogHistory`/`PrintLogHistoryStore` (deque `MemoryError`
+already guarded to a length-0 fallback, FRAM `get_chunk()` already wrapped), `asy_fram_manager.py`'s
+`set_pause()` (trivial - a `pr.evt()` call plus a bool assignment, confirmed never raises, unlike
+the arbitrary caller-supplied callbacks this file already treats defensively), and
+`extmod/asyncio/core.py`'s real `get_event_loop()`/`create_task()` (checked directly from the
+cached toolchain source at `~/pico-toolchain/micropython/extmod/asyncio/core.py` - `get_event_loop()`
+just returns the `Loop` class, and `create_task()`'s only raise path, `TypeError` for a non-coroutine
+argument, is unreachable here since `self.status_counter()` is always a real coroutine object).
+
+That audit found exactly one real, previously-missed gap: **`start_uptime_timer()`'s
+`self.uptime_timer.init(...)` was the one Timer-arming call site in this file (of four total) with
+no `OSError` guard** - `_reboot()`'s `reset_timer.init()`, `pause_permanent_storage()`'s
+`storage_timer.init()`, and `_timer_sequencer()`'s chained `Timer(...)` construction were all
+already guarded against real rp2 alarm-pool exhaustion (`ports/rp2/machine_timer.c`'s `ENOMEM`
+path, per the second pass above); this one wasn't. In practice it never actually crashed past this
+file's boundary - its only real caller today, `_timer_sequencer()`, already wraps every starter
+call in a broad `except Exception` - but the method violated its own module docstring's "every
+method returns a well-defined value and never raises" contract if ever called directly, and was
+inconsistent with the other three identical-failure-mode guards already in this exact file.
+
+Fixing the guard raised a real design question with no obviously-correct answer from the code
+alone: what should happen on failure? Flagged to the owner rather than guessed, since this file
+already has two different, equally-established precedents for "a Timer can't be armed" -
+`_reboot()`'s force a watchdog-starve reboot (rebooting was already the intent; there's no safe
+substitute action), while `pause_permanent_storage()` just aborts the action and keeps running
+normally (a fully safe substitute exists: "unpaused" is exactly "never paused"). Owner chose the
+`pause_permanent_storage()`-style graceful degradation: log via the non-persisting `pr.err()` and
+keep running - sensors, the REST API, and every other timer/task are unaffected; only
+uptime/boot-signature stay unresolved for the rest of this boot, which is a real but non-critical
+observability loss, not a reason to force a reboot for what is ultimately a resource hiccup in a
+non-essential subsystem.
+
+Separately, broadened test coverage per the same review pass beyond just the new guard: an
+`_ntp_boot_signature()` fault-injection test for `time.gmtime()` itself raising (not just
+`mktime()` - both calls share one `try`/`except`, and only `mktime()` raising had a test before);
+constructor edge cases (`history_length=0`, `history_length=-5` clamping) and one test combining
+all four constructor params (`fram`+`watchdog`+`history_length`+`debug`) together, since they'd
+previously only ever been tested pairwise; a FRAM-backed variant of the existing
+`get_error_counter()`/`reset_error_counter()` test (previously only exercised against the in-memory
+`PrintLogHistory` path, never the `PrintLogHistoryStore` one `system_service.py` itself also wires
+up); a `pause_permanent_storage()` re-entrancy test (a second call before the first pending
+auto-unpause timer ever fires must fully replace it, not stack two competing callbacks); and a
+`reboot_system()` cross-dependency test combining FRAM presence with the reset-timer `OSError`
+fallback (storage must still get paused before the failing `init()` call, independent of whether
+the fallback itself succeeds). Suite now 58 tests / 95% coverage (unchanged miss count - the new
+`try`/`except` lines are fully exercised; the 9 remaining misses are still the same documented
+tracer artifacts).
+
+#### Fifth pass: a silently-dropped soft-Timer callback can hang `start_timers()` forever with zero exception
+
+A follow-up review, prompted explicitly by the owner's "these are last-resort functions - no
+exceptions, no hangs" framing, went past synchronous-exception auditing (the fourth pass above)
+into whether a Timer *callback*, not just its *arming*, could fail silently. Verified directly
+against the real MicroPython/pico-sdk C source (not assumed): every `Timer` this file constructs
+omits `hard=True` (`ports/rp2/machine_timer.c`'s `machine_timer_init_helper()` defaults
+`self->ishard` to `false`), so `alarm_callback()`'s firing dispatches through
+`mp_irq_dispatch(..., ishard=false)` (`shared/runtime/mpirq.c`), which for a soft callback just
+calls `mp_sched_schedule(handler, parent)` - **and never checks its boolean return value**.
+`mp_sched_schedule()` itself (`py/scheduler.c`) returns `false` and silently drops the callback if
+MicroPython's own scheduler queue is already full - a small, fixed-depth ring buffer
+(`MICROPY_SCHEDULER_DEPTH = 8` on rp2, `ports/rp2/mpconfigport.h`) shared by *every* soft
+timer/IRQ callback on the whole device, not something this file (or any single file) controls.
+The underlying alarm still considers itself "handled" regardless (a periodic timer reschedules its
+next tick either way, self-healing after one dropped tick; a one-shot timer does not - it simply
+never fires again). No exception is raised anywhere in this chain; there is no way for Python code
+to detect that a specific scheduled callback was dropped rather than merely not-yet-run.
+
+Two call sites in this file rely on a scheduled callback eventually running with no other
+safeguard: `reboot_system()`/`reboot_bootloader()`'s one-shot `reset_timer` (drop ⟹ the requested
+reboot silently never happens, and `_force_watchdog_starve` is never set either, since
+`reset_timer.init()` itself didn't raise - that would only fire from a *failure to arm*, a
+different, already-guarded failure mode from a *failure to later deliver*), and
+`_timer_sequencer()`'s chained one-shot timers via `start_timers()`'s
+`await self.timers_running.wait()` (drop ⟹ sequencing stops permanently and this `wait()` - called
+from `main()` during device boot, before any sensor/task loop starts - hangs forever: the device
+never finishes booting, with nothing to log or catch).
+
+Flagged both to the owner rather than silently fixing, since the right response wasn't obvious
+from the code alone - and **both ended up rejected, for the same underlying reason.**
+
+An initial fix was drafted and briefly landed for `start_timers()`: wrap
+`await self.timers_running.wait()` in `asyncio.wait_for(..., 5)` (a new hardcoded-seconds
+`const()`), logging and setting `_force_watchdog_starve = True` on `asyncio.TimeoutError`. On
+reflection (owner's explicit call), this was reverted along with its test and is **not** part of
+the current file:
+
+- **In the productive system, arming a real `machine.WDT` is one of the very first things every
+  device does - always, not situationally.** A hardcoded software timeout here would just be a
+  second, independent clock racing the real watchdog with no coordination between the two - "no
+  hardcoded 5s brittleness vs. the WDT timeout," in the owner's words. Whichever fires first is
+  arbitrary and deployment-dependent (it depends on how much wall-clock time already elapsed before
+  `start_timers()` was even reached, which this file has no visibility into); the software timeout
+  doesn't reliably arrive *before* the hardware one the way `_RESET_DELAY < watchdog timeout` is
+  deliberately guaranteed elsewhere in this same file.
+- **The scenario the fix was defending against (no watchdog configured at all) is a test-only
+  configuration, not a real one.** `SystemService(watchdog=None)` exists so unit tests can exercise
+  the class without a real `WDT`; every real deployment always arms one. Adding a bounded-timeout/
+  `_force_watchdog_starve` mechanism whose entire justification is "what if there's no watchdog"
+  is solving for a case that doesn't occur in production - complexity with no real payoff, per the
+  same "don't design for a hypothetical" principle this repo already applies elsewhere.
+- This is the exact same shape of rejection already recorded above for
+  `reboot_system()`/`reboot_bootloader()`'s analogous candidate fix ("brittle wrt. wdt timeout
+  settings") - both call sites share one root cause (a silently-droppable soft-Timer callback,
+  verified from source, not hypothetical) and both were judged not worth guarding against in
+  software once a real watchdog is a given, rather than a maybe.
+
+The underlying finding (silently-droppable soft-Timer callback delivery, confirmed against real
+`py/scheduler.c`/`shared/runtime/mpirq.c`/`ports/rp2/machine_timer.c` source) stays recorded here
+precisely so a future session that rediscovers the same mechanism doesn't re-add either mitigation
+without first knowing both were already considered and declined, for a documented reason.
+`start_timers()` itself is back to its pre-this-pass shape (plain, unbounded
+`await self.timers_running.wait()`); the fourth pass's independent fixes (`start_uptime_timer()`'s
+`OSError` guard and its associated tests) are unaffected and remain. Suite back to 58 tests / 95%
+coverage.
+
+#### Sixth pass: `start_timers([])` didn't actually match its own fourth-pass write-up
+
+A full re-validation against every point of `src/README.md`'s checklist (not just a fresh
+exception audit) surfaced a real discrepancy between this file's documented behavior and its
+actual code: the fourth pass above claims `start_timers()` "short-circuits straight to
+`self.timers_running.set()` ... instead of ever calling `_timer_sequencer()`" for an empty list -
+but the code still called `_timer_sequencer(timers, counter=0)` unconditionally. For `timers=[]`,
+`timers[0]` raised `IndexError`, which only happened to be swallowed by `_timer_sequencer()`'s own
+`except Exception` (meant for a misbehaving starter callable), not by any explicit guard. Confirmed
+empirically against the real interpreter that this produced a misleading console line - `debug=1`,
+`start_timers([])` logged `"Timer starter 0 failed: list index out of range"` - even though
+`timers_running` still ended up `set()` correctly (no hang, no crash; `pr.err()` is console-only,
+so `err_count` was never actually affected). Harmless in practice (`start_timers()` is always
+called with the full multi-driver-merged list, never actually empty in real use), but a fragile,
+undocumented reliance on an accident of control flow rather than an explicit one - narrowing that
+`except Exception` later (e.g. to stop also swallowing a starter's own `IndexError`) would have
+silently reintroduced the exact hang `_timer_sequencer()`'s own guard was added to prevent.
+
+Fixed with the two-line guard the fourth pass already described but never actually landed:
+
+```python
+async def start_timers(self, timers: "list[Callable[[], None]]") -> None:
+    if not timers:  # nothing to sequence - avoid _timer_sequencer's timers[0] on an empty list
+        self.timers_running.set()
+        return
+    self._timer_sequencer(timers, counter=0)
+    await self.timers_running.wait()
+```
+
+`test_start_timers_empty_list_sets_timers_running_without_crashing` strengthened to assert
+`_timer_sequencer` is never even called for an empty list (monkeypatched on the instance), not just
+that nothing crashes - the old version would have passed identically before this fix, since the
+IndexError-swallowing path also "worked."
+
+Also from this pass: three inline comment blocks exceeded `src/README.md` section 11's "≤3 lines,
+prefer fewer" bar (`__init__`'s `_force_watchdog_starve` comment, `start_uptime_timer()`'s and
+`_reboot()`'s `except OSError` comments - 4-5 lines each). Trimmed to fit, pointing at this file's
+existing second-/fourth-pass write-ups above for the full rationale rather than duplicating it
+in-file - no information lost, just relocated to where it already lived.
+
+Suite still 58 tests (the empty-list test was strengthened in place, not added to) / 95% coverage
+(one more line covered by the new explicit guard; miss count unchanged - still the same documented
+tracer artifacts).
+
+A follow-up owner request went further than the ≤3-line cap already applied above: every remaining
+multi-line comment in the file (including ones already at exactly 3 lines, technically compliant)
+was tightened to at most 2, and the module docstring itself condensed from two 5-6-line paragraphs
+to two 3-4-line ones - same "purpose, then the never-raises contract" shape, less prose. Zero
+behavior change (comment/docstring text only); re-verified lint/typecheck/58-tests-58-passing/95%
+coverage identical to before this trim.
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
@@ -838,7 +1229,7 @@ and a missing config file failing independently without either derailing the oth
 
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
-`asy_fram_manager.py` 89, `test_fram_integration.py` 10 — **632 total**.
+`asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 58 — **690 total**.
 
 ## Decided for the refactor
 
