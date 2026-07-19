@@ -81,14 +81,25 @@ class DNSQuery:
         self.data = data
         self.domain = ""
         self.debug = debug
-        tipo = (data[2] >> 3) & 15  # Opcode bits
-        if tipo == 0:  # Standard query
-            ini = 12
-            lon = data[ini]
-            while lon != 0:
-                self.domain += data[ini + 1 : ini + lon + 1].decode("utf-8") + "."
-                ini += lon + 1
+        try:
+            tipo = (data[2] >> 3) & 15  # Opcode bits
+            if tipo == 0:  # Standard query
+                ini = 12
                 lon = data[ini]
+                while lon != 0:
+                    self.domain += data[ini + 1 : ini + lon + 1].decode("utf-8") + "."
+                    ini += lon + 1
+                    lon = data[ini]
+        except (IndexError, UnicodeError):
+            # data too short (fewer than 3 bytes for the opcode, or truncated mid-label) or a
+            # label containing invalid UTF-8 - confirmed directly reachable from a malformed or
+            # truncated UDP datagram, not just a hypothetical. Reset rather than propagate: an
+            # uncaught exception here reaches run()'s broad except-Exception handler and stalls
+            # the whole server (every other waiting client too) for 3s per bad packet. An empty
+            # domain is already the file's existing sentinel for "don't respond" (see the
+            # tipo != 0 case and response()'s `if self.domain:` gate), so this reuses it rather
+            # than introducing a new one.
+            self.domain = ""
         if self.debug:
             print("DNSQuery domain:" + self.domain)
 

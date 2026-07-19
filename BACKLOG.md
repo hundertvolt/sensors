@@ -1783,6 +1783,48 @@ today - flagged as out of scope for this transport-only module to fix" note and 
 parallel reference to the same gap - both were about `captive_dns.py`, not `asy_udp_socket.py` itself,
 and are closed by this fix rather than needing any further change in `asy_udp_socket.py`.
 
+#### `captive_dns.py`: `DNSQuery` unguarded against truncated/malformed query data
+
+Owner-directed bird's-eye follow-up pass over the whole file after the subnet-filtering fix above,
+looking specifically for more oversights of the same kind rather than assuming that fix was the only
+one. Found one: `DNSQuery.__init__` parses the raw datagram (`data[2]` for the opcode nibble, then
+walks length-prefixed labels starting at `data[12]`) with no bounds checking and no exception
+handling at all - a datagram shorter than 3 bytes, shorter than 13 bytes, or truncated/malformed
+mid-label all raise an uncaught `IndexError`; a label containing bytes that aren't valid UTF-8 raises
+`UnicodeError`. `DNSQuery(data, ...)` is constructed inside `DNSServer.run()`'s own try block, *after*
+the subnet-membership check, so any on-subnet client - not necessarily malicious, just a flaky Wi-Fi
+client, a stray port-scanner, or a buggy resolver - reaching this with a short or malformed packet
+falls through to the loop's broad `except Exception: ... await asyncio.sleep(3)`, stalling the entire
+DNS server (every other client waiting on it too) for 3 seconds per bad packet. Same class of bug as
+the `addr[0]`/`AttributeError` one found while verifying the subnet-filter fix, just in the
+query-parsing path instead of the address-parsing path - and by the same "concrete, reproducible, not
+hypothetical" bar the owner set during the `asy_udp_socket.py` sixth pass, this one clears it too:
+
+```
+MICROPYPATH="improved-quality:src:.:/root/pico-toolchain/micropython/extmod" micropython repro.py
+0 RAISED IndexError bytes index out of range   # b""
+1 RAISED IndexError bytes index out of range   # b"\x00"
+2 RAISED IndexError bytes index out of range   # b"\x00\x00"
+3 RAISED IndexError bytes index out of range   # 3 bytes, tipo==0 but len<13
+4 RAISED IndexError bytes index out of range   # exactly 12 bytes
+5 RAISED IndexError bytes index out of range   # length byte with no bytes following
+6 RAISED IndexError bytes index out of range   # one label then truncated
+7 RAISED UnicodeError                          # label containing an invalid UTF-8 byte (0xff)
+```
+
+Fix: wrapped the opcode-extraction-through-label-walk block in `try: ... except (IndexError,
+UnicodeError): self.domain = ""`. Reuses the file's own existing sentinel rather than inventing a new
+one - `self.domain == ""` was already how a non-standard-query (`tipo != 0`) says "don't respond"
+(`response()`'s `if self.domain:` gate). Re-ran the same 8 malformed inputs after the fix: all resolve
+to `domain == ""` instead of raising; a well-formed query (`"a.io"`) still parses to `"a.io."` and
+still produces a valid response packet, confirming the fix doesn't change legitimate-query behavior.
+
+Verified the same way as the subnet-filter fix - no permanent test file (`captive_dns.py` still isn't
+promoted to `src/`), throwaway scratchpad repro scripts only. Re-ran full-scope
+`scripts/lint.sh`/`scripts/typecheck.sh`/`scripts/test.sh`: 220/129 unchanged (no new findings from
+this fix), all 12 `tests/` files green, 752 tests total, unaffected (`captive_dns.py` isn't imported
+by any of them).
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
