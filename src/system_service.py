@@ -74,10 +74,9 @@ class SystemService:
         # for that value changing, as the reboot signal - never re-resolved once set, see below).
         self.boot_signature = LockedCounter(init_value=None, max_val=0xFFFFFFFF)
         self.watchdog = watchdog
-        # Set only if a reboot's own reset_timer.init() couldn't be armed (alarm-pool exhaustion) -
-        # start_and_check_tasks() then stops feeding the watchdog so it resets us anyway, the same
-        # backstop it already relies on past _TASK_FAIL_MAX. One-way: never cleared once set, since
-        # the whole point is forcing a reset within the watchdog's own timeout.
+        # Set when _reboot()'s own reset_timer can't be armed - start_and_check_tasks() then stops
+        # feeding the watchdog so it resets us anyway (see BACKLOG.md). One-way: never cleared once
+        # set, since the goal is forcing a reset within the watchdog's own timeout.
         self._force_watchdog_starve = False
 
     def start_asy_uptime_counter(self) -> asyncio.Task[None]:
@@ -87,11 +86,9 @@ class SystemService:
     def start_uptime_timer(self) -> None:
         try:
             self.uptime_timer.init(period=1000, mode=Timer.PERIODIC, callback=lambda b: self.uptime_event.set())
-        except OSError as e:  # alarm-pool exhaustion (confirmed: ports/rp2/machine_timer.c's ENOMEM
-            # path) - unlike _reboot()'s reset_timer (where rebooting was already the intent), there's
-            # a safe way to keep running: sensors, the REST API and every other timer/task are
-            # unaffected. Only uptime/boot-signature stay unresolved for the rest of this boot -
-            # degraded observability, not a reason to force a reboot (owner-confirmed design).
+        except OSError as e:  # alarm-pool exhaustion (ports/rp2/machine_timer.c ENOMEM) - degrades
+            # gracefully instead of forcing a reboot: only uptime/boot-signature stay unresolved this
+            # boot, everything else keeps running (owner-confirmed design, see BACKLOG.md).
             self.pr.err("Could not arm uptime timer:", e)
 
     def stop_uptime_timer(self) -> None:
@@ -112,10 +109,9 @@ class SystemService:
             self.pr.evt("Storage paused")
         try:
             self.reset_timer.init(period=_RESET_DELAY * 1000, mode=Timer.ONE_SHOT, callback=lambda b: action())
-        except OSError as e:  # alarm-pool exhaustion (confirmed: ports/rp2/machine_timer.c's ENOMEM
-            # path) - can't arm the delayed reset, so fall back to the same backstop
-            # start_and_check_tasks() already relies on past _TASK_FAIL_MAX: stop feeding the
-            # watchdog and let it reset us within its own timeout instead.
+        except OSError as e:  # alarm-pool exhaustion (ports/rp2/machine_timer.c ENOMEM) - can't arm
+            # the delayed reset, so fall back to the same watchdog-starve backstop
+            # start_and_check_tasks() already relies on past _TASK_FAIL_MAX (see BACKLOG.md).
             self.pr.err("Could not arm reset timer, stopping watchdog feed instead:", e)
             self._force_watchdog_starve = True
 
@@ -225,6 +221,9 @@ class SystemService:
         self.timers_running.set()
 
     async def start_timers(self, timers: "list[Callable[[], None]]") -> None:
+        if not timers:  # nothing to sequence - avoid _timer_sequencer's timers[0] on an empty list
+            self.timers_running.set()
+            return
         self._timer_sequencer(timers, counter=0)
         await self.timers_running.wait()
 

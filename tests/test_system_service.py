@@ -423,9 +423,16 @@ def test_status_counter_boot_signature_never_changes_again_once_resolved() -> No
 
 
 def test_start_timers_empty_list_sets_timers_running_without_crashing() -> None:
+    # Explicit short-circuit, not an incidental IndexError-in-_timer_sequencer caught by its own
+    # generic `except Exception` (that would still "work" but log a misleading "Timer starter 0
+    # failed" - confirmed empirically before this guard was added) - assert _timer_sequencer is
+    # never even called for an empty list, not just that nothing crashes.
     svc = make_service()
     Timer.all_timers.clear()
+    called = []
+    svc._timer_sequencer = lambda timers, counter=0: called.append(1)  # type: ignore[method-assign]
     run(svc.start_timers([]))
+    assert called == []
     assert Timer.all_timers == []  # no chain timer ever created for an empty starter list
 
 

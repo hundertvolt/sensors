@@ -1163,6 +1163,50 @@ without first knowing both were already considered and declined, for a documente
 `OSError` guard and its associated tests) are unaffected and remain. Suite back to 58 tests / 95%
 coverage.
 
+#### Sixth pass: `start_timers([])` didn't actually match its own fourth-pass write-up
+
+A full re-validation against every point of `src/README.md`'s checklist (not just a fresh
+exception audit) surfaced a real discrepancy between this file's documented behavior and its
+actual code: the fourth pass above claims `start_timers()` "short-circuits straight to
+`self.timers_running.set()` ... instead of ever calling `_timer_sequencer()`" for an empty list -
+but the code still called `_timer_sequencer(timers, counter=0)` unconditionally. For `timers=[]`,
+`timers[0]` raised `IndexError`, which only happened to be swallowed by `_timer_sequencer()`'s own
+`except Exception` (meant for a misbehaving starter callable), not by any explicit guard. Confirmed
+empirically against the real interpreter that this produced a misleading console line - `debug=1`,
+`start_timers([])` logged `"Timer starter 0 failed: list index out of range"` - even though
+`timers_running` still ended up `set()` correctly (no hang, no crash; `pr.err()` is console-only,
+so `err_count` was never actually affected). Harmless in practice (`start_timers()` is always
+called with the full multi-driver-merged list, never actually empty in real use), but a fragile,
+undocumented reliance on an accident of control flow rather than an explicit one - narrowing that
+`except Exception` later (e.g. to stop also swallowing a starter's own `IndexError`) would have
+silently reintroduced the exact hang `_timer_sequencer()`'s own guard was added to prevent.
+
+Fixed with the two-line guard the fourth pass already described but never actually landed:
+
+```python
+async def start_timers(self, timers: "list[Callable[[], None]]") -> None:
+    if not timers:  # nothing to sequence - avoid _timer_sequencer's timers[0] on an empty list
+        self.timers_running.set()
+        return
+    self._timer_sequencer(timers, counter=0)
+    await self.timers_running.wait()
+```
+
+`test_start_timers_empty_list_sets_timers_running_without_crashing` strengthened to assert
+`_timer_sequencer` is never even called for an empty list (monkeypatched on the instance), not just
+that nothing crashes - the old version would have passed identically before this fix, since the
+IndexError-swallowing path also "worked."
+
+Also from this pass: three inline comment blocks exceeded `src/README.md` section 11's "≤3 lines,
+prefer fewer" bar (`__init__`'s `_force_watchdog_starve` comment, `start_uptime_timer()`'s and
+`_reboot()`'s `except OSError` comments - 4-5 lines each). Trimmed to fit, pointing at this file's
+existing second-/fourth-pass write-ups above for the full rationale rather than duplicating it
+in-file - no information lost, just relocated to where it already lived.
+
+Suite still 58 tests (the empty-list test was strengthened in place, not added to) / 95% coverage
+(one more line covered by the new explicit guard; miss count unchanged - still the same documented
+tracer artifacts).
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
