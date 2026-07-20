@@ -88,9 +88,12 @@ From hands-on field experience with deployed units:
     implemented anywhere (not even in `improved-quality/`). If SD-card-style post-deassert clock
     cycling is wanted, it needs designing from scratch.
   - I2C recovery is device-specific (check what each driver already does before assuming a gap);
-    generalize only if a mechanism turns out to be genuinely common. *(Only `asy_scd30_driver.py`'s
-    reset path reviewed so far — SGP40's `_reset()` and BMP3xx's reset command still need the same
-    review.)*
+    generalize only if a mechanism turns out to be genuinely common. *(`asy_scd30_driver.py`'s
+    reset path reviewed: `reset()` slept only 0.2s after `_CMD_SOFT_RESET` — Interface Description
+    1.1/1.4.10 document boot-up time as < 2s and a soft reset as "restarting the system controller,"
+    i.e. the same bound applies. Fixed to 2.5s (margin over the documented bound, since this path
+    also runs on every failure-triggered restart, not just cold boot). SGP40's `_reset()` and
+    BMP3xx's reset command still need the same review.)*
   - FRAM's SPI bus gets the same bus-recovery treatment as sensor buses. **Partially done**:
     `asy_fram_driver.py`'s own `src/` promotion (see "`asy_fram_driver.py` → `src/`" below) fixed a
     real device-identification bug and added write-enable-latch/write-protect verification - the
@@ -110,7 +113,20 @@ From hands-on field experience with deployed units:
   accepted backstop, not a software fix to chase; current task-supervisor error-budget behavior is
   adequate. For calls that genuinely *can* be timeout-wrapped (`socket.getaddrinfo()`, FRAM SPI,
   anything not a raw blocking `machine.I2C` call mid-transaction), standardize on one consistent
-  timeout/cancellation mechanism everywhere.
+  timeout/cancellation mechanism everywhere. **Re-verified during `asy_scd30_driver.py`'s own
+  review, doesn't change the decision above**: the SCD30 Interface Description documents up to
+  150ms of clock stretching once per day for its internal calibration, above `machine.I2C`'s
+  50ms default `timeout` (`i2c0` in `sensortask-wozi.py` doesn't pass an explicit one). That daily
+  stretch is expected to surface as a routine `OSError(ETIMEDOUT)`, one instance of the already-
+  self-healing `_error_check()` counter (well under `max_i2c_err`), not the "genuinely wedged bus"
+  case this bullet is about — no code change from this alone.
+- **Same bug, two files**: `asy_scd30_driver.py`'s `_init_scd()` and `asy_sgp40_driver.py`'s
+  `_init_sgp()` both reset `self.err_cnt_internal` (no leading underscore) instead of
+  `base_classes.py`'s actual `SensorReader._err_cnt_internal` — a dead store that leaves the real
+  consecutive-failure counter never reset across a failure-triggered restart. Confirmed via git
+  history: introduced by the same `base_classes.py` rename that `asy_bmp3xx_driver.py` already
+  picked up correctly. **Fixed in `asy_scd30_driver.py`**; `asy_sgp40_driver.py` still has it,
+  flagged for its own promotion pass, not fixed here.
 - **Bus concurrency via `asyncio.Lock` + `async with` needs a coverage audit** (no gaps, no
   deadlock/starvation). Concrete progress: `asy_scd30_driver.py`/`asy_bmp3xx_driver.py`/
   `asy_sgp40_driver.py` each have a `*_DeviceSession(Lockable)` class — an outer per-sensor lock
@@ -1952,7 +1968,15 @@ non-hypothetical threat in a specific context justifies it. Accepted as residual
 - **UART sensor integration** (`asy_uart.py`/`asy_uart_comm.py`, unused by any deployed config) —
   after the refactor of already-deployed features, not before.
 - **Config-duplication centralization** (same keys hand-kept in sync across `_DEFAULT_CONFIG`, the
-  REST handler, and the HTML form) — owned by the refactor, not the current codebase.
+  REST handler, and the HTML form) — owned by the refactor, not the current codebase. **Concrete
+  gap found during `asy_scd30_driver.py`'s review**: `sensortask-wozi.py` calls
+  `SCD30_Reader.get_default_cfg()`/`SGP40_Reader.get_default_cfg()`/`BMP3xx_Reader.get_default_cfg()`
+  at module import time, merging them into one shared `config.json`; none of the three current
+  Reader classes define `get_default_cfg()` (they use `SensorReaderConfig`'s own per-sensor
+  `config_<name>.cfg` files instead, or — SCD30 — no local config file at all, since its params
+  live on-sensor). This looks like `sensortask-wozi.py` predates that per-sensor-file model and
+  was never updated. Owner-deferred to when `sensortask-wozi.py` itself is worked on, not fixed
+  here.
 - **`dev` config quirks** (e.g. LED/Neopixel REST routes referencing an uninstantiated object) —
   bench rig only, not bugs to fix.
 - **Unit tests against the current (pre-refactor) codebase** — not written; understand the system,

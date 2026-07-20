@@ -127,7 +127,7 @@ class SCD30_Reader(SensorReader):
 
     async def _init_scd(self) -> bool:
         await self.pr.setup()  # required for all logged warnings and errors
-        self.err_cnt_internal = 0
+        self._err_cnt_internal = 0
         try:
             await self.scd.setup()
         except Exception as e:
@@ -305,8 +305,10 @@ class SCD30_I2C:
     async def reset(self) -> None:
         # Perform a soft reset on the sensor, restoring default values
         await self._send_command(_CMD_SOFT_RESET)
-        await asyncio.sleep(0.2)
-        # not mentioned by datasheet, but required to avoid IO error
+        # Soft reset restarts the sensor's own system controller (Interface Description 1.4.10);
+        # boot-up time is documented as < 2s (1.1). This also runs on every failure-triggered
+        # restart, not just cold boot, so wait for the full documented bound - reliability over speed.
+        await asyncio.sleep(2.5)
 
     async def stop_continuous_measurement(self) -> None:
         # Turn off continuous measurement (turn on with ambient pressure command)
