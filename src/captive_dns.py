@@ -67,9 +67,7 @@ class DNSServer:
                             if sent is None:
                                 print(f"Reply to {addr[0]:s}:{addr[1]} dropped by sendto().")
                             else:
-                                print(
-                                    f"Replying to {addr[0]:s}:{addr[1]}: {dns.domain:s} -> {server_ip:s}"
-                                )
+                                print(f"Replying to {addr[0]:s}:{addr[1]}: {dns.domain:s} -> {server_ip:s}")
                 else:  # data or address is None
                     if self.debug:
                         print("Invalid DNS request data or address, not sending response.")

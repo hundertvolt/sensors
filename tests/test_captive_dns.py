@@ -154,6 +154,19 @@ def test_response_returns_none_for_empty_domain() -> None:
 
 
 # ---------------------------------------------------------------------------
+# DNSServer: construction.
+# ---------------------------------------------------------------------------
+
+
+def test_dns_server_init_binds_the_standard_dns_port_in_server_mode() -> None:
+    server = DNSServer(debug=True)
+    assert server.udps._addr == ("0.0.0.0", 53)
+    assert server.udps._mode == "server"
+    assert server.udps.sock is None  # lazy - no real bind attempted at construction
+    assert server.debug is True
+
+
+# ---------------------------------------------------------------------------
 # DNSServer.run(): driven through a controlled fake transport.
 #
 # DNSServer.udps is always bound via a resolved sockaddr in this Unix-port test build (the same
