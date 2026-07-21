@@ -59,6 +59,9 @@ _VAL_AP = const((("AmbPres", "int", None, 700, 1400, 0),))
 _VAL_ALT = const((("Altitude", "int", None, 0, 65535, None),))
 _VAL_CAL = const((("ForceCalRef", "int", None, 400, 2000, None),))
 _VAL_SC = const((("SelfCal", "bool", None, None, None, None),))
+# Deliberately no _VAL_* entry for "ContMeas" - the SCD30 can't report whether continuous
+# measurement is currently running, so it can't join this schema the way the other 6 fields do.
+# See BACKLOG.md ("asy_scd30_driver.py → src/") for the full finding.
 # no default value for config, params are stored on sensor
 
 _NAME = const("SCD30")
@@ -374,7 +377,9 @@ class SCD30_I2C:
         return await self._read_register(_CMD_CONTINUOUS_MEASUREMENT)
 
     async def set_ambient_pressure(self, pressure_mbar: int | float) -> None:
-        # Specifies the ambient air pressure at the measurement location in mBar.
+        # Specifies the ambient air pressure at the measurement location in mBar. This command
+        # (0x0010) is also "trigger continuous measurement" and is NVM-persisted (Interface
+        # Description 1.4.1) - see BACKLOG.md for the write-frequency finding re force=True callers.
         pressure_mbar = int(pressure_mbar)
         if pressure_mbar != 0 and (pressure_mbar > 1400 or pressure_mbar < 700):
             raise AttributeError("ambient_pressure must be from 700 to 1400 mBar")

@@ -1977,6 +1977,47 @@ list) - a successful, CRC-valid read is itself the identity signal, closer to SG
 BMP3xx's ID-list match. A failure here propagates the same way any other `setup()` failure already
 does (caught by `_init_scd()`'s existing `try/except Exception`).
 
+**Correction to an earlier removal in this same pass**: a `# TODO: Stop Measurement command`
+comment (in the `_VAL_*` schema block, right before `# no default value for config...`) was removed
+as stale in an earlier commit on the assumption it meant "is `stop_continuous_measurement()`
+implemented" (it always was - confirmed present in both this file and the legacy
+`python/IndividualDrivers/asy_scd30_driver.py`, unchanged). Re-investigated per project-owner
+request: the comment's actual *location*, right in the config-schema tuple block, makes "add a
+schema entry for continuous-measurement state" the more likely original intent - and that gap is
+real. `get_dict_cfg()`'s `_VAL_TO`/`_VAL_MI`/`_VAL_AP`/`_VAL_ALT`/`_VAL_CAL`/`_VAL_SC` cover 6
+fields; there's no 7th `_VAL_CM`/`ContMeas` entry, and `sensortask-wozi.py`'s REST handler confirms
+why: `data["ContMeas"] = True  # not readable from sensor, just as reference for parsing` (its own
+`sensor_cmd()` handler) - the SCD30 has no command to query whether continuous measurement is
+currently active (only whether *data* is ready, a different question), so it genuinely can't join
+this schema the way the other 6 do. Restored a short comment at the original location documenting
+this (not the same wording - accurate this time), rather than silently leaving the incorrect
+removal in place. The underlying fix (a real schema mechanism for a write-only/unreadable field, or
+accepting the REST-handler-side hardcode as permanent) belongs to `sensortask-wozi.py`'s own pass,
+already deferred per the project owner's "fix sensortask-wozi when we're about to work" instruction
+- not implemented here.
+
+**NVM write-cycle concern, investigated per project-owner request**: every persistent setter in
+this file writes to the SCD30's own non-volatile memory - confirmed directly against the Interface
+Description for `set_measurement_interval` (1.4.3), `set_ambient_pressure`/the underlying "trigger
+continuous measurement" command (1.4.1), `set_self_calibration_enabled` (1.4.6),
+`set_temperature_offset` (1.4.7), and `set_altitude` (1.4.8), plus the Field Calibration app note
+for `set_forced_recalibration_reference` ("saved in a non-volatile memory on the sensor device").
+**No write-cycle endurance figure is published anywhere for this NVM** - checked the Interface
+Description, Datasheet, Design-In Guidelines, and Field Calibration docs (all in
+`datasheets/scd30/`), plus Sensirion's own official `embedded-scd` C reference driver source
+(`scd30/scd30.c` on GitHub) for any comment addressing call-frequency/wear; none exists. One
+concrete, reassuring data point *does* exist: the Field Calibration doc explicitly states FRC "can
+be executed multiple times at arbitrary intervals" - Sensirion's own guidance treats repeated FRC
+writes as normal, not a wear concern. Given the absence of any endurance number, this can't be
+quantified further than that. **Current codebase usage is safe under this uncertainty regardless**:
+every one of these setters is only ever invoked from a REST-triggered config change in
+`sensortask-wozi.py` (human/automation-initiated, inherently infrequent) - never from
+`_init_scd()`/the boot path or any periodic loop in this file. The one spot worth a second look for
+call-frequency, already flagged separately above and deferred to `sensortask-wozi.py`'s own pass:
+the `force=True` resend of `set_ambient_pressure` in its REST handler (needed to resume continuous
+measurement per this file's own comment) fires once per matching REST call, not on a timer - so
+still bounded by REST-call frequency, not a loop.
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
