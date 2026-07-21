@@ -17,6 +17,16 @@ system_service.py's own `_timer_sequencer`, which never keeps a reference to the
 through). `reset()`/`bootloader()` real MCU calls never return at all; this fake just records that
 they were invoked instead of actually terminating the test process.
 
+`Timer` is also a second, separate reason this file has to exist beyond I2C/SPI mocking: it's what
+makes `from machine import Timer` in `src/asy_bmp3xx_driver.py` (and, eventually, the other
+`*_Reader` drivers using the same `start_timer()`/`stop_timer()` shape) resolve at all under
+mypy's `src tests` scope (see BACKLOG.md's "Timer mypy resolution" finding) - `tests` isn't on
+`mypy_path`, but mypy still treats every standalone `.py` file inside a directory passed via
+`files` as a top-level module by its own basename, so this file *is* what `machine` resolves to
+for any other checked file in the same run, same as at real runtime via `MICROPYPATH`. Before
+`Timer` existed here, any driver needing it hit "Module has no attribute Timer" under `src tests`
+even though the real `typings/machine.pyi` stub defines it correctly.
+
 Real RP2040 I2C error codes (confirmed against ports/rp2/machine_i2c.c, not guessed): the
 hardware I2C driver only ever raises OSError(errno.EIO) - covers a NAK/no response and any other
 general bus fault, which is also what a real multi-master arbitration loss would surface as on
