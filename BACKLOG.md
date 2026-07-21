@@ -1969,6 +1969,14 @@ bug, and it would add one more I2C transaction to every `setup()` call (cold boo
 failure-triggered restart alike) - a real, if small, tradeoff worth a conscious decision given this
 whole review's reliability focus, not something to slip in silently.
 
+**Owner decision: add it.** Implemented - `setup()` now reads `_CMD_READ_FIRMWARE_VERSION` (0xD100)
+via the existing `_read_register()` (CRC-validated) before `reset()`, matching both siblings' pattern
+of verifying identity before resetting. The returned value itself isn't checked against anything
+(no documented set of valid firmware versions exists to check against, unlike BMP3xx's fixed chip-ID
+list) - a successful, CRC-valid read is itself the identity signal, closer to SGP40's self-test than
+BMP3xx's ID-list match. A failure here propagates the same way any other `setup()` failure already
+does (caught by `_init_scd()`'s existing `try/except Exception`).
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`

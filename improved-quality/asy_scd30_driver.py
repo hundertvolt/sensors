@@ -38,6 +38,7 @@ _CMD_SET_FORCED_RECALIBRATION_FACTOR = const(0x5204)
 _CMD_SET_TEMPERATURE_OFFSET = const(0x5403)
 _CMD_SET_ALTITUDE_COMPENSATION = const(0x5102)
 _CMD_SOFT_RESET = const(0xD304)
+_CMD_READ_FIRMWARE_VERSION = const(0xD100)
 
 _VAL_TO = const((("TempOffs", "float", None, 0.0, 655.35, None),))
 _VAL_MI = const((("MeasInt", "int", None, 2, 1800, None),))
@@ -314,6 +315,10 @@ class SCD30_I2C:
         async with self.i2c_scd30 as scd30:  # device session
             async with scd30.i2c_device as i2c:  # bus session
                 await i2c.setup()
+        # A CRC-valid firmware-version read confirms a real SCD30 (not just anything ACKing this
+        # address) is responding - matches BMP3xx's chip-ID check and SGP40's serial-number/self-test
+        # checks; the value itself isn't checked, there's no documented set of valid versions.
+        await self._read_register(_CMD_READ_FIRMWARE_VERSION)
         await self.reset()
 
     async def reset(self) -> None:
