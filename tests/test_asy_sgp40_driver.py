@@ -480,6 +480,13 @@ def _sgp_cfg_dir(name: str) -> str:
     # A fresh subdirectory per test, not the shared _tmp_path("") every other test in this file
     # uses - those never write custom values, only ever rely on schema defaults, so they don't
     # collide; these tests write real per-test config files and must not see each other's state.
+    # _tmp_path("") first: guarantees _TMP_DIR itself exists before nesting a subdirectory under
+    # it - on a fresh checkout (no leftover tests/_tmp from a prior local run) this test file's own
+    # first call could otherwise hit ENOENT (parent missing), which the bare `except OSError: pass`
+    # below would silently swallow together with the real "already exists" case it's meant for,
+    # leaving the directory never actually created (caught by CI, not by a local rerun that reused
+    # an already-existing tests/_tmp from an earlier session).
+    _tmp_path("")
     path = _TMP_DIR + "/sgpcfg_" + name
     try:
         os.mkdir(path)
