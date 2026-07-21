@@ -1892,6 +1892,27 @@ driver going through this checklist; extending the mock with `irq()`/`IRQ_RISING
 is required before section 12's unit tests can exercise `start_timer()`'s IRQ registration, same
 precedent as `system_service.py` extending the mock with `Timer`/`WDT` for its own needs.
 
+**Correctness (section 1) - three real, confirmed range-validation gaps**: `set_altitude()`,
+`set_temperature_offset()`, and `set_forced_recalibration_reference()` had no input validation at
+all (or, for temperature offset, only an upper bound), despite this file's own `_VAL_ALT`/`_VAL_TO`/
+`_VAL_CAL` schema tuples already documenting the Interface Description's real valid ranges (0-65535m,
+0-655.35°C, 400-2000ppm) and two sibling setters (`set_measurement_interval`, `set_ambient_pressure`)
+already enforcing theirs the same way. An out-of-range altitude/FRC value would have been silently
+truncated into the wrong 16-bit argument sent to the sensor (wrong command reaches real hardware,
+no error anywhere); a negative temperature offset would have raised an uncaught `ValueError` from
+the raw `bytearray` assignment in `_send_dev_command`. Fixed to match the two existing setters'
+established `raise AttributeError(...)` guard-clause convention exactly.
+
+**Exception safety (section 2) - verified, not a gap**: `start_timer()` calls `Timer.init()` (can
+raise `OSError(ENOMEM)` on alarm-pool exhaustion, per `system_service.py`'s own real-rp2-source
+verification above) and `Pin.irq()` with no local `try/except`. Traced the actual call chain rather
+than assuming this needs fixing: `get_timer_starters()` feeds this into `system_service.py`'s
+`_timer_sequencer()`, which already wraps `timers[counter]()` in `try/except Exception` (logs via
+`self.pr.err()`, still advances to the next timer) - the same protection that guards every driver's
+timer starter, not something scd30-specific. Left as-is rather than adding a redundant local catch;
+`get_timer_starters()`'s own `Callable[[], None]` contract has no signal slot for a caught failure
+either way, so a local catch-and-swallow would be functionally identical to the existing outer one.
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`

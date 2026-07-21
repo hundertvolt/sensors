@@ -364,7 +364,10 @@ class SCD30_I2C:
     async def set_altitude(self, altitude: int) -> None:
         # Specifies the altitude at the measurement location in meters above sea level.
         # This value will be saved and will not be reset on boot or by calling `reset`.
-        await self._send_command(_CMD_SET_ALTITUDE_COMPENSATION, int(altitude))
+        altitude = int(altitude)
+        if altitude < 0 or altitude > 65535:
+            raise AttributeError("altitude must be from 0 to 65535 meters")
+        await self._send_command(_CMD_SET_ALTITUDE_COMPENSATION, altitude)
 
     async def get_temperature_offset(self) -> float:
         raw_offset = await self._read_register(_CMD_SET_TEMPERATURE_OFFSET)
@@ -374,8 +377,8 @@ class SCD30_I2C:
         # Specifies the offset to be added to the reported measurements to account for a bias in
         # the measured signal.
         # This value will be saved and will not be reset on boot or by calling `reset`.
-        if offset > 655.35:
-            raise AttributeError("Offset value must be less than or equal to 655.35 degrees Celsius")
+        if offset < 0 or offset > 655.35:
+            raise AttributeError("temperature_offset must be from 0 to 655.35 degrees Celsius")
 
         await self._send_command(_CMD_SET_TEMPERATURE_OFFSET, int(offset * 100))
 
@@ -384,6 +387,8 @@ class SCD30_I2C:
 
     async def set_forced_recalibration_reference(self, reference_value: int) -> None:
         # Specifies the concentration of a reference source of CO2
+        if reference_value < 400 or reference_value > 2000:
+            raise AttributeError("forced_recalibration_reference must be from 400 to 2000 ppm")
         await self._send_command(_CMD_SET_FORCED_RECALIBRATION_FACTOR, reference_value)
 
     async def get_CO2(self) -> float | None:
