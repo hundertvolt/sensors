@@ -1941,6 +1941,34 @@ used elsewhere in this same file. Same class of finding CLAUDE.md already flagge
 `base_classes.py` (fixed during that file's own promotion) - this is `asy_scd30_driver.py`'s own,
 separate instance of it.
 
+**Cross-file consistency (section 10) - read both `asy_bmp3xx_driver.py` and `asy_sgp40_driver.py`
+in full for comparison.** Confirms several of this file's own fixes are systemic, not scd30-specific
+- flagged for each file's own future promotion pass, not fixed here (out of scope for this session):
+- The same unconditional `from typing import Dict, Tuple, Union, Any, List, Callable, cast[, Coroutine]`
+  (would crash on real MicroPython) is present in both sibling files unchanged.
+- The same `from uasyncio import ThreadSafeFlag` old-prefix import is present in both.
+- The same `timestamp = time.mktime(time.gmtime())  # type: ignore[call-arg]` pattern (stale ignore,
+  plus the same implicit-`int`-then-reassigned-`None` mypy gap `_read_scd()` had) is present in both
+  `_read_bmp()` and `_read_sgp()`.
+- The same real-executed-module-level `XResults = Tuple[Union[...], ...]` pattern (`BMPResults`,
+  `SGPResults`) is present in both, unfixed.
+- `asy_sgp40_driver.py`'s `_init_sgp()` has the exact same `self.err_cnt_internal` (no underscore)
+  typo already fixed here and already flagged for that file above - re-confirmed by reading the
+  actual file this time, not just `grep`.
+
+**Real, not-yet-actioned divergence worth the project owner's input, not a silent fix**: both sibling
+drivers verify device identity during `setup()` beyond the generic bus-level ACK probe
+`I2CDevice.setup()` already does - `BMP3XX_I2C.setup()` reads and checks the chip-ID register against
+two known-good values; `SGP40_I2C.initialize()` checks a serial-number register, a feature-set
+register, *and* runs the sensor's self-test command, raising on any mismatch. `SCD30_I2C.setup()`
+does neither - it relies solely on the generic "something ACKed this address" probe. The SCD30 has a
+documented `0xD100` "read firmware version" command that could serve an analogous purpose (a
+CRC-validated 2-byte read only a genuine, correctly-responding SCD30 would complete) - flagging this
+as a discussion item rather than adding it, since it's a new safety check, not a fix for a confirmed
+bug, and it would add one more I2C transaction to every `setup()` call (cold boot and every
+failure-triggered restart alike) - a real, if small, tradeoff worth a conscious decision given this
+whole review's reliability focus, not something to slip in silently.
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
