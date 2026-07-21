@@ -84,8 +84,9 @@ class SGP40_Reader(SensorReaderConfig):
         self.trigger_event = asyncio.ThreadSafeFlag()
         self.trigger_timer = Timer()
         self.backup_counter = 0
-        self.voc_init = 1
-        self.voc_write = 1
+        # real values are always set by _init_sgp() before read_loop() ever reads these
+        self.voc_init = 0
+        self.voc_write = 0
         self.comp_callback = asy_comp_callback  # expects [Temperature, Humidity]
         if fram_storage is None or fram_ntp_callback is None:
             self.ts_storage = None
@@ -418,7 +419,11 @@ class SGP40_I2C:
             self_test = await self._read_word_from_command(sgp40, delay_ms=500)
         if self_test is None:
             raise RuntimeError("No sensor response!")
-        if self_test[0] != 0xD400:
+        # Datasheet Table 13: only the high byte is the pass/fail marker (0xD4 pass, 0x4B fail) -
+        # the low byte is explicitly documented as "ignore", not guaranteed zero. Checking the full
+        # word against 0xD400 (inherited from the deployed driver) would spuriously fail whenever
+        # real hardware returns a non-zero low byte, which the datasheet allows.
+        if (self_test[0] >> 8) != 0xD4:
             raise RuntimeError("Self test failed")
         await self._reset()
 

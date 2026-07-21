@@ -127,6 +127,17 @@ def test_initialize_self_test_failure_raises() -> None:
         assert "Self test failed" in str(e)
 
 
+def test_initialize_self_test_success_ignores_nonzero_low_byte() -> None:
+    # Regression test: datasheet Table 13 documents 0xD4 0xXX as "all tests passed, ignore 0xXX" -
+    # the low byte is not guaranteed to be 0x00. A prior version (inherited from the deployed
+    # driver) checked the full word against 0xD400 and would have spuriously raised here.
+    sgp = make_sgp()
+    fake_bus = bus(sgp.i2c_sgp40.i2c_device.i2c)
+    fake_bus.read_queue.append(_word(0x0000) + _word(0x1234) + _word(0x5678))
+    fake_bus.read_queue.append(_word(0xD4FF))  # high byte 0xD4 = pass, non-zero low byte
+    run(sgp.initialize())  # must not raise
+
+
 def test_initialize_no_feature_set_check_is_issued() -> None:
     # Regression test for the dropped, undocumented 0x20 0x2F check (see BACKLOG.md).
     sgp = make_sgp()
