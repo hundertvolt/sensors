@@ -766,13 +766,55 @@ promotion, tracked here per owner instruction):**
   resetting the real consecutive-failure counter on every re-init; after a give-up-and-restart
   cycle the error counter isn't actually reset, so recovery is slower than intended and a single
   subsequent failure can immediately re-trigger another give-up.
-- `sensortask-wozi.py` calls `SCD30_Reader.get_default_cfg()`/`SGP40_Reader.get_default_cfg()`/
-  `BMP3xx_Reader.get_default_cfg()` at module import time — none of the three `Reader` classes
-  define this method. Predates `config_manager.py`'s refactor to per-sensor `config_<name>.cfg`
-  files; this integration point is stale (consistent with the already-documented "Cross-file
-  wiring gaps" note above — `sensortask-wozi.py` is known WIP scaffold, not reconciled yet).
+- `sensortask-wozi.py`'s integration with `BMP3xx_Reader` (and presumably `SCD30_Reader`/
+  `SGP40_Reader` identically) is stale in at least three distinct, confirmed ways, not just the
+  already-noted `get_default_cfg()` gap:
+  1. `SCD30_Reader.get_default_cfg()`/`SGP40_Reader.get_default_cfg()`/`BMP3xx_Reader.get_default_cfg()`
+     called at module import time — none of the three `Reader` classes define this method.
+  2. `bmp_reader = BMP3xx_Reader(i2c1, cfgmgr, max_i2c_err=_MAX_I2C_ERR, debug=debug)` passes the
+     top-level system `cfgmgr` (a `ConfigManager` instance) as the constructor's second positional
+     argument - but `BMP3xx_Reader.__init__`'s second parameter is `address: int = 0x77`, not a
+     config manager (each `*_Reader` now builds its own per-sensor `ConfigManager` internally via
+     `cfg_path`, see `SensorReaderConfig.__init__`). A real, severe type mismatch, not just a
+     missing method.
+  3. `/system/status`'s `BMP388_ErrCnt = await bmp_reader.get_error_counter()` followed by
+     `(BMP388_ErrCnt > 0)` (same pattern for `SCD30_ErrCnt`/`SGP40_ErrCnt`) treats the result as a
+     plain int, but `get_error_counter()` actually returns
+     `dict[str, dict[str, int | list[int] | list[str]]]` (forwarding `PrintLogHistory.get_log()`'s
+     documented shape) - confirmed via mypy: `error: Unsupported operand types for < ("int" and
+     "dict[...]")` on all three comparisons.
+  All three predate `config_manager.py`'s refactor to per-sensor `config_<name>.cfg` files and the
+  base-class-driven `*_Reader` shape; consistent with the already-documented "Cross-file wiring
+  gaps" note above - `sensortask-wozi.py` is known WIP scaffold, not reconciled yet, and stays out
+  of scope for this file's own promotion.
 
-30 tests (`tests/test_asy_bmp3xx_driver.py`).
+**Architecture review pass** (structure/setup/inheritance/sensortask-integration/simplification,
+owner-requested): `BMP3xx_Reader`'s inheritance from `SensorReaderConfig` checked field-by-field
+against the base class's actual contract (constructor arg order, `self.pr`/`self.cfgmgr`/
+`self._err_cnt_internal`/`_error_check()`/`_get_meas_data()`/`_get_dict_cfg()` usage) - correct and
+complete, matches the shared shape `get_task_starters()`/`get_timer_starters()`/`get_data()`/
+`get_dict_data()`/`get_dict_cfg()` establish for the (future) generic task-supervisor/REST layer.
+Two real simplifications applied, zero behavior change: `get/set_pressure_oversampling` and
+`get/set_temperature_oversampling` collapsed their near-identical bodies (differing only in which
+3-bit field of the shared `OSR` register) into private `_get_osr_setting(start_bit)`/
+`_set_osr_setting(start_bit, oversample)` helpers; `_read_byte()` now delegates to `_read_register()`
+instead of duplicating its own lock/read/isinstance-check block. One real gap closed: Bosch's own
+self-test app note (`BST-MPS-AN006`, `datasheets/bmp3xx/`) describes "trimming data verification" -
+rejecting calibration NVM data outside plausible bounds before trusting it - which this driver
+never did; the exact per-coefficient bounds live in a header file this codebase doesn't have, but a
+factory-trimmed 21-byte block is never legitimately all one repeated byte, so `_read_coefficients()`
+now rejects an all-0x00/all-0xFF read (the classic stuck-bus/corrupted-read signature) before
+computing calibration coefficients from it, catching a bad read at setup time instead of silently
+computing systematically-wrong-but-plausible-looking readings from it forever until reboot.
+Considered and declined: checking `EVENT` register's `por_detected` bit (sec 4.3.7) during
+`setup()` to confirm the device's own power-on-reset/soft-reset sequence has completed before
+reading registers - Bosch's own reference driver (`bmp3_soft_reset()`) doesn't check it either
+(only `cmd_rdy` pre-write and `cmd_err` post-write, both already implemented), and `setup()`
+already has two independent layers of defense against a not-yet-ready device (the I2C probe's own
+ACK check, then the chip-ID validation) - added complexity without a documented failure mode it
+would newly catch.
+
+33 tests (`tests/test_asy_bmp3xx_driver.py`).
 
 ### Dangerous allocation shapes (segfault-class bug, swept project-wide)
 
@@ -1964,7 +2006,7 @@ and a missing config file failing independently without either derailing the oth
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
 `asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 58,
-`asy_udp_socket.py` 62, `asy_bmp3xx_driver.py` 30 — **782 total**. (Previous count of 690 across 11
+`asy_udp_socket.py` 62, `asy_bmp3xx_driver.py` 33 — **785 total**. (Previous count of 690 across 11
 files predated `asy_udp_socket.py`'s promotion and was never updated to include it — corrected
 during its third pass; the 23→42 jump was its fourth pass's uncaught-exception/configuration/
 integration test additions; 42→56 is its fifth pass's mutation-bypass/concurrency/

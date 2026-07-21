@@ -178,6 +178,41 @@ def test_setup_reads_and_scales_calibration_coefficients() -> None:
     assert bmp._pressure_calib[4] == 30462 * 8
 
 
+def test_setup_rejects_all_zero_calibration_data() -> None:
+    # Real factory-trimmed data is never all one repeated byte - a stuck bus (SDA/SCL disconnected)
+    # or a corrupted read commonly reads back as all-0x00 or all-0xFF instead, per Bosch's own
+    # self-test app note's "trimming data verification" concept.
+    i2c, bmp = ready_bmp()
+    seed_chip_id(i2c, _BMP388_CHIP_ID)
+    seed_calibration(i2c, raw=bytes(21))
+    try:
+        run(bmp.setup())
+        raised = False
+    except RuntimeError:
+        raised = True
+    assert raised
+
+
+def test_setup_rejects_all_ff_calibration_data() -> None:
+    i2c, bmp = ready_bmp()
+    seed_chip_id(i2c, _BMP388_CHIP_ID)
+    seed_calibration(i2c, raw=bytes([0xFF] * 21))
+    try:
+        run(bmp.setup())
+        raised = False
+    except RuntimeError:
+        raised = True
+    assert raised
+
+
+def test_read_coefficients_accepts_plausible_non_uniform_data() -> None:
+    # Regression guard: the all-zero/all-ff check must not false-positive on real-looking data.
+    i2c, bmp = make_bmp()
+    seed_calibration(i2c)
+    run(bmp._read_coefficients())  # must not raise
+    assert bmp._temp_calib[0] == 28617 * 256
+
+
 # ---------------------------------------------------------------------------
 # reset() - cmd_rdy wait, softreset write, ERR_REG cmd_err verification
 # ---------------------------------------------------------------------------

@@ -355,40 +355,40 @@ class BMP3XX_I2C:
         # see https://www.weather.gov/media/epz/wxcalc/pressureAltitude.pdf
         return float(44307.7 * (1.0 - (await self.get_pressure() / self.sea_level_pressure) ** 0.190284))
 
-    async def get_pressure_oversampling(self) -> int:
-        """The pressure oversampling setting."""
+    async def _get_osr_setting(self, start_bit: int) -> int:
+        # Shared by get_pressure_oversampling()/get_temperature_oversampling() - osr_p and osr_t
+        # are both 3-bit fields in the same OSR register (datasheet sec 4.3.17), differing only in
+        # start_bit (0 vs 3).
         async with self.i2c_bmp3xx as bmp3xx:  # device session
             async with bmp3xx.i2c_device as i2c:  # bus session
-                osr_p = await i2c.get_bits(3, _REGISTER_OSR, 0)
-        if osr_p is None:
-            raise OSError("failed to read pressure oversampling")
-        return _OSR_SETTINGS[osr_p]
+                osr = await i2c.get_bits(3, _REGISTER_OSR, start_bit)
+        if osr is None:
+            raise OSError(f"failed to read OSR bit-field at bit {start_bit}")
+        return _OSR_SETTINGS[osr]
 
-    async def set_pressure_oversampling(self, oversample: int) -> None:
+    async def _set_osr_setting(self, start_bit: int, oversample: int) -> None:
         if oversample not in _OSR_SETTINGS:
             raise ValueError(f"Oversampling must be one of: {_OSR_SETTINGS}")
         # get_bits()/set_bits() do their own read-modify-write with no await in between, so this
-        # is atomic against a concurrent set_temperature_oversampling() sharing the same OSR
-        # register - unlike the previous hand-rolled read-then-write pair, which was not.
+        # is atomic against a concurrent call setting the OSR register's *other* 3-bit field -
+        # unlike the previous hand-rolled read-then-write pair, which was not.
         async with self.i2c_bmp3xx as bmp3xx:  # device session
             async with bmp3xx.i2c_device as i2c:  # bus session
-                await i2c.set_bits(3, _REGISTER_OSR, 0, _OSR_SETTINGS.index(oversample))
+                await i2c.set_bits(3, _REGISTER_OSR, start_bit, _OSR_SETTINGS.index(oversample))
+
+    async def get_pressure_oversampling(self) -> int:
+        """The pressure oversampling setting."""
+        return await self._get_osr_setting(0)
+
+    async def set_pressure_oversampling(self, oversample: int) -> None:
+        await self._set_osr_setting(0, oversample)
 
     async def get_temperature_oversampling(self) -> int:
         """The temperature oversampling setting."""
-        async with self.i2c_bmp3xx as bmp3xx:  # device session
-            async with bmp3xx.i2c_device as i2c:  # bus session
-                osr_t = await i2c.get_bits(3, _REGISTER_OSR, 3)
-        if osr_t is None:
-            raise OSError("failed to read temperature oversampling")
-        return _OSR_SETTINGS[osr_t]
+        return await self._get_osr_setting(3)
 
     async def set_temperature_oversampling(self, oversample: int) -> None:
-        if oversample not in _OSR_SETTINGS:
-            raise ValueError(f"Oversampling must be one of: {_OSR_SETTINGS}")
-        async with self.i2c_bmp3xx as bmp3xx:  # device session
-            async with bmp3xx.i2c_device as i2c:  # bus session
-                await i2c.set_bits(3, _REGISTER_OSR, 3, _OSR_SETTINGS.index(oversample))
+        await self._set_osr_setting(3, oversample)
 
     async def get_filter_coefficient(self) -> int:
         """The IIR filter coefficient."""
@@ -511,6 +511,14 @@ class BMP3XX_I2C:
     async def _read_coefficients(self) -> None:
         """Read & save the calibration coefficients"""
         raw = await self._read_register(_REGISTER_CAL_DATA, 21)
+        # Bosch's own self-test app note (BST-MPS-AN006) verifies trimming data against bounds
+        # before trusting it ("Trimming data verification: ... a memory or programming error has
+        # occurred" if out of bounds) - the exact per-coefficient bounds live in a header file this
+        # codebase doesn't have, but a factory-trimmed 21-byte block is never legitimately all one
+        # repeated byte, so this catches the same class of fault (a corrupted read, or a stuck bus
+        # reading back all-0x00/all-0xFF) without needing those exact bounds.
+        if raw == bytes([raw[0]]) * len(raw) and raw[0] in (0x00, 0xFF):
+            raise RuntimeError(f"calibration data implausible (all bytes {raw[0]:#04x})")
         # See datasheet, pg. 27, table 22
         coeff = unpack("<HHbhhbbHHbbhbb", raw)
         # See datasheet, sec 9.1
@@ -537,12 +545,7 @@ class BMP3XX_I2C:
 
     async def _read_byte(self, register: int) -> int:
         """Read a byte register value and return it"""
-        async with self.i2c_bmp3xx as bmp3xx:  # device session
-            async with bmp3xx.i2c_device as i2c:  # bus session
-                value = await i2c.get_register_struct(register, "B")
-        if not isinstance(value, int):
-            raise OSError(f"failed to read register {register:#x}")
-        return value
+        return (await self._read_register(register, 1))[0]
 
     async def _read_register(self, register: int, length: int) -> bytes:
         """Low level register reading over I2C, returns the raw bytes read"""
