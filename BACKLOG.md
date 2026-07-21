@@ -1988,6 +1988,26 @@ scaffolding for a fairly narrow, already-indirectly-exercised code path), not ch
 (owner-confirmed elsewhere in this doc: no trouble with less than 100% coverage as long as nothing
 left uncovered is a real gap).
 
+**Post-push CI caught two things a stray global `mypy` missed locally** (PR #19): a pre-existing
+upstream MicroPython-stdlib-stubs drift unrelated to this promotion (`asyncio.gather()`'s 2-arg
+form now resolves as `tuple[...]` instead of `Any`, mirroring CPython typeshed's precise-arity
+overloads — fixed in `tests/test_asy_udp_socket.py`/`tests/test_asy_fram_manager.py`, kept the
+latter's return annotation honest to MicroPython's real list-returning `asyncio.gather()` rather
+than matching the stub, per `extmod/asyncio/funcs.py`'s own `return ts`), and a real bug in this
+promotion itself: `DFRobot_vocalgorithmParams.pack_into()` accepted `bytearray | memoryview` but
+its read-only mirror `unpack_from()` was narrower (`bytes | bytearray`) — inconsistent even though
+`asy_sgp40_driver.py`'s `measure_index_and_raw()`/`vocalgorithm_proc_ser_des()` legitimately pass a
+`memoryview` through both. Widened `unpack_from()` to `bytes | bytearray | memoryview`, matching
+`struct.unpack_from()`'s real buffer-protocol-accepting behavior. **Root cause of missing this
+locally**: this session had been running a stray globally-installed `mypy` (1.19.1) instead of the
+project's own `uv sync`-managed `.venv` (which CI always uses fresh, currently `mypy==2.3.0`,
+pinned only loosely as `"mypy"` in `pyproject.toml`) — the version gap was large enough to produce
+materially different results on the exact same source. Confirmed by running `uv sync` and
+re-checking with the venv's actual `mypy`, which reproduced both CI failures immediately. Take-away
+for future sessions: always run lint/typecheck through `uv sync`'s `.venv`, not whatever `mypy`/
+`ruff` happens to already be on `PATH` — a global install can silently diverge from what CI (and
+`pyproject.toml`'s own pin) actually enforces.
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`

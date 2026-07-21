@@ -138,7 +138,7 @@ class DFRobot_vocalgorithmParams:
         except Exception:
             return False
 
-    def unpack_from(self, buf: bytes | bytearray, offset: int = 0) -> bool:
+    def unpack_from(self, buf: bytes | bytearray | memoryview, offset: int = 0) -> bool:
         try:
             values = struct.unpack_from("32q", buf, offset)
         except Exception:
