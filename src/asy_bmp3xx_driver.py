@@ -361,7 +361,7 @@ class BMP3XX_I2C:
             async with bmp3xx.i2c_device as i2c:  # bus session
                 osr_p = await i2c.get_bits(3, _REGISTER_OSR, 0)
         if osr_p is None:
-            raise OSError("BMP3XX: failed to read pressure oversampling")
+            raise OSError("failed to read pressure oversampling")
         return _OSR_SETTINGS[osr_p]
 
     async def set_pressure_oversampling(self, oversample: int) -> None:
@@ -380,7 +380,7 @@ class BMP3XX_I2C:
             async with bmp3xx.i2c_device as i2c:  # bus session
                 osr_t = await i2c.get_bits(3, _REGISTER_OSR, 3)
         if osr_t is None:
-            raise OSError("BMP3XX: failed to read temperature oversampling")
+            raise OSError("failed to read temperature oversampling")
         return _OSR_SETTINGS[osr_t]
 
     async def set_temperature_oversampling(self, oversample: int) -> None:
@@ -396,7 +396,7 @@ class BMP3XX_I2C:
             async with bmp3xx.i2c_device as i2c:  # bus session
                 iir = await i2c.get_bits(3, _REGISTER_CONFIG, 1)
         if iir is None:
-            raise OSError("BMP3XX: failed to read filter coefficient")
+            raise OSError("failed to read filter coefficient")
         return _IIR_SETTINGS[iir]
 
     async def set_filter_coefficient(self, coef: int) -> None:
@@ -418,7 +418,7 @@ class BMP3XX_I2C:
             if isinstance(status, int) and status & mask == mask:
                 return
             if time.ticks_diff(time.ticks_ms(), start) >= timeout_ms:
-                raise OSError(f"BMP3XX: STATUS bits {mask:#x} not set within {timeout_ms}ms")
+                raise OSError(f"STATUS bits {mask:#x} not set within {timeout_ms}ms")
             await asyncio.sleep(self._wait_time)
 
     async def reset(self) -> None:
@@ -438,7 +438,7 @@ class BMP3XX_I2C:
             async with bmp3xx.i2c_device as i2c:  # bus session
                 err = await i2c.get_register_struct(_REGISTER_ERR, "B")
         if isinstance(err, int) and err & _ERR_CMD:
-            raise RuntimeError("BMP3XX: reset command rejected (ERR_REG cmd_err set)")
+            raise RuntimeError("reset command rejected (ERR_REG cmd_err set)")
 
     async def _read(self) -> tuple[float, float]:
         """Returns a tuple for temperature and pressure."""
@@ -462,7 +462,7 @@ class BMP3XX_I2C:
             async with bmp3xx.i2c_device as i2c:  # bus session
                 data = await i2c.get_register_struct(_REGISTER_PRESSUREDATA, "6s")
         if not isinstance(data, bytes) or len(data) != 6:
-            raise OSError("BMP3XX: unexpected data burst read result")
+            raise OSError("unexpected data burst read result")
         adc_p = data[2] << 16 | data[1] << 8 | data[0]
         adc_t = data[5] << 16 | data[4] << 8 | data[3]
 
@@ -505,7 +505,7 @@ class BMP3XX_I2C:
         # a NaN/inf value (not expected from this arithmetic, but not ruled out either) also fails
         # this range check and is rejected the same way. Treated as a failed read by the caller.
         if not (300.0 <= pressure_hpa <= 1250.0 and -40.0 <= temperature <= 85.0):
-            raise ValueError(f"BMP3XX: reading outside operating range (p={pressure_hpa} hPa, t={temperature} degC)")
+            raise ValueError(f"reading outside operating range (p={pressure_hpa} hPa, t={temperature} degC)")
         return pressure, temperature
 
     async def _read_coefficients(self) -> None:
@@ -541,7 +541,7 @@ class BMP3XX_I2C:
             async with bmp3xx.i2c_device as i2c:  # bus session
                 value = await i2c.get_register_struct(register, "B")
         if not isinstance(value, int):
-            raise OSError(f"BMP3XX: failed to read register {register:#x}")
+            raise OSError(f"failed to read register {register:#x}")
         return value
 
     async def _read_register(self, register: int, length: int) -> bytes:
@@ -550,5 +550,5 @@ class BMP3XX_I2C:
             async with bmp3xx.i2c_device as i2c:  # bus session
                 value = await i2c.get_register_struct(register, f"{length}s")
         if not isinstance(value, bytes) or len(value) != length:
-            raise OSError(f"BMP3XX: failed to read {length} bytes from register {register:#x}")
+            raise OSError(f"failed to read {length} bytes from register {register:#x}")
         return value

@@ -88,9 +88,9 @@ From hands-on field experience with deployed units:
     implemented anywhere (not even in `improved-quality/`). If SD-card-style post-deassert clock
     cycling is wanted, it needs designing from scratch.
   - I2C recovery is device-specific (check what each driver already does before assuming a gap);
-    generalize only if a mechanism turns out to be genuinely common. *(Only `asy_scd30_driver.py`'s
-    reset path reviewed so far — SGP40's `_reset()` and BMP3xx's reset command still need the same
-    review.)*
+    generalize only if a mechanism turns out to be genuinely common. *(`asy_scd30_driver.py`'s and
+    now `asy_bmp3xx_driver.py`'s reset paths reviewed — see `asy_bmp3xx_driver.py`'s own `src/`
+    promotion findings below for what changed. SGP40's `_reset()` still needs the same review.)*
   - FRAM's SPI bus gets the same bus-recovery treatment as sensor buses. **Partially done**:
     `asy_fram_driver.py`'s own `src/` promotion (see "`asy_fram_driver.py` → `src/`" below) fixed a
     real device-identification bug and added write-enable-latch/write-protect verification - the
@@ -650,6 +650,129 @@ converting would require broadening `LockedValue`'s type (breaks the `trigger_pe
 above). Explicitly deferred to the future `sensortask-*.py` functional refactor, confirmed by
 owner. `LockedCounter.increment`/`decrement`'s near-duplicate blocks collapsed into a shared
 private `_step(self, delta: int) -> int`.
+
+### `asy_bmp3xx_driver.py` → `src/`
+
+Reviewed for quality/style and, per explicit owner request, reliability against genuine I2C bus
+disturbance (transient disconnects, bit flips) — units must recover communication without manual
+intervention. Register map, compensation formulas, and timing verified directly against Bosch's
+own `BST-BMP388-DS001`/`BST-BMP384-DS003` datasheets (`datasheets/bmp3xx/`, added to the repo for
+this review) and `BMP3_SensorAPI` (Bosch's official reference driver on GitHub), not training
+memory — the vendor PDFs are blocked by this sandbox's proxy (403), so a web search plus the
+reference driver's source were used as a fallback primary source before the PDFs were added
+locally. Confirmed: BMP384 reports the same `CHIP_ID` (0x50) as BMP388 — not a separate ID the
+existing `chip_id not in (0x50, 0x60)` check was missing. Both BMP384 and BMP388 datasheets'
+`OPERATING CONDITIONS` tables confirm an identical envelope (-40..+85 degC, 300..1250 hPa),
+matching `math_helpers.altitude_baro()`'s already-verified range.
+
+**Reliability fixes, `BMP3XX_I2C` (the sensor-protocol layer):**
+- `_read()`'s forced-mode data-ready poll (`while STATUS & 0x60 != 0x60: sleep(...)`) was
+  unbounded — a bus disturbance corrupting `STATUS` into never reporting ready would hang the read
+  task forever, invisible to the existing error-counter/task-supervisor recovery path (which never
+  gets a chance to see a failure). Bounded with a `time.ticks_ms()`-based timeout
+  (`_MEAS_TIMEOUT_MS = 300`, generous margin over the datasheet's own worst-case ~129ms conversion
+  time at x32/x32 oversampling, sec 3.9.2), raising `OSError` on exhaustion like a real bus fault -
+  same shared `_wait_status_bits()` helper reused for `reset()`'s `cmd_rdy` wait below.
+- `reset()` was a blind, unverified `CMD` register write (0xB6) — no check that the command
+  decoder was actually ready to accept it, no settle time, no verification it was accepted. Now
+  matches Bosch's own reference sequence (`BMP3_SensorAPI`'s `bmp3_soft_reset()`): wait for
+  `cmd_rdy` (`STATUS` bit 4) first, settle 2ms after the write (datasheet-confirmed via the
+  reference driver's own `delay_us(2000)`), then verify via `ERR_REG`'s `cmd_err` bit (sec 4.3.2)
+  that the command was actually accepted, raising `RuntimeError` if not. Deliberately scoped to
+  just `cmd_err` (the bit Bosch's own driver checks post-reset) rather than a broader
+  `fatal_err`/`conf_err` sweep on every register write — `conf_err`'s one documented trigger
+  (ODR/OSR combination) doesn't apply to this driver's forced-mode-only operation, and there's no
+  separate recovery action for `fatal_err` beyond what the existing error-counter/restart mechanism
+  already provides.
+- `_read()` had no sanity check on the computed pressure/temperature before storing it. Unlike the
+  SCD30/SGP40 siblings (CRC8-framed commands), BMP3xx's plain register protocol has no CRC at all
+  (confirmed: neither datasheet documents one for the I2C register interface), so a single bit
+  flip in the 6-byte data burst was previously undetectable. Now rejects a reading outside the
+  datasheet's own -40..+85 degC / 300..1250 hPa operating range, raising `ValueError` (a `NaN`
+  comparison is always `False`, so this also rejects `NaN`/`inf` with no extra code, same reasoning
+  already established in `math_helpers.py`).
+- `set_pressure_oversampling()`/`set_temperature_oversampling()` shared the `OSR` register's
+  bit-fields via a hand-rolled, non-atomic read-then-write pair (`_read_byte()` and
+  `_write_register_byte()` each independently acquired and released the per-sensor device-session
+  lock) — a concurrent call to the other setter landing in the gap between the read and the write
+  could be silently lost. Migrated register access from hand-rolled `i2c.write()`/`readinto()`
+  calls to `asy_i2c_driver.py`'s shared `get_bits`/`set_bits`/`get_register_struct`/
+  `set_register_struct` API (confirmed valid for this protocol: both datasheets' I2C section
+  explicitly document "either a stop or a repeated start condition" as acceptable between the
+  register-address write and the data read, which is exactly what `readfrom_mem`/`writeto_mem`
+  do internally). `set_bits()`'s read-modify-write happens as one call with no `await` in between,
+  so it's atomic against the scheduler; combined with holding the outer device-session lock across
+  the whole call (unchanged from the file's existing per-call locking style), this closes the race.
+  `_read()`'s trigger-write/status-poll/data-read sequence is now also held under one
+  device-session lock for the same reason (a concurrent oversampling/filter/reset call could
+  previously interleave mid-conversion).
+- `BMP3xx_Reader`'s six low-level oversampling/filter-coefficient forwards
+  (`get/set_pressure_oversampling`, `get/set_temperature_oversampling`,
+  `get/set_filter_coefficient`) swallowed every exception silently (`except Exception: return
+  None/False`) — this is the concrete instance, in this file, of the open question already on
+  record above ("not verified whether the swallowed exception is still logged via `self.pr`").
+  Now logged via `self.pr.err_s()` (own `errno` per site, 15-20), so a transient bus fault on a
+  REST-triggered config change is visible in the sensor's own error history instead of a bare
+  `None`/`False`.
+- `_VAL_POV`/`_VAL_TOV` (schema range 1-5) and `_VAL_FC` (0-7) didn't match the discrete
+  `_OSR_SETTINGS`/`_IIR_SETTINGS` domain the corresponding `set_*` methods actually accept (e.g.
+  factor `8` is a legal oversampling value but was outside the old `PressOvers` schema's own
+  declared range) — currently latent since nothing in `improved-quality/` calls
+  `self.cfgmgr.write_config()` for this driver yet, but a real bug waiting for that path to be
+  wired up. Widened to the smallest correct contiguous bound (1-32 / 0-128) per owner decision;
+  the schema format still can't exactly express "one of {1,2,4,8,16,32}" without extending
+  `config_manager.py`'s own schema shape (a bigger, cross-file, explicitly deferred change) or
+  making `_init_bmp()`'s config-apply loop fall back per-field instead of aborting the whole
+  sensor on one bad value (also explicitly deferred, owner-scoped to "schema tightening only").
+
+**Typing modernization** (prep for `src/`, same pass every promoted file gets): `typing`/
+`asy_fram_manager` imports moved behind the established `TYPE_CHECKING` guard (`typing` has no
+runtime presence on MicroPython); `Dict`/`Tuple`/`Union`/`List` → lowercase/PEP 604 generics,
+matching `base_classes.py`/`config_manager.py`'s own already-promoted style; `typing.cast()`
+removed (unusable at runtime, same reason) — `get_data()`'s narrowing of `SensorReader`'s generic
+`NamedTuple` down to this Reader's own concrete `BMP3XX` is now a plain identity return with
+`# type: ignore[return-value]`, since `cast()` was already a no-op passthrough at runtime.
+**First instance of this pattern for a `*_Reader`-shaped file** — SCD30/SGP40 have the identical
+`cast(SCD30, data)`/`cast(SGP40, data)` shape and will need the same fix when they're promoted.
+
+**`tests/machine.py` Timer / mypy resolution finding**: `Timer()` (via `machine.Timer`, used for
+the sample-interval trigger) surfaced two issues, neither a real bug in this file:
+1. The installed generic `micropython-rp2-rpi_pico_w-stubs` package's `Timer.__init__` overloads
+   all require a positional `id` — but rp2 only ever supports virtual (software) timers, where
+   `id` is genuinely optional and defaults to -1 (confirmed against MicroPython's own rp2 quickref
+   docs). A stub inaccuracy, not a code bug — `sensortask-wozi.py`'s identical `Timer()` call
+   already exists unchanged, and `tests/machine.py`'s new fake `Timer` (see below) reflects the
+   real optional-id behavior, so no `# type: ignore` is needed in the scope CI actually gates on.
+2. `scripts/typecheck.sh src tests` (CI's actual invocation) reported "Module machine has no
+   attribute Timer" even though `typings/machine.pyi` defines it correctly — confirmed the cause:
+   `tests` isn't on `mypy_path`, but mypy still treats every standalone `.py` file inside a
+   directory passed via `files` as a top-level module by its own basename, so `tests/machine.py`
+   *is* what `machine` resolves to for any other file checked in the same run — same flat-namespace
+   property `tests/README.md` already documents for real-runtime `MICROPYPATH` resolution, just
+   previously unobserved for mypy specifically because no promoted `src/` file needed `Timer`
+   before this one (`asy_i2c_driver.py`/`asy_spi_driver.py` only need `I2C`/`Pin`/`SPI`, which
+   existed in both the real stub and the fake, so whichever won was never visible). Fixed by adding
+   a minimal `Timer` fake to `tests/machine.py` (tracks `init()`/`deinit()`, and a test-only
+   `fire()` to simulate one periodic tick) — genuinely useful for testing, not just a mypy
+   workaround, and resolves the same latent gap for SGP40/SCD30's future promotions too (both use
+   the identical `start_timer()`/`stop_timer()` shape).
+
+**Found in sibling drivers during this review, not fixed (out of scope for this file's
+promotion, tracked here per owner instruction):**
+- `asy_scd30_driver.py`'s `_init_scd()` and `asy_sgp40_driver.py`'s `_init_sgp()` both do
+  `self.err_cnt_internal = 0` (no underscore) instead of `self._err_cnt_internal` —
+  `base_classes.py`'s real attribute is underscored (confirmed: `asy_bmp3xx_driver.py`'s own
+  `_init_bmp()` already uses the correct name). Creates a dead, unused attribute instead of
+  resetting the real consecutive-failure counter on every re-init; after a give-up-and-restart
+  cycle the error counter isn't actually reset, so recovery is slower than intended and a single
+  subsequent failure can immediately re-trigger another give-up.
+- `sensortask-wozi.py` calls `SCD30_Reader.get_default_cfg()`/`SGP40_Reader.get_default_cfg()`/
+  `BMP3xx_Reader.get_default_cfg()` at module import time — none of the three `Reader` classes
+  define this method. Predates `config_manager.py`'s refactor to per-sensor `config_<name>.cfg`
+  files; this integration point is stale (consistent with the already-documented "Cross-file
+  wiring gaps" note above — `sensortask-wozi.py` is known WIP scaffold, not reconciled yet).
+
+30 tests (`tests/test_asy_bmp3xx_driver.py`).
 
 ### Dangerous allocation shapes (segfault-class bug, swept project-wide)
 
@@ -1841,11 +1964,12 @@ and a missing config file failing independently without either derailing the oth
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
 `asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 58,
-`asy_udp_socket.py` 62 — **752 total**. (Previous count of 690 across 11 files predated
-`asy_udp_socket.py`'s promotion and was never updated to include it — corrected during its
-third pass; the 23→42 jump was its fourth pass's uncaught-exception/configuration/integration
-test additions; 42→56 is its fifth pass's mutation-bypass/concurrency/cancellation-safety tests;
-56→62 is its sixth pass's ready()/write_and_recvfrom() parameter-guard tests.)
+`asy_udp_socket.py` 62, `asy_bmp3xx_driver.py` 30 — **782 total**. (Previous count of 690 across 11
+files predated `asy_udp_socket.py`'s promotion and was never updated to include it — corrected
+during its third pass; the 23→42 jump was its fourth pass's uncaught-exception/configuration/
+integration test additions; 42→56 is its fifth pass's mutation-bypass/concurrency/
+cancellation-safety tests; 56→62 is its sixth pass's ready()/write_and_recvfrom() parameter-guard
+tests.)
 
 ## Decided for the refactor
 
