@@ -32,9 +32,11 @@ class DNSServer:
         try:
             netmask_int = _ipv4_to_int(netmask)
             network = _ipv4_to_int(server_ip) & netmask_int
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, AttributeError):
             # server_ip/netmask come from the OS's own wlan.ifconfig(); guard anyway rather than
-            # let a malformed one raise out of the task with nothing supervising it.
+            # let a malformed one (e.g. None) raise out of the task with nothing supervising it -
+            # AttributeError covers a non-string value reaching _ipv4_to_int's .split() call,
+            # matching the same three exception types the per-packet check below already guards.
             if self.debug:
                 print("DNSServer: invalid server_ip/netmask, not starting:", server_ip, netmask)
             return
@@ -82,7 +84,18 @@ class DNSServer:
                     print("DNS Server error:", e)
                 await asyncio.sleep(3)
 
-        await self.udps.disconnect()
+        try:
+            await self.udps.disconnect()
+        except asyncio.CancelledError:
+            # A second cancellation delivered while this cleanup await is in flight (e.g. the
+            # caller cancels again, or wraps run() in asyncio.wait_for()) - already shutting down,
+            # nothing more to do.
+            pass
+        except Exception as e:
+            # disconnect() is documented as never raising, but this is the last await in run() and
+            # nothing supervises this task - never let cleanup itself become the uncaught exception.
+            if self.debug:
+                print("DNS Server error during disconnect:", e)
         if self.debug:
             print("DNS Server disconnected.")
 
@@ -103,9 +116,11 @@ class DNSQuery:
                     self.domain += data[ini + 1 : ini + lon + 1].decode("utf-8") + "."
                     ini += lon + 1
                     lon = data[ini]
-        except (IndexError, UnicodeError):
-            # Truncated/malformed datagram - reuse the existing "not a standard query" empty-
-            # domain sentinel instead of raising into run()'s 3s per-packet backoff.
+        except (IndexError, UnicodeError, TypeError, AttributeError):
+            # IndexError/UnicodeError: truncated/malformed datagram. TypeError/AttributeError: a
+            # non-bytes data (the only real caller, run(), already guarantees bytes, but this class
+            # is public and shouldn't rely on that discipline). Reuses the existing "not a standard
+            # query" empty-domain sentinel instead of raising into run()'s 3s per-packet backoff.
             self.domain = ""
         if self.debug:
             print("DNSQuery domain:" + self.domain)
@@ -116,6 +131,14 @@ class DNSQuery:
         if self.debug:
             print(f"DNSQuery response: {self.domain} ==> {ip}")
         if self.domain:
+            try:
+                # run() only ever calls this with its own already-validated server_ip, but this
+                # method is public and shouldn't rely on that - a bad ip here (wrong octet count,
+                # out-of-range octet, non-numeric, non-string) would otherwise either raise or
+                # silently build a corrupt packet (wrong RDATA length vs. the header's declared 4).
+                _ipv4_to_int(ip)
+            except (TypeError, ValueError, AttributeError):
+                return None
             packet = self.data[:2] + b"\x81\x80"
             packet += (
                 self.data[4:6] + self.data[4:6] + b"\x00\x00\x00\x00"

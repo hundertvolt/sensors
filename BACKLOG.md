@@ -1917,6 +1917,90 @@ while the real runtime value - and this test's own `== [True, True]` assertion -
 `return-value` rather than changing the runtime-checked assertion to match the stub's overload
 precision instead of reality). Zero behavior change in either file.
 
+### `captive_dns.py`: second pass - remaining uncaught-exception gaps and a full configuration/integration test sweep
+
+Owner-directed follow-up after the promotion above: re-audit every call captive_dns.py makes into
+itself and into `asy_udp_socket.py`/`asyncio` for a path that could still raise uncaught, then add
+exhaustive valid/invalid-parameter-configuration tests, real integration tests against the module it
+imports and the module that imports it, and fault-propagation tests for corrupted/malformed real
+traffic - mocking only what genuinely can't be produced for real.
+
+Four more real gaps found and fixed (all four are exactly the "either by itself or by a called
+function" shape the owner asked to re-check - none were hypothetical):
+
+- **`run()`'s startup guard only caught `(TypeError, ValueError)`, not `AttributeError`.** A
+  non-string `server_ip`/`netmask` (e.g. `None`) reaching `_ipv4_to_int()`'s `.split(".")` raises
+  `AttributeError`, not `TypeError`/`ValueError` - would have escaped the guard and killed the
+  unsupervised task. The per-packet check three lines below already caught all three; the startup
+  check just hadn't been kept in sync with it. Fixed: added `AttributeError` to match.
+- **`DNSQuery.__init__` only caught `(IndexError, UnicodeError)`.** A non-bytes `data` (the
+  constructor's only real caller, `run()`, always passes `bytes`, but the class itself is public)
+  can raise `TypeError` (`None[2]`, `(12345)[2]`) or `AttributeError` (a list/tuple slice has no
+  `.decode()`) instead - neither was caught. Fixed: broadened to
+  `(IndexError, UnicodeError, TypeError, AttributeError)`. Proved the `AttributeError` arm is
+  actually reachable, not just theoretically added, with a dedicated test (a 20-element list crafted
+  to survive both integer-index lookups but fail specifically at `.decode()`).
+- **`DNSQuery.response(ip)` never validated `ip` at all.** Its only real caller passes `run()`'s own
+  already-`_ipv4_to_int()`-validated `server_ip`, so this never fires in production today, but the
+  method is public: a bad `ip` (wrong octet count, out-of-range, non-numeric, non-string) would
+  either raise past `response()`'s declared `-> bytes | None`, or - for a 3- or 5-octet string, which
+  parses without raising - silently build a packet whose RDATA length doesn't match the 4-byte length
+  the header already declares, corrupting it rather than failing loudly or cleanly. Fixed: validates
+  via `_ipv4_to_int(ip)` (reusing the existing validator purely for its validation side effect) before
+  building the packet, returning `None` on any invalid `ip` - reuses the return type's existing
+  "nothing to send" sentinel rather than inventing a new one.
+- **`run()`'s final `await self.udps.disconnect()` (and its debug print) sat outside the loop's own
+  `try/except`, unguarded.** `disconnect()` is documented as never raising, but a second cancellation
+  delivered while this cleanup await is in flight (e.g. the caller cancels again, or wraps `run()` in
+  `asyncio.wait_for()`) would re-raise `CancelledError` at that await point with nothing to catch it -
+  the one place left in the file where an exception could still escape the task. Fixed: wrapped in its
+  own `try/except (asyncio.CancelledError, Exception)`, matching the "never let cleanup itself become
+  the uncaught exception" posture the rest of the file already has.
+
+**Test additions** (`tests/test_captive_dns.py`, 18 → 37 tests): every constructor/parameter surface
+now has an explicit valid-configuration test, a single-invalid-parameter test, and (where more than
+one parameter exists) a multiple-invalid-parameter-recombination test - `_ipv4_to_int()` (wrong type,
+multi-fault strings), `DNSServer.__init__` (all debug values, non-bool tolerance), `DNSServer.run()`
+(server_ip/netmask valid matrix, each rejected alone, both rejected together in five distinct
+fault-type combinations), `DNSQuery.__init__` (data/debug), and `response()` (ip, including combined
+with an already-empty-domain object state). `malformed_query_cases()` grew from 8 to 10 shapes (added
+an off-by-one truncated label and a 255-byte oversized label-length claim - the two boundary shapes
+missing from the original repro matrix).
+
+Integration tests against the real, unmocked dependency (`asy_udp_socket.py`): reused the same
+`DNSServer` instance across two full run()-start/cancel/run()-again cycles over a real socket, mirroring
+`async_connect.py`'s actual reuse pattern; a real loopback burst of all 10 malformed-datagram shapes
+back-to-back followed by a valid query, proving no cumulative state corruption. A third attempted
+real-socket test (asserting actual reply *content* over a real bound socket) had to be dropped after
+writing it: this Unix-port test build's server socket can never produce a real string `addr[0]` from
+`recvfrom()` (the same constraint the original promotion's `_FakeUDPS` design already documents) so
+`run()`'s subnet check correctly rejects every real packet as off-subnet before ever replying - reply
+*content* stays covered at the unit level (`test_response_builds_expected_packet_for_valid_domain`)
+and "doesn't crash" stays covered for real. Separately caught and fixed a genuine test bug during this
+work: calling the peer socket's plain blocking `recvfrom()` from inside a coroutine froze the single
+Unix-port test process, since it never yielded back to the very event loop `DNSServer.run()`'s task
+needed to run on to produce the reply being waited for - a self-inflicted deadlock, not a hang in the
+code under test.
+
+**Integration-contract test with the module that imports it** (`async_connect.py`): can't import that
+module directly (RP2040/`network.WLAN` hardware dependency, and it's out of scope to edit/test per
+CLAUDE.md's promotion rules) - instead replicated its exact confirmed usage pattern (one `DNSServer`
+built once, `run()` started via `evtloop.create_task(...)`, torn down via a fire-and-forget
+`task.cancel()` the caller never awaits) against a real socket, proving cleanup completes on its own
+even though nothing observes the task's outcome.
+
+**Fault-propagation test for the one category that can't be produced for real**: an unexpected
+exception from a dependency mid-processing (not malformed data, not an off-subnet address - nothing
+in the legitimate path actually throws). Simulated by monkeypatching the module-level `DNSQuery` name
+with a stub that raises once then delegates to the real class, proving `run()`'s catch-all `except
+Exception: await asyncio.sleep(3)` backoff genuinely engages (`elapsed_ms >= 3000`, timing-asserted)
+and the server recovers on the next packet - the complementary case to the existing
+`test_run_ignores_malformed_query_without_stalling`, which only ever proved the backoff *doesn't*
+fire.
+
+Verified: full-scope `scripts/lint.sh`/`scripts/typecheck.sh` still 0 findings, `scripts/test.sh` all
+13 files green, 789 tests total.
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
@@ -1933,11 +2017,13 @@ and a missing config file failing independently without either derailing the oth
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
 `asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 58,
-`asy_udp_socket.py` 62, `captive_dns.py` 18 — **770 total**. (Previous count of 690 across 11 files
+`asy_udp_socket.py` 62, `captive_dns.py` 37 — **789 total**. (Previous count of 690 across 11 files
 predated `asy_udp_socket.py`'s promotion and was never updated to include it — corrected during its
 third pass; the 23→42 jump was its fourth pass's uncaught-exception/configuration/integration
 test additions; 42→56 is its fifth pass's mutation-bypass/concurrency/cancellation-safety tests;
-56→62 is its sixth pass's ready()/write_and_recvfrom() parameter-guard tests.)
+56→62 is its sixth pass's ready()/write_and_recvfrom() parameter-guard tests. `captive_dns.py`'s own
+18→37 jump is its second pass's configuration-matrix/integration/fault-propagation test additions,
+see the entry above.)
 
 ## Decided for the refactor
 
