@@ -381,3 +381,9 @@ def test_run_handles_real_loopback_traffic_without_crashing() -> None:
             await _cancel(task)
 
     assert run(scenario()) is True
+
+
+if __name__ == "__main__":
+    import microtest
+
+    microtest.run(globals())

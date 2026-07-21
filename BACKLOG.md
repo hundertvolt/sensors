@@ -1933,8 +1933,8 @@ and a missing config file failing independently without either derailing the oth
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
 `asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 58,
-`asy_udp_socket.py` 62 — **752 total**. (Previous count of 690 across 11 files predated
-`asy_udp_socket.py`'s promotion and was never updated to include it — corrected during its
+`asy_udp_socket.py` 62, `captive_dns.py` 17 — **769 total**. (Previous count of 690 across 11 files
+predated `asy_udp_socket.py`'s promotion and was never updated to include it — corrected during its
 third pass; the 23→42 jump was its fourth pass's uncaught-exception/configuration/integration
 test additions; 42→56 is its fifth pass's mutation-bypass/concurrency/cancellation-safety tests;
 56→62 is its sixth pass's ready()/write_and_recvfrom() parameter-guard tests.)
