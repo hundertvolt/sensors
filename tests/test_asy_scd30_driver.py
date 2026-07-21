@@ -1,7 +1,4 @@
-"""Unit + integration tests for asy_scd30_driver.py (still in improved-quality/, not yet promoted
-to src/ - see BACKLOG.md's "asy_scd30_driver.py -> src/" entry). Run manually with
-MICROPYPATH="improved-quality:src:tests:.frozen" until the promotion itself adds this file to
-scripts/test.sh's default tests/test_*.py sweep (which only ever puts src/ on that path).
+"""Unit + integration tests for asy_scd30_driver.py (src/).
 
 Module-level tests exercise SCD30_I2C alone against tests/machine.py's fake I2C/Pin, cross-checked
 byte-for-byte against the Interface Description's own worked examples (datasheets/scd30/) rather
@@ -14,12 +11,12 @@ up through the Reader's never-raises wrapper contract and into the real error co
 import asyncio
 import struct
 
-from asy_scd30_driver import SCD30, SCD30_I2C, SCD30_Reader
 from machine import I2C as FakeI2C
 from machine import Pin as FakePin
 from machine import Timer as FakeTimer
 
 from asy_i2c_driver import I2C
+from asy_scd30_driver import SCD30, SCD30_I2C, SCD30_Reader
 from crc_checks import CRC8
 
 try:

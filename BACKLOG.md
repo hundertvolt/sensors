@@ -1841,7 +1841,7 @@ promoted to `src/`), throwaway scratchpad repro scripts only. Re-ran full-scope
 this fix), all 12 `tests/` files green, 752 tests total, unaffected (`captive_dns.py` isn't imported
 by any of them).
 
-### `asy_scd30_driver.py` → `src/` (in progress)
+### `asy_scd30_driver.py` → `src/` (done)
 
 Working through the full checklist per `src/README.md`; findings recorded incrementally as they
 land, not held until the end.
@@ -2018,6 +2018,28 @@ the `force=True` resend of `set_ambient_pressure` in its REST handler (needed to
 measurement per this file's own comment) fires once per matching REST call, not on a timer - so
 still bounded by REST-call frequency, not a loop.
 
+**Promotion (sections 13-14)**: moved to `src/asy_scd30_driver.py`. Triggered by CI itself catching
+a real gap: `tests/test_asy_scd30_driver.py` was written and committed one step ahead of the actual
+`git mv`, and both CI jobs immediately went red - `scripts/typecheck.sh src tests` can't resolve
+`import asy_scd30_driver` at all (`mypy_path` only ever listed `typings`/`src`, never
+`improved-quality`), and `scripts/test.sh`'s fixed `MICROPYPATH="src:tests:.frozen"` hit the same
+wall at runtime (`ImportError: no module named 'asy_scd30_driver'`). Considered patching either
+script to also resolve `improved-quality/` for this one file, but the driver had already cleared
+every other section of this checklist (correctness, exception safety, range validation, cross-file
+consistency, tests) - actually promoting was the more honest fix than teaching the tooling to
+special-case a pre-promotion file, and matches how every other file in `src/` got there (tests
+land with the move, not before it). No CI workflow or `pyproject.toml` change was needed - `src`
+was already in both `mypy`'s `files` and CI's explicit `src tests` scope, and `scripts/test.sh`'s
+`tests/test_*.py` glob just needed the import to resolve. Bird's-eye scan across all of `src/`
+after the move (per this file's own promotion-time requirement): module docstring convention,
+`TYPE_CHECKING` guard shape, and the "no `Union[...]`/no `uasyncio`" conventions all hold
+consistently across every file, including the new one - no cross-file discrepancy found. Full
+verification re-run clean: `ruff check src tests`, `scripts/typecheck.sh src tests` (0 errors),
+plain `scripts/typecheck.sh` (123 pre-existing errors, all in the same 7 already-tracked
+`improved-quality/` files - none in the newly moved `src/asy_scd30_driver.py`, and unchanged since
+no other file's content was touched by this move), and `scripts/test.sh` (all 13 `tests/test_*.py`
+files pass, 741 tests total including this file's 54).
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
@@ -2034,8 +2056,8 @@ and a missing config file failing independently without either derailing the oth
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
 `asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 58,
-`asy_udp_socket.py` 62 — **752 total**. (Previous count of 690 across 11 files predated
-`asy_udp_socket.py`'s promotion and was never updated to include it — corrected during its
+`asy_udp_socket.py` 62, `asy_scd30_driver.py` 54 — **806 total**. (Previous count of 690 across 11
+files predated `asy_udp_socket.py`'s promotion and was never updated to include it — corrected during its
 third pass; the 23→42 jump was its fourth pass's uncaught-exception/configuration/integration
 test additions; 42→56 is its fifth pass's mutation-bypass/concurrency/cancellation-safety tests;
 56→62 is its sixth pass's ready()/write_and_recvfrom() parameter-guard tests.)
