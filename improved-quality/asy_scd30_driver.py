@@ -1,3 +1,16 @@
+"""Async I2C driver for the Sensirion SCD30 CO2/temperature/relative-humidity sensor. SCD30_I2C
+wraps the raw command set (16-bit commands, CRC-8 protected 2-byte reads/args, no repeated-start);
+SCD30_Reader is the SensorReader subclass that runs the periodic read loop plus the IRQ-pin
+self-healing trigger (the sensor's data-ready pin can be missed/stuck, so a timer re-arms it), and
+feeds CO2/Temp/Hum/WetBulb/DewPoint into the framework. Source: Sensirion CO2 Sensors SCD30
+Interface Description & Datasheet (datasheets/scd30/).
+
+Contract: SCD30_Reader's public getters/setters never raise - a getter returns None and a setter
+returns False on any failure (matching asy_bmp3xx_driver.py/asy_sgp40_driver.py). SCD30_I2C's own
+methods are the one exception (per src/README.md's raw-bus-call carve-out): they raise on a failed
+I2C transaction, a CRC mismatch, or an out-of-range argument - SCD30_Reader is what absorbs that.
+"""
+
 import asyncio
 import time
 from asyncio import ThreadSafeFlag
