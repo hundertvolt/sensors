@@ -1,11 +1,11 @@
 import asyncio
 import time
+from asyncio import ThreadSafeFlag
 from collections import namedtuple
 from struct import unpack, unpack_from
 
 from machine import Pin, Timer
 from micropython import const
-from uasyncio import ThreadSafeFlag
 
 import math_helpers
 from asy_fram_manager import AsyFramManager
@@ -457,6 +457,7 @@ class SCD30_I2C:
                     await i2c.readinto(self._buffer)
 
             if not new_data:
+                self._co2 = self._temperature = self._relative_humidity = None
                 return
 
             crcs_good = True

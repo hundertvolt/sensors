@@ -1913,6 +1913,34 @@ timer starter, not something scd30-specific. Left as-is rather than adding a red
 `get_timer_starters()`'s own `Callable[[], None]` contract has no signal slot for a caught failure
 either way, so a local catch-and-swallow would be functionally identical to the existing outer one.
 
+**Stability (section 3) - real, if low-probability, stale-data gap**: `_read_data()` left
+`_co2`/`_temperature`/`_relative_humidity` at their previous cycle's values when the data-ready
+register read 0, instead of clearing them - so a caller in that window would silently get an old
+reading paired with a brand-new timestamp (`_read_scd()`'s `time.mktime(time.gmtime())` always
+reflects "now"), not caught by `_store_scd()`'s own None-check. `read_loop()` only calls into this
+after the RDY-pin trigger fires, so in practice the data-ready register should already agree with
+the pin - but I can't rule out a one-cycle desync between them from the datasheet alone. Fixed to
+clear all three to `None` on that path, matching this codebase's universal "`None` = no data"
+convention regardless of how likely the race actually is - zero-risk, and `_error_check()` already
+correctly treats a `None` result as a countable error either way.
+
+**Resource discipline (section 4) - considered, declined**: `_read_data()`'s three
+`unpack(">f", self._buffer[a:b] + self._buffer[c:d])` calls each allocate a temporary concatenated
+bytes object, once per measurement cycle (~every 2s+), because the SCD30's wire format interleaves
+a CRC byte between each float's MSB-pair and LSB-pair, so the 4 bytes an IEEE754 float needs aren't
+contiguous in the receive buffer. Considered replacing with a reused scratch buffer to avoid the
+allocation; declined - the savings are a few bytes-object allocations a couple of times a second,
+not meaningful next to what else this device allocates routinely, and the current concatenation is
+more readable than a manual byte-copy loop. Recording per section 8's "say so and move on" rather
+than manufacturing a change.
+
+**Currentness (section 9)**: `from uasyncio import ThreadSafeFlag` was the old pre-consolidation
+module name (verified `ThreadSafeFlag` re-exports from plain `asyncio` in the pinned-version stubs);
+changed to `from asyncio import ThreadSafeFlag`, matching `import asyncio`'s own already-modern name
+used elsewhere in this same file. Same class of finding CLAUDE.md already flagged for
+`base_classes.py` (fixed during that file's own promotion) - this is `asy_scd30_driver.py`'s own,
+separate instance of it.
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
