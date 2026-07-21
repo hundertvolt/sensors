@@ -308,7 +308,13 @@ class SGP40_Reader(SensorReaderConfig):
                 if not await self.ts_storage.clear():
                     await self.pr.err_s(_NAME, "Fehler beim FRAM löschen!", errno=14)
 
-        comp_data = await self.comp_callback()  # [Temperature, Humidity]
+        try:  # caller-supplied callback (sensortask-*.py's own compensation source, not itself
+            # promoted/audited) - could legitimately misbehave, same treatment as every other
+            # caller-supplied callback in this codebase (e.g. asy_fram_manager.py's ntp_sync_callback)
+            comp_data = await self.comp_callback()  # [Temperature, Humidity]
+        except Exception as e:
+            await self.pr.err_s(_NAME, "Kompensationsdaten-Callback fehlgeschlagen:", e, errno=18)
+            comp_data = [None, None]
         if len(comp_data) != 2 or comp_data[0] is None or comp_data[1] is None:
             await self.pr.wrn_s(_NAME, "hat keine Kompensationsdaten!", wrnno=14)
             if deserialize:
@@ -470,9 +476,11 @@ class SGP40_I2C:
         mv[0] = 0x26
         mv[1] = 0x0F  # compensated read command
         self._relative_humidity_to_ticks(relative_humidity, mv[2:4])
-        await self.crc.add_into(self._measure_command, 2, start=2)
+        if await self.crc.add_into(self._measure_command, 2, start=2) is None:
+            return None
         self._celsius_to_ticks(temperature, mv[5:7])
-        await self.crc.add_into(self._measure_command, 2, start=5)
+        if await self.crc.add_into(self._measure_command, 2, start=5) is None:
+            return None
         return await self.get_raw()
 
     async def measure_index_and_raw(

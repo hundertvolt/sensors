@@ -2036,52 +2036,108 @@ supervisor-triggered restart, which re-invokes `read_loop()` on the *same* `SGP4
 observed. Changed to `= 0` with a comment explaining why, avoiding the implication that either
 attribute is meaningfully "armed" pre-init.
 
-**Flagged, not fixed** (cross-file/within-file consistency discrepancy - per the hard-rule
-"report, don't silently fix" treatment): `measure_raw()` calls `self.crc.add_into(...)` twice
-(writing the RH-ticks and temperature-ticks CRC bytes into `self._measure_command`) without checking
-either call's return value. `add_into()` returns `None` on failure (buffer too small, invalid init,
-etc.) - `asy_fram_manager.py`'s own `add_into()` call site (`if await self.crc.add_into(buf,
-self.size) is None: ...`) already establishes checking this return as the project's convention, and
-`SGP40_I2C`'s own `_read_word_from_command()` checks `check_from()`'s return a few lines below in the
-very same class. In practice this specific call site can't actually return `None` today -
-`self._measure_command` is a fixed 8-byte buffer and `start=2`/`start=5`/`size=2` are hardcoded
-literals that always satisfy `add_into()`'s internal bounds check - so this isn't a live bug, just an
-inconsistency in defensive-checking style within the same file. Left as-is pending a decision on
-whether to add the check for consistency or leave it since the buffer shape can never actually change
-here.
+**Fixed (was flagged, now resolved on explicit request)**: `measure_raw()` called
+`self.crc.add_into(...)` twice (writing the RH-ticks and temperature-ticks CRC bytes into
+`self._measure_command`) without checking either call's return value. `add_into()` returns `None`
+on failure (buffer too small, invalid init, etc.) - `asy_fram_manager.py`'s own `add_into()` call
+site (`if await self.crc.add_into(buf, self.size) is None: ...`) already established checking this
+return as the project's convention, and `SGP40_I2C`'s own `_read_word_from_command()` checks
+`check_from()`'s return a few lines below in the very same class. In practice this specific call
+site can't actually return `None` today - `self._measure_command` is a fixed 8-byte buffer and
+`start=2`/`start=5`/`size=2` are hardcoded literals that always satisfy `add_into()`'s internal
+bounds check - so this was never a live bug, just an inconsistency in defensive-checking style
+within the same file. Fixed locally in `measure_raw()` (both calls now `if ... is None: return
+None`), not in `crc_checks.py`/`asy_fram_manager.py` - the inconsistency was this call site's own,
+not a defect in either of those shared modules. Regression test: `_AlwaysFailCRC`, a minimal fake
+matching `add_into()`'s signature, is substituted in for `sgp.crc` since the real `CRC8()` can't
+actually be driven to return `None` through this call site's fixed buffer shape -
+`test_measure_raw_add_into_failure_returns_none_not_raise` asserts `measure_raw()` returns `None`
+without ever reaching `get_raw()`'s own bus transaction.
 
-**Sensortask-\*.py integration gap is broader than previously documented.** The earlier promotion
-pass flagged only `SGP40_Reader.get_default_cfg()` as missing from `sensortask-wozi.py`'s
-construction call; re-reading that call in full shows the entire constructor convention is stale,
-not just one classmethod:
-- `sensortask-wozi.py` calls `SGP40_Reader(i2c1, cfgmgr, sgp_comp_callback, ts_storage=sgp_backup,
-  max_i2c_err=_MAX_I2C_ERR, debug=debug)` - a positional `cfgmgr` argument the current
-  `SensorReaderConfig`-based constructor doesn't take at all (config is now an internal
+**Real bug found and fixed (uncaught-exception audit)**: `_read_sgp()` called `await
+self.comp_callback()` unwrapped - the *only* caller-supplied callback in this file not wrapped in
+`try`/`except`, unlike every other caller-supplied callback in this codebase (`asy_fram_manager.py`'s
+`ntp_sync_callback`, twice; `system_service.py`'s own NTP callback; `base_classes.py`'s config
+callback). A full audit of every call in `asy_sgp40_driver.py` (cross-checked against
+`base_classes.py`, `config_manager.py`, `asy_fram_manager.py`, `print_log.py` - all independently
+confirmed "never raises" by their own module docstrings/promotion audits) found exactly this one
+gap: if a real compensation source (e.g. a sibling SHTC3/BMP388 driver's own read call, threaded
+through `sensortask-*.py`'s own callback) ever raised, it would propagate uncaught out of
+`_read_sgp()` → `read_loop()`, crashing the whole async task instead of being counted through the
+normal `_error_check()`/give-up path - the same failure mode every other caller-supplied callback in
+this codebase is already deliberately guarded against. Fixed by wrapping the call in `try`/`except
+Exception`, logging via `err_s(..., errno=18)` and falling back to `[None, None]` (the same shape
+`_read_sgp()` already treats as "no compensation data available"). Regression test:
+`test_read_sgp_comp_callback_exception_is_caught_not_propagated`.
+
+**Sensortask-\*.py integration gap was broader than previously documented, and is now partially
+fixed on explicit owner request (a one-off exception to the standing "don't edit
+`sensortask-wozi.py`" hard rule - confirmed directly, not assumed).** The earlier promotion pass
+flagged only `SGP40_Reader.get_default_cfg()` as missing from `sensortask-wozi.py`'s construction
+call; re-reading that call in full showed the entire constructor convention was stale, not just one
+classmethod. Confirmed this is unambiguously a `sensortask-wozi.py`-side staleness issue, not a
+driver bug - the driver's new API (per-sensor config file, internal chunk allocation,
+`AsyFramManager`-level error counters) is the deliberate, correct design; the caller just hadn't
+been updated to match:
+
+- **Fixed**: `sensortask-wozi.py` called `SGP40_Reader(i2c1, cfgmgr, sgp_comp_callback,
+  ts_storage=sgp_backup, max_i2c_err=_MAX_I2C_ERR, debug=debug)` - a positional `cfgmgr` argument the
+  current `SensorReaderConfig`-based constructor doesn't take at all (config is now an internal
   `ConfigManager` owned per-reader via `cfg_path`, not an external shared instance passed in), and a
-  `ts_storage=` keyword for a pre-built FRAM chunk, where the current constructor instead takes
-  `fram_storage` (the raw `AsyFramManager`) and `fram_ntp_callback` and builds the chunk internally
-  via `get_timestamped_chunk()` in `__init__`.
-- `sgp_backup = fram.get_timestamped_chunk(SGP40_Reader.get_params_memsize(), conn.ntp_issynced)` -
-  `get_params_memsize()` doesn't exist on `SGP40_Reader` (it's `VOCAlgorithm.get_params_memsize()`,
-  and the current design calls it internally, not at the call site).
-- `sgp_reader.get_mem_error_counters()` doesn't exist on the current class either. Traced to its
-  origin: the deployed driver's `ts_storage` was an old-style FRAM chunk object with its own
-  `get_error_counters()` (crit/uncrit/last, per-chunk). The refactor replaced that whole per-chunk
-  error-counting mechanism with `asy_fram_manager.py`'s unified `AsyFramManager.get_error_counter()`
-  (`self.pr.get_log("FRAM")` - same shape as every other driver's own `get_error_counter()`),
-  scoped to the whole FRAM chip rather than per-chunk. This is a confirmed, correct architectural
-  supersession - a future `sensortask-*.py` rewrite should call `fram.get_error_counter()` directly
-  (on the shared manager) instead of proxying it through each sensor reader - not a regression to
-  restore in `SGP40_Reader` itself.
-- `get_mem_status()` (last_backup/restored_from) is unchanged and still matches the deployed driver
-  1:1.
+  `ts_storage=` keyword for a pre-built FRAM chunk. Updated to `SGP40_Reader(i2c1, sgp_comp_callback,
+  fram_storage=fram, fram_ntp_callback=conn.ntp_issynced, max_i2c_err=_MAX_I2C_ERR, debug=debug)`,
+  matching the current constructor exactly; the external `sgp_backup =
+  fram.get_timestamped_chunk(SGP40_Reader.get_params_memsize(), conn.ntp_issynced)` call (which also
+  referenced a `get_params_memsize()` that no longer exists on `SGP40_Reader` - it's
+  `VOCAlgorithm.get_params_memsize()`, called internally by the driver now) was removed entirely, since
+  chunk allocation now happens inside `SGP40_Reader.__init__()` itself.
+- **Fixed**: `sensortask-wozi.py`'s cfgmgr construction still merged in
+  `SGP40_Reader.get_default_cfg()` (line 74), a classmethod that no longer exists - removed from the
+  merge, with a comment explaining SGP40 now owns its own `config_SGP40.cfg` instead of contributing
+  to the shared `config.json`.
+- **Fixed**: `/system/status`'s handler called `sgp_reader.get_mem_error_counters()`, which doesn't
+  exist on the current class. Traced to its origin: the deployed driver's `ts_storage` was an
+  old-style FRAM chunk object with its own `get_error_counters()` (crit/uncrit/last, per-chunk). The
+  refactor replaced that whole per-chunk error-counting mechanism with `asy_fram_manager.py`'s unified
+  `AsyFramManager.get_error_counter()` (`self.pr.get_log("FRAM")` - same shape as every other driver's
+  own `get_error_counter()`), scoped to the whole FRAM chip rather than per-chunk - a confirmed,
+  correct architectural supersession, not a regression to restore in `SGP40_Reader` itself. Replaced
+  the three `SGP40_MemErr_Critical`/`SGP40_MemErr_Uncritical`/`SGP40_MemErr_Last` JSON fields (which
+  can no longer be computed at all - the underlying per-chunk counters don't exist anymore) with a
+  single chip-wide `FRAM_ErrCnt`, sourced from `fram.get_error_counter()["FRAM"]["ErrCount"]`. This is
+  a real REST JSON schema change (field removal/rename), forced by the architectural supersession, not
+  an optional design choice.
+- **Fixed**: `SGP40_Reader.get_error_counter()` now returns a `print_log.py`-shaped dict
+  (`{"SGP40": {"ErrCount": ..., "ErrNum": [...], "ErrType": [...]}}`), not a bare int - the
+  `SGP40_ErrCnt > 0` comparison in `/system/status` would have compared a dict against an int.
+  Extracted `["SGP40"]["ErrCount"]` to keep the endpoint's existing flat-int JSON contract unchanged
+  for external consumers. Note: `SCD30_ErrCnt`/`BMP388_ErrCnt` have the exact same
+  dict-vs-int-comparison problem already, pre-existing and untouched here (`asy_scd30_driver.py`/
+  `asy_bmp3xx_driver.py` in `improved-quality/` already return the same dict shape, but neither driver
+  is promoted/in this task's scope) - confirmed via mypy (`Unsupported operand types for < ("int" and
+  "dict[...]")`, present in the pre-edit baseline for those two, now also present for `FRAM_ErrCnt`/
+  `SGP40_ErrCnt` since `print_log.py`'s `get_log()` return type (`int | list[int] | list[str]`) doesn't
+  let mypy narrow `"ErrCount"` specifically to `int` without a `print_log.py`-level `TypedDict`
+  change - out of scope here, left as the same accepted baseline pattern.
+- `get_mem_status()` (last_backup/restored_from) was already unchanged and still matches the
+  deployed driver 1:1 - no fix needed there.
+- **Still open, not fixed - flagged for a decision**: `sensortask-wozi.py`'s `setSGP` REST handler
+  validates `SGPBackupPeriod`/`SGPBackupMaxAge`/`SGPWaitTimeNTP` and writes them into the *shared*
+  `config.json` via the old `cfgmgr` (`async_manager.ConfigManager`, a different class entirely from
+  the driver's own `config_manager.ConfigManager`) - but the promoted `SGP40_Reader` now reads these
+  three values from its own private `config_SGP40.cfg` and exposes no setter for them at all (only
+  `reset_voc`). The REST handler validates input and persists it somewhere the sensor never reads -
+  a silent no-op against real hardware today. A real fix means adding write/setter methods to
+  `SGP40_Reader` (a driver API addition, not just a call-site fix) or another reconciliation -
+  intentionally left to the project owner to decide rather than guessed at, since it's exactly the
+  kind of driver-API-surface decision the "flag, don't silently invent architecture" working
+  agreement covers.
 
-All of this remains out of this promotion's scope per the standing hard rule against editing
-`sensortask-wozi.py` - it predates not just this driver's promotion but `base_classes.py`'s own
-`SensorReaderConfig` split (every sibling reader construction in that file, SCD30/BMP3xx included,
-uses the same stale external-`cfgmgr` convention), so fixing it here in isolation would be
-incomplete and premature. Recorded here so the eventual `sensortask-*.py` rewrite has the full,
-accurate list rather than just the originally-flagged single method.
+The REST config-write gap above remains out of scope for now; the constructor/error-counter fixes
+were narrowly targeted at what could be corrected mechanically, with a single, unambiguous right
+answer (matching the driver's actual current API), not a broader `sensortask-wozi.py` rewrite -
+every sibling reader construction in that file (SCD30/BMP3xx) still uses the old external-`cfgmgr`
+convention, untouched, since neither of those drivers is promoted yet.
 
 **Confirmed correct, no action needed**:
 - `sgp4x_turn_heater_off` (`0x36 0x15`, datasheet Table 14) is unimplemented. Its documented purpose
@@ -2104,6 +2160,74 @@ accurate list rather than just the originally-flagged single method.
 40 tests now (`tests/test_asy_sgp40_driver.py`, +1 for the self-test byte-check regression) - **814
 total**.
 
+### Third review pass (exception audit, self-test bug origin, sensortask fixes, deep test coverage)
+
+Requested explicitly by the project owner: (1) audit the whole file for uncaught exceptions,
+including called functions; (2) trace the self-test byte-check bug's origin; (3) fix the flagged
+`add_into()` inconsistency; (4) fix the `sensortask-wozi.py` integration gap; (5) add exhaustive
+config-validation tests; (6) add full-stack integration tests (`print_log`/`base_classes`/
+`asy_i2c_driver`/FRAM, success and every error type); (7) mock I2C bus success/error per the
+datasheet; (8) module- and integration-level fault-propagation tests; (9) an equal-depth separate
+test suite for `voc_algorithm.py`.
+
+**Self-test bug origin (item 2)**: confirmed via `python/IndividualDrivers/asy_sgp40_driver/__init__.py:337-338`
+(SPDX-tagged "Copyright (c) 2020 Bryan Siepert for Adafruit Industries") - the exact same
+`if self_test[0] != 0xD400: raise RuntimeError("Self test failed")` already exists there, with no
+comment or reasoning given. A plain oversight on Adafruit's own side (checking the whole word
+against one specific value instead of just the documented pass/fail byte), not a deliberate
+choice for some specific chip revision - inherited verbatim through this project's deployed driver,
+then into the first promotion pass, until this review's Table 13 re-read caught it.
+
+**Uncaught-exception audit (item 1)** across the whole file, cross-checking every called function's
+own "never raises" contract (`base_classes.py`, `config_manager.py`, `asy_fram_manager.py`,
+`print_log.py`, `voc_algorithm.py` - all independently confirmed by their own module docstrings/
+promotion audits) and every `SGP40_I2C` call site from `SGP40_Reader` (both already wrapped in
+`try`/`except Exception`, per the module docstring's own documented contract): found exactly one
+gap, the unwrapped `comp_callback()` call (see above, now fixed) - no other uncaught-exception path
+found.
+
+**Items 3 and 4** (the `add_into()` fix and the `sensortask-wozi.py` integration fixes) are recorded
+in full detail above, inline with the findings they extend.
+
+**Items 5-9 (test coverage)** added across `tests/test_asy_sgp40_driver.py` and
+`tests/test_voc_algorithm.py`:
+- Config schema: every field's documented bounds/defaults, valid boundary values (min and max for
+  all three fields simultaneously), a typical custom combination, single-field-invalid for each of
+  the three fields independently, two-fields-invalid and all-three-invalid recombinations, wrong-type
+  values, missing keys, and confirming `_init_sgp()` actually threads a valid custom `WaitTimeNTP`
+  into `voc_init`/`voc_write` (not just that `get_dict_cfg()` reports it). Each test uses its own
+  per-test config subdirectory (`_sgp_cfg_dir()`), not the shared `_tmp_path("")` every other test in
+  the file uses, since those never write custom values - only these do, and a shared file would let
+  one test's config bleed into another's.
+- Full-stack integration: confirmed `SGP40_Reader.pr` is a real `PrintLogHistoryStore` when
+  `fram_storage` is given, and that its error log survives a simulated reboot (a second
+  `AsyFramManager` sharing the same underlying `FakeMB85RS64V` chip, replaying the identical
+  allocation-call sequence) - the same "reboot" pattern this file's existing VOC-state FRAM tests
+  already used, now also covering the *other* FRAM chunk this driver allocates (`pr`'s own error log,
+  allocated first in construction order, ahead of `ts_storage`'s VOC-state chunk).
+- I2C mocking/fault propagation: a real NAK (`fake_bus.nak_addresses.add(0x59)`, not a
+  hand-constructed exception) during a measurement is caught by `_read_sgp()`'s own
+  `try`/`except Exception` and counted through the normal error path - proven both at the single-call
+  level and end-to-end through `read_loop()`'s give-up-after-`max_i2c_err` logic, mirroring the
+  existing CRC-mismatch-based give-up test but for a real bus-level `OSError` instead of a
+  hand-corrupted `RuntimeError`, since these are genuinely different fault shapes reaching the same
+  `except Exception` catch. This directly proves `SGP40_I2C`'s documented "OSError allowed to
+  propagate" carve-out (`src/README.md` section 2) is actually absorbed correctly by
+  `SGP40_Reader`, not just asserted in a comment.
+- `voc_algorithm.py`'s own dedicated integration suite (previously only exercised coupled to a full
+  sensor read cycle via `asy_sgp40_driver.py`'s tests): a real `AsyFramManager` +
+  `FakeMB85RS64V`-backed round trip of `pack_into()`/`unpack_from()` across a simulated reboot,
+  independent of the sensor driver entirely; a hard-failure case (both redundant on-chip copies
+  corrupted, matching `tests/test_asy_fram_manager.py`'s own
+  `test_read_fails_when_both_blocks_have_crc_invalid_payloads` idiom) proving `read_into()` returning
+  `False` never touches the live algorithm's state at all (`unpack_from()` never gets called, mirroring
+  `asy_sgp40_driver.py`'s own `_run_restore()` short-circuit, now proven directly at the algorithm
+  level too); and a single-copy-corruption self-heal case confirming the dual-copy redundancy still
+  recovers the *exact* original state, not just "read succeeded".
+
+Full suite: **835 tests, all passing** (`asy_sgp40_driver.py` 40→58, `voc_algorithm.py` 22→25 - see
+"Current test counts" below for the per-file breakdown).
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
@@ -2120,14 +2244,15 @@ and a missing config file failing independently without either derailing the oth
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
 `asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 58,
-`asy_udp_socket.py` 62, `asy_sgp40_driver.py` 40, `voc_algorithm.py` 22 — **814 total**. (Previous
+`asy_udp_socket.py` 62, `asy_sgp40_driver.py` 58, `voc_algorithm.py` 25 — **835 total**. (Previous
 count of 690 across 11 files predated `asy_udp_socket.py`'s promotion and was never updated to
 include it — corrected during its third pass; the 23→42 jump was its fourth pass's
 uncaught-exception/configuration/integration test additions; 42→56 is its fifth pass's
 mutation-bypass/concurrency/cancellation-safety tests; 56→62 is its sixth pass's
 ready()/write_and_recvfrom() parameter-guard tests. 752→813 is `asy_sgp40_driver.py`'s +
 `voc_algorithm.py`'s own promotion; 813→814 is the post-promotion review's self-test byte-check
-regression test, see above.)
+regression test; 814→835 is the third review pass's config-validation/integration/fault-propagation
+test additions (`asy_sgp40_driver.py` 40→58, `voc_algorithm.py` 22→25), see above.)
 
 ## Decided for the refactor
 

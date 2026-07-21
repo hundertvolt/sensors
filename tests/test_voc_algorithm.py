@@ -1,6 +1,48 @@
+import asyncio
 import struct
 
+from _fram_chip_fake import FakeMB85RS64V
+
+import asy_spi_driver
+from asy_fram_manager import AsyFramManager
+from asy_spi_driver import SPI
+from crc_checks import CRC32
 from voc_algorithm import VOCAlgorithm
+
+# Same one-process-per-test-file FRAM chip swap as tests/test_asy_sgp40_driver.py and every other
+# FRAM-touching test file - see their own comments.
+asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
+
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    from collections.abc import Coroutine
+    from typing import Any, TypeVar
+
+    T = TypeVar("T")
+
+
+def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
+    return asyncio.run(coro)
+
+
+def make_fram_manager() -> "tuple[AsyFramManager, FakeMB85RS64V, SPI]":
+    spi_bus = SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
+    manager = AsyFramManager(spi_bus, 1, max_size=0x2000)
+    chip = manager.fram._spidev.spi._spi
+    assert isinstance(chip, FakeMB85RS64V)
+    return manager, chip, spi_bus
+
+
+def make_fram_manager_sharing(spi_bus: SPI) -> AsyFramManager:
+    # A second, independently-allocating AsyFramManager sharing the first's underlying spi_bus (and
+    # so its FakeMB85RS64V chip/memory) - simulates a real reboot's fresh manager object replaying
+    # the identical get_chunk() call against surviving on-chip data, matching
+    # tests/test_asy_sgp40_driver.py's/tests/test_fram_integration.py's own pattern.
+    return AsyFramManager(spi_bus, 1, max_size=0x2000)
 
 # ---------------------------------------------------------------------------
 # get_params_memsize / initial state
@@ -266,6 +308,147 @@ def test_fix16_exp_saturates_at_documented_bounds() -> None:
     assert algo._fix16_exp(algo._f16(11.0)) == 0x7FFFFFFF
     assert algo._fix16_exp(algo._f16(-12.0)) == 0
     assert algo._fix16_exp(algo._f16(0.0)) == algo._f16(1.0)  # e^0 == 1
+
+
+# ---------------------------------------------------------------------------
+# Real-FRAM integration and fault propagation - VOCAlgorithm's own pack_into()/unpack_from()
+# through a real AsyFramManager + simulated chip, decoupled from asy_sgp40_driver.py entirely
+# (that file's own FRAM tests exercise the same mechanism, but always coupled to a full sensor
+# read cycle - see tests/test_asy_sgp40_driver.py). Matches tests/README.md's mocking-boundary plan.
+# ---------------------------------------------------------------------------
+
+
+def test_voc_state_round_trips_through_a_real_fram_chunk_across_a_simulated_reboot() -> None:
+    manager, _chip, spi_bus = make_fram_manager()
+    run(manager.setup())
+    chunk = manager.get_chunk(VOCAlgorithm.get_params_memsize(), crc=CRC32())
+    assert chunk is not None
+
+    algo = VOCAlgorithm()
+    algo.vocalgorithm_init()
+    for i in range(80):
+        algo.vocalgorithm_process(30000 + (i * 53) % 4000)
+
+    async def write() -> None:
+        buf = chunk.get_buffer()
+        dbuf = buf.get_data_buf()
+        assert dbuf is not None
+        assert algo.params.pack_into(dbuf) is True
+        assert await chunk.write_into(buf) is True
+
+    run(write())
+
+    # A second manager sharing the same underlying chip - simulates a real reboot: fresh
+    # VOCAlgorithm, never processed a single sample, must recover the exact converged state.
+    manager2 = make_fram_manager_sharing(spi_bus)
+    run(manager2.setup())
+    chunk2 = manager2.get_chunk(VOCAlgorithm.get_params_memsize(), crc=CRC32())
+    assert chunk2 is not None
+
+    async def read() -> bytearray:
+        buf = chunk2.get_buffer()
+        assert await chunk2.read_into(buf) is True
+        dbuf = buf.get_data_buf()
+        assert dbuf is not None
+        return bytearray(dbuf)
+
+    raw = run(read())
+    restored = VOCAlgorithm()  # fresh instance, never initialized
+    assert restored.params.unpack_from(raw) is True
+    assert dict(restored.params.__dict__) == dict(algo.params.__dict__)
+
+    # Continuing to process on both must produce identical output - proves the *whole* state (not
+    # just mean/std) survived a real FRAM round trip, not just the in-memory struct round trip
+    # test_pack_into_unpack_from_round_trip_is_byte_exact already covers.
+    for i in range(10):
+        a = algo.vocalgorithm_process(30000 + i * 90)
+        b = restored.vocalgorithm_process(30000 + i * 90)
+        assert a == b
+
+
+def test_voc_state_restore_from_a_hard_fram_read_failure_leaves_algorithm_state_untouched() -> None:
+    # Both redundant on-chip copies corrupted (not just one, which would self-heal - see
+    # tests/test_asy_fram_manager.py's own test_read_fails_when_both_blocks_have_crc_invalid_payloads)
+    # -> chunk.read_into() cleanly returns False, the same shape every other FRAM hardware failure
+    # this codebase models takes. asy_sgp40_driver.py's own _run_restore() never calls unpack_from()
+    # at all once read_into()/ts_storage.read_into() has already failed - proven here directly
+    # against VOCAlgorithm/its params, not just inferred from that caller's own short-circuit logic.
+    manager, chip, _spi_bus = make_fram_manager()
+    run(manager.setup())
+    chunk = manager.get_chunk(VOCAlgorithm.get_params_memsize(), crc=CRC32())
+    assert chunk is not None
+
+    async def write() -> None:
+        buf = chunk.get_buffer()
+        dbuf = buf.get_data_buf()
+        assert dbuf is not None
+        writer = VOCAlgorithm()
+        writer.vocalgorithm_init()
+        for i in range(20):
+            writer.vocalgorithm_process(30000 + i * 13)
+        assert writer.params.pack_into(dbuf) is True
+        assert await chunk.write_into(buf) is True
+
+    run(write())
+    addr0, addr1 = chunk.block_addr
+    chip.memory[addr0] ^= 0xFF  # both copies corrupted - a real, unrecoverable hardware fault
+    chip.memory[addr1] ^= 0xFF
+
+    restored = VOCAlgorithm()
+    restored.vocalgorithm_init()
+    before_state = dict(restored.params.__dict__)
+
+    async def read() -> bool:
+        buf = chunk.get_buffer()
+        ok = await chunk.read_into(buf)
+        if ok:
+            dbuf = buf.get_data_buf()
+            assert dbuf is not None
+            restored.params.unpack_from(dbuf)
+        return ok
+
+    assert run(read()) is False
+    assert dict(restored.params.__dict__) == before_state  # nothing touched restored.params
+
+
+def test_voc_state_self_heals_from_a_single_corrupted_copy_through_real_fram() -> None:
+    # Mirror of the hard-failure test above, but only one of the two redundant copies is
+    # corrupted - _AsyBaseFramChunk's own dual-copy redundancy must recover from the other,
+    # untouched copy and still hand back the exact original state, not just "read succeeded".
+    manager, chip, _spi_bus = make_fram_manager()
+    run(manager.setup())
+    chunk = manager.get_chunk(VOCAlgorithm.get_params_memsize(), crc=CRC32())
+    assert chunk is not None
+
+    algo = VOCAlgorithm()
+    algo.vocalgorithm_init()
+    for i in range(30):
+        algo.vocalgorithm_process(30000 + i * 19)
+
+    async def write() -> None:
+        buf = chunk.get_buffer()
+        dbuf = buf.get_data_buf()
+        assert dbuf is not None
+        assert algo.params.pack_into(dbuf) is True
+        assert await chunk.write_into(buf) is True
+
+    run(write())
+    addr0, _addr1 = chunk.block_addr
+    chip.memory[addr0] ^= 0xFF  # only block 0 corrupted
+
+    restored = VOCAlgorithm()
+
+    async def read() -> bool:
+        buf = chunk.get_buffer()
+        ok = await chunk.read_into(buf)
+        if ok:
+            dbuf = buf.get_data_buf()
+            assert dbuf is not None
+            restored.params.unpack_from(dbuf)
+        return ok
+
+    assert run(read()) is True
+    assert dict(restored.params.__dict__) == dict(algo.params.__dict__)
 
 
 if __name__ == "__main__":

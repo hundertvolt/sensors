@@ -71,9 +71,11 @@ cfgmgr = ConfigManager(
     _CFG_FILE_NAME,
     json.loads(_DEFAULT_CONFIG)
     | SCD30_Reader.get_default_cfg()
-    | SGP40_Reader.get_default_cfg()
     | BMP3xx_Reader.get_default_cfg()
     | asy_conn_time.get_default_cfg(),
+    # SGP40_Reader no longer contributes to the shared config.json - the promoted src/
+    # asy_sgp40_driver.py owns a private config_SGP40.cfg via base_classes.SensorReaderConfig
+    # and no longer exposes a get_default_cfg() classmethod (see BACKLOG.md).
     debug=debug,
 )
 # asy_conn_time: led_pin='LED' for onboard WiFi LED
@@ -84,12 +86,14 @@ i2c1 = asy_i2c_driver.I2C(1, 19, 18, frequency=50000)
 spi0 = asy_spi_driver.SPI(0, 2, 3, 4)
 fram = AsyFramManager(spi0, 1, max_size=0x2000, debug=debug)
 sysfunct = SystemService(conn.ntp_issynced, watchdog=watchdog, fram=fram, debug=debug)
-sgp_backup = fram.get_timestamped_chunk(SGP40_Reader.get_params_memsize(), conn.ntp_issynced)
+# fram_storage/fram_ntp_callback replace the old ts_storage= kwarg - SGP40_Reader now carves its
+# own timestamped FRAM chunk internally (VOCAlgorithm.get_params_memsize(), not a class method on
+# SGP40_Reader itself anymore) instead of taking a pre-built chunk from the caller.
 sgp_reader = SGP40_Reader(
     i2c1,
-    cfgmgr,
     sgp_comp_callback,
-    ts_storage=sgp_backup,
+    fram_storage=fram,
+    fram_ntp_callback=conn.ntp_issynced,
     max_i2c_err=_MAX_I2C_ERR,
     debug=debug,
 )
@@ -576,15 +580,22 @@ async def system_status(request: Request):
     else:
         sgpres = sgp_restored
 
-    sgp_fram_crit, sgp_fram_uncrit, sgp_fram_last = await sgp_reader.get_mem_error_counters()
+    # get_mem_error_counters() (per-chunk crit/uncrit/last counters) no longer exists on the
+    # promoted SGP40_Reader - superseded by AsyFramManager.get_error_counter(), a single
+    # whole-chip-scope log shared by every driver's FRAM usage (see BACKLOG.md).
+    fram_err_log = await fram.get_error_counter()
+    FRAM_ErrCnt = fram_err_log["FRAM"]["ErrCount"]
     SCD30_ErrCnt = await scd_reader.get_error_counter()
-    SGP40_ErrCnt = await sgp_reader.get_error_counter()
+    # SGP40_Reader.get_error_counter() now returns a print_log.py-shaped dict (matching every
+    # other SensorReaderConfig-based driver), not a bare int - extract ErrCount to keep this
+    # endpoint's existing flat-int JSON contract unchanged for SGP40_ErrCnt.
+    sgp_err_log = await sgp_reader.get_error_counter()
+    SGP40_ErrCnt = sgp_err_log["SGP40"]["ErrCount"]
     BMP388_ErrCnt = await bmp_reader.get_error_counter()
     _task_err_cnt_val = await task_error_counter.get_value()  # never None: only ever incremented from its 0 default
     Task_ErrCnt = 0 if _task_err_cnt_val is None else _task_err_cnt_val
     ErrorStatus = (
-        (sgp_fram_crit > 0)
-        or (sgp_fram_uncrit > 0)
+        (FRAM_ErrCnt > 0)
         or (SCD30_ErrCnt > 0)
         or (BMP388_ErrCnt > 0)
         or (SGP40_ErrCnt > 0)
@@ -602,9 +613,7 @@ async def system_status(request: Request):
         "SGP40_ErrCnt": SGP40_ErrCnt,
         "SGP40_Backup_TS": sgpback,
         "SGP40_Restore_TS": sgpres,
-        "SGP40_MemErr_Critical": sgp_fram_crit,
-        "SGP40_MemErr_Uncritical": sgp_fram_uncrit,
-        "SGP40_MemErr_Last": sgp_fram_last,
+        "FRAM_ErrCnt": FRAM_ErrCnt,
         "BMP388_ErrCnt": BMP388_ErrCnt,
     }
     return system_data
