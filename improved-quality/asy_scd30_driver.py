@@ -1,17 +1,30 @@
-import time
 import asyncio
-import math_helpers
+import time
+from collections import namedtuple
+from struct import unpack, unpack_from
+
+from machine import Pin, Timer
 from micropython import const
 from uasyncio import ThreadSafeFlag
-from collections import namedtuple
-from machine import Timer, Pin
-from struct import unpack_from, unpack
-from crc_checks import CRC8
-from asy_i2c_driver import I2C, I2CDevice
+
+import math_helpers
 from asy_fram_manager import AsyFramManager
+from asy_i2c_driver import I2C, I2CDevice
+from base_classes import Lockable, SensorReader
 from config_manager import make_dict, name_cfg
-from base_classes import SensorReader, Lockable
-from typing import Dict, Tuple, Union, Any, List, Callable, cast
+from crc_checks import CRC8
+
+try:
+    from typing import TYPE_CHECKING, cast
+except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
+    TYPE_CHECKING = False
+
+    def cast(typ: object, val: "Any") -> "Any":  # type: ignore[no-redef]  # no-op at runtime either way
+        return val
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from typing import Any
 
 
 _SCD30_DEFAULT_ADDR = const(0x61)
@@ -37,9 +50,9 @@ _VAL_SC = const((("SelfCal", "bool", None, None, None, None),))
 
 _NAME = const("SCD30")
 SCD30 = namedtuple("SCD30", ("CO2", "Temp", "Hum", "WetBulb", "DewPoint", "TS"))
-SCDResults = Tuple[
-    Union[float, None], Union[float, None], Union[float, None], Union[int, None]
-]  # CO2, temperature, humidity, timestamp
+
+if TYPE_CHECKING:
+    SCDResults = tuple[float | None, float | None, float | None, int | None]  # CO2, temperature, humidity, timestamp
 
 
 class SCD30_Reader(SensorReader):
@@ -90,22 +103,22 @@ class SCD30_Reader(SensorReader):
     def stop_timer(self) -> None:
         self.start_trigger_timer.deinit()
 
-    def get_task_starters(self) -> List[Callable[[], asyncio.Task[Any]]]:
+    def get_task_starters(self) -> "list[Callable[[], asyncio.Task[Any]]]":
         return [self.start_asy_read, self.start_asy_init]
 
-    def get_timer_starters(self) -> List[Callable[[], None]]:
+    def get_timer_starters(self) -> "list[Callable[[], None]]":
         return [self.start_timer]
 
     async def get_data(self) -> SCD30:
         data = await self._get_meas_data()
         return cast(SCD30, data)
 
-    async def get_dict_data(self) -> Dict[str, Dict[str, int | float | str | bool | None]]:
+    async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         data = await self.get_data()
         return make_dict(data)
 
-    async def _read_sensor_dict(self) -> Dict[str, int | float | str | bool | None]:
-        ret: Dict[str, int | float | str | bool | None] = {
+    async def _read_sensor_dict(self) -> dict[str, int | float | str | bool | None]:
+        ret: dict[str, int | float | str | bool | None] = {
             name_cfg(_VAL_TO): await self.get_temperature_offset(),
             name_cfg(_VAL_MI): await self.get_measurement_interval(),
             name_cfg(_VAL_AP): await self.get_ambient_pressure(),
@@ -115,14 +128,14 @@ class SCD30_Reader(SensorReader):
         }
         return ret  # only for callback in _get_dict_cfg, is automatically inside try-except!
 
-    async def get_dict_cfg(self) -> Dict[str, Dict[str, int | float | str | bool | None]]:
+    async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         return await self._get_dict_cfg(
             _NAME,
             _VAL_TO + _VAL_MI + _VAL_AP + _VAL_ALT + _VAL_CAL + _VAL_SC,
             callback=self._read_sensor_dict,
         )
 
-    async def get_error_counter(self) -> Dict[str, Dict[str, int | List[int] | List[str]]]:
+    async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
         return await self.pr.get_log(_NAME)
 
     async def _init_scd(self) -> bool:
@@ -136,9 +149,10 @@ class SCD30_Reader(SensorReader):
         self.pr.one(_NAME, "initialized")
         return True
 
-    async def _read_scd(self) -> SCDResults:
+    async def _read_scd(self) -> "SCDResults":
+        timestamp: int | None = None
         try:
-            timestamp = time.mktime(time.gmtime())  # type: ignore[call-arg]
+            timestamp = time.mktime(time.gmtime())
             co2 = await self.scd.get_CO2()
             temperature = await self.scd.get_temperature()
             humidity = await self.scd.get_relative_humidity()
@@ -148,7 +162,7 @@ class SCD30_Reader(SensorReader):
             await self.pr.err_s(_NAME, "Lesefehler:", e, errno=11)
         return co2, temperature, humidity, timestamp
 
-    async def _store_scd(self, results: SCDResults) -> None:
+    async def _store_scd(self, results: "SCDResults") -> None:
         if results[0] is None or results[1] is None or results[2] is None or results[3] is None:
             return  # don't run on invalid data
 

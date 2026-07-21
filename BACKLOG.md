@@ -1841,6 +1841,57 @@ promoted to `src/`), throwaway scratchpad repro scripts only. Re-ran full-scope
 this fix), all 12 `tests/` files green, 752 tests total, unaffected (`captive_dns.py` isn't imported
 by any of them).
 
+### `asy_scd30_driver.py` → `src/` (in progress)
+
+Working through the full checklist per `src/README.md`; findings recorded incrementally as they
+land, not held until the end.
+
+**Typing (section 6)**: `from typing import Dict, Tuple, Union, Any, List, Callable, cast` was an
+unconditional runtime import - `typing` has no runtime presence on MicroPython, so this would
+raise `ImportError` on the real Unix-port interpreter (or real device) the moment this module is
+imported, before a single line of driver logic runs. `Dict`/`Tuple`/`Union`/`List` only ever
+appeared in annotation position (never evaluated at runtime, per the already-established PEP 604
+finding) and modernized cleanly to builtin generics/`X | Y`; `Any`/`Callable` moved behind the
+established `TYPE_CHECKING` guard. `cast()` was different: it's called 5 times as real executable
+code (not just an annotation), so simply removing/guarding it away wasn't an option without either
+risking a new mypy narrowing gap or changing behavior. Fixed with a typed no-op fallback
+(`def cast(typ: object, val: "Any") -> "Any": return val`) defined in the same `except ImportError:`
+branch as `TYPE_CHECKING = False` - preserves every existing call site unchanged, zero behavior
+difference on real MicroPython, `cast()` still resolves to the real `typing.cast` under mypy/CPython
+dev tooling. `SCDResults` (a real, evaluated module-level `Tuple[...]` assignment, not just an
+annotation) moved inside `if TYPE_CHECKING:` as `tuple[float | None, ...]`, matching
+`config_manager.py`'s existing `FieldSchema`/`ConfigSchema` pattern; both real usages became quoted
+forward-reference annotations (`-> "SCDResults":`), same convention.
+
+**A real, pre-existing mypy gap** (never caught before - `improved-quality/` isn't in CI's checked
+scope): `_read_scd()`'s `timestamp` was implicitly typed `int` from its first (try-branch)
+assignment (`time.mktime(...)`), then reassigned `None` in the except branch with no declared
+`int | None` - fixed with an explicit `timestamp: int | None = None` before the `try`. The
+`# type: ignore[call-arg]` on the `time.mktime(time.gmtime())` line had gone stale (unused) under
+the current stub version - removed.
+
+**Real mypy finding, but not a code bug - a project tooling quirk worth recording**: type-checking
+`asy_scd30_driver.py` in isolation against the real `micropython-rp2-rpi_pico_w-stubs` package
+flags `self.start_trigger_timer = Timer()` ("All overload variants of Timer require at least one
+argument") - the exact same stub-vs-reality mismatch `system_service.py`'s own promotion already
+verified is safe by reading `ports/rp2/machine_timer.c` directly (bare `Timer()` never allocates
+anything; the stub's required `id` parameter doesn't match real rp2 behavior). Confirmed this
+doesn't affect CI or any documented invocation: `pyproject.toml`'s default `files` scope (and CI's
+own `src tests`) always checks `tests/` alongside `src/`/`improved-quality/`, and `tests/machine.py`
+defines its own `Timer.__init__(self, id: int = -1, ...)` with a real default - when both
+`tests/machine.py` and the pip-installed stub package are in scope together, mypy resolves
+`from machine import Timer` against the local `tests/machine.py` file, not the installed stub
+package, silently masking the mismatch. Checking a single `improved-quality/`/`src/` file in
+isolation (no `tests/` in the same invocation) is what surfaces it - worth knowing before treating
+a single-file mypy run as authoritative over what CI actually gates on.
+
+**Real, expected gap in `tests/machine.py` itself, not a driver bug**: the same isolated check
+shows `Pin` has no `irq`/`IRQ_RISING` - true, `tests/machine.py`'s `Pin` mock only ever needed
+`IN`/`OUT` so far (no promoted driver has used pin interrupts yet). SCD30 is the first IRQ-pin
+driver going through this checklist; extending the mock with `irq()`/`IRQ_RISING`/`IRQ_FALLING`
+is required before section 12's unit tests can exercise `start_timer()`'s IRQ registration, same
+precedent as `system_service.py` extending the mock with `Timer`/`WDT` for its own needs.
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
