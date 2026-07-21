@@ -1825,6 +1825,98 @@ promoted to `src/`), throwaway scratchpad repro scripts only. Re-ran full-scope
 this fix), all 12 `tests/` files green, 752 tests total, unaffected (`captive_dns.py` isn't imported
 by any of them).
 
+### `captive_dns.py` → `src/`
+
+Builds directly on the two `improved-quality/` fixes above (subnet filtering, `DNSQuery` malformed-
+data guard) - both carried over unchanged, no functional rework. This pass is the full
+`src/README.md` checklist promotion: module docstring, remaining exception-safety gaps, comment-
+length trim, RFC citations, and the permanent test suite that was explicitly deferred while the file
+stayed in `improved-quality/`.
+
+Real gaps closed:
+
+- **`run()`'s own startup computation was unguarded.** `_ipv4_to_int(netmask)`/`_ipv4_to_int(server_ip)`
+  ran before the `while True:` loop's own `try`, so a malformed `server_ip`/`netmask` would raise
+  straight out of the task - nothing supervises `dns_server_task` in `async_connect.py`, so this would
+  have silently killed the captive portal's DNS half until the next hotspot toggle. Both values come
+  from the OS's own `wlan.ifconfig()`, not attacker-controlled, but the type contract is just `str`,
+  not "valid dotted quad" - guarded anyway (`try/except (TypeError, ValueError): return`) rather than
+  trust an OS invariant `str` alone doesn't fully express.
+- **`_ipv4_to_int()` had no octet-range check.** `"999.1.1.1"` parsed without error, past `int()`,
+  straight into the bit-shift - an out-of-range octet doesn't raise, it silently spills into the
+  neighboring byte's bits, risking a false subnet-membership match rather than a clean rejection.
+  Fixed: validates each octet is `0-255` before shifting, raising `ValueError` (already caught by
+  both existing call sites) - zero behavior change for any previously-valid input.
+- **A failed `sendto()` was silently discarded** (flagged, not fixed, during the `asy_udp_socket.py`
+  fourth pass above - explicitly deferred as `captive_dns.py`'s own responsibility). `run()` now
+  checks the returned byte count and prints a distinct debug line when a reply is dropped, rather
+  than treating "sent" and "silently failed" identically.
+- **`DNSQuery.__init__`'s `data` parameter was typed `bytes | bytearray`, but its only real caller
+  (`AsyUDPSocket.recvfrom()`) only ever returns `bytes`.** The wider type let `packet` infer as
+  `bytes | bytearray` inside `response()`, failing mypy's own declared `-> bytes | None`. Narrowed to
+  `bytes`, matching the actual, only call shape - not an artificial restriction.
+- `.format()` calls converted to f-strings (`ruff --fix`, mechanical, zero behavior change) - the
+  earlier `improved-quality/` passes deliberately kept `.format()` for local file-style consistency
+  while unscoped from CI; that reasoning doesn't carry over once the file joins `src/`, which today
+  is 100% lint-clean end to end and CI-gated on exactly that.
+- Comment blocks trimmed to the established ≤3-line convention (several were 8-9 lines, carried over
+  from the `improved-quality/` fixes before this file was under that rule) - full rationale stays in
+  this file's entries above, not lost. RFC 1035 (header/question format, message compression) and RFC
+  791 (dotted-quad form) cited directly in `_ipv4_to_int()`/`DNSQuery.__init__()`/`response()`'s own
+  comments per section 1's "identify the authoritative source" requirement - neither had one before.
+
+Cross-file consistency scan (CLAUDE.md's "whenever a new file is promoted, scan the whole of `src/`"
+requirement), flagged rather than silently resolved: `base_classes.py`/`asy_fram_manager.py`/
+`system_service.py` use `debug: int | None` fed into `print_log.py`'s `PrintLogHistory`(`Store`) for
+persisted, post-mortem log history; `captive_dns.py` (like its own dependency `asy_udp_socket.py`)
+uses a plain `debug: bool` gating raw `print()`. **Not a discrepancy to resolve** - the two mechanisms
+solve different problems (persisted FRAM-backed log history for stateful `SensorReader`-derived
+classes vs. a lightweight console toggle for a stateless transport/protocol file with no FRAM
+dependency at all), and `captive_dns.py` sits at the same architectural layer as `asy_udp_socket.py`
+(which dropped console debug output entirely during its own promotion), not as a `SensorReader`.
+Kept the existing `debug: bool` + `print()` shape rather than wiring in `print_log.py` - matches its
+nearest architectural sibling, avoids adding a FRAM/log-store dependency to a file that never needed
+one, and the owner's own framing for this pass ("without adding too much complexity") doesn't favor
+the heavier mechanism here.
+
+**Test approach, owner-directed real-vs-fake split**: `DNSServer.udps` in this Unix-port test build
+must be bound via a `socket.getaddrinfo()`-resolved sockaddr (the same plain-tuple-`bind()`
+limitation `asy_udp_socket.py`'s own tests already work around) - and doing so means `recvfrom()`
+returns an opaque raw sockaddr here too, not a `(host, port) tuple`, so `addr[0]` can never be a real
+string through a genuine socket in this environment (confirmed directly during the subnet-filter fix
+above, not assumed). A `_FakeUDPS` stand-in (structurally duck-typed to `AsyUDPSocket`'s
+`recvfrom`/`sendto`/`disconnect` contract only, `# type: ignore[assignment]` at the swap-in point)
+drives `run()`'s actual subnet-membership/malformed-query/error-path branching with well-formed (and
+deliberately invalid) `(host, port)` tuples the real environment can't produce - `DNSQuery`/
+`response()` still execute unmocked underneath it. One additional real-socket test (genuine
+`AsyUDPSocket` + an independent `socket.socket()` peer over loopback) proves the whole thing actually
+binds/receives/replies without crashing end-to-end, including hitting the raw-sockaddr
+`AttributeError` path for real rather than only through the fake.
+
+17 tests (`tests/test_captive_dns.py`): `_ipv4_to_int()`'s valid/wrong-octet-count/out-of-range/non-
+numeric cases; `DNSQuery` single- and multi-label parsing, non-standard opcode, and all 8 malformed/
+truncated shapes from the `improved-quality/` fix's own repro matrix (still `domain == ""`, never
+raises); `response()`'s full byte-layout construction and its empty-domain `None` path; `run()`
+answering an on-subnet request, ignoring an off-subnet one then still answering the next, ignoring a
+non-IP source string, ignoring a malformed query without incurring the 3s backoff (timing-asserted,
+not just "didn't crash"), returning cleanly on an invalid `server_ip`/`netmask` without ever touching
+`udps`, disconnecting cleanly on cancellation, and continuing after a `sendto()` failure; plus the one
+real-loopback end-to-end smoke test. Verified: full-scope `scripts/lint.sh`/`scripts/typecheck.sh`
+clean (0 findings in the CI-gated `src`/`tests` scope - the first `src/` file promoted directly from
+`improved-quality/`'s more lenient bar straight to a fully clean state, no interim tracked findings
+left behind), `scripts/test.sh` all files green.
+
+Also fixed while re-verifying full-scope typecheck, unrelated to `captive_dns.py` itself (owner-
+authorized "quick mechanical fix" for out-of-scope drift surfacing in CI): two stale `# type: ignore`
+comments in `test_asy_udp_socket.py`/`test_asy_fram_manager.py` had gone stale against a newer mypy/
+typeshed pulled in by `uv sync` (unpinned dev dependency versions) - one had become genuinely unused
+(`asyncio.Task`'s stub no longer loses `recvfrom()`'s precise return type), the other's error code
+changed (`asyncio.gather()`'s two-argument overload now resolves to `tuple[bool, bool]` in typeshed,
+while the real runtime value - and this test's own `== [True, True]` assertion - is genuinely a
+`list`, matching CPython's own documented `gather()` behavior; re-pointed the `ignore` at
+`return-value` rather than changing the runtime-checked assertion to match the stub's overload
+precision instead of reality). Zero behavior change in either file.
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
