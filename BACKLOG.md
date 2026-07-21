@@ -766,27 +766,32 @@ promotion, tracked here per owner instruction):**
   resetting the real consecutive-failure counter on every re-init; after a give-up-and-restart
   cycle the error counter isn't actually reset, so recovery is slower than intended and a single
   subsequent failure can immediately re-trigger another give-up.
-- `sensortask-wozi.py`'s integration with `BMP3xx_Reader` (and presumably `SCD30_Reader`/
-  `SGP40_Reader` identically) is stale in at least three distinct, confirmed ways, not just the
-  already-noted `get_default_cfg()` gap:
-  1. `SCD30_Reader.get_default_cfg()`/`SGP40_Reader.get_default_cfg()`/`BMP3xx_Reader.get_default_cfg()`
-     called at module import time — none of the three `Reader` classes define this method.
-  2. `bmp_reader = BMP3xx_Reader(i2c1, cfgmgr, max_i2c_err=_MAX_I2C_ERR, debug=debug)` passes the
-     top-level system `cfgmgr` (a `ConfigManager` instance) as the constructor's second positional
-     argument - but `BMP3xx_Reader.__init__`'s second parameter is `address: int = 0x77`, not a
-     config manager (each `*_Reader` now builds its own per-sensor `ConfigManager` internally via
-     `cfg_path`, see `SensorReaderConfig.__init__`). A real, severe type mismatch, not just a
-     missing method.
-  3. `/system/status`'s `BMP388_ErrCnt = await bmp_reader.get_error_counter()` followed by
-     `(BMP388_ErrCnt > 0)` (same pattern for `SCD30_ErrCnt`/`SGP40_ErrCnt`) treats the result as a
-     plain int, but `get_error_counter()` actually returns
-     `dict[str, dict[str, int | list[int] | list[str]]]` (forwarding `PrintLogHistory.get_log()`'s
-     documented shape) - confirmed via mypy: `error: Unsupported operand types for < ("int" and
-     "dict[...]")` on all three comparisons.
-  All three predate `config_manager.py`'s refactor to per-sensor `config_<name>.cfg` files and the
-  base-class-driven `*_Reader` shape; consistent with the already-documented "Cross-file wiring
-  gaps" note above - `sensortask-wozi.py` is known WIP scaffold, not reconciled yet, and stays out
-  of scope for this file's own promotion.
+- `SCD30_Reader.get_default_cfg()`/`SGP40_Reader.get_default_cfg()` are still called by
+  `sensortask-wozi.py` at module import time even though neither `Reader` class defines the
+  method — unfixed, since fixing it means touching `SCD30_Reader`/`SGP40_Reader` themselves
+  (still unpromoted WIP), out of scope for this file. `BMP3xx_Reader.get_default_cfg()`'s own
+  identical call was removed from the merge (see "sensortask-wozi.py fixes" below) rather than
+  given a matching method, since it doesn't apply to the current architecture at all.
+
+**`sensortask-wozi.py` fixes (owner-authorized this pass, scoped to `BMP3xx_Reader`'s own three
+confirmed integration mismatches only — `SCD30_Reader`/`SGP40_Reader`'s identical-shaped issues
+above are still unfixed, out of scope):**
+1. `| BMP3xx_Reader.get_default_cfg()` removed from the system `cfgmgr`'s merged defaults —
+   unlike `SCD30_Reader`/`SGP40_Reader`, `BMP3xx_Reader` doesn't contribute anything to system
+   `config.json` at all: it owns its own per-sensor `config_BMP3XX.cfg` file internally via
+   `SensorReaderConfig`, so there's no method to call here in the first place, not just a missing
+   one.
+2. `bmp_reader = BMP3xx_Reader(i2c1, cfgmgr, max_i2c_err=_MAX_I2C_ERR, debug=debug)` → `BMP3xx_Reader(i2c1,
+   max_i2c_err=_MAX_I2C_ERR, debug=debug)` — dropped the wrong `cfgmgr` positional argument
+   (`BMP3xx_Reader.__init__`'s second parameter is `address: int`, not a config manager),
+   letting `address` default to `0x77` (the Sparkfun breakout's SDO-high default).
+3. `/system/status`'s `BMP388_ErrCnt = await bmp_reader.get_error_counter()` now correctly
+   extracts `["BMP3XX"]["ErrCount"]` from the dict `get_error_counter()` actually returns (with an
+   `isinstance(..., int)` narrow for mypy), instead of comparing the whole dict via `> 0`.
+   `SCD30_ErrCnt`/`SGP40_ErrCnt` two lines above have the identical bug, still unfixed (same
+   out-of-scope reasoning) — `/system/status` still can't type-check or run cleanly end-to-end
+   until those are addressed too; confirmed via mypy re-run: 93 → 91 errors in the file, the exact
+   two BMP-specific findings this pass removed, zero new ones introduced.
 
 **Architecture review pass** (structure/setup/inheritance/sensortask-integration/simplification,
 owner-requested): `BMP3xx_Reader`'s inheritance from `SensorReaderConfig` checked field-by-field
@@ -814,7 +819,58 @@ already has two independent layers of defense against a not-yet-ready device (th
 ACK check, then the chip-ID validation) - added complexity without a documented failure mode it
 would newly catch.
 
-33 tests (`tests/test_asy_bmp3xx_driver.py`).
+**Exception-safety audit pass** (owner-requested: "no places inside the file which can have
+uncaught exceptions, either by themselves or by a called function"). Traced every method's own
+body plus every collaborator it calls (`base_classes.py`, `config_manager.py`, `math_helpers.py`,
+`print_log.py` — each independently confirmed, via their own module docstrings, to never raise)
+for a path that could escape unhandled. Two real gaps found and fixed:
+- `BMP3xx_Reader.set_trigger_secs()` called `int(value)` unguarded — the only one of this class's
+  six low-level forwards that didn't wrap its own conversion/hardware call in try/except and log
+  via `self.pr` like its siblings. A non-numeric `value` (e.g. from a malformed REST request that
+  slipped past `api_helpers.py`'s own validation) would have raised `ValueError`/`TypeError`
+  straight out of it — pre-existing in the original `python/IndividualDrivers/asy_bmp3xx_driver.py`
+  too, not a regression from this promotion. Now wrapped and logged (`errno=21`), matching the
+  other five forwards; still returns `None` (not `bool`, unlike the hardware-backed forwards) to
+  match `api_helpers.py`'s `set_sensor_value()`'s own `Callable[..., Coroutine[Any, Any, None]]`
+  setter contract.
+- `BMP3XX_I2C._get_osr_setting()` indexed `_OSR_SETTINGS[osr]` without checking `osr` was in
+  range first. Confirmed directly against `datasheets/bmp3xx/bst-bmp388-ds001.pdf` sec 4.3.17's
+  own register table: `osr_p`/`osr_t` are 3-bit fields (0-7), but the datasheet only documents
+  encodings 0-5 (x1..x32) — 6/7 are undocumented/reserved, unlike `iir_filter` (sec 4.3.20), which
+  documents all 8 of its own 3-bit encodings. A bus disturbance flipping a bit could land exactly
+  on 6/7, raising a bare, cryptic `IndexError` instead of this driver's usual clearly-messaged
+  exception — caught incidentally by the `BMP3xx_Reader` forwards' broad `except Exception`
+  either way, but not the well-defined protocol-layer failure this file's docstring promises. Now
+  raises `OSError` with an explicit "reserved encoding" message before indexing.
+
+**Test suite expansion** (owner-requested: full config-schema coverage, integration tests against
+the real `print_log.py`/`base_classes.py`/`asy_i2c_driver.py` collaborators, and datasheet-grounded
+I2C fault-propagation tests at both module and integration level):
+- Confirmed `tests/machine.py`'s existing fake `machine.I2C` (register dict keyed by
+  `(address, reg)`, `nak_addresses`/`busy` for EIO/ETIMEDOUT fault injection) already faithfully
+  models `bst-bmp388-ds001.pdf` sec 5's documented transaction shapes (single-byte read/write,
+  multi-byte burst read via a single auto-incrementing base register) — documented explicitly in
+  the test file now rather than left implicit.
+- Full config-schema coverage: every one of the 8 `_VAL_*` fields at its valid min/mid/max, single
+  out-of-range/wrong-type rejections per field (including a `bool`-for-`int` rejection, since
+  `type_or_range_error()`'s `type(x) is not int` check is stricter than `isinstance`), and a
+  multi-field simultaneous invalid/valid recombination — all through the real `ConfigManager`
+  attached to a live `BMP3xx_Reader`, not a standalone mock.
+- New regression tests for both exception-safety fixes above, plus a module-level fault matrix
+  covering both real RP2040 I2C error codes (EIO/ETIMEDOUT) across `reset()`/`_read_coefficients()`/
+  `get_filter_coefficient()`, and the `get_bits()`-returns-`None`-but-`set_bits()`-always-returns-
+  `None` read/write asymmetry a deinitialized bus exposes in `asy_i2c_driver.py`'s own contract
+  (documented as a deliberate non-hardware-failure carve-out, not a bug in this driver).
+- Integration tests driving `_init_bmp()`/`read_loop()`'s error-counting through the real
+  `base_classes.py._error_check()` (consecutive-failure threshold and self-healing on recovery),
+  confirming `_init_bmp()` fails cleanly when the config schema accepts an in-range-but-not-
+  hardware-valid oversampling value (the schema/hardware discrepancy noted above), and a full
+  `PrintLogHistoryStore` FRAM-backed round trip (real `AsyFramManager` +
+  `tests/_fram_chip_fake.py`, same reboot-survival pattern as `tests/test_print_log.py`) — the
+  first time this driver's FRAM-backed logging path (as opposed to the default in-memory one) has
+  been exercised at all.
+
+54 tests (`tests/test_asy_bmp3xx_driver.py`), up from 33.
 
 ### Dangerous allocation shapes (segfault-class bug, swept project-wide)
 
@@ -2006,12 +2062,15 @@ and a missing config file failing independently without either derailing the oth
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
 `asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 58,
-`asy_udp_socket.py` 62, `asy_bmp3xx_driver.py` 33 — **785 total**. (Previous count of 690 across 11
+`asy_udp_socket.py` 62, `asy_bmp3xx_driver.py` 54 — **806 total**. (Previous count of 690 across 11
 files predated `asy_udp_socket.py`'s promotion and was never updated to include it — corrected
 during its third pass; the 23→42 jump was its fourth pass's uncaught-exception/configuration/
 integration test additions; 42→56 is its fifth pass's mutation-bypass/concurrency/
 cancellation-safety tests; 56→62 is its sixth pass's ready()/write_and_recvfrom() parameter-guard
-tests.)
+tests. `asy_bmp3xx_driver.py`'s 33→54 jump is its exception-safety-audit-and-integration-test
+pass: two fixes — `set_trigger_secs()`'s unguarded `int(value)`, `_get_osr_setting()`'s
+`IndexError` on a reserved OSR encoding — plus full config-schema, integration, and
+fault-propagation test coverage; see its own `BACKLOG.md` section above for the full breakdown.)
 
 ## Decided for the refactor
 

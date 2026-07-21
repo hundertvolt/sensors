@@ -146,7 +146,12 @@ class BMP3xx_Reader(SensorReaderConfig):
         return [self.start_timer]
 
     async def set_trigger_secs(self, value: int | float) -> None:
-        await self.trigger_period.set_value(int(value))
+        try:
+            trigger_secs = int(value)
+        except (TypeError, ValueError) as e:
+            await self.pr.err_s(_NAME, "Error setting trigger interval:", e, errno=21)
+            return
+        await self.trigger_period.set_value(trigger_secs)
 
     async def get_data(self) -> BMP3XX:
         # base_classes.py's SensorReader._get_meas_data() is typed generically as "NamedTuple";
@@ -364,6 +369,12 @@ class BMP3XX_I2C:
                 osr = await i2c.get_bits(3, _REGISTER_OSR, start_bit)
         if osr is None:
             raise OSError(f"failed to read OSR bit-field at bit {start_bit}")
+        # osr_p/osr_t are 3-bit fields but the datasheet only documents encodings 0-5 (x1..x32,
+        # sec 4.3.17); 6/7 are undocumented/reserved. A bus disturbance flipping a bit can land
+        # exactly here, so this is checked explicitly instead of letting a bare IndexError leak
+        # out of what's meant to be a well-defined, clearly-messaged protocol-layer failure.
+        if osr >= len(_OSR_SETTINGS):
+            raise OSError(f"OSR bit-field at bit {start_bit} read back reserved encoding {osr}")
         return _OSR_SETTINGS[osr]
 
     async def _set_osr_setting(self, start_bit: int, oversample: int) -> None:
