@@ -46,7 +46,6 @@ _VAL_AP = const((("AmbPres", "int", None, 700, 1400, 0),))
 _VAL_ALT = const((("Altitude", "int", None, 0, 65535, None),))
 _VAL_CAL = const((("ForceCalRef", "int", None, 400, 2000, None),))
 _VAL_SC = const((("SelfCal", "bool", None, None, None, None),))
-# TODO: Stop Measurement command
 # no default value for config, params are stored on sensor
 
 _NAME = const("SCD30")
@@ -140,6 +139,9 @@ class SCD30_Reader(SensorReader):
         return await self.pr.get_log(_NAME)
 
     async def _init_scd(self) -> bool:
+        # Doesn't (re-)start continuous measurement itself: that mode is stored in the sensor's own
+        # NVM (Interface Description 1.4.1) and survives both soft reset and power cycles once
+        # provisioned - provisioning happens externally via set_ambient_pressure (see CLAUDE.md).
         await self.pr.setup()  # required for all logged warnings and errors
         self._err_cnt_internal = 0
         try:
@@ -207,6 +209,8 @@ class SCD30_Reader(SensorReader):
 
     # selected low-level direct sensor driver function forwards
     async def stop_continuous_measurement(self, value: bool) -> bool:
+        # value is the desired "ContMeas" state (matches the REST field this backs): True (keep
+        # running) is a no-op, only False actually issues the stop command.
         if value:
             return False
         try:
@@ -388,6 +392,9 @@ class SCD30_I2C:
         await self._send_command(_CMD_SET_TEMPERATURE_OFFSET, int(offset * 100))
 
     async def get_forced_recalibration_reference(self) -> int:
+        # Unlike AmbPres/Altitude/TempOffs/SelfCal, this readback is volatile: it always returns
+        # 400 (the standard reference) after a power cycle, regardless of what FRC value was last
+        # applied - the calibration curve update itself is permanent, just not this readback.
         return await self._read_register(_CMD_SET_FORCED_RECALIBRATION_FACTOR)
 
     async def set_forced_recalibration_reference(self, reference_value: int) -> None:
