@@ -2122,6 +2122,18 @@ and 1 test locking in the not-ready-leaves-cache-untouched revert (replacing the
 clears-to-None test), plus 1 more confirming the pre-any-successful-read initial state is still
 correctly `None` (not stale garbage).
 
+**Final re-validation pass, owner-requested ("go through our recipe paragraph by paragraph")**: every
+command opcode, CRC parameter, byte-layout offset, and timing/NVM-persistence claim re-checked
+directly against the Interface Description PDF from scratch (not just against this file's own prior
+notes); RP2 v1.28.0 source (`ports/rp2/machine_i2c.c`) confirmed `DEFAULT_I2C_TIMEOUT = 50000` (50ms),
+re-confirming the already-decided 50ms-vs-150ms-clock-stretch tension above without reopening it;
+`Timer`/`ThreadSafeFlag` usage re-confirmed safe against current MicroPython docs. No new
+discrepancy found - a confirmation pass, not a change request. Separately, trimmed the file's
+per-function comments to section 11's 3-line convention (several ran 4-9 lines): condensed the
+worst case, `read_measurement()`, from 9 comment lines to 3, and switched `_store_scd()`'s `SCD30(...)`
+construction to keyword arguments instead of one comment per positional field, removing the need
+for those comments entirely. No functional change; 59/59 tests still pass unchanged.
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
