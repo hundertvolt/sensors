@@ -2121,17 +2121,19 @@ been updated to match:
   change - out of scope here, left as the same accepted baseline pattern.
 - `get_mem_status()` (last_backup/restored_from) was already unchanged and still matches the
   deployed driver 1:1 - no fix needed there.
-- **Still open, not fixed - flagged for a decision**: `sensortask-wozi.py`'s `setSGP` REST handler
-  validates `SGPBackupPeriod`/`SGPBackupMaxAge`/`SGPWaitTimeNTP` and writes them into the *shared*
-  `config.json` via the old `cfgmgr` (`async_manager.ConfigManager`, a different class entirely from
-  the driver's own `config_manager.ConfigManager`) - but the promoted `SGP40_Reader` now reads these
-  three values from its own private `config_SGP40.cfg` and exposes no setter for them at all (only
-  `reset_voc`). The REST handler validates input and persists it somewhere the sensor never reads -
-  a silent no-op against real hardware today. A real fix means adding write/setter methods to
-  `SGP40_Reader` (a driver API addition, not just a call-site fix) or another reconciliation -
-  intentionally left to the project owner to decide rather than guessed at, since it's exactly the
-  kind of driver-API-surface decision the "flag, don't silently invent architecture" working
-  agreement covers.
+- **Known gap, deliberately deferred (owner-confirmed, not an open question)**:
+  `sensortask-wozi.py`'s `setSGP` REST handler validates `SGPBackupPeriod`/`SGPBackupMaxAge`/
+  `SGPWaitTimeNTP` and writes them into the *shared* `config.json` via the old `cfgmgr`
+  (`async_manager.ConfigManager`, a different class entirely from the driver's own
+  `config_manager.ConfigManager`) - but the promoted `SGP40_Reader` reads these three values from
+  its own private `config_SGP40.cfg` and exposes no setter for them at all (only `reset_voc`). The
+  REST handler validates input and persists it somewhere the sensor never reads - a silent no-op
+  against real hardware today. The project owner confirmed this gap was already known (not a
+  surprise from this review) and is deliberately not being addressed sensor-by-sensor: per-driver
+  config setters are being deferred to a single consolidated pass across every promoted sensor
+  once they've all made the `src/` move, rather than adding them piecemeal here for SGP40 alone.
+  Left as-is; this note exists so the eventual consolidated pass has the concrete finding on
+  record rather than needing to be rediscovered.
 
 The REST config-write gap above remains out of scope for now; the constructor/error-counter fixes
 were narrowly targeted at what could be corrected mechanically, with a single, unambiguous right
@@ -2279,6 +2281,12 @@ test additions (`asy_sgp40_driver.py` 40→58, `voc_algorithm.py` 22→25), see 
   as the `asy_udp_socket.py` sixth pass's two actual fixes were), not just "any `await` could
   theoretically raise." Confirmed by owner directly, prompted by `asy_udp_socket.py`'s open question
   #14 (see below).
+- **Per-driver REST config setters (e.g. `SGP40_Reader`'s missing `BackupPeriod`/`BackupMaxAge`/
+  `WaitTimeNTP` setters, currently a silent no-op via `sensortask-wozi.py`'s `setSGP` handler
+  writing to a config file the driver never reads - see "Sensortask-\*.py integration" above) are
+  a known, owner-confirmed gap, deliberately not being closed sensor-by-sensor.** Addressed in one
+  consolidated pass across every promoted sensor once they've all made the `src/` move, not
+  piecemeal per driver as each one is promoted.
 - **Mypy shall be configured to not accept `Any` types** (owner-specified). The closest existing
   mypy option is `disallow_any_explicit` (flags explicit `Any` annotations); `[tool.mypy]` in
   `pyproject.toml` currently deliberately stops short of it and the other `--strict`-only checks
