@@ -88,9 +88,11 @@ From hands-on field experience with deployed units:
     implemented anywhere (not even in `improved-quality/`). If SD-card-style post-deassert clock
     cycling is wanted, it needs designing from scratch.
   - I2C recovery is device-specific (check what each driver already does before assuming a gap);
-    generalize only if a mechanism turns out to be genuinely common. *(`asy_scd30_driver.py`'s and
-    now `asy_bmp3xx_driver.py`'s reset paths reviewed — see `asy_bmp3xx_driver.py`'s own `src/`
-    promotion findings below for what changed. SGP40's `_reset()` still needs the same review.)*
+    generalize only if a mechanism turns out to be genuinely common. Per-driver reset-path review
+    status (each line owned by that driver's own promotion pass — update only your own):
+    - `asy_scd30_driver.py`: reviewed.
+    - `asy_bmp3xx_driver.py`: reviewed as part of its `src/` promotion — see its own section below.
+    - `asy_sgp40_driver.py`: `_reset()` still needs the same review.
   - FRAM's SPI bus gets the same bus-recovery treatment as sensor buses. **Partially done**:
     `asy_fram_driver.py`'s own `src/` promotion (see "`asy_fram_driver.py` → `src/`" below) fixed a
     real device-identification bug and added write-enable-latch/write-protect verification - the
@@ -2247,20 +2249,13 @@ and a missing config file failing independently without either derailing the oth
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
 `asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 58,
-`asy_udp_socket.py` 62, `asy_bmp3xx_driver.py` 67 — **819 total**. (Previous count of 690 across 11
+`asy_udp_socket.py` 62, `asy_bmp3xx_driver.py` 68 — **820 total**. (Previous count of 690 across 11
 files predated `asy_udp_socket.py`'s promotion and was never updated to include it — corrected
 during its third pass; the 23→42 jump was its fourth pass's uncaught-exception/configuration/
 integration test additions; 42→56 is its fifth pass's mutation-bypass/concurrency/
 cancellation-safety tests; 56→62 is its sixth pass's ready()/write_and_recvfrom() parameter-guard
-tests. `asy_bmp3xx_driver.py`'s 33→54 jump is its exception-safety-audit-and-integration-test
-pass: two fixes — `set_trigger_secs()`'s unguarded `int(value)`, `_get_osr_setting()`'s
-`IndexError` on a reserved OSR encoding — plus full config-schema, integration, and
-fault-propagation test coverage; 54→64 is its second detailed review pass, fixing a real bug
-present since the original deployed driver (`_read_bmp()` triggering two independent physical
-measurements instead of one atomic reading) plus `get_altitude()`'s two accidental exceptions and
-some dead-code cleanup; 64→67 adds owner-specified 1-600s bounds checking to `set_trigger_secs()`,
-closing the gap that pass had flagged instead of unilaterally fixing; see its own `BACKLOG.md`
-section above for the full breakdown.)
+tests. `asy_bmp3xx_driver.py`'s own count history across its review passes (33→54→64→67→68) is
+documented in full in its own section above, not repeated here.)
 
 ## Decided for the refactor
 
