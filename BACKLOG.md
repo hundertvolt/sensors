@@ -2040,6 +2040,64 @@ plain `scripts/typecheck.sh` (123 pre-existing errors, all in the same 7 already
 no other file's content was touched by this move), and `scripts/test.sh` (all 13 `tests/test_*.py`
 files pass, 741 tests total including this file's 54).
 
+**Post-promotion re-review (owner-requested "go through it again in detail"), two real bugs found
+and fixed, not just tests added**:
+
+1. **Severe: Temperature/Humidity would have come back `None` on every single successful read
+   cycle.** `get_CO2()`/`get_temperature()`/`get_relative_humidity()` each independently called
+   `_read_data()`, which re-checked the SCD30's data-ready flag on every call and cleared all three
+   cached fields to `None` whenever it read "not ready." But the data-ready flag clears the instant
+   the measurement is actually read (Interface Description 1.4.4) - so across `_read_scd()`'s real
+   sequential `get_CO2()` → `get_temperature()` → `get_relative_humidity()` calls, only the first
+   ever saw "ready"; the second and third, called milliseconds later, always saw "not ready" (already
+   consumed) and wiped out the first call's own fresh result. Confirmed directly against the real
+   interpreter before touching anything: `(co2, temp, hum)` came back `(412.5, None, None)`, not
+   `(412.5, 23.4, 45.6)`, from a realistic single-measurement fixture. Root cause traced to this same
+   session's own earlier "fix" (commit `800edf3`, recorded above as a stability improvement): clearing
+   the cache on "not ready" was the right call for a *stale, cross-cycle* not-ready (a genuinely
+   spurious trigger with no new data at all), but wrong for a *same-cycle* not-ready (the 2nd/3rd
+   getter call, which will always see not-ready by design) - that earlier fix conflated the two.
+   Every existing test for this happened to queue "ready=1" three separate times (once per getter),
+   which doesn't match how real hardware behaves and is exactly what let this go unnoticed - a lesson
+   in mock fidelity, not just test coverage. **Fix**: factored the data-ready-check-and-fetch into a
+   single `read_measurement()` call, made exactly once per `_read_scd()` cycle before the three
+   getters; `get_CO2()`/`get_temperature()`/`get_relative_humidity()` are now pure cache reads with no
+   I2C of their own, eliminating the redundant re-checks structurally rather than special-casing them.
+   This never reached deployed units - caught here, on the branch, before merge.
+2. **Moderate: `set_ambient_pressure()`/`set_altitude()` silently accepted an invalid negative value
+   as the special value `0` instead of rejecting it.** Both truncated their argument via `int(...)`
+   *before* validating the range, and `int(-0.5) == 0` in both Python and MicroPython (truncates
+   toward zero, doesn't round) - so any value in the open interval (-1, 0), e.g. `-0.5`, silently
+   passed through as `0` (ambient pressure's own "disable compensation" sentinel) instead of raising.
+   Confirmed directly: `set_ambient_pressure(-0.5)` sent a real "disable ambient pressure" command to
+   the fake bus with no error at all. `set_temperature_offset()` already validated before truncating
+   and was unaffected - this fix just brings the other two in line with that existing, correct order.
+   4 new regression tests added (2 per method: reject fractional near-zero values, confirm nothing
+   reaches the bus).
+3. **Investigated, not fixed - flagging for the project owner rather than guessing**:
+   `get_ambient_pressure()` reads back the SCD30's ambient-pressure setting via a bare write of
+   `0x0010` (the same command used to *set* it, "trigger continuous measurement") followed by the
+   standard 3-byte register read - this exact pattern is what every other paired getter/setter here
+   uses, and it's what the legacy `python/IndividualDrivers/asy_scd30_driver.py` already does too
+   (unchanged, presumably running in production for over a year per the project owner). But checked
+   against real sources this time, specifically because the Interface Description's own worked
+   examples only show a *write* sequence for 0x0010, unlike every other command (1.4.3/1.4.6/1.4.7/
+   1.4.8), which each have an explicit documented "Get" read-back sequence: Sensirion's own official
+   `embedded-scd` C reference driver has no ambient-pressure getter function at all, and their official
+   `python-i2c-scd30` driver's `StartPeriodicMeasurement` command class has no `rx` (receive)
+   attribute the way `GetMeasurementInterval`/`GetTemperatureOffset` do - i.e., neither official
+   reference implementation treats 0x0010 as readable. This doesn't necessarily mean it's broken (the
+   legacy code's own year+ of uneventful field use is real evidence it's *not* obviously broken), but
+   it means this specific read-back was never confirmed against an authoritative source either, only
+   inherited unchanged from driver to driver. Not something to silently "fix" - there's no alternate
+   documented way to read this back if the sensor genuinely doesn't support it - flagging as a real,
+   still-open question rather than asserting either way.
+
+New unit-test count for this file after the re-review: 58 (was 54) - 2 fault-propagation tests
+correcting `get_CO2()`/etc.'s now-pure-cache-read contract (they can no longer raise `OSError` on
+NAK the way they used to when they touched the bus directly), 1 regression test locking in the
+`read_measurement()`-once-per-cycle fix, and 4 regression tests for the truncate-before-validate fix.
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
@@ -2056,7 +2114,7 @@ and a missing config file failing independently without either derailing the oth
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
 `asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 58,
-`asy_udp_socket.py` 62, `asy_scd30_driver.py` 54 — **806 total**. (Previous count of 690 across 11
+`asy_udp_socket.py` 62, `asy_scd30_driver.py` 58 — **810 total**. (Previous count of 690 across 11
 files predated `asy_udp_socket.py`'s promotion and was never updated to include it — corrected during its
 third pass; the 23→42 jump was its fourth pass's uncaught-exception/configuration/integration
 test additions; 42→56 is its fifth pass's mutation-bypass/concurrency/cancellation-safety tests;

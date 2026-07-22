@@ -74,7 +74,7 @@ def register_frame(value: int) -> bytes:
 
 
 def data_frame(co2: float, temperature: float, humidity: float) -> bytes:
-    # 3 x (word0 + crc0 + word1 + crc1) = 18 bytes, matching _read_data()'s own layout and
+    # 3 x (word0 + crc0 + word1 + crc1) = 18 bytes, matching read_measurement()'s own layout and
     # Interface Description Table 2's read-out order (CO2, Temperature, Humidity).
     frame = bytearray()
     for value in (co2, temperature, humidity):
@@ -119,11 +119,11 @@ def test_set_measurement_interval_matches_datasheet_example() -> None:
 
 
 def test_get_data_ready_command_matches_datasheet_example() -> None:
-    # Section 1.4.4: START 0xC2 0x02 0x02 STOP. Queues "not ready" (0) so _read_data() stops right
-    # after this command instead of also needing a full 18-byte measurement frame queued.
+    # Section 1.4.4: START 0xC2 0x02 0x02 STOP. Queues "not ready" (0) so read_measurement() stops
+    # right after this command instead of also needing a full 18-byte measurement frame queued.
     scd, i2c = make_scd()
     i2c.read_queue.append(register_frame(0))
-    run(scd._read_data())
+    run(scd.read_measurement())
     assert i2c.log[0] == ("writeto", _ADDR, bytes([0x02, 0x02]), True)
 
 
@@ -132,7 +132,7 @@ def test_read_measurement_command_matches_datasheet_example() -> None:
     scd, i2c = make_scd()
     i2c.read_queue.append(register_frame(1))
     i2c.read_queue.append(data_frame(400.0, 20.0, 50.0))
-    run(scd._read_data())
+    run(scd.read_measurement())
     ops = [entry for entry in i2c.log if entry[0] == "writeto"]
     assert ops[-1] == ("writeto", _ADDR, bytes([0x03, 0x00]), True)
 
@@ -151,7 +151,7 @@ def test_read_measurement_data_matches_datasheet_worked_example() -> None:
             ]
         )
     )
-    run(scd._read_data())
+    run(scd.read_measurement())
     assert abs((scd._co2 or 0) - 439.09) < 0.01
     assert abs((scd._temperature or 0) - 27.2) < 0.05
     assert abs((scd._relative_humidity or 0) - 48.8) < 0.05
@@ -246,6 +246,19 @@ def test_set_ambient_pressure_rejects_values_just_inside_the_dead_zone_around_ze
     assert _raises_attribute_error(scd.set_ambient_pressure(699))
 
 
+def test_set_ambient_pressure_rejects_fractional_values_that_would_truncate_to_the_special_zero() -> None:
+    # Regression test for a real bug found during re-review: validating against pressure_mbar
+    # *after* int()-truncating it let any value in the open interval (-1, 0) - e.g. -0.5 - silently
+    # through as the special "disable" value 0, instead of being rejected, since int(-0.5) == 0
+    # (Python/MicroPython int() truncates toward zero, it doesn't round). Confirmed directly
+    # against the real interpreter before fixing: set_ambient_pressure(-0.5) used to send a real
+    # "disable ambient pressure" command to the sensor with no error raised at all.
+    scd, i2c = make_scd()
+    for bad in (-0.5, -0.01, -0.999):
+        assert _raises_attribute_error(scd.set_ambient_pressure(bad)), f"{bad} should have raised"
+    assert len(i2c.log) == 0  # none of the rejected calls should have reached the bus
+
+
 def test_set_altitude_boundaries() -> None:
     scd, _ = make_scd()
     assert _raises_attribute_error(scd.set_altitude(-1))
@@ -253,6 +266,18 @@ def test_set_altitude_boundaries() -> None:
     assert not _raises_attribute_error(scd.set_altitude(0))
     assert not _raises_attribute_error(scd.set_altitude(65535))
     assert not _raises_attribute_error(scd.set_altitude(1000))
+
+
+def test_set_altitude_rejects_fractional_values_that_would_truncate_to_zero() -> None:
+    # Same class of bug as set_ambient_pressure's own regression test above: int(-0.5) == 0, which
+    # is itself a valid altitude (sea level) - so truncating before validating would have silently
+    # accepted a negative altitude as "0m" instead of rejecting it. altitude's signature only
+    # advertises int (unlike pressure_mbar's explicit int | float), but nothing stops a caller from
+    # passing a float anyway - defensive test, deliberately outside the declared type.
+    scd, i2c = make_scd()
+    for bad in (-0.5, -0.01, -0.999):
+        assert _raises_attribute_error(scd.set_altitude(bad)), f"{bad} should have raised"  # type: ignore[arg-type]
+    assert len(i2c.log) == 0
 
 
 def test_set_temperature_offset_boundaries() -> None:
@@ -323,7 +348,7 @@ def test_read_register_raises_on_crc_mismatch() -> None:
     assert raised
 
 
-def test_read_data_raises_on_crc_mismatch_in_any_of_the_six_words() -> None:
+def test_read_measurement_raises_on_crc_mismatch_in_any_of_the_six_words() -> None:
     # Corrupt each of the 6 CRC bytes (positions 2,5,8,11,14,17) independently - every one must be
     # caught, not just the first.
     for crc_pos in (2, 5, 8, 11, 14, 17):
@@ -333,14 +358,14 @@ def test_read_data_raises_on_crc_mismatch_in_any_of_the_six_words() -> None:
         corrupted[crc_pos] ^= 0xFF
         i2c.read_queue.append(bytes(corrupted))
         try:
-            run(scd._read_data())
+            run(scd.read_measurement())
             raised = False
         except RuntimeError:
             raised = True
         assert raised, f"CRC corruption at byte {crc_pos} was not detected"
 
 
-def test_read_data_not_ready_clears_cached_values_and_issues_no_measurement_read() -> None:
+def test_read_measurement_not_ready_clears_cached_values_and_issues_no_measurement_read() -> None:
     scd, i2c = make_scd()
     # Assigned through a float | None-typed local rather than bare literals - mypy narrows a direct
     # `scd._co2 = 1.0` to non-Optional float and never widens it back across the run() call below,
@@ -348,7 +373,7 @@ def test_read_data_not_ready_clears_cached_values_and_issues_no_measurement_read
     stale: float | None = 1.0
     scd._co2, scd._temperature, scd._relative_humidity = stale, stale, stale
     i2c.read_queue.append(register_frame(0))
-    run(scd._read_data())
+    run(scd.read_measurement())
     assert scd._co2 is None
     assert scd._temperature is None
     assert scd._relative_humidity is None
@@ -356,18 +381,39 @@ def test_read_data_not_ready_clears_cached_values_and_issues_no_measurement_read
     assert ops == ["writeto", "readfrom_into"]  # only the data-ready probe, no measurement read
 
 
-def test_get_co2_temperature_humidity_each_independently_trigger_a_fresh_read() -> None:
+def test_get_co2_temperature_humidity_all_reflect_one_read_measurement_call() -> None:
+    # Regression test for a real bug found during re-review: get_CO2()/get_temperature()/
+    # get_relative_humidity() used to each independently call the data-ready-checking fetch, and
+    # the SCD30's data-ready flag clears the instant the measurement is actually read - so only the
+    # first of the three ever saw "ready", and the second/third would see "not ready" and wipe the
+    # first call's own fresh result back to None. Modeled here with a single register_frame(1) +
+    # data_frame() pair queued - exactly one real sensor read - not three, which is what let the bug
+    # go unnoticed: three independently-queued "ready" replies don't match how the real hardware
+    # actually behaves across one read_measurement() + three getter calls.
     scd, i2c = make_scd()
-    frame = data_frame(412.5, 23.4, 45.6)
-    for _ in range(3):
-        i2c.read_queue.append(register_frame(1))
-        i2c.read_queue.append(frame)
+    i2c.read_queue.append(register_frame(1))
+    i2c.read_queue.append(data_frame(412.5, 23.4, 45.6))
+    run(scd.read_measurement())
     co2 = run(scd.get_CO2())
     temperature = run(scd.get_temperature())
     humidity = run(scd.get_relative_humidity())
     assert co2 is not None and abs(co2 - 412.5) < 0.01
     assert temperature is not None and abs(temperature - 23.4) < 0.01
     assert humidity is not None and abs(humidity - 45.6) < 0.01
+    # The three getters must be pure cache reads - no further I2C traffic beyond the one
+    # read_measurement() call above.
+    assert len(i2c.log) == 4  # data-ready probe (write+read) + measurement read (write+read)
+
+
+def test_getters_never_touch_the_bus_on_their_own() -> None:
+    scd, i2c = make_scd()
+    co2 = run(scd.get_CO2())
+    temperature = run(scd.get_temperature())
+    humidity = run(scd.get_relative_humidity())
+    assert co2 is None  # nothing fetched yet - initial cache state, not a bus error
+    assert temperature is None
+    assert humidity is None
+    assert len(i2c.log) == 0
 
 
 def test_get_self_calibration_enabled_decodes_1_and_0() -> None:
@@ -415,9 +461,7 @@ def test_nak_propagates_as_oserror_from_every_register_read() -> None:
         scd.get_temperature_offset(),
         scd.get_forced_recalibration_reference(),
         scd.get_self_calibration_enabled(),
-        scd.get_CO2(),
-        scd.get_temperature(),
-        scd.get_relative_humidity(),
+        scd.read_measurement(),
     ):
         try:
             run(bad_call)
@@ -425,6 +469,17 @@ def test_nak_propagates_as_oserror_from_every_register_read() -> None:
         except OSError:
             raised = True
         assert raised
+
+
+def test_nak_never_reaches_get_co2_temperature_humidity_pure_cache_reads() -> None:
+    # Unlike every other getter above, get_CO2()/get_temperature()/get_relative_humidity() never
+    # touch the bus themselves (see their own comments) - a NAK'd bus must not make them raise,
+    # it should just mean they keep returning whatever's cached (None here, nothing fetched yet).
+    scd, i2c = make_scd()
+    i2c.nak_addresses.add(_ADDR)
+    assert run(scd.get_CO2()) is None
+    assert run(scd.get_temperature()) is None
+    assert run(scd.get_relative_humidity()) is None
 
 
 def test_bus_busy_timeout_propagates_as_oserror() -> None:
@@ -785,6 +840,11 @@ def test_init_scd_returns_false_immediately_when_probe_fails_no_reset_reached() 
 def test_read_loop_full_iteration_stores_measured_data_and_derived_values() -> None:
     reader = make_reader(max_i2c_err=1)
     reader.scd.setup = _fake_setup  # type: ignore[method-assign]
+    # read_measurement() is the one call that can raise post-fix; get_CO2()/get_temperature()/
+    # get_relative_humidity() are pure cache reads (see src/asy_scd30_driver.py's own comment on
+    # why they must never independently re-check data-ready) - faked as a no-op success plus fixed
+    # cache values, matching that real shape instead of the pre-fix "each getter fetches" one.
+    reader.scd.read_measurement = _fake_setup  # type: ignore[method-assign]
 
     async def fake_co2() -> float:
         return 500.0
@@ -825,15 +885,13 @@ def test_read_loop_gives_up_after_max_i2c_err_consecutive_failures_and_logs_via_
     reader = make_reader(max_i2c_err=1)
     reader.scd.setup = _fake_setup  # type: ignore[method-assign]
 
-    async def fake_fail() -> float:
+    async def fake_fail() -> None:
         raise OSError(5, "nak")
 
-    async def fake_ok() -> float:
-        return 1.0
-
-    reader.scd.get_CO2 = fake_fail  # type: ignore[method-assign]
-    reader.scd.get_temperature = fake_ok  # type: ignore[method-assign]
-    reader.scd.get_relative_humidity = fake_ok  # type: ignore[method-assign]
+    # Faked on read_measurement() itself, the real single fault point post-fix - the getters are
+    # never reached once it raises, so they're left as the real (pure cache-read) implementation;
+    # read_measurement()'s own protocol-level fault handling is covered separately above.
+    reader.scd.read_measurement = fake_fail  # type: ignore[method-assign]
 
     async def scenario() -> bool:
         task = asyncio.create_task(reader.read_loop())
@@ -858,15 +916,19 @@ def test_read_loop_recovers_error_counter_after_a_good_read_following_failures()
     reader.scd.setup = _fake_setup  # type: ignore[method-assign]
     fail_next = [True, True, False]
 
-    async def flaky_co2() -> float:
+    async def flaky_read_measurement() -> None:
         if fail_next.pop(0):
             raise OSError(5, "nak")
+
+    reader.scd.read_measurement = flaky_read_measurement  # type: ignore[method-assign]
+
+    async def fake_co2() -> float:
         return 500.0
 
     async def fake_ok() -> float:
         return 1.0
 
-    reader.scd.get_CO2 = flaky_co2  # type: ignore[method-assign]
+    reader.scd.get_CO2 = fake_co2  # type: ignore[method-assign]
     reader.scd.get_temperature = fake_ok  # type: ignore[method-assign]
     reader.scd.get_relative_humidity = fake_ok  # type: ignore[method-assign]
 

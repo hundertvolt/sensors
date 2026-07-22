@@ -172,6 +172,9 @@ class SCD30_Reader(SensorReader):
         timestamp: int | None = None
         try:
             timestamp = time.mktime(time.gmtime())
+            # Exactly one read_measurement() call per cycle, before the three getters below - see
+            # its own comment for why calling it again per-getter (the old shape) is a real bug.
+            await self.scd.read_measurement()
             co2 = await self.scd.get_CO2()
             temperature = await self.scd.get_temperature()
             humidity = await self.scd.get_relative_humidity()
@@ -380,10 +383,11 @@ class SCD30_I2C:
         # Specifies the ambient air pressure at the measurement location in mBar. This command
         # (0x0010) is also "trigger continuous measurement" and is NVM-persisted (Interface
         # Description 1.4.1) - see BACKLOG.md for the write-frequency finding re force=True callers.
-        pressure_mbar = int(pressure_mbar)
+        # Validated before truncating: int(-0.5) == 0 would otherwise slip through as the special
+        # "disable" value instead of being rejected - real bug, see BACKLOG.md.
         if pressure_mbar != 0 and (pressure_mbar > 1400 or pressure_mbar < 700):
             raise AttributeError("ambient_pressure must be from 700 to 1400 mBar")
-        await self._send_command(_CMD_CONTINUOUS_MEASUREMENT, pressure_mbar)
+        await self._send_command(_CMD_CONTINUOUS_MEASUREMENT, int(pressure_mbar))
 
     async def get_altitude(self) -> int:
         return await self._read_register(_CMD_SET_ALTITUDE_COMPENSATION)
@@ -391,10 +395,11 @@ class SCD30_I2C:
     async def set_altitude(self, altitude: int) -> None:
         # Specifies the altitude at the measurement location in meters above sea level.
         # This value will be saved and will not be reset on boot or by calling `reset`.
-        altitude = int(altitude)
+        # Validated before truncating - see set_ambient_pressure()'s own comment for why
+        # (int(-0.5) == 0 would otherwise silently accept a negative altitude as valid).
         if altitude < 0 or altitude > 65535:
             raise AttributeError("altitude must be from 0 to 65535 meters")
-        await self._send_command(_CMD_SET_ALTITUDE_COMPENSATION, altitude)
+        await self._send_command(_CMD_SET_ALTITUDE_COMPENSATION, int(altitude))
 
     async def get_temperature_offset(self) -> float:
         raw_offset = await self._read_register(_CMD_SET_TEMPERATURE_OFFSET)
@@ -422,18 +427,17 @@ class SCD30_I2C:
         await self._send_command(_CMD_SET_FORCED_RECALIBRATION_FACTOR, reference_value)
 
     async def get_CO2(self) -> float | None:
-        # Returns the CO2 concentration in PPM (parts per million)
-        await self._read_data()
+        # Returns the CO2 concentration in PPM (parts per million) from the most recent
+        # read_measurement() call - a pure cache read, no I2C of its own (see read_measurement()'s
+        # own comment for why these three getters must never independently re-check data-ready).
         return self._co2
 
     async def get_temperature(self) -> float | None:
-        # Returns the current temperature in degrees Celsius
-        await self._read_data()
+        # Returns the current temperature in degrees Celsius - see get_CO2()'s own comment.
         return self._temperature
 
     async def get_relative_humidity(self) -> float | None:
-        # Returns the current relative humidity in %rH.
-        await self._read_data()
+        # Returns the current relative humidity in %rH - see get_CO2()'s own comment.
         return self._relative_humidity
 
     async def _send_command(self, command: int, arguments: int | None = None) -> None:
@@ -474,7 +478,12 @@ class SCD30_I2C:
             raise RuntimeError("CRC check failed while reading data")
         return cast(int, unpack_from(">H", self._buffer)[0])
 
-    async def _read_data(self) -> None:
+    async def read_measurement(self) -> None:
+        # Public: SCD30_Reader._read_scd() calls this exactly once per cycle, before get_CO2()/
+        # get_temperature()/get_relative_humidity(). Never call it twice in a row - the data-ready
+        # flag clears the instant a measurement is read (Interface Description 1.4.4), so a second
+        # call would see "not ready" and wipe the first call's fresh result back to None. Real bug,
+        # already shipped and fixed once - see BACKLOG.md before changing this again.
         async with self.i2c_scd30 as scd30:
             async with scd30.i2c_device as i2c:
                 new_data = await self._read_dev_register(i2c, _CMD_GET_DATA_READY) > 0
