@@ -2351,8 +2351,60 @@ algorithm-reset succeeds first, FRAM clear kept failing via `set_pause(True)` ac
 cycles, `vocalgorithm_process()`'s own `muptime` counter used as an independent proof that
 `vocalgorithm_reset()` was never re-applied on a later cycle).
 
-Full suite: **868 tests, all passing** (`asy_sgp40_driver.py` 58→68, `voc_algorithm.py` 25→28 - net
+Full suite: **848 tests, all passing** (`asy_sgp40_driver.py` 58→68, `voc_algorithm.py` 25→28 - net
 +1 vs. the previous +9/+3 count, since one old test was replaced by two new ones).
+
+### Fifth review pass (full `src/README.md` checklist re-validation, owner-requested)
+
+Went section-by-section through `src/README.md`'s production-quality checklist against both files
+again, re-checking claims directly against the actual SGP40 datasheet PDF, current MicroPython docs
+(fetched live, not from training memory), and the RP2040/Pico W target - not re-deriving prior
+passes' already-closed findings.
+
+**Fixed (trivial, zero behavior change, confirmed via existing tests)**:
+- `_read_word_from_command()` checked `crc.check_from()`'s `int | None` return with a bare
+  `if not await ...`, while `measure_raw()` checks the same `add_into()` contract with `is None` -
+  an API-consistency mismatch within the same file (section 10). No live bug (`check_from`'s success
+  value here is always `2`, never `0`, so falsy-checking never misfired), but `is None` is the
+  file's own established, more defensive convention for this exact `int | None` shape. Fixed;
+  `test_initialize_corrupted_response_raises_crc_error`/`test_get_raw_crc_mismatch_raises` already
+  exercise the real-failure path and still pass unchanged.
+
+**New cross-checks confirming existing code, nothing to change**:
+- `asyncio.ThreadSafeFlag` (`self.trigger_event`) usage checked against current MicroPython
+  asyncio docs: "only one task may wait on the flag," set-able from ISR/async context. Exactly one
+  waiter (`read_loop()`), exactly one setter (the timer callback) - matches the documented contract.
+- `machine.Timer` (`self.trigger_timer`, RP2 port) checked against current docs: callbacks run as
+  **soft IRQ by default** (not hard) unless `hard=True` is passed. This driver doesn't pass it, so
+  the callback (`lambda b: self.trigger_event.set()`) runs in the less-restrictive soft-IRQ context,
+  free of hard-IRQ's no-heap-allocation constraint - already safe as written, no change needed.
+- MicroPython 1.27.0/1.28.0 release notes (the version between the code's older history and the
+  refactor's current `toolchain/versions.toml` pin) checked for anything touching `asyncio`,
+  `struct`, or `machine.I2C`: nothing relevant surfaced (1.27/1.28 additions are ESP32-C5/P4,
+  STM32U5, `machine.CAN`, PEP 750 t-strings - none touch this file's dependencies).
+- CRC-8 algorithm (`crc_checks.py`'s `CRC8`, poly `0x31`/init `0xFF`) re-checked against the
+  datasheet's own Table 7 C reference and worked example (`CRC(0xBEEF) = 0x92`) - `test_crc8_
+  helper_matches_datasheet_example` already covers this; still matches.
+- Considered, declined as unnecessary complexity: reusing `_read_word_from_command()`'s
+  per-call `readdata_buffer`/`replybuffer` allocations (a 3-9 byte bytearray + list, once per
+  second) the way `_command_buffer`/`_measure_command` already do. Negligible cost on a 264KB-SRAM
+  target at 1Hz: not worth the added complexity for a fixed/degenerate buffer shape across three
+  different call sites (`get_raw()`'s `readlen=1`, self-test's `readlen=1`, serial-number's
+  `readlen=3`).
+
+**Flagged, not changed (real discrepancy, needs an owner decision per section 1's rule)**:
+- `SGP40_I2C._celsius_to_ticks()`/`_relative_humidity_to_ticks()` (datasheet Table 10) round
+  differently from each other: humidity rounds to nearest (`int(x + 0.5)`), temperature truncates
+  toward zero (`int(x)`) - inherited unchanged from the legacy/Adafruit driver, present identically
+  in both. All three of the datasheet's own worked examples (25°C→0x6666, -45°C→0x0000,
+  130°C→0xFFFF, 50%→0x8000, 0%→0x0000, 100%→0xFFFF) happen to divide evenly, so this asymmetry
+  never showed up in the exact-example check already recorded above ("Confirmed correct, not
+  changed, after checking"). For a typical, non-exact temperature the truncation biases the tick
+  value down by up to 1 LSB (≈0.0027°C-equivalent) versus what rounding would give - the datasheet's
+  Table 10 formula doesn't itself mandate a rounding convention, so this isn't a "wrong vs. the
+  datasheet" bug, but it is a real, unexplained inconsistency between two sibling conversion
+  functions in the same class. Left as-is pending a decision: match temperature to humidity's
+  round-to-nearest (tiny, real output change for real inputs) or leave both as legacy-inherited.
 
 ### Coverage-driven completeness pass
 
@@ -2370,7 +2422,10 @@ and a missing config file failing independently without either derailing the oth
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
 `asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 58,
-`asy_udp_socket.py` 62, `asy_sgp40_driver.py` 68, `voc_algorithm.py` 28 — **868 total**. (Previous
+`asy_udp_socket.py` 62, `asy_sgp40_driver.py` 68, `voc_algorithm.py` 28 — **848 total** (corrected
+from a stale, arithmetically-wrong "868" during the fifth review pass below — the per-file counts
+listed here already summed to 848, not 868; a live `scripts/test.sh` run confirmed 848/848 passing,
+0 failures, matching `grep -c '^def test_' tests/test_*.py`'s own count exactly). (Previous
 count of 690 across 11 files predated `asy_udp_socket.py`'s promotion and was never updated to
 include it — corrected during its third pass; the 23→42 jump was its fourth pass's
 uncaught-exception/configuration/integration test additions; 42→56 is its fifth pass's
@@ -2378,9 +2433,9 @@ mutation-bypass/concurrency/cancellation-safety tests; 56→62 is its sixth pass
 ready()/write_and_recvfrom() parameter-guard tests. 752→813 is `asy_sgp40_driver.py`'s +
 `voc_algorithm.py`'s own promotion; 813→814 is the post-promotion review's self-test byte-check
 regression test; 814→835 is the third review pass's config-validation/integration/fault-propagation
-test additions (`asy_sgp40_driver.py` 40→58, `voc_algorithm.py` 22→25); 835→867 is the fourth
+test additions (`asy_sgp40_driver.py` 40→58, `voc_algorithm.py` 22→25); 835→847 is the fourth
 review pass's untested-condition regression tests (`asy_sgp40_driver.py` 58→67, `voc_algorithm.py`
-25→28); 867→868 is the owner-directed reset redesign (one old test replaced by two new ones,
+25→28); 847→848 is the owner-directed reset redesign (one old test replaced by two new ones,
 `asy_sgp40_driver.py` 67→68), see above.)
 
 ## Decided for the refactor
