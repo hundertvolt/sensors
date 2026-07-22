@@ -212,6 +212,14 @@ def test_celsius_to_ticks_matches_datasheet_table_10() -> None:
     assert bytes(buf) == b"\xff\xff"
 
 
+def test_celsius_to_ticks_rounds_to_nearest_not_truncates() -> None:
+    # 24C -> 25839.514285... ticks: truncation would give 25839 (0x64EF), rounding gives 25840
+    # (0x64F0) - matches _relative_humidity_to_ticks()'s own round-to-nearest convention.
+    buf = bytearray(2)
+    SGP40_I2C._celsius_to_ticks(24, buf)
+    assert bytes(buf) == b"\x64\xf0"
+
+
 def test_relative_humidity_to_ticks_matches_datasheet_table_10() -> None:
     buf = bytearray(2)
     SGP40_I2C._relative_humidity_to_ticks(50, buf)

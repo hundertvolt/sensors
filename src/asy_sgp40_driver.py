@@ -482,7 +482,8 @@ class SGP40_I2C:
     @staticmethod
     def _celsius_to_ticks(temperature: float, buf: bytearray | memoryview) -> None:
         # Temperature-to-ticks, datasheet Table 10: 25C->0x6666, -45C->0x0000, 130C->0xFFFF.
-        temp_ticks = int(((temperature + 45) * 65535) / 175) & 0xFFFF
+        # Rounds to nearest (matching _relative_humidity_to_ticks below) rather than truncating.
+        temp_ticks = int(((temperature + 45) * 65535) / 175 + 0.5) & 0xFFFF
         buf[0] = (temp_ticks >> 8) & 0xFF  # most significant byte
         buf[1] = temp_ticks & 0xFF  # least significant byte
 

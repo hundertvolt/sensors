@@ -2392,19 +2392,22 @@ passes' already-closed findings.
   different call sites (`get_raw()`'s `readlen=1`, self-test's `readlen=1`, serial-number's
   `readlen=3`).
 
-**Flagged, not changed (real discrepancy, needs an owner decision per section 1's rule)**:
-- `SGP40_I2C._celsius_to_ticks()`/`_relative_humidity_to_ticks()` (datasheet Table 10) round
-  differently from each other: humidity rounds to nearest (`int(x + 0.5)`), temperature truncates
+**Fixed, per explicit owner direction** (originally flagged, not changed - now resolved):
+- `SGP40_I2C._celsius_to_ticks()`/`_relative_humidity_to_ticks()` (datasheet Table 10) rounded
+  differently from each other: humidity rounds to nearest (`int(x + 0.5)`), temperature truncated
   toward zero (`int(x)`) - inherited unchanged from the legacy/Adafruit driver, present identically
   in both. All three of the datasheet's own worked examples (25°C→0x6666, -45°C→0x0000,
   130°C→0xFFFF, 50%→0x8000, 0%→0x0000, 100%→0xFFFF) happen to divide evenly, so this asymmetry
   never showed up in the exact-example check already recorded above ("Confirmed correct, not
-  changed, after checking"). For a typical, non-exact temperature the truncation biases the tick
-  value down by up to 1 LSB (≈0.0027°C-equivalent) versus what rounding would give - the datasheet's
-  Table 10 formula doesn't itself mandate a rounding convention, so this isn't a "wrong vs. the
-  datasheet" bug, but it is a real, unexplained inconsistency between two sibling conversion
-  functions in the same class. Left as-is pending a decision: match temperature to humidity's
-  round-to-nearest (tiny, real output change for real inputs) or leave both as legacy-inherited.
+  changed, after checking"). The datasheet's Table 10 formula doesn't itself mandate a rounding
+  convention, so this was never "wrong vs. the datasheet," but round-to-nearest is the more
+  reasonable/accurate choice of the two (minimizes conversion error vs. truncation's systematic
+  downward bias) - owner's direction: pick the more reasonable variant and make both consistent.
+  `_celsius_to_ticks()` now rounds to nearest too (`int(x + 0.5)`, matching
+  `_relative_humidity_to_ticks()` exactly); new regression test
+  `test_celsius_to_ticks_rounds_to_nearest_not_truncates` (24°C, where truncation and rounding
+  disagree by 1 tick: 25839 vs. 25840) proves it. All three datasheet worked examples still pass
+  unchanged (they divide evenly, so rounding doesn't move them).
 
 ### Coverage-driven completeness pass
 
@@ -2422,12 +2425,12 @@ and a missing config file failing independently without either derailing the oth
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
 `asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 58,
-`asy_udp_socket.py` 62, `asy_sgp40_driver.py` 68, `voc_algorithm.py` 28 — **848 total** (corrected
-from a stale, arithmetically-wrong "868" during the fifth review pass below — the per-file counts
-listed here already summed to 848, not 868; a live `scripts/test.sh` run confirmed 848/848 passing,
-0 failures, matching `grep -c '^def test_' tests/test_*.py`'s own count exactly). (Previous
-count of 690 across 11 files predated `asy_udp_socket.py`'s promotion and was never updated to
-include it — corrected during its third pass; the 23→42 jump was its fourth pass's
+`asy_udp_socket.py` 62, `asy_sgp40_driver.py` 69, `voc_algorithm.py` 28 — **849 total** (a "868"
+total was caught and corrected as stale/arithmetically-wrong during the fifth review pass below -
+the per-file counts listed here summed to 848 at that point, not 868; a live `scripts/test.sh` run
+confirmed 848/848 passing, 0 failures, matching `grep -c '^def test_' tests/test_*.py`'s own count
+exactly). (Previous count of 690 across 11 files predated `asy_udp_socket.py`'s promotion and was
+never updated to include it — corrected during its third pass; the 23→42 jump was its fourth pass's
 uncaught-exception/configuration/integration test additions; 42→56 is its fifth pass's
 mutation-bypass/concurrency/cancellation-safety tests; 56→62 is its sixth pass's
 ready()/write_and_recvfrom() parameter-guard tests. 752→813 is `asy_sgp40_driver.py`'s +
@@ -2436,7 +2439,8 @@ regression test; 814→835 is the third review pass's config-validation/integrat
 test additions (`asy_sgp40_driver.py` 40→58, `voc_algorithm.py` 22→25); 835→847 is the fourth
 review pass's untested-condition regression tests (`asy_sgp40_driver.py` 58→67, `voc_algorithm.py`
 25→28); 847→848 is the owner-directed reset redesign (one old test replaced by two new ones,
-`asy_sgp40_driver.py` 67→68), see above.)
+`asy_sgp40_driver.py` 67→68); 848→849 is the fifth review pass's temperature-tick-rounding fix
+(one new regression test, `asy_sgp40_driver.py` 68→69), see above.)
 
 ## Decided for the refactor
 
