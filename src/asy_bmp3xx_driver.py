@@ -1,23 +1,16 @@
 """Async I2C driver for the Bosch BMP384/BMP388/BMP390 pressure/temperature sensor (Sparkfun
-breakout; forced-mode single-shot reads only, no FIFO/normal-mode support). BMP3XX_I2C is the
-sensor-protocol layer (register access, calibration, compensation math); BMP3xx_Reader is the
-asyncio task/config/data-distribution layer built on base_classes.py's SensorReaderConfig, the
-shared shape used by every *_Reader class in this codebase.
+breakout; forced-mode single-shot reads only). BMP3XX_I2C is the sensor-protocol layer (register
+access, calibration, compensation math); BMP3xx_Reader is the asyncio task/config/data-distribution
+layer built on base_classes.py's SensorReaderConfig, the shared shape used by every *_Reader class.
 
-Register map, compensation formulas, and timing verified directly against Bosch's own
-BST-BMP388-DS001 and BST-BMP384-DS003 datasheets (see datasheets/bmp3xx/) and BMP3_SensorAPI
-(Bosch's official reference driver, github.com/boschsensortec/BMP3_SensorAPI) - not training
-memory. BMP384 and BMP388 report the same CHIP_ID (0x50); BMP390 reports 0x60. All three share an
-identical operating envelope (-40..+85 degC, 300..1250 hPa - datasheet sec 1, Table 2), the basis
-for _read()'s reading-sanity check and math_helpers.altitude_baro's own range.
+Verified against Bosch's BST-BMP388-DS001/BST-BMP384-DS003 datasheets (datasheets/bmp3xx/) and the
+official BMP3_SensorAPI reference driver - not training memory. See BACKLOG.md's
+"asy_bmp3xx_driver.py -> src/" entry for the full design/verification history.
 
-Shared contract: BMP3XX_I2C methods raise on any hardware/protocol failure - a real I2C bus fault,
-a measurement that doesn't complete or comes back out of the sensor's operating range, a rejected
-reset command - rather than returning a sentinel, matching asy_i2c_driver.py's own bus-fault
-carve-out and every existing Reader class's try/except around a full read/write sequence (see
-BMP3xx_Reader._read_bmp()). set_pressure_oversampling()/set_temperature_oversampling()/
-set_filter_coefficient() additionally raise ValueError for a value outside the sensor's own
-discrete oversampling/filter-coefficient domain.
+Shared contract: BMP3XX_I2C methods raise on any hardware/protocol failure rather than returning a
+sentinel, matching asy_i2c_driver.py's own bus-fault carve-out; set_pressure_oversampling()/
+set_temperature_oversampling()/set_filter_coefficient() additionally raise ValueError outside the
+sensor's own discrete oversampling/filter-coefficient domain.
 """
 
 import asyncio
@@ -67,13 +60,9 @@ _CMD_RDY_TIMEOUT_MS = const(50)  # cmd_rdy clears near-instantly outside an in-f
 _MEAS_TIMEOUT_MS = const(300)  # datasheet sec 3.9.2: max ~129ms at x32/x32 osr; generous margin
 
 _OSR_SETTINGS = (1, 2, 4, 8, 16, 32)  # pressure and temperature oversampling settings
-# IIR filter coefficients (datasheet sec 4.3.20's CONFIG register table: encoding index -> 2^index
-# - 1, not a power of two). Cross-checked against three independent sources - Bosch's own
-# BMP3_SensorAPI reference driver (bmp3_defs.h's BMP3_IIR_FILTER_COEFF_* macros), the Linux kernel's
-# IIO driver (drivers/iio/pressure/bmp280.h's BMP380_FILTER_*X constants), and both the BMP384 and
-# BMP388 datasheets themselves (BMP388's doc history even logs a 2018 "changed coefficient from 128
-# to 127" correction, ruling out a datasheet typo) - all agree. Adafruit's own CircuitPython
-# BMP3XX library has the same wrong (0,2,4,8,...,128) tuple this codebase inherited from it.
+# IIR filter coefficients (datasheet sec 4.3.20's CONFIG register: encoding index -> 2^index - 1,
+# not a power of two). Cross-checked against Bosch's reference driver, the Linux kernel IIO driver,
+# and both datasheets - see BACKLOG.md's "asy_bmp3xx_driver.py" entry for the full verification.
 _IIR_SETTINGS = (0, 1, 3, 7, 15, 31, 63, 127)
 
 _MIN_TRIGGER_SECS = const(1)
@@ -119,11 +108,9 @@ class BMP3xx_Reader(SensorReaderConfig):
         self.bmp = BMP3XX_I2C(i2c, address=address)
         self.base_trigger_event = asyncio.ThreadSafeFlag()
         self.trigger_event = asyncio.ThreadSafeFlag()
-        # rp2 only ever supports virtual (software) timers, where id defaults to -1 and is
-        # genuinely optional (confirmed against MicroPython's own rp2 quickref docs) - the
-        # installed generic micropython-rp2-rpi_pico_w-stubs package's Timer.__init__ overloads
-        # don't reflect that, incorrectly requiring a positional id on every overload (see
-        # tests/machine.py's own Timer, which reflects the real optional-id behavior instead).
+        # Bare Timer() is valid on rp2 (id defaults to -1) despite the installed stub package
+        # requiring a positional id - a stub inaccuracy, not a code bug; see BACKLOG.md's Timer
+        # finding.
         self.trigger_timer = Timer()
         self.trigger_period = LockedValue(int(trigger_sec))
         self.trigger_counter = 0
@@ -155,9 +142,8 @@ class BMP3xx_Reader(SensorReaderConfig):
     async def set_trigger_secs(self, value: int | float) -> None:
         try:
             # int(float('inf'))/int(float('-inf')) raise OverflowError, not ValueError - confirmed
-            # directly against the real MicroPython Unix-port interpreter (int(float('nan')) does
-            # raise ValueError, already covered). value's own type contract is int | float, so a
-            # caller-supplied +-inf is a legitimate input this must degrade cleanly for, not crash.
+            # against the real MicroPython Unix-port interpreter; +-inf is a legitimate int | float
+            # input this must degrade cleanly for, not crash on.
             trigger_secs = int(value)
             if not (_MIN_TRIGGER_SECS <= trigger_secs <= _MAX_TRIGGER_SECS):
                 raise ValueError(f"trigger interval must be between {_MIN_TRIGGER_SECS} and {_MAX_TRIGGER_SECS} seconds")
@@ -167,11 +153,9 @@ class BMP3xx_Reader(SensorReaderConfig):
         await self.trigger_period.set_value(trigger_secs)
 
     async def get_data(self) -> BMP3XX:
-        # base_classes.py's SensorReader._get_meas_data() is typed generically as "NamedTuple";
-        # narrowing to this Reader's own concrete BMP3XX is a real, needed mypy hint, but
-        # typing.cast() isn't usable here (typing has no runtime presence on MicroPython, on-device
-        # or in the Unix-port test build - see this module's TYPE_CHECKING guard above) - the
-        # identity return below is exactly what cast() would have done at runtime anyway.
+        # Narrows _get_meas_data()'s generic "NamedTuple" to this Reader's concrete BMP3XX;
+        # typing.cast() isn't usable (no runtime presence on MicroPython) so this identity return
+        # does the same job - see BACKLOG.md's typing.cast() finding.
         return await self._get_meas_data()  # type: ignore[return-value]
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
@@ -221,10 +205,8 @@ class BMP3xx_Reader(SensorReaderConfig):
             await self.pr.err_s(_NAME, "Error reading config data!", errno=11)
             return False  # error
 
-        # set_trigger_secs() never raises (it logs its own errno=21 and keeps the previous value
-        # on an invalid stored SampleInterv) - a bad sample interval alone shouldn't fail this
-        # whole init attempt (and restart the task) the way a bad hardware-facing value below
-        # does, since it's a pure software timing knob, not something the sensor itself can reject.
+        # set_trigger_secs() never raises (logs errno=21, keeps the previous value) - a bad stored
+        # SampleInterv is a pure software timing knob, not a reason to fail this whole init attempt.
         await self.set_trigger_secs(cfg_values[0])  # BMPSampleInterv
         try:
             await self.bmp.set_pressure_oversampling(cfg_values[1])  # BMPPressOvers
@@ -284,10 +266,9 @@ class BMP3xx_Reader(SensorReaderConfig):
                 return False  # break and restart if too many errors
             await self._store_bmp(results)  # store data in result buffer
 
-    # selected low-level direct sensor driver function forwards. Each failure is logged via
-    # self.pr (counted/persisted the same way as a regular read failure) rather than swallowed
-    # silently, so a transient bus fault on a REST-triggered config get/set is still visible in
-    # the sensor's own error history - not just a bare None/False back to the caller.
+    # Selected low-level driver forwards below: each failure is logged via self.pr (not swallowed
+    # silently) so a transient bus fault on a REST-triggered config get/set stays visible in the
+    # sensor's own error history, not just a bare None/False back to the caller.
     async def get_pressure_oversampling(self) -> int | None:
         try:
             return await self.bmp.get_pressure_oversampling()
@@ -341,7 +322,7 @@ class BMP3xx_DeviceSession(Lockable):
 
 
 class BMP3XX_I2C:
-    """Base class for BMP3XX sensor."""
+    # Base class for BMP3XX sensor.
 
     def __init__(self, i2c: I2C, address: int = 0x77) -> None:
         self.i2c_bmp3xx = BMP3xx_DeviceSession(I2CDevice(i2c, address))
@@ -361,38 +342,29 @@ class BMP3XX_I2C:
         self._wait_time = wait_time  # change this value to have faster reads if needed
 
     async def get_pressure(self) -> float:
-        """The pressure in hPa."""
+        # The pressure in hPa.
         res = await self._read()
         return res[0] / 100
 
     async def get_temperature(self) -> float:
-        """The temperature in degrees Celsius"""
+        # The temperature in degrees Celsius.
         res = await self._read()
         return res[1]
 
     async def get_pressure_and_temperature(self) -> tuple[float, float]:
-        """Pressure (hPa) and temperature (degC) from a single measurement cycle.
-
-        Unlike calling get_pressure() and get_temperature() separately - each independently
-        triggers its own full forced-mode conversion via _read(), even though one conversion
-        already yields both values - this reads both from the same physical measurement, so the
-        two are never up to a whole conversion cycle (up to ~129ms at max oversampling, datasheet
-        sec 3.9.2) apart in time. Use this when both values are needed together; get_pressure()/
-        get_temperature() remain available for a standalone single-value query.
-        """
+        # Pressure (hPa) and temperature (degC) from one measurement cycle, so the two are never
+        # up to a whole conversion apart in time - unlike calling get_pressure()/get_temperature()
+        # separately, which each trigger their own full conversion.
         pressure, temperature = await self._read()
         return pressure / 100, temperature
 
     async def get_altitude(self) -> float:
-        """The altitude in meters based on the currently set sea level pressure."""
+        # The altitude in meters based on the currently set sea level pressure.
         # see https://www.weather.gov/media/epz/wxcalc/pressureAltitude.pdf
         if self.sea_level_pressure <= 0:
-            # Confirmed directly against the real MicroPython Unix-port interpreter: a negative
-            # base to this fractional exponent produces a complex number (not a ValueError, as
-            # C's pow() would give), which float() then rejects with a confusing "can't convert
-            # complex to float" TypeError; zero raises ZeroDivisionError from the division itself.
-            # Both are accidental consequences of Python's numeric tower, not an intentional
-            # raise - replaced with one clear, deliberate error instead.
+            # A non-positive base here otherwise raises a confusing TypeError/ZeroDivisionError
+            # from Python's numeric tower (confirmed against the real Unix-port interpreter) -
+            # replaced with one clear, deliberate error instead.
             raise ValueError(f"sea_level_pressure must be positive, got {self.sea_level_pressure}")
         return float(44307.7 * (1.0 - (await self.get_pressure() / self.sea_level_pressure) ** 0.190284))
 
@@ -405,10 +377,9 @@ class BMP3XX_I2C:
                 osr = await i2c.get_bits(3, _REGISTER_OSR, start_bit)
         if osr is None:
             raise OSError(f"failed to read OSR bit-field at bit {start_bit}")
-        # osr_p/osr_t are 3-bit fields but the datasheet only documents encodings 0-5 (x1..x32,
-        # sec 4.3.17); 6/7 are undocumented/reserved. A bus disturbance flipping a bit can land
-        # exactly here, so this is checked explicitly instead of letting a bare IndexError leak
-        # out of what's meant to be a well-defined, clearly-messaged protocol-layer failure.
+        # Datasheet sec 4.3.17 only documents encodings 0-5 (x1..x32); 6/7 are reserved and could
+        # surface from a bus disturbance flipping a bit - checked explicitly rather than letting a
+        # bare IndexError leak out of this protocol-layer failure.
         if osr >= len(_OSR_SETTINGS):
             raise OSError(f"OSR bit-field at bit {start_bit} read back reserved encoding {osr}")
         return _OSR_SETTINGS[osr]
@@ -424,21 +395,21 @@ class BMP3XX_I2C:
                 await i2c.set_bits(3, _REGISTER_OSR, start_bit, _OSR_SETTINGS.index(oversample))
 
     async def get_pressure_oversampling(self) -> int:
-        """The pressure oversampling setting."""
+        # The pressure oversampling setting.
         return await self._get_osr_setting(0)
 
     async def set_pressure_oversampling(self, oversample: int) -> None:
         await self._set_osr_setting(0, oversample)
 
     async def get_temperature_oversampling(self) -> int:
-        """The temperature oversampling setting."""
+        # The temperature oversampling setting.
         return await self._get_osr_setting(3)
 
     async def set_temperature_oversampling(self, oversample: int) -> None:
         await self._set_osr_setting(3, oversample)
 
     async def get_filter_coefficient(self) -> int:
-        """The IIR filter coefficient."""
+        # The IIR filter coefficient.
         async with self.i2c_bmp3xx as bmp3xx:  # device session
             async with bmp3xx.i2c_device as i2c:  # bus session
                 iir = await i2c.get_bits(3, _REGISTER_CONFIG, 1)
@@ -454,10 +425,9 @@ class BMP3XX_I2C:
                 await i2c.set_bits(3, _REGISTER_CONFIG, 1, _IIR_SETTINGS.index(coef))
 
     async def _wait_status_bits(self, bmp3xx: "BMP3xx_DeviceSession", mask: int, timeout_ms: int) -> None:
-        # Polls STATUS until every bit in mask is set, or raises OSError once timeout_ms has
-        # elapsed - bounds what would otherwise be an unbounded loop if a bus disturbance leaves
-        # transactions ACKing but STATUS never reporting ready. Must be called with bmp3xx's
-        # device-session lock already held by the caller, spanning the whole logical operation.
+        # Polls STATUS until every bit in mask is set, or raises OSError after timeout_ms - bounds
+        # an otherwise-unbounded loop if a bus disturbance leaves STATUS never reporting ready.
+        # Caller must already hold bmp3xx's device-session lock, spanning the whole operation.
         start = time.ticks_ms()
         while True:
             async with bmp3xx.i2c_device as i2c:  # bus session
@@ -469,14 +439,9 @@ class BMP3XX_I2C:
             await asyncio.sleep(self._wait_time)
 
     async def reset(self) -> None:
-        """Soft reset via CMD register (datasheet sec 4.3.22, command 0xB6). All user
-        configuration settings are overwritten with their default state.
-
-        Matches Bosch's own reference sequence (BMP3_SensorAPI's bmp3_soft_reset()): wait for
-        cmd_rdy before issuing the command, settle 2ms afterward, then verify acceptance via
-        ERR_REG's cmd_err bit - a blind, unverified write can silently be ignored or corrupted on
-        a busy or disturbed bus.
-        """
+        # Soft reset via CMD register (datasheet sec 4.3.22, cmd 0xB6); all config reverts to
+        # default. Matches Bosch's reference sequence (bmp3_soft_reset()): wait cmd_rdy, settle
+        # 2ms, verify via ERR_REG's cmd_err - a blind write can be ignored/corrupted on a bad bus.
         async with self.i2c_bmp3xx as bmp3xx:  # device session
             await self._wait_status_bits(bmp3xx, _STATUS_CMD_RDY, _CMD_RDY_TIMEOUT_MS)
             async with bmp3xx.i2c_device as i2c:  # bus session
@@ -488,21 +453,17 @@ class BMP3XX_I2C:
             raise RuntimeError("reset command rejected (ERR_REG cmd_err set)")
 
     async def _read(self) -> tuple[float, float]:
-        """Returns a (pressure_pa, temperature_degC) tuple."""
-
-        # The whole measurement cycle (trigger, poll, data burst) is held under one device-session
-        # lock so a concurrent oversampling/filter/reset call from another coroutine can't
-        # interleave mid-conversion.
+        # Returns a (pressure_pa, temperature_degC) tuple. The whole cycle (trigger, poll, data
+        # burst) is held under one device-session lock so a concurrent oversampling/filter/reset
+        # call from another coroutine can't interleave mid-conversion.
         async with self.i2c_bmp3xx as bmp3xx:  # device session
-            # Perform one measurement in forced mode (PWR_CTRL=0x13: press_en|temp_en|mode=forced,
-            # datasheet sec 4.3.16)
+            # Forced-mode measurement (PWR_CTRL=0x13: press_en|temp_en|mode=forced, sec 4.3.16).
             async with bmp3xx.i2c_device as i2c:  # bus session
                 await i2c.set_register_struct(_REGISTER_CONTROL, "B", 0x13)
 
-            # Wait for *both* conversions to complete; bounded by the datasheet's own worst-case
-            # conversion time (sec 3.9.2) plus margin, so a bus disturbance that corrupts STATUS
-            # into never reporting ready can't hang this task forever - it raises like any other
-            # bus fault instead.
+            # Bounded by the datasheet's own worst-case conversion time (sec 3.9.2) plus margin, so
+            # a bus disturbance that corrupts STATUS into never reporting ready raises like any
+            # other bus fault instead of hanging this task forever.
             await self._wait_status_bits(bmp3xx, _STATUS_DATA_READY, _MEAS_TIMEOUT_MS)
 
             # Get ADC values
@@ -545,25 +506,19 @@ class BMP3XX_I2C:
         # the datasheet's own operating range below is in hPa, so it's applied after that same
         # conversion
         pressure_hpa = pressure / 100
-        # Reject a computed reading outside the sensor's own datasheet operating range (sec 1,
-        # Table 2: -40..+85 degC, 300..1250 hPa - identical for BMP384/388/390, and the same range
-        # math_helpers.altitude_baro() already uses). This bus has no CRC framing (unlike the
-        # SCD30/SGP40 siblings), so a single bit flip in the burst read is otherwise undetectable;
-        # a NaN/inf value (not expected from this arithmetic, but not ruled out either) also fails
-        # this range check and is rejected the same way. Treated as a failed read by the caller.
+        # Rejects a reading outside the datasheet's own operating range (sec 1, Table 2). This bus
+        # has no CRC framing, unlike SCD30/SGP40, so a bit flip in the burst read (or a NaN/inf from
+        # the arithmetic) is otherwise undetectable - treated as a failed read by the caller.
         if not (300.0 <= pressure_hpa <= 1250.0 and -40.0 <= temperature <= 85.0):
             raise ValueError(f"reading outside operating range (p={pressure_hpa} hPa, t={temperature} degC)")
         return pressure, temperature
 
     async def _read_coefficients(self) -> None:
-        """Read & save the calibration coefficients"""
+        # Read & save the calibration coefficients.
         raw = await self._read_register(_REGISTER_CAL_DATA, 21)
-        # Bosch's own self-test app note (BST-MPS-AN006) verifies trimming data against bounds
-        # before trusting it ("Trimming data verification: ... a memory or programming error has
-        # occurred" if out of bounds) - the exact per-coefficient bounds live in a header file this
-        # codebase doesn't have, but a factory-trimmed 21-byte block is never legitimately all one
-        # repeated byte, so this catches the same class of fault (a corrupted read, or a stuck bus
-        # reading back all-0x00/all-0xFF) without needing those exact bounds.
+        # Per Bosch's self-test app note (BST-MPS-AN006), trimming data is verified against bounds
+        # this codebase doesn't have the exact values for - a factory-trimmed block is never
+        # legitimately all-0x00/all-0xFF, which catches the same class of fault without them.
         if raw == bytes([raw[0]]) * len(raw) and raw[0] in (0x00, 0xFF):
             raise RuntimeError(f"calibration data implausible (all bytes {raw[0]:#04x})")
         # See datasheet, pg. 27, table 22
@@ -591,11 +546,11 @@ class BMP3XX_I2C:
         )  # P11
 
     async def _read_byte(self, register: int) -> int:
-        """Read a byte register value and return it"""
+        # Read a byte register value and return it.
         return (await self._read_register(register, 1))[0]
 
     async def _read_register(self, register: int, length: int) -> bytes:
-        """Low level register reading over I2C, returns the raw bytes read"""
+        # Low level register reading over I2C, returns the raw bytes read.
         async with self.i2c_bmp3xx as bmp3xx:  # device session
             async with bmp3xx.i2c_device as i2c:  # bus session
                 value = await i2c.get_register_struct(register, f"{length}s")
