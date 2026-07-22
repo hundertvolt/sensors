@@ -1496,7 +1496,7 @@ def test_op_lock_prevents_concurrent_writes_from_interleaving_between_blocks() -
     chunk._write_chunk = instrumented_write_chunk  # type: ignore[method-assign]
 
     async def scenario() -> list[bool]:
-        return await asyncio.gather(chunk.write(b"AAAA"), chunk.write(b"BBBB"))  # type: ignore[no-any-return]
+        return await asyncio.gather(chunk.write(b"AAAA"), chunk.write(b"BBBB"))  # type: ignore[return-value]
 
     results = run(scenario())
     assert results == [True, True]

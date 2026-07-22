@@ -88,9 +88,12 @@ From hands-on field experience with deployed units:
     implemented anywhere (not even in `improved-quality/`). If SD-card-style post-deassert clock
     cycling is wanted, it needs designing from scratch.
   - I2C recovery is device-specific (check what each driver already does before assuming a gap);
-    generalize only if a mechanism turns out to be genuinely common. *(Only `asy_scd30_driver.py`'s
-    reset path reviewed so far — SGP40's `_reset()` and BMP3xx's reset command still need the same
-    review.)*
+    generalize only if a mechanism turns out to be genuinely common. *(`asy_scd30_driver.py`'s
+    reset path reviewed: `reset()` slept only 0.2s after `_CMD_SOFT_RESET` — Interface Description
+    1.1/1.4.10 document boot-up time as < 2s and a soft reset as "restarting the system controller,"
+    i.e. the same bound applies. Fixed to 2.5s (margin over the documented bound, since this path
+    also runs on every failure-triggered restart, not just cold boot). SGP40's `_reset()` and
+    BMP3xx's reset command still need the same review.)*
   - FRAM's SPI bus gets the same bus-recovery treatment as sensor buses. **Partially done**:
     `asy_fram_driver.py`'s own `src/` promotion (see "`asy_fram_driver.py` → `src/`" below) fixed a
     real device-identification bug and added write-enable-latch/write-protect verification - the
@@ -110,7 +113,20 @@ From hands-on field experience with deployed units:
   accepted backstop, not a software fix to chase; current task-supervisor error-budget behavior is
   adequate. For calls that genuinely *can* be timeout-wrapped (`socket.getaddrinfo()`, FRAM SPI,
   anything not a raw blocking `machine.I2C` call mid-transaction), standardize on one consistent
-  timeout/cancellation mechanism everywhere.
+  timeout/cancellation mechanism everywhere. **Re-verified during `asy_scd30_driver.py`'s own
+  review, doesn't change the decision above**: the SCD30 Interface Description documents up to
+  150ms of clock stretching once per day for its internal calibration, above `machine.I2C`'s
+  50ms default `timeout` (`i2c0` in `sensortask-wozi.py` doesn't pass an explicit one). That daily
+  stretch is expected to surface as a routine `OSError(ETIMEDOUT)`, one instance of the already-
+  self-healing `_error_check()` counter (well under `max_i2c_err`), not the "genuinely wedged bus"
+  case this bullet is about — no code change from this alone.
+- **Same bug, two files**: `asy_scd30_driver.py`'s `_init_scd()` and `asy_sgp40_driver.py`'s
+  `_init_sgp()` both reset `self.err_cnt_internal` (no leading underscore) instead of
+  `base_classes.py`'s actual `SensorReader._err_cnt_internal` — a dead store that leaves the real
+  consecutive-failure counter never reset across a failure-triggered restart. Confirmed via git
+  history: introduced by the same `base_classes.py` rename that `asy_bmp3xx_driver.py` already
+  picked up correctly. **Fixed in `asy_scd30_driver.py`**; `asy_sgp40_driver.py` still has it,
+  flagged for its own promotion pass, not fixed here.
 - **Bus concurrency via `asyncio.Lock` + `async with` needs a coverage audit** (no gaps, no
   deadlock/starvation). Concrete progress: `asy_scd30_driver.py`/`asy_bmp3xx_driver.py`/
   `asy_sgp40_driver.py` each have a `*_DeviceSession(Lockable)` class — an outer per-sensor lock
@@ -1825,6 +1841,299 @@ promoted to `src/`), throwaway scratchpad repro scripts only. Re-ran full-scope
 this fix), all 12 `tests/` files green, 752 tests total, unaffected (`captive_dns.py` isn't imported
 by any of them).
 
+### `asy_scd30_driver.py` → `src/` (done)
+
+Working through the full checklist per `src/README.md`; findings recorded incrementally as they
+land, not held until the end.
+
+**Typing (section 6)**: `from typing import Dict, Tuple, Union, Any, List, Callable, cast` was an
+unconditional runtime import - `typing` has no runtime presence on MicroPython, so this would
+raise `ImportError` on the real Unix-port interpreter (or real device) the moment this module is
+imported, before a single line of driver logic runs. `Dict`/`Tuple`/`Union`/`List` only ever
+appeared in annotation position (never evaluated at runtime, per the already-established PEP 604
+finding) and modernized cleanly to builtin generics/`X | Y`; `Any`/`Callable` moved behind the
+established `TYPE_CHECKING` guard. `cast()` was different: it's called 5 times as real executable
+code (not just an annotation), so simply removing/guarding it away wasn't an option without either
+risking a new mypy narrowing gap or changing behavior. Fixed with a typed no-op fallback
+(`def cast(typ: object, val: "Any") -> "Any": return val`) defined in the same `except ImportError:`
+branch as `TYPE_CHECKING = False` - preserves every existing call site unchanged, zero behavior
+difference on real MicroPython, `cast()` still resolves to the real `typing.cast` under mypy/CPython
+dev tooling. `SCDResults` (a real, evaluated module-level `Tuple[...]` assignment, not just an
+annotation) moved inside `if TYPE_CHECKING:` as `tuple[float | None, ...]`, matching
+`config_manager.py`'s existing `FieldSchema`/`ConfigSchema` pattern; both real usages became quoted
+forward-reference annotations (`-> "SCDResults":`), same convention.
+
+**A real, pre-existing mypy gap** (never caught before - `improved-quality/` isn't in CI's checked
+scope): `_read_scd()`'s `timestamp` was implicitly typed `int` from its first (try-branch)
+assignment (`time.mktime(...)`), then reassigned `None` in the except branch with no declared
+`int | None` - fixed with an explicit `timestamp: int | None = None` before the `try`. The
+`# type: ignore[call-arg]` on the `time.mktime(time.gmtime())` line had gone stale (unused) under
+the current stub version - removed.
+
+**Real mypy finding, but not a code bug - a project tooling quirk worth recording**: type-checking
+`asy_scd30_driver.py` in isolation against the real `micropython-rp2-rpi_pico_w-stubs` package
+flags `self.start_trigger_timer = Timer()` ("All overload variants of Timer require at least one
+argument") - the exact same stub-vs-reality mismatch `system_service.py`'s own promotion already
+verified is safe by reading `ports/rp2/machine_timer.c` directly (bare `Timer()` never allocates
+anything; the stub's required `id` parameter doesn't match real rp2 behavior). Confirmed this
+doesn't affect CI or any documented invocation: `pyproject.toml`'s default `files` scope (and CI's
+own `src tests`) always checks `tests/` alongside `src/`/`improved-quality/`, and `tests/machine.py`
+defines its own `Timer.__init__(self, id: int = -1, ...)` with a real default - when both
+`tests/machine.py` and the pip-installed stub package are in scope together, mypy resolves
+`from machine import Timer` against the local `tests/machine.py` file, not the installed stub
+package, silently masking the mismatch. Checking a single `improved-quality/`/`src/` file in
+isolation (no `tests/` in the same invocation) is what surfaces it - worth knowing before treating
+a single-file mypy run as authoritative over what CI actually gates on.
+
+**Real, expected gap in `tests/machine.py` itself, not a driver bug**: the same isolated check
+shows `Pin` has no `irq`/`IRQ_RISING` - true, `tests/machine.py`'s `Pin` mock only ever needed
+`IN`/`OUT` so far (no promoted driver has used pin interrupts yet). SCD30 is the first IRQ-pin
+driver going through this checklist; extending the mock with `irq()`/`IRQ_RISING`/`IRQ_FALLING`
+is required before section 12's unit tests can exercise `start_timer()`'s IRQ registration, same
+precedent as `system_service.py` extending the mock with `Timer`/`WDT` for its own needs.
+
+**Correctness (section 1) - three real, confirmed range-validation gaps**: `set_altitude()`,
+`set_temperature_offset()`, and `set_forced_recalibration_reference()` had no input validation at
+all (or, for temperature offset, only an upper bound), despite this file's own `_VAL_ALT`/`_VAL_TO`/
+`_VAL_CAL` schema tuples already documenting the Interface Description's real valid ranges (0-65535m,
+0-655.35°C, 400-2000ppm) and two sibling setters (`set_measurement_interval`, `set_ambient_pressure`)
+already enforcing theirs the same way. An out-of-range altitude/FRC value would have been silently
+truncated into the wrong 16-bit argument sent to the sensor (wrong command reaches real hardware,
+no error anywhere); a negative temperature offset would have raised an uncaught `ValueError` from
+the raw `bytearray` assignment in `_send_dev_command`. Fixed to match the two existing setters'
+established `raise AttributeError(...)` guard-clause convention exactly.
+
+**Exception safety (section 2) - verified, not a gap**: `start_timer()` calls `Timer.init()` (can
+raise `OSError(ENOMEM)` on alarm-pool exhaustion, per `system_service.py`'s own real-rp2-source
+verification above) and `Pin.irq()` with no local `try/except`. Traced the actual call chain rather
+than assuming this needs fixing: `get_timer_starters()` feeds this into `system_service.py`'s
+`_timer_sequencer()`, which already wraps `timers[counter]()` in `try/except Exception` (logs via
+`self.pr.err()`, still advances to the next timer) - the same protection that guards every driver's
+timer starter, not something scd30-specific. Left as-is rather than adding a redundant local catch;
+`get_timer_starters()`'s own `Callable[[], None]` contract has no signal slot for a caught failure
+either way, so a local catch-and-swallow would be functionally identical to the existing outer one.
+
+**Stability (section 3) - real, if low-probability, stale-data gap**: `_read_data()` left
+`_co2`/`_temperature`/`_relative_humidity` at their previous cycle's values when the data-ready
+register read 0, instead of clearing them - so a caller in that window would silently get an old
+reading paired with a brand-new timestamp (`_read_scd()`'s `time.mktime(time.gmtime())` always
+reflects "now"), not caught by `_store_scd()`'s own None-check. `read_loop()` only calls into this
+after the RDY-pin trigger fires, so in practice the data-ready register should already agree with
+the pin - but I can't rule out a one-cycle desync between them from the datasheet alone. Fixed to
+clear all three to `None` on that path, matching this codebase's universal "`None` = no data"
+convention regardless of how likely the race actually is - zero-risk, and `_error_check()` already
+correctly treats a `None` result as a countable error either way.
+
+**Reverted, later in this same effort - see the post-promotion re-review entry below.** The
+project owner pushed back on this exact fix after it shipped: the legacy driver never clears on a
+not-ready read either (its `data_available()`-gated callers just skip the update and keep whatever
+was cached), has run that way in the field for over a year, and "zero-risk" undersold the real
+tradeoff - counting a rare, likely-harmless not-ready blip as an error the caller then has to
+recover from is itself a behavior change from something proven to work, not a pure improvement.
+Reverted to matching the legacy driver exactly: leaves the cache untouched on not-ready again.
+
+**Resource discipline (section 4) - considered, declined**: `_read_data()`'s three
+`unpack(">f", self._buffer[a:b] + self._buffer[c:d])` calls each allocate a temporary concatenated
+bytes object, once per measurement cycle (~every 2s+), because the SCD30's wire format interleaves
+a CRC byte between each float's MSB-pair and LSB-pair, so the 4 bytes an IEEE754 float needs aren't
+contiguous in the receive buffer. Considered replacing with a reused scratch buffer to avoid the
+allocation; declined - the savings are a few bytes-object allocations a couple of times a second,
+not meaningful next to what else this device allocates routinely, and the current concatenation is
+more readable than a manual byte-copy loop. Recording per section 8's "say so and move on" rather
+than manufacturing a change.
+
+**Currentness (section 9)**: `from uasyncio import ThreadSafeFlag` was the old pre-consolidation
+module name (verified `ThreadSafeFlag` re-exports from plain `asyncio` in the pinned-version stubs);
+changed to `from asyncio import ThreadSafeFlag`, matching `import asyncio`'s own already-modern name
+used elsewhere in this same file. Same class of finding CLAUDE.md already flagged for
+`base_classes.py` (fixed during that file's own promotion) - this is `asy_scd30_driver.py`'s own,
+separate instance of it.
+
+**Cross-file consistency (section 10) - read both `asy_bmp3xx_driver.py` and `asy_sgp40_driver.py`
+in full for comparison.** Confirms several of this file's own fixes are systemic, not scd30-specific
+- flagged for each file's own future promotion pass, not fixed here (out of scope for this session):
+- The same unconditional `from typing import Dict, Tuple, Union, Any, List, Callable, cast[, Coroutine]`
+  (would crash on real MicroPython) is present in both sibling files unchanged.
+- The same `from uasyncio import ThreadSafeFlag` old-prefix import is present in both.
+- The same `timestamp = time.mktime(time.gmtime())  # type: ignore[call-arg]` pattern (stale ignore,
+  plus the same implicit-`int`-then-reassigned-`None` mypy gap `_read_scd()` had) is present in both
+  `_read_bmp()` and `_read_sgp()`.
+- The same real-executed-module-level `XResults = Tuple[Union[...], ...]` pattern (`BMPResults`,
+  `SGPResults`) is present in both, unfixed.
+- `asy_sgp40_driver.py`'s `_init_sgp()` has the exact same `self.err_cnt_internal` (no underscore)
+  typo already fixed here and already flagged for that file above - re-confirmed by reading the
+  actual file this time, not just `grep`.
+
+**Real, not-yet-actioned divergence worth the project owner's input, not a silent fix**: both sibling
+drivers verify device identity during `setup()` beyond the generic bus-level ACK probe
+`I2CDevice.setup()` already does - `BMP3XX_I2C.setup()` reads and checks the chip-ID register against
+two known-good values; `SGP40_I2C.initialize()` checks a serial-number register, a feature-set
+register, *and* runs the sensor's self-test command, raising on any mismatch. `SCD30_I2C.setup()`
+does neither - it relies solely on the generic "something ACKed this address" probe. The SCD30 has a
+documented `0xD100` "read firmware version" command that could serve an analogous purpose (a
+CRC-validated 2-byte read only a genuine, correctly-responding SCD30 would complete) - flagging this
+as a discussion item rather than adding it, since it's a new safety check, not a fix for a confirmed
+bug, and it would add one more I2C transaction to every `setup()` call (cold boot and every
+failure-triggered restart alike) - a real, if small, tradeoff worth a conscious decision given this
+whole review's reliability focus, not something to slip in silently.
+
+**Owner decision: add it.** Implemented - `setup()` now reads `_CMD_READ_FIRMWARE_VERSION` (0xD100)
+via the existing `_read_register()` (CRC-validated) before `reset()`, matching both siblings' pattern
+of verifying identity before resetting. The returned value itself isn't checked against anything
+(no documented set of valid firmware versions exists to check against, unlike BMP3xx's fixed chip-ID
+list) - a successful, CRC-valid read is itself the identity signal, closer to SGP40's self-test than
+BMP3xx's ID-list match. A failure here propagates the same way any other `setup()` failure already
+does (caught by `_init_scd()`'s existing `try/except Exception`).
+
+**Correction to an earlier removal in this same pass**: a `# TODO: Stop Measurement command`
+comment (in the `_VAL_*` schema block, right before `# no default value for config...`) was removed
+as stale in an earlier commit on the assumption it meant "is `stop_continuous_measurement()`
+implemented" (it always was - confirmed present in both this file and the legacy
+`python/IndividualDrivers/asy_scd30_driver.py`, unchanged). Re-investigated per project-owner
+request: the comment's actual *location*, right in the config-schema tuple block, makes "add a
+schema entry for continuous-measurement state" the more likely original intent - and that gap is
+real. `get_dict_cfg()`'s `_VAL_TO`/`_VAL_MI`/`_VAL_AP`/`_VAL_ALT`/`_VAL_CAL`/`_VAL_SC` cover 6
+fields; there's no 7th `_VAL_CM`/`ContMeas` entry, and `sensortask-wozi.py`'s REST handler confirms
+why: `data["ContMeas"] = True  # not readable from sensor, just as reference for parsing` (its own
+`sensor_cmd()` handler) - the SCD30 has no command to query whether continuous measurement is
+currently active (only whether *data* is ready, a different question), so it genuinely can't join
+this schema the way the other 6 do. Restored a short comment at the original location documenting
+this (not the same wording - accurate this time), rather than silently leaving the incorrect
+removal in place. The underlying fix (a real schema mechanism for a write-only/unreadable field, or
+accepting the REST-handler-side hardcode as permanent) belongs to `sensortask-wozi.py`'s own pass,
+already deferred per the project owner's "fix sensortask-wozi when we're about to work" instruction
+- not implemented here.
+
+**NVM write-cycle concern, investigated per project-owner request**: every persistent setter in
+this file writes to the SCD30's own non-volatile memory - confirmed directly against the Interface
+Description for `set_measurement_interval` (1.4.3), `set_ambient_pressure`/the underlying "trigger
+continuous measurement" command (1.4.1), `set_self_calibration_enabled` (1.4.6),
+`set_temperature_offset` (1.4.7), and `set_altitude` (1.4.8), plus the Field Calibration app note
+for `set_forced_recalibration_reference` ("saved in a non-volatile memory on the sensor device").
+**No write-cycle endurance figure is published anywhere for this NVM** - checked the Interface
+Description, Datasheet, Design-In Guidelines, and Field Calibration docs (all in
+`datasheets/scd30/`), plus Sensirion's own official `embedded-scd` C reference driver source
+(`scd30/scd30.c` on GitHub) for any comment addressing call-frequency/wear; none exists. One
+concrete, reassuring data point *does* exist: the Field Calibration doc explicitly states FRC "can
+be executed multiple times at arbitrary intervals" - Sensirion's own guidance treats repeated FRC
+writes as normal, not a wear concern. Given the absence of any endurance number, this can't be
+quantified further than that. **Current codebase usage is safe under this uncertainty regardless**:
+every one of these setters is only ever invoked from a REST-triggered config change in
+`sensortask-wozi.py` (human/automation-initiated, inherently infrequent) - never from
+`_init_scd()`/the boot path or any periodic loop in this file. The one spot worth a second look for
+call-frequency, already flagged separately above and deferred to `sensortask-wozi.py`'s own pass:
+the `force=True` resend of `set_ambient_pressure` in its REST handler (needed to resume continuous
+measurement per this file's own comment) fires once per matching REST call, not on a timer - so
+still bounded by REST-call frequency, not a loop.
+
+**Promotion (sections 13-14)**: moved to `src/asy_scd30_driver.py`. Triggered by CI itself catching
+a real gap: `tests/test_asy_scd30_driver.py` was written and committed one step ahead of the actual
+`git mv`, and both CI jobs immediately went red - `scripts/typecheck.sh src tests` can't resolve
+`import asy_scd30_driver` at all (`mypy_path` only ever listed `typings`/`src`, never
+`improved-quality`), and `scripts/test.sh`'s fixed `MICROPYPATH="src:tests:.frozen"` hit the same
+wall at runtime (`ImportError: no module named 'asy_scd30_driver'`). Considered patching either
+script to also resolve `improved-quality/` for this one file, but the driver had already cleared
+every other section of this checklist (correctness, exception safety, range validation, cross-file
+consistency, tests) - actually promoting was the more honest fix than teaching the tooling to
+special-case a pre-promotion file, and matches how every other file in `src/` got there (tests
+land with the move, not before it). No CI workflow or `pyproject.toml` change was needed - `src`
+was already in both `mypy`'s `files` and CI's explicit `src tests` scope, and `scripts/test.sh`'s
+`tests/test_*.py` glob just needed the import to resolve. Bird's-eye scan across all of `src/`
+after the move (per this file's own promotion-time requirement): module docstring convention,
+`TYPE_CHECKING` guard shape, and the "no `Union[...]`/no `uasyncio`" conventions all hold
+consistently across every file, including the new one - no cross-file discrepancy found. Full
+verification re-run clean: `ruff check src tests`, `scripts/typecheck.sh src tests` (0 errors),
+plain `scripts/typecheck.sh` (123 pre-existing errors, all in the same 7 already-tracked
+`improved-quality/` files - none in the newly moved `src/asy_scd30_driver.py`, and unchanged since
+no other file's content was touched by this move), and `scripts/test.sh` (all 13 `tests/test_*.py`
+files pass, 741 tests total including this file's 54).
+
+**Post-promotion re-review (owner-requested "go through it again in detail"), two real bugs found
+and fixed, not just tests added**:
+
+1. **Severe: Temperature/Humidity would have come back `None` on every single successful read
+   cycle.** `get_CO2()`/`get_temperature()`/`get_relative_humidity()` each independently called
+   `_read_data()`, which re-checked the SCD30's data-ready flag on every call and cleared all three
+   cached fields to `None` whenever it read "not ready." But the data-ready flag clears the instant
+   the measurement is actually read (Interface Description 1.4.4) - so across `_read_scd()`'s real
+   sequential `get_CO2()` → `get_temperature()` → `get_relative_humidity()` calls, only the first
+   ever saw "ready"; the second and third, called milliseconds later, always saw "not ready" (already
+   consumed) and wiped out the first call's own fresh result. Confirmed directly against the real
+   interpreter before touching anything: `(co2, temp, hum)` came back `(412.5, None, None)`, not
+   `(412.5, 23.4, 45.6)`, from a realistic single-measurement fixture. Root cause traced to this same
+   session's own earlier "fix" (commit `800edf3`, recorded above as a stability improvement): clearing
+   the cache on "not ready" was the right call for a *stale, cross-cycle* not-ready (a genuinely
+   spurious trigger with no new data at all), but wrong for a *same-cycle* not-ready (the 2nd/3rd
+   getter call, which will always see not-ready by design) - that earlier fix conflated the two.
+   Every existing test for this happened to queue "ready=1" three separate times (once per getter),
+   which doesn't match how real hardware behaves and is exactly what let this go unnoticed - a lesson
+   in mock fidelity, not just test coverage. **Fix**: factored the data-ready-check-and-fetch into a
+   single `read_measurement()` call, made exactly once per `_read_scd()` cycle before the three
+   getters; `get_CO2()`/`get_temperature()`/`get_relative_humidity()` are now pure cache reads with no
+   I2C of their own, eliminating the redundant re-checks structurally rather than special-casing them.
+   This never reached deployed units - caught here, on the branch, before merge. **Follow-up**: the
+   single remaining not-ready path inside `read_measurement()` itself (a genuine, once-per-cycle
+   not-ready, as opposed to the every-cycle same-cycle bug above) was *also* reverted back to the
+   legacy driver's own behavior - see the amendment on the original "Stability (section 3)" entry
+   above; leaves the cache untouched instead of clearing to `None`.
+2. **Moderate: `set_ambient_pressure()`/`set_altitude()` silently accepted an invalid negative value
+   as the special value `0` instead of rejecting it.** Both truncated their argument via `int(...)`
+   *before* validating the range, and `int(-0.5) == 0` in both Python and MicroPython (truncates
+   toward zero, doesn't round) - so any value in the open interval (-1, 0), e.g. `-0.5`, silently
+   passed through as `0` (ambient pressure's own "disable compensation" sentinel) instead of raising.
+   Confirmed directly: `set_ambient_pressure(-0.5)` sent a real "disable ambient pressure" command to
+   the fake bus with no error at all. `set_temperature_offset()` already validated before truncating
+   and was unaffected - this fix just brings the other two in line with that existing, correct order.
+   4 new regression tests added (2 per method: reject fractional near-zero values, confirm nothing
+   reaches the bus).
+3. **Investigated, not fixed - flagging for the project owner rather than guessing**:
+   `get_ambient_pressure()` reads back the SCD30's ambient-pressure setting via a bare write of
+   `0x0010` (the same command used to *set* it, "trigger continuous measurement") followed by the
+   standard 3-byte register read - this exact pattern is what every other paired getter/setter here
+   uses, and it's what the legacy `python/IndividualDrivers/asy_scd30_driver.py` already does too
+   (unchanged, presumably running in production for over a year per the project owner). But checked
+   against real sources this time, specifically because the Interface Description's own worked
+   examples only show a *write* sequence for 0x0010, unlike every other command (1.4.3/1.4.6/1.4.7/
+   1.4.8), which each have an explicit documented "Get" read-back sequence: Sensirion's own official
+   `embedded-scd` C reference driver has no ambient-pressure getter function at all, and their official
+   `python-i2c-scd30` driver's `StartPeriodicMeasurement` command class has no `rx` (receive)
+   attribute the way `GetMeasurementInterval`/`GetTemperatureOffset` do - i.e., neither official
+   reference implementation treats 0x0010 as readable. This doesn't necessarily mean it's broken (the
+   legacy code's own year+ of uneventful field use is real evidence it's *not* obviously broken), but
+   it means this specific read-back was never confirmed against an authoritative source either, only
+   inherited unchanged from driver to driver. Not something to silently "fix" - there's no alternate
+   documented way to read this back if the sensor genuinely doesn't support it - flagging as a real,
+   still-open question rather than asserting either way. **Resolved by the project owner: leave it
+   as-is.** No code change - matches both the legacy driver and every sibling getter's own pattern,
+   and there's nothing concrete to change it to regardless.
+
+**General direction from the project owner after this pass, applying beyond just the two items
+above**: the legacy driver worked correctly in the field for a long time outside of genuinely
+exotic failures, so a "fix" here needs to actually be tested against that bar, not just judged
+against this file's own internal logic in isolation - re-verify every change (normal, error, and
+edge cases alike) against what the legacy driver's own proven behavior actually was before treating
+a behavioral difference as an improvement.
+
+New unit-test count for this file after the re-review: 59 (was 54) - 2 fault-propagation tests
+correcting `get_CO2()`/etc.'s now-pure-cache-read contract (they can no longer raise `OSError` on
+NAK the way they used to when they touched the bus directly), 1 regression test locking in the
+`read_measurement()`-once-per-cycle fix, 4 regression tests for the truncate-before-validate fix,
+and 1 test locking in the not-ready-leaves-cache-untouched revert (replacing the since-reverted
+clears-to-None test), plus 1 more confirming the pre-any-successful-read initial state is still
+correctly `None` (not stale garbage).
+
+**Final re-validation pass, owner-requested ("go through our recipe paragraph by paragraph")**: every
+command opcode, CRC parameter, byte-layout offset, and timing/NVM-persistence claim re-checked
+directly against the Interface Description PDF from scratch (not just against this file's own prior
+notes); RP2 v1.28.0 source (`ports/rp2/machine_i2c.c`) confirmed `DEFAULT_I2C_TIMEOUT = 50000` (50ms),
+re-confirming the already-decided 50ms-vs-150ms-clock-stretch tension above without reopening it;
+`Timer`/`ThreadSafeFlag` usage re-confirmed safe against current MicroPython docs. No new
+discrepancy found - a confirmation pass, not a change request. Separately, trimmed the file's
+per-function comments to section 11's 3-line convention (several ran 4-9 lines): condensed the
+worst case, `read_measurement()`, from 9 comment lines to 3, and switched `_store_scd()`'s `SCD30(...)`
+construction to keyword arguments instead of one comment per positional field, removing the need
+for those comments entirely. No functional change; 59/59 tests still pass unchanged.
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
@@ -1841,8 +2150,8 @@ and a missing config file failing independently without either derailing the oth
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
 `asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 58,
-`asy_udp_socket.py` 62 — **752 total**. (Previous count of 690 across 11 files predated
-`asy_udp_socket.py`'s promotion and was never updated to include it — corrected during its
+`asy_udp_socket.py` 62, `asy_scd30_driver.py` 59 — **811 total**. (Previous count of 690 across 11
+files predated `asy_udp_socket.py`'s promotion and was never updated to include it — corrected during its
 third pass; the 23→42 jump was its fourth pass's uncaught-exception/configuration/integration
 test additions; 42→56 is its fifth pass's mutation-bypass/concurrency/cancellation-safety tests;
 56→62 is its sixth pass's ready()/write_and_recvfrom() parameter-guard tests.)
@@ -1952,7 +2261,24 @@ non-hypothetical threat in a specific context justifies it. Accepted as residual
 - **UART sensor integration** (`asy_uart.py`/`asy_uart_comm.py`, unused by any deployed config) —
   after the refactor of already-deployed features, not before.
 - **Config-duplication centralization** (same keys hand-kept in sync across `_DEFAULT_CONFIG`, the
-  REST handler, and the HTML form) — owned by the refactor, not the current codebase.
+  REST handler, and the HTML form) — owned by the refactor, not the current codebase. **Concrete
+  gap found during `asy_scd30_driver.py`'s review**: `sensortask-wozi.py` calls
+  `SCD30_Reader.get_default_cfg()`/`SGP40_Reader.get_default_cfg()`/`BMP3xx_Reader.get_default_cfg()`
+  at module import time, merging them into one shared `config.json`; none of the three current
+  Reader classes define `get_default_cfg()` (they use `SensorReaderConfig`'s own per-sensor
+  `config_<name>.cfg` files instead, or — SCD30 — no local config file at all, since its params
+  live on-sensor). This looks like `sensortask-wozi.py` predates that per-sensor-file model and
+  was never updated. Owner-deferred to when `sensortask-wozi.py` itself is worked on, not fixed
+  here.
+- **Config read/write asymmetry - confirmed by owner, deliberately left as-is**: `get_dict_cfg()`
+  gives every Reader class a generic, schema-driven way to *read back* its whole config as a dict;
+  there's no equivalent generic *write* path - each sensor's REST handler still calls its own
+  `set_*` methods one field at a time by hand (see `sensortask-wozi.py`'s `sensor_cmd()`). Owner
+  confirmed this is a known, already-tracked gap, not a surprise this review surfaced: it's being
+  deferred on purpose until all three sensors (`SCD30`/`SGP40`/`BMP3xx`) are promoted to `src/`, so
+  a single consolidated generic-setter mechanism can be designed once across all of them instead of
+  bolted onto each Reader separately. Same spirit as the config-duplication item above - a
+  refactor-owned unification, not a per-file fix.
 - **`dev` config quirks** (e.g. LED/Neopixel REST routes referencing an uninstantiated object) —
   bench rig only, not bugs to fix.
 - **Unit tests against the current (pre-refactor) codebase** — not written; understand the system,
