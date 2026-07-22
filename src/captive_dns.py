@@ -104,6 +104,7 @@ class DNSQuery:
     def __init__(self, data: bytes, debug: bool = False) -> None:
         self.data = data
         self.domain = ""
+        self._question_end = 0  # set below once a full question is actually parsed
         self.debug = debug
         # RFC 1035 section 4.1.1/4.1.2: opcode is bits 3-6 of header byte 2; the question section
         # (a length-prefixed label sequence) starts at byte 12, right after the 12-byte header.
@@ -116,6 +117,11 @@ class DNSQuery:
                     self.domain += data[ini + 1 : ini + lon + 1].decode("utf-8") + "."
                     ini += lon + 1
                     lon = data[ini]
+                # ini now points at the zero-length terminator; QTYPE (2 bytes) and QCLASS (2 bytes)
+                # follow immediately - this is the end of the one question response() must echo,
+                # not the end of the whole datagram (which may carry an EDNS0 OPT record or further
+                # questions/records this class was never meant to parse - see response()'s comment).
+                self._question_end = ini + 5
         except (IndexError, UnicodeError, TypeError, AttributeError):
             # IndexError/UnicodeError: truncated/malformed datagram. TypeError/AttributeError: a
             # non-bytes data (the only real caller, run(), already guarantees bytes, but this class
@@ -140,10 +146,12 @@ class DNSQuery:
             except (TypeError, ValueError, AttributeError):
                 return None
             packet = self.data[:2] + b"\x81\x80"
-            packet += (
-                self.data[4:6] + self.data[4:6] + b"\x00\x00\x00\x00"
-            )  # Questions and Answers Counts
-            packet += self.data[12:]  # Original Domain Name Question
+            # QDCOUNT=1, ANCOUNT=1, NSCOUNT=0, ARCOUNT=0 - hardcoded, not echoed from the original
+            # header's own counts: this class only ever parses/echoes exactly one question (see
+            # _question_end above) and always answers with exactly one record, regardless of what
+            # the original packet declared (e.g. a second question, or an EDNS0 OPT record).
+            packet += b"\x00\x01\x00\x01\x00\x00\x00\x00"
+            packet += self.data[12 : self._question_end]  # the one echoed question, not the rest of the datagram
             packet += b"\xc0\x0c"  # Pointer to domain name
             packet += b"\x00\x01\x00\x01\x00\x00\x00\x3c\x00\x04"  # Response type, ttl and resource data length -> 4 bytes
             packet += bytes(map(int, ip.split(".")))  # 4bytes of IP

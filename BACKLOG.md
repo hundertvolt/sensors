@@ -2001,6 +2001,88 @@ fire.
 Verified: full-scope `scripts/lint.sh`/`scripts/typecheck.sh` still 0 findings, `scripts/test.sh` all
 13 files green, 789 tests total.
 
+### `captive_dns.py`: third pass - a real wire-format bug, plus two confirmed-and-flagged non-fixes
+
+Owner-directed follow-up: re-audit the whole file once more for oversights, bugs, or strange/
+unexpected behavior beyond exceptions - i.e. cases that don't crash but produce wrong output. This
+pass found one genuine, previously-undetected functional bug (fixed) and two edge cases confirmed
+by direct testing but deliberately left unfixed, flagged here per this file's own "flag genuinely
+ambiguous/architecturally significant decisions rather than guess" convention.
+
+**Real bug found and fixed - `response()` corrupted the reply for any query carrying data beyond a
+single question.** `packet += self.data[12:]` echoed *everything* from byte 12 to the end of the
+received datagram into what the response's header declares is pure question content, while
+`ANCOUNT` was set equal to the *original* `QDCOUNT` rather than the exactly-one record actually
+appended below it. For a plain, minimal query (nothing but one question - e.g. everything
+`make_query()` in the test suite ever constructed) this happened to produce a correct packet, which
+is why it was never caught by the original promotion's tests. But a real-world query carrying
+anything past that single question - most commonly an EDNS0 OPT pseudo-record in the additional
+section, which the large majority of modern OS stub resolvers (glibc, macOS, Android) attach by
+default for buffer-size signaling, or (rarer) a second question - produced a response whose declared
+header counts didn't match its actual byte layout: `ANCOUNT`/`ARCOUNT` claimed one answer and zero
+additional records, but the real synthesized answer sat several bytes *after* the leftover trailing
+data from the original query, exactly where a compliant parser - having read the declared question(s)
+- would instead try to parse that leftover data as the start of the answer section. Reproduced and
+confirmed directly against the real MicroPython Unix-port interpreter before fixing (not assumed):
+a synthetic EDNS0-bearing query showed the real answer record starting 11 bytes later than a
+compliant parser would look for it. Depending on how strict the receiving resolver's parser is, this
+could mean captive-portal-detection probes from any client that includes EDNS0 in its query - i.e.
+most real devices - either silently fail to parse the spoofed reply or reject it as malformed, quietly
+defeating the entire module's purpose for exactly the traffic it exists to intercept.
+
+Fixed by tracking where the one parsed question actually ends (`DNSQuery.__init__`'s new
+`self._question_end`, computed right after the label-parsing loop exits: the zero-length terminator
+plus QTYPE (2 bytes) plus QCLASS (2 bytes)) and using `self.data[12:self._question_end]` in
+`response()` instead of `self.data[12:]`. Combined with hardcoding
+`QDCOUNT=1, ANCOUNT=1, NSCOUNT=0, ARCOUNT=0` outright rather than echoing the original header's own
+(possibly different) counts - since this class only ever parses and echoes exactly one question and
+always answers with exactly one record, hardcoding is more honest than echoing a count that might not
+match what's actually in the packet. Verified backward-compatible for every previously-passing case:
+`make_query()`'s output never carries trailing data, so `_question_end` always equals the buffer's
+full length there and the original header's `QDCOUNT` was always already `\x00\x01` - byte-for-byte
+identical output to before for every existing test. Two new tests added: one reproducing the exact
+EDNS0-OPT-record shape that surfaced the bug (asserts the answer now sits immediately after the
+declared question, with `ANCOUNT`/`ARCOUNT` matching the packet's real layout), one for a header
+falsely declaring `QDCOUNT=2` (asserts the response still declares `QDCOUNT=1` and echoes only the
+first question, not the second).
+
+**Flagged, not fixed - a literal root-domain query (".") never gets a reply, silently contradicting
+this file's own module docstring.** A query for the root name is encoded as a single zero-length
+label - `DNSQuery.__init__`'s parsing loop (`while lon != 0:`) never executes its body for this input,
+so `self.domain` stays `""`, which is the *exact same* sentinel value used for "failed to parse" /
+"non-standard query". `response()`'s `if self.domain:` gate can't tell these two cases apart, so it
+returns `None` for both - meaning this module's docstring claim ("Every on-subnet query gets a canned
+A-record response... regardless of the name asked for") is not actually true for this one input.
+Confirmed by direct construction, not assumed. Not fixed because disentangling "successfully parsed,
+but it's the root domain" from "failed to parse" would need a second, separate success/failure flag
+alongside `self.domain` (the value alone can no longer carry both "did parsing succeed" and "what did
+it parse" once an empty string is itself a valid successful result) - a real behavior change, not a
+mechanical fix, and one with no practical impact on this module's actual purpose: no real captive-
+portal-detection probe (Apple's `captive.apple.com`, Android's `connectivitycheck.gstatic.com`,
+Windows' `www.msftconnecttest.com`, etc.) ever queries the bare root. Flagging per this file's own
+"prefer flagging genuinely ambiguous/architecturally significant decisions over guessing" convention
+rather than either silently changing behavior or silently leaving the docstring's claim inaccurate.
+
+**Confirmed non-issue, not a bug in this file**: cancelling an `asyncio.Task` before it has ever been
+scheduled to run even once can make `await task` raise `CancelledError` to the *awaiter*, regardless
+of any `try`/`except` inside the coroutine itself - reproduced directly against the real interpreter
+with a minimal `demo()` coroutine whose own `except asyncio.CancelledError:` never even ran, because
+the coroutine's body never started executing before the cancellation was thrown into it. This is
+universal `asyncio.Task` machinery (identical for CPython and this MicroPython port), not something
+any coroutine - including `run()` - can defend against from the inside; no amount of `try`/`except`
+inside `run()` can help, because the exception is thrown before `run()`'s own first line ever runs.
+Considered adding a defensive wrapper anyway and rejected it as pointless (it would never execute
+either, for the same reason). Practically irrelevant here regardless: `async_connect.py`'s real usage
+of `dns_server_task` is fire-and-forget (`.cancel()` then `= None`, confirmed directly against
+`improved-quality/async_connect.py`) and never awaits the task at all, so this exact race can never
+surface as a visible exception anywhere in the real system - a cancelled-before-first-step task that's
+never awaited is just silently discarded by asyncio, no different from an ordinary cancellation. No
+test added for this (there is nothing about `captive_dns.py` itself for a test to cover; it would only
+be testing a property of `asyncio.Task`).
+
+Verified: full-scope `scripts/lint.sh`/`scripts/typecheck.sh` still 0 findings, `scripts/test.sh` all
+13 files green, 791 tests total.
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
@@ -2017,13 +2099,14 @@ and a missing config file failing independently without either derailing the oth
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
 `asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 58,
-`asy_udp_socket.py` 62, `captive_dns.py` 37 — **789 total**. (Previous count of 690 across 11 files
+`asy_udp_socket.py` 62, `captive_dns.py` 39 — **791 total**. (Previous count of 690 across 11 files
 predated `asy_udp_socket.py`'s promotion and was never updated to include it — corrected during its
 third pass; the 23→42 jump was its fourth pass's uncaught-exception/configuration/integration
 test additions; 42→56 is its fifth pass's mutation-bypass/concurrency/cancellation-safety tests;
 56→62 is its sixth pass's ready()/write_and_recvfrom() parameter-guard tests. `captive_dns.py`'s own
-18→37 jump is its second pass's configuration-matrix/integration/fault-propagation test additions,
-see the entry above.)
+18→37 jump is its second pass's configuration-matrix/integration/fault-propagation test additions;
+37→39 is its third pass's wire-format (EDNS0/multi-question trailing-data) regression tests, see the
+entries above.)
 
 ## Decided for the refactor
 

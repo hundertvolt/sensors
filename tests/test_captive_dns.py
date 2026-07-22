@@ -138,16 +138,63 @@ def test_response_builds_expected_packet_for_valid_domain() -> None:
     assert packet is not None
     assert packet[:2] == query[:2]  # echoed transaction ID
     assert packet[2:4] == b"\x81\x80"  # standard response, recursion available
-    assert packet[4:6] == query[4:6]  # QDCOUNT echoed
-    assert packet[6:8] == query[4:6]  # ANCOUNT set equal to QDCOUNT
+    assert packet[4:6] == b"\x00\x01"  # QDCOUNT=1
+    assert packet[6:8] == b"\x00\x01"  # ANCOUNT=1
     assert packet[8:12] == b"\x00\x00\x00\x00"  # NSCOUNT, ARCOUNT
     question_len = len(query) - 12
-    assert packet[12 : 12 + question_len] == query[12:]  # original question echoed
+    assert packet[12 : 12 + question_len] == query[12:]  # the one question, echoed
     offset = 12 + question_len
     assert packet[offset : offset + 2] == b"\xc0\x0c"  # compression pointer to the question name
     assert packet[offset + 2 : offset + 12] == b"\x00\x01\x00\x01\x00\x00\x00\x3c\x00\x04"
     assert packet[offset + 12 : offset + 16] == bytes([192, 168, 4, 1])
     assert len(packet) == offset + 16
+
+
+def test_response_ignores_trailing_data_after_the_question_and_hardcodes_counts() -> None:
+    # A real-world shape: a query with a single question PLUS trailing data this class was never
+    # meant to parse (most commonly a real client's EDNS0 OPT record in the additional section, or
+    # - equally unhandled here - a second question). Before the _question_end fix, self.data[12:]
+    # echoed that trailing data straight into what the header declares is pure question content,
+    # while ANCOUNT was set equal to the *original* QDCOUNT rather than the one record actually
+    # appended - producing a packet whose declared header counts didn't match its real byte layout
+    # (a compliant parser, having read exactly the declared question(s), would try to parse the
+    # leftover trailing bytes as the start of the answer section instead of the real answer, which
+    # sits right after them).
+    header = b"\x12\x34\x01\x00\x00\x01\x00\x00\x00\x00\x00\x01"  # QDCOUNT=1, ARCOUNT=1 (EDNS0)
+    question = b"\x01a\x02io\x00\x00\x01\x00\x01"  # a.io, QTYPE=A, QCLASS=IN
+    opt_record = b"\x00\x00\x29\x10\x00\x00\x00\x00\x00\x00\x00"  # root name, TYPE=41 (OPT), RDLENGTH=0
+    query = header + question + opt_record
+
+    dns = DNSQuery(query)
+    assert dns.domain == "a.io."
+    packet = dns.response("192.168.4.1")
+    assert packet is not None
+    assert packet[4:6] == b"\x00\x01"  # QDCOUNT=1, not the original header's QDCOUNT
+    assert packet[6:8] == b"\x00\x01"  # ANCOUNT=1 - matches the one record actually appended
+    assert packet[8:12] == b"\x00\x00\x00\x00"  # NSCOUNT=0, ARCOUNT=0 - the OPT record is dropped
+    question_len = len(question)
+    assert packet[12 : 12 + question_len] == question  # exactly the one question, no OPT bytes
+    offset = 12 + question_len
+    assert packet[offset : offset + 2] == b"\xc0\x0c"  # the answer immediately follows the question
+    assert len(packet) == offset + 16
+
+
+def test_response_hardcodes_qdcount_even_when_original_header_declares_more_questions() -> None:
+    # A query whose header claims QDCOUNT=2: __init__ only ever parses the first question (by
+    # design, see its own comments), so the response must declare QDCOUNT=1 - matching the one
+    # question it actually echoes - rather than blindly echoing the original header's claim of 2.
+    header = b"\x12\x34\x01\x00\x00\x02\x00\x00\x00\x00\x00\x00"  # QDCOUNT=2
+    question = b"\x01a\x02io\x00\x00\x01\x00\x01"
+    second_question = b"\x01b\x00\x00\x01\x00\x01"
+    query = header + question + second_question
+
+    dns = DNSQuery(query)
+    assert dns.domain == "a.io."
+    packet = dns.response("192.168.4.1")
+    assert packet is not None
+    assert packet[4:6] == b"\x00\x01"  # QDCOUNT=1, not the original header's declared 2
+    question_len = len(question)
+    assert packet[12 : 12 + question_len] == question  # only the first question, not the second
 
 
 def test_response_returns_none_for_empty_domain() -> None:
