@@ -1860,6 +1860,21 @@ field order, and `vocalgorithm_process()`'s exact operation order matched 1:1, n
   `sgp40.i2c_device.i2c.writeto(0x00, b"\x06")`, still under the device session's shared-bus lock
   (a general call affects every device on the bus, not just this one) and still tolerating a NAK
   (`except OSError: pass`) — not every device needs to acknowledge a general call.
+  **Shared-bus blast-radius check, prompted by a later session's "don't deviate from proven
+  everyday behavior" concern**: `sensortask-wozi.py` puts `SGP40_Reader` and `BMP3xx_Reader` on
+  the same physical `i2c1` bus (pins 19/18), and `sensortask-dev.py` puts `SGP40_Reader` and
+  `SCD30_Reader` on the same `i2c1` bus (pins 15/14) — so this fix means every SGP40 init/restart
+  now actually broadcasts a real general call onto a bus a second sensor also lives on, where the
+  old buggy code never touched address `0x00` at all. Checked both shared sensors' own datasheets
+  (`datasheets/bmp3xx/bst-bmp388-ds001.pdf` section 5; `datasheets/scd30/
+  Sensirion_CO2_Sensors_SCD30_Interface_Description.pdf` section 1.1/1.4.10): neither documents
+  I2C general-call (address `0x00`) support anywhere — BMP388's own reset is a normal addressed
+  write (`softreset` 0xB6 to register 0x7E at its own address), SCD30's own reset is likewise a
+  normal addressed command (`0xD304` to its own address 0x61). Per the I2C spec, general-call
+  support is optional per-device; a device that doesn't implement it simply doesn't ACK, which is
+  exactly the `except OSError: pass` path this fix already tolerates. So the fix's real-world
+  blast radius on both units sharing a bus with SGP40 is verified negligible — worth recording
+  since it wasn't checked when the fix first went in, only reasoned about structurally.
 - `initialize()` dropped the "check feature set" step (command `0x20 0x2F`) entirely. Confirmed via
   the datasheet that this command isn't in Sensirion's real command table at all (only
   `sgp40_measure_raw_signal`/`sgp40_execute_self_test`/`sgp4x_turn_heater_off`/
