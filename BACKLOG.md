@@ -2176,6 +2176,15 @@ non-hypothetical threat in a specific context justifies it. Accepted as residual
   live on-sensor). This looks like `sensortask-wozi.py` predates that per-sensor-file model and
   was never updated. Owner-deferred to when `sensortask-wozi.py` itself is worked on, not fixed
   here.
+- **Config read/write asymmetry - confirmed by owner, deliberately left as-is**: `get_dict_cfg()`
+  gives every Reader class a generic, schema-driven way to *read back* its whole config as a dict;
+  there's no equivalent generic *write* path - each sensor's REST handler still calls its own
+  `set_*` methods one field at a time by hand (see `sensortask-wozi.py`'s `sensor_cmd()`). Owner
+  confirmed this is a known, already-tracked gap, not a surprise this review surfaced: it's being
+  deferred on purpose until all three sensors (`SCD30`/`SGP40`/`BMP3xx`) are promoted to `src/`, so
+  a single consolidated generic-setter mechanism can be designed once across all of them instead of
+  bolted onto each Reader separately. Same spirit as the config-duplication item above - a
+  refactor-owned unification, not a per-file fix.
 - **`dev` config quirks** (e.g. LED/Neopixel REST routes referencing an uninstantiated object) —
   bench rig only, not bugs to fix.
 - **Unit tests against the current (pre-refactor) codebase** — not written; understand the system,
