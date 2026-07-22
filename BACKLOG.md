@@ -1825,6 +1825,321 @@ promoted to `src/`), throwaway scratchpad repro scripts only. Re-ran full-scope
 this fix), all 12 `tests/` files green, 752 tests total, unaffected (`captive_dns.py` isn't imported
 by any of them).
 
+### `captive_dns.py` → `src/`
+
+Builds directly on the two `improved-quality/` fixes above (subnet filtering, `DNSQuery` malformed-
+data guard) - both carried over unchanged, no functional rework. This pass is the full
+`src/README.md` checklist promotion: module docstring, remaining exception-safety gaps, comment-
+length trim, RFC citations, and the permanent test suite that was explicitly deferred while the file
+stayed in `improved-quality/`.
+
+Real gaps closed:
+
+- **`run()`'s own startup computation was unguarded.** `_ipv4_to_int(netmask)`/`_ipv4_to_int(server_ip)`
+  ran before the `while True:` loop's own `try`, so a malformed `server_ip`/`netmask` would raise
+  straight out of the task - nothing supervises `dns_server_task` in `async_connect.py`, so this would
+  have silently killed the captive portal's DNS half until the next hotspot toggle. Both values come
+  from the OS's own `wlan.ifconfig()`, not attacker-controlled, but the type contract is just `str`,
+  not "valid dotted quad" - guarded anyway (`try/except (TypeError, ValueError): return`) rather than
+  trust an OS invariant `str` alone doesn't fully express.
+- **`_ipv4_to_int()` had no octet-range check.** `"999.1.1.1"` parsed without error, past `int()`,
+  straight into the bit-shift - an out-of-range octet doesn't raise, it silently spills into the
+  neighboring byte's bits, risking a false subnet-membership match rather than a clean rejection.
+  Fixed: validates each octet is `0-255` before shifting, raising `ValueError` (already caught by
+  both existing call sites) - zero behavior change for any previously-valid input.
+- **A failed `sendto()` was silently discarded** (flagged, not fixed, during the `asy_udp_socket.py`
+  fourth pass above - explicitly deferred as `captive_dns.py`'s own responsibility). `run()` now
+  checks the returned byte count and prints a distinct debug line when a reply is dropped, rather
+  than treating "sent" and "silently failed" identically.
+- **`DNSQuery.__init__`'s `data` parameter was typed `bytes | bytearray`, but its only real caller
+  (`AsyUDPSocket.recvfrom()`) only ever returns `bytes`.** The wider type let `packet` infer as
+  `bytes | bytearray` inside `response()`, failing mypy's own declared `-> bytes | None`. Narrowed to
+  `bytes`, matching the actual, only call shape - not an artificial restriction.
+- `.format()` calls converted to f-strings (`ruff --fix`, mechanical, zero behavior change) - the
+  earlier `improved-quality/` passes deliberately kept `.format()` for local file-style consistency
+  while unscoped from CI; that reasoning doesn't carry over once the file joins `src/`, which today
+  is 100% lint-clean end to end and CI-gated on exactly that.
+- Comment blocks trimmed to the established ≤3-line convention (several were 8-9 lines, carried over
+  from the `improved-quality/` fixes before this file was under that rule) - full rationale stays in
+  this file's entries above, not lost. RFC 1035 (header/question format, message compression) and RFC
+  791 (dotted-quad form) cited directly in `_ipv4_to_int()`/`DNSQuery.__init__()`/`response()`'s own
+  comments per section 1's "identify the authoritative source" requirement - neither had one before.
+
+Cross-file consistency scan (CLAUDE.md's "whenever a new file is promoted, scan the whole of `src/`"
+requirement), flagged rather than silently resolved: `base_classes.py`/`asy_fram_manager.py`/
+`system_service.py` use `debug: int | None` fed into `print_log.py`'s `PrintLogHistory`(`Store`) for
+persisted, post-mortem log history; `captive_dns.py` (like its own dependency `asy_udp_socket.py`)
+uses a plain `debug: bool` gating raw `print()`. **Not a discrepancy to resolve** - the two mechanisms
+solve different problems (persisted FRAM-backed log history for stateful `SensorReader`-derived
+classes vs. a lightweight console toggle for a stateless transport/protocol file with no FRAM
+dependency at all), and `captive_dns.py` sits at the same architectural layer as `asy_udp_socket.py`
+(which dropped console debug output entirely during its own promotion), not as a `SensorReader`.
+Kept the existing `debug: bool` + `print()` shape rather than wiring in `print_log.py` - matches its
+nearest architectural sibling, avoids adding a FRAM/log-store dependency to a file that never needed
+one, and the owner's own framing for this pass ("without adding too much complexity") doesn't favor
+the heavier mechanism here.
+
+**Test approach, owner-directed real-vs-fake split**: `DNSServer.udps` in this Unix-port test build
+must be bound via a `socket.getaddrinfo()`-resolved sockaddr (the same plain-tuple-`bind()`
+limitation `asy_udp_socket.py`'s own tests already work around) - and doing so means `recvfrom()`
+returns an opaque raw sockaddr here too, not a `(host, port) tuple`, so `addr[0]` can never be a real
+string through a genuine socket in this environment (confirmed directly during the subnet-filter fix
+above, not assumed). A `_FakeUDPS` stand-in (structurally duck-typed to `AsyUDPSocket`'s
+`recvfrom`/`sendto`/`disconnect` contract only, `# type: ignore[assignment]` at the swap-in point)
+drives `run()`'s actual subnet-membership/malformed-query/error-path branching with well-formed (and
+deliberately invalid) `(host, port)` tuples the real environment can't produce - `DNSQuery`/
+`response()` still execute unmocked underneath it. One additional real-socket test (genuine
+`AsyUDPSocket` + an independent `socket.socket()` peer over loopback) proves the whole thing actually
+binds/receives/replies without crashing end-to-end, including hitting the raw-sockaddr
+`AttributeError` path for real rather than only through the fake.
+
+17 tests (`tests/test_captive_dns.py`): `_ipv4_to_int()`'s valid/wrong-octet-count/out-of-range/non-
+numeric cases; `DNSQuery` single- and multi-label parsing, non-standard opcode, and all 8 malformed/
+truncated shapes from the `improved-quality/` fix's own repro matrix (still `domain == ""`, never
+raises); `response()`'s full byte-layout construction and its empty-domain `None` path; `run()`
+answering an on-subnet request, ignoring an off-subnet one then still answering the next, ignoring a
+non-IP source string, ignoring a malformed query without incurring the 3s backoff (timing-asserted,
+not just "didn't crash"), returning cleanly on an invalid `server_ip`/`netmask` without ever touching
+`udps`, disconnecting cleanly on cancellation, and continuing after a `sendto()` failure; plus the one
+real-loopback end-to-end smoke test. Verified: full-scope `scripts/lint.sh`/`scripts/typecheck.sh`
+clean (0 findings in the CI-gated `src`/`tests` scope - the first `src/` file promoted directly from
+`improved-quality/`'s more lenient bar straight to a fully clean state, no interim tracked findings
+left behind), `scripts/test.sh` all files green.
+
+Also fixed while re-verifying full-scope typecheck, unrelated to `captive_dns.py` itself (owner-
+authorized "quick mechanical fix" for out-of-scope drift surfacing in CI): two stale `# type: ignore`
+comments in `test_asy_udp_socket.py`/`test_asy_fram_manager.py` had gone stale against a newer mypy/
+typeshed pulled in by `uv sync` (unpinned dev dependency versions) - one had become genuinely unused
+(`asyncio.Task`'s stub no longer loses `recvfrom()`'s precise return type), the other's error code
+changed (`asyncio.gather()`'s two-argument overload now resolves to `tuple[bool, bool]` in typeshed,
+while the real runtime value - and this test's own `== [True, True]` assertion - is genuinely a
+`list`, matching CPython's own documented `gather()` behavior; re-pointed the `ignore` at
+`return-value` rather than changing the runtime-checked assertion to match the stub's overload
+precision instead of reality). Zero behavior change in either file.
+
+### `captive_dns.py`: second pass - remaining uncaught-exception gaps and a full configuration/integration test sweep
+
+Owner-directed follow-up after the promotion above: re-audit every call captive_dns.py makes into
+itself and into `asy_udp_socket.py`/`asyncio` for a path that could still raise uncaught, then add
+exhaustive valid/invalid-parameter-configuration tests, real integration tests against the module it
+imports and the module that imports it, and fault-propagation tests for corrupted/malformed real
+traffic - mocking only what genuinely can't be produced for real.
+
+Four more real gaps found and fixed (all four are exactly the "either by itself or by a called
+function" shape the owner asked to re-check - none were hypothetical):
+
+- **`run()`'s startup guard only caught `(TypeError, ValueError)`, not `AttributeError`.** A
+  non-string `server_ip`/`netmask` (e.g. `None`) reaching `_ipv4_to_int()`'s `.split(".")` raises
+  `AttributeError`, not `TypeError`/`ValueError` - would have escaped the guard and killed the
+  unsupervised task. The per-packet check three lines below already caught all three; the startup
+  check just hadn't been kept in sync with it. Fixed: added `AttributeError` to match.
+- **`DNSQuery.__init__` only caught `(IndexError, UnicodeError)`.** A non-bytes `data` (the
+  constructor's only real caller, `run()`, always passes `bytes`, but the class itself is public)
+  can raise `TypeError` (`None[2]`, `(12345)[2]`) or `AttributeError` (a list/tuple slice has no
+  `.decode()`) instead - neither was caught. Fixed: broadened to
+  `(IndexError, UnicodeError, TypeError, AttributeError)`. Proved the `AttributeError` arm is
+  actually reachable, not just theoretically added, with a dedicated test (a 20-element list crafted
+  to survive both integer-index lookups but fail specifically at `.decode()`).
+- **`DNSQuery.response(ip)` never validated `ip` at all.** Its only real caller passes `run()`'s own
+  already-`_ipv4_to_int()`-validated `server_ip`, so this never fires in production today, but the
+  method is public: a bad `ip` (wrong octet count, out-of-range, non-numeric, non-string) would
+  either raise past `response()`'s declared `-> bytes | None`, or - for a 3- or 5-octet string, which
+  parses without raising - silently build a packet whose RDATA length doesn't match the 4-byte length
+  the header already declares, corrupting it rather than failing loudly or cleanly. Fixed: validates
+  via `_ipv4_to_int(ip)` (reusing the existing validator purely for its validation side effect) before
+  building the packet, returning `None` on any invalid `ip` - reuses the return type's existing
+  "nothing to send" sentinel rather than inventing a new one.
+- **`run()`'s final `await self.udps.disconnect()` (and its debug print) sat outside the loop's own
+  `try/except`, unguarded.** `disconnect()` is documented as never raising, but a second cancellation
+  delivered while this cleanup await is in flight (e.g. the caller cancels again, or wraps `run()` in
+  `asyncio.wait_for()`) would re-raise `CancelledError` at that await point with nothing to catch it -
+  the one place left in the file where an exception could still escape the task. Fixed: wrapped in its
+  own `try/except (asyncio.CancelledError, Exception)`, matching the "never let cleanup itself become
+  the uncaught exception" posture the rest of the file already has.
+
+**Test additions** (`tests/test_captive_dns.py`, 18 → 37 tests): every constructor/parameter surface
+now has an explicit valid-configuration test, a single-invalid-parameter test, and (where more than
+one parameter exists) a multiple-invalid-parameter-recombination test - `_ipv4_to_int()` (wrong type,
+multi-fault strings), `DNSServer.__init__` (all debug values, non-bool tolerance), `DNSServer.run()`
+(server_ip/netmask valid matrix, each rejected alone, both rejected together in five distinct
+fault-type combinations), `DNSQuery.__init__` (data/debug), and `response()` (ip, including combined
+with an already-empty-domain object state). `malformed_query_cases()` grew from 8 to 10 shapes (added
+an off-by-one truncated label and a 255-byte oversized label-length claim - the two boundary shapes
+missing from the original repro matrix).
+
+Integration tests against the real, unmocked dependency (`asy_udp_socket.py`): reused the same
+`DNSServer` instance across two full run()-start/cancel/run()-again cycles over a real socket, mirroring
+`async_connect.py`'s actual reuse pattern; a real loopback burst of all 10 malformed-datagram shapes
+back-to-back followed by a valid query, proving no cumulative state corruption. A third attempted
+real-socket test (asserting actual reply *content* over a real bound socket) had to be dropped after
+writing it: this Unix-port test build's server socket can never produce a real string `addr[0]` from
+`recvfrom()` (the same constraint the original promotion's `_FakeUDPS` design already documents) so
+`run()`'s subnet check correctly rejects every real packet as off-subnet before ever replying - reply
+*content* stays covered at the unit level (`test_response_builds_expected_packet_for_valid_domain`)
+and "doesn't crash" stays covered for real. Separately caught and fixed a genuine test bug during this
+work: calling the peer socket's plain blocking `recvfrom()` from inside a coroutine froze the single
+Unix-port test process, since it never yielded back to the very event loop `DNSServer.run()`'s task
+needed to run on to produce the reply being waited for - a self-inflicted deadlock, not a hang in the
+code under test.
+
+**Integration-contract test with the module that imports it** (`async_connect.py`): can't import that
+module directly (RP2040/`network.WLAN` hardware dependency, and it's out of scope to edit/test per
+CLAUDE.md's promotion rules) - instead replicated its exact confirmed usage pattern (one `DNSServer`
+built once, `run()` started via `evtloop.create_task(...)`, torn down via a fire-and-forget
+`task.cancel()` the caller never awaits) against a real socket, proving cleanup completes on its own
+even though nothing observes the task's outcome.
+
+**Fault-propagation test for the one category that can't be produced for real**: an unexpected
+exception from a dependency mid-processing (not malformed data, not an off-subnet address - nothing
+in the legitimate path actually throws). Simulated by monkeypatching the module-level `DNSQuery` name
+with a stub that raises once then delegates to the real class, proving `run()`'s catch-all `except
+Exception: await asyncio.sleep(3)` backoff genuinely engages (`elapsed_ms >= 3000`, timing-asserted)
+and the server recovers on the next packet - the complementary case to the existing
+`test_run_ignores_malformed_query_without_stalling`, which only ever proved the backoff *doesn't*
+fire.
+
+Verified: full-scope `scripts/lint.sh`/`scripts/typecheck.sh` still 0 findings, `scripts/test.sh` all
+13 files green, 789 tests total.
+
+### `captive_dns.py`: third pass - a real wire-format bug, plus two confirmed-and-flagged non-fixes
+
+Owner-directed follow-up: re-audit the whole file once more for oversights, bugs, or strange/
+unexpected behavior beyond exceptions - i.e. cases that don't crash but produce wrong output. This
+pass found one genuine, previously-undetected functional bug (fixed) and two edge cases confirmed
+by direct testing but deliberately left unfixed, flagged here per this file's own "flag genuinely
+ambiguous/architecturally significant decisions rather than guess" convention.
+
+**Real bug found and fixed - `response()` corrupted the reply for any query carrying data beyond a
+single question.** `packet += self.data[12:]` echoed *everything* from byte 12 to the end of the
+received datagram into what the response's header declares is pure question content, while
+`ANCOUNT` was set equal to the *original* `QDCOUNT` rather than the exactly-one record actually
+appended below it. For a plain, minimal query (nothing but one question - e.g. everything
+`make_query()` in the test suite ever constructed) this happened to produce a correct packet, which
+is why it was never caught by the original promotion's tests. But a real-world query carrying
+anything past that single question - most commonly an EDNS0 OPT pseudo-record in the additional
+section, which the large majority of modern OS stub resolvers (glibc, macOS, Android) attach by
+default for buffer-size signaling, or (rarer) a second question - produced a response whose declared
+header counts didn't match its actual byte layout: `ANCOUNT`/`ARCOUNT` claimed one answer and zero
+additional records, but the real synthesized answer sat several bytes *after* the leftover trailing
+data from the original query, exactly where a compliant parser - having read the declared question(s)
+- would instead try to parse that leftover data as the start of the answer section. Reproduced and
+confirmed directly against the real MicroPython Unix-port interpreter before fixing (not assumed):
+a synthetic EDNS0-bearing query showed the real answer record starting 11 bytes later than a
+compliant parser would look for it. Depending on how strict the receiving resolver's parser is, this
+could mean captive-portal-detection probes from any client that includes EDNS0 in its query - i.e.
+most real devices - either silently fail to parse the spoofed reply or reject it as malformed, quietly
+defeating the entire module's purpose for exactly the traffic it exists to intercept.
+
+Fixed by tracking where the one parsed question actually ends (`DNSQuery.__init__`'s new
+`self._question_end`, computed right after the label-parsing loop exits: the zero-length terminator
+plus QTYPE (2 bytes) plus QCLASS (2 bytes)) and using `self.data[12:self._question_end]` in
+`response()` instead of `self.data[12:]`. Combined with hardcoding
+`QDCOUNT=1, ANCOUNT=1, NSCOUNT=0, ARCOUNT=0` outright rather than echoing the original header's own
+(possibly different) counts - since this class only ever parses and echoes exactly one question and
+always answers with exactly one record, hardcoding is more honest than echoing a count that might not
+match what's actually in the packet. Verified backward-compatible for every previously-passing case:
+`make_query()`'s output never carries trailing data, so `_question_end` always equals the buffer's
+full length there and the original header's `QDCOUNT` was always already `\x00\x01` - byte-for-byte
+identical output to before for every existing test. Two new tests added: one reproducing the exact
+EDNS0-OPT-record shape that surfaced the bug (asserts the answer now sits immediately after the
+declared question, with `ANCOUNT`/`ARCOUNT` matching the packet's real layout), one for a header
+falsely declaring `QDCOUNT=2` (asserts the response still declares `QDCOUNT=1` and echoes only the
+first question, not the second).
+
+**Flagged, not fixed - a literal root-domain query (".") never gets a reply, silently contradicting
+this file's own module docstring.** A query for the root name is encoded as a single zero-length
+label - `DNSQuery.__init__`'s parsing loop (`while lon != 0:`) never executes its body for this input,
+so `self.domain` stays `""`, which is the *exact same* sentinel value used for "failed to parse" /
+"non-standard query". `response()`'s `if self.domain:` gate can't tell these two cases apart, so it
+returns `None` for both - meaning this module's docstring claim ("Every on-subnet query gets a canned
+A-record response... regardless of the name asked for") is not actually true for this one input.
+Confirmed by direct construction, not assumed. Not fixed because disentangling "successfully parsed,
+but it's the root domain" from "failed to parse" would need a second, separate success/failure flag
+alongside `self.domain` (the value alone can no longer carry both "did parsing succeed" and "what did
+it parse" once an empty string is itself a valid successful result) - a real behavior change, not a
+mechanical fix, and one with no practical impact on this module's actual purpose: no real captive-
+portal-detection probe (Apple's `captive.apple.com`, Android's `connectivitycheck.gstatic.com`,
+Windows' `www.msftconnecttest.com`, etc.) ever queries the bare root. Flagging per this file's own
+"prefer flagging genuinely ambiguous/architecturally significant decisions over guessing" convention
+rather than either silently changing behavior or silently leaving the docstring's claim inaccurate.
+
+**Confirmed non-issue, not a bug in this file**: cancelling an `asyncio.Task` before it has ever been
+scheduled to run even once can make `await task` raise `CancelledError` to the *awaiter*, regardless
+of any `try`/`except` inside the coroutine itself - reproduced directly against the real interpreter
+with a minimal `demo()` coroutine whose own `except asyncio.CancelledError:` never even ran, because
+the coroutine's body never started executing before the cancellation was thrown into it. This is
+universal `asyncio.Task` machinery (identical for CPython and this MicroPython port), not something
+any coroutine - including `run()` - can defend against from the inside; no amount of `try`/`except`
+inside `run()` can help, because the exception is thrown before `run()`'s own first line ever runs.
+Considered adding a defensive wrapper anyway and rejected it as pointless (it would never execute
+either, for the same reason). Practically irrelevant here regardless: `async_connect.py`'s real usage
+of `dns_server_task` is fire-and-forget (`.cancel()` then `= None`, confirmed directly against
+`improved-quality/async_connect.py`) and never awaits the task at all, so this exact race can never
+surface as a visible exception anywhere in the real system - a cancelled-before-first-step task that's
+never awaited is just silently discarded by asyncio, no different from an ordinary cancellation. No
+test added for this (there is nothing about `captive_dns.py` itself for a test to cover; it would only
+be testing a property of `asyncio.Task`).
+
+**Owner-directed consolidation, same pass**: the four `try/except`s added across the prior two passes
+each enumerated a specific list of exception types (`TypeError, ValueError`, then `AttributeError` on
+top once a gap surfaced, then `IndexError, UnicodeError` too for `DNSQuery.__init__`) - closing real
+gaps, but by re-discovering one more specific type per pass rather than expressing the actual intent
+directly. None of the four ever behave differently based on *which* exception fired; every one just
+means "this input isn't usable, fall back." Collapsed all four to plain `except Exception:` - strictly
+broader than the enumerated lists (so no coverage lost; every previously-caught case is still caught,
+plus whatever specific type hadn't been found yet), simpler to read, and doesn't need re-auditing again
+if some other type-shaped input surfaces later. Confirmed directly against the real interpreter (not
+assumed from CPython docs) that `asyncio.CancelledError` inherits from `BaseException`, not `Exception`,
+in this MicroPython build too - so this broadening cannot accidentally swallow a real cancellation; the
+existing explicit `except asyncio.CancelledError:` clauses in `run()`'s main loop and disconnect cleanup
+were kept exactly as-is; they exist for a *behavioral* reason (treat shutdown differently from an
+error), not as exception-type bookkeeping. All 39 tests, full lint/typecheck, still clean - this was a
+pure readability/robustness simplification, zero behavior change for every case already tested.
+
+Verified: full-scope `scripts/lint.sh`/`scripts/typecheck.sh` still 0 findings, `scripts/test.sh` all
+13 files green, 791 tests total.
+
+### captive_dns.py: fourth pass - validated against src/README.md's promotion checklist end to end, found a real question-truncation bug
+
+Went through `src/README.md`'s full checklist section by section against the file (not just re-reading
+the file in isolation), plus a direct comparison against `python/CommonDrivers/captive_dns.py` (the
+still-deployed, field-proven legacy version) to check the project owner's concern that hardening
+shouldn't drift the file away from actually-working, everyday behavior. That comparison confirmed the
+common-case reply (single question, no EDNS0) is byte-identical to legacy's own output, and that both
+of `src/`'s bigger behavioral differences from legacy - subnet filtering and malformed-data guarding -
+predate this file's promotion and were owner-authorized fixes for a real gap flagged in
+`asy_udp_socket.py`'s own review, not incidental drift introduced during hardening.
+
+The checklist pass itself found one genuine, previously-untested bug: `DNSQuery.__init__`'s label-
+parsing loop only validates through the zero-length terminator byte - it never checks that QTYPE (2
+bytes) and QCLASS (2 bytes) actually follow. A datagram that's validly terminated but ends immediately
+after (e.g. header + one label + terminator, nothing else) parsed to a non-empty `self.domain` with
+`self._question_end` set past the end of `self.data`. Because Python bytes slicing truncates silently
+instead of raising, `response()`'s `self.data[12:self._question_end]` didn't crash - it echoed a short,
+misaligned "question" section into a packet whose header still declared it as complete, producing a
+real malformed reply instead of the "malformed, don't respond" behavior every other truncation shape in
+this file already gets. Confirmed via direct reproduction against the real interpreter before and after
+the fix. Fixed with one bounds check (`question_end > len(data)`) that raises into the same existing
+broad `except Exception:` the rest of `__init__` already relies on - not a new special-cased branch,
+consistent with the project owner's "general containment, not per-condition" direction from the
+previous pass. Added `header + b"\x01a\x00"` to `malformed_query_cases()` and a dedicated boundary
+regression test (`test_dns_query_rejects_question_truncated_right_before_qtype_qclass`) asserting the
+exact boundary (QTYPE/QCLASS fully present) is still accepted while one byte short of it is rejected -
+39→40 tests.
+
+The rest of the checklist held with no further changes needed: no other raise-capable line lacks either
+a guard clause or a catch (traced the full call chain, including through `asy_udp_socket.py`'s own
+documented never-raises contract for every public I/O method); no unbounded growth or retained state
+beyond the deliberately-stateful `self.udps`; no blocking calls anywhere in the file (all I/O is
+`await`ed through `AsyUDPSocket`); full type hints already in place and already using PEP 604 syntax;
+every `response()`/`run()` code path returns explicitly; already using modern (non-`u`-prefixed) module
+names; tests already exercise the full configuration matrix plus a real integration test replicating
+`async_connect.py`'s exact call pattern. No Pico W/RP2040-specific concern applies directly - this file
+never touches `machine`/`network` APIs itself, only generic `asyncio`/`socket` through `AsyUDPSocket`.
+
+Verified: `scripts/lint.sh`/`scripts/typecheck.sh` both clean (29 source files), `tests/test_captive_dns.py`
+40/40, full `scripts/test.sh` 792/792 (13 files).
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
@@ -1841,11 +2156,14 @@ and a missing config file failing independently without either derailing the oth
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
 `asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 58,
-`asy_udp_socket.py` 62 — **752 total**. (Previous count of 690 across 11 files predated
-`asy_udp_socket.py`'s promotion and was never updated to include it — corrected during its
+`asy_udp_socket.py` 62, `captive_dns.py` 40 — **792 total**. (Previous count of 690 across 11 files
+predated `asy_udp_socket.py`'s promotion and was never updated to include it — corrected during its
 third pass; the 23→42 jump was its fourth pass's uncaught-exception/configuration/integration
 test additions; 42→56 is its fifth pass's mutation-bypass/concurrency/cancellation-safety tests;
-56→62 is its sixth pass's ready()/write_and_recvfrom() parameter-guard tests.)
+56→62 is its sixth pass's ready()/write_and_recvfrom() parameter-guard tests. `captive_dns.py`'s own
+18→37 jump is its second pass's configuration-matrix/integration/fault-propagation test additions;
+37→39 is its third pass's wire-format (EDNS0/multi-question trailing-data) regression tests; 39→40 is
+its fourth pass's question-truncation boundary regression test, see the entries above.)
 
 ## Decided for the refactor
 
