@@ -451,6 +451,51 @@ def test_voc_state_self_heals_from_a_single_corrupted_copy_through_real_fram() -
     assert dict(restored.params.__dict__) == dict(algo.params.__dict__)
 
 
+# ---------------------------------------------------------------------------
+# Untested-but-safe conditions found during a deeper review pass
+# ---------------------------------------------------------------------------
+
+
+def test_pack_into_negative_offset_returns_false_not_raise() -> None:
+    # Confirmed directly against the real interpreter: MicroPython's struct.pack_into() raises
+    # ValueError for a negative offset (unlike CPython's struct, which treats a negative offset as
+    # relative to the buffer's end) - already caught by pack_into()'s own try/except Exception, but
+    # previously untested. No real caller in this codebase ever passes a negative offset today.
+    algo = VOCAlgorithm()
+    algo.vocalgorithm_init()
+    buf = bytearray(300)
+    assert algo.params.pack_into(buf, offset=-50) is False
+
+
+def test_unpack_from_negative_offset_returns_false_not_raise() -> None:
+    algo = VOCAlgorithm()
+    buf = bytearray(300)
+    assert algo.params.unpack_from(buf, offset=-50) is False
+
+
+def test_set_tuning_parameters_smoke_test_normal_values() -> None:
+    # _vocalgorithm_set_tuning_parameters() has no caller anywhere in this codebase today -
+    # asy_sgp40_driver.py never calls it; only _vocalgorithm_get_states()/_vocalgorithm_set_states()
+    # are used (Sensirion's own short-interruption API). Kept as documented, Sensirion-mirroring API
+    # surface, but had zero test coverage at all until now. This is a smoke test confirming it
+    # threads the given values through correctly and leaves the algorithm in a usable state - not a
+    # claim that it's exercised by any real caller today (see BACKLOG.md).
+    algo = VOCAlgorithm()
+    algo.vocalgorithm_init()
+    algo._vocalgorithm_set_tuning_parameters(
+        voc_index_offset=100.0,
+        learning_time_hours=12.0,
+        gating_max_duration_minutes=180.0,
+        std_initial=50.0,
+    )
+    assert algo.params.mvoc_index_offset == algo._fix16_from_int(100.0)
+    assert algo.params.mtau_mean_variance_hours == algo._fix16_from_int(12.0)
+    assert algo.params.mgating_max_duration_minutes == algo._fix16_from_int(180.0)
+    assert algo.params.msraw_std_initial == algo._fix16_from_int(50.0)
+    voc_index = algo.vocalgorithm_process(30000)  # must still produce a valid index afterward
+    assert isinstance(voc_index, int)
+
+
 if __name__ == "__main__":
     import microtest
 

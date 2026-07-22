@@ -451,6 +451,315 @@ def test_reset_voc_false_is_a_no_op() -> None:
     assert reader.reset is True  # unchanged - reset_voc's own documented contract
 
 
+def test_reset_flag_persists_across_a_failed_read_and_repeats_the_reset_sequence() -> None:
+    # Discovered behavior, not (yet) changed - flagged separately: self.reset only clears to False
+    # inside _read_sgp()'s try block, right after a *successful* measure_index_and_raw() call. Every
+    # early-return path (no compensation data, a failed I2C measurement) leaves self.reset True, so
+    # the whole reset sequence (FRAM clear + vocalgorithm_reset(), via reset=self.reset passed into
+    # measure_index_and_raw()) re-runs on every subsequent trigger cycle until a read finally
+    # succeeds - never silently drops a user's reset request, at the cost of redundant FRAM clears
+    # and re-resets while blocked. This test locks in the current behavior; it does not endorse it.
+    manager, _chip, _spi_bus = make_fram_manager()
+    run(manager.setup())
+    reader = SGP40_Reader(
+        make_i2c(),
+        _no_comp_data,
+        fram_storage=manager,
+        fram_ntp_callback=_ntp_synced,
+        max_i2c_err=5,
+        cfg_path=_tmp_path("") + "/",
+    )
+    fake_bus = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
+    queue_successful_init(fake_bus)
+    run(reader._init_sgp())
+    run(reader.reset_voc(True))
+    assert reader.reset is True
+
+    # No compensation data available -> _read_sgp() returns early, before ever reaching
+    # measure_index_and_raw() - reset must still be True afterward.
+    run(reader._read_sgp(None, False, False))
+    assert reader.reset is True
+
+    # Now supply compensation data, but fail the measurement itself (CRC mismatch) - reset must
+    # STILL be True, since the failure happens before "self.reset = False" is ever reached.
+    reader.comp_callback = _comp_data
+    bad = _word(30000)
+    fake_bus.read_queue.append(bytes([bad[0] ^ 0xFF]) + bad[1:])
+    run(reader._read_sgp(None, False, False))
+    assert reader.reset is True
+
+    # Only a fully successful measurement finally clears it.
+    fake_bus.read_queue.append(_word(30000))
+    run(reader._read_sgp(None, False, False))
+    assert reader.reset is False
+
+
+async def _nan_comp_data() -> list[float | None]:
+    return [float("nan"), 50.0]
+
+
+async def _inf_comp_data() -> list[float | None]:
+    return [25.0, float("inf")]
+
+
+def test_read_sgp_nan_compensation_temperature_is_caught_not_propagated() -> None:
+    # _celsius_to_ticks()/_relative_humidity_to_ticks() call int() on the compensation value, which
+    # is never validated beyond "not None" before reaching there - confirmed directly against the
+    # real interpreter that NaN raises ValueError (and Inf raises OverflowError, see the next test).
+    # Already structurally safe (both calls happen inside _read_sgp()'s own wrapping
+    # try/except Exception), but previously untested.
+    reader = make_reader()
+    reader.comp_callback = _nan_comp_data
+    run(reader.pr.setup())
+    data, compensated, serialized = run(reader._read_sgp(None, False, False))
+    assert data == SGP40(None, None, None)
+    assert compensated is True  # comp data was "available" (not None) - the arithmetic itself failed
+    assert serialized is False
+    log = run(reader.get_error_counter())
+    err_count = log["SGP40"]["ErrCount"]
+    assert isinstance(err_count, int)
+    assert err_count >= 1
+
+
+def test_read_sgp_inf_compensation_humidity_is_caught_not_propagated() -> None:
+    reader = make_reader()
+    reader.comp_callback = _inf_comp_data
+    run(reader.pr.setup())
+    data, compensated, serialized = run(reader._read_sgp(None, False, False))
+    assert data == SGP40(None, None, None)
+    assert compensated is True
+    assert serialized is False
+    log = run(reader.get_error_counter())
+    err_count = log["SGP40"]["ErrCount"]
+    assert isinstance(err_count, int)
+    assert err_count >= 1
+
+
+def test_run_backup_genuine_fram_write_failure_is_logged_as_an_error() -> None:
+    # Distinct from the "no NTP yet" deferral path
+    # (test_fram_backup_without_ntp_sync_is_deferred_not_lost): here NTP is synced and require_ntp
+    # is already satisfied (voc_write forced to 0), but the underlying FRAM write itself genuinely
+    # fails - manager.set_pause(True) makes _mempause() return True, so _write() bails out with a
+    # clean False without ever touching the real chip, the same shape a genuine hardware fault
+    # takes. Previously untested branch: "Schreibfehler beim Backup!" (errno=13).
+    manager, _chip, _spi_bus = make_fram_manager()
+    run(manager.setup())
+    reader = SGP40_Reader(
+        make_i2c(),
+        _comp_data,
+        fram_storage=manager,
+        fram_ntp_callback=_ntp_synced,
+        max_i2c_err=5,
+        cfg_path=_tmp_path("") + "/",
+    )
+    fake_bus = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
+    queue_successful_init(fake_bus)
+    run(reader._init_sgp())
+    reader.voc_write = 0  # require_ntp=False - isolates the "genuine write failure" branch
+    buf, _serialize, _deserialize, cfg_values = run(reader._check_storage())
+    manager.set_pause(True)
+    run(reader._run_backup(buf, True, cfg_values))
+    manager.set_pause(False)
+    assert reader.last_backup is None
+    log = run(reader.get_error_counter())
+    err_count = log["SGP40"]["ErrCount"]
+    assert isinstance(err_count, int)
+    assert err_count >= 1
+
+
+def test_run_restore_applies_backup_anyway_once_wait_time_ntp_budget_is_exhausted() -> None:
+    # Escape hatch in _run_restore(): if a valid, timestamped backup exists but NTP still hasn't
+    # synced by the time voc_init's WaitTimeNTP countdown reaches 0, the restore is applied anyway
+    # without ever checking BackupMaxAge - recovering a possibly-unverifiable-age baseline rather
+    # than losing it entirely. Previously untested (existing FRAM restore tests all use _ntp_synced
+    # throughout).
+    manager, _chip, spi_bus = make_fram_manager()
+    run(manager.setup())
+
+    async def scenario() -> tuple[bool, int | None]:
+        writer = SGP40_Reader(
+            make_i2c(),
+            _comp_data,
+            fram_storage=manager,
+            fram_ntp_callback=_ntp_synced,
+            max_i2c_err=5,
+            cfg_path=_tmp_path("") + "/",
+        )
+        fake_bus = bus(writer.sgp.i2c_sgp40.i2c_device.i2c)
+        queue_successful_init(fake_bus)
+        await writer._init_sgp()
+        await _write_and_back_up(writer, fake_bus, 1)  # a real, valid, NTP-timestamped backup
+
+        manager2 = make_fram_manager_sharing(spi_bus)
+        await manager2.setup()
+        reader = SGP40_Reader(
+            make_i2c(),
+            _comp_data,
+            fram_storage=manager2,
+            fram_ntp_callback=_ntp_not_synced,  # the *reader's* own current time is never NTP-synced
+            max_i2c_err=5,
+            cfg_path=_tmp_path("") + "/",
+        )
+        fake_bus2 = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
+        queue_successful_init(fake_bus2)
+        await reader._init_sgp()
+        reader.voc_init = 1  # about to hit 0 on the next _check_storage() cycle
+        buf2, _serialize2, deserialize2, cfg_values2 = await reader._check_storage()
+        assert reader.voc_init == 0  # countdown just reached its end this same cycle
+        return await reader._run_restore(buf2, deserialize2, cfg_values2), reader.restored_from
+
+    restored, restored_from = run(scenario())
+    assert restored is True  # applied anyway, despite age being unknowable (no NTP)
+    # A real write-time timestamp (the backup itself has one - only the *reader's* clock is
+    # unsynced), not the ts=-1 "no timestamp at all" sentinel from the ts_is_None branch.
+    assert restored_from is not None and restored_from > 0
+
+
+def test_run_backup_writes_without_timestamp_once_wait_time_ntp_budget_is_exhausted() -> None:
+    # Symmetric to the restore-side escape hatch above: once voc_write's WaitTimeNTP countdown
+    # reaches 0, require_ntp becomes False and the backup is written anyway even though NTP still
+    # hasn't synced - the existing test_fram_backup_without_ntp_sync_is_deferred_not_lost only
+    # covers the "still waiting" (require_ntp still True) branch, not this one.
+    manager, _chip, _spi_bus = make_fram_manager()
+    run(manager.setup())
+
+    async def scenario() -> tuple[int | None, int]:
+        writer = SGP40_Reader(
+            make_i2c(),
+            _comp_data,
+            fram_storage=manager,
+            fram_ntp_callback=_ntp_not_synced,
+            max_i2c_err=5,
+            cfg_path=_tmp_path("") + "/",
+        )
+        fake_bus = bus(writer.sgp.i2c_sgp40.i2c_device.i2c)
+        queue_successful_init(fake_bus)
+        await writer._init_sgp()
+        writer.voc_write = 0  # budget already exhausted -> require_ntp will be False
+        buf, _serialize, _deserialize, cfg_values = await writer._check_storage()
+        fake_bus.read_queue.append(_word(30000))
+        data, _compensated, _serialized = await writer._read_sgp(buf, True, False)
+        await writer._store_sgp(data)
+        await writer._run_backup(buf, True, cfg_values)
+        return writer.last_backup, writer.voc_write
+
+    last_backup, voc_write_after = run(scenario())
+    assert last_backup == 0  # written without a timestamp - the documented "backup exists, no TS" sentinel
+    assert voc_write_after == 0  # require_ntp was False, so the "resynced" branch never re-arms it
+
+
+def test_check_storage_backup_counter_wraps_before_it_could_overflow() -> None:
+    # The 100000 wraparound guard only ever matters when BackupPeriod is disabled (0) - any nonzero
+    # period's own periodic-trigger reset (backup_counter=0 once the period elapses) already fires
+    # long before 100000 for every value in that field's own valid range (max 60*1440 = 86400 <
+    # 100000), so this specific guard is otherwise unreachable. Previously untested.
+    cfg_dir = _sgp_cfg_dir("backupdisabled")
+    _write_sgp_cfg(cfg_dir, {"BackupPeriod": 0, "BackupMaxAge": 7200, "WaitTimeNTP": 30})
+    manager, _chip, _spi_bus = make_fram_manager()
+    run(manager.setup())
+    reader = SGP40_Reader(
+        make_i2c(),
+        _comp_data,
+        fram_storage=manager,
+        fram_ntp_callback=_ntp_synced,
+        max_i2c_err=5,
+        cfg_path=cfg_dir,
+    )
+    fake_bus = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
+    queue_successful_init(fake_bus)
+    run(reader._init_sgp())
+    reader.backup_counter = 99999
+    run(reader._check_storage())
+    assert reader.backup_counter == 0  # wrapped, not left to grow past 100000
+
+
+def test_init_sgp_sets_verify_to_the_documented_formula() -> None:
+    # ceil((10 * _FRAM_VERIFY_MINS) / BackupPeriod) * 0.1 - roughly "verify once per
+    # _FRAM_VERIFY_MINS (60min) worth of backups". Confirmed against the real
+    # ts_storage.get_verify(), not just that _init_sgp() succeeds.
+    cfg_dir = _sgp_cfg_dir("verify")
+    _write_sgp_cfg(cfg_dir, {"BackupPeriod": 5, "BackupMaxAge": 7200, "WaitTimeNTP": 30})
+    manager, _chip, _spi_bus = make_fram_manager()
+    run(manager.setup())
+    reader = SGP40_Reader(
+        make_i2c(),
+        _comp_data,
+        fram_storage=manager,
+        fram_ntp_callback=_ntp_synced,
+        max_i2c_err=5,
+        cfg_path=cfg_dir,
+    )
+    fake_bus = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
+    queue_successful_init(fake_bus)
+    assert run(reader._init_sgp()) is True
+    assert reader.ts_storage is not None
+    # ceil(600/5)*0.1 = ceil(120.0)*0.1 = 120*0.1 = 12.0 -> int(12.0) = 12
+    assert run(reader.ts_storage.get_verify()) == 12
+
+
+def test_simultaneous_restore_and_backup_in_one_cycle_reads_then_rewrites_the_same_buffer() -> None:
+    # _check_storage() can independently set both serialize and deserialize True in the same cycle
+    # (a restore still pending AND the periodic backup period elapsing at the same tick) - both then
+    # share the SAME buffer: _run_restore() reads the old state into it first, then
+    # vocalgorithm_proc_ser_des() unpacks it, processes one new sample, and re-packs the *updated*
+    # state back into that same buffer, which _run_backup() then writes out. Never exercised by any
+    # existing test (each of which only ever triggers one or the other, never both at once).
+    manager, _chip, spi_bus = make_fram_manager()
+    run(manager.setup())
+
+    async def scenario() -> tuple[bool, bool, int]:
+        writer = SGP40_Reader(
+            make_i2c(),
+            _comp_data,
+            fram_storage=manager,
+            fram_ntp_callback=_ntp_synced,
+            max_i2c_err=5,
+            cfg_path=_tmp_path("") + "/",
+        )
+        fake_bus = bus(writer.sgp.i2c_sgp40.i2c_device.i2c)
+        queue_successful_init(fake_bus)
+        await writer._init_sgp()
+        # Converge past the initial blackout so the restored state is meaningfully distinguishable
+        # - _write_and_back_up() (used by the existing FRAM round-trip test) threads buf through
+        # _read_sgp() on the final sample so pack_into() actually populates it before the backup
+        # write; passing buf=None here (like the plain read_loop tests do) would instead persist a
+        # freshly-allocated, all-zero buffer that was never populated at all.
+        await _write_and_back_up(writer, fake_bus, 60)
+
+        manager2 = make_fram_manager_sharing(spi_bus)
+        await manager2.setup()
+        reader = SGP40_Reader(
+            make_i2c(),
+            _comp_data,
+            fram_storage=manager2,
+            fram_ntp_callback=_ntp_synced,
+            max_i2c_err=5,
+            cfg_path=_tmp_path("") + "/",
+        )
+        fake_bus2 = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
+        queue_successful_init(fake_bus2)
+        await reader._init_sgp()
+        # Force both triggers to coincide on the very next _check_storage() cycle: WaitTimeNTP's
+        # default (30) leaves voc_init > 0 on a fresh reader already; backup_counter is set one
+        # short of BackupPeriod's default (1) * 60 trigger threshold.
+        reader.backup_counter = 59
+        buf2, serialize2, deserialize2, cfg_values2 = await reader._check_storage()
+        assert serialize2 is True
+        assert deserialize2 is True
+        deserialize2 = await reader._run_restore(buf2, deserialize2, cfg_values2)
+        assert deserialize2 is True  # restore actually applied
+        fake_bus2.read_queue.append(_word(31000))
+        data, _compensated, serialized2 = await reader._read_sgp(buf2, serialize2, deserialize2)
+        await reader._store_sgp(data)
+        assert reader.sgp._voc_algorithm is not None
+        return serialized2, True, reader.sgp._voc_algorithm.params.muptime
+
+    serialized, has_algo, muptime_after = run(scenario())
+    assert serialized is True  # the same cycle both restored AND re-serialized successfully
+    assert has_algo is True
+    assert muptime_after > 45 * 65536  # restored state was already well past the initial blackout
+
+
 def test_get_dict_data_and_get_dict_cfg_shape() -> None:
     reader = make_reader()
     run(reader._store_sgp(SGP40(42, 31000, 12345)))

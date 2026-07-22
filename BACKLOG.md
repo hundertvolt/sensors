@@ -2230,6 +2230,94 @@ in full detail above, inline with the findings they extend.
 Full suite: **835 tests, all passing** (`asy_sgp40_driver.py` 40→58, `voc_algorithm.py` 22→25 - see
 "Current test counts" below for the per-file breakdown).
 
+### Fourth review pass (line-by-line re-read for oversights/dead code/untested conditions)
+
+Requested explicitly: go through both `asy_sgp40_driver.py` and `voc_algorithm.py` again in detail
+for oversights, bugs, strange/unexpected behavior, and unhandled/unplanned/accidental exceptions or
+conditions with no unit test yet - independent of the earlier passes' own findings. Nothing here
+was silently changed; every item below is either a new regression test locking in already-correct-
+but-untested behavior, or a flagged behavioral question left for the project owner to decide (see
+"Flagged, not changed" below).
+
+**Confirmed real, previously untested conditions (now covered by new tests, no behavior change)**:
+- `_run_backup()`'s genuine-FRAM-write-failure branch (`"Schreibfehler beim Backup!"`, errno=13,
+  distinct from the already-tested "no NTP yet" deferral) had zero coverage. New test forces a real
+  write failure via `manager.set_pause(True)` (the same clean-`False`-without-touching-the-chip
+  shape a genuine hardware fault takes) and confirms it's logged and `last_backup` stays `None`.
+- Both `_run_restore()`'s and `_run_backup()`'s "wait-time-NTP budget exhausted, act anyway" escape
+  hatches were untested. `_run_restore()`: once `voc_init`'s countdown reaches 0 while NTP still
+  hasn't synced, a valid-but-ageless backup is restored anyway *without* ever checking
+  `BackupMaxAge` (recovering a possibly-unverifiable-age baseline rather than losing it). `_run_backup()`:
+  the symmetric case - once `voc_write`'s countdown reaches 0, the backup is written anyway without
+  a real timestamp (`last_backup` ends up `0`, the documented "backup exists, no TS" sentinel, not
+  `None`). The existing `test_fram_backup_without_ntp_sync_is_deferred_not_lost` only covered the
+  "still waiting" branch of the second case, never the "budget exhausted" branch of either.
+- `_check_storage()`'s `backup_counter >= 100000` wraparound guard was unreachable in every previous
+  test - it turns out to only ever matter when `BackupPeriod` is disabled (`0`), since any nonzero
+  period's own periodic-trigger reset already fires long before 100000 (max `60*1440 = 86400` for
+  the field's own valid range). New test disables `BackupPeriod`, pre-sets `backup_counter=99999`,
+  and confirms it wraps to `0` rather than being left to grow unbounded.
+- `_init_sgp()`'s `set_verify()` call was never checked against its actual computed value (only
+  that `_init_sgp()` succeeds) - new test confirms `ts_storage.get_verify()` matches the documented
+  `ceil(600/BackupPeriod)*0.1` formula for a real, non-default `BackupPeriod`.
+- **A genuinely reachable, previously unexercised interaction**: `_check_storage()` can
+  independently set both `serialize` and `deserialize` `True` in the *same* cycle (a restore still
+  pending, `voc_init > 0`, coinciding with the periodic backup period elapsing). Both then operate
+  on the *same* buffer: `_run_restore()` reads the old state into it, `vocalgorithm_proc_ser_des()`
+  unpacks it, processes one new sample, and re-packs the *updated* state back into that same
+  buffer, which `_run_backup()` then persists - restore and backup coherently compose in one pass.
+  No existing test ever triggered both at once. New test constructs this exact coincidence and
+  confirms the whole chain (restore succeeds, re-serialize succeeds, the resulting state reflects
+  the restored-then-processed uptime) - this test itself initially had a bug of its own (see next
+  paragraph), caught and fixed before landing.
+- **NaN/Inf compensation data**: confirmed directly against the real interpreter that
+  `_celsius_to_ticks()`/`_relative_humidity_to_ticks()` call `int()` on the caller-supplied
+  compensation value with no validation beyond "not `None`" - `float('nan')` raises `ValueError`,
+  `float('inf')`/`float('-inf')` raise `OverflowError`. Already structurally safe (both calls happen
+  inside `_read_sgp()`'s own wrapping `try`/`except Exception`, counted as a normal read error, not
+  propagated), but had zero test coverage for either case until now.
+- `voc_algorithm.py`: MicroPython's `struct.pack_into()`/`unpack_from()` raise `ValueError` for a
+  negative `offset` - confirmed directly against the real interpreter this is a genuine
+  MicroPython-vs-CPython difference (CPython's `struct` treats a negative offset as relative to the
+  buffer's end; MicroPython's doesn't support that convention at all). Already safe (both call
+  sites are wrapped in `try`/`except Exception: return False`), but untested; no real caller in this
+  codebase ever passes a negative offset today.
+- `voc_algorithm.py`'s `_vocalgorithm_set_tuning_parameters()` has *zero* callers anywhere in this
+  codebase (`asy_sgp40_driver.py` only ever calls `vocalgorithm_init()`/`vocalgorithm_reset()`; only
+  `_vocalgorithm_get_states()`/`_vocalgorithm_set_states()` - Sensirion's own short-interruption API
+  - are used, and only by tests exercising that path directly) and had zero test coverage at all.
+  Kept as documented, Sensirion-mirroring dead API surface; added a smoke test confirming it
+  threads values through correctly and doesn't leave the algorithm unusable, since "untested" and
+  "safe" aren't the same claim and this had neither established before now.
+
+**Confirmed harmless, not fixed (dead/vestigial code, noted for the record)**:
+- `measure_index_and_raw()`'s `if raw is None or raw < 0:` guard - `raw < 0` can never actually be
+  true given the current implementation (`get_raw()` returns either `None` or an unsigned 16-bit
+  value from `unpack_from(">H", ...)`, never negative). Vestigial from the old Adafruit-style
+  convention of returning `-1` as a sentinel for "read failed" (this driver uses `None` instead,
+  which the `is None` half of the check already fully covers). Harmless dead condition, not touched.
+
+**Flagged, not changed (behavioral question for the project owner)**:
+- `self.reset` (the `reset_voc()`-triggered flag) only ever clears to `False` in one place: inside
+  `_read_sgp()`'s `try` block, immediately after a *successful* `measure_index_and_raw()` call.
+  Every early-return path in `_read_sgp()` - no compensation data available, or a failed I2C
+  measurement/CRC error - leaves `self.reset` `True`, so the *entire* reset sequence (`ts_storage.clear()`
+  plus another `vocalgorithm_reset()` via `reset=self.reset` passed into `measure_index_and_raw()`)
+  re-runs on *every subsequent trigger cycle* (once per second) until a read finally succeeds. This
+  is arguably a deliberate resilience property (a user's reset request is never silently dropped
+  because of one transient fault, and re-running `vocalgorithm_reset()`/`ts_storage.clear()`
+  repeatedly is idempotent, not corrupting) - but it also means a prolonged fault (a stuck upstream
+  compensation source, or a flaky I2C bus) causes the FRAM to be cleared and the log line "Reset
+  Trigger" to fire every single second for as long as the fault lasts. Not fixed here - flagged for
+  a decision (e.g. clearing `self.reset` immediately once the FRAM-clear/reset actions are taken,
+  regardless of whether the *subsequent* measurement succeeds, would avoid the repetition without
+  losing the "never silently drop a reset request" property, since the FRAM-clear/reset actions
+  themselves don't depend on measurement success at all). A new test
+  (`test_reset_flag_persists_across_a_failed_read_and_repeats_the_reset_sequence`) locks in the
+  *current* behavior so a future change here is a deliberate, visible diff, not silent drift.
+
+Full suite: **867 tests, all passing** (`asy_sgp40_driver.py` 58→67, `voc_algorithm.py` 25→28).
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
@@ -2246,7 +2334,7 @@ and a missing config file failing independently without either derailing the oth
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
 `asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 58,
-`asy_udp_socket.py` 62, `asy_sgp40_driver.py` 58, `voc_algorithm.py` 25 — **835 total**. (Previous
+`asy_udp_socket.py` 62, `asy_sgp40_driver.py` 67, `voc_algorithm.py` 28 — **867 total**. (Previous
 count of 690 across 11 files predated `asy_udp_socket.py`'s promotion and was never updated to
 include it — corrected during its third pass; the 23→42 jump was its fourth pass's
 uncaught-exception/configuration/integration test additions; 42→56 is its fifth pass's
@@ -2254,7 +2342,9 @@ mutation-bypass/concurrency/cancellation-safety tests; 56→62 is its sixth pass
 ready()/write_and_recvfrom() parameter-guard tests. 752→813 is `asy_sgp40_driver.py`'s +
 `voc_algorithm.py`'s own promotion; 813→814 is the post-promotion review's self-test byte-check
 regression test; 814→835 is the third review pass's config-validation/integration/fault-propagation
-test additions (`asy_sgp40_driver.py` 40→58, `voc_algorithm.py` 22→25), see above.)
+test additions (`asy_sgp40_driver.py` 40→58, `voc_algorithm.py` 22→25); 835→867 is the fourth
+review pass's untested-condition regression tests (`asy_sgp40_driver.py` 58→67, `voc_algorithm.py`
+25→28), see above.)
 
 ## Decided for the refactor
 
