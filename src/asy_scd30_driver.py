@@ -496,7 +496,10 @@ class SCD30_I2C:
                     await i2c.readinto(self._buffer)
 
             if not new_data:
-                self._co2 = self._temperature = self._relative_humidity = None
+                # Leaves the cache untouched (not cleared to None) - matches the legacy driver's
+                # own proven field behavior exactly. Reconsidered per project-owner direction after
+                # an earlier pass here changed this to clear-to-None; see BACKLOG.md for why that
+                # was reverted.
                 return
 
             crcs_good = True

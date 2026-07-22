@@ -1924,6 +1924,14 @@ clear all three to `None` on that path, matching this codebase's universal "`Non
 convention regardless of how likely the race actually is - zero-risk, and `_error_check()` already
 correctly treats a `None` result as a countable error either way.
 
+**Reverted, later in this same effort - see the post-promotion re-review entry below.** The
+project owner pushed back on this exact fix after it shipped: the legacy driver never clears on a
+not-ready read either (its `data_available()`-gated callers just skip the update and keep whatever
+was cached), has run that way in the field for over a year, and "zero-risk" undersold the real
+tradeoff - counting a rare, likely-harmless not-ready blip as an error the caller then has to
+recover from is itself a behavior change from something proven to work, not a pure improvement.
+Reverted to matching the legacy driver exactly: leaves the cache untouched on not-ready again.
+
 **Resource discipline (section 4) - considered, declined**: `_read_data()`'s three
 `unpack(">f", self._buffer[a:b] + self._buffer[c:d])` calls each allocate a temporary concatenated
 bytes object, once per measurement cycle (~every 2s+), because the SCD30's wire format interleaves
@@ -2063,7 +2071,11 @@ and fixed, not just tests added**:
    single `read_measurement()` call, made exactly once per `_read_scd()` cycle before the three
    getters; `get_CO2()`/`get_temperature()`/`get_relative_humidity()` are now pure cache reads with no
    I2C of their own, eliminating the redundant re-checks structurally rather than special-casing them.
-   This never reached deployed units - caught here, on the branch, before merge.
+   This never reached deployed units - caught here, on the branch, before merge. **Follow-up**: the
+   single remaining not-ready path inside `read_measurement()` itself (a genuine, once-per-cycle
+   not-ready, as opposed to the every-cycle same-cycle bug above) was *also* reverted back to the
+   legacy driver's own behavior - see the amendment on the original "Stability (section 3)" entry
+   above; leaves the cache untouched instead of clearing to `None`.
 2. **Moderate: `set_ambient_pressure()`/`set_altitude()` silently accepted an invalid negative value
    as the special value `0` instead of rejecting it.** Both truncated their argument via `int(...)`
    *before* validating the range, and `int(-0.5) == 0` in both Python and MicroPython (truncates
@@ -2091,12 +2103,24 @@ and fixed, not just tests added**:
    it means this specific read-back was never confirmed against an authoritative source either, only
    inherited unchanged from driver to driver. Not something to silently "fix" - there's no alternate
    documented way to read this back if the sensor genuinely doesn't support it - flagging as a real,
-   still-open question rather than asserting either way.
+   still-open question rather than asserting either way. **Resolved by the project owner: leave it
+   as-is.** No code change - matches both the legacy driver and every sibling getter's own pattern,
+   and there's nothing concrete to change it to regardless.
 
-New unit-test count for this file after the re-review: 58 (was 54) - 2 fault-propagation tests
+**General direction from the project owner after this pass, applying beyond just the two items
+above**: the legacy driver worked correctly in the field for a long time outside of genuinely
+exotic failures, so a "fix" here needs to actually be tested against that bar, not just judged
+against this file's own internal logic in isolation - re-verify every change (normal, error, and
+edge cases alike) against what the legacy driver's own proven behavior actually was before treating
+a behavioral difference as an improvement.
+
+New unit-test count for this file after the re-review: 59 (was 54) - 2 fault-propagation tests
 correcting `get_CO2()`/etc.'s now-pure-cache-read contract (they can no longer raise `OSError` on
 NAK the way they used to when they touched the bus directly), 1 regression test locking in the
-`read_measurement()`-once-per-cycle fix, and 4 regression tests for the truncate-before-validate fix.
+`read_measurement()`-once-per-cycle fix, 4 regression tests for the truncate-before-validate fix,
+and 1 test locking in the not-ready-leaves-cache-untouched revert (replacing the since-reverted
+clears-to-None test), plus 1 more confirming the pre-any-successful-read initial state is still
+correctly `None` (not stale garbage).
 
 ### Coverage-driven completeness pass
 
@@ -2114,7 +2138,7 @@ and a missing config file failing independently without either derailing the oth
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
 `asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 58,
-`asy_udp_socket.py` 62, `asy_scd30_driver.py` 58 — **810 total**. (Previous count of 690 across 11
+`asy_udp_socket.py` 62, `asy_scd30_driver.py` 59 — **811 total**. (Previous count of 690 across 11
 files predated `asy_udp_socket.py`'s promotion and was never updated to include it — corrected during its
 third pass; the 23→42 jump was its fourth pass's uncaught-exception/configuration/integration
 test additions; 42→56 is its fifth pass's mutation-bypass/concurrency/cancellation-safety tests;

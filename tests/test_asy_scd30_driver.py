@@ -365,20 +365,31 @@ def test_read_measurement_raises_on_crc_mismatch_in_any_of_the_six_words() -> No
         assert raised, f"CRC corruption at byte {crc_pos} was not detected"
 
 
-def test_read_measurement_not_ready_clears_cached_values_and_issues_no_measurement_read() -> None:
+def test_read_measurement_not_ready_leaves_cached_values_untouched_and_issues_no_measurement_read() -> None:
+    # Matches the legacy driver's own proven behavior: a not-ready read_measurement() call must
+    # neither raise nor clear the cache - it just leaves whatever was last read in place. Reverted
+    # from an earlier "clear to None" version per project-owner direction; see BACKLOG.md.
     scd, i2c = make_scd()
-    # Assigned through a float | None-typed local rather than bare literals - mypy narrows a direct
-    # `scd._co2 = 1.0` to non-Optional float and never widens it back across the run() call below,
-    # which would make every `assert ... is None` after the first look statically unreachable.
-    stale: float | None = 1.0
-    scd._co2, scd._temperature, scd._relative_humidity = stale, stale, stale
+    scd._co2, scd._temperature, scd._relative_humidity = 1.0, 2.0, 3.0
+    i2c.read_queue.append(register_frame(0))
+    run(scd.read_measurement())
+    assert scd._co2 == 1.0
+    assert scd._temperature == 2.0
+    assert scd._relative_humidity == 3.0
+    ops = [entry[0] for entry in i2c.log]
+    assert ops == ["writeto", "readfrom_into"]  # only the data-ready probe, no measurement read
+
+
+def test_read_measurement_never_ran_yet_leaves_getters_at_their_initial_none() -> None:
+    # The untouched-on-not-ready behavior must not be confused with "always returns stale data" -
+    # before the first successful read_measurement() ever runs, the cache is still None (__init__'s
+    # own default), not some leftover garbage value.
+    scd, i2c = make_scd()
     i2c.read_queue.append(register_frame(0))
     run(scd.read_measurement())
     assert scd._co2 is None
     assert scd._temperature is None
     assert scd._relative_humidity is None
-    ops = [entry[0] for entry in i2c.log]
-    assert ops == ["writeto", "readfrom_into"]  # only the data-ready probe, no measurement read
 
 
 def test_get_co2_temperature_humidity_all_reflect_one_read_measurement_call() -> None:
