@@ -155,16 +155,15 @@ class SCD30_Reader(SensorReader):
         return await self.pr.get_log(_NAME)
 
     async def _init_scd(self) -> bool:
-        # Doesn't (re-)start continuous measurement itself: that mode is stored in the sensor's own
-        # NVM (Interface Description 1.4.1) and survives both soft reset and power cycles once
-        # provisioned - provisioning happens externally via set_ambient_pressure (see CLAUDE.md).
-        await self.pr.setup()  # required for all logged warnings and errors
+        # Continuous measurement isn't (re)started here - it's NVM-persisted and provisioned
+        # externally via set_ambient_pressure (see CLAUDE.md).
+        await self.pr.setup()
         self._err_cnt_internal = 0
         try:
             await self.scd.setup()
         except Exception as e:
             await self.pr.err_s(_NAME, "Error in initial setup:", e, errno=10)
-            return False  # error
+            return False
         self.pr.one(_NAME, "initialized")
         return True
 
@@ -172,8 +171,7 @@ class SCD30_Reader(SensorReader):
         timestamp: int | None = None
         try:
             timestamp = time.mktime(time.gmtime())
-            # Exactly one read_measurement() call per cycle, before the three getters below - see
-            # its own comment for why calling it again per-getter (the old shape) is a real bug.
+            # read_measurement() must run exactly once per cycle, before the getters below.
             await self.scd.read_measurement()
             co2 = await self.scd.get_CO2()
             temperature = await self.scd.get_temperature()
@@ -186,50 +184,45 @@ class SCD30_Reader(SensorReader):
 
     async def _store_scd(self, results: "SCDResults") -> None:
         if results[0] is None or results[1] is None or results[2] is None or results[3] is None:
-            return  # don't run on invalid data
-
-        # results: CO2, temperature, humidity, timestamp
+            return
         await self._set_meas_data(
             SCD30(
-                results[0],  # CO2
-                results[1],  # Temperature
-                results[2],  # Humidity
-                math_helpers.wet_bulb_temperature(results[1], results[2]),
-                math_helpers.dew_point(results[1], results[2]),
-                results[3],  # Timestamp
+                CO2=results[0],
+                Temp=results[1],
+                Hum=results[2],
+                WetBulb=math_helpers.wet_bulb_temperature(results[1], results[2]),
+                DewPoint=math_helpers.dew_point(results[1], results[2]),
+                TS=results[3],
             )
         )
         self.pr.all(_NAME, "Daten gespeichert")
 
     async def read_loop(self) -> bool:
-        if not await self._init_scd():  # init sensor at startup
-            return False  # break and restart if init fails
+        if not await self._init_scd():
+            return False
         while True:
-            await self.irq_trigger_event.wait()  # wait for read trigger IRQ
+            await self.irq_trigger_event.wait()
             self.pr.evt(_NAME, "sensor trigger")
-            self.scd_timer_triggers = 0  # reset no-irq-timer
-            results = await self._read_scd()  # read data
-            if not await self._error_check(results, _NAME):  # check and count errors
-                return False  # break and restart if too many errors
-            await self._store_scd(results)  # store data in result buffer
+            self.scd_timer_triggers = 0
+            results = await self._read_scd()
+            if not await self._error_check(results, _NAME):
+                return False
+            await self._store_scd(results)
 
     # CO2 Sensor IRQ triggern falls es nicht läuft (Pin bleibt HIGH wenn nicht gelesen!)
     async def scd_init_irq(self) -> None:
         while True:
             await self.start_trigger_event.wait()
-            if self.irq_pin.value() == 1:  # Interrupt pin is currently set
+            if self.irq_pin.value() == 1:
                 self.scd_timer_triggers += 1
 
-            if (
-                self.scd_timer_triggers >= self.trigger_half_sec
-            ):  # consecutive intervals with interrupt pin set (meas rate 500ms)
+            if self.scd_timer_triggers >= self.trigger_half_sec:  # consecutive intervals seen (500ms rate)
                 self.pr.evt(_NAME, "Interrupt Start Trigger")
                 self.irq_trigger_event.set()
 
     # selected low-level direct sensor driver function forwards
     async def stop_continuous_measurement(self, value: bool) -> bool:
-        # value is the desired "ContMeas" state (matches the REST field this backs): True (keep
-        # running) is a no-op, only False actually issues the stop command.
+        # value is the desired ContMeas state; True (keep running) is a no-op, only False stops it.
         if value:
             return False
         try:
@@ -335,21 +328,18 @@ class SCD30_I2C:
         self._co2: float | None = None
 
     async def setup(self) -> None:
-        async with self.i2c_scd30 as scd30:  # device session
-            async with scd30.i2c_device as i2c:  # bus session
+        async with self.i2c_scd30 as scd30:
+            async with scd30.i2c_device as i2c:
                 await i2c.setup()
-        # A CRC-valid firmware-version read confirms a real SCD30 (not just anything ACKing this
-        # address) is responding - matches BMP3xx's chip-ID check and SGP40's serial-number/self-test
-        # checks; the value itself isn't checked, there's no documented set of valid versions.
+        # CRC-valid firmware-version read confirms a real SCD30 is responding (matches
+        # BMP3xx/SGP40's identity checks) - the version value itself isn't checked.
         await self._read_register(_CMD_READ_FIRMWARE_VERSION)
         await self.reset()
 
     async def reset(self) -> None:
-        # Perform a soft reset on the sensor, restoring default values
         await self._send_command(_CMD_SOFT_RESET)
-        # Soft reset restarts the sensor's own system controller (Interface Description 1.4.10);
-        # boot-up time is documented as < 2s (1.1). This also runs on every failure-triggered
-        # restart, not just cold boot, so wait for the full documented bound - reliability over speed.
+        # Boot-up is documented as <2s (Interface Description 1.1); wait the full bound since this
+        # also runs on every failure-triggered restart, not just cold boot.
         await asyncio.sleep(2.5)
 
     async def stop_continuous_measurement(self) -> None:
@@ -360,8 +350,7 @@ class SCD30_I2C:
         return await self._read_register(_CMD_SET_MEASUREMENT_INTERVAL)
 
     async def set_measurement_interval(self, value: int) -> None:
-        # Sets the interval between readings in seconds. The interval value must be from 2-1800
-        # This value will be saved and will not be reset on boot or by calling `reset`.
+        # NVM-persisted - survives reset() and power cycles.
         if value < 2 or value > 1800:
             raise AttributeError("measurement_interval must be from 2-1800 seconds")
         await self._send_command(_CMD_SET_MEASUREMENT_INTERVAL, value)
@@ -370,8 +359,7 @@ class SCD30_I2C:
         return await self._read_register(_CMD_AUTOMATIC_SELF_CALIBRATION) == 1
 
     async def set_self_calibration_enabled(self, enabled: bool) -> None:
-        # Enables or disables automatic self calibration (ASC)
-        # This value will be saved and will not be reset on boot or by calling `reset`.
+        # NVM-persisted - survives reset() and power cycles.
         await self._send_command(_CMD_AUTOMATIC_SELF_CALIBRATION, enabled)
         if enabled:
             await asyncio.sleep(0.01)
@@ -380,11 +368,9 @@ class SCD30_I2C:
         return await self._read_register(_CMD_CONTINUOUS_MEASUREMENT)
 
     async def set_ambient_pressure(self, pressure_mbar: int | float) -> None:
-        # Specifies the ambient air pressure at the measurement location in mBar. This command
-        # (0x0010) is also "trigger continuous measurement" and is NVM-persisted (Interface
-        # Description 1.4.1) - see BACKLOG.md for the write-frequency finding re force=True callers.
-        # Validated before truncating: int(-0.5) == 0 would otherwise slip through as the special
-        # "disable" value instead of being rejected - real bug, see BACKLOG.md.
+        # 0x0010 doubles as "trigger continuous measurement" and is NVM-persisted (Interface
+        # Description 1.4.1). Validated before truncating - int(-0.5) == 0 would otherwise slip
+        # through as the "disable" value instead of being rejected.
         if pressure_mbar != 0 and (pressure_mbar > 1400 or pressure_mbar < 700):
             raise AttributeError("ambient_pressure must be from 700 to 1400 mBar")
         await self._send_command(_CMD_CONTINUOUS_MEASUREMENT, int(pressure_mbar))
@@ -393,10 +379,8 @@ class SCD30_I2C:
         return await self._read_register(_CMD_SET_ALTITUDE_COMPENSATION)
 
     async def set_altitude(self, altitude: int) -> None:
-        # Specifies the altitude at the measurement location in meters above sea level.
-        # This value will be saved and will not be reset on boot or by calling `reset`.
-        # Validated before truncating - see set_ambient_pressure()'s own comment for why
-        # (int(-0.5) == 0 would otherwise silently accept a negative altitude as valid).
+        # NVM-persisted. Validated before truncating - see set_ambient_pressure()'s comment for
+        # why int(-0.5) == 0 would otherwise slip through.
         if altitude < 0 or altitude > 65535:
             raise AttributeError("altitude must be from 0 to 65535 meters")
         await self._send_command(_CMD_SET_ALTITUDE_COMPENSATION, int(altitude))
@@ -406,38 +390,30 @@ class SCD30_I2C:
         return raw_offset / 100.0
 
     async def set_temperature_offset(self, offset: float | int) -> None:
-        # Specifies the offset to be added to the reported measurements to account for a bias in
-        # the measured signal.
-        # This value will be saved and will not be reset on boot or by calling `reset`.
+        # NVM-persisted - survives reset() and power cycles.
         if offset < 0 or offset > 655.35:
             raise AttributeError("temperature_offset must be from 0 to 655.35 degrees Celsius")
-
         await self._send_command(_CMD_SET_TEMPERATURE_OFFSET, int(offset * 100))
 
     async def get_forced_recalibration_reference(self) -> int:
-        # Unlike AmbPres/Altitude/TempOffs/SelfCal, this readback is volatile: it always returns
-        # 400 (the standard reference) after a power cycle, regardless of what FRC value was last
-        # applied - the calibration curve update itself is permanent, just not this readback.
+        # Volatile readback: always returns 400 after a power cycle regardless of the last FRC
+        # value applied - the calibration curve update itself is permanent, just not this readback.
         return await self._read_register(_CMD_SET_FORCED_RECALIBRATION_FACTOR)
 
     async def set_forced_recalibration_reference(self, reference_value: int) -> None:
-        # Specifies the concentration of a reference source of CO2
         if reference_value < 400 or reference_value > 2000:
             raise AttributeError("forced_recalibration_reference must be from 400 to 2000 ppm")
         await self._send_command(_CMD_SET_FORCED_RECALIBRATION_FACTOR, reference_value)
 
     async def get_CO2(self) -> float | None:
-        # Returns the CO2 concentration in PPM (parts per million) from the most recent
-        # read_measurement() call - a pure cache read, no I2C of its own (see read_measurement()'s
-        # own comment for why these three getters must never independently re-check data-ready).
+        # Pure cache read from the last read_measurement() call, no I2C of its own - see
+        # read_measurement()'s comment for why these getters must never re-check data-ready.
         return self._co2
 
     async def get_temperature(self) -> float | None:
-        # Returns the current temperature in degrees Celsius - see get_CO2()'s own comment.
         return self._temperature
 
     async def get_relative_humidity(self) -> float | None:
-        # Returns the current relative humidity in %rH - see get_CO2()'s own comment.
         return self._relative_humidity
 
     async def _send_command(self, command: int, arguments: int | None = None) -> None:
@@ -469,21 +445,18 @@ class SCD30_I2C:
         self._buffer[0] = reg_addr >> 8
         self._buffer[1] = reg_addr & 0xFF
         await i2c.write(self._buffer, end=2)
-        # separate readinto because the SCD30 wants an i2c stop before the read
-        # (non-repeated start)
-        await asyncio.sleep(0.05)  # delay for response
-        # min 3 ms delay
+        # Separate readinto: the SCD30 has no repeated-start, so this stops the bus first; the
+        # delay clears the datasheet's >3ms minimum (Interface Description 1.4.4).
+        await asyncio.sleep(0.05)
         await i2c.readinto(self._buffer, end=3)
         if await self.crc.check_from(self._buffer, 3) != 2:
             raise RuntimeError("CRC check failed while reading data")
         return cast(int, unpack_from(">H", self._buffer)[0])
 
     async def read_measurement(self) -> None:
-        # Public: SCD30_Reader._read_scd() calls this exactly once per cycle, before get_CO2()/
-        # get_temperature()/get_relative_humidity(). Never call it twice in a row - the data-ready
-        # flag clears the instant a measurement is read (Interface Description 1.4.4), so a second
-        # call would see "not ready" and wipe the first call's fresh result back to None. Real bug,
-        # already shipped and fixed once - see BACKLOG.md before changing this again.
+        # Call exactly once per cycle (data-ready clears the instant it's read - Interface
+        # Description 1.4.4); a second call would wipe fresh data back to None. If not ready,
+        # leaves the cache untouched, matching the legacy driver - see BACKLOG.md.
         async with self.i2c_scd30 as scd30:
             async with scd30.i2c_device as i2c:
                 new_data = await self._read_dev_register(i2c, _CMD_GET_DATA_READY) > 0
@@ -496,10 +469,6 @@ class SCD30_I2C:
                     await i2c.readinto(self._buffer)
 
             if not new_data:
-                # Leaves the cache untouched (not cleared to None) - matches the legacy driver's
-                # own proven field behavior exactly. Reconsidered per project-owner direction after
-                # an earlier pass here changed this to clear-to-None; see BACKLOG.md for why that
-                # was reverted.
                 return
 
             crcs_good = True
