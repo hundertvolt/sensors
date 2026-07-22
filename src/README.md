@@ -114,8 +114,7 @@ you check, per file.
 
 ## 3. Stability for indefinite, unattended operation
 
-These units run for years without a reboot (see CLAUDE.md/BACKLOG.md's "No leaks, no drift"). For
-any file moving to `src/`:
+These units run for years without a reboot. For any file moving to `src/`:
 
 - [ ] No unbounded growth: no list/dict/buffer that grows with each call and is never trimmed, no
       accumulating counters that assume they'll be reset externally without confirming they are.

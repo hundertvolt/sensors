@@ -190,7 +190,7 @@ verification chain (`run_verification_sequence()`), each step gating the next:
 5. Import the frozen module *by name* inside that Unix port binary (no source `.py` file anywhere
    on disk) and check its result — proves `mpy-cross` and the Unix port build both actually work.
    This is the host-side interpreter used for running tests later, see "Code quality tooling"
-   below and BACKLOG.md's "Self-contained venv via uv".
+   below and `tests/README.md`'s "Why not pytest".
 6. Build the RP2 firmware for the target board with the same test module frozen in — zero
    errors/warnings (build-only; there's no RP2 hardware here to run it on).
 7. Clean up the frozen-bytecode build artifacts from steps 4–6.
@@ -222,8 +222,7 @@ and bus/sensor fault recovery considerably beyond what's described above, and ad
 mypy, ruff, and a CI pipeline (including a real firmware build, eventually — the current pipeline
 covers lint/type-check/unit-tests only) that don't exist for the current codebase at all. Files
 move to `src/` once fully reviewed and tested against that bar — see `src/` and `tests/` in
-"Repository layout" above. See BACKLOG.md's "Final-goal requirements for the refactor" for the
-full, detailed target.
+"Repository layout" above. See BACKLOG.md's "Refactor targets not yet done" for what's still open.
 
 ## Code quality tooling
 
@@ -296,5 +295,5 @@ non-gating, `continue-on-error: true` steps:
 ## Further reading
 
 - **CLAUDE.md** — AI-session operating constraints and architecture reference.
-- **BACKLOG.md** — the project's running knowledge base; see its own opening paragraph for the
-  full scope.
+- **BACKLOG.md** — active open questions and not-yet-done work; see its own opening paragraph for
+  the full scope. Resolved items move into this file or CLAUDE.md instead of staying there.
