@@ -2297,26 +2297,47 @@ but-untested behavior, or a flagged behavioral question left for the project own
   convention of returning `-1` as a sentinel for "read failed" (this driver uses `None` instead,
   which the `is None` half of the check already fully covers). Harmless dead condition, not touched.
 
-**Flagged, not changed (behavioral question for the project owner)**:
-- `self.reset` (the `reset_voc()`-triggered flag) only ever clears to `False` in one place: inside
-  `_read_sgp()`'s `try` block, immediately after a *successful* `measure_index_and_raw()` call.
-  Every early-return path in `_read_sgp()` - no compensation data available, or a failed I2C
-  measurement/CRC error - leaves `self.reset` `True`, so the *entire* reset sequence (`ts_storage.clear()`
-  plus another `vocalgorithm_reset()` via `reset=self.reset` passed into `measure_index_and_raw()`)
-  re-runs on *every subsequent trigger cycle* (once per second) until a read finally succeeds. This
-  is arguably a deliberate resilience property (a user's reset request is never silently dropped
-  because of one transient fault, and re-running `vocalgorithm_reset()`/`ts_storage.clear()`
-  repeatedly is idempotent, not corrupting) - but it also means a prolonged fault (a stuck upstream
-  compensation source, or a flaky I2C bus) causes the FRAM to be cleared and the log line "Reset
-  Trigger" to fire every single second for as long as the fault lasts. Not fixed here - flagged for
-  a decision (e.g. clearing `self.reset` immediately once the FRAM-clear/reset actions are taken,
-  regardless of whether the *subsequent* measurement succeeds, would avoid the repetition without
-  losing the "never silently drop a reset request" property, since the FRAM-clear/reset actions
-  themselves don't depend on measurement success at all). A new test
-  (`test_reset_flag_persists_across_a_failed_read_and_repeats_the_reset_sequence`) locks in the
-  *current* behavior so a future change here is a deliberate, visible diff, not silent drift.
+**Fixed, per explicit owner direction** (originally flagged, not changed - now resolved): the
+`self.reset` behavior above was redesigned rather than left as a documented quirk. Owner's
+direction, verbatim in spirit: never drop a reset, don't need to redo the whole thing every time,
+never give up retrying, every path leads to defined and clear behavior. Reset now tracks its two
+independent sub-parts separately - `self._reset_fram_cleared` (has `ts_storage.clear()` succeeded
+for this request) and `self._reset_algo_applied` (has `vocalgorithm_reset()` actually been applied
+for this request) - both initialized `True` (nothing pending) and reset to `False` together by
+`reset_voc(True)`, so a fresh explicit request always restarts full tracking rather than silently
+riding on a previous request's stale bookkeeping.
 
-Full suite: **867 tests, all passing** (`asy_sgp40_driver.py` 58→67, `voc_algorithm.py` 25→28).
+`_read_sgp()` now only attempts whichever sub-part hasn't yet succeeded: the FRAM clear is skipped
+once `_reset_fram_cleared` is `True` (no more redundant FRAM writes while only the algorithm side is
+still blocked, e.g. on missing compensation data), and `vocalgorithm_reset()` is only actually
+invoked (`reset=True` passed into `measure_index_and_raw()`) while `_reset_algo_applied` is still
+`False` - the moment that call is issued, `_reset_algo_applied` is set `True` immediately, since
+`vocalgorithm_reset()` runs unconditionally before `measure_raw()`'s I2C transaction and never
+raises (`voc_algorithm.py`'s own contract), so it's guaranteed applied regardless of whether the
+I2C measurement that follows then succeeds or fails. `self.reset` only clears to `False` once both
+sub-parts are confirmed `True` in the same cycle - on both the success path and the exception path,
+since the software half can complete even when the hardware measurement that follows it fails.
+
+`reset_now = self.reset` is snapshotted once at the top of `_read_sgp()`, so a concurrent
+`reset_voc()` call from another task (a REST handler) only ever affects the *next* cycle's own
+snapshot - this cycle's own completion accounting can't be corrupted by a mid-cycle request from
+elsewhere, matching this driver's existing single-owning-task model (see the atomicity/locking
+answer this same conversation turn covered for `ts_storage`/`_voc_algorithm`, which this reset
+logic doesn't add any new concurrency risk on top of).
+
+The old test documenting "current, not endorsed" behavior
+(`test_reset_flag_persists_across_a_failed_read_and_repeats_the_reset_sequence`) no longer applies
+and was replaced by two tests proving the new contract directly:
+`test_reset_never_drops_but_each_sub_part_completes_at_most_once` (FRAM succeeds first, while
+algorithm-reset is still pending on missing compensation data; pauses FRAM storage afterward to
+prove a correct implementation would *not* need to touch it again) and
+`test_reset_retries_only_the_fram_half_once_the_algo_half_already_succeeded` (the mirror case -
+algorithm-reset succeeds first, FRAM clear kept failing via `set_pause(True)` across multiple
+cycles, `vocalgorithm_process()`'s own `muptime` counter used as an independent proof that
+`vocalgorithm_reset()` was never re-applied on a later cycle).
+
+Full suite: **868 tests, all passing** (`asy_sgp40_driver.py` 58→68, `voc_algorithm.py` 25→28 - net
++1 vs. the previous +9/+3 count, since one old test was replaced by two new ones).
 
 ### Coverage-driven completeness pass
 
@@ -2334,7 +2355,7 @@ and a missing config file failing independently without either derailing the oth
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
 `asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 58,
-`asy_udp_socket.py` 62, `asy_sgp40_driver.py` 67, `voc_algorithm.py` 28 — **867 total**. (Previous
+`asy_udp_socket.py` 62, `asy_sgp40_driver.py` 68, `voc_algorithm.py` 28 — **868 total**. (Previous
 count of 690 across 11 files predated `asy_udp_socket.py`'s promotion and was never updated to
 include it — corrected during its third pass; the 23→42 jump was its fourth pass's
 uncaught-exception/configuration/integration test additions; 42→56 is its fifth pass's
@@ -2344,7 +2365,8 @@ ready()/write_and_recvfrom() parameter-guard tests. 752→813 is `asy_sgp40_driv
 regression test; 814→835 is the third review pass's config-validation/integration/fault-propagation
 test additions (`asy_sgp40_driver.py` 40→58, `voc_algorithm.py` 22→25); 835→867 is the fourth
 review pass's untested-condition regression tests (`asy_sgp40_driver.py` 58→67, `voc_algorithm.py`
-25→28), see above.)
+25→28); 867→868 is the owner-directed reset redesign (one old test replaced by two new ones,
+`asy_sgp40_driver.py` 67→68), see above.)
 
 ## Decided for the refactor
 

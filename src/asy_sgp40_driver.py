@@ -97,6 +97,12 @@ class SGP40_Reader(SensorReaderConfig):
         self.last_backup: int | None = None
         self.restored_from: int | None = None
         self.reset = False
+        # Sub-completion tracking for a pending reset (see reset_voc()/_read_sgp()): a reset has two
+        # independent parts - clearing the FRAM backup and applying vocalgorithm_reset() - which can
+        # complete on different cycles (e.g. FRAM clear fails once but the software reset already
+        # succeeded). Both start "done" (nothing pending) until reset_voc(True) marks them pending.
+        self._reset_fram_cleared = True
+        self._reset_algo_applied = True
 
     def start_asy_read(self) -> asyncio.Task[bool]:
         evtloop = asyncio.get_event_loop()
@@ -138,6 +144,11 @@ class SGP40_Reader(SensorReaderConfig):
     async def reset_voc(self, flag: bool) -> None:
         if flag:
             self.reset = True
+            # A fresh request always restarts both sub-parts' tracking, even if a previous reset was
+            # already midway through completing - this specific request must be fully honored too,
+            # not silently considered already-satisfied by an earlier, unrelated reset's bookkeeping.
+            self._reset_fram_cleared = False
+            self._reset_algo_applied = False
 
     async def _init_sgp(self) -> bool:
         await self.pr.setup()  # required for all logged warnings and errors
@@ -297,15 +308,24 @@ class SGP40_Reader(SensorReaderConfig):
     async def _read_sgp(
         self, buf: "AsyFramChunkTimestampedBuffer | None", serialize: bool, deserialize: bool
     ) -> tuple[SGP40, bool, bool]:
-        if self.reset:
+        # A pending reset has two independent parts that can complete on different cycles - FRAM
+        # clear and vocalgorithm_reset() - tracked via _reset_fram_cleared/_reset_algo_applied so a
+        # transient fault in one part retries only that part, never redoing an already-succeeded one.
+        # reset_now is snapshotted once at entry: a concurrent reset_voc(True) from another task
+        # (e.g. a REST handler) only ever affects the *next* cycle's own snapshot, never this one's.
+        reset_now = self.reset
+        if reset_now:
             self.pr.evt(_NAME, "Reset Trigger")
             self.backup_counter = 0
             serialize = False
             deserialize = False
             self.last_backup = None
             self.restored_from = None
-            if self.ts_storage is not None:
-                if not await self.ts_storage.clear():
+            if self.ts_storage is None:
+                self._reset_fram_cleared = True  # nothing to clear - vacuously satisfied
+            elif not self._reset_fram_cleared:
+                self._reset_fram_cleared = await self.ts_storage.clear()
+                if not self._reset_fram_cleared:
                     await self.pr.err_s(_NAME, "Fehler beim FRAM löschen!", errno=14)
 
         try:  # caller-supplied callback (sensortask-*.py's own compensation source, not itself
@@ -325,6 +345,14 @@ class SGP40_Reader(SensorReaderConfig):
 
         try:
             timestamp = time.mktime(time.gmtime())
+            # Only actually apply the software reset once per pending request, even if the FRAM
+            # half is still incomplete - vocalgorithm_reset() runs unconditionally, before
+            # measure_raw()'s I2C transaction, and never raises (voc_algorithm.py's own contract),
+            # so the moment we decide to pass reset=True below, that half is guaranteed applied
+            # regardless of whether the I2C measurement that follows then succeeds or fails.
+            reset_for_measure = reset_now and not self._reset_algo_applied
+            if reset_for_measure:
+                self._reset_algo_applied = True
             (
                 voc_index,
                 raw,
@@ -333,12 +361,13 @@ class SGP40_Reader(SensorReaderConfig):
             ) = await self.sgp.measure_index_and_raw(
                 temperature=float(comp_data[0]),
                 relative_humidity=float(comp_data[1]),
-                reset=self.reset,
+                reset=reset_for_measure,
                 buf=None if buf is None else buf.get_data_buf(),
                 serialize=serialize,
                 deserialize=deserialize,
             )
-            self.reset = False
+            if reset_now and self._reset_algo_applied and self._reset_fram_cleared:
+                self.reset = False
             self.pr.all(_NAME, "gelesen")
 
             if deserialize:
@@ -354,6 +383,11 @@ class SGP40_Reader(SensorReaderConfig):
                     await self.pr.err_s(_NAME, "Fehler beim Serialisieren!", errno=16)
 
         except Exception as e:
+            # measure_raw()'s I2C transaction failed, but vocalgorithm_reset() (if reset_for_measure
+            # was True above) already completed before this exception could have been raised - same
+            # two-part completion check applies as the success path above.
+            if reset_now and self._reset_algo_applied and self._reset_fram_cleared:
+                self.reset = False
             voc_index = raw = timestamp = None
             serialized = False
             await self.pr.err_s(_NAME, "Lesefehler:", e, errno=17)

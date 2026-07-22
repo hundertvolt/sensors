@@ -451,14 +451,11 @@ def test_reset_voc_false_is_a_no_op() -> None:
     assert reader.reset is True  # unchanged - reset_voc's own documented contract
 
 
-def test_reset_flag_persists_across_a_failed_read_and_repeats_the_reset_sequence() -> None:
-    # Discovered behavior, not (yet) changed - flagged separately: self.reset only clears to False
-    # inside _read_sgp()'s try block, right after a *successful* measure_index_and_raw() call. Every
-    # early-return path (no compensation data, a failed I2C measurement) leaves self.reset True, so
-    # the whole reset sequence (FRAM clear + vocalgorithm_reset(), via reset=self.reset passed into
-    # measure_index_and_raw()) re-runs on every subsequent trigger cycle until a read finally
-    # succeeds - never silently drops a user's reset request, at the cost of redundant FRAM clears
-    # and re-resets while blocked. This test locks in the current behavior; it does not endorse it.
+def test_reset_never_drops_but_each_sub_part_completes_at_most_once() -> None:
+    # Reset has two independent sub-parts tracked separately (_reset_fram_cleared/
+    # _reset_algo_applied): self.reset only clears once BOTH have succeeded (never silently drops
+    # a user's reset request), but neither part repeats once it has already succeeded, even while
+    # the other is still being retried.
     manager, _chip, _spi_bus = make_fram_manager()
     run(manager.setup())
     reader = SGP40_Reader(
@@ -475,23 +472,67 @@ def test_reset_flag_persists_across_a_failed_read_and_repeats_the_reset_sequence
     run(reader.reset_voc(True))
     assert reader.reset is True
 
-    # No compensation data available -> _read_sgp() returns early, before ever reaching
-    # measure_index_and_raw() - reset must still be True afterward.
+    # Cycle 1: no compensation data yet, but the FRAM clear doesn't depend on it at all - it
+    # succeeds this cycle against the real, working chip. The algorithm-reset half hasn't run yet
+    # (measure_index_and_raw() is never reached without compensation data), so the request as a
+    # whole is still pending.
     run(reader._read_sgp(None, False, False))
     assert reader.reset is True
+    assert reader._reset_fram_cleared is True
+    assert reader._reset_algo_applied is False
 
-    # Now supply compensation data, but fail the measurement itself (CRC mismatch) - reset must
-    # STILL be True, since the failure happens before "self.reset = False" is ever reached.
+    # Pause FRAM storage: if _read_sgp() incorrectly re-attempted the already-succeeded clear(), it
+    # would now fail and leave self.reset stuck True forever - proving it does NOT touch FRAM again.
+    manager.set_pause(True)
     reader.comp_callback = _comp_data
-    bad = _word(30000)
-    fake_bus.read_queue.append(bytes([bad[0] ^ 0xFF]) + bad[1:])
+    fake_bus.read_queue.append(_word(30000))
+    run(reader._read_sgp(None, False, False))
+    manager.set_pause(False)
+    assert reader.reset is False  # both parts satisfied - the clear was correctly not retried
+    assert reader.sgp._voc_algorithm is not None
+    assert reader.sgp._voc_algorithm.params.muptime == 1 * 65536  # vocalgorithm_reset() applied exactly once
+
+
+def test_reset_retries_only_the_fram_half_once_the_algo_half_already_succeeded() -> None:
+    # Mirror of the test above: the algorithm reset succeeds first (compensation data available
+    # immediately), but the FRAM clear keeps failing (paused) - vocalgorithm_reset() must NOT run
+    # again on a later cycle just because the FRAM half is still incomplete.
+    manager, _chip, _spi_bus = make_fram_manager()
+    run(manager.setup())
+    reader = SGP40_Reader(
+        make_i2c(),
+        _comp_data,
+        fram_storage=manager,
+        fram_ntp_callback=_ntp_synced,
+        max_i2c_err=5,
+        cfg_path=_tmp_path("") + "/",
+    )
+    fake_bus = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
+    queue_successful_init(fake_bus)
+    run(reader._init_sgp())
+    manager.set_pause(True)  # FRAM clear fails every attempt until unpaused below
+    run(reader.reset_voc(True))
+
+    fake_bus.read_queue.append(_word(30000))
+    run(reader._read_sgp(None, False, False))
+    assert reader.reset is True  # FRAM half still pending
+    assert reader._reset_algo_applied is True  # algorithm reset already succeeded, first cycle
+    assert reader.sgp._voc_algorithm is not None
+    assert reader.sgp._voc_algorithm.params.muptime == 1 * 65536
+
+    # Retry with the FRAM clear still failing - the algorithm reset must NOT run again (muptime
+    # keeps advancing by one sample per call, never resetting back to 1 * 65536).
+    fake_bus.read_queue.append(_word(30000))
     run(reader._read_sgp(None, False, False))
     assert reader.reset is True
+    assert reader.sgp._voc_algorithm.params.muptime == 2 * 65536
 
-    # Only a fully successful measurement finally clears it.
+    # FRAM finally recovers - the reset completes, still without ever re-applying the algo reset.
+    manager.set_pause(False)
     fake_bus.read_queue.append(_word(30000))
     run(reader._read_sgp(None, False, False))
     assert reader.reset is False
+    assert reader.sgp._voc_algorithm.params.muptime == 3 * 65536
 
 
 async def _nan_comp_data() -> list[float | None]:
