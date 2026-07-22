@@ -470,16 +470,26 @@ def test_reset_never_drops_but_each_sub_part_completes_at_most_once() -> None:
     queue_successful_init(fake_bus)
     run(reader._init_sgp())
     run(reader.reset_voc(True))
-    assert reader.reset is True
+    reset_after_request = reader.reset
+    assert reset_after_request is True
 
     # Cycle 1: no compensation data yet, but the FRAM clear doesn't depend on it at all - it
     # succeeds this cycle against the real, working chip. The algorithm-reset half hasn't run yet
     # (measure_index_and_raw() is never reached without compensation data), so the request as a
     # whole is still pending.
     run(reader._read_sgp(None, False, False))
-    assert reader.reset is True
-    assert reader._reset_fram_cleared is True
-    assert reader._reset_algo_applied is False
+    # Snapshotting into local variables before each assert, rather than repeating `reader.reset`
+    # (etc.) as a bare attribute access, sidesteps a real mypy narrowing limitation: once
+    # `reader.reset is True` is asserted once, mypy doesn't invalidate that narrowing across the
+    # `run(...)` calls in between, so a later `reader.reset is False` gets flagged as unreachable
+    # (confirmed directly against the pinned mypy version with a minimal repro) even though the
+    # attribute genuinely does change at runtime.
+    reset_mid = reader.reset
+    fram_cleared_mid = reader._reset_fram_cleared
+    algo_applied_mid = reader._reset_algo_applied
+    assert reset_mid is True
+    assert fram_cleared_mid is True
+    assert algo_applied_mid is False
 
     # Pause FRAM storage: if _read_sgp() incorrectly re-attempted the already-succeeded clear(), it
     # would now fail and leave self.reset stuck True forever - proving it does NOT touch FRAM again.
@@ -488,9 +498,11 @@ def test_reset_never_drops_but_each_sub_part_completes_at_most_once() -> None:
     fake_bus.read_queue.append(_word(30000))
     run(reader._read_sgp(None, False, False))
     manager.set_pause(False)
-    assert reader.reset is False  # both parts satisfied - the clear was correctly not retried
-    assert reader.sgp._voc_algorithm is not None
-    assert reader.sgp._voc_algorithm.params.muptime == 1 * 65536  # vocalgorithm_reset() applied exactly once
+    reset_final = reader.reset
+    assert reset_final is False  # both parts satisfied - the clear was correctly not retried
+    voc_algorithm = reader.sgp._voc_algorithm
+    assert voc_algorithm is not None
+    assert voc_algorithm.params.muptime == 1 * 65536  # vocalgorithm_reset() applied exactly once
 
 
 def test_reset_retries_only_the_fram_half_once_the_algo_half_already_succeeded() -> None:
@@ -513,26 +525,34 @@ def test_reset_retries_only_the_fram_half_once_the_algo_half_already_succeeded()
     manager.set_pause(True)  # FRAM clear fails every attempt until unpaused below
     run(reader.reset_voc(True))
 
+    # Local-variable snapshots throughout (rather than repeated bare `reader.reset`/
+    # `reader.sgp._voc_algorithm` attribute access) sidestep a real mypy narrowing limitation - see
+    # the matching comment in test_reset_never_drops_but_each_sub_part_completes_at_most_once above.
     fake_bus.read_queue.append(_word(30000))
     run(reader._read_sgp(None, False, False))
-    assert reader.reset is True  # FRAM half still pending
-    assert reader._reset_algo_applied is True  # algorithm reset already succeeded, first cycle
-    assert reader.sgp._voc_algorithm is not None
-    assert reader.sgp._voc_algorithm.params.muptime == 1 * 65536
+    reset_after_cycle1 = reader.reset
+    algo_applied_after_cycle1 = reader._reset_algo_applied
+    voc_algorithm = reader.sgp._voc_algorithm
+    assert reset_after_cycle1 is True  # FRAM half still pending
+    assert algo_applied_after_cycle1 is True  # algorithm reset already succeeded, first cycle
+    assert voc_algorithm is not None
+    assert voc_algorithm.params.muptime == 1 * 65536
 
     # Retry with the FRAM clear still failing - the algorithm reset must NOT run again (muptime
     # keeps advancing by one sample per call, never resetting back to 1 * 65536).
     fake_bus.read_queue.append(_word(30000))
     run(reader._read_sgp(None, False, False))
-    assert reader.reset is True
-    assert reader.sgp._voc_algorithm.params.muptime == 2 * 65536
+    reset_after_cycle2 = reader.reset
+    assert reset_after_cycle2 is True
+    assert voc_algorithm.params.muptime == 2 * 65536
 
     # FRAM finally recovers - the reset completes, still without ever re-applying the algo reset.
     manager.set_pause(False)
     fake_bus.read_queue.append(_word(30000))
     run(reader._read_sgp(None, False, False))
-    assert reader.reset is False
-    assert reader.sgp._voc_algorithm.params.muptime == 3 * 65536
+    reset_after_cycle3 = reader.reset
+    assert reset_after_cycle3 is False
+    assert voc_algorithm.params.muptime == 3 * 65536
 
 
 async def _nan_comp_data() -> list[float | None]:
