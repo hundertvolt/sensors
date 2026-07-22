@@ -1,13 +1,9 @@
-"""Captive-portal DNS spoofer for hotspot/AP mode. One caller: async_connect.py's
-DNSServer.run(), started only while the device is broadcasting its own fallback hotspot. Every
-on-subnet query gets a canned A-record response pointing back at the AP's own IP, regardless of
-the name asked for, so any client on the hotspot lands on the device's own config page.
+"""Captive-portal DNS spoofer for hotspot/AP mode. Called only by async_connect.py's
+DNSServer.run() while the device broadcasts its fallback hotspot; every on-subnet query gets a
+canned A-record pointing back at the AP's own IP, landing any client on the config page.
 
-Never inspects anything beyond the DNS header/question section and the source address; a
-subnet-mismatched, malformed, or truncated packet is silently dropped rather than raising. Stability
-comes first here: every try/except in this file is a broad `except Exception` guarding "this input
-must never crash the server," not an enumerated list of specific exception types - see
-DNSServer.run()'s and DNSQuery.__init__'s own comments for what's routine vs. genuinely unexpected.
+Malformed/off-subnet/truncated input is dropped, never raised - see BACKLOG.md for the full
+design rationale and review history.
 """
 
 import asyncio
@@ -35,10 +31,8 @@ class DNSServer:
             netmask_int = _ipv4_to_int(netmask)
             network = _ipv4_to_int(server_ip) & netmask_int
         except Exception:
-            # server_ip/netmask come from the OS's own wlan.ifconfig(); guard broadly anyway rather
-            # than let any parsing failure raise out of the task, which nothing supervises. Caught
-            # broadly, not enumerated by type, since every failure here means the same thing: not a
-            # usable value (asyncio.CancelledError is exempt - it's a BaseException, not Exception).
+            # server_ip/netmask come from the OS's own wlan.ifconfig(); guard broadly since nothing
+            # supervises this task (CancelledError is exempt - it's a BaseException, not Exception).
             if self.debug:
                 print("DNSServer: invalid server_ip/netmask, not starting:", server_ip, netmask)
             return
@@ -52,8 +46,7 @@ class DNSServer:
                         on_subnet = (_ipv4_to_int(addr[0]) & netmask_int) == network
                     except Exception:
                         # addr[0] not a well-formed dotted-quad string (e.g. a raw sockaddr byte -
-                        # see BACKLOG.md) - a routine, expected condition, not caught by type.
-                        # Treated like off-subnet rather than falling through to the 3s backoff below.
+                        # see BACKLOG.md) - treated like off-subnet, not the 3s backoff below.
                         on_subnet = False
                     if not on_subnet:
                         if self.debug:
@@ -90,13 +83,12 @@ class DNSServer:
         try:
             await self.udps.disconnect()
         except asyncio.CancelledError:
-            # A second cancellation delivered while this cleanup await is in flight (e.g. the
-            # caller cancels again, or wraps run() in asyncio.wait_for()) - already shutting down,
-            # nothing more to do.
+            # A second cancellation delivered while this cleanup await is in flight - already
+            # shutting down, nothing more to do.
             pass
         except Exception as e:
-            # disconnect() is documented as never raising, but this is the last await in run() and
-            # nothing supervises this task - never let cleanup itself become the uncaught exception.
+            # disconnect() is documented as never raising, but nothing supervises this task -
+            # never let cleanup itself become the uncaught exception.
             if self.debug:
                 print("DNS Server error during disconnect:", e)
         if self.debug:
@@ -120,24 +112,17 @@ class DNSQuery:
                     self.domain += data[ini + 1 : ini + lon + 1].decode("utf-8") + "."
                     ini += lon + 1
                     lon = data[ini]
-                # ini now points at the zero-length terminator; QTYPE (2 bytes) and QCLASS (2 bytes)
-                # follow immediately - this is the end of the one question response() must echo,
-                # not the end of the whole datagram (which may carry an EDNS0 OPT record or further
-                # questions/records this class was never meant to parse - see response()'s comment).
+                # ini now points at the zero-length terminator; QTYPE+QCLASS (4 bytes) follow -
+                # the end of the one question response() must echo, not the whole datagram.
                 question_end = ini + 5
                 if question_end > len(data):
-                    # Terminator found, but the datagram ends before QTYPE/QCLASS - bytes slicing
-                    # would silently truncate rather than raise, so this needs an explicit check
-                    # instead of relying on the surrounding try/except. Raising routes it through
-                    # the same "malformed, don't respond" path as every other truncated shape,
-                    # instead of building a response with a short, misaligned question section.
+                    # Bytes slicing would silently truncate rather than raise on a datagram that
+                    # ends before QTYPE/QCLASS - raise explicitly into the "malformed" except below.
                     raise ValueError("truncated question: missing QTYPE/QCLASS")
                 self._question_end = question_end
         except Exception:
-            # Truncated/malformed data, or a non-bytes data (the only real caller, run(), always
-            # passes bytes, but this class is public) - caught broadly, not enumerated by type,
-            # since every failure here means the same thing: not a usable standard query. Reuses
-            # the existing empty-domain sentinel instead of raising into run()'s 3s backoff.
+            # Truncated/malformed data (or non-bytes data, since this class is public) - not a
+            # usable standard query. Reuses the empty-domain sentinel, no raise into run().
             self.domain = ""
         if self.debug:
             print("DNSQuery domain:" + self.domain)
@@ -149,18 +134,14 @@ class DNSQuery:
             print(f"DNSQuery response: {self.domain} ==> {ip}")
         if self.domain:
             try:
-                # run() only ever calls this with its own already-validated server_ip, but this
-                # method is public and shouldn't rely on that - a bad ip would otherwise either
-                # raise or silently build a corrupt packet (wrong RDATA length vs. the header's
-                # declared 4). Caught broadly, not enumerated by type; any failure means "invalid".
+                # This method is public and shouldn't rely on run() only passing a validated
+                # server_ip - a bad ip would otherwise build a corrupt packet (wrong RDATA length).
                 _ipv4_to_int(ip)
             except Exception:
                 return None
             packet = self.data[:2] + b"\x81\x80"
             # QDCOUNT=1, ANCOUNT=1, NSCOUNT=0, ARCOUNT=0 - hardcoded, not echoed from the original
-            # header's own counts: this class only ever parses/echoes exactly one question (see
-            # _question_end above) and always answers with exactly one record, regardless of what
-            # the original packet declared (e.g. a second question, or an EDNS0 OPT record).
+            # header: this class always parses/echoes exactly one question and one answer.
             packet += b"\x00\x01\x00\x01\x00\x00\x00\x00"
             packet += self.data[12 : self._question_end]  # the one echoed question, not the rest of the datagram
             packet += b"\xc0\x0c"  # Pointer to domain name
