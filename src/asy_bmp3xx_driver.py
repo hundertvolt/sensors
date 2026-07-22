@@ -70,7 +70,10 @@ _MEAS_TIMEOUT_MS = const(300)  # datasheet sec 3.9.2: max ~129ms at x32/x32 osr;
 _OSR_SETTINGS = (1, 2, 4, 8, 16, 32)  # pressure and temperature oversampling settings
 _IIR_SETTINGS = (0, 2, 4, 8, 16, 32, 64, 128)  # IIR filter coefficients
 
-_VAL_SI = const((("SampleInterv", "int", 2, 1, 3600, None),))
+_MIN_TRIGGER_SECS = const(1)
+_MAX_TRIGGER_SECS = const(600)
+
+_VAL_SI = const((("SampleInterv", "int", 2, _MIN_TRIGGER_SECS, _MAX_TRIGGER_SECS, None),))
 _VAL_POV = const((("PressOvers", "int", 1, 1, 32, None),))
 _VAL_TOV = const((("TempOvers", "int", 1, 1, 32, None),))
 _VAL_FC = const((("FiltCoeff", "int", 0, 0, 128, None),))
@@ -146,6 +149,8 @@ class BMP3xx_Reader(SensorReaderConfig):
     async def set_trigger_secs(self, value: int | float) -> None:
         try:
             trigger_secs = int(value)
+            if not (_MIN_TRIGGER_SECS <= trigger_secs <= _MAX_TRIGGER_SECS):
+                raise ValueError(f"trigger interval must be between {_MIN_TRIGGER_SECS} and {_MAX_TRIGGER_SECS} seconds")
         except (TypeError, ValueError) as e:
             await self.pr.err_s(_NAME, "Error setting trigger interval:", e, errno=21)
             return
@@ -206,8 +211,12 @@ class BMP3xx_Reader(SensorReaderConfig):
             await self.pr.err_s(_NAME, "Error reading config data!", errno=11)
             return False  # error
 
+        # set_trigger_secs() never raises (it logs its own errno=21 and keeps the previous value
+        # on an invalid stored SampleInterv) - a bad sample interval alone shouldn't fail this
+        # whole init attempt (and restart the task) the way a bad hardware-facing value below
+        # does, since it's a pure software timing knob, not something the sensor itself can reject.
+        await self.set_trigger_secs(cfg_values[0])  # BMPSampleInterv
         try:
-            await self.trigger_period.set_value(cfg_values[0])  # BMPSampleInterv
             await self.bmp.set_pressure_oversampling(cfg_values[1])  # BMPPressOvers
             await self.bmp.set_temperature_oversampling(cfg_values[2])  # BMPTempOvers
             await self.bmp.set_filter_coefficient(cfg_values[3])  # BMPFiltCoeff

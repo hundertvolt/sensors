@@ -919,21 +919,25 @@ three smaller ones:
   actual `return pressure, temperature` statement (and every caller's own unpacking) is
   pressure-first - the docstring's stated order was backwards. Fixed.
 
-**Flagged, not fixed** (ambiguous design decision, not a clear-cut bug): `set_trigger_secs()`
-and `_init_bmp()`'s own `self.trigger_period.set_value(cfg_values[0])` both accept and store any
-int with zero bounds checking, unlike every hardware-backed setter in this file
-(`set_pressure_oversampling`/`set_temperature_oversampling`/`set_filter_coefficient`), which all
-self-validate against the sensor's own discrete domain independent of upstream validation. The
-config schema (`_VAL_SI`) declares `SampleInterv`'s valid range as 1-3600, but nothing in this
-file enforces it at the point of consumption - a 0 or negative value (reachable only via a
-direct/malformed caller, since the REST layer's `update_valid_json` already enforces 1-3600
-before calling `set_trigger_secs`) would make `_base_trigger()`'s `trigger_counter >=
-trigger_period` comparison true on every single 1-second timer tick instead of the intended
-interval - not a crash, just "fires every tick" instead of respecting the configured interval.
-Left as-is pending owner input: reject, clamp, or intentionally treat ≤0 as "fire on every tick"
-(a legitimate pattern elsewhere in this codebase for a different 0-means-X convention)?
+**Follow-up (owner-resolved): `set_trigger_secs()` bounds.** The previously-flagged gap above -
+`set_trigger_secs()`/`_init_bmp()`'s stored `SampleInterv` had zero bounds checking, unlike every
+hardware-backed setter in this file - is now fixed. Owner specified the valid range directly:
+1-600 seconds (not the schema's previous 1-3600 - `_VAL_SI`'s own `max` updated to match, via two
+new named constants `_MIN_TRIGGER_SECS`/`_MAX_TRIGGER_SECS` shared by both). `set_trigger_secs()`
+now validates and, on an out-of-range value, follows the exact same pattern it already used for a
+bad *type* (log via `self.pr` with the existing `errno=21`, keep the previous value, never raise)
+rather than introducing a second, different failure mode for the same method. `_init_bmp()` was
+changed to route `BMPSampleInterv` through `set_trigger_secs()` itself instead of writing
+`trigger_period` directly, so both entry points (REST-facing setter and config-file-driven
+startup) share one validation path - deliberately *not* wrapped in the surrounding `try`/`except`
+that the three hardware-facing values (`PressOvers`/`TempOvers`/`FiltCoeff`) are: since
+`set_trigger_secs()` never raises, a stale/out-of-range stored sample interval (e.g. from a
+config file written before this bound existed) is logged and the previous value kept, without
+failing the whole init attempt and forcing an unrelated task restart the way a genuinely bad
+*hardware* value does - a pure software timing knob failing shouldn't cost the same as the
+sensor itself rejecting a value it can't handle.
 
-64 tests (`tests/test_asy_bmp3xx_driver.py`), up from 54.
+67 tests (`tests/test_asy_bmp3xx_driver.py`), up from 54.
 
 ### Dangerous allocation shapes (segfault-class bug, swept project-wide)
 
@@ -2125,7 +2129,7 @@ and a missing config file failing independently without either derailing the oth
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
 `asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 58,
-`asy_udp_socket.py` 62, `asy_bmp3xx_driver.py` 64 — **816 total**. (Previous count of 690 across 11
+`asy_udp_socket.py` 62, `asy_bmp3xx_driver.py` 67 — **819 total**. (Previous count of 690 across 11
 files predated `asy_udp_socket.py`'s promotion and was never updated to include it — corrected
 during its third pass; the 23→42 jump was its fourth pass's uncaught-exception/configuration/
 integration test additions; 42→56 is its fifth pass's mutation-bypass/concurrency/
@@ -2136,7 +2140,9 @@ pass: two fixes — `set_trigger_secs()`'s unguarded `int(value)`, `_get_osr_set
 fault-propagation test coverage; 54→64 is its second detailed review pass, fixing a real bug
 present since the original deployed driver (`_read_bmp()` triggering two independent physical
 measurements instead of one atomic reading) plus `get_altitude()`'s two accidental exceptions and
-some dead-code cleanup; see its own `BACKLOG.md` section above for the full breakdown.)
+some dead-code cleanup; 64→67 adds owner-specified 1-600s bounds checking to `set_trigger_secs()`,
+closing the gap that pass had flagged instead of unilaterally fixing; see its own `BACKLOG.md`
+section above for the full breakdown.)
 
 ## Decided for the refactor
 

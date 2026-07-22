@@ -799,6 +799,60 @@ def test_reader_set_trigger_secs_accepts_valid_values() -> None:
     assert run(reader.trigger_period.get_value()) == 45
 
 
+def test_reader_set_trigger_secs_accepts_boundary_values() -> None:
+    reader = make_reader("boundary_trigger")
+    run(reader.set_trigger_secs(1))
+    assert run(reader.trigger_period.get_value()) == 1
+    run(reader.set_trigger_secs(600))
+    assert run(reader.trigger_period.get_value()) == 600
+
+
+def test_reader_set_trigger_secs_rejects_out_of_range_values() -> None:
+    # Owner-specified bound: 1-600 seconds. Below/above/zero/negative are all rejected the same
+    # way as a bad type - logged (errno=21), the previous value is kept, never raises.
+    reader = make_reader("out_of_range_trigger")
+    run(reader.set_trigger_secs(30))  # establish a known-good baseline value first
+    for bad in (0, -1, 601, 3600):
+
+        async def scenario(value: int = bad) -> dict:
+            await reader.set_trigger_secs(value)
+            await reader.pr.setup()
+            return await reader.get_error_counter()
+
+        counters = run(scenario())
+        assert run(reader.trigger_period.get_value()) == 30  # rejected - kept the prior value
+        assert counters["BMP3XX"]["ErrNum"][-1] == 21
+
+
+def test_init_bmp_soft_degrades_on_out_of_range_stored_sample_interval() -> None:
+    # _init_bmp() routes BMPSampleInterv through set_trigger_secs() (which never raises) rather
+    # than writing trigger_period directly, unlike the hardware-facing oversampling/filter values
+    # right after it - a stale/out-of-range stored sample interval (e.g. from a config file
+    # written before this bound existed) shouldn't fail the whole init attempt and force a task
+    # restart the way a genuinely bad hardware value does; it should log and keep going.
+    i2c, reader = make_clean_reader("bad_stored_trigger")
+    seed_chip_id(i2c, _BMP388_CHIP_ID)
+    seed_calibration(i2c)
+    seed_status(i2c, 0x10 | 0x60)
+    seed_err(i2c, 0x00)
+    ok, results = run(reader.cfgmgr.write_config({"SampleInterv": 1800}, _FULL_SCHEMA))
+    assert ok is True
+    assert results["SampleInterv"] == "Invalid"  # rejected by the schema too (max is now 600)
+    # write_config() only accepts the update when the value clears the schema check, so a stale
+    # out-of-range value has to be seeded directly into the underlying cache to simulate a config
+    # file written before this bound existed - not reachable via write_config() alone anymore.
+    reader.cfgmgr._cache["SampleInterv"] = 1800
+
+    assert run(reader._init_bmp()) is True  # doesn't fail the whole init over this
+    assert run(reader.get_pressure_oversampling()) == 1  # other config values still applied
+
+    async def error_counter() -> dict:
+        return await reader.get_error_counter()
+
+    counters = run(error_counter())["BMP3XX"]
+    assert counters["ErrNum"][-1] == 21
+
+
 def test_reader_get_pressure_oversampling_logs_and_returns_none_on_bus_failure() -> None:
     reader = make_reader("get_pov")
 
@@ -834,7 +888,7 @@ def test_reader_set_pressure_oversampling_logs_and_returns_false_on_bus_failure(
 # then single and multiple invalid-field recombinations.
 # ---------------------------------------------------------------------------
 
-_VAL_SI = (("SampleInterv", "int", 2, 1, 3600, None),)
+_VAL_SI = (("SampleInterv", "int", 2, 1, 600, None),)
 _VAL_POV = (("PressOvers", "int", 1, 1, 32, None),)
 _VAL_TOV = (("TempOvers", "int", 1, 1, 32, None),)
 _VAL_FC = (("FiltCoeff", "int", 0, 0, 128, None),)
@@ -846,7 +900,7 @@ _FULL_SCHEMA = _VAL_SI + _VAL_POV + _VAL_TOV + _VAL_FC + _VAL_PO + _VAL_TO + _VA
 
 # name -> (type, min, max), mirroring each _VAL_* tuple's own (name, type, def, min, max, special)
 _FIELD_BOUNDS = {
-    "SampleInterv": ("int", 1, 3600),
+    "SampleInterv": ("int", 1, 600),
     "PressOvers": ("int", 1, 32),
     "TempOvers": ("int", 1, 32),
     "FiltCoeff": ("int", 0, 128),
@@ -907,7 +961,7 @@ def test_config_write_rejects_multiple_invalid_fields_while_keeping_valid_ones()
     before = run(reader.cfgmgr.get_dict(list(_FIELD_BOUNDS)))
     assert before is not None
     mixed: dict[str, int | float | str | bool | None] = {
-        "SampleInterv": 1800,  # valid
+        "SampleInterv": 300,  # valid
         "PressOvers": 999,  # invalid: way above max
         "TempOvers": 8,  # valid
         "FiltCoeff": -5,  # invalid: below min
@@ -927,7 +981,7 @@ def test_config_write_rejects_multiple_invalid_fields_while_keeping_valid_ones()
     assert after["PressOvers"] == before["PressOvers"]
     assert after["FiltCoeff"] == before["FiltCoeff"]
     assert after["TempOffset"] == before["TempOffset"]
-    assert after["SampleInterv"] == 1800
+    assert after["SampleInterv"] == 300
     assert after["TempOvers"] == 8
     assert after["PressOffset"] == 50.0
     assert after["SeaLevelOffs"] == 250.0
