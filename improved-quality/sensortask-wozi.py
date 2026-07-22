@@ -588,11 +588,12 @@ async def system_status(request: Request):
     # whole-chip-scope log shared by every driver's FRAM usage (see BACKLOG.md).
     fram_err_log = await fram.get_error_counter()
     FRAM_ErrCnt = fram_err_log["FRAM"]["ErrCount"]
-    SCD30_ErrCnt = await scd_reader.get_error_counter()
     # base_classes.py's SensorReader.get_error_counter() (used by every promoted *_Reader) returns
     # print_log.py's get_log() shape - {"<NAME>": {"ErrCount": int, "ErrNum": [...], "ErrType":
     # [...]}}, not a bare int; extract the count explicitly instead of comparing the whole dict
     # below, to keep this endpoint's existing flat-int JSON contract unchanged.
+    _scd_err_count = (await scd_reader.get_error_counter())["SCD30"]["ErrCount"]
+    SCD30_ErrCnt = _scd_err_count if isinstance(_scd_err_count, int) else 0
     _sgp_err_count = (await sgp_reader.get_error_counter())["SGP40"]["ErrCount"]
     SGP40_ErrCnt = _sgp_err_count if isinstance(_sgp_err_count, int) else 0
     _bmp_err_count = (await bmp_reader.get_error_counter())["BMP3XX"]["ErrCount"]

@@ -793,9 +793,9 @@ promotion, tracked here per owner instruction):**
   identical call was removed from the merge (see "sensortask-wozi.py fixes" below) rather than
   given a matching method, since it doesn't apply to the current architecture at all.
 
-**`sensortask-wozi.py` fixes (owner-authorized this pass, scoped to `BMP3xx_Reader`'s own three
-confirmed integration mismatches only — `SCD30_Reader`/`SGP40_Reader`'s identical-shaped issues
-above are still unfixed, out of scope):**
+**`sensortask-wozi.py` fixes (owner-authorized this pass, originally scoped to `BMP3xx_Reader`'s
+own three confirmed integration mismatches only — `SCD30_Reader`/`SGP40_Reader`'s identical-shaped
+issues were left unfixed here, out of that pass's scope):**
 1. `| BMP3xx_Reader.get_default_cfg()` removed from the system `cfgmgr`'s merged defaults —
    unlike `SCD30_Reader`/`SGP40_Reader`, `BMP3xx_Reader` doesn't contribute anything to system
    `config.json` at all: it owns its own per-sensor `config_BMP3XX.cfg` file internally via
@@ -808,10 +808,15 @@ above are still unfixed, out of scope):**
 3. `/system/status`'s `BMP388_ErrCnt = await bmp_reader.get_error_counter()` now correctly
    extracts `["BMP3XX"]["ErrCount"]` from the dict `get_error_counter()` actually returns (with an
    `isinstance(..., int)` narrow for mypy), instead of comparing the whole dict via `> 0`.
-   `SCD30_ErrCnt`/`SGP40_ErrCnt` two lines above have the identical bug, still unfixed (same
-   out-of-scope reasoning) — `/system/status` still can't type-check or run cleanly end-to-end
-   until those are addressed too; confirmed via mypy re-run: 93 → 91 errors in the file, the exact
-   two BMP-specific findings this pass removed, zero new ones introduced.
+   `SCD30_ErrCnt`/`SGP40_ErrCnt` two lines above had the identical bug, left unfixed at the time
+   (same out-of-scope reasoning) — confirmed via mypy re-run then: 93 → 91 errors in the file, the
+   exact two BMP-specific findings that pass removed, zero new ones introduced.
+
+**Consolidation-session follow-up (all three sensors now promoted together)**: `SCD30_ErrCnt`/
+`SGP40_ErrCnt` fixed the same way as `BMP388_ErrCnt` above — each now extracts `["<NAME>"]
+["ErrCount"]` from its `get_error_counter()` dict with the same `isinstance(..., int)` narrow,
+instead of comparing the whole dict via `> 0`. All three `/system/status` error counters are now
+consistent with each other and with `base_classes.py`'s shared `get_error_counter()` contract.
 
 **Architecture review pass** (structure/setup/inheritance/sensortask-integration/simplification,
 owner-requested): `BMP3xx_Reader`'s inheritance from `SensorReaderConfig` checked field-by-field
@@ -2843,14 +2848,18 @@ been updated to match:
   (`{"SGP40": {"ErrCount": ..., "ErrNum": [...], "ErrType": [...]}}`), not a bare int - the
   `SGP40_ErrCnt > 0` comparison in `/system/status` would have compared a dict against an int.
   Extracted `["SGP40"]["ErrCount"]` to keep the endpoint's existing flat-int JSON contract unchanged
-  for external consumers. Note: `SCD30_ErrCnt`/`BMP388_ErrCnt` have the exact same
-  dict-vs-int-comparison problem already, pre-existing and untouched here (`asy_scd30_driver.py`/
-  `asy_bmp3xx_driver.py` in `improved-quality/` already return the same dict shape, but neither driver
-  is promoted/in this task's scope) - confirmed via mypy (`Unsupported operand types for < ("int" and
-  "dict[...]")`, present in the pre-edit baseline for those two, now also present for `FRAM_ErrCnt`/
-  `SGP40_ErrCnt` since `print_log.py`'s `get_log()` return type (`int | list[int] | list[str]`) doesn't
-  let mypy narrow `"ErrCount"` specifically to `int` without a `print_log.py`-level `TypedDict`
-  change - out of scope here, left as the same accepted baseline pattern.
+  for external consumers. At the time this was written, `SCD30_ErrCnt`/`BMP388_ErrCnt` had the exact
+  same dict-vs-int-comparison problem, pre-existing and out of this task's scope to fix (`asy_scd30_
+  driver.py`/`asy_bmp3xx_driver.py` in `improved-quality/` already returned the same dict shape, but
+  neither driver was promoted yet within this branch). **Consolidation-session update**: now that all
+  three sensors are promoted together, `SCD30_ErrCnt`/`BMP388_ErrCnt` were fixed the same way (see
+  the "sensortask-wozi.py fixes" entry under `asy_bmp3xx_driver.py`'s own section above) - all three
+  are consistent now. `FRAM_ErrCnt` still lacks the same `isinstance` narrow (no dict key to extract
+  wrongly - `fram_err_log["FRAM"]["ErrCount"]` is a direct index, not a bare object - but its
+  `int | list[int] | list[str]` type still isn't narrowed to `int` for the `> 0` comparison), left as
+  the same accepted baseline mypy gap: `print_log.py`'s `get_log()` return type doesn't let mypy
+  narrow `"ErrCount"` specifically to `int` without a `print_log.py`-level `TypedDict` change -
+  out of scope here.
 - `get_mem_status()` (last_backup/restored_from) was already unchanged and still matches the
   deployed driver 1:1 - no fix needed there.
 - **Known gap, deliberately deferred (owner-confirmed, not an open question)**:
