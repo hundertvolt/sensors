@@ -95,7 +95,9 @@ From hands-on field experience with deployed units:
       system controller," i.e. the same bound applies. Fixed to 2.5s (margin over the documented
       bound, since this path also runs on every failure-triggered restart, not just cold boot).
     - `asy_bmp3xx_driver.py`: reviewed as part of its `src/` promotion — see its own section below.
-    - `asy_sgp40_driver.py`: `_reset()` still needs the same review.
+    - `asy_sgp40_driver.py`: reviewed — a confirmed real bug, not just a review with nothing found
+      (see its own `src/` promotion entry below for the full datasheet-backed writeup).
+    All three drivers' reset paths are now reviewed.
   - FRAM's SPI bus gets the same bus-recovery treatment as sensor buses. **Partially done**:
     `asy_fram_driver.py`'s own `src/` promotion (see "`asy_fram_driver.py` → `src/`" below) fixed a
     real device-identification bug and added write-enable-latch/write-protect verification - the
@@ -2541,6 +2543,649 @@ per-function comments to section 11's 3-line convention (several ran 4-9 lines):
 worst case, `read_measurement()`, from 9 comment lines to 3, and switched `_store_scd()`'s `SCD30(...)`
 construction to keyword arguments instead of one comment per positional field, removing the need
 for those comments entirely. No functional change; 59/59 tests still pass unchanged.
+### `asy_sgp40_driver.py` + `voc_algorithm.py` → `src/`
+
+Promoted together (owner-directed): `asy_sgp40_driver.py`'s `measure_index_and_raw()` is
+`voc_algorithm.py`'s only real caller. Verified against the actual SGP40 datasheet (owner-provided,
+`datasheets/sgp40/Sensirion_Gas_Sensors_Datasheet_SGP40.pdf`, v1.2 Feb 2022 — the earlier session
+that first reviewed this file couldn't fetch it directly) and against Sensirion's original VOC
+algorithm C reference (`Sensirion/embedded-sgp`, now archived, `sgp40_voc_index/
+sensirion_voc_algorithm.c/.h` — the pre-NOx-generalization ancestor of the current
+`gas-index-algorithm` repo, and of this file's DFRobot-derived naming): every constant, the struct
+field order, and `vocalgorithm_process()`'s exact operation order matched 1:1, no discrepancies.
+
+**Real bugs found and fixed:**
+- `_init_sgp()` wrote `self.err_cnt_internal` (no leading underscore) — a dead, unused attribute
+  distinct from `base_classes.py`'s real `self._err_cnt_internal`, the counter `_error_check()`
+  actually reads. Same class of bug as `asy_scd30_driver.py`'s own (found in a sibling review
+  session): after a give-up-and-restart cycle, the real consecutive-failure counter was never
+  reset, so a freshly-restarted reader was one bad reading away from immediately giving up again.
+  `asy_bmp3xx_driver.py` already had the correct spelling — confirmed via git history that the
+  rename happened in `base_classes.py` while `asy_bmp3xx_driver.py` was updated to match and
+  `asy_scd30_driver.py`/`asy_sgp40_driver.py` weren't. Fixed here; `asy_scd30_driver.py`'s own copy
+  is that file's own promotion's problem.
+- `_reset()`'s general-call soft reset was a confirmed real bug, not just a mislabeled comment: the
+  datasheet (Table 17) is explicit that `soft_reset` is *"a general call... the first byte refers
+  to the general call address and the second byte refers to the reset command"* — i.e. a
+  single data byte `0x06` addressed to the reserved bus address `0x00`. The code instead wrote
+  *two* bytes, `[0x00, 0x06]`, to the SGP40's own address (`0x59`) — never touching address `0x00`
+  at all, and `0x0006` appears nowhere in the datasheet's real command table (Table 8: only
+  `0x260F`/`0x280E`/`0x3615`/`0x3682`). Cross-checked against DFRobot's independent
+  `DFRobot_SGP40` Python driver, which has the *identical* bug (same wrong target address) —
+  confirmed this is a bug that propagated Adafruit → DFRobot → both of this project's drivers, not
+  something anyone had verified against the datasheet before. Fixed to a real general call:
+  `sgp40.i2c_device.i2c.writeto(0x00, b"\x06")`, still under the device session's shared-bus lock
+  (a general call affects every device on the bus, not just this one) and still tolerating a NAK
+  (`except OSError: pass`) — not every device needs to acknowledge a general call.
+  **Shared-bus blast-radius check, prompted by a later session's "don't deviate from proven
+  everyday behavior" concern**: `sensortask-wozi.py` puts `SGP40_Reader` and `BMP3xx_Reader` on
+  the same physical `i2c1` bus (pins 19/18), and `sensortask-dev.py` puts `SGP40_Reader` and
+  `SCD30_Reader` on the same `i2c1` bus (pins 15/14) — so this fix means every SGP40 init/restart
+  now actually broadcasts a real general call onto a bus a second sensor also lives on, where the
+  old buggy code never touched address `0x00` at all. Checked both shared sensors' own datasheets
+  (`datasheets/bmp3xx/bst-bmp388-ds001.pdf` section 5; `datasheets/scd30/
+  Sensirion_CO2_Sensors_SCD30_Interface_Description.pdf` section 1.1/1.4.10): neither documents
+  I2C general-call (address `0x00`) support anywhere — BMP388's own reset is a normal addressed
+  write (`softreset` 0xB6 to register 0x7E at its own address), SCD30's own reset is likewise a
+  normal addressed command (`0xD304` to its own address 0x61). Per the I2C spec, general-call
+  support is optional per-device; a device that doesn't implement it simply doesn't ACK, which is
+  exactly the `except OSError: pass` path this fix already tolerates. So the fix's real-world
+  blast radius on both units sharing a bus with SGP40 is verified negligible — worth recording
+  since it wasn't checked when the fix first went in, only reasoned about structurally.
+- `initialize()` dropped the "check feature set" step (command `0x20 0x2F`) entirely. Confirmed via
+  the datasheet that this command isn't in Sensirion's real command table at all (only
+  `sgp40_measure_raw_signal`/`sgp40_execute_self_test`/`sgp4x_turn_heater_off`/
+  `sgp4x_get_serial_number` are documented), and that DFRobot's independent driver's own init
+  sequence doesn't do it either — an Adafruit-only addition with a live upstream GitHub issue
+  ("Feature set check may fail") reporting it rejects real hardware unpredictably. Sitting on the
+  restart-after-disturbance path, this was a spurious extra failure mode for zero real validation
+  benefit (self-test already positively confirms real, working SGP40 silicon). Owner-confirmed
+  before removing.
+- `get_raw()`'s post-measurement read delay was 500ms; the datasheet's own command table (Table 8)
+  gives 25ms typ/30ms max for `sgp40_measure_raw_signal`, and DFRobot's independent driver
+  hardcodes exactly 30ms — this runs once per second, forever, so the gap was a real, ongoing,
+  16x-oversized cost, not a one-time init cost like the self-test's similarly-generous margin
+  (datasheet 300/320ms typ/max vs. this file's 500ms, left alone). Unlike the two already-recorded
+  owner-tested SGP40/SCD30 timing tweaks below, this one showed no sign of ever having been
+  deliberately measured. Owner-directed fix: 100ms (>3x the datasheet's own max, well short of the
+  old 500ms).
+- `measure_raw()` built and immediately discarded a dead local `_compensated_read_cmd =
+  bytearray([0x26, 0x0F])` — the actual command bytes were already being written directly into the
+  recycled `_measure_command` buffer via `mv[0]`/`mv[1]` two lines above. Leftover from an earlier,
+  non-buffer-recycling version of this method. Removed — one fewer allocation on the 1Hz hot path.
+- `voc_algorithm.py`'s `_vocalgorithm__mean_variance_estimator___sigmoid__set_parameters(self, L:
+  float, X0: float, K: float)` was typed `float` for all three params, but every real call site
+  passes pre-`_f16()`-encoded fixed-point `int` values (matching every other analogous
+  `set_parameters` method in this file, e.g. `_mox_model__set_parameters(self, SRAW_STD: int,
+  SRAW_MEAN: int)`) — mypy caught the resulting real assignment-type mismatch against
+  `DFRobot_vocalgorithmParams`'s `int`-inferred fields. Fixed the annotation to `int` to match both
+  actual usage and every sibling method's convention; zero behavior change (annotations are never
+  evaluated on MicroPython).
+
+**Confirmed correct, not changed, after checking:**
+- `_celsius_to_ticks`/`_relative_humidity_to_ticks` (datasheet Table 10) and the compensated
+  measurement command's exact byte layout (Table 9) matched the datasheet's own worked examples
+  exactly (`25°C→0x6666`/`-45°C→0x0000`/`130°C→0xFFFF`, `50%→0x8000`/`0%→0x0000`/`100%→0xFFFF`).
+- `voc_algorithm.py`'s legacy serialization bug BACKLOG.md already recorded
+  (`m_mox_model_sraw_std` missing from packed/restored fields) was already fixed in this file —
+  confirmed present in the 32-field `pack_into`/`unpack_from` format string.
+- `initialize()`'s remaining `serialnumber[0] != 0x0000` check is flagged, not touched: not
+  documented by the datasheet (no structural breakdown of the 3-word ID given), not replicated by
+  any other reference driver checked (Sensirion's own minimal `embedded-i2c-sgp40`, DFRobot's,
+  `agners/micropython-sgp40`) — an unverified assumption inherited from Adafruit, same risk
+  category as the feature-set check that was removed. Kept as-is (observed working on deployed
+  hardware) per the same "don't change hardware-facing behavior without real-hardware testing"
+  caution `_boot.py`'s `import sensortask.py` already gets — owner can revisit with real hardware
+  access.
+- The FRAM restore mechanism intentionally dumps/restores voc_algorithm.py's *entire* 32-field
+  internal state (`vocalgorithm_proc_ser_des`), not Sensirion's own narrower `get_states()`/
+  `set_states()` (mean/std only, documented for gaps up to 10 minutes after 3+ hours of runtime).
+  Owner-confirmed deliberate: freezing every field, including the `uptime_gamma`/`uptime_gating`
+  learning-progress counters, keeps a resumed state internally self-consistent regardless of the
+  real gap length (this project's backups can legitimately span days, via `BackupMaxAge`), and
+  age-gating/rejection is this driver's own responsibility (`_run_restore`'s `BackupMaxAge` check),
+  not something the algorithm file itself needs to enforce. Documented in `voc_algorithm.py`'s own
+  module docstring rather than silently treated as equivalent to Sensirion's narrower API.
+
+**FRAM dependency — resolved by timing, not by this promotion's own work**: this file was
+originally going to need the same `Protocol`-based decoupling `print_log.py` used, since
+`asy_fram_manager.py` wasn't promoted yet when this review started. By the time this promotion
+actually landed, `asy_fram_manager.py` had cleared its own `src/` promotion (see above) — so
+`asy_sgp40_driver.py` imports `AsyFramManager`/`AsyFramChunkTimestampedBuffer` the same way
+`asy_scd30_driver.py` already does, `TYPE_CHECKING`-only (neither name is ever used as a real
+runtime value in this file — only `.get_timestamped_chunk()`/`.set_verify()`/etc. are called on an
+already-constructed instance passed in from outside), matching `base_classes.py`/`print_log.py`/
+`system_service.py`'s own established convention for the same "only ever used as an annotation"
+shape. **Found, not fixed (out of scope, already-promoted file)**: `asy_fram_manager.py` itself
+keeps a real, unconditional top-level `from asy_spi_driver import SPI` for its own `spi_bus: SPI`
+parameter, despite `SPI` fitting that exact same "annotation-only" criterion — a real, live
+inconsistency against the convention the other three files already established. Flagged for
+whenever `asy_fram_manager.py` next gets touched, not silently fixed here.
+
+**Other typing/style modernization** (first promotion of a `Reader`-shaped file, so the first time
+these needed solving): dropped `typing.cast` entirely rather than making it MicroPython-runtime-safe
+— `SGP40_Reader.get_data()`'s `NamedTuple`→`SGP40` narrowing now just reconstructs
+`SGP40(*data)` (a real, safe re-validation, not a type-only assertion); `_check_storage()`'s
+`tuple(cfg_values)`→`tuple[int,int,int]` narrowing now unpacks-then-repacks
+(`backup_period, backup_maxage, wait_ntp = cfg_values; return ..., (backup_period, backup_maxage,
+wait_ntp)`), which is both cast-free and mypy-exact, not just suppressed. `SGPResults` (a
+`Tuple[int|None, int|None, int|None]` distinct from the `SGP40` namedtuple) was dropped entirely —
+unlike `asy_scd30_driver.py`'s `SCDResults` (which legitimately differs from its own `SCD30`
+namedtuple by carrying derived `math_helpers`-computed fields the raw read doesn't have), SGP40's
+raw-read fields and its namedtuple fields are identical, so `_read_sgp()`/`_store_sgp()` now pass
+a real `SGP40` end to end. `voc_algorithm.py`'s `DFRobot_vocalgorithmParams.__init__` and `reset()`
+were byte-for-byte identical 32-line bodies — `__init__` now just calls `self.reset()`. Six
+`_VOCALGORITHM_*` float constants (`..._TRANSITION_MEAN`, `..._TRANSITION_VARIANCE`,
+`..._GATING_THRESHOLD_TRANSITION`, `..._GATING_MAX_RATIO`, `..._SIGMOID_K`, `..._LP_ALPHA`) were
+plain module globals instead of `const()`-wrapped like every integer constant in the same file —
+inconsistent for no reason, confirmed via BACKLOG.md's own already-established finding that
+`const()` folds floats too on this target; wrapped to match. A stray `# pylint: disable=all`/
+"Complex math conversion from C" comment pair (this project uses ruff, not pylint) removed as dead
+tooling-reference cruft. `Tuple`/`Union` (unconditional `from typing import ...`, would crash on
+real MicroPython) replaced with bare lowercase generics/`|` throughout both files, following the
+now-standard `TYPE_CHECKING` guard pattern for the handful of names (`Callable`/`Coroutine`/`Any`/
+`AsyFramManager`/`AsyFramChunkTimestampedBuffer`/`I2C`) that still need it.
+
+**Integration gap, confirmed still stale, kept as a to-do (out of scope for this promotion)**:
+`improved-quality/sensortask-wozi.py`'s `SGP40_Reader(...)` call site still uses the pre-refactor
+API shape (`SGP40_Reader.get_default_cfg()`, `SGP40_Reader.get_params_memsize()`, a `ts_storage=`
+constructor kwarg) that doesn't exist on this file's actual, current constructor — same
+already-documented class of gap as `SCD30_Reader`/`BMP3xx_Reader`'s own call sites in the same
+file (see "Cross-file wiring gaps... known WIP, not regressions" above). Confirmed via a fresh
+`mypy` run that this is unchanged by this promotion (same three `"has no attribute
+'get_default_cfg'"` errors as before, just now resolving `asy_sgp40_driver`'s real types instead of
+hitting a missing-module gap). `sensortask-wozi.py` stays out of routine-editing scope
+(`improved-quality/` source) regardless.
+
+`tests/machine.py`'s fake `machine.I2C` gained a `read_queue` (a FIFO of byte strings, mirroring the
+fake `machine.SPI`'s own `read_queue`/`_next_read_bytes`) — the existing fake had no way to script a
+*response* to a `readfrom_into()` call at all (only `readfrom_mem`/`writeto_mem`'s register dict
+did), which every existing `src/` I2C caller happened not to need but this word-oriented
+command/response protocol does. FRAM-backed tests use the real `AsyFramManager` against
+`tests/_fram_chip_fake.py`'s simulated chip, matching `tests/test_fram_integration.py`'s own
+pattern — including a "simulated reboot" (a *second*, independently-allocating `AsyFramManager`
+sharing the first's underlying `spi_bus`/chip, not the same manager instance reused, which would
+bump-allocate the second `SGP40_Reader`'s chunks into fresh, never-written territory instead of
+reading back the first one's) and an aged-backup test that monkeypatches
+`asy_fram_manager.py`'s own `time` module reference (real `time` is a read-only builtin — same
+technique `tests/test_system_service.py` already established) rather than poking the chip's raw
+stored timestamp bytes directly, since that only corrupts one of the two dual-redundant copies'
+CRC and gets silently healed from the other, untouched (young) copy.
+
+39 tests (`tests/test_asy_sgp40_driver.py`) + 22 (`tests/test_voc_algorithm.py`). Coverage: 84%/88%
+respectively — most of the remainder is genuinely low-value to chase further (rare `voc_algorithm.py`
+`_fix16_div`/`_fix16_sqrt` internal overflow branches needing precisely-threaded fixed-point operand
+values; `_run_restore`'s NTP-still-pending and timestamp-less-backup branches, needing extra FRAM
+scaffolding for a fairly narrow, already-indirectly-exercised code path), not chased further
+(owner-confirmed elsewhere in this doc: no trouble with less than 100% coverage as long as nothing
+left uncovered is a real gap).
+
+**Post-push CI caught two things a stray global `mypy` missed locally** (PR #19): a pre-existing
+upstream MicroPython-stdlib-stubs drift unrelated to this promotion (`asyncio.gather()`'s 2-arg
+form now resolves as `tuple[...]` instead of `Any`, mirroring CPython typeshed's precise-arity
+overloads — fixed in `tests/test_asy_udp_socket.py`/`tests/test_asy_fram_manager.py`, kept the
+latter's return annotation honest to MicroPython's real list-returning `asyncio.gather()` rather
+than matching the stub, per `extmod/asyncio/funcs.py`'s own `return ts`), and a real bug in this
+promotion itself: `DFRobot_vocalgorithmParams.pack_into()` accepted `bytearray | memoryview` but
+its read-only mirror `unpack_from()` was narrower (`bytes | bytearray`) — inconsistent even though
+`asy_sgp40_driver.py`'s `measure_index_and_raw()`/`vocalgorithm_proc_ser_des()` legitimately pass a
+`memoryview` through both. Widened `unpack_from()` to `bytes | bytearray | memoryview`, matching
+`struct.unpack_from()`'s real buffer-protocol-accepting behavior. **Root cause of missing this
+locally**: this session had been running a stray globally-installed `mypy` (1.19.1) instead of the
+project's own `uv sync`-managed `.venv` (which CI always uses fresh, currently `mypy==2.3.0`,
+pinned only loosely as `"mypy"` in `pyproject.toml`) — the version gap was large enough to produce
+materially different results on the exact same source. Confirmed by running `uv sync` and
+re-checking with the venv's actual `mypy`, which reproduced both CI failures immediately. Take-away
+for future sessions: always run lint/typecheck through `uv sync`'s `.venv`, not whatever `mypy`/
+`ruff` happens to already be on `PATH` — a global install can silently diverge from what CI (and
+`pyproject.toml`'s own pin) actually enforces.
+
+#### Post-promotion architecture review (structure/setup/inheritance/sensortask-integration pass)
+
+A second review pass over the merged-but-still-open PR, checking structure/leanness, setup,
+`SensorReaderConfig`/`Lockable` inheritance correctness, coherence with the (not-yet-rewritten)
+`sensortask-*.py` integration layer, sensor-specific correctness against the datasheet, and general
+completeness - separate from the initial promotion pass above.
+
+**Real bug found and fixed**: `initialize()`'s self-test check compared the *whole* returned word
+against `0xD400`. Datasheet Table 13 is explicit that only the high byte is the pass/fail marker
+(`0xD4` pass, `0x4B` fail) - *"0xD4 0xXX: all tests passed successfully (ignore 0xXX byte)"* - the
+low byte is documented as a genuine don't-care, not guaranteed zero. The old check would have
+spuriously raised "Self test failed" on real hardware the instant the chip returned a non-zero low
+byte, which the datasheet explicitly permits. Inherited verbatim from the deployed driver
+(`python/IndividualDrivers/asy_sgp40_driver/__init__.py:337`, same `!= 0xD400` check) - not
+something this promotion introduced, but caught by finally reading Table 13's exact wording rather
+than pattern-matching the deployed code's assumption. Fixed to `(self_test[0] >> 8) != 0xD4`, with a
+regression test (`test_initialize_self_test_success_ignores_nonzero_low_byte`) feeding `0xD4FF` and
+asserting no raise.
+
+**Minor simplification**: `SGP40_Reader.__init__()` set `self.voc_init = 1` / `self.voc_write = 1`,
+but every real code path that reads either attribute only runs after `read_loop()` → `_init_sgp()`,
+which unconditionally zeroes both at its very top before any other statement - including on every
+supervisor-triggered restart, which re-invokes `read_loop()` on the *same* `SGP40_Reader` instance
+(`get_task_starters()` returns a bound `self.start_asy_read`, not a fresh-instance factory - see
+`system_service.py`'s `starter()` call). So the `= 1` was dead: always overwritten before ever being
+observed. Changed to `= 0` with a comment explaining why, avoiding the implication that either
+attribute is meaningfully "armed" pre-init.
+
+**Fixed (was flagged, now resolved on explicit request)**: `measure_raw()` called
+`self.crc.add_into(...)` twice (writing the RH-ticks and temperature-ticks CRC bytes into
+`self._measure_command`) without checking either call's return value. `add_into()` returns `None`
+on failure (buffer too small, invalid init, etc.) - `asy_fram_manager.py`'s own `add_into()` call
+site (`if await self.crc.add_into(buf, self.size) is None: ...`) already established checking this
+return as the project's convention, and `SGP40_I2C`'s own `_read_word_from_command()` checks
+`check_from()`'s return a few lines below in the very same class. In practice this specific call
+site can't actually return `None` today - `self._measure_command` is a fixed 8-byte buffer and
+`start=2`/`start=5`/`size=2` are hardcoded literals that always satisfy `add_into()`'s internal
+bounds check - so this was never a live bug, just an inconsistency in defensive-checking style
+within the same file. Fixed locally in `measure_raw()` (both calls now `if ... is None: return
+None`), not in `crc_checks.py`/`asy_fram_manager.py` - the inconsistency was this call site's own,
+not a defect in either of those shared modules. Regression test: `_AlwaysFailCRC`, a minimal fake
+matching `add_into()`'s signature, is substituted in for `sgp.crc` since the real `CRC8()` can't
+actually be driven to return `None` through this call site's fixed buffer shape -
+`test_measure_raw_add_into_failure_returns_none_not_raise` asserts `measure_raw()` returns `None`
+without ever reaching `get_raw()`'s own bus transaction.
+
+**Real bug found and fixed (uncaught-exception audit)**: `_read_sgp()` called `await
+self.comp_callback()` unwrapped - the *only* caller-supplied callback in this file not wrapped in
+`try`/`except`, unlike every other caller-supplied callback in this codebase (`asy_fram_manager.py`'s
+`ntp_sync_callback`, twice; `system_service.py`'s own NTP callback; `base_classes.py`'s config
+callback). A full audit of every call in `asy_sgp40_driver.py` (cross-checked against
+`base_classes.py`, `config_manager.py`, `asy_fram_manager.py`, `print_log.py` - all independently
+confirmed "never raises" by their own module docstrings/promotion audits) found exactly this one
+gap: if a real compensation source (e.g. a sibling SHTC3/BMP388 driver's own read call, threaded
+through `sensortask-*.py`'s own callback) ever raised, it would propagate uncaught out of
+`_read_sgp()` → `read_loop()`, crashing the whole async task instead of being counted through the
+normal `_error_check()`/give-up path - the same failure mode every other caller-supplied callback in
+this codebase is already deliberately guarded against. Fixed by wrapping the call in `try`/`except
+Exception`, logging via `err_s(..., errno=18)` and falling back to `[None, None]` (the same shape
+`_read_sgp()` already treats as "no compensation data available"). Regression test:
+`test_read_sgp_comp_callback_exception_is_caught_not_propagated`.
+
+**Sensortask-\*.py integration gap was broader than previously documented, and is now partially
+fixed on explicit owner request (a one-off exception to the standing "don't edit
+`sensortask-wozi.py`" hard rule - confirmed directly, not assumed).** The earlier promotion pass
+flagged only `SGP40_Reader.get_default_cfg()` as missing from `sensortask-wozi.py`'s construction
+call; re-reading that call in full showed the entire constructor convention was stale, not just one
+classmethod. Confirmed this is unambiguously a `sensortask-wozi.py`-side staleness issue, not a
+driver bug - the driver's new API (per-sensor config file, internal chunk allocation,
+`AsyFramManager`-level error counters) is the deliberate, correct design; the caller just hadn't
+been updated to match:
+
+- **Fixed**: `sensortask-wozi.py` called `SGP40_Reader(i2c1, cfgmgr, sgp_comp_callback,
+  ts_storage=sgp_backup, max_i2c_err=_MAX_I2C_ERR, debug=debug)` - a positional `cfgmgr` argument the
+  current `SensorReaderConfig`-based constructor doesn't take at all (config is now an internal
+  `ConfigManager` owned per-reader via `cfg_path`, not an external shared instance passed in), and a
+  `ts_storage=` keyword for a pre-built FRAM chunk. Updated to `SGP40_Reader(i2c1, sgp_comp_callback,
+  fram_storage=fram, fram_ntp_callback=conn.ntp_issynced, max_i2c_err=_MAX_I2C_ERR, debug=debug)`,
+  matching the current constructor exactly; the external `sgp_backup =
+  fram.get_timestamped_chunk(SGP40_Reader.get_params_memsize(), conn.ntp_issynced)` call (which also
+  referenced a `get_params_memsize()` that no longer exists on `SGP40_Reader` - it's
+  `VOCAlgorithm.get_params_memsize()`, called internally by the driver now) was removed entirely, since
+  chunk allocation now happens inside `SGP40_Reader.__init__()` itself.
+- **Fixed**: `sensortask-wozi.py`'s cfgmgr construction still merged in
+  `SGP40_Reader.get_default_cfg()` (line 74), a classmethod that no longer exists - removed from the
+  merge, with a comment explaining SGP40 now owns its own `config_SGP40.cfg` instead of contributing
+  to the shared `config.json`.
+- **Fixed**: `/system/status`'s handler called `sgp_reader.get_mem_error_counters()`, which doesn't
+  exist on the current class. Traced to its origin: the deployed driver's `ts_storage` was an
+  old-style FRAM chunk object with its own `get_error_counters()` (crit/uncrit/last, per-chunk). The
+  refactor replaced that whole per-chunk error-counting mechanism with `asy_fram_manager.py`'s unified
+  `AsyFramManager.get_error_counter()` (`self.pr.get_log("FRAM")` - same shape as every other driver's
+  own `get_error_counter()`), scoped to the whole FRAM chip rather than per-chunk - a confirmed,
+  correct architectural supersession, not a regression to restore in `SGP40_Reader` itself. Replaced
+  the three `SGP40_MemErr_Critical`/`SGP40_MemErr_Uncritical`/`SGP40_MemErr_Last` JSON fields (which
+  can no longer be computed at all - the underlying per-chunk counters don't exist anymore) with a
+  single chip-wide `FRAM_ErrCnt`, sourced from `fram.get_error_counter()["FRAM"]["ErrCount"]`. This is
+  a real REST JSON schema change (field removal/rename), forced by the architectural supersession, not
+  an optional design choice.
+- **Fixed**: `SGP40_Reader.get_error_counter()` now returns a `print_log.py`-shaped dict
+  (`{"SGP40": {"ErrCount": ..., "ErrNum": [...], "ErrType": [...]}}`), not a bare int - the
+  `SGP40_ErrCnt > 0` comparison in `/system/status` would have compared a dict against an int.
+  Extracted `["SGP40"]["ErrCount"]` to keep the endpoint's existing flat-int JSON contract unchanged
+  for external consumers. Note: `SCD30_ErrCnt`/`BMP388_ErrCnt` have the exact same
+  dict-vs-int-comparison problem already, pre-existing and untouched here (`asy_scd30_driver.py`/
+  `asy_bmp3xx_driver.py` in `improved-quality/` already return the same dict shape, but neither driver
+  is promoted/in this task's scope) - confirmed via mypy (`Unsupported operand types for < ("int" and
+  "dict[...]")`, present in the pre-edit baseline for those two, now also present for `FRAM_ErrCnt`/
+  `SGP40_ErrCnt` since `print_log.py`'s `get_log()` return type (`int | list[int] | list[str]`) doesn't
+  let mypy narrow `"ErrCount"` specifically to `int` without a `print_log.py`-level `TypedDict`
+  change - out of scope here, left as the same accepted baseline pattern.
+- `get_mem_status()` (last_backup/restored_from) was already unchanged and still matches the
+  deployed driver 1:1 - no fix needed there.
+- **Known gap, deliberately deferred (owner-confirmed, not an open question)**:
+  `sensortask-wozi.py`'s `setSGP` REST handler validates `SGPBackupPeriod`/`SGPBackupMaxAge`/
+  `SGPWaitTimeNTP` and writes them into the *shared* `config.json` via the old `cfgmgr`
+  (`async_manager.ConfigManager`, a different class entirely from the driver's own
+  `config_manager.ConfigManager`) - but the promoted `SGP40_Reader` reads these three values from
+  its own private `config_SGP40.cfg` and exposes no setter for them at all (only `reset_voc`). The
+  REST handler validates input and persists it somewhere the sensor never reads - a silent no-op
+  against real hardware today. The project owner confirmed this gap was already known (not a
+  surprise from this review) and is deliberately not being addressed sensor-by-sensor: per-driver
+  config setters are being deferred to a single consolidated pass across every promoted sensor
+  once they've all made the `src/` move, rather than adding them piecemeal here for SGP40 alone.
+  Left as-is; this note exists so the eventual consolidated pass has the concrete finding on
+  record rather than needing to be rediscovered.
+
+The REST config-write gap above remains out of scope for now; the constructor/error-counter fixes
+were narrowly targeted at what could be corrected mechanically, with a single, unambiguous right
+answer (matching the driver's actual current API), not a broader `sensortask-wozi.py` rewrite -
+every sibling reader construction in that file (SCD30/BMP3xx) still uses the old external-`cfgmgr`
+convention, untouched, since neither of those drivers is promoted yet.
+
+**Confirmed correct, no action needed**:
+- `sgp4x_turn_heater_off` (`0x36 0x15`, datasheet Table 14) is unimplemented. Its documented purpose
+  is exiting VOC measurement mode for low-power idle/sleep (Figure 6: *"use only for exiting
+  measurement mode, e.g., putting a device into sleep"*) - this driver has no sleep/pause feature
+  anywhere (it samples continuously at a fixed 1 Hz for as long as the reader task runs), so there is
+  no call site that would ever need it. Not a gap given the current design.
+- `WaitTimeNTP=0` disables backup/restore entirely for that boot (since `voc_init`/`voc_write` stay
+  at the zero `_init_sgp()` sets them to, and every trigger condition is `> 0`) - confirmed this
+  exactly matches the deployed driver's own `if 1 <= wait_ntp <= 600: ...` gate, not a behavior
+  change introduced by refactoring the inline logic into separate `_check_storage`/`_run_restore`/
+  `_run_backup` methods.
+- Structure (4-part split: `SGP40_I2C` protocol class, `SGP40_DeviceSession` lock wrapper,
+  `SGP40_Reader` framework-facing class, `VOCAlgorithm` as the algorithmic extension consumed by
+  `measure_index_and_raw()`), `SensorReaderConfig`/`Lockable` inheritance (constructor argument
+  order and defaults both match `base_classes.py` exactly), and the `get_task_starters()`/
+  `get_timer_starters()` contract (`system_service.py`'s exact expected `Callable` shapes) were all
+  re-checked and found correct - no further findings.
+
+40 tests now (`tests/test_asy_sgp40_driver.py`, +1 for the self-test byte-check regression) - **814
+total**.
+
+#### Third review pass (exception audit, self-test bug origin, sensortask fixes, deep test coverage)
+
+Requested explicitly by the project owner: (1) audit the whole file for uncaught exceptions,
+including called functions; (2) trace the self-test byte-check bug's origin; (3) fix the flagged
+`add_into()` inconsistency; (4) fix the `sensortask-wozi.py` integration gap; (5) add exhaustive
+config-validation tests; (6) add full-stack integration tests (`print_log`/`base_classes`/
+`asy_i2c_driver`/FRAM, success and every error type); (7) mock I2C bus success/error per the
+datasheet; (8) module- and integration-level fault-propagation tests; (9) an equal-depth separate
+test suite for `voc_algorithm.py`.
+
+**Self-test bug origin (item 2)**: confirmed via `python/IndividualDrivers/asy_sgp40_driver/__init__.py:337-338`
+(SPDX-tagged "Copyright (c) 2020 Bryan Siepert for Adafruit Industries") - the exact same
+`if self_test[0] != 0xD400: raise RuntimeError("Self test failed")` already exists there, with no
+comment or reasoning given. A plain oversight on Adafruit's own side (checking the whole word
+against one specific value instead of just the documented pass/fail byte), not a deliberate
+choice for some specific chip revision - inherited verbatim through this project's deployed driver,
+then into the first promotion pass, until this review's Table 13 re-read caught it.
+
+**Uncaught-exception audit (item 1)** across the whole file, cross-checking every called function's
+own "never raises" contract (`base_classes.py`, `config_manager.py`, `asy_fram_manager.py`,
+`print_log.py`, `voc_algorithm.py` - all independently confirmed by their own module docstrings/
+promotion audits) and every `SGP40_I2C` call site from `SGP40_Reader` (both already wrapped in
+`try`/`except Exception`, per the module docstring's own documented contract): found exactly one
+gap, the unwrapped `comp_callback()` call (see above, now fixed) - no other uncaught-exception path
+found.
+
+**Items 3 and 4** (the `add_into()` fix and the `sensortask-wozi.py` integration fixes) are recorded
+in full detail above, inline with the findings they extend.
+
+**Items 5-9 (test coverage)** added across `tests/test_asy_sgp40_driver.py` and
+`tests/test_voc_algorithm.py`:
+- Config schema: every field's documented bounds/defaults, valid boundary values (min and max for
+  all three fields simultaneously), a typical custom combination, single-field-invalid for each of
+  the three fields independently, two-fields-invalid and all-three-invalid recombinations, wrong-type
+  values, missing keys, and confirming `_init_sgp()` actually threads a valid custom `WaitTimeNTP`
+  into `voc_init`/`voc_write` (not just that `get_dict_cfg()` reports it). Each test uses its own
+  per-test config subdirectory (`_sgp_cfg_dir()`), not the shared `_tmp_path("")` every other test in
+  the file uses, since those never write custom values - only these do, and a shared file would let
+  one test's config bleed into another's.
+- Full-stack integration: confirmed `SGP40_Reader.pr` is a real `PrintLogHistoryStore` when
+  `fram_storage` is given, and that its error log survives a simulated reboot (a second
+  `AsyFramManager` sharing the same underlying `FakeMB85RS64V` chip, replaying the identical
+  allocation-call sequence) - the same "reboot" pattern this file's existing VOC-state FRAM tests
+  already used, now also covering the *other* FRAM chunk this driver allocates (`pr`'s own error log,
+  allocated first in construction order, ahead of `ts_storage`'s VOC-state chunk).
+- I2C mocking/fault propagation: a real NAK (`fake_bus.nak_addresses.add(0x59)`, not a
+  hand-constructed exception) during a measurement is caught by `_read_sgp()`'s own
+  `try`/`except Exception` and counted through the normal error path - proven both at the single-call
+  level and end-to-end through `read_loop()`'s give-up-after-`max_i2c_err` logic, mirroring the
+  existing CRC-mismatch-based give-up test but for a real bus-level `OSError` instead of a
+  hand-corrupted `RuntimeError`, since these are genuinely different fault shapes reaching the same
+  `except Exception` catch. This directly proves `SGP40_I2C`'s documented "OSError allowed to
+  propagate" carve-out (`src/README.md` section 2) is actually absorbed correctly by
+  `SGP40_Reader`, not just asserted in a comment.
+- `voc_algorithm.py`'s own dedicated integration suite (previously only exercised coupled to a full
+  sensor read cycle via `asy_sgp40_driver.py`'s tests): a real `AsyFramManager` +
+  `FakeMB85RS64V`-backed round trip of `pack_into()`/`unpack_from()` across a simulated reboot,
+  independent of the sensor driver entirely; a hard-failure case (both redundant on-chip copies
+  corrupted, matching `tests/test_asy_fram_manager.py`'s own
+  `test_read_fails_when_both_blocks_have_crc_invalid_payloads` idiom) proving `read_into()` returning
+  `False` never touches the live algorithm's state at all (`unpack_from()` never gets called, mirroring
+  `asy_sgp40_driver.py`'s own `_run_restore()` short-circuit, now proven directly at the algorithm
+  level too); and a single-copy-corruption self-heal case confirming the dual-copy redundancy still
+  recovers the *exact* original state, not just "read succeeded".
+
+Full suite: **835 tests, all passing** (`asy_sgp40_driver.py` 40→58, `voc_algorithm.py` 22→25 - see
+"Current test counts" below for the per-file breakdown).
+
+#### Fourth review pass (line-by-line re-read for oversights/dead code/untested conditions)
+
+Requested explicitly: go through both `asy_sgp40_driver.py` and `voc_algorithm.py` again in detail
+for oversights, bugs, strange/unexpected behavior, and unhandled/unplanned/accidental exceptions or
+conditions with no unit test yet - independent of the earlier passes' own findings. Nothing here
+was silently changed; every item below is either a new regression test locking in already-correct-
+but-untested behavior, or a flagged behavioral question left for the project owner to decide (see
+"Flagged, not changed" below).
+
+**Confirmed real, previously untested conditions (now covered by new tests, no behavior change)**:
+- `_run_backup()`'s genuine-FRAM-write-failure branch (`"Schreibfehler beim Backup!"`, errno=13,
+  distinct from the already-tested "no NTP yet" deferral) had zero coverage. New test forces a real
+  write failure via `manager.set_pause(True)` (the same clean-`False`-without-touching-the-chip
+  shape a genuine hardware fault takes) and confirms it's logged and `last_backup` stays `None`.
+- Both `_run_restore()`'s and `_run_backup()`'s "wait-time-NTP budget exhausted, act anyway" escape
+  hatches were untested. `_run_restore()`: once `voc_init`'s countdown reaches 0 while NTP still
+  hasn't synced, a valid-but-ageless backup is restored anyway *without* ever checking
+  `BackupMaxAge` (recovering a possibly-unverifiable-age baseline rather than losing it). `_run_backup()`:
+  the symmetric case - once `voc_write`'s countdown reaches 0, the backup is written anyway without
+  a real timestamp (`last_backup` ends up `0`, the documented "backup exists, no TS" sentinel, not
+  `None`). The existing `test_fram_backup_without_ntp_sync_is_deferred_not_lost` only covered the
+  "still waiting" branch of the second case, never the "budget exhausted" branch of either.
+- `_check_storage()`'s `backup_counter >= 100000` wraparound guard was unreachable in every previous
+  test - it turns out to only ever matter when `BackupPeriod` is disabled (`0`), since any nonzero
+  period's own periodic-trigger reset already fires long before 100000 (max `60*1440 = 86400` for
+  the field's own valid range). New test disables `BackupPeriod`, pre-sets `backup_counter=99999`,
+  and confirms it wraps to `0` rather than being left to grow unbounded.
+- `_init_sgp()`'s `set_verify()` call was never checked against its actual computed value (only
+  that `_init_sgp()` succeeds) - new test confirms `ts_storage.get_verify()` matches the documented
+  `ceil(600/BackupPeriod)*0.1` formula for a real, non-default `BackupPeriod`.
+- **A genuinely reachable, previously unexercised interaction**: `_check_storage()` can
+  independently set both `serialize` and `deserialize` `True` in the *same* cycle (a restore still
+  pending, `voc_init > 0`, coinciding with the periodic backup period elapsing). Both then operate
+  on the *same* buffer: `_run_restore()` reads the old state into it, `vocalgorithm_proc_ser_des()`
+  unpacks it, processes one new sample, and re-packs the *updated* state back into that same
+  buffer, which `_run_backup()` then persists - restore and backup coherently compose in one pass.
+  No existing test ever triggered both at once. New test constructs this exact coincidence and
+  confirms the whole chain (restore succeeds, re-serialize succeeds, the resulting state reflects
+  the restored-then-processed uptime) - this test itself initially had a bug of its own (see next
+  paragraph), caught and fixed before landing.
+- **NaN/Inf compensation data**: confirmed directly against the real interpreter that
+  `_celsius_to_ticks()`/`_relative_humidity_to_ticks()` call `int()` on the caller-supplied
+  compensation value with no validation beyond "not `None`" - `float('nan')` raises `ValueError`,
+  `float('inf')`/`float('-inf')` raise `OverflowError`. Already structurally safe (both calls happen
+  inside `_read_sgp()`'s own wrapping `try`/`except Exception`, counted as a normal read error, not
+  propagated), but had zero test coverage for either case until now.
+- `voc_algorithm.py`: MicroPython's `struct.pack_into()`/`unpack_from()` raise `ValueError` for a
+  negative `offset` - confirmed directly against the real interpreter this is a genuine
+  MicroPython-vs-CPython difference (CPython's `struct` treats a negative offset as relative to the
+  buffer's end; MicroPython's doesn't support that convention at all). Already safe (both call
+  sites are wrapped in `try`/`except Exception: return False`), but untested; no real caller in this
+  codebase ever passes a negative offset today.
+- `voc_algorithm.py`'s `_vocalgorithm_set_tuning_parameters()` has *zero* callers anywhere in this
+  codebase (`asy_sgp40_driver.py` only ever calls `vocalgorithm_init()`/`vocalgorithm_reset()`; only
+  `_vocalgorithm_get_states()`/`_vocalgorithm_set_states()` - Sensirion's own short-interruption API
+  - are used, and only by tests exercising that path directly) and had zero test coverage at all.
+  Kept as documented, Sensirion-mirroring dead API surface; added a smoke test confirming it
+  threads values through correctly and doesn't leave the algorithm unusable, since "untested" and
+  "safe" aren't the same claim and this had neither established before now.
+
+**Confirmed harmless, not fixed (dead/vestigial code, noted for the record)**:
+- `measure_index_and_raw()`'s `if raw is None or raw < 0:` guard - `raw < 0` can never actually be
+  true given the current implementation (`get_raw()` returns either `None` or an unsigned 16-bit
+  value from `unpack_from(">H", ...)`, never negative). Vestigial from the old Adafruit-style
+  convention of returning `-1` as a sentinel for "read failed" (this driver uses `None` instead,
+  which the `is None` half of the check already fully covers). Harmless dead condition, not touched.
+
+**Fixed, per explicit owner direction** (originally flagged, not changed - now resolved): the
+`self.reset` behavior above was redesigned rather than left as a documented quirk. Owner's
+direction, verbatim in spirit: never drop a reset, don't need to redo the whole thing every time,
+never give up retrying, every path leads to defined and clear behavior. Reset now tracks its two
+independent sub-parts separately - `self._reset_fram_cleared` (has `ts_storage.clear()` succeeded
+for this request) and `self._reset_algo_applied` (has `vocalgorithm_reset()` actually been applied
+for this request) - both initialized `True` (nothing pending) and reset to `False` together by
+`reset_voc(True)`, so a fresh explicit request always restarts full tracking rather than silently
+riding on a previous request's stale bookkeeping.
+
+`_read_sgp()` now only attempts whichever sub-part hasn't yet succeeded: the FRAM clear is skipped
+once `_reset_fram_cleared` is `True` (no more redundant FRAM writes while only the algorithm side is
+still blocked, e.g. on missing compensation data), and `vocalgorithm_reset()` is only actually
+invoked (`reset=True` passed into `measure_index_and_raw()`) while `_reset_algo_applied` is still
+`False` - the moment that call is issued, `_reset_algo_applied` is set `True` immediately, since
+`vocalgorithm_reset()` runs unconditionally before `measure_raw()`'s I2C transaction and never
+raises (`voc_algorithm.py`'s own contract), so it's guaranteed applied regardless of whether the
+I2C measurement that follows then succeeds or fails. `self.reset` only clears to `False` once both
+sub-parts are confirmed `True` in the same cycle - on both the success path and the exception path,
+since the software half can complete even when the hardware measurement that follows it fails.
+
+`reset_now = self.reset` is snapshotted once at the top of `_read_sgp()`, so a concurrent
+`reset_voc()` call from another task (a REST handler) only ever affects the *next* cycle's own
+snapshot - this cycle's own completion accounting can't be corrupted by a mid-cycle request from
+elsewhere, matching this driver's existing single-owning-task model (see the atomicity/locking
+answer this same conversation turn covered for `ts_storage`/`_voc_algorithm`, which this reset
+logic doesn't add any new concurrency risk on top of).
+
+The old test documenting "current, not endorsed" behavior
+(`test_reset_flag_persists_across_a_failed_read_and_repeats_the_reset_sequence`) no longer applies
+and was replaced by two tests proving the new contract directly:
+`test_reset_never_drops_but_each_sub_part_completes_at_most_once` (FRAM succeeds first, while
+algorithm-reset is still pending on missing compensation data; pauses FRAM storage afterward to
+prove a correct implementation would *not* need to touch it again) and
+`test_reset_retries_only_the_fram_half_once_the_algo_half_already_succeeded` (the mirror case -
+algorithm-reset succeeds first, FRAM clear kept failing via `set_pause(True)` across multiple
+cycles, `vocalgorithm_process()`'s own `muptime` counter used as an independent proof that
+`vocalgorithm_reset()` was never re-applied on a later cycle).
+
+Full suite: **848 tests, all passing** (`asy_sgp40_driver.py` 58→68, `voc_algorithm.py` 25→28 - net
++1 vs. the previous +9/+3 count, since one old test was replaced by two new ones).
+
+#### Fifth review pass (full `src/README.md` checklist re-validation, owner-requested)
+
+Went section-by-section through `src/README.md`'s production-quality checklist against both files
+again, re-checking claims directly against the actual SGP40 datasheet PDF, current MicroPython docs
+(fetched live, not from training memory), and the RP2040/Pico W target - not re-deriving prior
+passes' already-closed findings.
+
+**Fixed (trivial, zero behavior change, confirmed via existing tests)**:
+- `_read_word_from_command()` checked `crc.check_from()`'s `int | None` return with a bare
+  `if not await ...`, while `measure_raw()` checks the same `add_into()` contract with `is None` -
+  an API-consistency mismatch within the same file (section 10). No live bug (`check_from`'s success
+  value here is always `2`, never `0`, so falsy-checking never misfired), but `is None` is the
+  file's own established, more defensive convention for this exact `int | None` shape. Fixed;
+  `test_initialize_corrupted_response_raises_crc_error`/`test_get_raw_crc_mismatch_raises` already
+  exercise the real-failure path and still pass unchanged.
+
+**New cross-checks confirming existing code, nothing to change**:
+- `asyncio.ThreadSafeFlag` (`self.trigger_event`) usage checked against current MicroPython
+  asyncio docs: "only one task may wait on the flag," set-able from ISR/async context. Exactly one
+  waiter (`read_loop()`), exactly one setter (the timer callback) - matches the documented contract.
+- `machine.Timer` (`self.trigger_timer`, RP2 port) checked against current docs: callbacks run as
+  **soft IRQ by default** (not hard) unless `hard=True` is passed. This driver doesn't pass it, so
+  the callback (`lambda b: self.trigger_event.set()`) runs in the less-restrictive soft-IRQ context,
+  free of hard-IRQ's no-heap-allocation constraint - already safe as written, no change needed.
+- MicroPython 1.27.0/1.28.0 release notes (the version between the code's older history and the
+  refactor's current `toolchain/versions.toml` pin) checked for anything touching `asyncio`,
+  `struct`, or `machine.I2C`: nothing relevant surfaced (1.27/1.28 additions are ESP32-C5/P4,
+  STM32U5, `machine.CAN`, PEP 750 t-strings - none touch this file's dependencies).
+- CRC-8 algorithm (`crc_checks.py`'s `CRC8`, poly `0x31`/init `0xFF`) re-checked against the
+  datasheet's own Table 7 C reference and worked example (`CRC(0xBEEF) = 0x92`) - `test_crc8_
+  helper_matches_datasheet_example` already covers this; still matches.
+- Considered, declined as unnecessary complexity: reusing `_read_word_from_command()`'s
+  per-call `readdata_buffer`/`replybuffer` allocations (a 3-9 byte bytearray + list, once per
+  second) the way `_command_buffer`/`_measure_command` already do. Negligible cost on a 264KB-SRAM
+  target at 1Hz: not worth the added complexity for a fixed/degenerate buffer shape across three
+  different call sites (`get_raw()`'s `readlen=1`, self-test's `readlen=1`, serial-number's
+  `readlen=3`).
+
+**Fixed, per explicit owner direction** (originally flagged, not changed - now resolved):
+- `SGP40_I2C._celsius_to_ticks()`/`_relative_humidity_to_ticks()` (datasheet Table 10) rounded
+  differently from each other: humidity rounds to nearest (`int(x + 0.5)`), temperature truncated
+  toward zero (`int(x)`) - inherited unchanged from the legacy/Adafruit driver, present identically
+  in both. All three of the datasheet's own worked examples (25°C→0x6666, -45°C→0x0000,
+  130°C→0xFFFF, 50%→0x8000, 0%→0x0000, 100%→0xFFFF) happen to divide evenly, so this asymmetry
+  never showed up in the exact-example check already recorded above ("Confirmed correct, not
+  changed, after checking"). The datasheet's Table 10 formula doesn't itself mandate a rounding
+  convention, so this was never "wrong vs. the datasheet," but round-to-nearest is the more
+  reasonable/accurate choice of the two (minimizes conversion error vs. truncation's systematic
+  downward bias) - owner's direction: pick the more reasonable variant and make both consistent.
+  `_celsius_to_ticks()` now rounds to nearest too (`int(x + 0.5)`, matching
+  `_relative_humidity_to_ticks()` exactly); new regression test
+  `test_celsius_to_ticks_rounds_to_nearest_not_truncates` (24°C, where truncation and rounding
+  disagree by 1 tick: 25839 vs. 25840) proves it. All three datasheet worked examples still pass
+  unchanged (they divide evenly, so rounding doesn't move them).
+
+#### Sixth review pass (documentation trimmed to `src/README.md` section 11's 3-line cap, owner-requested)
+
+Both files' module docstrings and several per-function `#` comment blocks had grown past section
+11's "module docstring is a short header... per-function/inline comments stay within 3 lines,
+prefer fewer" rule (same trim `config_manager.py` already went through) - pure documentation
+trim, zero behavior change, confirmed via `ruff check` (clean), `mypy` (same single pre-existing
+`Timer()` `call-overload` finding, unchanged), and the full existing test suites (69/69, 28/28,
+unchanged pass/fail set).
+
+- `asy_sgp40_driver.py`'s module docstring: 16 lines → 10, dropping the itemized datasheet-table
+  cross-reference list (I2C address, CRC-8 poly/init, Table 8/10/17 - all still verifiable in the
+  code's own per-function comments and this file's earlier review-pass write-ups above) and
+  folding the three-paragraph structure into two.
+- `voc_algorithm.py`'s module docstring: 17 lines → 7, dropping the standalone paragraph
+  contrasting `vocalgorithm_proc_ser_des()`'s full-state FRAM pack/unpack against Sensirion's own
+  short-interruption-only `VocAlgorithm_get_states()`/`set_states()` API (freezing every field,
+  including the `uptime_gamma`/`uptime_gating` learning-progress counters, keeps resumed state
+  internally consistent regardless of gap length; restore-age gating is `asy_sgp40_driver.py`'s
+  own `BackupMaxAge` config's job, not this file's) - the design rationale itself isn't lost, just
+  moved here instead of restated in the file.
+- Six over-limit comment blocks in `asy_sgp40_driver.py`, trimmed to ≤3 lines each, full original
+  wording preserved here instead of in the file:
+  - `SGP40_Reader.__init__`'s reset sub-completion tracking (4→2 lines): a pending reset has two
+    independent parts - clearing the FRAM backup and applying `vocalgorithm_reset()` - which can
+    complete on different cycles (e.g. FRAM clear fails once but the software reset already
+    succeeded); both start "done" until `reset_voc(True)` marks them pending.
+  - `_read_sgp()`'s `reset_now` snapshot (5→2 lines): a pending reset's two parts are tracked via
+    `_reset_fram_cleared`/`_reset_algo_applied` so a transient fault in one retries only that part,
+    never redoing an already-succeeded one; `reset_now` is snapshotted once at entry so a
+    concurrent `reset_voc(True)` from another task (e.g. a REST handler) only ever affects the
+    *next* cycle's own snapshot, never this one's.
+  - `_read_sgp()`'s `reset_for_measure` comment (5→2 lines): the software reset is applied at most
+    once per pending request, even if the FRAM half is still incomplete - `vocalgorithm_reset()`
+    runs unconditionally, before `measure_raw()`'s I2C transaction, and never raises, so the moment
+    `reset=True` is decided, that half is guaranteed applied regardless of whether the I2C
+    measurement that follows then succeeds or fails.
+  - `initialize()`'s intro comment (6→2 lines): only the serial-number read and self-test (both
+    real, datasheet-documented commands, Table 8) gate success - the previous feature-set check
+    (command 0x202F) isn't in the datasheet's command table, isn't done by Sensirion's own or
+    DFRobot's reference drivers, and has a known real-hardware unreliability report upstream;
+    dropped rather than kept as a spurious extra failure mode on the restart-after-disturbance
+    path.
+  - `initialize()`'s self-test byte-check comment (4→2 lines): datasheet Table 13 documents only
+    the high byte as the pass/fail marker (0xD4 pass, 0x4B fail) - the low byte is explicitly
+    documented as "ignore", not guaranteed zero; checking the full word against 0xD400 (inherited
+    from the deployed driver) would spuriously fail whenever real hardware returns a non-zero low
+    byte, which the datasheet allows.
+  - `_reset()`'s general-call comment (4→2 lines): a true I2C general-call reset (datasheet
+    Table 17) is a single data byte 0x06 sent to the reserved general-call address 0x00,
+    broadcasting a reset to every device on the bus that supports it - not a command sent to the
+    SGP40's own address; not every device needs to ACK a general call, so a NAK (`OSError`) here is
+    expected, not a real failure.
+- Two comment blocks already exactly at the 3-line cap were shortened further for consistency
+  (the `comp_callback()` try-comment and the `_read_sgp()` exception-path comment), same
+  zero-behavior-change treatment; a handful of other exactly-3-line blocks (the reset_voc()
+  restart-tracking comment, the serial-number-zero comment, the measure_index_and_raw() VOC-index
+  comment) were left as-is since they were already within the cap.
+- `voc_algorithm.py` had no per-function comment blocks past the cap to begin with (the file's
+  fixed-point port functions are largely uncommented, following the C reference 1:1 - only the
+  `DFRobot_vocalgorithmParams` class-level comment existed, already at 2 lines).
 
 ### Coverage-driven completeness pass
 
@@ -2558,16 +3203,19 @@ and a missing config file failing independently without either derailing the oth
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
 `asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 58,
-`asy_udp_socket.py` 62, `asy_scd30_driver.py` 59, `asy_bmp3xx_driver.py` 68 — **879 total**.
-(Previous count of 690 across 11 files predated `asy_udp_socket.py`'s promotion and was never
-updated to include it — corrected during its third pass; the 23→42 jump was its fourth pass's
-uncaught-exception/configuration/integration test additions; 42→56 is its fifth pass's
-mutation-bypass/concurrency/cancellation-safety tests; 56→62 is its sixth pass's
-ready()/write_and_recvfrom() parameter-guard tests. `asy_bmp3xx_driver.py`'s own count history
-across its review passes (33→54→64→67→68) is documented in full in its own section above, not
-repeated here. 752→811→879 reflects `asy_scd30_driver.py`'s (+59) and `asy_bmp3xx_driver.py`'s
-(+68) entire promotions landing in the same consolidation merge — each was independently 752+own
-when reviewed on its own branch, the combined total simply adds both.)
+`asy_udp_socket.py` 62, `asy_scd30_driver.py` 59, `asy_bmp3xx_driver.py` 68, `asy_sgp40_driver.py`
+69, `voc_algorithm.py` 28 — **976 total** (verified live via `grep -c '^def test_'
+tests/test_*.py`, not just arithmetic). (Previous count of 690 across 11 files predated
+`asy_udp_socket.py`'s promotion and was never updated to include it — corrected during its third
+pass; the 23→42 jump was its fourth pass's uncaught-exception/configuration/integration test
+additions; 42→56 is its fifth pass's mutation-bypass/concurrency/cancellation-safety tests; 56→62
+is its sixth pass's ready()/write_and_recvfrom() parameter-guard tests. `asy_bmp3xx_driver.py`'s
+own count history across its review passes (33→54→64→67→68) and `asy_sgp40_driver.py`'s/
+`voc_algorithm.py`'s own history (including a caught "868"-vs-848 arithmetic error mid-review) are
+documented in full in their own `src/` promotion sections above, not repeated here. 752→976
+reflects `asy_scd30_driver.py`'s (+59), `asy_bmp3xx_driver.py`'s (+68), and `asy_sgp40_driver.py`'s
++ `voc_algorithm.py`'s (+69+28) entire promotions landing together in this consolidation merge -
+each was independently 752+own when reviewed on its own branch; the combined total adds all three.)
 
 ## Decided for the refactor
 
@@ -2594,6 +3242,12 @@ when reviewed on its own branch, the combined total simply adds both.)
   as the `asy_udp_socket.py` sixth pass's two actual fixes were), not just "any `await` could
   theoretically raise." Confirmed by owner directly, prompted by `asy_udp_socket.py`'s open question
   #14 (see below).
+- **Per-driver REST config setters (e.g. `SGP40_Reader`'s missing `BackupPeriod`/`BackupMaxAge`/
+  `WaitTimeNTP` setters, currently a silent no-op via `sensortask-wozi.py`'s `setSGP` handler
+  writing to a config file the driver never reads - see "Sensortask-\*.py integration" above) are
+  a known, owner-confirmed gap, deliberately not being closed sensor-by-sensor.** Addressed in one
+  consolidated pass across every promoted sensor once they've all made the `src/` move, not
+  piecemeal per driver as each one is promoted.
 - **Mypy shall be configured to not accept `Any` types** (owner-specified). The closest existing
   mypy option is `disallow_any_explicit` (flags explicit `Any` annotations); `[tool.mypy]` in
   `pyproject.toml` currently deliberately stops short of it and the other `--strict`-only checks

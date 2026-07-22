@@ -134,6 +134,11 @@ class I2C:
     # Registers are a plain dict of (address, reg_addr) -> bytearray, seeded directly by a test
     # via .registers before exercising get_bits/set_bits/get_register_struct/set_register_struct
     # - a real round trip through readfrom_mem/writeto_mem, not a canned return value.
+    #
+    # read_queue is the raw-transaction counterpart (readfrom_into has no register address to key
+    # off of - a driver issuing its own command bytes via writeto() then reading a reply via
+    # readfrom_into(), e.g. asy_sgp40_driver.py's word-oriented protocol): a FIFO of byte strings a
+    # test primes before each expected readfrom_into() call, mirroring SPI's own read_queue below.
     def __init__(self, id: int, *, scl: Pin, sda: Pin, freq: int = 400000, timeout: int = 50000) -> None:
         self.id = id
         self.scl = scl
@@ -144,6 +149,7 @@ class I2C:
         self.deinit_count = 0
         self.log: list[tuple] = []
         self.registers: dict[tuple[int, int], bytearray] = {}
+        self.read_queue: list[bytes] = []
         self.nak_addresses: set[int] = set()  # convenience: EIO (no ACK) on every op to this address
         self.busy = False  # convenience: ETIMEDOUT (bus/clock-stretch timeout) on every op, any address
         self._faults: dict[str, list[Exception]] = {}  # op name -> FIFO queue, one exception per matching call
@@ -189,8 +195,9 @@ class I2C:
 
     def readfrom_into(self, address: int, buf: object, stop: bool = True) -> None:
         self._maybe_raise("readfrom_into", address)
-        buf[:] = self._next_read_bytes(len(buf))  # type: ignore[index,arg-type]
-        self.log.append(("readfrom_into", address, bytes(buf), stop))  # type: ignore[call-overload]
+        data = self._next_read_bytes(len(buf))  # type: ignore[arg-type]
+        buf[:] = data  # type: ignore[index]
+        self.log.append(("readfrom_into", address, data, stop))
 
     def writeto(self, address: int, buf: object, stop: bool = True) -> int:
         self._maybe_raise("writeto", address)
