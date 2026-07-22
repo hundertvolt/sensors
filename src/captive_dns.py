@@ -4,8 +4,10 @@ on-subnet query gets a canned A-record response pointing back at the AP's own IP
 the name asked for, so any client on the hotspot lands on the device's own config page.
 
 Never inspects anything beyond the DNS header/question section and the source address; a
-subnet-mismatched, malformed, or truncated packet is silently dropped rather than raising - see
-DNSServer.run()'s and DNSQuery.__init__'s own comments for the specific guards.
+subnet-mismatched, malformed, or truncated packet is silently dropped rather than raising. Stability
+comes first here: every try/except in this file is a broad `except Exception` guarding "this input
+must never crash the server," not an enumerated list of specific exception types - see
+DNSServer.run()'s and DNSQuery.__init__'s own comments for what's routine vs. genuinely unexpected.
 """
 
 import asyncio
@@ -32,11 +34,11 @@ class DNSServer:
         try:
             netmask_int = _ipv4_to_int(netmask)
             network = _ipv4_to_int(server_ip) & netmask_int
-        except (TypeError, ValueError, AttributeError):
-            # server_ip/netmask come from the OS's own wlan.ifconfig(); guard anyway rather than
-            # let a malformed one (e.g. None) raise out of the task with nothing supervising it -
-            # AttributeError covers a non-string value reaching _ipv4_to_int's .split() call,
-            # matching the same three exception types the per-packet check below already guards.
+        except Exception:
+            # server_ip/netmask come from the OS's own wlan.ifconfig(); guard broadly anyway rather
+            # than let any parsing failure raise out of the task, which nothing supervises. Caught
+            # broadly, not enumerated by type, since every failure here means the same thing: not a
+            # usable value (asyncio.CancelledError is exempt - it's a BaseException, not Exception).
             if self.debug:
                 print("DNSServer: invalid server_ip/netmask, not starting:", server_ip, netmask)
             return
@@ -48,9 +50,10 @@ class DNSServer:
                 if data is not None and addr is not None:
                     try:
                         on_subnet = (_ipv4_to_int(addr[0]) & netmask_int) == network
-                    except (TypeError, ValueError, AttributeError):
+                    except Exception:
                         # addr[0] not a well-formed dotted-quad string (e.g. a raw sockaddr byte -
-                        # see BACKLOG.md). Treat like off-subnet rather than the 3s backoff below.
+                        # see BACKLOG.md) - a routine, expected condition, not caught by type.
+                        # Treated like off-subnet rather than falling through to the 3s backoff below.
                         on_subnet = False
                     if not on_subnet:
                         if self.debug:
@@ -122,11 +125,11 @@ class DNSQuery:
                 # not the end of the whole datagram (which may carry an EDNS0 OPT record or further
                 # questions/records this class was never meant to parse - see response()'s comment).
                 self._question_end = ini + 5
-        except (IndexError, UnicodeError, TypeError, AttributeError):
-            # IndexError/UnicodeError: truncated/malformed datagram. TypeError/AttributeError: a
-            # non-bytes data (the only real caller, run(), already guarantees bytes, but this class
-            # is public and shouldn't rely on that discipline). Reuses the existing "not a standard
-            # query" empty-domain sentinel instead of raising into run()'s 3s per-packet backoff.
+        except Exception:
+            # Truncated/malformed data, or a non-bytes data (the only real caller, run(), always
+            # passes bytes, but this class is public) - caught broadly, not enumerated by type,
+            # since every failure here means the same thing: not a usable standard query. Reuses
+            # the existing empty-domain sentinel instead of raising into run()'s 3s backoff.
             self.domain = ""
         if self.debug:
             print("DNSQuery domain:" + self.domain)
@@ -139,11 +142,11 @@ class DNSQuery:
         if self.domain:
             try:
                 # run() only ever calls this with its own already-validated server_ip, but this
-                # method is public and shouldn't rely on that - a bad ip here (wrong octet count,
-                # out-of-range octet, non-numeric, non-string) would otherwise either raise or
-                # silently build a corrupt packet (wrong RDATA length vs. the header's declared 4).
+                # method is public and shouldn't rely on that - a bad ip would otherwise either
+                # raise or silently build a corrupt packet (wrong RDATA length vs. the header's
+                # declared 4). Caught broadly, not enumerated by type; any failure means "invalid".
                 _ipv4_to_int(ip)
-            except (TypeError, ValueError, AttributeError):
+            except Exception:
                 return None
             packet = self.data[:2] + b"\x81\x80"
             # QDCOUNT=1, ANCOUNT=1, NSCOUNT=0, ARCOUNT=0 - hardcoded, not echoed from the original

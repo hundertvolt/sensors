@@ -2080,6 +2080,22 @@ never awaited is just silently discarded by asyncio, no different from an ordina
 test added for this (there is nothing about `captive_dns.py` itself for a test to cover; it would only
 be testing a property of `asyncio.Task`).
 
+**Owner-directed consolidation, same pass**: the four `try/except`s added across the prior two passes
+each enumerated a specific list of exception types (`TypeError, ValueError`, then `AttributeError` on
+top once a gap surfaced, then `IndexError, UnicodeError` too for `DNSQuery.__init__`) - closing real
+gaps, but by re-discovering one more specific type per pass rather than expressing the actual intent
+directly. None of the four ever behave differently based on *which* exception fired; every one just
+means "this input isn't usable, fall back." Collapsed all four to plain `except Exception:` - strictly
+broader than the enumerated lists (so no coverage lost; every previously-caught case is still caught,
+plus whatever specific type hadn't been found yet), simpler to read, and doesn't need re-auditing again
+if some other type-shaped input surfaces later. Confirmed directly against the real interpreter (not
+assumed from CPython docs) that `asyncio.CancelledError` inherits from `BaseException`, not `Exception`,
+in this MicroPython build too - so this broadening cannot accidentally swallow a real cancellation; the
+existing explicit `except asyncio.CancelledError:` clauses in `run()`'s main loop and disconnect cleanup
+were kept exactly as-is; they exist for a *behavioral* reason (treat shutdown differently from an
+error), not as exception-type bookkeeping. All 39 tests, full lint/typecheck, still clean - this was a
+pure readability/robustness simplification, zero behavior change for every case already tested.
+
 Verified: full-scope `scripts/lint.sh`/`scripts/typecheck.sh` still 0 findings, `scripts/test.sh` all
 13 files green, 791 tests total.
 
