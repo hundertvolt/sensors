@@ -803,16 +803,19 @@ def test_reader_set_trigger_secs_accepts_boundary_values() -> None:
     reader = make_reader("boundary_trigger")
     run(reader.set_trigger_secs(1))
     assert run(reader.trigger_period.get_value()) == 1
-    run(reader.set_trigger_secs(600))
-    assert run(reader.trigger_period.get_value()) == 600
+    run(reader.set_trigger_secs(3600))
+    assert run(reader.trigger_period.get_value()) == 3600
 
 
 def test_reader_set_trigger_secs_rejects_out_of_range_values() -> None:
-    # Owner-specified bound: 1-600 seconds. Below/above/zero/negative are all rejected the same
-    # way as a bad type - logged (errno=21), the previous value is kept, never raises.
+    # Bound is 1-3600 seconds, matching the deployed production validation for this exact field
+    # (modules/sensortask-wozi.py's `update_valid_json(..., "BMPSampleInterv", "int", res, 1, 3600,
+    # ...)`, mirrored across every other sensor's sample interval too). Below/above/zero/negative
+    # are all rejected the same way as a bad type - logged (errno=21), the previous value is kept,
+    # never raises.
     reader = make_reader("out_of_range_trigger")
     run(reader.set_trigger_secs(30))  # establish a known-good baseline value first
-    for bad in (0, -1, 601, 3600):
+    for bad in (0, -1, 3601, 100000):
 
         async def scenario(value: int = bad) -> dict:
             await reader.set_trigger_secs(value)
@@ -835,13 +838,13 @@ def test_init_bmp_soft_degrades_on_out_of_range_stored_sample_interval() -> None
     seed_calibration(i2c)
     seed_status(i2c, 0x10 | 0x60)
     seed_err(i2c, 0x00)
-    ok, results = run(reader.cfgmgr.write_config({"SampleInterv": 1800}, _FULL_SCHEMA))
+    ok, results = run(reader.cfgmgr.write_config({"SampleInterv": 7200}, _FULL_SCHEMA))
     assert ok is True
-    assert results["SampleInterv"] == "Invalid"  # rejected by the schema too (max is now 600)
+    assert results["SampleInterv"] == "Invalid"  # rejected by the schema too (max is 3600)
     # write_config() only accepts the update when the value clears the schema check, so a stale
     # out-of-range value has to be seeded directly into the underlying cache to simulate a config
     # file written before this bound existed - not reachable via write_config() alone anymore.
-    reader.cfgmgr._cache["SampleInterv"] = 1800
+    reader.cfgmgr._cache["SampleInterv"] = 7200
 
     assert run(reader._init_bmp()) is True  # doesn't fail the whole init over this
     assert run(reader.get_pressure_oversampling()) == 1  # other config values still applied
@@ -888,7 +891,7 @@ def test_reader_set_pressure_oversampling_logs_and_returns_false_on_bus_failure(
 # then single and multiple invalid-field recombinations.
 # ---------------------------------------------------------------------------
 
-_VAL_SI = (("SampleInterv", "int", 2, 1, 600, None),)
+_VAL_SI = (("SampleInterv", "int", 2, 1, 3600, None),)
 _VAL_POV = (("PressOvers", "int", 1, 1, 32, None),)
 _VAL_TOV = (("TempOvers", "int", 1, 1, 32, None),)
 _VAL_FC = (("FiltCoeff", "int", 0, 0, 128, None),)
@@ -900,7 +903,7 @@ _FULL_SCHEMA = _VAL_SI + _VAL_POV + _VAL_TOV + _VAL_FC + _VAL_PO + _VAL_TO + _VA
 
 # name -> (type, min, max), mirroring each _VAL_* tuple's own (name, type, def, min, max, special)
 _FIELD_BOUNDS = {
-    "SampleInterv": ("int", 1, 600),
+    "SampleInterv": ("int", 1, 3600),
     "PressOvers": ("int", 1, 32),
     "TempOvers": ("int", 1, 32),
     "FiltCoeff": ("int", 0, 128),

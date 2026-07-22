@@ -71,7 +71,7 @@ _OSR_SETTINGS = (1, 2, 4, 8, 16, 32)  # pressure and temperature oversampling se
 _IIR_SETTINGS = (0, 2, 4, 8, 16, 32, 64, 128)  # IIR filter coefficients
 
 _MIN_TRIGGER_SECS = const(1)
-_MAX_TRIGGER_SECS = const(600)
+_MAX_TRIGGER_SECS = const(3600)
 
 _VAL_SI = const((("SampleInterv", "int", 2, _MIN_TRIGGER_SECS, _MAX_TRIGGER_SECS, None),))
 _VAL_POV = const((("PressOvers", "int", 1, 1, 32, None),))

@@ -921,21 +921,34 @@ three smaller ones:
 
 **Follow-up (owner-resolved): `set_trigger_secs()` bounds.** The previously-flagged gap above -
 `set_trigger_secs()`/`_init_bmp()`'s stored `SampleInterv` had zero bounds checking, unlike every
-hardware-backed setter in this file - is now fixed. Owner specified the valid range directly:
-1-600 seconds (not the schema's previous 1-3600 - `_VAL_SI`'s own `max` updated to match, via two
-new named constants `_MIN_TRIGGER_SECS`/`_MAX_TRIGGER_SECS` shared by both). `set_trigger_secs()`
-now validates and, on an out-of-range value, follows the exact same pattern it already used for a
-bad *type* (log via `self.pr` with the existing `errno=21`, keep the previous value, never raise)
-rather than introducing a second, different failure mode for the same method. `_init_bmp()` was
-changed to route `BMPSampleInterv` through `set_trigger_secs()` itself instead of writing
+hardware-backed setter in this file - is now fixed. `set_trigger_secs()` now validates and, on an
+out-of-range value, follows the exact same pattern it already used for a bad *type* (log via
+`self.pr` with the existing `errno=21`, keep the previous value, never raise) rather than
+introducing a second, different failure mode for the same method, via two new named constants
+`_MIN_TRIGGER_SECS`/`_MAX_TRIGGER_SECS` shared with `_VAL_SI`'s own schema `max`. `_init_bmp()`
+was changed to route `BMPSampleInterv` through `set_trigger_secs()` itself instead of writing
 `trigger_period` directly, so both entry points (REST-facing setter and config-file-driven
 startup) share one validation path - deliberately *not* wrapped in the surrounding `try`/`except`
 that the three hardware-facing values (`PressOvers`/`TempOvers`/`FiltCoeff`) are: since
-`set_trigger_secs()` never raises, a stale/out-of-range stored sample interval (e.g. from a
-config file written before this bound existed) is logged and the previous value kept, without
-failing the whole init attempt and forcing an unrelated task restart the way a genuinely bad
-*hardware* value does - a pure software timing knob failing shouldn't cost the same as the
-sensor itself rejecting a value it can't handle.
+`set_trigger_secs()` never raises, a stale/out-of-range stored sample interval is logged and the
+previous value kept, without failing the whole init attempt and forcing an unrelated task restart
+the way a genuinely bad *hardware* value does - a pure software timing knob failing shouldn't cost
+the same as the sensor itself rejecting a value it can't handle.
+
+**Correction - the bound is 1-3600 seconds, not 1-600.** The first pass of this fix used an
+owner-specified 1-600s range, replacing `_VAL_SI`'s previous 1-3600s `max`. A later top-level
+consistency check (prompted by an owner request to verify deviation from actually-deployed,
+working behavior was kept low across this whole promotion effort) found that **1-3600 is the
+range actually enforced by the deployed, working production REST handler for this exact field** -
+`modules/sensortask-wozi.py`'s `update_valid_json(req_json, "BMPSampleInterv", "int", res, 1,
+3600, ...)` - and the same `1, 3600` pattern is used for every sibling sensor's own sample
+interval in `modules/sensortask-dev.py` (`SHTCSampleInterv`, `MPRLSSampleInterv`,
+`ISLSampleInterv`). A 600s ceiling would have silently started rejecting any already-deployed
+device's stored `BMPSampleInterv` between 601-3600 on the next config write or soft-degrade path -
+a real regression against proven production behavior, not a hypothetical one. Reverted
+`_MAX_TRIGGER_SECS` to `3600` to match; the bounds-checking/exception-handling machinery itself
+(previously entirely absent) is unchanged and is still a genuine fix - only the ceiling constant
+was wrong.
 
 67 tests (`tests/test_asy_bmp3xx_driver.py`), up from 54.
 
