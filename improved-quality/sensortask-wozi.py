@@ -70,12 +70,14 @@ watchdog = WDT(timeout=8000)
 cfgmgr = ConfigManager(
     _CFG_FILE_NAME,
     json.loads(_DEFAULT_CONFIG)
-    | SCD30_Reader.get_default_cfg()
     | SGP40_Reader.get_default_cfg()
-    | BMP3xx_Reader.get_default_cfg()
     | asy_conn_time.get_default_cfg(),
     debug=debug,
 )
+# BMP3xx_Reader (src/asy_bmp3xx_driver.py) and SCD30_Reader (src/asy_scd30_driver.py) don't
+# contribute anything here: BMP3xx owns its own per-sensor config_BMP3XX.cfg file via
+# base_classes.py's SensorReaderConfig, and SCD30 has no local config file at all (its params live
+# on-sensor, no get_default_cfg() to call) - see BACKLOG.md's sensortask-wozi.py integration notes.
 # asy_conn_time: led_pin='LED' for onboard WiFi LED
 conn = asy_conn_time(cfgmgr, conn_fail_to_hotspot=5, hotspot_time_min=8, debug=debug)
 app = Microdot()  # type: ignore[no-untyped-call]
@@ -93,7 +95,10 @@ sgp_reader = SGP40_Reader(
     max_i2c_err=_MAX_I2C_ERR,
     debug=debug,
 )
-bmp_reader = BMP3xx_Reader(i2c1, cfgmgr, max_i2c_err=_MAX_I2C_ERR, debug=debug)
+# address defaults to 0x77 (Sparkfun breakout's SDO-high default) - unlike SCD30_Reader/
+# SGP40_Reader's cfgmgr callback-based config, BMP3xx_Reader owns its own ConfigManager
+# internally (base_classes.py's SensorReaderConfig), so the system cfgmgr isn't passed here.
+bmp_reader = BMP3xx_Reader(i2c1, max_i2c_err=_MAX_I2C_ERR, debug=debug)
 scd_reader = SCD30_Reader(i2c0, 8, trigger_sec=3, max_i2c_err=_MAX_I2C_ERR, debug=debug)
 pixel = Neopixel_Signal(
     15,
@@ -411,8 +416,7 @@ async def sensor_cmd(request: Request):
             res,
             0,
             7,
-            special_val=[0],
-            weight_fct=lambda x: 2**x,
+            weight_fct=lambda x: 2**x - 1,
             debug=debug,
         )
         res = await set_sensor_value(
@@ -579,7 +583,12 @@ async def system_status(request: Request):
     sgp_fram_crit, sgp_fram_uncrit, sgp_fram_last = await sgp_reader.get_mem_error_counters()
     SCD30_ErrCnt = await scd_reader.get_error_counter()
     SGP40_ErrCnt = await sgp_reader.get_error_counter()
-    BMP388_ErrCnt = await bmp_reader.get_error_counter()
+    # base_classes.py's SensorReader.get_error_counter() (which BMP3xx_Reader uses, unlike SCD30/
+    # SGP40's own TimeCounterManager-based int) returns print_log.py's get_log() shape -
+    # {"BMP3XX": {"ErrCount": int, "ErrNum": [...], "ErrType": [...]}} - not a bare int; extract
+    # the count explicitly instead of comparing the whole dict below.
+    _bmp_err_count = (await bmp_reader.get_error_counter())["BMP3XX"]["ErrCount"]
+    BMP388_ErrCnt = _bmp_err_count if isinstance(_bmp_err_count, int) else 0
     _task_err_cnt_val = await task_error_counter.get_value()  # never None: only ever incremented from its 0 default
     Task_ErrCnt = 0 if _task_err_cnt_val is None else _task_err_cnt_val
     ErrorStatus = (

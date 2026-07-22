@@ -88,12 +88,14 @@ From hands-on field experience with deployed units:
     implemented anywhere (not even in `improved-quality/`). If SD-card-style post-deassert clock
     cycling is wanted, it needs designing from scratch.
   - I2C recovery is device-specific (check what each driver already does before assuming a gap);
-    generalize only if a mechanism turns out to be genuinely common. *(`asy_scd30_driver.py`'s
-    reset path reviewed: `reset()` slept only 0.2s after `_CMD_SOFT_RESET` — Interface Description
-    1.1/1.4.10 document boot-up time as < 2s and a soft reset as "restarting the system controller,"
-    i.e. the same bound applies. Fixed to 2.5s (margin over the documented bound, since this path
-    also runs on every failure-triggered restart, not just cold boot). SGP40's `_reset()` and
-    BMP3xx's reset command still need the same review.)*
+    generalize only if a mechanism turns out to be genuinely common. Per-driver reset-path review
+    status (each line owned by that driver's own promotion pass — update only your own):
+    - `asy_scd30_driver.py`: reviewed. `reset()` slept only 0.2s after `_CMD_SOFT_RESET` — Interface
+      Description 1.1/1.4.10 document boot-up time as < 2s and a soft reset as "restarting the
+      system controller," i.e. the same bound applies. Fixed to 2.5s (margin over the documented
+      bound, since this path also runs on every failure-triggered restart, not just cold boot).
+    - `asy_bmp3xx_driver.py`: reviewed as part of its `src/` promotion — see its own section below.
+    - `asy_sgp40_driver.py`: `_reset()` still needs the same review.
   - FRAM's SPI bus gets the same bus-recovery treatment as sensor buses. **Partially done**:
     `asy_fram_driver.py`'s own `src/` promotion (see "`asy_fram_driver.py` → `src/`" below) fixed a
     real device-identification bug and added write-enable-latch/write-protect verification - the
@@ -666,6 +668,412 @@ converting would require broadening `LockedValue`'s type (breaks the `trigger_pe
 above). Explicitly deferred to the future `sensortask-*.py` functional refactor, confirmed by
 owner. `LockedCounter.increment`/`decrement`'s near-duplicate blocks collapsed into a shared
 private `_step(self, delta: int) -> int`.
+
+### `asy_bmp3xx_driver.py` → `src/`
+
+Reviewed for quality/style and, per explicit owner request, reliability against genuine I2C bus
+disturbance (transient disconnects, bit flips) — units must recover communication without manual
+intervention. Register map, compensation formulas, and timing verified directly against Bosch's
+own `BST-BMP388-DS001`/`BST-BMP384-DS003` datasheets (`datasheets/bmp3xx/`, added to the repo for
+this review) and `BMP3_SensorAPI` (Bosch's official reference driver on GitHub), not training
+memory — the vendor PDFs are blocked by this sandbox's proxy (403), so a web search plus the
+reference driver's source were used as a fallback primary source before the PDFs were added
+locally. Confirmed: BMP384 reports the same `CHIP_ID` (0x50) as BMP388 — not a separate ID the
+existing `chip_id not in (0x50, 0x60)` check was missing. Both BMP384 and BMP388 datasheets'
+`OPERATING CONDITIONS` tables confirm an identical envelope (-40..+85 degC, 300..1250 hPa),
+matching `math_helpers.altitude_baro()`'s already-verified range.
+
+**Reliability fixes, `BMP3XX_I2C` (the sensor-protocol layer):**
+- `_read()`'s forced-mode data-ready poll (`while STATUS & 0x60 != 0x60: sleep(...)`) was
+  unbounded — a bus disturbance corrupting `STATUS` into never reporting ready would hang the read
+  task forever, invisible to the existing error-counter/task-supervisor recovery path (which never
+  gets a chance to see a failure). Bounded with a `time.ticks_ms()`-based timeout
+  (`_MEAS_TIMEOUT_MS = 300`, generous margin over the datasheet's own worst-case ~129ms conversion
+  time at x32/x32 oversampling, sec 3.9.2), raising `OSError` on exhaustion like a real bus fault -
+  same shared `_wait_status_bits()` helper reused for `reset()`'s `cmd_rdy` wait below.
+- `reset()` was a blind, unverified `CMD` register write (0xB6) — no check that the command
+  decoder was actually ready to accept it, no settle time, no verification it was accepted. Now
+  matches Bosch's own reference sequence (`BMP3_SensorAPI`'s `bmp3_soft_reset()`): wait for
+  `cmd_rdy` (`STATUS` bit 4) first, settle 2ms after the write (datasheet-confirmed via the
+  reference driver's own `delay_us(2000)`), then verify via `ERR_REG`'s `cmd_err` bit (sec 4.3.2)
+  that the command was actually accepted, raising `RuntimeError` if not. Deliberately scoped to
+  just `cmd_err` (the bit Bosch's own driver checks post-reset) rather than a broader
+  `fatal_err`/`conf_err` sweep on every register write — `conf_err`'s one documented trigger
+  (ODR/OSR combination) doesn't apply to this driver's forced-mode-only operation, and there's no
+  separate recovery action for `fatal_err` beyond what the existing error-counter/restart mechanism
+  already provides.
+- `_read()` had no sanity check on the computed pressure/temperature before storing it. Unlike the
+  SCD30/SGP40 siblings (CRC8-framed commands), BMP3xx's plain register protocol has no CRC at all
+  (confirmed: neither datasheet documents one for the I2C register interface), so a single bit
+  flip in the 6-byte data burst was previously undetectable. Now rejects a reading outside the
+  datasheet's own -40..+85 degC / 300..1250 hPa operating range, raising `ValueError` (a `NaN`
+  comparison is always `False`, so this also rejects `NaN`/`inf` with no extra code, same reasoning
+  already established in `math_helpers.py`).
+- `set_pressure_oversampling()`/`set_temperature_oversampling()` shared the `OSR` register's
+  bit-fields via a hand-rolled, non-atomic read-then-write pair (`_read_byte()` and
+  `_write_register_byte()` each independently acquired and released the per-sensor device-session
+  lock) — a concurrent call to the other setter landing in the gap between the read and the write
+  could be silently lost. Migrated register access from hand-rolled `i2c.write()`/`readinto()`
+  calls to `asy_i2c_driver.py`'s shared `get_bits`/`set_bits`/`get_register_struct`/
+  `set_register_struct` API (confirmed valid for this protocol: both datasheets' I2C section
+  explicitly document "either a stop or a repeated start condition" as acceptable between the
+  register-address write and the data read, which is exactly what `readfrom_mem`/`writeto_mem`
+  do internally). `set_bits()`'s read-modify-write happens as one call with no `await` in between,
+  so it's atomic against the scheduler; combined with holding the outer device-session lock across
+  the whole call (unchanged from the file's existing per-call locking style), this closes the race.
+  `_read()`'s trigger-write/status-poll/data-read sequence is now also held under one
+  device-session lock for the same reason (a concurrent oversampling/filter/reset call could
+  previously interleave mid-conversion).
+- `BMP3xx_Reader`'s six low-level oversampling/filter-coefficient forwards
+  (`get/set_pressure_oversampling`, `get/set_temperature_oversampling`,
+  `get/set_filter_coefficient`) swallowed every exception silently (`except Exception: return
+  None/False`) — this is the concrete instance, in this file, of the open question already on
+  record above ("not verified whether the swallowed exception is still logged via `self.pr`").
+  Now logged via `self.pr.err_s()` (own `errno` per site, 15-20), so a transient bus fault on a
+  REST-triggered config change is visible in the sensor's own error history instead of a bare
+  `None`/`False`.
+- `_VAL_POV`/`_VAL_TOV` (schema range 1-5) and `_VAL_FC` (0-7) didn't match the discrete
+  `_OSR_SETTINGS`/`_IIR_SETTINGS` domain the corresponding `set_*` methods actually accept (e.g.
+  factor `8` is a legal oversampling value but was outside the old `PressOvers` schema's own
+  declared range) — currently latent since nothing in `improved-quality/` calls
+  `self.cfgmgr.write_config()` for this driver yet, but a real bug waiting for that path to be
+  wired up. Widened to the smallest correct contiguous bound (1-32 / 0-128) per owner decision;
+  the schema format still can't exactly express "one of {1,2,4,8,16,32}" without extending
+  `config_manager.py`'s own schema shape (a bigger, cross-file, explicitly deferred change) or
+  making `_init_bmp()`'s config-apply loop fall back per-field instead of aborting the whole
+  sensor on one bad value (also explicitly deferred, owner-scoped to "schema tightening only").
+
+**Typing modernization** (prep for `src/`, same pass every promoted file gets): `typing`/
+`asy_fram_manager` imports moved behind the established `TYPE_CHECKING` guard (`typing` has no
+runtime presence on MicroPython); `Dict`/`Tuple`/`Union`/`List` → lowercase/PEP 604 generics,
+matching `base_classes.py`/`config_manager.py`'s own already-promoted style; `typing.cast()`
+removed (unusable at runtime, same reason) — `get_data()`'s narrowing of `SensorReader`'s generic
+`NamedTuple` down to this Reader's own concrete `BMP3XX` is now a plain identity return with
+`# type: ignore[return-value]`, since `cast()` was already a no-op passthrough at runtime.
+**First instance of this pattern for a `*_Reader`-shaped file** — SCD30/SGP40 have the identical
+`cast(SCD30, data)`/`cast(SGP40, data)` shape and will need the same fix when they're promoted.
+
+**`tests/machine.py` Timer / mypy resolution finding**: `Timer()` (via `machine.Timer`, used for
+the sample-interval trigger) surfaced two issues, neither a real bug in this file:
+1. The installed generic `micropython-rp2-rpi_pico_w-stubs` package's `Timer.__init__` overloads
+   all require a positional `id` — but rp2 only ever supports virtual (software) timers, where
+   `id` is genuinely optional and defaults to -1 (confirmed against MicroPython's own rp2 quickref
+   docs). A stub inaccuracy, not a code bug — `sensortask-wozi.py`'s identical `Timer()` call
+   already exists unchanged, and `tests/machine.py`'s new fake `Timer` (see below) reflects the
+   real optional-id behavior, so no `# type: ignore` is needed in the scope CI actually gates on.
+2. `scripts/typecheck.sh src tests` (CI's actual invocation) reported "Module machine has no
+   attribute Timer" even though `typings/machine.pyi` defines it correctly — confirmed the cause:
+   `tests` isn't on `mypy_path`, but mypy still treats every standalone `.py` file inside a
+   directory passed via `files` as a top-level module by its own basename, so `tests/machine.py`
+   *is* what `machine` resolves to for any other file checked in the same run — same flat-namespace
+   property `tests/README.md` already documents for real-runtime `MICROPYPATH` resolution, just
+   previously unobserved for mypy specifically because no promoted `src/` file needed `Timer`
+   before this one (`asy_i2c_driver.py`/`asy_spi_driver.py` only need `I2C`/`Pin`/`SPI`, which
+   existed in both the real stub and the fake, so whichever won was never visible). Fixed by adding
+   a minimal `Timer` fake to `tests/machine.py` (tracks `init()`/`deinit()`, and a test-only
+   `fire()` to simulate one periodic tick) — genuinely useful for testing, not just a mypy
+   workaround, and resolves the same latent gap for SGP40/SCD30's future promotions too (both use
+   the identical `start_timer()`/`stop_timer()` shape).
+
+**Found in sibling drivers during this review, not fixed (out of scope for this file's
+promotion, tracked here per owner instruction):**
+- `asy_scd30_driver.py`'s `_init_scd()` and `asy_sgp40_driver.py`'s `_init_sgp()` both do
+  `self.err_cnt_internal = 0` (no underscore) instead of `self._err_cnt_internal` —
+  `base_classes.py`'s real attribute is underscored (confirmed: `asy_bmp3xx_driver.py`'s own
+  `_init_bmp()` already uses the correct name). Creates a dead, unused attribute instead of
+  resetting the real consecutive-failure counter on every re-init; after a give-up-and-restart
+  cycle the error counter isn't actually reset, so recovery is slower than intended and a single
+  subsequent failure can immediately re-trigger another give-up.
+- `SCD30_Reader.get_default_cfg()`/`SGP40_Reader.get_default_cfg()` are still called by
+  `sensortask-wozi.py` at module import time even though neither `Reader` class defines the
+  method — unfixed, since fixing it means touching `SCD30_Reader`/`SGP40_Reader` themselves
+  (still unpromoted WIP), out of scope for this file. `BMP3xx_Reader.get_default_cfg()`'s own
+  identical call was removed from the merge (see "sensortask-wozi.py fixes" below) rather than
+  given a matching method, since it doesn't apply to the current architecture at all.
+
+**`sensortask-wozi.py` fixes (owner-authorized this pass, scoped to `BMP3xx_Reader`'s own three
+confirmed integration mismatches only — `SCD30_Reader`/`SGP40_Reader`'s identical-shaped issues
+above are still unfixed, out of scope):**
+1. `| BMP3xx_Reader.get_default_cfg()` removed from the system `cfgmgr`'s merged defaults —
+   unlike `SCD30_Reader`/`SGP40_Reader`, `BMP3xx_Reader` doesn't contribute anything to system
+   `config.json` at all: it owns its own per-sensor `config_BMP3XX.cfg` file internally via
+   `SensorReaderConfig`, so there's no method to call here in the first place, not just a missing
+   one.
+2. `bmp_reader = BMP3xx_Reader(i2c1, cfgmgr, max_i2c_err=_MAX_I2C_ERR, debug=debug)` → `BMP3xx_Reader(i2c1,
+   max_i2c_err=_MAX_I2C_ERR, debug=debug)` — dropped the wrong `cfgmgr` positional argument
+   (`BMP3xx_Reader.__init__`'s second parameter is `address: int`, not a config manager),
+   letting `address` default to `0x77` (the Sparkfun breakout's SDO-high default).
+3. `/system/status`'s `BMP388_ErrCnt = await bmp_reader.get_error_counter()` now correctly
+   extracts `["BMP3XX"]["ErrCount"]` from the dict `get_error_counter()` actually returns (with an
+   `isinstance(..., int)` narrow for mypy), instead of comparing the whole dict via `> 0`.
+   `SCD30_ErrCnt`/`SGP40_ErrCnt` two lines above have the identical bug, still unfixed (same
+   out-of-scope reasoning) — `/system/status` still can't type-check or run cleanly end-to-end
+   until those are addressed too; confirmed via mypy re-run: 93 → 91 errors in the file, the exact
+   two BMP-specific findings this pass removed, zero new ones introduced.
+
+**Architecture review pass** (structure/setup/inheritance/sensortask-integration/simplification,
+owner-requested): `BMP3xx_Reader`'s inheritance from `SensorReaderConfig` checked field-by-field
+against the base class's actual contract (constructor arg order, `self.pr`/`self.cfgmgr`/
+`self._err_cnt_internal`/`_error_check()`/`_get_meas_data()`/`_get_dict_cfg()` usage) - correct and
+complete, matches the shared shape `get_task_starters()`/`get_timer_starters()`/`get_data()`/
+`get_dict_data()`/`get_dict_cfg()` establish for the (future) generic task-supervisor/REST layer.
+Two real simplifications applied, zero behavior change: `get/set_pressure_oversampling` and
+`get/set_temperature_oversampling` collapsed their near-identical bodies (differing only in which
+3-bit field of the shared `OSR` register) into private `_get_osr_setting(start_bit)`/
+`_set_osr_setting(start_bit, oversample)` helpers; `_read_byte()` now delegates to `_read_register()`
+instead of duplicating its own lock/read/isinstance-check block. One real gap closed: Bosch's own
+self-test app note (`BST-MPS-AN006`, `datasheets/bmp3xx/`) describes "trimming data verification" -
+rejecting calibration NVM data outside plausible bounds before trusting it - which this driver
+never did; the exact per-coefficient bounds live in a header file this codebase doesn't have, but a
+factory-trimmed 21-byte block is never legitimately all one repeated byte, so `_read_coefficients()`
+now rejects an all-0x00/all-0xFF read (the classic stuck-bus/corrupted-read signature) before
+computing calibration coefficients from it, catching a bad read at setup time instead of silently
+computing systematically-wrong-but-plausible-looking readings from it forever until reboot.
+Considered and declined: checking `EVENT` register's `por_detected` bit (sec 4.3.7) during
+`setup()` to confirm the device's own power-on-reset/soft-reset sequence has completed before
+reading registers - Bosch's own reference driver (`bmp3_soft_reset()`) doesn't check it either
+(only `cmd_rdy` pre-write and `cmd_err` post-write, both already implemented), and `setup()`
+already has two independent layers of defense against a not-yet-ready device (the I2C probe's own
+ACK check, then the chip-ID validation) - added complexity without a documented failure mode it
+would newly catch.
+
+**Exception-safety audit pass** (owner-requested: "no places inside the file which can have
+uncaught exceptions, either by themselves or by a called function"). Traced every method's own
+body plus every collaborator it calls (`base_classes.py`, `config_manager.py`, `math_helpers.py`,
+`print_log.py` — each independently confirmed, via their own module docstrings, to never raise)
+for a path that could escape unhandled. Two real gaps found and fixed:
+- `BMP3xx_Reader.set_trigger_secs()` called `int(value)` unguarded — the only one of this class's
+  six low-level forwards that didn't wrap its own conversion/hardware call in try/except and log
+  via `self.pr` like its siblings. A non-numeric `value` (e.g. from a malformed REST request that
+  slipped past `api_helpers.py`'s own validation) would have raised `ValueError`/`TypeError`
+  straight out of it — pre-existing in the original `python/IndividualDrivers/asy_bmp3xx_driver.py`
+  too, not a regression from this promotion. Now wrapped and logged (`errno=21`), matching the
+  other five forwards; still returns `None` (not `bool`, unlike the hardware-backed forwards) to
+  match `api_helpers.py`'s `set_sensor_value()`'s own `Callable[..., Coroutine[Any, Any, None]]`
+  setter contract.
+- `BMP3XX_I2C._get_osr_setting()` indexed `_OSR_SETTINGS[osr]` without checking `osr` was in
+  range first. Confirmed directly against `datasheets/bmp3xx/bst-bmp388-ds001.pdf` sec 4.3.17's
+  own register table: `osr_p`/`osr_t` are 3-bit fields (0-7), but the datasheet only documents
+  encodings 0-5 (x1..x32) — 6/7 are undocumented/reserved, unlike `iir_filter` (sec 4.3.20), which
+  documents all 8 of its own 3-bit encodings. A bus disturbance flipping a bit could land exactly
+  on 6/7, raising a bare, cryptic `IndexError` instead of this driver's usual clearly-messaged
+  exception — caught incidentally by the `BMP3xx_Reader` forwards' broad `except Exception`
+  either way, but not the well-defined protocol-layer failure this file's docstring promises. Now
+  raises `OSError` with an explicit "reserved encoding" message before indexing.
+
+**Test suite expansion** (owner-requested: full config-schema coverage, integration tests against
+the real `print_log.py`/`base_classes.py`/`asy_i2c_driver.py` collaborators, and datasheet-grounded
+I2C fault-propagation tests at both module and integration level):
+- Confirmed `tests/machine.py`'s existing fake `machine.I2C` (register dict keyed by
+  `(address, reg)`, `nak_addresses`/`busy` for EIO/ETIMEDOUT fault injection) already faithfully
+  models `bst-bmp388-ds001.pdf` sec 5's documented transaction shapes (single-byte read/write,
+  multi-byte burst read via a single auto-incrementing base register) — documented explicitly in
+  the test file now rather than left implicit.
+- Full config-schema coverage: every one of the 8 `_VAL_*` fields at its valid min/mid/max, single
+  out-of-range/wrong-type rejections per field (including a `bool`-for-`int` rejection, since
+  `type_or_range_error()`'s `type(x) is not int` check is stricter than `isinstance`), and a
+  multi-field simultaneous invalid/valid recombination — all through the real `ConfigManager`
+  attached to a live `BMP3xx_Reader`, not a standalone mock.
+- New regression tests for both exception-safety fixes above, plus a module-level fault matrix
+  covering both real RP2040 I2C error codes (EIO/ETIMEDOUT) across `reset()`/`_read_coefficients()`/
+  `get_filter_coefficient()`, and the `get_bits()`-returns-`None`-but-`set_bits()`-always-returns-
+  `None` read/write asymmetry a deinitialized bus exposes in `asy_i2c_driver.py`'s own contract
+  (documented as a deliberate non-hardware-failure carve-out, not a bug in this driver).
+- Integration tests driving `_init_bmp()`/`read_loop()`'s error-counting through the real
+  `base_classes.py._error_check()` (consecutive-failure threshold and self-healing on recovery),
+  confirming `_init_bmp()` fails cleanly when the config schema accepts an in-range-but-not-
+  hardware-valid oversampling value (the schema/hardware discrepancy noted above), and a full
+  `PrintLogHistoryStore` FRAM-backed round trip (real `AsyFramManager` +
+  `tests/_fram_chip_fake.py`, same reboot-survival pattern as `tests/test_print_log.py`) — the
+  first time this driver's FRAM-backed logging path (as opposed to the default in-memory one) has
+  been exercised at all.
+
+54 tests (`tests/test_asy_bmp3xx_driver.py`), up from 33.
+
+**Second detailed review pass** (owner-requested: "go through the sensor script again in
+detail... oversights, bugs, strange or unexpected behaviors, unhandled/unplanned/accidental
+exceptions or conditions with yet no unit test"). Traced every code path once more, line by line,
+this time including public API surface never exercised by `BMP3xx_Reader` itself
+(`get_altitude()`) and cross-checking against the pre-refactor deployed driver to tell "carried
+over as-is" from "introduced by this promotion." One significant real bug found and fixed, plus
+three smaller ones:
+
+- **`_read_bmp()` triggered two independent physical measurements per read cycle, not one.**
+  `get_pressure()` and `get_temperature()` each independently call `_read()` (the full
+  trigger-forced-mode → poll-status → burst-read → compensate cycle), and `_read_bmp()` called
+  both back-to-back - so every read discarded half of what each `_read()` call actually computed
+  (each conversion yields *both* pressure and temperature together) and re-triggered a whole new
+  conversion for the other value. Confirmed this predates the refactor entirely: the original
+  `python/IndividualDrivers/asy_bmp3xx_driver.py` has the identical `Pressure =
+  await self.bmp.get_pressure()` / `Temperature = await self.bmp.get_temperature()` pair. Beyond
+  wasting bus traffic/measurement time (up to 2× conversion time per cycle, worse at higher
+  oversampling - exactly the kind of unnecessary bus exposure this session has otherwise been
+  hardening against), the stored `Pres`/`Temp` pair were never actually simultaneous: they came
+  from two separate physical conversions up to a whole conversion cycle (~129ms at x32/x32 osr)
+  apart, not the single atomic reading the combined result tuple implies. Fixed by adding
+  `get_pressure_and_temperature()` (one `_read()` call, both values from it) and switching
+  `_read_bmp()` to use it; `get_pressure()`/`get_temperature()` remain available unchanged for a
+  genuine standalone single-value query.
+- **`get_altitude()` had zero test coverage and two accidental, confusing exceptions.** It's
+  never called by `BMP3xx_Reader` (dead from the Reader's perspective, live public API on
+  `BMP3XX_I2C`) and no test exercised it before this pass. Confirmed directly against the real
+  MicroPython Unix-port interpreter (not guessed): a negative `sea_level_pressure` makes
+  `(pressure / sea_level_pressure) ** 0.190284`'s negative-base fractional exponent produce a
+  **complex number** (MicroPython supports complex arithmetic here, matching CPython, not a
+  domain-error raise), which the surrounding `float()` then rejects with `TypeError: can't
+  convert complex to float` - a confusing accident of Python's numeric tower, not an intentional
+  validation raise; zero `sea_level_pressure` raises a plain `ZeroDivisionError`. Fixed with an
+  explicit `if self.sea_level_pressure <= 0: raise ValueError(...)` guard up front, giving one
+  clear, deliberate error instead of two accidental ones.
+- **Dead code**: `setup()` had an orphaned `"""Sea level pressure in hPa."""` string-literal
+  statement sitting after the real code at the end of the function - syntactically legal (any
+  expression statement is), evaluated and discarded, does nothing; not attached to anything as an
+  actual docstring since it isn't the function's first statement. Removed, repositioned as a
+  regular `#` comment on the line it was clearly meant to document. `_REGISTER_TEMPDATA`/
+  `_REGISTER_ODR` were both defined but never referenced anywhere in the file (`_REGISTER_TEMPDATA`
+  is subsumed by the single 6-byte burst read from `_REGISTER_PRESSUREDATA`; `_REGISTER_ODR` only
+  applies to normal mode, which this forced-mode-only driver never uses) - removed.
+- **Doc bug**: `_read()`'s docstring said "Returns a tuple for temperature and pressure" but the
+  actual `return pressure, temperature` statement (and every caller's own unpacking) is
+  pressure-first - the docstring's stated order was backwards. Fixed.
+
+**Follow-up (owner-resolved): `set_trigger_secs()` bounds.** The previously-flagged gap above -
+`set_trigger_secs()`/`_init_bmp()`'s stored `SampleInterv` had zero bounds checking, unlike every
+hardware-backed setter in this file - is now fixed. `set_trigger_secs()` now validates and, on an
+out-of-range value, follows the exact same pattern it already used for a bad *type* (log via
+`self.pr` with the existing `errno=21`, keep the previous value, never raise) rather than
+introducing a second, different failure mode for the same method, via two new named constants
+`_MIN_TRIGGER_SECS`/`_MAX_TRIGGER_SECS` shared with `_VAL_SI`'s own schema `max`. `_init_bmp()`
+was changed to route `BMPSampleInterv` through `set_trigger_secs()` itself instead of writing
+`trigger_period` directly, so both entry points (REST-facing setter and config-file-driven
+startup) share one validation path - deliberately *not* wrapped in the surrounding `try`/`except`
+that the three hardware-facing values (`PressOvers`/`TempOvers`/`FiltCoeff`) are: since
+`set_trigger_secs()` never raises, a stale/out-of-range stored sample interval is logged and the
+previous value kept, without failing the whole init attempt and forcing an unrelated task restart
+the way a genuinely bad *hardware* value does - a pure software timing knob failing shouldn't cost
+the same as the sensor itself rejecting a value it can't handle.
+
+**Correction - the bound is 1-3600 seconds, not 1-600.** The first pass of this fix used an
+owner-specified 1-600s range, replacing `_VAL_SI`'s previous 1-3600s `max`. A later top-level
+consistency check (prompted by an owner request to verify deviation from actually-deployed,
+working behavior was kept low across this whole promotion effort) found that **1-3600 is the
+range actually enforced by the deployed, working production REST handler for this exact field** -
+`modules/sensortask-wozi.py`'s `update_valid_json(req_json, "BMPSampleInterv", "int", res, 1,
+3600, ...)` - and the same `1, 3600` pattern is used for every sibling sensor's own sample
+interval in `modules/sensortask-dev.py` (`SHTCSampleInterv`, `MPRLSSampleInterv`,
+`ISLSampleInterv`). A 600s ceiling would have silently started rejecting any already-deployed
+device's stored `BMPSampleInterv` between 601-3600 on the next config write or soft-degrade path -
+a real regression against proven production behavior, not a hypothetical one. Reverted
+`_MAX_TRIGGER_SECS` to `3600` to match; the bounds-checking/exception-handling machinery itself
+(previously entirely absent) is unchanged and is still a genuine fix - only the ceiling constant
+was wrong.
+
+67 tests (`tests/test_asy_bmp3xx_driver.py`), up from 54.
+
+**Full recipe re-check against `src/README.md`, re-verified against the real datasheets, current
+MicroPython docs/source, and the pinned Unix-port interpreter (not training memory) - owner-
+requested "target production quality" pass.**
+
+- **Fixed (owner-confirmed after multi-source verification): `_IIR_SETTINGS` didn't match either
+  BMP384 or BMP388's datasheet.** `CONFIG` register sec 4.3.20 (both `bst-bmp388-ds001.pdf` and
+  `bst-bmp384-ds003.pdf` - identical table in both, and BMP388's own doc-history table records
+  "Changed coefficient from 128 to 127" as a deliberate 2018 datasheet correction, ruling out a
+  datasheet typo) documents the 8 valid `iir_filter` encodings as coefficients
+  **0, 1, 3, 7, 15, 31, 63, 127** (`2^index - 1`) - but `_IIR_SETTINGS = (0, 2, 4, 8, 16, 32, 64,
+  128)` (powers of two) is what both `get_filter_coefficient()`/`set_filter_coefficient()` and
+  `_VAL_FC`'s schema actually used. Per `src/README.md` section 1's gate this was first flagged,
+  not fixed, since correcting it changes real output. Owner asked for independent corroboration
+  beyond the datasheet alone before acting, given a recollection that the setting "was somewhat
+  working" - three sources now agree the datasheet's values are the only correct ones:
+  1. **Bosch's own reference driver** (`BMP3_SensorAPI`'s `bmp3_defs.h`) - macro names encode the
+     coefficient directly: `BMP3_IIR_FILTER_COEFF_1=0x01`, `_COEFF_3=0x02`, ... `_COEFF_127=0x07`.
+  2. **The Linux kernel's IIO driver** (`torvalds/linux`, `drivers/iio/pressure/bmp280.h`) - a
+     fully independent implementation, no code lineage from either Bosch's SDK or Adafruit's
+     library: `BMP380_FILTER_OFF=0, _1X=1, _3X=2, _7X=3, _15X=4, _31X=5, _63X=6, _127X=7`.
+  3. The datasheets themselves (both parts, byte-identical table).
+
+  The interesting side-finding: **Adafruit's own CircuitPython BMP3XX library has the exact same
+  wrong tuple** - `_IIR_SETTINGS = (0, 2, 4, 8, 16, 32, 64, 128)`, same variable name, same
+  comment - almost certainly where this codebase's version came from (consistent with the earlier
+  `get_altitude()` formula match already pointing to Adafruit as this driver's lineage), not an
+  independently-introduced error. Why it "worked, somewhat": the wrong tuple still has exactly 8
+  entries, so `.index(value)` always resolved to a valid 0-7 hardware encoding and asking for a
+  bigger number still bought more smoothing - monotonic behavior was intact, just mislabeled.
+  Concretely, before this fix: `set_filter_coefficient(1)` (a real, correct datasheet coefficient)
+  **raised `ValueError`** since `1` wasn't in the old tuple at all, while
+  `set_filter_coefficient(128)` was silently accepted and applied as *actual* coefficient 127,
+  even though 128 was never a real hardware setting.
+
+  **Fixed everywhere this specific bug appeared, per explicit owner instruction to adapt every
+  wrong usage even outside this file's normal scope:**
+  - `src/asy_bmp3xx_driver.py`: `_IIR_SETTINGS` corrected to `(0, 1, 3, 7, 15, 31, 63, 127)`;
+    `_VAL_FC`'s schema `max` tightened from `128` to `127` (its true ceiling) to match.
+  - `python/IndividualDrivers/asy_bmp3xx_driver.py` (the live, deployed production driver): same
+    tuple correction. No unit tests added for this file, per this doc's standing "no tests against
+    the pre-refactor codebase" rule - the fix is the source-value change alone.
+  - `modules/sensortask-wozi.py` and `improved-quality/sensortask-wozi.py` (the REST config
+    handler, deployed and WIP copies): both independently re-derived the same wrong assumption via
+    `update_valid_json(..., "BMPFiltCoeff", ..., weight_fct=lambda x: 2**x)`, converting a raw 0-7
+    REST index into what they believed was the real coefficient - i.e. the same bug, expressed a
+    second way, one layer up. Corrected to `lambda x: 2**x - 1`, which naturally yields 0 at x=0,
+    so the `special_val=[0]` bypass that existed only to force that one case under the old formula
+    is no longer needed and was removed as a direct, mechanical consequence of the fix (not a
+    separate cleanup). Note this specific `BMPTempOvers`/`BMPPressOvers` sibling lines' own
+    `weight_fct=lambda x: 2**x` (oversampling, range 0-5) is **correct as-is** - oversampling really
+    is a power-of-two domain (`_OSR_SETTINGS`), unlike the filter coefficient; only the
+    `BMPFiltCoeff` line needed changing.
+  - `html_raw/wozi/sensorconfig.html`: the user-facing REST UI literally labeled the input
+    `2 ** <input>` with "Valid values: 0 to 7, 0 = Off" - directly documenting the wrong formula to
+    whoever configures the sensor over the web UI. Corrected to `(2 ** <input>) - 1`.
+  - `arzi`/`neu`/`dev` don't have a BMP3xx sensor at all (confirmed via `modules/sensortask-*.py`
+    and `html_raw/*` - only `wozi` references `BMP`), so no other unit's config/UI needed this fix.
+  - SHTC3's/MPRLS's own `FilterCoefficient` fields are an unrelated concept (a `0.0-1.0` float EMA
+    smoothing weight, not a discrete IIR register encoding) - confirmed distinct, left alone.
+  - Regression tests: `tests/test_asy_bmp3xx_driver.py`'s `_IIR_SETTINGS`/`_VAL_FC`/
+    `_FIELD_BOUNDS` mirrors corrected to match; `test_filter_coefficient_rejects_invalid_values`
+    now asserts `2` is rejected (a real value under the *old* wrong tuple, not under the corrected
+    one - a direct regression check that the fix took effect, not just a generic bad-value probe);
+    `test_get_dict_cfg_overlays_live_sensor_readback_on_oversampling_and_filter_fields`'s
+    `set_filter_coefficient(16)` (no longer valid) changed to `15` (the same tuple index, now
+    holding the correct value).
+- **Fixed: `set_trigger_secs()`'s `except (TypeError, ValueError)` didn't cover the whole
+  `int | float` type contract.** Confirmed directly against the real pinned MicroPython Unix-port
+  interpreter: `int(float('inf'))`/`int(float('-inf'))` raise `OverflowError`, not `ValueError`
+  (`int(float('nan'))` does raise `ValueError`, already covered). Since `value`'s own declared type
+  is `int | float`, a caller-supplied `+-inf` is in-contract, not an out-of-contract input section
+  2 says to skip defending against - so this was a real, reachable crash in a method whose own
+  comments already claimed "never raises". Added `OverflowError` to the caught tuple; regression
+  test `test_reader_set_trigger_secs_rejects_inf_and_nan` added.
+- **Fixed: mixed `uasyncio`/`asyncio` import spelling in the same file.** Line imported `asyncio`
+  directly for everything else but pulled `ThreadSafeFlag` from `uasyncio` specifically. Checked
+  current docs (`docs/library/index.rst` at the pinned `v1.28.0` tag): `u`-prefixed names still
+  work today but are legacy, "code should always use `import module` rather than `import umodule`"
+  unless forcing the built-in over a same-named user module - not the case here. Verified via the
+  actual pinned Unix-port interpreter that `asyncio.ThreadSafeFlag is uasyncio.ThreadSafeFlag`
+  (`True` - identical class either way), so this is a zero-behavior-change consistency fix per
+  section 8/9, not a "changes real output" one needing sign-off. Now uses `asyncio.ThreadSafeFlag`
+  throughout, matching the rest of the file's `asyncio.get_event_loop()`/`asyncio.sleep()` etc.
+- **Re-confirmed correct, no changes needed** (re-verified this pass, not assumed from the earlier
+  session): operating range (-40..85 degC, 300..1250 hPa - identical in both BMP384 and BMP388
+  datasheets' Table 2); `STATUS`/`ERR_REG`/`PWR_CTRL`/`OSR` bit positions (sec 4.3.2-4.3.3,
+  4.3.16-4.3.17, identical across both datasheets); the conversion-time formula
+  (`Tconv = 234us + press_en*(392us+2^osr_p*2000us) + temp_en*(313us+2^osr_t*2000us)`, sec 3.9.2)
+  computes to ~128.9ms worst-case at osr_p=osr_t=x32, confirming `_MEAS_TIMEOUT_MS = 300`'s stated
+  margin; the temperature/pressure compensation formula and the `PAR_*` calibration-coefficient
+  scaling formulas (sec 9.1-9.3's C reference implementation) match this file's arithmetic term for
+  term, sign for sign, exponent for exponent; the 21-byte calibration `unpack("<HHbhhbbHHbbhbb", ...)`
+  format matches Table 23's per-coefficient sign/size column exactly, and total byte count (21)
+  matches the 0x31-0x45 register span; `math_helpers.altitude_baro()`'s own `None`-on-out-of-domain
+  guard (re-checked directly) confirms `_store_bmp()` degrades cleanly rather than crashing on the
+  (real, reachable) case where `PressOffset` pushes a valid in-range hardware reading outside
+  `altitude_baro`'s own 300-1250 hPa domain.
+- **Known local-verification gap, unchanged from before:** BMP390's own datasheet isn't in
+  `datasheets/bmp3xx/` (only BMP384/BMP388 are) - its `0x60` chip ID and assumed-identical register
+  map/IIR table couldn't be re-verified against a real BMP390 datasheet this pass either, same as
+  every previous pass. Flagging again per CLAUDE.md's datasheet-gap instruction rather than letting
+  it go unmentioned; the project owner would need to add the BMP390 datasheet to close this.
+
+68 tests (`tests/test_asy_bmp3xx_driver.py`), up from 67.
 
 ### Dangerous allocation shapes (segfault-class bug, swept project-wide)
 
@@ -2150,11 +2558,16 @@ and a missing config file failing independently without either derailing the oth
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
 `asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 58,
-`asy_udp_socket.py` 62, `asy_scd30_driver.py` 59 — **811 total**. (Previous count of 690 across 11
-files predated `asy_udp_socket.py`'s promotion and was never updated to include it — corrected during its
-third pass; the 23→42 jump was its fourth pass's uncaught-exception/configuration/integration
-test additions; 42→56 is its fifth pass's mutation-bypass/concurrency/cancellation-safety tests;
-56→62 is its sixth pass's ready()/write_and_recvfrom() parameter-guard tests.)
+`asy_udp_socket.py` 62, `asy_scd30_driver.py` 59, `asy_bmp3xx_driver.py` 68 — **879 total**.
+(Previous count of 690 across 11 files predated `asy_udp_socket.py`'s promotion and was never
+updated to include it — corrected during its third pass; the 23→42 jump was its fourth pass's
+uncaught-exception/configuration/integration test additions; 42→56 is its fifth pass's
+mutation-bypass/concurrency/cancellation-safety tests; 56→62 is its sixth pass's
+ready()/write_and_recvfrom() parameter-guard tests. `asy_bmp3xx_driver.py`'s own count history
+across its review passes (33→54→64→67→68) is documented in full in its own section above, not
+repeated here. 752→811→879 reflects `asy_scd30_driver.py`'s (+59) and `asy_bmp3xx_driver.py`'s
+(+68) entire promotions landing in the same consolidation merge — each was independently 752+own
+when reviewed on its own branch, the combined total simply adds both.)
 
 ## Decided for the refactor
 
@@ -2314,6 +2727,14 @@ non-hypothetical threat in a specific context justifies it. Accepted as residual
   single-LED dual-duty design, but no legend anywhere. Worth adding, low priority.
 - **FRAM SGP40 "0 = disabled" semantics need user-facing documentation** (see Functional
   Clarifications).
+- **Config classes only expose getters, no setters** — confirmed by the project owner as a known,
+  already-identified gap, not something surfaced fresh by this review. Deliberately deferred: the
+  owner wants to add setters in one consolidated pass across every `*_Reader`'s config surface
+  once all of them (currently just `asy_bmp3xx_driver.py`) are promoted to `src/`, rather than
+  bolting them on per-file as each one is promoted. Applies to `config_manager.py`'s `ConfigManager`
+  itself (`get_dict`/`get_int_values`/`get_float_values`/`get_str_values`/`get_bool_values`, no
+  matching typed setters — only the untyped `write_config(dict, schema)`) and to every `*_Reader`'s
+  own `get_dict_cfg()`-shaped config surface alike. Leave as-is until that consolidated pass.
 
 ## Security notes
 

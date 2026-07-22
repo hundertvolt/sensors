@@ -1496,6 +1496,9 @@ def test_op_lock_prevents_concurrent_writes_from_interleaving_between_blocks() -
     chunk._write_chunk = instrumented_write_chunk  # type: ignore[method-assign]
 
     async def scenario() -> list[bool]:
+        # asyncio.gather() always returns a real list at runtime regardless of argument count -
+        # mypy's own stub types a 2-argument call as tuple[T1, T2] (typeshed's per-arity overload
+        # set), a static-only mismatch against that real runtime shape, not a behavior change.
         return await asyncio.gather(chunk.write(b"AAAA"), chunk.write(b"BBBB"))  # type: ignore[return-value]
 
     results = run(scenario())
