@@ -2023,7 +2023,7 @@ for future sessions: always run lint/typecheck through `uv sync`'s `.venv`, not 
 `ruff` happens to already be on `PATH` — a global install can silently diverge from what CI (and
 `pyproject.toml`'s own pin) actually enforces.
 
-### Post-promotion architecture review (structure/setup/inheritance/sensortask-integration pass)
+#### Post-promotion architecture review (structure/setup/inheritance/sensortask-integration pass)
 
 A second review pass over the merged-but-still-open PR, checking structure/leanness, setup,
 `SensorReaderConfig`/`Lockable` inheritance correctness, coherence with the (not-yet-rewritten)
@@ -2177,7 +2177,7 @@ convention, untouched, since neither of those drivers is promoted yet.
 40 tests now (`tests/test_asy_sgp40_driver.py`, +1 for the self-test byte-check regression) - **814
 total**.
 
-### Third review pass (exception audit, self-test bug origin, sensortask fixes, deep test coverage)
+#### Third review pass (exception audit, self-test bug origin, sensortask fixes, deep test coverage)
 
 Requested explicitly by the project owner: (1) audit the whole file for uncaught exceptions,
 including called functions; (2) trace the self-test byte-check bug's origin; (3) fix the flagged
@@ -2245,7 +2245,7 @@ in full detail above, inline with the findings they extend.
 Full suite: **835 tests, all passing** (`asy_sgp40_driver.py` 40→58, `voc_algorithm.py` 22→25 - see
 "Current test counts" below for the per-file breakdown).
 
-### Fourth review pass (line-by-line re-read for oversights/dead code/untested conditions)
+#### Fourth review pass (line-by-line re-read for oversights/dead code/untested conditions)
 
 Requested explicitly: go through both `asy_sgp40_driver.py` and `voc_algorithm.py` again in detail
 for oversights, bugs, strange/unexpected behavior, and unhandled/unplanned/accidental exceptions or
@@ -2354,7 +2354,7 @@ cycles, `vocalgorithm_process()`'s own `muptime` counter used as an independent 
 Full suite: **848 tests, all passing** (`asy_sgp40_driver.py` 58→68, `voc_algorithm.py` 25→28 - net
 +1 vs. the previous +9/+3 count, since one old test was replaced by two new ones).
 
-### Fifth review pass (full `src/README.md` checklist re-validation, owner-requested)
+#### Fifth review pass (full `src/README.md` checklist re-validation, owner-requested)
 
 Went section-by-section through `src/README.md`'s production-quality checklist against both files
 again, re-checking claims directly against the actual SGP40 datasheet PDF, current MicroPython docs
@@ -2409,7 +2409,7 @@ passes' already-closed findings.
   disagree by 1 tick: 25839 vs. 25840) proves it. All three datasheet worked examples still pass
   unchanged (they divide evenly, so rounding doesn't move them).
 
-### Sixth review pass (documentation trimmed to `src/README.md` section 11's 3-line cap, owner-requested)
+#### Sixth review pass (documentation trimmed to `src/README.md` section 11's 3-line cap, owner-requested)
 
 Both files' module docstrings and several per-function `#` comment blocks had grown past section
 11's "module docstring is a short header... per-function/inline comments stay within 3 lines,
@@ -2487,21 +2487,17 @@ and a missing config file failing independently without either derailing the oth
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
 `asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 58,
 `asy_udp_socket.py` 62, `asy_sgp40_driver.py` 69, `voc_algorithm.py` 28 — **849 total** (a "868"
-total was caught and corrected as stale/arithmetically-wrong during the fifth review pass below -
+total was caught and corrected as stale/arithmetically-wrong during the fifth review pass above -
 the per-file counts listed here summed to 848 at that point, not 868; a live `scripts/test.sh` run
 confirmed 848/848 passing, 0 failures, matching `grep -c '^def test_' tests/test_*.py`'s own count
 exactly). (Previous count of 690 across 11 files predated `asy_udp_socket.py`'s promotion and was
 never updated to include it — corrected during its third pass; the 23→42 jump was its fourth pass's
 uncaught-exception/configuration/integration test additions; 42→56 is its fifth pass's
 mutation-bypass/concurrency/cancellation-safety tests; 56→62 is its sixth pass's
-ready()/write_and_recvfrom() parameter-guard tests. 752→813 is `asy_sgp40_driver.py`'s +
-`voc_algorithm.py`'s own promotion; 813→814 is the post-promotion review's self-test byte-check
-regression test; 814→835 is the third review pass's config-validation/integration/fault-propagation
-test additions (`asy_sgp40_driver.py` 40→58, `voc_algorithm.py` 22→25); 835→847 is the fourth
-review pass's untested-condition regression tests (`asy_sgp40_driver.py` 58→67, `voc_algorithm.py`
-25→28); 847→848 is the owner-directed reset redesign (one old test replaced by two new ones,
-`asy_sgp40_driver.py` 67→68); 848→849 is the fifth review pass's temperature-tick-rounding fix
-(one new regression test, `asy_sgp40_driver.py` 68→69), see above.)
+ready()/write_and_recvfrom() parameter-guard tests. 752→849 is `asy_sgp40_driver.py`'s +
+`voc_algorithm.py`'s entire promotion plus every subsequent review pass's test additions — see
+that file pair's own `src/` promotion section above for the full per-pass breakdown, not restated
+here.)
 
 ## Decided for the refactor
 
