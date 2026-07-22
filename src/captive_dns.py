@@ -124,7 +124,15 @@ class DNSQuery:
                 # follow immediately - this is the end of the one question response() must echo,
                 # not the end of the whole datagram (which may carry an EDNS0 OPT record or further
                 # questions/records this class was never meant to parse - see response()'s comment).
-                self._question_end = ini + 5
+                question_end = ini + 5
+                if question_end > len(data):
+                    # Terminator found, but the datagram ends before QTYPE/QCLASS - bytes slicing
+                    # would silently truncate rather than raise, so this needs an explicit check
+                    # instead of relying on the surrounding try/except. Raising routes it through
+                    # the same "malformed, don't respond" path as every other truncated shape,
+                    # instead of building a response with a short, misaligned question section.
+                    raise ValueError("truncated question: missing QTYPE/QCLASS")
+                self._question_end = question_end
         except Exception:
             # Truncated/malformed data, or a non-bytes data (the only real caller, run(), always
             # passes bytes, but this class is public) - caught broadly, not enumerated by type,

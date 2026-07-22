@@ -48,10 +48,11 @@ def make_query(labels: list[str], query_id: bytes = b"\x12\x34") -> bytes:
 
 
 def malformed_query_cases() -> list[bytes]:
-    # The 10 shapes found reachable from a truncated/malformed real UDP datagram (see BACKLOG.md):
+    # The 11 shapes found reachable from a truncated/malformed real UDP datagram (see BACKLOG.md):
     # too short for the opcode byte, too short for the question section, a length byte with
     # nothing following, a label truncated mid-way (both by 1 byte and entirely), an oversized
-    # (attack-style) label-length claim, and a label with an invalid UTF-8 byte.
+    # (attack-style) label-length claim, a label with an invalid UTF-8 byte, and a validly-
+    # terminated label with QTYPE/QCLASS missing entirely.
     header = b"\x12\x34\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00"  # standard query, QDCOUNT=1
     return [
         b"",
@@ -64,6 +65,7 @@ def malformed_query_cases() -> list[bytes]:
         header + b"\x03ab",  # a label claiming 3 bytes, truncated by exactly 1 byte (off-by-one)
         header + b"\xff",  # a 255-byte label claim (max byte value) with nothing following
         header + b"\x01\xff\x00",  # a 1-byte label containing an invalid UTF-8 byte
+        header + b"\x01a\x00",  # valid label + terminator, but QTYPE/QCLASS never arrive
     ]
 
 
@@ -201,6 +203,25 @@ def test_response_returns_none_for_empty_domain() -> None:
     data = bytearray(make_query(["a", "io"]))
     data[2] = 0x09  # non-standard query -> empty domain
     assert DNSQuery(bytes(data)).response("192.168.4.1") is None
+
+
+def test_dns_query_rejects_question_truncated_right_before_qtype_qclass() -> None:
+    # Boundary check either side of the QTYPE/QCLASS cutoff: a label + terminator with the full 4
+    # trailing bytes present must still parse and answer normally (exact boundary accepted); the
+    # same label + terminator with those 4 bytes missing entirely must be treated as malformed
+    # (don't respond), not silently echoed as a short, misaligned question - self.data[12:end]
+    # would otherwise truncate via ordinary slice semantics instead of raising.
+    header = b"\x12\x34\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00"
+    complete = header + b"\x01a\x00" + b"\x00\x01\x00\x01"  # QTYPE=A, QCLASS=IN present
+    truncated = header + b"\x01a\x00"  # terminator present, QTYPE/QCLASS entirely missing
+
+    complete_query = DNSQuery(complete)
+    assert complete_query.domain == "a."
+    assert complete_query.response("192.168.4.1") is not None
+
+    truncated_query = DNSQuery(truncated)
+    assert truncated_query.domain == ""
+    assert truncated_query.response("192.168.4.1") is None
 
 
 # ---------------------------------------------------------------------------

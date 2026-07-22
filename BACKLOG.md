@@ -2099,6 +2099,47 @@ pure readability/robustness simplification, zero behavior change for every case 
 Verified: full-scope `scripts/lint.sh`/`scripts/typecheck.sh` still 0 findings, `scripts/test.sh` all
 13 files green, 791 tests total.
 
+### captive_dns.py: fourth pass - validated against src/README.md's promotion checklist end to end, found a real question-truncation bug
+
+Went through `src/README.md`'s full checklist section by section against the file (not just re-reading
+the file in isolation), plus a direct comparison against `python/CommonDrivers/captive_dns.py` (the
+still-deployed, field-proven legacy version) to check the project owner's concern that hardening
+shouldn't drift the file away from actually-working, everyday behavior. That comparison confirmed the
+common-case reply (single question, no EDNS0) is byte-identical to legacy's own output, and that both
+of `src/`'s bigger behavioral differences from legacy - subnet filtering and malformed-data guarding -
+predate this file's promotion and were owner-authorized fixes for a real gap flagged in
+`asy_udp_socket.py`'s own review, not incidental drift introduced during hardening.
+
+The checklist pass itself found one genuine, previously-untested bug: `DNSQuery.__init__`'s label-
+parsing loop only validates through the zero-length terminator byte - it never checks that QTYPE (2
+bytes) and QCLASS (2 bytes) actually follow. A datagram that's validly terminated but ends immediately
+after (e.g. header + one label + terminator, nothing else) parsed to a non-empty `self.domain` with
+`self._question_end` set past the end of `self.data`. Because Python bytes slicing truncates silently
+instead of raising, `response()`'s `self.data[12:self._question_end]` didn't crash - it echoed a short,
+misaligned "question" section into a packet whose header still declared it as complete, producing a
+real malformed reply instead of the "malformed, don't respond" behavior every other truncation shape in
+this file already gets. Confirmed via direct reproduction against the real interpreter before and after
+the fix. Fixed with one bounds check (`question_end > len(data)`) that raises into the same existing
+broad `except Exception:` the rest of `__init__` already relies on - not a new special-cased branch,
+consistent with the project owner's "general containment, not per-condition" direction from the
+previous pass. Added `header + b"\x01a\x00"` to `malformed_query_cases()` and a dedicated boundary
+regression test (`test_dns_query_rejects_question_truncated_right_before_qtype_qclass`) asserting the
+exact boundary (QTYPE/QCLASS fully present) is still accepted while one byte short of it is rejected -
+39→40 tests.
+
+The rest of the checklist held with no further changes needed: no other raise-capable line lacks either
+a guard clause or a catch (traced the full call chain, including through `asy_udp_socket.py`'s own
+documented never-raises contract for every public I/O method); no unbounded growth or retained state
+beyond the deliberately-stateful `self.udps`; no blocking calls anywhere in the file (all I/O is
+`await`ed through `AsyUDPSocket`); full type hints already in place and already using PEP 604 syntax;
+every `response()`/`run()` code path returns explicitly; already using modern (non-`u`-prefixed) module
+names; tests already exercise the full configuration matrix plus a real integration test replicating
+`async_connect.py`'s exact call pattern. No Pico W/RP2040-specific concern applies directly - this file
+never touches `machine`/`network` APIs itself, only generic `asyncio`/`socket` through `AsyUDPSocket`.
+
+Verified: `scripts/lint.sh`/`scripts/typecheck.sh` both clean (29 source files), `tests/test_captive_dns.py`
+40/40, full `scripts/test.sh` 792/792 (13 files).
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
@@ -2115,14 +2156,14 @@ and a missing config file failing independently without either derailing the oth
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
 `asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 58,
-`asy_udp_socket.py` 62, `captive_dns.py` 39 — **791 total**. (Previous count of 690 across 11 files
+`asy_udp_socket.py` 62, `captive_dns.py` 40 — **792 total**. (Previous count of 690 across 11 files
 predated `asy_udp_socket.py`'s promotion and was never updated to include it — corrected during its
 third pass; the 23→42 jump was its fourth pass's uncaught-exception/configuration/integration
 test additions; 42→56 is its fifth pass's mutation-bypass/concurrency/cancellation-safety tests;
 56→62 is its sixth pass's ready()/write_and_recvfrom() parameter-guard tests. `captive_dns.py`'s own
 18→37 jump is its second pass's configuration-matrix/integration/fault-propagation test additions;
-37→39 is its third pass's wire-format (EDNS0/multi-question trailing-data) regression tests, see the
-entries above.)
+37→39 is its third pass's wire-format (EDNS0/multi-question trailing-data) regression tests; 39→40 is
+its fourth pass's question-truncation boundary regression test, see the entries above.)
 
 ## Decided for the refactor
 
