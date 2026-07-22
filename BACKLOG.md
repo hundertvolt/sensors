@@ -2409,6 +2409,67 @@ passes' already-closed findings.
   disagree by 1 tick: 25839 vs. 25840) proves it. All three datasheet worked examples still pass
   unchanged (they divide evenly, so rounding doesn't move them).
 
+### Sixth review pass (documentation trimmed to `src/README.md` section 11's 3-line cap, owner-requested)
+
+Both files' module docstrings and several per-function `#` comment blocks had grown past section
+11's "module docstring is a short header... per-function/inline comments stay within 3 lines,
+prefer fewer" rule (same trim `config_manager.py` already went through) - pure documentation
+trim, zero behavior change, confirmed via `ruff check` (clean), `mypy` (same single pre-existing
+`Timer()` `call-overload` finding, unchanged), and the full existing test suites (69/69, 28/28,
+unchanged pass/fail set).
+
+- `asy_sgp40_driver.py`'s module docstring: 16 lines → 10, dropping the itemized datasheet-table
+  cross-reference list (I2C address, CRC-8 poly/init, Table 8/10/17 - all still verifiable in the
+  code's own per-function comments and this file's earlier review-pass write-ups above) and
+  folding the three-paragraph structure into two.
+- `voc_algorithm.py`'s module docstring: 17 lines → 7, dropping the standalone paragraph
+  contrasting `vocalgorithm_proc_ser_des()`'s full-state FRAM pack/unpack against Sensirion's own
+  short-interruption-only `VocAlgorithm_get_states()`/`set_states()` API (freezing every field,
+  including the `uptime_gamma`/`uptime_gating` learning-progress counters, keeps resumed state
+  internally consistent regardless of gap length; restore-age gating is `asy_sgp40_driver.py`'s
+  own `BackupMaxAge` config's job, not this file's) - the design rationale itself isn't lost, just
+  moved here instead of restated in the file.
+- Six over-limit comment blocks in `asy_sgp40_driver.py`, trimmed to ≤3 lines each, full original
+  wording preserved here instead of in the file:
+  - `SGP40_Reader.__init__`'s reset sub-completion tracking (4→2 lines): a pending reset has two
+    independent parts - clearing the FRAM backup and applying `vocalgorithm_reset()` - which can
+    complete on different cycles (e.g. FRAM clear fails once but the software reset already
+    succeeded); both start "done" until `reset_voc(True)` marks them pending.
+  - `_read_sgp()`'s `reset_now` snapshot (5→2 lines): a pending reset's two parts are tracked via
+    `_reset_fram_cleared`/`_reset_algo_applied` so a transient fault in one retries only that part,
+    never redoing an already-succeeded one; `reset_now` is snapshotted once at entry so a
+    concurrent `reset_voc(True)` from another task (e.g. a REST handler) only ever affects the
+    *next* cycle's own snapshot, never this one's.
+  - `_read_sgp()`'s `reset_for_measure` comment (5→2 lines): the software reset is applied at most
+    once per pending request, even if the FRAM half is still incomplete - `vocalgorithm_reset()`
+    runs unconditionally, before `measure_raw()`'s I2C transaction, and never raises, so the moment
+    `reset=True` is decided, that half is guaranteed applied regardless of whether the I2C
+    measurement that follows then succeeds or fails.
+  - `initialize()`'s intro comment (6→2 lines): only the serial-number read and self-test (both
+    real, datasheet-documented commands, Table 8) gate success - the previous feature-set check
+    (command 0x202F) isn't in the datasheet's command table, isn't done by Sensirion's own or
+    DFRobot's reference drivers, and has a known real-hardware unreliability report upstream;
+    dropped rather than kept as a spurious extra failure mode on the restart-after-disturbance
+    path.
+  - `initialize()`'s self-test byte-check comment (4→2 lines): datasheet Table 13 documents only
+    the high byte as the pass/fail marker (0xD4 pass, 0x4B fail) - the low byte is explicitly
+    documented as "ignore", not guaranteed zero; checking the full word against 0xD400 (inherited
+    from the deployed driver) would spuriously fail whenever real hardware returns a non-zero low
+    byte, which the datasheet allows.
+  - `_reset()`'s general-call comment (4→2 lines): a true I2C general-call reset (datasheet
+    Table 17) is a single data byte 0x06 sent to the reserved general-call address 0x00,
+    broadcasting a reset to every device on the bus that supports it - not a command sent to the
+    SGP40's own address; not every device needs to ACK a general call, so a NAK (`OSError`) here is
+    expected, not a real failure.
+- Two comment blocks already exactly at the 3-line cap were shortened further for consistency
+  (the `comp_callback()` try-comment and the `_read_sgp()` exception-path comment), same
+  zero-behavior-change treatment; a handful of other exactly-3-line blocks (the reset_voc()
+  restart-tracking comment, the serial-number-zero comment, the measure_index_and_raw() VOC-index
+  comment) were left as-is since they were already within the cap.
+- `voc_algorithm.py` had no per-function comment blocks past the cap to begin with (the file's
+  fixed-point port functions are largely uncommented, following the C reference 1:1 - only the
+  `DFRobot_vocalgorithmParams` class-level comment existed, already at 2 lines).
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`

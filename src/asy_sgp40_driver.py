@@ -1,18 +1,14 @@
-"""Sensirion SGP40 VOC sensor driver: SGP40_I2C (chip protocol - init/self-test/reset, raw-signal
-measurement with humidity/temperature compensation) and SGP40_Reader (the async framework-facing
-wrapper - trigger timer, read loop, error counting, config schema, FRAM backup/restore of
-voc_algorithm.py's VOCAlgorithm state), following the same SensorReader/SensorReaderConfig shape as
-asy_scd30_driver.py/asy_bmp3xx_driver.py.
+"""Sensirion SGP40 VOC sensor driver: SGP40_I2C (chip protocol) and SGP40_Reader (async
+framework-facing wrapper - trigger timer, read loop, error counting, config schema, FRAM
+backup/restore of voc_algorithm.py's VOCAlgorithm state), same shape as asy_scd30_driver.py/
+asy_bmp3xx_driver.py.
 
-Verified against Sensirion's SGP40 datasheet (datasheets/sgp40/, version 1.2 - Feb 2022): I2C
-address 0x59, command bytes/timings (Table 8), CRC-8 (poly 0x31, init 0xFF - see crc_checks.py),
-temperature/humidity-to-ticks conversion (Table 10), and the general-call soft-reset sequence
-(Table 17). See BACKLOG.md for the full review write-up.
+Verified against Sensirion's SGP40 datasheet (datasheets/sgp40/, v1.2 - Feb 2022). See
+BACKLOG.md for the full review write-up.
 
-Shared contract: every method returns a well-defined value (None/False, or an all-None namedtuple),
-never raises - except SGP40_I2C's raw bus-transaction calls (a NAK/timeout OSError from
-`I2CDevice` is allowed to propagate, per src/README.md section 2's I2C carve-out); every call into
-SGP40_I2C from SGP40_Reader already wraps a full read/write sequence in its own try/except.
+Shared contract: every method returns a well-defined value, never raises - except SGP40_I2C's
+raw bus-transaction calls (src/README.md section 2's I2C carve-out); every SGP40_Reader call
+into SGP40_I2C wraps a full read/write sequence in its own try/except.
 """
 
 import asyncio
@@ -97,10 +93,8 @@ class SGP40_Reader(SensorReaderConfig):
         self.last_backup: int | None = None
         self.restored_from: int | None = None
         self.reset = False
-        # Sub-completion tracking for a pending reset (see reset_voc()/_read_sgp()): a reset has two
-        # independent parts - clearing the FRAM backup and applying vocalgorithm_reset() - which can
-        # complete on different cycles (e.g. FRAM clear fails once but the software reset already
-        # succeeded). Both start "done" (nothing pending) until reset_voc(True) marks them pending.
+        # Two independent sub-parts of a pending reset, tracked separately since they can complete
+        # on different cycles (see reset_voc()/_read_sgp(), BACKLOG.md). Both start "done".
         self._reset_fram_cleared = True
         self._reset_algo_applied = True
 
@@ -308,11 +302,8 @@ class SGP40_Reader(SensorReaderConfig):
     async def _read_sgp(
         self, buf: "AsyFramChunkTimestampedBuffer | None", serialize: bool, deserialize: bool
     ) -> tuple[SGP40, bool, bool]:
-        # A pending reset has two independent parts that can complete on different cycles - FRAM
-        # clear and vocalgorithm_reset() - tracked via _reset_fram_cleared/_reset_algo_applied so a
-        # transient fault in one part retries only that part, never redoing an already-succeeded one.
-        # reset_now is snapshotted once at entry: a concurrent reset_voc(True) from another task
-        # (e.g. a REST handler) only ever affects the *next* cycle's own snapshot, never this one's.
+        # Snapshotted once at entry so a concurrent reset_voc(True) (e.g. a REST handler) only
+        # ever affects the *next* cycle, never this one (see BACKLOG.md for the two-part design).
         reset_now = self.reset
         if reset_now:
             self.pr.evt(_NAME, "Reset Trigger")
@@ -328,9 +319,7 @@ class SGP40_Reader(SensorReaderConfig):
                 if not self._reset_fram_cleared:
                     await self.pr.err_s(_NAME, "Fehler beim FRAM löschen!", errno=14)
 
-        try:  # caller-supplied callback (sensortask-*.py's own compensation source, not itself
-            # promoted/audited) - could legitimately misbehave, same treatment as every other
-            # caller-supplied callback in this codebase (e.g. asy_fram_manager.py's ntp_sync_callback)
+        try:  # caller-supplied callback, could legitimately misbehave (see BACKLOG.md)
             comp_data = await self.comp_callback()  # [Temperature, Humidity]
         except Exception as e:
             await self.pr.err_s(_NAME, "Kompensationsdaten-Callback fehlgeschlagen:", e, errno=18)
@@ -345,11 +334,8 @@ class SGP40_Reader(SensorReaderConfig):
 
         try:
             timestamp = time.mktime(time.gmtime())
-            # Only actually apply the software reset once per pending request, even if the FRAM
-            # half is still incomplete - vocalgorithm_reset() runs unconditionally, before
-            # measure_raw()'s I2C transaction, and never raises (voc_algorithm.py's own contract),
-            # so the moment we decide to pass reset=True below, that half is guaranteed applied
-            # regardless of whether the I2C measurement that follows then succeeds or fails.
+            # Applies the software reset at most once per pending request; vocalgorithm_reset()
+            # never raises, so this half is guaranteed applied regardless of I2C outcome below.
             reset_for_measure = reset_now and not self._reset_algo_applied
             if reset_for_measure:
                 self._reset_algo_applied = True
@@ -383,9 +369,7 @@ class SGP40_Reader(SensorReaderConfig):
                     await self.pr.err_s(_NAME, "Fehler beim Serialisieren!", errno=16)
 
         except Exception as e:
-            # measure_raw()'s I2C transaction failed, but vocalgorithm_reset() (if reset_for_measure
-            # was True above) already completed before this exception could have been raised - same
-            # two-part completion check applies as the success path above.
+            # I2C failed, but a pending reset_for_measure already completed above regardless.
             if reset_now and self._reset_algo_applied and self._reset_fram_cleared:
                 self.reset = False
             voc_index = raw = timestamp = None
@@ -435,12 +419,8 @@ class SGP40_I2C:
         await self.initialize()
 
     async def initialize(self) -> None:
-        # Reset to an unconfigured state and bring up with sensible defaults. Only the serial-
-        # number read and self-test (both real, datasheet-documented commands, Table 8) gate
-        # success - the previous feature-set check (command 0x202F) isn't in the datasheet's
-        # command table, isn't done by Sensirion's own or DFRobot's reference drivers, and has a
-        # known real-hardware unreliability report upstream; dropped rather than kept as a
-        # spurious extra failure mode on the restart-after-disturbance path (see BACKLOG.md).
+        # Only the serial-number read and self-test (datasheet Table 8) gate success - the
+        # feature-set check the legacy driver had isn't datasheet-documented; see BACKLOG.md.
         async with self.i2c_sgp40 as sgp40:  # device session
             self._command_buffer[0] = 0x36
             self._command_buffer[1] = 0x82
@@ -459,20 +439,16 @@ class SGP40_I2C:
             self_test = await self._read_word_from_command(sgp40, delay_ms=500)
         if self_test is None:
             raise RuntimeError("No sensor response!")
-        # Datasheet Table 13: only the high byte is the pass/fail marker (0xD4 pass, 0x4B fail) -
-        # the low byte is explicitly documented as "ignore", not guaranteed zero. Checking the full
-        # word against 0xD400 (inherited from the deployed driver) would spuriously fail whenever
-        # real hardware returns a non-zero low byte, which the datasheet allows.
+        # Datasheet Table 13: only the high byte is the pass/fail marker (0xD4/0x4B); the low
+        # byte is documented as "ignore", not guaranteed zero - see BACKLOG.md.
         if (self_test[0] >> 8) != 0xD4:
             raise RuntimeError("Self test failed")
         await self._reset()
 
     async def _reset(self) -> None:
-        # True I2C general-call reset (datasheet Table 17): a single data byte 0x06 sent to the
-        # reserved general-call address 0x00, broadcasting a reset to every device on the bus that
-        # supports it - not a command sent to the SGP40's own address. Not every device needs to
-        # ACK a general call, so a NAK (OSError) here is expected, not a real failure.
-        async with self.i2c_sgp40 as sgp40:  # shared-bus lock: a general call affects every device on it
+        # True I2C general-call reset (datasheet Table 17): 0x06 to the reserved address 0x00,
+        # broadcast to every device on the bus. A NAK (OSError) is expected, not a failure.
+        async with self.i2c_sgp40 as sgp40:  # shared-bus lock: a general call affects every device
             try:
                 sgp40.i2c_device.i2c.writeto(0x00, b"\x06")
             except OSError:

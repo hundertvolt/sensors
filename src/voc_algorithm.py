@@ -1,17 +1,8 @@
-"""Sensirion's Gas Index Algorithm (VOC-only variant), fixed-point (Q16.16) port of the original
-C reference (Sensirion/embedded-sgp, sgp40_voc_index/sensirion_voc_algorithm.c/.h, now archived) -
-verified constant-for-constant and against vocalgorithm_process()'s exact operation order.
-DFRobot_vocalgorithmParams's naming traces that port's own DFRobot-derived naming, kept for
-traceability against the reference rather than "Pythonized" further.
-
-vocalgorithm_proc_ser_des() adds a full-state pack/unpack (all 32 params, not just the 2-value
-mean/std Sensirion's own VocAlgorithm_get_states()/VocAlgorithm_set_states() expose) so a
-converged baseline can survive a reboot via FRAM (see asy_sgp40_driver.py). This is a deliberately
-different mechanism from Sensirion's own short-interruption-only API (documented for gaps up to
-10 minutes, after 3+ hours of runtime): freezing every field, including the uptime_gamma/
-uptime_gating learning-progress counters, keeps the resumed state internally consistent regardless
-of the gap length. Restore-age gating/rejection is the caller's responsibility (asy_sgp40_driver.py
-does this via its own BackupMaxAge config), not this file's.
+"""Sensirion's Gas Index Algorithm (VOC-only variant), fixed-point (Q16.16) port of the archived
+C reference (Sensirion/embedded-sgp, sgp40_voc_index/sensirion_voc_algorithm.c/.h) - verified
+constant-for-constant and against vocalgorithm_process()'s exact operation order. See BACKLOG.md
+for the naming/traceability rationale and vocalgorithm_proc_ser_des()'s full-state FRAM
+pack/unpack design (used by asy_sgp40_driver.py).
 
 Contract: every method returns a well-defined value, never raises.
 """
