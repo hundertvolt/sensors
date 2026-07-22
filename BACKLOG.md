@@ -2213,6 +2213,14 @@ non-hypothetical threat in a specific context justifies it. Accepted as residual
   single-LED dual-duty design, but no legend anywhere. Worth adding, low priority.
 - **FRAM SGP40 "0 = disabled" semantics need user-facing documentation** (see Functional
   Clarifications).
+- **Config classes only expose getters, no setters** — confirmed by the project owner as a known,
+  already-identified gap, not something surfaced fresh by this review. Deliberately deferred: the
+  owner wants to add setters in one consolidated pass across every `*_Reader`'s config surface
+  once all of them (currently just `asy_bmp3xx_driver.py`) are promoted to `src/`, rather than
+  bolting them on per-file as each one is promoted. Applies to `config_manager.py`'s `ConfigManager`
+  itself (`get_dict`/`get_int_values`/`get_float_values`/`get_str_values`/`get_bool_values`, no
+  matching typed setters — only the untyped `write_config(dict, schema)`) and to every `*_Reader`'s
+  own `get_dict_cfg()`-shaped config surface alike. Leave as-is until that consolidated pass.
 
 ## Security notes
 
