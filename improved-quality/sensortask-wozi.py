@@ -416,8 +416,7 @@ async def sensor_cmd(request: Request):
             res,
             0,
             7,
-            special_val=[0],
-            weight_fct=lambda x: 2**x,
+            weight_fct=lambda x: 2**x - 1,
             debug=debug,
         )
         res = await set_sensor_value(

@@ -53,7 +53,10 @@ _REGISTER_CAL_DATA = const(0x31)
 _REGISTER_CMD = const(0x7E)
 
 _OSR_SETTINGS = (1, 2, 4, 8, 16, 32)  # pressure and temperature oversampling settings
-_IIR_SETTINGS = (0, 2, 4, 8, 16, 32, 64, 128)  # IIR filter coefficients
+# Datasheet sec 4.3.20 (CONFIG register): encoding index -> 2^index - 1, not a power of two.
+# The previous (0, 2, 4, 8, 16, 32, 64, 128) tuple here didn't match the sensor's real coefficient
+# encoding - see BACKLOG.md's asy_bmp3xx_driver.py entry for the full multi-source verification.
+_IIR_SETTINGS = (0, 1, 3, 7, 15, 31, 63, 127)  # IIR filter coefficients
 
 
 

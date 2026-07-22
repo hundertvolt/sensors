@@ -956,24 +956,68 @@ was wrong.
 MicroPython docs/source, and the pinned Unix-port interpreter (not training memory) - owner-
 requested "target production quality" pass.**
 
-- **Flagged, not fixed: `_IIR_SETTINGS` doesn't match either BMP384 or BMP388's datasheet.**
-  `CONFIG` register sec 4.3.20 (both `bst-bmp388-ds001.pdf` and `bst-bmp384-ds003.pdf` - identical
-  table in both, and BMP388's own doc-history table records "Changed coefficient from 128 to 127"
-  as a deliberate 2018 datasheet correction, ruling out a datasheet typo) documents the 8 valid
-  `iir_filter` encodings as coefficients **0, 1, 3, 7, 15, 31, 63, 127** (`2^index - 1`) - but
-  `_IIR_SETTINGS = (0, 2, 4, 8, 16, 32, 64, 128)` (powers of two) is what both
-  `get_filter_coefficient()`/`set_filter_coefficient()` and `_VAL_FC`'s schema actually use. This
-  is a real, currently-deployed bug, not something introduced during this refactor: the exact same
-  wrong tuple is in `python/IndividualDrivers/asy_bmp3xx_driver.py` (the live production driver)
-  today. Concretely: calling `set_filter_coefficient(4)` writes encoding index 2 (looked up via
-  `_IIR_SETTINGS.index(4)`), which the sensor interprets as coefficient 3, not 4 - every
-  `FiltCoeff` value other than 0/1 has silently meant a different (and for the powers-of-two-only
-  values 2/4/8/... a *nonexistent*, off-by-one) IIR smoothing strength than the config value
-  implies, on every deployed unit, since this driver was first written. Per `src/README.md`
-  section 1's explicit gate ("do not silently change it to match... flag the specific discrepancy
-  and ask"), this is **not fixed** - correcting it changes real output (what `FiltCoeff`'s value
-  has actually meant this whole time) and needs an owner decision on how to handle already-written
-  config values, not a silent swap.
+- **Fixed (owner-confirmed after multi-source verification): `_IIR_SETTINGS` didn't match either
+  BMP384 or BMP388's datasheet.** `CONFIG` register sec 4.3.20 (both `bst-bmp388-ds001.pdf` and
+  `bst-bmp384-ds003.pdf` - identical table in both, and BMP388's own doc-history table records
+  "Changed coefficient from 128 to 127" as a deliberate 2018 datasheet correction, ruling out a
+  datasheet typo) documents the 8 valid `iir_filter` encodings as coefficients
+  **0, 1, 3, 7, 15, 31, 63, 127** (`2^index - 1`) - but `_IIR_SETTINGS = (0, 2, 4, 8, 16, 32, 64,
+  128)` (powers of two) is what both `get_filter_coefficient()`/`set_filter_coefficient()` and
+  `_VAL_FC`'s schema actually used. Per `src/README.md` section 1's gate this was first flagged,
+  not fixed, since correcting it changes real output. Owner asked for independent corroboration
+  beyond the datasheet alone before acting, given a recollection that the setting "was somewhat
+  working" - three sources now agree the datasheet's values are the only correct ones:
+  1. **Bosch's own reference driver** (`BMP3_SensorAPI`'s `bmp3_defs.h`) - macro names encode the
+     coefficient directly: `BMP3_IIR_FILTER_COEFF_1=0x01`, `_COEFF_3=0x02`, ... `_COEFF_127=0x07`.
+  2. **The Linux kernel's IIO driver** (`torvalds/linux`, `drivers/iio/pressure/bmp280.h`) - a
+     fully independent implementation, no code lineage from either Bosch's SDK or Adafruit's
+     library: `BMP380_FILTER_OFF=0, _1X=1, _3X=2, _7X=3, _15X=4, _31X=5, _63X=6, _127X=7`.
+  3. The datasheets themselves (both parts, byte-identical table).
+
+  The interesting side-finding: **Adafruit's own CircuitPython BMP3XX library has the exact same
+  wrong tuple** - `_IIR_SETTINGS = (0, 2, 4, 8, 16, 32, 64, 128)`, same variable name, same
+  comment - almost certainly where this codebase's version came from (consistent with the earlier
+  `get_altitude()` formula match already pointing to Adafruit as this driver's lineage), not an
+  independently-introduced error. Why it "worked, somewhat": the wrong tuple still has exactly 8
+  entries, so `.index(value)` always resolved to a valid 0-7 hardware encoding and asking for a
+  bigger number still bought more smoothing - monotonic behavior was intact, just mislabeled.
+  Concretely, before this fix: `set_filter_coefficient(1)` (a real, correct datasheet coefficient)
+  **raised `ValueError`** since `1` wasn't in the old tuple at all, while
+  `set_filter_coefficient(128)` was silently accepted and applied as *actual* coefficient 127,
+  even though 128 was never a real hardware setting.
+
+  **Fixed everywhere this specific bug appeared, per explicit owner instruction to adapt every
+  wrong usage even outside this file's normal scope:**
+  - `src/asy_bmp3xx_driver.py`: `_IIR_SETTINGS` corrected to `(0, 1, 3, 7, 15, 31, 63, 127)`;
+    `_VAL_FC`'s schema `max` tightened from `128` to `127` (its true ceiling) to match.
+  - `python/IndividualDrivers/asy_bmp3xx_driver.py` (the live, deployed production driver): same
+    tuple correction. No unit tests added for this file, per this doc's standing "no tests against
+    the pre-refactor codebase" rule - the fix is the source-value change alone.
+  - `modules/sensortask-wozi.py` and `improved-quality/sensortask-wozi.py` (the REST config
+    handler, deployed and WIP copies): both independently re-derived the same wrong assumption via
+    `update_valid_json(..., "BMPFiltCoeff", ..., weight_fct=lambda x: 2**x)`, converting a raw 0-7
+    REST index into what they believed was the real coefficient - i.e. the same bug, expressed a
+    second way, one layer up. Corrected to `lambda x: 2**x - 1`, which naturally yields 0 at x=0,
+    so the `special_val=[0]` bypass that existed only to force that one case under the old formula
+    is no longer needed and was removed as a direct, mechanical consequence of the fix (not a
+    separate cleanup). Note this specific `BMPTempOvers`/`BMPPressOvers` sibling lines' own
+    `weight_fct=lambda x: 2**x` (oversampling, range 0-5) is **correct as-is** - oversampling really
+    is a power-of-two domain (`_OSR_SETTINGS`), unlike the filter coefficient; only the
+    `BMPFiltCoeff` line needed changing.
+  - `html_raw/wozi/sensorconfig.html`: the user-facing REST UI literally labeled the input
+    `2 ** <input>` with "Valid values: 0 to 7, 0 = Off" - directly documenting the wrong formula to
+    whoever configures the sensor over the web UI. Corrected to `(2 ** <input>) - 1`.
+  - `arzi`/`neu`/`dev` don't have a BMP3xx sensor at all (confirmed via `modules/sensortask-*.py`
+    and `html_raw/*` - only `wozi` references `BMP`), so no other unit's config/UI needed this fix.
+  - SHTC3's/MPRLS's own `FilterCoefficient` fields are an unrelated concept (a `0.0-1.0` float EMA
+    smoothing weight, not a discrete IIR register encoding) - confirmed distinct, left alone.
+  - Regression tests: `tests/test_asy_bmp3xx_driver.py`'s `_IIR_SETTINGS`/`_VAL_FC`/
+    `_FIELD_BOUNDS` mirrors corrected to match; `test_filter_coefficient_rejects_invalid_values`
+    now asserts `2` is rejected (a real value under the *old* wrong tuple, not under the corrected
+    one - a direct regression check that the fix took effect, not just a generic bad-value probe);
+    `test_get_dict_cfg_overlays_live_sensor_readback_on_oversampling_and_filter_fields`'s
+    `set_filter_coefficient(16)` (no longer valid) changed to `15` (the same tuple index, now
+    holding the correct value).
 - **Fixed: `set_trigger_secs()`'s `except (TypeError, ValueError)` didn't cover the whole
   `int | float` type contract.** Confirmed directly against the real pinned MicroPython Unix-port
   interpreter: `int(float('inf'))`/`int(float('-inf'))` raise `OverflowError`, not `ValueError`

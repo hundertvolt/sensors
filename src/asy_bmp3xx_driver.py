@@ -67,7 +67,14 @@ _CMD_RDY_TIMEOUT_MS = const(50)  # cmd_rdy clears near-instantly outside an in-f
 _MEAS_TIMEOUT_MS = const(300)  # datasheet sec 3.9.2: max ~129ms at x32/x32 osr; generous margin
 
 _OSR_SETTINGS = (1, 2, 4, 8, 16, 32)  # pressure and temperature oversampling settings
-_IIR_SETTINGS = (0, 2, 4, 8, 16, 32, 64, 128)  # IIR filter coefficients
+# IIR filter coefficients (datasheet sec 4.3.20's CONFIG register table: encoding index -> 2^index
+# - 1, not a power of two). Cross-checked against three independent sources - Bosch's own
+# BMP3_SensorAPI reference driver (bmp3_defs.h's BMP3_IIR_FILTER_COEFF_* macros), the Linux kernel's
+# IIO driver (drivers/iio/pressure/bmp280.h's BMP380_FILTER_*X constants), and both the BMP384 and
+# BMP388 datasheets themselves (BMP388's doc history even logs a 2018 "changed coefficient from 128
+# to 127" correction, ruling out a datasheet typo) - all agree. Adafruit's own CircuitPython
+# BMP3XX library has the same wrong (0,2,4,8,...,128) tuple this codebase inherited from it.
+_IIR_SETTINGS = (0, 1, 3, 7, 15, 31, 63, 127)
 
 _MIN_TRIGGER_SECS = const(1)
 _MAX_TRIGGER_SECS = const(3600)
@@ -75,7 +82,7 @@ _MAX_TRIGGER_SECS = const(3600)
 _VAL_SI = const((("SampleInterv", "int", 2, _MIN_TRIGGER_SECS, _MAX_TRIGGER_SECS, None),))
 _VAL_POV = const((("PressOvers", "int", 1, 1, 32, None),))
 _VAL_TOV = const((("TempOvers", "int", 1, 1, 32, None),))
-_VAL_FC = const((("FiltCoeff", "int", 0, 0, 128, None),))
+_VAL_FC = const((("FiltCoeff", "int", 0, 0, 127, None),))
 _VAL_PO = const((("PressOffset", "float", 0.0, -500.0, 500.0, None),))
 _VAL_TO = const((("TempOffset", "float", 0.0, -10.0, 10.0, None),))
 _VAL_SLO = const((("SeaLevelOffs", "float", 0.0, -1000.0, 5000.0, None),))

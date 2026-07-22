@@ -35,7 +35,7 @@ _REGISTER_CONFIG = 0x1F
 _REGISTER_CAL_DATA = 0x31
 _REGISTER_CMD = 0x7E
 _OSR_SETTINGS = (1, 2, 4, 8, 16, 32)
-_IIR_SETTINGS = (0, 2, 4, 8, 16, 32, 64, 128)
+_IIR_SETTINGS = (0, 1, 3, 7, 15, 31, 63, 127)
 
 try:
     from typing import TYPE_CHECKING
@@ -612,9 +612,12 @@ def test_filter_coefficient_round_trip_every_valid_setting() -> None:
 
 
 def test_filter_coefficient_rejects_invalid_values() -> None:
+    # 2 is a real coefficient under the old (wrong) power-of-two tuple this codebase used to have,
+    # but not under the corrected 2^index-1 encoding (0,1,3,7,15,31,63,127) - a regression check
+    # that the fix actually took effect, not just a generic bad-value check.
     i2c, bmp = ready_bmp()
     try:
-        run(bmp.set_filter_coefficient(1))
+        run(bmp.set_filter_coefficient(2))
         raised = False
     except ValueError:
         raised = True
@@ -913,7 +916,7 @@ def test_reader_set_pressure_oversampling_logs_and_returns_false_on_bus_failure(
 _VAL_SI = (("SampleInterv", "int", 2, 1, 3600, None),)
 _VAL_POV = (("PressOvers", "int", 1, 1, 32, None),)
 _VAL_TOV = (("TempOvers", "int", 1, 1, 32, None),)
-_VAL_FC = (("FiltCoeff", "int", 0, 0, 128, None),)
+_VAL_FC = (("FiltCoeff", "int", 0, 0, 127, None),)
 _VAL_PO = (("PressOffset", "float", 0.0, -500.0, 500.0, None),)
 _VAL_TO = (("TempOffset", "float", 0.0, -10.0, 10.0, None),)
 _VAL_SLO = (("SeaLevelOffs", "float", 0.0, -1000.0, 5000.0, None),)
@@ -925,7 +928,7 @@ _FIELD_BOUNDS = {
     "SampleInterv": ("int", 1, 3600),
     "PressOvers": ("int", 1, 32),
     "TempOvers": ("int", 1, 32),
-    "FiltCoeff": ("int", 0, 128),
+    "FiltCoeff": ("int", 0, 127),
     "PressOffset": ("float", -500.0, 500.0),
     "TempOffset": ("float", -10.0, 10.0),
     "SeaLevelOffs": ("float", -1000.0, 5000.0),
@@ -1038,11 +1041,11 @@ def test_get_dict_cfg_overlays_live_sensor_readback_on_oversampling_and_filter_f
     seed_err(i2c, 0x00)
     run(reader.bmp.set_pressure_oversampling(8))
     run(reader.bmp.set_temperature_oversampling(4))
-    run(reader.bmp.set_filter_coefficient(16))
+    run(reader.bmp.set_filter_coefficient(15))
     cfg = run(reader.get_dict_cfg())["BMP3XX"]
     assert cfg["PressOvers"] == 8  # live sensor value, not the config file's stored default (1)
     assert cfg["TempOvers"] == 4
-    assert cfg["FiltCoeff"] == 16
+    assert cfg["FiltCoeff"] == 15
     assert cfg["SampleInterv"] == 2  # pure config-file field, no live equivalent to read back
 
 
