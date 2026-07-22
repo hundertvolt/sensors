@@ -952,6 +952,67 @@ was wrong.
 
 67 tests (`tests/test_asy_bmp3xx_driver.py`), up from 54.
 
+**Full recipe re-check against `src/README.md`, re-verified against the real datasheets, current
+MicroPython docs/source, and the pinned Unix-port interpreter (not training memory) - owner-
+requested "target production quality" pass.**
+
+- **Flagged, not fixed: `_IIR_SETTINGS` doesn't match either BMP384 or BMP388's datasheet.**
+  `CONFIG` register sec 4.3.20 (both `bst-bmp388-ds001.pdf` and `bst-bmp384-ds003.pdf` - identical
+  table in both, and BMP388's own doc-history table records "Changed coefficient from 128 to 127"
+  as a deliberate 2018 datasheet correction, ruling out a datasheet typo) documents the 8 valid
+  `iir_filter` encodings as coefficients **0, 1, 3, 7, 15, 31, 63, 127** (`2^index - 1`) - but
+  `_IIR_SETTINGS = (0, 2, 4, 8, 16, 32, 64, 128)` (powers of two) is what both
+  `get_filter_coefficient()`/`set_filter_coefficient()` and `_VAL_FC`'s schema actually use. This
+  is a real, currently-deployed bug, not something introduced during this refactor: the exact same
+  wrong tuple is in `python/IndividualDrivers/asy_bmp3xx_driver.py` (the live production driver)
+  today. Concretely: calling `set_filter_coefficient(4)` writes encoding index 2 (looked up via
+  `_IIR_SETTINGS.index(4)`), which the sensor interprets as coefficient 3, not 4 - every
+  `FiltCoeff` value other than 0/1 has silently meant a different (and for the powers-of-two-only
+  values 2/4/8/... a *nonexistent*, off-by-one) IIR smoothing strength than the config value
+  implies, on every deployed unit, since this driver was first written. Per `src/README.md`
+  section 1's explicit gate ("do not silently change it to match... flag the specific discrepancy
+  and ask"), this is **not fixed** - correcting it changes real output (what `FiltCoeff`'s value
+  has actually meant this whole time) and needs an owner decision on how to handle already-written
+  config values, not a silent swap.
+- **Fixed: `set_trigger_secs()`'s `except (TypeError, ValueError)` didn't cover the whole
+  `int | float` type contract.** Confirmed directly against the real pinned MicroPython Unix-port
+  interpreter: `int(float('inf'))`/`int(float('-inf'))` raise `OverflowError`, not `ValueError`
+  (`int(float('nan'))` does raise `ValueError`, already covered). Since `value`'s own declared type
+  is `int | float`, a caller-supplied `+-inf` is in-contract, not an out-of-contract input section
+  2 says to skip defending against - so this was a real, reachable crash in a method whose own
+  comments already claimed "never raises". Added `OverflowError` to the caught tuple; regression
+  test `test_reader_set_trigger_secs_rejects_inf_and_nan` added.
+- **Fixed: mixed `uasyncio`/`asyncio` import spelling in the same file.** Line imported `asyncio`
+  directly for everything else but pulled `ThreadSafeFlag` from `uasyncio` specifically. Checked
+  current docs (`docs/library/index.rst` at the pinned `v1.28.0` tag): `u`-prefixed names still
+  work today but are legacy, "code should always use `import module` rather than `import umodule`"
+  unless forcing the built-in over a same-named user module - not the case here. Verified via the
+  actual pinned Unix-port interpreter that `asyncio.ThreadSafeFlag is uasyncio.ThreadSafeFlag`
+  (`True` - identical class either way), so this is a zero-behavior-change consistency fix per
+  section 8/9, not a "changes real output" one needing sign-off. Now uses `asyncio.ThreadSafeFlag`
+  throughout, matching the rest of the file's `asyncio.get_event_loop()`/`asyncio.sleep()` etc.
+- **Re-confirmed correct, no changes needed** (re-verified this pass, not assumed from the earlier
+  session): operating range (-40..85 degC, 300..1250 hPa - identical in both BMP384 and BMP388
+  datasheets' Table 2); `STATUS`/`ERR_REG`/`PWR_CTRL`/`OSR` bit positions (sec 4.3.2-4.3.3,
+  4.3.16-4.3.17, identical across both datasheets); the conversion-time formula
+  (`Tconv = 234us + press_en*(392us+2^osr_p*2000us) + temp_en*(313us+2^osr_t*2000us)`, sec 3.9.2)
+  computes to ~128.9ms worst-case at osr_p=osr_t=x32, confirming `_MEAS_TIMEOUT_MS = 300`'s stated
+  margin; the temperature/pressure compensation formula and the `PAR_*` calibration-coefficient
+  scaling formulas (sec 9.1-9.3's C reference implementation) match this file's arithmetic term for
+  term, sign for sign, exponent for exponent; the 21-byte calibration `unpack("<HHbhhbbHHbbhbb", ...)`
+  format matches Table 23's per-coefficient sign/size column exactly, and total byte count (21)
+  matches the 0x31-0x45 register span; `math_helpers.altitude_baro()`'s own `None`-on-out-of-domain
+  guard (re-checked directly) confirms `_store_bmp()` degrades cleanly rather than crashing on the
+  (real, reachable) case where `PressOffset` pushes a valid in-range hardware reading outside
+  `altitude_baro`'s own 300-1250 hPa domain.
+- **Known local-verification gap, unchanged from before:** BMP390's own datasheet isn't in
+  `datasheets/bmp3xx/` (only BMP384/BMP388 are) - its `0x60` chip ID and assumed-identical register
+  map/IIR table couldn't be re-verified against a real BMP390 datasheet this pass either, same as
+  every previous pass. Flagging again per CLAUDE.md's datasheet-gap instruction rather than letting
+  it go unmentioned; the project owner would need to add the BMP390 datasheet to close this.
+
+68 tests (`tests/test_asy_bmp3xx_driver.py`), up from 67.
+
 ### Dangerous allocation shapes (segfault-class bug, swept project-wide)
 
 Confirmed against the real interpreter: `[x] * n` (list repeat — what `deque([x]*n, n)` does

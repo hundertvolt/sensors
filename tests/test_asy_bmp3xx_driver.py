@@ -827,6 +827,25 @@ def test_reader_set_trigger_secs_rejects_out_of_range_values() -> None:
         assert counters["BMP3XX"]["ErrNum"][-1] == 21
 
 
+def test_reader_set_trigger_secs_rejects_inf_and_nan() -> None:
+    # int(float('inf'))/int(float('-inf')) raise OverflowError, not ValueError - confirmed
+    # directly against the real MicroPython Unix-port interpreter (int(float('nan')) raises
+    # ValueError, already covered by the bad-type/out-of-range cases above). value's own type
+    # contract is int | float, so +-inf/NaN are legitimate inputs this must degrade cleanly for.
+    reader = make_reader("inf_nan_trigger")
+    run(reader.set_trigger_secs(30))  # establish a known-good baseline value first
+    for bad in (float("inf"), float("-inf"), float("nan")):
+
+        async def scenario(value: float = bad) -> dict:
+            await reader.set_trigger_secs(value)
+            await reader.pr.setup()
+            return await reader.get_error_counter()
+
+        counters = run(scenario())
+        assert run(reader.trigger_period.get_value()) == 30  # rejected - kept the prior value
+        assert counters["BMP3XX"]["ErrNum"][-1] == 21
+
+
 def test_init_bmp_soft_degrades_on_out_of_range_stored_sample_interval() -> None:
     # _init_bmp() routes BMPSampleInterv through set_trigger_secs() (which never raises) rather
     # than writing trigger_period directly, unlike the hardware-facing oversampling/filter values

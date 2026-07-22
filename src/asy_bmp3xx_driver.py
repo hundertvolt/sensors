@@ -27,7 +27,6 @@ from struct import unpack
 
 from machine import Timer
 from micropython import const
-from uasyncio import ThreadSafeFlag
 
 import math_helpers
 from asy_i2c_driver import I2C, I2CDevice
@@ -111,8 +110,8 @@ class BMP3xx_Reader(SensorReaderConfig):
             debug=debug,
         )
         self.bmp = BMP3XX_I2C(i2c, address=address)
-        self.base_trigger_event = ThreadSafeFlag()
-        self.trigger_event = ThreadSafeFlag()
+        self.base_trigger_event = asyncio.ThreadSafeFlag()
+        self.trigger_event = asyncio.ThreadSafeFlag()
         # rp2 only ever supports virtual (software) timers, where id defaults to -1 and is
         # genuinely optional (confirmed against MicroPython's own rp2 quickref docs) - the
         # installed generic micropython-rp2-rpi_pico_w-stubs package's Timer.__init__ overloads
@@ -148,10 +147,14 @@ class BMP3xx_Reader(SensorReaderConfig):
 
     async def set_trigger_secs(self, value: int | float) -> None:
         try:
+            # int(float('inf'))/int(float('-inf')) raise OverflowError, not ValueError - confirmed
+            # directly against the real MicroPython Unix-port interpreter (int(float('nan')) does
+            # raise ValueError, already covered). value's own type contract is int | float, so a
+            # caller-supplied +-inf is a legitimate input this must degrade cleanly for, not crash.
             trigger_secs = int(value)
             if not (_MIN_TRIGGER_SECS <= trigger_secs <= _MAX_TRIGGER_SECS):
                 raise ValueError(f"trigger interval must be between {_MIN_TRIGGER_SECS} and {_MAX_TRIGGER_SECS} seconds")
-        except (TypeError, ValueError) as e:
+        except (TypeError, ValueError, OverflowError) as e:
             await self.pr.err_s(_NAME, "Error setting trigger interval:", e, errno=21)
             return
         await self.trigger_period.set_value(trigger_secs)
