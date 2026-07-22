@@ -569,7 +569,7 @@ class SGP40_I2C:
             await i2c.readinto(replybuffer, end=replylen)
 
         for i in range(0, replylen, 3):
-            if not await self.crc.check_from(replybuffer, 3, start=i):
+            if await self.crc.check_from(replybuffer, 3, start=i) is None:
                 raise RuntimeError("CRC check failed while reading data")
             readdata_buffer.append(unpack_from(">H", replybuffer, i)[0])
 
