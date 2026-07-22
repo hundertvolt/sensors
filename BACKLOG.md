@@ -872,6 +872,69 @@ I2C fault-propagation tests at both module and integration level):
 
 54 tests (`tests/test_asy_bmp3xx_driver.py`), up from 33.
 
+**Second detailed review pass** (owner-requested: "go through the sensor script again in
+detail... oversights, bugs, strange or unexpected behaviors, unhandled/unplanned/accidental
+exceptions or conditions with yet no unit test"). Traced every code path once more, line by line,
+this time including public API surface never exercised by `BMP3xx_Reader` itself
+(`get_altitude()`) and cross-checking against the pre-refactor deployed driver to tell "carried
+over as-is" from "introduced by this promotion." One significant real bug found and fixed, plus
+three smaller ones:
+
+- **`_read_bmp()` triggered two independent physical measurements per read cycle, not one.**
+  `get_pressure()` and `get_temperature()` each independently call `_read()` (the full
+  trigger-forced-mode → poll-status → burst-read → compensate cycle), and `_read_bmp()` called
+  both back-to-back - so every read discarded half of what each `_read()` call actually computed
+  (each conversion yields *both* pressure and temperature together) and re-triggered a whole new
+  conversion for the other value. Confirmed this predates the refactor entirely: the original
+  `python/IndividualDrivers/asy_bmp3xx_driver.py` has the identical `Pressure =
+  await self.bmp.get_pressure()` / `Temperature = await self.bmp.get_temperature()` pair. Beyond
+  wasting bus traffic/measurement time (up to 2× conversion time per cycle, worse at higher
+  oversampling - exactly the kind of unnecessary bus exposure this session has otherwise been
+  hardening against), the stored `Pres`/`Temp` pair were never actually simultaneous: they came
+  from two separate physical conversions up to a whole conversion cycle (~129ms at x32/x32 osr)
+  apart, not the single atomic reading the combined result tuple implies. Fixed by adding
+  `get_pressure_and_temperature()` (one `_read()` call, both values from it) and switching
+  `_read_bmp()` to use it; `get_pressure()`/`get_temperature()` remain available unchanged for a
+  genuine standalone single-value query.
+- **`get_altitude()` had zero test coverage and two accidental, confusing exceptions.** It's
+  never called by `BMP3xx_Reader` (dead from the Reader's perspective, live public API on
+  `BMP3XX_I2C`) and no test exercised it before this pass. Confirmed directly against the real
+  MicroPython Unix-port interpreter (not guessed): a negative `sea_level_pressure` makes
+  `(pressure / sea_level_pressure) ** 0.190284`'s negative-base fractional exponent produce a
+  **complex number** (MicroPython supports complex arithmetic here, matching CPython, not a
+  domain-error raise), which the surrounding `float()` then rejects with `TypeError: can't
+  convert complex to float` - a confusing accident of Python's numeric tower, not an intentional
+  validation raise; zero `sea_level_pressure` raises a plain `ZeroDivisionError`. Fixed with an
+  explicit `if self.sea_level_pressure <= 0: raise ValueError(...)` guard up front, giving one
+  clear, deliberate error instead of two accidental ones.
+- **Dead code**: `setup()` had an orphaned `"""Sea level pressure in hPa."""` string-literal
+  statement sitting after the real code at the end of the function - syntactically legal (any
+  expression statement is), evaluated and discarded, does nothing; not attached to anything as an
+  actual docstring since it isn't the function's first statement. Removed, repositioned as a
+  regular `#` comment on the line it was clearly meant to document. `_REGISTER_TEMPDATA`/
+  `_REGISTER_ODR` were both defined but never referenced anywhere in the file (`_REGISTER_TEMPDATA`
+  is subsumed by the single 6-byte burst read from `_REGISTER_PRESSUREDATA`; `_REGISTER_ODR` only
+  applies to normal mode, which this forced-mode-only driver never uses) - removed.
+- **Doc bug**: `_read()`'s docstring said "Returns a tuple for temperature and pressure" but the
+  actual `return pressure, temperature` statement (and every caller's own unpacking) is
+  pressure-first - the docstring's stated order was backwards. Fixed.
+
+**Flagged, not fixed** (ambiguous design decision, not a clear-cut bug): `set_trigger_secs()`
+and `_init_bmp()`'s own `self.trigger_period.set_value(cfg_values[0])` both accept and store any
+int with zero bounds checking, unlike every hardware-backed setter in this file
+(`set_pressure_oversampling`/`set_temperature_oversampling`/`set_filter_coefficient`), which all
+self-validate against the sensor's own discrete domain independent of upstream validation. The
+config schema (`_VAL_SI`) declares `SampleInterv`'s valid range as 1-3600, but nothing in this
+file enforces it at the point of consumption - a 0 or negative value (reachable only via a
+direct/malformed caller, since the REST layer's `update_valid_json` already enforces 1-3600
+before calling `set_trigger_secs`) would make `_base_trigger()`'s `trigger_counter >=
+trigger_period` comparison true on every single 1-second timer tick instead of the intended
+interval - not a crash, just "fires every tick" instead of respecting the configured interval.
+Left as-is pending owner input: reject, clamp, or intentionally treat ≤0 as "fire on every tick"
+(a legitimate pattern elsewhere in this codebase for a different 0-means-X convention)?
+
+64 tests (`tests/test_asy_bmp3xx_driver.py`), up from 54.
+
 ### Dangerous allocation shapes (segfault-class bug, swept project-wide)
 
 Confirmed against the real interpreter: `[x] * n` (list repeat — what `deque([x]*n, n)` does
@@ -2062,7 +2125,7 @@ and a missing config file failing independently without either derailing the oth
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
 `asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 58,
-`asy_udp_socket.py` 62, `asy_bmp3xx_driver.py` 54 — **806 total**. (Previous count of 690 across 11
+`asy_udp_socket.py` 62, `asy_bmp3xx_driver.py` 64 — **816 total**. (Previous count of 690 across 11
 files predated `asy_udp_socket.py`'s promotion and was never updated to include it — corrected
 during its third pass; the 23→42 jump was its fourth pass's uncaught-exception/configuration/
 integration test additions; 42→56 is its fifth pass's mutation-bypass/concurrency/
@@ -2070,7 +2133,10 @@ cancellation-safety tests; 56→62 is its sixth pass's ready()/write_and_recvfro
 tests. `asy_bmp3xx_driver.py`'s 33→54 jump is its exception-safety-audit-and-integration-test
 pass: two fixes — `set_trigger_secs()`'s unguarded `int(value)`, `_get_osr_setting()`'s
 `IndexError` on a reserved OSR encoding — plus full config-schema, integration, and
-fault-propagation test coverage; see its own `BACKLOG.md` section above for the full breakdown.)
+fault-propagation test coverage; 54→64 is its second detailed review pass, fixing a real bug
+present since the original deployed driver (`_read_bmp()` triggering two independent physical
+measurements instead of one atomic reading) plus `get_altitude()`'s two accidental exceptions and
+some dead-code cleanup; see its own `BACKLOG.md` section above for the full breakdown.)
 
 ## Decided for the refactor
 

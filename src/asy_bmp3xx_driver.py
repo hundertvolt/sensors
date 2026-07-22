@@ -52,11 +52,9 @@ _BMP390_CHIP_ID = const(0x60)
 _REGISTER_CHIPID = const(0x00)
 _REGISTER_ERR = const(0x02)
 _REGISTER_STATUS = const(0x03)
-_REGISTER_PRESSUREDATA = const(0x04)
-_REGISTER_TEMPDATA = const(0x07)
+_REGISTER_PRESSUREDATA = const(0x04)  # burst-read base; the 6-byte burst covers temp data too
 _REGISTER_CONTROL = const(0x1B)
 _REGISTER_OSR = const(0x1C)
-_REGISTER_ODR = const(0x1D)
 _REGISTER_CONFIG = const(0x1F)
 _REGISTER_CAL_DATA = const(0x31)
 _REGISTER_CMD = const(0x7E)
@@ -225,8 +223,7 @@ class BMP3xx_Reader(SensorReaderConfig):
         temperature: float | None = None
         try:
             timestamp = time.mktime(time.gmtime())
-            pressure = await self.bmp.get_pressure()
-            temperature = await self.bmp.get_temperature()
+            pressure, temperature = await self.bmp.get_pressure_and_temperature()
             self.pr.all(_NAME, "gelesen")
         except Exception as e:
             timestamp = pressure = temperature = None
@@ -341,9 +338,8 @@ class BMP3XX_I2C:
             raise RuntimeError(f"Failed to find BMP3XX! Chip ID {hex(chip_id)}")
         await self._read_coefficients()
         await self.reset()
-        self.sea_level_pressure = sea_level_pressure
+        self.sea_level_pressure = sea_level_pressure  # in hPa
         self._wait_time = wait_time  # change this value to have faster reads if needed
-        """Sea level pressure in hPa."""
 
     async def get_pressure(self) -> float:
         """The pressure in hPa."""
@@ -355,9 +351,30 @@ class BMP3XX_I2C:
         res = await self._read()
         return res[1]
 
+    async def get_pressure_and_temperature(self) -> tuple[float, float]:
+        """Pressure (hPa) and temperature (degC) from a single measurement cycle.
+
+        Unlike calling get_pressure() and get_temperature() separately - each independently
+        triggers its own full forced-mode conversion via _read(), even though one conversion
+        already yields both values - this reads both from the same physical measurement, so the
+        two are never up to a whole conversion cycle (up to ~129ms at max oversampling, datasheet
+        sec 3.9.2) apart in time. Use this when both values are needed together; get_pressure()/
+        get_temperature() remain available for a standalone single-value query.
+        """
+        pressure, temperature = await self._read()
+        return pressure / 100, temperature
+
     async def get_altitude(self) -> float:
         """The altitude in meters based on the currently set sea level pressure."""
         # see https://www.weather.gov/media/epz/wxcalc/pressureAltitude.pdf
+        if self.sea_level_pressure <= 0:
+            # Confirmed directly against the real MicroPython Unix-port interpreter: a negative
+            # base to this fractional exponent produces a complex number (not a ValueError, as
+            # C's pow() would give), which float() then rejects with a confusing "can't convert
+            # complex to float" TypeError; zero raises ZeroDivisionError from the division itself.
+            # Both are accidental consequences of Python's numeric tower, not an intentional
+            # raise - replaced with one clear, deliberate error instead.
+            raise ValueError(f"sea_level_pressure must be positive, got {self.sea_level_pressure}")
         return float(44307.7 * (1.0 - (await self.get_pressure() / self.sea_level_pressure) ** 0.190284))
 
     async def _get_osr_setting(self, start_bit: int) -> int:
@@ -452,7 +469,7 @@ class BMP3XX_I2C:
             raise RuntimeError("reset command rejected (ERR_REG cmd_err set)")
 
     async def _read(self) -> tuple[float, float]:
-        """Returns a tuple for temperature and pressure."""
+        """Returns a (pressure_pa, temperature_degC) tuple."""
 
         # The whole measurement cycle (trigger, poll, data burst) is held under one device-session
         # lock so a concurrent oversampling/filter/reset call from another coroutine can't

@@ -232,6 +232,18 @@ def test_read_coefficients_accepts_plausible_non_uniform_data() -> None:
     assert bmp._temp_calib[0] == 28617 * 256
 
 
+def test_setup_applies_custom_sea_level_pressure_and_wait_time() -> None:
+    # Neither optional setup() parameter is exercised by any test above (all call setup() with no
+    # args) or by any real caller in this codebase (BMP3xx_Reader._init_bmp() always calls
+    # self.bmp.setup() with no args too) - confirms they're at least wired correctly if ever used.
+    i2c, bmp = ready_bmp()
+    seed_chip_id(i2c, _BMP388_CHIP_ID)
+    seed_calibration(i2c)
+    run(bmp.setup(sea_level_pressure=950.0, wait_time=0.01))
+    assert bmp.sea_level_pressure == 950.0
+    assert bmp._wait_time == 0.01
+
+
 # ---------------------------------------------------------------------------
 # reset() - cmd_rdy wait, softreset write, ERR_REG cmd_err verification
 # ---------------------------------------------------------------------------
@@ -272,6 +284,23 @@ def test_reset_raises_oserror_on_cmd_rdy_timeout() -> None:
         raised = True
     assert raised
     assert (_ADDR, _REGISTER_CMD) not in fake(i2c).registers  # never reached the write
+
+
+def test_reset_raises_oserror_when_bus_deinitialized_mid_poll() -> None:
+    # asy_i2c_driver.py's own contract: a deinitialized bus makes get_register_struct() return
+    # None rather than raise - _wait_status_bits() treats that the same as "not ready yet" and
+    # keeps retrying until its own timeout elapses, then raises OSError. The message reads as a
+    # genuine hardware timeout even though the real cause is different, but confirms the poll
+    # still terminates within its bounded timeout instead of hanging forever either way.
+    i2c, bmp = make_bmp()
+    seed_status(i2c, 0x00)  # not ready
+    i2c.deinit()
+    try:
+        run(bmp.reset())
+        raised = False
+    except OSError:
+        raised = True
+    assert raised
 
 
 def test_reset_raises_runtime_error_when_cmd_err_set() -> None:
@@ -315,6 +344,53 @@ def test_get_pressure_returns_hpa_and_get_temperature_returns_deg_c() -> None:
     run(bmp._read_coefficients())
     assert abs(run(bmp.get_pressure()) - _EXPECTED_PRESSURE_HPA) < 1e-6
     assert abs(run(bmp.get_temperature()) - _EXPECTED_TEMPERATURE) < 1e-6
+
+
+def test_get_pressure_and_temperature_returns_hpa_and_deg_c_from_one_measurement() -> None:
+    i2c, bmp = ready_bmp()
+    seed_calibration(i2c)
+    seed_data(i2c, _adc_to_data6(_ADC_P, _ADC_T))
+    run(bmp._read_coefficients())
+    pressure, temperature = run(bmp.get_pressure_and_temperature())
+    assert abs(pressure - _EXPECTED_PRESSURE_HPA) < 1e-6
+    assert abs(temperature - _EXPECTED_TEMPERATURE) < 1e-6
+
+
+def _count_forced_mode_triggers(i2c: I2C) -> int:
+    return sum(
+        1
+        for entry in fake(i2c).log
+        if entry[0] == "writeto_mem" and entry[2] == _REGISTER_CONTROL and bytes(entry[3]) == bytes([0x13])
+    )
+
+
+def test_get_pressure_and_temperature_triggers_exactly_one_measurement_cycle() -> None:
+    # Regression test for a real bug present since the original deployed driver (not introduced
+    # by this promotion, but never fixed until now): get_pressure() and get_temperature() each
+    # independently call _read(), so calling them back-to-back (as _read_bmp() used to) triggered
+    # two separate physical conversions instead of one - doubling bus traffic/measurement time
+    # and reporting pressure and temperature from two different measurement instants, up to a
+    # whole conversion cycle (~129ms at max oversampling) apart. get_pressure_and_temperature()
+    # must trigger the forced-mode conversion exactly once.
+    i2c, bmp = ready_bmp()
+    seed_calibration(i2c)
+    seed_data(i2c, _adc_to_data6(_ADC_P, _ADC_T))
+    run(bmp._read_coefficients())
+    run(bmp.get_pressure_and_temperature())
+    assert _count_forced_mode_triggers(i2c) == 1
+
+
+def test_get_pressure_and_get_temperature_called_separately_do_trigger_two_measurements() -> None:
+    # Documents the standalone get_pressure()/get_temperature() behavior as intentional (each is
+    # still a valid independent single-value query) - contrasted with the combined getter above,
+    # which is what _read_bmp() now uses instead of this two-call pattern.
+    i2c, bmp = ready_bmp()
+    seed_calibration(i2c)
+    seed_data(i2c, _adc_to_data6(_ADC_P, _ADC_T))
+    run(bmp._read_coefficients())
+    run(bmp.get_pressure())
+    run(bmp.get_temperature())
+    assert _count_forced_mode_triggers(i2c) == 2
 
 
 def test_read_triggers_forced_mode() -> None:
@@ -361,6 +437,20 @@ def test_read_raises_oserror_on_status_timeout() -> None:
     assert raised
 
 
+def test_read_raises_oserror_when_bus_deinitialized_mid_poll() -> None:
+    i2c, bmp = make_bmp()
+    seed_status(i2c, 0x00)  # not ready
+    seed_calibration(i2c)
+    run(bmp._read_coefficients())
+    i2c.deinit()
+    try:
+        run(bmp._read())
+        raised = False
+    except OSError:
+        raised = True
+    assert raised
+
+
 def test_read_rejects_pressure_above_datasheet_operating_range() -> None:
     i2c, bmp = ready_bmp()
     seed_calibration(i2c)
@@ -383,6 +473,51 @@ def test_read_rejects_temperature_below_datasheet_operating_range() -> None:
     run(bmp._read_coefficients())
     try:
         run(bmp._read())
+        raised = False
+    except ValueError:
+        raised = True
+    assert raised
+
+
+# ---------------------------------------------------------------------------
+# get_altitude() - never called by BMP3xx_Reader today (dead from its perspective), but live,
+# reachable public API on BMP3XX_I2C that had zero test coverage before this pass.
+# ---------------------------------------------------------------------------
+
+
+def test_get_altitude_computes_a_plausible_value_at_default_sea_level_pressure() -> None:
+    i2c, bmp = ready_bmp()
+    seed_calibration(i2c)
+    seed_data(i2c, _adc_to_data6(_ADC_P, _ADC_T))
+    run(bmp._read_coefficients())
+    altitude = run(bmp.get_altitude())
+    # _EXPECTED_PRESSURE_HPA (~713.77 hPa) is well below the default 1013.25 hPa sea-level
+    # reference, so the computed altitude must be a large positive number (the station reads as
+    # "above" the reference), not zero/negative/NaN.
+    assert altitude > 1000.0
+
+
+def test_get_altitude_raises_value_error_for_zero_sea_level_pressure() -> None:
+    i2c, bmp = ready_bmp()
+    bmp.sea_level_pressure = 0.0
+    try:
+        run(bmp.get_altitude())
+        raised = False
+    except ValueError:
+        raised = True
+    assert raised
+
+
+def test_get_altitude_raises_value_error_for_negative_sea_level_pressure() -> None:
+    # Confirmed directly against the real MicroPython Unix-port interpreter: without this guard,
+    # a negative sea_level_pressure produces a confusing TypeError("can't convert complex to
+    # float") instead - the fractional exponent (** 0.190284) on a negative base produces a
+    # complex number, which float() then rejects. An accidental consequence of Python's numeric
+    # tower, not an intentional raise - get_altitude() now raises a clear ValueError up front.
+    i2c, bmp = ready_bmp()
+    bmp.sea_level_pressure = -50.0
+    try:
+        run(bmp.get_altitude())
         raised = False
     except ValueError:
         raised = True
@@ -945,6 +1080,27 @@ def test_reader_error_counter_reflects_read_failures_via_print_log() -> None:
     assert counters["ErrCount"] == 1
     assert counters["ErrNum"][-1] == 13
     assert counters["ErrType"][-1] == "E"
+
+
+def test_reader_read_bmp_triggers_exactly_one_measurement_cycle() -> None:
+    # Reader-level counterpart of test_get_pressure_and_temperature_triggers_exactly_one_
+    # measurement_cycle above: confirms _read_bmp() itself (not just the low-level method it now
+    # calls) only triggers one physical conversion per read cycle, not the two independent ones
+    # the old get_pressure()+get_temperature() two-call pattern used to produce.
+    i2c, reader = make_clean_reader("single_measurement")
+    seed_chip_id(i2c, _BMP388_CHIP_ID)
+    seed_calibration(i2c)
+    seed_status(i2c, 0x10 | 0x60)
+    seed_err(i2c, 0x00)
+    seed_data(i2c, _adc_to_data6(_ADC_P, _ADC_T))
+    assert run(reader._init_bmp())
+    fake(i2c).log.clear()  # only count triggers from the read itself, not setup()'s own traffic
+
+    results = run(reader._read_bmp())
+
+    assert results[0] is not None
+    assert results[1] is not None
+    assert _count_forced_mode_triggers(i2c) == 1
 
 
 def test_reader_uses_fram_backed_print_log_when_fram_provided() -> None:
