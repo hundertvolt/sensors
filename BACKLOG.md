@@ -1998,7 +1998,8 @@ inline comment in `tests/test_asy_uart_driver.py`) and `test_print_log.py`'s pre
 generalized as a reusable rule for future passes, not just those two ad hoc instances.
 
 **Controlled paths - upstream callers must handle these**: `UART.__init__()`/`init()` may raise
-`ValueError` (bad pin/baudrate/bits/parity/stop/buffer-size/port_id) - see above. Whichever module
+`ValueError` (bad pin/inversion-mask/buffer-size/port_id - see above; `baudrate`/`bits`/`parity`/
+`stop` have no raising validation at all, corrected below). Whichever module
 eventually wires this driver into a real caller (`asy_uart_comm.py`'s own future promotion, or
 whatever else ends up constructing a `UART` instance) must catch/handle this at construction time,
 the same way every existing I2C-based `Reader` class already fails loudly at boot for a bad I2C
@@ -2159,18 +2160,36 @@ and a missing config file failing independently without either derailing the oth
 
 ### Current test counts (verify via `grep -c '^def test_' tests/test_*.py` if this looks stale)
 
-`math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
-`base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
-`asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 58,
-`asy_udp_socket.py` 62, `asy_uart_driver.py` 62 — **814 total**. (Previous count of 690 across 11
-files predated `asy_udp_socket.py`'s promotion and was never updated to include it — corrected
-during its third pass; the 23→42 jump was its fourth pass's uncaught-exception/configuration/
-integration test additions; 42→56 is its fifth pass's mutation-bypass/concurrency/cancellation-
-safety tests; 56→62 is its sixth pass's ready()/write_and_recvfrom() parameter-guard tests.
-`asy_uart_driver.py`'s own 29→58 jump was its first follow-up pass's parameter-validation/
-`Lockable`-integration/`MemoryError`-fault-injection additions; 58→61 was its production-quality
-checklist pass's short-write regression tests; 61→62 was the immediate re-verification pass's
-empty-write coverage gap, all described above.)
+- `math_helpers.py` 45
+- `crc_checks.py` 66
+- `asy_i2c_driver.py` 77
+- `asy_spi_driver.py` 43
+- `base_classes.py` 70
+- `config_manager.py` 140
+- `print_log.py` 46
+- `asy_fram_driver.py` 46
+- `asy_fram_manager.py` 89
+- `test_fram_integration.py` 10
+- `system_service.py` 58
+- `asy_udp_socket.py` 62
+- `asy_uart_driver.py` 62
+
+**814 total.** Promoting another file: append one bullet above and bump this total, don't rewrap
+the list — keeps this section a one-line diff against other promotion branches editing it in
+parallel.
+
+Per-file running-total history (why a file's own count moved between passes — kept here rather
+than repeated in each file's section above, since it's about the total, not the underlying change):
+
+- `asy_udp_socket.py`: total was 690 across 11 files before this file's promotion, never updated at
+  the time — corrected during its third pass. 23→42 was its fourth pass's uncaught-exception/
+  configuration/integration test additions; 42→56 its fifth pass's mutation-bypass/concurrency/
+  cancellation-safety tests; 56→62 its sixth pass's `ready()`/`write_and_recvfrom()` parameter-guard
+  tests.
+- `asy_uart_driver.py`: 29→58 was its first follow-up pass's parameter-validation/`Lockable`-
+  integration/`MemoryError`-fault-injection additions; 58→61 its production-quality checklist
+  pass's short-write regression tests; 61→62 the immediate re-verification pass's empty-write
+  coverage gap.
 
 ## Decided for the refactor
 
