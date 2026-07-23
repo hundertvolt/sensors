@@ -36,7 +36,7 @@ _LF = const(0x0A)  # b"\n"[0] - readline_until_complete's own-line terminator
 class UART(Lockable):
     def __init__(
         self,
-        uart_id: int,
+        port_id: int,
         tx_pin: int,
         rx_pin: int,
         baudrate: int = 9600,
@@ -48,7 +48,7 @@ class UART(Lockable):
         timeout: int = 0,
         timeout_char: int = 1,
         invert: int = 0,
-        poll_wait_ms: int = 0,
+        poll_wait_ms: int = 20,
         crc: CRC_Base | None = None,
     ) -> None:
         self._uart: _UART | None = None
@@ -58,11 +58,11 @@ class UART(Lockable):
         self.cancel = False
         self.cancelled = asyncio.Event()
         self.crc = CRC_Pass() if crc is None else crc
-        self.init(uart_id, tx_pin, rx_pin, baudrate, bits, parity, stop, rxbuf, txbuf, timeout, timeout_char, invert)
+        self.init(port_id, tx_pin, rx_pin, baudrate, bits, parity, stop, rxbuf, txbuf, timeout, timeout_char, invert)
 
     def init(
         self,
-        uart_id: int,
+        port_id: int,
         tx_pin: int,
         rx_pin: int,
         baudrate: int = 9600,
@@ -79,7 +79,7 @@ class UART(Lockable):
         # registration - matches asy_spi_driver.py's/asy_i2c_driver.py's own init() pattern.
         self.deinit()
         self._uart = _UART(
-            uart_id,
+            port_id,
             baudrate=baudrate,
             tx=Pin(tx_pin),
             rx=Pin(rx_pin),
@@ -107,6 +107,21 @@ class UART(Lockable):
             self._uart.deinit()
             self._uart = None
             self.poller = None
+
+    def _active_uart(self) -> "_UART | None":
+        # Shared entry guard for every read/write method below: returns the live machine.UART
+        # only if called inside `async with self:` (asy_lock held) on a not-deinitialized bus,
+        # None otherwise - the same sentinel every caller already returns for "can't operate".
+        # Returning the narrowed value (not just a bool) keeps mypy's None-narrowing working
+        # through a local variable, the same way asy_i2c_driver.py's/asy_spi_driver.py's own
+        # inline `if self._i2c is None: return None` checks do.
+        # Unlike SPIDevice/I2CDevice, which trust the caller here, the lock check is load-bearing
+        # for UART specifically: cancel_read_timeout() infers "is a read genuinely in flight" from
+        # asy_lock.locked() alone, called from a *different* task than the one doing the read - a
+        # lock-less caller would be invisible to it, silently breaking cancellation.
+        if not self.asy_lock.locked():
+            return None
+        return self._uart
 
     async def cancel_read_timeout(self) -> bool:
         # Lets another task abort this instance's in-flight ready()/read wait from the outside -
@@ -138,27 +153,29 @@ class UART(Lockable):
             await asyncio.sleep_ms(self.poll_wait_ms)
 
     async def read(self, nbytes: int | None = None, timeout_ms: int = -1) -> bytes | None:
-        if not self.asy_lock.locked() or self._uart is None:  # only use inside `async with`
+        uart = self._active_uart()
+        if uart is None:
             return None
-        if await self.ready(select.POLLIN, timeout_ms=timeout_ms):
-            if nbytes is None:
-                return self._uart.read()
-            return self._uart.read(nbytes)
-        return None
+        if not await self.ready(select.POLLIN, timeout_ms=timeout_ms):
+            return None
+        if nbytes is None:
+            return uart.read()
+        return uart.read(nbytes)
 
     async def read_until_complete(
         self, nbytes: int, start_timeout_ms: int = -1, timeout_ms: int = -1
     ) -> bytearray | None:
         # Reads exactly nbytes (+ CRC, if configured) across as many ready()/read() rounds as it
         # takes, then verifies/strips the trailing CRC in one go.
-        if not self.asy_lock.locked() or self._uart is None:
+        uart = self._active_uart()
+        if uart is None:
             return None
         timeout = start_timeout_ms  # wait time for the first message part
         msg = bytearray()
         nbytes += self.crc.length()
         while len(msg) < nbytes:
             if await self.ready(select.POLLIN, timeout_ms=timeout):
-                add = self._uart.read(nbytes - len(msg))
+                add = uart.read(nbytes - len(msg))
                 if add is None:
                     return None
                 msg += add
@@ -168,20 +185,22 @@ class UART(Lockable):
         return await self.crc.check(msg)
 
     async def readinto(self, buf: bytearray, nbytes: int | None = None, timeout_ms: int = -1) -> int | None:
-        if not self.asy_lock.locked() or self._uart is None:
+        uart = self._active_uart()
+        if uart is None:
             return None
-        if await self.ready(select.POLLIN, timeout_ms=timeout_ms):
-            if nbytes is None:
-                return self._uart.readinto(buf)
-            return self._uart.readinto(buf, nbytes)
-        return None
+        if not await self.ready(select.POLLIN, timeout_ms=timeout_ms):
+            return None
+        if nbytes is None:
+            return uart.readinto(buf)
+        return uart.readinto(buf, nbytes)
 
     async def readinto_until_complete(
         self, buf: bytearray, nbytes: int, start_timeout_ms: int = -1, timeout_ms: int = -1
     ) -> int | None:
         # readinto() counterpart of read_until_complete(): fills buf in place instead of
         # allocating a new bytearray per call.
-        if not self.asy_lock.locked() or self._uart is None:
+        uart = self._active_uart()
+        if uart is None:
             return None
         timeout = start_timeout_ms  # wait time for the first message part
         size = 0
@@ -191,7 +210,7 @@ class UART(Lockable):
         buf_mv = memoryview(buf)
         while size < nbytes:
             if await self.ready(select.POLLIN, timeout_ms=timeout):
-                nb = self._uart.readinto(buf_mv[size:], nbytes - size)
+                nb = uart.readinto(buf_mv[size:], nbytes - size)
                 if nb is None:
                     return None
                 size += nb
@@ -201,22 +220,24 @@ class UART(Lockable):
         return await self.crc.check_from(buf, size=size)
 
     async def readline(self, timeout_ms: int = -1) -> bytes | None:
-        if not self.asy_lock.locked() or self._uart is None:
+        uart = self._active_uart()
+        if uart is None:
             return None
-        if await self.ready(select.POLLIN, timeout_ms=timeout_ms):
-            return self._uart.readline()
-        return None
+        if not await self.ready(select.POLLIN, timeout_ms=timeout_ms):
+            return None
+        return uart.readline()
 
     async def readline_until_complete(self, start_timeout_ms: int = -1, timeout_ms: int = -1) -> bytearray | None:
         # No CRC framing here (unlike the other *_until_complete methods) - readline() is for
         # text-style, newline-terminated messages, matching the original driver's own scope.
-        if not self.asy_lock.locked() or self._uart is None:
+        uart = self._active_uart()
+        if uart is None:
             return None
         timeout = start_timeout_ms  # wait time for the first message part
         msg = bytearray()
         while True:
             if await self.ready(select.POLLIN, timeout_ms=timeout):
-                add = self._uart.readline()  # reads until b"\n" or the buffer runs empty
+                add = uart.readline()  # reads until b"\n" or the buffer runs empty
                 if add is None:
                     return None
                 msg += add
@@ -230,23 +251,25 @@ class UART(Lockable):
         return msg
 
     async def write(self, msg: bytearray) -> bool:  # write msg (+ CRC, if configured) once ready
-        if not self.asy_lock.locked() or self._uart is None:  # only use inside `async with`
+        uart = self._active_uart()
+        if uart is None:
             return False
         framed = await self.crc.add(msg)
         if framed is None:
             return False
-        if await self.ready(select.POLLOUT):
-            self._uart.write(framed)  # rp2 stream write: can short-write, never raises (see module docstring)
-            return True
-        return False
+        if not await self.ready(select.POLLOUT):
+            return False
+        uart.write(framed)  # rp2 stream write: can short-write, never raises (see module docstring)
+        return True
 
     async def writefrom(self, buf: bytearray, size: int) -> bool:  # write buf's first size bytes (+ CRC) in place
-        if not self.asy_lock.locked() or self._uart is None:
+        uart = self._active_uart()
+        if uart is None:
             return False
         crcsize = await self.crc.add_into(buf, size)
         if crcsize is None:
             return False
-        if await self.ready(select.POLLOUT):
-            self._uart.write(memoryview(buf)[0:crcsize])
-            return True
-        return False
+        if not await self.ready(select.POLLOUT):
+            return False
+        uart.write(memoryview(buf)[0:crcsize])
+        return True
