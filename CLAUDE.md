@@ -86,7 +86,11 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
   passing (see "Code quality tooling" below and `tests/README.md`), unlike `improved-quality/`'s
   WIP files above. **`src/README.md` is the full checklist** for what "fully reviewed and tested"
   actually requires — apply it to every file that makes this move, not just whichever ones already
-  have. Files in `src/` aren't automatically re-wired into any driver's actual import path for a
+  have. **For a new sensor driver specifically, `DRIVER_SPEC.md` (repo root) is the shared
+  architecture/interface spec** extracted from the three drivers already in `src/` — what shape
+  the code should take (layering, naming, error handling, config schema, ...), separate from
+  `src/README.md`'s "is it good enough to move" checklist. Files in `src/` aren't automatically
+  re-wired into any driver's actual import path for a
   real firmware build just by moving there — `improved-quality/` files keep importing them by
   their old unqualified name unchanged (e.g. `import math_helpers`, `from crc_checks import ...`),
   which still resolves correctly both because MicroPython's frozen-module namespace is flat (it

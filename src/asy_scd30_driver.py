@@ -126,8 +126,10 @@ class SCD30_Reader(SensorReader):
         return [self.start_timer]
 
     async def get_data(self) -> SCD30:
-        data = await self._get_meas_data()
-        return cast(SCD30, data)
+        # Narrows _get_meas_data()'s generic "NamedTuple" to this Reader's concrete SCD30;
+        # typing.cast() isn't usable (no runtime presence on MicroPython) so this identity return
+        # does the same job - see DRIVER_SPEC.md's get_data() narrowing convention.
+        return await self._get_meas_data()  # type: ignore[return-value]
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         data = await self.get_data()
@@ -220,7 +222,10 @@ class SCD30_Reader(SensorReader):
                 self.pr.evt(_NAME, "Interrupt Start Trigger")
                 self.irq_trigger_event.set()
 
-    # selected low-level direct sensor driver function forwards
+    # Selected low-level driver forwards below: each failure is logged via self.pr (not swallowed
+    # silently) so a transient bus fault on a REST-triggered config get/set stays visible in the
+    # sensor's own error history, not just a bare None/False back to the caller - matching
+    # asy_bmp3xx_driver.py's own forwards (see DRIVER_SPEC.md).
     async def stop_continuous_measurement(self, value: bool) -> bool:
         # value is the desired ContMeas state; True (keep running) is a no-op, only False stops it.
         if value:
@@ -228,85 +233,98 @@ class SCD30_Reader(SensorReader):
         try:
             await self.scd.stop_continuous_measurement()
             return True
-        except Exception:
+        except Exception as e:
+            await self.pr.err_s(_NAME, "Error stopping continuous measurement:", e, errno=12)
             return False
 
     async def get_measurement_interval(self) -> int | None:
         try:
             return await self.scd.get_measurement_interval()
-        except Exception:
+        except Exception as e:
+            await self.pr.err_s(_NAME, "Error reading measurement interval:", e, errno=13)
             return None
 
     async def set_measurement_interval(self, value: int) -> bool:
         try:
             await self.scd.set_measurement_interval(value)
             return True
-        except Exception:
+        except Exception as e:
+            await self.pr.err_s(_NAME, "Error setting measurement interval:", e, errno=14)
             return False
 
     async def get_self_calibration_enabled(self) -> bool | None:
         try:
             return await self.scd.get_self_calibration_enabled()
-        except Exception:
+        except Exception as e:
+            await self.pr.err_s(_NAME, "Error reading self calibration enabled:", e, errno=15)
             return None
 
     async def set_self_calibration_enabled(self, enabled: bool) -> bool:
         try:
             await self.scd.set_self_calibration_enabled(enabled)
             return True
-        except Exception:
+        except Exception as e:
+            await self.pr.err_s(_NAME, "Error setting self calibration enabled:", e, errno=16)
             return False
 
     async def get_ambient_pressure(self) -> int | None:
         try:
             return await self.scd.get_ambient_pressure()
-        except Exception:
+        except Exception as e:
+            await self.pr.err_s(_NAME, "Error reading ambient pressure:", e, errno=17)
             return None
 
     async def set_ambient_pressure(self, pressure_mbar: int | float) -> bool:
         try:
             await self.scd.set_ambient_pressure(pressure_mbar)
             return True
-        except Exception:
+        except Exception as e:
+            await self.pr.err_s(_NAME, "Error setting ambient pressure:", e, errno=18)
             return False
 
     async def get_altitude(self) -> int | None:
         try:
             return await self.scd.get_altitude()
-        except Exception:
+        except Exception as e:
+            await self.pr.err_s(_NAME, "Error reading altitude:", e, errno=19)
             return None
 
     async def set_altitude(self, altitude: int) -> bool:
         try:
             await self.scd.set_altitude(altitude)
             return True
-        except Exception:
+        except Exception as e:
+            await self.pr.err_s(_NAME, "Error setting altitude:", e, errno=20)
             return False
 
     async def get_temperature_offset(self) -> float | None:
         try:
             return await self.scd.get_temperature_offset()
-        except Exception:
+        except Exception as e:
+            await self.pr.err_s(_NAME, "Error reading temperature offset:", e, errno=21)
             return None
 
     async def set_temperature_offset(self, offset: int | float) -> bool:
         try:
             await self.scd.set_temperature_offset(offset)
             return True
-        except Exception:
+        except Exception as e:
+            await self.pr.err_s(_NAME, "Error setting temperature offset:", e, errno=22)
             return False
 
     async def get_forced_recalibration_reference(self) -> int | None:
         try:
             return await self.scd.get_forced_recalibration_reference()
-        except Exception:
+        except Exception as e:
+            await self.pr.err_s(_NAME, "Error reading forced recalibration reference:", e, errno=23)
             return None
 
     async def set_forced_recalibration_reference(self, reference_value: int) -> bool:
         try:
             await self.scd.set_forced_recalibration_reference(reference_value)
             return True
-        except Exception:
+        except Exception as e:
+            await self.pr.err_s(_NAME, "Error setting forced recalibration reference:", e, errno=24)
             return False
 
 

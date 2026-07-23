@@ -155,7 +155,7 @@ class BMP3xx_Reader(SensorReaderConfig):
     async def get_data(self) -> BMP3XX:
         # Narrows _get_meas_data()'s generic "NamedTuple" to this Reader's concrete BMP3XX;
         # typing.cast() isn't usable (no runtime presence on MicroPython) so this identity return
-        # does the same job - see BACKLOG.md's typing.cast() finding.
+        # does the same job - see DRIVER_SPEC.md's get_data() narrowing convention.
         return await self._get_meas_data()  # type: ignore[return-value]
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:

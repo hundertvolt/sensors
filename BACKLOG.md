@@ -45,11 +45,19 @@ constraints.
 - **Bus concurrency (`asyncio.Lock` + `async with`) needs a coverage audit** — no gaps, no
   deadlock/starvation. The `*_DeviceSession(Lockable)` pattern (an outer per-sensor lock around a
   whole write-then-read transaction, `asyncio.sleep(0)` yield between phases) is the pattern to
-  verify/extend, not start from scratch. **Concrete open gap, not just hypothetical**: BMP3xx's
-  low-level getter/setter forwards log a swallowed exception via `self.pr.err_s()`; SCD30's
-  identically-shaped forwards (`get_measurement_interval`, `set_ambient_pressure`, etc.) still use
-  bare `except Exception: return None/False` with no logging — a transient bus fault on a
-  REST-triggered SCD30 config change is currently invisible in its own error history.
+  verify/extend, not start from scratch. (The one concrete gap this audit had already turned up —
+  SCD30's low-level getter/setter forwards not logging via `self.pr.err_s()`, unlike BMP3xx's — is
+  now fixed; see DRIVER_SPEC.md section 7 for the settled forward-logging convention every driver
+  now follows. The broader "no gaps, no deadlock/starvation" audit itself is still open.)
+- **Common driver error classes across sensors — future direction, not designed or implemented
+  yet.** Each driver currently defines and reports its own `errno`/`wrnno` values independently
+  (see DRIVER_SPEC.md section 7); the one exception is `errno=10` ("initial setup failed"), which
+  all three drivers already use for the same situation by independent convergence rather than by
+  any enforced scheme. Project owner's stated direction: keep per-driver definition/reporting (not
+  a single shared enum), but predefine a small set of common error *classes* so the same number
+  means the same or an equivalent condition across different drivers, beyond just the one
+  already-consistent case. No scheme (numbering ranges, category list, how a driver opts in)
+  designed yet — out of scope until config setters (above) are done.
 - **Network/WiFi and Neopixel config still share one ad hoc top-level `ConfigManager`** in
   `sensortask-wozi.py` (confirmed intentional intermediate state, not finished) — every sensor now
   has its own per-device `SensorReaderConfig`-based config file; this cross-cutting config still

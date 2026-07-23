@@ -35,6 +35,9 @@ python/
 improved-quality/        WIP refactor target (out of scope for day-to-day work; see CLAUDE.md)
 src/                     Files moved out of improved-quality/ once fully reviewed/tested - see
                           src/README.md for the promotion checklist
+DRIVER_SPEC.md           Shared sensor driver architecture/interface spec - what a new driver's
+                          code should look like; src/README.md's checklist is how you know it's
+                          good enough
 tests/                   Unit tests for src/, run under a real MicroPython interpreter - see
                           tests/README.md
 toolchain/               MicroPython/pico-sdk/picotool build-environment installer
@@ -297,3 +300,6 @@ non-gating, `continue-on-error: true` steps:
 - **CLAUDE.md** — AI-session operating constraints and architecture reference.
 - **BACKLOG.md** — active open questions and not-yet-done work; see its own opening paragraph for
   the full scope. Resolved items move into this file or CLAUDE.md instead of staying there.
+- **DRIVER_SPEC.md** — the shared sensor driver architecture/interface spec extracted from the
+  three drivers already in `src/`; what a new driver's code should look like, given a datasheet
+  and the developer's own design decisions.

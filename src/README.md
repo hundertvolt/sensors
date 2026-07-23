@@ -9,6 +9,12 @@ an uncaught exception, safe to run unattended and uninterrupted indefinitely, re
 RP2040's limited resources, never blocks, and always returns a well-defined value — each expanded
 below.
 
+For a *new sensor driver* specifically, see `../DRIVER_SPEC.md` first — the shared architecture/
+interface shape (layering, naming, error handling, config schema, ...) extracted from the three
+drivers already promoted here. This checklist is how you know a file (that spec's shape or any
+other) is good enough to move; `DRIVER_SPEC.md` is what shape a sensor driver's code should take
+in the first place.
+
 Out of scope for this checklist: setting up the CI pipeline itself and the MicroPython Unix-port
 toolchain build — that's already done (see BACKLOG.md/`toolchain/README.md`) and is a one-time
 project-level setup, not something each new file redoes. What follows is what changes, and what

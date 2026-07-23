@@ -100,6 +100,52 @@ temperature/humidity/CO2; SGP40's `VOCAlgorithm` instance).
   value is available — reject and raise rather than returning an implausible value silently (see
   BMP3xx's pressure/temperature range check on every `_read()`).
 
+### 3.1 SPI sensor variant — best effort, non-proven
+
+**Flag on this whole subsection: no SPI *sensor* driver has gone through this project's
+promotion process yet.** Everything above (sections 1-2) is proven against three real I2C
+drivers; what follows is extrapolated from `asy_spi_driver.py`'s own contract (verified, but
+never exercised by a sensor) and `asy_fram_driver.py`'s `FRAM_SPI` (a real, promoted SPI driver —
+but for a memory chip, not a sensor, so its write-enable-latch mechanics below are FRAM/EEPROM-
+specific, not a general SPI-sensor pattern). Treat this as a starting point that needs extra
+scrutiny — datasheet cross-checks and real-hardware testing both — the first time it's actually
+used, not as settled precedent the way sections 1-2 are.
+
+The general structure is identical to the I2C case (section 1-2): `*_DeviceSession(Lockable)`
+wraps an `SPIDevice` instead of an `I2CDevice`; the protocol class becomes `*_SPI`; the `*_Reader`
+layer is unchanged (it only ever calls the protocol class, never the bus directly, so nothing
+about layer 3 depends on which bus layer 2 uses). What genuinely differs:
+
+- **No bus-level presence probe exists for SPI, unlike I2C.** `I2CDevice.setup()` has
+  `__probe_for_device()` — a zero-byte write that raises `ValueError` on a NAK, catching "wrong
+  address / nothing there" before any real protocol traffic. SPI has no addressing and no
+  ACK/NAK concept at all (`asy_spi_driver.py`'s own contract: `write()`/`readinto()` cannot raise
+  on rp2 hardware once the bus is constructed) — there is no equivalent bus-level check to lean
+  on. **Identity verification must be a real, content-checked register read** — the *only* signal
+  available — modeled on `FRAM_SPI._check_device_id()`: send the chip's documented ID-read
+  opcode, read back the documented number of bytes, and compare against the datasheet's fixed
+  ID/manufacturer values before trusting anything else. Skipping this (or doing it as a bare
+  "did the read not raise" check, which SPI can't give you anyway) leaves `setup()` with no way
+  to detect "wrong/no chip on this CS line" at all.
+- **Register/command framing is far more chip-specific than I2C's fairly uniform
+  `readfrom_mem`/`writeto_mem` shape**, and this codebase only has one real example (`FRAM_SPI`'s
+  opcode-then-address-then-data framing, `_setup_addr_buffer()`). A real SPI sensor may instead
+  use a single address byte with a read/write bit (common on accelerometers/gyros: bit 7 of the
+  first byte selects read vs. write, the rest is the register address) or another scheme
+  entirely — **check the specific datasheet's SPI command format before assuming
+  `FRAM_SPI`'s shape transfers**; it's one example of the general "opcode/address framed into a
+  small scratch buffer, then a data phase" idea, not a template to copy verbatim.
+- **Write-enable-latch mechanics (`_enable_write()`/`_disable_write()`'s WREN/WRDI-and-verify
+  pattern) are FRAM/EEPROM-specific, not a general SPI-sensor concern.** Most sensor registers
+  (configuration, calibration, oversampling-equivalent settings) are plainly writable without a
+  separate enable-latch step — don't build this into a new SPI sensor driver unless its own
+  datasheet documents an equivalent latch/protection mechanism.
+- Everything else — pre-allocated scratch buffers, the `*_DeviceSession` lock covering a whole
+  multi-transaction sequence, datasheet-cited compensation math, operating-range checks — carries
+  over from the I2C case unchanged; `SPIDevice`'s own CS-assert/deassert and settle-time handling
+  (`asy_spi_driver.py`) is already transparent to the protocol layer, the same way `I2CDevice`'s
+  bus session is.
+
 ## 4. Layer 3: `*_Reader(SensorReader | SensorReaderConfig)`
 
 **Contract: never raises.** Every public method returns a well-defined sentinel (`None`/`False`/
@@ -155,10 +201,20 @@ async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[
 ```
 
 `get_data()`'s return type can't be narrowed with `typing.cast()` inside the base class (no
-runtime presence — see section 9), so the concrete override either re-declares the concrete
-return type and relies on the base's `NamedTuple` annotation being compatible (BMP3xx/SGP40:
-`# type: ignore[return-value]` with a comment), or uses a driver-local no-op `cast()` shim
-(SCD30). **These two approaches coexist today — flagged, not resolved, see section 12.**
+runtime presence on MicroPython — see section 10), so every driver's override narrows
+`_get_meas_data()`'s generic `NamedTuple` return the same way: an identity return with a scoped
+`# type: ignore[return-value]` and a one-line comment explaining why (see any of the three
+drivers' `get_data()`). This is the settled convention — don't reach for a local `cast()` shim or
+reconstruct the namedtuple field-by-field (`<Sensor>(*data)`) instead: both were tried during the
+original three-way promotion (one driver used a runtime no-op `cast()` shim, another rebuilt the
+namedtuple from its own unpacked fields on every call) and dropped in favor of this one, since
+`# type: ignore[return-value]` needs no extra shim code and — unlike the rebuild — allocates
+nothing on a call this hot (every REST read of a sensor's data goes through `get_data()`).
+`typing.cast()` still has a real, separate use elsewhere: narrowing a `struct.unpack()`/
+`unpack_from()` result (typed `Any` by the installed MicroPython stubs) before a `return`
+statement whose declared type isn't `Any` — mypy's `warn_return_any` flags that specific pattern
+regardless of this convention; `SCD30_I2C._read_dev_register()` is the current example. Use
+`cast()` there if a new driver's protocol layer hits the same stub gap, just not for `get_data()`.
 
 ### 4.3 `SensorReader` vs. `SensorReaderConfig`
 
@@ -176,10 +232,16 @@ values actually live:
   `ConfigManager`/`config_<name>.cfg` exists at all for this sensor. See CLAUDE.md's SCD30
   `AmbPres` note for why this is deliberate, not a gap.
 
-A sensor could plausibly need both kinds of fields at once (some NVM-persisted, some
-software-only) — none of the three current drivers hit this case, so there's no established
-pattern for it yet; treat it as an open design question if it comes up (flag to the project
-owner rather than guessing, per CLAUDE.md's working agreement).
+These two aren't mutually exclusive within one sensor, and mixing them needs no new mechanism:
+use `SensorReaderConfig` as soon as *any* field needs local storage, and for the fields that
+don't (sensor-NVM-persisted, no local cache needed) simply omit them from the schema and
+`ConfigManager` entirely — read/write them straight from the sensor, the same way SCD30 does for
+*all* of its fields today, just for a subset instead of the whole set. `get_dict_cfg()`'s
+`callback` (section 4.4) already merges schema-backed and live-readback fields into one dict
+regardless of how many of each a given driver has, so a driver with, say, 3 schema fields and 2
+NVM-only fields looks the same to `get_dict_cfg()`'s caller as one with 8-and-0 (BMP3xx) or 0-and-6
+(SCD30) — only the schema tuple passed to `_get_dict_cfg()` and the `callback`'s own field list
+change.
 
 ### 4.4 `get_dict_cfg()`'s `callback` parameter
 
@@ -231,11 +293,21 @@ every driver writing its own `_asdict()`-based dict conversion.
   history entry) for informational/trace messages; `pr.err_s`/`pr.wrn_s` (async, `await` required
   — they persist to `self.history`/FRAM) for anything that should count against
   `get_error_counter()`'s reported `ErrCount`/`ErrNum`/`ErrType`.
-- `errno=`/`wrnno=` are small positive integers, unique *within one driver's own `_NAME` log
-  stream* — there's no project-wide registry and none is planned; BMP3xx's numbering (10=init,
-  11-14=config read/write, 15-20=oversampling/filter forwards, 21=trigger-interval) is a
-  representative pattern (sequential, grouped by the method that raises it) worth following for a
-  new driver, not a fixed convention to match number-for-number.
+- `errno=`/`wrnno=` are small positive integers, defined and reported **per driver** — each
+  driver owns and reports its own error list, there is no project-wide numbering a new driver
+  must slot into. Within that per-driver list, group sequentially by the method that raises it
+  (BMP3xx: 10=init, 11-14=config read/write, 15-20=oversampling/filter forwards, 21=trigger-
+  interval) — a representative pattern worth following, not a fixed convention to match
+  number-for-number.
+- **One number is already a de facto shared convention, worth keeping deliberately**: `errno=10`
+  means "error in initial sensor setup" (`_init_<sensor>()`'s own `self.<protocol>.setup()`
+  failure) in all three current drivers, independently arrived at. A new driver should use
+  `errno=10` for the same situation, for the same reason any of the three already do — not
+  because it's enforced anywhere, but because it costs nothing to match and helps a human
+  scanning `get_error_counter()` output across sensors recognize the same failure class at a
+  glance. A broader, deliberate scheme of shared common-error *classes* (not just this one
+  precedent) across drivers is a real future direction — see BACKLOG.md's "common driver error
+  classes" entry — not implemented yet and out of scope for a driver's initial promotion.
 - `_error_check(results, name, condition=True) -> bool` (`base_classes.py`) is the shared
   consecutive-failure-streak counter every `read_loop()` calls once per cycle with that cycle's
   results tuple — returns `False` (give up, triggers task-supervisor restart) once
@@ -243,12 +315,13 @@ every driver writing its own `_asdict()`-based dict conversion.
   `condition` lets a driver suppress counting a "failure" that isn't really the sensor's fault
   (SGP40 passes `condition=compensated` — a `None` result from a missing compensation callback
   isn't a sensor failure).
-- **Whether a per-field get/set forward (section 4.4-adjacent — `get_pressure_oversampling()`
-  style thin wrappers around the protocol layer) logs via `self.pr.err_s()` on failure is
-  currently inconsistent between drivers** — BMP3xx's forwards do; SCD30's/SGP40's plain
-  `try/except Exception: return None` forwards don't. This is a known, already-tracked
-  discrepancy (see BACKLOG.md's bus-concurrency-audit item), not a new one — a new driver should
-  follow BMP3xx's logged-forward pattern until/unless the project owner decides otherwise.
+- A per-field get/set forward (section 4.4-adjacent — `get_pressure_oversampling()`-style thin
+  wrappers around the protocol layer) **always logs via `self.pr.err_s()`/`wrn_s()` on failure**,
+  not just a bare `try/except Exception: return None`/`False` — a transient bus fault on a
+  REST-triggered config get/set must stay visible in the sensor's own error history, the same way
+  a `read_loop()` failure already is. (BMP3xx established this pattern first; SCD30's forwards
+  originally didn't follow it and were brought in line with it — see any of SCD30's forwards for
+  the now-shared shape.)
 
 ## 8. Concurrency & locking model
 
@@ -305,8 +378,8 @@ Already stated generally in `src/README.md` section 6 — the sensor-driver-spec
 - `TYPE_CHECKING` guarded via `try/except ImportError: TYPE_CHECKING = False`, never an
   unconditional `from typing import ...`.
 - PEP 604 `X | None` everywhere; never `typing.Union`.
-- `typing.cast()` has no runtime presence on MicroPython — see section 4.2 for the two
-  approaches currently in use (flagged as unresolved, section 12).
+- `typing.cast()` has no runtime presence on MicroPython — see section 4.2 for the settled
+  `get_data()` narrowing convention and the one genuine remaining use of a local `cast()` shim.
 - A driver-local `*Results` tuple-of-optionals type alias (`SCDResults`, `BMPResults`) is
   declared under `if TYPE_CHECKING:`, used only as `_read_<sensor>()`'s return annotation — it's
   a plain tuple, not a `NamedTuple`, since it's an internal intermediate shape, not the public
@@ -317,7 +390,8 @@ Already stated generally in `src/README.md` section 6 — the sensor-driver-spec
 Everything above is already decided by the existing three drivers. What's genuinely new per
 sensor:
 
-1. **Bus**: I2C or SPI — determines which protocol-layer exception surface applies (section 3).
+1. **Bus**: I2C or SPI — determines which protocol-layer exception surface applies (section 3;
+   SPI specifically is section 3.1, flagged best-effort/unproven).
 2. **Identity check**: what does `setup()` verify before trusting the sensor is really there
    (chip-ID register, firmware-version CRC, serial-number + self-test, ...) — per the datasheet's
    own documented identification mechanism.
@@ -337,28 +411,11 @@ sensor:
    generic error-history logging every driver gets for free (SGP40's VOC-algorithm-state backup
    is the only current example — a much larger addition than most sensors will need)?
 8. **Errno/wrnno numbering**: pick a sequential scheme grouped by failing method, scoped to this
-   driver's own `_NAME` stream (section 7) — no cross-driver registry to consult or update.
+   driver's own `_NAME` stream, reusing `errno=10` for "initial setup failed" to match the other
+   three drivers (section 7) — no cross-driver registry to consult or update beyond that one
+   precedent.
 
-## 12. Known open inconsistencies (flagged, not resolved by this document)
-
-Per CLAUDE.md's "flag, don't silently fix" rule — these are real, verified differences between
-the three existing drivers that this spec deliberately does not adjudicate:
-
-- **`typing.cast()` narrowing** (section 4.2): SCD30 defines a local no-op `cast()` shim guarded
-  by the same `try/except ImportError` pattern as `TYPE_CHECKING`; BMP3xx/SGP40 instead use
-  `# type: ignore[return-value]` with an explanatory comment. Both are runtime-safe; they're
-  simply different styles for the same problem, introduced independently across the three
-  original promotion sessions.
-- **Per-field get/set forward error logging** (section 7): BMP3xx's forwards log via
-  `self.pr.err_s()` on failure; SCD30's/SGP40's don't. Already tracked in BACKLOG.md, not new
-  here — restated because it's directly relevant to "what should a new driver's forwards do."
-
-Neither blocks writing a new driver — pick BMP3xx's version of each (the more recently settled,
-more informative one) per this spec's section 4.2/7 guidance — but reconciling the two existing
-drivers that diverge is a separate, still-open piece of work (goal 3 of the consolidation
-session that produced this document), not something this spec resolves by fiat.
-
-## 13. Testing
+## 12. Testing
 
 Covered fully by `tests/README.md` ("Hardware-touching files: mock at the raw bus-transaction
 level only") — restated as the one sensor-driver-specific summary: mock `tests/machine.py`'s
