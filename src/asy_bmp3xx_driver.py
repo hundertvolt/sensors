@@ -316,7 +316,7 @@ class BMP3xx_Reader(SensorReaderConfig):
 
 
 class BMP3xx_DeviceSession(Lockable):
-    def __init__(self, i2c_device: I2CDevice):
+    def __init__(self, i2c_device: I2CDevice) -> None:
         super().__init__()
         self.i2c_device = i2c_device
 

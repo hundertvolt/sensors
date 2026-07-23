@@ -212,38 +212,38 @@ def test_get_temperature_offset_matches_datasheet_example() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _raises_attribute_error(coro: "Coroutine[Any, Any, None]") -> bool:
+def _raises_value_error(coro: "Coroutine[Any, Any, None]") -> bool:
     try:
         run(coro)
-    except AttributeError:
+    except ValueError:
         return True
     return False
 
 
 def test_set_measurement_interval_boundaries() -> None:
     scd, _ = make_scd()
-    assert _raises_attribute_error(scd.set_measurement_interval(1))
-    assert _raises_attribute_error(scd.set_measurement_interval(1801))
-    assert not _raises_attribute_error(scd.set_measurement_interval(2))
-    assert not _raises_attribute_error(scd.set_measurement_interval(1800))
-    assert not _raises_attribute_error(scd.set_measurement_interval(900))
+    assert _raises_value_error(scd.set_measurement_interval(1))
+    assert _raises_value_error(scd.set_measurement_interval(1801))
+    assert not _raises_value_error(scd.set_measurement_interval(2))
+    assert not _raises_value_error(scd.set_measurement_interval(1800))
+    assert not _raises_value_error(scd.set_measurement_interval(900))
 
 
 def test_set_ambient_pressure_boundaries() -> None:
     scd, _ = make_scd()
-    assert _raises_attribute_error(scd.set_ambient_pressure(699))
-    assert _raises_attribute_error(scd.set_ambient_pressure(1401))
-    assert not _raises_attribute_error(scd.set_ambient_pressure(0))  # special "disable" value
-    assert not _raises_attribute_error(scd.set_ambient_pressure(700))
-    assert not _raises_attribute_error(scd.set_ambient_pressure(1400))
-    assert not _raises_attribute_error(scd.set_ambient_pressure(1013))
+    assert _raises_value_error(scd.set_ambient_pressure(699))
+    assert _raises_value_error(scd.set_ambient_pressure(1401))
+    assert not _raises_value_error(scd.set_ambient_pressure(0))  # special "disable" value
+    assert not _raises_value_error(scd.set_ambient_pressure(700))
+    assert not _raises_value_error(scd.set_ambient_pressure(1400))
+    assert not _raises_value_error(scd.set_ambient_pressure(1013))
 
 
 def test_set_ambient_pressure_rejects_values_just_inside_the_dead_zone_around_zero() -> None:
     # 0 is the one special value below 700 that's valid - 1 through 699 must all still raise.
     scd, _ = make_scd()
-    assert _raises_attribute_error(scd.set_ambient_pressure(1))
-    assert _raises_attribute_error(scd.set_ambient_pressure(699))
+    assert _raises_value_error(scd.set_ambient_pressure(1))
+    assert _raises_value_error(scd.set_ambient_pressure(699))
 
 
 def test_set_ambient_pressure_rejects_fractional_values_that_would_truncate_to_the_special_zero() -> None:
@@ -255,17 +255,26 @@ def test_set_ambient_pressure_rejects_fractional_values_that_would_truncate_to_t
     # "disable ambient pressure" command to the sensor with no error raised at all.
     scd, i2c = make_scd()
     for bad in (-0.5, -0.01, -0.999):
-        assert _raises_attribute_error(scd.set_ambient_pressure(bad)), f"{bad} should have raised"
+        assert _raises_value_error(scd.set_ambient_pressure(bad)), f"{bad} should have raised"
     assert len(i2c.log) == 0  # none of the rejected calls should have reached the bus
+
+
+def test_set_ambient_pressure_rejects_nan() -> None:
+    # NaN compares False against every bound in the range check (never > or < anything), so
+    # without an explicit check it would silently reach int(pressure_mbar) instead of being
+    # rejected by the guard clause itself - see asy_scd30_driver.py's own comment.
+    scd, i2c = make_scd()
+    assert _raises_value_error(scd.set_ambient_pressure(float("nan")))
+    assert len(i2c.log) == 0
 
 
 def test_set_altitude_boundaries() -> None:
     scd, _ = make_scd()
-    assert _raises_attribute_error(scd.set_altitude(-1))
-    assert _raises_attribute_error(scd.set_altitude(65536))
-    assert not _raises_attribute_error(scd.set_altitude(0))
-    assert not _raises_attribute_error(scd.set_altitude(65535))
-    assert not _raises_attribute_error(scd.set_altitude(1000))
+    assert _raises_value_error(scd.set_altitude(-1))
+    assert _raises_value_error(scd.set_altitude(65536))
+    assert not _raises_value_error(scd.set_altitude(0))
+    assert not _raises_value_error(scd.set_altitude(65535))
+    assert not _raises_value_error(scd.set_altitude(1000))
 
 
 def test_set_altitude_rejects_fractional_values_that_would_truncate_to_zero() -> None:
@@ -276,26 +285,33 @@ def test_set_altitude_rejects_fractional_values_that_would_truncate_to_zero() ->
     # passing a float anyway - defensive test, deliberately outside the declared type.
     scd, i2c = make_scd()
     for bad in (-0.5, -0.01, -0.999):
-        assert _raises_attribute_error(scd.set_altitude(bad)), f"{bad} should have raised"  # type: ignore[arg-type]
+        assert _raises_value_error(scd.set_altitude(bad)), f"{bad} should have raised"  # type: ignore[arg-type]
     assert len(i2c.log) == 0
 
 
 def test_set_temperature_offset_boundaries() -> None:
     scd, _ = make_scd()
-    assert _raises_attribute_error(scd.set_temperature_offset(-0.01))
-    assert _raises_attribute_error(scd.set_temperature_offset(655.36))
-    assert not _raises_attribute_error(scd.set_temperature_offset(0.0))
-    assert not _raises_attribute_error(scd.set_temperature_offset(655.35))
-    assert not _raises_attribute_error(scd.set_temperature_offset(5.0))
+    assert _raises_value_error(scd.set_temperature_offset(-0.01))
+    assert _raises_value_error(scd.set_temperature_offset(655.36))
+    assert not _raises_value_error(scd.set_temperature_offset(0.0))
+    assert not _raises_value_error(scd.set_temperature_offset(655.35))
+    assert not _raises_value_error(scd.set_temperature_offset(5.0))
+
+
+def test_set_temperature_offset_rejects_nan() -> None:
+    # Same NaN gap as set_ambient_pressure's own regression test above.
+    scd, i2c = make_scd()
+    assert _raises_value_error(scd.set_temperature_offset(float("nan")))
+    assert len(i2c.log) == 0
 
 
 def test_set_forced_recalibration_reference_boundaries() -> None:
     scd, _ = make_scd()
-    assert _raises_attribute_error(scd.set_forced_recalibration_reference(399))
-    assert _raises_attribute_error(scd.set_forced_recalibration_reference(2001))
-    assert not _raises_attribute_error(scd.set_forced_recalibration_reference(400))
-    assert not _raises_attribute_error(scd.set_forced_recalibration_reference(2000))
-    assert not _raises_attribute_error(scd.set_forced_recalibration_reference(450))
+    assert _raises_value_error(scd.set_forced_recalibration_reference(399))
+    assert _raises_value_error(scd.set_forced_recalibration_reference(2001))
+    assert not _raises_value_error(scd.set_forced_recalibration_reference(400))
+    assert not _raises_value_error(scd.set_forced_recalibration_reference(2000))
+    assert not _raises_value_error(scd.set_forced_recalibration_reference(450))
 
 
 def test_invalid_setter_call_does_not_corrupt_state_for_a_later_valid_call() -> None:
@@ -303,11 +319,11 @@ def test_invalid_setter_call_does_not_corrupt_state_for_a_later_valid_call() -> 
     # real valid call afterwards - the shared self._buffer must not be left in a state that
     # corrupts a subsequent, unrelated, valid command.
     scd, i2c = make_scd()
-    assert _raises_attribute_error(scd.set_altitude(-1))
-    assert _raises_attribute_error(scd.set_temperature_offset(-1.0))
-    assert _raises_attribute_error(scd.set_forced_recalibration_reference(100))
-    assert _raises_attribute_error(scd.set_measurement_interval(0))
-    assert _raises_attribute_error(scd.set_ambient_pressure(1))
+    assert _raises_value_error(scd.set_altitude(-1))
+    assert _raises_value_error(scd.set_temperature_offset(-1.0))
+    assert _raises_value_error(scd.set_forced_recalibration_reference(100))
+    assert _raises_value_error(scd.set_measurement_interval(0))
+    assert _raises_value_error(scd.set_ambient_pressure(1))
     # None of the above should have reached the bus at all (raised before _send_command).
     assert len(i2c.log) == 0
     run(scd.set_altitude(500))
@@ -324,7 +340,7 @@ def test_range_checks_raise_before_touching_the_bus() -> None:
         scd.set_temperature_offset(-1.0),
         scd.set_forced_recalibration_reference(1),
     ):
-        assert _raises_attribute_error(bad_call)
+        assert _raises_value_error(bad_call)
     assert len(i2c.log) == 0
 
 
@@ -657,7 +673,7 @@ def test_scd_init_irq_never_triggers_while_pin_reads_low() -> None:
 
 # ---------------------------------------------------------------------------
 # Integration: every public getter/setter, real fault propagation through print_log/base_classes -
-# an OSError (bus NAK), a RuntimeError (CRC), and an AttributeError (bad range) must all surface as
+# an OSError (bus NAK), a RuntimeError (CRC), and a ValueError (bad range) must all surface as
 # None (getters) / False (setters), never leak past the Reader.
 # ---------------------------------------------------------------------------
 
@@ -696,8 +712,49 @@ def test_reader_setters_return_false_on_bus_nak() -> None:
     assert run(scenario()) == (False, False, False, False, False, False)
 
 
+def test_reader_getters_log_the_correct_errno_on_bus_nak() -> None:
+    # Regression test for the getter forwards' own pr.err_s() logging (added alongside the
+    # setters' below) - errno values per asy_scd30_driver.py's own forward-logging block, matching
+    # DRIVER_SPEC.md's documented convention that every forward logs, not just returns a sentinel.
+    reader = make_reader()
+    reader_fake_i2c(reader).nak_addresses.add(_ADDR)
+
+    async def scenario() -> dict:
+        await reader.get_measurement_interval()
+        await reader.get_self_calibration_enabled()
+        await reader.get_ambient_pressure()
+        await reader.get_altitude()
+        await reader.get_temperature_offset()
+        await reader.get_forced_recalibration_reference()
+        return await reader.get_error_counter()
+
+    log = run(scenario())["SCD30"]
+    # History is a fixed-length deque (default history_length=10), left-padded with "no error"
+    # sentinels until it fills - only the trailing entries are this scenario's own 6 calls.
+    assert log["ErrNum"][-6:] == [13, 15, 17, 19, 21, 23]
+    assert log["ErrType"][-6:] == ["E", "E", "E", "E", "E", "E"]
+
+
+def test_reader_setters_log_the_correct_errno_on_bus_nak() -> None:
+    reader = make_reader()
+    reader_fake_i2c(reader).nak_addresses.add(_ADDR)
+
+    async def scenario() -> dict:
+        await reader.set_measurement_interval(10)
+        await reader.set_self_calibration_enabled(True)
+        await reader.set_ambient_pressure(1000)
+        await reader.set_altitude(100)
+        await reader.set_temperature_offset(1.0)
+        await reader.set_forced_recalibration_reference(500)
+        return await reader.get_error_counter()
+
+    log = run(scenario())["SCD30"]
+    assert log["ErrNum"][-6:] == [14, 16, 18, 20, 22, 24]
+    assert log["ErrType"][-6:] == ["E", "E", "E", "E", "E", "E"]
+
+
 def test_reader_setters_return_false_on_invalid_range_not_just_bus_faults() -> None:
-    # The AttributeError SCD30_I2C raises for an out-of-range argument must be absorbed exactly
+    # The ValueError SCD30_I2C raises for an out-of-range argument must be absorbed exactly
     # like a bus fault - same False return, no special-casing.
     reader = make_reader()
 
@@ -770,7 +827,14 @@ def test_reader_stop_continuous_measurement_false_sends_the_real_stop_command() 
 def test_reader_stop_continuous_measurement_false_returns_false_on_bus_fault() -> None:
     reader = make_reader()
     reader_fake_i2c(reader).nak_addresses.add(_ADDR)
-    assert run(reader.stop_continuous_measurement(False)) is False
+
+    async def scenario() -> "tuple[bool, dict]":
+        ok = await reader.stop_continuous_measurement(False)
+        return ok, await reader.get_error_counter()
+
+    ok, log = run(scenario())
+    assert ok is False
+    assert log["SCD30"]["ErrNum"][-1] == 12
 
 
 # ---------------------------------------------------------------------------

@@ -1410,6 +1410,32 @@ def test_reader_with_fram_storage_gets_a_fram_backed_print_log() -> None:
     assert isinstance(reader.pr, PrintLogHistoryStore)
 
 
+def test_reader_survives_get_timestamped_chunk_raising_instead_of_returning_none() -> None:
+    # Regression test: __init__ used to call fram_storage.get_timestamped_chunk() unguarded,
+    # trusting AsyFramManager's own audited "never raises" contract with no defense-in-depth -
+    # unlike print_log.py's PrintLogHistoryStore, which wraps the identical class of call. A raise
+    # here happens at construction time, before any task supervisor exists to catch it, so this
+    # must degrade to ts_storage=None instead of ever propagating.
+    manager, _chip, _spi_bus = make_fram_manager()
+    run(manager.setup())
+
+    def raising_get_timestamped_chunk(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("simulated allocation failure")
+
+    manager.get_timestamped_chunk = raising_get_timestamped_chunk  # type: ignore[method-assign]
+
+    reader = SGP40_Reader(
+        make_i2c(),
+        _comp_data,
+        fram_storage=manager,
+        fram_ntp_callback=_ntp_synced,
+        max_i2c_err=2,
+        cfg_path=_tmp_path("") + "/",
+    )
+    assert reader.ts_storage is None
+    assert isinstance(reader.pr, PrintLogHistoryStore)  # print-log FRAM persistence is unaffected
+
+
 def test_sgp40_error_log_survives_a_simulated_reboot_via_fram() -> None:
     manager, _chip, spi_bus = make_fram_manager()
     run(manager.setup())

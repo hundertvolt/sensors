@@ -87,9 +87,18 @@ class SGP40_Reader(SensorReaderConfig):
         if fram_storage is None or fram_ntp_callback is None:
             self.ts_storage = None
         else:
-            self.ts_storage = fram_storage.get_timestamped_chunk(
-                VOCAlgorithm.get_params_memsize(), fram_ntp_callback, crc=CRC32()
-            )  # timestamped backup storage (FRAM)
+            try:  # broad on purpose: defense-in-depth against the Protocol in the abstract, not
+                # this one concrete, audited-to-never-raise implementation - matches
+                # print_log.py's PrintLogHistoryStore doing the same for its own FRAM chunk
+                # allocation, applied here since this runs at construction time with no task
+                # supervisor yet in place to catch an escaped exception.
+                self.ts_storage = fram_storage.get_timestamped_chunk(
+                    VOCAlgorithm.get_params_memsize(), fram_ntp_callback, crc=CRC32()
+                )  # timestamped backup storage (FRAM)
+            except Exception:
+                self.ts_storage = None
+            if self.ts_storage is None:
+                self.pr.err(_NAME, "FRAM backup storage allocation failed!")
         self.last_backup: int | None = None
         self.restored_from: int | None = None
         self.reset = False

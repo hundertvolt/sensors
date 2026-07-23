@@ -329,7 +329,7 @@ class SCD30_Reader(SensorReader):
 
 
 class SCD30_DeviceSession(Lockable):  # lock for consecutive i2c communication and self._buffer
-    def __init__(self, i2c_device: I2CDevice):
+    def __init__(self, i2c_device: I2CDevice) -> None:
         super().__init__()
         self.i2c_device = i2c_device
 
@@ -370,7 +370,7 @@ class SCD30_I2C:
     async def set_measurement_interval(self, value: int) -> None:
         # NVM-persisted - survives reset() and power cycles.
         if value < 2 or value > 1800:
-            raise AttributeError("measurement_interval must be from 2-1800 seconds")
+            raise ValueError("measurement_interval must be from 2-1800 seconds")
         await self._send_command(_CMD_SET_MEASUREMENT_INTERVAL, value)
 
     async def get_self_calibration_enabled(self) -> bool:
@@ -387,10 +387,15 @@ class SCD30_I2C:
 
     async def set_ambient_pressure(self, pressure_mbar: int | float) -> None:
         # 0x0010 doubles as "trigger continuous measurement" and is NVM-persisted (Interface
-        # Description 1.4.1). Validated before truncating - int(-0.5) == 0 would otherwise slip
-        # through as the "disable" value instead of being rejected.
+        # Description 1.4.1). NaN compares False against every bound below, so the range check
+        # alone would silently pass it through - rejected explicitly first, matching
+        # set_temperature_offset() below and asy_bmp3xx_driver.py's set_trigger_secs(). Validated
+        # before truncating - int(-0.5) == 0 would otherwise slip through as the "disable" value
+        # instead of being rejected.
+        if pressure_mbar != pressure_mbar:  # NaN is the only value unequal to itself
+            raise ValueError("ambient_pressure must not be NaN")
         if pressure_mbar != 0 and (pressure_mbar > 1400 or pressure_mbar < 700):
-            raise AttributeError("ambient_pressure must be from 700 to 1400 mBar")
+            raise ValueError("ambient_pressure must be from 700 to 1400 mBar")
         await self._send_command(_CMD_CONTINUOUS_MEASUREMENT, int(pressure_mbar))
 
     async def get_altitude(self) -> int:
@@ -400,7 +405,7 @@ class SCD30_I2C:
         # NVM-persisted. Validated before truncating - see set_ambient_pressure()'s comment for
         # why int(-0.5) == 0 would otherwise slip through.
         if altitude < 0 or altitude > 65535:
-            raise AttributeError("altitude must be from 0 to 65535 meters")
+            raise ValueError("altitude must be from 0 to 65535 meters")
         await self._send_command(_CMD_SET_ALTITUDE_COMPENSATION, int(altitude))
 
     async def get_temperature_offset(self) -> float:
@@ -408,9 +413,12 @@ class SCD30_I2C:
         return raw_offset / 100.0
 
     async def set_temperature_offset(self, offset: float | int) -> None:
-        # NVM-persisted - survives reset() and power cycles.
+        # NVM-persisted - survives reset() and power cycles. NaN rejected explicitly first - see
+        # set_ambient_pressure()'s comment.
+        if offset != offset:  # NaN is the only value unequal to itself
+            raise ValueError("temperature_offset must not be NaN")
         if offset < 0 or offset > 655.35:
-            raise AttributeError("temperature_offset must be from 0 to 655.35 degrees Celsius")
+            raise ValueError("temperature_offset must be from 0 to 655.35 degrees Celsius")
         await self._send_command(_CMD_SET_TEMPERATURE_OFFSET, int(offset * 100))
 
     async def get_forced_recalibration_reference(self) -> int:
@@ -420,7 +428,7 @@ class SCD30_I2C:
 
     async def set_forced_recalibration_reference(self, reference_value: int) -> None:
         if reference_value < 400 or reference_value > 2000:
-            raise AttributeError("forced_recalibration_reference must be from 400 to 2000 ppm")
+            raise ValueError("forced_recalibration_reference must be from 400 to 2000 ppm")
         await self._send_command(_CMD_SET_FORCED_RECALIBRATION_FACTOR, reference_value)
 
     async def get_CO2(self) -> float | None:

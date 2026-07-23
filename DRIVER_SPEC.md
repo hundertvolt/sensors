@@ -60,7 +60,14 @@ One file per sensor: `asy_<sensor>_driver.py`. Within it:
   need every parameter): bus handle first (`i2c: I2C`), then sensor-specific addressing/pins
   (`address`, `irq_pin`, ...), then `trigger_sec: int = <n>`, `max_i2c_err: int = 5`, then (only
   if `SensorReaderConfig`, see section 4.3) `cfg_path: str = ""`, then `fram:
-  AsyFramManager | None = None`, `history_length: int = 10`, `debug: int | None = None`.
+  AsyFramManager | None = None`, `history_length: int = 10`, `debug: int | None = None`. **One
+  documented exception**: SGP40 needs a second, paired argument (`fram_ntp_callback`) alongside
+  its FRAM manager (renamed `fram_storage` there) for its VOC-algorithm-state backup — the pair
+  is kept adjacent, right after the mandatory `asy_comp_callback`, rather than splitting them
+  across the parameter list to keep `fram_storage` at the position `fram` holds elsewhere. Only
+  reorder a new driver's `fram`-equivalent parameter this way if it's similarly paired with
+  another mandatory argument that must stay next to it — otherwise keep `fram` at the end, per
+  the general rule above.
 
 ## 3. Layer 2: `*_I2C`/`*_SPI` protocol class
 
