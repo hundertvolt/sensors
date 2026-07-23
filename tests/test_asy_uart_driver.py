@@ -615,6 +615,21 @@ def test_readline_until_complete_survives_an_empty_readline_without_crashing() -
 # ---------------------------------------------------------------------------
 
 
+def test_write_empty_message_succeeds_without_touching_the_bus() -> None:
+    # _write_all()'s `while sent < total` never executes when total == 0 - mirrors
+    # test_read_until_complete_zero_nbytes_returns_empty_immediately on the read side; there's
+    # nothing to send, so it must not block waiting on ready(POLLOUT) for a write that never happens.
+    uart = make_uart()
+
+    async def scenario() -> bool:
+        async with uart:
+            result = await uart.write(bytearray())
+        return result
+
+    assert run(scenario()) is True
+    assert fake(uart).log == []
+
+
 def test_write_default_crc_is_pass_through() -> None:
     uart = make_uart()
 

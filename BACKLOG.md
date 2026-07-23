@@ -2121,6 +2121,31 @@ possible today; revisit when `asy_uart_comm.py` is promoted.
 inline). Cut down to a short contract statement pointing here for the full rationale, matching the
 `config_manager.py` precedent this same checklist section already cites.
 
+#### Re-verification pass (same checklist, re-run against the post-fix file)
+
+Owner asked for the same `src/README.md` pass again immediately after the one above landed - taken
+as "verify the fixes themselves hold up," not a rubber-stamp repeat. Two outcomes:
+
+- **Closed a real, if narrow, test-coverage gap**: `write(bytearray())` (an empty message) exercises
+  `_write_all()`'s `while sent < total` loop with `total == 0`, returning `True` without ever calling
+  `ready()`/`uart.write()` - the write-side mirror of `read_until_complete()`'s own already-tested
+  `test_read_until_complete_zero_nbytes_returns_empty_immediately`, but the write side had no
+  equivalent. Added `test_write_empty_message_succeeds_without_touching_the_bus`.
+- **Chased down and ruled out a suspected race, rather than silently dropping it or reflexively
+  patching around it**: `read_until_complete()`/`readinto_until_complete()`/`readline_until_complete()`/
+  `_write_all()` all capture `uart = self._active_uart()` once, then reuse that same local reference
+  across every loop round's synchronous `uart.read()`/`write()`/etc. call - raising the question of
+  whether a concurrent `deinit()` between rounds could leave it pointing at an already-deinitialized
+  bus. Traced through MicroPython's cooperative single-threaded scheduling model: the synchronous
+  hardware call always runs immediately after `await self.ready(...)` returns, with no intervening
+  `await` point, so no other task can run and call `deinit()` in that specific window - and `ready()`
+  itself already re-checks `self._uart`/`self.poller` for `None` at the top of *every* call (the fix
+  from an earlier pass), so a `deinit()` that happens during any *other* task's turn is caught before
+  the next round's hardware call ever fires. No fix needed; reasoning recorded here so a future
+  session doesn't have to re-derive it from scratch or wrongly assume it's an open gap.
+
+814/814 tests pass (up from 813), lint/typecheck unchanged.
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
@@ -2137,13 +2162,15 @@ and a missing config file failing independently without either derailing the oth
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
 `asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 58,
-`asy_udp_socket.py` 62, `asy_uart_driver.py` 58 — **810 total**. (Previous count of 690 across 11
+`asy_udp_socket.py` 62, `asy_uart_driver.py` 62 — **814 total**. (Previous count of 690 across 11
 files predated `asy_udp_socket.py`'s promotion and was never updated to include it — corrected
 during its third pass; the 23→42 jump was its fourth pass's uncaught-exception/configuration/
 integration test additions; 42→56 is its fifth pass's mutation-bypass/concurrency/cancellation-
 safety tests; 56→62 is its sixth pass's ready()/write_and_recvfrom() parameter-guard tests.
-`asy_uart_driver.py`'s own 29→58 jump is this follow-up pass's parameter-validation/`Lockable`-
-integration/`MemoryError`-fault-injection additions, described above.)
+`asy_uart_driver.py`'s own 29→58 jump was its first follow-up pass's parameter-validation/
+`Lockable`-integration/`MemoryError`-fault-injection additions; 58→61 was its production-quality
+checklist pass's short-write regression tests; 61→62 was the immediate re-verification pass's
+empty-write coverage gap, all described above.)
 
 ## Decided for the refactor
 
