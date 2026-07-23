@@ -1496,7 +1496,9 @@ def test_op_lock_prevents_concurrent_writes_from_interleaving_between_blocks() -
     chunk._write_chunk = instrumented_write_chunk  # type: ignore[method-assign]
 
     async def scenario() -> list[bool]:
-        return await asyncio.gather(chunk.write(b"AAAA"), chunk.write(b"BBBB"))  # type: ignore[no-any-return]
+        # real MicroPython asyncio.gather() returns a list (matches the assert below) - mypy's
+        # CPython typeshed infers a fixed tuple[bool, bool] for a 2-arg call, which doesn't apply here
+        return await asyncio.gather(chunk.write(b"AAAA"), chunk.write(b"BBBB"))  # type: ignore[return-value]
 
     results = run(scenario())
     assert results == [True, True]

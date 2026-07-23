@@ -388,7 +388,7 @@ def test_arbitrary_binary_content_round_trips_untouched() -> None:
             task = asyncio.create_task(server.recvfrom(1024))
             await client.write(garbage)
             data, _ = await task
-            return data  # type: ignore[no-any-return]  # asyncio.Task's stub loses recvfrom()'s precise return type
+            return data
         finally:
             await client.disconnect()
             await server.disconnect()

@@ -33,9 +33,52 @@ NAK/busy-style fault-injection surface to model for those two methods, unlike `I
 length")` (mp_machine_spi_write_readinto(), shared by hardware and soft SPI alike) when its two
 buffers differ in length - modeled directly below since it's deterministic from the buffers a
 test passes in, not something that needs fault injection to trigger.
+
+`UART` (added for asy_uart_driver.py) is a different shape from `I2C`/`SPI` above: it's the first
+fake here that a driver actually registers with real `select.poll()` (asy_uart_driver.py's
+`ready()`), not just calls methods on directly. Confirmed against py/stream.h/extmod/modselect.c:
+`select.poll().register()` requires the object's C-level *type* to carry MicroPython's stream
+protocol slot - a plain `class Foo:` can't satisfy this no matter what Python methods it defines,
+`register()` raises `OSError` immediately otherwise. `io.IOBase` is the documented builtin base
+that does carry this slot, dispatching its C-level `ioctl` callback back into a Python-level
+`ioctl(self, req, arg)` override - so `UART` below subclasses it instead of a plain class.
+`req == 3` is `MP_STREAM_POLL` (py/stream.h); the expected return is the subset of `arg`'s
+requested bits (`select.POLLIN`/`POLLOUT`, numerically identical to `MP_STREAM_POLL_RD`/`_WR`)
+that are currently ready - not a bool. Real UART read/readinto/readline return `None` on no data
+available (see asy_uart_driver.py's own module docstring - confirmed via ports/rp2/machine_uart.c
+and py/stream.c that this is MP_EAGAIN, not a raised exception); this fake matches that for the
+same "called after ready() should return True" case. `write()` is the mirror-image case on the TX
+side - real `mp_machine_uart_write()` loops internally but can still return fewer bytes than given
+(a genuine short write, once its own internal per-byte timeout hits after some progress) or `None`
+(if that timeout hits before writing anything) - see `write()`'s own comment below for how this
+fake models both via `write_limit`.
+
+`UART.__init__`'s parameter validation mirrors `mp_machine_uart_init_helper()`/
+`mp_machine_uart_make_new()` (confirmed against ports/rp2/machine_uart.c, v1.28.0 - real numeric
+constants, not guessed): `id` must be `0` or `1` (RP2040 has exactly two UART peripherals) or
+`ValueError("UART(%d) doesn't exist")`; `rxbuf`/`txbuf` above `MAX_BUFFER_SIZE` (32766) raise
+`ValueError("rxbuf/txbuf too large")` (a value below `MIN_BUFFER_SIZE` (32) silently clamps up
+instead of raising - not modeled here since it doesn't affect the raise/no-raise contract this
+fake needs); `invert` outside `UART_INVERT_MASK` (`UART_INVERT_TX (1) | UART_INVERT_RX (2)` = `3`)
+raises `ValueError("bad inversion mask")`. `baudrate`/`bits`/`stop` are real `int` fields with no
+raising validation at all in this function - a non-positive value is silently ignored (keeps
+whatever was previously set / the hardware default) rather than rejected, confirmed directly from
+the source's own `if (args[ARG_baudrate].u_int > 0) { self->baudrate = ...}` shape - so this fake
+doesn't validate them either. **Deliberately not modeled**: real hardware also validates that
+`tx`/`rx` are GPIO pins actually muxable to the *chosen* UART peripheral's TX/RX role
+(`IS_VALID_TX`/`IS_VALID_RX`, e.g. UART0 only on GPIO 0/1, 12/13, 16/17 vs. UART1 only on GPIO
+4/5, 8/9) - that table lives in the RP2040 silicon datasheet, which isn't in this repo's
+`datasheets/` folder (only the Pico W *board* datasheet is, a different document); the pin/role
+mapping above was found via public web search, not the authoritative datasheet PDF, so it isn't
+encoded here as a raise condition - flagged per CLAUDE.md rather than silently assumed. The
+existing generic `Pin(id)` range check (`0 <= id <= 28`) still applies before a pin ever reaches
+`UART()`, since `asy_uart_driver.py`'s own `init()` always constructs `Pin(tx_pin)`/`Pin(rx_pin)`
+first.
 """
 
 import errno
+import io
+import select
 
 try:
     from typing import TYPE_CHECKING
@@ -236,6 +279,127 @@ class SPI:
         data = self._next_read_bytes(len(buffer_in))
         buffer_in[:] = data
         self.log.append(("write_readinto", bytes(buffer_out)))  # type: ignore[call-overload]
+
+
+class UART(io.IOBase):
+    # rx_queue is a test-fed FIFO of "received" bytes; writable gates POLLOUT readiness so a test
+    # can simulate a stalled/full TX path. Beyond __init__'s own real-hardware parameter validation
+    # and write()'s own write_limit (see each's docstring/comment), there's no further fault
+    # injection - unlike I2C, real UART read/readinto/readline can't raise or short-transfer, so
+    # there's nothing to inject into those specifically.
+    _MP_STREAM_POLL = 3  # py/stream.h - see module docstring
+    _MIN_BUFFER_SIZE = 32
+    _MAX_BUFFER_SIZE = 32766
+    _UART_INVERT_MASK = 3  # UART_INVERT_TX (1) | UART_INVERT_RX (2)
+
+    def __init__(
+        self,
+        id: int,
+        *,
+        tx: Pin,
+        rx: Pin,
+        baudrate: int = 9600,
+        bits: int = 8,
+        parity: int | None = None,
+        stop: int = 1,
+        rxbuf: int = 256,
+        txbuf: int = 256,
+        timeout: int = 0,
+        timeout_char: int = 1,
+        invert: int = 0,
+    ) -> None:
+        # Real mp_machine_uart_make_new()/init_helper() validation, in the same order the real
+        # source checks it (id, then invert, then rxbuf, then txbuf - matters for which exception
+        # surfaces first when more than one field is invalid at once) - see module docstring for
+        # the exact source-confirmed constants and what's deliberately NOT modeled.
+        if id not in (0, 1):
+            raise ValueError(f"UART({id}) doesn't exist")
+        if invert & ~self._UART_INVERT_MASK:
+            raise ValueError("bad inversion mask")
+        if rxbuf > self._MAX_BUFFER_SIZE:
+            raise ValueError("rxbuf too large")
+        if txbuf > self._MAX_BUFFER_SIZE:
+            raise ValueError("txbuf too large")
+        self.id = id
+        self.tx = tx
+        self.rx = rx
+        self.baudrate = baudrate
+        self.bits = bits
+        self.parity = parity
+        self.stop = stop
+        self.rxbuf = rxbuf
+        self.txbuf = txbuf
+        self.timeout = timeout
+        self.timeout_char = timeout_char
+        self.invert = invert
+        self.deinit_called = False
+        self.deinit_count = 0
+        self.log: list[tuple] = []
+        self.rx_queue = bytearray()
+        self.writable = True
+        self.write_limit: int | None = None  # test-only: caps bytes accepted per write() call - see write()
+
+    def feed_rx(self, data: bytes) -> None:  # test helper: queue bytes as if received over the wire
+        self.rx_queue += data
+
+    def ioctl(self, req: int, arg: int) -> int:
+        if req != self._MP_STREAM_POLL:
+            return 0
+        ready = 0
+        if (arg & select.POLLIN) and self.rx_queue:
+            ready |= select.POLLIN
+        if (arg & select.POLLOUT) and self.writable:
+            ready |= select.POLLOUT
+        return ready
+
+    def deinit(self) -> None:
+        self.deinit_called = True
+        self.deinit_count += 1
+        self.log.append(("deinit",))
+
+    def read(self, nbytes: int | None = None) -> bytes | None:
+        n = len(self.rx_queue) if nbytes is None else min(nbytes, len(self.rx_queue))
+        if n == 0:  # real UART: None on no data available, matches MP_EAGAIN (see module docstring)
+            return None
+        data = bytes(self.rx_queue[:n])
+        self.rx_queue = self.rx_queue[n:]  # MicroPython bytearray has no slice-delete, unlike CPython
+        self.log.append(("read", n))
+        return data
+
+    def readinto(self, buf: bytearray | memoryview, nbytes: int | None = None) -> int | None:
+        n = len(buf) if nbytes is None else min(nbytes, len(buf))
+        n = min(n, len(self.rx_queue))
+        if n == 0:
+            return None
+        buf[:n] = self.rx_queue[:n]
+        self.rx_queue = self.rx_queue[n:]  # MicroPython bytearray has no slice-delete, unlike CPython
+        self.log.append(("readinto", n))
+        return n
+
+    def readline(self) -> bytes | None:
+        if not self.rx_queue:
+            return None
+        idx = self.rx_queue.find(b"\n")
+        end = len(self.rx_queue) if idx == -1 else idx + 1
+        data = bytes(self.rx_queue[:end])
+        self.rx_queue = self.rx_queue[end:]  # MicroPython bytearray has no slice-delete, unlike CPython
+        self.log.append(("readline", len(data)))
+        return data
+
+    def write(self, buf: object) -> int | None:
+        # Real rp2 uart.write() can accept fewer bytes than given (its own internal per-byte
+        # timeout hit after some progress - returns that count) or none at all before that timeout
+        # (returns None, matching MP_EAGAIN) - confirmed against ports/rp2/machine_uart.c's own
+        # internal write loop, not guessed. write_limit (None by default = accept everything, the
+        # normal case) lets a test model either: 0 simulates a total send failure, and a positive
+        # count less than len(buf) simulates a genuine short write a caller must retry.
+        data = bytes(buf)  # type: ignore[call-overload]
+        if self.write_limit is not None:
+            data = data[: self.write_limit]
+            if not data:
+                return None
+        self.log.append(("write", data))
+        return len(data)
 
 
 class Timer:
