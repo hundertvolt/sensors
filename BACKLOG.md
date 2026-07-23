@@ -158,14 +158,19 @@ File-by-file review comparing `improved-quality/` against legacy equivalents (or
 there's no legacy equivalent), against `src/README.md`'s checklist. Real bugs, decisions, and
 deferred items below — process narrative (review-pass counts, "verified lint/typecheck/tests clean"
 after every change) is omitted; assume every change below was lint/type/test-clean before landing.
-Current total: 976 tests across 16 `tests/test_*.py` files (verify via
+Current total: 981 tests across 16 `tests/test_*.py` files (verify via
 `grep -c '^def test_' tests/test_*.py` if this looks stale).
 
 ### `math_helpers.py`
 
 First file promoted. `wet_bulb_temperature`'s humidity lower bound was `0.5%`; Stull (2011) only
 validates down to `5%` — real bug, fixed. `altitude_baro`'s 300–1250 hPa / -40–85°C range comes
-from the BMP388/390 datasheet (its only caller), not the barometric formula itself. 45 tests.
+from the BMP388/390 datasheet (its only caller), not the barometric formula itself; `dh`'s own
+±9000 m bound is generous on purpose, just rejecting nonsense input while still covering any
+plausible real station-elevation offset. `dew_point`'s two Magnus-Tetens branches (ice/water
+phase, Sonntag 1990) are independently-fit curves that disagree by ~1°C right at the
+temperature==0 switch — an inherent quirk of stitching two fits together, not a bug; see
+`tests/test_math_helpers.py`'s `test_dew_point_branch_boundary_roughly_continuous`. 45 tests.
 
 ### `crc_checks.py`
 
@@ -516,7 +521,15 @@ reconsidering this.
 the legacy driver's own actually-proven field behavior, not just judged correct against internal
 code-review logic in isolation.
 
-59 tests.
+**Structural-consistency pass findings, fixed**: the five NVM-field setters raised `AttributeError`
+for range violations, inconsistent with `ValueError` everywhere else in `src/` for the same "right
+type, wrong value" situation — renamed. `set_ambient_pressure()`/`set_temperature_offset()` didn't
+explicitly reject `NaN` (every comparison against it is `False`, so the range-check guard never
+fired) — it degraded safely by accident via a later `int(NaN)` raising and getting caught upstream,
+but untested; both now reject `NaN` explicitly. All 13 low-level forwards now log via `self.pr`,
+matching `asy_bmp3xx_driver.py`'s pattern (see DRIVER_SPEC.md section 7).
+
+63 tests.
 
 ### `asy_bmp3xx_driver.py`
 
@@ -629,7 +642,13 @@ job, not the algorithm's.
 fake SPI's own) — the existing fake had no way to script a response to a `readfrom_into()` call at
 all, which this word-oriented command/response protocol needs.
 
-69 tests (`asy_sgp40_driver.py`), 28 (`voc_algorithm.py`).
+**Structural-consistency pass finding, fixed**: `__init__`'s `fram_storage.get_timestamped_chunk()`
+call was unguarded, trusting `asy_fram_manager.py`'s audited "never raises" contract with no
+defense-in-depth — unlike `print_log.py`'s `PrintLogHistoryStore`, which wraps the identical class
+of call. A raise here would happen at construction time, before any task supervisor exists to catch
+it. Wrapped in `try`/`except`, matching the sibling pattern.
+
+70 tests (`asy_sgp40_driver.py`), 28 (`voc_algorithm.py`).
 
 ## Consolidation-session integration fixes (sensortask-wozi.py)
 

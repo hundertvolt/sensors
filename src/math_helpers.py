@@ -33,14 +33,9 @@ def wet_bulb_temperature(temperature: float | None, humidity: float | None) -> f
 
 
 def dew_point(temperature: float | None, humidity: float | None) -> float | None:
-    # Magnus-Tetens dew-point approximation; coeff1/toffs pick the ice- vs water-phase constants
-    # (Sonntag 1990: water valid -45-60 degC, ice valid -65-0 degC; -40-50 degC covers both
-    # branches' well-supported range and matches this codebase's other humidity formulas).
-    # The two branches are independently-fit curves, not one continuous formula: they disagree by
-    # about 1 degC right at the temperature == 0 branch switch (see
-    # tests/test_math_helpers.py's test_dew_point_branch_boundary_roughly_continuous). This is an
-    # inherent property of stitching two fits together, not a bug - flagged here since it's easy
-    # to mistake for one if a caller sees a value jump for near-identical readings near freezing.
+    # Magnus-Tetens dew-point approximation (Sonntag 1990); coeff1/toffs pick the ice- vs
+    # water-phase constants. The two branches are independently-fit curves, not one continuous
+    # formula - they disagree by ~1 degC right at the temperature==0 switch; not a bug, see BACKLOG.md.
     if temperature is None or humidity is None:
         return None
     if not (-40.0 <= temperature <= 50.0 and 0.1 <= humidity <= 100.0):
@@ -61,10 +56,8 @@ def dew_point(temperature: float | None, humidity: float | None) -> float | None
 
 def altitude_baro(p0: float | None, dh: float | None, tmean: float | None) -> float | None:
     # Barometric formula: pressure at height offset dh from the p0 reference (callers pass a
-    # negative dh to reduce a station reading to sea-level-equivalent pressure), not an altitude.
-    # Range reflects the BMP388/BMP390 datasheet's rated operating envelope (the only caller):
-    # 300-1250 hPa, -40-85 degC; dh is bounded to a generous +-9000 m to reject nonsense input
-    # while still covering any plausible station-elevation offset on Earth's surface.
+    # negative dh to reduce a station reading to sea-level-equivalent pressure, not an altitude).
+    # p0/tmean range matches the BMP388/390 datasheet (its only caller); see BACKLOG.md.
     if p0 is None or dh is None or tmean is None:
         return None
     if not (300.0 <= p0 <= 1250.0 and -9000.0 <= dh <= 9000.0 and -40.0 <= tmean <= 85.0):

@@ -224,8 +224,7 @@ class SCD30_Reader(SensorReader):
 
     # Selected low-level driver forwards below: each failure is logged via self.pr (not swallowed
     # silently) so a transient bus fault on a REST-triggered config get/set stays visible in the
-    # sensor's own error history, not just a bare None/False back to the caller - matching
-    # asy_bmp3xx_driver.py's own forwards (see DRIVER_SPEC.md).
+    # sensor's own error history, not just a bare None/False back to the caller.
     async def stop_continuous_measurement(self, value: bool) -> bool:
         # value is the desired ContMeas state; True (keep running) is a no-op, only False stops it.
         if value:
@@ -387,11 +386,8 @@ class SCD30_I2C:
 
     async def set_ambient_pressure(self, pressure_mbar: int | float) -> None:
         # 0x0010 doubles as "trigger continuous measurement" and is NVM-persisted (Interface
-        # Description 1.4.1). NaN compares False against every bound below, so the range check
-        # alone would silently pass it through - rejected explicitly first, matching
-        # set_temperature_offset() below and asy_bmp3xx_driver.py's set_trigger_secs(). Validated
-        # before truncating - int(-0.5) == 0 would otherwise slip through as the "disable" value
-        # instead of being rejected.
+        # Description 1.4.1). Validated before truncating - int(-0.5) == 0 would otherwise slip
+        # through as the "disable" value instead of being rejected; NaN is rejected explicitly too.
         if pressure_mbar != pressure_mbar:  # NaN is the only value unequal to itself
             raise ValueError("ambient_pressure must not be NaN")
         if pressure_mbar != 0 and (pressure_mbar > 1400 or pressure_mbar < 700):

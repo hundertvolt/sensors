@@ -231,9 +231,8 @@ class I2C:
         addrsize: int | None = None,
     ) -> None:
         # Byte order comes from reg_format's own prefix, matching get_register_struct(). Unlike
-        # CPython, struct.pack here silently truncates/zero-pads a value that doesn't fit
-        # reg_format instead of raising; it raises TypeError (not ValueError) for a type
-        # mismatch (e.g. int value against a bytes-format like "4s") - both caught below.
+        # CPython, struct.pack silently truncates/zero-pads a value that doesn't fit reg_format
+        # instead of raising; a type mismatch (e.g. int vs. "4s") raises TypeError, both caught below.
         if self._i2c is None:
             return
         try:
