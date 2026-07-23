@@ -59,10 +59,10 @@ class SGP40_Reader(SensorReaderConfig):
         self,
         i2c: "I2C",
         asy_comp_callback: "Callable[[], Coroutine[Any, Any, list[int | float | None]]]",
-        fram_storage: "AsyFramManager | None" = None,
-        fram_ntp_callback: "Callable[[], Coroutine[Any, Any, bool]] | None" = None,
         max_i2c_err: int = 5,
         cfg_path: str = "",
+        fram_storage: "AsyFramManager | None" = None,
+        fram_ntp_callback: "Callable[[], Coroutine[Any, Any, bool]] | None" = None,
         history_length: int = 10,
         debug: int | None = None,
     ) -> None:

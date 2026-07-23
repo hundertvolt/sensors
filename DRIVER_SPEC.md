@@ -57,17 +57,14 @@ One file per sensor: `asy_<sensor>_driver.py`. Within it:
   Copy this verbatim (swap `I2CDevice`/`SPIDevice` as needed) — don't invent a variant shape.
 - `<Sensor>_I2C` (or `_SPI`) — layer 2, protocol class. `<Sensor>_Reader` — layer 3, framework
   class. Constructor parameter order for `*_Reader` (match exactly, even when a sensor doesn't
-  need every parameter): bus handle first (`i2c: I2C`), then sensor-specific addressing/pins
-  (`address`, `irq_pin`, ...), then `trigger_sec: int = <n>`, `max_i2c_err: int = 5`, then (only
-  if `SensorReaderConfig`, see section 4.3) `cfg_path: str = ""`, then `fram:
-  AsyFramManager | None = None`, `history_length: int = 10`, `debug: int | None = None`. **One
-  documented exception**: SGP40 needs a second, paired argument (`fram_ntp_callback`) alongside
-  its FRAM manager (renamed `fram_storage` there) for its VOC-algorithm-state backup — the pair
-  is kept adjacent, right after the mandatory `asy_comp_callback`, rather than splitting them
-  across the parameter list to keep `fram_storage` at the position `fram` holds elsewhere. Only
-  reorder a new driver's `fram`-equivalent parameter this way if it's similarly paired with
-  another mandatory argument that must stay next to it — otherwise keep `fram` at the end, per
-  the general rule above.
+  need every parameter): bus handle first (`i2c: I2C`), then sensor-specific addressing/pins/
+  mandatory callbacks (`address`, `irq_pin`, `asy_comp_callback`, ...), then `trigger_sec: int =
+  <n>` (only if the sensor has a configurable trigger rate — SGP40 doesn't, see section 11 point
+  6), `max_i2c_err: int = 5`, then (only if `SensorReaderConfig`, see section 4.3) `cfg_path: str
+  = ""`, then the FRAM-related parameter(s) (`fram: AsyFramManager | None = None`, or — if a
+  second, paired argument is needed alongside it, as SGP40's `fram_ntp_callback` is for its
+  VOC-algorithm-state backup — `fram_storage`/`fram_ntp_callback` kept adjacent to each other in
+  that same position), then `history_length: int = 10`, `debug: int | None = None`.
 
 ## 3. Layer 2: `*_I2C`/`*_SPI` protocol class
 
