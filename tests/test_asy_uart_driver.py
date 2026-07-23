@@ -691,6 +691,59 @@ def test_writefrom_buffer_too_small_for_crc_returns_false() -> None:
     assert fake(uart).log == []  # rejected before ever touching the bus
 
 
+def test_write_retries_after_a_short_write_until_everything_is_sent() -> None:
+    # Regression test: uart.write() used to be called once and its return value discarded
+    # entirely, silently dropping the untransmitted tail of a message larger than the TX ring
+    # buffer's available room - confirmed as a real gap against ports/rp2/machine_uart.c's own
+    # write() loop, which can return a short count. write_limit=3 forces every fake write() call to
+    # accept at most 3 bytes, so a 7-byte message needs 3 rounds (3+3+1) to fully send.
+    uart = make_uart()
+    fake(uart).write_limit = 3
+
+    async def scenario() -> bool:
+        async with uart:
+            result = await uart.write(bytearray(b"1234567"))
+        return result
+
+    assert run(scenario()) is True
+    writes = [data for op, data in fake(uart).log if op == "write"]
+    assert len(writes) > 1  # genuinely needed more than one round, not a lucky single call
+    assert b"".join(writes) == b"1234567"  # nothing dropped, nothing duplicated
+
+
+def test_write_returns_false_when_uart_write_returns_none() -> None:
+    # write_limit=0 models a total send failure - uart.write() hit its own internal timeout before
+    # accepting anything at all, matching real MP_EAGAIN -> None (see module docstring).
+    uart = make_uart()
+    fake(uart).write_limit = 0
+
+    async def scenario() -> bool:
+        async with uart:
+            result = await uart.write(bytearray(b"x"))
+        return result
+
+    assert run(scenario()) is False
+    assert fake(uart).log == []  # nothing was ever actually recorded as sent
+
+
+def test_writefrom_retries_after_a_short_write_until_everything_is_sent() -> None:
+    uart = make_uart(crc=CRC16())
+    fake(uart).write_limit = 4
+    buf = bytearray(b"hello" + b"\x00" * 10)
+
+    async def scenario() -> bool:
+        async with uart:
+            result = await uart.writefrom(buf, 5)
+        return result
+
+    assert run(scenario()) is True
+    writes = [data for op, data in fake(uart).log if op == "write"]
+    assert len(writes) > 1
+    framed = b"".join(writes)
+    assert framed[:5] == b"hello"
+    assert len(framed) == 5 + CRC16().length()
+
+
 # ---------------------------------------------------------------------------
 # base_classes.Lockable integration - real inheritance (UART(Lockable)), not
 # mocked - mirrors test_asy_i2c_driver.py's own Lockable integration coverage

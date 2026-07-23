@@ -47,7 +47,11 @@ requested bits (`select.POLLIN`/`POLLOUT`, numerically identical to `MP_STREAM_P
 that are currently ready - not a bool. Real UART read/readinto/readline return `None` on no data
 available (see asy_uart_driver.py's own module docstring - confirmed via ports/rp2/machine_uart.c
 and py/stream.c that this is MP_EAGAIN, not a raised exception); this fake matches that for the
-same "called after ready() should return True" case.
+same "called after ready() should return True" case. `write()` is the mirror-image case on the TX
+side - real `mp_machine_uart_write()` loops internally but can still return fewer bytes than given
+(a genuine short write, once its own internal per-byte timeout hits after some progress) or `None`
+(if that timeout hits before writing anything) - see `write()`'s own comment below for how this
+fake models both via `write_limit`.
 
 `UART.__init__`'s parameter validation mirrors `mp_machine_uart_init_helper()`/
 `mp_machine_uart_make_new()` (confirmed against ports/rp2/machine_uart.c, v1.28.0 - real numeric
@@ -279,9 +283,10 @@ class SPI:
 
 class UART(io.IOBase):
     # rx_queue is a test-fed FIFO of "received" bytes; writable gates POLLOUT readiness so a test
-    # can simulate a stalled/full TX path. No fault injection beyond __init__'s own real-hardware
-    # parameter validation (see module docstring) - unlike I2C, real UART read/write/readinto/
-    # readline can't raise, so there's nothing to inject into those.
+    # can simulate a stalled/full TX path. Beyond __init__'s own real-hardware parameter validation
+    # and write()'s own write_limit (see each's docstring/comment), there's no further fault
+    # injection - unlike I2C, real UART read/readinto/readline can't raise or short-transfer, so
+    # there's nothing to inject into those specifically.
     _MP_STREAM_POLL = 3  # py/stream.h - see module docstring
     _MIN_BUFFER_SIZE = 32
     _MAX_BUFFER_SIZE = 32766
@@ -332,6 +337,7 @@ class UART(io.IOBase):
         self.log: list[tuple] = []
         self.rx_queue = bytearray()
         self.writable = True
+        self.write_limit: int | None = None  # test-only: caps bytes accepted per write() call - see write()
 
     def feed_rx(self, data: bytes) -> None:  # test helper: queue bytes as if received over the wire
         self.rx_queue += data
@@ -380,8 +386,18 @@ class UART(io.IOBase):
         self.log.append(("readline", len(data)))
         return data
 
-    def write(self, buf: object) -> int:
+    def write(self, buf: object) -> int | None:
+        # Real rp2 uart.write() can accept fewer bytes than given (its own internal per-byte
+        # timeout hit after some progress - returns that count) or none at all before that timeout
+        # (returns None, matching MP_EAGAIN) - confirmed against ports/rp2/machine_uart.c's own
+        # internal write loop, not guessed. write_limit (None by default = accept everything, the
+        # normal case) lets a test model either: 0 simulates a total send failure, and a positive
+        # count less than len(buf) simulates a genuine short write a caller must retry.
         data = bytes(buf)  # type: ignore[call-overload]
+        if self.write_limit is not None:
+            data = data[: self.write_limit]
+            if not data:
+                return None
         self.log.append(("write", data))
         return len(data)
 
