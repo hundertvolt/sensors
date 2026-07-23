@@ -32,9 +32,10 @@ MicroPython raises OSError(ETIMEDOUT) from it on a real timeout, unlike the meth
 MemoryError guarding: read_until_complete()/readline_until_complete()'s own bytearray accumulation
 (`msg += add`), and crc_checks.py's CRC_Base.add()/check() (which allocate a fresh buffer
 proportional to the message they're framing/verifying - see crc_checks.py's own docstring, which
-documents a "never raises for invalid input" contract that doesn't extend to a MemoryError from
-this internal allocation), are wrapped in try/except MemoryError at their call sites in this file
-and folded into the same None/False sentinel every other operational failure already uses -
+formally documents this as a deliberate, controlled exception to its usual "never raises" contract,
+on the same schema as a driver's one-time-setup raise, provided this file is the caller that proves
+it's handled), are wrapped in try/except MemoryError at their call sites in this file and folded
+into the same None/False sentinel every other operational failure already uses -
 readline_until_complete() in particular has no caller-supplied size cap the way
 read_until_complete()/readinto_until_complete() do, so an unterminated line from a real external
 peer could otherwise grow msg without bound. Matches asy_udp_socket.py's own precedent of wrapping

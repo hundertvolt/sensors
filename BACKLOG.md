@@ -1960,15 +1960,42 @@ contract applies to them, not the controlled-path allowance. `readinto_until_com
 `writefrom()` need no equivalent fix: their CRC counterparts (`check_from()`/`add_into()`) work in
 place via `memoryview` into a caller-owned buffer, no incremental allocation of their own.
 
-**Flagged, not silently fixed** (per CLAUDE.md's cross-file-consistency hard rule -
-`crc_checks.py` is a shared `src/` dependency, not something this pass owns): `crc_checks.py`'s own
-module docstring states a "never raises... for invalid input" contract, but that contract doesn't
-actually cover a `MemoryError` from `add()`'s/`check()`'s own internal allocation - a real gap in
-what `crc_checks.py` promises versus what it's guarded against. Worked around locally in
-`asy_uart_driver.py` (see above) rather than editing `crc_checks.py` itself, since `asy_uart_driver.py`
-is the first live `src/` consumer of `crc.add()`/`crc.check()`'s bidirectional-framing path (unlike
-any prior use). Whether to tighten `crc_checks.py`'s own contract/docstring to explicitly acknowledge
-this is an open question for a future pass, not decided here.
+**Resolved (owner-directed follow-up)**: `crc_checks.py`'s own module docstring originally stated a
+blanket "never raises... for invalid input" contract that didn't actually cover a `MemoryError` from
+`add()`'s/`check()`'s own internal allocation (`bytearr + crc_b`/`bytearr[0:n]`) - flagged rather
+than silently fixed, per CLAUDE.md's cross-file-consistency hard rule, since `crc_checks.py` is a
+shared `src/` dependency this pass doesn't own outright. Owner direction: apply the same schema
+already used for a driver's controlled one-time-setup raise (e.g. `asy_i2c_driver.py`'s/
+`asy_spi_driver.py`'s own `__init__` raising `ValueError`) - raising is allowed, but only in a
+controlled, documented manner, and only once it's proven every upstream caller actually handles it.
+**Proof, via a full-codebase audit of every `crc.add()`/`crc.check()` call site** (not just the ones
+already known about): `src/print_log.py`, `src/asy_fram_manager.py`,
+`improved-quality/asy_scd30_driver.py`, `improved-quality/asy_sgp40_driver.py`, and
+`improved-quality/base_classes_old.py` all either construct a `CRC_Base` instance or call the
+*other*, allocation-free methods (`add_into()`/`check_from()`/`run_inc()`/`check_inc()` - all work
+in place via `memoryview` into a caller-owned buffer) - none of them call `add()`/`check()`
+themselves. `asy_uart_driver.py`'s `write()`/`read_until_complete()` are the *only* call sites of
+`add()`/`check()` anywhere in this codebase today, and both already wrap the call in
+`try/except MemoryError` (see above) - proven, not just asserted, by
+`test_write_returns_false_on_crc_add_memoryerror`/
+`test_read_until_complete_returns_none_on_crc_check_memoryerror` in `tests/test_asy_uart_driver.py`,
+which use a `_MemoryErrorCRC` wrapper (same technique as `test_asy_udp_socket.py`'s own
+`_MemoryErrorSocketWrapper`) to force exactly this raise and confirm it's caught. `crc_checks.py`'s
+own module docstring now formally documents `add()`/`check()`'s `MemoryError` as this deliberate,
+controlled exception to its usual contract, cross-referencing this entry; `asy_uart_driver.py`'s own
+docstring updated to point at the now-resolved contract instead of describing it as an open gap.
+
+**Standing convention, confirmed by owner in the same follow-up**: when a `try`/`except` is
+technically justified (a concrete, provable threat - not a theoretical blanket wrap, per the
+existing "Standing scope convention for exception-handling audits" above) but genuinely can't be
+deterministically fault-injected in a test (no Python-level hook to force the exact fault, e.g.
+`bytearray.__iadd__` has none for `MemoryError`), the right call is: **keep the catch, skip the
+test, and document why inline** - not remove the catch for lack of a test, and not chase a flaky/
+unsafe test that actually exhausts memory to force it. Matches
+`read_until_complete()`'s/`readline_until_complete()`'s own `msg += add` guard above (see its
+inline comment in `tests/test_asy_uart_driver.py`) and `test_print_log.py`'s pre-existing
+`test_history_length_huge_is_capped_instead_of_crashing_the_interpreter` precedent - now explicitly
+generalized as a reusable rule for future passes, not just those two ad hoc instances.
 
 **Controlled paths - upstream callers must handle these**: `UART.__init__()`/`init()` may raise
 `ValueError` (bad pin/baudrate/bits/parity/stop/buffer-size/port_id) - see above. Whichever module
