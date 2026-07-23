@@ -1,76 +1,24 @@
 """Async wrapper around machine.UART: select.poll-driven non-blocking read/write (MicroPython's
-asyncio has no built-in UART-readiness primitive - the same problem asy_udp_socket.py solves for
-sockets), lock-scoped via base_classes.Lockable so a whole read/write exchange runs atomically
-under `async with`. Optional per-instance CRC framing (crc_checks.py's CRC_Base family) adds/
-verifies a trailing CRC on read_until_complete/readinto_until_complete/write/writefrom.
+asyncio has no built-in UART-readiness primitive), lock-scoped via base_classes.Lockable so a whole
+read/write exchange runs atomically under `async with`. Optional per-instance CRC framing
+(crc_checks.py's CRC_Base family) adds/verifies a trailing CRC on read_until_complete/
+readinto_until_complete/write/writefrom.
 
 Not currently wired into any live caller in this codebase - python/IndividualDrivers/asy_uart_comm.py
-(its one existing consumer) is its own separate promotion, out of scope here.
-
-**Pico W board hazard for whoever does wire this in** (confirmed against the Pico W datasheet,
-Section 2.1 "Pico W pinout" - datasheets/pico w/, not the plain-Pico pinout): GPIO23/24/25/29 are
-wired on-board to the CYW43439 wireless chip (power-on signal, SPI CS, SPI data/IRQ, and SPI
-CLK/VSYS-ADC3 respectively) and must never be passed as tx_pin/rx_pin (or claimed by any other
-peripheral) - unlike a plain Pico, where those same GPIO numbers are ordinary user I/O. This
-matters here specifically because they fall inside two of the RP2040's real UART TX/RX pin-mux
-groups (UART0: GPIO0/1, 12/13, 16/17, 28/29; UART1: GPIO4/5, 8/9, 20/21, 24/25 - found via public
-documentation search, not the RP2040 silicon datasheet itself, which isn't in this repo's
-datasheets/ folder; see BACKLOG.md), so a caller could plausibly reach for GPIO24/25 or GPIO28/29
-without realizing they'd collide with WiFi on this specific board. Not enforced here at runtime -
-matches this codebase's standing convention that board-wiring facts are a caller/board concern, not
-a driver-level check (the same reasoning asy_i2c_driver.py already applies to not range-checking a
-device address) - but flagged here since no current caller exists yet to have already worked this
-out by trial and error.
+(its one existing consumer) is its own separate promotion, out of scope here. Whoever does wire this
+in: see BACKLOG.md for a Pico W GPIO23/24/25/29 wiring hazard worth knowing about first.
 
 Contract: every method other than __init__/init() returns its documented None/False sentinel -
-never raises - for a non-hardware failure (bus not initialized/deinitialized, called outside
-`async with`, a poll/read timeout, a failed CRC check, or a MemoryError while assembling/framing a
-message - see below). Confirmed via ports/rp2/machine_uart.c and py/stream.c (checked from v1.18
-through the current 1.28.0 pin) that a real UART fault (timeout, framing/parity/overrun error)
-surfaces as MP_EAGAIN -> None from the underlying stream read/write, never as a raised exception -
-unlike asy_i2c_driver.py, where a real NAK/timeout is allowed to propagate as OSError. Also
-confirmed there that UART.deinit() itself never raises (safe to call more than once), so it needs
-no defensive wrapping here beyond the None-guard already required to call it at all.
+never raises - for a non-hardware failure, including a MemoryError from assembling/framing an
+oversized message. __init__()/init() are the exception, allowed to raise ValueError for a bad
+pin/inversion-mask/buffer-size/port_id combination, matching asy_spi_driver.py's/
+asy_i2c_driver.py's own __init__ pattern - see BACKLOG.md for why callers must be prepared to catch
+this at construction time. write()/writefrom() retry via _write_all() until the whole (CRC-framed)
+buffer is actually sent, since real rp2 uart.write() can short-write rather than raising.
 
-__init__()/init() are the exception, allowed to raise ValueError for a bad pin/inversion-mask/
-buffer-size/port_id combination (mp_machine_uart_init_helper()/mp_machine_uart_make_new()),
-matching asy_spi_driver.py's/asy_i2c_driver.py's own __init__ pattern - a misconfigured bus should
-fail loudly once at boot, not silently produce a permanently-nonfunctional driver. baudrate/bits/
-parity/stop are deliberately not in that list: confirmed directly against the source that none of
-them have any raising validation at all (an out-of-range value is either silently ignored, keeping
-the previous/default setting, or passed straight through to the hardware with no software-side
-check) - see tests/machine.py's own docstring for the exact source-confirmed shape. init()'s
-select.poll().register() call is covered by this same one-time-setup allowance: it raises unless
-the registered object's C-level type carries MicroPython's stream protocol slot (confirmed against
-extmod/modselect.c) - unreachable with a real machine.UART instance, but the allowance is
-documented for completeness rather than silently assumed. See BACKLOG.md for why callers of this
-driver must be prepared to catch these at construction time. UART.flush() (not used by this file,
-unlike any()/txdone()/sendbreak()/irq() - see BACKLOG.md for why those don't change this file's
-design) is a different operational-call case - MicroPython raises OSError(ETIMEDOUT) from it on a
-real timeout, unlike the methods wrapped here.
-
-Short-write handling: real rp2 uart.write() loops internally but can still return fewer bytes than
-given (its own per-byte timeout hit after some progress) or None (that timeout hit before writing
-anything at all) rather than raising - confirmed against ports/rp2/machine_uart.c's own write loop,
-not assumed from "never raises" alone. write()/writefrom() retry via the shared _write_all() helper
-until the whole (CRC-framed) buffer is actually out, or a real failure (ready() timeout/cancel, or
-write() returning None) gives up - the write-side counterpart of read_until_complete()'s own
-retry-until-done loop; a single best-effort uart.write() call that ignored this return value would
-have silently truncated a message larger than the TX ring buffer's available room.
-
-MemoryError guarding: read_until_complete()/readline_until_complete()'s own bytearray accumulation
-(`msg += add`), and crc_checks.py's CRC_Base.add()/check() (which allocate a fresh buffer
-proportional to the message they're framing/verifying - see crc_checks.py's own docstring, which
-formally documents this as a deliberate, controlled exception to its usual "never raises" contract,
-on the same schema as a driver's one-time-setup raise, provided this file is the caller that proves
-it's handled), are wrapped in try/except MemoryError at their call sites in this file and folded
-into the same None/False sentinel every other operational failure already uses -
-readline_until_complete() in particular has no caller-supplied size cap the way
-read_until_complete()/readinto_until_complete() do, so an unterminated line from a real external
-peer could otherwise grow msg without bound. Matches asy_udp_socket.py's own precedent of wrapping
-its raw I/O calls in MemoryError alongside OSError. readinto_until_complete()/writefrom() need no
-equivalent guard: their CRC counterparts (check_from()/add_into()) work in place via memoryview
-into a caller-owned buffer, with no incremental allocation of their own.
+See BACKLOG.md's `asy_uart_driver.py -> src/` entries for the full verification rationale: exact
+MicroPython source citations for what does/doesn't raise and why, the short-write fix, the
+MemoryError-guarding design, and API-consistency comparisons against the other src/ drivers.
 """
 
 import asyncio
@@ -150,12 +98,9 @@ class UART(Lockable):
         self.poller.register(self._uart, select.POLLIN | select.POLLOUT)
 
     def deinit(self) -> None:
-        # machine.UART.deinit() actually turns off the hardware bus - not just dropping the
-        # Python reference, which would leave the peripheral/pins claimed. Confirmed against
-        # ports/rp2/machine_uart.c that deinit() itself never raises and is safe to call more than
-        # once, so it needs no try/except of its own here (unlike poller.unregister() below, whose
-        # wrap is defensive against a documented-but-currently-unimplemented upstream TODO - see
-        # BACKLOG.md).
+        # machine.UART.deinit() actually turns off the hardware bus, not just drops the Python
+        # reference - confirmed never to raise itself, unlike poller.unregister() below, whose
+        # wrap is defensive against an upstream corner case - see BACKLOG.md for both.
         if self._uart is not None:
             if self.poller is not None:
                 try:
@@ -248,7 +193,7 @@ class UART(Lockable):
                 return None  # ready() timed out or was cancelled
         try:
             return await self.crc.check(msg)
-        except MemoryError:  # check()'s own bytearr[0:n] slice allocates a fresh copy - see module docstring
+        except MemoryError:  # check()'s own bytearr[0:n] slice allocates a fresh copy - see BACKLOG.md
             return None
 
     async def readinto(self, buf: bytearray, nbytes: int | None = None, timeout_ms: int = -1) -> int | None:
@@ -309,7 +254,7 @@ class UART(Lockable):
                     return None
                 try:
                     msg += add
-                except MemoryError:  # unbounded across rounds, unlike read_until_complete()'s nbytes cap - see module docstring
+                except MemoryError:  # unbounded across rounds, unlike read_until_complete()'s nbytes cap - see BACKLOG.md
                     return None
                 # `msg and` guards msg[-1]: readline() ready via poll can still return b"" (e.g. a
                 # zero-length read), which would otherwise index an empty bytearray and raise.
@@ -321,12 +266,9 @@ class UART(Lockable):
         return msg
 
     async def _write_all(self, uart: "_UART", buf: bytearray | memoryview) -> bool:
-        # rp2 uart.write() can short-write - returns fewer bytes than given (its own internal
-        # per-byte timeout hit after some progress), or None if it hit that timeout before writing
-        # anything at all - rather than raising (see module docstring). Retries with whatever's
-        # left until the whole buffer is out, or a real failure (ready() timeout/cancel, or write()
-        # returning None) gives up - the write()/writefrom() counterpart of read_until_complete()'s
-        # own retry-until-done loop.
+        # rp2 uart.write() can short-write instead of raising (see BACKLOG.md) - retries with
+        # whatever's left until the whole buffer is out or a real failure gives up, the write-side
+        # counterpart of read_until_complete()'s own retry-until-done loop.
         sent = 0
         total = len(buf)
         view = memoryview(buf)
@@ -344,7 +286,7 @@ class UART(Lockable):
         if uart is None:
             return False
         try:
-            framed = await self.crc.add(msg)  # add()'s own bytearr + crc_b allocates a fresh copy - see module docstring
+            framed = await self.crc.add(msg)  # add()'s own bytearr + crc_b allocates a fresh copy - see BACKLOG.md
         except MemoryError:
             return False
         if framed is None:

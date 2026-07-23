@@ -2033,6 +2033,94 @@ recombinations that should raise `ValueError`/`TypeError` exactly where the real
 and `MemoryError` fault-injection at each of the four newly-guarded sites plus a regression test for
 `readline_until_complete()`'s unbounded-growth case specifically.
 
+#### `asy_uart_driver.py` follow-up pass: full `src/README.md` checklist re-validation
+
+A dedicated pass re-running every section of `src/README.md`'s production-quality checklist against
+this file specifically (owner request - "target production quality code"), re-verifying claims
+against current MicroPython source/docs and the local Pico W datasheet rather than trusting the
+file's own prior docstring.
+
+**Real bug found and fixed - short writes were silently dropped.** `write()`/`writefrom()` called
+`uart.write(framed)` exactly once and discarded its return value, unconditionally returning
+`True`. Confirmed against `ports/rp2/machine_uart.c`'s `mp_machine_uart_write()`: it loops
+internally, but if its own per-byte timeout hits after only partial progress it returns an `int`
+less than the buffer length (a genuine short write); if that timeout hits before writing anything
+at all, it returns `None` (matching `MP_EAGAIN`). Neither case was handled - a message larger than
+the TX ring buffer's available room (`txbuf`, default 256 bytes) would have its untransmitted tail
+silently dropped while the caller was told it succeeded, and a total send failure was reported as
+success too. Fixed with a shared `_write_all()` helper (the write-side counterpart of
+`read_until_complete()`'s own retry-until-done loop) that retries with whatever's left until the
+whole buffer is out or a real failure occurs. `tests/machine.py`'s `UART` fake gained a
+`write_limit` attribute (`None` = accept everything, matching prior behavior; a positive int models
+a short write; `0` models a total failure) so this is fault-injected, not just reasoned about:
+`test_write_retries_after_a_short_write_until_everything_is_sent`,
+`test_write_returns_false_when_uart_write_returns_none`,
+`test_writefrom_retries_after_a_short_write_until_everything_is_sent`.
+
+**Docstring inaccuracy found and fixed**: the module docstring claimed `__init__()`/`init()` are
+"allowed to raise ValueError for a bad pin/baudrate/bits/parity/stop/buffer-size/port_id
+combination" - re-verified against `mp_machine_uart_init_helper()`'s actual body (not just its
+existence) and confirmed `baudrate`/`bits`/`parity`/`stop` have **no raising validation at all**:
+an out-of-range value is silently ignored (kept at its previous/default setting) or passed straight
+to the hardware with zero software-side check. Only pin/inversion-mask/buffer-size/port_id actually
+raise. This had already been correctly captured in the *tests* (`test_valid_bits_parity_stop_pass_
+through_unvalidated`, `test_non_positive_baudrate_does_not_raise`, from the previous pass) but the
+module docstring's own summary sentence hadn't been corrected to match - a real, if narrow,
+instance of the code/tests being right while the docstring lagged behind. Fixed.
+
+**Pico W-specific hazard found, documented (not enforced)**: confirmed directly against the local
+`datasheets/pico w/RP-008312-DS-2-pico-w-datasheet.pdf`, Section 2.1 "Pico W pinout" - GPIO23/24/
+25/29 are wired on-board to the CYW43439 wireless chip (power-on signal, SPI CS, SPI data/IRQ, SPI
+CLK/VSYS-ADC3) and are not general-purpose I/O on this board, unlike a plain Pico. Cross-referenced
+against the RP2040 UART pin-mux groups from the previous pass's web search (UART0: GPIO0/1, 12/13,
+16/17, 28/29; UART1: GPIO4/5, 8/9, 20/21, 24/25): GPIO24/25 and GPIO28/29 both fall inside a real
+UART pin-mux group *and* are wireless-reserved on Pico W specifically - a caller picking either pair
+for `tx_pin`/`rx_pin` would silently collide with WiFi. Confirmed via `grep` that no deployed
+`sensortask-*.py` currently constructs an `AsyUART`/`UART_Comm` at all, so this is a latent hazard
+for whoever wires this driver in next, not a live bug today. Documented in the module docstring
+rather than enforced at runtime, matching the same "board-wiring facts are documented, not
+runtime-checked" convention already applied elsewhere in this codebase (e.g. `asy_i2c_driver.py`
+not range-checking a device address) - a board-wiring fact is a caller/board concern, not something
+this driver should defend against.
+
+**Confirmed correct, no change** (worth recording per src/README.md section 9's "note findings even
+when nothing needs to change"): `poller.ipoll(0)` (vs. `.poll(0)`) is confirmed via
+`docs/library/select.rst` to be "an efficient, allocation-free way to poll on streams" - the
+existing choice already matches section 4's "prefer the cheaper stdlib call" bar, not merely
+assumed. `UART.any()`/`.txdone()`/`.irq()` exist on current MicroPython and were considered as
+simpler alternatives to the `select.poll`-based design - rejected because none of them cover
+TX-readiness (the actual gap `select.poll`'s `POLLOUT` fills): `any()` only reports RX-pending
+count, `txdone()` reports whether a *previous* transmission finished rather than whether there's
+room for more, so mixing `any()` for RX with `select.poll` for TX would be less consistent than the
+current uniform-`select.poll` design, not more. `write()`'s return-`bool`-and-retry-to-completion
+shape was compared against `asy_udp_socket.py`'s `write()`/`sendto()`, which return the raw `int |
+None` byte count instead - a deliberate difference, not an inconsistency: UDP is datagram-oriented
+(a partial send doesn't have "the rest" to retry the way a stream ring buffer does), while UART is a
+continuous byte stream where "keep going until it's all out" is the correct semantics, matching how
+`read_until_complete()` already frames "did the whole logical operation complete" as its own return
+shape rather than a byte count.
+
+**Never-block clarification added**: `ready()`'s own poll loop yields cooperatively via
+`asyncio.sleep_ms()`, but the individual `uart.read()`/`readinto()`/`readline()`/`write()` call this
+file makes once `ready()` reports readiness is itself a synchronous C-level call bounded by the
+UART's own `timeout`/`timeout_char` constructor parameters (default `0`ms/`1`ms - negligible), not
+by this file's `poll_wait_ms`. A caller configuring unusually large `timeout`/`timeout_char` values
+takes on the resulting per-call scheduling cost themselves - documented rather than defended
+against, matching this file's general stance of trusting caller-supplied configuration.
+
+**src/README.md section 12's integration-test bullet re-confirmed still N/A**: this file has no
+promoted real consumer to test an actual chain through (`asy_uart_comm.py` remains its own
+out-of-scope future promotion, and nothing else in `src/`/`improved-quality/` constructs a `UART`
+instance) - re-confirmed, not silently assumed, by the same `grep` used for the Pico W hazard check
+above. Module-level tests against `tests/machine.py`'s fake remain the full extent of what's
+possible today; revisit when `asy_uart_comm.py` is promoted.
+
+**Module docstring trimmed** per section 11's "a module docstring is a short header, not an essay"
+- the file's own docstring had grown past that bar across this pass and the two before it (every
+"confirmed against ports/rp2/machine_uart.c" citation, the full Pico W hazard writeup, etc., all
+inline). Cut down to a short contract statement pointing here for the full rationale, matching the
+`config_manager.py` precedent this same checklist section already cites.
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
