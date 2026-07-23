@@ -9,14 +9,38 @@ Not currently wired into any live caller in this codebase - python/IndividualDri
 
 Contract: every method other than __init__/init() returns its documented None/False sentinel -
 never raises - for a non-hardware failure (bus not initialized/deinitialized, called outside
-`async with`, a poll/read timeout, a failed CRC check). Confirmed via ports/rp2/machine_uart.c and
-py/stream.c (checked from v1.18 through the current 1.28.0 pin) that a real UART fault (timeout,
-framing/parity/overrun error) surfaces as MP_EAGAIN -> None from the underlying stream read/write,
-never as a raised exception - unlike asy_i2c_driver.py, where a real NAK/timeout is allowed to
-propagate as OSError. __init__()/init() are the exception, allowed to raise ValueError for a bad
-pin/baudrate/bits/parity/stop/buffer-size combination, matching asy_spi_driver.py's/
-asy_i2c_driver.py's own __init__ pattern. UART.flush() (not used by this file) is a different case -
+`async with`, a poll/read timeout, a failed CRC check, or a MemoryError while assembling/framing a
+message - see below). Confirmed via ports/rp2/machine_uart.c and py/stream.c (checked from v1.18
+through the current 1.28.0 pin) that a real UART fault (timeout, framing/parity/overrun error)
+surfaces as MP_EAGAIN -> None from the underlying stream read/write, never as a raised exception -
+unlike asy_i2c_driver.py, where a real NAK/timeout is allowed to propagate as OSError. Also
+confirmed there that UART.deinit() itself never raises (safe to call more than once), so it needs
+no defensive wrapping here beyond the None-guard already required to call it at all.
+
+__init__()/init() are the exception, allowed to raise ValueError for a bad pin/baudrate/bits/
+parity/stop/buffer-size/port_id combination (mp_machine_uart_init_helper()/
+mp_machine_uart_make_new()), matching asy_spi_driver.py's/asy_i2c_driver.py's own __init__
+pattern - a misconfigured bus should fail loudly once at boot, not silently produce a
+permanently-nonfunctional driver. init()'s select.poll().register() call is covered by this same
+one-time-setup allowance: it raises unless the registered object's C-level type carries
+MicroPython's stream protocol slot (confirmed against extmod/modselect.c) - unreachable with a
+real machine.UART instance, but the allowance is documented for completeness rather than silently
+assumed. See BACKLOG.md for why callers of this driver must be prepared to catch these at
+construction time. UART.flush() (not used by this file) is a different operational-call case -
 MicroPython raises OSError(ETIMEDOUT) from it on a real timeout, unlike the methods wrapped here.
+
+MemoryError guarding: read_until_complete()/readline_until_complete()'s own bytearray accumulation
+(`msg += add`), and crc_checks.py's CRC_Base.add()/check() (which allocate a fresh buffer
+proportional to the message they're framing/verifying - see crc_checks.py's own docstring, which
+documents a "never raises for invalid input" contract that doesn't extend to a MemoryError from
+this internal allocation), are wrapped in try/except MemoryError at their call sites in this file
+and folded into the same None/False sentinel every other operational failure already uses -
+readline_until_complete() in particular has no caller-supplied size cap the way
+read_until_complete()/readinto_until_complete() do, so an unterminated line from a real external
+peer could otherwise grow msg without bound. Matches asy_udp_socket.py's own precedent of wrapping
+its raw I/O calls in MemoryError alongside OSError. readinto_until_complete()/writefrom() need no
+equivalent guard: their CRC counterparts (check_from()/add_into()) work in place via memoryview
+into a caller-owned buffer, with no incremental allocation of their own.
 """
 
 import asyncio
@@ -97,7 +121,11 @@ class UART(Lockable):
 
     def deinit(self) -> None:
         # machine.UART.deinit() actually turns off the hardware bus - not just dropping the
-        # Python reference, which would leave the peripheral/pins claimed.
+        # Python reference, which would leave the peripheral/pins claimed. Confirmed against
+        # ports/rp2/machine_uart.c that deinit() itself never raises and is safe to call more than
+        # once, so it needs no try/except of its own here (unlike poller.unregister() below, whose
+        # wrap is defensive against a documented-but-currently-unimplemented upstream TODO - see
+        # BACKLOG.md).
         if self._uart is not None:
             if self.poller is not None:
                 try:
@@ -181,11 +209,17 @@ class UART(Lockable):
                 add = uart.read(nbytes - len(msg))
                 if add is None:
                     return None
-                msg += add
+                try:
+                    msg += add
+                except MemoryError:
+                    return None
                 timeout = timeout_ms  # once started, use the regular timeout for the remaining parts
             else:
                 return None  # ready() timed out or was cancelled
-        return await self.crc.check(msg)
+        try:
+            return await self.crc.check(msg)
+        except MemoryError:  # check()'s own bytearr[0:n] slice allocates a fresh copy - see module docstring
+            return None
 
     async def readinto(self, buf: bytearray, nbytes: int | None = None, timeout_ms: int = -1) -> int | None:
         uart = self._active_uart()
@@ -243,7 +277,10 @@ class UART(Lockable):
                 add = uart.readline()  # reads until b"\n" or the buffer runs empty
                 if add is None:
                     return None
-                msg += add
+                try:
+                    msg += add
+                except MemoryError:  # unbounded across rounds, unlike read_until_complete()'s nbytes cap - see module docstring
+                    return None
                 # `msg and` guards msg[-1]: readline() ready via poll can still return b"" (e.g. a
                 # zero-length read), which would otherwise index an empty bytearray and raise.
                 if msg and msg[-1] == _LF:  # trailing \n means the line is actually complete
@@ -257,7 +294,10 @@ class UART(Lockable):
         uart = self._active_uart()
         if uart is None:
             return False
-        framed = await self.crc.add(msg)
+        try:
+            framed = await self.crc.add(msg)  # add()'s own bytearr + crc_b allocates a fresh copy - see module docstring
+        except MemoryError:
+            return False
         if framed is None:
             return False
         if not await self.ready(select.POLLOUT):

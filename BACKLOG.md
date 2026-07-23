@@ -1910,6 +1910,102 @@ whole time remains open - not re-verified for those two files in this pass.
 `_StepPoller` for the readiness-timing cases above. Full `scripts/lint.sh`/`scripts/typecheck.sh`/
 `scripts/test.sh` green, no regressions elsewhere.
 
+#### `asy_uart_driver.py` follow-up pass: uncaught-exception audit, parameter/integration tests
+
+A dedicated pass, prompted by owner request, to (1) verify every call inside `asy_uart_driver.py` -
+its own code and every function it calls into - either can't raise, or is deliberately classified as
+an allowed-to-raise "controlled path" the same way `__init__()`/`init()` already were; (2) record in
+this file that upstream callers must handle those controlled paths; (3) review (read-only, not
+promoted) how `python/IndividualDrivers/asy_uart_comm.py` actually handles the driver's exceptions/
+return values today; (4) add parameter-validation, integration (`base_classes`/`print_log`), and
+real-fault-injection tests.
+
+**Verified against real MicroPython source, not assumed** (`ports/rp2/machine_uart.c` and
+`extmod/modselect.c`, v1.28.0 pin):
+- `mp_machine_uart_init_helper()`/`mp_machine_uart_make_new()`: every `ValueError` `__init__()`/
+  `init()` can hit (bad TX/RX/CTS/RTS pin, inversion mask, hw-flow-control mask, rxbuf/txbuf too
+  large, out-of-range UART id) - confirms the module docstring's existing claim, itemized instead of
+  taken on faith.
+- `mp_machine_uart_read()`/`write()`: confirmed to never raise at all for the timeout/fault path
+  (`MP_EAGAIN` region only, no raise) - tightens the module docstring's prior wording.
+- **`UART.deinit()` itself never raises and is safe to call more than once** (no exception-raising
+  logic in `mp_machine_uart_deinit()` at all) - newly confirmed, not previously verified; `deinit()`'s
+  comment updated to say so explicitly, matching `asy_spi_driver.py`'s own "can't raise" phrasing for
+  its analogous call.
+- `select.poll().register()` raises unless the registered object's C-level type carries
+  MicroPython's stream protocol slot (`mp_get_stream_raise()`) - unreachable with a real
+  `machine.UART` instance, but now explicitly folded into the same one-time-setup "allowed to raise"
+  contract `__init__()`/`init()` already had, instead of being an undocumented gap.
+- **`poll.unregister()` currently never raises at all on this MicroPython version** - its own source
+  has a literal `// TODO raise KeyError if obj didn't exist in map` that's unimplemented, so the
+  existing `except (OSError, MemoryError): pass` around it in `deinit()` is defensive against a
+  documented future upstream change, not a currently-reachable path. Left as-is (harmless, and
+  removing it would just have to be re-added the day upstream implements that TODO).
+
+**Real gap found and fixed - MemoryError from unbounded/caller-influenced allocation, not a
+hardware fault**: `read_until_complete()`'s and `readline_until_complete()`'s own `msg += add`
+accumulation, plus `crc_checks.py`'s `CRC_Base.add()` (`bytearr + crc_b`, called from `write()`) and
+`CRC_Base.check()` (`bytearr[0:n]` slice, called from `read_until_complete()`) all allocate a fresh
+buffer whose size tracks the message being framed/verified/assembled, and none of it was previously
+caught. `readline_until_complete()` is the sharpest case: unlike `read_until_complete()`/
+`readinto_until_complete()`, it has no caller-supplied size cap at all - an unterminated line from a
+real external peer (stuck sender, wrong baud rate, noise) could grow `msg` without bound for as long
+as the device stays powered. Matches the "concrete, non-hypothetical threat" bar the standing
+exception-handling-scope convention (see "Decided for the refactor") already sets, and mirrors
+`asy_udp_socket.py`'s own precedent of wrapping its raw socket I/O calls in `MemoryError` alongside
+`OSError` - not a blanket wrap of every `await`. Fixed by wrapping each site in `try`/`except
+MemoryError`, returning the same `None`/`False` sentinel every other operational failure in this file
+already returns - these are operational (not one-time-setup) calls, so the file's own "never raises"
+contract applies to them, not the controlled-path allowance. `readinto_until_complete()`/
+`writefrom()` need no equivalent fix: their CRC counterparts (`check_from()`/`add_into()`) work in
+place via `memoryview` into a caller-owned buffer, no incremental allocation of their own.
+
+**Flagged, not silently fixed** (per CLAUDE.md's cross-file-consistency hard rule -
+`crc_checks.py` is a shared `src/` dependency, not something this pass owns): `crc_checks.py`'s own
+module docstring states a "never raises... for invalid input" contract, but that contract doesn't
+actually cover a `MemoryError` from `add()`'s/`check()`'s own internal allocation - a real gap in
+what `crc_checks.py` promises versus what it's guarded against. Worked around locally in
+`asy_uart_driver.py` (see above) rather than editing `crc_checks.py` itself, since `asy_uart_driver.py`
+is the first live `src/` consumer of `crc.add()`/`crc.check()`'s bidirectional-framing path (unlike
+any prior use). Whether to tighten `crc_checks.py`'s own contract/docstring to explicitly acknowledge
+this is an open question for a future pass, not decided here.
+
+**Controlled paths - upstream callers must handle these**: `UART.__init__()`/`init()` may raise
+`ValueError` (bad pin/baudrate/bits/parity/stop/buffer-size/port_id) - see above. Whichever module
+eventually wires this driver into a real caller (`asy_uart_comm.py`'s own future promotion, or
+whatever else ends up constructing a `UART` instance) must catch/handle this at construction time,
+the same way every existing I2C-based `Reader` class already fails loudly at boot for a bad I2C
+config today. Not yet enforced anywhere since nothing in `src/`/`improved-quality/` constructs a real
+`UART` instance yet (see "Not currently wired into any live caller" in the module docstring).
+
+**`asy_uart_comm.py` review (read-only - still out of scope for promotion, per the original decision
+to keep it out of this driver's pass)**: it has **zero `try`/`except` blocks anywhere in the file** -
+confirmed by inspection, not inferred. Every one of its calls into the driver
+(`device.read()`/`read_until_complete()`/`write()`/`cancel_read_timeout()`) relies entirely on the
+driver's own `None`/`False` sentinel contract; if the driver ever raised an uncaught exception (as it
+could have, before this pass's fixes above), `asy_uart_comm.py` would propagate it all the way up
+uncaught rather than absorbing it. In practice this isn't a dangling failure mode on deployed units:
+`main()`'s per-device task supervisor (see "Architecture reference" in CLAUDE.md) broadly catches and
+resets the whole sensor task on any uncaught exception, so the real-world blast radius of a gap like
+the one just fixed would have been "this sensor task's next scheduled reset", not a device crash -
+worth recording so a future reader doesn't assume `asy_uart_comm.py`'s total absence of `try`/`except`
+means it was previously unsafe in an unbounded way, or that the driver-level fix above was
+load-bearing for device stability rather than tightening an already-supervised failure mode. Also
+notable: `asy_uart_comm.py`'s own chunked protocol caps every real `read_until_complete()` call at
+`_NUM_MSG_FIELDS + payload_size` (53 bytes with the default `payload_size=48`), so the
+`read_until_complete()`/`write()` MemoryError gap fixed above was never practically reachable through
+this specific legacy caller - the fix closes the driver's own general-purpose contract regardless of
+how any one caller happens to use it today.
+
+**New tests** (`tests/test_asy_uart_driver.py`, count updated below): parameter-validation matrix
+(every valid-parameter combination that should construct cleanly, single- and multi-invalid-parameter
+recombinations that should raise `ValueError`/`TypeError` exactly where the real
+`mp_machine_uart_init_helper()` source says they should), `base_classes.Lockable` integration
+(task-cancellation-still-releases-the-lock, concurrent-session serialization, exception-inside-
+`async with`-still-releases-the-lock - mirroring `test_asy_i2c_driver.py`'s own `Lockable` coverage),
+and `MemoryError` fault-injection at each of the four newly-guarded sites plus a regression test for
+`readline_until_complete()`'s unbounded-growth case specifically.
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
@@ -1926,11 +2022,13 @@ and a missing config file failing independently without either derailing the oth
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
 `asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 58,
-`asy_udp_socket.py` 62 — **752 total**. (Previous count of 690 across 11 files predated
-`asy_udp_socket.py`'s promotion and was never updated to include it — corrected during its
-third pass; the 23→42 jump was its fourth pass's uncaught-exception/configuration/integration
-test additions; 42→56 is its fifth pass's mutation-bypass/concurrency/cancellation-safety tests;
-56→62 is its sixth pass's ready()/write_and_recvfrom() parameter-guard tests.)
+`asy_udp_socket.py` 62, `asy_uart_driver.py` 58 — **810 total**. (Previous count of 690 across 11
+files predated `asy_udp_socket.py`'s promotion and was never updated to include it — corrected
+during its third pass; the 23→42 jump was its fourth pass's uncaught-exception/configuration/
+integration test additions; 42→56 is its fifth pass's mutation-bypass/concurrency/cancellation-
+safety tests; 56→62 is its sixth pass's ready()/write_and_recvfrom() parameter-guard tests.
+`asy_uart_driver.py`'s own 29→58 jump is this follow-up pass's parameter-validation/`Lockable`-
+integration/`MemoryError`-fault-injection additions, described above.)
 
 ## Decided for the refactor
 

@@ -48,6 +48,28 @@ that are currently ready - not a bool. Real UART read/readinto/readline return `
 available (see asy_uart_driver.py's own module docstring - confirmed via ports/rp2/machine_uart.c
 and py/stream.c that this is MP_EAGAIN, not a raised exception); this fake matches that for the
 same "called after ready() should return True" case.
+
+`UART.__init__`'s parameter validation mirrors `mp_machine_uart_init_helper()`/
+`mp_machine_uart_make_new()` (confirmed against ports/rp2/machine_uart.c, v1.28.0 - real numeric
+constants, not guessed): `id` must be `0` or `1` (RP2040 has exactly two UART peripherals) or
+`ValueError("UART(%d) doesn't exist")`; `rxbuf`/`txbuf` above `MAX_BUFFER_SIZE` (32766) raise
+`ValueError("rxbuf/txbuf too large")` (a value below `MIN_BUFFER_SIZE` (32) silently clamps up
+instead of raising - not modeled here since it doesn't affect the raise/no-raise contract this
+fake needs); `invert` outside `UART_INVERT_MASK` (`UART_INVERT_TX (1) | UART_INVERT_RX (2)` = `3`)
+raises `ValueError("bad inversion mask")`. `baudrate`/`bits`/`stop` are real `int` fields with no
+raising validation at all in this function - a non-positive value is silently ignored (keeps
+whatever was previously set / the hardware default) rather than rejected, confirmed directly from
+the source's own `if (args[ARG_baudrate].u_int > 0) { self->baudrate = ...}` shape - so this fake
+doesn't validate them either. **Deliberately not modeled**: real hardware also validates that
+`tx`/`rx` are GPIO pins actually muxable to the *chosen* UART peripheral's TX/RX role
+(`IS_VALID_TX`/`IS_VALID_RX`, e.g. UART0 only on GPIO 0/1, 12/13, 16/17 vs. UART1 only on GPIO
+4/5, 8/9) - that table lives in the RP2040 silicon datasheet, which isn't in this repo's
+`datasheets/` folder (only the Pico W *board* datasheet is, a different document); the pin/role
+mapping above was found via public web search, not the authoritative datasheet PDF, so it isn't
+encoded here as a raise condition - flagged per CLAUDE.md rather than silently assumed. The
+existing generic `Pin(id)` range check (`0 <= id <= 28`) still applies before a pin ever reaches
+`UART()`, since `asy_uart_driver.py`'s own `init()` always constructs `Pin(tx_pin)`/`Pin(rx_pin)`
+first.
 """
 
 import errno
@@ -257,9 +279,13 @@ class SPI:
 
 class UART(io.IOBase):
     # rx_queue is a test-fed FIFO of "received" bytes; writable gates POLLOUT readiness so a test
-    # can simulate a stalled/full TX path. No fault injection beyond that - unlike I2C, real UART
-    # read/write/readinto/readline can't raise (see module docstring), so there's nothing to inject.
+    # can simulate a stalled/full TX path. No fault injection beyond __init__'s own real-hardware
+    # parameter validation (see module docstring) - unlike I2C, real UART read/write/readinto/
+    # readline can't raise, so there's nothing to inject into those.
     _MP_STREAM_POLL = 3  # py/stream.h - see module docstring
+    _MIN_BUFFER_SIZE = 32
+    _MAX_BUFFER_SIZE = 32766
+    _UART_INVERT_MASK = 3  # UART_INVERT_TX (1) | UART_INVERT_RX (2)
 
     def __init__(
         self,
@@ -277,6 +303,18 @@ class UART(io.IOBase):
         timeout_char: int = 1,
         invert: int = 0,
     ) -> None:
+        # Real mp_machine_uart_make_new()/init_helper() validation, in the same order the real
+        # source checks it (id, then invert, then rxbuf, then txbuf - matters for which exception
+        # surfaces first when more than one field is invalid at once) - see module docstring for
+        # the exact source-confirmed constants and what's deliberately NOT modeled.
+        if id not in (0, 1):
+            raise ValueError(f"UART({id}) doesn't exist")
+        if invert & ~self._UART_INVERT_MASK:
+            raise ValueError("bad inversion mask")
+        if rxbuf > self._MAX_BUFFER_SIZE:
+            raise ValueError("rxbuf too large")
+        if txbuf > self._MAX_BUFFER_SIZE:
+            raise ValueError("txbuf too large")
         self.id = id
         self.tx = tx
         self.rx = rx

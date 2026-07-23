@@ -4,7 +4,7 @@ import select
 from machine import UART as FakeUART
 
 from asy_uart_driver import UART
-from crc_checks import CRC16, CRC_Pass
+from crc_checks import CRC16, CRC_Base, CRC_Pass
 
 try:
     from typing import TYPE_CHECKING
@@ -49,6 +49,212 @@ class _StepPoller:
 
     def unregister(self, obj: "object") -> None:  # lets a step trigger deinit() without crashing on this stand-in
         pass
+
+
+# ---------------------------------------------------------------------------
+# __init__ / init() - valid parameter configurations
+# ---------------------------------------------------------------------------
+# Real mp_machine_uart_init_helper()/make_new() constants (see tests/machine.py's own docstring
+# for the source citations - not guessed).
+
+
+def test_valid_default_construction_succeeds() -> None:
+    uart = make_uart()
+    assert fake(uart).id == 0
+    assert fake(uart).baudrate == 9600
+
+
+def test_valid_construction_on_both_real_uart_ports() -> None:
+    for port_id in (0, 1):  # RP2040 has exactly two UART peripherals
+        uart = UART(port_id, tx_pin=0, rx_pin=1)
+        assert fake(uart).id == port_id
+
+
+def test_valid_buffer_size_boundaries() -> None:
+    uart = make_uart(rxbuf=32, txbuf=32766)  # MIN_BUFFER_SIZE / MAX_BUFFER_SIZE, both inclusive
+    assert fake(uart).rxbuf == 32
+    assert fake(uart).txbuf == 32766
+
+
+def test_valid_invert_mask_every_combination() -> None:
+    for invert in (0, 1, 2, 3):  # every real UART_INVERT_TX | UART_INVERT_RX combination
+        uart = make_uart(invert=invert)
+        assert fake(uart).invert == invert
+
+
+def test_valid_bits_parity_stop_pass_through_unvalidated() -> None:
+    # Real mp_machine_uart_init_helper() has no raising validation at all for bits/parity/stop -
+    # confirmed directly against the source (see tests/machine.py's docstring); documents that
+    # asy_uart_driver.py doesn't add its own validation on top either.
+    uart = make_uart(bits=9, parity=1, stop=2)
+    assert fake(uart).bits == 9
+    assert fake(uart).parity == 1
+    assert fake(uart).stop == 2
+
+
+def test_non_positive_baudrate_does_not_raise() -> None:
+    # Real hardware silently ignores a non-positive baudrate (keeps the previous/default value)
+    # instead of raising - confirmed directly, not guessed (see tests/machine.py's docstring). The
+    # raise/no-raise contract is what this test actually checks; it doesn't claim the fake models
+    # the silent-ignore/clamp behavior itself.
+    uart = make_uart(baudrate=0)
+    assert fake(uart).id == 0  # construction completed, nothing raised
+
+
+def test_valid_crc_configurations() -> None:
+    default = make_uart()
+    assert isinstance(default.crc, CRC_Pass)
+    explicit_pass = CRC_Pass()
+    with_pass = make_uart(crc=explicit_pass)
+    assert with_pass.crc is explicit_pass
+    explicit_crc16 = CRC16()
+    with_crc16 = make_uart(crc=explicit_crc16)
+    assert with_crc16.crc is explicit_crc16
+
+
+# ---------------------------------------------------------------------------
+# __init__ / init() - single invalid parameter
+# ---------------------------------------------------------------------------
+
+
+def test_invalid_port_id_raises_value_error() -> None:
+    for port_id in (-1, 2, 99):
+        try:
+            UART(port_id, tx_pin=0, rx_pin=1)
+            raised = False
+        except ValueError:
+            raised = True
+        assert raised
+
+
+def test_invalid_tx_pin_raises_value_error() -> None:
+    try:
+        UART(0, tx_pin=29, rx_pin=1)  # outside the real GPIO0-28 range
+        raised = False
+    except ValueError:
+        raised = True
+    assert raised
+
+
+def test_invalid_rx_pin_raises_value_error() -> None:
+    try:
+        UART(0, tx_pin=0, rx_pin=-1)
+        raised = False
+    except ValueError:
+        raised = True
+    assert raised
+
+
+def test_non_int_pin_raises_type_error() -> None:
+    try:
+        UART(0, tx_pin="0", rx_pin=1)  # type: ignore[arg-type]
+        raised = False
+    except TypeError:
+        raised = True
+    assert raised
+
+
+def test_rxbuf_too_large_raises_value_error() -> None:
+    try:
+        make_uart(rxbuf=32767)  # one past MAX_BUFFER_SIZE
+        raised = False
+    except ValueError:
+        raised = True
+    assert raised
+
+
+def test_txbuf_too_large_raises_value_error() -> None:
+    try:
+        make_uart(txbuf=40000)
+        raised = False
+    except ValueError:
+        raised = True
+    assert raised
+
+
+def test_bad_invert_mask_raises_value_error() -> None:
+    for invert in (4, -1, 255):  # outside UART_INVERT_MASK's real 0-3 range
+        try:
+            make_uart(invert=invert)
+            raised = False
+        except ValueError:
+            raised = True
+        assert raised
+
+
+# ---------------------------------------------------------------------------
+# __init__ / init() - multiple simultaneously-invalid parameters: which
+# exception surfaces first, matching real evaluation/check order
+# ---------------------------------------------------------------------------
+
+
+def test_bad_tx_pin_wins_over_bad_port_id() -> None:
+    # asy_uart_driver.py's own init() constructs Pin(tx_pin) as a call *argument* to _UART(...),
+    # so a bad tx_pin always raises before _UART()'s own body (and therefore its port_id check)
+    # ever runs - a consequence of how this driver is structured, not something to assume matches
+    # mp_machine_uart_make_new()'s own internal check order in isolation.
+    try:
+        UART(99, tx_pin=29, rx_pin=1)
+        message = ""
+    except ValueError as e:
+        message = str(e)
+    assert "pin" in message.lower()
+
+
+def test_bad_port_id_wins_over_bad_rxbuf_and_invert() -> None:
+    # Once inside _UART()'s own body (both pins valid), id is checked before invert/rxbuf/txbuf -
+    # matches mp_machine_uart_make_new() fully checking uart_id before init_helper() ever runs.
+    try:
+        UART(99, tx_pin=0, rx_pin=1, rxbuf=99999, invert=255)
+        message = ""
+    except ValueError as e:
+        message = str(e)
+    assert "UART(99)" in message
+
+
+def test_bad_invert_wins_over_bad_rxbuf_and_txbuf() -> None:
+    # invert is checked before rxbuf/txbuf in mp_machine_uart_init_helper()'s own body.
+    try:
+        make_uart(invert=255, rxbuf=99999, txbuf=99999)
+        message = ""
+    except ValueError as e:
+        message = str(e)
+    assert "inversion" in message.lower()
+
+
+def test_bad_rxbuf_wins_over_bad_txbuf() -> None:
+    # rxbuf is checked before txbuf in mp_machine_uart_init_helper()'s own body.
+    try:
+        make_uart(rxbuf=99999, txbuf=99999)
+        message = ""
+    except ValueError as e:
+        message = str(e)
+    assert "rxbuf" in message.lower()
+
+
+def test_multiple_invalid_pins_still_raises_cleanly() -> None:
+    try:
+        UART(0, tx_pin=29, rx_pin=-1)
+        raised = False
+    except ValueError:
+        raised = True
+    assert raised
+
+
+def test_failed_reinit_leaves_the_bus_deinitialized_not_reverted() -> None:
+    # init() always deinit()s the previous bus first (see its own comment), so a failing re-init
+    # can't roll back to the previous working bus - the instance is left deinitialized until a
+    # caller successfully re-inits with valid parameters. Same shape as asy_i2c_driver.py's/
+    # asy_spi_driver.py's own init(), not unique to UART.
+    uart = make_uart()
+    try:
+        uart.init(99, tx_pin=0, rx_pin=1)  # bad port_id
+        raised = False
+    except ValueError:
+        raised = True
+    assert raised
+    assert uart._uart is None
+    assert uart.poller is None
 
 
 # ---------------------------------------------------------------------------
@@ -483,6 +689,202 @@ def test_writefrom_buffer_too_small_for_crc_returns_false() -> None:
 
     assert run(scenario()) is False
     assert fake(uart).log == []  # rejected before ever touching the bus
+
+
+# ---------------------------------------------------------------------------
+# base_classes.Lockable integration - real inheritance (UART(Lockable)), not
+# mocked - mirrors test_asy_i2c_driver.py's own Lockable integration coverage
+# ---------------------------------------------------------------------------
+
+
+def test_exception_inside_session_still_releases_the_lock() -> None:
+    uart = make_uart()
+
+    async def scenario() -> None:
+        try:
+            async with uart:
+                raise RuntimeError("boom")
+        except RuntimeError:
+            pass
+        assert not uart.asy_lock.locked()
+        async with uart:  # must still be acquirable - not left stuck locked
+            pass
+
+    run(scenario())
+
+
+def test_context_manager_does_not_suppress_exceptions() -> None:
+    uart = make_uart()
+
+    async def scenario() -> None:
+        async with uart:
+            raise ValueError("boom")
+
+    try:
+        run(scenario())
+        raised = False
+    except ValueError:
+        raised = True
+    assert raised
+
+
+def test_aexit_tolerates_a_lock_already_released_inside_the_block() -> None:
+    uart = make_uart()
+
+    async def scenario() -> None:
+        async with uart:
+            uart.asy_lock.release()  # released early by hand
+        # __aexit__'s own release() must swallow the resulting RuntimeError, not propagate it
+
+    run(scenario())  # must not raise
+    assert not uart.asy_lock.locked()
+
+
+def test_task_cancellation_while_holding_the_lock_still_releases_it() -> None:
+    # Interrupts a session via real asyncio cancellation (not just an exception raised by our own
+    # code) - MicroPython's asyncio still runs __aexit__ via CancelledError propagating through
+    # `async with`, same as CPython (confirmed directly for I2CDevice; UART(Lockable) shares the
+    # exact same __aenter__/__aexit__ implementation, not a reimplementation).
+    uart = make_uart()
+    started = False
+
+    async def holder() -> None:
+        nonlocal started
+        async with uart:
+            started = True
+            await asyncio.sleep(10)
+
+    async def scenario() -> None:
+        task = asyncio.create_task(holder())
+        while not started:
+            await asyncio.sleep(0)
+        assert uart.asy_lock.locked()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        assert not uart.asy_lock.locked()
+
+    run(scenario())
+
+
+def test_two_tasks_sharing_one_uart_never_run_concurrently() -> None:
+    uart = make_uart()
+    concurrent = 0
+    max_concurrent = 0
+
+    async def worker() -> None:
+        nonlocal concurrent, max_concurrent
+        async with uart:
+            concurrent += 1
+            max_concurrent = max(max_concurrent, concurrent)
+            await asyncio.sleep(0)  # yield - if the lock didn't serialize, the other task runs here
+            concurrent -= 1
+
+    async def scenario() -> None:
+        await asyncio.gather(worker(), worker())
+
+    run(scenario())
+    assert max_concurrent == 1
+
+
+def test_aenter_returns_the_uart_itself() -> None:
+    uart = make_uart()
+
+    async def scenario() -> None:
+        async with uart as entered:
+            assert entered is uart
+
+    run(scenario())
+
+
+def test_reentrant_acquisition_deadlocks_and_cleans_up() -> None:
+    # Not reentrant by design (a plain asyncio.Lock, same as I2CDevice/SPIDevice's shared bus
+    # lock) - bounded by wait_for so the test itself can't hang.
+    uart = make_uart()
+
+    async def reentrant() -> None:
+        async with uart:
+            async with uart:
+                pass
+
+    async def scenario() -> bool:
+        try:
+            await asyncio.wait_for(reentrant(), 0.2)
+            return False
+        except asyncio.TimeoutError:
+            return True
+
+    assert run(scenario())
+    assert not uart.asy_lock.locked()
+
+
+# ---------------------------------------------------------------------------
+# crc_checks.py integration - real CRC_Base subclasses (not mocked), plus
+# MemoryError fault injection at the guarded call sites (module docstring's
+# "MemoryError guarding" section)
+# ---------------------------------------------------------------------------
+
+
+class _MemoryErrorCRC:
+    # Wraps a real CRC_Base so length() (needed by read_until_complete()'s own nbytes += ... call)
+    # keeps working, while add()/check() raise MemoryError instead of doing real work - same
+    # technique as test_asy_udp_socket.py's own _MemoryErrorSocketWrapper, proving
+    # asy_uart_driver.py's try/except MemoryError around these two calls actually catches it.
+    def __init__(self, real: "CRC_Base") -> None:
+        self._real = real
+
+    def length(self) -> int:
+        return self._real.length()
+
+    async def add(self, bytearr: bytearray, init: "int | None" = None) -> bytearray | None:
+        raise MemoryError("simulated allocation failure")
+
+    async def check(self, bytearr: bytearray, init: "int | None" = None) -> bytearray | None:
+        raise MemoryError("simulated allocation failure")
+
+
+def test_write_returns_false_on_crc_add_memoryerror() -> None:
+    uart = make_uart(crc=CRC16())
+    uart.crc = _MemoryErrorCRC(CRC16())  # type: ignore[assignment]
+
+    async def scenario() -> bool:
+        async with uart:
+            result = await uart.write(bytearray(b"x"))
+        return result
+
+    assert run(scenario()) is False
+    assert fake(uart).log == []  # rejected before ever touching the bus
+
+
+def test_read_until_complete_returns_none_on_crc_check_memoryerror() -> None:
+    uart = make_uart(crc=CRC16())
+    framed = run(CRC16().add(bytearray(b"hello")))
+    assert framed is not None
+    fake(uart).feed_rx(bytes(framed))
+    uart.crc = _MemoryErrorCRC(CRC16())  # type: ignore[assignment]
+
+    async def scenario() -> bytearray | None:
+        async with uart:
+            result = await uart.read_until_complete(5)
+        return result
+
+    assert run(scenario()) is None
+
+
+# `msg += add`'s own MemoryError guard in read_until_complete()/readline_until_complete() (see the
+# module docstring's "MemoryError guarding" section) is deliberately NOT fault-injected here the
+# same way: unlike self.crc, `msg` is a plain bytearray built and grown entirely inside those
+# methods - there's no substitutable object to wrap/monkeypatch the way _MemoryErrorCRC does above,
+# and bytearray.__iadd__ has no Python-level hook to force MemoryError deterministically without
+# either a constrained interpreter heap (not controllable from within a running test - see
+# tests/README.md) or genuinely exhausting memory (flaky/unsafe for CI). Same category of
+# documented, deliberate testing gap as test_print_log.py's own
+# test_history_length_huge_is_capped_instead_of_crashing_the_interpreter comment. The surrounding
+# behavior is still covered: test_read_until_complete_assembles_across_multiple_rounds and
+# test_readline_until_complete_assembles_multi_part_line already exercise this exact line
+# successfully across multiple rounds, proving the guard doesn't break normal accumulation.
 
 
 if __name__ == "__main__":
