@@ -33,9 +33,26 @@ NAK/busy-style fault-injection surface to model for those two methods, unlike `I
 length")` (mp_machine_spi_write_readinto(), shared by hardware and soft SPI alike) when its two
 buffers differ in length - modeled directly below since it's deterministic from the buffers a
 test passes in, not something that needs fault injection to trigger.
+
+`UART` (added for asy_uart_driver.py) is a different shape from `I2C`/`SPI` above: it's the first
+fake here that a driver actually registers with real `select.poll()` (asy_uart_driver.py's
+`ready()`), not just calls methods on directly. Confirmed against py/stream.h/extmod/modselect.c:
+`select.poll().register()` requires the object's C-level *type* to carry MicroPython's stream
+protocol slot - a plain `class Foo:` can't satisfy this no matter what Python methods it defines,
+`register()` raises `OSError` immediately otherwise. `io.IOBase` is the documented builtin base
+that does carry this slot, dispatching its C-level `ioctl` callback back into a Python-level
+`ioctl(self, req, arg)` override - so `UART` below subclasses it instead of a plain class.
+`req == 3` is `MP_STREAM_POLL` (py/stream.h); the expected return is the subset of `arg`'s
+requested bits (`select.POLLIN`/`POLLOUT`, numerically identical to `MP_STREAM_POLL_RD`/`_WR`)
+that are currently ready - not a bool. Real UART read/readinto/readline return `None` on no data
+available (see asy_uart_driver.py's own module docstring - confirmed via ports/rp2/machine_uart.c
+and py/stream.c that this is MP_EAGAIN, not a raised exception); this fake matches that for the
+same "called after ready() should return True" case.
 """
 
 import errno
+import io
+import select
 
 try:
     from typing import TYPE_CHECKING
@@ -236,6 +253,99 @@ class SPI:
         data = self._next_read_bytes(len(buffer_in))
         buffer_in[:] = data
         self.log.append(("write_readinto", bytes(buffer_out)))  # type: ignore[call-overload]
+
+
+class UART(io.IOBase):
+    # rx_queue is a test-fed FIFO of "received" bytes; writable gates POLLOUT readiness so a test
+    # can simulate a stalled/full TX path. No fault injection beyond that - unlike I2C, real UART
+    # read/write/readinto/readline can't raise (see module docstring), so there's nothing to inject.
+    _MP_STREAM_POLL = 3  # py/stream.h - see module docstring
+
+    def __init__(
+        self,
+        id: int,
+        *,
+        tx: Pin,
+        rx: Pin,
+        baudrate: int = 9600,
+        bits: int = 8,
+        parity: int | None = None,
+        stop: int = 1,
+        rxbuf: int = 256,
+        txbuf: int = 256,
+        timeout: int = 0,
+        timeout_char: int = 1,
+        invert: int = 0,
+    ) -> None:
+        self.id = id
+        self.tx = tx
+        self.rx = rx
+        self.baudrate = baudrate
+        self.bits = bits
+        self.parity = parity
+        self.stop = stop
+        self.rxbuf = rxbuf
+        self.txbuf = txbuf
+        self.timeout = timeout
+        self.timeout_char = timeout_char
+        self.invert = invert
+        self.deinit_called = False
+        self.deinit_count = 0
+        self.log: list[tuple] = []
+        self.rx_queue = bytearray()
+        self.writable = True
+
+    def feed_rx(self, data: bytes) -> None:  # test helper: queue bytes as if received over the wire
+        self.rx_queue += data
+
+    def ioctl(self, req: int, arg: int) -> int:
+        if req != self._MP_STREAM_POLL:
+            return 0
+        ready = 0
+        if (arg & select.POLLIN) and self.rx_queue:
+            ready |= select.POLLIN
+        if (arg & select.POLLOUT) and self.writable:
+            ready |= select.POLLOUT
+        return ready
+
+    def deinit(self) -> None:
+        self.deinit_called = True
+        self.deinit_count += 1
+        self.log.append(("deinit",))
+
+    def read(self, nbytes: int | None = None) -> bytes | None:
+        n = len(self.rx_queue) if nbytes is None else min(nbytes, len(self.rx_queue))
+        if n == 0:  # real UART: None on no data available, matches MP_EAGAIN (see module docstring)
+            return None
+        data = bytes(self.rx_queue[:n])
+        self.rx_queue = self.rx_queue[n:]  # MicroPython bytearray has no slice-delete, unlike CPython
+        self.log.append(("read", n))
+        return data
+
+    def readinto(self, buf: bytearray | memoryview, nbytes: int | None = None) -> int | None:
+        n = len(buf) if nbytes is None else min(nbytes, len(buf))
+        n = min(n, len(self.rx_queue))
+        if n == 0:
+            return None
+        buf[:n] = self.rx_queue[:n]
+        self.rx_queue = self.rx_queue[n:]  # MicroPython bytearray has no slice-delete, unlike CPython
+        self.log.append(("readinto", n))
+        return n
+
+    def readline(self) -> bytes | None:
+        if not self.rx_queue:
+            return None
+        idx = self.rx_queue.find(b"\n")
+        end = len(self.rx_queue) if idx == -1 else idx + 1
+        data = bytes(self.rx_queue[:end])
+        self.rx_queue = self.rx_queue[end:]  # MicroPython bytearray has no slice-delete, unlike CPython
+        self.log.append(("readline", len(data)))
+        return data
+
+    def write(self, buf: object) -> int:
+        data = bytes(buf)  # type: ignore[call-overload]
+        self.log.append(("write", data))
+        return len(data)
 
 
 class Timer:
