@@ -8,17 +8,11 @@ Not currently wired into any live caller in this codebase - python/IndividualDri
 (its one existing consumer) is its own separate promotion, out of scope here. Whoever does wire this
 in: see BACKLOG.md for a Pico W GPIO23/24/25/29 wiring hazard worth knowing about first.
 
-Contract: every method other than __init__/init() returns its documented None/False sentinel -
-never raises - for a non-hardware failure, including a MemoryError from assembling/framing an
-oversized message. __init__()/init() are the exception, allowed to raise ValueError for a bad
-pin/inversion-mask/buffer-size/port_id combination, matching asy_spi_driver.py's/
-asy_i2c_driver.py's own __init__ pattern - see BACKLOG.md for why callers must be prepared to catch
-this at construction time. write()/writefrom() retry via _write_all() until the whole (CRC-framed)
-buffer is actually sent, since real rp2 uart.write() can short-write rather than raising.
+Contract: every method but __init__()/init() returns its documented None/False sentinel, never
+raises - init() may raise ValueError for a bad pin/buffer/port_id, matching the other src/ drivers.
+write()/writefrom() retry until the whole buffer is sent, since real uart.write() can short-write.
 
-See BACKLOG.md's `asy_uart_driver.py -> src/` entries for the full verification rationale: exact
-MicroPython source citations for what does/doesn't raise and why, the short-write fix, the
-MemoryError-guarding design, and API-consistency comparisons against the other src/ drivers.
+See BACKLOG.md's `asy_uart_driver.py -> src/` entries for the full verification rationale.
 """
 
 import asyncio
@@ -112,10 +106,9 @@ class UART(Lockable):
             self.poller = None
 
     def _active_uart(self) -> "_UART | None":
-        # Shared entry guard for every read/write method below - None unless called inside
-        # `async with self:` on a not-deinitialized bus. Returns the narrowed machine.UART (not
-        # just a bool) so mypy's None-narrowing still works through the resulting local variable.
-        # See BACKLOG.md for why the lock check itself is kept, unlike SPIDevice/I2CDevice.
+        # Shared entry guard for every read/write method - None unless called inside `async with
+        # self:` on a live bus. Returns the narrowed UART (not bool) so mypy's None-narrowing works.
+        # See BACKLOG.md for why the lock check is kept here, unlike SPIDevice/I2CDevice.
         if not self.asy_lock.locked():
             return None
         return self._uart
@@ -130,11 +123,9 @@ class UART(Lockable):
         return True
 
     async def ready(self, mask: int, timeout_ms: int = -1) -> bool:
-        # Busy-polls ipoll(0), yielding via sleep_ms(poll_wait_ms) each cycle, until mask is
-        # satisfied, cancel_read_timeout() requests a cancel, or timeout_ms elapses (<=0 waits
-        # forever). Matches asy_udp_socket.py's own ready() defensive shape (see BACKLOG.md): a
-        # concurrent deinit() can null self.poller mid-loop, and MemoryError/OSError are real,
-        # if rare, possibilities on a device meant to run unattended for years.
+        # Busy-polls ipoll(0), yielding via sleep_ms(poll_wait_ms), until mask is satisfied, a
+        # cancel is requested, or timeout_ms elapses (<=0 waits forever). Defensive against a
+        # concurrent deinit() nulling self.poller mid-loop - see BACKLOG.md.
         if self._uart is None or self.poller is None:
             return False
         self.cancel = False
