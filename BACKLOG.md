@@ -1825,6 +1825,91 @@ promoted to `src/`), throwaway scratchpad repro scripts only. Re-ran full-scope
 this fix), all 12 `tests/` files green, 752 tests total, unaffected (`captive_dns.py` isn't imported
 by any of them).
 
+### `asy_uart_driver.py` → `src/`
+
+Async wrapper around `machine.UART` (`select.poll`-driven non-blocking read/write, same problem
+`asy_udp_socket.py` solves for sockets), promoted from `python/IndividualDrivers/asy_uart.py`'s
+`AsyUART` as `UART(Lockable)`. Copied, not moved - the legacy file stays untouched.
+`asy_uart_comm.py` (its one real consumer) is its own separate, still-out-of-scope promotion;
+verified this file's public method signatures (`cancel_read_timeout`, `async with`, `read`,
+`read_until_complete`, `write`) remain fully call-compatible with it.
+
+- Verified against `ports/rp2/machine_uart.c`/`py/stream.c` (v1.18 through the 1.28.0 pin): unlike
+  I2C, real UART read/write/readinto/readline never raise on a hardware fault (`MP_EAGAIN` ->
+  `None`), matching SPI's contract - documented in the module docstring.
+- **Embedded, non-standard `CRC16` swapped for `crc_checks.py`'s `CRC_Base` family** (owner
+  decision): the original bit-banged implementation shifted right/tested the LSB while still using
+  the MSB-first polynomial `0x1021` (its bit-reflected form is `0x8408`) and packed with
+  native-endian `struct.pack`, matching no standard named CRC-16. Zero live callers today, so
+  nothing depends on the old bit pattern.
+- **`port_id`, not `uart_id`** - matches `asy_spi_driver.py`'s/`asy_i2c_driver.py`'s own naming for
+  this exact role; the legacy driver's own `uart_id` was carried forward uncritically during the
+  first promotion pass and caught on review.
+- **`poll_wait_ms` default `0` -> `20`**, same fix `asy_udp_socket.py`'s `wait_time_ms` already
+  needed and got (see above): a `0` default busy-polls `ipoll(0)` + `sleep_ms(0)` at the same
+  ~9000/sec-vs-~50/sec-at-20ms cadence documented there. The legacy code's own `0` default was
+  initially carried forward for behavior-preservation, then corrected once it was clear nothing
+  live depends on it.
+- **Kept the `asy_lock.locked()` guard on every read/write method, unlike `SPIDevice`/`I2CDevice`**
+  (which trust the caller entered `async with device:`). Confirmed this is architecturally
+  necessary here, not an arbitrary carry-over: `cancel_read_timeout()` is called from a *different*
+  task than the one doing the read, specifically to interrupt it (`asy_uart_comm.py`'s `clear()`:
+  "must be done outside the with statement in case it's blocked!"), and it infers "is a read
+  genuinely in flight" purely from `asy_lock.locked()`. A lock-less caller would be invisible to
+  it, silently breaking cancellation - a failure mode SPI/I2C can't have since neither has a
+  cross-task cancellation feature at all. Deduplicated the 8x-repeated guard into `_active_uart()`,
+  which returns the narrowed `machine.UART` rather than a bool (a bool-returning version broke
+  mypy's None-narrowing through the resulting local variable - confirmed directly, not assumed).
+- **Real bug found and fixed**: `ready()` checked `self._uart`/`self.poller` for `None` only once,
+  at entry, then looped indefinitely calling `self.poller.ipoll(0)`. A concurrent `deinit()`
+  mid-loop nulls `self.poller`; the next iteration's `self.poller.ipoll(0)` then either raises
+  `AttributeError` or (confirmed directly, reproducibly) hangs the interpreter, depending on
+  exactly when the null lands relative to the in-flight call - violating this file's own "never
+  raises" contract either way. This is the exact same class of bug `asy_udp_socket.py`'s `ready()`
+  already hit and fixed (see above); missed during the first promotion pass despite reviewing that
+  precedent, caught on a follow-up factorization review. Fixed identically: re-check
+  `self.poller is None` every loop iteration, and wrap the loop body in
+  `except (OSError, MemoryError, TypeError)` for the same real-if-rare resource-exhaustion
+  parity `asy_udp_socket.py`'s own `ready()` has. Regression test
+  (`test_ready_survives_a_concurrent_deinit_mid_loop`) drives it deterministically via the
+  `_StepPoller` test helper (see below) rather than relying on real task-scheduling timing.
+- **Incidental fix**: `read`/`readinto`/`readline`/`write`/`writefrom` now capture
+  `self._active_uart()`'s narrowed return into a local `uart` variable once, instead of re-reading
+  `self._uart` at the point of use. This closes a second, narrower instance of the same race: a
+  concurrent `deinit()` between the entry guard and the final `uart.write()`/`.read()` call could
+  previously have raised `AttributeError` on `None` there too.
+
+**Real, platform-specific test-infrastructure limitation found while writing tests** (not a driver
+bug): this project's MicroPython Unix-port test build does not correctly re-poll a synthetic
+(non-real-fd) Python stream object per `select.poll()`/`ipoll()` call - confirmed directly via
+isolated repro scripts, not assumed. A plain `io.IOBase`-style fake (the same shape
+`tests/machine.py`'s `I2C`/`SPI` fakes already use, just never polled) reports whatever it computed
+on the *first* readiness check forever afterward, regardless of what its `ioctl()` returns on later
+calls - so it can't exercise a genuine not-ready -> ready transition. A real, kernel-backed socket
+*does* correctly and dynamically reflect readiness (the same mechanism `asy_udp_socket.py`'s own
+tests already rely on) - but subclassing `socket.socket` to bolt on custom read/write/tracking
+broke polling further (`POLLNVAL` reported immediately), and plain instance-attribute assignment on
+an unsubclassed real socket object is rejected outright by this build. No fully-satisfying fake
+exists for a poll-based driver on this test interpreter today. Worked around with a small
+`_StepPoller` helper in `tests/test_asy_uart_driver.py` that substitutes for `uart.poller` directly
+(bypassing `select.poll` entirely) in every test needing genuine per-call readiness control
+(timeout, cancel, multi-round assembly, the concurrent-deinit regression above) - documented inline
+there as the pattern for any future poll-based driver's tests on this interpreter.
+
+Also incidentally surfaced and fixed: `scripts/typecheck.sh`'s combined `mypy src tests` run
+resolves every `from machine import X` project-wide to `tests/machine.py`'s fake module (no
+`__init__.py` under `tests/`, so mypy names it bare `machine`), not `typings/machine.pyi` - true for
+every previously-promoted `src/` file too, invisible until now because they only ever imported
+names (`I2C`/`SPI`/`Pin`/`Timer`/`WDT`) the fake already defines. Adding the required `UART` fake
+closed the gap for this file; whether `asy_spi_driver.py`/`asy_i2c_driver.py` have been silently
+type-checking against the fake's (so far compatible) signatures instead of the real board stub this
+whole time remains open - not re-verified for those two files in this pass.
+
+29 tests (`tests/test_asy_uart_driver.py`), against the `tests/machine.py` `UART` fake (raw
+`read`/`readinto`/`readline`/`write`/`deinit`, matching the I2C/SPI mocking-boundary precedent) plus
+`_StepPoller` for the readiness-timing cases above. Full `scripts/lint.sh`/`scripts/typecheck.sh`/
+`scripts/test.sh` green, no regressions elsewhere.
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`

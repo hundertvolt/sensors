@@ -47,6 +47,9 @@ class _StepPoller:
         event = step() if callable(step) else step
         return [(None, event)] if event else []
 
+    def unregister(self, obj: "object") -> None:  # lets a step trigger deinit() without crashing on this stand-in
+        pass
+
 
 # ---------------------------------------------------------------------------
 # init / deinit - real hardware deinit(), not just dropping the reference
@@ -140,6 +143,27 @@ def test_ready_times_out_when_nothing_arrives() -> None:
     uart = make_uart()
     uart.poller = _StepPoller([0])  # type: ignore[assignment]  # never ready - see _StepPoller's own docstring
     assert run(uart.ready(select.POLLIN, timeout_ms=20)) is False
+
+
+def test_ready_survives_a_concurrent_deinit_mid_loop() -> None:
+    # Regression test: ready() used to check self._uart/self.poller for None only once, at entry,
+    # then loop indefinitely calling self.poller.ipoll(0) - a concurrent deinit() mid-loop nulled
+    # self.poller and crashed the next iteration with AttributeError. Fixed to re-check every
+    # iteration, matching asy_udp_socket.py's own ready() (see BACKLOG.md).
+    uart = make_uart()
+
+    def deinit_mid_loop() -> int:
+        uart.deinit()
+        return 0
+
+    uart.poller = _StepPoller([0, deinit_mid_loop])  # type: ignore[assignment]
+
+    async def scenario() -> bool:
+        async with uart:
+            result = await uart.ready(select.POLLIN, timeout_ms=200)
+        return result
+
+    assert run(scenario()) is False  # must not raise
 
 
 def test_cancel_read_timeout_returns_false_if_not_locked() -> None:

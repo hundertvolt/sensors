@@ -109,16 +109,10 @@ class UART(Lockable):
             self.poller = None
 
     def _active_uart(self) -> "_UART | None":
-        # Shared entry guard for every read/write method below: returns the live machine.UART
-        # only if called inside `async with self:` (asy_lock held) on a not-deinitialized bus,
-        # None otherwise - the same sentinel every caller already returns for "can't operate".
-        # Returning the narrowed value (not just a bool) keeps mypy's None-narrowing working
-        # through a local variable, the same way asy_i2c_driver.py's/asy_spi_driver.py's own
-        # inline `if self._i2c is None: return None` checks do.
-        # Unlike SPIDevice/I2CDevice, which trust the caller here, the lock check is load-bearing
-        # for UART specifically: cancel_read_timeout() infers "is a read genuinely in flight" from
-        # asy_lock.locked() alone, called from a *different* task than the one doing the read - a
-        # lock-less caller would be invisible to it, silently breaking cancellation.
+        # Shared entry guard for every read/write method below - None unless called inside
+        # `async with self:` on a not-deinitialized bus. Returns the narrowed machine.UART (not
+        # just a bool) so mypy's None-narrowing still works through the resulting local variable.
+        # See BACKLOG.md for why the lock check itself is kept, unlike SPIDevice/I2CDevice.
         if not self.asy_lock.locked():
             return None
         return self._uart
@@ -135,22 +129,31 @@ class UART(Lockable):
     async def ready(self, mask: int, timeout_ms: int = -1) -> bool:
         # Busy-polls ipoll(0), yielding via sleep_ms(poll_wait_ms) each cycle, until mask is
         # satisfied, cancel_read_timeout() requests a cancel, or timeout_ms elapses (<=0 waits
-        # forever).
+        # forever). Matches asy_udp_socket.py's own ready() defensive shape (see BACKLOG.md): a
+        # concurrent deinit() can null self.poller mid-loop, and MemoryError/OSError are real,
+        # if rare, possibilities on a device meant to run unattended for years.
         if self._uart is None or self.poller is None:
             return False
         self.cancel = False
         self.cancelled.clear()
         t0 = time.ticks_ms()
         while True:
-            res = self.poller.ipoll(0)
-            for _, event in res:
-                if event & mask:
-                    return True
-            if self.cancel or ((timeout_ms > 0) and (time.ticks_diff(time.ticks_ms(), t0) > timeout_ms)):
-                self.cancel = False
-                self.cancelled.set()
+            if self.poller is None:  # a concurrent deinit() can null this mid-loop
+                return False  # type: ignore[unreachable]  # mypy can't see the mutation
+            try:
+                res = self.poller.ipoll(0)
+                for _, event in res:
+                    if event & mask:
+                        return True
+                if self.cancel or ((timeout_ms > 0) and (time.ticks_diff(time.ticks_ms(), t0) > timeout_ms)):
+                    self.cancel = False
+                    self.cancelled.set()
+                    return False
+                await asyncio.sleep_ms(self.poll_wait_ms)
+            except (OSError, MemoryError, TypeError):
+                # TypeError: a malformed mask/timeout_ms - not caught by callers' own except
+                # clauses, since those only wrap the real UART call, not this await.
                 return False
-            await asyncio.sleep_ms(self.poll_wait_ms)
 
     async def read(self, nbytes: int | None = None, timeout_ms: int = -1) -> bytes | None:
         uart = self._active_uart()
