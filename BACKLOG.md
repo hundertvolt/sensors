@@ -1992,6 +1992,8 @@ test additions; 42→56 is its fifth pass's mutation-bypass/concurrency/cancella
 - SGP40 silently falling back to uncompensated VOC readings when SCD30 is down/stale, with no
   distinct "degraded" signal, is acceptable as-is — SCD30's own error counter already surfaces the
   cause.
+- `asy_uart_driver.py` intentionally does not expose hardware flow control (`rts`/`cts`/`flow`) —
+  not planned for the future either. Not a gap to revisit unprompted.
 
 ## Open questions (need owner input or further investigation)
 
