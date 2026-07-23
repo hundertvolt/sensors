@@ -29,7 +29,7 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
     is explicitly meant to move the version target forward to whatever is the most recent *stable*
     release at that time (MicroPython, pico-sdk, picotool, Microdot) and to actively use relevant
     improvements/new features those releases introduced — not just reproduce 1.26-era behavior
-    under a newer version number. See BACKLOG.md's "Decided for the refactor" section.
+    under a newer version number.
   - **MicroPython 1.26 already bundles pico-sdk 2.1.1 as its internal `ports/rp2` submodule** —
     confirmed via web search, not training-data memory. Since pico-sdk 2.0.0, a standalone
     `picotool` build must match the pico-sdk major.minor version it's used against (enforced via
@@ -46,6 +46,28 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
   - Pico W's littlefs partition (~848KB) is smaller than plain Pico's (~1.37MB) because Pico W's
     firmware image is larger (CYW43 driver + WiFi/BT firmware blobs baked in) — the filesystem
     occupies whatever flash remains after the firmware image, not a fixed per-board reservation.
+  - **A soft `machine.Timer` callback (the default — no code in this repo passes `hard=True`) can
+    be silently dropped, not just delayed.** Confirmed against real `py/scheduler.c`/
+    `shared/runtime/mpirq.c`/`ports/rp2/machine_timer.c` source: firing dispatches via
+    `mp_sched_schedule()`, which returns `False` and drops the callback if MicroPython's
+    fixed-depth scheduler queue (`MICROPY_SCHEDULER_DEPTH=8` on rp2, shared by every soft
+    timer/IRQ on the device) is already full — no exception anywhere in that chain, and no way for
+    Python code to detect a dropped vs. not-yet-run callback. A periodic timer self-heals on the
+    next tick; a one-shot timer does not fire again. A software timeout to guard against this was
+    considered for `system_service.py`'s two exposed call sites (the reboot-reset timer,
+    `start_timers()`'s chained sequencer) and rejected: it would just be a second, uncoordinated
+    clock racing the real hardware watchdog every real deployment already arms, and the scenario it
+    defends against (no watchdog configured) is test-only. Don't re-propose a software-timeout
+    mitigation for this without a materially different justification.
+  - **`[x] * n` (list repeat) can segfault the whole interpreter process, not just raise, for n in
+    roughly 2⁶¹–2⁶³** — confirmed by direct reproduction (`[0] * (2**62)` → SIGSEGV, no `try/except`
+    catches it). Below ~2⁶¹ it raises `MemoryError` like `bytearray(n)`; at/above 2⁶³ it raises
+    `OverflowError`; the gap in between is the dangerous range, likely from the repeat's internal
+    `n * sizeof(pointer)` byte-count multiplication overflowing before being bounds-checked (`bytearray`
+    has no such intermediate multiplication, hence no gap). Any new code allocating a
+    list/deque/buffer sized from external or caller-supplied input must clamp the size *before* the
+    allocation, not just catch `MemoryError` reactively — see `base_classes.py`'s `LockableBuffer`/
+    `print_log.py`'s `PrintLogHistory` for the established clamp-then-allocate pattern.
 - **Always check current MicroPython and Microdot documentation before asserting how an API
   behaves** — do not rely on training-data memory for either. This has already caught real
   discrepancies once; treat it as a standing requirement for every session, not a one-time step.
@@ -64,7 +86,11 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
   passing (see "Code quality tooling" below and `tests/README.md`), unlike `improved-quality/`'s
   WIP files above. **`src/README.md` is the full checklist** for what "fully reviewed and tested"
   actually requires — apply it to every file that makes this move, not just whichever ones already
-  have. Files in `src/` aren't automatically re-wired into any driver's actual import path for a
+  have. **For a new sensor driver specifically, `DRIVER_SPEC.md` (repo root) is the shared
+  architecture/interface spec** extracted from the three drivers already in `src/` — what shape
+  the code should take (layering, naming, error handling, config schema, ...), separate from
+  `src/README.md`'s "is it good enough to move" checklist. Files in `src/` aren't automatically
+  re-wired into any driver's actual import path for a
   real firmware build just by moving there — `improved-quality/` files keep importing them by
   their old unqualified name unchanged (e.g. `import math_helpers`, `from crc_checks import ...`),
   which still resolves correctly both because MicroPython's frozen-module namespace is flat (it
@@ -106,7 +132,26 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
   all tests indefinitely.
 - **Don't touch `sensors/config.json`-equivalent files or commit any real credentials.** A
   `.gitignore` covers per-device config/build artifacts, but still be deliberate about what you
-  stage — see BACKLOG.md's security notes for the one known real credential in this repo.
+  stage. **The one known real credential already in this repo**: a hardcoded hotspot fallback
+  password, present in both `python/CommonDrivers/async_connect.py` and
+  `improved-quality/async_connect.py` — accepted risk (only exploitable by someone in physical WiFi
+  range of a unit that's already lost its real WiFi), not something to "fix" by rotating/removing
+  without the project owner's direction.
+- **For a genuinely wedged I2C bus/sensor (e.g. SCD30 hanging mid-transaction), the hardware
+  watchdog is the accepted backstop, not a software fix to chase.** MicroPython's cooperative
+  scheduler can't preempt a synchronous `machine.I2C` call already in progress, so an asyncio-level
+  timeout can't interrupt it either way. This is settled — don't re-propose an I2C-level timeout
+  mechanism. (Calls that genuinely *can* be timeout-wrapped — `socket.getaddrinfo()`, FRAM SPI,
+  anything not a raw blocking `machine.I2C` call mid-transaction — are a separate, still-open
+  question; see BACKLOG.md.)
+- **Don't wrap every `asyncio` primitive call (`asyncio.sleep()`, `Lock.acquire()`, etc.) in
+  `try`/`except` against a theoretical internal `MemoryError` as a blanket policy** — overkill and
+  outside this project's own standard. Only worth closing when a concrete, non-hypothetical threat
+  exists in a specific context (a real caller-supplied value reaching an unguarded
+  comparison/construct), not just "any `await` could theoretically raise."
+- **Adafruit-derived driver code is fair game to restructure/rewrite** (keeping attribution) —
+  unlike `python/CommonDrivers/microdot.py`/`improved-quality/microdot.py`, which stay hands-off/
+  vendored (see above).
 - **Long-blocking operations must not stall timing-sensitive work.** Any new code that blocks the
   event loop for a noticeable time (e.g. `socket.getaddrinfo()`) must not do so while
   timing-sensitive work like the Neopixel animation needs to run — either avoid the block, or
@@ -139,8 +184,9 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
 - **Scope is `improved-quality/`, `src/`, and `tests/`, for now.** The pre-refactor deployed
   codebase (`python/`, `modules/`) has no lint/type config yet; extending scope there is a separate
   future decision, not assumed by this setup.
-- **Unit tests run under a real MicroPython Unix-port interpreter, not pytest/CPython** — per
-  BACKLOG.md's "Self-contained venv via `uv`" requirement. `scripts/test.sh` builds that
+- **Unit tests run under a real MicroPython Unix-port interpreter, not pytest/CPython** — "as close
+  to the real environment as possible" means the actual runtime, not CPython plus MicroPython-
+  flavored stubs (see `tests/README.md`'s "Why not pytest"). `scripts/test.sh` builds that
   interpreter on first run (`toolchain/setup_toolchain.py`'s `setup` — building/verifying the
   Unix port is just part of what `setup`/`test` already do, there's no separate `unix`
   subcommand — cached under `$PICO_TOOLCHAIN_DIR`) and shells out to it once per `tests/test_*.py`
@@ -148,7 +194,7 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
   (`tests/microtest.py`) used in place of CPython's `unittest`.
 - **`scripts/test.sh --coverage` reports `src/` line coverage; it never gates anything** — no
   threshold is enforced anywhere, by design (confirmed directly, not a placeholder for a future
-  gate — see BACKLOG.md). Since `coverage.py` only runs under CPython while `src/` only ever runs
+  gate). Since `coverage.py` only runs under CPython while `src/` only ever runs
   under the real MicroPython Unix-port interpreter, collection (`tests/_coverage_runner.py`,
   `sys.settrace` inside MicroPython) and rendering (`scripts/_render_coverage.py`, a second
   self-contained `uv run` script, under CPython) are two separate stages glued together through
@@ -174,8 +220,7 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
   Confirmed safe at runtime on both the deployed 1.26 pin and the refactor's 1.28.0 target by
   testing directly against the pinned Unix-port interpreter (`int | None` in an unquoted, executed
   annotation works with no import needed) — MicroPython parses but never evaluates annotation
-  expressions at all (also documented in BACKLOG.md's PEP 604 entry, verified against current
-  MicroPython docs), so this isn't even a runtime-support question, just a style one. `typing.Union`
+  expressions at all, so this isn't even a runtime-support question, just a style one. `typing.Union`
   needs `from typing import Union`, which isn't guarded by `TYPE_CHECKING` in every file that still
   uses it and would raise `ImportError` on-device if actually reached at runtime — one more reason
   `|` is strictly better here, not just newer. This is already machine-enforced: ruff's `UP007` rule
@@ -188,8 +233,8 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
 - **mypy is stricter than default, short of `--strict`** (`disallow_untyped_defs`,
   `check_untyped_defs`, `warn_return_any`, `warn_unreachable`, `strict_equality`, etc., but not
   `disallow_any_generics`/`disallow_untyped_calls`/`disallow_subclassing_any`). Does **not** disable
-  the `assignment` error code — the old `improved-quality/mypy.ini` did, but BACKLOG.md records that
-  as never a deliberate choice.
+  the `assignment` error code — the old `improved-quality/mypy.ini` did, though that was never a
+  deliberate choice.
 - **MicroPython stubs**: `micropython-rp2-rpi_pico_w-stubs` (PyPI, board/version-specific, pulls in
   `micropython-stdlib-stubs`). Published by the same project as
   [`josverl/micropython-stubs`](https://github.com/josverl/micropython-stubs) — PyPI is just its
@@ -326,8 +371,7 @@ time), copy the working tree in the same way, then run `uv run toolchain/setup_t
 (a full build: ARM toolchain + firmware + `mpy-cross` + Unix port, several minutes, not seconds)
 instead of the lint/typecheck scripts. This is exactly how the Unix port addition (and later the
 frozen-bytecode verification chain) was verified — see `toolchain/README.md`'s "Verification" for
-what a passing run must show and "Evidence this actually works" for what's already been checked,
-plus BACKLOG.md's "Self-contained venv via uv" for that specific verification's results.
+what a passing run must show and "Evidence this actually works" for what's already been checked.
 
 ## Pull request workflow
 
@@ -367,3 +411,20 @@ need to go deeper:
   Don't "fix" this into a live BMP388→SCD30 feed; it's intentional, confirmed by the project owner.
 - Task supervisor lives in `main()` inside each `sensortask-*.py`, not in a shared module — it's
   duplicated per device file today.
+- **Functional behaviors confirmed intentional by the project owner, not obvious from the code
+  alone — don't "fix" any of these:**
+  - Air-quality warning LED sequencing (one color per condition, paused between flashes rather than
+    combined) is exactly as designed.
+  - FRAM SGP40 backup "0 = disabled" semantics: `SGPBackupPeriod=0` disables periodic backup
+    writes, `SGPBackupMaxAge=0` disables the staleness check (currently undocumented user-facing —
+    see BACKLOG.md).
+  - Permanent WiFi deactivation after a second STA failure streak (post-hotspot) is a deliberate
+    safety feature, preventing an unclaimed hotspot from staying open indefinitely — a physical
+    power-cycle is the accepted recovery path.
+  - The web UI intentionally shows raw sensor numbers only, no color-coding — the physical LED is
+    the sufficient at-a-glance indicator.
+  - SGP40 silently falling back to uncompensated VOC readings when SCD30 is down/stale, with no
+    distinct "degraded" signal, is acceptable as-is — SCD30's own error counter already surfaces
+    the cause.
+  - FRAM's 8KB allocation has plenty of headroom over SGP40's current ~250-byte usage for future
+    FRAM-backed features.

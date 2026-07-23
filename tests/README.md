@@ -4,9 +4,9 @@ Unit tests for `src/` (fully-reviewed code moved out of `improved-quality/` — 
 
 ## Why not pytest
 
-Per BACKLOG.md's "Self-contained venv via `uv`" requirement, tests run under a **real
-MicroPython interpreter** (the Unix port), not CPython — "as close to the real environment as
-possible" means the actual MicroPython runtime, not CPython plus MicroPython-flavored stubs.
+Tests run under a **real MicroPython interpreter** (the Unix port), not CPython — "as close to the
+real environment as possible" means the actual MicroPython runtime, not CPython plus
+MicroPython-flavored stubs.
 Since pytest itself only runs under CPython, it isn't the test runner here: `scripts/test.sh`
 instead shells out to a built MicroPython Unix-port binary directly, once per `tests/test_*.py`
 file, and checks its exit code. `pytest` stays available in `pyproject.toml`'s dev dependency
@@ -47,8 +47,8 @@ For a `src/` file that talks to real hardware (`asy_i2c_driver.py` and `asy_spi_
 MicroPython Unix port's own `machine` module has no `I2C`/`SPI`/real `Pin` (confirmed directly:
 only `PinBase`/`Signal`/`mem8`/`mem16`/`mem32`/`idle`/`time_pulse_us`). `tests/machine.py` is a
 fake `machine` module, resolved ahead of any real one because `tests` comes before `.frozen` on
-`MICROPYPATH` — per BACKLOG.md's "Mocking boundary" plan, it mocks only the raw bus transactions
-(`readfrom_mem`/`writeto_mem`/`readfrom_into`/`writeto`/`scan`/`deinit`), backed by a real
+`MICROPYPATH`. Per this project's mocking-boundary convention, it mocks only the raw bus
+transactions (`readfrom_mem`/`writeto_mem`/`readfrom_into`/`writeto`/`scan`/`deinit`), backed by a real
 dict-of-registers store, so the driver's own logic (bit-packing, byte order, locking, error paths)
 runs for real against it.
 

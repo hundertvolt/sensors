@@ -4,7 +4,7 @@ One command sets up (or updates) everything needed to build MicroPython firmware
 Raspberry Pi Pico W: MicroPython itself, a matching `pico-sdk`, a version-matched `picotool`,
 and the ARM cross-compiler — plus a host-side MicroPython Unix port build, used for running
 tests under the real interpreter later instead of just CPython with MicroPython-flavored stubs
-on top (see BACKLOG.md's "Self-contained venv via uv").
+on top (see `tests/README.md`'s "Why not pytest").
 
 ## Why this isn't just "apt install the toolchain"
 
@@ -190,8 +190,7 @@ earlier one:
    anywhere on disk for the interpreter to find — and check its result. The only way this can
    succeed is if the module was actually baked into the binary as frozen bytecode, not merely
    compiled and left on disk. `mpy-cross` and the Unix port build are now both verified. This is
-   the host-side MicroPython build that tests will eventually run under (see BACKLOG.md's
-   "Self-contained venv via uv").
+   the host-side MicroPython build that tests run under (see `tests/README.md`).
 6. Build the RP2 firmware for the target board (default `RPI_PICO_W`) with the same test module
    frozen in, with no compiler errors or warnings. Build-only: there's no RP2 hardware here to
    run it on, so a clean build is the whole check. Freezing extra bytecode is strictly additive
@@ -202,7 +201,7 @@ earlier one:
    `picotool`'s build output are *not* touched — both are real toolchain deliverables needed for
    actual project work later, not verification-only artifacts.
 8. Rebuild a vanilla (non-frozen) Unix port. This becomes the standing test rig used for running
-   tests under the real interpreter later (see BACKLOG.md's "Self-contained venv via uv").
+   tests under the real interpreter later (see `tests/README.md`).
 
 Any failure aborts with a non-zero exit and the build log leading up to it. Note this means a
 completed `setup`/`test` run does **not** leave a vanilla RP2 `firmware.uf2` anywhere — only the
@@ -293,9 +292,8 @@ port) and proves it builds, cross-compiles, and runs real Python. It does **not*
 `build-*.sh`'s hardcoded `/home/nico/rpi_pico/...` paths or the `py-include` symlink this
 project's own firmware builds expect — that's the next step (see BACKLOG.md). The Unix port build
 itself **is** wired into the actual test suite now (`scripts/test.sh` runs `setup` automatically
-the first time it needs the interpreter, see "Code quality tooling" in the root README and
-BACKLOG.md's "Self-contained venv via uv") — the remaining gap is the RP2040 firmware build, not
-the Unix port.
+the first time it needs the interpreter, see "Code quality tooling" in the root README) — the
+remaining gap is the RP2040 firmware build, not the Unix port.
 
 ## CI perspective
 
@@ -310,7 +308,7 @@ with `"module 'sys' has no attribute 'settrace'"` while passing locally, where a
 `~/pico-toolchain` always picks up the current flags) rather than a hypothetical one; see
 `ci.yml`'s own cache-step comment. It does **not** yet include a real RP2040
 firmware-build stage. `test` (the offline re-verification subcommand) is still written with that
-eventual stage in mind (see BACKLOG.md's "Final-goal requirements for the refactor"): a `setup`
+eventual stage in mind (see BACKLOG.md's "Refactor targets not yet done"): a `setup`
 job would provision (or restore a cache of) `--toolchain-dir` once, and a `test` job would run
 against it as the actual gate — offline, fast, and not dependent on GitHub/apt reachability at
 gate time. The `unit-tests` job actually running today already follows this same
