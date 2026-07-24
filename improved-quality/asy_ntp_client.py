@@ -166,7 +166,25 @@ class asy_ntp_client:
                                 )
                                 await cli.disconnect()
 
-                        if msg is None:
+                        sync_ok = False
+                        if msg is not None:
+                            try:
+                                ntp_time = (
+                                    (struct.unpack("!I", msg[40:44])[0]) - 2208988800 + ntp_offs[0]
+                                )  # offset since 1970
+                                if self.debug:
+                                    print("Received NTP time:", ntp_time)
+                                tm = time.gmtime(ntp_time)
+                                RTC().datetime((tm[0], tm[1], tm[2], tm[6] + 1, tm[3], tm[4], tm[5], 0))
+                                sync_ok = True
+                            except (struct.error, OverflowError, ValueError, OSError) as e:
+                                # malformed/truncated reply, or an out-of-range timestamp (rp2's
+                                # ~2037 32-bit epoch limit - see BACKLOG.md) - treat exactly like no
+                                # response at all rather than letting it crash the whole task.
+                                if self.debug:
+                                    print("Malformed NTP response, treating as no response:", e)
+
+                        if not sync_ok:
                             if self.debug:
                                 print("Invalid NTP Time received!")
                             self.ntp_retry_timer.deinit()
@@ -191,13 +209,6 @@ class asy_ntp_client:
                         else:
                             self.ntp_retry_timer.deinit()
                             self.ntp_retries = 0
-                            ntp_time = (
-                                (struct.unpack("!I", msg[40:44])[0]) - 2208988800 + ntp_offs[0]
-                            )  # offset since 1970
-                            if self.debug:
-                                print("Received NTP time:", ntp_time)
-                            tm = time.gmtime(ntp_time)
-                            RTC().datetime((tm[0], tm[1], tm[2], tm[6] + 1, tm[3], tm[4], tm[5], 0))
                             await self.last_ntp_sync.set_value(0)
                             await self.ntp_synced.set_true()
                             if self.debug:
