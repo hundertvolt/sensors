@@ -12,6 +12,7 @@ from asy_sgp40_driver import SGP40_Reader
 from asy_bmp3xx_driver import BMP3xx_Reader
 from neopixel_signal import Neopixel_Signal
 from async_connect import asy_conn_time
+from asy_ntp_client import asy_ntp_client
 from async_manager import LockedValue, ConfigManager
 from base_classes import LockedCounter
 from microdot import Microdot, send_file, Request, Response
@@ -73,18 +74,20 @@ cfgmgr = ConfigManager(
     | SCD30_Reader.get_default_cfg()
     | SGP40_Reader.get_default_cfg()
     | BMP3xx_Reader.get_default_cfg()
-    | asy_conn_time.get_default_cfg(),
+    | asy_conn_time.get_default_cfg()
+    | asy_ntp_client.get_default_cfg(),
     debug=debug,
 )
 # asy_conn_time: led_pin='LED' for onboard WiFi LED
 conn = asy_conn_time(cfgmgr, conn_fail_to_hotspot=5, hotspot_time_min=8, debug=debug)
+ntp = asy_ntp_client(cfgmgr, conn.get_wifi_mode_lock(), conn.network_available, debug=debug)
 app = Microdot()  # type: ignore[no-untyped-call]
 i2c0 = asy_i2c_driver.I2C(0, 13, 12, frequency=50000)
 i2c1 = asy_i2c_driver.I2C(1, 19, 18, frequency=50000)
 spi0 = asy_spi_driver.SPI(0, 2, 3, 4)
 fram = AsyFramManager(spi0, 1, max_size=0x2000, debug=debug)
-sysfunct = SystemService(conn.ntp_issynced, watchdog=watchdog, fram=fram, debug=debug)
-sgp_backup = fram.get_timestamped_chunk(SGP40_Reader.get_params_memsize(), conn.ntp_issynced)
+sysfunct = SystemService(ntp.ntp_issynced, watchdog=watchdog, fram=fram, debug=debug)
+sgp_backup = fram.get_timestamped_chunk(SGP40_Reader.get_params_memsize(), ntp.ntp_issynced)
 sgp_reader = SGP40_Reader(
     i2c1,
     cfgmgr,
@@ -99,8 +102,8 @@ pixel = Neopixel_Signal(
     15,
     cfgmgr,
     airqual_meas_callback,
-    conn.cettime,
-    asy_long_block_lock=conn.get_long_block_lock(),
+    ntp.cettime,
+    asy_long_block_lock=ntp.get_long_block_lock(),
     debug=debug,
 )
 conn.set_ext_led(pixel)  # callback for wifi led
@@ -216,14 +219,14 @@ async def network_cmd(request: Request) -> Dict[str, str | int | JsonValidity]:
 async def timing_status(
     request: Request,
 ) -> Dict[str, Dict[str, int | float | str | None]]:
-    synced = await conn.ntp_issynced()
+    synced = await ntp.ntp_issynced()
     gmt = time.gmtime()
     system: Dict[str, int | float | str | None] = {
         "Synced": "On" if synced else "Off",
         "Unix": time.mktime(gmt),  # type: ignore[call-arg]
     }
     utc = time_to_dict(gmt)
-    local = time_to_dict(await conn.cettime())
+    local = time_to_dict(await ntp.cettime())
 
     rtc_time = {"System": system, "UTC": utc, "Local": local}
     return rtc_time
@@ -265,7 +268,7 @@ async def timing_cmd(request: Request) -> Dict[str, str | int | JsonValidity]:
                     req_json, "DSTOffset", "int", res, -43200, 43200, debug=debug
                 )
                 return await cmd_post_check(
-                    res, cfgmgr, post_asy_fct=conn.ntp_force_sync, debug=debug
+                    res, cfgmgr, post_asy_fct=ntp.ntp_force_sync, debug=debug
                 )  # resync NTP with new config
     return generic_error_return()
 
@@ -593,7 +596,7 @@ async def system_status(request: Request):
     system_data = {
         "Sys_Uptime": await sysfunct.get_uptime(),
         "Wifi_Uptime": await conn.get_wifi_uptime(),
-        "NTP_LastSync": await conn.get_last_ntp_sync(),
+        "NTP_LastSync": await ntp.get_last_ntp_sync(),
         "Boot_Signature": await sysfunct.get_boot_signature(),
         "Error_Status": to_switch(ErrorStatus),
         "Task_ErrCnt": Task_ErrCnt,
@@ -678,16 +681,18 @@ async def main():
         pixel.start_asy_auto_override,
         pixel.start_asy_airquality_signal,
         conn.start_asy_wlan_connect,
-        conn.start_asy_ntp_client,
-        conn.start_asy_ntp_refresh,
+        ntp.start_asy_ntp_client,
+        ntp.start_asy_ntp_refresh,
         conn.start_asy_uptime_counter,
+        ntp.start_asy_sync_age_counter,
         start_asy_webserver,
     ]
 
     timer_starters += [
         sysfunct.start_uptime_timer,
         conn.start_counter_timer,
-        conn.start_ntp_timer,
+        ntp.start_counter_timer,
+        ntp.start_ntp_timer,
     ]
 
     all_running = True
@@ -735,7 +740,7 @@ async def main():
         await asyncio.sleep(_TASK_CHECK_TIME)
 
 
-        await conn.ntp_force_sync()  # first sync
+        await ntp.ntp_force_sync()  # first sync
 
 try:
     asyncio.run(main())
