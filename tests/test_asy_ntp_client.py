@@ -13,8 +13,18 @@ import time
 # still WIP, not yet promoted; every asy_ntp_client-typed value below is consequently Any, not a
 # real gap being masked.
 import asy_ntp_client as ntpmod  # type: ignore[import-not-found]
+from _fram_chip_fake import FakeMB85RS64V
 from asy_ntp_client import asy_ntp_client
 from machine import RTC, Timer
+
+import asy_spi_driver
+from asy_fram_manager import AsyFramManager
+from print_log import PrintLogHistoryStore
+
+# Same one-process-per-test-file swap as test_base_classes.py/test_asy_fram_driver.py/
+# test_asy_fram_manager.py - only exercised by the fram= wiring test below, isolated to this
+# file's own process.
+asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
 
 try:
     from typing import TYPE_CHECKING
@@ -72,6 +82,7 @@ def make_client(
     asy_long_block_lock: "asyncio.Lock | None" = None,
     debug: "int | None" = None,
     cfg_path: "str | None" = None,
+    fram: "AsyFramManager | None" = None,
 ) -> asy_ntp_client:
     if wifi_mode_lock is None:
         wifi_mode_lock = asyncio.Lock()
@@ -79,7 +90,9 @@ def make_client(
         network_available = lambda: True  # noqa: E731
     if cfg_path is None:
         cfg_path = _tmp_cfg_dir()
-    return asy_ntp_client(wifi_mode_lock, network_available, asy_long_block_lock, debug=debug, cfg_path=cfg_path)
+    return asy_ntp_client(
+        wifi_mode_lock, network_available, asy_long_block_lock, debug=debug, cfg_path=cfg_path, fram=fram
+    )
 
 
 def make_client_with_json(json_text: str) -> asy_ntp_client:
@@ -162,6 +175,47 @@ def test_init_creates_its_own_config_file_with_schema_defaults() -> None:
     }
 
 
+def test_config_persists_across_a_fresh_client_instance_pointed_at_the_same_path() -> None:
+    # Proves config_NTP.cfg is genuinely read from disk at __init__, not just written once and
+    # cached in-process - a second, independent client pointed at the same cfg_path must see the
+    # same persisted values, not fall back to schema defaults.
+    cfg_path = _tmp_cfg_dir()
+    with open(cfg_path + "config_NTP.cfg", "w") as f:
+        f.write(_VALID_JSON)
+    first = make_client(cfg_path=cfg_path)
+    second = make_client(cfg_path=cfg_path)
+    first_host, _first_offs = run(first._get_ntp_config())
+    second_host, _second_offs = run(second._get_ntp_config())
+    assert first_host == ["time.example.org"]
+    assert second_host == ["time.example.org"]
+
+
+def test_two_clients_with_different_cfg_paths_have_independent_configs() -> None:
+    first = make_client_with_json(_VALID_JSON)
+    second = make_client()  # fresh directory, defaults only
+    first_host, _first_offs = run(first._get_ntp_config())
+    second_host, _second_offs = run(second._get_ntp_config())
+    assert first_host == ["time.example.org"]
+    assert second_host == ["pool.ntp.org"]
+
+
+def test_debug_level_propagates_to_the_inherited_pr_logger() -> None:
+    client = make_client(debug=3)
+    assert client.pr.get_level() == 3
+
+
+def test_fram_given_uses_fram_backed_logging() -> None:
+    # asy_ntp_client didn't accept a fram= parameter at all before this migration - proves the
+    # constructor actually forwards it to SensorReaderConfig/SensorReader rather than silently
+    # dropping it (the same real, promoted AsyFramManager + simulated chip test_base_classes.py
+    # uses for the equivalent base-class-level check, exercised here as an integration check of
+    # this driver's own constructor wiring).
+    bus = asy_spi_driver.SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
+    manager = AsyFramManager(bus, 1, max_size=0x2000)
+    client = make_client(fram=manager)
+    assert isinstance(client.pr, PrintLogHistoryStore)
+
+
 # ---------------------------------------------------------------------------
 # get_dict_cfg / get_data / get_dict_data / get_error_counter - the base-class getter quartet
 # (DRIVER_SPEC.md section 4.2). Setters are explicitly out of scope (see BACKLOG.md).
@@ -178,6 +232,34 @@ def test_get_dict_cfg_returns_schema_defaults_wrapped_in_ntp_key() -> None:
             "NTP_Interv_H": 12,
             "GMTOffset": 3600,
             "DSTOffset": 3600,
+        }
+    }
+
+
+def test_get_dict_cfg_reflects_a_customized_on_disk_config() -> None:
+    client = make_client_with_json(_VALID_JSON)
+    result = run(client.get_dict_cfg())
+    assert result == {
+        "NTP": {
+            "NTP_Host": "time.example.org",
+            "NTP_Offset_S": 5,
+            "NTP_Interv_H": 6,
+            "GMTOffset": 7200,
+            "DSTOffset": 3600,
+        }
+    }
+
+
+def test_get_dict_cfg_returns_all_none_values_when_config_manager_is_invalid() -> None:
+    client = make_invalid_cfg_client()
+    result = run(client.get_dict_cfg())
+    assert result == {
+        "NTP": {
+            "NTP_Host": None,
+            "NTP_Offset_S": None,
+            "NTP_Interv_H": None,
+            "GMTOffset": None,
+            "DSTOffset": None,
         }
     }
 
@@ -199,6 +281,14 @@ def test_get_data_reflects_a_successful_sync() -> None:
     assert data.LastSyncAge == 0
 
 
+def test_get_dict_data_reflects_a_successful_sync() -> None:
+    client = make_client()
+    run(client._handle_ntp_sync_success((2026, 1, 1, 0, 0, 0, 0, 0)))
+    dict_data = run(client.get_dict_data())
+    assert dict_data["NTP"]["Synced"] is True
+    assert dict_data["NTP"]["LastSyncAge"] == 0
+
+
 def test_get_error_counter_starts_empty_and_records_a_real_error() -> None:
     client = make_client()
     run(client.pr.setup())
@@ -207,6 +297,147 @@ def test_get_error_counter_starts_empty_and_records_a_real_error() -> None:
     run(client.pr.err_s("boom", errno=1))
     counter = run(client.get_error_counter())
     assert counter["NTP"]["ErrCount"] == 1
+
+
+def test_get_error_counter_counts_a_warning_too() -> None:
+    # Full-dict equality (not indexing into the union-typed ErrNum/ErrType values) - same style
+    # test_print_log.py's own get_log() tests use; history_length defaults to 10 (make_client()
+    # doesn't override it), so 9 untouched "N"/0 slots precede the one real warning.
+    client = make_client()
+    run(client.pr.setup())
+    run(client.pr.wrn_s("careful", wrnno=1))
+    counter = run(client.get_error_counter())
+    assert counter == {"NTP": {"ErrCount": 1, "ErrNum": [0] * 9 + [1], "ErrType": ["N"] * 9 + ["W"]}}
+
+
+def test_get_error_counter_records_multiple_entries_in_order() -> None:
+    client = make_client()
+    run(client.pr.setup())
+    run(client.pr.err_s("first error", errno=1))
+    run(client.pr.wrn_s("first warning", wrnno=2))
+    counter = run(client.get_error_counter())
+    assert counter == {"NTP": {"ErrCount": 2, "ErrNum": [0] * 8 + [1, 2], "ErrType": ["N"] * 8 + ["E", "W"]}}
+
+
+# ---------------------------------------------------------------------------
+# _now() / _set_synced() / _set_last_sync_age() / _increment_last_sync_age() - the internal
+# state-mutation helpers that replaced last_ntp_sync's/ntp_synced's old independent LockedCounter/
+# LockedFlag objects. These are exercised incidentally as test setup throughout this file, but the
+# field-preservation/None-handling/clamping contract they're actually responsible for needs its own
+# direct coverage - this is exactly the concurrency-safety claim BACKLOG.md's fifth-pass entry
+# makes (each helper does an unlocked get-then-set pair, safe only because nothing in between
+# awaits - see asy_ntp_client.py's own comment on _set_synced()).
+# ---------------------------------------------------------------------------
+
+
+def test_now_returns_a_real_unix_timestamp() -> None:
+    client = make_client()
+    result = client._now()
+    assert result is not None
+    assert result >= 1735689600  # sane lower bound - _NTP_MIN_PLAUSIBLE_UNIX_TIME, compiled away
+
+
+class _RaisingTimeForNow:
+    def __init__(self, exc: "Exception") -> None:
+        self._exc = exc
+
+    def gmtime(self, *_a: "Any") -> "Any":
+        raise self._exc
+
+    def mktime(self, *_a: "Any") -> "Any":
+        raise self._exc
+
+
+def test_now_returns_none_on_overflow_error() -> None:
+    client = make_client()
+    original_time = ntpmod.time
+    ntpmod.time = _RaisingTimeForNow(OverflowError("past rp2's ~2037 32-bit epoch range"))
+    try:
+        result = client._now()
+    finally:
+        ntpmod.time = original_time
+    assert result is None
+
+
+def test_now_returns_none_on_os_error() -> None:
+    client = make_client()
+    original_time = ntpmod.time
+    ntpmod.time = _RaisingTimeForNow(OSError("simulated RTC read failure"))
+    try:
+        result = client._now()
+    finally:
+        ntpmod.time = original_time
+    assert result is None
+
+
+def test_set_synced_to_true_preserves_last_sync_age_and_ts() -> None:
+    client = make_client()
+    run(client._set_last_sync_age(42))
+    before = run(client.get_data())
+    run(client._set_synced(True))
+    after = run(client.get_data())
+    assert after.Synced is True
+    assert after.LastSyncAge == 42
+    assert after.TS == before.TS  # _set_synced() never touches TS
+
+
+def test_set_synced_to_false_preserves_last_sync_age() -> None:
+    client = make_client()
+    run(client._set_synced(True))
+    run(client._set_last_sync_age(7))
+    run(client._set_synced(False))
+    data = run(client.get_data())
+    assert data.Synced is False
+    assert data.LastSyncAge == 7
+
+
+def test_set_last_sync_age_preserves_synced_flag_when_true() -> None:
+    client = make_client()
+    run(client._set_synced(True))
+    run(client._set_last_sync_age(99))
+    data = run(client.get_data())
+    assert data.Synced is True
+    assert data.LastSyncAge == 99
+
+
+def test_set_last_sync_age_to_none_preserves_synced_flag() -> None:
+    client = make_client()
+    run(client._set_synced(True))
+    run(client._set_last_sync_age(None))
+    data = run(client.get_data())
+    assert data.Synced is True
+    assert data.LastSyncAge is None
+
+
+def test_increment_last_sync_age_from_none_yields_one() -> None:
+    # None counts as 0, then +1 - matches base_classes.py's LockedCounter.increment() this
+    # replaces (see BACKLOG.md's fifth-pass entry: an earlier draft got this wrong, returning 0).
+    client = make_client()
+    result = run(client._increment_last_sync_age())
+    assert result == 1
+    assert run(client.get_data()).LastSyncAge == 1
+
+
+def test_increment_last_sync_age_from_a_real_value_adds_one() -> None:
+    client = make_client()
+    run(client._set_last_sync_age(10))
+    result = run(client._increment_last_sync_age())
+    assert result == 11
+
+
+def test_increment_last_sync_age_clamps_at_uint32_max() -> None:
+    client = make_client()
+    run(client._set_last_sync_age(0xFFFFFFFF))
+    result = run(client._increment_last_sync_age())
+    assert result == 0xFFFFFFFF  # clamped, not wrapped/overflowed
+
+
+def test_increment_last_sync_age_preserves_synced_flag() -> None:
+    client = make_client()
+    run(client._set_synced(True))
+    run(client._increment_last_sync_age())
+    data = run(client.get_data())
+    assert data.Synced is True
 
 
 # ---------------------------------------------------------------------------

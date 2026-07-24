@@ -465,6 +465,43 @@ From hands-on field experience with deployed units:
       pre-existing 176 baseline — the two deleted `get_default_cfg()`-monkeypatch tests' own
       findings disappeared with them, no new errors introduced anywhere) — both verified via the
       usual before/after `git stash` diff.
+    - **Follow-up in the same session (owner-requested: "add extensive tests for the newly
+      introduced methods, including edge cases, also for the new config management"), after
+      honestly flagging that the first pass above was spot-check-level, not extensive**: the three
+      new private state-mutation helpers (`_set_synced()`/`_set_last_sync_age()`/
+      `_increment_last_sync_age()`) were only ever exercised as incidental test *setup* before this
+      pass, never given their own test proving the field-preservation contract the concurrency-
+      safety argument actually depends on (that a partial update leaves the *other* namedtuple
+      field untouched); `_now()` had zero direct coverage at all, including its
+      `OverflowError`/`OSError` → `None` branch; `get_dict_cfg()`/`get_error_counter()` only had a
+      single defaults-only/empty-history test each. 20 new tests added directly for these plus the
+      config-management migration itself: field-preservation and `None`-handling for all three
+      state-mutation helpers (8 tests, including a uint32-clamp boundary case for
+      `_increment_last_sync_age()`), `_now()`'s normal case and both caught exception types (3
+      tests), `get_dict_cfg()` against a customized on-disk config and an invalid `ConfigManager`
+      (2 tests), `get_data()`/`get_dict_data()` reflecting a real sync (1 more test alongside the
+      existing pair), `get_error_counter()` counting a warning and multiple ordered entries (2
+      tests), and four config-management-specific tests: config persisting across a second,
+      independent client instance pointed at the same `cfg_path` (proving the file is genuinely
+      read from disk at `__init__`, not just written once and cached), two clients with different
+      `cfg_path`s having fully independent configs, the `debug` param actually reaching
+      `self.pr.get_level()`, and `fram=` actually producing a `PrintLogHistoryStore` (the same real
+      `AsyFramManager` + `tests/_fram_chip_fake.py` simulated-chip technique
+      `test_base_classes.py` already uses for the base-class-level version of this same check -
+      this driver had no FRAM support at all before this migration, so there was nothing to test
+      before it). Two real mypy findings surfaced by the new tests and fixed before committing:
+      directly indexing `run(client._get_ntp_config())[0]` without unpacking first (`[index]` on
+      an `Optional` tuple) - fixed by unpacking into two locals first, matching every other call
+      site in this file; and indexing/slicing `get_error_counter()`'s union-typed
+      `ErrNum`/`ErrType` values directly (`[index]` on `int | list[int] | list[str]`) - fixed by
+      asserting full-dict equality instead, the same style `test_print_log.py`'s own `get_log()`
+      tests already use for exactly this shape. Verified: 858/858 tests passing (106/106 in
+      `test_asy_ntp_client.py` alone, up from 86); ruff unchanged at 220 (zero new findings); mypy
+      180 vs the 174 baseline immediately above - the +6 are two already-established, pre-existing
+      finding *shapes* recurring at new call sites (the module-global-reassignment monkeypatch
+      pattern this file uses throughout for `ntpmod.time`/`ntpmod.socket`, and the `Optional`-tuple-
+      unpacking pattern `_get_ntp_config()`'s callers already trigger elsewhere in this same file),
+      not a new kind of gap - both confirmed via the usual before/after `git stash` diff.
 - **Bus concurrency via `asyncio.Lock` + `async with` needs a coverage audit** (no gaps, no
   deadlock/starvation). Concrete progress: `asy_scd30_driver.py`/`asy_bmp3xx_driver.py`/
   `asy_sgp40_driver.py` each have a `*_DeviceSession(Lockable)` class — an outer per-sensor lock
