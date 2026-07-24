@@ -518,7 +518,10 @@ def test_fetch_ntp_reply_real_round_trip_returns_the_exact_reply_bytes() -> None
 # _parse_ntp_reply - NTP packet format verified against RFC 5905 during this session: 48-byte
 # header, Transmit Timestamp at byte offset 40 (8 bytes: 4-byte integer seconds + 4-byte fraction,
 # only the integer half is read here), 2208988800s is the documented 1900->1970 epoch delta - see
-# BACKLOG.md.
+# BACKLOG.md. Also checks byte 0's Leap Indicator and byte 1's Stratum before trusting the
+# timestamp at all (rejects LI=3 "unsynchronized" and Stratum=0 "invalid"/Kiss-o'-Death) - every
+# helper below sets Stratum=1 by default so the era/plausibility-window tests aren't incidentally
+# rejected by this separate check.
 # ---------------------------------------------------------------------------
 
 _NTP_EPOCH_DELTA = 2208988800
@@ -526,7 +529,10 @@ _NTP_EPOCH_DELTA = 2208988800
 
 def make_ntp_reply(unix_seconds: int) -> bytes:
     ntp_seconds = (unix_seconds + _NTP_EPOCH_DELTA) & 0xFFFFFFFF
-    header = b"\x1c" + bytes(39)  # LI/VN/Mode + Stratum..Receive Timestamp - content-agnostic here
+    # LI=0/VN=3/Mode=4(server) + Stratum=1(primary reference, i.e. genuinely synchronized - stratum
+    # 0 would now be rejected as a Kiss-o'-Death packet, see asy_ntp_client.py's own
+    # _NTP_STRATUM_INVALID) + zeroed Poll..Receive Timestamp - content-agnostic beyond that.
+    header = b"\x1c\x01" + bytes(38)
     transmit = struct.pack("!I", ntp_seconds) + bytes(4)  # seconds + zeroed fraction
     packet = header + transmit
     assert len(packet) == 48
@@ -555,16 +561,27 @@ def test_parse_ntp_reply_applies_the_ntp_offset_s_correction() -> None:
     assert time.mktime(tm_with_offset) - time.mktime(tm_no_offset) == 3600
 
 
+def _truncated(length: int) -> bytes:
+    # A non-zero Stratum (index 1) whenever the length reaches it, so these truncation-length tests
+    # are rejected (if at all) for being too short to reach the Transmit Timestamp, not incidentally
+    # for looking like a Kiss-o'-Death reply (stratum 0) - keeps this isolated from the separate
+    # LI/Stratum check.
+    buf = bytearray(length)
+    if length > 1:
+        buf[1] = 1
+    return bytes(buf)
+
+
 def test_parse_ntp_reply_truncated_packet_returns_none() -> None:
     client = make_client()
     for length in (0, 10, 39, 43):  # all short of the 44 bytes struct.unpack("!I", msg[40:44]) needs
-        assert client._parse_ntp_reply(bytes(length), 0) is None
+        assert client._parse_ntp_reply(_truncated(length), 0) is None
 
 
 def test_parse_ntp_reply_zero_length_and_exact_boundary_lengths() -> None:
     client = make_client()
     assert client._parse_ntp_reply(b"", 0) is None
-    assert client._parse_ntp_reply(bytes(44), 0) is not None  # exactly enough bytes - accepted
+    assert client._parse_ntp_reply(_truncated(44), 0) is not None  # exactly enough bytes - accepted
 
 
 def test_parse_ntp_reply_arbitrary_binary_content_never_raises() -> None:
@@ -605,7 +622,10 @@ def test_parse_ntp_reply_rtc_set_failure_returns_none_not_raise() -> None:
 
 
 def _make_raw_ntp_reply(raw_seconds: int) -> bytes:
-    header = b"\x1c" + bytes(39)  # LI/VN/Mode + Stratum..Receive Timestamp - content-agnostic here
+    # Same LI=0/Stratum=1 header as make_ntp_reply() above - a genuinely-synchronized-looking
+    # server, so these era/plausibility-window tests aren't incidentally rejected by the separate
+    # LI/Stratum check instead of exercising the era logic they're meant to test.
+    header = b"\x1c\x01" + bytes(38)
     transmit = struct.pack("!I", raw_seconds & 0xFFFFFFFF) + bytes(4)
     msg = header + transmit
     assert len(msg) == 48
@@ -662,6 +682,47 @@ def test_parse_ntp_reply_rejects_just_past_the_ceiling_boundary() -> None:
     raw = (ceiling + 1 + _NTP_EPOCH_DELTA) & 0xFFFFFFFF
     result = client._parse_ntp_reply(_make_raw_ntp_reply(raw), 0)
     assert result is None
+
+
+def _reply_with_li_and_stratum(leap_indicator: int, stratum: int, unix_seconds: int) -> bytes:
+    ntp_seconds = (unix_seconds + _NTP_EPOCH_DELTA) & 0xFFFFFFFF
+    first_byte = (leap_indicator << 6) | 0b011100  # VN=3, Mode=4(server) in the low 6 bits
+    header = bytes([first_byte, stratum]) + bytes(38)
+    transmit = struct.pack("!I", ntp_seconds) + bytes(4)
+    msg = header + transmit
+    assert len(msg) == 48
+    return msg
+
+
+def test_parse_ntp_reply_rejects_leap_indicator_unsynchronized() -> None:
+    # RFC 5905's Leap Indicator = 3 ("unknown (clock unsynchronized)") is an alarm condition - the
+    # server is explicitly saying it isn't a trustworthy time source yet, even though its Transmit
+    # Timestamp here is a perfectly plausible current date that would otherwise pass every other
+    # check (see BACKLOG.md).
+    client = make_client()
+    msg = _reply_with_li_and_stratum(leap_indicator=3, stratum=1, unix_seconds=int(time.time()))
+    assert client._parse_ntp_reply(msg, 0) is None
+
+
+def test_parse_ntp_reply_rejects_stratum_zero_kiss_of_death() -> None:
+    # RFC 5905/4330: Stratum 0 = "unspecified or invalid", used for Kiss-o'-Death (KoD) packets -
+    # never a genuine time source, regardless of its Transmit Timestamp's contents (see
+    # BACKLOG.md's worked example: a real KoD reply's all-zero Transmit Timestamp would otherwise
+    # land exactly inside the plausibility window after era-reinterpretation).
+    client = make_client()
+    msg = _reply_with_li_and_stratum(leap_indicator=0, stratum=0, unix_seconds=int(time.time()))
+    assert client._parse_ntp_reply(msg, 0) is None
+
+
+def test_parse_ntp_reply_accepts_a_normal_synchronized_reply_li_zero_stratum_one() -> None:
+    # Companion to the two rejection tests above - proves the new LI/Stratum check doesn't reject
+    # everything, only the two specific alarm/KoD conditions.
+    client = make_client()
+    now = int(time.time())
+    msg = _reply_with_li_and_stratum(leap_indicator=0, stratum=1, unix_seconds=now)
+    result = client._parse_ntp_reply(msg, 0)
+    assert result is not None
+    assert tuple(result) == tuple(time.gmtime(now))
 
 
 # ---------------------------------------------------------------------------

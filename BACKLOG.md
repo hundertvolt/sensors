@@ -297,6 +297,54 @@ From hands-on field experience with deployed units:
       `_fetch_ntp_reply`'s `except (ValueError, TypeError)`) — both now have a regression test
       (`test_resolve_ntp_server_empty_getaddrinfo_result_returns_none`,
       `test_fetch_ntp_reply_ipv6_shaped_four_tuple_addr_returns_none`).
+  - **Fourth pass (owner-requested: re-validate the era-rollover fix above paragraph-by-paragraph
+    against the code, re-check against the NTP spec and the Pico W datasheet, target production
+    quality) — the era-rollover math and packet-offset claims all checked out exactly (worked
+    example numerically re-derived: raw `3000000000` → era-0 1995-01-25, era-1 2131-03-03, both
+    outside `[floor, ceiling]`, confirmed via direct computation, not just re-reading the prose);
+    the `tm[6] + 1` weekday question was already resolved earlier this session (re-fetched
+    `ports/rp2/machine_rtc.c` independently, same conclusion: harmless, weekday is unused by the
+    real setter) — but this pass found one genuine new gap, since fixed (owner-requested):
+    `_parse_ntp_reply()` never checked the reply's Leap Indicator or Stratum before trusting its
+    Transmit Timestamp.** RFC 5905/4330 both say a client should discard a reply with LI=3
+    ("unknown, clock unsynchronized" - an alarm condition) or Stratum=0 ("unspecified or invalid" -
+    used for Kiss-o'-Death/KoD packets, e.g. a server rate-limiting a client polling too fast: mode
+    4, LI 3, stratum 0, an ASCII "kiss code" in the Reference Identifier field). Neither was
+    checked, and the plausibility window above doesn't help here — a KoD reply's Transmit Timestamp
+    is typically all-zero, and **concretely, not hypothetically**, `raw_seconds=0` passes the
+    window: era-0 is 1900 (below the floor), era-1 reinterpretation lands on exactly
+    `2036-02-07T06:28:16Z` (era-0's max representable value, `2**32-1 - _NTP_EPOCH_DELTA`, plus the
+    one second `raw=0` sits past it) — squarely inside `[floor, ceiling]`. So a KoD/rate-limit reply,
+    or any reply from a server telling us its own clock isn't trustworthy yet, would have been
+    silently accepted as a genuine successful sync. **Fix**: `_parse_ntp_reply()` now reads byte 0's
+    top 2 bits (Leap Indicator) and byte 1 (Stratum) before anything else, and rejects
+    (`return None`, same "treat like no response" path as every other rejection here) if LI is 3 or
+    Stratum is 0 — checked via the general-source-of-truth approach used throughout this file's
+    fixes: RFC text confirmed via web search snippets (direct RFC-editor/IETF/Wikipedia fetches all
+    returned HTTP 403 this session - this session's egress policy blocks general web hosts outright,
+    confirmed by `https://example.com` itself also 403ing; `raw.githubusercontent.com` remained
+    reachable via plain `curl`, which is how `machine_rtc.c` was independently re-verified above).
+    Every synthetic NTP reply built by `tests/test_asy_ntp_client.py`'s own helpers previously used
+    an all-zero Stratum byte (part of a "content-agnostic" zeroed filler) - which would now make
+    *every* existing "valid reply" test incidentally look like a KoD packet, so `make_ntp_reply()`/
+    `_make_raw_ntp_reply()` were updated to set Stratum=1 (a genuine primary-reference-looking
+    value) in that filler, and the two boundary-length tests (`..._truncated_packet_returns_none`,
+    `..._zero_length_and_exact_boundary_lengths`) now build their fixed-length buffers through a new
+    `_truncated()` helper that sets the same non-zero Stratum byte whenever the length reaches it -
+    keeping those tests isolated to proving truncation-length handling, not incidentally exercising
+    the new LI/Stratum check for an unrelated reason. Three new tests cover the new check directly
+    (`test_parse_ntp_reply_rejects_leap_indicator_unsynchronized`,
+    `test_parse_ntp_reply_rejects_stratum_zero_kiss_of_death`,
+    `test_parse_ntp_reply_accepts_a_normal_synchronized_reply_li_zero_stratum_one`). Also widened the
+    outer `except` tuple to include `IndexError` (a reply shorter than 2 bytes couldn't even reach
+    the LI/Stratum read before this) - same "treat like no response" contract, no new failure mode.
+    85/85 tests passing; ruff/mypy verified unchanged from baseline via the usual before/after
+    `git stash` diff (4 ruff errors, 176 mypy errors, both identical before and after).
+    The Pico W datasheet (`datasheets/pico w/RP-008312-DS-2-pico-w-datasheet.pdf`) was checked too -
+    it's the board-level datasheet, not an RP2040 silicon datasheet (not present in `datasheets/` at
+    all, per CLAUDE.md's own inventory), and only lists "1 × real time clock" as a peripheral bullet
+    with no register/epoch-level detail - nothing to add beyond what's already sourced from the real
+    `ports/rp2/machine_rtc.c` source directly.
   - **Real bug found in a downstream consumer during this pass — NOT in `asy_ntp_client.py` itself
     (`api_helpers.py`), since fixed (owner-requested, overriding this file's normal
     out-of-editing-scope caution for this one fix): `time_to_dict(gmt_raw)` only filled in real

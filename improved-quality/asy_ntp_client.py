@@ -42,6 +42,19 @@ _NTP_MAX_PLAUSIBLE_UNIX_TIME = const(4102444800)  # 2100-01-01T00:00:00Z - comfo
 # ~2036 era wrap (so a real post-2036 reply still passes) but not so far out that it stops meaning
 # anything as a sanity check; this file isn't expected to still be running unmodified by then.
 
+_NTP_LI_UNSYNCHRONIZED = const(3)  # RFC 5905's Leap Indicator field (top 2 bits of byte 0): 3 means
+# "unknown (clock unsynchronized)" - an alarm condition. The server is explicitly saying its own
+# time isn't trustworthy yet (e.g. just rebooted, hasn't synced upstream itself); its Transmit
+# Timestamp can still look like a perfectly plausible date and pass the floor/ceiling window above,
+# so this needs its own check rather than being caught by the plausibility bounds.
+_NTP_STRATUM_INVALID = const(0)  # RFC 5905/4330: stratum 0 means "unspecified or invalid" - used for
+# Kiss-o'-Death (KoD) packets (mode 4, LI 3, stratum 0, an ASCII "kiss code" in the Reference
+# Identifier field, e.g. rate-limiting a client that's polling too fast). A KoD reply's Transmit
+# Timestamp is typically all-zero, which - concretely, not just in theory - lands exactly on
+# 2036-02-07T06:28:16Z after this file's own era-reinterpretation step (era 0's max representable
+# value plus one second), squarely inside the plausibility window above; without this check it would
+# be silently accepted as a genuine successful sync.
+
 _DEFAULT_CONFIG = const(
     '{"NTP_Host": "pool.ntp.org", "NTP_Offset_S": 0, "NTP_Interv_H": 12, "GMTOffset": 3600, "DSTOffset": 3600}'
 )
@@ -244,6 +257,15 @@ class asy_ntp_client:
 
     def _parse_ntp_reply(self, msg: bytes, ntp_offset_s: int) -> tuple[int, ...] | None:
         try:
+            leap_indicator = (msg[0] >> 6) & 0x3
+            stratum = msg[1]
+            if leap_indicator == _NTP_LI_UNSYNCHRONIZED or stratum == _NTP_STRATUM_INVALID:
+                # Server says its own clock is unsynchronized, or this is a Kiss-o'-Death packet
+                # (see the constants' own comments) - never a genuine time source, regardless of
+                # what its Transmit Timestamp happens to contain.
+                if self.debug:
+                    print("NTP reply unsynchronized or Kiss-o'-Death, rejecting:", leap_indicator, stratum)
+                return None
             raw_seconds = struct.unpack("!I", msg[40:44])[0]
             ntp_time = raw_seconds - _NTP_EPOCH_DELTA + ntp_offset_s  # assume the current NTP era first
             if ntp_time < _NTP_MIN_PLAUSIBLE_UNIX_TIME:
@@ -260,10 +282,11 @@ class asy_ntp_client:
             tm = time.gmtime(ntp_time)
             RTC().datetime((tm[0], tm[1], tm[2], tm[6] + 1, tm[3], tm[4], tm[5], 0))
             return tm
-        except (OverflowError, ValueError, OSError) as e:
+        except (IndexError, OverflowError, ValueError, OSError) as e:
             # malformed/truncated reply (MicroPython's struct module raises plain ValueError, not
             # CPython's struct.error - confirmed directly against the pinned interpreter, no
-            # struct.error attribute exists here at all), or an out-of-range timestamp (rp2's ~2037
+            # struct.error attribute exists here at all; IndexError covers a reply too short to even
+            # contain the LI/Stratum bytes read above), or an out-of-range timestamp (rp2's ~2037
             # 32-bit epoch limit - see BACKLOG.md) - treat exactly like no response at
             # all rather than letting it crash the whole task.
             if self.debug:
