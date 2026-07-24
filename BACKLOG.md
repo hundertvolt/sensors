@@ -373,6 +373,98 @@ From hands-on field experience with deployed units:
     (`sensortask-wozi.py:228`/`229: error: Argument 1 to "time_to_dict"...`), which is the type
     checker's own version of exactly this bug — strong independent confirmation the fix is correct,
     not just a guess.
+  - **Fifth pass (owner-requested): migrated `asy_ntp_client.py`'s configuration management off the
+    legacy externally-injected-`ConfigManager` pattern onto the same base-class-backed scheme
+    `claude/sensor-driver-consolidation-vit4xq`'s promoted drivers use
+    (`base_classes.py`'s `SensorReaderConfig`).** Previously the class took a `cfgmgr: ConfigManager`
+    constructor argument built by the caller (`sensortask-wozi.py`), merged from a `_DEFAULT_CONFIG`
+    JSON blob via a `get_default_cfg()` static method — the exact "legacy style" pattern the owner
+    pointed at. Now `asy_ntp_client(SensorReaderConfig)` owns its own `config_NTP.cfg` internally
+    (schema + defaults already lived in this file's own `_VAL_NH`/`_VAL_NOS`/`_VAL_NIH`/`_VAL_GMT`/
+    `_VAL_DST` tuples, unchanged) — `_DEFAULT_CONFIG`/`get_default_cfg()` are gone, `cfg_path: str =
+    ""` replaces the constructor's old `cfgmgr` parameter, and `self.cfgmgr` is created by
+    `SensorReaderConfig.__init__` itself, so every existing internal `self.cfgmgr.get_*_values(...)`
+    call site kept working unchanged. `improved-quality/sensortask-wozi.py`'s one call site (still
+    fully on the old pre-refactor pattern for its *other* drivers, out of scope otherwise) was
+    updated minimally to match — the `| asy_ntp_client.get_default_cfg()` merge term and the
+    `cfgmgr` constructor argument both removed; `fram=` deliberately not wired in there since `fram`
+    is constructed later in that file than `ntp` is, and reordering an out-of-scope WIP file wasn't
+    part of this request.
+    - **Scope of "getters", clarified with the owner before writing any code**: DRIVER_SPEC.md
+      section 4.2 defines a getter quartet per `*_Reader` (`get_data()`/`get_dict_data()`/
+      `get_dict_cfg()`/`get_error_counter()`) — the owner explicitly chose the full quartet over a
+      config-only subset, meaning `last_ntp_sync`/`ntp_synced` (previously independent
+      `LockedCounter`/`LockedFlag` instances) are now folded into a single `NTP` namedtuple
+      (`Synced`, `LastSyncAge`, `TS`) stored via the inherited `_get_meas_data()`/`_set_meas_data()`,
+      and all `if self.debug: print(...)` calls became `self.pr`-based logging (`err_s`/`wrn_s` with
+      per-driver `errno`/`wrnno`, `one`/`evt`/`all` for pure trace) — `self.debug` no longer exists
+      as an attribute, matching every other promoted driver. Setters remain explicitly out of scope
+      (DRIVER_SPEC.md section 5, the owner's own "missing setters... not in scope here, they will be
+      added later on globally" framing) — only getters were added.
+    - **Concurrency correctness of splitting one namedtuple across independent partial-field
+      updates** (`_set_synced()`/`_set_last_sync_age()`/`_increment_last_sync_age()`, each doing a
+      separate `await self.get_data()` then `await self._set_meas_data(...)` rather than one atomic
+      read-modify-write) was checked against the real interpreter source, not assumed: every
+      promoted driver's `_set_meas_data()` is called once per read cycle with a wholly-fresh tuple,
+      never a partial update of a previously-read one, so this is a genuinely new usage shape.
+      Verified safe by reading `extmod/asyncio/lock.py` directly — `Lock.acquire()` returns
+      immediately with no `yield` at all when uncontended (`if self.state != 0: ... yield ...` only
+      triggers on real contention) — so as long as nothing *else* between a helper's `get_data()`
+      call and its following `_set_meas_data()` call itself awaits (nothing does), no other
+      coroutine can be scheduled in between under MicroPython's cooperative single-threaded
+      scheduler; the two-call sequence is exactly as atomic as a single `async with` block would be.
+    - **Real bug caught by the test suite while implementing `_increment_last_sync_age()`**: the
+      first draft set a fresh `LastSyncAge` of `0` when the previous value was `None` (i.e. did not
+      apply the increment on the None→real transition), unlike `base_classes.py`'s
+      `LockedCounter.increment()` this replaces, which treats `None` as an implicit `0` and *then*
+      adds the delta — so the correct first-increment-after-sync value is `1`, not `0`.
+      `test_time_counter_increments_while_synced` (expects `3` after three ticks) caught this
+      immediately (got `2`) before it reached mypy/lint or a commit. Fixed to match
+      `LockedCounter`'s exact semantics.
+    - **mypy findings this introduced, all fixed before committing** (checked via the usual
+      before/after `git stash` diff, not assumed clean): the three partial-update helpers above
+      initially read state via `self._get_meas_data()` directly, whose declared return type is the
+      base class's generic `"NamedTuple"` (no named fields) — accessing `.Synced`/`.LastSyncAge`/
+      `.TS` on that raised `attr-defined` errors; fixed by routing through this file's own
+      `get_data()` instead (which already carries the sanctioned `# type: ignore[return-value]`
+      narrowing every promoted driver's `get_data()` uses, per DRIVER_SPEC.md section 4.2).
+      Separately, `ntp_issynced()`/`get_last_ntp_sync()` directly returning a plain-namedtuple field
+      access from a strictly-typed function tripped `no-any-return` (a `collections.namedtuple`
+      field access types as `Any`, unlike a `typing.NamedTuple` class) — fixed with explicit
+      `bool(...)`/an explicit `None`-check-then-`int(...)` coercion, the same "wrap in the target
+      type's constructor" idiom already used elsewhere in this codebase for Any-typed namedtuple
+      field access (e.g. `sensortask-wozi.py`'s `sgp_comp_callback`).
+    - **Test file rewritten extensively to match** (`tests/test_asy_ntp_client.py`, 85→86 tests):
+      the whole `get_default_cfg()`/`_DEFAULT_CONFIG` test family (4 tests plus 2 monkeypatch helper
+      classes) deleted outright — that surface no longer exists. `make_client()` no longer accepts
+      an externally-built `cfgmgr`; new helpers `make_client_with_json()` (writes a JSON string to
+      the exact `config_NTP.cfg` path `SensorReaderConfig` will look for, under a fresh per-call tmp
+      directory from a new `_tmp_cfg_dir()`) and `make_invalid_cfg_client()` (creates a *directory*
+      at that same path, tripping `ConfigManager`'s own `os.stat()` `MP_S_IFDIR` check) replace the
+      old `make_cfgmgr()`/`make_cfgmgr_from_json()`/`make_broken_cfgmgr()` — the empty-schema trick
+      the old "broken config manager" test used no longer applies, since this driver's schema is now
+      fixed and non-empty by construction; a directory-in-place-of-a-file reproduces the same
+      "`ConfigManager.valid` stays `False`" end state through a mechanism that still applies. Every
+      direct test-side poke at the old `last_ntp_sync`/`ntp_synced` `LockedCounter`/`LockedFlag`
+      objects was replaced with the new private `_set_synced()`/`_set_last_sync_age()` helpers, and
+      every `_parse_ntp_reply()` call site now goes through `run(...)` since it's async now (it
+      persists LI/Stratum/implausible-time rejections via `self.pr.wrn_s()`/`err_s()`, which
+      require awaiting — a bare lambda monkeypatch in the `_run_ntp_sync_attempt()` tests was
+      likewise promoted to a small `async def fake_parse(...)`). Five new tests added directly for
+      the new getter quartet
+      (`test_init_creates_its_own_config_file_with_schema_defaults`,
+      `test_get_dict_cfg_returns_schema_defaults_wrapped_in_ntp_key`,
+      `test_get_data_and_get_dict_data_reflect_the_initial_never_synced_state`,
+      `test_get_data_reflects_a_successful_sync`,
+      `test_get_error_counter_starts_empty_and_records_a_real_error`). Verified: full suite
+      838/838 tests passing across all 13 `tests/` files (up from 837 - net +1 after deleting 4
+      `get_default_cfg()` tests and adding 5 new getter-quartet ones); `scripts/lint.sh`'s
+      full-scope ruff count dropped from 224 to 220 errors (asy_ntp_client.py's own 4 pre-existing
+      errors — including the legacy `Dict`/`typing.Callable` imports this migration also cleaned up
+      — are now fully gone, zero new findings anywhere else); mypy improved by 2 errors (174 vs the
+      pre-existing 176 baseline — the two deleted `get_default_cfg()`-monkeypatch tests' own
+      findings disappeared with them, no new errors introduced anywhere) — both verified via the
+      usual before/after `git stash` diff.
 - **Bus concurrency via `asyncio.Lock` + `async with` needs a coverage audit** (no gaps, no
   deadlock/starvation). Concrete progress: `asy_scd30_driver.py`/`asy_bmp3xx_driver.py`/
   `asy_sgp40_driver.py` each have a `*_DeviceSession(Lockable)` class — an outer per-sensor lock

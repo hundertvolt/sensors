@@ -74,13 +74,14 @@ cfgmgr = ConfigManager(
     | SCD30_Reader.get_default_cfg()
     | SGP40_Reader.get_default_cfg()
     | BMP3xx_Reader.get_default_cfg()
-    | asy_conn_time.get_default_cfg()
-    | asy_ntp_client.get_default_cfg(),
+    | asy_conn_time.get_default_cfg(),
     debug=debug,
 )
 # asy_conn_time: led_pin='LED' for onboard WiFi LED
 conn = asy_conn_time(cfgmgr, conn_fail_to_hotspot=5, hotspot_time_min=8, debug=debug)
-ntp = asy_ntp_client(cfgmgr, conn.get_wifi_mode_lock(), conn.network_available, debug=debug)
+# asy_ntp_client now owns its own config_NTP.cfg internally (base_classes.py's SensorReaderConfig),
+# so the system cfgmgr/get_default_cfg() merge above no longer covers it.
+ntp = asy_ntp_client(conn.get_wifi_mode_lock(), conn.network_available, debug=debug)
 app = Microdot()  # type: ignore[no-untyped-call]
 i2c0 = asy_i2c_driver.I2C(0, 13, 12, frequency=50000)
 i2c1 = asy_i2c_driver.I2C(1, 19, 18, frequency=50000)
