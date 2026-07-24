@@ -116,109 +116,122 @@ class asy_ntp_client:
             await self.ntp_sync_trigger_event.wait()
             if self.debug:
                 print("NTP Start Sync.")
-            msg: bytes | None = None
             await self.wifi_mode_lock.acquire()
             try:
-                if self.network_available():
-                    ntp_host = await self.cfgmgr.get_str_values(["NTP_Host"])
-                    ntp_offs = await self.cfgmgr.get_int_values(["NTP_Offset_S"])
-                    if ntp_host is None or ntp_offs is None or len(ntp_host) != 1 or len(ntp_offs) != 1:
-                        await self.ntp_synced.set_false()
-                        if self.debug:
-                            print("Fehlende NTP Konfiguration!")
-                    else:
-                        await self.asy_long_block_lock.acquire()  # getaddrinfo may block for some time - see BACKLOG.md
-                        if self.debug:
-                            print("NTP Long Block Lock acquired.")
-                        addr = None
-                        try:
-                            addr = socket.getaddrinfo(ntp_host[0], 123)[0][-1]
-                        except Exception as e:
-                            if self.debug:
-                                print("No valid NTP server:", e)
-                            addr = None
-                        finally:
-                            await asyncio.sleep(0)
-                            try:
-                                self.asy_long_block_lock.release()
-                            except RuntimeError:  # in case it's already released somehow
-                                pass
-                            if self.debug:
-                                print("NTP Long Block Lock released.")
-
-                        if addr is not None:
-                            cli = None
-                            try:
-                                cli = AsyUDPSocket(addr, mode="client")
-                            except (ValueError, TypeError) as e:  # malformed addr - see AsyUDPSocket's own contract
-                                if self.debug:
-                                    print("Invalid NTP server address:", e)
-                                cli = None
-                            if cli is not None:
-                                # write_and_recvfrom()/disconnect() never raise - they return their
-                                # documented None-shaped sentinel on any OSError/MemoryError/timeout
-                                # instead (see src/asy_udp_socket.py's module contract), so no
-                                # try/except is needed - or correct - around this call.
-                                msg, _addr_from = await cli.write_and_recvfrom(
-                                    b"\x1b" + bytearray(47),
-                                    1024,
-                                    timeout_ms=_NTP_CONN_TIMEOUT,
-                                )
-                                await cli.disconnect()
-
-                        sync_ok = False
-                        if msg is not None:
-                            try:
-                                ntp_time = (
-                                    (struct.unpack("!I", msg[40:44])[0]) - 2208988800 + ntp_offs[0]
-                                )  # offset since 1970
-                                if self.debug:
-                                    print("Received NTP time:", ntp_time)
-                                tm = time.gmtime(ntp_time)
-                                RTC().datetime((tm[0], tm[1], tm[2], tm[6] + 1, tm[3], tm[4], tm[5], 0))
-                                sync_ok = True
-                            except (struct.error, OverflowError, ValueError, OSError) as e:
-                                # malformed/truncated reply, or an out-of-range timestamp (rp2's
-                                # ~2037 32-bit epoch limit - see BACKLOG.md) - treat exactly like no
-                                # response at all rather than letting it crash the whole task.
-                                if self.debug:
-                                    print("Malformed NTP response, treating as no response:", e)
-
-                        if not sync_ok:
-                            if self.debug:
-                                print("Invalid NTP Time received!")
-                            self.ntp_retry_timer.deinit()
-                            if (
-                                await self.ntp_synced.get_value()
-                            ):  # in case of already synced, retry if regular trigger fails
-                                if (
-                                    self.ntp_retries < _NTP_SYNC_RETRIES
-                                ):  # if not synced at all, self.ntp_time_hours_counter() will permanently try to sync
-                                    if self.debug:
-                                        print("Waiting for NTP sync retry.")
-                                    self.ntp_retry_timer.init(
-                                        period=_NTP_RETRY_INTERV * 1000,
-                                        mode=Timer.ONE_SHOT,
-                                        callback=lambda b: self.ntp_sync_trigger_event.set(),
-                                    )
-                                    self.ntp_retries += 1
-                                else:
-                                    if self.debug:
-                                        print("Maximum retries reached, cancelling sync!")
-                                    self.ntp_retries = 0
-                        else:
-                            self.ntp_retry_timer.deinit()
-                            self.ntp_retries = 0
-                            await self.last_ntp_sync.set_value(0)
-                            await self.ntp_synced.set_true()
-                            if self.debug:
-                                print("RTC set to:", tm)
+                await self._run_ntp_sync_attempt()
             finally:
                 try:
                     self.wifi_mode_lock.release()
                 except RuntimeError:  # in case it's already released somehow
                     pass
-            msg = None  # drop the reference eagerly rather than holding it across the next long wait
+
+    async def _run_ntp_sync_attempt(self) -> None:
+        if not self.network_available():
+            return
+        ntp_config = await self._get_ntp_config()
+        if ntp_config is None:
+            await self.ntp_synced.set_false()
+            if self.debug:
+                print("Fehlende NTP Konfiguration!")
+            return
+        ntp_host, ntp_offs = ntp_config
+        addr = await self._resolve_ntp_server(ntp_host[0])
+        msg = await self._fetch_ntp_reply(addr) if addr is not None else None
+        tm = self._parse_ntp_reply(msg, ntp_offs[0]) if msg is not None else None
+        if tm is None:
+            await self._handle_ntp_sync_failure()
+        else:
+            await self._handle_ntp_sync_success(tm)
+
+    async def _get_ntp_config(self) -> tuple[list[str], list[int]] | None:
+        ntp_host = await self.cfgmgr.get_str_values(["NTP_Host"])
+        ntp_offs = await self.cfgmgr.get_int_values(["NTP_Offset_S"])
+        if ntp_host is None or ntp_offs is None or len(ntp_host) != 1 or len(ntp_offs) != 1:
+            return None
+        return ntp_host, ntp_offs
+
+    async def _resolve_ntp_server(self, ntp_host: str) -> tuple[str, int] | None:
+        await self.asy_long_block_lock.acquire()  # getaddrinfo may block for some time - see BACKLOG.md
+        if self.debug:
+            print("NTP Long Block Lock acquired.")
+        try:
+            return socket.getaddrinfo(ntp_host, 123)[0][-1]
+        except Exception as e:
+            if self.debug:
+                print("No valid NTP server:", e)
+            return None
+        finally:
+            await asyncio.sleep(0)
+            try:
+                self.asy_long_block_lock.release()
+            except RuntimeError:  # in case it's already released somehow
+                pass
+            if self.debug:
+                print("NTP Long Block Lock released.")
+
+    async def _fetch_ntp_reply(self, addr: tuple[str, int]) -> bytes | None:
+        try:
+            cli = AsyUDPSocket(addr, mode="client")
+        except (ValueError, TypeError) as e:  # malformed addr - see AsyUDPSocket's own contract
+            if self.debug:
+                print("Invalid NTP server address:", e)
+            return None
+        # write_and_recvfrom()/disconnect() never raise - they return their documented
+        # None-shaped sentinel on any OSError/MemoryError/timeout instead (see
+        # src/asy_udp_socket.py's module contract), so no try/except is needed - or
+        # correct - around this call.
+        msg, _addr_from = await cli.write_and_recvfrom(
+            b"\x1b" + bytearray(47),
+            1024,
+            timeout_ms=_NTP_CONN_TIMEOUT,
+        )
+        await cli.disconnect()
+        return msg
+
+    def _parse_ntp_reply(self, msg: bytes, ntp_offset_s: int) -> tuple[int, ...] | None:
+        try:
+            ntp_time = (struct.unpack("!I", msg[40:44])[0]) - 2208988800 + ntp_offset_s  # offset since 1970
+            if self.debug:
+                print("Received NTP time:", ntp_time)
+            tm = time.gmtime(ntp_time)
+            RTC().datetime((tm[0], tm[1], tm[2], tm[6] + 1, tm[3], tm[4], tm[5], 0))
+            return tm
+        except (struct.error, OverflowError, ValueError, OSError) as e:
+            # malformed/truncated reply, or an out-of-range timestamp (rp2's ~2037
+            # 32-bit epoch limit - see BACKLOG.md) - treat exactly like no response at
+            # all rather than letting it crash the whole task.
+            if self.debug:
+                print("Malformed NTP response, treating as no response:", e)
+            return None
+
+    async def _handle_ntp_sync_failure(self) -> None:
+        if self.debug:
+            print("Invalid NTP Time received!")
+        self.ntp_retry_timer.deinit()
+        if await self.ntp_synced.get_value():  # in case of already synced, retry if regular trigger fails
+            if (
+                self.ntp_retries < _NTP_SYNC_RETRIES
+            ):  # if not synced at all, self.ntp_time_hours_counter() will permanently try to sync
+                if self.debug:
+                    print("Waiting for NTP sync retry.")
+                self.ntp_retry_timer.init(
+                    period=_NTP_RETRY_INTERV * 1000,
+                    mode=Timer.ONE_SHOT,
+                    callback=lambda b: self.ntp_sync_trigger_event.set(),
+                )
+                self.ntp_retries += 1
+            else:
+                if self.debug:
+                    print("Maximum retries reached, cancelling sync!")
+                self.ntp_retries = 0
+
+    async def _handle_ntp_sync_success(self, tm: tuple[int, ...]) -> None:
+        self.ntp_retry_timer.deinit()
+        self.ntp_retries = 0
+        await self.last_ntp_sync.set_value(0)
+        await self.ntp_synced.set_true()
+        if self.debug:
+            print("RTC set to:", tm)
 
     async def ntp_time_hours_counter(self) -> None:  # Timer für NTP Refresh
         self.ntp_sec_count = 0
