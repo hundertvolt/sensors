@@ -136,8 +136,14 @@ class asy_ntp_client:
             return
         ntp_host, ntp_offs = ntp_config
         addr = await self._resolve_ntp_server(ntp_host[0])
-        msg = await self._fetch_ntp_reply(addr) if addr is not None else None
-        tm = self._parse_ntp_reply(msg, ntp_offs[0]) if msg is not None else None
+        if addr is None:
+            await self._handle_ntp_sync_failure()
+            return
+        msg = await self._fetch_ntp_reply(addr)
+        if msg is None:
+            await self._handle_ntp_sync_failure()
+            return
+        tm = self._parse_ntp_reply(msg, ntp_offs[0])
         if tm is None:
             await self._handle_ntp_sync_failure()
         else:
@@ -270,10 +276,10 @@ class asy_ntp_client:
             return None
         year = time.gmtime()[0]  # get current year
         HHMarch = time.mktime(
-            (year, 3, (31 - (int(5 * year / 4 + 4)) % 7), 1, 0, 0, 0, 0, 0)  # type: ignore[call-arg]
+            (year, 3, (31 - (int(5 * year / 4 + 4)) % 7), 1, 0, 0, 0, 0, 0)
         )  # Time of March change to CEST
         HHOctober = time.mktime(
-            (year, 10, (31 - (int(5 * year / 4 + 1)) % 7), 1, 0, 0, 0, 0, 0)  # type: ignore[call-arg]
+            (year, 10, (31 - (int(5 * year / 4 + 1)) % 7), 1, 0, 0, 0, 0, 0)
         )  # Time of October change to CET
         now = time.time()
         if now < HHMarch:  # we are before last sunday of march
