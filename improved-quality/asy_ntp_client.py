@@ -25,6 +25,23 @@ _NTP_CONN_TIMEOUT = const(5000)  # 5s  to send request / receive an answer from 
 _NTP_SYNC_RETRIES = const(3)  # try 3 times to connect to NTP server before stopping
 _NTP_RETRY_INTERV = const(15)  # wait 15 secs before retrying to sync
 
+_NTP_EPOCH_DELTA = const(2208988800)  # 1900 -> 1970, RFC 5905's NTP-to-Unix epoch conversion
+_NTP_ERA_SECONDS = const(4294967296)  # 2**32 - one full NTP era (the 32-bit seconds field wraps ~2036)
+# Plausibility window for a parsed NTP reply, see BACKLOG.md. A floor alone can't actually reject
+# anything once era-reinterpretation is in play: for any 32-bit raw value, either the current-era
+# reading already clears the floor, or adding one era pushes it decades past the floor - some
+# interpretation always "looks" post-floor. Pairing the floor with a ceiling is what gives this an
+# actual ability to reject implausible/corrupt data instead of just always picking a plausible-
+# looking era: a raw value only gets rejected if BOTH the current-era and the next-era reading fall
+# outside [floor, ceiling] - which does happen for a wide swath of the raw range (see BACKLOG.md's
+# worked example). Both bounds need bumping forward occasionally to stay "recent enough"/"far
+# enough out" without ever needing to track wall-clock time itself.
+_NTP_MIN_PLAUSIBLE_UNIX_TIME = const(1735689600)  # 2025-01-01T00:00:00Z - no genuine reply can
+# predate this file's own writing.
+_NTP_MAX_PLAUSIBLE_UNIX_TIME = const(4102444800)  # 2100-01-01T00:00:00Z - comfortably past the
+# ~2036 era wrap (so a real post-2036 reply still passes) but not so far out that it stops meaning
+# anything as a sanity check; this file isn't expected to still be running unmodified by then.
+
 _DEFAULT_CONFIG = const(
     '{"NTP_Host": "pool.ntp.org", "NTP_Offset_S": 0, "NTP_Interv_H": 12, "GMTOffset": 3600, "DSTOffset": 3600}'
 )
@@ -227,7 +244,17 @@ class asy_ntp_client:
 
     def _parse_ntp_reply(self, msg: bytes, ntp_offset_s: int) -> tuple[int, ...] | None:
         try:
-            ntp_time = (struct.unpack("!I", msg[40:44])[0]) - 2208988800 + ntp_offset_s  # offset since 1970
+            raw_seconds = struct.unpack("!I", msg[40:44])[0]
+            ntp_time = raw_seconds - _NTP_EPOCH_DELTA + ntp_offset_s  # assume the current NTP era first
+            if ntp_time < _NTP_MIN_PLAUSIBLE_UNIX_TIME:
+                # Either a still-wrapped reply from the next NTP era (RFC 5905 7.3: the 32-bit
+                # seconds field wraps ~2036) - reinterpret once and recheck - or outright implausible
+                # data, rejected below if still out of range after the reinterpretation.
+                ntp_time += _NTP_ERA_SECONDS
+            if not (_NTP_MIN_PLAUSIBLE_UNIX_TIME <= ntp_time <= _NTP_MAX_PLAUSIBLE_UNIX_TIME):
+                if self.debug:
+                    print("Implausible NTP time, rejecting:", ntp_time)
+                return None
             if self.debug:
                 print("Received NTP time:", ntp_time)
             tm = time.gmtime(ntp_time)

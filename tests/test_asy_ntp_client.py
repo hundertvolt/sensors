@@ -604,28 +604,64 @@ def test_parse_ntp_reply_rtc_set_failure_returns_none_not_raise() -> None:
     assert result is None
 
 
-def test_parse_ntp_reply_ntp_era_rollover_wrapped_timestamp_does_not_raise() -> None:
-    # NTP's 32-bit "seconds since 1900" field wraps in 2036 (era rollover) - distinct from the
-    # ~2037 Unix time_t OverflowError already covered above. A real post-2036 server would send a
-    # small raw value (wrapped back near 0); this file has no era-disambiguation logic (RFC 5905
-    # 7.3's "reinterpret as next era if smaller than a reference point" is never applied), so
-    # ntp_time = raw - 2208988800 + offset goes deeply negative.
-    #
-    # Real finding (see BACKLOG.md's third-pass entry): this does NOT raise, and does NOT degrade
-    # to None the way every other malformed-input case in this function does - time.gmtime() on
-    # this interpreter happily accepts a deeply negative epoch and returns a valid-shaped tuple for
-    # 1900-01-01, which _parse_ntp_reply treats as a perfectly good sync result (would call
-    # RTC().datetime(...) and report success upstream, not failure). Confirmed directly: only
-    # asserting "no crash" here, matching what the code can actually be relied on for today - not
-    # asserting a specific return value, since "silently wrong instead of rejected" is the bug, not
-    # a stable behavior to lock in as correct.
-    client = make_client()
-    header = b"\x1c" + bytes(39)
-    wrapped_raw_seconds = 12345  # small value, as a real wrapped-era server would send
-    transmit = struct.pack("!I", wrapped_raw_seconds) + bytes(4)
+def _make_raw_ntp_reply(raw_seconds: int) -> bytes:
+    header = b"\x1c" + bytes(39)  # LI/VN/Mode + Stratum..Receive Timestamp - content-agnostic here
+    transmit = struct.pack("!I", raw_seconds & 0xFFFFFFFF) + bytes(4)
     msg = header + transmit
     assert len(msg) == 48
-    client._parse_ntp_reply(msg, 0)  # must not raise - return value deliberately not asserted
+    return msg
+
+
+def test_parse_ntp_reply_era_rollover_wrapped_reply_reconstructs_the_real_future_date() -> None:
+    # NTP's 32-bit "seconds since 1900" field wraps in 2036 (era rollover) - distinct from the
+    # ~2037 Unix time_t OverflowError already covered above. A real post-2036 server sends a small
+    # raw value (wrapped back near 0, not the huge continuously-counting value it "really" means).
+    # _parse_ntp_reply() now reinterprets a below-floor reading as the next NTP era (RFC 5905 7.3)
+    # and rechecks against the same plausibility window - this proves the round trip actually lands
+    # back on the real intended date, not just "doesn't crash" (see BACKLOG.md).
+    client = make_client()
+    target_unix = 2185978496  # 2039-04-09ish - past the ~2036 wrap, well within the plausible ceiling
+    raw = (target_unix + _NTP_EPOCH_DELTA) & 0xFFFFFFFF
+    result = client._parse_ntp_reply(_make_raw_ntp_reply(raw), 0)
+    assert result is not None
+    assert tuple(result) == tuple(time.gmtime(target_unix))
+
+
+def test_parse_ntp_reply_rejects_a_timestamp_implausible_in_every_era() -> None:
+    # A raw value that looks implausible both read directly (era 0: ~1995, below the floor) and
+    # after the one-shot era reinterpretation (era 1: ~2131, past the ceiling) - genuinely
+    # rejectable corrupt/garbage data, not just an ordinary era-rollover reply. Fixes the real bug
+    # found while writing this test's predecessor: previously this silently produced a bogus-but-
+    # accepted "successful sync" (see BACKLOG.md's third-pass entry) instead of failing closed.
+    client = make_client()
+    result = client._parse_ntp_reply(_make_raw_ntp_reply(3000000000), 0)
+    assert result is None
+
+
+def test_parse_ntp_reply_accepts_exactly_at_the_floor_boundary() -> None:
+    client = make_client()
+    floor = 1735689600  # 2025-01-01T00:00:00Z - _NTP_MIN_PLAUSIBLE_UNIX_TIME, compiled away, hardcoded
+    raw = (floor + _NTP_EPOCH_DELTA) & 0xFFFFFFFF
+    result = client._parse_ntp_reply(_make_raw_ntp_reply(raw), 0)
+    assert result is not None
+    assert tuple(result) == tuple(time.gmtime(floor))
+
+
+def test_parse_ntp_reply_accepts_exactly_at_the_ceiling_boundary() -> None:
+    client = make_client()
+    ceiling = 4102444800  # 2100-01-01T00:00:00Z - _NTP_MAX_PLAUSIBLE_UNIX_TIME, compiled away, hardcoded
+    raw = (ceiling + _NTP_EPOCH_DELTA) & 0xFFFFFFFF
+    result = client._parse_ntp_reply(_make_raw_ntp_reply(raw), 0)
+    assert result is not None
+    assert tuple(result) == tuple(time.gmtime(ceiling))
+
+
+def test_parse_ntp_reply_rejects_just_past_the_ceiling_boundary() -> None:
+    client = make_client()
+    ceiling = 4102444800
+    raw = (ceiling + 1 + _NTP_EPOCH_DELTA) & 0xFFFFFFFF
+    result = client._parse_ntp_reply(_make_raw_ntp_reply(raw), 0)
+    assert result is None
 
 
 # ---------------------------------------------------------------------------

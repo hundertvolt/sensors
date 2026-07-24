@@ -245,30 +245,50 @@ From hands-on field experience with deployed units:
       `test_ntp_time_hours_counter_never_naturally_reaches_the_async_interval_multiple_under_constant_config`
       now proves the natural-ticking side of this finding (hundreds of ticks across multiple 1×
       cycles under a constant interval, still synced throughout).
-    - **Real finding, more concerning than initially assumed while writing its test: NTP's 32-bit
-      "seconds since 1900" field wraps in 2036 (era rollover) — distinct from the already-documented
-      ~2037 Unix `time_t` limit above, a different 32-bit field wrapping in a different epoch — and
-      `_parse_ntp_reply()` has no era-disambiguation logic (RFC 5905 §7.3's "reinterpret as the next
-      era if the raw value is smaller than a reference point" is never applied) or any plausibility
-      bound on the result at all.** A real post-2036 server's reply (small raw value, wrapped back
-      near 0) makes `ntp_time = raw - 2208988800 + offset_s` deeply negative. First assumed this
-      would land in the already-caught `(OverflowError, ValueError, OSError)` path like every other
-      malformed input; **testing it directly proved otherwise**: `time.gmtime()` on a deeply
-      negative epoch does not raise at all - confirmed both on the pinned Unix-port interpreter
-      (returns a valid-shaped tuple for 1900-01-01) and, checked directly against
-      `shared/timeutils/timeutils.c`'s actual `timeutils_seconds_since_1970_to_struct_time()`
-      (shared by rp2 and every other embedded port), which does unconditional arithmetic on a
-      negative input with no bounds/validity check regardless of the
-      `MICROPY_TIME_SUPPORT_Y1969_AND_BEFORE` config - so real rp2 hardware would do the same. The
-      practical effect: a wrapped-era (or otherwise wildly out-of-range) reply doesn't fail closed -
-      `_parse_ntp_reply()` returns a normal-looking (if nonsensical, e.g. year 1900) tuple,
-      `RTC().datetime(...)` gets called with it, and `_handle_ntp_sync_success()` marks
-      `ntp_synced = True` as if the sync had genuinely succeeded. Not fixed (no plausibility/era
-      check added — this is ten years out and would be new behavior, not a bug fix to existing
-      behavior, needing a project-owner decision on what bound to enforce and how to signal
-      rejection) — flagged, with `test_parse_ntp_reply_ntp_era_rollover_wrapped_timestamp_does_not_raise`
-      now locking in the "does not raise" fact (deliberately not asserting a specific return value,
-      since the silently-wrong result is exactly the open finding, not a stable contract to pin down).
+    - **Real finding, more concerning than initially assumed while writing its test — since fixed
+      (owner-requested): NTP's 32-bit "seconds since 1900" field wraps in 2036 (era rollover) —
+      distinct from the already-documented ~2037 Unix `time_t` limit above, a different 32-bit
+      field wrapping in a different epoch — and `_parse_ntp_reply()` had no era-disambiguation
+      logic (RFC 5905 §7.3's "reinterpret as the next era if the raw value is smaller than a
+      reference point" was never applied) or any plausibility bound on the result at all.** A real
+      post-2036 server's reply (small raw value, wrapped back near 0) made
+      `ntp_time = raw - 2208988800 + offset_s` deeply negative. First assumed this would land in the
+      already-caught `(OverflowError, ValueError, OSError)` path like every other malformed input;
+      **testing it directly proved otherwise**: `time.gmtime()` on a deeply negative epoch does not
+      raise at all - confirmed both on the pinned Unix-port interpreter (returned a valid-shaped
+      tuple for 1900-01-01) and, checked directly against `shared/timeutils/timeutils.c`'s actual
+      `timeutils_seconds_since_1970_to_struct_time()` (shared by rp2 and every other embedded
+      port), which does unconditional arithmetic on a negative input with no bounds/validity check
+      regardless of the `MICROPY_TIME_SUPPORT_Y1969_AND_BEFORE` config - so real rp2 hardware would
+      do the same. The practical effect: a wrapped-era (or otherwise wildly out-of-range) reply
+      didn't fail closed - `_parse_ntp_reply()` returned a normal-looking (if nonsensical, e.g. year
+      1900) tuple, `RTC().datetime(...)` got called with it, and `_handle_ntp_sync_success()` marked
+      `ntp_synced = True` as if the sync had genuinely succeeded.
+      **Fix**: `_parse_ntp_reply()` now computes the raw seconds against the current NTP era first,
+      and if that reading falls below `_NTP_MIN_PLAUSIBLE_UNIX_TIME` (2025-01-01T00:00:00Z - no
+      genuine reply can predate this file's own writing), reinterprets it as the *next* era (+2**32,
+      RFC 5905 §7.3) and rechecks. The recheck is against a **floor-and-ceiling window**
+      (`_NTP_MAX_PLAUSIBLE_UNIX_TIME` = 2100-01-01T00:00:00Z), not the floor alone — a floor-only
+      check can't actually reject anything once era-reinterpretation is in play: for *any* 32-bit
+      raw value, either the current-era reading already clears the floor, or adding one era pushes
+      it decades past it - some interpretation always "looks" post-floor with no upper bound to stop
+      it. Pairing the floor with a ceiling is what gives this the ability to genuinely reject
+      implausible/corrupt data: a raw value is only rejected once *both* the current-era and
+      next-era readings fall outside `[floor, ceiling]`, which happens for a wide swath of the raw
+      range (worked example: raw `3000000000` reads as ~1995 directly - below the floor - and as
+      ~2131 after the era shift - past the ceiling - so it's now correctly rejected either way,
+      where it previously would have been silently accepted as a "successful" 1995ish sync).
+      Verified directly against the built interpreter: a genuine era-1 reply (raw seconds
+      corresponding to a real 2039 date, wrapped through `& 0xFFFFFFFF` exactly as a real server
+      would send it) round-trips to the exact right date; boundary raw values at exactly the floor
+      and exactly the ceiling are accepted; one second past the ceiling is rejected. Both bounds are
+      plain `const()` values that need bumping forward occasionally (not tied to wall-clock time in
+      any way) - `_NTP_MAX_PLAUSIBLE_UNIX_TIME` in particular should move out well before 2100 once
+      this code is still in service anywhere near that date. Five tests now cover this
+      (`test_parse_ntp_reply_era_rollover_wrapped_reply_reconstructs_the_real_future_date`,
+      `test_parse_ntp_reply_rejects_a_timestamp_implausible_in_every_era`, plus floor/ceiling
+      boundary tests) in place of the earlier "must not raise, return value not asserted" test this
+      supersedes.
     - `_resolve_ntp_server()`'s `socket.getaddrinfo(ntp_host, 123)[0][-1]` indexing runs inside its
       own broad `try/except Exception`, so two shapes of a *malformed but non-raising-by-itself*
       result both already degrade safely but had no test: an empty result list (`[][0]` →
@@ -277,27 +297,34 @@ From hands-on field experience with deployed units:
       `_fetch_ntp_reply`'s `except (ValueError, TypeError)`) — both now have a regression test
       (`test_resolve_ntp_server_empty_getaddrinfo_result_returns_none`,
       `test_fetch_ntp_reply_ipv6_shaped_four_tuple_addr_returns_none`).
-  - **Real bug found in a downstream consumer during this pass — NOT in `asy_ntp_client.py` itself,
-    flagged only, not fixed (out of this session's editing scope; see CLAUDE.md's `improved-quality/`
-    hard rule): `api_helpers.py`'s `time_to_dict(gmt_raw)` only fills in real values when
-    `len(gmt_raw) == 9`.** Both of its actual callers, `sensortask-wozi.py`'s `GET /time/status`
-    handler's `time.gmtime()` call and its `await ntp.cettime()` call, hand it an **8**-element
-    tuple on real target hardware — rp2's documented `time.gmtime()` shape, and `cettime()`'s own
-    explicit `GMTimeStruct` (8 fields) built only after checking `len(cet) == 8`. So on the actual
-    deployed hardware, `/time/status`'s `"UTC"` and `"Local"` response fields would come back
-    all-`None` **unconditionally**, even immediately after a fully successful, live NTP sync — this
-    isn't a maybe/edge-case bug, it's the only behavior this endpoint can ever produce on-device.
-    This looks like the same 8-vs-9 Unix-port-vs-rp2 `time.gmtime()` shape ambiguity already
+  - **Real bug found in a downstream consumer during this pass — NOT in `asy_ntp_client.py` itself
+    (`api_helpers.py`), since fixed (owner-requested, overriding this file's normal
+    out-of-editing-scope caution for this one fix): `time_to_dict(gmt_raw)` only filled in real
+    values when `len(gmt_raw) == 9`.** Both of its actual callers, `sensortask-wozi.py`'s
+    `GET /time/status` handler's `time.gmtime()` call and its `await ntp.cettime()` call, hand it an
+    **8**-element tuple on real target hardware — rp2's documented `time.gmtime()` shape, and
+    `cettime()`'s own explicit `GMTimeStruct` (8 fields) built only after checking `len(cet) == 8`.
+    So on the actual deployed hardware, `/time/status`'s `"UTC"` and `"Local"` response fields would
+    have come back all-`None` **unconditionally**, even immediately after a fully successful, live
+    NTP sync — this wasn't a maybe/edge-case bug, it was the only behavior this endpoint could ever
+    produce on-device. Same 8-vs-9 Unix-port-vs-rp2 `time.gmtime()` shape ambiguity already
     documented above (found there via `cettime()`'s own tests), but landing here as a genuine,
     currently-broken consumer-side bug rather than a test-environment-only quirk — most likely
     written and only ever exercised against this project's Unix-port test interpreter's own
     9-element `gmtime()`, never against a real rp2-shaped 8-element tuple. No pre-refactor legacy
     equivalent of this endpoint exists anywhere under `python/` to compare against (searched; no
     `time_to_dict`/`time/status` in the deployed codebase at all) — this looks like new code written
-    during the refactor itself, not inherited legacy behavior being faithfully reproduced. Needs a
-    project-owner decision (most likely: change `time_to_dict`'s check to accept either 8 or 9
-    elements, or fix it at exactly 8 to match the real target and stop over-generalizing for the
-    test-only Unix-port shape) before anyone touches `api_helpers.py`.
+    during the refactor itself, not inherited legacy behavior being faithfully reproduced.
+    **Fix**: `time_to_dict()`'s check now accepts `len(gmt_raw) in (8, 9)` instead of only `9` — both
+    are the only real shapes any actual caller in this codebase ever produces (rp2/`cettime()`'s 8,
+    the Unix-port test interpreter's 9); only indices 0-5 (year..sec) are ever read regardless of
+    which shape was passed in, so accepting either is correct, not just permissive. Also corrected
+    the parameter's own type hint from `Tuple[int]` (a malformed fixed-length-1 hint) to
+    `Tuple[int, ...]`. Confirmed via mypy before/after: this fix independently resolved two
+    pre-existing errors at the actual real-world call sites
+    (`sensortask-wozi.py:228`/`229: error: Argument 1 to "time_to_dict"...`), which is the type
+    checker's own version of exactly this bug — strong independent confirmation the fix is correct,
+    not just a guess.
 - **Bus concurrency via `asyncio.Lock` + `async with` needs a coverage audit** (no gaps, no
   deadlock/starvation). Concrete progress: `asy_scd30_driver.py`/`asy_bmp3xx_driver.py`/
   `asy_sgp40_driver.py` each have a `*_DeviceSession(Lockable)` class — an outer per-sensor lock
