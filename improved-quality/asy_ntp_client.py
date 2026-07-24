@@ -7,7 +7,7 @@ from uasyncio import Lock, ThreadSafeFlag
 from asy_udp_socket import AsyUDPSocket
 from machine import Timer, RTC
 from micropython import const
-from async_manager import ConfigManager
+from config_manager import ConfigManager
 from base_classes import LockedCounter, LockedFlag
 from typing import Callable, Dict
 from collections import namedtuple
@@ -21,6 +21,15 @@ _NTP_RETRY_INTERV = const(15)  # wait 15 secs before retrying to sync
 _DEFAULT_CONFIG = const(
     '{"NTP_Host": "pool.ntp.org", "NTP_Offset_S": 0, "NTP_Interv_H": 12, "GMTOffset": 3600, "DSTOffset": 3600}'
 )
+
+# Schema tuples for config_manager.ConfigManager.get_*_values() - min/max mirror the REST-API
+# bounds sensortask-wozi.py's update_valid_json() already enforces for these same fields, so both
+# validation paths agree; defaults mirror _DEFAULT_CONFIG above.
+_VAL_NH = const((("NTP_Host", "str", "pool.ntp.org", 3, 1024, None),))
+_VAL_NOS = const((("NTP_Offset_S", "int", 0, -43200, 43200, None),))
+_VAL_NIH = const((("NTP_Interv_H", "int", 12, 1, 24, None),))
+_VAL_GMT = const((("GMTOffset", "int", 3600, -43200, 43200, None),))
+_VAL_DST = const((("DSTOffset", "int", 3600, -43200, 43200, None),))
 
 GMTimeStruct = namedtuple("GMTimeStruct", ("year", "month", "mday", "hour", "minute", "second", "weekday", "yearday"))
 
@@ -150,8 +159,8 @@ class asy_ntp_client:
             await self._handle_ntp_sync_success(tm)
 
     async def _get_ntp_config(self) -> tuple[list[str], list[int]] | None:
-        ntp_host = await self.cfgmgr.get_str_values(["NTP_Host"])
-        ntp_offs = await self.cfgmgr.get_int_values(["NTP_Offset_S"])
+        ntp_host = await self.cfgmgr.get_str_values(_VAL_NH)
+        ntp_offs = await self.cfgmgr.get_int_values(_VAL_NOS)
         if ntp_host is None or ntp_offs is None or len(ntp_host) != 1 or len(ntp_offs) != 1:
             return None
         return ntp_host, ntp_offs
@@ -243,7 +252,7 @@ class asy_ntp_client:
         self.ntp_sec_count = 0
         while True:
             await self.ntp_timer_trigger_event.wait()
-            ntp_interv = await self.cfgmgr.get_int_values(["NTP_Interv_H"])
+            ntp_interv = await self.cfgmgr.get_int_values(_VAL_NIH)
             if ntp_interv is None or len(ntp_interv) != 1:
                 ntp_interv = [12]
                 if self.debug:
@@ -271,7 +280,7 @@ class asy_ntp_client:
     ) -> GMTimeStruct | None:  # Umrechnung Lokalzeit
         if not (await self.ntp_synced.get_value()):
             return None
-        time_offs = await self.cfgmgr.get_int_values(["GMTOffset", "DSTOffset"])
+        time_offs = await self.cfgmgr.get_int_values(_VAL_GMT + _VAL_DST)
         if time_offs is None or len(time_offs) != 2:
             return None
         year = time.gmtime()[0]  # get current year
