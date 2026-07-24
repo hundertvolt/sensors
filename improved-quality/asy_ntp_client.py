@@ -9,8 +9,15 @@ from machine import Timer, RTC
 from micropython import const
 from config_manager import ConfigManager
 from base_classes import LockedCounter, LockedFlag
-from typing import Callable, Dict
 from collections import namedtuple
+
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    from typing import Callable, Dict
 
 _NTP_ASYNC_INTERV = const(3)  # 3 times interval considered as out of sync
 _NTP_CHECK_INTERV = const(10)  # seconds to count for NTP status update
@@ -39,7 +46,7 @@ class asy_ntp_client:
         self,
         cfgmgr: ConfigManager,
         wifi_mode_lock: Lock,
-        network_available: Callable[[], bool],
+        network_available: "Callable[[], bool]",
         asy_long_block_lock: Lock | None = None,
         debug: bool = False,
     ) -> None:
@@ -60,7 +67,7 @@ class asy_ntp_client:
         self.counter_timer = Timer()
 
     @staticmethod
-    def get_default_cfg() -> Dict[str, int | float | str | bool]:
+    def get_default_cfg() -> "Dict[str, int | float | str | bool]":
         try:
             res = json.loads(_DEFAULT_CONFIG)
             if isinstance(res, dict):
@@ -82,18 +89,27 @@ class asy_ntp_client:
         return evtloop.create_task(self.time_counter())
 
     def start_ntp_timer(self) -> None:
-        self.ntp_timer.init(
-            period=_NTP_CHECK_INTERV * 1000,
-            mode=Timer.PERIODIC,
-            callback=lambda b: self.ntp_timer_trigger_event.set(),
-        )
+        try:
+            self.ntp_timer.init(
+                period=_NTP_CHECK_INTERV * 1000,
+                mode=Timer.PERIODIC,
+                callback=lambda b: self.ntp_timer_trigger_event.set(),
+            )
+        except OSError as e:  # alarm-pool exhaustion (ENOMEM, see BACKLOG.md) - degrades gracefully;
+            # NTP refresh scheduling just never starts rather than crashing the caller.
+            if self.debug:
+                print("Konnte NTP-Timer nicht starten:", e)
 
     def start_counter_timer(self) -> None:
-        self.counter_timer.init(
-            period=1000,
-            mode=Timer.PERIODIC,
-            callback=lambda b: self.time_counter_trigger_event.set(),
-        )
+        try:
+            self.counter_timer.init(
+                period=1000,
+                mode=Timer.PERIODIC,
+                callback=lambda b: self.time_counter_trigger_event.set(),
+            )
+        except OSError as e:  # alarm-pool exhaustion (ENOMEM) - same graceful degradation as start_ntp_timer()
+            if self.debug:
+                print("Konnte Counter-Timer nicht starten:", e)
 
     def stop_ntp_timer(self) -> None:
         self.ntp_timer.deinit()
@@ -135,7 +151,13 @@ class asy_ntp_client:
                     pass
 
     async def _run_ntp_sync_attempt(self) -> None:
-        if not self.network_available():
+        try:
+            network_ok = self.network_available()
+        except Exception as e:  # caller-supplied callback (async_connect.py) - could legitimately misbehave
+            if self.debug:
+                print("network_available() Callback fehlgeschlagen:", e)
+            network_ok = False
+        if not network_ok:
             return
         ntp_config = await self._get_ntp_config()
         if ntp_config is None:
@@ -211,8 +233,10 @@ class asy_ntp_client:
             tm = time.gmtime(ntp_time)
             RTC().datetime((tm[0], tm[1], tm[2], tm[6] + 1, tm[3], tm[4], tm[5], 0))
             return tm
-        except (struct.error, OverflowError, ValueError, OSError) as e:
-            # malformed/truncated reply, or an out-of-range timestamp (rp2's ~2037
+        except (OverflowError, ValueError, OSError) as e:
+            # malformed/truncated reply (MicroPython's struct module raises plain ValueError, not
+            # CPython's struct.error - confirmed directly against the pinned interpreter, no
+            # struct.error attribute exists here at all), or an out-of-range timestamp (rp2's ~2037
             # 32-bit epoch limit - see BACKLOG.md) - treat exactly like no response at
             # all rather than letting it crash the whole task.
             if self.debug:
@@ -229,12 +253,18 @@ class asy_ntp_client:
             ):  # if not synced at all, self.ntp_time_hours_counter() will permanently try to sync
                 if self.debug:
                     print("Waiting for NTP sync retry.")
-                self.ntp_retry_timer.init(
-                    period=_NTP_RETRY_INTERV * 1000,
-                    mode=Timer.ONE_SHOT,
-                    callback=lambda b: self.ntp_sync_trigger_event.set(),
-                )
-                self.ntp_retries += 1
+                try:
+                    self.ntp_retry_timer.init(
+                        period=_NTP_RETRY_INTERV * 1000,
+                        mode=Timer.ONE_SHOT,
+                        callback=lambda b: self.ntp_sync_trigger_event.set(),
+                    )
+                    self.ntp_retries += 1
+                except OSError as e:  # alarm-pool exhaustion (ENOMEM) - give up this retry cycle rather
+                    # than crashing the task; ntp_time_hours_counter()'s regular check still recovers it.
+                    if self.debug:
+                        print("Konnte NTP-Retry-Timer nicht starten:", e)
+                    self.ntp_retries = 0
             else:
                 if self.debug:
                     print("Maximum retries reached, cancelling sync!")
@@ -283,20 +313,27 @@ class asy_ntp_client:
         time_offs = await self.cfgmgr.get_int_values(_VAL_GMT + _VAL_DST)
         if time_offs is None or len(time_offs) != 2:
             return None
-        year = time.gmtime()[0]  # get current year
-        HHMarch = time.mktime(
-            (year, 3, (31 - (int(5 * year / 4 + 4)) % 7), 1, 0, 0, 0, 0, 0)
-        )  # Time of March change to CEST
-        HHOctober = time.mktime(
-            (year, 10, (31 - (int(5 * year / 4 + 1)) % 7), 1, 0, 0, 0, 0, 0)
-        )  # Time of October change to CET
-        now = time.time()
-        if now < HHMarch:  # we are before last sunday of march
-            cet = time.gmtime(now + time_offs[0])  # GMTOffset -> CET:  UTC+1H
-        elif now < HHOctober:  # we are before last sunday of october
-            cet = time.gmtime(now + time_offs[0] + time_offs[1])  # GMTOffset + DSTOffset-> CEST: UTC+2H
-        else:  # we are after last sunday of october
-            cet = time.gmtime(now + time_offs[0])  # GMTOffset -> CET:  UTC+1H
+        try:
+            year = time.gmtime()[0]  # get current year
+            HHMarch = time.mktime(
+                (year, 3, (31 - (int(5 * year / 4 + 4)) % 7), 1, 0, 0, 0, 0, 0)
+            )  # Time of March change to CEST
+            HHOctober = time.mktime(
+                (year, 10, (31 - (int(5 * year / 4 + 1)) % 7), 1, 0, 0, 0, 0, 0)
+            )  # Time of October change to CET
+            now = time.time()
+            if now < HHMarch:  # we are before last sunday of march
+                cet = time.gmtime(now + time_offs[0])  # GMTOffset -> CET:  UTC+1H
+            elif now < HHOctober:  # we are before last sunday of october
+                cet = time.gmtime(now + time_offs[0] + time_offs[1])  # GMTOffset + DSTOffset-> CEST: UTC+2H
+            else:  # we are after last sunday of october
+                cet = time.gmtime(now + time_offs[0])  # GMTOffset -> CET:  UTC+1H
+        except (OverflowError, ValueError, OSError) as e:
+            # rp2's mktime()/gmtime() raise OverflowError past its ~2037 32-bit epoch range (see
+            # BACKLOG.md) - treat exactly like "not ready" instead of crashing the caller.
+            if self.debug:
+                print("Fehler bei Zeitberechnung:", e)
+            return None
         if len(cet) == 8:
             return GMTimeStruct(*cet)
         return None

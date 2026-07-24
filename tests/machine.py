@@ -3,9 +3,9 @@ I2C/SPI bus-transaction level (readfrom_mem/writeto_mem/readfrom_into/writeto/sc
 I2C; write/readinto/write_readinto/deinit for SPI), so asy_i2c_driver.py's/asy_spi_driver.py's
 own logic (bit-packing, byte order, buffer slicing, locking, error paths, CS-pin sequencing) runs
 for real against this fake instead of unavailable real hardware - the MicroPython Unix port's own
-`machine` module has no I2C/SPI/real Pin, Timer, or WDT (confirmed directly: PinBase/Signal/
+`machine` module has no I2C/SPI/real Pin, Timer, WDT, or RTC (confirmed directly: PinBase/Signal/
 mem8/mem16/mem32/idle/time_pulse_us only). Only implements what these drivers' (and
-system_service.py's) own imports need; not a general-purpose machine stub.
+system_service.py's/asy_ntp_client.py's) own imports need; not a general-purpose machine stub.
 
 Timer/WDT/reset/bootloader (added for system_service.py): real rp2 Timers are software-scheduled
 virtual timers that fire their callback from an IRQ context whenever their period elapses, with no
@@ -283,6 +283,31 @@ class Timer:
         # waiting on this fake's `period` (which is never actually scheduled against real time).
         if self.callback is not None:
             self.callback(self)
+
+
+class RTC:
+    # Minimal fake for asy_ntp_client.py's RTC().datetime((...)) call: stores/returns whatever
+    # 8-tuple it's given, no validation - real per-port weekday-field semantics/validity are
+    # genuinely unsettled upstream (confirmed via web search of micropython/micropython#7394 during
+    # this file's own test-writing pass, not fixed here - flagged to the project owner separately,
+    # see BACKLOG.md), so this fake deliberately takes no position on what's "valid".
+    # State is class-level, not per-instance: real RTC is one physical peripheral - every RTC()
+    # call (the real class takes no useful constructor args on rp2) refers to the same hardware,
+    # so a test must be able to construct a fresh RTC() after the fact and still read back what an
+    # earlier RTC() instance set, exactly like the real singleton would.
+    raise_exc: "Exception | None" = None  # test-only fault injection, shared class attribute like Timer.raise_on_arm
+    _shared_datetime: tuple = (2000, 1, 1, 0, 0, 0, 0, 0)
+
+    def __init__(self, id: int = 0) -> None:
+        self.id = id
+
+    def datetime(self, dt: "tuple | None" = None) -> "tuple | None":
+        if RTC.raise_exc is not None:
+            raise RTC.raise_exc
+        if dt is None:
+            return RTC._shared_datetime
+        RTC._shared_datetime = tuple(dt)
+        return None
 
 
 class WDT:

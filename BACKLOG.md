@@ -134,6 +134,89 @@ From hands-on field experience with deployed units:
     (FRAM SPI transactions, the promoted `src/asy_udp_socket.py`'s own `select.poll`-driven
     `ready()`/`write_and_recvfrom(timeout_ms=..., tries=...)`), standardize on one consistent
     timeout/cancellation mechanism everywhere — that part of the original guidance still holds.
+  - **Standing decision (owner-confirmed): adopt a genuine non-blocking alternative to
+    `getaddrinfo()` (or any other currently-unavoidable blocking call) as soon as one reliably
+    exists** — a future MicroPython release with an async-native resolver, an offload-to-second-
+    core (`_thread`) implementation, or any other mechanism that actually removes the blocking
+    call rather than just bounding/hiding it. Don't treat the current state as permanently accepted
+    risk just because today's options (accept the block, or the architecture change flagged above)
+    are both unattractive — re-check this whenever `improved-quality/asy_ntp_client.py` (or any
+    other caller) is touched again, the same way "check against current MicroPython" is already a
+    standing per-file re-check in `src/README.md`.
+  - **Second full exception/blocking audit of `asy_ntp_client.py` (owner-requested, after the
+    `config_manager` migration above) found three real gaps, all fixed in the same session**: (1)
+    `cettime()`'s `time.mktime()`/`time.gmtime()` calls for the DST-boundary calculation were
+    unguarded — same `OverflowError` risk near rp2's ~2037 32-bit epoch limit already documented for
+    `_parse_ntp_reply()`, just not yet caught here; now wrapped, returns `None` like every other
+    "not ready" path in this function. (2) `_run_ntp_sync_attempt()` called the caller-injected
+    `network_available` callback unguarded — every other caller-supplied callback in this codebase
+    (`system_service.py`'s `ntp_is_synced`/task starters/timer starters) is wrapped in
+    `except Exception`, and this one wasn't; now matches that convention (treats a raise as "network
+    unavailable", not fatal). (3) Three `Timer.init()` call sites (`start_ntp_timer()`,
+    `start_counter_timer()`, `_handle_ntp_sync_failure()`'s retry timer) were unguarded against real
+    rp2 alarm-pool exhaustion (`OSError(ENOMEM)`, confirmed against `ports/rp2/machine_timer.c` -
+    see `tests/machine.py`'s own fake `Timer.raise_on_arm`) — `system_service.py`'s own promoted,
+    tested code already treats this as a real, expected failure mode (`start_uptime_timer()`,
+    `_reboot()`, `pause_permanent_storage()` all catch it and degrade gracefully); `asy_ntp_client.py`
+    simply hadn't adopted that same convention yet. All three now catch `OSError` and degrade
+    (log via the file's own `if self.debug: print(...)` pattern, no `self.pr` logger exists in this
+    file) instead of letting the exception kill the whole `asy_ntp_time()`/supervisor task. Verified
+    via the usual before/after ruff+mypy diff: zero new findings either way (still the same 4
+    pre-existing mypy findings — 3× `Timer()` no-arg overload, 1× `getaddrinfo()` return-type — and 4
+    pre-existing ruff findings on this file); `src`/`tests` stayed fully clean throughout.
+  - **Real bug found and fixed while writing `tests/test_asy_ntp_client.py` for the audit above:
+    `_parse_ntp_reply()`'s except clause referenced `struct.error`, which doesn't exist on
+    MicroPython at all** (confirmed directly against the pinned Unix-port interpreter:
+    `hasattr(struct, "error")` is `False`; a too-short `struct.unpack()` buffer raises plain
+    `ValueError` instead, matching the general "MicroPython's struct module raises ValueError, not
+    CPython's struct.error" finding confirmed via web search too). Referencing a nonexistent
+    attribute inside an `except (...)` tuple raises `AttributeError` the moment Python evaluates it
+    to check a match — so a malformed/truncated NTP reply (exactly the "no uncaught exceptions"
+    scenario this whole audit was for) crashed the except clause itself instead of being caught,
+    completely defeating the guard. `ValueError` was already in the same tuple, so the fix was
+    simply dropping the dead `struct.error` reference — no behavior change for any input that
+    previously worked, only for the exact crash path this test caught. This was invisible until a
+    test actually drove a truncated reply through the real interpreter; confirms tests/README.md's
+    own point that mocking below the real interpreter can hide exactly this class of bug.
+  - **Real, unresolved discrepancy found while testing `_parse_ntp_reply()`'s
+    `RTC().datetime((..., tm[6] + 1, ...))` weekday conversion — flagged, not fixed.** `tm[6]` is
+    `time.gmtime()`'s weekday field (Monday=0..Sunday=6, standard Python/MicroPython convention).
+    Web search of `micropython/micropython#7394` ("RTC weekday meaning inconsistencies") found: the
+    rp2 port accepts a raw 0-6 weekday value and passes it straight to hardware, but the RP2040
+    datasheet's own `dayw` field semantics say `dayw=0` means **Sunday**, not Monday — and the issue
+    reports that RP2 "will put the given value to the hardware, but only if it is a valid weekday,
+    otherwise the whole RTC setting will silently fail" (no exception, no partial update). If that
+    reported behavior is accurate for the currently pinned MicroPython version, `tm[6] + 1` produces
+    `7` whenever the real day is Sunday (`tm[6] == 6`) — out of the accepted 0-6 range — meaning the
+    RTC set would silently no-op on every Sunday sync, while `_parse_ntp_reply()` still returns `tm`
+    and the caller still marks a successful sync. Not fixed here: (a) this line predates this
+    session's own edits, out of scope for a "flag, don't silently fix" formula/behavior discrepancy
+    per CLAUDE.md; (b) confidence is genuinely mixed — the `#7394` discussion itself describes this
+    as unsettled/inconsistent upstream, and WebFetch was unavailable this session to read the actual
+    current `ports/rp2/machine_rtc.c` source directly (only web-search summaries), so this could
+    already be stale relative to the pinned `v1.28.0`. Needs verification against the actual current
+    `machine_rtc.c` source (or real hardware) before deciding whether `tm[6] + 1` should become
+    `tm[6]`, a modulo-7 wrap, or something else. `tests/machine.py`'s own `RTC` fake deliberately
+    takes no position on weekday validity for this same reason (see its own comment).
+  - **Real, environment-specific discrepancy found while testing `cettime()` — confirmed, not a
+    bug, but worth recording:** this project's pinned MicroPython Unix-port test interpreter's
+    `time.gmtime()` returns a **9-element** tuple (trailing `isdst=0`), not the 8-element shape
+    MicroPython's own docs state for embedded ports including rp2, the real deployment target
+    (confirmed directly: `len(time.gmtime()) == 9` under the pinned Unix-port build, vs. docs
+    ("the unix, windows, webassembly, alif, mimxrt and rp2 ports use the standard POSIX epoch...")
+    which don't call out a tuple-length difference for Unix specifically — only the well-known
+    8-vs-9 split between embedded ports and CPython's own `struct_time`). `cettime()`'s own
+    `if len(cet) == 8:` guard is correct for the real rp2 target (matches the docs) but returns
+    `None` under this test interpreter if not accounted for — exactly the cross-port ambiguity
+    `typings/_mpy_shed/time_mp.pyi`'s `_TimeTuple` union type already anticipates. Not changed in
+    the source (would need to actually run on differently-shaped hardware to justify widening the
+    check, and this is a test-environment fact, not a bug in the shipped code) — instead,
+    `tests/test_asy_ntp_client.py`'s own `time` monkeypatch normalizes `gmtime()`'s result to 8
+    elements before handing it to `cettime()`, so the DST-boundary math is tested against the real
+    rp2-target contract despite running on a host whose own `gmtime()` shape differs. See that
+    test file's own `test_this_interpreters_gmtime_returns_nine_elements_not_eight` for the direct,
+    standalone proof of this fact, kept as a permanent regression check against this assumption
+    silently drifting.
 - **Bus concurrency via `asyncio.Lock` + `async with` needs a coverage audit** (no gaps, no
   deadlock/starvation). Concrete progress: `asy_scd30_driver.py`/`asy_bmp3xx_driver.py`/
   `asy_sgp40_driver.py` each have a `*_DeviceSession(Lockable)` class — an outer per-sensor lock
