@@ -116,6 +116,7 @@ class asy_ntp_client:
             await self.ntp_sync_trigger_event.wait()
             if self.debug:
                 print("NTP Start Sync.")
+            msg: bytes | None = None
             await self.wifi_mode_lock.acquire()
             try:
                 if self.network_available():
@@ -126,7 +127,7 @@ class asy_ntp_client:
                         if self.debug:
                             print("Fehlende NTP Konfiguration!")
                     else:
-                        await self.asy_long_block_lock.acquire()  # getaddrinfo may block for some time
+                        await self.asy_long_block_lock.acquire()  # getaddrinfo may block for some time - see BACKLOG.md
                         if self.debug:
                             print("NTP Long Block Lock acquired.")
                         addr = None
@@ -145,25 +146,25 @@ class asy_ntp_client:
                             if self.debug:
                                 print("NTP Long Block Lock released.")
 
-                        if addr is None:
-                            msg = None
-                        else:
+                        if addr is not None:
                             cli = None
                             try:
                                 cli = AsyUDPSocket(addr, mode="client")
-                                msg, add = await cli.write_and_recvfrom(
+                            except (ValueError, TypeError) as e:  # malformed addr - see AsyUDPSocket's own contract
+                                if self.debug:
+                                    print("Invalid NTP server address:", e)
+                                cli = None
+                            if cli is not None:
+                                # write_and_recvfrom()/disconnect() never raise - they return their
+                                # documented None-shaped sentinel on any OSError/MemoryError/timeout
+                                # instead (see src/asy_udp_socket.py's module contract), so no
+                                # try/except is needed - or correct - around this call.
+                                msg, _addr_from = await cli.write_and_recvfrom(
                                     b"\x1b" + bytearray(47),
                                     1024,
                                     timeout_ms=_NTP_CONN_TIMEOUT,
                                 )
-                                del add
                                 await cli.disconnect()
-                            except Exception:
-                                cli = msg = None
-                            finally:
-                                if cli is not None:
-                                    await cli.disconnect()
-                            del cli, add, addr
 
                         if msg is None:
                             if self.debug:
@@ -201,12 +202,12 @@ class asy_ntp_client:
                             await self.ntp_synced.set_true()
                             if self.debug:
                                 print("RTC set to:", tm)
-                    del ntp_host, ntp_offs, msg, ntp_time, tm
             finally:
                 try:
                     self.wifi_mode_lock.release()
                 except RuntimeError:  # in case it's already released somehow
                     pass
+            msg = None  # drop the reference eagerly rather than holding it across the next long wait
 
     async def ntp_time_hours_counter(self) -> None:  # Timer für NTP Refresh
         self.ntp_sec_count = 0

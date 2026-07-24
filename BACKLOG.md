@@ -108,9 +108,32 @@ From hands-on field experience with deployed units:
   `machine.I2C` call already in progress, so an asyncio-level timeout can't interrupt a genuinely
   wedged transaction. **Decided**: for a truly stuck bus/sensor, the hardware watchdog is the
   accepted backstop, not a software fix to chase; current task-supervisor error-budget behavior is
-  adequate. For calls that genuinely *can* be timeout-wrapped (`socket.getaddrinfo()`, FRAM SPI,
-  anything not a raw blocking `machine.I2C` call mid-transaction), standardize on one consistent
-  timeout/cancellation mechanism everywhere.
+  adequate.
+  - **Correction (`asy_ntp_client.py` review): `socket.getaddrinfo()` belongs in the "can't be
+    timeout-wrapped" bucket with `machine.I2C`, not the "genuinely can" bucket this line originally
+    claimed.** Verified directly against current MicroPython issue tracker, not training memory:
+    [micropython#18797](https://github.com/micropython/micropython/issues/18797) (RP2350/CYW43:
+    `getaddrinfo()` blocks indefinitely — no timeout, no exception, no recovery but a hard reset),
+    [micropython#8326](https://github.com/micropython/micropython/issues/8326) (ESP32:
+    `socket.connect()` ignores `settimeout()`), and
+    [micropython-lib#1078](https://github.com/micropython/micropython-lib/issues/1078) (`requests`
+    issue tracker: "asyncio.wait_for will not work when using a blocking getaddrinfo function... the
+    only solution is a nonblocking async getaddrinfo, not implemented yet"). `getaddrinfo()` is a
+    raw synchronous call, never awaited, so there's no coroutine boundary for `asyncio.wait_for()`
+    (or any other asyncio-level timeout) to even attach to — the same preemption gap as a wedged
+    `machine.I2C` transaction, for the same reason (single-threaded cooperative scheduler, no OS
+    preemption). `asy_ntp_client.py`'s existing `network_available()` gate (only attempt sync while
+    `wlan.status() == network.STAT_GOT_IP`) already avoids the specific "WiFi active, no IP yet"
+    trigger from #18797, but does not and cannot cover "got an IP, but the path to the configured
+    NTP host/resolver is otherwise down" (owner-reported field case: router up, upstream internet
+    down) — `getaddrinfo()` can still block indefinitely, or for long enough to blow the ~8.3s WDT
+    cap, in that case. Real elimination (not just risk-reduction) would need offloading the call off
+    the asyncio core entirely — e.g. RP2040's second core via `_thread`, a pattern not used anywhere
+    in this codebase today — which is an architecture decision flagged to the owner for discussion,
+    not silently introduced. For calls that genuinely can be bounded from within the asyncio loop
+    (FRAM SPI transactions, the promoted `src/asy_udp_socket.py`'s own `select.poll`-driven
+    `ready()`/`write_and_recvfrom(timeout_ms=..., tries=...)`), standardize on one consistent
+    timeout/cancellation mechanism everywhere — that part of the original guidance still holds.
 - **Bus concurrency via `asyncio.Lock` + `async with` needs a coverage audit** (no gaps, no
   deadlock/starvation). Concrete progress: `asy_scd30_driver.py`/`asy_bmp3xx_driver.py`/
   `asy_sgp40_driver.py` each have a `*_DeviceSession(Lockable)` class — an outer per-sensor lock

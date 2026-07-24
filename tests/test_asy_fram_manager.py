@@ -1496,7 +1496,11 @@ def test_op_lock_prevents_concurrent_writes_from_interleaving_between_blocks() -
     chunk._write_chunk = instrumented_write_chunk  # type: ignore[method-assign]
 
     async def scenario() -> list[bool]:
-        return await asyncio.gather(chunk.write(b"AAAA"), chunk.write(b"BBBB"))  # type: ignore[no-any-return]
+        # The stub types 2-arg gather() as returning tuple[bool, bool] (mirroring CPython
+        # typeshed's precise-arity overloads), but MicroPython's real asyncio.gather() always
+        # returns a list (extmod/asyncio/funcs.py's `return ts`, ts built as a list) - so the
+        # annotation stays honest to actual runtime behavior instead of matching the stub.
+        return await asyncio.gather(chunk.write(b"AAAA"), chunk.write(b"BBBB"))  # type: ignore[return-value]
 
     results = run(scenario())
     assert results == [True, True]
