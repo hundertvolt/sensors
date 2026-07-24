@@ -1154,25 +1154,54 @@ def test_asy_ntp_time_releases_the_wifi_lock_even_if_the_attempt_raises() -> Non
 # ===========================================================================
 # Integration tests: real (not mocked) network path, driving the whole asy_ntp_time() task
 # through cfgmgr -> _resolve_ntp_server -> AsyUDPSocket -> real UDP loopback -> a staged real NTP
-# server on port 123 (the real, hardcoded NTP port _resolve_ntp_server always resolves to) -
-# proving how a genuine network fault (or success) propagates all the way up through
+# server - proving how a genuine network fault (or success) propagates all the way up through
 # ntp_issynced()/get_last_ntp_sync()/cettime(), not just the unit under test in isolation.
 # ===========================================================================
+
+
+class _RedirectGetaddrinfo:
+    # _resolve_ntp_server() always resolves to real port 123 (socket.getaddrinfo(host, 123),
+    # hardcoded - the real NTP port) - binding a test server there needs root/CAP_NET_BIND_SERVICE,
+    # which CI runners don't have (confirmed directly: bind() raises EACCES there, even though it
+    # worked in a root dev sandbox). Redirects asy_ntp_client.py's own module-level `socket` name
+    # (not the real, shared `socket` module - same technique as _RaisingSocketModule above) so its
+    # one getaddrinfo() call resolves to a real, already-bound ephemeral-port address instead;
+    # AsyUDPSocket's own actual socket calls (a separate module's own `socket` import) are entirely
+    # unaffected, so the rest of the real send/receive path is still exercised for real.
+    def __init__(self, addr: "tuple[str, int]") -> None:
+        self._addr = addr
+
+    def __enter__(self) -> "_RedirectGetaddrinfo":
+        self._original = ntpmod.socket
+        addr = self._addr
+
+        class _Wrapper:
+            def getaddrinfo(self, _host: "Any", _port: "Any") -> "Any":
+                return [(2, 1, 0, "", addr)]
+
+        ntpmod.socket = _Wrapper()
+        return self
+
+    def __exit__(self, *exc_info: "Any") -> None:
+        ntpmod.socket = self._original
+
 
 class FakeNtpServer:
     # A genuine independent UDP endpoint (real socket.socket(), not an AsyUDPSocket) - staged to
     # answer with a controlled reply or drop the request entirely, the same "real peer, not a
-    # mock" approach as test_asy_udp_socket.py's AdversarialPeer. Binds to real port 123 (the
-    # actual NTP port _resolve_ntp_server always resolves to), resolved via getaddrinfo() first -
-    # same Unix-port-only quirk as make_addr(): a plain (host, port) tuple is rejected by bind().
+    # mock" approach as test_asy_udp_socket.py's AdversarialPeer. Binds to a real, free ephemeral
+    # port (see _RedirectGetaddrinfo above for why not real port 123).
     def __init__(self) -> None:
-        addr = socket.getaddrinfo("127.0.0.1", 123)[0][-1]
+        self.addr = make_addr()
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.sock.bind(addr)
+        self.sock.bind(self.addr)
         self.sock.setblocking(False)
         self.poller = select.poll()
         self.poller.register(self.sock, select.POLLIN)
+
+    def redirect_resolution(self) -> _RedirectGetaddrinfo:
+        return _RedirectGetaddrinfo(self.addr)
 
     async def serve_once(self, reply: "bytes | None") -> None:
         # Answers exactly one request with `reply` (None = drop it silently, never answer).
@@ -1208,22 +1237,23 @@ def test_integration_full_task_reaches_synced_state_on_a_real_successful_reply()
     async def scenario() -> "tuple[bool, int | None]":
         server = FakeNtpServer()
         try:
-            task = asyncio.create_task(client.asy_ntp_time())
-            server_task = asyncio.create_task(server.serve_once(reply))
-            client.ntp_sync_trigger_event.set()
-            await asyncio.wait_for(server_task, 5)
-            for _ in range(50):
-                if await client.ntp_issynced():
-                    break
-                await asyncio.sleep_ms(20)
-            synced = await client.ntp_issynced()
-            last_sync = await client.get_last_ntp_sync()
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
-            return synced, last_sync
+            with server.redirect_resolution():
+                task = asyncio.create_task(client.asy_ntp_time())
+                server_task = asyncio.create_task(server.serve_once(reply))
+                client.ntp_sync_trigger_event.set()
+                await asyncio.wait_for(server_task, 5)
+                for _ in range(50):
+                    if await client.ntp_issynced():
+                        break
+                    await asyncio.sleep_ms(20)
+                synced = await client.ntp_issynced()
+                last_sync = await client.get_last_ntp_sync()
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                return synced, last_sync
         finally:
             server.close()
 
@@ -1257,18 +1287,19 @@ def test_integration_full_task_stays_not_synced_on_a_malformed_reply() -> None:
     async def scenario() -> bool:
         server = FakeNtpServer()
         try:
-            task = asyncio.create_task(client.asy_ntp_time())
-            server_task = asyncio.create_task(server.serve_once(garbage_reply))
-            client.ntp_sync_trigger_event.set()
-            await asyncio.wait_for(server_task, 5)
-            await asyncio.sleep(0.2)
-            synced = await client.ntp_issynced()
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
-            return synced  # type: ignore[no-any-return]  # client: Any, see note near line 476
+            with server.redirect_resolution():
+                task = asyncio.create_task(client.asy_ntp_time())
+                server_task = asyncio.create_task(server.serve_once(garbage_reply))
+                client.ntp_sync_trigger_event.set()
+                await asyncio.wait_for(server_task, 5)
+                await asyncio.sleep(0.2)
+                synced = await client.ntp_issynced()
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                return synced  # type: ignore[no-any-return]  # client: Any, see note near line 476
         finally:
             server.close()
 
@@ -1295,32 +1326,33 @@ def test_integration_recovers_on_retry_after_one_dropped_request() -> None:
     async def scenario() -> bool:
         server = FakeNtpServer()
         try:
-            task = asyncio.create_task(client.asy_ntp_time())
-            client.ntp_sync_trigger_event.set()
-            first_reply_task = asyncio.create_task(server.serve_once(reply))
-            await asyncio.wait_for(first_reply_task, 5)
-            await _wait_synced(True)
-            assert await client.ntp_issynced() is True  # confirmed synced once via a real round trip
+            with server.redirect_resolution():
+                task = asyncio.create_task(client.asy_ntp_time())
+                client.ntp_sync_trigger_event.set()
+                first_reply_task = asyncio.create_task(server.serve_once(reply))
+                await asyncio.wait_for(first_reply_task, 5)
+                await _wait_synced(True)
+                assert await client.ntp_issynced() is True  # confirmed synced once via a real round trip
 
-            await client.ntp_force_sync()  # trigger a second attempt
-            await server.serve_once(None)  # drop it entirely
-            for _ in range(300):  # wait for the real _NTP_CONN_TIMEOUT to elapse and arm a retry
-                if client.ntp_retry_timer.callback is not None:
-                    break
-                await asyncio.sleep_ms(20)
-            assert client.ntp_retry_timer.callback is not None  # retry genuinely armed this time
+                await client.ntp_force_sync()  # trigger a second attempt
+                await server.serve_once(None)  # drop it entirely
+                for _ in range(300):  # wait for the real _NTP_CONN_TIMEOUT to elapse and arm a retry
+                    if client.ntp_retry_timer.callback is not None:
+                        break
+                    await asyncio.sleep_ms(20)
+                assert client.ntp_retry_timer.callback is not None  # retry genuinely armed this time
 
-            client.ntp_retry_timer.trigger()  # fire the scheduled retry immediately, not after 15s
-            second_reply_task = asyncio.create_task(server.serve_once(reply))
-            await asyncio.wait_for(second_reply_task, 5)
-            await _wait_synced(True)
-            synced = await client.ntp_issynced()
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
-            return synced  # type: ignore[no-any-return]  # client: Any, see note near line 476
+                client.ntp_retry_timer.trigger()  # fire the scheduled retry immediately, not after 15s
+                second_reply_task = asyncio.create_task(server.serve_once(reply))
+                await asyncio.wait_for(second_reply_task, 5)
+                await _wait_synced(True)
+                synced = await client.ntp_issynced()
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                return synced  # type: ignore[no-any-return]  # client: Any, see note near line 476
         finally:
             server.close()
 
