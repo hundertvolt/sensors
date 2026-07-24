@@ -422,6 +422,26 @@ def test_resolve_ntp_server_waits_for_the_long_block_lock_if_already_held() -> N
     assert run(scenario())
 
 
+class _EmptyResultSocketModule:
+    def getaddrinfo(self, host: "Any", port: "Any") -> "Any":
+        return []  # a real resolver can legitimately return "no addresses" without raising
+
+
+def test_resolve_ntp_server_empty_getaddrinfo_result_returns_none() -> None:
+    # [][0] raises IndexError - not a "real" DNS failure, but still just a plain Exception subclass,
+    # so the same broad except Exception in _resolve_ntp_server already catches it; genuinely
+    # untested until now (see BACKLOG.md's third-pass findings).
+    client = make_client()
+    original_socket = ntpmod.socket
+    ntpmod.socket = _EmptyResultSocketModule()
+    try:
+        result = run(client._resolve_ntp_server("pool.ntp.org"))
+    finally:
+        ntpmod.socket = original_socket
+    assert result is None
+    assert not client.asy_long_block_lock.locked()
+
+
 # ---------------------------------------------------------------------------
 # _fetch_ntp_reply
 # ---------------------------------------------------------------------------
@@ -430,6 +450,18 @@ def test_resolve_ntp_server_waits_for_the_long_block_lock_if_already_held() -> N
 def test_fetch_ntp_reply_invalid_addr_returns_none() -> None:
     client = make_client()
     result = run(client._fetch_ntp_reply((12345, 80)))  # host not a str
+    assert result is None
+
+
+def test_fetch_ntp_reply_ipv6_shaped_four_tuple_addr_returns_none() -> None:
+    # getaddrinfo() is called with no address-family hint, so a resolver that prefers/returns IPv6
+    # would hand back a 4-tuple (host, port, flowinfo, scopeid), not the (host, port) 2-tuple this
+    # file assumes throughout. AsyUDPSocket.__init__ already rejects any non-2-tuple with TypeError
+    # (see its own module docstring), which _fetch_ntp_reply already catches - proving the whole
+    # pipeline degrades to "no reply" instead of crashing on an unexpected address family, even
+    # though this file never restricts getaddrinfo() to AF_INET (see BACKLOG.md's third-pass note).
+    client = make_client()
+    result = run(client._fetch_ntp_reply(("2001:db8::1", 123, 0, 0)))
     assert result is None
 
 
@@ -570,6 +602,30 @@ def test_parse_ntp_reply_rtc_set_failure_returns_none_not_raise() -> None:
     finally:
         RTC.raise_exc = None
     assert result is None
+
+
+def test_parse_ntp_reply_ntp_era_rollover_wrapped_timestamp_does_not_raise() -> None:
+    # NTP's 32-bit "seconds since 1900" field wraps in 2036 (era rollover) - distinct from the
+    # ~2037 Unix time_t OverflowError already covered above. A real post-2036 server would send a
+    # small raw value (wrapped back near 0); this file has no era-disambiguation logic (RFC 5905
+    # 7.3's "reinterpret as next era if smaller than a reference point" is never applied), so
+    # ntp_time = raw - 2208988800 + offset goes deeply negative.
+    #
+    # Real finding (see BACKLOG.md's third-pass entry): this does NOT raise, and does NOT degrade
+    # to None the way every other malformed-input case in this function does - time.gmtime() on
+    # this interpreter happily accepts a deeply negative epoch and returns a valid-shaped tuple for
+    # 1900-01-01, which _parse_ntp_reply treats as a perfectly good sync result (would call
+    # RTC().datetime(...) and report success upstream, not failure). Confirmed directly: only
+    # asserting "no crash" here, matching what the code can actually be relied on for today - not
+    # asserting a specific return value, since "silently wrong instead of rejected" is the bug, not
+    # a stable behavior to lock in as correct.
+    client = make_client()
+    header = b"\x1c" + bytes(39)
+    wrapped_raw_seconds = 12345  # small value, as a real wrapped-era server would send
+    transmit = struct.pack("!I", wrapped_raw_seconds) + bytes(4)
+    msg = header + transmit
+    assert len(msg) == 48
+    client._parse_ntp_reply(msg, 0)  # must not raise - return value deliberately not asserted
 
 
 # ---------------------------------------------------------------------------
@@ -762,6 +818,37 @@ def test_ntp_time_hours_counter_marks_out_of_sync_past_the_async_interval_multip
         return synced  # type: ignore[no-any-return]  # client: Any, see note near line 476
 
     assert run(scenario()) is False
+
+
+def test_ntp_time_hours_counter_never_naturally_reaches_the_async_interval_multiple_under_constant_config() -> None:
+    # Complements test_ntp_time_hours_counter_marks_out_of_sync_past_the_async_interval_multiple
+    # above (which isolates the 3x transition by directly poking ntp_sec_count). Under natural
+    # ticking with a constant NTP_Interv_H, the loop's own reset-to-0-once-sec_count-hits-1x-
+    # interval logic fires every single cycle before sec_count can ever approach the 3x threshold -
+    # so the "distrust a stale sync after 3x the interval" safety net never actually engages here,
+    # even across several full cycles of continuous (simulated) sync silence. See BACKLOG.md's
+    # third-pass findings: inherited from python/CommonDrivers/async_connect.py byte-for-byte,
+    # flagged rather than changed.
+    json_text = '{"NTP_Host": "pool.ntp.org", "NTP_Offset_S": 0, "NTP_Interv_H": 1, "GMTOffset": 3600, "DSTOffset": 3600}'
+    cfgmgr = make_cfgmgr_from_json("hours_never_3x.cfg", json_text)
+    client = make_client(cfgmgr=cfgmgr)
+
+    async def scenario() -> bool:
+        await client.ntp_synced.set_true()
+        task = asyncio.create_task(client.ntp_time_hours_counter())
+        # 3 full 1h/360-tick cycles - well past where the 3x(=3h) threshold would sit if sec_count
+        # were ever allowed to accumulate past a single 1x cycle.
+        await _tick(client.ntp_timer_trigger_event, 3 * 360)
+        still_synced = await client.ntp_issynced()
+        sec_count_bounded = client.ntp_sec_count < (1 * 60 * 60)  # always reset well under 1x
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        return still_synced and sec_count_bounded  # type: ignore[no-any-return]  # client: Any, see note near line 476
+
+    assert run(scenario())
 
 
 # ---------------------------------------------------------------------------

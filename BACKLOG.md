@@ -216,6 +216,88 @@ From hands-on field experience with deployed units:
     test file's own `test_this_interpreters_gmtime_returns_nine_elements_not_eight` for the direct,
     standalone proof of this fact, kept as a permanent regression check against this assumption
     silently drifting.
+  - **Third pass (owner-requested "go through it again") over `asy_ntp_client.py` — no new
+    exception/blocking gaps found in the file itself; four smaller findings, all now covered by a
+    regression test:**
+    - Re-verified the "no uncaught exceptions" claim against a fact this file's broad
+      `except Exception` clauses all implicitly depend on: `asyncio.CancelledError` must be a
+      `BaseException`, not an `Exception`, or task cancellation (e.g. of `asy_ntp_time()`'s task by
+      an outer supervisor) would get silently swallowed by `_resolve_ntp_server()`'s/
+      `_run_ntp_sync_attempt()`'s catch-alls instead of propagating. Confirmed directly against the
+      pinned v1.28.0 Unix-port interpreter: `asyncio.CancelledError.__bases__ == (BaseException,)`
+      — matches modern CPython (3.8+), not the older Exception-subclass convention. Nothing to fix;
+      recorded since this was verified, not assumed.
+    - `ntp_time_hours_counter()`'s "3× interval without a successful resync → mark unsynced" branch
+      (`_NTP_ASYNC_INTERV`) is unreachable under natural ticking with a constant `NTP_Interv_H`: the
+      very same iteration that would grow `ntp_sec_count` past the 1× threshold always resets it to
+      0 in the same breath (the second `if` in the loop fires unconditionally once `sec_count >= 1x
+      interval`, regardless of sync success/failure). This is byte-for-byte identical to
+      `python/CommonDrivers/async_connect.py`'s own `ntp_time_hours_counter()` — inherited existing
+      behavior, not a refactor regression — so **flagged, not changed**, matching the refactor's
+      explicit "same top-level features" goal. Practical consequence: if the configured NTP server
+      goes silently unreachable for a long time (network down for days/weeks), `ntp_synced` stays
+      `True` from the last real success indefinitely — the "distrust a stale sync after 3× the
+      interval" safety net this constant's own comment describes never actually engages under a
+      static config; it's only reachable if `NTP_Interv_H` is *increased* while a count is already
+      in progress. `tests/test_asy_ntp_client.py`'s existing
+      `test_ntp_time_hours_counter_marks_out_of_sync_past_the_async_interval_multiple` already
+      exercised the isolated transition (by directly setting `ntp_sec_count` at the boundary); a new
+      `test_ntp_time_hours_counter_never_naturally_reaches_the_async_interval_multiple_under_constant_config`
+      now proves the natural-ticking side of this finding (hundreds of ticks across multiple 1×
+      cycles under a constant interval, still synced throughout).
+    - **Real finding, more concerning than initially assumed while writing its test: NTP's 32-bit
+      "seconds since 1900" field wraps in 2036 (era rollover) — distinct from the already-documented
+      ~2037 Unix `time_t` limit above, a different 32-bit field wrapping in a different epoch — and
+      `_parse_ntp_reply()` has no era-disambiguation logic (RFC 5905 §7.3's "reinterpret as the next
+      era if the raw value is smaller than a reference point" is never applied) or any plausibility
+      bound on the result at all.** A real post-2036 server's reply (small raw value, wrapped back
+      near 0) makes `ntp_time = raw - 2208988800 + offset_s` deeply negative. First assumed this
+      would land in the already-caught `(OverflowError, ValueError, OSError)` path like every other
+      malformed input; **testing it directly proved otherwise**: `time.gmtime()` on a deeply
+      negative epoch does not raise at all - confirmed both on the pinned Unix-port interpreter
+      (returns a valid-shaped tuple for 1900-01-01) and, checked directly against
+      `shared/timeutils/timeutils.c`'s actual `timeutils_seconds_since_1970_to_struct_time()`
+      (shared by rp2 and every other embedded port), which does unconditional arithmetic on a
+      negative input with no bounds/validity check regardless of the
+      `MICROPY_TIME_SUPPORT_Y1969_AND_BEFORE` config - so real rp2 hardware would do the same. The
+      practical effect: a wrapped-era (or otherwise wildly out-of-range) reply doesn't fail closed -
+      `_parse_ntp_reply()` returns a normal-looking (if nonsensical, e.g. year 1900) tuple,
+      `RTC().datetime(...)` gets called with it, and `_handle_ntp_sync_success()` marks
+      `ntp_synced = True` as if the sync had genuinely succeeded. Not fixed (no plausibility/era
+      check added — this is ten years out and would be new behavior, not a bug fix to existing
+      behavior, needing a project-owner decision on what bound to enforce and how to signal
+      rejection) — flagged, with `test_parse_ntp_reply_ntp_era_rollover_wrapped_timestamp_does_not_raise`
+      now locking in the "does not raise" fact (deliberately not asserting a specific return value,
+      since the silently-wrong result is exactly the open finding, not a stable contract to pin down).
+    - `_resolve_ntp_server()`'s `socket.getaddrinfo(ntp_host, 123)[0][-1]` indexing runs inside its
+      own broad `try/except Exception`, so two shapes of a *malformed but non-raising-by-itself*
+      result both already degrade safely but had no test: an empty result list (`[][0]` →
+      `IndexError`, caught) and an IPv6-shaped 4-tuple resolved address (rejected two frames down by
+      `AsyUDPSocket.__init__`'s own `len(addr) == 2` check, which raises `TypeError`, caught by
+      `_fetch_ntp_reply`'s `except (ValueError, TypeError)`) — both now have a regression test
+      (`test_resolve_ntp_server_empty_getaddrinfo_result_returns_none`,
+      `test_fetch_ntp_reply_ipv6_shaped_four_tuple_addr_returns_none`).
+  - **Real bug found in a downstream consumer during this pass — NOT in `asy_ntp_client.py` itself,
+    flagged only, not fixed (out of this session's editing scope; see CLAUDE.md's `improved-quality/`
+    hard rule): `api_helpers.py`'s `time_to_dict(gmt_raw)` only fills in real values when
+    `len(gmt_raw) == 9`.** Both of its actual callers, `sensortask-wozi.py`'s `GET /time/status`
+    handler's `time.gmtime()` call and its `await ntp.cettime()` call, hand it an **8**-element
+    tuple on real target hardware — rp2's documented `time.gmtime()` shape, and `cettime()`'s own
+    explicit `GMTimeStruct` (8 fields) built only after checking `len(cet) == 8`. So on the actual
+    deployed hardware, `/time/status`'s `"UTC"` and `"Local"` response fields would come back
+    all-`None` **unconditionally**, even immediately after a fully successful, live NTP sync — this
+    isn't a maybe/edge-case bug, it's the only behavior this endpoint can ever produce on-device.
+    This looks like the same 8-vs-9 Unix-port-vs-rp2 `time.gmtime()` shape ambiguity already
+    documented above (found there via `cettime()`'s own tests), but landing here as a genuine,
+    currently-broken consumer-side bug rather than a test-environment-only quirk — most likely
+    written and only ever exercised against this project's Unix-port test interpreter's own
+    9-element `gmtime()`, never against a real rp2-shaped 8-element tuple. No pre-refactor legacy
+    equivalent of this endpoint exists anywhere under `python/` to compare against (searched; no
+    `time_to_dict`/`time/status` in the deployed codebase at all) — this looks like new code written
+    during the refactor itself, not inherited legacy behavior being faithfully reproduced. Needs a
+    project-owner decision (most likely: change `time_to_dict`'s check to accept either 8 or 9
+    elements, or fix it at exactly 8 to match the real target and stop over-generalizing for the
+    test-only Unix-port shape) before anyone touches `api_helpers.py`.
 - **Bus concurrency via `asyncio.Lock` + `async with` needs a coverage audit** (no gaps, no
   deadlock/starvation). Concrete progress: `asy_scd30_driver.py`/`asy_bmp3xx_driver.py`/
   `asy_sgp40_driver.py` each have a `*_DeviceSession(Lockable)` class — an outer per-sensor lock
