@@ -287,10 +287,13 @@ class Timer:
 
 class RTC:
     # Minimal fake for asy_ntp_client.py's RTC().datetime((...)) call: stores/returns whatever
-    # 8-tuple it's given, no validation - real per-port weekday-field semantics/validity are
-    # genuinely unsettled upstream (confirmed via web search of micropython/micropython#7394 during
-    # this file's own test-writing pass, not fixed here - flagged to the project owner separately,
-    # see BACKLOG.md), so this fake deliberately takes no position on what's "valid".
+    # 8-tuple it's given, no validation - confirmed directly against the real
+    # ports/rp2/machine_rtc.c (v1.28.0) that the real setter reads all 8 elements but only ever
+    # uses indices 0/1/2/4/5/6 (year/month/day/hour/minute/second); index 3 (weekday) is extracted
+    # and never used/validated/written anywhere - so there's no real weekday-validity behavior for
+    # this fake to model in the first place (see BACKLOG.md for the fuller history: an earlier,
+    # web-search-only pass on this file mistakenly flagged the weekday value as possibly
+    # significant/validated upstream, since corrected against the actual source).
     # State is class-level, not per-instance: real RTC is one physical peripheral - every RTC()
     # call (the real class takes no useful constructor args on rp2) refers to the same hardware,
     # so a test must be able to construct a fresh RTC() after the fact and still read back what an

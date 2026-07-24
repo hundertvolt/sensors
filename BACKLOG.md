@@ -178,26 +178,25 @@ From hands-on field experience with deployed units:
     previously worked, only for the exact crash path this test caught. This was invisible until a
     test actually drove a truncated reply through the real interpreter; confirms tests/README.md's
     own point that mocking below the real interpreter can hide exactly this class of bug.
-  - **Real, unresolved discrepancy found while testing `_parse_ntp_reply()`'s
-    `RTC().datetime((..., tm[6] + 1, ...))` weekday conversion — flagged, not fixed.** `tm[6]` is
-    `time.gmtime()`'s weekday field (Monday=0..Sunday=6, standard Python/MicroPython convention).
-    Web search of `micropython/micropython#7394` ("RTC weekday meaning inconsistencies") found: the
-    rp2 port accepts a raw 0-6 weekday value and passes it straight to hardware, but the RP2040
-    datasheet's own `dayw` field semantics say `dayw=0` means **Sunday**, not Monday — and the issue
-    reports that RP2 "will put the given value to the hardware, but only if it is a valid weekday,
-    otherwise the whole RTC setting will silently fail" (no exception, no partial update). If that
-    reported behavior is accurate for the currently pinned MicroPython version, `tm[6] + 1` produces
-    `7` whenever the real day is Sunday (`tm[6] == 6`) — out of the accepted 0-6 range — meaning the
-    RTC set would silently no-op on every Sunday sync, while `_parse_ntp_reply()` still returns `tm`
-    and the caller still marks a successful sync. Not fixed here: (a) this line predates this
-    session's own edits, out of scope for a "flag, don't silently fix" formula/behavior discrepancy
-    per CLAUDE.md; (b) confidence is genuinely mixed — the `#7394` discussion itself describes this
-    as unsettled/inconsistent upstream, and WebFetch was unavailable this session to read the actual
-    current `ports/rp2/machine_rtc.c` source directly (only web-search summaries), so this could
-    already be stale relative to the pinned `v1.28.0`. Needs verification against the actual current
-    `machine_rtc.c` source (or real hardware) before deciding whether `tm[6] + 1` should become
-    `tm[6]`, a modulo-7 wrap, or something else. `tests/machine.py`'s own `RTC` fake deliberately
-    takes no position on weekday validity for this same reason (see its own comment).
+  - **Resolved (was flagged as unresolved earlier the same session): `_parse_ntp_reply()`'s
+    `RTC().datetime((..., tm[6] + 1, ...))` weekday conversion is harmless — confirmed directly
+    against the actual current `ports/rp2/machine_rtc.c` source
+    (`raw.githubusercontent.com/micropython/micropython/v1.28.0/ports/rp2/machine_rtc.c`; WebFetch
+    had been unavailable for this specific check earlier in the session, only came back later — see
+    `tests/machine.py`'s own `RTC` fake comment for the original, more cautious framing this
+    supersedes).** `tm[6]` is `time.gmtime()`'s weekday field (Monday=0..Sunday=6); the earlier,
+    web-search-only finding (citing `micropython/micropython#7394`) said RP2 validates this field
+    and silently no-ops the whole RTC set if it's out of range — **that turned out not to describe
+    the real current implementation.** The actual `machine_rtc_datetime()` setter reads all 8 tuple
+    elements but **only ever uses indices 0/1/2/4/5/6** (year/month/day/hour/minute/second) for the
+    real time calculation — index 3 (weekday) is extracted and then never used, never validated,
+    never written anywhere; reading the RTC back separately derives its own `tm_wday`, independent
+    of whatever was ever passed in on write. So `tm[6] + 1` — right, wrong, or wildly out of range —
+    has **zero effect** on the real RTC set, on every day of the week, not just Sundays; the earlier
+    "silently fails on Sunday" concern doesn't apply to the currently pinned version. Nothing to fix
+    here; `tests/machine.py`'s `RTC` fake stays weekday-validation-free, which was already the
+    correct, safe choice (it just turns out to be safe for a different, better-confirmed reason than
+    originally written).
   - **Real, environment-specific discrepancy found while testing `cettime()` — confirmed, not a
     bug, but worth recording:** this project's pinned MicroPython Unix-port test interpreter's
     `time.gmtime()` returns a **9-element** tuple (trailing `isdst=0`), not the 8-element shape
