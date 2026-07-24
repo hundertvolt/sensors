@@ -99,7 +99,6 @@ class asy_ntp_client:
         return await self.ntp_synced.get_value()
 
     async def ntp_force_sync(self) -> None:
-        await self.ntp_synced.set_false()
         await self.last_ntp_sync.set_value(None)
         self.ntp_retry_timer.deinit()
         self.ntp_retries = 0
