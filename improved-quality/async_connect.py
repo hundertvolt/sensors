@@ -1,3 +1,4 @@
+import json
 import network
 import asyncio
 from uasyncio import Lock, ThreadSafeFlag
@@ -6,7 +7,7 @@ from machine import Pin, Timer
 from micropython import const
 from async_manager import ConfigManager
 from base_classes import LockedCounter
-from typing import Tuple
+from typing import Dict, Tuple
 
 try:
     from typing import Protocol
@@ -62,7 +63,7 @@ class asy_conn_time:
     @staticmethod
     def get_default_cfg() -> Dict[str, int | float | str | bool]:
         try:
-            res = json.load(_DEFAULT_CONFIG)
+            res = json.loads(_DEFAULT_CONFIG)
             if isinstance(res, dict):
                 return res
         except Exception:

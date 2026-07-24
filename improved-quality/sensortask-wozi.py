@@ -708,7 +708,7 @@ async def main():
         tasks.append(starter())
         await asyncio.sleep(1.0 / len(task_starters))
 
-
+    await ntp.ntp_force_sync()  # first sync
 
     task_errors = 0
     while True:
@@ -738,9 +738,6 @@ async def main():
                 print("Alle Tasks laufen.")
             watchdog.feed()
         await asyncio.sleep(_TASK_CHECK_TIME)
-
-
-        await ntp.ntp_force_sync()  # first sync
 
 try:
     asyncio.run(main())

@@ -1,3 +1,4 @@
+import json
 import time
 import socket
 import struct
@@ -8,7 +9,7 @@ from machine import Timer, RTC
 from micropython import const
 from async_manager import ConfigManager
 from base_classes import LockedCounter, LockedFlag
-from typing import Callable
+from typing import Callable, Dict
 from collections import namedtuple
 
 _NTP_ASYNC_INTERV = const(3)  # 3 times interval considered as out of sync
@@ -52,7 +53,7 @@ class asy_ntp_client:
     @staticmethod
     def get_default_cfg() -> Dict[str, int | float | str | bool]:
         try:
-            res = json.load(_DEFAULT_CONFIG)
+            res = json.loads(_DEFAULT_CONFIG)
             if isinstance(res, dict):
                 return res
         except Exception:
