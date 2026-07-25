@@ -1519,8 +1519,9 @@ def test_asy_ntp_time_runs_one_attempt_per_trigger_and_releases_the_wifi_lock() 
     client = make_client()
     attempts = [0]
 
-    async def fake_attempt() -> None:
+    async def fake_attempt() -> "Any":
         attempts[0] += 1
+        return None, True
 
     client._run_ntp_sync_attempt = fake_attempt
 
@@ -1546,7 +1547,7 @@ def test_asy_ntp_time_runs_one_attempt_per_trigger_and_releases_the_wifi_lock() 
 def test_asy_ntp_time_releases_the_wifi_lock_even_if_the_attempt_raises() -> None:
     client = make_client()
 
-    async def raising_attempt() -> None:
+    async def raising_attempt() -> "Any":
         raise RuntimeError("simulated bug downstream")
 
     client._run_ntp_sync_attempt = raising_attempt
