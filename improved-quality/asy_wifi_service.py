@@ -113,6 +113,12 @@ class asy_conn_time(SensorReaderConfig):
         self.hotspot_timer = Timer()
         self.hotspot_timer_running = False
         self.ledflash: asyncio.Task[None] | None = None
+        # wlan_connect()'s own state machine - reset at the top of every wlan_connect() call
+        # (i.e. every task (re)start), not meant to be read from outside this class.
+        self.connection_failures = 0
+        self.hotspot_started_once = False
+        self.wlan_connected_once = False
+        self.wlan_deactivated = False
 
     def start_asy_wlan_connect(self) -> asyncio.Task[None]:
         evtloop = asyncio.get_event_loop()
@@ -271,16 +277,32 @@ class asy_conn_time(SensorReaderConfig):
                 pass
 
     async def wlan_connect(self) -> None:  # Funktion: WLAN-Verbindung
+        self._reset_wlan_connect_state()
+        await self._apply_initial_led_config()
+        while True:
+            if self.wlan_deactivated:
+                if self.debug:
+                    print("WLAN ist deaktiviert.")
+            else:
+                if self.reconn_wifi:
+                    await self._handle_reconnect_trigger()
+                if self.hotspot_mode:
+                    await self._run_hotspot_mode()
+                else:
+                    await self._run_sta_mode()
+            await asyncio.sleep(self.wifi_refresh_sec)
+
+    def _reset_wlan_connect_state(self) -> None:
         if self.ledflash is not None:
             self.ledflash.cancel()
             self.ledflash = None
         if self.dns_server_task is not None:
             self.dns_server_task.cancel()
             self.dns_server_task = None
-        connection_failures = 0
-        hotspot_started_once = False
-        wlan_connected_once = False
-        wlan_deactivated = False
+        self.connection_failures = 0
+        self.hotspot_started_once = False
+        self.wlan_connected_once = False
+        self.wlan_deactivated = False
         self.hotspot_timer.deinit()
         self.hotspot_timer_running = False
         self.reconn_wifi = (
@@ -288,266 +310,299 @@ class asy_conn_time(SensorReaderConfig):
         )  # clear possible previous connections
         if self.led is not None:
             self.led.off()
-        wifi_led = await self.cfgmgr.get_bool_values(_VAL_LED)
-        if wifi_led is None or len(wifi_led) != 1:
+
+    async def _apply_initial_led_config(self) -> None:
+        led_cfg = await self._read_wifi_led_cfg()
+        if led_cfg is None:
             await self.set_wifi_led(False)
-            wlan_deactivated = True
+            self.wlan_deactivated = True
             if self.debug:
                 print("Fehlende WLAN Konfiguration!")
         else:
-            await self.set_wifi_led(wifi_led[0])
-        del wifi_led
-        while True:
-            if wlan_deactivated:
+            await self.set_wifi_led(led_cfg)
+
+    async def _read_wifi_led_cfg(self) -> bool | None:  # None = config missing/malformed
+        wifi_led = await self.cfgmgr.get_bool_values(_VAL_LED)
+        if wifi_led is None or len(wifi_led) != 1:
+            return None
+        return wifi_led[0]
+
+    async def _handle_reconnect_trigger(self) -> None:
+        self.hotspot_timer.deinit()
+        self.hotspot_timer_running = False
+        if self.ledflash is not None:
+            self.ledflash.cancel()
+            self.ledflash = None
+        self.reconn_wifi = False
+        self.wlan_connected_once = False
+        if self.debug:
+            print("WLAN Reconnect ausgelöst!")
+        await asyncio.sleep(5)  # allow final tasks of calling function
+        if self.hotspot_mode:  # mode switch
+            await self._leave_hotspot_mode()
+        else:  # plain reconnect
+            await self._wait_for_sta_disconnect()
+        await asyncio.sleep(3)  # wait once for whatever else to settle
+
+    async def _leave_hotspot_mode(self) -> None:
+        self.hotspot_mode = False
+        if self.dns_server_task is not None:
+            self.dns_server_task.cancel()
+            self.dns_server_task = None
+        await self._select_wifi_mode(network.STA_IF)
+        if self.led is not None:
+            self.led.off()
+        if self.debug:
+            print("WLAN Hotspot wurde ausgeschaltet")
+
+    async def _wait_for_sta_disconnect(self) -> None:
+        if self.debug:
+            print("WLAN neu verbinden...")
+        await self.wifi_mode_lock.acquire()
+        try:
+            self.wlan.disconnect()
+            while self.wlan.isconnected():  # wait until disconnected
+                if self.led is not None:
+                    self.led.toggle()
+                await asyncio.sleep(0.5)
+        finally:
+            try:
+                self.wifi_mode_lock.release()
+            except RuntimeError:  # in case it's already released somehow
+                pass
+        if self.led is not None:
+            self.led.off()
+        if self.debug:
+            print("WLAN ist getrennt")
+
+    async def _run_hotspot_mode(self) -> None:
+        status = await self._locked_wlan_status()
+        if status != network.STAT_GOT_IP:
+            await self._start_hotspot()
+        else:
+            await self._manage_hotspot_stations()
+
+    async def _locked_wlan_status(self) -> int:
+        await self.wifi_mode_lock.acquire()
+        try:
+            return self.wlan.status()
+        finally:
+            try:
+                self.wifi_mode_lock.release()
+            except RuntimeError:  # in case it's already released somehow
+                pass
+
+    async def _start_hotspot(self) -> None:
+        await self._select_wifi_mode(network.AP_IF)
+        await self.wifi_mode_lock.acquire()
+        try:
+            led_cfg = await self._read_wifi_led_cfg()
+            wifi_cfg = await self.cfgmgr.get_str_values(_VAL_CTRY + _VAL_HOST)
+            if wifi_cfg is None or led_cfg is None or len(wifi_cfg) != 2:
                 if self.debug:
-                    print("WLAN ist deaktiviert.")
+                    print("Fehlende WLAN Konfiguration!")
+                await self.set_wifi_led(False)
             else:
-                if self.reconn_wifi:
-                    self.hotspot_timer.deinit()
-                    self.hotspot_timer_running = False
-                    if self.ledflash is not None:
-                        self.ledflash.cancel()
-                        self.ledflash = None
-                    self.reconn_wifi = False
-                    wlan_connected_once = False
-                    if self.debug:
-                        print("WLAN Reconnect ausgelöst!")
-                    await asyncio.sleep(5)
-                    # allow final tasks of calling function
-                    if self.hotspot_mode:  # mode switch
-                        self.hotspot_mode = False
-                        if self.dns_server_task is not None:
-                            self.dns_server_task.cancel()
-                            self.dns_server_task = None
-                        await self._select_wifi_mode(network.STA_IF)
-                        if self.led is not None:
-                            self.led.off()
-                        if self.debug:
-                            print("WLAN Hotspot wurde ausgeschaltet")
-                    else:  # plain reconnect
-                        if self.debug:
-                            print("WLAN neu verbinden...")
-                        await self.wifi_mode_lock.acquire()
-                        try:
-                            self.wlan.disconnect()
-                            while self.wlan.isconnected():  # wait until disconnected
-                                if self.led is not None:
-                                    self.led.toggle()
-                                await asyncio.sleep(0.5)
-                        finally:
-                            try:
-                                self.wifi_mode_lock.release()
-                            except RuntimeError:  # in case it's already released somehow
-                                pass
-                        if self.led is not None:
-                            self.led.off()
-                        if self.debug:
-                            print("WLAN ist getrennt")
-                    await asyncio.sleep(3)
-                    # wait once for whatever else to settle
-                if self.hotspot_mode:
-                    await self.wifi_mode_lock.acquire()
-                    status: int | None = None
-                    try:
-                        status = self.wlan.status()
-                    finally:
-                        try:
-                            self.wifi_mode_lock.release()
-                        except RuntimeError:  # in case it's already released somehow
-                            pass
-                    if status != network.STAT_GOT_IP:
-                        await self._select_wifi_mode(network.AP_IF)
-                        await self.wifi_mode_lock.acquire()
-                        try:
-                            wifi_cfg = await self.cfgmgr.get_str_values(_VAL_CTRY + _VAL_HOST)
-                            wifi_led = await self.cfgmgr.get_bool_values(_VAL_LED)
-                            if wifi_cfg is None or wifi_led is None or len(wifi_cfg) != 2 or len(wifi_led) != 1:
-                                if self.debug:
-                                    print("Fehlende WLAN Konfiguration!")
-                                await self.set_wifi_led(False)
-                            else:
-                                await self.set_wifi_led(wifi_led[0])
-                                network.country(wifi_cfg[0])  # Country
-                                network.hostname(wifi_cfg[1])  # Hostname
-                                self.wlan.config(essid=wifi_cfg[1], password="12345678")
-                                self.wlan.active(True)
-                                self.wlan.config(pm=0xA11140)  # Stromsparmodus ausschalten
-                                own_ip, own_netmask = self.wlan.ifconfig()[:2]
-                                evtloop = asyncio.get_event_loop()
-                                self.dns_server_task = evtloop.create_task(self.dns_server.run(own_ip, own_netmask))
-                                del evtloop, own_ip, own_netmask
-                                if self.debug:
-                                    print("WLAN Hotspot wurde gestartet")
-                            del wifi_cfg, wifi_led
-                            hotspot_started_once = True
-                        finally:
-                            try:
-                                self.wifi_mode_lock.release()
-                            except RuntimeError:  # in case it's already released somehow
-                                pass
-                    else:  # got hotspot IP
-                        if self.debug:
-                            print("Hotspot Mode ist aktiv")
-                        await self.wifi_mode_lock.acquire()
-                        stations = []
-                        try:
-                            await asyncio.sleep(0.1)
-                            # stations command needs no other status commands close before (and does not support "async with"!)
-                            stations = self.wlan.status("stations")
-                            if self.debug:
-                                print("Connected stations:", stations)
-                        except Exception as e:
-                            if self.debug:
-                                print("Verbundene Clients können nicht abgerufen werden:", e)
-                            stations = []
-                        finally:
-                            try:
-                                self.wifi_mode_lock.release()
-                            except RuntimeError:  # in case it's already released somehow
-                                pass
-                        if len(stations) > 0:  # at least one client connected
-                            self.hotspot_timer.deinit()  # if client connected, do not stop hotspot
-                            self.hotspot_timer_running = False
-                            if self.ledflash is None:
-                                if self.led is not None:
-                                    self.led.on()
-                            else:
-                                self.ledflash.cancel()
-                                self.ledflash = None
-                            if self.debug:
-                                print("Client mit Hotspot verbunden, Timer gestoppt")
-                        else:  # no client connected
-                            if not self.hotspot_timer_running:
-                                if self.debug:
-                                    print("Kein Client verbunden - Hotspot Timer gestartet")
-                                self.hotspot_timer.init(
-                                    period=self.hotspot_time,
-                                    mode=Timer.ONE_SHOT,
-                                    callback=lambda b: self.reconnect_wifi(),
-                                )
-                                self.hotspot_timer_running = True  # try to reconnect once after hotspot time if no client connected (maybe router reboot after power loss)
-                            if self.ledflash is None:
-                                evtloop = asyncio.get_event_loop()
-                                self.ledflash = evtloop.create_task(self._flash_led_off())
-                                del evtloop
-                        del stations
-                else:  # hotspot_mode
-                    await self.wifi_mode_lock.acquire()
-                    try:
-                        if not self.wlan.isconnected():
-                            if self.debug:
-                                print("WLAN-Verbindung herstellen")
-                            wifi_led = await self.cfgmgr.get_bool_values(_VAL_LED)
-                            if wifi_led is None or len(wifi_led) != 1:
-                                await self.set_wifi_led(False)
-                            else:
-                                await self.set_wifi_led(wifi_led[0])
-                            del wifi_led
-                            wifi_cfg = await self.cfgmgr.get_str_values(_VAL_SSID + _VAL_PW + _VAL_CTRY + _VAL_HOST)
-                            if wifi_cfg is None or len(wifi_cfg) != 4:
-                                if self.debug:
-                                    print("Fehlende WLAN Konfiguration!")
-                            else:
-                                if wifi_cfg[0] == "":  # SSID - invalid or empty config
-                                    connection_failures = self.conn_fail_to_hotspot  # immediate hotspot mode
-                                else:
-                                    network.country(wifi_cfg[2])  # Country
-                                    network.hostname(wifi_cfg[3])  # Hostname
-                                    self.wlan.active(True)
-                                    self.wlan.config(pm=0xA11140)  # Stromsparmodus ausschalten
-                                    self.wlan.connect(wifi_cfg[0], wifi_cfg[1])  # SSID, PW
-                                    for i in range(10):
-                                        if self.led is not None:
-                                            self.led.toggle()
-                                        status = self.wlan.status()
-                                        if status == network.STAT_IDLE:
-                                            if self.debug:
-                                                print("WLAN idle")
-                                        elif status == network.STAT_CONNECTING:
-                                            if self.debug:
-                                                print("WLAN connecting")
-                                        elif status == 2:  #  not defined by constant in class yet!
-                                            if self.debug:
-                                                print("WLAN obtaining IP")
-                                        elif status == network.STAT_WRONG_PASSWORD:
-                                            if self.debug:
-                                                print("WLAN wrong password")
-                                            break
-                                        elif status == network.STAT_NO_AP_FOUND:
-                                            if self.debug:
-                                                print("WLAN access point not found")
-                                            break
-                                        elif status == network.STAT_CONNECT_FAIL:
-                                            if self.debug:
-                                                print("WLAN connection failed")
-                                            break
-                                        elif status == network.STAT_GOT_IP:
-                                            if self.debug:
-                                                print("WLAN connection successful")
-                                        else:
-                                            if self.debug:
-                                                print("WLAN undefined state")
-                                            break
-                                        await asyncio.sleep(0.5)
-                                    del status
-                            del wifi_cfg
-                        if self.wlan.isconnected():
-                            if self.debug:
-                                print("WLAN-Verbindung hergestellt")
-                            wlan_connected_once = True
-                            connection_failures = 0
-                            if self.led is not None:
-                                self.led.on()
-                            if self.debug:
-                                print("WLAN-Status:", self.wlan.status())
-                                net_config = self.wlan.ifconfig()
-                                print("IPv4-Adresse:", net_config[0], "/", net_config[1])
-                                print("Standard-Gateway:", net_config[2])
-                                print("DNS-Server:", net_config[3])
-                                del net_config
-                        else:
-                            if self.debug:
-                                print("Keine WLAN-Verbindung")
-                            if wlan_connected_once:
-                                if self.debug:
-                                    print("WLAN-Verbindung war zuvor erfolgreich, neuer Versuch in 1 Minute...")
-                                await asyncio.sleep(60)
-                                # retry previously successful connecion in one minute
-                            else:  # wlan_connected_once
-                                if connection_failures < (self.conn_fail_to_hotspot - 1):
-                                    connection_failures += 1
-                                    if self.debug:
-                                        print(
-                                            "Zähler für fehlgeschlagene Verbindungen:",
-                                            connection_failures,
-                                        )
-                                else:
-                                    connection_failures = 0
-                                    if hotspot_started_once:
-                                        if self.debug:
-                                            print(
-                                                "Dauerhaft keine WLAN-Verbindung, keine Verbindung zu Hotspot. Deaktiviere WLAN!"
-                                            )
-                                        wlan_deactivated = True
-                                        self.wlan.disconnect()
-                                        self.wlan.active(False)
-                                        self.hotspot_mode = False
-                                        await asyncio.sleep(2)
-                                        self.wlan.deinit()
-                                    else:
-                                        self.hotspot_mode = True
-                                        if self.debug:
-                                            print("Dauerhaft keine WLAN-Verbindung - aktiviere Hotspot!")
-                            if self.led is not None:
-                                self.led.off()
-                            if self.debug:
-                                print("WLAN-Status:", self.wlan.status())
-                    finally:
-                        try:
-                            self.wifi_mode_lock.release()
-                        except RuntimeError:  # in case it's already released somehow
-                            pass
-            await asyncio.sleep(self.wifi_refresh_sec)
+                await self.set_wifi_led(led_cfg)
+                self._activate_hotspot_ap(wifi_cfg[0], wifi_cfg[1])
+            self.hotspot_started_once = True
+        finally:
+            try:
+                self.wifi_mode_lock.release()
+            except RuntimeError:  # in case it's already released somehow
+                pass
+
+    def _activate_hotspot_ap(self, country: str, hostname: str) -> None:
+        network.country(country)  # Country
+        network.hostname(hostname)  # Hostname
+        self.wlan.config(essid=hostname, password="12345678")
+        self.wlan.active(True)
+        self.wlan.config(pm=0xA11140)  # Stromsparmodus ausschalten
+        own_ip, own_netmask = self.wlan.ifconfig()[:2]
+        evtloop = asyncio.get_event_loop()
+        self.dns_server_task = evtloop.create_task(self.dns_server.run(own_ip, own_netmask))
+        if self.debug:
+            print("WLAN Hotspot wurde gestartet")
+
+    async def _manage_hotspot_stations(self) -> None:
+        if self.debug:
+            print("Hotspot Mode ist aktiv")
+        stations = await self._get_hotspot_stations()
+        if len(stations) > 0:  # at least one client connected
+            self._hotspot_client_connected()
+        else:  # no client connected
+            self._hotspot_client_absent()
+
+    async def _get_hotspot_stations(self) -> "list[Any]":
+        await self.wifi_mode_lock.acquire()
+        try:
+            await asyncio.sleep(0.1)
+            # stations command needs no other status commands close before (and does not support "async with"!)
+            stations = self.wlan.status("stations")
+            if self.debug:
+                print("Connected stations:", stations)
+            return stations
+        except Exception as e:
+            if self.debug:
+                print("Verbundene Clients können nicht abgerufen werden:", e)
+            return []
+        finally:
+            try:
+                self.wifi_mode_lock.release()
+            except RuntimeError:  # in case it's already released somehow
+                pass
+
+    def _hotspot_client_connected(self) -> None:
+        self.hotspot_timer.deinit()  # if client connected, do not stop hotspot
+        self.hotspot_timer_running = False
+        if self.ledflash is None:
+            if self.led is not None:
+                self.led.on()
+        else:
+            self.ledflash.cancel()
+            self.ledflash = None
+        if self.debug:
+            print("Client mit Hotspot verbunden, Timer gestoppt")
+
+    def _hotspot_client_absent(self) -> None:
+        if not self.hotspot_timer_running:
+            if self.debug:
+                print("Kein Client verbunden - Hotspot Timer gestartet")
+            self.hotspot_timer.init(
+                period=self.hotspot_time,
+                mode=Timer.ONE_SHOT,
+                callback=lambda b: self.reconnect_wifi(),
+            )
+            self.hotspot_timer_running = True  # try to reconnect once after hotspot time if no client connected (maybe router reboot after power loss)
+        if self.ledflash is None:
+            evtloop = asyncio.get_event_loop()
+            self.ledflash = evtloop.create_task(self._flash_led_off())
+
+    async def _run_sta_mode(self) -> None:
+        await self.wifi_mode_lock.acquire()
+        try:
+            if not self.wlan.isconnected():
+                await self._attempt_sta_connect()
+            await self._handle_sta_connection_result()
+        finally:
+            try:
+                self.wifi_mode_lock.release()
+            except RuntimeError:  # in case it's already released somehow
+                pass
+
+    async def _attempt_sta_connect(self) -> None:
+        if self.debug:
+            print("WLAN-Verbindung herstellen")
+        led_cfg = await self._read_wifi_led_cfg()
+        await self.set_wifi_led(False if led_cfg is None else led_cfg)
+        wifi_cfg = await self.cfgmgr.get_str_values(_VAL_SSID + _VAL_PW + _VAL_CTRY + _VAL_HOST)
+        if wifi_cfg is None or len(wifi_cfg) != 4:
+            if self.debug:
+                print("Fehlende WLAN Konfiguration!")
+            return
+        ssid, pw, country, hostname = wifi_cfg
+        if ssid == "":  # SSID - invalid or empty config
+            self.connection_failures = self.conn_fail_to_hotspot  # immediate hotspot mode
+            return
+        network.country(country)
+        network.hostname(hostname)
+        self.wlan.active(True)
+        self.wlan.config(pm=0xA11140)  # Stromsparmodus ausschalten
+        self.wlan.connect(ssid, pw)
+        await self._poll_sta_connect_status()
+
+    async def _poll_sta_connect_status(self) -> None:
+        for _i in range(10):
+            if self.led is not None:
+                self.led.toggle()
+            status = self.wlan.status()
+            if status == network.STAT_IDLE:
+                if self.debug:
+                    print("WLAN idle")
+            elif status == network.STAT_CONNECTING:
+                if self.debug:
+                    print("WLAN connecting")
+            elif status == 2:  #  not defined by constant in class yet!
+                if self.debug:
+                    print("WLAN obtaining IP")
+            elif status == network.STAT_WRONG_PASSWORD:
+                if self.debug:
+                    print("WLAN wrong password")
+                return
+            elif status == network.STAT_NO_AP_FOUND:
+                if self.debug:
+                    print("WLAN access point not found")
+                return
+            elif status == network.STAT_CONNECT_FAIL:
+                if self.debug:
+                    print("WLAN connection failed")
+                return
+            elif status == network.STAT_GOT_IP:
+                if self.debug:
+                    print("WLAN connection successful")
+            else:
+                if self.debug:
+                    print("WLAN undefined state")
+                return
+            await asyncio.sleep(0.5)
+
+    async def _handle_sta_connection_result(self) -> None:
+        if self.wlan.isconnected():
+            self._on_sta_connected()
+        else:
+            await self._on_sta_disconnected()
+
+    def _on_sta_connected(self) -> None:
+        if self.debug:
+            print("WLAN-Verbindung hergestellt")
+        self.wlan_connected_once = True
+        self.connection_failures = 0
+        if self.led is not None:
+            self.led.on()
+        if self.debug:
+            print("WLAN-Status:", self.wlan.status())
+            net_config = self.wlan.ifconfig()
+            print("IPv4-Adresse:", net_config[0], "/", net_config[1])
+            print("Standard-Gateway:", net_config[2])
+            print("DNS-Server:", net_config[3])
+
+    async def _on_sta_disconnected(self) -> None:
+        if self.debug:
+            print("Keine WLAN-Verbindung")
+        if self.wlan_connected_once:
+            if self.debug:
+                print("WLAN-Verbindung war zuvor erfolgreich, neuer Versuch in 1 Minute...")
+            await asyncio.sleep(60)  # retry previously successful connecion in one minute
+        else:
+            await self._register_sta_connection_failure()
+        if self.led is not None:
+            self.led.off()
+        if self.debug:
+            print("WLAN-Status:", self.wlan.status())
+
+    async def _register_sta_connection_failure(self) -> None:
+        if self.connection_failures < (self.conn_fail_to_hotspot - 1):
+            self.connection_failures += 1
+            if self.debug:
+                print("Zähler für fehlgeschlagene Verbindungen:", self.connection_failures)
+            return
+        self.connection_failures = 0
+        if self.hotspot_started_once:
+            await self._deactivate_wlan_permanently()
+        else:
+            self.hotspot_mode = True
+            if self.debug:
+                print("Dauerhaft keine WLAN-Verbindung - aktiviere Hotspot!")
+
+    async def _deactivate_wlan_permanently(self) -> None:
+        if self.debug:
+            print("Dauerhaft keine WLAN-Verbindung, keine Verbindung zu Hotspot. Deaktiviere WLAN!")
+        self.wlan_deactivated = True
+        self.wlan.disconnect()
+        self.wlan.active(False)
+        self.hotspot_mode = False
+        await asyncio.sleep(2)
+        self.wlan.deinit()
 
     async def time_counter(self) -> None:
         await self.wifi_uptime.set_value(0)
