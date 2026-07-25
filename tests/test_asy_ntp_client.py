@@ -80,6 +80,7 @@ def make_client(
     wifi_mode_lock: "asyncio.Lock | None" = None,
     network_available: "Callable[[], bool] | None" = None,
     asy_long_block_lock: "asyncio.Lock | None" = None,
+    max_i2c_err: int = 5,
     debug: "int | None" = None,
     cfg_path: "str | None" = None,
     fram: "AsyFramManager | None" = None,
@@ -91,7 +92,13 @@ def make_client(
     if cfg_path is None:
         cfg_path = _tmp_cfg_dir()
     return asy_ntp_client(
-        wifi_mode_lock, network_available, asy_long_block_lock, debug=debug, cfg_path=cfg_path, fram=fram
+        wifi_mode_lock,
+        network_available,
+        asy_long_block_lock,
+        max_i2c_err=max_i2c_err,
+        debug=debug,
+        cfg_path=cfg_path,
+        fram=fram,
     )
 
 
@@ -202,6 +209,20 @@ def test_two_clients_with_different_cfg_paths_have_independent_configs() -> None
 def test_debug_level_propagates_to_the_inherited_pr_logger() -> None:
     client = make_client(debug=3)
     assert client.pr.get_level() == 3
+
+
+def test_get_task_starters_returns_all_three_ntp_tasks() -> None:
+    client = make_client()
+    assert client.get_task_starters() == [
+        client.start_asy_ntp_client,
+        client.start_asy_ntp_refresh,
+        client.start_asy_sync_age_counter,
+    ]
+
+
+def test_get_timer_starters_returns_both_ntp_timers() -> None:
+    client = make_client()
+    assert client.get_timer_starters() == [client.start_ntp_timer, client.start_counter_timer]
 
 
 def test_fram_given_uses_fram_backed_logging() -> None:
@@ -1394,6 +1415,18 @@ def test_run_sync_attempt_network_available_raising_is_treated_as_unavailable() 
     assert reached[0] is False
 
 
+def test_run_sync_attempt_network_available_raising_persists_a_warning() -> None:
+    def raiser() -> bool:
+        raise RuntimeError("wlan.status() exploded")
+
+    client = make_client(network_available=raiser)
+    run(client.pr.setup())
+    run(client._run_ntp_sync_attempt())
+    counter = run(client.get_error_counter())
+    assert counter["NTP"]["ErrNum"][-1] == 1
+    assert counter["NTP"]["ErrType"][-1] == "W"
+
+
 def test_run_sync_attempt_missing_config_marks_not_synced_and_returns() -> None:
     client = make_client()
     run(client._set_synced(True))
@@ -1566,6 +1599,130 @@ def test_asy_ntp_time_releases_the_wifi_lock_even_if_the_attempt_raises() -> Non
         return raised and not client.wifi_mode_lock.locked()
 
     assert run(scenario())
+
+
+def test_asy_ntp_time_calls_pr_setup_before_entering_its_loop() -> None:
+    client = make_client()
+    assert client.pr.initialized is False
+
+    async def scenario() -> bool:
+        task = asyncio.create_task(client.asy_ntp_time())
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        initialized = client.pr.initialized
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        return initialized  # type: ignore[no-any-return]  # client: Any, see note near line 476
+
+    assert run(scenario()) is True
+
+
+def test_asy_ntp_time_resets_err_cnt_internal_at_the_start_of_every_run() -> None:
+    client = make_client()
+    client._err_cnt_internal = 99
+
+    async def scenario() -> int:
+        task = asyncio.create_task(client.asy_ntp_time())
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        streak = client._err_cnt_internal
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        return streak  # type: ignore[no-any-return]  # client: Any, see note near line 476
+
+    assert run(scenario()) == 0
+
+
+def test_asy_ntp_time_gives_up_after_repeated_sync_failures_and_persists_errno_20() -> None:
+    # Independent, coarser safety net on top of _handle_ntp_sync_failure()'s own short-term
+    # ntp_retries/_NTP_SYNC_RETRIES retry loop - see asy_ntp_time()'s own comment. A real attempt
+    # that completes (network was up) but never yields a parsed time counts toward this streak.
+    client = make_client(max_i2c_err=2)
+
+    async def failing_attempt() -> "Any":
+        return None, True  # network was available, but the attempt itself still failed
+
+    client._run_ntp_sync_attempt = failing_attempt
+
+    async def scenario() -> "Any":
+        task = asyncio.create_task(client.asy_ntp_time())
+        for _ in range(3):  # one trigger per would-be failure cycle - max_i2c_err=2 gives up on the 3rd
+            client.ntp_sync_trigger_event.set()
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+        await asyncio.wait_for(task, 2.0)  # must actually complete, not loop forever
+        return await client.get_error_counter()
+
+    counter = run(scenario())
+    assert counter["NTP"]["ErrNum"][-1] == 20
+    assert counter["NTP"]["ErrType"][-1] == "E"
+
+
+def test_asy_ntp_time_network_unavailable_cycles_never_count_toward_giving_up() -> None:
+    # condition=network_ok excludes "network wasn't up yet" from the give-up streak, the same way
+    # SGP40 excludes a missing-compensation read via condition=compensated - proven here by running
+    # well past max_i2c_err trigger cycles, all reporting network unavailable, without giving up.
+    client = make_client(max_i2c_err=2)
+
+    async def unavailable_attempt() -> "Any":
+        return None, False  # network not available - condition=False, must not count as a real failure
+
+    client._run_ntp_sync_attempt = unavailable_attempt
+
+    async def scenario() -> bool:
+        task = asyncio.create_task(client.asy_ntp_time())
+        for _ in range(10):
+            client.ntp_sync_trigger_event.set()
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+        still_running = not task.done()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        return still_running
+
+    assert run(scenario()) is True
+
+
+def test_asy_ntp_time_recovers_the_streak_on_alternating_failure_and_success() -> None:
+    # A success resets tm to non-None, decrementing _err_cnt_internal (base_classes.py's own
+    # _error_check() contract) - failures that never land two-in-a-row must never trip
+    # max_i2c_err=2, however many trigger cycles run in total.
+    client = make_client(max_i2c_err=2)
+    toggle = [True]
+
+    async def alternating_attempt() -> "Any":
+        if toggle[0]:
+            toggle[0] = False
+            return None, True  # failure
+        toggle[0] = True
+        return (2026, 1, 1, 0, 0, 0, 0, 0), True  # success
+
+    client._run_ntp_sync_attempt = alternating_attempt
+
+    async def scenario() -> bool:
+        task = asyncio.create_task(client.asy_ntp_time())
+        for _ in range(20):
+            client.ntp_sync_trigger_event.set()
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+        still_running = not task.done()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        return still_running
+
+    assert run(scenario()) is True
 
 
 # ===========================================================================
