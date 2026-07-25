@@ -4,13 +4,16 @@ base_classes.py's SensorReaderConfig, owns its own config_WIFI.cfg file/schema i
 externally-injected ConfigManager, no separate get_default_cfg()/_DEFAULT_CONFIG merge step. See
 DRIVER_SPEC.md for the shared contract this follows.
 
-First step of the async_connect.py -> asy_wifi_service.py promotion: only the config-manager
-migration, the getter quartet (get_data()/get_dict_data()/get_dict_cfg()/get_error_counter()), and
-get_task_starters()/get_timer_starters() are new here. wlan_connect()'s control flow, the
-STA/AP/LED state machine, timer/locking structure, and every internal name are an otherwise
-unmodified copy of improved-quality/async_connect.py's asy_conn_time - naming staleness, the
-unbounded isconnected()-wait loop, the ONE_SHOT hotspot timer, and the rest of the findings list
-are deliberately deferred to a later pass, not silently fixed here.
+First step of the async_connect.py -> asy_wifi_service.py promotion: the config-manager migration,
+the getter quartet (get_data()/get_dict_data()/get_dict_cfg()/get_error_counter()),
+get_task_starters()/get_timer_starters(), and wlan_connect()'s factoring into shallow private
+methods are done. The STA/AP/LED state machine's own control flow, timer/locking structure, and
+every internal name are still an otherwise unmodified copy of
+improved-quality/async_connect.py's asy_conn_time - naming staleness, the unbounded
+isconnected()-wait loop, the ONE_SHOT hotspot timer, and (new finding) the fact that this state
+machine never calls self.pr.err_s()/wrn_s() at all (so get_error_counter() is wired up but always
+reports empty - everything here still only gates on the bare `if self.debug: print(...)` the
+original file used) are deliberately deferred to a later pass, not silently fixed here.
 """
 
 import asyncio
@@ -217,6 +220,12 @@ class asy_conn_time(SensorReaderConfig):
     def get_wifi_mode_lock(self) -> Lock:
         return self.wifi_mode_lock
 
+    def _release_wifi_lock(self) -> None:
+        try:
+            self.wifi_mode_lock.release()
+        except RuntimeError:  # in case it's already released somehow
+            pass
+
     def network_available(self) -> bool:  # caller must already hold wifi_mode_lock
         return (not self.hotspot_mode) and (self.wlan.status() == network.STAT_GOT_IP)
 
@@ -231,9 +240,19 @@ class asy_conn_time(SensorReaderConfig):
                 else:
                     self.led = self.led_pin  # gpio has priority if not None
         else:  # turn off
-            if self.led is not None:
-                self.led.off()
+            self._led_off()
             self.led = None
+
+    def _led_on(self) -> None:
+        if self.led is not None:
+            self.led.on()
+
+    def _led_off(self) -> None:
+        self._led_off()
+
+    def _led_toggle(self) -> None:
+        if self.led is not None:
+            self.led.toggle()
 
     async def get_wifi_uptime(self) -> int:
         value = await self.wifi_uptime.get_value()  # never None: never constructed/set with a None sentinel
@@ -242,15 +261,12 @@ class asy_conn_time(SensorReaderConfig):
     async def _flash_led_off(self) -> None:
         while True:
             try:
-                if self.led is not None:
-                    self.led.on()
+                self._led_on()
                 await asyncio.sleep(2.9)
-                if self.led is not None:
-                    self.led.off()
+                self._led_off()
                 await asyncio.sleep(0.1)
             except asyncio.CancelledError:
-                if self.led is not None:
-                    self.led.on()
+                self._led_on()
                 break
 
     async def _select_wifi_mode(self, mode: int) -> None:
@@ -271,12 +287,11 @@ class asy_conn_time(SensorReaderConfig):
                 print("Wifi mode set")
             await asyncio.sleep(1)
         finally:
-            try:
-                self.wifi_mode_lock.release()
-            except RuntimeError:  # in case it's already released somehow
-                pass
+            self._release_wifi_lock()
 
     async def wlan_connect(self) -> None:  # Funktion: WLAN-Verbindung
+        await self.pr.setup()  # required for all logged warnings and errors (base_classes.py's own
+        # __init__ never calls this - matches every _init_<sensor>() in the three promoted drivers)
         self._reset_wlan_connect_state()
         await self._apply_initial_led_config()
         while True:
@@ -308,8 +323,7 @@ class asy_conn_time(SensorReaderConfig):
         self.reconn_wifi = (
             self.hotspot_mode or self.wlan.isconnected() or self.wlan.active()  # type: ignore[func-returns-value]
         )  # clear possible previous connections
-        if self.led is not None:
-            self.led.off()
+        self._led_off()
 
     async def _apply_initial_led_config(self) -> None:
         led_cfg = await self._read_wifi_led_cfg()
@@ -350,8 +364,7 @@ class asy_conn_time(SensorReaderConfig):
             self.dns_server_task.cancel()
             self.dns_server_task = None
         await self._select_wifi_mode(network.STA_IF)
-        if self.led is not None:
-            self.led.off()
+        self._led_off()
         if self.debug:
             print("WLAN Hotspot wurde ausgeschaltet")
 
@@ -362,16 +375,11 @@ class asy_conn_time(SensorReaderConfig):
         try:
             self.wlan.disconnect()
             while self.wlan.isconnected():  # wait until disconnected
-                if self.led is not None:
-                    self.led.toggle()
+                self._led_toggle()
                 await asyncio.sleep(0.5)
         finally:
-            try:
-                self.wifi_mode_lock.release()
-            except RuntimeError:  # in case it's already released somehow
-                pass
-        if self.led is not None:
-            self.led.off()
+            self._release_wifi_lock()
+        self._led_off()
         if self.debug:
             print("WLAN ist getrennt")
 
@@ -387,10 +395,7 @@ class asy_conn_time(SensorReaderConfig):
         try:
             return self.wlan.status()
         finally:
-            try:
-                self.wifi_mode_lock.release()
-            except RuntimeError:  # in case it's already released somehow
-                pass
+            self._release_wifi_lock()
 
     async def _start_hotspot(self) -> None:
         await self._select_wifi_mode(network.AP_IF)
@@ -407,10 +412,7 @@ class asy_conn_time(SensorReaderConfig):
                 self._activate_hotspot_ap(wifi_cfg[0], wifi_cfg[1])
             self.hotspot_started_once = True
         finally:
-            try:
-                self.wifi_mode_lock.release()
-            except RuntimeError:  # in case it's already released somehow
-                pass
+            self._release_wifi_lock()
 
     def _activate_hotspot_ap(self, country: str, hostname: str) -> None:
         network.country(country)  # Country
@@ -447,17 +449,13 @@ class asy_conn_time(SensorReaderConfig):
                 print("Verbundene Clients können nicht abgerufen werden:", e)
             return []
         finally:
-            try:
-                self.wifi_mode_lock.release()
-            except RuntimeError:  # in case it's already released somehow
-                pass
+            self._release_wifi_lock()
 
     def _hotspot_client_connected(self) -> None:
         self.hotspot_timer.deinit()  # if client connected, do not stop hotspot
         self.hotspot_timer_running = False
         if self.ledflash is None:
-            if self.led is not None:
-                self.led.on()
+            self._led_on()
         else:
             self.ledflash.cancel()
             self.ledflash = None
@@ -485,10 +483,7 @@ class asy_conn_time(SensorReaderConfig):
                 await self._attempt_sta_connect()
             await self._handle_sta_connection_result()
         finally:
-            try:
-                self.wifi_mode_lock.release()
-            except RuntimeError:  # in case it's already released somehow
-                pass
+            self._release_wifi_lock()
 
     async def _attempt_sta_connect(self) -> None:
         if self.debug:
@@ -513,8 +508,7 @@ class asy_conn_time(SensorReaderConfig):
 
     async def _poll_sta_connect_status(self) -> None:
         for _i in range(10):
-            if self.led is not None:
-                self.led.toggle()
+            self._led_toggle()
             status = self.wlan.status()
             if status == network.STAT_IDLE:
                 if self.debug:
@@ -557,8 +551,7 @@ class asy_conn_time(SensorReaderConfig):
             print("WLAN-Verbindung hergestellt")
         self.wlan_connected_once = True
         self.connection_failures = 0
-        if self.led is not None:
-            self.led.on()
+        self._led_on()
         if self.debug:
             print("WLAN-Status:", self.wlan.status())
             net_config = self.wlan.ifconfig()
@@ -575,8 +568,7 @@ class asy_conn_time(SensorReaderConfig):
             await asyncio.sleep(60)  # retry previously successful connecion in one minute
         else:
             await self._register_sta_connection_failure()
-        if self.led is not None:
-            self.led.off()
+        self._led_off()
         if self.debug:
             print("WLAN-Status:", self.wlan.status())
 
