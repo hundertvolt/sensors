@@ -31,6 +31,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from typing import Any
 
     from asy_fram_manager import AsyFramManager
 
@@ -158,6 +159,12 @@ class asy_ntp_client(SensorReaderConfig):
 
     def stop_counter_timer(self) -> None:
         self.counter_timer.deinit()
+
+    def get_task_starters(self) -> "list[Callable[[], asyncio.Task[Any]]]":
+        return [self.start_asy_ntp_client, self.start_asy_ntp_refresh, self.start_asy_sync_age_counter]
+
+    def get_timer_starters(self) -> "list[Callable[[], None]]":
+        return [self.start_ntp_timer, self.start_counter_timer]
 
     def get_long_block_lock(self) -> Lock:
         return self.asy_long_block_lock

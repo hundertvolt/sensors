@@ -6,14 +6,18 @@ DRIVER_SPEC.md for the shared contract this follows.
 
 First step of the async_connect.py -> asy_wifi_service.py promotion: the config-manager migration,
 the getter quartet (get_data()/get_dict_data()/get_dict_cfg()/get_error_counter()),
-get_task_starters()/get_timer_starters(), and wlan_connect()'s factoring into shallow private
-methods are done. The STA/AP/LED state machine's own control flow, timer/locking structure, and
-every internal name are still an otherwise unmodified copy of
-improved-quality/async_connect.py's asy_conn_time - naming staleness, the unbounded
-isconnected()-wait loop, the ONE_SHOT hotspot timer, and (new finding) the fact that this state
-machine never calls self.pr.err_s()/wrn_s() at all (so get_error_counter() is wired up but always
-reports empty - everything here still only gates on the bare `if self.debug: print(...)` the
-original file used) are deliberately deferred to a later pass, not silently fixed here.
+get_task_starters()/get_timer_starters(), wlan_connect()'s factoring into shallow private methods,
+get_data()'s switch to the cached-reading convention (_set_meas_data() pushed once per second from
+time_counter(), see get_data()'s own comment), and tightened exception handling around every direct
+network/wlan call (each caught close to its call site - "attempt" operations like a mode switch or
+a connect attempt persist a real errno via self.pr.err_s(); routine state *observations* like a
+status()/isconnected() query degrade silently to a sentinel instead, matching the pre-existing
+wifi_mode_lock.locked() sentinel precedent, to avoid flooding get_error_counter() with a query that
+legitimately fails on every tick while wlan_deactivated) are all done. What's still an otherwise
+unmodified copy of improved-quality/async_connect.py's asy_conn_time: the STA/AP/LED state
+machine's overall control flow and timer/locking structure, its naming staleness, the unbounded
+isconnected()-wait loop inside _disconnect_sta_and_wait(), and the ONE_SHOT hotspot timer - these
+are deliberately deferred to a later pass, not silently fixed here.
 """
 
 import asyncio
@@ -154,18 +158,14 @@ class asy_conn_time(SensorReaderConfig):
             return None
 
     async def get_data(self) -> WIFI:
-        # Unlike a sensor Reader, nothing calls _set_meas_data() this pass (see module docstring) -
-        # wlan_connect()'s state machine isn't touched here, so there's no single point to push a
-        # cached reading from without restructuring it. Instead this composes a live snapshot from
-        # the same already-existing lock-aware helpers below (wlan_isconnected()/
-        # get_wlan_ifconfig()), which already return a safe sentinel while wifi_mode_lock is held -
-        # a deliberate, flagged deviation from DRIVER_SPEC.md's "cached last-good reading"
-        # convention, not an oversight.
-        connected = self.wlan_isconnected()
-        ifcfg = self.get_wlan_ifconfig()
-        mode = "AP" if self.hotspot_mode else "STA"
-        ip = ifcfg[0] if ifcfg is not None else None
-        return WIFI(mode, connected, ip, self._now())
+        # Narrows _get_meas_data()'s generic "NamedTuple" to this Reader's concrete WIFI - matches
+        # asy_ntp_client.py's own get_data() narrowing convention (DRIVER_SPEC.md section 4.2).
+        # Backed by time_counter()'s 1Hz cache push (_update_wifi_snapshot()) rather than a live
+        # lock-aware query: the earlier version called wlan_isconnected()/get_wlan_ifconfig(), which
+        # return a safe-but-uninformative sentinel while wifi_mode_lock is held - meaning a caller
+        # reading get_data() mid-mode-switch saw a transient "unknown" reading instead of the actual
+        # last-known state, exactly the failure mode the cached-reading convention exists to avoid.
+        return await self._get_meas_data()  # type: ignore[return-value]
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         data = await self.get_data()
@@ -195,15 +195,37 @@ class asy_conn_time(SensorReaderConfig):
             self.ledflash = None
         self.reconn_wifi = True
 
+    def _wlan_status_or_none(self) -> int | None:
+        # Observation-tier helper: a status *query* failing (WLAN mid-transition/deinitialized) is
+        # routine enough here to degrade silently rather than feed get_error_counter() - the state
+        # machine's own "attempt" methods (_switch_wlan_mode(), _trigger_sta_connect(), ...) are the
+        # ones that persist a real errno when an actual operation fails.
+        try:
+            return self.wlan.status()
+        except Exception as e:
+            self.pr.err(_NAME, "wlan.status() failed:", e)
+            return None
+
+    def _wlan_isconnected_or_false(self) -> bool:
+        try:
+            return self.wlan.isconnected()
+        except Exception as e:  # observation-tier - see _wlan_status_or_none()'s comment
+            self.pr.err(_NAME, "wlan.isconnected() failed:", e)
+            return False
+
     def wlan_isconnected(self) -> bool:
         if self.wifi_mode_lock.locked():
             return False
-        return self.wlan.isconnected()
+        return self._wlan_isconnected_or_false()
 
     def get_wlan_ifconfig(self) -> tuple[str, str, str, str] | None:
         if self.wifi_mode_lock.locked():
             return None
-        ifcfg = self.wlan.ifconfig()
+        try:
+            ifcfg = self.wlan.ifconfig()
+        except Exception as e:  # observation-tier - see _wlan_status_or_none()'s comment
+            self.pr.err(_NAME, "wlan.ifconfig() failed:", e)
+            return None
         if len(ifcfg) == 4:
             return ifcfg[0:4]
         return None
@@ -227,7 +249,7 @@ class asy_conn_time(SensorReaderConfig):
             pass
 
     def network_available(self) -> bool:  # caller must already hold wifi_mode_lock
-        return (not self.hotspot_mode) and (self.wlan.status() == network.STAT_GOT_IP)
+        return (not self.hotspot_mode) and (self._wlan_status_or_none() == network.STAT_GOT_IP)
 
     def set_ext_led(self, ext_led: LEDControl) -> None:  # for post-setting ext_led at any time
         self.ext_led = ext_led  # if called even after init, call set_wifi_led(True) to init LED
@@ -248,7 +270,8 @@ class asy_conn_time(SensorReaderConfig):
             self.led.on()
 
     def _led_off(self) -> None:
-        self._led_off()
+        if self.led is not None:
+            self.led.off()
 
     def _led_toggle(self) -> None:
         if self.led is not None:
@@ -272,6 +295,12 @@ class asy_conn_time(SensorReaderConfig):
     async def _select_wifi_mode(self, mode: int) -> None:
         await self.wifi_mode_lock.acquire()
         try:
+            await self._switch_wlan_mode(mode)
+        finally:
+            self._release_wifi_lock()
+
+    async def _switch_wlan_mode(self, mode: int) -> None:
+        try:
             self.wlan.disconnect()
             self.wlan.active(False)
             if self.debug:
@@ -286,8 +315,8 @@ class asy_conn_time(SensorReaderConfig):
             if self.debug:
                 print("Wifi mode set")
             await asyncio.sleep(1)
-        finally:
-            self._release_wifi_lock()
+        except Exception as e:
+            await self.pr.err_s(_NAME, "Error switching WLAN mode:", e, errno=1)
 
     async def wlan_connect(self) -> None:  # Funktion: WLAN-Verbindung
         await self.pr.setup()  # required for all logged warnings and errors (base_classes.py's own
@@ -320,9 +349,12 @@ class asy_conn_time(SensorReaderConfig):
         self.wlan_deactivated = False
         self.hotspot_timer.deinit()
         self.hotspot_timer_running = False
-        self.reconn_wifi = (
-            self.hotspot_mode or self.wlan.isconnected() or self.wlan.active()  # type: ignore[func-returns-value]
-        )  # clear possible previous connections
+        try:
+            self.reconn_wifi = self.hotspot_mode or self.wlan.isconnected() or bool(self.wlan.active())
+        except Exception as e:  # rare (once per task (re)start) - safe default forces a clean reconnect
+            self.pr.err(_NAME, "Error checking WLAN state at start:", e)
+            self.reconn_wifi = True
+        # clear possible previous connections
         self._led_off()
 
     async def _apply_initial_led_config(self) -> None:
@@ -373,15 +405,21 @@ class asy_conn_time(SensorReaderConfig):
             print("WLAN neu verbinden...")
         await self.wifi_mode_lock.acquire()
         try:
-            self.wlan.disconnect()
-            while self.wlan.isconnected():  # wait until disconnected
-                self._led_toggle()
-                await asyncio.sleep(0.5)
+            await self._disconnect_sta_and_wait()
         finally:
             self._release_wifi_lock()
         self._led_off()
         if self.debug:
             print("WLAN ist getrennt")
+
+    async def _disconnect_sta_and_wait(self) -> None:
+        try:
+            self.wlan.disconnect()
+            while self.wlan.isconnected():  # wait until disconnected
+                self._led_toggle()
+                await asyncio.sleep(0.5)
+        except Exception as e:
+            await self.pr.err_s(_NAME, "Error waiting for STA disconnect:", e, errno=5)
 
     async def _run_hotspot_mode(self) -> None:
         status = await self._locked_wlan_status()
@@ -390,10 +428,10 @@ class asy_conn_time(SensorReaderConfig):
         else:
             await self._manage_hotspot_stations()
 
-    async def _locked_wlan_status(self) -> int:
+    async def _locked_wlan_status(self) -> int | None:
         await self.wifi_mode_lock.acquire()
         try:
-            return self.wlan.status()
+            return self._wlan_status_or_none()
         finally:
             self._release_wifi_lock()
 
@@ -409,12 +447,18 @@ class asy_conn_time(SensorReaderConfig):
                 await self.set_wifi_led(False)
             else:
                 await self.set_wifi_led(led_cfg)
-                self._activate_hotspot_ap(wifi_cfg[0], wifi_cfg[1])
+                await self._activate_hotspot_ap(wifi_cfg[0], wifi_cfg[1])
             self.hotspot_started_once = True
         finally:
             self._release_wifi_lock()
 
-    def _activate_hotspot_ap(self, country: str, hostname: str) -> None:
+    async def _activate_hotspot_ap(self, country: str, hostname: str) -> None:
+        try:
+            self._configure_hotspot_ap(country, hostname)
+        except Exception as e:
+            await self.pr.err_s(_NAME, "Error activating hotspot AP:", e, errno=2)
+
+    def _configure_hotspot_ap(self, country: str, hostname: str) -> None:
         network.country(country)  # Country
         network.hostname(hostname)  # Hostname
         self.wlan.config(essid=hostname, password="12345678")
@@ -479,7 +523,7 @@ class asy_conn_time(SensorReaderConfig):
     async def _run_sta_mode(self) -> None:
         await self.wifi_mode_lock.acquire()
         try:
-            if not self.wlan.isconnected():
+            if not self._wlan_isconnected_or_false():
                 await self._attempt_sta_connect()
             await self._handle_sta_connection_result()
         finally:
@@ -499,17 +543,29 @@ class asy_conn_time(SensorReaderConfig):
         if ssid == "":  # SSID - invalid or empty config
             self.connection_failures = self.conn_fail_to_hotspot  # immediate hotspot mode
             return
-        network.country(country)
-        network.hostname(hostname)
-        self.wlan.active(True)
-        self.wlan.config(pm=0xA11140)  # Stromsparmodus ausschalten
-        self.wlan.connect(ssid, pw)
-        await self._poll_sta_connect_status()
+        if await self._trigger_sta_connect(ssid, pw, country, hostname):
+            await self._poll_sta_connect_status()
+
+    async def _trigger_sta_connect(self, ssid: str, pw: str, country: str, hostname: str) -> bool:
+        try:
+            network.country(country)
+            network.hostname(hostname)
+            self.wlan.active(True)
+            self.wlan.config(pm=0xA11140)  # Stromsparmodus ausschalten
+            self.wlan.connect(ssid, pw)
+            return True
+        except Exception as e:
+            await self.pr.err_s(_NAME, "Error attempting STA connect:", e, errno=3)
+            return False
 
     async def _poll_sta_connect_status(self) -> None:
         for _i in range(10):
             self._led_toggle()
-            status = self.wlan.status()
+            try:
+                status = self.wlan.status()
+            except Exception as e:
+                await self.pr.err_s(_NAME, "Error polling STA connect status:", e, errno=4)
+                return
             if status == network.STAT_IDLE:
                 if self.debug:
                     print("WLAN idle")
@@ -541,7 +597,7 @@ class asy_conn_time(SensorReaderConfig):
             await asyncio.sleep(0.5)
 
     async def _handle_sta_connection_result(self) -> None:
-        if self.wlan.isconnected():
+        if self._wlan_isconnected_or_false():
             self._on_sta_connected()
         else:
             await self._on_sta_disconnected()
@@ -553,11 +609,17 @@ class asy_conn_time(SensorReaderConfig):
         self.connection_failures = 0
         self._led_on()
         if self.debug:
+            self._print_wlan_diagnostics()
+
+    def _print_wlan_diagnostics(self) -> None:  # debug-only - self.debug already gates every caller
+        try:
             print("WLAN-Status:", self.wlan.status())
             net_config = self.wlan.ifconfig()
             print("IPv4-Adresse:", net_config[0], "/", net_config[1])
             print("Standard-Gateway:", net_config[2])
             print("DNS-Server:", net_config[3])
+        except Exception as e:
+            print("WLAN diagnostic read failed:", e)
 
     async def _on_sta_disconnected(self) -> None:
         if self.debug:
@@ -570,7 +632,7 @@ class asy_conn_time(SensorReaderConfig):
             await self._register_sta_connection_failure()
         self._led_off()
         if self.debug:
-            print("WLAN-Status:", self.wlan.status())
+            print("WLAN-Status:", self._wlan_status_or_none())
 
     async def _register_sta_connection_failure(self) -> None:
         if self.connection_failures < (self.conn_fail_to_hotspot - 1):
@@ -590,24 +652,41 @@ class asy_conn_time(SensorReaderConfig):
         if self.debug:
             print("Dauerhaft keine WLAN-Verbindung, keine Verbindung zu Hotspot. Deaktiviere WLAN!")
         self.wlan_deactivated = True
-        self.wlan.disconnect()
-        self.wlan.active(False)
         self.hotspot_mode = False
-        await asyncio.sleep(2)
-        self.wlan.deinit()
+        try:
+            self.wlan.disconnect()
+            self.wlan.active(False)
+            await asyncio.sleep(2)
+            self.wlan.deinit()
+        except Exception as e:
+            await self.pr.err_s(_NAME, "Error deactivating WLAN:", e, errno=6)
 
     async def time_counter(self) -> None:
         await self.wifi_uptime.set_value(0)
         while True:
             await self.time_counter_trigger_event.wait()
+            if self.wlan_deactivated:
+                await self.wifi_uptime.set_value(0)
+                await self._update_wifi_snapshot(False)
+                continue
             await self.wifi_mode_lock.acquire()
             try:
-                if self.wlan.status() == network.STAT_GOT_IP:
+                connected = self._wlan_status_or_none() == network.STAT_GOT_IP
+                if connected:
                     await self.wifi_uptime.increment()
                 else:
                     await self.wifi_uptime.set_value(0)
+                await self._update_wifi_snapshot(connected)
             finally:
-                try:
-                    self.wifi_mode_lock.release()
-                except RuntimeError:  # in case it's already released somehow
-                    pass
+                self._release_wifi_lock()
+
+    async def _update_wifi_snapshot(self, connected: bool) -> None:
+        mode = "AP" if self.hotspot_mode else "STA"
+        ip = None
+        try:
+            ifcfg = self.wlan.ifconfig()
+            if len(ifcfg) == 4:
+                ip = ifcfg[0]
+        except Exception as e:  # observation-tier - see _wlan_status_or_none()'s comment
+            self.pr.err(_NAME, "wlan.ifconfig() failed:", e)
+        await self._set_meas_data(WIFI(mode, connected, ip, self._now()))
