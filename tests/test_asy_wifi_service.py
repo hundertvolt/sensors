@@ -9,7 +9,7 @@ import os
 # still WIP, not yet promoted; every asy_wifi_service-typed value below is consequently Any, not a
 # real gap being masked.
 import network
-from asy_wifi_service import WIFI, asy_conn_time
+from asy_wifi_service import WIFI, asy_conn_time  # type: ignore[import-not-found]
 
 try:
     from typing import TYPE_CHECKING
@@ -370,7 +370,7 @@ def test_time_counter_increments_uptime_while_connected() -> None:
         await _tick(client.time_counter_trigger_event, 3)
         uptime = await client.get_wifi_uptime()
         await _cancel(task)
-        return uptime
+        return uptime  # type: ignore[no-any-return]  # client: Any, see module note near line 8
 
     assert run(scenario()) == 3
 
@@ -384,7 +384,7 @@ def test_time_counter_resets_uptime_while_not_connected() -> None:
         await _tick(client.time_counter_trigger_event, 2)
         uptime = await client.get_wifi_uptime()
         await _cancel(task)
-        return uptime
+        return uptime  # type: ignore[no-any-return]  # client: Any, see module note near line 8
 
     assert run(scenario()) == 0
 
@@ -676,7 +676,7 @@ def test_wlan_connect_calls_pr_setup_before_entering_its_loop() -> None:
         await asyncio.sleep(0)
         initialized = client.pr.initialized
         await _cancel(task)
-        return initialized  # type: ignore[no-any-return]  # client: Any - see module note near line 20
+        return initialized  # type: ignore[no-any-return]  # client: Any - see module note near line 8
 
     assert run(scenario()) is True
 
@@ -691,7 +691,7 @@ def test_wlan_connect_resets_err_cnt_internal_at_the_start_of_every_run() -> Non
         await asyncio.sleep(0)
         streak = client._err_cnt_internal
         await _cancel(task)
-        return streak  # type: ignore[no-any-return]  # client: Any - see module note near line 20
+        return streak  # type: ignore[no-any-return]  # client: Any - see module note near line 8
 
     assert run(scenario()) == 0
 
