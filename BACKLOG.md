@@ -766,15 +766,17 @@ From hands-on field experience with deployed units:
     - No code changed in this pass - purely traced/analyzed, per the standing "flag genuinely
       architecturally significant decisions rather than guessing" working agreement and this file's
       own explicit deferral of the state-machine's control flow to a later, dedicated pass.
-  - **Follow-up, same session: owner's decision on the two findings above, plus the state-
-    representation rework itself.** The project owner confirmed directly: the automatic path to
-    permanent WLAN deactivation (finding 2 above) is intentional, not a gap - these devices are
-    physically accessible and easy to power-cycle, so an automatic terminal state reachable without
-    human intervention is an accepted trade-off, not something to soften (e.g. with a
-    longer/backoff-based shutoff window or a repeatable hotspot fallback). Left exactly as-is; no
-    code changed for this finding. The first finding (STA never falling back to hotspot again once
-    connected successfully even once this task lifetime) remains open, pending a separate decision -
-    not addressed in this follow-up.
+  - **Follow-up, same session: owner's decision on both findings above, plus the state-
+    representation rework itself.** The project owner confirmed directly, for both findings, that
+    they're intentional design choices rather than gaps - both left exactly as-is, no code changed
+    for either:
+    - The automatic path to permanent WLAN deactivation (finding 2 above) is intentional - these
+      devices are physically accessible and easy to power-cycle, so an automatic terminal state
+      reachable without human intervention is an accepted trade-off, not something to soften (e.g.
+      with a longer/backoff-based shutoff window or a repeatable hotspot fallback).
+    - STA never falling back to hotspot again once it has connected successfully even once this task
+      lifetime (finding 1 above, the single most consequential one traced in the review) is also
+      confirmed deliberate by design, not an oversight - not a gap to close.
   - **State-representation rework, explicitly requested and authorized this session** (the
     project owner confirmed the state-machine rework is already underway, superseding this file's
     earlier "deliberately deferred" note for this specific piece): `hotspot_mode`/
@@ -789,15 +791,17 @@ From hands-on field experience with deployed units:
     box tests of internals, not a stable API, consistent with this suite's existing style) and
     confirming all 121 tests in `tests/test_asy_wifi_service.py` (987/987 project-wide) still pass
     unchanged in behavior.
-    - **Not `micropython.const()`-wrapped, unlike this file's other module-level constants**: `const()`
-      values are inlined at compile time and don't survive as real importable module attributes on
-      this port (confirmed directly - this file's own test suite already had a comment noting this
-      same limitation for `_STA_DISCONNECT_WAIT_ITERS` elsewhere), which would have made them
-      untestable from `tests/test_asy_wifi_service.py`. Four tiny ints cost nothing meaningful
-      on-device left as plain module globals, unlike the tuple-valued `_VAL_*` schema constants in
-      this same file, where `const()`'s heap-allocation avoidance is actually load-bearing - so this
-      isn't an inconsistency, it's the same constant-vs-plain-global distinction the file already
-      draws for a different reason.
+    - **`micropython.const()`-wrapped, matching every other module-level constant in this file** -
+      an initial draft left these four as plain (non-const) module globals specifically so
+      `tests/test_asy_wifi_service.py` could import them directly, since `const()` values are inlined
+      at compile time and don't survive as real importable module attributes on this port (confirmed
+      directly - this file's own test suite already had a comment noting this same limitation for
+      `_STA_DISCONNECT_WAIT_ITERS` elsewhere). The project owner rejected that trade-off directly:
+      keep the file's own coding style consistent, adapt the test to the code rather than the code to
+      the test. Reverted to `const()`; `tests/test_asy_wifi_service.py` now defines its own four
+      literal mirrors of these values (with a comment explaining why they're duplicated rather than
+      imported, and a note to keep them in sync if the real ones ever change) instead of importing
+      them.
     - **Why this is a lossless consolidation, not a lossy simplification**: tracing every mutator of
       the old trio confirmed only 4 of their 8 possible boolean combinations were ever reachable -
       `hotspot_mode=True` always implied `wlan_connected_once=False` (both are only ever set together

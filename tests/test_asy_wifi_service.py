@@ -11,17 +11,21 @@ import socket
 # still WIP, not yet promoted; every asy_wifi_service-typed value below is consequently Any, not a
 # real gap being masked.
 import network
-from asy_wifi_service import (  # type: ignore[import-not-found]
-    _PHASE_DEACTIVATED,
-    _PHASE_HOTSPOT,
-    _PHASE_STA_ESTABLISHED,
-    _PHASE_STA_SEEKING,
-    WIFI,
-    asy_conn_time,
-)
+from asy_wifi_service import WIFI, asy_conn_time  # type: ignore[import-not-found]
 from machine import Timer
 
 from asy_udp_socket import AsyUDPSocket
+
+# Mirrors asy_wifi_service.py's own _PHASE_STA_SEEKING/_PHASE_STA_ESTABLISHED/_PHASE_HOTSPOT/
+# _PHASE_DEACTIVATED values, duplicated here rather than imported: those are micropython.const()-
+# wrapped there (consistent with every other module-level constant in that file), and const()
+# values are inlined at compile time and don't survive as real importable module attributes on this
+# port (confirmed directly) - `from asy_wifi_service import _PHASE_HOTSPOT` raises ImportError. Keep
+# these four literals in sync with asy_wifi_service.py's own definitions if those ever change.
+_PHASE_STA_SEEKING = 0
+_PHASE_STA_ESTABLISHED = 1
+_PHASE_HOTSPOT = 2
+_PHASE_DEACTIVATED = 3
 
 try:
     from typing import TYPE_CHECKING

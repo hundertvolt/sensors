@@ -77,11 +77,11 @@ previously-untested-method gap it found.
 A design-level review of this state machine (owner-requested, analysis only at the time) found two
 real behavioral gaps in what it accomplishes rather than in exception/blocking safety - see
 BACKLOG.md's "Design-level review" entry for the full trace. The project owner has since confirmed,
-directly: permanent WLAN deactivation after a second failed hotspot-fallback attempt is intentional
-(these devices are physically accessible and easy to power-cycle, so an automatic path to that
-terminal state is an accepted trade-off, not a gap) - left exactly as-is. The other finding (STA
-never falling back to hotspot again once it has connected successfully even once this task
-lifetime) is unchanged pending a separate decision.
+directly, that both are intentional design choices rather than gaps, and left both exactly as-is:
+permanent WLAN deactivation after a second failed hotspot-fallback attempt (these devices are
+physically accessible and easy to power-cycle, so an automatic path to that terminal state is an
+accepted trade-off), and STA never falling back to hotspot again once it has connected successfully
+even once this task lifetime (also deliberate by design).
 
 Also per the same review: hotspot_mode/wlan_connected_once/wlan_deactivated - three separate
 booleans whose valid combinations were only ever implicit in scattered control flow (confirmed by
@@ -158,19 +158,17 @@ _STA_DISCONNECT_WAIT_ITERS = const(20)  # 20 * 0.5s = 10s max wait for isconnect
 # wlan_connected_once=False, and wlan_deactivated=True always implied both the others False - so
 # this is a lossless consolidation onto the state space the code actually used, not a simplification
 # that drops a real distinction. No functional change: every transition below fires at exactly the
-# same call site, under exactly the same condition, as the flag it replaces did.
-# Deliberately NOT wrapped in micropython.const(): const() values are inlined at compile time and
-# don't survive as real module attributes on this port (confirmed directly - see
-# tests/test_asy_wifi_service.py's own note on this same limitation elsewhere), so tests/
-# test_asy_wifi_service.py couldn't import and assert against them if they were. Four tiny module-
-# level ints cost nothing meaningful on-device either way, unlike the tuple-valued _VAL_* schema
-# constants above and below, where const()'s heap-allocation avoidance is actually load-bearing.
-_PHASE_STA_SEEKING = 0  # STA mode, has not connected successfully since the last reset
-_PHASE_STA_ESTABLISHED = 1  # STA mode, has connected successfully at least once since the last
-# reset - live wlan.isconnected() (not a stored flag, same as before) distinguishes "currently
+# same call site, under exactly the same condition, as the flag it replaces did. const()-wrapped
+# like every other module-level constant in this file, despite const() values not surviving as
+# importable module attributes on this port (see tests/test_asy_wifi_service.py's own mirrored
+# constants, kept deliberately in sync via a comment rather than imported, for exactly this reason) -
+# consistent style here matters more than sparing that one file a few duplicated literals.
+_PHASE_STA_SEEKING = const(0)  # STA mode, has not connected successfully since the last reset
+_PHASE_STA_ESTABLISHED = const(1)  # STA mode, has connected successfully at least once since the
+# last reset - live wlan.isconnected() (not a stored flag, same as before) distinguishes "currently
 # connected" from "disconnected, retrying every 60s" within this one phase, exactly as before.
-_PHASE_HOTSPOT = 2  # AP/hotspot fallback mode active
-_PHASE_DEACTIVATED = 3  # terminal - WLAN fully deactivated, needs a task/device restart
+_PHASE_HOTSPOT = const(2)  # AP/hotspot fallback mode active
+_PHASE_DEACTIVATED = const(3)  # terminal - WLAN fully deactivated, needs a task/device restart
 
 
 class LEDControl(Protocol):
