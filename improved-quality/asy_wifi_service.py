@@ -35,7 +35,9 @@ and max_i2c_err/_error_check() actually wired up (was previously inert) are all 
   separate namespace from errno - base_classes.py never calls wrn_s()), so it still starts at 1.
 
 What's still an otherwise unmodified copy of improved-quality/async_connect.py's asy_conn_time: the
-STA/AP/LED state machine's overall control flow and timer/locking structure, its naming staleness,
+STA/AP/LED state machine's overall control-flow *logic* (every transition still fires under exactly
+the same condition, with exactly the same side effects and timing, as the original - see the
+_conn_phase paragraph below for the one representational change made to it), its naming staleness,
 and the ONE_SHOT hotspot timer - these are deliberately deferred to a later pass, not silently
 fixed here.
 
@@ -67,9 +69,34 @@ completely silently with no self.pr.err() call - confirmed via extmod/network_cy
 raises ValueError("STA required") on every single poll while hotspot_mode is active, a routine and
 frequent condition this file was silently hiding even with logging turned all the way up. Now logs
 like every sibling accessor. See BACKLOG.md for the full writeup, including what this pass checked
-and confirmed were *not* gaps (wlan.status("stations")'s return type, the wlan_deactivated dead-end,
-and _on_sta_disconnected()'s 60s wifi_mode_lock hold - the latter two both pre-existing, unchanged
-from async_connect.py), and the 28 new tests closing every previously-untested-method gap it found.
+and confirmed were *not* gaps (wlan.status("stations")'s return type, the permanent-WLAN-deactivation
+path discussed below, and _on_sta_disconnected()'s 60s wifi_mode_lock hold - the latter both
+pre-existing, unchanged from async_connect.py), and the 28 new tests closing every
+previously-untested-method gap it found.
+
+A design-level review of this state machine (owner-requested, analysis only at the time) found two
+real behavioral gaps in what it accomplishes rather than in exception/blocking safety - see
+BACKLOG.md's "Design-level review" entry for the full trace. The project owner has since confirmed,
+directly: permanent WLAN deactivation after a second failed hotspot-fallback attempt is intentional
+(these devices are physically accessible and easy to power-cycle, so an automatic path to that
+terminal state is an accepted trade-off, not a gap) - left exactly as-is. The other finding (STA
+never falling back to hotspot again once it has connected successfully even once this task
+lifetime) is unchanged pending a separate decision.
+
+Also per the same review: hotspot_mode/wlan_connected_once/wlan_deactivated - three separate
+booleans whose valid combinations were only ever implicit in scattered control flow (confirmed by
+tracing every mutator: hotspot_mode=True always implied wlan_connected_once=False, and
+wlan_deactivated=True always implied both the others False, i.e. only 4 of their 8 possible
+combinations were ever reachable) - are now one explicit self._conn_phase value
+(_PHASE_STA_SEEKING/_PHASE_STA_ESTABLISHED/_PHASE_HOTSPOT/_PHASE_DEACTIVATED, defined near
+_STA_DISCONNECT_WAIT_ITERS above). This is a pure representational change: every transition fires at
+the exact same call site, under the exact same condition, with the exact same side effects, as the
+flag it replaces did - confirmed via the full existing test suite (all 121 tests in
+tests/test_asy_wifi_service.py, updated only where they poke the old flag names directly as test
+setup/assertions) passing unchanged. Illegal combinations (e.g. simultaneously "in hotspot mode" and
+"permanently deactivated") are now structurally unrepresentable rather than merely never-produced-
+by-current-code-paths, which is what made the two design-level findings above possible to miss on an
+ordinary read in the first place.
 """
 
 import asyncio
@@ -124,6 +151,27 @@ _STA_DISCONNECT_WAIT_ITERS = const(20)  # 20 * 0.5s = 10s max wait for isconnect
 # rp2 (no blocking network handshake involved, unlike connect()), so 10s is a generous ceiling for
 # a driver that's genuinely stuck, not a normal-case timeout.
 
+# self._conn_phase - the connection state machine, as one explicit value instead of the
+# hotspot_mode/wlan_connected_once/wlan_deactivated boolean trio this replaces. Tracing every
+# mutator of that trio (see BACKLOG.md's design-level review) confirmed the three only ever
+# occupied 4 of their 8 possible combinations in practice - hotspot_mode=True always implied
+# wlan_connected_once=False, and wlan_deactivated=True always implied both the others False - so
+# this is a lossless consolidation onto the state space the code actually used, not a simplification
+# that drops a real distinction. No functional change: every transition below fires at exactly the
+# same call site, under exactly the same condition, as the flag it replaces did.
+# Deliberately NOT wrapped in micropython.const(): const() values are inlined at compile time and
+# don't survive as real module attributes on this port (confirmed directly - see
+# tests/test_asy_wifi_service.py's own note on this same limitation elsewhere), so tests/
+# test_asy_wifi_service.py couldn't import and assert against them if they were. Four tiny module-
+# level ints cost nothing meaningful on-device either way, unlike the tuple-valued _VAL_* schema
+# constants above and below, where const()'s heap-allocation avoidance is actually load-bearing.
+_PHASE_STA_SEEKING = 0  # STA mode, has not connected successfully since the last reset
+_PHASE_STA_ESTABLISHED = 1  # STA mode, has connected successfully at least once since the last
+# reset - live wlan.isconnected() (not a stored flag, same as before) distinguishes "currently
+# connected" from "disconnected, retrying every 60s" within this one phase, exactly as before.
+_PHASE_HOTSPOT = 2  # AP/hotspot fallback mode active
+_PHASE_DEACTIVATED = 3  # terminal - WLAN fully deactivated, needs a task/device restart
+
 
 class LEDControl(Protocol):
     def on(self) -> None: ...
@@ -166,7 +214,6 @@ class asy_conn_time(SensorReaderConfig):
         self.hotspot_time = 60000 * hotspot_time_min  # convert to ms
         self.conn_fail_to_hotspot = conn_fail_to_hotspot
         self.wifi_uptime = LockedCounter(max_val=0xFFFFFFFF)
-        self.hotspot_mode = False
         self.dns_server = DNSServer(debug=bool(debug))
         self.dns_server_task: asyncio.Task[None] | None = None
         self.reconn_wifi = False
@@ -178,10 +225,9 @@ class asy_conn_time(SensorReaderConfig):
         self.ledflash: asyncio.Task[None] | None = None
         # wlan_connect()'s own state machine - reset at the top of every wlan_connect() call
         # (i.e. every task (re)start), not meant to be read from outside this class.
+        self._conn_phase = _PHASE_STA_SEEKING
         self.connection_failures = 0
         self.hotspot_started_once = False
-        self.wlan_connected_once = False
-        self.wlan_deactivated = False
         self.hw_op_failed = False  # this loop iteration's flag feeding _error_check(), see wlan_connect()
 
     def start_asy_wlan_connect(self) -> asyncio.Task[None]:
@@ -316,7 +362,7 @@ class asy_conn_time(SensorReaderConfig):
             pass
 
     def network_available(self) -> bool:  # caller must already hold wifi_mode_lock
-        return (not self.hotspot_mode) and (self._wlan_status_or_none() == network.STAT_GOT_IP)
+        return (self._conn_phase != _PHASE_HOTSPOT) and (self._wlan_status_or_none() == network.STAT_GOT_IP)
 
     def set_ext_led(self, ext_led: LEDControl) -> None:  # for post-setting ext_led at any time
         self.ext_led = ext_led  # if called even after init, call set_wifi_led(True) to init LED
@@ -403,13 +449,13 @@ class asy_conn_time(SensorReaderConfig):
         self._reset_wlan_connect_state()
         await self._apply_initial_led_config()
         while True:
-            if self.wlan_deactivated:
+            if self._conn_phase == _PHASE_DEACTIVATED:
                 self.pr.all(_NAME, "WLAN ist deaktiviert.")
             else:
                 self.hw_op_failed = False
                 if self.reconn_wifi:
                     await self._handle_reconnect_trigger()
-                if self.hotspot_mode:
+                if self._conn_phase == _PHASE_HOTSPOT:
                     await self._run_hotspot_mode()
                 else:
                     await self._run_sta_mode()
@@ -436,12 +482,18 @@ class asy_conn_time(SensorReaderConfig):
             self.dns_server_task = None
         self.connection_failures = 0
         self.hotspot_started_once = False
-        self.wlan_connected_once = False
-        self.wlan_deactivated = False
+        if self._conn_phase != _PHASE_HOTSPOT:
+            # Deliberately left at _PHASE_HOTSPOT rather than reset when a task restart happens to
+            # land here mid-hotspot - matches the old code's separate wlan_connected_once=False/
+            # wlan_deactivated=False resets firing unconditionally here while hotspot_mode itself was
+            # left untouched. The reconn_wifi computation right below, and wlan_connect()'s own first
+            # loop iteration, both still see _PHASE_HOTSPOT and route through the same forced
+            # leave-hotspot-and-reconnect path a restart out of STA/deactivated never needed.
+            self._conn_phase = _PHASE_STA_SEEKING
         self.hotspot_timer.deinit()
         self.hotspot_timer_running = False
         try:
-            self.reconn_wifi = self.hotspot_mode or self.wlan.isconnected() or bool(self.wlan.active())
+            self.reconn_wifi = (self._conn_phase == _PHASE_HOTSPOT) or self.wlan.isconnected() or bool(self.wlan.active())
         except Exception as e:  # rare (once per task (re)start) - safe default forces a clean reconnect
             self.pr.err(_NAME, "Error checking WLAN state at start:", e)
             self.reconn_wifi = True
@@ -452,7 +504,7 @@ class asy_conn_time(SensorReaderConfig):
         led_cfg = await self._read_wifi_led_cfg()
         if led_cfg is None:
             await self.set_wifi_led(False)
-            self.wlan_deactivated = True
+            self._conn_phase = _PHASE_DEACTIVATED
             await self.pr.wrn_s(_NAME, "Fehlende WLAN Konfiguration!", wrnno=1)
         else:
             await self.set_wifi_led(led_cfg)
@@ -470,17 +522,24 @@ class asy_conn_time(SensorReaderConfig):
             self.ledflash.cancel()
             self.ledflash = None
         self.reconn_wifi = False
-        self.wlan_connected_once = False
+        leaving_hotspot = self._conn_phase == _PHASE_HOTSPOT
+        if not leaving_hotspot:
+            # The hotspot-leaving path's own transition (in _leave_hotspot_mode(), below) already
+            # lands on the same _PHASE_STA_SEEKING value - matches the old code's unconditional
+            # wlan_connected_once=False reset here, which _leave_hotspot_mode()'s separate
+            # hotspot_mode=False assignment never overlapped with (two different flags, now one
+            # field) - so only the plain-STA-reconnect path needs it done here.
+            self._conn_phase = _PHASE_STA_SEEKING
         self.pr.evt(_NAME, "WLAN Reconnect ausgelöst!")
         await asyncio.sleep(5)  # allow final tasks of calling function
-        if self.hotspot_mode:  # mode switch
+        if leaving_hotspot:  # mode switch
             await self._leave_hotspot_mode()
         else:  # plain reconnect
             await self._wait_for_sta_disconnect()
         await asyncio.sleep(3)  # wait once for whatever else to settle
 
     async def _leave_hotspot_mode(self) -> None:
-        self.hotspot_mode = False
+        self._conn_phase = _PHASE_STA_SEEKING
         if self.dns_server_task is not None:
             self.dns_server_task.cancel()
             self.dns_server_task = None
@@ -690,7 +749,7 @@ class asy_conn_time(SensorReaderConfig):
 
     def _on_sta_connected(self) -> None:
         self.pr.one(_NAME, "WLAN-Verbindung hergestellt")
-        self.wlan_connected_once = True
+        self._conn_phase = _PHASE_STA_ESTABLISHED
         self.connection_failures = 0
         self._led_on()
         self._print_wlan_diagnostics()
@@ -707,7 +766,7 @@ class asy_conn_time(SensorReaderConfig):
 
     async def _on_sta_disconnected(self) -> None:
         self.pr.evt(_NAME, "Keine WLAN-Verbindung")
-        if self.wlan_connected_once:
+        if self._conn_phase == _PHASE_STA_ESTABLISHED:
             self.pr.evt(_NAME, "WLAN-Verbindung war zuvor erfolgreich, neuer Versuch in 1 Minute...")
             await asyncio.sleep(60)  # retry previously successful connecion in one minute
         else:
@@ -724,13 +783,12 @@ class asy_conn_time(SensorReaderConfig):
         if self.hotspot_started_once:
             await self._deactivate_wlan_permanently()
         else:
-            self.hotspot_mode = True
+            self._conn_phase = _PHASE_HOTSPOT
             self.pr.one(_NAME, "Dauerhaft keine WLAN-Verbindung - aktiviere Hotspot!")
 
     async def _deactivate_wlan_permanently(self) -> None:
         self.pr.one(_NAME, "Dauerhaft keine WLAN-Verbindung, keine Verbindung zu Hotspot. Deaktiviere WLAN!")
-        self.wlan_deactivated = True
-        self.hotspot_mode = False
+        self._conn_phase = _PHASE_DEACTIVATED
         try:
             self.wlan.disconnect()
             self.wlan.active(False)
@@ -744,7 +802,7 @@ class asy_conn_time(SensorReaderConfig):
         await self.wifi_uptime.set_value(0)
         while True:
             await self.time_counter_trigger_event.wait()
-            if self.wlan_deactivated:
+            if self._conn_phase == _PHASE_DEACTIVATED:
                 await self.wifi_uptime.set_value(0)
                 await self._update_wifi_snapshot(False)
                 continue
@@ -760,7 +818,7 @@ class asy_conn_time(SensorReaderConfig):
                 self._release_wifi_lock()
 
     async def _update_wifi_snapshot(self, connected: bool) -> None:
-        mode = "AP" if self.hotspot_mode else "STA"
+        mode = "AP" if self._conn_phase == _PHASE_HOTSPOT else "STA"
         ip = None
         try:
             ifcfg = self.wlan.ifconfig()

@@ -766,6 +766,64 @@ From hands-on field experience with deployed units:
     - No code changed in this pass - purely traced/analyzed, per the standing "flag genuinely
       architecturally significant decisions rather than guessing" working agreement and this file's
       own explicit deferral of the state-machine's control flow to a later, dedicated pass.
+  - **Follow-up, same session: owner's decision on the two findings above, plus the state-
+    representation rework itself.** The project owner confirmed directly: the automatic path to
+    permanent WLAN deactivation (finding 2 above) is intentional, not a gap - these devices are
+    physically accessible and easy to power-cycle, so an automatic terminal state reachable without
+    human intervention is an accepted trade-off, not something to soften (e.g. with a
+    longer/backoff-based shutoff window or a repeatable hotspot fallback). Left exactly as-is; no
+    code changed for this finding. The first finding (STA never falling back to hotspot again once
+    connected successfully even once this task lifetime) remains open, pending a separate decision -
+    not addressed in this follow-up.
+  - **State-representation rework, explicitly requested and authorized this session** (the
+    project owner confirmed the state-machine rework is already underway, superseding this file's
+    earlier "deliberately deferred" note for this specific piece): `hotspot_mode`/
+    `wlan_connected_once`/`wlan_deactivated` - the boolean trio the design-level review above singled
+    out as the actual root cause of the two findings being easy to miss - replaced with one explicit
+    `self._conn_phase` field, one of four plain-int module constants (`_PHASE_STA_SEEKING`/
+    `_PHASE_STA_ESTABLISHED`/`_PHASE_HOTSPOT`/`_PHASE_DEACTIVATED`, defined near
+    `_STA_DISCONNECT_WAIT_ITERS`). Explicitly a pure representational change, not a behavior change -
+    every transition still fires at the exact same call site under the exact same condition with the
+    exact same side effects as the flag it replaces did; verified by running the full existing test
+    suite (updated only where a test pokes the old flag names directly as setup/assertions - white-
+    box tests of internals, not a stable API, consistent with this suite's existing style) and
+    confirming all 121 tests in `tests/test_asy_wifi_service.py` (987/987 project-wide) still pass
+    unchanged in behavior.
+    - **Not `micropython.const()`-wrapped, unlike this file's other module-level constants**: `const()`
+      values are inlined at compile time and don't survive as real importable module attributes on
+      this port (confirmed directly - this file's own test suite already had a comment noting this
+      same limitation for `_STA_DISCONNECT_WAIT_ITERS` elsewhere), which would have made them
+      untestable from `tests/test_asy_wifi_service.py`. Four tiny ints cost nothing meaningful
+      on-device left as plain module globals, unlike the tuple-valued `_VAL_*` schema constants in
+      this same file, where `const()`'s heap-allocation avoidance is actually load-bearing - so this
+      isn't an inconsistency, it's the same constant-vs-plain-global distinction the file already
+      draws for a different reason.
+    - **Why this is a lossless consolidation, not a lossy simplification**: tracing every mutator of
+      the old trio confirmed only 4 of their 8 possible boolean combinations were ever reachable -
+      `hotspot_mode=True` always implied `wlan_connected_once=False` (both are only ever set together
+      via code paths that already require the other to be in a specific state first), and
+      `wlan_deactivated=True` always implied both others `False` (`_deactivate_wlan_permanently()`
+      explicitly clears `hotspot_mode` in the same breath it used to set `wlan_deactivated`). The one
+      genuine subtlety this surfaced: `_reset_wlan_connect_state()` (called once per task (re)start)
+      deliberately does *not* reset `_conn_phase` away from `_PHASE_HOTSPOT` if a restart happens to
+      land there - matching the old code's asymmetry where `wlan_connected_once`/`wlan_deactivated`
+      were unconditionally cleared here but `hotspot_mode` itself was left untouched, so a restart
+      mid-hotspot is detected by both the `reconn_wifi` computation right below and `wlan_connect()`'s
+      own first loop iteration, forcing the same leave-hotspot-and-reconnect path a restart out of
+      STA/deactivated never needed. Preserving this one exception (rather than a uniform reset)
+      required capturing "was this the hotspot-leaving path" as a local before overwriting the field
+      in `_handle_reconnect_trigger()`, since the trigger method's own dispatch used to read
+      `hotspot_mode` (an independent memory cell) *after* already having cleared the differently-named
+      `wlan_connected_once` - a distinction that would otherwise have been lost once both became the
+      same field.
+    - Illegal state combinations (e.g. simultaneously "in hotspot mode" and "permanently deactivated")
+      are now structurally unrepresentable rather than merely never-produced-by-current-code-paths -
+      which is precisely what made the two design-level findings above possible to miss on an
+      ordinary read in the first place, per the maintainability observation above.
+    - Verified via the usual before/after checks: `ruff check` clean at 220 findings (transiently 221
+      from an unsorted multi-line import, fixed via `ruff check --fix`); `scripts/typecheck.sh
+      src tests` (CI's own scope) clean; full suite 987/987 passing across all 14 `tests/` files, 0
+      failures, 0 change in test count (this was a pure representational refactor, not new coverage).
 - **Bus concurrency via `asyncio.Lock` + `async with` needs a coverage audit** (no gaps, no
   deadlock/starvation). Concrete progress: `asy_scd30_driver.py`/`asy_bmp3xx_driver.py`/
   `asy_sgp40_driver.py` each have a `*_DeviceSession(Lockable)` class — an outer per-sensor lock
