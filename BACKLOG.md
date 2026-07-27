@@ -828,6 +828,55 @@ From hands-on field experience with deployed units:
       from an unsorted multi-line import, fixed via `ruff check --fix`); `scripts/typecheck.sh
       src tests` (CI's own scope) clean; full suite 987/987 passing across all 14 `tests/` files, 0
       failures, 0 change in test count (this was a pure representational refactor, not new coverage).
+- **Full `src/README.md` promotion-checklist pass against `asy_wifi_service.py` (owner-requested:
+  "go through our recipe paragraph by paragraph")**, cross-checked against current MicroPython
+  docs/source and the Pico W datasheet rather than training memory, plus a fresh test-coverage pass.
+  Sections 0/2-8/10-13 already held from the audits recorded above; this pass's own findings:
+  - **`wlan.config(pm=0xA11140)` confirmed correct, not just "looks plausible"**: decoded the raw
+    hex against `cyw43-driver`'s own `cyw43_pm_value()`/`CYW43_NONE_PM`/`CYW43_DEFAULT_PM` macros
+    (`src/cyw43.h`) bit-field-by-bit-field - `0xA11140`'s nibbles (`li_assoc=10, li_dtim_period=1,
+    li_beacon_period=1, pm2_sleep_ret_ms=200, pm_mode=0`) match `CYW43_DEFAULT_PM`'s own
+    beacon/DTIM/assoc/sleep-return parameters exactly, with only `pm_mode` changed from
+    `CYW43_PM2_POWERSAVE_MODE` (2) to `CYW43_NO_POWERSAVE_MODE` (0) - i.e. this value really is
+    "disable power-save, change nothing else parameter-wise," matching the code's own "Stromsparmodus
+    ausschalten" comment precisely. No fix needed; recorded here since this was previously an
+    unverified "looks like the standard community magic number" assumption, not a source-checked one.
+  - **Real, verified discrepancy found (flagged, not fixed): `_VAL_HOST`'s schema allows a 1-63
+    character `Hostname`, but `network.hostname()`'s real documented limit is 32 characters**
+    (`MICROPY_PY_NETWORK_HOSTNAME_MAX_LEN`, `extmod/modnetwork.h`/`.c` - confirmed unchanged on both
+    the deployed `v1.26.0` pin and the `v1.28.0` refactor target; rp2/`RPI_PICO_W` doesn't override
+    it to something stricter, so 32 is the real cap on this hardware). Setting a longer hostname
+    raises `ValueError` uncaught by `network.hostname()` itself - this file's own broad
+    `except Exception` in `_trigger_sta_connect()`/`_configure_hotspot_ap()` does catch it, so it
+    can't crash the task, but it gets mis-attributed as `hw_op_failed` (errno=12/13, "a WLAN hardware
+    fault") rather than recognized as a config-validation gap - meaning a 33-63 char configured
+    hostname would make *every* connect/hotspot-activate attempt "fail" for a reason that has nothing
+    to do with the WLAN hardware, eventually tripping `wlan_connect()`'s own repeated-hardware-failure
+    give-up/restart path (errno=17) for what's really a bad config value. **Not this promotion's own
+    bug**: `_VAL_HOST`'s schema deliberately mirrors `sensortask-wozi.py`'s existing REST-route bound
+    (`update_valid_json(req_json, "Hostname", "str", res, 1, 63, ...)`), which already allows the same
+    33-63 range today, unrelated to this session's changes - this pass just verified the bound against
+    real source and found it was already wrong before this promotion touched it. Per `src/README.md`
+    section 1, not narrowed here: tightening `max` from 63 to 32 would change what hostnames the
+    schema itself accepts (a real behavior change), so this is flagged for the project owner to decide
+    rather than silently changed.
+  - **Cross-branch documentation gap found (flagged, not fixed)**: this file's own module docstring
+    and this file's own BACKLOG.md entries above say "see `DRIVER_SPEC.md` for the shared contract" -
+    but `DRIVER_SPEC.md` does not exist on this branch or on `main` (`git log --all` shows it was
+    added on the separate, still-unmerged `claude/sensor-driver-consolidation-vit4xq` branch,
+    `eff19bf`/later commits). The reference isn't broken *in intent* - that branch's `DRIVER_SPEC.md`
+    is real and matches what this file's docstring describes - but it's a dangling reference from
+    this branch's own checked-out state today, exactly the "reconcile docs from parallel sessions"
+    scenario `src/README.md` section 14 and CLAUDE.md's working agreements call out. Left for the
+    project owner to resolve (merge order between the two branches is a project-level decision, not
+    something to guess at from inside a single-file review).
+  - **Test coverage**: `_reset_wlan_connect_state()` had zero direct tests despite this session's own
+    `_conn_phase` refactor changing its hotspot-preserving-across-a-restart behavior (only exercised
+    indirectly via `wlan_connect()`'s own tests); `wlan_connect()`'s own phase-dispatch
+    (hotspot vs. STA) and reconn_wifi-gated call to `_handle_reconnect_trigger()` were similarly only
+    proven end-to-end via the slower integration tests, not directly. 14 new tests close both gaps
+    (`tests/test_asy_wifi_service.py`'s count: 121 -> 135); full suite 1001/1001 passing project-wide,
+    `ruff check` still 220 (baseline unchanged), `scripts/typecheck.sh src tests` clean.
 - **Bus concurrency via `asyncio.Lock` + `async with` needs a coverage audit** (no gaps, no
   deadlock/starvation). Concrete progress: `asy_scd30_driver.py`/`asy_bmp3xx_driver.py`/
   `asy_sgp40_driver.py` each have a `*_DeviceSession(Lockable)` class — an outer per-sensor lock

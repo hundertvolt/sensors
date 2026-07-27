@@ -1301,6 +1301,113 @@ def test_handle_reconnect_trigger_sta_mode_waits_for_disconnect() -> None:
 
 
 # ---------------------------------------------------------------------------
+# _reset_wlan_connect_state() - runs once at the top of every wlan_connect() task (re)start: clears
+# the per-run failure bookkeeping, preserves (rather than resets) _conn_phase when a restart
+# happens to land mid-hotspot, and computes reconn_wifi from the (possibly preserved) phase plus
+# the real WLAN driver state. Previously only exercised indirectly through wlan_connect()'s own
+# tests below - these isolate it directly, including the hotspot-preserving asymmetry the
+# _conn_phase refactor had to keep (see asy_wifi_service.py's own comment on this method).
+# ---------------------------------------------------------------------------
+
+
+def test_reset_wlan_connect_state_preserves_hotspot_phase_across_a_restart() -> None:
+    client = make_client()
+    client._conn_phase = _PHASE_HOTSPOT
+    client._reset_wlan_connect_state()
+    assert client._conn_phase == _PHASE_HOTSPOT
+
+
+def test_reset_wlan_connect_state_resets_sta_established_to_seeking() -> None:
+    client = make_client()
+    client._conn_phase = _PHASE_STA_ESTABLISHED
+    client._reset_wlan_connect_state()
+    assert client._conn_phase == _PHASE_STA_SEEKING
+
+
+def test_reset_wlan_connect_state_resets_deactivated_to_seeking() -> None:
+    # A task restart (e.g. after the hw_op_failed streak gives up) pulls the state machine back out
+    # of the terminal deactivated phase - matches the old code's unconditional wlan_deactivated=False
+    # reset here.
+    client = make_client()
+    client._conn_phase = _PHASE_DEACTIVATED
+    client._reset_wlan_connect_state()
+    assert client._conn_phase == _PHASE_STA_SEEKING
+
+
+def test_reset_wlan_connect_state_clears_failure_counters_and_hotspot_started_once() -> None:
+    client = make_client()
+    client.connection_failures = 3
+    client.hotspot_started_once = True
+    client._reset_wlan_connect_state()
+    assert client.connection_failures == 0
+    assert client.hotspot_started_once is False
+
+
+def test_reset_wlan_connect_state_cancels_ledflash_and_dns_server_task() -> None:
+    client = make_client()
+
+    async def _sleep_forever() -> None:
+        await asyncio.sleep(100)
+
+    async def scenario() -> "tuple[bool, bool]":
+        client.ledflash = asyncio.create_task(_sleep_forever())
+        client.dns_server_task = asyncio.create_task(_sleep_forever())
+        client._reset_wlan_connect_state()
+        return client.ledflash is None, client.dns_server_task is None
+
+    ledflash_cleared, dns_task_cleared = run(scenario())
+    assert ledflash_cleared is True
+    assert dns_task_cleared is True
+
+
+def test_reset_wlan_connect_state_sets_reconn_wifi_true_when_hotspot() -> None:
+    client = make_client()
+    client._conn_phase = _PHASE_HOTSPOT
+    client._reset_wlan_connect_state()
+    assert client.reconn_wifi is True
+
+
+def test_reset_wlan_connect_state_sets_reconn_wifi_true_when_already_connected() -> None:
+    client = make_client()
+    client.wlan._connected = True
+    client._reset_wlan_connect_state()
+    assert client.reconn_wifi is True
+
+
+def test_reset_wlan_connect_state_sets_reconn_wifi_true_when_wlan_active_but_not_connected() -> None:
+    client = make_client()
+    client.wlan._active = True
+    client._reset_wlan_connect_state()
+    assert client.reconn_wifi is True
+
+
+def test_reset_wlan_connect_state_sets_reconn_wifi_false_when_seeking_and_wlan_is_idle() -> None:
+    client = make_client()
+    client._reset_wlan_connect_state()
+    assert client.reconn_wifi is False
+
+
+def test_reset_wlan_connect_state_degrades_to_reconn_wifi_true_on_exception() -> None:
+    # A real exception checking wlan.isconnected()/active() at task-start time is rare (once per
+    # task (re)start) but must still force a safe reconnect-on-next-iteration default rather than
+    # silently under-reacting.
+    client = make_client()
+    run(client.pr.setup())
+    client.wlan.raise_on["isconnected"] = RuntimeError("simulated hardware fault")
+    client._reset_wlan_connect_state()
+    assert client.reconn_wifi is True
+
+
+def test_reset_wlan_connect_state_turns_the_led_off() -> None:
+    led = FakeLED()
+    client = make_client(ext_led=led)
+    run(client.set_wifi_led(True))
+    client._led_on()
+    client._reset_wlan_connect_state()
+    assert led.off_calls == 1
+
+
+# ---------------------------------------------------------------------------
 # wlan_connect() - the task-supervisor entry point: pr.setup(), the fresh _err_cnt_internal streak,
 # and max_i2c_err/_error_check() giving up after repeated WLAN-hardware-exception cycles
 # (independent from, and a coarser safety net than, connection_failures/conn_fail_to_hotspot's own
@@ -1362,6 +1469,95 @@ def test_wlan_connect_skips_the_state_machine_entirely_while_deactivated() -> No
         return calls
 
     assert run(scenario()) == 0
+
+
+def test_wlan_connect_dispatches_to_hotspot_mode_when_conn_phase_is_hotspot() -> None:
+    client = make_client(wifi_refresh_sec=0)
+    client._conn_phase = _PHASE_HOTSPOT
+    hotspot_calls = [0]
+    sta_calls = [0]
+
+    async def fake_reconnect() -> None:
+        return None  # isolates this test to the phase-dispatch branch, not the reconnect-trigger path
+
+    async def fake_hotspot() -> None:
+        hotspot_calls[0] += 1
+
+    async def fake_sta() -> None:
+        sta_calls[0] += 1
+
+    client._handle_reconnect_trigger = fake_reconnect
+    client._run_hotspot_mode = fake_hotspot
+    client._run_sta_mode = fake_sta
+
+    async def scenario() -> "tuple[int, int]":
+        task = asyncio.create_task(client.wlan_connect())
+        for _ in range(4):
+            await asyncio.sleep(0)
+        calls = hotspot_calls[0], sta_calls[0]
+        await _cancel(task)
+        return calls
+
+    hotspot_called, sta_called = run(scenario())
+    assert hotspot_called >= 1
+    assert sta_called == 0
+
+
+def test_wlan_connect_dispatches_to_sta_mode_when_conn_phase_is_not_hotspot() -> None:
+    client = make_client(wifi_refresh_sec=0)
+    hotspot_calls = [0]
+    sta_calls = [0]
+
+    async def fake_hotspot() -> None:
+        hotspot_calls[0] += 1
+
+    async def fake_sta() -> None:
+        sta_calls[0] += 1
+
+    client._run_hotspot_mode = fake_hotspot
+    client._run_sta_mode = fake_sta
+
+    async def scenario() -> "tuple[int, int]":
+        task = asyncio.create_task(client.wlan_connect())
+        for _ in range(4):
+            await asyncio.sleep(0)
+        calls = hotspot_calls[0], sta_calls[0]
+        await _cancel(task)
+        return calls
+
+    hotspot_called, sta_called = run(scenario())
+    assert sta_called >= 1
+    assert hotspot_called == 0
+
+
+def test_wlan_connect_calls_handle_reconnect_trigger_when_reconn_wifi_is_set() -> None:
+    # A task (re)start while the driver still reports connected forces reconn_wifi=True via
+    # _reset_wlan_connect_state()'s own computation - wlan_connect()'s loop must act on that the
+    # very first iteration, not just on ones following an explicit reconnect_wifi()/hotspot-timer
+    # trigger.
+    client = make_client(wifi_refresh_sec=0)
+    client.wlan._connected = True
+    reconnect_calls = [0]
+
+    async def fake_reconnect() -> None:
+        reconnect_calls[0] += 1
+        client.reconn_wifi = False  # avoid retriggering every loop iteration
+
+    async def fake_sta() -> None:
+        return None
+
+    client._handle_reconnect_trigger = fake_reconnect
+    client._run_sta_mode = fake_sta
+
+    async def scenario() -> int:
+        task = asyncio.create_task(client.wlan_connect())
+        for _ in range(4):
+            await asyncio.sleep(0)
+        calls = reconnect_calls[0]
+        await _cancel(task)
+        return calls
+
+    assert run(scenario()) == 1
 
 
 def test_wlan_connect_gives_up_after_repeated_hardware_failures_and_persists_errno_17() -> None:

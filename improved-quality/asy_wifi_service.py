@@ -97,6 +97,23 @@ setup/assertions) passing unchanged. Illegal combinations (e.g. simultaneously "
 "permanently deactivated") are now structurally unrepresentable rather than merely never-produced-
 by-current-code-paths, which is what made the two design-level findings above possible to miss on an
 ordinary read in the first place.
+
+A full pass of src/README.md's promotion checklist against this file (owner-requested) confirmed
+sections 0/2-8/10-13 already hold from the audits above and found two new, genuinely verified-
+against-source items - see BACKLOG.md for the full writeup: `wlan.config(pm=0xA11140)` is confirmed
+correct (decoded against real cyw43-driver source: `CYW43_NO_POWERSAVE_MODE` with the same
+beacon/DTIM/assoc/sleep-return parameters `CYW43_DEFAULT_PM` uses, i.e. exactly "disable power-save,
+change nothing else" - no fix needed), while `_VAL_HOST`'s schema max of 63 characters is flagged
+(not fixed) as exceeding `network.hostname()`'s real, documented 32-character hard cap
+(`MICROPY_PY_NETWORK_HOSTNAME_MAX_LEN`, confirmed unchanged on both the deployed v1.26.0 pin and the
+v1.28.0 refactor target) - a pre-existing gap inherited unmodified from `sensortask-wozi.py`'s own
+REST-route bound this schema deliberately mirrors, not introduced by this promotion; a hostname of
+33-63 characters passes config validation but then makes `network.hostname()` raise, which
+`_trigger_sta_connect()`/`_configure_hotspot_ap()` catch but mis-attribute as `hw_op_failed` (a WLAN
+*hardware* fault) rather than a config-validation gap. 14 new tests (121 -> 135) close the last
+previously-untested orchestration gaps: `_reset_wlan_connect_state()` itself (the hotspot-preserving
+asymmetry above had no direct test) and `wlan_connect()`'s own phase-dispatch/reconnect-trigger-
+gating lines.
 """
 
 import asyncio
