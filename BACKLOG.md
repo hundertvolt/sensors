@@ -668,6 +668,104 @@ From hands-on field experience with deployed units:
       a pre-existing, already-documented divergence this file's every other test function already
       triggers too, not a new kind of gap - CI itself only ever runs the clean `src tests` scope).
       Full suite: 987/987 tests passing across all 14 `tests/` files (up from 959/959), 0 failures.
+  - **Design-level review of the STA/AP/LED state machine itself (owner-requested, analysis only -
+    no code changed, per this file's own "deliberately deferred to a later pass" note and CLAUDE.md's
+    hard rule against editing this control flow without discussion first).** Traced every mutator of
+    every state flag (`wlan_connected_once`, `connection_failures`, `hotspot_started_once`,
+    `hotspot_mode`, `wlan_deactivated`, `reconn_wifi`) end to end, then cross-checked against
+    `sensortask-wozi.py`'s own task supervisor (`main()`'s `tasks[n].done()` restart loop) to confirm
+    what's actually externally reachable, not just what the code inside this one file suggests.
+    Three real, load-bearing findings, worth the project owner's attention before/during the planned
+    state-machine rework - none are uncaught-exception or hang bugs (already covered by the two
+    exception/blocking audits above), they're behavioral/design gaps in what the state machine
+    actually accomplishes:
+    - **The hotspot-fallback safety net is permanently bypassed for any AP that ever worked, the
+      single most consequential finding.** `_on_sta_disconnected()` branches on `wlan_connected_once`:
+      once `True` (set the first time STA ever connects, in `_on_sta_connected()`), every subsequent
+      disconnect takes the "retry a previously-successful connection in one minute"
+      `await asyncio.sleep(60)` branch *forever* - `_register_sta_connection_failure()` (the only
+      code path that increments `connection_failures` toward `conn_fail_to_hotspot` and flips
+      `hotspot_mode = True`) becomes permanently unreachable. `wlan_connected_once` is reset to
+      `False` only by a full task restart (`_reset_wlan_connect_state()`) or an explicit
+      `reconnect_wifi()` call - traced every call site of the latter and confirmed it's wired to
+      exactly one place, `sensortask-wozi.py`'s `/net/config` POST handler
+      (`post_fct=conn.reconnect_wifi`) - i.e. a human explicitly resubmitting WiFi credentials over
+      the REST API. Nothing periodic or automatic ever calls it. And a task restart only happens via
+      `wlan_connect()`'s own `_error_check()` give-up path, which counts consecutive `hw_op_failed`
+      (real driver *exceptions*) - a cleanly-failing "AP unreachable" case (the driver returns
+      `STAT_CONNECT_FAIL`/keeps retrying internally, no exception) never trips it, confirmed by
+      re-reading every `hw_op_failed = True` assignment site (all guard a genuine `except Exception`,
+      none cover "isconnected() stayed False"). Net effect, confirmed against the real task
+      supervisor: a device that connects fine once and then permanently loses that AP (router
+      replaced, credentials rotated elsewhere, AP decommissioned - the single most likely real-world
+      long-term failure for an unattended sensor node, far more likely than "never connects even
+      once") will retry STA every ~65-70s *forever*, watchdog happily fed the whole time (the
+      supervisor only restarts a task that actually completes, and this one never does), with **no
+      automatic path back to the hotspot recovery mode that exists specifically for this
+      situation** - only a human reconfiguring WiFi through the REST API can break the loop, which
+      itself requires already having network access to that API, the exact thing that's broken.
+      This inverts the hotspot fallback's own stated purpose: it protects a WLAN that's never worked,
+      not one that worked and later died, which is backwards for a long-deployed unattended device.
+    - **The one automatic path that *does* exist afterward can end in a fully automatic, unattended
+      walk to permanent WiFi death.** `hotspot_started_once` is set `True` (never reset except on
+      task restart) the first time `_start_hotspot()` runs, regardless of outcome. If the hotspot's
+      own auto-shutoff timer (`_hotspot_client_absent()`, default 5 minutes, unattended - nobody
+      connected to configure it) fires and calls `reconnect_wifi()`, the state machine goes back to
+      STA fresh (`wlan_connected_once` reset to `False` by `_handle_reconnect_trigger()`) - and now,
+      if that AP is still unreachable, `_register_sta_connection_failure()` *is* reachable again, but
+      `hotspot_started_once` being `True` routes it to `_deactivate_wlan_permanently()` instead of
+      back to hotspot mode (`_register_sta_connection_failure()`'s own
+      `if self.hotspot_started_once: ... else: hotspot_mode = True` branch) - i.e. hotspot mode is a
+      one-shot-per-task-lifetime resource, not a repeatable fallback. So the fully automatic sequence
+      "AP dies -> hotspot opens -> nobody visits it within 5 minutes -> auto-reconnect -> AP still
+      unreachable -> `conn_fail_to_hotspot` more failed attempts (~25-30s at the default 5s refresh)"
+      ends in `wlan_deactivated = True` - WiFi off until a physical power-cycle - with zero human
+      decision anywhere in that chain. `BACKLOG.md` already records permanent deactivation as a
+      deliberate safety feature ("prevents an unclaimed hotspot staying open indefinitely"), which is
+      a reasonable design *choice*, but this traces out that its most likely real trigger is a
+      short-lived, unattended AP blip that happens to outlast a single 5-minute hotspot window on an
+      unattended device - not necessarily the "someone should have claimed this hotspot and didn't"
+      scenario the safety feature seems aimed at. Worth the owner explicitly re-confirming this
+      trade-off (e.g. would a device revisiting hotspot mode more than once per task lifetime, or a
+      longer/backoff-based shutoff window, better serve an unattended-sensor-node use case?) rather
+      than carrying it forward unexamined into the refactor.
+    - **Secondary, lower-severity finding tying back to the already-flagged `reconnects` question
+      above**: because `wlan.status()` likely never surfaces `STAT_WRONG_PASSWORD`/`STAT_NO_AP_FOUND`
+      /`STAT_CONNECT_FAIL` on stock rp2 hardware (driver retries internally, see above), a real
+      connect success is still detected correctly (`_handle_sta_connection_result()` checks
+      `isconnected()` directly, independent of `_poll_sta_connect_status()`'s own classification) -
+      so this does *not* break connectivity itself, only its diagnosability: `wrnno=4/5/6/7`'s
+      distinct "wrong password" vs "no AP found" vs "connect failed" reasons are effectively
+      unreachable in practice, and `connection_failures` really counts "didn't finish within one
+      ~5s-10s poll window" rather than a genuine driver-reported failure - a fuzzier, more
+      timing-dependent signal than the code's own naming suggests, though not incorrect in effect.
+    - **Efficiency/fairness note, compounding the first finding above**: `_switch_wlan_mode()` holds
+      `wifi_mode_lock` across a fixed ~4s of `asyncio.sleep()` (2s+1s+1s, unverified-against-docs
+      magic constants inherited from the original file, not derived from any documented cyw43
+      settle-time requirement) on every single hotspot<->STA mode switch, and the `wlan_connected_once`
+      60s-retry branch above holds the same lock across a full `asyncio.sleep(60)` (already noted in
+      this file's own earlier audit entry). Since `asy_ntp_client.py`'s sync task acquires this exact
+      same shared `Lock` before every attempt, the periods when NTP sync is most likely to be delayed
+      by up to a minute are exactly the periods of active WLAN instability - i.e. exactly when
+      accurate timestamps on newly-logged connectivity error events matter most. Not a deadlock or a
+      correctness bug, just a priority-inversion-shaped design cost worth having in view.
+    - **Code-quality/maintainability observation, generalizable beyond this one file**: this "state
+      machine" is six loosely-related booleans/counters (`wlan_deactivated`, `hotspot_mode`,
+      `reconn_wifi`, `connection_failures`, `hotspot_started_once`, `wlan_connected_once`) whose valid
+      combinations and legal transitions are implicit in scattered control flow, not an explicit
+      enumerated state + transition table - e.g. `hotspot_mode = True` and `wlan_deactivated = True`
+      never coexist today only because `_deactivate_wlan_permanently()` happens to clear the former
+      by convention, not because the type system or a single source of truth makes the illegal
+      combination unrepresentable. This made the three findings above possible to miss on a read that
+      doesn't trace every flag mutator by hand (as this pass did), and will keep being a source of
+      this same *class* of gap under future maintenance. A worthwhile candidate for the version-
+      forward refactor (`improved-quality/` explicitly targets "actively use relevant improvements/
+      new features," not just reproduce 1.26-era behavior - see this file's "Platform target"
+      section) - not raised as something to fix now, since it's squarely the deferred control-flow
+      rework this file's own docstring already calls out.
+    - No code changed in this pass - purely traced/analyzed, per the standing "flag genuinely
+      architecturally significant decisions rather than guessing" working agreement and this file's
+      own explicit deferral of the state-machine's control flow to a later, dedicated pass.
 - **Bus concurrency via `asyncio.Lock` + `async with` needs a coverage audit** (no gaps, no
   deadlock/starvation). Concrete progress: `asy_scd30_driver.py`/`asy_bmp3xx_driver.py`/
   `asy_sgp40_driver.py` each have a `*_DeviceSession(Lockable)` class — an outer per-sensor lock
