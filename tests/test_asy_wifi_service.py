@@ -4,12 +4,17 @@ sys.path.insert(0, "improved-quality")  # not yet promoted to src/ - see CLAUDE.
 
 import asyncio
 import os
+import select
+import socket
 
 # improved-quality/ isn't on mypy_path (only src/typings are - see pyproject.toml) since it's
 # still WIP, not yet promoted; every asy_wifi_service-typed value below is consequently Any, not a
 # real gap being masked.
 import network
 from asy_wifi_service import WIFI, asy_conn_time  # type: ignore[import-not-found]
+from machine import Timer
+
+from asy_udp_socket import AsyUDPSocket
 
 try:
     from typing import TYPE_CHECKING
@@ -64,19 +69,43 @@ def _tmp_cfg_dir() -> str:
 class FakeLED:
     # Structurally satisfies asy_wifi_service.py's own LEDControl Protocol (on/off/toggle) without
     # needing a real GPIO pin - same spirit as the fake network.WLAN this file also depends on.
+    # raise_on models a genuinely misbehaving caller-injected ext_led (_led_on()/_led_off()/
+    # _led_toggle() must degrade gracefully against this, not just a well-behaved LED).
     def __init__(self) -> None:
         self.on_calls = 0
         self.off_calls = 0
         self.toggle_calls = 0
+        self.raise_on: dict[str, Exception] = {}
 
     def on(self) -> None:
+        exc = self.raise_on.get("on")
+        if exc is not None:
+            raise exc
         self.on_calls += 1
 
     def off(self) -> None:
+        exc = self.raise_on.get("off")
+        if exc is not None:
+            raise exc
         self.off_calls += 1
 
     def toggle(self) -> None:
+        exc = self.raise_on.get("toggle")
+        if exc is not None:
+            raise exc
         self.toggle_calls += 1
+
+
+class _RaiseOnArm:
+    # Same technique as test_asy_ntp_client.py's own _RaiseOnArm - toggles tests/machine.py's
+    # Timer.raise_on_arm (a shared class attribute) for the duration of the `with` block,
+    # simulating real rp2 alarm-pool exhaustion (OSError(ENOMEM) from Timer.init()).
+    def __enter__(self) -> "_RaiseOnArm":
+        Timer.raise_on_arm = True
+        return self
+
+    def __exit__(self, *exc_info: "Any") -> None:
+        Timer.raise_on_arm = False
 
 
 def make_client(
@@ -104,11 +133,11 @@ def make_client(
     )
 
 
-def make_client_with_json(json_text: str) -> asy_conn_time:
+def make_client_with_json(json_text: str, **kwargs: "Any") -> asy_conn_time:
     cfg_path = _tmp_cfg_dir()
     with open(cfg_path + "config_WIFI.cfg", "w") as f:
         f.write(json_text)
-    return make_client(cfg_path=cfg_path)
+    return make_client(cfg_path=cfg_path, **kwargs)
 
 
 def make_invalid_cfg_client() -> asy_conn_time:
@@ -167,6 +196,20 @@ def test_get_timer_starters_returns_the_counter_timer() -> None:
     assert client.get_timer_starters() == [client.start_counter_timer]
 
 
+def test_start_counter_timer_arms_periodic_1s() -> None:
+    client = make_client()
+    client.start_counter_timer()
+    assert client.counter_timer.mode == Timer.PERIODIC
+    assert client.counter_timer.period == 1000
+
+
+def test_start_counter_timer_degrades_gracefully_when_alarm_pool_exhausted() -> None:
+    client = make_client()
+    with _RaiseOnArm():
+        client.start_counter_timer()  # must not raise despite the timer failing to arm
+    assert client.counter_timer.period == -1  # never actually armed
+
+
 def test_debug_level_propagates_to_the_inherited_pr_logger() -> None:
     client = make_client(debug=3)
     assert client.pr.get_level() == 3
@@ -184,6 +227,186 @@ def test_get_dict_cfg_masks_the_password() -> None:
     result = run(client.get_dict_cfg())
     assert result["WIFI"]["PW"] == "********"
     assert result["WIFI"]["SSID"] == "MyNetwork"
+
+
+# ---------------------------------------------------------------------------
+# Configuration: every valid field, and single/multiple invalid recombinations coming from a real
+# on-disk config_WIFI.cfg file, exercised through the real ConfigManager asy_wifi_service now owns
+# internally (not mocked) - proving asy_wifi_service.py's own handling of ConfigManager's per-field
+# defaulting, not re-testing ConfigManager's own contract (already covered by test_config_manager.py).
+# get_dict_cfg()'s own PW-masking (_mask_pw()) hides the real underlying value regardless of
+# validity, so these read the raw cached value via client.cfgmgr.get_dict([...]) instead - the same
+# level test_asy_ntp_client.py's own config-matrix tests exercise through _get_ntp_config().
+# ---------------------------------------------------------------------------
+
+_WIFI_KEYS = ["SSID", "PW", "Country", "Hostname", "LedWifiOn"]
+_WIFI_DEFAULTS = {"SSID": "", "PW": "", "Country": "DE", "Hostname": "SensorNode", "LedWifiOn": True}
+
+
+def test_config_all_fields_valid_reads_real_values() -> None:
+    client = make_client_with_json(_VALID_JSON)
+    values = run(client.cfgmgr.get_dict(_WIFI_KEYS))
+    assert values == {
+        "SSID": "MyNetwork",
+        "PW": "supersecret",
+        "Country": "US",
+        "Hostname": "TestNode",
+        "LedWifiOn": False,
+    }
+
+
+def test_config_ssid_empty_is_valid_not_defaulted() -> None:
+    # SSID's own schema min is relaxed to 0 (see asy_wifi_service.py's own schema comment) so the
+    # fresh, unconfigured default ("") self-validates - unlike every other str field here.
+    json_text = '{"SSID": "", "PW": "supersecret", "Country": "US", "Hostname": "TestNode", "LedWifiOn": false}'
+    client = make_client_with_json(json_text)
+    values = run(client.cfgmgr.get_dict(_WIFI_KEYS))
+    assert values["SSID"] == ""
+    assert values["PW"] == "supersecret"  # untouched
+
+
+def test_config_ssid_too_long_falls_back_to_default_ssid_only() -> None:
+    json_text = (
+        '{"SSID": "' + ("x" * 33) + '", "PW": "supersecret", "Country": "US", '
+        '"Hostname": "TestNode", "LedWifiOn": false}'
+    )
+    client = make_client_with_json(json_text)
+    values = run(client.cfgmgr.get_dict(_WIFI_KEYS))
+    assert values["SSID"] == ""  # defaulted (max 32)
+    assert values["PW"] == "supersecret"  # untouched
+
+
+def test_config_pw_too_long_falls_back_to_default_pw_only() -> None:
+    json_text = (
+        '{"SSID": "MyNetwork", "PW": "' + ("x" * 64) + '", "Country": "US", '
+        '"Hostname": "TestNode", "LedWifiOn": false}'
+    )
+    client = make_client_with_json(json_text)
+    values = run(client.cfgmgr.get_dict(_WIFI_KEYS))
+    assert values["PW"] == ""  # defaulted (max 63)
+    assert values["SSID"] == "MyNetwork"  # untouched
+
+
+def test_config_country_too_long_falls_back_to_default() -> None:
+    json_text = (
+        '{"SSID": "MyNetwork", "PW": "supersecret", "Country": "USA", '
+        '"Hostname": "TestNode", "LedWifiOn": false}'
+    )
+    client = make_client_with_json(json_text)
+    values = run(client.cfgmgr.get_dict(_WIFI_KEYS))
+    assert values["Country"] == "DE"
+
+
+def test_config_country_too_short_falls_back_to_default() -> None:
+    json_text = (
+        '{"SSID": "MyNetwork", "PW": "supersecret", "Country": "U", '
+        '"Hostname": "TestNode", "LedWifiOn": false}'
+    )
+    client = make_client_with_json(json_text)
+    values = run(client.cfgmgr.get_dict(_WIFI_KEYS))
+    assert values["Country"] == "DE"
+
+
+def test_config_country_wrong_type_falls_back_to_default() -> None:
+    json_text = (
+        '{"SSID": "MyNetwork", "PW": "supersecret", "Country": 12345, '
+        '"Hostname": "TestNode", "LedWifiOn": false}'
+    )
+    client = make_client_with_json(json_text)
+    values = run(client.cfgmgr.get_dict(_WIFI_KEYS))
+    assert values["Country"] == "DE"
+
+
+def test_config_hostname_empty_falls_back_to_default() -> None:
+    json_text = '{"SSID": "MyNetwork", "PW": "supersecret", "Country": "US", "Hostname": "", "LedWifiOn": false}'
+    client = make_client_with_json(json_text)
+    values = run(client.cfgmgr.get_dict(_WIFI_KEYS))
+    assert values["Hostname"] == "SensorNode"  # min 1
+
+
+def test_config_hostname_too_long_falls_back_to_default() -> None:
+    json_text = (
+        '{"SSID": "MyNetwork", "PW": "supersecret", "Country": "US", '
+        '"Hostname": "' + ("h" * 64) + '", "LedWifiOn": false}'
+    )
+    client = make_client_with_json(json_text)
+    values = run(client.cfgmgr.get_dict(_WIFI_KEYS))
+    assert values["Hostname"] == "SensorNode"  # max 63
+
+
+def test_config_led_wifi_on_wrong_type_falls_back_to_default() -> None:
+    json_text = (
+        '{"SSID": "MyNetwork", "PW": "supersecret", "Country": "US", '
+        '"Hostname": "TestNode", "LedWifiOn": "true"}'
+    )
+    client = make_client_with_json(json_text)
+    values = run(client.cfgmgr.get_dict(_WIFI_KEYS))
+    assert values["LedWifiOn"] is True  # a JSON string isn't a real bool - defaulted
+
+
+def test_config_multiple_invalid_fields_each_fall_back_independently() -> None:
+    json_text = (
+        '{"SSID": "' + ("x" * 33) + '", "PW": "supersecret", "Country": 12345, '
+        '"Hostname": "TestNode", "LedWifiOn": false}'
+    )
+    client = make_client_with_json(json_text)
+    values = run(client.cfgmgr.get_dict(_WIFI_KEYS))
+    assert values["SSID"] == ""  # defaulted
+    assert values["PW"] == "supersecret"  # untouched
+    assert values["Country"] == "DE"  # defaulted
+    assert values["Hostname"] == "TestNode"  # untouched
+    assert values["LedWifiOn"] is False  # untouched
+
+
+def test_config_all_fields_invalid_falls_back_to_every_default() -> None:
+    json_text = '{"SSID": null, "PW": 12345, "Country": "", "Hostname": null, "LedWifiOn": "nope"}'
+    client = make_client_with_json(json_text)
+    values = run(client.cfgmgr.get_dict(_WIFI_KEYS))
+    assert values == _WIFI_DEFAULTS
+
+
+def test_config_missing_file_uses_every_default() -> None:
+    client = make_client()  # fresh directory - no config_WIFI.cfg written, so every default applies
+    values = run(client.cfgmgr.get_dict(_WIFI_KEYS))
+    assert values == _WIFI_DEFAULTS
+
+
+def test_config_non_dict_json_uses_every_default() -> None:
+    client = make_client_with_json("[1, 2, 3]")
+    values = run(client.cfgmgr.get_dict(_WIFI_KEYS))
+    assert values == _WIFI_DEFAULTS
+
+
+def test_config_malformed_json_syntax_uses_every_default() -> None:
+    client = make_client_with_json("{not json at all")
+    values = run(client.cfgmgr.get_dict(_WIFI_KEYS))
+    assert values == _WIFI_DEFAULTS
+
+
+def test_config_returns_none_when_config_manager_itself_is_invalid() -> None:
+    client = make_invalid_cfg_client()
+    assert client.cfgmgr.valid is False
+    assert run(client.cfgmgr.get_dict(_WIFI_KEYS)) is None
+
+
+def test_get_dict_cfg_returns_schema_defaults_wrapped_in_wifi_key() -> None:
+    # PW comes back "********" even though the real cached default is "" - _mask_pw()'s callback
+    # overlay is unconditional, confirmed directly (see test_get_dict_cfg_masks_the_password above).
+    client = make_client()
+    result = run(client.get_dict_cfg())
+    expected = dict(_WIFI_DEFAULTS)
+    expected["PW"] = "********"
+    assert result == {"WIFI": expected}
+
+
+def test_get_dict_cfg_returns_all_none_values_when_config_manager_is_invalid() -> None:
+    # PW is still "********", not None - _mask_pw()'s callback overlay runs unconditionally,
+    # regardless of whether the underlying ConfigManager itself is valid (confirmed directly).
+    client = make_invalid_cfg_client()
+    result = run(client.get_dict_cfg())
+    expected: dict[str, str | None] = {key: None for key in _WIFI_KEYS}
+    expected["PW"] = "********"
+    assert result == {"WIFI": expected}
 
 
 def test_get_error_counter_starts_empty_and_records_a_real_error() -> None:
@@ -258,6 +481,33 @@ def test_set_wifi_led_false_turns_the_led_off_and_clears_it() -> None:
     run(client.set_wifi_led(False))
     assert led.off_calls == 1
     assert client.led is None
+
+
+def test_led_on_degrades_gracefully_when_a_misbehaving_ext_led_raises() -> None:
+    # self.led can be a caller-injected ext_led, not necessarily a real, never-raising Pin - a
+    # broken implementation must not crash whatever caller happened to touch the LED (e.g.
+    # wlan_connect()'s own startup path, see BACKLOG.md).
+    led = FakeLED()
+    led.raise_on["on"] = RuntimeError("simulated misbehaving ext_led")
+    client = make_client(ext_led=led)
+    run(client.set_wifi_led(True))
+    client._led_on()  # must not raise
+
+
+def test_led_off_degrades_gracefully_when_a_misbehaving_ext_led_raises() -> None:
+    led = FakeLED()
+    led.raise_on["off"] = RuntimeError("simulated misbehaving ext_led")
+    client = make_client(ext_led=led)
+    run(client.set_wifi_led(True))
+    client._led_off()  # must not raise
+
+
+def test_led_toggle_degrades_gracefully_when_a_misbehaving_ext_led_raises() -> None:
+    led = FakeLED()
+    led.raise_on["toggle"] = RuntimeError("simulated misbehaving ext_led")
+    client = make_client(ext_led=led)
+    run(client.set_wifi_led(True))
+    client._led_toggle()  # must not raise
 
 
 # ---------------------------------------------------------------------------
@@ -454,6 +704,59 @@ def test_network_available_false_on_a_status_exception() -> None:
 
 
 # ---------------------------------------------------------------------------
+# _hotspot_client_connected() / _hotspot_client_absent() - the hotspot auto-shutoff timer
+# ---------------------------------------------------------------------------
+
+
+def test_hotspot_client_connected_stops_the_shutoff_timer_and_turns_the_led_on() -> None:
+    led = FakeLED()
+    client = make_client(ext_led=led)
+    run(client.set_wifi_led(True))
+    client.hotspot_timer.init(period=5000, mode=Timer.ONE_SHOT, callback=lambda b: None)
+    client._hotspot_client_connected()
+    assert client.hotspot_timer.deinit_called is True
+    assert led.on_calls == 1
+
+
+def test_hotspot_client_absent_arms_the_shutoff_timer_once() -> None:
+    client = make_client(hotspot_time_min=1)
+    client._hotspot_client_absent()
+    assert client.hotspot_timer_running is True
+    assert client.hotspot_timer.mode == Timer.ONE_SHOT
+    assert client.hotspot_timer.period == 60000  # hotspot_time_min=1 -> 60000ms
+
+
+def test_hotspot_client_absent_shutoff_timer_fires_reconnect() -> None:
+    client = make_client(hotspot_time_min=1)
+    client._hotspot_client_absent()
+
+    async def scenario() -> bool:
+        client.hotspot_timer.trigger()
+        await asyncio.sleep(0)
+        return client.reconn_wifi  # type: ignore[no-any-return]  # client: Any, see module note near line 10
+
+    assert run(scenario()) is True
+
+
+def test_hotspot_client_absent_degrades_gracefully_when_alarm_pool_exhausted() -> None:
+    client = make_client(hotspot_time_min=1)
+    with _RaiseOnArm():
+        client._hotspot_client_absent()  # must not raise despite the timer failing to arm
+    assert client.hotspot_timer_running is False  # left False so the next cycle retries arming it
+
+
+def test_hotspot_client_absent_starts_the_led_flash_task() -> None:
+    client = make_client()
+
+    async def scenario() -> None:
+        client._hotspot_client_absent()
+        assert client.ledflash is not None
+        await _cancel(client.ledflash)
+
+    run(scenario())
+
+
+# ---------------------------------------------------------------------------
 # "Attempt" operations - a mode switch, hotspot activation, a connect trigger, polling connect
 # status, the disconnect-wait, permanent deactivation: each persists a real errno via pr.err_s()
 # and sets self.hw_op_failed on a genuine exception, independent of connection_failures/
@@ -587,6 +890,26 @@ def test_disconnect_sta_and_wait_returns_immediately_when_already_disconnected()
     run(client._disconnect_sta_and_wait())
     assert client.hw_op_failed is False
     assert client.wlan.disconnect_called is True
+
+
+def test_disconnect_sta_and_wait_times_out_instead_of_hanging_forever() -> None:
+    # Real correctness proof for the bounded-loop fix: a driver that never confirms disconnection
+    # (isconnected() always True) must not hang wlan_connect() forever - this genuinely runs the
+    # full _STA_DISCONNECT_WAIT_ITERS(20) * 0.5s = 10s bound in real time (const() values are
+    # compiled away, so there's no way to fast-forward this from the test side - see
+    # tests/README.md's own note on this class of MicroPython behavior). The fake WLAN's own
+    # disconnect() normally clears _connected as a side effect (modeling a real disconnect
+    # completing immediately) - overridden here to a no-op so isconnected() keeps reporting True
+    # throughout, genuinely simulating a driver that never confirms disconnection.
+    client = make_client()
+    run(client.pr.setup())
+    client.wlan._connected = True
+    client.wlan.disconnect = lambda: setattr(client.wlan, "disconnect_called", True)
+    run(client._disconnect_sta_and_wait())
+    assert client.hw_op_failed is True
+    counter = run(client.get_error_counter())
+    assert counter["WIFI"]["ErrNum"][-1] == 18
+    assert counter["WIFI"]["ErrType"][-1] == "E"
 
 
 def test_deactivate_wlan_permanently_sets_state_even_when_the_hardware_call_raises() -> None:
@@ -781,6 +1104,199 @@ def test_wlan_connect_recovers_the_streak_on_alternating_failure_and_success() -
         return still_running
 
     assert run(scenario()) is True
+
+
+# ===========================================================================
+# Integration tests: real (not mocked) captive DNS server - downstream. _configure_hotspot_ap()
+# starts a real DNSServer.run() task backed by a real AsyUDPSocket; driving it end-to-end proves
+# how a genuine malformed/off-subnet UDP datagram is handled, not just the unit under test in
+# isolation. DNSServer.__init__ hardcodes port 53 (privileged, no root in CI - same problem
+# test_asy_ntp_client.py's own _RedirectGetaddrinfo works around for real port 123) - redirected
+# here by swapping client.dns_server.udps for a fresh AsyUDPSocket on a free ephemeral port before
+# ever starting the hotspot, since DNSServer.run() only ever touches self.udps, never rebuilds it.
+# ===========================================================================
+
+_next_port = 54000
+
+
+def make_addr() -> "tuple[str, int]":
+    global _next_port
+    _next_port += 1
+    # Same Unix-port-only workaround as test_asy_ntp_client.py's own make_addr(): a plain
+    # (host, port) tuple is rejected by bind()/connect()/sendto() on this port's "standard" build.
+    return socket.getaddrinfo("127.0.0.1", _next_port)[0][-1]  # type: ignore[return-value]
+
+
+def _dns_query_packet(domain: str) -> bytes:
+    # Minimal standard-query DNS packet DNSQuery.__init__ can parse: a 12-byte header (opcode bits
+    # of byte 2 all zero -> "standard query"), then the QNAME as length-prefixed labels terminated
+    # by a zero-length label, then a harmless QTYPE=A/QCLASS=IN (never read by this file's own
+    # parsing, which stops once the QNAME's terminator is reached).
+    header = b"\x12\x34\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00"
+    qname = b"".join(bytes([len(label)]) + label.encode("ascii") for label in domain.split(".")) + b"\x00"
+    return header + qname + b"\x00\x01\x00\x01"
+
+
+async def _start_real_hotspot(client: asy_conn_time, server_addr: "tuple[str, int]") -> None:
+    # Same-subnet own_ip/netmask as the test client's own loopback source address, so
+    # DNSServer.run()'s subnet filter doesn't reject the test query as off-subnet.
+    client.wlan._ifconfig = ("127.0.0.1", "255.255.255.0", "127.0.0.1", "127.0.0.1")
+    client.dns_server.udps = AsyUDPSocket(server_addr, mode="server")
+    await client._activate_hotspot_ap("US", "TestHost")
+
+
+def test_integration_hotspot_captive_dns_ignores_a_malformed_packet_without_crashing() -> None:
+    # "Interrupted packet" simulation: a datagram far too short to even contain a DNS header, sent
+    # from a genuine second socket over a real loopback UDP round trip (not mocked) - proves the
+    # whole real transport-to-parsing pipeline survives, not just DNSQuery in isolation.
+    # DNSQuery.__init__'s own (IndexError, UnicodeError) guard already handles this.
+    client = make_client()
+    server_addr = make_addr()
+
+    async def scenario() -> bool:
+        await _start_real_hotspot(client, server_addr)
+        try:
+            cli = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            cli.setblocking(False)
+            cli.sendto(b"\x01\x02", server_addr)  # 2 bytes - nowhere near a real 12-byte header
+            await asyncio.sleep(0.3)  # give the server a moment to (not) respond
+            poller = select.poll()
+            poller.register(cli, select.POLLIN)
+            got_a_reply = any(event & select.POLLIN for _fd, event in poller.ipoll(0))
+            still_alive = not client.dns_server_task.done()  # the malformed packet didn't kill the task
+            return (not got_a_reply) and still_alive
+        finally:
+            await _cancel(client.dns_server_task)
+
+    assert run(scenario())
+
+
+class _ScriptedUDPSocket:
+    # Feeds a scripted sequence of (data, addr) pairs to DNSServer.run()'s real recvfrom() calls,
+    # with addr as a genuine (host, port) tuple. Needed because this Unix port's own AsyUDPSocket,
+    # once bound via a pre-resolved sockaddr (required for a real bind() to work at all here - see
+    # make_addr()'s own comment), returns an *opaque raw sockaddr* from its own real recvfrom() in
+    # this specific build, not a parseable (host, port) tuple - exactly the quirk captive_dns.py's
+    # own on_subnet except-clause already anticipates and degrades gracefully against (confirmed
+    # directly: a real two-socket round trip here gets every packet dropped as "unparseable
+    # address", regardless of actual subnet match). This drives DNSServer.run()'s real subnet-check
+    # and response-building code against a controlled, always-clean address shape instead, so the
+    # accept/reject distinction is actually being tested, not just "every real packet gets dropped
+    # here regardless of subnet".
+    def __init__(self, script: "list[tuple[bytes, tuple[str, int]]]") -> None:
+        self._script = list(script)
+        self.sent: list[tuple[bytes, tuple[str, int]]] = []
+
+    async def recvfrom(self, _bufsize: int) -> "tuple[bytes, tuple[str, int]] | tuple[None, None]":
+        if not self._script:
+            await asyncio.sleep(3600)  # nothing more to deliver - park forever, caller cancels us
+        return self._script.pop(0)
+
+    async def sendto(self, data: bytes, addr: "tuple[str, int]") -> int:
+        self.sent.append((data, addr))
+        return len(data)
+
+    async def disconnect(self) -> None:
+        return None
+
+
+def test_integration_hotspot_captive_dns_answers_an_on_subnet_query() -> None:
+    client = make_client()
+    fake_udps = _ScriptedUDPSocket([(_dns_query_packet("test.example.com"), ("192.168.4.55", 5353))])
+    client.dns_server.udps = fake_udps
+
+    async def scenario() -> None:
+        task = asyncio.create_task(client.dns_server.run("192.168.4.1", "255.255.255.0"))
+        for _ in range(100):
+            if fake_udps.sent:
+                break
+            await asyncio.sleep_ms(10)
+        await _cancel(task)
+
+    run(scenario())
+    assert len(fake_udps.sent) == 1
+    reply, addr = fake_udps.sent[0]
+    assert addr == ("192.168.4.55", 5353)
+    assert reply[:2] == b"\x12\x34"  # echoes the query's own transaction ID
+    assert reply[-4:] == bytes([192, 168, 4, 1])  # resolves to own_ip
+
+
+def test_integration_hotspot_captive_dns_ignores_an_off_subnet_query() -> None:
+    # A well-formed query from an address outside the AP's own subnet must be silently ignored (see
+    # DNSServer.run()'s on_subnet check) - proves the filter, not just "any query gets answered".
+    client = make_client()
+    fake_udps = _ScriptedUDPSocket([(_dns_query_packet("test.example.com"), ("10.0.0.55", 5353))])
+    client.dns_server.udps = fake_udps
+
+    async def scenario() -> None:
+        task = asyncio.create_task(client.dns_server.run("192.168.4.1", "255.255.255.0"))
+        await asyncio.sleep(0.2)
+        await _cancel(task)
+
+    run(scenario())
+    assert fake_udps.sent == []
+
+
+# ===========================================================================
+# Integration tests: the full wlan_connect() task driven end-to-end through the fake network.WLAN,
+# proving how a real connect success/failure sequence propagates all the way up through
+# get_data()/get_error_counter() and connection_failures/hotspot fallback - not just the unit under
+# test in isolation. Mirrors test_asy_ntp_client.py's own integration-tests section.
+# ===========================================================================
+
+
+def test_integration_sta_connect_succeeds_and_propagates_to_get_data() -> None:
+    # _poll_sta_connect_status() never returns early on STAT_GOT_IP (existing, unmodified
+    # behavior - it keeps polling for its full 10 iterations regardless), so this genuinely runs
+    # ~5s in real time; simulates a WLAN driver that reports a connection as already established
+    # the instant connect() is called (connect_calls still records the real attempt). get_data()'s
+    # cached snapshot is only ever pushed by time_counter()'s own task (see get_data()'s own
+    # comment) - driven here alongside wlan_connect(), exactly like a real task-starter set would.
+    client = make_client_with_json(_VALID_JSON, wifi_refresh_sec=0)
+    original_connect = client.wlan.connect
+
+    def fake_connect(ssid: str, pw: str) -> None:
+        original_connect(ssid, pw)
+        client.wlan._status = network.STAT_GOT_IP
+        client.wlan._connected = True
+
+    client.wlan.connect = fake_connect
+
+    async def scenario() -> "tuple[bool, Any]":
+        connect_task = asyncio.create_task(client.wlan_connect())
+        counter_task = asyncio.create_task(client.time_counter())
+        connected_once = False
+        for _ in range(200):
+            client.time_counter_trigger_event.set()
+            await asyncio.sleep_ms(50)
+            data = await client.get_data()
+            if data.Connected:
+                connected_once = client.wlan_connected_once
+                break
+        await _cancel(connect_task)
+        await _cancel(counter_task)
+        return connected_once, (await client.get_data()).Connected
+
+    connected_once, data_connected = run(scenario())
+    assert connected_once is True
+    assert data_connected is True
+
+
+def test_integration_repeated_wrong_password_falls_back_to_hotspot_mode() -> None:
+    client = make_client_with_json(_VALID_JSON, wifi_refresh_sec=0, conn_fail_to_hotspot=3)
+    client.wlan._status = network.STAT_WRONG_PASSWORD  # every _poll_sta_connect_status() call sees this
+
+    async def scenario() -> bool:
+        task = asyncio.create_task(client.wlan_connect())
+        for _ in range(100):
+            if client.hotspot_mode:
+                break
+            await asyncio.sleep_ms(20)
+        hotspot_reached = client.hotspot_mode
+        await _cancel(task)
+        return hotspot_reached  # type: ignore[no-any-return]  # client: Any, see module note near line 10
+
+    assert run(scenario())
 
 
 if __name__ == "__main__":

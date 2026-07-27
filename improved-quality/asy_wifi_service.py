@@ -36,8 +36,30 @@ and max_i2c_err/_error_check() actually wired up (was previously inert) are all 
 
 What's still an otherwise unmodified copy of improved-quality/async_connect.py's asy_conn_time: the
 STA/AP/LED state machine's overall control flow and timer/locking structure, its naming staleness,
-the unbounded isconnected()-wait loop inside _disconnect_sta_and_wait(), and the ONE_SHOT hotspot
-timer - these are deliberately deferred to a later pass, not silently fixed here.
+and the ONE_SHOT hotspot timer - these are deliberately deferred to a later pass, not silently
+fixed here.
+
+A fresh exception/blocking audit (owner-requested, same bar as asy_ntp_client.py's own passes - no
+uncaught exceptions, no blocking/hangs anywhere in this file) found and fixed four real gaps - see
+BACKLOG.md for the full writeup:
+- _led_on()/_led_off()/_led_toggle() now guard self.led.on()/.off()/.toggle() against a misbehaving
+  caller-injected ext_led (the LEDControl Protocol isn't guaranteed to be a real, never-raising Pin)
+  - degrades silently via self.pr.err(), matching the observation-tier convention above; LED state
+    is decorative, not part of the hw_op_failed/_error_check() hardware-health streak.
+- start_counter_timer()'s and _hotspot_client_absent()'s Timer.init() calls now catch OSError (real
+  rp2 alarm-pool exhaustion), matching asy_ntp_client.py's own Timer.init() guards.
+- _disconnect_sta_and_wait()'s isconnected()-wait loop is no longer unbounded (was flagged-but-
+  deferred by an earlier pass, now fixed per the owner's broader "no blocking/hangs" instruction):
+  bounded to _STA_DISCONNECT_WAIT_ITERS via the same for/else pattern _poll_sta_connect_status()
+  already uses, persisting a new errno=18 on timeout (distinct from errno=15's exception path).
+- Confirmed against current MicroPython docs/source, not assumed: WLAN.connect() is genuinely
+  non-blocking on rp2 (this file's existing bounded-polling design was already correct); Timer()
+  with zero args is valid on rp2 (the pre-existing tracked mypy "Timer needs an argument" finding is
+  a stub inaccuracy, not a real bug - left as-is). Flagged, not changed: since reconnects is never
+  configured anywhere in this codebase, wlan.status() may never actually surface
+  STAT_WRONG_PASSWORD/STAT_NO_AP_FOUND/STAT_CONNECT_FAIL on stock rp2 (the driver retries
+  internally, status stays STAT_CONNECTING) - doesn't cause a hang (the poll loop is already
+  bounded regardless), so left for the owner to decide, not silently reworked.
 """
 
 import asyncio
@@ -86,6 +108,11 @@ _VAL_LED = const((("LedWifiOn", "bool", True, None, None, None),))
 
 _NAME = const("WIFI")
 WIFI = namedtuple("WIFI", ("Mode", "Connected", "IP", "TS"))
+
+_STA_DISCONNECT_WAIT_ITERS = const(20)  # 20 * 0.5s = 10s max wait for isconnected() to clear -
+# bounds _disconnect_sta_and_wait()'s loop; a real disconnect() completes far faster than this on
+# rp2 (no blocking network handshake involved, unlike connect()), so 10s is a generous ceiling for
+# a driver that's genuinely stuck, not a normal-case timeout.
 
 
 class LEDControl(Protocol):
@@ -156,11 +183,16 @@ class asy_conn_time(SensorReaderConfig):
         return evtloop.create_task(self.time_counter())
 
     def start_counter_timer(self) -> None:
-        self.counter_timer.init(
-            period=1000,
-            mode=Timer.PERIODIC,
-            callback=lambda b: self.time_counter_trigger_event.set(),
-        )
+        try:
+            self.counter_timer.init(
+                period=1000,
+                mode=Timer.PERIODIC,
+                callback=lambda b: self.time_counter_trigger_event.set(),
+            )
+        except OSError as e:  # alarm-pool exhaustion (ENOMEM) - matches asy_ntp_client.py's own
+            # start_counter_timer()/start_ntp_timer() guards; degrades gracefully instead of
+            # crashing the caller (uptime counting just never starts this cycle).
+            self.pr.err(_NAME, "Could not start counter timer:", e)
 
     def stop_counter_timer(self) -> None:
         self.counter_timer.deinit()
@@ -287,15 +319,28 @@ class asy_conn_time(SensorReaderConfig):
 
     def _led_on(self) -> None:
         if self.led is not None:
-            self.led.on()
+            try:  # self.led may be a caller-supplied ext_led (LEDControl Protocol, not
+                # necessarily a real Pin) - could legitimately misbehave, same as NTP's
+                # network_available() callback; purely decorative status, so degrades silently
+                # rather than feeding hw_op_failed/_error_check() (that streak is about the WLAN
+                # hardware itself, not a broken LED).
+                self.led.on()
+            except Exception as e:
+                self.pr.err(_NAME, "LED on() failed:", e)
 
     def _led_off(self) -> None:
         if self.led is not None:
-            self.led.off()
+            try:  # see _led_on()'s comment
+                self.led.off()
+            except Exception as e:
+                self.pr.err(_NAME, "LED off() failed:", e)
 
     def _led_toggle(self) -> None:
         if self.led is not None:
-            self.led.toggle()
+            try:  # see _led_on()'s comment
+                self.led.toggle()
+            except Exception as e:
+                self.pr.err(_NAME, "LED toggle() failed:", e)
 
     async def get_wifi_uptime(self) -> int:
         value = await self.wifi_uptime.get_value()  # never None: never constructed/set with a None sentinel
@@ -441,9 +486,16 @@ class asy_conn_time(SensorReaderConfig):
     async def _disconnect_sta_and_wait(self) -> None:
         try:
             self.wlan.disconnect()
-            while self.wlan.isconnected():  # wait until disconnected
+            for _i in range(_STA_DISCONNECT_WAIT_ITERS):  # bounded - a driver that never actually
+                # disconnects (isconnected() staying True forever) must not hang this task forever;
+                # matches _poll_sta_connect_status()'s own bounded for-loop convention.
+                if not self.wlan.isconnected():
+                    break
                 self._led_toggle()
                 await asyncio.sleep(0.5)
+            else:
+                self.hw_op_failed = True
+                await self.pr.err_s(_NAME, "Timed out waiting for STA disconnect", errno=18)
         except Exception as e:
             self.hw_op_failed = True
             await self.pr.err_s(_NAME, "Error waiting for STA disconnect:", e, errno=15)
@@ -532,12 +584,17 @@ class asy_conn_time(SensorReaderConfig):
     def _hotspot_client_absent(self) -> None:
         if not self.hotspot_timer_running:
             self.pr.evt(_NAME, "Kein Client verbunden - Hotspot Timer gestartet")
-            self.hotspot_timer.init(
-                period=self.hotspot_time,
-                mode=Timer.ONE_SHOT,
-                callback=lambda b: self.reconnect_wifi(),
-            )
-            self.hotspot_timer_running = True  # try to reconnect once after hotspot time if no client connected (maybe router reboot after power loss)
+            try:
+                self.hotspot_timer.init(
+                    period=self.hotspot_time,
+                    mode=Timer.ONE_SHOT,
+                    callback=lambda b: self.reconnect_wifi(),
+                )
+                self.hotspot_timer_running = True  # try to reconnect once after hotspot time if no client connected (maybe router reboot after power loss)
+            except OSError as e:  # alarm-pool exhaustion (ENOMEM) - matches asy_ntp_client.py's own
+                # Timer.init() guards; hotspot_timer_running stays False so the next
+                # wifi_refresh_sec cycle retries arming it instead of getting stuck unset.
+                self.pr.err(_NAME, "Could not start hotspot timer:", e)
         if self.ledflash is None:
             evtloop = asyncio.get_event_loop()
             self.ledflash = evtloop.create_task(self._flash_led_off())

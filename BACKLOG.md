@@ -502,6 +502,90 @@ From hands-on field experience with deployed units:
       pattern this file uses throughout for `ntpmod.time`/`ntpmod.socket`, and the `Optional`-tuple-
       unpacking pattern `_get_ntp_config()`'s callers already trigger elsewhere in this same file),
       not a new kind of gap - both confirmed via the usual before/after `git stash` diff.
+  - **Fresh exception/blocking audit of `asy_wifi_service.py` (owner-requested, same "no uncaught
+    exceptions, no blocking/hangs except the one permitted `getaddrinfo()` call" bar already applied
+    to `asy_ntp_client.py` above) — four real gaps found and fixed, all directly analogous to gaps
+    already fixed in `asy_ntp_client.py`'s own earlier audit passes:**
+    - `_led_on()`/`_led_off()`/`_led_toggle()` called `self.led.on()`/`.off()`/`.toggle()` unguarded.
+      `self.led` can be a caller-injected `ext_led` (the `LEDControl` Protocol), not necessarily a
+      real `Pin` - the same "caller-supplied object could legitimately misbehave" class of gap
+      `asy_ntp_client.py`'s `network_available()` callback wrapping already established a fix
+      pattern for. Now each wraps its single hardware call in `try/except Exception`, degrading
+      silently via `self.pr.err()` (LED state is purely decorative, not part of the WLAN
+      hardware-health streak `hw_op_failed`/`_error_check()` tracks) rather than crashing whatever
+      caller happened to touch the LED - which, unguarded, would have included `wlan_connect()`'s
+      own startup path (`_reset_wlan_connect_state()`'s `_led_off()` call), i.e. a broken `ext_led`
+      could have repeatedly crashed the entire WLAN task, not just lost its status light.
+    - `start_counter_timer()`'s and `_hotspot_client_absent()`'s `Timer.init()` calls were both
+      unguarded against real rp2 alarm-pool exhaustion (`OSError(ENOMEM)`) - the exact same failure
+      mode `asy_ntp_client.py`'s `start_ntp_timer()`/`start_counter_timer()` (see above) and
+      `system_service.py`'s `start_uptime_timer()`/`_reboot()`/`pause_permanent_storage()` already
+      treat as real and expected. `asy_wifi_service.py` simply hadn't adopted the same convention on
+      its own two `Timer.init()` sites yet. Both now catch `OSError` and degrade gracefully
+      (uptime counting/the hotspot auto-shutoff timer just don't arm this cycle, retried the next);
+      `_hotspot_client_absent()`'s fix also keeps `hotspot_timer_running` `False` on failure so the
+      next `wifi_refresh_sec` cycle retries arming it instead of getting permanently stuck unset.
+    - `_disconnect_sta_and_wait()`'s `while self.wlan.isconnected(): ...` loop was genuinely
+      unbounded - if `isconnected()` never returns `False` (a real hardware/driver fault, not just a
+      slow-but-eventual disconnect), this would hang the whole `wlan_connect()` task forever, since
+      nothing else in the loop can raise to trigger the surrounding `except Exception`. Bounded to
+      `_STA_DISCONNECT_WAIT_ITERS` (20 × 0.5s = 10s, generous - a real rp2 `disconnect()` involves no
+      network handshake, unlike `connect()`) via the same `for _i in range(N): ... else: <timeout>`
+      pattern `_poll_sta_connect_status()` already used for its own bounded connect-status poll; a
+      timeout now sets `hw_op_failed = True` and persists a new, distinct `errno=18` (separate from
+      the pre-existing `errno=15` exception path, since "driver never confirms disconnect" and "an
+      operation on the driver raised" are different failure modes worth telling apart in
+      `get_error_counter()`'s history). This exact loop had been explicitly flagged-but-deferred in
+      an earlier session's review (see this file's own module docstring history) - the owner's
+      current, broader "no blocking/hangs are allowed" instruction supersedes that earlier deferral
+      rather than leaving it as a standing exception.
+    - **Verified against current MicroPython docs/source (not training memory), confirming three
+      things this audit needed to know rather than assume:**
+      - `WLAN.connect()` is non-blocking on rp2 (`docs/rp2/quickref.rst`: "After a call to
+        `wlan.connect()`, the device will by default retry to connect forever... `wlan.status()`
+        will return `network.STAT_CONNECTING` in this state until a connection succeeds or the
+        interface gets disabled") - confirms this file's existing bounded-polling design
+        (`_poll_sta_connect_status()`) was already the correct approach, not something needing a
+        blocking-call fix.
+      - `machine.Timer()` with **zero** positional arguments is genuinely valid on rp2 (confirmed
+        directly against `ports/rp2/machine_timer.c` @ v1.26.0: `id` defaults to `-1`, i.e. rp2's
+        always-virtual/software timer mode, and only a non-`-1` id raises) - resolves what the
+        pre-existing tracked mypy finding ("All overload variants of Timer require at least one
+        argument") might have suggested was a real runtime bug: it isn't. The
+        `micropython-rp2-rpi_pico_w-stubs` package's overload signatures model the generic
+        cross-port `machine.Timer` API (which does require `id`), not rp2's own more permissive C
+        implementation - a stub inaccuracy, not a bug in this file. Left as-is (the stub itself is
+        out of this project's control); noted here so a future reader doesn't "fix" `Timer()` calls
+        into `Timer(-1)` believing the mypy finding describes a real hazard.
+      - **Flagged, not changed - a real, doc-verified discrepancy worth recording:** by default
+        (`reconnects` is never configured anywhere in this codebase, confirmed via grep, so the rp2
+        default applies), the quickref text above implies `wlan.status()` may **never** actually
+        settle on `STAT_WRONG_PASSWORD`/`STAT_NO_AP_FOUND`/`STAT_CONNECT_FAIL` at all while the
+        driver keeps silently retrying internally - it would just keep reporting
+        `STAT_CONNECTING`. If so, `_poll_sta_connect_status()`'s dedicated handling of those three
+        codes (persisted `wrn_s()`, `wrnno=4/5/6/7`) may be effectively unreachable on stock rp2
+        hardware today. This does **not** create a hang or uncaught exception - the poll loop is
+        already bounded (`for _i in range(10)`) regardless of what `status()` reports, so the
+        system still falls through correctly to `connection_failures`/hotspot-fallback handling
+        either way - so it's out of this audit's authorized scope to silently rework; flagged for
+        the owner to decide whether `wlan.config(reconnects=0)` (making failures actually surface
+        as the documented terminal status codes, trading away the driver's own internal retry) is
+        wanted, the same "flag genuinely architecturally significant decisions" policy this file
+        already follows elsewhere.
+    - `asy_wifi_service.py` itself introduces zero blocking calls of its own - `getaddrinfo()` inside
+      `asy_ntp_client.py` (see above) remains the sole permitted blocking call anywhere in this
+      subsystem; the standing "adopt a genuine non-blocking alternative as soon as one reliably
+      exists" decision recorded above for that call is unaffected and still the single place this
+      applies.
+    - `captive_dns.py`'s `DNSServer.run()` (the one other always-running background task this file
+      creates, via `_configure_hotspot_ap()`) was checked too - already fully exception-safe from an
+      earlier session's work (`except asyncio.CancelledError: ... break` plus a broad
+      `except Exception: ... await asyncio.sleep(3)` around its whole per-request loop body,
+      `DNSQuery.__init__` catching its own `(IndexError, UnicodeError)` parse failures) - no gap
+      found, nothing changed.
+    - Verified via the usual before/after checks: `ruff check improved-quality/asy_wifi_service.py`
+      clean before and after; `tests/test_asy_wifi_service.py`'s pre-existing 59 tests all still pass
+      unchanged against the fixed file (no regressions from the four fixes above).
 - **Bus concurrency via `asyncio.Lock` + `async with` needs a coverage audit** (no gaps, no
   deadlock/starvation). Concrete progress: `asy_scd30_driver.py`/`asy_bmp3xx_driver.py`/
   `asy_sgp40_driver.py` each have a `*_DeviceSession(Lockable)` class — an outer per-sensor lock
