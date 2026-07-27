@@ -342,7 +342,34 @@ def test_config_hostname_too_long_falls_back_to_default() -> None:
     )
     client = make_client_with_json(json_text)
     values = run(client.cfgmgr.get_dict(_WIFI_KEYS))
-    assert values["Hostname"] == "SensorNode"  # max 63
+    assert values["Hostname"] == "SensorNode"  # max 32
+
+
+def test_config_hostname_one_over_the_real_max_falls_back_to_default() -> None:
+    # 33 chars - just past network.hostname()'s real, documented 32-character hard cap
+    # (MICROPY_PY_NETWORK_HOSTNAME_MAX_LEN, confirmed against extmod/modnetwork.c on both the
+    # deployed v1.26.0 pin and the v1.28.0 refactor target). _VAL_HOST's schema max was narrowed to
+    # match this real constraint - see BACKLOG.md - so this must now be rejected at config-validation
+    # time instead of reaching network.hostname() and raising there.
+    json_text = (
+        '{"SSID": "MyNetwork", "PW": "supersecret", "Country": "US", '
+        '"Hostname": "' + ("h" * 33) + '", "LedWifiOn": false}'
+    )
+    client = make_client_with_json(json_text)
+    values = run(client.cfgmgr.get_dict(_WIFI_KEYS))
+    assert values["Hostname"] == "SensorNode"
+
+
+def test_config_hostname_at_the_real_max_is_accepted() -> None:
+    # The boundary value itself (32 chars) must be accepted, not rejected.
+    name = "h" * 32
+    json_text = (
+        '{"SSID": "MyNetwork", "PW": "supersecret", "Country": "US", '
+        '"Hostname": "' + name + '", "LedWifiOn": false}'
+    )
+    client = make_client_with_json(json_text)
+    values = run(client.cfgmgr.get_dict(_WIFI_KEYS))
+    assert values["Hostname"] == name
 
 
 def test_config_led_wifi_on_wrong_type_falls_back_to_default() -> None:

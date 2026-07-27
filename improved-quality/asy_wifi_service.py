@@ -103,17 +103,19 @@ sections 0/2-8/10-13 already hold from the audits above and found two new, genui
 against-source items - see BACKLOG.md for the full writeup: `wlan.config(pm=0xA11140)` is confirmed
 correct (decoded against real cyw43-driver source: `CYW43_NO_POWERSAVE_MODE` with the same
 beacon/DTIM/assoc/sleep-return parameters `CYW43_DEFAULT_PM` uses, i.e. exactly "disable power-save,
-change nothing else" - no fix needed), while `_VAL_HOST`'s schema max of 63 characters is flagged
-(not fixed) as exceeding `network.hostname()`'s real, documented 32-character hard cap
-(`MICROPY_PY_NETWORK_HOSTNAME_MAX_LEN`, confirmed unchanged on both the deployed v1.26.0 pin and the
-v1.28.0 refactor target) - a pre-existing gap inherited unmodified from `sensortask-wozi.py`'s own
-REST-route bound this schema deliberately mirrors, not introduced by this promotion; a hostname of
-33-63 characters passes config validation but then makes `network.hostname()` raise, which
-`_trigger_sta_connect()`/`_configure_hotspot_ap()` catch but mis-attribute as `hw_op_failed` (a WLAN
-*hardware* fault) rather than a config-validation gap. 14 new tests (121 -> 135) close the last
-previously-untested orchestration gaps: `_reset_wlan_connect_state()` itself (the hotspot-preserving
-asymmetry above had no direct test) and `wlan_connect()`'s own phase-dispatch/reconnect-trigger-
-gating lines.
+change nothing else" - no fix needed), and `_VAL_HOST`'s schema max was found to exceed
+`network.hostname()`'s real, documented 32-character hard cap (`MICROPY_PY_NETWORK_HOSTNAME_MAX_LEN`,
+confirmed unchanged on both the deployed v1.26.0 pin and the v1.28.0 refactor target) - a pre-existing
+gap inherited unmodified from `sensortask-wozi.py`'s own REST-route bound this schema otherwise
+mirrors, not introduced by this promotion; a hostname of 33-63 characters used to pass config
+validation but then make `network.hostname()` raise, which `_trigger_sta_connect()`/
+`_configure_hotspot_ap()` catch but mis-attribute as `hw_op_failed` (a WLAN *hardware* fault) rather
+than a config-validation gap. Per the project owner's direction ("adapt the schema to fit the actual
+value"), `_VAL_HOST`'s max is now 32, closing the gap at its source; `sensortask-wozi.py`'s own
+REST-route bound (still 1-63 there) is a separate, still-open mismatch outside this file's scope.
+14 new tests (121 -> 135) close the last previously-untested orchestration gaps:
+`_reset_wlan_connect_state()` itself (the hotspot-preserving asymmetry above had no direct test) and
+`wlan_connect()`'s own phase-dispatch/reconnect-trigger-gating lines.
 """
 
 import asyncio
@@ -153,11 +155,17 @@ except Exception:
 # "SSID"(2-32), "PW"(8-63)), except SSID/PW's own min is relaxed to 0 here so the fresh, unconfigured
 # default ("") self-validates against ConfigManager.__init__'s own type_or_range_error() check -
 # actual REST-write bounds are still the tighter 2-32/8-63 (config setters are out of scope for
-# this pass regardless, see DRIVER_SPEC.md section 5).
+# this pass regardless, see DRIVER_SPEC.md section 5). Hostname is the one deliberate exception to
+# "mirrors the REST bound": that REST route still allows 1-63 today, but network.hostname()'s real,
+# documented hard cap is 32 characters (confirmed against extmod/modnetwork.c on both the deployed
+# v1.26.0 pin and the v1.28.0 refactor target - rp2/RPI_PICO_W doesn't override it any tighter) - see
+# BACKLOG.md for the full finding. Narrowed here to the real constraint per the project owner's
+# direction ("adapt the schema to fit the actual value"); sensortask-wozi.py's own REST-route bound
+# is a separate, still-open 1-63 mismatch outside this file's scope.
 _VAL_SSID = const((("SSID", "str", "", 0, 32, None),))
 _VAL_PW = const((("PW", "str", "", 0, 63, None),))
 _VAL_CTRY = const((("Country", "str", "DE", 2, 2, None),))
-_VAL_HOST = const((("Hostname", "str", "SensorNode", 1, 63, None),))
+_VAL_HOST = const((("Hostname", "str", "SensorNode", 1, 32, None),))
 _VAL_LED = const((("LedWifiOn", "bool", True, None, None, None),))
 
 _NAME = const("WIFI")
