@@ -586,6 +586,88 @@ From hands-on field experience with deployed units:
     - Verified via the usual before/after checks: `ruff check improved-quality/asy_wifi_service.py`
       clean before and after; `tests/test_asy_wifi_service.py`'s pre-existing 59 tests all still pass
       unchanged against the fixed file (no regressions from the four fixes above).
+  - **Second full re-audit pass (owner-requested again, same bar)** - a line-by-line re-scan of
+    every method in `asy_wifi_service.py`, this time cross-checked against real MicroPython/cyw43
+    source (not training memory) for every claim, plus a systematic pass over `tests/
+    test_asy_wifi_service.py` to find methods with genuinely zero direct test coverage. One real
+    (if minor) gap found and fixed; two things checked and confirmed *not* to be gaps; 28 new tests
+    added closing every previously-untested-method gap this pass surfaced:
+    - **Real gap, fixed**: `get_wlan_rssi()` was the one observation-tier accessor in this file that
+      swallowed its exception completely silently (`except Exception: rssi = None`, no `self.pr.err()`
+      call) - every sibling accessor (`_wlan_status_or_none()`, `_wlan_isconnected_or_false()`,
+      `get_wlan_ifconfig()`, `_print_wlan_diagnostics()`, `_update_wifi_snapshot()`) logs via
+      `self.pr.err()` on failure (a level-gated, non-persisted print - see this file's own module
+      docstring on the observation-tier convention), so this was a real, if minor, inconsistency:
+      a genuine RSSI-read failure was invisible even with logging turned all the way up. Confirmed
+      via `extmod/network_cyw43.c` @ v1.26.0 that `wlan.status("rssi")` genuinely raises
+      `ValueError("STA required")` whenever queried outside STA mode - i.e. on every single poll
+      while hotspot_mode is active, a routine and frequent condition, not just a hypothetical - so
+      this was silently swallowing a failure that happens constantly in one whole operating mode.
+      Fixed to match every sibling: logs via `self.pr.err()`, otherwise unchanged behavior (still
+      returns `None`).
+    - **Checked, not a gap**: `_manage_hotspot_stations()`'s `len(stations)` call (fed by
+      `_get_hotspot_stations()`'s return value) isn't itself guarded against a non-list return -
+      looked like a plausible gap on first read, since a non-list `stations` would crash `len()`
+      uncaught outside `_get_hotspot_stations()`'s own try/except. Confirmed via
+      `extmod/network_cyw43.c`'s real `network_cyw43_status()` implementation for the `"stations"`
+      case: it always constructs and returns a real Python list (`mp_obj_new_list(...)`, empty when
+      zero stations are connected), and can only ever raise `ValueError("AP required")` outside AP
+      mode - already caught by `_get_hotspot_stations()`'s existing broad `except Exception`. No fix
+      needed; recorded here so a future reader doesn't "fix" this speculatively without checking the
+      real return-type contract first.
+    - **Checked, not a gap (pre-existing, inherited from `async_connect.py` unchanged)**: two
+      control-flow characteristics that looked like fresh findings on first read turned out to be
+      byte-for-byte preserved from the original file (confirmed via direct diff against
+      `improved-quality/async_connect.py`), and are explicitly out of this file's audit scope per its
+      own module docstring ("STA/AP/LED state machine's overall control flow... deliberately
+      deferred to a later pass, not silently fixed here"):
+      - Once `wlan_deactivated` becomes `True`, `wlan_connect()`'s main loop's `if
+        self.wlan_deactivated: ... else: ...` structure means `reconn_wifi`/`reconnect_wifi()` (and
+        thus any external "force reconnect" trigger) becomes permanently inert, and `_error_check()`
+        is never consulted again either - a real dead-end requiring a full task restart (physical
+        power-cycle in practice) to leave. This is already documented elsewhere in this file
+        (search "Permanent WiFi deactivation... deliberate safety feature") as intentional, not an
+        oversight.
+      - `_on_sta_disconnected()`'s "retry a previously-successful connection in one minute" branch
+        (`wlan_connected_once` is `True`) does a real `await asyncio.sleep(60)` while
+        `_run_sta_mode()`'s caller still holds `wifi_mode_lock` - a full 60s lock hold, on top of
+        this file's own bounded ~10s disconnect-wait. Since `asy_ntp_client.py`'s `asy_ntp_time()`
+        acquires this exact same shared `Lock` instance before every sync attempt, a WLAN drop
+        right after a previously-good connection can delay a pending/triggered NTP sync attempt by
+        up to a minute. Confirmed via diff this is the original file's own behavior unchanged (the
+        original holds the lock across the identical `asyncio.sleep(60)` in the identical retry
+        branch) - not a regression, and out of this pass's authorized scope to reword since it's
+        part of the deferred state-machine control flow. Flagged here since it hadn't been written
+        down anywhere yet, for whoever picks up the state-machine control-flow rework later.
+    - **Test coverage**: `tests/test_asy_wifi_service.py` had several methods with zero direct test
+      coverage, found by grepping every method name against the test file - some only reachable
+      indirectly through `wlan_connect()`'s full loop with everything else faked out, some not
+      exercised at all: `get_wlan_rssi()`, `wlan_isconnected()` (the public lock-aware wrapper -
+      only its private `_wlan_isconnected_or_false()` helper had a test), `reconnect_wifi()` (only
+      ever exercised indirectly via the hotspot shutoff timer's callback, never called directly),
+      `_print_wlan_diagnostics()`, `_on_sta_connected()`, `_on_sta_disconnected()`,
+      `_register_sta_connection_failure()`, `_handle_sta_connection_result()`, `_run_sta_mode()`,
+      `_get_hotspot_stations()`, `_manage_hotspot_stations()`, `_run_hotspot_mode()`,
+      `_leave_hotspot_mode()`, `_wait_for_sta_disconnect()`, `_handle_reconnect_trigger()`. 28 new
+      tests added (`tests/test_asy_wifi_service.py`'s count: 93 -> 121), covering both the success
+      and failure/degraded path of each, using the same fault-injection (`raise_on`) and
+      "prove a bound without paying its full real-time cost by observing the task still suspended
+      there" (`test_wlan_connect_never_gives_up_while_repeatedly_succeeding()`'s own technique)
+      conventions this file already established, rather than introducing a new testing style.
+      One test-writing pitfall hit and fixed along the way: `asyncio.create_task(asyncio.sleep(N))`
+      raises `TypeError: coroutine expected` on this port's Unix-port `uasyncio` (confirmed
+      directly) - `asyncio.sleep(...)`'s return value isn't itself a `create_task()`-acceptable
+      coroutine object here, unlike CPython's `asyncio`; a thin `async def` wrapper around the
+      `await asyncio.sleep(N)` call is the fix, not a bug in the source file under test.
+    - Verified via the usual before/after checks: `ruff check` clean at 220 findings both before and
+      after (unchanged - no new findings); `scripts/typecheck.sh src tests` (CI's own scope) clean
+      both before and after; full-scope `scripts/typecheck.sh` shows +25 findings, all of them the
+      same already-established "WLAN has no attribute" finding *shape* recurring at the new test
+      call sites (full-scope mypy resolves `improved-quality/asy_wifi_service.py`'s `import network`
+      against the real `micropython-rp2-rpi_pico_w-stubs` package, not `tests/network.py`'s fake -
+      a pre-existing, already-documented divergence this file's every other test function already
+      triggers too, not a new kind of gap - CI itself only ever runs the clean `src tests` scope).
+      Full suite: 987/987 tests passing across all 14 `tests/` files (up from 959/959), 0 failures.
 - **Bus concurrency via `asyncio.Lock` + `async with` needs a coverage audit** (no gaps, no
   deadlock/starvation). Concrete progress: `asy_scd30_driver.py`/`asy_bmp3xx_driver.py`/
   `asy_sgp40_driver.py` each have a `*_DeviceSession(Lockable)` class — an outer per-sensor lock

@@ -60,6 +60,16 @@ BACKLOG.md for the full writeup:
   STAT_WRONG_PASSWORD/STAT_NO_AP_FOUND/STAT_CONNECT_FAIL on stock rp2 (the driver retries
   internally, status stays STAT_CONNECTING) - doesn't cause a hang (the poll loop is already
   bounded regardless), so left for the owner to decide, not silently reworked.
+
+A second full re-audit pass (owner-requested again, same bar) found one further real gap: unlike
+every other observation-tier accessor in this file, get_wlan_rssi() swallowed its exception
+completely silently with no self.pr.err() call - confirmed via extmod/network_cyw43.c that this
+raises ValueError("STA required") on every single poll while hotspot_mode is active, a routine and
+frequent condition this file was silently hiding even with logging turned all the way up. Now logs
+like every sibling accessor. See BACKLOG.md for the full writeup, including what this pass checked
+and confirmed were *not* gaps (wlan.status("stations")'s return type, the wlan_deactivated dead-end,
+and _on_sta_disconnected()'s 60s wifi_mode_lock hold - the latter two both pre-existing, unchanged
+from async_connect.py), and the 28 new tests closing every previously-untested-method gap it found.
 """
 
 import asyncio
@@ -287,7 +297,12 @@ class asy_conn_time(SensorReaderConfig):
             return None
         try:
             rssi = int(self.wlan.status("rssi"))  # not valid in AP mode!
-        except Exception:
+        except Exception as e:  # observation-tier - see _wlan_status_or_none()'s comment. Confirmed
+            # against extmod/network_cyw43.c: querying "rssi" outside STA mode raises
+            # ValueError("STA required") - a routine, expected failure while hotspot_mode is active,
+            # not just a hypothetical - so this still logs like every sibling observation-tier
+            # accessor instead of swallowing completely silently.
+            self.pr.err(_NAME, "wlan.status('rssi') failed:", e)
             rssi = None
         return rssi
 

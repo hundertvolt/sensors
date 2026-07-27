@@ -704,6 +704,65 @@ def test_network_available_false_on_a_status_exception() -> None:
 
 
 # ---------------------------------------------------------------------------
+# get_wlan_rssi() / wlan_isconnected() / reconnect_wifi() - previously untested public accessors
+# ---------------------------------------------------------------------------
+
+
+def test_get_wlan_rssi_returns_none_while_mode_lock_held() -> None:
+    client = make_client()
+    run(client.wifi_mode_lock.acquire())
+    assert client.get_wlan_rssi() is None
+    client._release_wifi_lock()
+
+
+def test_get_wlan_rssi_returns_the_real_value_on_success() -> None:
+    client = make_client()
+    client.wlan._rssi = -42
+    assert client.get_wlan_rssi() == -42
+
+
+def test_get_wlan_rssi_degrades_gracefully_on_exception() -> None:
+    # Real rp2/cyw43 raises ValueError("STA required") when queried outside STA mode (confirmed
+    # against extmod/network_cyw43.c) - a routine, expected failure while hotspot_mode is active.
+    client = make_client()
+    client.wlan.raise_on["status"] = ValueError("STA required")
+    assert client.get_wlan_rssi() is None
+
+
+def test_wlan_isconnected_returns_false_while_mode_lock_held() -> None:
+    client = make_client()
+    client.wlan._connected = True
+    run(client.wifi_mode_lock.acquire())
+    assert client.wlan_isconnected() is False
+    client._release_wifi_lock()
+
+
+def test_wlan_isconnected_returns_the_real_value_when_unlocked() -> None:
+    client = make_client()
+    client.wlan._connected = True
+    assert client.wlan_isconnected() is True
+
+
+def test_reconnect_wifi_sets_the_trigger_and_tears_down_hotspot_bookkeeping() -> None:
+    client = make_client(hotspot_time_min=1)
+    client._hotspot_client_absent()  # arms hotspot_timer + starts a real ledflash task
+
+    async def scenario() -> "tuple[bool, bool, bool]":
+        await asyncio.sleep(0)
+        ledflash_before = client.ledflash
+        client.reconnect_wifi()
+        ledflash_cleared = (ledflash_before is not None) and (client.ledflash is None)
+        assert ledflash_before is not None
+        await _cancel(ledflash_before)  # let the cancellation actually settle
+        return client.reconn_wifi, client.hotspot_timer_running, ledflash_cleared
+
+    reconn, timer_running, ledflash_cleared = run(scenario())
+    assert reconn is True
+    assert timer_running is False
+    assert ledflash_cleared is True
+
+
+# ---------------------------------------------------------------------------
 # _hotspot_client_connected() / _hotspot_client_absent() - the hotspot auto-shutoff timer
 # ---------------------------------------------------------------------------
 
@@ -927,6 +986,106 @@ def test_deactivate_wlan_permanently_sets_state_even_when_the_hardware_call_rais
 
 
 # ---------------------------------------------------------------------------
+# _print_wlan_diagnostics() / _on_sta_connected() / _on_sta_disconnected() /
+# _register_sta_connection_failure() / _handle_sta_connection_result() - previously untested
+# STA-mode connect/disconnect bookkeeping helpers
+# ---------------------------------------------------------------------------
+
+
+def test_print_wlan_diagnostics_does_not_raise_on_success() -> None:
+    client = make_client(debug=5)  # PrintLog.level_info() - pr.all() actually prints, not gated off
+    client.wlan._ifconfig = ("10.0.0.5", "255.255.255.0", "10.0.0.1", "8.8.8.8")
+    client._print_wlan_diagnostics()  # must not raise
+
+
+def test_print_wlan_diagnostics_degrades_gracefully_when_ifconfig_raises() -> None:
+    client = make_client(debug=5)
+    client.wlan.raise_on["ifconfig"] = RuntimeError("simulated hardware fault")
+    client._print_wlan_diagnostics()  # must not raise
+
+
+def test_on_sta_connected_updates_state_and_turns_led_on() -> None:
+    led = FakeLED()
+    client = make_client(ext_led=led)
+    run(client.set_wifi_led(True))
+    client.connection_failures = 3
+    client._on_sta_connected()
+    assert client.wlan_connected_once is True
+    assert client.connection_failures == 0
+    assert led.on_calls == 1
+
+
+def test_register_sta_connection_failure_increments_below_threshold() -> None:
+    client = make_client(conn_fail_to_hotspot=3)
+    run(client._register_sta_connection_failure())
+    assert client.connection_failures == 1
+    assert client.hotspot_mode is False
+    assert client.wlan_deactivated is False
+
+
+def test_register_sta_connection_failure_switches_to_hotspot_at_threshold() -> None:
+    client = make_client(conn_fail_to_hotspot=2)
+    client.connection_failures = 1  # one below threshold already
+    client.hotspot_started_once = False
+    run(client._register_sta_connection_failure())
+    assert client.connection_failures == 0
+    assert client.hotspot_mode is True
+
+
+def test_register_sta_connection_failure_deactivates_when_hotspot_already_tried() -> None:
+    client = make_client(conn_fail_to_hotspot=2)
+    run(client.pr.setup())
+    client.connection_failures = 1
+    client.hotspot_started_once = True
+    run(client._register_sta_connection_failure())
+    assert client.wlan_deactivated is True
+    assert client.hotspot_mode is False
+
+
+def test_on_sta_disconnected_registers_failure_when_never_connected() -> None:
+    client = make_client(conn_fail_to_hotspot=3)
+    client.wlan_connected_once = False
+    run(client._on_sta_disconnected())
+    assert client.connection_failures == 1
+
+
+def test_on_sta_disconnected_retries_after_a_minute_when_previously_connected() -> None:
+    # wlan_connected_once=True takes the "retry a previously-successful connection in one minute"
+    # branch, which asyncio.sleep(60)s for real - proven by observing the task is still suspended
+    # there (not finished, never reached _register_sta_connection_failure()) instead of paying the
+    # full 60s wait, the same "prove the bound without waiting it out" approach
+    # test_wlan_connect_never_gives_up_while_repeatedly_succeeding() already uses.
+    client = make_client(conn_fail_to_hotspot=2)
+    client.wlan_connected_once = True
+
+    async def scenario() -> bool:
+        task = asyncio.create_task(client._on_sta_disconnected())
+        for _ in range(10):
+            await asyncio.sleep(0)
+        still_running = not task.done()
+        await _cancel(task)
+        return still_running
+
+    assert run(scenario()) is True
+    assert client.connection_failures == 0  # never reached _register_sta_connection_failure()
+
+
+def test_handle_sta_connection_result_connected_calls_on_sta_connected() -> None:
+    client = make_client()
+    client.wlan._connected = True
+    run(client._handle_sta_connection_result())
+    assert client.wlan_connected_once is True
+
+
+def test_handle_sta_connection_result_disconnected_calls_on_sta_disconnected() -> None:
+    client = make_client(conn_fail_to_hotspot=3)
+    client.wlan._connected = False
+    client.wlan_connected_once = False
+    run(client._handle_sta_connection_result())
+    assert client.connection_failures == 1
+
+
+# ---------------------------------------------------------------------------
 # Missing-configuration warnings - a real, actionable reason now persists via pr.wrn_s() instead of
 # vanishing into a debug-only print
 # ---------------------------------------------------------------------------
@@ -979,6 +1138,158 @@ def test_attempt_sta_connect_empty_ssid_forces_immediate_hotspot_fallback() -> N
     client = make_client(conn_fail_to_hotspot=5)  # default SSID is "" until configured
     run(client._attempt_sta_connect())
     assert client.connection_failures == 5
+
+
+# ---------------------------------------------------------------------------
+# _run_sta_mode() / _get_hotspot_stations() / _manage_hotspot_stations() / _run_hotspot_mode() /
+# _leave_hotspot_mode() / _wait_for_sta_disconnect() / _handle_reconnect_trigger() - the
+# orchestration layer around wlan_connect()'s main loop, previously only exercised indirectly
+# through the full loop (with these helpers themselves faked out) or not at all.
+# ---------------------------------------------------------------------------
+
+
+def test_run_sta_mode_attempts_connect_when_not_connected() -> None:
+    client = make_client()
+    client.wlan._connected = False
+    attempt_calls = [0]
+
+    async def fake_attempt() -> None:
+        attempt_calls[0] += 1
+
+    client._attempt_sta_connect = fake_attempt
+    run(client._run_sta_mode())
+    assert attempt_calls[0] == 1
+    assert client.wifi_mode_lock.locked() is False  # released despite the attempt being faked out
+
+
+def test_run_sta_mode_skips_attempt_when_already_connected() -> None:
+    client = make_client()
+    client.wlan._connected = True
+    attempt_calls = [0]
+
+    async def fake_attempt() -> None:
+        attempt_calls[0] += 1
+
+    client._attempt_sta_connect = fake_attempt
+    run(client._run_sta_mode())
+    assert attempt_calls[0] == 0
+
+
+def test_get_hotspot_stations_returns_the_real_list_on_success() -> None:
+    client = make_client()
+    client.wlan._stations = [(b"\xaa\xbb\xcc\xdd\xee\xff",)]
+    stations = run(client._get_hotspot_stations())
+    assert stations == [(b"\xaa\xbb\xcc\xdd\xee\xff",)]
+    assert client.wifi_mode_lock.locked() is False
+
+
+def test_get_hotspot_stations_degrades_to_empty_list_on_exception() -> None:
+    client = make_client()
+    client.wlan.raise_on["status"] = RuntimeError("simulated hardware fault")
+    stations = run(client._get_hotspot_stations())
+    assert stations == []
+    assert client.wifi_mode_lock.locked() is False
+
+
+def test_manage_hotspot_stations_with_a_client_connected_stops_the_shutoff_timer() -> None:
+    client = make_client()
+    client.wlan._stations = [(b"\xaa\xbb\xcc\xdd\xee\xff",)]
+    client.hotspot_timer.init(period=5000, mode=Timer.ONE_SHOT, callback=lambda b: None)
+    run(client._manage_hotspot_stations())
+    assert client.hotspot_timer.deinit_called is True
+
+
+def test_manage_hotspot_stations_with_no_client_arms_the_shutoff_timer() -> None:
+    client = make_client(hotspot_time_min=1)
+    client.wlan._stations = []
+    run(client._manage_hotspot_stations())
+    assert client.hotspot_timer_running is True
+
+
+def test_run_hotspot_mode_starts_hotspot_when_no_ip_yet() -> None:
+    client = make_client()
+    client.wlan._status = network.STAT_IDLE
+    start_calls = [0]
+
+    async def fake_start() -> None:
+        start_calls[0] += 1
+
+    client._start_hotspot = fake_start
+    run(client._run_hotspot_mode())
+    assert start_calls[0] == 1
+
+
+def test_run_hotspot_mode_manages_stations_once_ip_obtained() -> None:
+    client = make_client()
+    client.wlan._status = network.STAT_GOT_IP
+    manage_calls = [0]
+
+    async def fake_manage() -> None:
+        manage_calls[0] += 1
+
+    client._manage_hotspot_stations = fake_manage
+    run(client._run_hotspot_mode())
+    assert manage_calls[0] == 1
+
+
+def test_leave_hotspot_mode_switches_back_to_sta_and_cancels_dns_task() -> None:
+    client = make_client()
+    client.hotspot_mode = True
+    select_calls: list[Any] = []
+
+    async def fake_select(mode: "Any") -> None:
+        select_calls.append(mode)
+
+    client._select_wifi_mode = fake_select
+
+    async def _sleep_forever() -> None:
+        # asyncio.create_task() requires a real coroutine object, not the awaitable
+        # asyncio.sleep(...) itself returns on this port - confirmed directly ("TypeError:
+        # coroutine expected") - so this thin async def wrapper is the fix, not a style choice.
+        await asyncio.sleep(100)
+
+    async def scenario() -> bool:
+        client.dns_server_task = asyncio.create_task(_sleep_forever())
+        await client._leave_hotspot_mode()
+        return (client.hotspot_mode is False) and (client.dns_server_task is None)
+
+    assert run(scenario()) is True
+    assert select_calls == [network.STA_IF]
+
+
+def test_wait_for_sta_disconnect_acquires_and_releases_the_lock() -> None:
+    client = make_client()
+    client.wlan._connected = False
+    run(client._wait_for_sta_disconnect())
+    assert client.wifi_mode_lock.locked() is False
+    assert client.wlan.disconnect_called is True
+
+
+def test_handle_reconnect_trigger_hotspot_mode_leaves_hotspot() -> None:
+    client = make_client()
+    client.hotspot_mode = True
+    leave_calls = [0]
+
+    async def fake_leave() -> None:
+        leave_calls[0] += 1
+
+    client._leave_hotspot_mode = fake_leave
+    run(client._handle_reconnect_trigger())
+    assert leave_calls[0] == 1
+    assert client.reconn_wifi is False
+
+
+def test_handle_reconnect_trigger_sta_mode_waits_for_disconnect() -> None:
+    client = make_client()
+    client.hotspot_mode = False
+    wait_calls = [0]
+
+    async def fake_wait() -> None:
+        wait_calls[0] += 1
+
+    client._wait_for_sta_disconnect = fake_wait
+    run(client._handle_reconnect_trigger())
+    assert wait_calls[0] == 1
 
 
 # ---------------------------------------------------------------------------
