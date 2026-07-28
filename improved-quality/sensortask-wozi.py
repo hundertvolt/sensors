@@ -222,7 +222,9 @@ async def network_cmd(request: Request) -> Dict[str, str | int | JsonValidity]:
             if err is not None:
                 return err
             if res is not None:
-                res = update_valid_json(req_json, "Hostname", "str", res, 1, 63, debug=debug)
+                res = update_valid_json(req_json, "Hostname", "str", res, 1, 32, debug=debug)
+                # 32, not 63: network.hostname()'s real, documented hard cap on rp2 (see
+                # asy_wifi_service.py's own _VAL_HOST schema, which this bound now matches).
                 res = update_valid_json(req_json, "Country", "str", res, 2, 2, debug=debug)
                 res = update_valid_json(req_json, "SSID", "str", res, 2, 32, debug=debug)
                 res = update_valid_json(req_json, "PW", "str", res, 8, 63, debug=debug)

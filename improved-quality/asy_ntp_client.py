@@ -90,8 +90,8 @@ class asy_ntp_client(SensorReaderConfig):
     ) -> None:
         super().__init__(
             NTP(False, None, None),
-            max_i2c_err,  # inert here - this driver never calls _error_check(); kept only because
-            # SensorReaderConfig's own constructor contract requires it.
+            max_i2c_err,  # consecutive failed-sync-attempt streak before asy_ntp_time() gives up and
+            # lets the task supervisor restart this task - see that method's own _error_check() call.
             _NAME,
             _VAL_NH + _VAL_NOS + _VAL_NIH + _VAL_GMT + _VAL_DST,
             cfg_path=cfg_path,

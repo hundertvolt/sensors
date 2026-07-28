@@ -1166,6 +1166,38 @@ From hands-on field experience with deployed units:
     rather than a functional bug; flagged here rather than silently changed, since picking one
     convention over the other for these two specific calls is a small enough style choice that it
     isn't worth guessing at without the owner's steer.
+  - **Owner follow-up on the max_i2c_err question**: asked why an I2C-named parameter matters in a
+    file with no I2C bus at all. Answer, confirmed by re-reading `base_classes.py`'s
+    `SensorReaderConfig.__init__`/`_error_check()`: `max_i2c_err` is a generically-useful
+    "consecutive-failure streak before giving up and letting the task supervisor restart this task"
+    threshold, misleadingly named for I2C only because every original caller of this base class was
+    an I2C sensor driver — it's stored as `self.max_i2c_err` and compared against
+    `self._err_cnt_internal` in `_error_check()` regardless of what kind of failure is being counted.
+    Both `asy_wifi_service.py` (WLAN-hardware-exception streak in `wlan_connect()`) and
+    `asy_ntp_client.py` (failed-sync-attempt streak in `asy_ntp_time()`) genuinely call
+    `_error_check()` and rely on it. This surfaced a real, separate bug while checking:
+    `asy_ntp_client.py`'s own constructor comment on this parameter claimed "inert here - this
+    driver never calls `_error_check()`" — stale and simply wrong, contradicted by
+    `asy_ntp_time()`'s own `_error_check()` call a few lines down in the same file (the module
+    docstring's own history already said this was "added later" and no longer inert; the inline
+    comment was never updated to match). Fixed the comment to describe the real, active behavior.
+    The `max_i2c_err=` omission API-consistency note above is unaffected by this — that was already
+    about the *omission having no functional effect* since both defaults equal `_MAX_I2C_ERR`, not
+    about the parameter being unused; the owner separately confirmed the DNS-inside-wifi_mode_lock
+    timing tradeoff noted above is fine as-is ("self-stabilising... fast under normal circumstances")
+    and needs no action.
+  - **Owner-requested quick fix**: `sensortask-wozi.py`'s `/net/cmd` `setNetwork` REST route still
+    validated `Hostname` against `1-63` characters, while `asy_wifi_service.py`'s own `_VAL_HOST`
+    schema was tightened to `1-32` earlier this session (network.hostname()'s real, documented
+    hard cap - see that finding above). Fixed to `1-32` to match, closing the last still-open half
+    of that mismatch (both bounds now agree; a config value written to `Country`/`Hostname`/`SSID`
+    via this REST route can no longer pass this route's own validation only to fail
+    `network.hostname()` later). Verified: `ruff check` on both touched files unchanged (24 errors,
+    same pre-existing `sensortask-wozi.py` baseline; 0 in `asy_ntp_client.py`), full-scope `mypy`
+    still exactly 371 (unchanged), full `scripts/test.sh` green (16/16 files, 1048 tests) - this
+    file has no dedicated test suite of its own (see CLAUDE.md's "No unit tests against the current
+    codebase" - `sensortask-wozi.py` isn't a promoted `src/` file), so this specific change isn't
+    independently regression-tested, only checked for lint/type-cleanliness and non-interference.
   - **Owner-requested documentation-conciseness pass over the same three files**, applying
     `src/README.md` section 11's "module docstring is a short header, not an essay" / "per-function
     comments stay within 3 lines, prefer fewer" rule, which had drifted badly on all three across
