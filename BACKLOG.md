@@ -1138,9 +1138,34 @@ From hands-on field experience with deployed units:
     `git diff`-clean `ruff`/`mypy` counts against this file's own pre-existing baseline (24/121
     findings respectively, both unchanged) — this file was never lint/type-clean to begin with, but
     nothing new was introduced.
-
-Owner: much of this is already underway in `improved-quality/` — recorded as the bar to hold the
-rest of the refactor to.
+  - **Follow-up full recipe re-pass over the integrated whole (owner-requested again, this time
+    targeting production quality specifically for stability/exception-handling/test-coverage)**
+    re-checked `asy_wifi_service.py`/`asy_ntp_client.py`/`asy_dns_client.py`/`asy_udp_socket.py`
+    together plus `sensortask-wozi.py` as their one real composition root. Found and fixed one real,
+    reachable crash bug in `/net/config`'s GET handler (pre-existing since this repo's very first
+    commit, confirmed via `git log -p`, not introduced by any work this session): on
+    `conn.cfgmgr.get_dict([...])` returning `None` — which it genuinely does whenever
+    `ConfigManager.valid` is `False` (e.g. a corrupted `config_WIFI.cfg`), not just a hypothetical —
+    the `else` branch did `cfg_data["PW"] = None`, an item-assignment onto a `None` object, raising
+    an uncaught `TypeError` and crashing that request. Fixed to fall through and return `None`
+    instead, matching this exact same file's own `/led/config` and `/time/config` routes, which
+    already use that same "just return `None`, let it propagate" convention for the identical
+    failure mode a few lines away. Re-verified `ruff`/`mypy` on this file afterward: 24/120 (mypy
+    dropped by exactly one from the prior 121 baseline — the removed dead assignment was itself one
+    of the pre-existing findings, a genuine improvement, not a masked regression) plus a clean full
+    `scripts/test.sh` run (all 16 files, 1048 tests). Everything else re-checked against the
+    recipe held from the prior rounds above with nothing further to report: the shared-lock
+    hold-time budget (DNS worst case now ~1.5s + NTP fetch's 5s ceiling, down from the original
+    ~12s+5s) remains a documented, deliberately-deferred trade-off rather than a new gap;
+    `asy_udp_socket.py`'s own contract (every I/O method returns its `None`-shaped sentinel,
+    never raises) is honored by every caller in both `asy_dns_client.py` and `asy_ntp_client.py`;
+    `conn`/`ntp`'s constructor calls in `sensortask-wozi.py` both omit an explicit `max_i2c_err=`
+    (unlike every sensor `Reader` instantiated in the same file, which all pass
+    `max_i2c_err=_MAX_I2C_ERR` explicitly) — both classes' own default of `5` happens to already
+    equal `_MAX_I2C_ERR`, so this is a real, if currently inert, API-consistency gap worth noting
+    rather than a functional bug; flagged here rather than silently changed, since picking one
+    convention over the other for these two specific calls is a small enough style choice that it
+    isn't worth guessing at without the owner's steer.
 
 - **Define configs/behavior used at multiple sites in exactly one location.** Concrete mechanism:
   `asy_scd30_driver.py`/`asy_bmp3xx_driver.py`/`asy_sgp40_driver.py` each define per-field config

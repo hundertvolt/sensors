@@ -201,9 +201,11 @@ async def network_config(request: Request) -> Dict[str, int | float | str | None
     cfg_data = await conn.cfgmgr.get_dict(["Country", "Hostname", "SSID"])
     if cfg_data is not None:
         cfg_data["PW"] = "********"
-    else:
-        # TODO Create full dict if None!
-        cfg_data["PW"] = None
+    # else: TODO Create full dict if None! Falls through and returns None below for now, matching
+    # /led/config's and /time/config's own "let it be None" convention elsewhere in this file - the
+    # previous `cfg_data["PW"] = None` here crashed with a real TypeError on this branch (assigning
+    # into a None object), reachable whenever conn.cfgmgr.valid is False (e.g. a corrupted
+    # config_WIFI.cfg), not just a hypothetical.
     return cfg_data
 
 
