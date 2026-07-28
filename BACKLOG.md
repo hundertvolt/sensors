@@ -2295,8 +2295,11 @@ non-hypothetical threat in a specific context justifies it. Accepted as residual
 
 - **HTML/frontend automation & consistency** — known hand-written/brittle, not a priority; revisit
   after the Python-side refactor.
-- **UART sensor integration** (`asy_uart.py`/`asy_uart_comm.py`, unused by any deployed config) —
-  after the refactor of already-deployed features, not before.
+- **UART sensor integration into a deployed device config** — wiring `src/asy_uart_driver.py`/
+  `asy_uart_comm.py` into a real `sensortask-*.py`; currently unused by any deployed config, after
+  the refactor of already-deployed features, not before. Distinct from the driver's own promotion
+  to `src/` (done — see `asy_uart_driver.py -> src/` under "`src/` promotion findings"); the legacy
+  `asy_uart_comm.py` consumer remains its own separate, still out-of-scope promotion.
 - **Config-duplication centralization** (same keys hand-kept in sync across `_DEFAULT_CONFIG`, the
   REST handler, and the HTML form) — owned by the refactor, not the current codebase.
 - **`dev` config quirks** (e.g. LED/Neopixel REST routes referencing an uninstantiated object) —
