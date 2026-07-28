@@ -625,9 +625,51 @@ def test_get_ntp_config_returns_none_when_config_manager_itself_is_invalid() -> 
 
 
 # ---------------------------------------------------------------------------
+# _safe_get_dns_server - reads the get_dns_server callback (asy_conn_time.get_dns_server_ip) and
+# wraps its errors; called by asy_ntp_time() *before* acquiring wifi_mode_lock (see that method's
+# own comment and BACKLOG.md for the real bug this split fixes: calling the callback from inside the
+# locked section always saw the shared Lock as held and always got None back, regardless of the
+# real WLAN state).
+# ---------------------------------------------------------------------------
+
+
+def test_safe_get_dns_server_returns_the_callbacks_value() -> None:
+    client = make_client(get_dns_server=lambda: "192.0.2.53")
+    assert run(client._safe_get_dns_server()) == "192.0.2.53"
+
+
+def test_safe_get_dns_server_passes_through_none() -> None:
+    client = make_client(get_dns_server=lambda: None)
+    assert run(client._safe_get_dns_server()) is None
+
+
+def test_safe_get_dns_server_callback_raising_returns_none() -> None:
+    def raiser() -> "str | None":
+        raise RuntimeError("get_wlan_ifconfig() exploded")
+
+    client = make_client(get_dns_server=raiser)
+    assert run(client._safe_get_dns_server()) is None
+
+
+def test_safe_get_dns_server_callback_raising_persists_a_warning() -> None:
+    def raiser() -> "str | None":
+        raise RuntimeError("get_wlan_ifconfig() exploded")
+
+    client = make_client(get_dns_server=raiser)
+    run(client.pr.setup())
+    run(client._safe_get_dns_server())
+    counter = run(client.get_error_counter())
+    assert counter["NTP"]["ErrNum"][-1] == 3
+    assert counter["NTP"]["ErrType"][-1] == "W"
+
+
+# ---------------------------------------------------------------------------
 # _resolve_ntp_server - now delegates to asy_dns_client.py's resolve_ipv4() (see that file's own
 # module docstring and BACKLOG.md); this file's own long_block_lock is gone entirely since
-# resolve_ipv4() never blocks the event loop the way socket.getaddrinfo() used to.
+# resolve_ipv4() never blocks the event loop the way socket.getaddrinfo() used to. Takes dns_server
+# as a plain parameter (not a callback it invokes itself) since _safe_get_dns_server() above must be
+# called before wifi_mode_lock is acquired, one level up in asy_ntp_time() - see that method's own
+# comment.
 # ---------------------------------------------------------------------------
 
 
@@ -636,14 +678,14 @@ def test_resolve_ntp_server_literal_ip_returns_immediately() -> None:
     # network I/O at all - proven at that layer already (tests/test_asy_dns_client.py); this just
     # confirms the (ip, 123) tuple shape _resolve_ntp_server() wraps its result in.
     client = make_client()
-    result = run(client._resolve_ntp_server("127.0.0.1"))
+    result = run(client._resolve_ntp_server("127.0.0.1", None))
     assert result == ("127.0.0.1", 123)
 
 
 class _RecordingResolver:
     # Stands in for asy_dns_client.resolve_ipv4() itself - proves _resolve_ntp_server()'s own
-    # orchestration (callback wiring, tuple building, error handling) independent of resolve_ipv4()'s
-    # own real network behavior, which tests/test_asy_dns_client.py already covers exhaustively.
+    # orchestration (tuple building, error handling) independent of resolve_ipv4()'s own real
+    # network behavior, which tests/test_asy_dns_client.py already covers exhaustively.
     def __init__(self, return_value: "str | None") -> None:
         self.calls: list[tuple[str, tuple[str, ...]]] = []
         self.return_value = return_value
@@ -653,57 +695,29 @@ class _RecordingResolver:
         return self.return_value
 
 
-def test_resolve_ntp_server_passes_the_dns_server_callbacks_result_through() -> None:
+def test_resolve_ntp_server_passes_the_given_dns_server_through() -> None:
     recorder = _RecordingResolver("9.9.9.9")
     original = ntpmod.resolve_ipv4
     ntpmod.resolve_ipv4 = recorder  # deliberate monkeypatch
     try:
-        client = make_client(get_dns_server=lambda: "192.0.2.53")
-        result = run(client._resolve_ntp_server("pool.ntp.org"))
+        client = make_client()
+        result = run(client._resolve_ntp_server("pool.ntp.org", "192.0.2.53"))
     finally:
         ntpmod.resolve_ipv4 = original
     assert result == ("9.9.9.9", 123)
     assert recorder.calls == [("pool.ntp.org", ("192.0.2.53",))]
 
 
-def test_resolve_ntp_server_get_dns_server_none_passes_an_empty_servers_tuple() -> None:
+def test_resolve_ntp_server_none_dns_server_passes_an_empty_servers_tuple() -> None:
     recorder = _RecordingResolver("9.9.9.9")
     original = ntpmod.resolve_ipv4
     ntpmod.resolve_ipv4 = recorder
     try:
-        client = make_client(get_dns_server=lambda: None)
-        run(client._resolve_ntp_server("pool.ntp.org"))
+        client = make_client()
+        run(client._resolve_ntp_server("pool.ntp.org", None))
     finally:
         ntpmod.resolve_ipv4 = original
     assert recorder.calls == [("pool.ntp.org", ())]
-
-
-def test_resolve_ntp_server_get_dns_server_callback_raising_is_treated_as_none() -> None:
-    def raiser() -> "str | None":
-        raise RuntimeError("get_wlan_ifconfig() exploded")
-
-    recorder = _RecordingResolver("9.9.9.9")
-    original = ntpmod.resolve_ipv4
-    ntpmod.resolve_ipv4 = recorder
-    try:
-        client = make_client(get_dns_server=raiser)
-        result = run(client._resolve_ntp_server("pool.ntp.org"))
-    finally:
-        ntpmod.resolve_ipv4 = original
-    assert result == ("9.9.9.9", 123)  # resolution still proceeds, just with no server hint
-    assert recorder.calls == [("pool.ntp.org", ())]
-
-
-def test_resolve_ntp_server_get_dns_server_callback_raising_persists_a_warning() -> None:
-    def raiser() -> "str | None":
-        raise RuntimeError("get_wlan_ifconfig() exploded")
-
-    client = make_client(get_dns_server=raiser)
-    run(client.pr.setup())
-    run(client._resolve_ntp_server("127.0.0.1"))  # literal IP - resolve_ipv4() itself never touches the network
-    counter = run(client.get_error_counter())
-    assert counter["NTP"]["ErrNum"][-1] == 3
-    assert counter["NTP"]["ErrType"][-1] == "W"
 
 
 def test_resolve_ntp_server_dns_failure_returns_none() -> None:
@@ -712,7 +726,7 @@ def test_resolve_ntp_server_dns_failure_returns_none() -> None:
     ntpmod.resolve_ipv4 = recorder
     try:
         client = make_client()
-        result = run(client._resolve_ntp_server("bogus.invalid"))
+        result = run(client._resolve_ntp_server("bogus.invalid", None))
     finally:
         ntpmod.resolve_ipv4 = original
     assert result is None
@@ -725,7 +739,7 @@ def test_resolve_ntp_server_dns_failure_persists_an_error() -> None:
     try:
         client = make_client()
         run(client.pr.setup())
-        run(client._resolve_ntp_server("bogus.invalid"))
+        run(client._resolve_ntp_server("bogus.invalid", None))
     finally:
         ntpmod.resolve_ipv4 = original
     counter = run(client.get_error_counter())
@@ -1438,7 +1452,7 @@ def test_run_sync_attempt_network_unavailable_skips_everything_downstream() -> N
         return None
 
     client._get_ntp_config = fake_get_cfg
-    run(client._run_ntp_sync_attempt())
+    run(client._run_ntp_sync_attempt(None))
     assert reached[0] is False
 
 
@@ -1454,7 +1468,7 @@ def test_run_sync_attempt_network_available_raising_is_treated_as_unavailable() 
         return None
 
     client._get_ntp_config = fake_get_cfg
-    run(client._run_ntp_sync_attempt())  # must not raise
+    run(client._run_ntp_sync_attempt(None))  # must not raise
     assert reached[0] is False
 
 
@@ -1464,7 +1478,7 @@ def test_run_sync_attempt_network_available_raising_persists_a_warning() -> None
 
     client = make_client(network_available=raiser)
     run(client.pr.setup())
-    run(client._run_ntp_sync_attempt())
+    run(client._run_ntp_sync_attempt(None))
     counter = run(client.get_error_counter())
     assert counter["NTP"]["ErrNum"][-1] == 1
     assert counter["NTP"]["ErrType"][-1] == "W"
@@ -1478,7 +1492,7 @@ def test_run_sync_attempt_missing_config_marks_not_synced_and_returns() -> None:
         return None
 
     client._get_ntp_config = fake_get_cfg
-    run(client._run_ntp_sync_attempt())
+    run(client._run_ntp_sync_attempt(None))
     assert run(client.ntp_issynced()) is False
 
 
@@ -1489,7 +1503,7 @@ def test_run_sync_attempt_resolve_failure_calls_handle_failure() -> None:
     async def fake_get_cfg() -> "Any":
         return (["pool.ntp.org"], [0])
 
-    async def fake_resolve(_host: str) -> "Any":
+    async def fake_resolve(_host: str, _dns_server: "Any") -> "Any":
         return None
 
     async def fake_handle_failure() -> None:
@@ -1498,8 +1512,28 @@ def test_run_sync_attempt_resolve_failure_calls_handle_failure() -> None:
     client._get_ntp_config = fake_get_cfg
     client._resolve_ntp_server = fake_resolve
     client._handle_ntp_sync_failure = fake_handle_failure
-    run(client._run_ntp_sync_attempt())
+    run(client._run_ntp_sync_attempt(None))
     assert handled[0] is True
+
+
+def test_run_sync_attempt_passes_the_given_dns_server_to_resolve_ntp_server() -> None:
+    # Proves _run_ntp_sync_attempt() forwards its own dns_server parameter through unchanged -
+    # the actual value only ever comes from asy_ntp_time()'s _safe_get_dns_server() call, read
+    # before wifi_mode_lock is acquired (see that method's own comment/BACKLOG.md).
+    client = make_client()
+    received: list[Any] = []
+
+    async def fake_get_cfg() -> "Any":
+        return (["pool.ntp.org"], [0])
+
+    async def fake_resolve(_host: str, dns_server: "Any") -> "Any":
+        received.append(dns_server)
+        return None
+
+    client._get_ntp_config = fake_get_cfg
+    client._resolve_ntp_server = fake_resolve
+    run(client._run_ntp_sync_attempt("203.0.113.53"))
+    assert received == ["203.0.113.53"]
 
 
 def test_run_sync_attempt_fetch_failure_calls_handle_failure() -> None:
@@ -1509,7 +1543,7 @@ def test_run_sync_attempt_fetch_failure_calls_handle_failure() -> None:
     async def fake_get_cfg() -> "Any":
         return (["pool.ntp.org"], [0])
 
-    async def fake_resolve(_host: str) -> "Any":
+    async def fake_resolve(_host: str, _dns_server: "Any") -> "Any":
         return ("1.2.3.4", 123)
 
     async def fake_fetch(_addr: "Any") -> "Any":
@@ -1522,7 +1556,7 @@ def test_run_sync_attempt_fetch_failure_calls_handle_failure() -> None:
     client._resolve_ntp_server = fake_resolve
     client._fetch_ntp_reply = fake_fetch
     client._handle_ntp_sync_failure = fake_handle_failure
-    run(client._run_ntp_sync_attempt())
+    run(client._run_ntp_sync_attempt(None))
     assert handled[0] is True
 
 
@@ -1533,7 +1567,7 @@ def test_run_sync_attempt_parse_failure_calls_handle_failure() -> None:
     async def fake_get_cfg() -> "Any":
         return (["pool.ntp.org"], [0])
 
-    async def fake_resolve(_host: str) -> "Any":
+    async def fake_resolve(_host: str, _dns_server: "Any") -> "Any":
         return ("1.2.3.4", 123)
 
     async def fake_fetch(_addr: "Any") -> "Any":
@@ -1550,7 +1584,7 @@ def test_run_sync_attempt_parse_failure_calls_handle_failure() -> None:
     client._fetch_ntp_reply = fake_fetch
     client._parse_ntp_reply = fake_parse
     client._handle_ntp_sync_failure = fake_handle_failure
-    run(client._run_ntp_sync_attempt())
+    run(client._run_ntp_sync_attempt(None))
     assert handled[0] is True
 
 
@@ -1562,7 +1596,7 @@ def test_run_sync_attempt_success_calls_handle_success_with_the_parsed_time() ->
     async def fake_get_cfg() -> "Any":
         return (["pool.ntp.org"], [0])
 
-    async def fake_resolve(_host: str) -> "Any":
+    async def fake_resolve(_host: str, _dns_server: "Any") -> "Any":
         return ("1.2.3.4", 123)
 
     async def fake_fetch(_addr: "Any") -> "Any":
@@ -1579,7 +1613,7 @@ def test_run_sync_attempt_success_calls_handle_success_with_the_parsed_time() ->
     client._fetch_ntp_reply = fake_fetch
     client._parse_ntp_reply = fake_parse
     client._handle_ntp_sync_success = fake_handle_success
-    run(client._run_ntp_sync_attempt())
+    run(client._run_ntp_sync_attempt(None))
     assert handled_with == [parsed_tm]
 
 
@@ -1595,7 +1629,7 @@ def test_asy_ntp_time_runs_one_attempt_per_trigger_and_releases_the_wifi_lock() 
     client = make_client()
     attempts = [0]
 
-    async def fake_attempt() -> "Any":
+    async def fake_attempt(_dns_server: "Any") -> "Any":
         attempts[0] += 1
         return None, True
 
@@ -1623,7 +1657,7 @@ def test_asy_ntp_time_runs_one_attempt_per_trigger_and_releases_the_wifi_lock() 
 def test_asy_ntp_time_releases_the_wifi_lock_even_if_the_attempt_raises() -> None:
     client = make_client()
 
-    async def raising_attempt() -> "Any":
+    async def raising_attempt(_dns_server: "Any") -> "Any":
         raise RuntimeError("simulated bug downstream")
 
     client._run_ntp_sync_attempt = raising_attempt
@@ -1688,7 +1722,7 @@ def test_asy_ntp_time_gives_up_after_repeated_sync_failures_and_persists_errno_2
     # that completes (network was up) but never yields a parsed time counts toward this streak.
     client = make_client(max_i2c_err=2)
 
-    async def failing_attempt() -> "Any":
+    async def failing_attempt(_dns_server: "Any") -> "Any":
         return None, True  # network was available, but the attempt itself still failed
 
     client._run_ntp_sync_attempt = failing_attempt
@@ -1713,7 +1747,7 @@ def test_asy_ntp_time_network_unavailable_cycles_never_count_toward_giving_up() 
     # well past max_i2c_err trigger cycles, all reporting network unavailable, without giving up.
     client = make_client(max_i2c_err=2)
 
-    async def unavailable_attempt() -> "Any":
+    async def unavailable_attempt(_dns_server: "Any") -> "Any":
         return None, False  # network not available - condition=False, must not count as a real failure
 
     client._run_ntp_sync_attempt = unavailable_attempt
@@ -1742,7 +1776,7 @@ def test_asy_ntp_time_recovers_the_streak_on_alternating_failure_and_success() -
     client = make_client(max_i2c_err=2)
     toggle = [True]
 
-    async def alternating_attempt() -> "Any":
+    async def alternating_attempt(_dns_server: "Any") -> "Any":
         if toggle[0]:
             toggle[0] = False
             return None, True  # failure

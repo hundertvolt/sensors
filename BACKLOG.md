@@ -1008,6 +1008,79 @@ From hands-on field experience with deployed units:
     tests since every other test in the file already passes a pre-resolved addr directly).
     `tests/test_asy_wifi_service.py` gains three new tests for `get_dns_server_ip()` (137 -> 140),
     otherwise unaffected.
+  - **A follow-up owner-requested review of all three files together (`asy_wifi_service.py`/
+    `asy_ntp_client.py`/`asy_dns_client.py`'s mutual embedding, not each file in isolation) found and
+    fixed one real, concrete bug in how the first two share `wifi_mode_lock`**: `sensortask-wozi.py`
+    wires `asy_ntp_client(conn.get_wifi_mode_lock(), conn.network_available, conn.get_dns_server_ip,
+    ...)` — `asy_ntp_client` and `asy_conn_time` share the *exact same* `Lock` instance. `asy_ntp_time()`
+    used to call `self.get_dns_server()` (== `conn.get_dns_server_ip()`) from inside
+    `_resolve_ntp_server()`, itself called only after `asy_ntp_time()` had already acquired that
+    shared lock for the whole sync attempt. But `get_dns_server_ip()` internally calls
+    `get_wlan_ifconfig()`, which starts with `if self.wifi_mode_lock.locked(): return None` — a
+    guard meant to detect "WLAN mid-mode-switch, `ifconfig()` unsafe to read." Since `asy_ntp_client`
+    itself was the one holding the lock at that exact call site (that's the whole point of it
+    acquiring the lock — to keep the WLAN mode stable during its own network I/O, not because it's
+    mid-transition), `locked()` was always `True` there, so `get_dns_server_ip()` returned `None`
+    **every single time it was actually invoked in production**, regardless of the real WLAN state.
+    The DHCP-DNS-server feature added earlier this session was structurally dead code on its one
+    real call path — `resolve_ipv4()` always silently fell through to the hardcoded public
+    `8.8.8.8`/`1.1.1.1` fallback instead. No existing test caught this because every NTP-side test
+    replaces `get_dns_server` with a lambda that ignores the lock entirely, and every
+    `asy_wifi_service`-side test calls `get_dns_server_ip()` in isolation without a second real
+    object holding the same lock the way `asy_ntp_client` does. **Fixed** by adding
+    `asy_ntp_client._safe_get_dns_server()`, called from `asy_ntp_time()` *before*
+    `wifi_mode_lock.acquire()`, with the captured value threaded down through
+    `_run_ntp_sync_attempt(dns_server)`/`_resolve_ntp_server(ntp_host, dns_server)` as a plain
+    parameter instead of a callback invoked while the lock is held.
+  - **A related, broader API-consistency observation, not further acted on**: `asy_wifi_service.py`
+    has two opposite locking contracts hiding under the same `Callable[[], T]` shape.
+    `network_available()`'s own comment says "caller must already hold `wifi_mode_lock`" — it reads
+    WLAN state directly, trusting the caller's own hold on the lock to make that safe, and this is
+    exactly how `_run_ntp_sync_attempt()` already calls it (correctly, no bug there). But
+    `get_wlan_ifconfig()`/`get_dns_server_ip()`/`get_wlan_rssi()`/`wlan_isconnected()` assume the
+    *opposite* — that the **caller does not** hold the lock — and use `.locked()` defensively as
+    their own "someone else is transitioning right now" signal. `_resolve_ntp_server()`'s original
+    bug was calling a "must-not-hold" callback as if it had a "must-hold" contract, mirroring how it
+    correctly treats `network_available()` right next to it. This is exactly the trap
+    `src/README.md`'s API-consistency section (10) warns about: two members with an identical
+    signature silently expecting opposite things from their caller. Flagged rather than restructured
+    further right now (e.g. renaming/typing the two families differently) — the concrete bug is
+    fixed; a naming/typing convention to make the distinction structurally visible is a separate,
+    smaller follow-up if a third such callback is ever added.
+  - **New integration test file**: `tests/test_ntp_wifi_dns_integration.py` (8 tests) constructs real
+    `asy_conn_time`/`asy_ntp_client` instances wired exactly like `sensortask-wozi.py`, rather than
+    replacing one side with a lambda/recorder the way every other test file in this suite
+    deliberately does — this is what let the lock-collision bug above be found and reproduced at
+    all. Covers: the real conn-derived DNS server IP (including the real "0.0.0.0"
+    never-configured sentinel) reaching `resolve_ipv4()`'s arguments unmodified; the shared
+    `wifi_mode_lock` genuinely blocking a concurrent real `conn._select_wifi_mode()` call while
+    `asy_ntp_time()` holds it (and `conn.get_dns_server_ip()` correctly degrading to `None` during
+    that same real window, proving the fix's ordering is right); a real WLAN `ifconfig()` exception
+    degrading to `None` rather than propagating; two full-task real-UDP round trips through a real
+    `conn` object (network unavailable skips everything downstream; a literal-IP `NTP_Host` reaches
+    a genuinely synced state); and total DNS-server unreachability (via malformed, instantly-skipped
+    entries — no real network wait needed) persisting `errno=12` through the real chain. No real
+    port-53/port-123 end-to-end test is attempted, for the same reason `tests/test_asy_ntp_client.py`'s
+    own comment already gives (`resolve_ipv4()`'s `port` has no override through
+    `_resolve_ntp_server()`; binding a real privileged port needs root, non-portable to CI) — see
+    that file's comment for the full reasoning, unchanged by this review.
+  - **A connected, not-yet-acted-on observation from the DNS resolver's own worst-case timing**:
+    `_resolve_ntp_server()`'s DNS resolution now happens *inside* the `wifi_mode_lock`-held window
+    (previously it happened outside any wifi_mode_lock coordination at all, via the old
+    `socket.getaddrinfo()`+`asy_long_block_lock` pattern). `resolve_ipv4()`'s own worst case (a
+    DHCP-supplied server plus 2 public fallbacks, each with `_DNS_TRIES=2` tries at
+    `_DNS_TIMEOUT_MS=2000` per try) can reach roughly 12s before even reaching the actual NTP fetch's
+    own 5s timeout — meaning `wifi_mode_lock` can now be held by a single sync attempt for up to
+    roughly 17s in the worst realistic case (all DNS servers transiently unreachable), versus
+    whatever the old single blocking `getaddrinfo()` call plus the NTP fetch alone took. Since
+    `asy_conn_time.wlan_connect()`'s own state-machine tick (every `wifi_refresh_sec`, default 5s)
+    acquires this same lock on every STA-phase iteration, a run of NTP sync failures with
+    unreachable DNS servers (retried every 15s per `_handle_ntp_sync_failure()`) could noticeably
+    delay `wlan_connect()`'s own monitoring/reconnect responsiveness during that window. Not fixed
+    here — resolving it (e.g. bounding DNS resolution's own worst case, or not holding
+    `wifi_mode_lock` across DNS resolution at all) is a real design tradeoff of its own (releasing
+    the lock during DNS resolution would let a WLAN mode switch invalidate an in-flight resolution),
+    flagged for a future decision rather than guessed at here.
 
 ### Code structure / style patterns for the refactor
 

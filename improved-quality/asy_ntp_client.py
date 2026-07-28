@@ -41,6 +41,20 @@ config_manager.py's write_config() separately needs long-block coordination of i
 _resolve_ntp_server()'s returned port is now the module-level _NTP_UDP_PORT (still 123, unchanged
 behavior) rather than a bare literal - see that constant's own comment for why it's deliberately not
 const()-wrapped like every sibling constant here.
+
+A real bug found during a follow-up three-file integration review (asy_wifi_service.py/
+asy_ntp_client.py/asy_dns_client.py together, owner-requested) and fixed: get_dns_server
+(asy_conn_time.get_dns_server_ip) internally gates on `wifi_mode_lock.locked()` as its own "WLAN
+mid-mode-switch, ifconfig() unsafe to read" check - but asy_ntp_time() and asy_conn_time share that
+exact same Lock instance (see sensortask-wozi.py's wiring), and asy_ntp_time() itself holds it for
+the whole sync attempt. Calling get_dns_server() from inside that locked section (as
+_resolve_ntp_server() used to) therefore always saw locked()==True and always got None back,
+regardless of the real WLAN state - the DHCP-DNS-server feature was structurally dead code on its
+one real call path, silently falling through to the public fallback list every time. Fixed by
+reading it via the new _safe_get_dns_server() *before* wifi_mode_lock.acquire() in asy_ntp_time(),
+then threading the captured value down through _run_ntp_sync_attempt()/_resolve_ntp_server() as a
+plain parameter instead of a callback invoked while the lock is held. See BACKLOG.md for the full
+writeup.
 """
 
 import asyncio
@@ -273,9 +287,11 @@ class asy_ntp_client(SensorReaderConfig):
         while True:
             await self.ntp_sync_trigger_event.wait()
             self.pr.evt(_NAME, "NTP sync starting.")
+            dns_server = await self._safe_get_dns_server()  # must be read before acquiring
+            # wifi_mode_lock below - see _safe_get_dns_server()'s own comment.
             await self.wifi_mode_lock.acquire()
             try:
-                tm, network_ok = await self._run_ntp_sync_attempt()
+                tm, network_ok = await self._run_ntp_sync_attempt(dns_server)
             finally:
                 try:
                     self.wifi_mode_lock.release()
@@ -295,7 +311,22 @@ class asy_ntp_client(SensorReaderConfig):
                 await self.pr.err_s(_NAME, "Giving up after repeated sync failures, restarting task.", errno=20)
                 return
 
-    async def _run_ntp_sync_attempt(self) -> "tuple[tuple[int, ...] | None, bool]":
+    async def _safe_get_dns_server(self) -> str | None:
+        # get_dns_server (asy_conn_time.get_dns_server_ip) internally gates on
+        # wifi_mode_lock.locked() as its own "WLAN mid-mode-switch, ifconfig() unsafe to read" check
+        # - but this file shares that exact same Lock instance with asy_conn_time (see
+        # sensortask-wozi.py's wiring) and holds it itself for the whole sync attempt below. Calling
+        # this from inside that locked section would always see locked()==True and always get None
+        # back, regardless of the real WLAN state - a real bug found and fixed during a follow-up
+        # integration review (see module docstring/BACKLOG.md). Must be called before
+        # wifi_mode_lock.acquire(), never after.
+        try:
+            return self.get_dns_server()
+        except Exception as e:  # caller-supplied callback (asy_conn_time) - could legitimately misbehave
+            await self.pr.wrn_s(_NAME, "get_dns_server() callback failed:", e, wrnno=3)
+            return None
+
+    async def _run_ntp_sync_attempt(self, dns_server: str | None) -> "tuple[tuple[int, ...] | None, bool]":
         try:
             network_ok = self.network_available()
         except Exception as e:  # caller-supplied callback (async_connect.py) - could legitimately misbehave
@@ -310,7 +341,7 @@ class asy_ntp_client(SensorReaderConfig):
             await self.pr.err_s(_NAME, "Missing NTP configuration!", errno=11)
             return None, True
         ntp_host, ntp_offs = ntp_config
-        addr = await self._resolve_ntp_server(ntp_host[0])
+        addr = await self._resolve_ntp_server(ntp_host[0], dns_server)
         if addr is None:
             await self._handle_ntp_sync_failure()
             return None, True
@@ -332,12 +363,7 @@ class asy_ntp_client(SensorReaderConfig):
             return None
         return ntp_host, ntp_offs
 
-    async def _resolve_ntp_server(self, ntp_host: str) -> tuple[str, int] | None:
-        try:
-            dns_server = self.get_dns_server()
-        except Exception as e:  # caller-supplied callback (asy_conn_time) - could legitimately misbehave, same as network_available()
-            await self.pr.wrn_s(_NAME, "get_dns_server() callback failed:", e, wrnno=3)
-            dns_server = None
+    async def _resolve_ntp_server(self, ntp_host: str, dns_server: str | None) -> tuple[str, int] | None:
         servers = () if dns_server is None else (dns_server,)
         ip = await resolve_ipv4(ntp_host, servers)
         if ip is None:
