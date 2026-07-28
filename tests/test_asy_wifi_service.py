@@ -720,6 +720,26 @@ def test_get_wlan_ifconfig_returns_the_real_tuple_on_success() -> None:
     assert client.get_wlan_ifconfig() == ("10.0.0.1", "255.255.255.0", "10.0.0.254", "8.8.8.8")
 
 
+def test_get_dns_server_ip_returns_the_fourth_ifconfig_element() -> None:
+    client = make_client()
+    client.wlan._ifconfig = ("10.0.0.1", "255.255.255.0", "10.0.0.254", "192.168.1.1")
+    assert client.get_dns_server_ip() == "192.168.1.1"
+
+
+def test_get_dns_server_ip_returns_none_while_mode_lock_held() -> None:
+    # Reuses get_wlan_ifconfig()'s own observation-tier convention - see get_dns_server_ip()'s comment.
+    client = make_client()
+    run(client.wifi_mode_lock.acquire())
+    assert client.get_dns_server_ip() is None
+    client._release_wifi_lock()
+
+
+def test_get_dns_server_ip_returns_none_on_exception() -> None:
+    client = make_client()
+    client.wlan.raise_on["ifconfig"] = OSError("simulated")
+    assert client.get_dns_server_ip() is None
+
+
 def test_network_available_true_only_in_sta_mode_with_an_ip() -> None:
     client = make_client()
     client._conn_phase = _PHASE_STA_SEEKING

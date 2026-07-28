@@ -43,7 +43,6 @@ class Neopixel_Signal:
         asy_local_time_callback: Callable[[], Coroutine[Any, Any, GMTimeStruct | None]],
         neopixel_freq: int = 20,
         led_overl_bri: int = 50,
-        asy_long_block_lock: Lock | None = None,
         debug: bool = False,
     ) -> None:
         self.pixel = neopixel.NeoPixel(Pin(neopixel_pin, Pin.OUT), 1, bpp=3)
@@ -54,7 +53,6 @@ class Neopixel_Signal:
         self.auto_signal_timer_event = Event()
         self.start_signal_event = Event()
         self.start_signal_lock = Lock()
-        self.asy_long_block_lock = Lock() if asy_long_block_lock is None else asy_long_block_lock
         self.led_overl_lock = Lock()
         self.led_overl_start = ThreadSafeFlag()
         self.led_overl_bri = led_overl_bri
@@ -109,9 +107,6 @@ class Neopixel_Signal:
         self.ext_rgbt = [r, g, b, t]
         self.ext_start_signal.set()
         return True
-
-    def get_long_block_lock(self) -> Lock:
-        return self.asy_long_block_lock
 
     def on(self) -> None:
         self.led_overl_on = True
@@ -180,22 +175,23 @@ class Neopixel_Signal:
             b_s = self.rgbt[2] * steps_inv  # blue
 
             async with self.led_overl_lock:
-                async with self.asy_long_block_lock:
-                    if self.debug:
-                        print("Neopixel Long Block Lock acquired.")
-                    for n in range(1, steps + 1, 1):
-                        self.pixel[0] = (int(r_s * n), int(g_s * n), int(b_s * n))
-                        self.pixel.write()
-                        await asyncio.sleep(self.neopixel_dt)
-                    for n in range(steps - 1, -1, -1):
-                        self.pixel[0] = (int(r_s * n), int(g_s * n), int(b_s * n))
-                        self.pixel.write()
-                        await asyncio.sleep(self.neopixel_dt)
-                    self.pixel[0] = (0, 0, 0)  # defined off state after signal
+                # No longer coordinated via a shared asy_long_block_lock (see asy_ntp_client.py's
+                # own module docstring): that lock existed only to pause this animation while NTP's
+                # socket.getaddrinfo() blocked the event loop elsewhere. asy_ntp_client.py now
+                # resolves DNS through asy_dns_client.py's async resolver instead, which never
+                # blocks the loop in the first place - there is nothing left project-wide for this
+                # animation to coordinate against.
+                for n in range(1, steps + 1, 1):
+                    self.pixel[0] = (int(r_s * n), int(g_s * n), int(b_s * n))
                     self.pixel.write()
-                    self.start_signal_event.clear()
-                    if self.debug:
-                        print("Neopixel Long Block Lock released.")
+                    await asyncio.sleep(self.neopixel_dt)
+                for n in range(steps - 1, -1, -1):
+                    self.pixel[0] = (int(r_s * n), int(g_s * n), int(b_s * n))
+                    self.pixel.write()
+                    await asyncio.sleep(self.neopixel_dt)
+                self.pixel[0] = (0, 0, 0)  # defined off state after signal
+                self.pixel.write()
+                self.start_signal_event.clear()
             self.led_overl_start.set()  # restore last value
 
     async def airquality_auto_signal(self) -> None:

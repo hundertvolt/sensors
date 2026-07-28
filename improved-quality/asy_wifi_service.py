@@ -116,6 +116,11 @@ REST-route bound (still 1-63 there) is a separate, still-open mismatch outside t
 14 new tests (121 -> 135) close the last previously-untested orchestration gaps:
 `_reset_wlan_connect_state()` itself (the hotspot-preserving asymmetry above had no direct test) and
 `wlan_connect()`'s own phase-dispatch/reconnect-trigger-gating lines.
+
+`get_dns_server_ip()` (new, owner-requested alongside asy_ntp_client.py's DNS-resolution rework -
+see that file's own module docstring and BACKLOG.md) exposes the network's own DHCP-assigned DNS
+server so asy_ntp_client.py's async DNS resolver can use it instead of a hardcoded public resolver
+list, following the same shape/degradation convention as get_wlan_ifconfig() and network_available().
 """
 
 import asyncio
@@ -360,6 +365,14 @@ class asy_conn_time(SensorReaderConfig):
         if len(ifcfg) == 4:
             return ifcfg[0:4]
         return None
+
+    def get_dns_server_ip(self) -> str | None:
+        # asy_ntp_client.py's get_dns_server callback - the network's own DHCP-assigned DNS server,
+        # for asy_dns_client.py's resolve_ipv4() to try first (see BACKLOG.md). Reuses
+        # get_wlan_ifconfig()'s own observation-tier "None while mid-mode-switch or on a real
+        # ifconfig() failure" convention rather than duplicating it.
+        ifcfg = self.get_wlan_ifconfig()
+        return None if ifcfg is None else ifcfg[3]
 
     def get_wlan_rssi(self) -> int | None:
         if self.wifi_mode_lock.locked():

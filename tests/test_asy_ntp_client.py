@@ -79,7 +79,7 @@ def _tmp_cfg_dir() -> str:
 def make_client(
     wifi_mode_lock: "asyncio.Lock | None" = None,
     network_available: "Callable[[], bool] | None" = None,
-    asy_long_block_lock: "asyncio.Lock | None" = None,
+    get_dns_server: "Callable[[], str | None] | None" = None,
     max_i2c_err: int = 5,
     debug: "int | None" = None,
     cfg_path: "str | None" = None,
@@ -89,12 +89,14 @@ def make_client(
         wifi_mode_lock = asyncio.Lock()
     if network_available is None:
         network_available = lambda: True  # noqa: E731
+    if get_dns_server is None:
+        get_dns_server = lambda: None  # noqa: E731
     if cfg_path is None:
         cfg_path = _tmp_cfg_dir()
     return asy_ntp_client(
         wifi_mode_lock,
         network_available,
-        asy_long_block_lock,
+        get_dns_server,
         max_i2c_err=max_i2c_err,
         debug=debug,
         cfg_path=cfg_path,
@@ -142,24 +144,20 @@ def make_addr() -> "tuple[str, int]":
     return socket.getaddrinfo("127.0.0.1", _next_port)[0][-1]  # type: ignore[return-value]
 
 
+def make_port() -> int:
+    # A raw port int, sharing make_addr()'s own counter - needed wherever a test has to redirect
+    # _NTP_UDP_PORT (see FakeNtpServer below), since make_addr()'s own return value is opaque/
+    # non-indexable on this Unix port (the same reason it's never indexed into elsewhere in this file).
+    global _next_port
+    _next_port += 1
+    return _next_port
+
+
 # ---------------------------------------------------------------------------
 # __init__ - asy_ntp_client now extends base_classes.py's SensorReaderConfig: it owns its own
 # config_NTP.cfg file/schema internally (no externally-injected ConfigManager, no separate
 # get_default_cfg()/_DEFAULT_CONFIG merge step anymore - see DRIVER_SPEC.md/BACKLOG.md).
 # ---------------------------------------------------------------------------
-
-
-def test_init_creates_its_own_long_block_lock_when_none_given() -> None:
-    client = make_client(asy_long_block_lock=None)
-    lock = client.get_long_block_lock()
-    assert isinstance(lock, asyncio.Lock().__class__)
-    assert not lock.locked()
-
-
-def test_init_reuses_a_shared_long_block_lock_when_given() -> None:
-    shared = asyncio.Lock()
-    client = make_client(asy_long_block_lock=shared)
-    assert client.get_long_block_lock() is shared
 
 
 def test_init_never_synced_before_first_task_run() -> None:
@@ -627,77 +625,122 @@ def test_get_ntp_config_returns_none_when_config_manager_itself_is_invalid() -> 
 
 
 # ---------------------------------------------------------------------------
-# _resolve_ntp_server - the one deliberately-permitted blocking call in this file (see BACKLOG.md)
+# _resolve_ntp_server - now delegates to asy_dns_client.py's resolve_ipv4() (see that file's own
+# module docstring and BACKLOG.md); this file's own long_block_lock is gone entirely since
+# resolve_ipv4() never blocks the event loop the way socket.getaddrinfo() used to.
 # ---------------------------------------------------------------------------
 
 
-def test_resolve_ntp_server_success_returns_a_real_resolved_tuple() -> None:
-    # Same Unix-port-only quirk as test_asy_udp_socket.py's own make_addr(): getaddrinfo()'s
-    # resolved object is an opaque sockaddr bytearray here, not a real tuple[str, int] the way the
-    # real rp2 target returns it - only its existence matters to this test, not its shape.
+def test_resolve_ntp_server_literal_ip_returns_immediately() -> None:
+    # asy_dns_client.py's own resolve_ipv4() short-circuits a literal IPv4 address without any
+    # network I/O at all - proven at that layer already (tests/test_asy_dns_client.py); this just
+    # confirms the (ip, 123) tuple shape _resolve_ntp_server() wraps its result in.
     client = make_client()
     result = run(client._resolve_ntp_server("127.0.0.1"))
-    assert result is not None
+    assert result == ("127.0.0.1", 123)
 
 
-def test_resolve_ntp_server_releases_the_long_block_lock_on_success() -> None:
-    client = make_client()
-    run(client._resolve_ntp_server("127.0.0.1"))
-    assert not client.asy_long_block_lock.locked()
+class _RecordingResolver:
+    # Stands in for asy_dns_client.resolve_ipv4() itself - proves _resolve_ntp_server()'s own
+    # orchestration (callback wiring, tuple building, error handling) independent of resolve_ipv4()'s
+    # own real network behavior, which tests/test_asy_dns_client.py already covers exhaustively.
+    def __init__(self, return_value: "str | None") -> None:
+        self.calls: list[tuple[str, tuple[str, ...]]] = []
+        self.return_value = return_value
+
+    async def __call__(self, host: str, dns_servers: "tuple[str, ...]" = ()) -> "str | None":
+        self.calls.append((host, dns_servers))
+        return self.return_value
 
 
-class _RaisingSocketModule:
-    def getaddrinfo(self, host: "Any", port: "Any") -> "Any":
-        raise OSError("simulated DNS failure")
-
-
-def test_resolve_ntp_server_dns_failure_returns_none_and_releases_the_lock() -> None:
-    client = make_client()
-    original_socket = ntpmod.socket
-    ntpmod.socket = _RaisingSocketModule()  # deliberate monkeypatch
+def test_resolve_ntp_server_passes_the_dns_server_callbacks_result_through() -> None:
+    recorder = _RecordingResolver("9.9.9.9")
+    original = ntpmod.resolve_ipv4
+    ntpmod.resolve_ipv4 = recorder  # deliberate monkeypatch
     try:
-        result = run(client._resolve_ntp_server("bogus.invalid"))
-    finally:
-        ntpmod.socket = original_socket
-    assert result is None
-    assert not client.asy_long_block_lock.locked()
-
-
-def test_resolve_ntp_server_waits_for_the_long_block_lock_if_already_held() -> None:
-    # Proves the shared asy_long_block_lock (the whole point of BACKLOG.md's getaddrinfo()
-    # discussion) actually serializes a concurrent caller, not just that each call works alone.
-    client = make_client()
-
-    async def scenario() -> bool:
-        await client.asy_long_block_lock.acquire()
-        resolve_task = asyncio.create_task(client._resolve_ntp_server("127.0.0.1"))
-        await asyncio.sleep(0.05)
-        still_pending = not resolve_task.done()
-        client.asy_long_block_lock.release()
-        result = await resolve_task
-        return still_pending and result is not None
-
-    assert run(scenario())
-
-
-class _EmptyResultSocketModule:
-    def getaddrinfo(self, host: "Any", port: "Any") -> "Any":
-        return []  # a real resolver can legitimately return "no addresses" without raising
-
-
-def test_resolve_ntp_server_empty_getaddrinfo_result_returns_none() -> None:
-    # [][0] raises IndexError - not a "real" DNS failure, but still just a plain Exception subclass,
-    # so the same broad except Exception in _resolve_ntp_server already catches it; genuinely
-    # untested until now (see BACKLOG.md's third-pass findings).
-    client = make_client()
-    original_socket = ntpmod.socket
-    ntpmod.socket = _EmptyResultSocketModule()
-    try:
+        client = make_client(get_dns_server=lambda: "192.0.2.53")
         result = run(client._resolve_ntp_server("pool.ntp.org"))
     finally:
-        ntpmod.socket = original_socket
+        ntpmod.resolve_ipv4 = original
+    assert result == ("9.9.9.9", 123)
+    assert recorder.calls == [("pool.ntp.org", ("192.0.2.53",))]
+
+
+def test_resolve_ntp_server_get_dns_server_none_passes_an_empty_servers_tuple() -> None:
+    recorder = _RecordingResolver("9.9.9.9")
+    original = ntpmod.resolve_ipv4
+    ntpmod.resolve_ipv4 = recorder
+    try:
+        client = make_client(get_dns_server=lambda: None)
+        run(client._resolve_ntp_server("pool.ntp.org"))
+    finally:
+        ntpmod.resolve_ipv4 = original
+    assert recorder.calls == [("pool.ntp.org", ())]
+
+
+def test_resolve_ntp_server_get_dns_server_callback_raising_is_treated_as_none() -> None:
+    def raiser() -> "str | None":
+        raise RuntimeError("get_wlan_ifconfig() exploded")
+
+    recorder = _RecordingResolver("9.9.9.9")
+    original = ntpmod.resolve_ipv4
+    ntpmod.resolve_ipv4 = recorder
+    try:
+        client = make_client(get_dns_server=raiser)
+        result = run(client._resolve_ntp_server("pool.ntp.org"))
+    finally:
+        ntpmod.resolve_ipv4 = original
+    assert result == ("9.9.9.9", 123)  # resolution still proceeds, just with no server hint
+    assert recorder.calls == [("pool.ntp.org", ())]
+
+
+def test_resolve_ntp_server_get_dns_server_callback_raising_persists_a_warning() -> None:
+    def raiser() -> "str | None":
+        raise RuntimeError("get_wlan_ifconfig() exploded")
+
+    client = make_client(get_dns_server=raiser)
+    run(client.pr.setup())
+    run(client._resolve_ntp_server("127.0.0.1"))  # literal IP - resolve_ipv4() itself never touches the network
+    counter = run(client.get_error_counter())
+    assert counter["NTP"]["ErrNum"][-1] == 3
+    assert counter["NTP"]["ErrType"][-1] == "W"
+
+
+def test_resolve_ntp_server_dns_failure_returns_none() -> None:
+    recorder = _RecordingResolver(None)
+    original = ntpmod.resolve_ipv4
+    ntpmod.resolve_ipv4 = recorder
+    try:
+        client = make_client()
+        result = run(client._resolve_ntp_server("bogus.invalid"))
+    finally:
+        ntpmod.resolve_ipv4 = original
     assert result is None
-    assert not client.asy_long_block_lock.locked()
+
+
+def test_resolve_ntp_server_dns_failure_persists_an_error() -> None:
+    recorder = _RecordingResolver(None)
+    original = ntpmod.resolve_ipv4
+    ntpmod.resolve_ipv4 = recorder
+    try:
+        client = make_client()
+        run(client.pr.setup())
+        run(client._resolve_ntp_server("bogus.invalid"))
+    finally:
+        ntpmod.resolve_ipv4 = original
+    counter = run(client.get_error_counter())
+    assert counter["NTP"]["ErrNum"][-1] == 12
+    assert counter["NTP"]["ErrType"][-1] == "E"
+
+
+# No real-network end-to-end test through _resolve_ntp_server() itself: resolve_ipv4()'s `port`
+# parameter has no override here (real hardware always queries port 53, and _resolve_ntp_server()
+# doesn't expose a test-only knob for it) - binding a fake DNS peer to port 53 would need root and
+# would be genuinely environment-dependent (unlike every other loopback test in this suite, which
+# uses an arbitrary unprivileged port). The seam between the two files is already fully
+# characterized above (_RecordingResolver proves the exact arguments/return-value handling), and
+# resolve_ipv4()'s own real UDP behavior is exhaustively covered by tests/test_asy_dns_client.py -
+# together these prove the same thing a port-53 integration test would, without that fragility.
 
 
 # ---------------------------------------------------------------------------
@@ -1733,49 +1776,64 @@ def test_asy_ntp_time_recovers_the_streak_on_alternating_failure_and_success() -
 # ===========================================================================
 
 
-class _RedirectGetaddrinfo:
-    # _resolve_ntp_server() always resolves to real port 123 (socket.getaddrinfo(host, 123),
-    # hardcoded - the real NTP port) - binding a test server there needs root/CAP_NET_BIND_SERVICE,
-    # which CI runners don't have (confirmed directly: bind() raises EACCES there, even though it
-    # worked in a root dev sandbox). Redirects asy_ntp_client.py's own module-level `socket` name
-    # (not the real, shared `socket` module - same technique as _RaisingSocketModule above) so its
-    # one getaddrinfo() call resolves to a real, already-bound ephemeral-port address instead;
-    # AsyUDPSocket's own actual socket calls (a separate module's own `socket` import) are entirely
-    # unaffected, so the rest of the real send/receive path is still exercised for real.
-    def __init__(self, addr: "tuple[str, int]") -> None:
-        self._addr = addr
+class _RedirectNtpNetworking:
+    # Combines two Unix-port-only test workarounds needed only when driving the FULL asy_ntp_time()
+    # task end-to-end (not when calling _fetch_ntp_reply() etc. directly with an already-resolved
+    # addr, which every other test in this file already does - this must NOT be applied there, or
+    # indexing into an already-opaque object would itself break, confirmed directly):
+    # (1) _resolve_ntp_server() always returns _NTP_UDP_PORT (123, the real NTP port) alongside
+    #     whatever IP resolve_ipv4() resolved - binding a test server on the real port 123 needs
+    #     root/CAP_NET_BIND_SERVICE, which CI runners don't have (confirmed directly: bind() raises
+    #     EACCES there, even though it worked in a root dev sandbox). Redirected here to a real,
+    #     already-bound ephemeral port instead (see _NTP_UDP_PORT's own comment on why it's
+    #     deliberately not const()-wrapped, unlike every sibling constant in that file).
+    # (2) _resolve_ntp_server() now returns a plain (str, int) tuple - the correct, typed shape real
+    #     rp2 hardware's socket.connect() accepts directly (see asy_dns_client.py's own resolve_ipv4()
+    #     contract) - but this Unix-port "standard" build's connect() rejects that same plain tuple
+    #     (test_asy_udp_socket.py's own make_addr() comment, micropython/micropython#6924). Wraps
+    #     asy_ntp_client.py's own AsyUDPSocket import to pre-resolve it transparently, exactly like
+    #     tests/test_asy_dns_client.py's own _ResolvingAsyUDPSocket wrapper.
+    def __init__(self, port: int) -> None:
+        self._port = port
 
-    def __enter__(self) -> "_RedirectGetaddrinfo":
-        self._original = ntpmod.socket
-        addr = self._addr
+    def __enter__(self) -> "_RedirectNtpNetworking":
+        self._original_port = ntpmod._NTP_UDP_PORT
+        self._original_socket_cls = ntpmod.AsyUDPSocket
+        ntpmod._NTP_UDP_PORT = self._port
+        real_cls = self._original_socket_cls
 
-        class _Wrapper:
-            def getaddrinfo(self, _host: "Any", _port: "Any") -> "Any":
-                return [(2, 1, 0, "", addr)]
+        class _Resolving:
+            def __init__(self, addr: "Any", mode: str = "client", conn_tries: int = 1) -> None:
+                resolved = socket.getaddrinfo(addr[0], addr[1])[0][-1]
+                self._real = real_cls(resolved, mode=mode, conn_tries=conn_tries)
 
-        ntpmod.socket = _Wrapper()
+            def __getattr__(self, name: str) -> "Any":
+                return getattr(self._real, name)
+
+        ntpmod.AsyUDPSocket = _Resolving
         return self
 
     def __exit__(self, *exc_info: "Any") -> None:
-        ntpmod.socket = self._original
+        ntpmod._NTP_UDP_PORT = self._original_port
+        ntpmod.AsyUDPSocket = self._original_socket_cls
 
 
 class FakeNtpServer:
     # A genuine independent UDP endpoint (real socket.socket(), not an AsyUDPSocket) - staged to
     # answer with a controlled reply or drop the request entirely, the same "real peer, not a
     # mock" approach as test_asy_udp_socket.py's AdversarialPeer. Binds to a real, free ephemeral
-    # port (see _RedirectGetaddrinfo above for why not real port 123).
+    # port (see _RedirectNtpNetworking above for why not real port 123).
     def __init__(self) -> None:
-        self.addr = make_addr()
+        self.port = make_port()
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.sock.bind(self.addr)
+        self.sock.bind(socket.getaddrinfo("127.0.0.1", self.port)[0][-1])
         self.sock.setblocking(False)
         self.poller = select.poll()
         self.poller.register(self.sock, select.POLLIN)
 
-    def redirect_resolution(self) -> _RedirectGetaddrinfo:
-        return _RedirectGetaddrinfo(self.addr)
+    def redirect_resolution(self) -> _RedirectNtpNetworking:
+        return _RedirectNtpNetworking(self.port)
 
     async def serve_once(self, reply: "bytes | None") -> None:
         # Answers exactly one request with `reply` (None = drop it silently, never answer).

@@ -891,6 +891,107 @@ From hands-on field experience with deployed units:
   from bare pass-through coroutines to `try/except Exception: return False/None` — not verified
   whether the swallowed exception is still logged via `self.pr`, which would be a silent-failure
   risk if not.
+- **`asy_ntp_client.py`'s DNS resolution reworked from `socket.getaddrinfo()` to a new, from-scratch
+  async resolver (`src/asy_dns_client.py`), and the `async_connect.py`-pattern shared long-block lock
+  removed entirely from both files that used it** (owner-requested: replace `getaddrinfo()`,
+  inspired by but not copied from `github.com/vshymanskyy/aiodns`, then reassess whether the shared
+  lock is still needed).
+  - **`src/asy_dns_client.py`**: a new, typed, never-raising A-record-only async DNS client built on
+    this project's own `AsyUDPSocket` (already cooperative/poll-driven, never blocks the loop) rather
+    than a second hand-rolled non-blocking-socket implementation. Deliberately much narrower than
+    aiodns after studying its actual implementation in detail: IPv4/single-hostname-per-call only, no
+    cache, no mDNS — this project's networking is IPv4-only throughout (`asy_udp_socket.py`,
+    `captive_dns.py`) and the only caller resolves one already-rarely-changing hostname roughly once
+    per sync cycle (hours apart), so aiodns's IPv6/mDNS support and 32-entry LRU cache would be dead
+    weight here, not a feature being dropped by oversight. **Licensing**: aiodns is MIT-licensed
+    (`SPDX-FileCopyrightText: 2024 Volodymyr Shymanskyy`) — permits free reuse/modification with
+    attribution, no copyleft; the new file's own module docstring carries that attribution plus a
+    note that it's a from-scratch rewrite, not a port, satisfying the license without needing to
+    reproduce aiodns's own code verbatim anywhere. No further licensing concern identified.
+  - **Two real correctness gaps found in aiodns itself while studying it, fixed rather than carried
+    over** (not just "inspired by," per the owner's explicit "question if it is correct" instruction):
+    (1) `_build_dns_query()`'s precomputed `bytearray(17 + len(host))` is one byte short of what it
+    actually writes (hand-traced the exact offsets) — it only "works" because Python's bytearray
+    slice assignment silently grows the array when the assigned slice is longer than the target
+    range, a real if harmless correctness smell (relying on an incidental resize, not a correct size
+    calculation). `_build_query()` here computes the exact final size upfront instead (QNAME is
+    always `len(host) + 2` bytes on the wire, regardless of label count — each `"."` becomes a 1-byte
+    length prefix, one for one). (2) aiodns never checks the response's RCODE field at all — a
+    SERVFAIL/NXDOMAIN with a stale-but-nonzero ANCOUNT wouldn't be caught by its own answer-parsing
+    loop. `_parse_response()` here checks both QR (must be a response) and RCODE (must be 0) before
+    ever reading an answer.
+  - **Documented, accepted limitation carried over deliberately, not fixed**: like `captive_dns.py`'s
+    own existing DNS-parsing code, an answer record's name field is only handled when it's a bare
+    2-byte compression pointer (RFC 1035 §4.1.4) — the near-universal case for a straightforward
+    A-record answer, not a full label decompressor. Matches the owner's explicit "limitations are
+    acceptable as long as it works fine in most cases" — this project's real NTP hosts (`pool.ntp.org`
+    and similar) resolve this way in practice.
+  - **DNS server selection**: `asy_wifi_service.py` gained a new `get_dns_server_ip()` method
+    (mirrors `network_available()`'s own shape/degradation convention) exposing
+    `network.WLAN.ifconfig()`'s own DHCP-assigned DNS server (confirmed via current MicroPython
+    `network.WLAN.ifconfig()` docs: the 4-tuple's 4th element). `asy_ntp_client.py`'s constructor
+    gained a matching `get_dns_server` callback parameter, wired to it in `sensortask-wozi.py` —
+    `resolve_ipv4()` tries that server first, then falls back to a small hardcoded public-resolver
+    list (`8.8.8.8`, `1.1.1.1`), same rationale aiodns's own default list uses. A literal IPv4
+    `NTP_Host` (already supported via `getaddrinfo()`) is preserved via an explicit dotted-quad
+    short-circuit, so existing configs with a literal IP keep working unchanged.
+  - **Long-block lock removal, verified thoroughly before removing anything (owner's explicit
+    condition)**: traced every `asy_long_block_lock`/`get_long_block_lock()` reference across
+    `improved-quality/` before touching anything. Found exactly two real users: `asy_ntp_client.py`'s
+    own (now-removed) `socket.getaddrinfo()` call, and `neopixel_signal.py`'s LED-animation loop,
+    which only ever acquired the *same shared instance* to pause itself around that one real block —
+    it never had a blocking operation of its own to protect. `asy_wifi_service.py` had already dropped
+    the parameter entirely in an earlier promotion pass (confirmed via its own constructor signature —
+    it never held this lock at all in its current, promoted form). With `resolve_ipv4()` never
+    blocking the event loop (built entirely on `AsyUDPSocket`, which already yields throughout),
+    there is no longer a real blocking operation anywhere in `improved-quality/` for this shared lock
+    to coordinate against — removed the constructor parameter, field, and `get_long_block_lock()`
+    method from both `asy_ntp_client.py` and `neopixel_signal.py`, and the corresponding wiring
+    (`asy_long_block_lock=ntp.get_long_block_lock()`) from `sensortask-wozi.py`. **This does not
+    resolve, or foreclose, Open Question #13 below** (whether `config_manager.py`'s `write_config()`
+    separately needs long-block coordination for its own littlefs write) — that question is
+    independent of DNS resolution and remains exactly as open as before; if it's ever answered "yes,"
+    a fresh lock will need to be introduced at that time; nothing here should be read as having
+    already provided one.
+  - **A real MicroPython `const()` testability gotcha found and worked around, worth remembering
+    generally**: `const()`-wrapped values are inlined into the referencing bytecode at compile time
+    (confirmed directly, and already noted once before for `asy_wifi_service.py`'s own `_PHASE_*`
+    values — see `tests/test_asy_wifi_service.py`'s comment on why those are duplicated rather than
+    imported) — a test monkeypatching a `const()`-wrapped module attribute (e.g.
+    `mymodule._SOME_CONST = other_value`) silently has **zero effect** on code that reads that name,
+    since the reference was folded away before the module attribute could ever be reassigned. Hit
+    this concretely twice while writing this session's tests: `asy_dns_client.py`'s
+    `_FALLBACK_DNS_SERVERS` (needed to be redirectable to a loopback fake server so
+    `tests/test_asy_dns_client.py` never touches the real public internet) and
+    `asy_ntp_client.py`'s new `_NTP_UDP_PORT` (needed to be redirectable to a fake NTP server's
+    ephemeral port, since binding a real listener on the actual port 123 needs
+    root/`CAP_NET_BIND_SERVICE`, unavailable on CI runners — confirmed directly: works in this
+    session's own root sandbox, would fail elsewhere). Both are now deliberately plain (non-`const()`)
+    module-level assignments instead, each with a comment explaining why — the right trade-off
+    specifically because both are read at most once per sync attempt (hours apart), so skipping the
+    compile-time fold costs nothing performance-wise on the RP2040, unlike a `const()` read from a
+    tight/frequent loop elsewhere in these files.
+  - **A second, separate Unix-port-only test-environment quirk found and worked around** (unrelated
+    to the `const()` one above): this build's `select.poll().ipoll(0)` reports a freshly-registered,
+    idle socket as "ready" on every poll tick regardless of whether real data is pending — confirmed
+    directly by instrumenting a debug repro (almost certainly `POLLOUT`, a UDP socket's send buffer
+    being available, reported even though only `POLLIN` was registered for). Every new real-socket
+    test helper in `tests/test_asy_dns_client.py`/`tests/test_asy_ntp_client.py` checks the actual
+    returned event bitmask (`event & select.POLLIN`) before calling `recvfrom()`, exactly like
+    `asy_udp_socket.py`'s own `ready()` already does — not just `ipoll()`'s truthiness. Not a new
+    finding about `asy_udp_socket.py` itself (already correct); a reminder for any *future* test
+    helper written against a raw socket in this codebase to follow the same pattern.
+  - **Verification**: `tests/test_asy_dns_client.py` — new file, 28 tests (packet-building/parsing
+    unit tests plus real-loopback-UDP integration tests via a genuine independent fake DNS server,
+    mirroring `tests/test_asy_udp_socket.py`'s own `AdversarialPeer` convention — never mocks
+    `AsyUDPSocket` itself). `tests/test_asy_ntp_client.py` — the long-block-lock init tests removed,
+    a new `_resolve_ntp_server()` section added (`get_dns_server` callback wiring/failure handling,
+    delegation to `resolve_ipv4()`, literal-IP short-circuit), and the three existing full-task
+    integration tests (`test_integration_full_task_*`) updated to redirect `_NTP_UDP_PORT` and
+    pre-resolve `AsyUDPSocket`'s address (the same Unix-port-only workaround, scoped to only these
+    tests since every other test in the file already passes a pre-resolved addr directly).
+    `tests/test_asy_wifi_service.py` gains three new tests for `get_dns_server_ip()` (137 -> 140),
+    otherwise unaffected.
 
 ### Code structure / style patterns for the refactor
 
@@ -2704,7 +2805,13 @@ test additions; 42→56 is its fifth pass's mutation-bypass/concurrency/cancella
     cache-elimination redesign closed *that* concern. Whether a real RP2040 littlefs write of a
     small config file is fast enough not to matter is a hardware-timing question this dev
     environment can't verify — needs either a real-hardware measurement or an owner call on wiring
-    it in proactively.
+    it in proactively. **Note (unchanged by the DNS-resolution rework above)**: `asy_ntp_client.py`
+    and `neopixel_signal.py` no longer hold any shared long-block lock at all (removed once
+    `asy_ntp_client.py`'s own `socket.getaddrinfo()` — the lock's last real user — was replaced by
+    `asy_dns_client.py`'s non-blocking resolver). This question was never about that lock instance
+    specifically; it's still exactly as open as before, and answering it "yes" would mean
+    introducing a fresh lock for `write_config()` at that time, not reusing or resurrecting anything
+    removed here.
 *(Questions #2–7, #9, #10 were resolved during earlier sessions — SGP40 FRAM backup semantics,
 no external schematics exist, arzi/neu's static `AmbPres` is accepted, Adafruit-derived code is
 refactor-fair-game, `get_long_block_lock()` is now a general convention, `neu` reusing arzi's HTML

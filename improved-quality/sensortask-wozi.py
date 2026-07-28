@@ -81,7 +81,7 @@ cfgmgr = ConfigManager(
 conn = asy_conn_time(cfgmgr, conn_fail_to_hotspot=5, hotspot_time_min=8, debug=debug)
 # asy_ntp_client now owns its own config_NTP.cfg internally (base_classes.py's SensorReaderConfig),
 # so the system cfgmgr/get_default_cfg() merge above no longer covers it.
-ntp = asy_ntp_client(conn.get_wifi_mode_lock(), conn.network_available, debug=debug)
+ntp = asy_ntp_client(conn.get_wifi_mode_lock(), conn.network_available, conn.get_dns_server_ip, debug=debug)
 app = Microdot()  # type: ignore[no-untyped-call]
 i2c0 = asy_i2c_driver.I2C(0, 13, 12, frequency=50000)
 i2c1 = asy_i2c_driver.I2C(1, 19, 18, frequency=50000)
@@ -104,7 +104,6 @@ pixel = Neopixel_Signal(
     cfgmgr,
     airqual_meas_callback,
     ntp.cettime,
-    asy_long_block_lock=ntp.get_long_block_lock(),
     debug=debug,
 )
 conn.set_ext_led(pixel)  # callback for wifi led

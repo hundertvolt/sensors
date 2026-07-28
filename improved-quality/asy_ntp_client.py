@@ -21,10 +21,29 @@ asy_ntp_time()'s own comment. Every errno/wrnno this file assigns starts at 11, 
 calls them (both now called here), and 10 is the shared "initial setup failed" convention (DRIVER_
 SPEC.md section 7) which doesn't apply to this file (no protocol-layer setup() to fail) - skipped
 rather than reused for something else, to keep that convention meaningful project-wide.
+
+_resolve_ntp_server() no longer calls socket.getaddrinfo() - a real, synchronously-blocking call
+(see BACKLOG.md's original finding) - and consequently no longer needs async_connect.py's
+get_long_block_lock() coordination either. It now delegates to asy_dns_client.py's resolve_ipv4(),
+a from-scratch async DNS client (inspired by, not a port of, github.com/vshymanskyy/aiodns - see
+that file's own module docstring for the full comparison and licensing note) built on this
+project's own AsyUDPSocket, which already yields to the event loop throughout instead of blocking
+it. A new get_dns_server callback (asy_conn_time.get_dns_server_ip, mirroring the existing
+network_available callback's shape) supplies the network's own DHCP-assigned DNS server as the
+first server tried, falling back to public resolvers if it's unavailable. The asy_long_block_lock
+constructor parameter, field, and get_long_block_lock() method are removed entirely - this file was
+the shared lock's only real user (see BACKLOG.md); neopixel_signal.py's own use of the same lock
+(coordinating its LED animation against this file's block) is removed alongside it for the same
+reason, not left as now-pointless dead wiring. See BACKLOG.md for the full before/after design
+writeup, including why this doesn't resolve (or foreclose) the still-open question of whether
+config_manager.py's write_config() separately needs long-block coordination of its own.
+
+_resolve_ntp_server()'s returned port is now the module-level _NTP_UDP_PORT (still 123, unchanged
+behavior) rather than a bare literal - see that constant's own comment for why it's deliberately not
+const()-wrapped like every sibling constant here.
 """
 
 import asyncio
-import socket
 import struct
 import time
 from collections import namedtuple
@@ -33,6 +52,7 @@ from machine import RTC, Timer
 from micropython import const
 from uasyncio import Lock, ThreadSafeFlag
 
+from asy_dns_client import resolve_ipv4
 from asy_udp_socket import AsyUDPSocket
 from base_classes import SensorReaderConfig
 from config_manager import make_dict
@@ -53,6 +73,14 @@ _NTP_CHECK_INTERV = const(10)  # seconds to count for NTP status update
 _NTP_CONN_TIMEOUT = const(5000)  # 5s  to send request / receive an answer from NTP server
 _NTP_SYNC_RETRIES = const(3)  # try 3 times to connect to NTP server before stopping
 _NTP_RETRY_INTERV = const(15)  # wait 15 secs before retrying to sync
+
+_NTP_UDP_PORT = 123  # RFC 5905's standard NTP port. Deliberately NOT const()-wrapped, unlike every
+# other module-level constant here: MicroPython's const() inlines the literal at compile time
+# (confirmed directly - see asy_dns_client.py's own _FALLBACK_DNS_SERVERS for the same reasoning),
+# so tests/test_asy_ntp_client.py's real-network integration tests can redirect this to a fake NTP
+# server's own ephemeral port (binding a real listener on the actual port 123 needs root/
+# CAP_NET_BIND_SERVICE, which CI runners don't have). _resolve_ntp_server() reads this once per
+# sync attempt (hours apart), so skipping the const-fold costs nothing performance-wise here.
 
 _NTP_EPOCH_DELTA = const(2208988800)  # 1900 -> 1970, RFC 5905's NTP-to-Unix epoch conversion
 _NTP_ERA_SECONDS = const(4294967296)  # 2**32 - one full NTP era (the 32-bit seconds field wraps ~2036)
@@ -104,7 +132,7 @@ class asy_ntp_client(SensorReaderConfig):
         self,
         wifi_mode_lock: Lock,
         network_available: "Callable[[], bool]",
-        asy_long_block_lock: Lock | None = None,
+        get_dns_server: "Callable[[], str | None]",
         max_i2c_err: int = 5,
         cfg_path: str = "",
         fram: "AsyFramManager | None" = None,
@@ -124,12 +152,12 @@ class asy_ntp_client(SensorReaderConfig):
         )
         self.wifi_mode_lock = wifi_mode_lock  # shared with asy_conn_time - protects the WLAN state this class only reads
         self.network_available = network_available  # asy_conn_time.network_available - caller must hold wifi_mode_lock
+        self.get_dns_server = get_dns_server  # asy_conn_time.get_dns_server_ip - the network's own DHCP-assigned DNS server, or None
         self.ntp_sec_count = 0
         self.ntp_retries = 0
         self.ntp_sync_trigger_event = ThreadSafeFlag()
         self.ntp_timer_trigger_event = ThreadSafeFlag()
         self.time_counter_trigger_event = ThreadSafeFlag()
-        self.asy_long_block_lock = Lock() if asy_long_block_lock is None else asy_long_block_lock
         self.ntp_timer = Timer()
         self.ntp_retry_timer = Timer()
         self.counter_timer = Timer()
@@ -178,9 +206,6 @@ class asy_ntp_client(SensorReaderConfig):
 
     def get_timer_starters(self) -> "list[Callable[[], None]]":
         return [self.start_ntp_timer, self.start_counter_timer]
-
-    def get_long_block_lock(self) -> Lock:
-        return self.asy_long_block_lock
 
     def _now(self) -> int | None:
         try:
@@ -308,20 +333,17 @@ class asy_ntp_client(SensorReaderConfig):
         return ntp_host, ntp_offs
 
     async def _resolve_ntp_server(self, ntp_host: str) -> tuple[str, int] | None:
-        await self.asy_long_block_lock.acquire()  # getaddrinfo may block for some time - see BACKLOG.md
-        self.pr.all(_NAME, "Long block lock acquired.")
         try:
-            return socket.getaddrinfo(ntp_host, 123)[0][-1]
-        except Exception as e:
-            await self.pr.err_s(_NAME, "No valid NTP server:", e, errno=12)
+            dns_server = self.get_dns_server()
+        except Exception as e:  # caller-supplied callback (asy_conn_time) - could legitimately misbehave, same as network_available()
+            await self.pr.wrn_s(_NAME, "get_dns_server() callback failed:", e, wrnno=3)
+            dns_server = None
+        servers = () if dns_server is None else (dns_server,)
+        ip = await resolve_ipv4(ntp_host, servers)
+        if ip is None:
+            await self.pr.err_s(_NAME, "No valid NTP server:", ntp_host, errno=12)
             return None
-        finally:
-            await asyncio.sleep(0)
-            try:
-                self.asy_long_block_lock.release()
-            except RuntimeError:  # in case it's already released somehow
-                pass
-            self.pr.all(_NAME, "Long block lock released.")
+        return ip, _NTP_UDP_PORT
 
     async def _fetch_ntp_reply(self, addr: tuple[str, int]) -> bytes | None:
         try:
