@@ -35,6 +35,12 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
     return asyncio.run(coro)
 
 
+def _last_err(counter: "dict[str, dict[str, int | list[int] | list[str]]]", field: str) -> "int | str":
+    value = counter["NTP"][field]  # ErrNum/ErrType are list-shaped once _error_check() has run once
+    assert isinstance(value, list)
+    return value[-1]
+
+
 _TMP_DIR = "tests/_tmp"
 _next_dir = 0
 
@@ -188,8 +194,12 @@ def test_config_persists_across_a_fresh_client_instance_pointed_at_the_same_path
         f.write(_VALID_JSON)
     first = make_client(cfg_path=cfg_path)
     second = make_client(cfg_path=cfg_path)
-    first_host, _first_offs = run(first._get_ntp_config())
-    second_host, _second_offs = run(second._get_ntp_config())
+    first_cfg = run(first._get_ntp_config())
+    second_cfg = run(second._get_ntp_config())
+    assert first_cfg is not None
+    assert second_cfg is not None
+    first_host, _first_offs = first_cfg
+    second_host, _second_offs = second_cfg
     assert first_host == ["time.example.org"]
     assert second_host == ["time.example.org"]
 
@@ -197,8 +207,12 @@ def test_config_persists_across_a_fresh_client_instance_pointed_at_the_same_path
 def test_two_clients_with_different_cfg_paths_have_independent_configs() -> None:
     first = make_client_with_json(_VALID_JSON)
     second = make_client()  # fresh directory, defaults only
-    first_host, _first_offs = run(first._get_ntp_config())
-    second_host, _second_offs = run(second._get_ntp_config())
+    first_cfg = run(first._get_ntp_config())
+    second_cfg = run(second._get_ntp_config())
+    assert first_cfg is not None
+    assert second_cfg is not None
+    first_host, _first_offs = first_cfg
+    second_host, _second_offs = second_cfg
     assert first_host == ["time.example.org"]
     assert second_host == ["pool.ntp.org"]
 
@@ -369,7 +383,7 @@ class _RaisingTimeForNow:
 def test_now_returns_none_on_overflow_error() -> None:
     client = make_client()
     original_time = ntpmod.time
-    ntpmod.time = _RaisingTimeForNow(OverflowError("past rp2's ~2037 32-bit epoch range"))
+    ntpmod.time = _RaisingTimeForNow(OverflowError("past rp2's ~2037 32-bit epoch range"))  # type: ignore[assignment]
     try:
         result = client._now()
     finally:
@@ -380,7 +394,7 @@ def test_now_returns_none_on_overflow_error() -> None:
 def test_now_returns_none_on_os_error() -> None:
     client = make_client()
     original_time = ntpmod.time
-    ntpmod.time = _RaisingTimeForNow(OSError("simulated RTC read failure"))
+    ntpmod.time = _RaisingTimeForNow(OSError("simulated RTC read failure"))  # type: ignore[assignment]
     try:
         result = client._now()
     finally:
@@ -565,7 +579,9 @@ _VALID_JSON = (
 
 def test_get_ntp_config_returns_real_values_from_a_fully_valid_file() -> None:
     client = make_client_with_json(_VALID_JSON)
-    ntp_host, ntp_offs = run(client._get_ntp_config())
+    ntp_cfg = run(client._get_ntp_config())
+    assert ntp_cfg is not None
+    ntp_host, ntp_offs = ntp_cfg
     assert ntp_host == ["time.example.org"]
     assert ntp_offs == [5]
 
@@ -574,7 +590,9 @@ def test_get_ntp_config_single_invalid_field_falls_back_to_default_for_that_fiel
     # NTP_Host too short (min length 3) - falls back to its own default; NTP_Offset_S stays real.
     json_text = '{"NTP_Host": "ab", "NTP_Offset_S": 5, "NTP_Interv_H": 6, "GMTOffset": 7200, "DSTOffset": 3600}'
     client = make_client_with_json(json_text)
-    ntp_host, ntp_offs = run(client._get_ntp_config())
+    ntp_cfg = run(client._get_ntp_config())
+    assert ntp_cfg is not None
+    ntp_host, ntp_offs = ntp_cfg
     assert ntp_host == ["pool.ntp.org"]  # defaulted
     assert ntp_offs == [5]  # untouched
 
@@ -583,7 +601,9 @@ def test_get_ntp_config_multiple_invalid_fields_each_fall_back_independently() -
     # NTP_Host wrong type, NTP_Offset_S out of range (both invalid at once) - each defaults on its own.
     json_text = '{"NTP_Host": 12345, "NTP_Offset_S": 999999, "NTP_Interv_H": 6, "GMTOffset": 7200, "DSTOffset": 3600}'
     client = make_client_with_json(json_text)
-    ntp_host, ntp_offs = run(client._get_ntp_config())
+    ntp_cfg = run(client._get_ntp_config())
+    assert ntp_cfg is not None
+    ntp_host, ntp_offs = ntp_cfg
     assert ntp_host == ["pool.ntp.org"]
     assert ntp_offs == [0]
 
@@ -591,28 +611,36 @@ def test_get_ntp_config_multiple_invalid_fields_each_fall_back_independently() -
 def test_get_ntp_config_all_fields_invalid_falls_back_to_every_default() -> None:
     json_text = '{"NTP_Host": null, "NTP_Offset_S": "bad", "NTP_Interv_H": -5, "GMTOffset": "x", "DSTOffset": null}'
     client = make_client_with_json(json_text)
-    ntp_host, ntp_offs = run(client._get_ntp_config())
+    ntp_cfg = run(client._get_ntp_config())
+    assert ntp_cfg is not None
+    ntp_host, ntp_offs = ntp_cfg
     assert ntp_host == ["pool.ntp.org"]
     assert ntp_offs == [0]
 
 
 def test_get_ntp_config_missing_file_uses_every_default() -> None:
     client = make_client()  # fresh directory - no config_NTP.cfg written, so every default applies
-    ntp_host, ntp_offs = run(client._get_ntp_config())
+    ntp_cfg = run(client._get_ntp_config())
+    assert ntp_cfg is not None
+    ntp_host, ntp_offs = ntp_cfg
     assert ntp_host == ["pool.ntp.org"]
     assert ntp_offs == [0]
 
 
 def test_get_ntp_config_non_dict_json_uses_every_default() -> None:
     client = make_client_with_json("[1, 2, 3]")
-    ntp_host, ntp_offs = run(client._get_ntp_config())
+    ntp_cfg = run(client._get_ntp_config())
+    assert ntp_cfg is not None
+    ntp_host, ntp_offs = ntp_cfg
     assert ntp_host == ["pool.ntp.org"]
     assert ntp_offs == [0]
 
 
 def test_get_ntp_config_malformed_json_syntax_uses_every_default() -> None:
     client = make_client_with_json("{not json at all")
-    ntp_host, ntp_offs = run(client._get_ntp_config())
+    ntp_cfg = run(client._get_ntp_config())
+    assert ntp_cfg is not None
+    ntp_host, ntp_offs = ntp_cfg
     assert ntp_host == ["pool.ntp.org"]
     assert ntp_offs == [0]
 
@@ -658,8 +686,8 @@ def test_safe_get_dns_server_callback_raising_persists_a_warning() -> None:
     run(client.pr.setup())
     run(client._safe_get_dns_server())
     counter = run(client.get_error_counter())
-    assert counter["NTP"]["ErrNum"][-1] == 3
-    assert counter["NTP"]["ErrType"][-1] == "W"
+    assert _last_err(counter, "ErrNum") == 3
+    assert _last_err(counter, "ErrType") == "W"
 
 
 # ---------------------------------------------------------------------------
@@ -698,7 +726,7 @@ class _RecordingResolver:
 def test_resolve_ntp_server_passes_the_given_dns_server_through() -> None:
     recorder = _RecordingResolver("9.9.9.9")
     original = ntpmod.resolve_ipv4
-    ntpmod.resolve_ipv4 = recorder  # deliberate monkeypatch
+    ntpmod.resolve_ipv4 = recorder  # type: ignore[assignment]  # deliberate monkeypatch
     try:
         client = make_client()
         result = run(client._resolve_ntp_server("pool.ntp.org", "192.0.2.53"))
@@ -711,7 +739,7 @@ def test_resolve_ntp_server_passes_the_given_dns_server_through() -> None:
 def test_resolve_ntp_server_none_dns_server_passes_an_empty_servers_tuple() -> None:
     recorder = _RecordingResolver("9.9.9.9")
     original = ntpmod.resolve_ipv4
-    ntpmod.resolve_ipv4 = recorder
+    ntpmod.resolve_ipv4 = recorder  # type: ignore[assignment]
     try:
         client = make_client()
         run(client._resolve_ntp_server("pool.ntp.org", None))
@@ -726,7 +754,7 @@ def test_resolve_ntp_server_forwards_the_constructors_own_dns_timeout_and_tries(
     # asy_dns_client.py's own standalone defaults, and not hardcoded here either.
     recorder = _RecordingResolver("9.9.9.9")
     original = ntpmod.resolve_ipv4
-    ntpmod.resolve_ipv4 = recorder
+    ntpmod.resolve_ipv4 = recorder  # type: ignore[assignment]
     try:
         client = make_client(dns_timeout_ms=1234, dns_tries=3)
         run(client._resolve_ntp_server("pool.ntp.org", None))
@@ -738,7 +766,7 @@ def test_resolve_ntp_server_forwards_the_constructors_own_dns_timeout_and_tries(
 def test_resolve_ntp_server_dns_failure_returns_none() -> None:
     recorder = _RecordingResolver(None)
     original = ntpmod.resolve_ipv4
-    ntpmod.resolve_ipv4 = recorder
+    ntpmod.resolve_ipv4 = recorder  # type: ignore[assignment]
     try:
         client = make_client()
         result = run(client._resolve_ntp_server("bogus.invalid", None))
@@ -750,7 +778,7 @@ def test_resolve_ntp_server_dns_failure_returns_none() -> None:
 def test_resolve_ntp_server_dns_failure_persists_an_error() -> None:
     recorder = _RecordingResolver(None)
     original = ntpmod.resolve_ipv4
-    ntpmod.resolve_ipv4 = recorder
+    ntpmod.resolve_ipv4 = recorder  # type: ignore[assignment]
     try:
         client = make_client()
         run(client.pr.setup())
@@ -758,8 +786,8 @@ def test_resolve_ntp_server_dns_failure_persists_an_error() -> None:
     finally:
         ntpmod.resolve_ipv4 = original
     counter = run(client.get_error_counter())
-    assert counter["NTP"]["ErrNum"][-1] == 12
-    assert counter["NTP"]["ErrType"][-1] == "E"
+    assert _last_err(counter, "ErrNum") == 12
+    assert _last_err(counter, "ErrType") == "E"
 
 
 # No real-network end-to-end test through _resolve_ntp_server() itself: resolve_ipv4()'s `port`
@@ -779,7 +807,7 @@ def test_resolve_ntp_server_dns_failure_persists_an_error() -> None:
 
 def test_fetch_ntp_reply_invalid_addr_returns_none() -> None:
     client = make_client()
-    result = run(client._fetch_ntp_reply((12345, 80)))  # host not a str
+    result = run(client._fetch_ntp_reply((12345, 80)))  # type: ignore[arg-type]  # host not a str
     assert result is None
 
 
@@ -807,11 +835,11 @@ def test_fetch_ntp_reply_forwards_the_constructors_own_fetch_timeout() -> None:
     client = make_client(ntp_fetch_timeout_ms=9999)
     original = ntpmod.AsyUDPSocket
     _RecordingUDPSocket.calls = []
-    ntpmod.AsyUDPSocket = _RecordingUDPSocket
+    ntpmod.AsyUDPSocket = _RecordingUDPSocket  # type: ignore[assignment, misc]
     try:
         run(client._fetch_ntp_reply(("127.0.0.1", 123)))
     finally:
-        ntpmod.AsyUDPSocket = original
+        ntpmod.AsyUDPSocket = original  # type: ignore[misc]
     assert _RecordingUDPSocket.calls == [9999]
 
 
@@ -823,7 +851,7 @@ def test_fetch_ntp_reply_ipv6_shaped_four_tuple_addr_returns_none() -> None:
     # pipeline degrades to "no reply" instead of crashing on an unexpected address family, even
     # though this file never restricts getaddrinfo() to AF_INET (see BACKLOG.md's third-pass note).
     client = make_client()
-    result = run(client._fetch_ntp_reply(("2001:db8::1", 123, 0, 0)))
+    result = run(client._fetch_ntp_reply(("2001:db8::1", 123, 0, 0)))  # type: ignore[arg-type]
     assert result is None
 
 
@@ -964,7 +992,7 @@ def test_parse_ntp_reply_gmtime_overflow_returns_none_not_raise() -> None:
     client = make_client()
     msg = make_ntp_reply(int(time.time()))
     original_time = ntpmod.time
-    ntpmod.time = _OverflowingTime()  # deliberate monkeypatch
+    ntpmod.time = _OverflowingTime()  # type: ignore[assignment]  # deliberate monkeypatch
     try:
         result = run(client._parse_ntp_reply(msg, 0))
     finally:
@@ -1270,7 +1298,7 @@ def test_ntp_time_hours_counter_marks_out_of_sync_past_the_async_interval_multip
             await task
         except asyncio.CancelledError:
             pass
-        return synced  # type: ignore[no-any-return]  # client: Any, see note near line 476
+        return synced
 
     assert run(scenario()) is False
 
@@ -1300,7 +1328,7 @@ def test_ntp_time_hours_counter_never_naturally_reaches_the_async_interval_multi
             await task
         except asyncio.CancelledError:
             pass
-        return still_synced and sec_count_bounded  # type: ignore[no-any-return]  # client: Any, see note near line 476
+        return still_synced and sec_count_bounded
 
     assert run(scenario())
 
@@ -1382,7 +1410,7 @@ def test_cettime_returns_none_when_config_missing() -> None:
 
 def _run_cettime_with_fixed_now(client: asy_ntp_client, fixed_now: int, raise_exc: "Exception | None" = None) -> "Any":
     original_time = ntpmod.time
-    ntpmod.time = _FixedNowTime(fixed_now, raise_exc)
+    ntpmod.time = _FixedNowTime(fixed_now, raise_exc)  # type: ignore[assignment]
     try:
         return run(client.cettime())
     finally:
@@ -1461,7 +1489,7 @@ def test_time_counter_increments_while_synced() -> None:
             await task
         except asyncio.CancelledError:
             pass
-        return value  # type: ignore[no-any-return]  # client: Any, see note near line 476
+        return value
 
     assert run(scenario()) == 3
 
@@ -1478,7 +1506,7 @@ def test_time_counter_resets_to_none_while_not_synced() -> None:
             await task
         except asyncio.CancelledError:
             pass
-        return value  # type: ignore[no-any-return]  # client: Any, see note near line 476
+        return value
 
     assert run(scenario()) is None
 
@@ -1497,7 +1525,7 @@ def test_run_sync_attempt_network_unavailable_skips_everything_downstream() -> N
         reached[0] = True
         return None
 
-    client._get_ntp_config = fake_get_cfg
+    client._get_ntp_config = fake_get_cfg  # type: ignore[method-assign]
     run(client._run_ntp_sync_attempt(None))
     assert reached[0] is False
 
@@ -1513,7 +1541,7 @@ def test_run_sync_attempt_network_available_raising_is_treated_as_unavailable() 
         reached[0] = True
         return None
 
-    client._get_ntp_config = fake_get_cfg
+    client._get_ntp_config = fake_get_cfg  # type: ignore[method-assign]
     run(client._run_ntp_sync_attempt(None))  # must not raise
     assert reached[0] is False
 
@@ -1526,8 +1554,8 @@ def test_run_sync_attempt_network_available_raising_persists_a_warning() -> None
     run(client.pr.setup())
     run(client._run_ntp_sync_attempt(None))
     counter = run(client.get_error_counter())
-    assert counter["NTP"]["ErrNum"][-1] == 1
-    assert counter["NTP"]["ErrType"][-1] == "W"
+    assert _last_err(counter, "ErrNum") == 1
+    assert _last_err(counter, "ErrType") == "W"
 
 
 def test_run_sync_attempt_missing_config_marks_not_synced_and_returns() -> None:
@@ -1537,7 +1565,7 @@ def test_run_sync_attempt_missing_config_marks_not_synced_and_returns() -> None:
     async def fake_get_cfg() -> "Any":
         return None
 
-    client._get_ntp_config = fake_get_cfg
+    client._get_ntp_config = fake_get_cfg  # type: ignore[method-assign]
     run(client._run_ntp_sync_attempt(None))
     assert run(client.ntp_issynced()) is False
 
@@ -1555,9 +1583,9 @@ def test_run_sync_attempt_resolve_failure_calls_handle_failure() -> None:
     async def fake_handle_failure() -> None:
         handled[0] = True
 
-    client._get_ntp_config = fake_get_cfg
-    client._resolve_ntp_server = fake_resolve
-    client._handle_ntp_sync_failure = fake_handle_failure
+    client._get_ntp_config = fake_get_cfg  # type: ignore[method-assign]
+    client._resolve_ntp_server = fake_resolve  # type: ignore[assignment, method-assign]
+    client._handle_ntp_sync_failure = fake_handle_failure  # type: ignore[method-assign]
     run(client._run_ntp_sync_attempt(None))
     assert handled[0] is True
 
@@ -1576,8 +1604,8 @@ def test_run_sync_attempt_passes_the_given_dns_server_to_resolve_ntp_server() ->
         received.append(dns_server)
         return None
 
-    client._get_ntp_config = fake_get_cfg
-    client._resolve_ntp_server = fake_resolve
+    client._get_ntp_config = fake_get_cfg  # type: ignore[method-assign]
+    client._resolve_ntp_server = fake_resolve  # type: ignore[assignment, method-assign]
     run(client._run_ntp_sync_attempt("203.0.113.53"))
     assert received == ["203.0.113.53"]
 
@@ -1598,10 +1626,10 @@ def test_run_sync_attempt_fetch_failure_calls_handle_failure() -> None:
     async def fake_handle_failure() -> None:
         handled[0] = True
 
-    client._get_ntp_config = fake_get_cfg
-    client._resolve_ntp_server = fake_resolve
-    client._fetch_ntp_reply = fake_fetch
-    client._handle_ntp_sync_failure = fake_handle_failure
+    client._get_ntp_config = fake_get_cfg  # type: ignore[method-assign]
+    client._resolve_ntp_server = fake_resolve  # type: ignore[assignment, method-assign]
+    client._fetch_ntp_reply = fake_fetch  # type: ignore[assignment, method-assign]
+    client._handle_ntp_sync_failure = fake_handle_failure  # type: ignore[method-assign]
     run(client._run_ntp_sync_attempt(None))
     assert handled[0] is True
 
@@ -1625,11 +1653,11 @@ def test_run_sync_attempt_parse_failure_calls_handle_failure() -> None:
     async def fake_handle_failure() -> None:
         handled[0] = True
 
-    client._get_ntp_config = fake_get_cfg
-    client._resolve_ntp_server = fake_resolve
-    client._fetch_ntp_reply = fake_fetch
-    client._parse_ntp_reply = fake_parse
-    client._handle_ntp_sync_failure = fake_handle_failure
+    client._get_ntp_config = fake_get_cfg  # type: ignore[method-assign]
+    client._resolve_ntp_server = fake_resolve  # type: ignore[assignment, method-assign]
+    client._fetch_ntp_reply = fake_fetch  # type: ignore[assignment, method-assign]
+    client._parse_ntp_reply = fake_parse  # type: ignore[assignment, method-assign]
+    client._handle_ntp_sync_failure = fake_handle_failure  # type: ignore[method-assign]
     run(client._run_ntp_sync_attempt(None))
     assert handled[0] is True
 
@@ -1654,11 +1682,11 @@ def test_run_sync_attempt_success_calls_handle_success_with_the_parsed_time() ->
     async def fake_handle_success(tm: "Any") -> None:
         handled_with.append(tm)
 
-    client._get_ntp_config = fake_get_cfg
-    client._resolve_ntp_server = fake_resolve
-    client._fetch_ntp_reply = fake_fetch
-    client._parse_ntp_reply = fake_parse
-    client._handle_ntp_sync_success = fake_handle_success
+    client._get_ntp_config = fake_get_cfg  # type: ignore[method-assign]
+    client._resolve_ntp_server = fake_resolve  # type: ignore[assignment, method-assign]
+    client._fetch_ntp_reply = fake_fetch  # type: ignore[assignment, method-assign]
+    client._parse_ntp_reply = fake_parse  # type: ignore[assignment, method-assign]
+    client._handle_ntp_sync_success = fake_handle_success  # type: ignore[method-assign]
     run(client._run_ntp_sync_attempt(None))
     assert handled_with == [parsed_tm]
 
@@ -1679,7 +1707,7 @@ def test_asy_ntp_time_runs_one_attempt_per_trigger_and_releases_the_wifi_lock() 
         attempts[0] += 1
         return None, True
 
-    client._run_ntp_sync_attempt = fake_attempt
+    client._run_ntp_sync_attempt = fake_attempt  # type: ignore[assignment, method-assign]
 
     async def scenario() -> int:
         task = asyncio.create_task(client.asy_ntp_time())
@@ -1706,7 +1734,7 @@ def test_asy_ntp_time_releases_the_wifi_lock_even_if_the_attempt_raises() -> Non
     async def raising_attempt(_dns_server: "Any") -> "Any":
         raise RuntimeError("simulated bug downstream")
 
-    client._run_ntp_sync_attempt = raising_attempt
+    client._run_ntp_sync_attempt = raising_attempt  # type: ignore[assignment, method-assign]
 
     async def scenario() -> bool:
         task = asyncio.create_task(client.asy_ntp_time())
@@ -1738,7 +1766,7 @@ def test_asy_ntp_time_calls_pr_setup_before_entering_its_loop() -> None:
             await task
         except asyncio.CancelledError:
             pass
-        return initialized  # type: ignore[no-any-return]  # client: Any, see note near line 476
+        return initialized
 
     assert run(scenario()) is True
 
@@ -1757,7 +1785,7 @@ def test_asy_ntp_time_resets_err_cnt_internal_at_the_start_of_every_run() -> Non
             await task
         except asyncio.CancelledError:
             pass
-        return streak  # type: ignore[no-any-return]  # client: Any, see note near line 476
+        return streak
 
     assert run(scenario()) == 0
 
@@ -1771,7 +1799,7 @@ def test_asy_ntp_time_gives_up_after_repeated_sync_failures_and_persists_errno_2
     async def failing_attempt(_dns_server: "Any") -> "Any":
         return None, True  # network was available, but the attempt itself still failed
 
-    client._run_ntp_sync_attempt = failing_attempt
+    client._run_ntp_sync_attempt = failing_attempt  # type: ignore[assignment, method-assign]
 
     async def scenario() -> "Any":
         task = asyncio.create_task(client.asy_ntp_time())
@@ -1783,8 +1811,8 @@ def test_asy_ntp_time_gives_up_after_repeated_sync_failures_and_persists_errno_2
         return await client.get_error_counter()
 
     counter = run(scenario())
-    assert counter["NTP"]["ErrNum"][-1] == 20
-    assert counter["NTP"]["ErrType"][-1] == "E"
+    assert _last_err(counter, "ErrNum") == 20
+    assert _last_err(counter, "ErrType") == "E"
 
 
 def test_asy_ntp_time_network_unavailable_cycles_never_count_toward_giving_up() -> None:
@@ -1796,7 +1824,7 @@ def test_asy_ntp_time_network_unavailable_cycles_never_count_toward_giving_up() 
     async def unavailable_attempt(_dns_server: "Any") -> "Any":
         return None, False  # network not available - condition=False, must not count as a real failure
 
-    client._run_ntp_sync_attempt = unavailable_attempt
+    client._run_ntp_sync_attempt = unavailable_attempt  # type: ignore[assignment, method-assign]
 
     async def scenario() -> bool:
         task = asyncio.create_task(client.asy_ntp_time())
@@ -1829,7 +1857,7 @@ def test_asy_ntp_time_recovers_the_streak_on_alternating_failure_and_success() -
         toggle[0] = True
         return (2026, 1, 1, 0, 0, 0, 0, 0), True  # success
 
-    client._run_ntp_sync_attempt = alternating_attempt
+    client._run_ntp_sync_attempt = alternating_attempt  # type: ignore[assignment, method-assign]
 
     async def scenario() -> bool:
         task = asyncio.create_task(client.asy_ntp_time())
@@ -1885,17 +1913,17 @@ class _RedirectNtpNetworking:
         class _Resolving:
             def __init__(self, addr: "Any", mode: str = "client", conn_tries: int = 1) -> None:
                 resolved = socket.getaddrinfo(addr[0], addr[1])[0][-1]
-                self._real = real_cls(resolved, mode=mode, conn_tries=conn_tries)
+                self._real = real_cls(resolved, mode=mode, conn_tries=conn_tries)  # type: ignore[arg-type]
 
             def __getattr__(self, name: str) -> "Any":
                 return getattr(self._real, name)
 
-        ntpmod.AsyUDPSocket = _Resolving
+        ntpmod.AsyUDPSocket = _Resolving  # type: ignore[assignment, misc]
         return self
 
     def __exit__(self, *exc_info: "Any") -> None:
         ntpmod._NTP_UDP_PORT = self._original_port
-        ntpmod.AsyUDPSocket = self._original_socket_cls
+        ntpmod.AsyUDPSocket = self._original_socket_cls  # type: ignore[misc]
 
 
 class FakeNtpServer:
@@ -1986,7 +2014,7 @@ def test_integration_full_task_stays_not_synced_when_nobody_answers() -> None:
             await task
         except asyncio.CancelledError:
             pass
-        return synced  # type: ignore[no-any-return]  # client: Any, see note near line 476
+        return synced
 
     assert run(scenario()) is False
 
@@ -2010,7 +2038,7 @@ def test_integration_full_task_stays_not_synced_on_a_malformed_reply() -> None:
                     await task
                 except asyncio.CancelledError:
                     pass
-                return synced  # type: ignore[no-any-return]  # client: Any, see note near line 476
+                return synced
         finally:
             server.close()
 
@@ -2063,7 +2091,7 @@ def test_integration_recovers_on_retry_after_one_dropped_request() -> None:
                     await task
                 except asyncio.CancelledError:
                     pass
-                return synced  # type: ignore[no-any-return]  # client: Any, see note near line 476
+                return synced
         finally:
             server.close()
 

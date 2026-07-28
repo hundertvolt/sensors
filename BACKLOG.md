@@ -2806,6 +2806,46 @@ runner's `MICROPYPATH` (blurs the "tests only exercise `src/`" boundary `tests/R
 establishes), or leave `asy_wifi_service.py` staged until `captive_dns.py` is promoted. Flagged here
 rather than decided unilaterally.
 
+**CI's own `lint-and-typecheck` job went red on push, exposing 87 real, pre-existing type errors
+this session's own local verification had missed.** CI runs `scripts/typecheck.sh src tests` — a
+narrower scope than `pyproject.toml`'s own `files=["improved-quality","src","tests"]` default,
+overridden by CI's own positional args (see `scripts/typecheck.sh`'s own comment). Before this
+promotion, `asy_ntp_client.py` didn't exist under that narrower scope at all, so
+`tests/test_asy_ntp_client.py`'s own `from asy_ntp_client import asy_ntp_client` was suppressed via
+`# type: ignore[import-not-found]`, typing every `client.*` call as `Any` and skipping real
+type-checking on it entirely under CI's own gate — even though the *same* 78 errors already existed
+under this session's own full-scope local runs the whole time (confirmed directly: reproduced
+against the pre-promotion commit with a `git worktree`), just never surfaced because full scope
+was never what CI actually gates on. Moving the file into `src/` made it resolve under CI's own
+narrower scope too, revealing these as genuine, always-latent bugs in the test file's own typing —
+not new bugs, not a regression from the move itself, just newly checked for the first time. Fixed
+all 87 (plus dropped 9 now-genuinely-unused `# type: ignore[no-any-return]` comments left over from
+the same historical `Any`-typing): `_get_ntp_config()`'s `tuple | None` return unpacked directly
+without narrowing (~11 sites) — added `assert ... is not None` before unpacking, matching
+`tests/test_asy_wifi_service.py`'s own established idiom for this exact shape, rather than a
+blanket ignore. `get_error_counter()`'s `int | list[int] | list[str]` union indexed directly
+(~8 sites, both files) — added a small `_last_err()` helper (`tests/test_asy_ntp_client.py`) doing
+the `isinstance(..., list)` narrow once, reused at every call site; `test_ntp_wifi_dns_integration.py`
+inlines the same narrow once for its own single two-site usage. Method/module monkeypatching
+(`client._foo = fake_foo`, `ntpmod.time = ...`, `ntpmod.AsyUDPSocket = ...`, ~55 sites combined) and
+deliberately-malformed test inputs (~6 sites) — per-site `# type: ignore[method-assign]`/
+`[assignment]`/`[misc]`/`[arg-type]`, matching `tests/test_asy_udp_socket.py`'s own already-clean
+precedent for the identical pattern. **One real gotcha found while doing this**: mypy does not
+recognize a `# type: ignore[...]` comment placed *after* another `# explanatory comment` on the
+same line — confirmed directly with a minimal repro — so the ignore must always come first,
+explanation after (`# type: ignore[assignment]  # deliberate monkeypatch`, not the reverse). Three
+sites had the reversed order at first and were silently still failing; caught by re-running mypy
+rather than assuming the first pass was clean. Verified: CI's own exact `mypy src tests` invocation
+now clean (`Success: no issues found in 33 source files`), full-scope `mypy` dropped from 368 to
+271 (same 87 fixes, this time visible under full scope too, since it was never scope-limited to
+begin with), `ruff check` unchanged (220), `scripts/test.sh` unchanged (16/16 files, 1048 tests) —
+the `assert`/helper-based fixes are typing-only, no behavior change. The four remaining full-scope-
+only findings in `test_ntp_wifi_dns_integration.py` (one now-unused-under-full-scope `# type:
+ignore[import-not-found]` plus three `"WLAN" has no attribute ..."` errors) are the same
+already-documented scope-difference noise from `asy_wifi_service.py` not being promoted (see
+`pyproject.toml`'s own `tests/network.py`-exclude comment and this file's earlier "full-scope mypy
+shows +25 findings" note) — pre-existing, not a regression, and invisible to CI's own actual gate.
+
 #### `captive_dns.py` (`improved-quality/`, not promoted): source-subnet filtering fix
 
 Owner-directed follow-up to the `asy_udp_socket.py` sixth pass's two remaining open items: the real-

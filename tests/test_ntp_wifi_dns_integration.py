@@ -161,7 +161,7 @@ def test_dns_server_ip_flows_from_a_connected_real_wifi_service_into_resolve_ipv
     ntp = make_ntp(conn, "pool.ntp.org")
     recorder = _RecordingResolver("9.9.9.9")
     original = ntpmod.resolve_ipv4
-    ntpmod.resolve_ipv4 = recorder  # deliberate monkeypatch, same as test_asy_ntp_client.py's own
+    ntpmod.resolve_ipv4 = recorder  # type: ignore[assignment]  # deliberate monkeypatch, same as test_asy_ntp_client.py's own
     try:
 
         async def scenario() -> None:
@@ -188,7 +188,7 @@ def test_dns_server_ip_unset_sentinel_flows_through_a_real_never_configured_wifi
     ntp = make_ntp(conn, "pool.ntp.org")
     recorder = _RecordingResolver("9.9.9.9")
     original = ntpmod.resolve_ipv4
-    ntpmod.resolve_ipv4 = recorder
+    ntpmod.resolve_ipv4 = recorder  # type: ignore[assignment]
     try:
 
         async def scenario() -> None:
@@ -295,17 +295,17 @@ class _RedirectNtpNetworking:
         class _Resolving:
             def __init__(self, addr: "Any", mode: str = "client", conn_tries: int = 1) -> None:
                 resolved = socket.getaddrinfo(addr[0], addr[1])[0][-1]
-                self._real = real_cls(resolved, mode=mode, conn_tries=conn_tries)
+                self._real = real_cls(resolved, mode=mode, conn_tries=conn_tries)  # type: ignore[arg-type]
 
             def __getattr__(self, name: str) -> "Any":
                 return getattr(self._real, name)
 
-        ntpmod.AsyUDPSocket = _Resolving
+        ntpmod.AsyUDPSocket = _Resolving  # type: ignore[assignment, misc]
         return self
 
     def __exit__(self, *exc_info: "Any") -> None:
         ntpmod._NTP_UDP_PORT = self._original_port
-        ntpmod.AsyUDPSocket = self._original_socket_cls
+        ntpmod.AsyUDPSocket = self._original_socket_cls  # type: ignore[misc]
 
 
 class FakeNtpServer:
@@ -392,7 +392,7 @@ def test_full_chain_stays_unsynced_when_the_real_wifi_service_reports_network_un
         await _tick(ntp.ntp_sync_trigger_event, 1)
         synced = await ntp.ntp_issynced()
         await _cancel(task)
-        return synced  # type: ignore[no-any-return]
+        return synced
 
     assert run(scenario()) is False
 
@@ -425,8 +425,10 @@ def test_dns_resolution_totally_unreachable_through_the_real_chain_persists_errn
     # index -1, not -2, is base_classes.py's own _error_check() streak-counter log (errno=1, "Fehlerzähler
     # erhöht auf") - it always logs once more right after a failed attempt, on top of this file's own
     # errno=12 "No valid NTP server" - see that method's own comment in base_classes.py.
-    assert counter["NTP"]["ErrNum"][-2] == 12
-    assert counter["NTP"]["ErrType"][-2] == "E"
+    err_num, err_type = counter["NTP"]["ErrNum"], counter["NTP"]["ErrType"]
+    assert isinstance(err_num, list) and isinstance(err_type, list)
+    assert err_num[-2] == 12
+    assert err_type[-2] == "E"
 
 
 if __name__ == "__main__":
