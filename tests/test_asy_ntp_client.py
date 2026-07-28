@@ -1,7 +1,3 @@
-import sys
-
-sys.path.insert(0, "improved-quality")  # not yet promoted to src/ - see CLAUDE.md
-
 import asyncio
 import os
 import select
@@ -9,16 +5,13 @@ import socket
 import struct
 import time
 
-# improved-quality/ isn't on mypy_path (only src/typings are - see pyproject.toml) since it's
-# still WIP, not yet promoted; every asy_ntp_client-typed value below is consequently Any, not a
-# real gap being masked.
-import asy_ntp_client as ntpmod  # type: ignore[import-not-found]
 from _fram_chip_fake import FakeMB85RS64V
-from asy_ntp_client import asy_ntp_client
 from machine import RTC, Timer
 
+import asy_ntp_client as ntpmod
 import asy_spi_driver
 from asy_fram_manager import AsyFramManager
+from asy_ntp_client import asy_ntp_client
 from print_log import PrintLogHistoryStore
 
 # Same one-process-per-test-file swap as test_base_classes.py/test_asy_fram_driver.py/
@@ -877,8 +870,7 @@ def test_fetch_ntp_reply_real_round_trip_returns_the_exact_reply_bytes() -> None
         # yield the request could race ahead of the responder's own bind() (confirmed directly).
         msg = await client._fetch_ntp_reply(addr)
         await responder_task
-        return msg  # type: ignore[no-any-return]  # client: Any - asy_ntp_client.py isn't on
-        # mypy_path yet (still WIP in improved-quality/, not promoted to src/ - see CLAUDE.md)
+        return msg
 
     assert run(scenario()) == reply
 

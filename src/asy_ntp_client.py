@@ -18,7 +18,6 @@ from collections import namedtuple
 
 from machine import RTC, Timer
 from micropython import const
-from uasyncio import Lock, ThreadSafeFlag
 
 from asy_dns_client import resolve_ipv4
 from asy_udp_socket import AsyUDPSocket
@@ -74,7 +73,7 @@ GMTimeStruct = namedtuple("GMTimeStruct", ("year", "month", "mday", "hour", "min
 class asy_ntp_client(SensorReaderConfig):
     def __init__(
         self,
-        wifi_mode_lock: Lock,
+        wifi_mode_lock: asyncio.Lock,
         network_available: "Callable[[], bool]",
         get_dns_server: "Callable[[], str | None]",
         max_i2c_err: int = 5,
@@ -107,9 +106,9 @@ class asy_ntp_client(SensorReaderConfig):
         self.ntp_fetch_timeout_ms = ntp_fetch_timeout_ms
         self.ntp_sec_count = 0
         self.ntp_retries = 0
-        self.ntp_sync_trigger_event = ThreadSafeFlag()
-        self.ntp_timer_trigger_event = ThreadSafeFlag()
-        self.time_counter_trigger_event = ThreadSafeFlag()
+        self.ntp_sync_trigger_event = asyncio.ThreadSafeFlag()
+        self.ntp_timer_trigger_event = asyncio.ThreadSafeFlag()
+        self.time_counter_trigger_event = asyncio.ThreadSafeFlag()
         self.ntp_timer = Timer()
         self.ntp_retry_timer = Timer()
         self.counter_timer = Timer()

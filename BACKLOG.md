@@ -140,9 +140,9 @@ From hands-on field experience with deployed units:
     core (`_thread`) implementation, or any other mechanism that actually removes the blocking
     call rather than just bounding/hiding it. Don't treat the current state as permanently accepted
     risk just because today's options (accept the block, or the architecture change flagged above)
-    are both unattractive — re-check this whenever `improved-quality/asy_ntp_client.py` (or any
-    other caller) is touched again, the same way "check against current MicroPython" is already a
-    standing per-file re-check in `src/README.md`.
+    are both unattractive — re-check this whenever `src/asy_ntp_client.py` (or any other caller) is
+    touched again, the same way "check against current MicroPython" is already a standing per-file
+    re-check in `src/README.md`.
   - **Second full exception/blocking audit of `asy_ntp_client.py` (owner-requested, after the
     `config_manager` migration above) found three real gaps, all fixed in the same session**: (1)
     `cettime()`'s `time.mktime()`/`time.gmtime()` calls for the DST-boundary calculation were
@@ -2779,6 +2779,33 @@ values (`None`, a `str`, a `list`). Re-verified: full-scope `scripts/lint.sh`/`s
 still unchanged (219/129), 62/62 passing here, zero regressions across the rest of `tests/`
 (`scripts/test.sh`, all 12 files green, 752 tests total).
 
+### `asy_ntp_client.py` → `src/`
+
+Promoted once this session's own wifi/ntp/dns audit rounds (see the "three-file integration"
+narrative above) closed the one remaining `src/README.md` checklist gap: `from uasyncio import
+Lock, ThreadSafeFlag` was still the old-style import, unlike every other already-promoted file
+(`base_classes.py`/`system_service.py` had already switched to `asyncio.Lock`/
+`asyncio.ThreadSafeFlag` — confirmed the same underlying classes under two import names). Fixed,
+then moved; `tests/test_asy_ntp_client.py`/`tests/test_ntp_wifi_dns_integration.py`'s
+`sys.path.insert(0, "improved-quality")` workaround and its `# type: ignore[import-not-found]`
+dropped for this file now that it resolves via `mypy_path` instead of typing as `Any`. Verified:
+`ruff check` unchanged (220), full-scope `mypy` improved 371→368 (the dropped `type: ignore`s were
+masking real type resolution, not suppressing genuine errors), `scripts/test.sh` unchanged (16/16
+files, 1048 tests).
+
+**`asy_wifi_service.py` stays in `improved-quality/` — a real blocker, not an oversight.** The same
+`uasyncio` fix is applied (harmless either way, kept), but `import captive_dns` (its hotspot DNS
+server) genuinely fails once moved: `captive_dns.py` is itself not promoted — see its own two fix
+entries just below, both verified via throwaway scratchpad scripts rather than a real test suite or
+a full checklist pass — and `improved-quality/` isn't on `scripts/test.sh`'s own
+`MICROPYPATH="src:tests:.frozen"`. Found by actually running `scripts/test.sh` after moving the
+file (`ImportError: no module named 'captive_dns'` in `test_asy_wifi_service.py`/
+`test_ntp_wifi_dns_integration.py`), not assumed. Resolving it needs an owner decision, not a guess:
+promote `captive_dns.py` too (its own separate checklist pass), add `improved-quality` to the test
+runner's `MICROPYPATH` (blurs the "tests only exercise `src/`" boundary `tests/README.md`
+establishes), or leave `asy_wifi_service.py` staged until `captive_dns.py` is promoted. Flagged here
+rather than decided unilaterally.
+
 #### `captive_dns.py` (`improved-quality/`, not promoted): source-subnet filtering fix
 
 Owner-directed follow-up to the `asy_udp_socket.py` sixth pass's two remaining open items: the real-
@@ -2897,11 +2924,12 @@ and a missing config file failing independently without either derailing the oth
 `math_helpers.py` 45, `crc_checks.py` 66, `asy_i2c_driver.py` 77, `asy_spi_driver.py` 43,
 `base_classes.py` 70, `config_manager.py` 140, `print_log.py` 46, `asy_fram_driver.py` 46,
 `asy_fram_manager.py` 89, `test_fram_integration.py` 10, `system_service.py` 58,
-`asy_udp_socket.py` 62 — **752 total**. (Previous count of 690 across 11 files predated
-`asy_udp_socket.py`'s promotion and was never updated to include it — corrected during its
-third pass; the 23→42 jump was its fourth pass's uncaught-exception/configuration/integration
-test additions; 42→56 is its fifth pass's mutation-bypass/concurrency/cancellation-safety tests;
-56→62 is its sixth pass's ready()/write_and_recvfrom() parameter-guard tests.)
+`asy_udp_socket.py` 62, `asy_dns_client.py` 29, `asy_ntp_client.py` 119 — **900 total**. (Previous
+count of 752 across 12 files predated `asy_dns_client.py`'s from-scratch `src/` design and
+`asy_ntp_client.py`'s own promotion above, neither yet folded in.) This list only tracks each
+promoted file's own dedicated `tests/test_*.py` suite, not the full project-wide `scripts/test.sh`
+total (1048 across all 16 files, including `improved-quality/`-scoped suites like
+`test_asy_wifi_service.py` and the cross-file `test_ntp_wifi_dns_integration.py`).
 
 ## Decided for the refactor
 

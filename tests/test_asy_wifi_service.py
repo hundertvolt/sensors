@@ -1,6 +1,6 @@
 import sys
 
-sys.path.insert(0, "improved-quality")  # not yet promoted to src/ - see CLAUDE.md
+sys.path.insert(0, "improved-quality")  # not yet promoted to src/ - see BACKLOG.md's captive_dns.py finding
 
 import asyncio
 import os

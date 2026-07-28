@@ -21,7 +21,6 @@ import network
 from captive_dns import DNSServer
 from machine import Pin, Timer
 from micropython import const
-from uasyncio import Lock, ThreadSafeFlag
 
 from base_classes import LockedCounter, SensorReaderConfig
 from config_manager import make_dict
@@ -114,8 +113,8 @@ class asy_conn_time(SensorReaderConfig):
         self.dns_server = DNSServer(debug=bool(debug))
         self.dns_server_task: asyncio.Task[None] | None = None
         self.reconn_wifi = False
-        self.time_counter_trigger_event = ThreadSafeFlag()
-        self.wifi_mode_lock = Lock()
+        self.time_counter_trigger_event = asyncio.ThreadSafeFlag()
+        self.wifi_mode_lock = asyncio.Lock()
         self.counter_timer = Timer()
         self.hotspot_timer = Timer()
         self.hotspot_timer_running = False
@@ -246,7 +245,7 @@ class asy_conn_time(SensorReaderConfig):
             rssi = None
         return rssi
 
-    def get_wifi_mode_lock(self) -> Lock:
+    def get_wifi_mode_lock(self) -> asyncio.Lock:
         return self.wifi_mode_lock
 
     def _release_wifi_lock(self) -> None:

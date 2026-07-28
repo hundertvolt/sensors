@@ -29,7 +29,7 @@ tests/test_asy_dns_client.py and tests/test_asy_ntp_client.py.
 
 import sys
 
-sys.path.insert(0, "improved-quality")  # not yet promoted to src/ - see CLAUDE.md
+sys.path.insert(0, "improved-quality")  # asy_wifi_service.py isn't promoted yet - see BACKLOG.md's captive_dns.py finding
 
 import asyncio
 import os
@@ -38,13 +38,11 @@ import socket
 import struct
 import time
 
-# improved-quality/ isn't on mypy_path (only src/typings are - see pyproject.toml) since it's still
-# WIP, not yet promoted; every asy_wifi_service/asy_ntp_client-typed value below is consequently
-# Any, not a real gap being masked.
-import asy_ntp_client as ntpmod  # type: ignore[import-not-found]
 import network
-from asy_ntp_client import asy_ntp_client
 from asy_wifi_service import asy_conn_time  # type: ignore[import-not-found]
+
+import asy_ntp_client as ntpmod
+from asy_ntp_client import asy_ntp_client
 
 try:
     from typing import TYPE_CHECKING
