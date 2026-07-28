@@ -1,36 +1,17 @@
-"""Async, non-blocking DNS resolver (A records only) built on asy_udp_socket.py's AsyUDPSocket.
+"""Async, non-blocking DNS resolver (IPv4 A-records only) built on asy_udp_socket.py's AsyUDPSocket.
 
-Inspired by github.com/vshymanskyy/aiodns (SPDX: MIT, (c) 2024 Volodymyr Shymanskyy) after reading
-its packet-building/parsing/resolution strategy in detail - not a port of its code, and not a
-drop-in of its API. MIT permits this freely (reuse/modify with attribution, no copyleft); this
-comment plus BACKLOG.md's writeup is that attribution. Rewritten from scratch, deliberately
-narrower than aiodns: IPv4/A-record only, one hostname per call, no cache, no mDNS - this project's
-networking is IPv4-only throughout (see asy_udp_socket.py, captive_dns.py) and the only caller
-(asy_ntp_client.py) resolves one already-rarely-changing hostname roughly once per sync cycle, so
-aiodns's IPv6/mDNS support and 32-entry LRU cache would be unused complexity here. Transport is
-this project's own AsyUDPSocket (cooperative, poll-driven) instead of aiodns's hand-rolled
-non-blocking socket+sleep_ms loop - one fewer non-blocking-socket implementation in the codebase.
-See BACKLOG.md for the full aiodns comparison, including two real correctness gaps found in it and
-fixed here (an off-by-one query-size calculation masked by bytearray auto-resize, and no RCODE
-check on the response) rather than carried over.
-
-Exists so asy_ntp_client.py's NTP-hostname resolution no longer needs socket.getaddrinfo() (a
-real, synchronously-blocking call) - and therefore no longer needs async_connect.py's
-get_long_block_lock() coordination either; see asy_ntp_client.py's and neopixel_signal.py's own
-docstrings for that removal.
+Inspired by github.com/vshymanskyy/aiodns (MIT license) after reading its design in detail, not a
+port of it - deliberately narrower (no cache, no mDNS, IPv4 only) since this project's only caller
+resolves one already-rarely-changing hostname roughly once per sync cycle. See BACKLOG.md for the
+full comparison, attribution, and two correctness gaps found in aiodns and fixed here instead of
+carried over.
 
 Contract: resolve_ipv4() never raises - returns the resolved dotted-quad str, or None on any
 failure (timeout, malformed/spoofed reply, NXDOMAIN/SERVFAIL, unreachable server, ...). A literal
-IPv4 address is returned unchanged without ever touching the network, so an NTP_Host config value
-that's already a literal IP keeps working exactly as it did through socket.getaddrinfo().
+IPv4 host is returned unchanged, untouched by the network.
 
-Documented, accepted limitation (matches this project's existing DNS-parsing precedent in
-captive_dns.py, which takes the same trade-off): an answer record's own name field is only handled
-when it's a bare 2-byte compression pointer (RFC 1035 SS4.1.4) - the near-universal case for a
-straightforward A-record answer to an A-record query - not a full label decompressor. An answer
-using literal (uncompressed) labels stops iteration and falls back to whatever answer (if any) was
-already found, rather than being parsed. Good enough for this project's real NTP hosts (pool.ntp.org
-and similar), not a general-purpose resolver.
+Limitation: an answer's name is only followed when it's a bare compression pointer (RFC 1035
+SS4.1.4), not a full label decompressor - matches captive_dns.py's own precedent. See BACKLOG.md.
 """
 
 import os
@@ -40,37 +21,19 @@ from micropython import const
 from asy_udp_socket import AsyUDPSocket
 
 _DNS_PORT = const(53)
-_DNS_TIMEOUT_MS = const(500)  # per-server, per-attempt budget - these are just this function's own
-# standalone defaults, used only when a caller doesn't override timeout_ms/tries (asy_ntp_client.py
-# always does, with its own explicitly-configured values - see that file's own constructor). A real
-# resolver on a working network answers in well under 100ms; 500ms already gives that a wide
-# margin without needlessly stretching out the case where a server is genuinely unreachable
-# (an earlier, much larger pair of defaults here - 2000ms x 2 tries x up to 3 servers - produced a
-# worst case of several seconds to over ten, flagged as excessive - see BACKLOG.md).
-_DNS_TRIES = const(1)  # write_and_recvfrom()'s own retry budget per server - see _DNS_TIMEOUT_MS's
-# own comment; one try per server is enough given resolve_ipv4() already tries multiple servers.
-_DNS_RECV_BUF = const(512)  # RFC 1035 SS4.2.1's guaranteed-safe UDP message size; no EDNS0 OPT is
-# sent, so no larger response is ever solicited.
-_FALLBACK_DNS_SERVERS: tuple[str, ...] = ("8.8.8.8", "1.1.1.1")  # tried, in order, after the caller-supplied servers
-# (typically the network's own DHCP-assigned DNS server) - Google/Cloudflare public resolvers,
-# reachable from virtually any network that has real internet access at all, same rationale
-# aiodns's own default server set uses. Deliberately NOT const()-wrapped, unlike every other
-# module-level tuple in this file: MicroPython's const() inlines the literal value at compile time
-# (confirmed directly - see tests/test_asy_wifi_service.py's own comment on the same behavior for
-# its _PHASE_* constants), so a const()-wrapped value can't be monkeypatched from a test the way a
-# plain module global can (tests/test_asy_dns_client.py's own fallback-list tests rely on this
-# being genuinely overridable to stay hermetic, never touching the real public internet). resolve_
-# ipv4() only reads this once per call (roughly once per NTP sync cycle - hours apart), so skipping
-# the const-fold costs nothing performance-wise here, unlike this file's other, frequently-read constants.
+_DNS_TIMEOUT_MS = const(500)  # per-server, per-attempt budget - standalone default only, the real
+# caller (asy_ntp_client.py) always overrides it explicitly. See BACKLOG.md.
+_DNS_TRIES = const(1)  # per-server retry budget - resolve_ipv4() already tries multiple servers.
+_DNS_RECV_BUF = const(512)  # RFC 1035 SS4.2.1's guaranteed-safe UDP message size.
+_FALLBACK_DNS_SERVERS: tuple[str, ...] = ("8.8.8.8", "1.1.1.1")  # tried after caller-supplied
+# servers. Not const()-wrapped so tests can monkeypatch it (const() inlines at compile time).
 
 _QTYPE_A = const(b"\x00\x01")
 _QCLASS_IN = const(b"\x00\x01")
 
 
 def _is_ipv4_literal(host: str) -> bool:
-    # Dotted-quad check - if host is already numeric there's nothing to resolve. Adapted from
-    # aiodns's own _ip4(), but avoids using exceptions for control flow: isdigit() rejects a
-    # non-numeric/negative/empty part without needing a try/except around int().
+    # Dotted-quad check, avoiding int()'s exceptions for control flow via isdigit().
     parts = host.split(".")
     if len(parts) != 4:
         return False
@@ -81,22 +44,14 @@ def _is_ipv4_literal(host: str) -> bool:
 
 
 def _build_query(host: bytes, txn_id: bytes) -> bytearray:
-    # RFC 1035 SS4.1.1/4.1.2 message format: 12-byte header + QNAME (length-prefixed labels, null-
-    # terminated) + QTYPE + QCLASS. Adapted from aiodns's _build_dns_query(), but computes the
-    # exact final size upfront instead of aiodns's `bytearray(17 + len(host))` - confirmed by
-    # hand-tracing aiodns's own byte offsets that its precomputed size is one byte short of what it
-    # actually writes (its trailing `query[pos + 2 : pos + 4] = ...` reaches one index past the
-    # array as sized); it "works" there only because Python's bytearray slice assignment silently
-    # grows the array when the assigned data is longer than the sliced range - a real, if harmless,
-    # correctness smell (relying on an incidental resize instead of a correct size calculation), not
-    # reproduced here. Each "." in host becomes a 1-byte length prefix in the wire format (so it
-    # contributes the same byte count either way), plus one terminating null byte -> QNAME is
-    # exactly len(host) + 2 bytes on the wire, independent of label count.
+    # RFC 1035 SS4.1.1/4.1.2 message: 12-byte header + QNAME + QTYPE + QCLASS. QNAME is exactly
+    # len(host) + 2 bytes on the wire regardless of label count - see BACKLOG.md for the exact-size
+    # vs. aiodns's own off-by-one comparison.
     qname_len = len(host) + 2
     query = bytearray(12 + qname_len + 4)  # header + QNAME + QTYPE(2) + QCLASS(2)
     query[0:2] = txn_id
     query[2:4] = b"\x01\x00"  # QR=0 (query), Opcode=0 (standard), RD=1 (recursion desired)
-    query[4:6] = b"\x00\x01"  # QDCOUNT=1 (ANCOUNT/NSCOUNT/ARCOUNT stay 0 - bytearray is zero-initialized)
+    query[4:6] = b"\x00\x01"  # QDCOUNT=1 (ANCOUNT/NSCOUNT/ARCOUNT stay 0 - already zero-initialized)
     pos = 12
     for label in host.split(b"."):
         n = len(label)
@@ -112,8 +67,7 @@ def _build_query(host: bytes, txn_id: bytes) -> bytearray:
 
 
 def _parse_response(rsp: bytes | bytearray, query: bytes | bytearray) -> str | None:
-    # See module docstring for the compression-pointer-only limitation. RCODE/QR/transaction-ID
-    # checks are real correctness additions over aiodns (which checks none of these - see BACKLOG.md).
+    # See module docstring for the compression-pointer-only limitation.
     if len(rsp) < 12 or rsp[0:2] != query[0:2]:
         return None  # too short to be a real header, or a stale/spoofed reply (wrong transaction ID)
     if not (rsp[2] & 0x80):
@@ -121,20 +75,14 @@ def _parse_response(rsp: bytes | bytearray, query: bytes | bytearray) -> str | N
     if rsp[3] & 0x0F:
         return None  # RCODE != 0 (NXDOMAIN, SERVFAIL, ...) - a real error, not a usable answer
     answer_count = (rsp[6] << 8) | rsp[7]
-    # The response's Question section mirrors the query's own, unchanged (RFC 1035) - reusing
-    # len(query) as the exact answer-section offset avoids aiodns's fragile `rsp.find(b"\xc0",
-    # pos)` heuristic search entirely for the first answer.
+    # Response's Question section mirrors the query's own (RFC 1035), so len(query) is the exact
+    # answer-section offset.
     pos = len(query)
     for _ in range(answer_count):
-        # A compression pointer's own target offset is never followed (see module docstring) - only
-        # its *format* matters here, so the check is the top-two-bits mask (RFC 1035 SS4.1.4: any
-        # 0xC0-0xFF leading byte), not literal equality with 0xC0. The earlier `!= 0xC0` form was a
-        # real bug, not the documented limitation: it silently misidentified a valid pointer to any
-        # offset >= 256 (leading byte 0xC1-0xFF) as an uncompressed name and aborted parsing, even
-        # though such an offset is reachable within this file's own 512-byte _DNS_RECV_BUF (e.g. a
-        # second answer in a CNAME chain pointing past byte 255).
+        # Top-two-bits mask (RFC 1035 SS4.1.4: any 0xC0-0xFF leading byte), not `== 0xC0` - see
+        # BACKLOG.md for the real bug this fixed (a valid pointer to offset >= 256 was misread).
         if pos + 12 > len(rsp) or (rsp[pos] & 0xC0) != 0xC0:
-            break  # truncated, or a name that isn't a bare compression pointer - see module docstring
+            break  # truncated, or a name that isn't a bare compression pointer
         rtype = (rsp[pos + 2] << 8) | rsp[pos + 3]
         rclass = (rsp[pos + 4] << 8) | rsp[pos + 5]
         rdlength = (rsp[pos + 10] << 8) | rsp[pos + 11]

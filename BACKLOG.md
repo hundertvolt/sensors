@@ -1166,6 +1166,18 @@ From hands-on field experience with deployed units:
     rather than a functional bug; flagged here rather than silently changed, since picking one
     convention over the other for these two specific calls is a small enough style choice that it
     isn't worth guessing at without the owner's steer.
+  - **Owner-requested documentation-conciseness pass over the same three files**, applying
+    `src/README.md` section 11's "module docstring is a short header, not an essay" / "per-function
+    comments stay within 3 lines, prefer fewer" rule, which had drifted badly on all three across
+    the many review rounds above: `asy_wifi_service.py`'s module docstring alone had grown to 125
+    lines, several inline comment blocks ran 5-10 lines. Trimmed every module docstring to a few
+    short paragraphs (contract + a BACKLOG.md pointer for the full history, instead of restating
+    that history inline) and every oversized inline comment block to 3 lines or fewer, without
+    touching any code line. Net: `asy_wifi_service.py` 866 -> 713 lines, `asy_ntp_client.py` 544 ->
+    435, `asy_dns_client.py` 179 -> 126 (~20% smaller combined). Verified zero behavior change:
+    `ruff check` clean on all three individually (unchanged), full-scope `mypy` still exactly 371
+    errors total (unchanged), and the full `scripts/test.sh` run still 100% green (16/16 files,
+    1048 tests) - comments/docstrings only, no code line touched.
 
 - **Define configs/behavior used at multiple sites in exactly one location.** Concrete mechanism:
   `asy_scd30_driver.py`/`asy_bmp3xx_driver.py`/`asy_sgp40_driver.py` each define per-field config

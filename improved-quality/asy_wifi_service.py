@@ -1,126 +1,16 @@
 """Async WiFi connection/hotspot/LED service (asy_conn_time) - not a sensor (no I2C/SPI bus), but
-config-managed the same way as every promoted sensor driver and asy_ntp_client.py: extends
-base_classes.py's SensorReaderConfig, owns its own config_WIFI.cfg file/schema internally - no
-externally-injected ConfigManager, no separate get_default_cfg()/_DEFAULT_CONFIG merge step. See
-DRIVER_SPEC.md for the shared contract this follows.
+config-managed the same way as every promoted sensor driver: extends base_classes.py's
+SensorReaderConfig, owns its own config_WIFI.cfg internally. See DRIVER_SPEC.md for the shared
+contract this follows and BACKLOG.md for the full promotion/audit history (exception/blocking
+hardening passes, the hostname schema-cap fix, get_dns_server_ip(), and the _conn_phase
+state-machine consolidation this file uses instead of the hotspot_mode/wlan_connected_once/
+wlan_deactivated boolean trio it replaced).
 
-First step of the async_connect.py -> asy_wifi_service.py promotion: the config-manager migration,
-the getter quartet (get_data()/get_dict_data()/get_dict_cfg()/get_error_counter()),
-get_task_starters()/get_timer_starters(), wlan_connect()'s factoring into shallow private methods,
-get_data()'s switch to the cached-reading convention (_set_meas_data() pushed once per second from
-time_counter(), see get_data()'s own comment), exception handling tightened around every direct
-network/wlan call, every legacy `if self.debug: print(...)` replaced by a leveled self.pr.*  call
-(self.debug itself is gone - self.pr.level already does that job, matching every promoted driver),
-and max_i2c_err/_error_check() actually wired up (was previously inert) are all done:
-- "Attempt" operations (a mode switch, hotspot activation, a connect trigger, the disconnect-wait,
-  permanent deactivation) persist a real errno via self.pr.err_s() on a real exception, and set
-  self.hw_op_failed so wlan_connect()'s loop can feed that into _error_check() once per iteration -
-  independent from, and a coarser safety net than, connection_failures/conn_fail_to_hotspot's own
-  AP-reachability-driven hotspot fallback (see wlan_connect()'s own comment): enough consecutive
-  hardware exceptions gives up on the whole task instead, matching a sensor read_loop() returning
-  False, letting the task supervisor restart it fresh.
-- Routine state *observations* (a status()/isconnected()/ifconfig() query, or STA connect polling's
-  intermediate idle/connecting/obtaining-IP states) degrade silently (self.pr.err(), not persisted,
-  or self.pr.all() trace) instead, matching the pre-existing wifi_mode_lock.locked() sentinel
-  precedent - a query that legitimately fails/varies on every tick (e.g. status() while
-  wlan_deactivated) would otherwise flood get_error_counter() with noise instead of signal.
-- A real, actionable connect-failure reason (missing config, wrong password, AP not found, connect
-  fail, an undefined status) now persists via self.pr.wrn_s() instead of vanishing into a
-  debug-only print - visible in get_error_counter() even with logging off.
-- Every errno this file assigns starts at 11, not 1: base_classes.py's own _error_check()/
-  _get_dict_cfg() already claim errno 1-4 internally for any driver that calls them (both are
-  called here), and 10 is the shared "initial setup failed" convention (DRIVER_SPEC.md section 7)
-  which doesn't apply here (no protocol-layer setup() to fail) - skipped rather than reused for
-  something else, to keep that convention meaningful project-wide. wrnno isn't affected (a
-  separate namespace from errno - base_classes.py never calls wrn_s()), so it still starts at 1.
-
-What's still an otherwise unmodified copy of improved-quality/async_connect.py's asy_conn_time: the
-STA/AP/LED state machine's overall control-flow *logic* (every transition still fires under exactly
-the same condition, with exactly the same side effects and timing, as the original - see the
-_conn_phase paragraph below for the one representational change made to it), its naming staleness,
-and the ONE_SHOT hotspot timer - these are deliberately deferred to a later pass, not silently
-fixed here.
-
-A fresh exception/blocking audit (owner-requested, same bar as asy_ntp_client.py's own passes - no
-uncaught exceptions, no blocking/hangs anywhere in this file) found and fixed four real gaps - see
-BACKLOG.md for the full writeup:
-- _led_on()/_led_off()/_led_toggle() now guard self.led.on()/.off()/.toggle() against a misbehaving
-  caller-injected ext_led (the LEDControl Protocol isn't guaranteed to be a real, never-raising Pin)
-  - degrades silently via self.pr.err(), matching the observation-tier convention above; LED state
-    is decorative, not part of the hw_op_failed/_error_check() hardware-health streak.
-- start_counter_timer()'s and _hotspot_client_absent()'s Timer.init() calls now catch OSError (real
-  rp2 alarm-pool exhaustion), matching asy_ntp_client.py's own Timer.init() guards.
-- _disconnect_sta_and_wait()'s isconnected()-wait loop is no longer unbounded (was flagged-but-
-  deferred by an earlier pass, now fixed per the owner's broader "no blocking/hangs" instruction):
-  bounded to _STA_DISCONNECT_WAIT_ITERS via the same for/else pattern _poll_sta_connect_status()
-  already uses, persisting a new errno=18 on timeout (distinct from errno=15's exception path).
-- Confirmed against current MicroPython docs/source, not assumed: WLAN.connect() is genuinely
-  non-blocking on rp2 (this file's existing bounded-polling design was already correct); Timer()
-  with zero args is valid on rp2 (the pre-existing tracked mypy "Timer needs an argument" finding is
-  a stub inaccuracy, not a real bug - left as-is). Flagged, not changed: since reconnects is never
-  configured anywhere in this codebase, wlan.status() may never actually surface
-  STAT_WRONG_PASSWORD/STAT_NO_AP_FOUND/STAT_CONNECT_FAIL on stock rp2 (the driver retries
-  internally, status stays STAT_CONNECTING) - doesn't cause a hang (the poll loop is already
-  bounded regardless), so left for the owner to decide, not silently reworked.
-
-A second full re-audit pass (owner-requested again, same bar) found one further real gap: unlike
-every other observation-tier accessor in this file, get_wlan_rssi() swallowed its exception
-completely silently with no self.pr.err() call - confirmed via extmod/network_cyw43.c that this
-raises ValueError("STA required") on every single poll while hotspot_mode is active, a routine and
-frequent condition this file was silently hiding even with logging turned all the way up. Now logs
-like every sibling accessor. See BACKLOG.md for the full writeup, including what this pass checked
-and confirmed were *not* gaps (wlan.status("stations")'s return type, the permanent-WLAN-deactivation
-path discussed below, and _on_sta_disconnected()'s 60s wifi_mode_lock hold - the latter both
-pre-existing, unchanged from async_connect.py), and the 28 new tests closing every
-previously-untested-method gap it found.
-
-A design-level review of this state machine (owner-requested, analysis only at the time) found two
-real behavioral gaps in what it accomplishes rather than in exception/blocking safety - see
-BACKLOG.md's "Design-level review" entry for the full trace. The project owner has since confirmed,
-directly, that both are intentional design choices rather than gaps, and left both exactly as-is:
-permanent WLAN deactivation after a second failed hotspot-fallback attempt (these devices are
-physically accessible and easy to power-cycle, so an automatic path to that terminal state is an
-accepted trade-off), and STA never falling back to hotspot again once it has connected successfully
-even once this task lifetime (also deliberate by design).
-
-Also per the same review: hotspot_mode/wlan_connected_once/wlan_deactivated - three separate
-booleans whose valid combinations were only ever implicit in scattered control flow (confirmed by
-tracing every mutator: hotspot_mode=True always implied wlan_connected_once=False, and
-wlan_deactivated=True always implied both the others False, i.e. only 4 of their 8 possible
-combinations were ever reachable) - are now one explicit self._conn_phase value
-(_PHASE_STA_SEEKING/_PHASE_STA_ESTABLISHED/_PHASE_HOTSPOT/_PHASE_DEACTIVATED, defined near
-_STA_DISCONNECT_WAIT_ITERS above). This is a pure representational change: every transition fires at
-the exact same call site, under the exact same condition, with the exact same side effects, as the
-flag it replaces did - confirmed via the full existing test suite (all 121 tests in
-tests/test_asy_wifi_service.py, updated only where they poke the old flag names directly as test
-setup/assertions) passing unchanged. Illegal combinations (e.g. simultaneously "in hotspot mode" and
-"permanently deactivated") are now structurally unrepresentable rather than merely never-produced-
-by-current-code-paths, which is what made the two design-level findings above possible to miss on an
-ordinary read in the first place.
-
-A full pass of src/README.md's promotion checklist against this file (owner-requested) confirmed
-sections 0/2-8/10-13 already hold from the audits above and found two new, genuinely verified-
-against-source items - see BACKLOG.md for the full writeup: `wlan.config(pm=0xA11140)` is confirmed
-correct (decoded against real cyw43-driver source: `CYW43_NO_POWERSAVE_MODE` with the same
-beacon/DTIM/assoc/sleep-return parameters `CYW43_DEFAULT_PM` uses, i.e. exactly "disable power-save,
-change nothing else" - no fix needed), and `_VAL_HOST`'s schema max was found to exceed
-`network.hostname()`'s real, documented 32-character hard cap (`MICROPY_PY_NETWORK_HOSTNAME_MAX_LEN`,
-confirmed unchanged on both the deployed v1.26.0 pin and the v1.28.0 refactor target) - a pre-existing
-gap inherited unmodified from `sensortask-wozi.py`'s own REST-route bound this schema otherwise
-mirrors, not introduced by this promotion; a hostname of 33-63 characters used to pass config
-validation but then make `network.hostname()` raise, which `_trigger_sta_connect()`/
-`_configure_hotspot_ap()` catch but mis-attribute as `hw_op_failed` (a WLAN *hardware* fault) rather
-than a config-validation gap. Per the project owner's direction ("adapt the schema to fit the actual
-value"), `_VAL_HOST`'s max is now 32, closing the gap at its source; `sensortask-wozi.py`'s own
-REST-route bound (still 1-63 there) is a separate, still-open mismatch outside this file's scope.
-14 new tests (121 -> 135) close the last previously-untested orchestration gaps:
-`_reset_wlan_connect_state()` itself (the hotspot-preserving asymmetry above had no direct test) and
-`wlan_connect()`'s own phase-dispatch/reconnect-trigger-gating lines.
-
-`get_dns_server_ip()` (new, owner-requested alongside asy_ntp_client.py's DNS-resolution rework -
-see that file's own module docstring and BACKLOG.md) exposes the network's own DHCP-assigned DNS
-server so asy_ntp_client.py's async DNS resolver can use it instead of a hardcoded public resolver
-list, following the same shape/degradation convention as get_wlan_ifconfig() and network_available().
+Shared convention: "attempt" operations (a mode switch, hotspot activation, a connect trigger, ...)
+persist a real errno via self.pr.err_s() and set self.hw_op_failed on a real exception, feeding
+wlan_connect()'s own _error_check() streak. Routine state *observations* (a status()/isconnected()/
+ifconfig() query) degrade silently via self.pr.err() instead, since these legitimately vary/fail on
+every tick. Errno numbering starts at 11 here, same convention as asy_ntp_client.py.
 """
 
 import asyncio
@@ -155,18 +45,9 @@ except Exception:
         pass  # micropython does not support typing Protocol
 
 
-# Schema tuples for ConfigManager.get_*_values() - min/max mirror the REST-API bounds
-# sensortask-wozi.py's update_valid_json() already enforces for SSID/Country/PW ("Country"(2-2),
-# "SSID"(2-32), "PW"(8-63)), except SSID/PW's own min is relaxed to 0 here so the fresh, unconfigured
-# default ("") self-validates against ConfigManager.__init__'s own type_or_range_error() check -
-# actual REST-write bounds are still the tighter 2-32/8-63 (config setters are out of scope for
-# this pass regardless, see DRIVER_SPEC.md section 5). Hostname is the one deliberate exception to
-# "mirrors the REST bound": that REST route still allows 1-63 today, but network.hostname()'s real,
-# documented hard cap is 32 characters (confirmed against extmod/modnetwork.c on both the deployed
-# v1.26.0 pin and the v1.28.0 refactor target - rp2/RPI_PICO_W doesn't override it any tighter) - see
-# BACKLOG.md for the full finding. Narrowed here to the real constraint per the project owner's
-# direction ("adapt the schema to fit the actual value"); sensortask-wozi.py's own REST-route bound
-# is a separate, still-open 1-63 mismatch outside this file's scope.
+# Schema tuples for ConfigManager.get_*_values() - min/max mirror sensortask-wozi.py's REST bounds,
+# except SSID/PW's min is relaxed to 0 (fresh "" default) and Hostname's max is 32, network.hostname()'s
+# real hard cap, not the REST route's still-open 1-63 (see BACKLOG.md).
 _VAL_SSID = const((("SSID", "str", "", 0, 32, None),))
 _VAL_PW = const((("PW", "str", "", 0, 63, None),))
 _VAL_CTRY = const((("Country", "str", "DE", 2, 2, None),))
@@ -177,26 +58,15 @@ _NAME = const("WIFI")
 WIFI = namedtuple("WIFI", ("Mode", "Connected", "IP", "TS"))
 
 _STA_DISCONNECT_WAIT_ITERS = const(20)  # 20 * 0.5s = 10s max wait for isconnected() to clear -
-# bounds _disconnect_sta_and_wait()'s loop; a real disconnect() completes far faster than this on
-# rp2 (no blocking network handshake involved, unlike connect()), so 10s is a generous ceiling for
-# a driver that's genuinely stuck, not a normal-case timeout.
+# bounds _disconnect_sta_and_wait()'s loop; a real disconnect() completes far faster than this.
 
-# self._conn_phase - the connection state machine, as one explicit value instead of the
-# hotspot_mode/wlan_connected_once/wlan_deactivated boolean trio this replaces. Tracing every
-# mutator of that trio (see BACKLOG.md's design-level review) confirmed the three only ever
-# occupied 4 of their 8 possible combinations in practice - hotspot_mode=True always implied
-# wlan_connected_once=False, and wlan_deactivated=True always implied both the others False - so
-# this is a lossless consolidation onto the state space the code actually used, not a simplification
-# that drops a real distinction. No functional change: every transition below fires at exactly the
-# same call site, under exactly the same condition, as the flag it replaces did. const()-wrapped
-# like every other module-level constant in this file, despite const() values not surviving as
-# importable module attributes on this port (see tests/test_asy_wifi_service.py's own mirrored
-# constants, kept deliberately in sync via a comment rather than imported, for exactly this reason) -
-# consistent style here matters more than sparing that one file a few duplicated literals.
+# self._conn_phase - the connection state machine, replacing the hotspot_mode/wlan_connected_once/
+# wlan_deactivated boolean trio (only 4 of their 8 combinations were ever reachable - see BACKLOG.md
+# for the full trace). Not importable as a module attribute once const()-folded (see
+# tests/test_asy_wifi_service.py's own mirrored copy), same tradeoff as every constant here.
 _PHASE_STA_SEEKING = const(0)  # STA mode, has not connected successfully since the last reset
-_PHASE_STA_ESTABLISHED = const(1)  # STA mode, has connected successfully at least once since the
-# last reset - live wlan.isconnected() (not a stored flag, same as before) distinguishes "currently
-# connected" from "disconnected, retrying every 60s" within this one phase, exactly as before.
+_PHASE_STA_ESTABLISHED = const(1)  # STA mode, connected at least once since the last reset - live
+# wlan.isconnected() still distinguishes "connected" from "disconnected, retrying every 60s".
 _PHASE_HOTSPOT = const(2)  # AP/hotspot fallback mode active
 _PHASE_DEACTIVATED = const(3)  # terminal - WLAN fully deactivated, needs a task/device restart
 
@@ -215,10 +85,9 @@ class asy_conn_time(SensorReaderConfig):
         ext_led: LEDControl | None = None,
         wifi_refresh_sec: int = 5,
         hotspot_time_min: int = 5,
-        max_i2c_err: int = 5,  # consecutive hw_op_failed WLAN-hardware-exception cycles (see
-        # wlan_connect()) before giving up and letting the task supervisor restart this task -
-        # same _error_check() contract every sensor Reader's read_loop() uses, despite the
-        # misleading "i2c" name inherited from SensorReaderConfig's constructor (no I2C bus here).
+        max_i2c_err: int = 5,  # consecutive hw_op_failed cycles before giving up and letting the
+        # task supervisor restart this task - same _error_check() contract every Reader uses,
+        # despite the misleading "i2c" name inherited from SensorReaderConfig (no I2C bus here).
         cfg_path: str = "",
         fram: "AsyFramManager | None" = None,
         history_length: int = 10,
@@ -273,8 +142,7 @@ class asy_conn_time(SensorReaderConfig):
                 mode=Timer.PERIODIC,
                 callback=lambda b: self.time_counter_trigger_event.set(),
             )
-        except OSError as e:  # alarm-pool exhaustion (ENOMEM) - matches asy_ntp_client.py's own
-            # start_counter_timer()/start_ntp_timer() guards; degrades gracefully instead of
+        except OSError as e:  # alarm-pool exhaustion (ENOMEM) - degrades gracefully instead of
             # crashing the caller (uptime counting just never starts this cycle).
             self.pr.err(_NAME, "Could not start counter timer:", e)
 
@@ -294,13 +162,9 @@ class asy_conn_time(SensorReaderConfig):
             return None
 
     async def get_data(self) -> WIFI:
-        # Narrows _get_meas_data()'s generic "NamedTuple" to this Reader's concrete WIFI - matches
-        # asy_ntp_client.py's own get_data() narrowing convention (DRIVER_SPEC.md section 4.2).
-        # Backed by time_counter()'s 1Hz cache push (_update_wifi_snapshot()) rather than a live
-        # lock-aware query: the earlier version called wlan_isconnected()/get_wlan_ifconfig(), which
-        # return a safe-but-uninformative sentinel while wifi_mode_lock is held - meaning a caller
-        # reading get_data() mid-mode-switch saw a transient "unknown" reading instead of the actual
-        # last-known state, exactly the failure mode the cached-reading convention exists to avoid.
+        # Narrows _get_meas_data()'s generic NamedTuple to this Reader's concrete WIFI, matching
+        # asy_ntp_client.py's own convention. Backed by time_counter()'s 1Hz cache push rather than
+        # a live lock-aware query - avoids a transient "unknown" reading mid-mode-switch (see BACKLOG.md).
         return await self._get_meas_data()  # type: ignore[return-value]
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
@@ -308,11 +172,9 @@ class asy_conn_time(SensorReaderConfig):
         return make_dict(data)
 
     async def _mask_pw(self) -> dict[str, int | float | str | bool | None]:
-        # PW is a real credential (the configured WiFi password). sensortask-wozi.py's existing
-        # /net/config route already masks it before returning it ("********", never the real
-        # cached value) - reusing _get_dict_cfg()'s callback-overlay mechanism here keeps that same
-        # masking in the generic getter-quartet path too, so a future REST route wired straight to
-        # get_dict_cfg() can't accidentally leak the plaintext password where today's route doesn't.
+        # PW is a real credential. sensortask-wozi.py's /net/config route already masks it before
+        # returning it ("********") - reusing _get_dict_cfg()'s callback overlay keeps that masking
+        # in the generic getter-quartet path too, so it can't leak the plaintext value elsewhere.
         return {"PW": "********"}
 
     async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
@@ -332,10 +194,8 @@ class asy_conn_time(SensorReaderConfig):
         self.reconn_wifi = True
 
     def _wlan_status_or_none(self) -> int | None:
-        # Observation-tier helper: a status *query* failing (WLAN mid-transition/deinitialized) is
-        # routine enough here to degrade silently rather than feed get_error_counter() - the state
-        # machine's own "attempt" methods (_switch_wlan_mode(), _trigger_sta_connect(), ...) are the
-        # ones that persist a real errno when an actual operation fails.
+        # Observation-tier: a status query failing (WLAN mid-transition/deinitialized) is routine
+        # enough to degrade silently - the state machine's own "attempt" methods persist a real errno.
         try:
             return self.wlan.status()
         except Exception as e:
@@ -367,10 +227,9 @@ class asy_conn_time(SensorReaderConfig):
         return None
 
     def get_dns_server_ip(self) -> str | None:
-        # asy_ntp_client.py's get_dns_server callback - the network's own DHCP-assigned DNS server,
-        # for asy_dns_client.py's resolve_ipv4() to try first (see BACKLOG.md). Reuses
-        # get_wlan_ifconfig()'s own observation-tier "None while mid-mode-switch or on a real
-        # ifconfig() failure" convention rather than duplicating it.
+        # asy_ntp_client.py's get_dns_server callback - the DHCP-assigned DNS server for
+        # resolve_ipv4() to try first (see BACKLOG.md). Reuses get_wlan_ifconfig()'s own
+        # None-on-failure convention.
         ifcfg = self.get_wlan_ifconfig()
         return None if ifcfg is None else ifcfg[3]
 
@@ -380,10 +239,9 @@ class asy_conn_time(SensorReaderConfig):
         try:
             rssi = int(self.wlan.status("rssi"))  # not valid in AP mode!
         except Exception as e:  # observation-tier - see _wlan_status_or_none()'s comment. Confirmed
-            # against extmod/network_cyw43.c: querying "rssi" outside STA mode raises
-            # ValueError("STA required") - a routine, expected failure while hotspot_mode is active,
-            # not just a hypothetical - so this still logs like every sibling observation-tier
-            # accessor instead of swallowing completely silently.
+            # via extmod/network_cyw43.c: querying "rssi" outside STA mode raises
+            # ValueError("STA required"), a routine failure while hotspot_mode is active - still
+            # logs, unlike a silent swallow.
             self.pr.err(_NAME, "wlan.status('rssi') failed:", e)
             rssi = None
         return rssi
@@ -416,11 +274,10 @@ class asy_conn_time(SensorReaderConfig):
 
     def _led_on(self) -> None:
         if self.led is not None:
-            try:  # self.led may be a caller-supplied ext_led (LEDControl Protocol, not
-                # necessarily a real Pin) - could legitimately misbehave, same as NTP's
-                # network_available() callback; purely decorative status, so degrades silently
-                # rather than feeding hw_op_failed/_error_check() (that streak is about the WLAN
-                # hardware itself, not a broken LED).
+            try:  # self.led may be a caller-supplied ext_led (LEDControl Protocol, not necessarily
+                # a real Pin) - could legitimately misbehave. Purely decorative status, so degrades
+                # silently rather than feeding hw_op_failed/_error_check() (that's about the WLAN
+                # hardware, not the LED).
                 self.led.on()
             except Exception as e:
                 self.pr.err(_NAME, "LED on() failed:", e)
@@ -495,13 +352,10 @@ class asy_conn_time(SensorReaderConfig):
                     await self._run_hotspot_mode()
                 else:
                     await self._run_sta_mode()
-                # Consecutive-failure streak over real WLAN-hardware exceptions (set by the
-                # "attempt" methods below on their own except blocks) - independent from, and a
-                # coarser safety net than, connection_failures/conn_fail_to_hotspot's own
-                # AP-reachability-driven hotspot fallback below: this one is about the WLAN
-                # hardware/driver itself seeming broken, not about a particular AP being
-                # unreachable, so giving up here means restarting the whole task (matching a
-                # sensor read_loop() returning False) rather than switching to hotspot mode.
+                # Consecutive-failure streak over real WLAN-hardware exceptions, independent from
+                # and coarser than connection_failures/conn_fail_to_hotspot's own AP-reachability-
+                # driven hotspot fallback: this one gives up on the whole task (matching a Reader's
+                # read_loop() returning False).
                 if not await self._error_check((None,) if self.hw_op_failed else (1,), _NAME):
                     await self.pr.err_s(
                         _NAME, "Giving up after repeated WLAN hardware failures, restarting task.", errno=17
@@ -519,12 +373,9 @@ class asy_conn_time(SensorReaderConfig):
         self.connection_failures = 0
         self.hotspot_started_once = False
         if self._conn_phase != _PHASE_HOTSPOT:
-            # Deliberately left at _PHASE_HOTSPOT rather than reset when a task restart happens to
-            # land here mid-hotspot - matches the old code's separate wlan_connected_once=False/
-            # wlan_deactivated=False resets firing unconditionally here while hotspot_mode itself was
-            # left untouched. The reconn_wifi computation right below, and wlan_connect()'s own first
-            # loop iteration, both still see _PHASE_HOTSPOT and route through the same forced
-            # leave-hotspot-and-reconnect path a restart out of STA/deactivated never needed.
+            # Deliberately left at _PHASE_HOTSPOT on a task restart mid-hotspot (matches the old
+            # code's behavior) - reconn_wifi below and wlan_connect()'s first iteration both still
+            # see it and route through the same forced leave-hotspot-and-reconnect path.
             self._conn_phase = _PHASE_STA_SEEKING
         self.hotspot_timer.deinit()
         self.hotspot_timer_running = False
@@ -560,11 +411,8 @@ class asy_conn_time(SensorReaderConfig):
         self.reconn_wifi = False
         leaving_hotspot = self._conn_phase == _PHASE_HOTSPOT
         if not leaving_hotspot:
-            # The hotspot-leaving path's own transition (in _leave_hotspot_mode(), below) already
-            # lands on the same _PHASE_STA_SEEKING value - matches the old code's unconditional
-            # wlan_connected_once=False reset here, which _leave_hotspot_mode()'s separate
-            # hotspot_mode=False assignment never overlapped with (two different flags, now one
-            # field) - so only the plain-STA-reconnect path needs it done here.
+            # _leave_hotspot_mode() below already lands on this same value via its own transition -
+            # only the plain-STA-reconnect path needs it set here (see BACKLOG.md for the full trace).
             self._conn_phase = _PHASE_STA_SEEKING
         self.pr.evt(_NAME, "WLAN Reconnect ausgelöst!")
         await asyncio.sleep(5)  # allow final tasks of calling function
