@@ -81,7 +81,10 @@ cfgmgr = ConfigManager(
 # cfgmgr, no more get_default_cfg()/_DEFAULT_CONFIG merge step. Every REST route below that reads or
 # writes a WIFI-schema field (Country/Hostname/SSID/PW/LedWifiOn) now goes through conn.cfgmgr, not
 # the shared cfgmgr above - see BACKLOG.md for the full writeup on this promotion gap and its fix.
-conn = asy_conn_time(conn_fail_to_hotspot=5, hotspot_time_min=8, debug=debug)
+conn = asy_conn_time(conn_fail_to_hotspot=5, hotspot_time_min=8, max_i2c_err=_MAX_I2C_ERR, debug=debug)
+# max_i2c_err: consecutive-failure-streak threshold, not literally about I2C - conn/ntp neither have
+# an I2C bus, they just inherit this generically-named base_classes.py parameter (see BACKLOG.md).
+# TODO: rename it project-wide to something bus-agnostic in a later, separate pass.
 # The leaf timeouts asy_ntp_client forwards to resolve_ipv4()/its own NTP fetch are set here, the
 # one place this class is instantiated - see BACKLOG.md's timing-restructure writeup for why these
 # (and not a hidden module constant, and not any computation inside asy_ntp_client.py itself) are
@@ -93,6 +96,7 @@ ntp = asy_ntp_client(
     conn.get_wifi_mode_lock(),
     conn.network_available,
     conn.get_dns_server_ip,
+    max_i2c_err=_MAX_I2C_ERR,
     dns_timeout_ms=_DNS_TIMEOUT_MS,
     dns_tries=_DNS_TRIES,
     ntp_fetch_timeout_ms=_NTP_FETCH_TIMEOUT_MS,

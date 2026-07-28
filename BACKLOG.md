@@ -1186,6 +1186,15 @@ From hands-on field experience with deployed units:
     about the parameter being unused; the owner separately confirmed the DNS-inside-wifi_mode_lock
     timing tradeoff noted above is fine as-is ("self-stabilising... fast under normal circumstances")
     and needs no action.
+  - **Owner-requested follow-up**: pass `max_i2c_err=_MAX_I2C_ERR` explicitly to both `conn`/`ntp`
+    in `sensortask-wozi.py`, closing the API-consistency gap noted just above (now every promoted
+    driver/service instantiated there passes it explicitly, none rely on the default matching by
+    coincidence). Added a `# TODO: rename it project-wide...` comment at the call site per the
+    owner's own framing ("note that we will rename it later in another context") - the misleading
+    "i2c" name itself is intentionally *not* renamed in this pass, only flagged for a later,
+    separate one (renaming a `base_classes.py` constructor parameter touches every promoted driver
+    and service, not just these two). Verified: `ruff check sensortask-wozi.py` unchanged (24,
+    same baseline), full-scope `mypy` still exactly 371, full `scripts/test.sh` green (1048 tests).
   - **Owner-requested quick fix**: `sensortask-wozi.py`'s `/net/cmd` `setNetwork` REST route still
     validated `Hostname` against `1-63` characters, while `asy_wifi_service.py`'s own `_VAL_HOST`
     schema was tightened to `1-32` earlier this session (network.hostname()'s real, documented
@@ -3038,6 +3047,16 @@ non-hypothetical threat in a specific context justifies it. Accepted as residual
 
 ## Deferred / explicitly out-of-scope work
 
+- **Rename `max_i2c_err`** (`base_classes.py`'s `SensorReaderConfig`/`SensorReader` constructor
+  parameter, and every promoted driver/service's own constructor that forwards it) to something
+  bus-agnostic — confirmed by the owner it's a generically-useful "consecutive-failure streak
+  before giving up and restarting the task" threshold via `_error_check()`, not literally about
+  I2C, and both `asy_wifi_service.py` and `asy_ntp_client.py` (neither has an I2C bus) already rely
+  on it under that misleading name. Deliberately not renamed in this pass (owner's own framing:
+  "note that we will rename it later in another context") — touches every promoted driver/service's
+  constructor signature and every test file that constructs one, a wider blast radius than this
+  session's wifi/ntp/dns scope. See this file's `src/` promotion findings above for the full
+  finding.
 - **HTML/frontend automation & consistency** — known hand-written/brittle, not a priority; revisit
   after the Python-side refactor.
 - **UART sensor integration** (`asy_uart.py`/`asy_uart_comm.py`, unused by any deployed config) —
