@@ -122,7 +122,14 @@ def _parse_response(rsp: bytes | bytearray, query: bytes | bytearray) -> str | N
     # pos)` heuristic search entirely for the first answer.
     pos = len(query)
     for _ in range(answer_count):
-        if pos + 12 > len(rsp) or rsp[pos] != 0xC0:
+        # A compression pointer's own target offset is never followed (see module docstring) - only
+        # its *format* matters here, so the check is the top-two-bits mask (RFC 1035 SS4.1.4: any
+        # 0xC0-0xFF leading byte), not literal equality with 0xC0. The earlier `!= 0xC0` form was a
+        # real bug, not the documented limitation: it silently misidentified a valid pointer to any
+        # offset >= 256 (leading byte 0xC1-0xFF) as an uncompressed name and aborted parsing, even
+        # though such an offset is reachable within this file's own 512-byte _DNS_RECV_BUF (e.g. a
+        # second answer in a CNAME chain pointing past byte 255).
+        if pos + 12 > len(rsp) or (rsp[pos] & 0xC0) != 0xC0:
             break  # truncated, or a name that isn't a bare compression pointer - see module docstring
         rtype = (rsp[pos + 2] << 8) | rsp[pos + 3]
         rclass = (rsp[pos + 4] << 8) | rsp[pos + 5]
@@ -137,7 +144,7 @@ def _parse_response(rsp: bytes | bytearray, query: bytes | bytearray) -> str | N
 
 async def resolve_ipv4(
     host: str,
-    dns_servers: "tuple[str, ...]" = (),
+    dns_servers: tuple[str, ...] = (),
     port: int = _DNS_PORT,
     timeout_ms: int = _DNS_TIMEOUT_MS,
     tries: int = _DNS_TRIES,

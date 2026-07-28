@@ -255,6 +255,19 @@ def test_parse_response_skips_non_a_records_to_find_the_real_a_record() -> None:
     assert _parse_response(rsp, query) == "198.51.100.7"
 
 
+def test_parse_response_accepts_a_compression_pointer_targeting_offset_256_or_above() -> None:
+    # Regression test for a real bug found in this file's own review: RFC 1035 SS4.1.4 identifies a
+    # compression pointer by its top two bits (0xC0 mask), not by the leading byte being literally
+    # 0xC0 - that's only true for pointers whose target offset is < 256. A pointer to offset >= 256
+    # (leading byte 0xC1-0xFF) is reachable within this file's own 512-byte _DNS_RECV_BUF (e.g. a
+    # second answer in a CNAME chain pointing past byte 255) and was previously misidentified as an
+    # uncompressed name, aborting parsing. The actual target offset is never followed (see module
+    # docstring), so any 0xC1-0xFF leading byte must be accepted the same as 0xC0.
+    query = _build_query(b"pool.ntp.org", b"\x11\x12")
+    rsp = _make_response(query, _a_answer("192.0.2.200", name_ptr=b"\xc1\x2c"), ancount=1)
+    assert _parse_response(rsp, query) == "192.0.2.200"
+
+
 def test_parse_response_no_a_record_present_returns_none() -> None:
     query = _build_query(b"ipv6-only.example", b"\x0f\x10")
     aaaa = b"\xc0\x0c" + b"\x00\x1c" + b"\x00\x01" + b"\x00\x00\x00\x3c" + _be16(16) + bytes(range(16))

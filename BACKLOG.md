@@ -920,6 +920,22 @@ From hands-on field experience with deployed units:
     SERVFAIL/NXDOMAIN with a stale-but-nonzero ANCOUNT wouldn't be caught by its own answer-parsing
     loop. `_parse_response()` here checks both QR (must be a response) and RCODE (must be 0) before
     ever reading an answer.
+  - **A third real correctness gap found in a follow-up owner-requested review pass of this file
+    (not carried over from aiodns — a bug in this file's own from-scratch code)**: `_parse_response()`'s
+    answer-name-pointer check originally tested `rsp[pos] != 0xC0` — requiring the pointer's leading
+    byte to be *exactly* `0xC0`. RFC 1035 §4.1.4 actually identifies a compression pointer by its top
+    two bits (`(byte & 0xC0) == 0xC0`); a pointer whose target offset is `>= 256` has a leading byte of
+    `0xC1`-`0xFF`, not literally `0xC0`. That offset range is reachable within this file's own 512-byte
+    `_DNS_RECV_BUF` (e.g. a second answer in a CNAME chain whose name field points back into the first
+    answer's own rdata, past byte 255) — such a reply was silently misidentified as an uncompressed
+    name and dropped, distinct from the deliberate uncompressed-name limitation documented below (that
+    one is about literal label sequences, not pointers of a different byte value). Since the pointer's
+    actual target offset is never followed either way (the code only needs to recognize the 2-byte
+    pointer *format* to skip past it), the fix is the bitmask comparison instead of exact equality — no
+    behavior change for the already-working `0xC0` case, and the previously-mishandled `0xC1`-`0xFF`
+    case now parses correctly. `tests/test_asy_dns_client.py` gained
+    `test_parse_response_accepts_a_compression_pointer_targeting_offset_256_or_above` (28 -> 29 tests)
+    to lock this in as a regression test.
   - **Documented, accepted limitation carried over deliberately, not fixed**: like `captive_dns.py`'s
     own existing DNS-parsing code, an answer record's name field is only handled when it's a bare
     2-byte compression pointer (RFC 1035 §4.1.4) — the near-universal case for a straightforward
@@ -981,7 +997,7 @@ From hands-on field experience with deployed units:
     `asy_udp_socket.py`'s own `ready()` already does — not just `ipoll()`'s truthiness. Not a new
     finding about `asy_udp_socket.py` itself (already correct); a reminder for any *future* test
     helper written against a raw socket in this codebase to follow the same pattern.
-  - **Verification**: `tests/test_asy_dns_client.py` — new file, 28 tests (packet-building/parsing
+  - **Verification**: `tests/test_asy_dns_client.py` — new file, 29 tests (packet-building/parsing
     unit tests plus real-loopback-UDP integration tests via a genuine independent fake DNS server,
     mirroring `tests/test_asy_udp_socket.py`'s own `AdversarialPeer` convention — never mocks
     `AsyUDPSocket` itself). `tests/test_asy_ntp_client.py` — the long-block-lock init tests removed,
