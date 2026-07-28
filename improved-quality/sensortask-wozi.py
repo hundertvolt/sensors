@@ -11,7 +11,7 @@ from asy_scd30_driver import SCD30_Reader
 from asy_sgp40_driver import SGP40_Reader
 from asy_bmp3xx_driver import BMP3xx_Reader
 from neopixel_signal import Neopixel_Signal
-from async_connect import asy_conn_time
+from asy_wifi_service import asy_conn_time
 from asy_ntp_client import asy_ntp_client
 from async_manager import LockedValue, ConfigManager
 from base_classes import LockedCounter
@@ -73,15 +73,31 @@ cfgmgr = ConfigManager(
     json.loads(_DEFAULT_CONFIG)
     | SCD30_Reader.get_default_cfg()
     | SGP40_Reader.get_default_cfg()
-    | BMP3xx_Reader.get_default_cfg()
-    | asy_conn_time.get_default_cfg(),
+    | BMP3xx_Reader.get_default_cfg(),
     debug=debug,
 )
-# asy_conn_time: led_pin='LED' for onboard WiFi LED
-conn = asy_conn_time(cfgmgr, conn_fail_to_hotspot=5, hotspot_time_min=8, debug=debug)
-# asy_ntp_client now owns its own config_NTP.cfg internally (base_classes.py's SensorReaderConfig),
-# so the system cfgmgr/get_default_cfg() merge above no longer covers it.
-ntp = asy_ntp_client(conn.get_wifi_mode_lock(), conn.network_available, conn.get_dns_server_ip, debug=debug)
+# asy_conn_time (asy_wifi_service.py, promoted) now owns its own config_WIFI.cfg internally
+# (base_classes.py's SensorReaderConfig, same as asy_ntp_client below) - no more externally-injected
+# cfgmgr, no more get_default_cfg()/_DEFAULT_CONFIG merge step. Every REST route below that reads or
+# writes a WIFI-schema field (Country/Hostname/SSID/PW/LedWifiOn) now goes through conn.cfgmgr, not
+# the shared cfgmgr above - see BACKLOG.md for the full writeup on this promotion gap and its fix.
+conn = asy_conn_time(conn_fail_to_hotspot=5, hotspot_time_min=8, debug=debug)
+# The leaf timeouts asy_ntp_client forwards to resolve_ipv4()/its own NTP fetch are set here, the
+# one place this class is instantiated - see BACKLOG.md's timing-restructure writeup for why these
+# (and not a hidden module constant, and not any computation inside asy_ntp_client.py itself) are
+# the only place a real device's timing behavior actually gets decided.
+_DNS_TIMEOUT_MS = const(500)  # per-server, per-attempt DNS lookup budget
+_DNS_TRIES = const(1)  # retry budget per DNS server
+_NTP_FETCH_TIMEOUT_MS = const(5000)  # timeout for the actual NTP request/reply round trip
+ntp = asy_ntp_client(
+    conn.get_wifi_mode_lock(),
+    conn.network_available,
+    conn.get_dns_server_ip,
+    dns_timeout_ms=_DNS_TIMEOUT_MS,
+    dns_tries=_DNS_TRIES,
+    ntp_fetch_timeout_ms=_NTP_FETCH_TIMEOUT_MS,
+    debug=debug,
+)
 app = Microdot()  # type: ignore[no-untyped-call]
 i2c0 = asy_i2c_driver.I2C(0, 13, 12, frequency=50000)
 i2c1 = asy_i2c_driver.I2C(1, 19, 18, frequency=50000)
@@ -182,7 +198,7 @@ async def network_status(request: Request) -> Dict[str, int | float | str | None
 
 @app.get("/net/config")  # type: ignore[no-untyped-call, misc]
 async def network_config(request: Request) -> Dict[str, int | float | str | None]:
-    cfg_data = await cfgmgr.get_dict(["Country", "Hostname", "SSID"])
+    cfg_data = await conn.cfgmgr.get_dict(["Country", "Hostname", "SSID"])
     if cfg_data is not None:
         cfg_data["PW"] = "********"
     else:
@@ -200,7 +216,7 @@ async def network_cmd(request: Request) -> Dict[str, str | int | JsonValidity]:
         if req_json["cmd"] == "setNetwork":
             if debug:
                 print("Received Set Network command.")
-            res, err = await init_json_from_cfg(cfgmgr, ["Hostname", "Country", "SSID", "PW"])
+            res, err = await init_json_from_cfg(conn.cfgmgr, ["Hostname", "Country", "SSID", "PW"])
             if err is not None:
                 return err
             if res is not None:
@@ -209,7 +225,7 @@ async def network_cmd(request: Request) -> Dict[str, str | int | JsonValidity]:
                 res = update_valid_json(req_json, "SSID", "str", res, 2, 32, debug=debug)
                 res = update_valid_json(req_json, "PW", "str", res, 8, 63, debug=debug)
                 return await cmd_post_check(
-                    res, cfgmgr, post_fct=conn.reconnect_wifi, debug=debug
+                    res, conn.cfgmgr, post_fct=conn.reconnect_wifi, debug=debug
                 )  # Reconnect WiFi with new config (has 5 sec delay)
     return generic_error_return()
 
@@ -448,7 +464,6 @@ async def led_config(request: Request):
     cfg_data = await cfgmgr.get_dict(
         [
             "LedAutoOn",
-            "LedWifiOn",
             "LedAutoOnH",
             "LedAutoOnM",
             "LedAutoOffH",
@@ -461,9 +476,15 @@ async def led_config(request: Request):
             "LedWarnHum",
         ]
     )
-    if cfg_data is not None:
+    # LedWifiOn lives in conn's own config_WIFI.cfg (asy_wifi_service.py), not the shared cfgmgr
+    # above - get_dict() returns None for the *whole* call if any requested key is unknown to that
+    # particular ConfigManager, so this needs its own separate read rather than one combined list.
+    wifi_led_data = await conn.cfgmgr.get_dict(["LedWifiOn"])
+    if cfg_data is not None and wifi_led_data is not None:
         cfg_data["LedAutoOn"] = to_switch(cfg_data["LedAutoOn"])
-        cfg_data["LedWifiOn"] = to_switch(cfg_data["LedWifiOn"])
+        cfg_data["LedWifiOn"] = to_switch(wifi_led_data["LedWifiOn"])
+    else:
+        cfg_data = None
 
     # TODO What if cfg_data is None
     return cfg_data
@@ -553,12 +574,12 @@ async def led_cmd(request: Request):
     if req_json["cmd"] == "setWiFiLED":
         if debug:
             print("Received Set WiFi LED command.")
-        res, err = await init_json_from_cfg(cfgmgr, ["LedWifiOn"])
+        res, err = await init_json_from_cfg(conn.cfgmgr, ["LedWifiOn"])
         if res is None:
             return err
         res = update_valid_json(req_json, "LedWifiOn", "switch", res, None, None, debug=debug)
-        res = await set_sensor_value(res, conn.set_wifi_led, cfgmgr, default=True, debug=debug)
-        return await cmd_post_check(res, cfgmgr, debug=debug)
+        res = await set_sensor_value(res, conn.set_wifi_led, conn.cfgmgr, default=True, debug=debug)
+        return await cmd_post_check(res, conn.cfgmgr, debug=debug)
 
 
 # System API

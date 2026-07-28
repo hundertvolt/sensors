@@ -40,11 +40,15 @@ from micropython import const
 from asy_udp_socket import AsyUDPSocket
 
 _DNS_PORT = const(53)
-_DNS_TIMEOUT_MS = const(2000)  # per-server, per-attempt budget - keep the worst case (every
-# configured server unreachable) bounded to a few seconds total, not tens of seconds; a real
-# resolver on a working network answers in well under 100ms.
-_DNS_TRIES = const(2)  # write_and_recvfrom()'s own retry budget per server - same shape as
-# asy_ntp_client.py's own _fetch_ntp_reply()/AsyUDPSocket call convention.
+_DNS_TIMEOUT_MS = const(500)  # per-server, per-attempt budget - these are just this function's own
+# standalone defaults, used only when a caller doesn't override timeout_ms/tries (asy_ntp_client.py
+# always does, with its own explicitly-configured values - see that file's own constructor). A real
+# resolver on a working network answers in well under 100ms; 500ms already gives that a wide
+# margin without needlessly stretching out the case where a server is genuinely unreachable
+# (an earlier, much larger pair of defaults here - 2000ms x 2 tries x up to 3 servers - produced a
+# worst case of several seconds to over ten, flagged as excessive - see BACKLOG.md).
+_DNS_TRIES = const(1)  # write_and_recvfrom()'s own retry budget per server - see _DNS_TIMEOUT_MS's
+# own comment; one try per server is enough given resolve_ipv4() already tries multiple servers.
 _DNS_RECV_BUF = const(512)  # RFC 1035 SS4.2.1's guaranteed-safe UDP message size; no EDNS0 OPT is
 # sent, so no larger response is ever solicited.
 _FALLBACK_DNS_SERVERS: tuple[str, ...] = ("8.8.8.8", "1.1.1.1")  # tried, in order, after the caller-supplied servers

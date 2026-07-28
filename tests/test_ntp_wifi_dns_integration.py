@@ -149,11 +149,11 @@ async def _cancel(task: "asyncio.Task[Any]") -> None:
 
 class _RecordingResolver:
     def __init__(self, return_value: "str | None") -> None:
-        self.calls: list[tuple[str, tuple[str, ...]]] = []
+        self.calls: list[tuple[str, tuple[str, ...], int, int]] = []
         self.return_value = return_value
 
-    async def __call__(self, host: str, dns_servers: "tuple[str, ...]" = ()) -> "str | None":
-        self.calls.append((host, dns_servers))
+    async def __call__(self, host: str, dns_servers: "tuple[str, ...]" = (), timeout_ms: int = 0, tries: int = 0) -> "str | None":
+        self.calls.append((host, dns_servers, timeout_ms, tries))
         return self.return_value
 
 
@@ -176,7 +176,7 @@ def test_dns_server_ip_flows_from_a_connected_real_wifi_service_into_resolve_ipv
         ntpmod.resolve_ipv4 = original
     # The real conn-derived DNS server IP - not None, not a stand-in lambda's value - reached the
     # resolver call. This is the exact value that used to always arrive as None before the fix.
-    assert recorder.calls == [("pool.ntp.org", ("203.0.113.9",))]
+    assert recorder.calls == [("pool.ntp.org", ("203.0.113.9",), 500, 1)]
 
 
 def test_dns_server_ip_unset_sentinel_flows_through_a_real_never_configured_wifi_service() -> None:
@@ -201,7 +201,7 @@ def test_dns_server_ip_unset_sentinel_flows_through_a_real_never_configured_wifi
         run(scenario())
     finally:
         ntpmod.resolve_ipv4 = original
-    assert recorder.calls == [("pool.ntp.org", ("0.0.0.0",))]
+    assert recorder.calls == [("pool.ntp.org", ("0.0.0.0",), 500, 1)]
 
 
 def test_get_dns_server_ip_real_wlan_exception_is_treated_as_none_not_propagated() -> None:

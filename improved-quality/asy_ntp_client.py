@@ -55,6 +55,16 @@ reading it via the new _safe_get_dns_server() *before* wifi_mode_lock.acquire() 
 then threading the captured value down through _run_ntp_sync_attempt()/_resolve_ntp_server() as a
 plain parameter instead of a callback invoked while the lock is held. See BACKLOG.md for the full
 writeup.
+
+Owner-requested timing restructure: dns_timeout_ms/dns_tries/ntp_fetch_timeout_ms are now this
+file's own constructor parameters (explicitly forwarded to resolve_ipv4()/_fetch_ntp_reply(), never
+read from a hidden module constant) instead of being fixed at whatever asy_dns_client.py's own
+standalone defaults happen to be. This is deliberately just plain parameter-passing - this file does
+no computation of its own with these three values beyond forwarding them; sensortask-wozi.py (the
+one place this class is actually instantiated) is where their values, and any dependent/summable
+total derived from them (e.g. how long a sync attempt could hold the shared wifi_mode_lock for), are
+computed - see BACKLOG.md for the full rationale (including why the previous ~2000ms x 2-try x
+up-to-3-server DNS worst case was flagged as excessive and cut down).
 """
 
 import asyncio
@@ -148,6 +158,16 @@ class asy_ntp_client(SensorReaderConfig):
         network_available: "Callable[[], bool]",
         get_dns_server: "Callable[[], str | None]",
         max_i2c_err: int = 5,
+        dns_timeout_ms: int = 500,  # forwarded to asy_dns_client.resolve_ipv4() - this file's own
+        # explicitly-configured value, independent of that function's own standalone defaults (see
+        # asy_dns_client.py's own comment on _DNS_TIMEOUT_MS). sensortask-wozi.py (the one place
+        # this class is instantiated) is where this value, and any dependent/summable total derived
+        # from it plus dns_tries/ntp_fetch_timeout_ms below and a safety margin, are actually
+        # computed - see BACKLOG.md's timing-restructure writeup.
+        dns_tries: int = 1,  # forwarded to resolve_ipv4() - see dns_timeout_ms's own comment.
+        ntp_fetch_timeout_ms: int = _NTP_CONN_TIMEOUT,  # forwarded to _fetch_ntp_reply()'s
+        # AsyUDPSocket.write_and_recvfrom() call, replacing the old direct module-constant use -
+        # same "explicitly configured, not a hidden module constant" reasoning as dns_timeout_ms.
         cfg_path: str = "",
         fram: "AsyFramManager | None" = None,
         history_length: int = 10,
@@ -167,6 +187,9 @@ class asy_ntp_client(SensorReaderConfig):
         self.wifi_mode_lock = wifi_mode_lock  # shared with asy_conn_time - protects the WLAN state this class only reads
         self.network_available = network_available  # asy_conn_time.network_available - caller must hold wifi_mode_lock
         self.get_dns_server = get_dns_server  # asy_conn_time.get_dns_server_ip - the network's own DHCP-assigned DNS server, or None
+        self.dns_timeout_ms = dns_timeout_ms
+        self.dns_tries = dns_tries
+        self.ntp_fetch_timeout_ms = ntp_fetch_timeout_ms
         self.ntp_sec_count = 0
         self.ntp_retries = 0
         self.ntp_sync_trigger_event = ThreadSafeFlag()
@@ -365,7 +388,7 @@ class asy_ntp_client(SensorReaderConfig):
 
     async def _resolve_ntp_server(self, ntp_host: str, dns_server: str | None) -> tuple[str, int] | None:
         servers = () if dns_server is None else (dns_server,)
-        ip = await resolve_ipv4(ntp_host, servers)
+        ip = await resolve_ipv4(ntp_host, servers, timeout_ms=self.dns_timeout_ms, tries=self.dns_tries)
         if ip is None:
             await self.pr.err_s(_NAME, "No valid NTP server:", ntp_host, errno=12)
             return None
@@ -384,7 +407,7 @@ class asy_ntp_client(SensorReaderConfig):
         msg, _addr_from = await cli.write_and_recvfrom(
             b"\x1b" + bytearray(47),
             1024,
-            timeout_ms=_NTP_CONN_TIMEOUT,
+            timeout_ms=self.ntp_fetch_timeout_ms,
         )
         await cli.disconnect()
         return msg

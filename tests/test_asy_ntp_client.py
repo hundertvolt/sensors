@@ -81,6 +81,9 @@ def make_client(
     network_available: "Callable[[], bool] | None" = None,
     get_dns_server: "Callable[[], str | None] | None" = None,
     max_i2c_err: int = 5,
+    dns_timeout_ms: int = 500,
+    dns_tries: int = 1,
+    ntp_fetch_timeout_ms: int = 5000,
     debug: "int | None" = None,
     cfg_path: "str | None" = None,
     fram: "AsyFramManager | None" = None,
@@ -98,6 +101,9 @@ def make_client(
         network_available,
         get_dns_server,
         max_i2c_err=max_i2c_err,
+        dns_timeout_ms=dns_timeout_ms,
+        dns_tries=dns_tries,
+        ntp_fetch_timeout_ms=ntp_fetch_timeout_ms,
         debug=debug,
         cfg_path=cfg_path,
         fram=fram,
@@ -684,14 +690,15 @@ def test_resolve_ntp_server_literal_ip_returns_immediately() -> None:
 
 class _RecordingResolver:
     # Stands in for asy_dns_client.resolve_ipv4() itself - proves _resolve_ntp_server()'s own
-    # orchestration (tuple building, error handling) independent of resolve_ipv4()'s own real
-    # network behavior, which tests/test_asy_dns_client.py already covers exhaustively.
+    # orchestration (tuple building, error handling, timeout_ms/tries forwarding) independent of
+    # resolve_ipv4()'s own real network behavior, which tests/test_asy_dns_client.py already
+    # covers exhaustively.
     def __init__(self, return_value: "str | None") -> None:
-        self.calls: list[tuple[str, tuple[str, ...]]] = []
+        self.calls: list[tuple[str, tuple[str, ...], int, int]] = []
         self.return_value = return_value
 
-    async def __call__(self, host: str, dns_servers: "tuple[str, ...]" = ()) -> "str | None":
-        self.calls.append((host, dns_servers))
+    async def __call__(self, host: str, dns_servers: "tuple[str, ...]" = (), timeout_ms: int = 0, tries: int = 0) -> "str | None":
+        self.calls.append((host, dns_servers, timeout_ms, tries))
         return self.return_value
 
 
@@ -705,7 +712,7 @@ def test_resolve_ntp_server_passes_the_given_dns_server_through() -> None:
     finally:
         ntpmod.resolve_ipv4 = original
     assert result == ("9.9.9.9", 123)
-    assert recorder.calls == [("pool.ntp.org", ("192.0.2.53",))]
+    assert recorder.calls == [("pool.ntp.org", ("192.0.2.53",), 500, 1)]
 
 
 def test_resolve_ntp_server_none_dns_server_passes_an_empty_servers_tuple() -> None:
@@ -717,7 +724,22 @@ def test_resolve_ntp_server_none_dns_server_passes_an_empty_servers_tuple() -> N
         run(client._resolve_ntp_server("pool.ntp.org", None))
     finally:
         ntpmod.resolve_ipv4 = original
-    assert recorder.calls == [("pool.ntp.org", ())]
+    assert recorder.calls == [("pool.ntp.org", (), 500, 1)]
+
+
+def test_resolve_ntp_server_forwards_the_constructors_own_dns_timeout_and_tries() -> None:
+    # Proves dns_timeout_ms/dns_tries are this instance's own configured values (see
+    # asy_ntp_client.py's own constructor comment) reaching resolve_ipv4() unchanged - not
+    # asy_dns_client.py's own standalone defaults, and not hardcoded here either.
+    recorder = _RecordingResolver("9.9.9.9")
+    original = ntpmod.resolve_ipv4
+    ntpmod.resolve_ipv4 = recorder
+    try:
+        client = make_client(dns_timeout_ms=1234, dns_tries=3)
+        run(client._resolve_ntp_server("pool.ntp.org", None))
+    finally:
+        ntpmod.resolve_ipv4 = original
+    assert recorder.calls == [("pool.ntp.org", (), 1234, 3)]
 
 
 def test_resolve_ntp_server_dns_failure_returns_none() -> None:
@@ -766,6 +788,38 @@ def test_fetch_ntp_reply_invalid_addr_returns_none() -> None:
     client = make_client()
     result = run(client._fetch_ntp_reply((12345, 80)))  # host not a str
     assert result is None
+
+
+class _RecordingUDPSocket:
+    # Stands in for asy_udp_socket.AsyUDPSocket - records the timeout_ms _fetch_ntp_reply() passes
+    # to write_and_recvfrom(), proving ntp_fetch_timeout_ms is this instance's own configured value
+    # (see asy_ntp_client.py's own constructor comment) reaching the real call, not a hardcoded
+    # module constant.
+    calls: "list[int]" = []
+
+    def __init__(self, addr: "Any", mode: str = "client", conn_tries: int = 1) -> None:
+        pass
+
+    async def write_and_recvfrom(
+        self, msg: "bytes | bytearray", buf: int, timeout_ms: int = -1, tries: int = 1
+    ) -> "tuple[bytes | None, tuple[str, int] | None]":
+        _RecordingUDPSocket.calls.append(timeout_ms)
+        return None, None
+
+    async def disconnect(self) -> None:
+        pass
+
+
+def test_fetch_ntp_reply_forwards_the_constructors_own_fetch_timeout() -> None:
+    client = make_client(ntp_fetch_timeout_ms=9999)
+    original = ntpmod.AsyUDPSocket
+    _RecordingUDPSocket.calls = []
+    ntpmod.AsyUDPSocket = _RecordingUDPSocket  # type: ignore[misc, assignment]
+    try:
+        run(client._fetch_ntp_reply(("127.0.0.1", 123)))
+    finally:
+        ntpmod.AsyUDPSocket = original
+    assert _RecordingUDPSocket.calls == [9999]
 
 
 def test_fetch_ntp_reply_ipv6_shaped_four_tuple_addr_returns_none() -> None:

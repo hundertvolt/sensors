@@ -1081,8 +1081,63 @@ From hands-on field experience with deployed units:
     `wifi_mode_lock` across DNS resolution at all) is a real design tradeoff of its own (releasing
     the lock during DNS resolution would let a WLAN mode switch invalidate an in-flight resolution),
     flagged for a future decision rather than guessed at here.
-
-### Code structure / style patterns for the refactor
+  - **Follow-up owner-requested timing restructure, acting on the ~12s DNS observation above**:
+    the owner's own framing was explicit — "define the timeouts per service and compute
+    dependent/summable timings... Only the individual timeouts need to be set as parameter" — and,
+    after a first pass added a `wifi_mode_lock_timeout_ms` parameter plus a bounded-acquire helper
+    rewiring all 7 of `asy_wifi_service.py`'s own `wifi_mode_lock.acquire()` call sites, a second
+    round of owner feedback asked for that specific piece to be reverted: "keep it simple... no
+    need to do any computation inside the three files... trust this, all computation is done
+    centrally... just a few lines in sensortask should be able to do the job." Final shape:
+    - `asy_dns_client.py`'s own standalone defaults (used only when a caller doesn't override) are
+      cut from `_DNS_TIMEOUT_MS=2000`/`_DNS_TRIES=2` to `500`/`1` — still generous next to "well
+      under 100ms" for a real working resolver, but no longer contributing a many-seconds worst
+      case on its own.
+    - `asy_ntp_client.py` gained three new, plain constructor parameters —
+      `dns_timeout_ms`/`dns_tries`/`ntp_fetch_timeout_ms` — forwarded verbatim to
+      `resolve_ipv4()`/`_fetch_ntp_reply()`. No computation happens inside this file; a new
+      `_safe_get_dns_server()`-adjacent helper was deliberately *not* added for these, since the
+      owner's second round of feedback ruled that out — they're just plain values this class trusts
+      were set correctly at construction.
+    - `asy_wifi_service.py` ends this round completely unchanged from before this timing work
+      (the `wifi_mode_lock_timeout_ms`/`_acquire_wifi_mode_lock()` addition and its 7 call-site
+      rewrite were reverted via `git checkout` back to the pre-existing committed state) — it still
+      does a plain, unbounded `wifi_mode_lock.acquire()` everywhere. The DNS-timeout reduction above
+      already substantially shrinks the worst-case duration `wlan_connect()`'s own lock-acquire
+      calls could be delayed by; genuinely *bounding* that wait (instead of just shrinking the thing
+      that makes it long) remains the deliberately-deferred, separate follow-up noted above, not
+      resolved by this round.
+    - `sensortask-wozi.py` is the one place these three leaf values are actually decided
+      (`_DNS_TIMEOUT_MS`/`_DNS_TRIES`/`_NTP_FETCH_TIMEOUT_MS`, passed straight into `asy_ntp_client`'s
+      new parameters) — "just a few lines," per the owner's own framing, with no dependent/summed
+      value computed *from* them this round (the earlier `_NTP_SYNC_WORST_CASE_MS`-style total was
+      part of the reverted `wifi_mode_lock_timeout_ms` mechanism and had no other consumer once that
+      was pulled back out).
+  - **A serious, unrelated bug found while deciding where to wire the above centrally, fixed in the
+    same round**: `sensortask-wozi.py` still imported `asy_conn_time` from `async_connect.py` (the
+    original, pre-promotion module — unchanged since this repo's very first commit) rather than the
+    promoted `asy_wifi_service.py`. An earlier commit this session (`a6abe13`, adding the
+    `get_dns_server_ip` wiring) added `conn.get_dns_server_ip` to the `asy_ntp_client(...)`
+    construction call without checking this — a method that only exists on the promoted class — so
+    `sensortask-wozi.py` would have raised `AttributeError` at module load (i.e. failed to boot) from
+    that commit onward. Confirmed via `git log -p` that the stale import dates back to the initial
+    commit and was never updated when `asy_wifi_service.py` was created as the promoted copy. Fixed
+    by switching the import, updating the constructor call (the promoted class takes no external
+    `cfgmgr` — it owns `config_WIFI.cfg` internally via `SensorReaderConfig`, same as
+    `asy_ntp_client`), and removing `asy_conn_time.get_default_cfg()` from the shared `cfgmgr`'s
+    default-config merge (the promoted class has no such static method). This surfaced a further,
+    connected gap: three REST routes (`/net/config` GET, `/net/cmd` PUT's `setNetwork`, `/led/cmd`
+    PUT's `setWiFiLED`, plus `/led/config` GET's `LedWifiOn` field) still read/wrote WIFI-schema
+    fields (`Country`/`Hostname`/`SSID`/`PW`/`LedWifiOn`) through the *shared* `cfgmgr`, which no
+    longer carries them once the `get_default_cfg()` merge was removed — `ConfigManager.get_dict()`
+    returns `None` for the whole call if any requested key is unknown to it, so these routes would
+    have silently started returning nothing. Fixed by redirecting each to `conn.cfgmgr` (a real,
+    independent `ConfigManager` instance every `SensorReaderConfig` subclass already owns), splitting
+    `/led/config`'s mixed request into two separate reads (the other ten `Led*` fields legitimately
+    still live in the shared `cfgmgr`) rather than one that would now fail as a whole. Verified via
+    `git diff`-clean `ruff`/`mypy` counts against this file's own pre-existing baseline (24/121
+    findings respectively, both unchanged) — this file was never lint/type-clean to begin with, but
+    nothing new was introduced.
 
 Owner: much of this is already underway in `improved-quality/` — recorded as the bar to hold the
 rest of the refactor to.
