@@ -814,7 +814,7 @@ def test_fetch_ntp_reply_forwards_the_constructors_own_fetch_timeout() -> None:
     client = make_client(ntp_fetch_timeout_ms=9999)
     original = ntpmod.AsyUDPSocket
     _RecordingUDPSocket.calls = []
-    ntpmod.AsyUDPSocket = _RecordingUDPSocket  # type: ignore[misc, assignment]
+    ntpmod.AsyUDPSocket = _RecordingUDPSocket
     try:
         run(client._fetch_ntp_reply(("127.0.0.1", 123)))
     finally:
