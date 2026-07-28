@@ -2140,6 +2140,20 @@ never touches `machine`/`network` APIs itself, only generic `asyncio`/`socket` t
 Verified: `scripts/lint.sh`/`scripts/typecheck.sh` both clean (29 source files), `tests/test_captive_dns.py`
 40/40, full `scripts/test.sh` 792/792 (13 files).
 
+### `captive_dns.py`: fifth pass - comment/docstring conciseness trim (`src/README.md` section 11)
+
+Owner-directed pass applying section 11's "3 lines, prefer fewer" per-comment limit, which the file
+hadn't been checked against directly before. Module docstring cut from 11 to 6 lines; seven inline
+comment blocks that ran 4-6 lines each cut to 1-2 lines. No docstrings existed on individual functions
+(all per-function explanations were already `#` comments, matching section 11's docstring-vs-comment
+rule), so only length needed trimming, not form. All rationale trimmed out of the file already lives
+in this section's own four prior passes above, so nothing was lost - the trim just stopped duplicating
+it in the file, per section 11's own stated pattern. No behavior change.
+
+Verified: `ruff check src/captive_dns.py` clean, `scripts/typecheck.sh` unaffected (its 5 pre-existing
+findings are all in `system_service.py`/`asy_i2c_driver.py`, none in this file), `tests/test_captive_dns.py`
+still 40/40.
+
 ### Coverage-driven completeness pass
 
 Used `scripts/test.sh --coverage`'s line-level miss report to close real gaps: `print_log.py`
