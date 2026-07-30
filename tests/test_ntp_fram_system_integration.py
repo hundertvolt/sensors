@@ -29,10 +29,13 @@ import time
 
 import network
 from _fram_chip_fake import FakeMB85RS64V
+from machine import I2C as FakeI2C
 
 import asy_ntp_client as ntpmod
 import asy_spi_driver
+from asy_bmp3xx_driver import BMP3xx_Reader
 from asy_fram_manager import AsyFramManager
+from asy_i2c_driver import I2C
 from asy_ntp_client import asy_ntp_client
 from asy_spi_driver import SPI
 from asy_wifi_service import asy_conn_time
@@ -538,6 +541,60 @@ def test_fram_timestamped_chunk_torn_write_self_heals_with_a_real_ntp_derived_ti
     ts, _age, data = run(chunk2.read())
     assert data == bytearray(b"deadbeef")  # recovered from block 1 despite block 0's torn-write marker
     assert ts is not None  # the real timestamp written before the simulated reboot survived intact
+
+
+# ---------------------------------------------------------------------------
+# SystemService supervising a real *sensor* Reader task, not just the ntp one above -
+# get_task_starters()/start_asy_read() are proven individually (test_asy_bmp3xx_driver.py's own
+# test_get_task_starters_returns_read_and_trigger_starters/test_start_asy_read_returns_a_real_task,
+# added alongside a coverage audit that found neither had ever been called at all before), but
+# nothing proves the same starter still works once it's wired through the real, generic
+# start_and_check_tasks() every sensortask-*.py device actually uses - the exact seam
+# test_system_service_restarts_a_real_ntp_task_that_genuinely_gives_up above already proves for
+# asy_ntp_client's own task, generalized here to a sensor driver.
+# ---------------------------------------------------------------------------
+
+_BMP_ADDR = 0x77
+
+
+def make_bmp_reader(cfg_path: str, max_i2c_err: int = 1) -> BMP3xx_Reader:
+    i2c = I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
+    return BMP3xx_Reader(i2c, address=_BMP_ADDR, max_i2c_err=max_i2c_err, cfg_path=cfg_path)
+
+
+async def _never_synced() -> bool:
+    return False
+
+
+def test_system_service_restarts_a_real_sensor_reader_task_that_genuinely_gives_up() -> None:
+    reader = make_bmp_reader(_tmp_cfg_dir(), max_i2c_err=1)  # gives up on the 2nd consecutive real failure
+    fake_i2c: FakeI2C = reader.bmp.i2c_bmp3xx.i2c_device.i2c._i2c  # type: ignore[assignment]
+    fake_i2c.nak_addresses.add(_BMP_ADDR)  # every real bus op fails - setup() itself never succeeds
+    svc = SystemService(_never_synced)
+    starts: list[asyncio.Task[bool]] = []
+
+    def spy_starter() -> "asyncio.Task[bool]":
+        # Wraps the real starter (not a synthetic one), same technique as
+        # test_system_service_restarts_a_real_ntp_task_that_genuinely_gives_up above.
+        t = reader.start_asy_read()
+        starts.append(t)
+        return t
+
+    async def scenario() -> int:
+        svc_task = asyncio.create_task(svc.start_and_check_tasks([spy_starter]))
+        for _ in range(200):  # bounded wait for the real read_loop()'s own init failure -> return False
+            if starts and starts[0].done():
+                break
+            await asyncio.sleep(0)
+        assert starts[0].done()  # the real read_loop() genuinely returned on its own (init failed)
+        await asyncio.sleep(2.5)  # real wall-clock wait for start_and_check_tasks()'s own 2s poll
+        await _cancel(svc_task)
+        return len(starts)
+
+    call_count = run(scenario())
+    assert call_count == 2  # the initial real start, plus one genuine restart by the real supervisor
+    counter = run(svc.get_error_counter())
+    assert counter["Tasks"]["ErrCount"] == 1  # the restart itself is persisted (wrnno=1), not silent
 
 
 if __name__ == "__main__":
