@@ -158,7 +158,7 @@ File-by-file review comparing `improved-quality/` against legacy equivalents (or
 there's no legacy equivalent), against `src/README.md`'s checklist. Real bugs, decisions, and
 deferred items below — process narrative (review-pass counts, "verified lint/typecheck/tests clean"
 after every change) is omitted; assume every change below was lint/type/test-clean before landing.
-Current total: 981 tests across 16 `tests/test_*.py` files (verify via
+Current total: 1021 tests across 17 `tests/test_*.py` files (verify via
 `grep -c '^def test_' tests/test_*.py` if this looks stale).
 
 ### `math_helpers.py`
@@ -470,18 +470,51 @@ sockets are unconnected and get no such filtering (`captive_dns.py` didn't check
 its own fix below). `ready()`'s `wait_time_ms` default of `0` busy-polled ~180× more than necessary
 while idle — changed default to `20`ms.
 
-**`captive_dns.py` fixes (owner-authorized exception to the "don't edit `improved-quality/`" hard
-rule)**: `DNSServer.run()` now takes a `netmask` alongside `server_ip` and rejects any request whose
-source address doesn't fall in the AP's own subnet — a captive-portal DNS server has no legitimate
-reason to answer a query from off its own AP. `DNSQuery.__init__` parsed the raw datagram with no
-bounds checking — a datagram shorter than 13 bytes or truncated mid-label raised an uncaught
-`IndexError`/`UnicodeError`, stalling the entire DNS server (and every client waiting on it) for 3
-seconds per bad packet via the loop's own broad `except Exception: ... sleep(3)`. Fixed: wrapped in
-`try/except (IndexError, UnicodeError): self.domain = ""`, reusing the existing "don't respond"
-sentinel.
+**`captive_dns.py` — now promoted to `src/`** (started as an owner-authorized exception to the "don't
+edit `improved-quality/`" hard rule, later fully promoted): `DNSServer.run()` takes a `netmask`
+alongside `server_ip` and rejects any request whose source address doesn't fall in the AP's own
+subnet — a captive-portal DNS server has no legitimate reason to answer a query from off its own AP.
+`_ipv4_to_int()`'s dotted-quad parsing now validates each octet is `0-255` — an out-of-range octet
+used to silently spill into the neighboring byte's bits instead of failing, risking a false
+subnet-membership match. `DNSQuery.__init__` parsed the raw datagram (opcode nibble, then
+length-prefixed labels) with no bounds/exception handling at all — a short, truncated, or non-UTF-8
+datagram raised `IndexError`/`UnicodeError`/`TypeError`/`AttributeError` uncaught, stalling the
+entire DNS server (and every other client waiting on it) for 3 seconds per bad packet via the loop's
+own broad `except Exception: ... sleep(3)`; now caught and treated as "don't respond" (reusing the
+existing empty-`domain` sentinel). A second, distinct bounds gap survived that fix: a
+validly-terminated label with nothing following it (no QTYPE/QCLASS) parsed to a non-empty `domain`
+with `_question_end` computed past the end of the buffer — bytes slicing truncates silently instead
+of raising, so this produced a real malformed reply instead of the "don't respond" path every other
+truncation shape gets; closed with one explicit bounds check.
 
-62 tests (`asy_udp_socket.py`; `captive_dns.py` isn't promoted to `src/`, verified via throwaway
-scratchpad repro scripts instead, per the "tests belong once code is promoted" convention).
+**Real wire-format bug, not just an exception path**: `response()` echoed `self.data[12:]`
+(everything past the header) into the reply as if it were pure question content, with `ANCOUNT` set
+to the original `QDCOUNT` rather than the one record actually appended below it. For a bare
+single-question query this happens to produce a correct packet (why the original tests never caught
+it), but any real query carrying trailing data — most commonly an EDNS0 OPT record, which most modern
+OS resolvers (glibc/macOS/Android) attach by default — produced a reply whose declared header counts
+didn't match its actual byte layout, silently defeating the module's purpose for exactly the traffic
+it exists to intercept. Fixed by tracking where the one parsed question actually ends
+(`self._question_end`) and slicing `self.data[12:self._question_end]`, plus hardcoding
+`QDCOUNT=1, ANCOUNT=1, NSCOUNT=0, ARCOUNT=0` outright rather than echoing a count that might not match
+the packet's real layout. `response(ip)` also never validated its own `ip` argument (only ever called
+with an already-validated address today, but the method is public) — now validated via
+`_ipv4_to_int()`, returning `None` (the existing "nothing to send" sentinel) on anything invalid. A
+failed `sendto()` was silently discarded before; `run()` now prints a distinct debug line when a reply
+is dropped instead of treating "sent" and "silently failed" identically.
+
+**Flagged, not fixed**: a literal root-domain query (`.`) — a single zero-length label — parses to
+`domain == ""`, the same sentinel already used for "failed to parse"/non-standard query, so
+`response()` can't tell the two cases apart and returns `None` for both — contradicting the module's
+own docstring claim that every on-subnet query gets an answer regardless of the name asked for. No
+real captive-portal probe (Apple/Android/Windows) ever queries the bare root, so this is left as a
+documented gap rather than adding a second success/failure flag just to distinguish it.
+
+62 tests (`asy_udp_socket.py`) + 40 tests (`tests/test_captive_dns.py`), including one real
+end-to-end loopback smoke test alongside the mocked `run()`-loop branching tests — this Unix-port
+test environment can never produce a real string `addr[0]` from `recvfrom()` for this socket shape,
+so the branching tests drive `run()` through a duck-typed fake (`_FakeUDPS`) while `DNSQuery`/
+`response()` still execute unmocked underneath it.
 
 ### `asy_scd30_driver.py`
 
