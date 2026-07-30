@@ -271,6 +271,19 @@ def test_deinit_calls_real_hardware_deinit_and_clears_poller() -> None:
     assert uart.poller is None
 
 
+class _RaisingUnregisterPoller:
+    def unregister(self, obj: "object") -> None:
+        raise OSError("simulated poller unregister failure")
+
+
+def test_deinit_swallows_poller_unregister_failure() -> None:
+    uart = make_uart()
+    uart.poller = _RaisingUnregisterPoller()  # type: ignore[assignment]
+    uart.deinit()  # must not raise despite the poller's own unregister() failing
+    assert uart._uart is None
+    assert uart.poller is None
+
+
 def test_double_deinit_is_idempotent() -> None:
     uart = make_uart()
     fk = fake(uart)
@@ -372,6 +385,15 @@ def test_ready_survives_a_concurrent_deinit_mid_loop() -> None:
     assert run(scenario()) is False  # must not raise
 
 
+def test_ready_returns_false_on_a_malformed_mask() -> None:
+    # A non-int mask makes `event & mask` inside ready()'s own loop raise TypeError - not caught by
+    # any caller's own except clause (those only wrap the real UART call, not this await) - so
+    # ready() must catch it itself and degrade to False rather than propagating.
+    uart = make_uart()
+    uart.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]
+    assert run(uart.ready("not-a-mask")) is False  # type: ignore[arg-type]
+
+
 def test_cancel_read_timeout_returns_false_if_not_locked() -> None:
     uart = make_uart()
     assert run(uart.cancel_read_timeout()) is False
@@ -427,6 +449,18 @@ def test_read_returns_none_on_timeout() -> None:
     assert run(scenario()) is None
 
 
+def test_read_with_explicit_nbytes_reads_exactly_that_many_bytes() -> None:
+    uart = make_uart()
+    fake(uart).feed_rx(b"hello world")
+
+    async def scenario() -> bytes | None:
+        async with uart:
+            result = await uart.read(5)
+        return result
+
+    assert run(scenario()) == b"hello"
+
+
 def test_readinto_fills_buffer_and_returns_count() -> None:
     uart = make_uart()
     fake(uart).feed_rx(b"hi")
@@ -439,6 +473,20 @@ def test_readinto_fills_buffer_and_returns_count() -> None:
 
     assert run(scenario()) == 2
     assert bytes(buf[:2]) == b"hi"
+
+
+def test_readinto_with_explicit_nbytes_reads_exactly_that_many_bytes() -> None:
+    uart = make_uart()
+    fake(uart).feed_rx(b"hello world")
+    buf = bytearray(11)
+
+    async def scenario() -> int | None:
+        async with uart:
+            result = await uart.readinto(buf, 5)
+        return result
+
+    assert run(scenario()) == 5
+    assert bytes(buf[:5]) == b"hello"
 
 
 def test_readline_returns_bytes_once_ready() -> None:
@@ -656,6 +704,30 @@ def test_write_frames_with_configured_crc() -> None:
     assert framed[:5] == b"hello"
     assert len(framed) == 5 + CRC16().length()
     assert run(CRC16().check(bytearray(framed))) == bytearray(b"hello")
+
+
+def test_write_can_be_cancelled_while_waiting_for_tx_ready() -> None:
+    # _write_all()'s own `if not await self.ready(select.POLLOUT): return False` - write() calls
+    # ready() with no timeout_ms (waits forever), so cancellation is the only way it ever returns
+    # False, same mechanism as test_cancel_read_timeout_unblocks_a_pending_wait's read-side version.
+    uart = make_uart()
+    uart.poller = _StepPoller([0])  # type: ignore[assignment]  # POLLOUT never arrives on its own
+
+    async def writer() -> bool:
+        async with uart:
+            result = await uart.write(bytearray(b"x"))
+        return result
+
+    async def scenario() -> tuple[bool, bool]:
+        task = asyncio.create_task(writer())
+        await asyncio.sleep_ms(5)  # let writer enter ready()'s poll loop, holding the lock
+        cancelled = await uart.cancel_read_timeout()
+        result = await asyncio.wait_for(task, 2)
+        return result, cancelled
+
+    result, cancelled = run(scenario())
+    assert result is False
+    assert cancelled is True
 
 
 def test_write_waits_until_tx_becomes_writable() -> None:
@@ -916,6 +988,31 @@ class _MemoryErrorCRC:
 def test_write_returns_false_on_crc_add_memoryerror() -> None:
     uart = make_uart(crc=CRC16())
     uart.crc = _MemoryErrorCRC(CRC16())  # type: ignore[assignment]
+
+    async def scenario() -> bool:
+        async with uart:
+            result = await uart.write(bytearray(b"x"))
+        return result
+
+    assert run(scenario()) is False
+    assert fake(uart).log == []  # rejected before ever touching the bus
+
+
+class _NoneCRC:
+    # A real CRC_Base's add() only ever returns None via its own _validate_init() rejecting an
+    # explicit init argument - write() never passes one, so this path can't be reached through any
+    # real CRC object. Minimal fake matching just the add()/length() surface write() calls, same
+    # technique as _MemoryErrorCRC above for its own otherwise-unreachable branch.
+    def length(self) -> int:
+        return 0
+
+    async def add(self, bytearr: bytearray, init: "int | None" = None) -> bytearray | None:
+        return None
+
+
+def test_write_returns_false_when_crc_add_returns_none() -> None:
+    uart = make_uart()
+    uart.crc = _NoneCRC()  # type: ignore[assignment]
 
     async def scenario() -> bool:
         async with uart:
