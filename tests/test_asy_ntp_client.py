@@ -41,6 +41,16 @@ def _last_err(counter: "dict[str, dict[str, int | list[int] | list[str]]]", fiel
     return value[-1]
 
 
+# Mirrors asy_ntp_client.py's own _VAL_NH/_VAL_NOS/_VAL_NIH/_VAL_GMT/_VAL_DST schema tuples -
+# not importable once const()-folded (same reasoning as test_asy_wifi_service.py's own
+# duplicated _PHASE_* constants), so mirrored here instead.
+_VAL_NH = (("NTP_Host", "str", "pool.ntp.org", 3, 1024, None),)
+_VAL_NOS = (("NTP_Offset_S", "int", 0, -43200, 43200, None),)
+_VAL_NIH = (("NTP_Interv_H", "int", 12, 1, 24, None),)
+_VAL_GMT = (("GMTOffset", "int", 3600, -43200, 43200, None),)
+_VAL_DST = (("DSTOffset", "int", 3600, -43200, 43200, None),)
+
+
 _TMP_DIR = "tests/_tmp"
 _next_dir = 0
 
@@ -2096,6 +2106,31 @@ def test_integration_recovers_on_retry_after_one_dropped_request() -> None:
             server.close()
 
     assert run(scenario())
+
+
+def test_cfg_schema_matches_what_cfgmgr_was_built_with() -> None:
+    # Regression check for the sensortask-wozi.py integration bug where a shared REST helper
+    # (api_helpers.py's cmd_post_check()) needed each module's own schema to call the promoted
+    # config_manager.ConfigManager.write_config(data, cfg_vals) correctly - cfg_schema is the public
+    # attribute that lets a caller outside this module get that schema without reaching into a
+    # private, underscore-prefixed module-level const.
+    client = make_client()
+    assert client.cfg_schema == (_VAL_NH + _VAL_NOS + _VAL_NIH + _VAL_GMT + _VAL_DST)
+
+
+def test_write_config_via_public_cfg_schema_round_trips_a_real_value() -> None:
+    # Proves cfg_schema is actually usable for a real write, not just structurally equal - the exact
+    # call shape api_helpers.py's cmd_post_check() now makes.
+    client = make_client()
+
+    async def scenario() -> "tuple[bool, dict[str, int | float | str | bool | None] | None]":
+        written, _ = await client.cfgmgr.write_config({"NTP_Host": "time.example.org"}, client.cfg_schema)
+        data = await client.cfgmgr.get_dict(["NTP_Host"])
+        return written, data
+
+    written, data = run(scenario())
+    assert written
+    assert data == {"NTP_Host": "time.example.org"}
 
 
 if __name__ == "__main__":

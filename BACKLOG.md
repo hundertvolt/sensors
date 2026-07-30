@@ -61,18 +61,21 @@ constraints.
   means the same or an equivalent condition across different drivers, beyond just the one
   already-consistent case. No scheme (numbering ranges, category list, how a driver opts in)
   designed yet — out of scope until config setters (above) are done.
-- **Network/WiFi and Neopixel config still share one ad hoc top-level `ConfigManager`** in
-  `sensortask-wozi.py` (confirmed intentional intermediate state, not finished) — every sensor now
-  has its own per-device `SensorReaderConfig`-based config file; this cross-cutting config still
-  needs its own clearly-scoped global home instead of an implicit grab-bag.
+- **Resolved**: Network config (`conn.cfgmgr`) and LED/warning config (now `pixel.cfgmgr`, moved
+  into `neopixel_signal.py` itself) each own their own schema/file now, same as every sensor driver
+  — no more single ad hoc top-level `ConfigManager` grab-bag for those. One narrower ad hoc bucket
+  remains by design, not oversight: `sensortask-wozi.py`'s own residual `config_SYSTEM.cfg`
+  (`_VAL_SYSTEM_FIELDS`) still covers SGP40's `BackupPeriod`/`BackupMaxAge`/`WaitTimeNTP` and every
+  BMP3xx REST field, because those genuinely have no other home yet — that's exactly the deferred
+  "per-driver REST config setters" gap above, intentionally left alone by this fix.
 - **Neopixel warning-flash sequencing and the task-supervisor error-budget counter** are both
   behaviorally correct and intentional as designed, but flagged by the owner as implementable more
   efficiently — worth a cleaner implementation in the refactor without changing observed behavior.
-- **`sensortask-wozi.py`'s own task-supervisor loop in `main()`** still never calls the real
-  `start_and_check_tasks()`/`get_task_starters()` `system_service.py` now provides — it hand-rolls
-  its own loop instead. Same file's `sysfunct.start_timers(timer_starters, 1000)` call also passes
-  a second positional argument `start_timers()` has never accepted. Pre-existing, not touched by
-  any driver promotion so far.
+- **Resolved**: `sensortask-wozi.py`'s `main()` now calls the real `start_and_check_tasks()`
+  `system_service.py` provides, instead of hand-rolling its own loop, and `start_timers()` is no
+  longer called with an extra positional argument it never accepted. `/system/status`'s
+  `Task_ErrCnt`/`Task_LastErr` now read from `sysfunct.get_error_counter()`'s "Tasks" log instead of
+  the removed hand-rolled `LockedCounter`/`LockedValue` pair.
 - **`improved-quality/microdot.py` is a confirmed *unintentional* fork of vendored Microdot**
   (owner-confirmed). Action when refactor work resumes: revert it to match upstream exactly, no
   behavioral additions ever. Not touched now (`improved-quality/` source stays out of routine
@@ -948,3 +951,46 @@ rewrites touched overlapping lines and needed hand-combining, not just concatena
 `SystemService`/`SGP40_Reader`'s `fram_ntp_callback` both now take `ntp.ntp_issynced`, not
 `conn.ntp_issynced` — `ntp_issynced()` lives on the promoted `asy_ntp_client` (`ntp`) after the
 conn/ntp peer split, not on `asy_conn_time` (`conn`) anymore.
+
+**Third reconciliation, real severity this time — a genuine crash bug, not a mechanical mismatch**:
+`sensortask-wozi.py` (and `api_helpers.py`/`neopixel_signal.py`, which it wires together) still
+imported `ConfigManager`/`LockedValue` from `python/CommonDrivers/async_manager.py` (the old,
+pre-refactor module — MicroPython's flat frozen-module namespace resolves `import async_manager` to
+whichever file defines that module name, regardless of directory), not the promoted
+`config_manager.py`/`base_classes.py`. Confirmed by direct reproduction (a CPython stand-in with a
+stubbed `micropython` module, not just read cold): the old class has no `get_dict()`/
+`get_int_values()`/`get_bool_values()` at all (`AttributeError` on every call); `api_helpers.py`'s
+`init_json_from_cfg()` unpacked the new `get_dict()`'s plain-dict-or-`None` return as a `(valid,
+data)` 2-tuple (`ValueError` for any key count other than 2, silent key-not-value corruption for
+exactly 2); `cmd_post_check()` called `write_config(data)` with one argument against a class that now
+requires `(data, cfg_vals)`. Every REST config path built on these two helpers was broken — reads
+*and* writes, not just the already-tracked missing-setter gap. Worse:
+`neopixel_signal.py`'s `airquality_auto_signal()` (a task started every boot) hit the
+`AttributeError` immediately on its first config read, and the resulting restart-bookkeeping call
+(`last_task_err.set_value()`, same wrong module — real method is camelCase `setValue()`) raised
+*uncaught* inside `main()`'s own loop (no `try`/`except` there), crashing the whole process — this
+would have been a boot-crash-loop had this file been built into real firmware as-is. Zero test
+coverage on any of this (`api_helpers.py`/`sensortask-wozi.py`/`neopixel_signal.py` aren't in
+`MICROPYPATH`'s test scope — see "Refactor targets not yet done" — so nothing caught it).
+
+Fixed, owner-authorized as an exception to the "don't edit `improved-quality/`" hard rule given the
+severity: `neopixel_signal.py` now owns its own schema/`config_NEOPIXEL.cfg` (matching every other
+module with user-settable config — see the resolved item above) instead of taking an externally
+injected, wrongly-typed `cfgmgr`; also fixed its `get_int_values()`/`get_bool_values()` calls, which
+passed bare key-name strings instead of schema tuples (`schema_names()` would have silently indexed
+each string's first character), and an int/float bucket mix-up that silently truncated
+`LedAutoInterv`/`LedAutoFlashDur`. `api_helpers.py`'s `init_json_from_cfg()`/`cmd_post_check()`
+rewritten against the real `ConfigManager` API; `cmd_post_check()` now takes the caller's schema as
+an explicit `cfg_vals` parameter. `asy_wifi_service.py`/`asy_ntp_client.py` each gained a public
+`self.cfg_schema` attribute so callers can pass the exact schema their `cfgmgr` was built with,
+without reaching into a private, `const()`-folded module constant — covered by
+`test_cfg_schema_matches_what_cfgmgr_was_built_with`/`test_write_config_via_public_cfg_schema_round_trips_a_real_value`
+in both `tests/test_asy_wifi_service.py` and `tests/test_asy_ntp_client.py` (the only new test
+coverage possible without widening `MICROPYPATH` to include `improved-quality/`, a separate,
+not-yet-made decision — see "Refactor targets not yet done"). Surfaced several real mypy findings
+along the way, previously masked by the unresolved `async_manager` import typing whole files `Any`
+(same mechanism BACKLOG.md's `asy_wifi_service.py` entry already documents): `led_config()`'s
+`to_switch()` calls needed an explicit `isinstance(x, bool)` narrow, and `/net/config`'s/
+`/time/config`'s declared return types needed widening to match what they actually return (including
+`bool`, and `| None` for the already-acknowledged "what if the read fails" case). mypy total actually
+*dropped* (94→86) fixing this — every removed error was this bug's own masking effect, not new debt.

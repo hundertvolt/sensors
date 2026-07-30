@@ -20,6 +20,14 @@ _PHASE_STA_ESTABLISHED = 1
 _PHASE_HOTSPOT = 2
 _PHASE_DEACTIVATED = 3
 
+# Same reasoning as the phase constants above, for asy_wifi_service.py's own _VAL_SSID/_VAL_PW/
+# _VAL_CTRY/_VAL_HOST/_VAL_LED schema tuples - not importable once const()-folded, so mirrored here.
+_VAL_SSID = (("SSID", "str", "", 0, 32, None),)
+_VAL_PW = (("PW", "str", "", 0, 63, None),)
+_VAL_CTRY = (("Country", "str", "DE", 2, 2, None),)
+_VAL_HOST = (("Hostname", "str", "SensorNode", 1, 32, None),)
+_VAL_LED = (("LedWifiOn", "bool", True, None, None, None),)
+
 try:
     from typing import TYPE_CHECKING
 except ImportError:  # typing isn't available on the real MicroPython test interpreter
@@ -1890,6 +1898,31 @@ def test_integration_repeated_wrong_password_falls_back_to_hotspot_mode() -> Non
         return hotspot_reached
 
     assert run(scenario())
+
+
+def test_cfg_schema_matches_what_cfgmgr_was_built_with() -> None:
+    # Regression check for the sensortask-wozi.py integration bug where a shared REST helper
+    # (api_helpers.py's cmd_post_check()) needed each module's own schema to call the promoted
+    # config_manager.ConfigManager.write_config(data, cfg_vals) correctly - cfg_schema is the public
+    # attribute that lets a caller outside this module get that schema without reaching into a
+    # private, underscore-prefixed module-level const.
+    client = make_client()
+    assert client.cfg_schema == (_VAL_SSID + _VAL_PW + _VAL_CTRY + _VAL_HOST + _VAL_LED)
+
+
+def test_write_config_via_public_cfg_schema_round_trips_a_real_value() -> None:
+    # Proves cfg_schema is actually usable for a real write, not just structurally equal - the exact
+    # call shape api_helpers.py's cmd_post_check() now makes.
+    client = make_client()
+
+    async def scenario() -> "tuple[bool, dict[str, int | float | str | bool | None] | None]":
+        written, _ = await client.cfgmgr.write_config({"Hostname": "NewName"}, client.cfg_schema)
+        data = await client.cfgmgr.get_dict(["Hostname"])
+        return written, data
+
+    written, data = run(scenario())
+    assert written
+    assert data == {"Hostname": "NewName"}
 
 
 if __name__ == "__main__":
