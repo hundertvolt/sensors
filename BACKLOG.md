@@ -179,7 +179,7 @@ File-by-file review comparing `improved-quality/` against legacy equivalents (or
 there's no legacy equivalent), against `src/README.md`'s checklist. Real bugs, decisions, and
 deferred items below — process narrative (review-pass counts, "verified lint/typecheck/tests clean"
 after every change) is omitted; assume every change below was lint/type/test-clean before landing.
-Current total: 1379 tests across 22 `tests/test_*.py` files (verify via
+Current total: 1392 tests across 23 `tests/test_*.py` files (verify via
 `grep -c '^def test_' tests/test_*.py` if this looks stale).
 
 ### `math_helpers.py`

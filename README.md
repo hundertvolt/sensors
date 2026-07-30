@@ -61,9 +61,15 @@ scripts/                 lint.sh / typecheck.sh / test.sh - manual code-quality 
 - **Bus layer** — `asy_i2c_driver.py`/`asy_spi_driver.py` wrap `machine.I2C`/`machine.SPI` with an
   `asyncio.Lock` and a CircuitPython-style `async with device as dev:` pattern so multiple sensors
   can share one physical bus.
-- **Config management** (`async_manager.ConfigManager`) — flat JSON file on the flash filesystem.
-  Self-heals on corruption/missing keys by overwriting the *entire* file with hardcoded defaults —
-  see BACKLOG.md, this is a known data-loss risk on firmware upgrades that add config keys.
+- **Config management** — the deployed, pre-refactor codebase (`python/`, `modules/`) uses
+  `async_manager.ConfigManager`: one ad hoc top-level instance per device, flat JSON file on the
+  flash filesystem, self-heals on corruption/missing keys by overwriting the *entire* file with
+  hardcoded defaults (a known data-loss risk on firmware upgrades that add config keys — see
+  BACKLOG.md). `src/config_manager.py`'s `ConfigManager` replaces this in the refactor: every
+  module with user-settable configuration (each sensor `*_Reader`, `asy_wifi_service.py`,
+  `asy_ntp_client.py`, `neopixel_signal.py`, ...) owns its own schema (a `ConfigSchema` tuple) and
+  its own config file/instance via a public `cfg_schema` attribute, instead of one shared grab-bag —
+  see `DRIVER_SPEC.md` and CLAUDE.md's "Code quality tooling"/BACKLOG.md for the migration state.
 - **REST API pipeline** (`api_helpers.py`) — every `PUT` handler follows `cmd_pre_check` →
   `init_json_from_cfg` → `update_valid_json` → `set_sensor_value` → `cmd_post_check` (validate →
   load current → per-field validate → apply to sensor → persist + post-hooks).

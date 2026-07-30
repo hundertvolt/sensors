@@ -425,8 +425,12 @@ need to go deeper:
   `set_ambient_pressure` is called with `force=True` in the REST handler: resending the same value
   is also the SCD30's documented command to resume continuous measurement after it's been stopped.
   Don't "fix" this into a live BMP388→SCD30 feed; it's intentional, confirmed by the project owner.
-- Task supervisor lives in `main()` inside each `sensortask-*.py`, not in a shared module — it's
-  duplicated per device file today.
+- In the deployed, pre-refactor codebase (`modules/sensortask-*.py`), the task supervisor is a
+  hand-rolled loop inside each file's `main()`, not a shared module — duplicated per device file.
+  `improved-quality/sensortask-wozi.py` no longer matches this: its `main()` now calls
+  `system_service.py`'s real `start_and_check_tasks()`/`start_timers()` instead of reimplementing
+  the loop — see BACKLOG.md's "Resolved" note on this fix. Don't assume the two describe the same
+  current state.
 - **Functional behaviors confirmed intentional by the project owner, not obvious from the code
   alone — don't "fix" any of these:**
   - Air-quality warning LED sequencing (one color per condition, paused between flashes rather than
