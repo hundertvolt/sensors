@@ -4,6 +4,7 @@ import struct
 
 from machine import I2C as FakeI2C
 
+import asy_i2c_driver
 from asy_i2c_driver import I2C, I2CDevice
 
 try:
@@ -223,6 +224,53 @@ def test_register_struct_malformed_format_returns_none_and_noop() -> None:
     assert i2c.get_register_struct(0x50, 0x20, "Y") is None  # not a real struct format char
     i2c.set_register_struct(0x50, 0x20, "Y", 1)
     assert len(fake(i2c).log) == 0
+
+
+class _FakeStruct:
+    # get_register_struct()'s calcsize()/unpack() try/except pair share the same format-string
+    # parsing logic in real MicroPython - confirmed directly: any reg_format bad enough to raise
+    # out of unpack() already raises out of calcsize() first (both reject "Y" identically), so the
+    # unpack()-specific except and the "unpacked value isn't int/float/bytes" fallback below it can
+    # never actually be reached through any real malformed format string. Faked here by
+    # substituting asy_i2c_driver's own module-level `struct` name, the same technique this
+    # project's other test files use for their own otherwise-unreachable guards.
+    def __init__(self, unpack_result: "Any") -> None:
+        self._unpack_result = unpack_result
+
+    def calcsize(self, fmt: str) -> int:
+        return struct.calcsize(fmt)
+
+    def unpack(self, fmt: str, buf: object) -> "Any":
+        if isinstance(self._unpack_result, Exception):
+            raise self._unpack_result
+        return self._unpack_result
+
+    def pack_into(self, fmt: str, buf: object, offset: int, *values: object) -> None:
+        struct.pack_into(fmt, buf, offset, *values)
+
+
+def test_get_register_struct_returns_none_when_unpack_itself_raises() -> None:
+    i2c = make_i2c()
+    fake(i2c).registers[(0x50, 0x20)] = bytearray(b"\x12\x34")
+    original_struct = asy_i2c_driver.struct
+    asy_i2c_driver.struct = _FakeStruct(ValueError("simulated malformed-format failure"))  # type: ignore[assignment]
+    try:
+        result = i2c.get_register_struct(0x50, 0x20, ">H")
+    finally:
+        asy_i2c_driver.struct = original_struct
+    assert result is None
+
+
+def test_get_register_struct_returns_none_when_unpacked_value_is_the_wrong_type() -> None:
+    i2c = make_i2c()
+    fake(i2c).registers[(0x50, 0x20)] = bytearray(b"\x12\x34")
+    original_struct = asy_i2c_driver.struct
+    asy_i2c_driver.struct = _FakeStruct(("not-a-number",))  # type: ignore[assignment]
+    try:
+        result = i2c.get_register_struct(0x50, 0x20, ">H")
+    finally:
+        asy_i2c_driver.struct = original_struct
+    assert result is None
 
 
 def test_set_register_struct_value_out_of_range_truncates_silently() -> None:

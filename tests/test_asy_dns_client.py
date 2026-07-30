@@ -492,6 +492,36 @@ def test_resolve_ipv4_memoryerror_building_the_query_returns_none() -> None:
     assert result is None
 
 
+def test_resolve_ipv4_parse_response_raising_bounds_error_returns_none() -> None:
+    # _parse_response()'s own bounds checks are careful enough that no crafted malformed reply
+    # (see test_resolve_ipv4_garbage_reply_returns_none_not_an_exception above) has ever been found
+    # to actually reach this IndexError/ValueError guard through real bytes - faked directly here to
+    # prove resolve_ipv4() itself degrades cleanly (moves on / returns None) if it ever did.
+    original_parse = asy_dns_client._parse_response
+
+    def raising_parse(rsp: bytes, query: bytes) -> "str | None":
+        raise IndexError("simulated residual bounds-math failure")
+
+    asy_dns_client._parse_response = raising_parse
+    port = make_port()
+
+    async def scenario() -> "str | None":
+        server = FakeDNSServer(_HOST, port)
+        try:
+            responder = asyncio.create_task(server.answer_once(lambda q: _make_response(q, _a_answer("10.20.30.40"), ancount=1)))
+            result = await resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), port=port, timeout_ms=1000, tries=1)
+            await responder
+            return result
+        finally:
+            server.close()
+
+    try:
+        result = run(scenario())
+    finally:
+        asy_dns_client._parse_response = original_parse
+    assert result is None  # degrades cleanly instead of propagating the exception
+
+
 def test_resolve_ipv4_cname_chain_end_to_end() -> None:
     port = make_port()
 
