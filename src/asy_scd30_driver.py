@@ -98,11 +98,15 @@ class SCD30_Reader(SensorReader):
         return evtloop.create_task(self.scd_init_irq())
 
     def start_timer(self) -> None:
-        self.start_trigger_timer.init(
-            period=500,
-            mode=Timer.PERIODIC,
-            callback=lambda b: self.start_trigger_event.set(),
-        )
+        try:
+            self.start_trigger_timer.init(
+                period=500,
+                mode=Timer.PERIODIC,
+                callback=lambda b: self.start_trigger_event.set(),
+            )
+        except OSError as e:  # alarm-pool exhaustion (ENOMEM) - degrades gracefully instead of
+            # crashing the caller (this sensor just never gets triggered this cycle).
+            self.pr.err(_NAME, "Could not start timer:", e)
         self.irq_pin.irq(
             trigger=self.irq_pin.IRQ_RISING,
             handler=lambda b: self.irq_trigger_event.set(),

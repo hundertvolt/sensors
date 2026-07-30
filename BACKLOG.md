@@ -79,25 +79,43 @@ constraints.
 
 ## Open questions (need owner input or further investigation)
 
-1. `modules/_boot.py`'s `import sensortask.py` (literal `.py`) — works reliably on real hardware,
+1. **A task-level restart of `asy_wifi_service.py`'s `wlan_connect()` would silently undo permanent
+   WLAN deactivation**, though only through an essentially unreachable trigger path — flagged for
+   owner awareness, not fixed. `_conn_phase == _PHASE_DEACTIVATED`'s branch in `wlan_connect()`'s
+   main loop (`asy_wifi_service.py`, the `while True:` body) never returns — it just logs and
+   sleeps — so the task can only die while deactivated via an exception escaping that trivial
+   log-and-sleep branch, which no realistic MicroPython call there would raise. *If* that ever
+   happened, though, `_reset_wlan_connect_state()` (called at the top of every fresh `wlan_connect()`
+   invocation) only special-cases `_PHASE_HOTSPOT` staying as-is — any other phase, including
+   `_PHASE_DEACTIVATED`, gets reset to `_PHASE_STA_SEEKING`, silently re-enabling WLAN. CLAUDE.md
+   documents "a physical power-cycle is the accepted recovery path" for this deliberate safety
+   feature, which a task-level supervisor restart (distinct from a full device reboot) would
+   contradict if it were ever reachable. **Confirmed not a promotion regression**: the legacy
+   `python/CommonDrivers/async_connect.py`'s `wlanConnect()` has the identical shape —
+   `wlan_deactivated` is a local variable reset to `False` at the top of every fresh call, so a
+   restarted legacy task would behave the same way. Owner call needed on whether this
+   vanishingly-unlikely edge case is worth hardening (e.g. `_reset_wlan_connect_state()` also
+   special-casing `_PHASE_DEACTIVATED`) or left as-is, matching decades of uneventful legacy field
+   behavior.
+2. `modules/_boot.py`'s `import sensortask.py` (literal `.py`) — works reliably on real hardware,
    but MicroPython's documented freeze/import behavior says it should raise `ModuleNotFoundError`.
    Mechanism genuinely unresolved. **Do not "fix" without testing on real hardware first.**
    Addressed during the refactor, not before.
-2. Config-schema migration is a real data-loss risk on the *current deployed* codebase —
+3. Config-schema migration is a real data-loss risk on the *current deployed* codebase —
    `ConfigManager` overwrites the entire config file with hardcoded defaults the moment one key is
    missing, so a firmware update adding a config key could silently wipe WiFi credentials/tuned
    values. **Decided: not patched on the current codebase** — accepted (reconfigure via web UI
    after a key-adding update). The refactor's per-sensor config model avoids this failure mode
    structurally, not by patching the current global-JSON codebase.
-3. MicroPython version target vs. upstream drift — deployed units run 1.26; upstream stable is
+4. MicroPython version target vs. upstream drift — deployed units run 1.26; upstream stable is
    1.28.0 as of the last check. **Decided**: deployed code stays pinned to 1.26 until a deliberate
    reflash campaign; the refactor is where the version target moves forward. 1.27→1.28 rp2-port
    changes checked so far look RP2350-specific, not RP2040-breaking, but not exhaustively checked
    against every module — re-check whenever the refactor picks a landing version.
-4. SCD30 `ForceCalRef` field procedure isn't written down anywhere — a real maintenance routine
+5. SCD30 `ForceCalRef` field procedure isn't written down anywhere — a real maintenance routine
    exists (confirmed by owner) but the actual steps (reference concentration, exposure
    conditions/timing, frequency) still need capturing from the owner.
-5. Does `config_manager.py`'s `write_config()` need long-block-lock-style coordination? Its
+6. Does `config_manager.py`'s `write_config()` need long-block-lock-style coordination? Its
    `open()`+`json.dump()` has no yield point, the same shape `__init__`'s read path had before the
    cache-elimination redesign closed *that* concern. Whether a real RP2040 littlefs write of a
    small config file is fast enough not to matter is a hardware-timing question this dev
@@ -107,13 +125,6 @@ constraints.
    lock instance, and removing it neither resolves nor forecloses this question. Answering "yes"
    here would mean designing a fresh coordination mechanism at that time, not reusing or
    resurrecting anything already removed.
-6. `get_ambient_pressure()`'s read-back (SCD30) reuses the same command word used to *set* it —
-   matches every sibling getter's pattern and the legacy driver, but neither Sensirion's own
-   `embedded-scd` reference driver nor their `python-i2c-scd30` driver treats that command as
-   readable (their own worked examples/command classes only show a write path for it). Not proven
-   broken — legacy behavior, uneventful field use — but never confirmed against an authoritative
-   source either. **Resolved by owner: leave as-is**, no alternate documented read-back exists to
-   switch to regardless; recorded so it isn't re-investigated from scratch.
 7. Real-hardware verification gap for `asy_udp_socket.py`/`captive_dns.py`: every UDP-layer claim
    (POLLERR/POLLHUP delivery, truncation, connected-socket source filtering) is verified against the
    MicroPython Unix port's socket implementation, not real rp2/lwIP — no rp2 hardware was available
@@ -123,24 +134,24 @@ constraints.
 8. BMP390's own datasheet isn't in `datasheets/bmp3xx/` (only BMP384/BMP388 are) — its `0x60` chip
    ID and assumed-identical register map/IIR table couldn't be verified against a real BMP390
    datasheet. Needs the owner to add the datasheet to close this.
-9. `asy_wifi_service.py` never configures `wlan.config(reconnects=...)`, so the RP2040 WLAN driver
-   may retry an STA connection internally forever and never actually settle on
-   `STAT_WRONG_PASSWORD`/`STAT_NO_AP_FOUND`/`STAT_CONNECT_FAIL` — meaning `_poll_sta_connect_status()`'s
-   dedicated handling of those three codes could be effectively unreachable on real hardware, and
-   `connection_failures` may really just be "didn't finish within the poll window," not a genuine
-   driver-reported failure. Trading this away would mean calling `wlan.config(reconnects=0)`, which
-   changes retry behavior in ways only the owner can weigh. Rediscovered during this file's original
-   promotion review; needs an owner call, not a unilateral fix.
-10. Whether a hot-unplugged/replugged I2C or SPI sensor fully recovers is only field-tested at the
+9. Whether a hot-unplugged/replugged I2C or SPI sensor fully recovers is only field-tested at the
     task-death-and-respawn level (the whole `*_Reader` task dies and gets restarted by the
     supervisor) — never confirmed as *complete* recovery of the underlying bus/device state itself.
     Owner-flagged as "may be incomplete," to revisit/harden during the refactor rather than assume
     solved.
-11. `scripts/typecheck.sh`'s combined `mypy src tests` run resolves every `from machine import X`
-    project-wide to `tests/machine.py`'s fake module, not the real `typings/machine.pyi` board
-    stub — true for every `src/` file, not just ones that exercise it directly. Whether any
-    already-promoted driver has been silently type-checking against the fake's (so far compatible)
-    signatures instead of the real stub this whole time has never been specifically re-verified.
+10. **Cross-file naming discrepancy found during a fresh consistency scan of `src/`** (flagged per
+    this file's own "bird's-eye-view scan" policy, not silently fixed): `asy_wifi_service.py`'s
+    `class asy_conn_time(SensorReaderConfig):` and `asy_ntp_client.py`'s
+    `class asy_ntp_client(SensorReaderConfig):` are snake_case, matching their own module's
+    filename — every other class in `src/` (`BMP3xx_Reader`, `SCD30_Reader`, `SGP40_Reader`,
+    `ConfigManager`, `PrintLog`, `AsyFramManager`, `DNSServer`, `AsyUDPSocket`, `SystemService`,
+    `LockedValue`, ...) is PascalCase and deliberately doesn't share its module's exact name. Likely
+    inherited from the pre-refactor code's `asy_conn_time()` (a plain coroutine function, not a
+    class, in `python/CommonDrivers/async_connect.py`) for continuity during promotion, not an
+    oversight — but renaming now would touch every import/instantiation site (production
+    `sensortask-wozi.py`/`neopixel_signal.py`, several test files), a real blast-radius decision
+    similar in shape to the already-deferred `max_i2c_err` rename. Needs an owner call on whether to
+    rename (and to what) or accept the mismatch permanently, not a unilateral fix.
 
 ## Deferred / explicitly out-of-scope work
 

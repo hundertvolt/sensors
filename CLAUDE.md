@@ -294,6 +294,20 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
   holds mypy/ruff/pytest's own dependencies breaks type-checking of those. Keep this isolation if
   you touch the stub setup — it's load-bearing, not incidental, confirmed by testing the collision
   directly in-session.
+- **`scripts/typecheck.sh`'s combined `mypy src tests` run resolves every `from machine import X`
+  project-wide to `tests/machine.py`'s fake module, not the real `typings/machine.pyi` board stub**
+  — confirmed directly by running `mypy src` alone (no `tests` in scope): the real stub's `Timer`
+  class has no zero-argument constructor overload (every overload requires a positional `id: int`
+  first argument) and doesn't declare `I2C.deinit()` at all, so an `src`-only run raises 13 errors
+  across `asy_ntp_client.py`/`asy_sgp40_driver.py`/`asy_scd30_driver.py`/`asy_bmp3xx_driver.py`
+  (bare `Timer()` construction) and `asy_i2c_driver.py` (`self._i2c.deinit()`) that never surface in
+  the actual, documented `mypy src tests` invocation. Both are real, working MicroPython patterns
+  (bare `Timer()` allocate-now/`init()`-later is valid runtime usage; `I2C.deinit()` releases the
+  peripheral's pins) — this is a **gap in the third-party `micropython-rp2-rpi_pico_w-stubs`
+  package**, not a bug in any promoted driver, and `tests/machine.py`'s fake happens to model both
+  correctly. Net effect: harmless today, but worth knowing that the real board stub's coverage is
+  incomplete for these two APIs specifically if a future `src`-only or `--strict`-adjacent
+  type-check run is ever added.
 - **`improved-quality/microdot.py` — not `python/CommonDrivers/microdot.py` from the hard rule
   above — is excluded from both tools' direct checks** (`pyproject.toml`'s `extend-exclude`/
   `exclude`): it's the only one of the two copies ruff/mypy ever look at in the first place, since
@@ -512,3 +526,8 @@ need to go deeper:
     FRAM-backed features.
   - `asy_uart_driver.py` intentionally does not expose hardware flow control (`rts`/`cts`/`flow`) —
     confirmed directly, not planned for the future either. Not a gap to revisit unprompted.
+  - SCD30's `get_ambient_pressure()` read-back reuses the same command word used to *set* it —
+    matches every sibling getter's pattern and the legacy driver's own proven field behavior, even
+    though neither Sensirion's `embedded-scd` reference driver nor their `python-i2c-scd30` driver
+    documents that command as readable (their worked examples only show a write path for it). No
+    alternate documented read-back path exists to switch to regardless. Leave as-is.

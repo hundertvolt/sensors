@@ -114,11 +114,15 @@ class BMP3xx_Reader(SensorReaderConfig):
         return evtloop.create_task(self._base_trigger())
 
     def start_timer(self) -> None:
-        self.trigger_timer.init(
-            period=1000,
-            mode=Timer.PERIODIC,
-            callback=lambda b: self.base_trigger_event.set(),
-        )
+        try:
+            self.trigger_timer.init(
+                period=1000,
+                mode=Timer.PERIODIC,
+                callback=lambda b: self.base_trigger_event.set(),
+            )
+        except OSError as e:  # alarm-pool exhaustion (ENOMEM) - degrades gracefully instead of
+            # crashing the caller (this sensor just never gets triggered this cycle).
+            self.pr.err(_NAME, "Could not start timer:", e)
 
     def stop_timer(self) -> None:
         self.trigger_timer.deinit()

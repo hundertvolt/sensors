@@ -103,19 +103,23 @@ class SGP40_Reader(SensorReaderConfig):
         return evtloop.create_task(self.read_loop())
 
     def start_timer(self) -> None:  # voc algorithm needs 1s period fixed
-        self.trigger_timer.init(
-            period=1000,
-            mode=Timer.PERIODIC,
-            callback=lambda b: self.trigger_event.set(),
-        )
+        try:
+            self.trigger_timer.init(
+                period=1000,
+                mode=Timer.PERIODIC,
+                callback=lambda b: self.trigger_event.set(),
+            )
+        except OSError as e:  # alarm-pool exhaustion (ENOMEM) - degrades gracefully instead of
+            # crashing the caller (this sensor just never gets triggered this cycle).
+            self.pr.err(_NAME, "Could not start timer:", e)
 
     def stop_timer(self) -> None:
         self.trigger_timer.deinit()
 
-    def get_task_starters(self) -> list["Callable[[], asyncio.Task[Any]]"]:
+    def get_task_starters(self) -> "list[Callable[[], asyncio.Task[Any]]]":
         return [self.start_asy_read]
 
-    def get_timer_starters(self) -> list["Callable[[], None]"]:
+    def get_timer_starters(self) -> "list[Callable[[], None]]":
         return [self.start_timer]
 
     async def get_mem_status(self) -> tuple[int | None, int | None]:
