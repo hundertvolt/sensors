@@ -106,7 +106,9 @@ def make_conn() -> asy_conn_time:
     return asy_conn_time(led_pin=None, cfg_path=_tmp_cfg_dir())
 
 
-def make_ntp(conn: asy_conn_time, ntp_host: str, ntp_fetch_timeout_ms: int = 5000) -> asy_ntp_client:
+def make_ntp(
+    conn: asy_conn_time, ntp_host: str, ntp_fetch_timeout_ms: int = 5000, max_i2c_err: int = 5
+) -> asy_ntp_client:
     # Exactly sensortask-wozi.py's own wiring: conn.get_wifi_mode_lock()/network_available/
     # get_dns_server_ip passed straight through as ntp's own constructor arguments - the real bound
     # methods, not a lambda standing in for them.
@@ -117,6 +119,7 @@ def make_ntp(conn: asy_conn_time, ntp_host: str, ntp_fetch_timeout_ms: int = 500
         conn.get_wifi_mode_lock(),
         conn.network_available,
         conn.get_dns_server_ip,
+        max_i2c_err=max_i2c_err,
         cfg_path=cfg_path,
         ntp_fetch_timeout_ms=ntp_fetch_timeout_ms,
     )
@@ -427,6 +430,114 @@ def test_system_service_and_a_fram_backup_chunk_share_one_real_ntp_client_indepe
     boot_signature, write_ok = run(scenario())
     assert boot_signature is not None
     assert write_ok is True
+
+
+# ---------------------------------------------------------------------------
+# Task-supervision propagation: applying test_asy_ntp_client.py's own
+# test_asy_ntp_time_gives_up_after_repeated_sync_failures_and_persists_errno_20 (a real asy_ntp_time()
+# task genuinely returning after exceeding max_i2c_err) together with test_system_service.py's own
+# test_start_and_check_tasks_restarts_a_dead_task_and_logs_a_warning (SystemService noticing and
+# restarting a dead task) - neither per-module test observes the other side of this seam: does a
+# real asy_ntp_client task that genuinely dies actually get detected and restarted by a real
+# SystemService.start_and_check_tasks(), the exact supervision loop sensortask-wozi.py's own
+# start_and_check_tasks(task_starters) call relies on for every promoted task?
+# ---------------------------------------------------------------------------
+
+
+def test_system_service_restarts_a_real_ntp_task_that_genuinely_gives_up() -> None:
+    conn = make_conn()
+    connect_wlan(conn)  # network_available() is genuinely True - failures come from resolution, not this
+    ntp = make_ntp(conn, "127.0.0.1", max_i2c_err=1)  # gives up on the 2nd consecutive real failure
+    svc = SystemService(ntp.ntp_issynced)
+    starts: list[asyncio.Task[None]] = []
+
+    def spy_starter() -> "asyncio.Task[None]":
+        # Wraps the real starter (not a synthetic one) so this test can observe how many times the
+        # real supervisor actually (re)started the real task, without needing to reach into
+        # start_and_check_tasks()'s own function-local task list.
+        t = ntp.start_asy_ntp_client()
+        starts.append(t)
+        return t
+
+    original_resolver = ntpmod.resolve_ipv4
+
+    async def always_fails(*_args: "Any", **_kwargs: "Any") -> "str | None":
+        return None  # every real resolution attempt fails instantly - no real network wait needed
+
+    ntpmod.resolve_ipv4 = always_fails
+    try:
+
+        async def scenario() -> int:
+            svc_task = asyncio.create_task(svc.start_and_check_tasks([spy_starter]))
+            await asyncio.sleep(0)  # let start_and_check_tasks()'s own initial _start_task run
+            assert len(starts) == 1
+            for _ in range(2):  # max_i2c_err=1: the 2nd consecutive real failure makes the task give up
+                ntp.ntp_sync_trigger_event.set()
+                await asyncio.sleep(0)
+                await asyncio.sleep(0)
+            for _ in range(200):  # bounded wait for the real, genuine task death
+                if starts[0].done():
+                    break
+                await asyncio.sleep(0)
+            assert starts[0].done()  # the real asy_ntp_time() task genuinely returned on its own
+            await asyncio.sleep(2.5)  # real wall-clock wait for start_and_check_tasks()'s own 2s poll
+            await _cancel(svc_task)
+            return len(starts)
+
+        call_count = run(scenario())
+    finally:
+        ntpmod.resolve_ipv4 = original_resolver
+    assert call_count == 2  # the initial real start, plus one genuine restart by the real supervisor
+    counter = run(svc.get_error_counter())
+    assert counter["Tasks"]["ErrCount"] == 1  # the restart itself is persisted (wrnno=1), not silent
+
+
+# ---------------------------------------------------------------------------
+# Torn-write self-heal with a real, chain-derived timestamp: applying
+# tests/test_fram_integration.py's own test_torn_write_on_printloghistorystore_chunk_self_heals_...
+# fault-injection pattern (simulate power loss mid-write, then a fresh reboot) to a timestamped chunk
+# whose ntp_sync_callback is a real asy_ntp_client.ntp_issynced instead of the `_synced()`
+# always-True stub every other FRAM test in this suite uses.
+# ---------------------------------------------------------------------------
+
+_STATUS_BUSY = 0x02
+
+
+def test_fram_timestamped_chunk_torn_write_self_heals_with_a_real_ntp_derived_timestamp() -> None:
+    conn = make_conn()
+    ntp = make_ntp(conn, "127.0.0.1")
+    manager1, chip = make_fram_manager()
+    run(manager1.setup())
+    chunk1 = manager1.get_timestamped_chunk(8, ntp.ntp_issynced, crc=CRC32())
+    assert chunk1 is not None
+
+    async def before_reboot() -> None:
+        await sync_real_ntp_chain(conn, ntp)
+        ntp_synced, _utc, write_ok = await chunk1.write(b"deadbeef")
+        assert ntp_synced is True
+        assert write_ok is True
+
+    run(before_reboot())
+    # Simulate power loss mid-write: block 0's status bytes are left BUSY, mirroring
+    # tests/test_fram_integration.py's own torn-write fault injection exactly.
+    addr0, _addr1 = chunk1.block_addr
+    status_addr = addr0 + chunk1.size + chunk1.crc.length()
+    chip.memory[status_addr] = _STATUS_BUSY
+    chip.memory[status_addr + 1] = _STATUS_BUSY
+
+    # Fresh reboot: new manager/chunk objects (same underlying chip), a fresh never-synced
+    # asy_ntp_client this time - proving the self-heal doesn't depend on NTP state at read time.
+    manager2, _chip2 = make_fram_manager()
+    manager2.fram._spidev.spi._spi = chip
+    run(manager2.setup())
+    conn2 = make_conn()
+    ntp2 = make_ntp(conn2, "127.0.0.1")
+    chunk2 = manager2.get_timestamped_chunk(8, ntp2.ntp_issynced, crc=CRC32())
+    assert chunk2 is not None
+
+    ts, _age, data = run(chunk2.read())
+    assert data == bytearray(b"deadbeef")  # recovered from block 1 despite block 0's torn-write marker
+    assert ts is not None  # the real timestamp written before the simulated reboot survived intact
 
 
 if __name__ == "__main__":
