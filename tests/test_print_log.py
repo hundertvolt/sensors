@@ -1,8 +1,10 @@
 import asyncio
+from collections import deque
 
 from _fram_chip_fake import FakeMB85RS64V
 
 import asy_spi_driver
+import print_log as print_log_module
 from asy_fram_manager import AsyFramChunk, AsyFramManager
 from asy_spi_driver import SPI
 from print_log import PrintLog, PrintLogHistory, PrintLogHistoryStore
@@ -279,6 +281,33 @@ def test_history_length_huge_is_capped_instead_of_crashing_the_interpreter() -> 
     assert len(hist.history) <= 0xFFFF
     run(hist.err_s("e", errno=1))
     assert hist.err_count == 1
+
+
+class _RaisingDeque:
+    # PrintLogHistory.__init__()'s except MemoryError fallback (deque([_NO_ERR] * history_length,
+    # history_length) failing on a genuinely memory-constrained device) can't be forced
+    # deterministically through a real allocation at any size small enough to be safe/reliable in a
+    # test - faked by substituting print_log's own module-level `deque` name, the same technique
+    # this project's other test files use for their own otherwise-unreachable guards. Only the
+    # first (nonzero-maxlen) call raises - the except block's own deque([], 0) fallback must still
+    # succeed normally, matching what a real memory-constrained device's tiny recovery allocation
+    # would do.
+    def __call__(self, iterable: "Any", maxlen: int) -> "Any":
+        if maxlen == 0:
+            return deque(iterable, maxlen)
+        raise MemoryError("simulated allocation failure")
+
+
+def test_history_deque_allocation_failure_degrades_to_an_empty_bounded_history() -> None:
+    original_deque = print_log_module.deque
+    print_log_module.deque = _RaisingDeque()  # type: ignore[assignment,misc]
+    try:
+        hist = PrintLogHistory(history_length=10)
+    finally:
+        print_log_module.deque = original_deque  # type: ignore[misc]
+    assert list(hist.history) == []
+    run(hist.err_s("e", errno=1))
+    assert hist.err_count == 1  # counting still works even though history recording can't
 
 
 def test_err_s_before_setup_does_not_write_even_with_logging_off() -> None:
