@@ -150,10 +150,12 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
 - **Don't touch `sensors/config.json`-equivalent files or commit any real credentials.** A
   `.gitignore` covers per-device config/build artifacts, but still be deliberate about what you
   stage. **The one known real credential already in this repo**: a hardcoded hotspot fallback
-  password, present in both `python/CommonDrivers/async_connect.py` and
-  `improved-quality/async_connect.py` — accepted risk (only exploitable by someone in physical WiFi
-  range of a unit that's already lost its real WiFi), not something to "fix" by rotating/removing
-  without the project owner's direction.
+  password, present in both `python/CommonDrivers/async_connect.py` (deployed, pre-refactor) and
+  `src/asy_wifi_service.py` (promoted) — accepted risk (only exploitable by someone in physical
+  WiFi range of a unit that's already lost its real WiFi), not something to "fix" by
+  rotating/removing without the project owner's direction. `improved-quality/async_connect.py`
+  itself was removed once its functionality was fully promoted to `src/asy_wifi_service.py`/
+  `asy_ntp_client.py`/`asy_dns_client.py` — no import in the repo referenced it anymore.
 - **For a genuinely wedged I2C bus/sensor (e.g. SCD30 hanging mid-transaction), the hardware
   watchdog is the accepted backstop, not a software fix to chase.** MicroPython's cooperative
   scheduler can't preempt a synchronous `machine.I2C` call already in progress, so an asyncio-level
