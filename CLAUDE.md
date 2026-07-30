@@ -92,7 +92,12 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
   explicitly asked to have questioned and replaced (confirmed directly, not inferred) — they've
   been retired in favor of root-level `pyproject.toml` + `scripts/lint.sh`/`scripts/typecheck.sh`
   (see "Code quality tooling" below). Source files elsewhere in `improved-quality/` remain
-  read-only context until the refactor itself starts.
+  read-only context until the refactor itself starts. **The project owner can authorize a scoped
+  exception for a severity-justified fix** (precedent: the `ConfigManager`/`LockedValue`
+  wrong-module-import bug that would have crash-looped every deployed unit's boot) — this is a
+  standing, repeatable exception path, not a one-off; it still requires the owner's explicit
+  authorization each time, scoped narrowly to the specific fix, not a general license to edit
+  `improved-quality/` more broadly.
 - **`src/` is where files land once they're fully reviewed and tested** — formula/logic
   correctness checked, input validation and exception-safety audited, unit tests written and
   passing (see "Code quality tooling" below and `tests/README.md`), unlike `improved-quality/`'s
@@ -193,6 +198,14 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
 - When a fact in this file or BACKLOG.md turns out to be stale (version drift, changed upstream
   API, etc.), update the doc in the same session rather than silently working around the
   discrepancy.
+- **Documentation contains current state, future targets, and rules/agreements — not the historic
+  path that got there.** BACKLOG.md is active working memory (open questions, deferred work,
+  in-flux decisions), not an append-only log of bugs found and fixed in already-shipped, tested
+  code; once an item is resolved, it comes out, migrated to CLAUDE.md/README.md if it's a
+  permanent fact worth keeping, or simply dropped if it was process narrative with no forward
+  value. This already had to be corrected once (a merge re-accumulated ~800 lines of per-file
+  "bug found, fixed" narrative in BACKLOG.md) — treat pruning history back out as routine
+  maintenance whenever an item resolves, not a one-off cleanup.
 - Prefer flagging genuinely ambiguous/architecturally significant decisions to the project owner
   over guessing — several open questions in BACKLOG.md exist precisely because the code's actual
   intent wasn't obvious from reading it alone.
@@ -430,13 +443,27 @@ need to go deeper:
   `asy_ntp_client.py`/`asy_dns_client.py` and retired the lock entirely (see "Hard rules" above and
   BACKLOG.md); don't assume the two describe the same current state.
 - `python/CommonDrivers/async_manager.py` — `ConfigManager`, `DataManager`,
-  `TimeCounterManager`, `LockedValue`/`Flag`. `src/config_manager.py`'s `ConfigManager` replaces
-  this in the refactor (see README.md's "Config management" bullet). Its config is loaded once at
+  `TimeCounterManager`, `LockedValue`/`Flag`. `src/config_manager.py`'s `ConfigManager` and
+  `src/base_classes.py`'s `LockedValue`/`LockedCounter`/`LockedFlag` (snake_case `set_value()`/
+  `get_value()`, unlike the old module's camelCase `setValue()`/`getValue()`) replace these in the
+  refactor (see README.md's "Config management" bullet). MicroPython's flat frozen-module
+  namespace means `import async_manager` silently resolves to whichever file defines that module
+  name — a new or promoted module must import `ConfigManager`/`LockedValue`/etc. from
+  `config_manager`/`base_classes` by name, never `async_manager`, or it gets the old,
+  incompatible classes with no import error to catch it. Its config is loaded once at
   `__init__` and served entirely from an in-memory cache thereafter — a deliberate consequence is
   that a read can no longer detect the on-disk file being corrupted/deleted out-of-band after a
   valid `__init__`; the cache is the sole source of truth, and a later `write_config()` silently
   *repairs* an externally-corrupted file from it. Accepted given this device is the file's only
-  writer.
+  writer. **Every module with user-settable configuration owns its own schema/config file** — a
+  global project convention, not limited to sensor drivers; `asy_wifi_service.py`,
+  `asy_ntp_client.py`, and `neopixel_signal.py` each follow it the same way every sensor `*_Reader`
+  does, replacing the single ad hoc top-level `ConfigManager` grab-bag the deployed codebase still
+  uses. A module whose own REST/caller layer needs to call `write_config()` directly against its
+  `cfgmgr` exposes the schema via a public `self.cfg_schema` attribute (see
+  `asy_wifi_service.py`/`asy_ntp_client.py`) rather than the caller reaching into a private
+  module-level schema constant — `base_classes.py`'s `SensorReaderConfig` doesn't provide this
+  itself, so any new module needing it adds the attribute the same way.
 - `python/IndividualDrivers/asy_fram_driver.py` / `asy_fram_manager.py` — raw SPI FRAM driver +
   chunk allocator with dual-copy redundancy (arzi/neu/wozi only, not dev). `src/`'s promoted
   versions keep the same design: each chunk stores two redundant copies plus a busy/idle status

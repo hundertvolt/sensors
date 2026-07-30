@@ -278,6 +278,11 @@ promotion** (project owner's stated decision, see CLAUDE.md) — the schema, `Co
 `write_config()` all already exist generically; what's deferred is the per-driver REST
 handler wiring a config *setter* through `api_helpers.py`'s validate→apply→persist pipeline.
 Getters (`get_dict_cfg()`) are expected from every driver; setters are a later, separate pass.
+When that pass happens: `SensorReaderConfig` doesn't itself expose the schema tuple it was built
+with, so a driver whose REST handler needs to call `self.cfgmgr.write_config(data, cfg_vals)`
+directly should store it as a public `self.cfg_schema` attribute in `__init__` (the convention
+`asy_wifi_service.py`/`asy_ntp_client.py` already use for the same reason), not have the caller
+reach into a private module-level schema constant.
 
 ## 6. Data model (`config_manager.py`'s `make_dict()`)
 
