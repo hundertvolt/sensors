@@ -72,6 +72,14 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
     return asyncio.run(coro)
 
 
+def _last_err(counter: "dict[str, dict[str, int | list[int] | list[str]]]", field: str) -> "int | str":
+    # ErrNum/ErrType are list-shaped once _error_check()/err_s() has run at least once - same
+    # helper as test_asy_wifi_service.py's/test_asy_ntp_client.py's own, scoped to "SGP40".
+    value = counter["SGP40"][field]
+    assert isinstance(value, list)
+    return value[-1]
+
+
 def make_i2c() -> I2C:
     return I2C(1, scl_pin=19, sda_pin=18, frequency=50000)
 
@@ -1492,8 +1500,8 @@ def test_init_sgp_fails_and_logs_when_setup_raises() -> None:
     ok = run(reader._init_sgp())
     assert ok is False
     log = run(reader.get_error_counter())
-    assert log["SGP40"]["ErrNum"][-1] == 10
-    assert log["SGP40"]["ErrType"][-1] == "E"
+    assert _last_err(log, "ErrNum") == 10
+    assert _last_err(log, "ErrType") == "E"
 
 
 def test_init_sgp_fails_and_logs_when_config_data_unreadable() -> None:
@@ -1513,8 +1521,8 @@ def test_init_sgp_fails_and_logs_when_config_data_unreadable() -> None:
     ok = run(reader._init_sgp())
     assert ok is False
     log = run(reader.get_error_counter())
-    assert log["SGP40"]["ErrNum"][-1] == 11
-    assert log["SGP40"]["ErrType"][-1] == "E"
+    assert _last_err(log, "ErrNum") == 11
+    assert _last_err(log, "ErrType") == "E"
 
 
 def test_init_sgp_caps_a_stale_out_of_schema_wait_time_ntp() -> None:
@@ -1557,8 +1565,8 @@ def test_check_storage_fails_and_logs_when_config_data_unreadable() -> None:
     buf, serialize, deserialize, cfg_values = run(reader._check_storage())
     assert (buf, serialize, deserialize, cfg_values) == (None, False, False, None)
     log = run(reader.get_error_counter())
-    assert log["SGP40"]["ErrNum"][-1] == 12
-    assert log["SGP40"]["ErrType"][-1] == "E"
+    assert _last_err(log, "ErrNum") == 12
+    assert _last_err(log, "ErrType") == "E"
 
 
 # ---------------------------------------------------------------------------
@@ -1749,8 +1757,8 @@ def test_read_sgp_logs_errno_15_when_deserialize_fails() -> None:
     run(reader.pr.setup())
     run(reader._read_sgp(_TooSmallBuf(), False, True))  # type: ignore[arg-type]
     log = run(reader.get_error_counter())
-    assert log["SGP40"]["ErrNum"][-1] == 15
-    assert log["SGP40"]["ErrType"][-1] == "E"
+    assert _last_err(log, "ErrNum") == 15
+    assert _last_err(log, "ErrType") == "E"
 
 
 def test_read_sgp_completes_a_pending_reset_even_when_the_i2c_read_fails() -> None:
@@ -1793,7 +1801,7 @@ class _NoneReadWord:
 
 def test_initialize_raises_when_serial_number_read_returns_none() -> None:
     sgp = make_sgp()
-    sgp._read_word_from_command = _NoneReadWord()  # type: ignore[method-assign, assignment]
+    sgp._read_word_from_command = _NoneReadWord()  # type: ignore[method-assign]
     try:
         run(sgp.initialize())
         raise AssertionError("expected RuntimeError")
@@ -1812,7 +1820,7 @@ def test_initialize_raises_when_self_test_read_returns_none() -> None:
             return None
         return await real_read_word(sgp40, delay_ms=delay_ms, readlen=readlen)  # type: ignore[arg-type]
 
-    sgp._read_word_from_command = fake_read_word  # type: ignore[method-assign, assignment]
+    sgp._read_word_from_command = fake_read_word  # type: ignore[method-assign]
     try:
         run(sgp.initialize())
         raise AssertionError("expected RuntimeError")
@@ -1822,7 +1830,7 @@ def test_initialize_raises_when_self_test_read_returns_none() -> None:
 
 def test_get_raw_returns_none_when_read_word_from_command_returns_none() -> None:
     sgp = make_sgp()
-    sgp._read_word_from_command = _NoneReadWord()  # type: ignore[method-assign, assignment]
+    sgp._read_word_from_command = _NoneReadWord()  # type: ignore[method-assign]
     assert run(sgp.get_raw()) is None
 
 
