@@ -145,7 +145,9 @@ constraints.
   pass.
 - **HTML/frontend automation & consistency** — known hand-written/brittle, not a priority; revisit
   after the Python-side refactor.
-- **UART sensor integration** (`asy_uart.py`/`asy_uart_comm.py`, unused by any deployed config) —
+- **UART sensor integration** — `asy_uart_driver.py` is promoted to `src/` (see below) but
+  deliberately not wired into any `sensortask-*.py`; `asy_uart_comm.py` (its one real consumer) is
+  its own separate, still out-of-scope promotion. Unused by any deployed config — wiring it in is
   after the refactor of already-deployed features, not before.
 - **Config-duplication centralization** — same keys hand-kept in sync across `_DEFAULT_CONFIG`, the
   REST handler, and the HTML form. Owned by the refactor: each promoted `*_Reader`'s own `_VAL_*`
@@ -174,7 +176,7 @@ File-by-file review comparing `improved-quality/` against legacy equivalents (or
 there's no legacy equivalent), against `src/README.md`'s checklist. Real bugs, decisions, and
 deferred items below — process narrative (review-pass counts, "verified lint/typecheck/tests clean"
 after every change) is omitted; assume every change below was lint/type/test-clean before landing.
-Current total: 1317 tests across 21 `tests/test_*.py` files (verify via
+Current total: 1379 tests across 22 `tests/test_*.py` files (verify via
 `grep -c '^def test_' tests/test_*.py` if this looks stale).
 
 ### `math_helpers.py`
@@ -801,6 +803,70 @@ of call. A raise here would happen at construction time, before any task supervi
 it. Wrapped in `try`/`except`, matching the sibling pattern.
 
 70 tests (`asy_sgp40_driver.py`), 28 (`voc_algorithm.py`).
+
+### `asy_uart_driver.py`
+
+Async wrapper around `machine.UART` (`select.poll`-driven non-blocking read/write, the same problem
+`asy_udp_socket.py` solves for sockets), promoted from `python/IndividualDrivers/asy_uart.py`'s
+`AsyUART` as `UART(Lockable)` — copied, not moved, the legacy file stays untouched. **Not currently
+wired into any live caller** — `asy_uart_comm.py` (its one real consumer) is its own separate,
+still-out-of-scope promotion; this file's public method signatures were verified call-compatible
+with it, but nothing in `src/`/`improved-quality/` constructs a real `UART` instance yet.
+
+Real bugs found and fixed: **`ready()`'s poll loop only checked `self._uart`/`self.poller` for
+`None` once, at entry** — a concurrent `deinit()` mid-loop nulls `self.poller`, and the next
+iteration's `self.poller.ipoll(0)` then either raises or hangs the interpreter depending on timing
+(the same class of bug `asy_udp_socket.py`'s own `ready()` hit and fixed). Fixed identically:
+re-check `self.poller is None` every iteration, wrap the loop body in
+`except (OSError, MemoryError, TypeError)`. **Short writes were silently dropped** — `write()`/
+`writefrom()` called `uart.write(framed)` once and discarded its return value, unconditionally
+returning `True`; a message larger than the TX ring buffer's available room would have its
+untransmitted tail silently dropped while the caller was told it succeeded. Fixed with a shared
+`_write_all()` retry helper (the write-side counterpart of `read_until_complete()`'s own
+retry-until-done loop). **`MemoryError` from unbounded/caller-influenced allocation** —
+`read_until_complete()`/`readline_until_complete()`'s own message accumulation, plus
+`crc_checks.py`'s `add()`/`check()` (called from `write()`/`read_until_complete()`) — none of it was
+caught; `readline_until_complete()` is the sharpest case, with no caller-supplied size cap at all, so
+an unterminated line from a stuck/misconfigured peer could grow its buffer without bound. Fixed by
+wrapping each site in `try`/`except MemoryError`. This also surfaced a genuine cross-file gap in
+`crc_checks.py`'s own module docstring (claimed a blanket "never raises" contract that didn't
+actually cover `add()`/`check()`'s own internal-allocation `MemoryError`) — flagged rather than
+silently changed since `crc_checks.py` is a shared dependency this pass doesn't own outright; owner
+confirmed the fix (documented, controlled exception to the contract, same schema already used for a
+driver's one-time-setup `ValueError`), verified safe via a full-codebase audit showing
+`asy_uart_driver.py` is the *only* caller of `add()`/`check()` anywhere in this codebase (every other
+caller uses the allocation-free `add_into()`/`check_from()`/`run_inc()`/`check_inc()` variants).
+
+Other decisions: embedded non-standard `CRC16` swapped for `crc_checks.py`'s `CRC_Base` family (zero
+live callers, nothing depends on the old bit pattern); `port_id` (not the legacy `uart_id`) to match
+`asy_spi_driver.py`/`asy_i2c_driver.py`'s own naming; `poll_wait_ms` default `0`→`20`, the same
+busy-poll fix `asy_udp_socket.py`'s `wait_time_ms` already needed. The `asy_lock.locked()` guard on
+every read/write method (unlike `SPIDevice`/`I2CDevice`, which trust `async with device:`) is kept
+deliberately, not an arbitrary carry-over: `cancel_read_timeout()` runs from a different task
+specifically to interrupt an in-flight read, and infers "a read is genuinely in flight" purely from
+`asy_lock.locked()` — a lock-less caller would be invisible to it, silently breaking cancellation.
+**Documented, not enforced**: GPIO24/25 and GPIO28/29 both fall inside a real UART pin-mux group
+*and* are wireless-reserved on Pico W specifically (confirmed against the local Pico W datasheet) —
+a caller picking either pair for `tx_pin`/`rx_pin` would silently collide with WiFi; a latent hazard
+for whoever wires this driver in next, not a live bug today, documented in the module docstring
+rather than runtime-checked (matches this codebase's existing "board-wiring facts are documented,
+not enforced" convention).
+
+**Test-infrastructure limitation found, not a driver bug**: this project's MicroPython Unix-port
+test build doesn't correctly re-poll a synthetic (non-real-fd) Python stream object per
+`select.poll()`/`ipoll()` call — a plain fake reports whatever it computed on the first readiness
+check forever afterward. Worked around with a `_StepPoller` test helper that substitutes for
+`uart.poller` directly, documented inline as the pattern for any future poll-based driver's tests on
+this interpreter.
+
+**Open, not re-verified**: `scripts/typecheck.sh`'s combined `mypy src tests` run resolves every
+`from machine import X` project-wide to `tests/machine.py`'s fake module, not `typings/machine.pyi`
+— true for every previously-promoted `src/` file too, invisible until this promotion needed a `UART`
+fake added, since earlier files only imported names the fake already defined. Whether
+`asy_spi_driver.py`/`asy_i2c_driver.py` have been silently type-checking against the fake's (so far
+compatible) signatures instead of the real board stub this whole time is not yet re-verified.
+
+62 tests (`tests/test_asy_uart_driver.py`).
 
 ## Consolidation-session integration fixes (sensortask-wozi.py)
 

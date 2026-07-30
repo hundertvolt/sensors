@@ -4,7 +4,20 @@
 CRC-32/MPEG-2. CRC_Pass is a zero-length no-op.
 
 Shared contract: every public method returns None (or False for run_inc) - never raises - for
-invalid input (bad init/poly, buffer too small, insufficient data).
+invalid input (bad init/poly, buffer too small, insufficient data). **add()/check() are a
+deliberate, controlled exception to this**: unlike every other method here, they each allocate and
+return a *new* buffer sized to the message they're framing/verifying (`bytearr + crc_b` and
+`bytearr[0:n]`, respectively) instead of working in place via memoryview into a caller-owned
+buffer - a MemoryError from that allocation is allowed to propagate, the same schema every
+close-to-hardware driver in this codebase already uses for a controlled raise (e.g.
+asy_i2c_driver.py's/asy_spi_driver.py's own __init__ raising ValueError for a bad one-time-setup
+value). Every current caller of add()/check() must be, and is, proven to handle it: they're called
+from exactly one place in this codebase today (asy_uart_driver.py's write()/read_until_complete()),
+and both call sites wrap the call in try/except MemoryError - see that file's own module docstring
+and BACKLOG.md's `asy_uart_driver.py -> src/` entry for the audit confirming no other caller exists.
+add_into()/check_from()/run_inc()/check_inc() are not exempted the same way: they read/write a
+caller-supplied buffer via memoryview, with no allocation of their own proportional to message
+size, so the "never raises" contract above holds for them without qualification.
 
 run_inc()/check_inc() share mutable state (inc_crc, inc_count) on the instance across an
 incremental sequence, so a single instance must not be used for more than one concurrent
