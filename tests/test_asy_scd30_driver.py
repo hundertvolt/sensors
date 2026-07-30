@@ -1026,6 +1026,102 @@ def test_read_loop_recovers_error_counter_after_a_good_read_following_failures()
     assert data.CO2 == 500.0  # the third, successful read is what ends up stored
 
 
+# ---------------------------------------------------------------------------
+# Task starters (DRIVER_SPEC.md section 9) - get_task_starters()'s own shape is already checked
+# above; neither starter method it returns was ever actually called.
+# ---------------------------------------------------------------------------
+
+
+def test_start_asy_read_returns_a_real_task() -> None:
+    reader = make_reader()
+
+    async def scenario() -> bool:
+        task = reader.start_asy_read()
+        await asyncio.sleep(0)
+        is_task = isinstance(task, asyncio.Task)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        return is_task
+
+    assert run(scenario()) is True
+
+
+def test_start_asy_init_returns_a_real_task() -> None:
+    reader = make_reader()
+
+    async def scenario() -> bool:
+        task = reader.start_asy_init()
+        await asyncio.sleep(0)
+        is_task = isinstance(task, asyncio.Task)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        return is_task
+
+    assert run(scenario()) is True
+
+
+def test_read_loop_returns_false_when_init_fails() -> None:
+    reader = make_reader()
+    reader_fake_i2c(reader).nak_addresses.add(_ADDR)
+    assert run(reader.read_loop()) is False
+
+
+# ---------------------------------------------------------------------------
+# Reader-level setters' success paths - test_reader_setters_return_false_on_bus_nak/
+# _on_invalid_range above only ever exercise the failure branches; only set_altitude has its own
+# success-path round-trip test.
+# ---------------------------------------------------------------------------
+
+
+def test_reader_setters_return_true_on_success() -> None:
+    reader = make_reader()
+
+    async def scenario() -> "tuple[bool, ...]":
+        return (
+            await reader.set_measurement_interval(10),
+            await reader.set_self_calibration_enabled(True),
+            await reader.set_ambient_pressure(1000),
+            await reader.set_temperature_offset(1.0),
+            await reader.set_forced_recalibration_reference(500),
+        )
+
+    assert run(scenario()) == (True, True, True, True, True)
+
+
+# ---------------------------------------------------------------------------
+# SCD30_I2C._send_dev_command()'s CRC-generation guard - a real CRC8 object can't actually fail
+# add_into() through any real command this driver sends (always a fixed 2-byte argument, always
+# succeeds), so this monkeypatches scd.crc with a minimal fake, the same technique
+# test_asy_sgp40_driver.py's own _AlwaysFailCRC/test_asy_uart_driver.py's own _NoneCRC use for their
+# own otherwise-unreachable branches.
+# ---------------------------------------------------------------------------
+
+
+class _WrongLengthCRC:
+    def length(self) -> int:
+        return 1
+
+    async def add_into(self, buffer: bytearray, size: int, start: int = 0, init: "int | None" = None) -> int:
+        return 0  # never matches the expected size+crc_length total
+
+
+def test_send_dev_command_raises_when_crc_generation_produces_the_wrong_length() -> None:
+    scd, _i2c = make_scd()
+    scd.crc = _WrongLengthCRC()  # type: ignore[assignment]
+    try:
+        run(scd.set_altitude(100))
+        raised = False
+    except RuntimeError as e:
+        raised = "CRC generation failed" in str(e)
+    assert raised
+
+
 if __name__ == "__main__":
     import microtest
 

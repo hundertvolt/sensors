@@ -246,6 +246,40 @@ def test_get_timer_starters_returns_both_ntp_timers() -> None:
     assert client.get_timer_starters() == [client.start_ntp_timer, client.start_counter_timer]
 
 
+def test_start_asy_ntp_refresh_returns_a_real_task() -> None:
+    client = make_client()
+
+    async def scenario() -> bool:
+        task = client.start_asy_ntp_refresh()
+        await asyncio.sleep(0)
+        is_task = isinstance(task, asyncio.Task)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        return is_task
+
+    assert run(scenario()) is True
+
+
+def test_start_asy_sync_age_counter_returns_a_real_task() -> None:
+    client = make_client()
+
+    async def scenario() -> bool:
+        task = client.start_asy_sync_age_counter()
+        await asyncio.sleep(0)
+        is_task = isinstance(task, asyncio.Task)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        return is_task
+
+    assert run(scenario()) is True
+
+
 def test_fram_given_uses_fram_backed_logging() -> None:
     # asy_ntp_client didn't accept a fram= parameter at all before this migration - proves the
     # constructor actually forwards it to SensorReaderConfig/SensorReader rather than silently
@@ -1481,6 +1515,35 @@ def test_cettime_mktime_or_gmtime_failure_returns_none_not_raise() -> None:
     assert result is None
 
 
+class _ShortGmtimeTime:
+    # Real rp2 time.gmtime() always returns exactly 8 elements - cettime()'s own `len(cet) == 8`
+    # check can't actually fail through any real gmtime() call, so this fakes a malformed result
+    # directly, the same technique _FixedNowTime above uses for its own fixed-now/raising variants.
+    def __init__(self, fixed_now: int) -> None:
+        self._fixed_now = fixed_now
+
+    def gmtime(self, *a: "Any") -> "Any":
+        return tuple(time.gmtime(*a))[:7]  # one short of the real 8-element shape
+
+    def mktime(self, t: "Any") -> int:
+        return time.mktime(t)
+
+    def time(self) -> int:
+        return self._fixed_now
+
+
+def test_cettime_returns_none_when_gmtime_result_has_the_wrong_length() -> None:
+    client = _client_with_offsets(3600, 3600)
+    run(client._set_synced(True))
+    original_time = ntpmod.time
+    ntpmod.time = _ShortGmtimeTime(_mid_month_now(1))  # type: ignore[assignment]
+    try:
+        result = run(client.cettime())
+    finally:
+        ntpmod.time = original_time
+    assert result is None
+
+
 # ---------------------------------------------------------------------------
 # time_counter()
 # ---------------------------------------------------------------------------
@@ -1760,6 +1823,35 @@ def test_asy_ntp_time_releases_the_wifi_lock_even_if_the_attempt_raises() -> Non
         return raised and not client.wifi_mode_lock.locked()
 
     assert run(scenario())
+
+
+def test_asy_ntp_time_swallows_an_already_released_wifi_lock() -> None:
+    # Regression-shaped defensive guard: if the lock were somehow already released by the time
+    # asy_ntp_time()'s own finally block runs, wifi_mode_lock.release() raises RuntimeError - caught
+    # and swallowed rather than crashing the task. Forced here by having the (monkeypatched)
+    # attempt itself release the lock as a side effect, simulating that "already released" state.
+    client = make_client()
+
+    async def attempt_releases_lock_itself(_dns_server: "Any") -> "Any":
+        client.wifi_mode_lock.release()
+        return None, True
+
+    client._run_ntp_sync_attempt = attempt_releases_lock_itself  # type: ignore[assignment, method-assign]
+
+    async def scenario() -> bool:
+        task = asyncio.create_task(client.asy_ntp_time())
+        client.ntp_sync_trigger_event.set()
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        still_running = not task.done()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        return still_running
+
+    assert run(scenario()) is True  # must not have crashed on the redundant release
 
 
 def test_asy_ntp_time_calls_pr_setup_before_entering_its_loop() -> None:
