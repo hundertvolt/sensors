@@ -4,17 +4,37 @@ import asyncio
 from uasyncio import Lock, ThreadSafeFlag, Event
 from machine import Pin
 from micropython import const
-from async_manager import ConfigManager
+from config_manager import ConfigManager
+from print_log import PrintLog
 from base_classes import LockedCounter
 from typing import Callable, Any, List, Coroutine
 from collections import namedtuple
-from async_connect import GMTimeStruct
+from asy_ntp_client import GMTimeStruct
 
 _MAX_OVERRIDE_TIME = const(3600)
 
-_DEFAULT_CONFIG = const(
-    '{ "LedAutoOnH": 10, "LedAutoOnM": 0, "LedAutoOffH": 18, "LedAutoOffM": 0, "LedAutoFlashBri": 200, "LedWarnCO2": 1600, "LedWarnVOC": 350, "LedAutoInterv": 300.0, "LedAutoFlashDur": 2.0, "LedWarnHum": 65.0, "LedAutoOn": true}'
-)
+_NAME = const("NEOPIXEL")
+
+# Own schema, own config_NEOPIXEL.cfg file - matches every other module with user-settable
+# configuration (asy_wifi_service.py/asy_ntp_client.py/the three sensor drivers), not an
+# externally-injected ConfigManager anymore. Ranges/types mirror sensortask-wozi.py's own
+# update_valid_json() calls for these same fields (the REST layer's own authoritative validation).
+_VAL_ON_H = const((("LedAutoOnH", "int", 10, 0, 23, None),))
+_VAL_ON_M = const((("LedAutoOnM", "int", 0, 0, 59, None),))
+_VAL_OFF_H = const((("LedAutoOffH", "int", 18, 0, 23, None),))
+_VAL_OFF_M = const((("LedAutoOffM", "int", 0, 0, 59, None),))
+_VAL_FLASH_BRI = const((("LedAutoFlashBri", "int", 200, 1, 255, None),))
+_VAL_WARN_CO2 = const((("LedWarnCO2", "int", 1600, 0, 3000, None),))
+_VAL_WARN_VOC = const((("LedWarnVOC", "int", 350, 0, 500, None),))
+_VAL_INTERV = const((("LedAutoInterv", "float", 300.0, 60.0, 3600.0, None),))
+_VAL_FLASH_DUR = const((("LedAutoFlashDur", "float", 2.0, 0.5, 10.0, None),))
+_VAL_WARN_HUM = const((("LedWarnHum", "float", 65.0, 0.0, 100.0, None),))
+_VAL_AUTO_ON = const((("LedAutoOn", "bool", True, None, None, None),))
+
+_VAL_INT_FIELDS = _VAL_ON_H + _VAL_ON_M + _VAL_OFF_H + _VAL_OFF_M + _VAL_FLASH_BRI + _VAL_WARN_CO2 + _VAL_WARN_VOC
+_VAL_FLOAT_FIELDS = _VAL_INTERV + _VAL_FLASH_DUR + _VAL_WARN_HUM
+_VAL_BOOL_FIELDS = _VAL_AUTO_ON
+_VAL_ALL_FIELDS = _VAL_INT_FIELDS + _VAL_FLOAT_FIELDS + _VAL_BOOL_FIELDS
 
 LocalConfig = namedtuple(
     "LocalConfig",
@@ -25,10 +45,10 @@ LocalConfig = namedtuple(
         "OffM",
         "FlashBri",
         "WarnCO2",
-        "WarnHum",
+        "WarnVOC",
         "Interv",
         "FlashDur",
-        "WarnVOC",
+        "WarnHum",
         "AutoOn",
     ),
 )
@@ -38,13 +58,16 @@ class Neopixel_Signal:
     def __init__(
         self,
         neopixel_pin: int,
-        cfgmgr: ConfigManager,
         asy_airquality_meas_callback: Callable[[], Coroutine[Any, Any, List[int | float | None]]],
         asy_local_time_callback: Callable[[], Coroutine[Any, Any, GMTimeStruct | None]],
         neopixel_freq: int = 20,
         led_overl_bri: int = 50,
-        debug: bool = False,
+        cfg_path: str = "",
+        debug: int | None = None,
     ) -> None:
+        self.pr = PrintLog(debug)
+        self.cfg_schema = _VAL_ALL_FIELDS
+        self.cfgmgr = ConfigManager(cfg_path + "config_" + _NAME + ".cfg", self.cfg_schema, self.pr)
         self.pixel = neopixel.NeoPixel(Pin(neopixel_pin, Pin.OUT), 1, bpp=3)
         self.rgbt = [0, 0, 0, 1]
         self.ext_rgbt = [0, 0, 0, 1]
@@ -66,11 +89,6 @@ class Neopixel_Signal:
             asy_local_time_callback  # expects gmtime formatted for local time
         )
         self.measurements_callback = asy_airquality_meas_callback  # expects [CO2, Humidity, VOC]
-        self.cfgmgr = cfgmgr
-
-    @staticmethod
-    def get_default_cfg() -> str:
-        return _DEFAULT_CONFIG
 
     def start_asy_neopixel_led_overl(self) -> asyncio.Task[None]:
         evtloop = asyncio.get_event_loop()
@@ -197,21 +215,9 @@ class Neopixel_Signal:
     async def airquality_auto_signal(self) -> None:
         while True:
             t0 = time.ticks_ms()
-            cfg_int = await self.cfgmgr.get_int_values(
-                [
-                    "LedAutoOnH",
-                    "LedAutoOnM",
-                    "LedAutoOffH",
-                    "LedAutoOffM",
-                    "LedAutoFlashBri",
-                    "LedWarnCO2",
-                    "LedWarnHum",
-                ]
-            )
-            cfg_float = await self.cfgmgr.get_int_values(
-                ["LedAutoInterv", "LedAutoFlashDur", "LedWarnVOC"]
-            )
-            cfg_bool = await self.cfgmgr.get_bool_values(["LedAutoOn"])
+            cfg_int = await self.cfgmgr.get_int_values(_VAL_INT_FIELDS)
+            cfg_float = await self.cfgmgr.get_float_values(_VAL_FLOAT_FIELDS)
+            cfg_bool = await self.cfgmgr.get_bool_values(_VAL_BOOL_FIELDS)
             if (
                 cfg_int is None
                 or cfg_float is None

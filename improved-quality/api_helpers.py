@@ -1,6 +1,11 @@
-from async_manager import ConfigManager
-from typing import Any, Tuple, Literal, Callable, Dict, List, Union, Coroutine
+from config_manager import ConfigManager
+from typing import Any, Tuple, Literal, Callable, Dict, List, Union, Coroutine, TYPE_CHECKING
 from microdot import Request
+
+if TYPE_CHECKING:  # ConfigSchema is only a TYPE_CHECKING-time name in config_manager.py too (like
+    # every other project-internal type on MicroPython) - real import here for precise typing,
+    # even though this file otherwise imports `typing` unconditionally (unlike src/'s convention).
+    from config_manager import ConfigSchema
 
 
 ResultValue = Union[int, float, str, bool, None]
@@ -25,9 +30,10 @@ async def init_json_from_cfg(
     ApiData | None,
     Dict[str, str | int | JsonValidity] | None,
 ]:
-    (valid, data) = await cfgmgr.get_dict(keys)
-    # TODO what if data is None (valid is obsolete)
-    return await _init_json(valid, data, cmd_keys)
+    # config_manager.py's get_dict() returns a plain dict, or None on a read error - not a
+    # (valid, data) tuple like the old async_manager.py ConfigManager's get_json() did.
+    data = await cfgmgr.get_dict(keys)
+    return await _init_json(data is not None, data if data is not None else {}, cmd_keys)
 
 
 async def init_json_from_ext(
@@ -352,6 +358,7 @@ def generic_error_return() -> Dict[str, str | int | JsonValidity]:
 async def cmd_post_check(
     prev_values: ApiData,
     cfgmgr: ConfigManager | None,
+    cfg_vals: "ConfigSchema | None" = None,
     post_fct: Callable[[], None] | None = None,
     post_asy_fct: Callable[[], Coroutine[Any, Any, None]] | None = None,
     special_err: Literal["invalidLED", "busyLED", "pauseLED", "sysCmd"] | None = None,
@@ -375,6 +382,8 @@ async def cmd_post_check(
                 if debug:
                     print("Using new values...")
                 data_written = True
+            elif cfg_vals is None:  # caller error: a real cfgmgr always needs its matching schema
+                data_written = False
             else:
                 if debug:
                     print("Saving new configuration...")
@@ -382,7 +391,10 @@ async def cmd_post_check(
                     if debug:
                         print("Ignoring command key", key)
                     dst_json_value.pop(key, None)  # ignore for saving, but keep validity result
-                data_written = await cfgmgr.write_config(dst_json_value)
+                # config_manager.py's write_config() needs the schema alongside the data (unlike
+                # the old async_manager.py ConfigManager's single-arg write_config()) and returns
+                # (bool, WriteValidity), not a bare bool.
+                data_written, _ = await cfgmgr.write_config(dst_json_value, cfg_vals)
             if not data_written:
                 return {
                     "res": "ERR",

@@ -1,6 +1,5 @@
 import frozen_html  # type: ignore[import-not-found] # noqa: F401
 import time
-import json
 import asyncio
 from uasyncio import ThreadSafeFlag
 from system_service import SystemService
@@ -13,8 +12,7 @@ from asy_bmp3xx_driver import BMP3xx_Reader
 from neopixel_signal import Neopixel_Signal
 from asy_wifi_service import asy_conn_time
 from asy_ntp_client import asy_ntp_client
-from async_manager import LockedValue, ConfigManager
-from base_classes import LockedCounter
+from config_manager import ConfigManager
 from microdot import Microdot, send_file, Request, Response
 from machine import Timer, WDT
 from micropython import const
@@ -33,16 +31,40 @@ from api_helpers import (
 )
 from typing import List, Callable, Dict
 
-_CFG_FILE_NAME = const("config.json")
-_DEFAULT_CONFIG = const(
-    '{"LedAutoOn": true, "LedAutoInterv": 300, "LedAutoOnH": 10, "LedAutoOnM": 0, "LedAutoOffH": 18, "LedAutoOffM": 0, "LedAutoFlashDur": 2, "LedAutoFlashBri": 200, "LedWarnCO2": 1600, "LedWarnVOC": 350, "LedWarnHum": 65}'
-)
-
-_TASK_CHECK_TIME = const(3)
-_TASK_FAIL_INCREMENT = const(100)
-_TASK_FAIL_MAX = const(300)
 _MAX_I2C_ERR = const(5)
 _FRAM_PAUSE_SEC = const(300)  # 5min communication pause for FRAM
+
+# Residual system-level config: fields with no per-driver setter/schema of their own yet (the
+# generic REST config-setter mechanism is deferred, tracked separately in BACKLOG.md - not part of
+# this fix) - own schema, own config_SYSTEM.cfg file, same global scheme every other module with
+# user-settable configuration now follows (LED config moved into neopixel_signal.py itself; NTP
+# timing config already lives on ntp.cfgmgr - see /time/*, /led/* routes below). Ranges/defaults for
+# the BMP fields mirror asy_bmp3xx_driver.py's own internal schema (_VAL_SI/_VAL_POV/etc.) exactly,
+# since these are REST-layer aliases of the same real fields, not independently-designed values.
+_VAL_SGP_BACKUP_PERIOD = const((("SGPBackupPeriod", "int", 0, 0, 1440, None),))
+_VAL_SGP_BACKUP_MAXAGE = const((("SGPBackupMaxAge", "int", 0, 0, 10080, None),))
+_VAL_SGP_WAIT_NTP = const((("SGPWaitTimeNTP", "int", 60, 0, 600, None),))
+_VAL_BMP_SAMPLE_INTERV = const((("BMPSampleInterv", "int", 2, 1, 3600, None),))
+_VAL_BMP_PRESS_OVERS = const((("BMPPressOvers", "int", 1, 1, 32, None),))
+_VAL_BMP_TEMP_OVERS = const((("BMPTempOvers", "int", 1, 1, 32, None),))
+_VAL_BMP_FILT_COEFF = const((("BMPFiltCoeff", "int", 0, 0, 127, None),))
+_VAL_BMP_PRESS_OFFSET = const((("BMPPressOffset", "float", 0.0, -500.0, 500.0, None),))
+_VAL_BMP_TEMP_OFFSET = const((("BMPTempOffset", "float", 0.0, -10.0, 10.0, None),))
+_VAL_BMP_SEALEVEL_OFFS = const((("BMPSeaLevelOffs", "float", 0.0, -1000.0, 5000.0, None),))
+_VAL_BMP_MEAN_ATM_TEMP = const((("BMPMeanAtmTemp", "float", 15.0, -50.0, 50.0, None),))
+
+_VAL_SGP_SYS_FIELDS = _VAL_SGP_BACKUP_PERIOD + _VAL_SGP_BACKUP_MAXAGE + _VAL_SGP_WAIT_NTP
+_VAL_BMP_SYS_FIELDS = (
+    _VAL_BMP_SAMPLE_INTERV
+    + _VAL_BMP_PRESS_OVERS
+    + _VAL_BMP_TEMP_OVERS
+    + _VAL_BMP_FILT_COEFF
+    + _VAL_BMP_PRESS_OFFSET
+    + _VAL_BMP_TEMP_OFFSET
+    + _VAL_BMP_SEALEVEL_OFFS
+    + _VAL_BMP_MEAN_ATM_TEMP
+)
+_VAL_SYSTEM_FIELDS = _VAL_SGP_SYS_FIELDS + _VAL_BMP_SYS_FIELDS
 
 
 async def sgp_comp_callback() -> List[float | None]:
@@ -68,13 +90,8 @@ async def airqual_meas_callback() -> List[int | float | None]:
 
 debug = False
 watchdog = WDT(timeout=8000)
-cfgmgr = ConfigManager(
-    _CFG_FILE_NAME,
-    json.loads(_DEFAULT_CONFIG),
-    debug=debug,
-)
-# None of the promoted sensor Readers or asy_conn_time contribute to the shared config.json anymore
-# - see BACKLOG.md's sensortask-wozi.py integration notes:
+# None of the promoted sensor Readers or asy_conn_time contribute to a shared config.json anymore -
+# see BACKLOG.md's sensortask-wozi.py integration notes:
 # - SGP40_Reader/BMP3xx_Reader (src/asy_sgp40_driver.py, src/asy_bmp3xx_driver.py) each own a
 #   private per-sensor config_<NAME>.cfg file via base_classes.py's SensorReaderConfig, and no
 #   longer expose a get_default_cfg() classmethod.
@@ -84,7 +101,11 @@ cfgmgr = ConfigManager(
 #   (base_classes.py's SensorReaderConfig, same as asy_ntp_client below) - no more
 #   externally-injected cfgmgr, no more get_default_cfg()/_DEFAULT_CONFIG merge step. Every REST
 #   route below that reads or writes a WIFI-schema field (Country/Hostname/SSID/PW/LedWifiOn) goes
-#   through conn.cfgmgr, not the shared cfgmgr above - see BACKLOG.md for the full writeup.
+#   through conn.cfgmgr, not a shared cfgmgr - see BACKLOG.md for the full writeup.
+# - Neopixel_Signal (neopixel_signal.py, promoted) now owns its own config_NEOPIXEL.cfg internally
+#   too - every REST route below that reads or writes an LedAuto*/LedWarn* field goes through
+#   pixel.cfgmgr. NTP_Host/NTP_Offset_S/NTP_Interv_H/GMTOffset/DSTOffset already live on
+#   ntp.cfgmgr (asy_ntp_client.py's own schema) - /time/* below goes through that, not a shared one.
 conn = asy_conn_time(conn_fail_to_hotspot=5, hotspot_time_min=8, max_i2c_err=_MAX_I2C_ERR, debug=debug)
 # max_i2c_err: consecutive-failure-streak threshold, not literally about I2C - conn/ntp neither have
 # an I2C bus, they just inherit this generically-named base_classes.py parameter (see BACKLOG.md).
@@ -112,6 +133,9 @@ i2c1 = asy_i2c_driver.I2C(1, 19, 18, frequency=50000)
 spi0 = asy_spi_driver.SPI(0, 2, 3, 4)
 fram = AsyFramManager(spi0, 1, max_size=0x2000, debug=debug)
 sysfunct = SystemService(ntp.ntp_issynced, watchdog=watchdog, fram=fram, debug=debug)
+# Residual system-level config (see _VAL_SYSTEM_FIELDS above) - reuses sysfunct's own logger
+# (self.pr) rather than a second, separately-tracked PrintLog instance.
+cfgmgr = ConfigManager("config_SYSTEM.cfg", _VAL_SYSTEM_FIELDS, sysfunct.pr)
 # fram_storage/fram_ntp_callback replace the old ts_storage= kwarg - SGP40_Reader now carves its
 # own timestamped FRAM chunk internally (VOCAlgorithm.get_params_memsize(), not a class method on
 # SGP40_Reader itself anymore) instead of taking a pre-built chunk from the caller. ntp_issynced now
@@ -132,14 +156,11 @@ bmp_reader = BMP3xx_Reader(i2c1, max_i2c_err=_MAX_I2C_ERR, debug=debug)
 scd_reader = SCD30_Reader(i2c0, 8, trigger_sec=3, max_i2c_err=_MAX_I2C_ERR, debug=debug)
 pixel = Neopixel_Signal(
     15,
-    cfgmgr,
     airqual_meas_callback,
     ntp.cettime,
     debug=debug,
 )
 conn.set_ext_led(pixel)  # callback for wifi led
-task_error_counter = LockedCounter(max_val=0xFFFFFFFF)  # overall task-restart counter, practically unbounded
-last_task_err = LockedValue(-1)
 timers_running = ThreadSafeFlag()
 
 
@@ -212,7 +233,7 @@ async def network_status(request: Request) -> Dict[str, int | float | str | None
 
 
 @app.get("/net/config")  # type: ignore[no-untyped-call, misc]
-async def network_config(request: Request) -> Dict[str, int | float | str | None]:
+async def network_config(request: Request) -> Dict[str, int | float | str | bool | None] | None:
     cfg_data = await conn.cfgmgr.get_dict(["Country", "Hostname", "SSID"])
     if cfg_data is not None:
         cfg_data["PW"] = "********"
@@ -244,7 +265,7 @@ async def network_cmd(request: Request) -> Dict[str, str | int | JsonValidity]:
                 res = update_valid_json(req_json, "SSID", "str", res, 2, 32, debug=debug)
                 res = update_valid_json(req_json, "PW", "str", res, 8, 63, debug=debug)
                 return await cmd_post_check(
-                    res, conn.cfgmgr, post_fct=conn.reconnect_wifi, debug=debug
+                    res, conn.cfgmgr, conn.cfg_schema, post_fct=conn.reconnect_wifi, debug=debug
                 )  # Reconnect WiFi with new config (has 5 sec delay)
     return generic_error_return()
 
@@ -268,8 +289,8 @@ async def timing_status(
 
 
 @app.get("/time/config")  # type: ignore[no-untyped-call, misc]
-async def timing_config(request: Request) -> Dict[str, int | float | str | None]:
-    ntp_data = await cfgmgr.get_dict(
+async def timing_config(request: Request) -> Dict[str, int | float | str | bool | None] | None:
+    ntp_data = await ntp.cfgmgr.get_dict(
         ["NTP_Host", "NTP_Offset_S", "NTP_Interv_H", "GMTOffset", "DSTOffset"]
     )
     # TODO what if ntp_data is None
@@ -286,7 +307,7 @@ async def timing_cmd(request: Request) -> Dict[str, str | int | JsonValidity]:
             if debug:
                 print("Received Set Timing command.")
             res, err = await init_json_from_cfg(
-                cfgmgr, ["NTP_Host", "NTP_Offset_S", "NTP_Interv_H", "GMTOffset", "DSTOffset"]
+                ntp.cfgmgr, ["NTP_Host", "NTP_Offset_S", "NTP_Interv_H", "GMTOffset", "DSTOffset"]
             )
             if err is not None:
                 return err
@@ -303,7 +324,7 @@ async def timing_cmd(request: Request) -> Dict[str, str | int | JsonValidity]:
                     req_json, "DSTOffset", "int", res, -43200, 43200, debug=debug
                 )
                 return await cmd_post_check(
-                    res, cfgmgr, post_asy_fct=ntp.ntp_force_sync, debug=debug
+                    res, ntp.cfgmgr, ntp.cfg_schema, post_asy_fct=ntp.ntp_force_sync, debug=debug
                 )  # resync NTP with new config
     return generic_error_return()
 
@@ -398,7 +419,7 @@ async def sensor_cmd(request: Request):
             req_json, "SGPResetVOC", "switch", res, None, None, debug=debug
         )  # only understands "On"
         res = await set_sensor_value(res, sgp_reader.reset_voc, cfgmgr, default=False, debug=debug)
-        return await cmd_post_check(res, cfgmgr, debug=debug)  # don't save reset flag
+        return await cmd_post_check(res, cfgmgr, _VAL_SGP_SYS_FIELDS, debug=debug)  # don't save reset flag
 
     if req_json["cmd"] == "setBMP":
         if debug:
@@ -467,7 +488,7 @@ async def sensor_cmd(request: Request):
             req_json, "BMPSeaLevelOffs", "float", res, -1000.0, 5000.0, debug=debug
         )
         res = update_valid_json(req_json, "BMPMeanAtmTemp", "float", res, -50.0, 50.0, debug=debug)
-        return await cmd_post_check(res, cfgmgr, debug=debug)
+        return await cmd_post_check(res, cfgmgr, _VAL_BMP_SYS_FIELDS, debug=debug)
 
 
 # LED API
@@ -479,7 +500,7 @@ async def led_status(request: Request):
 
 @app.get("/led/config")  # type: ignore[no-untyped-call, misc]
 async def led_config(request: Request):
-    cfg_data = await cfgmgr.get_dict(
+    cfg_data = await pixel.cfgmgr.get_dict(
         [
             "LedAutoOn",
             "LedAutoOnH",
@@ -494,13 +515,20 @@ async def led_config(request: Request):
             "LedWarnHum",
         ]
     )
-    # LedWifiOn lives in conn's own config_WIFI.cfg (asy_wifi_service.py), not the shared cfgmgr
-    # above - get_dict() returns None for the *whole* call if any requested key is unknown to that
+    # LedWifiOn lives in conn's own config_WIFI.cfg (asy_wifi_service.py), not pixel's cfgmgr above
+    # - get_dict() returns None for the *whole* call if any requested key is unknown to that
     # particular ConfigManager, so this needs its own separate read rather than one combined list.
     wifi_led_data = await conn.cfgmgr.get_dict(["LedWifiOn"])
-    if cfg_data is not None and wifi_led_data is not None:
-        cfg_data["LedAutoOn"] = to_switch(cfg_data["LedAutoOn"])
-        cfg_data["LedWifiOn"] = to_switch(wifi_led_data["LedWifiOn"])
+    _led_auto_on = cfg_data["LedAutoOn"] if cfg_data is not None else None
+    _led_wifi_on = wifi_led_data["LedWifiOn"] if wifi_led_data is not None else None
+    if (
+        cfg_data is not None
+        and wifi_led_data is not None
+        and isinstance(_led_auto_on, bool)
+        and isinstance(_led_wifi_on, bool)
+    ):
+        cfg_data["LedAutoOn"] = to_switch(_led_auto_on)
+        cfg_data["LedWifiOn"] = to_switch(_led_wifi_on)
     else:
         cfg_data = None
 
@@ -559,7 +587,7 @@ async def led_cmd(request: Request):
         if debug:
             print("Received Set Auto LED command.")
         res, err = await init_json_from_cfg(
-            cfgmgr,
+            pixel.cfgmgr,
             [
                 "LedAutoOn",
                 "LedAutoOnH",
@@ -587,7 +615,7 @@ async def led_cmd(request: Request):
         res = update_valid_json(req_json, "LedWarnCO2", "int", res, 0, 3000, debug=debug)
         res = update_valid_json(req_json, "LedWarnVOC", "int", res, 0, 500, debug=debug)
         res = update_valid_json(req_json, "LedWarnHum", "float", res, 0.0, 100.0, debug=debug)
-        return await cmd_post_check(res, cfgmgr, debug=debug)
+        return await cmd_post_check(res, pixel.cfgmgr, pixel.cfg_schema, debug=debug)
 
     if req_json["cmd"] == "setWiFiLED":
         if debug:
@@ -597,7 +625,7 @@ async def led_cmd(request: Request):
             return err
         res = update_valid_json(req_json, "LedWifiOn", "switch", res, None, None, debug=debug)
         res = await set_sensor_value(res, conn.set_wifi_led, conn.cfgmgr, default=True, debug=debug)
-        return await cmd_post_check(res, conn.cfgmgr, debug=debug)
+        return await cmd_post_check(res, conn.cfgmgr, conn.cfg_schema, debug=debug)
 
 
 # System API
@@ -633,8 +661,18 @@ async def system_status(request: Request):
     SGP40_ErrCnt = _sgp_err_count if isinstance(_sgp_err_count, int) else 0
     _bmp_err_count = (await bmp_reader.get_error_counter())["BMP3XX"]["ErrCount"]
     BMP388_ErrCnt = _bmp_err_count if isinstance(_bmp_err_count, int) else 0
-    _task_err_cnt_val = await task_error_counter.get_value()  # never None: only ever incremented from its 0 default
-    Task_ErrCnt = 0 if _task_err_cnt_val is None else _task_err_cnt_val
+    # sysfunct.get_error_counter()'s "Tasks" log now supersedes the old hand-rolled
+    # task_error_counter/last_task_err LockedCounter/LockedValue pair, once main() switched to the
+    # real, tested start_and_check_tasks() supervisor - same dict shape every *_Reader already uses.
+    _task_err_log = (await sysfunct.get_error_counter())["Tasks"]
+    _task_err_cnt_val = _task_err_log["ErrCount"]
+    Task_ErrCnt = _task_err_cnt_val if isinstance(_task_err_cnt_val, int) else 0
+    _task_err_num = _task_err_log["ErrNum"]
+    Task_LastErr = (
+        _task_err_num[-1] - 1
+        if Task_ErrCnt > 0 and isinstance(_task_err_num, list) and _task_err_num and isinstance(_task_err_num[-1], int)
+        else -1
+    )  # wrnno was recorded as (task index + 1); -1 matches the old "never failed" sentinel
     ErrorStatus = (
         (FRAM_ErrCnt > 0)
         or (SCD30_ErrCnt > 0)
@@ -649,7 +687,7 @@ async def system_status(request: Request):
         "Boot_Signature": await sysfunct.get_boot_signature(),
         "Error_Status": to_switch(ErrorStatus),
         "Task_ErrCnt": Task_ErrCnt,
-        "Task_LastErr": await last_task_err.get_value(),
+        "Task_LastErr": Task_LastErr,
         "SCD30_ErrCnt": SCD30_ErrCnt,
         "SGP40_ErrCnt": SGP40_ErrCnt,
         "SGP40_Backup_TS": sgpback,
@@ -742,49 +780,18 @@ async def main():
         ntp.start_ntp_timer,
     ]
 
-    all_running = True
     for trigger in async_onetime:
-        res = await trigger()
-        all_running = all_running and res
+        await trigger()
 
-    await sysfunct.start_timers(timer_starters, 1000)
+    await sysfunct.start_timers(timer_starters)
 
-
-    tasks = []
-    for starter in task_starters:
-        tasks.append(starter())
-        await asyncio.sleep(1.0 / len(task_starters))
-
+    # Force an initial sync attempt before the ntp task itself even starts - ntp_force_sync() only
+    # sets an event flag asy_ntp_time() watches for, so pre-setting it here is equivalent to (and
+    # simpler than) waiting for the task to start first, and start_and_check_tasks() below is the
+    # last call in this function (it blocks forever, running the real task supervisor).
     await ntp.ntp_force_sync()  # first sync
 
-    task_errors = 0
-    while True:
-        no_fail = True
-        for n in range(0, len(tasks)):
-            if tasks[n].done():
-                await task_error_counter.increment()
-                await last_task_err.set_value(n)
-                task_errors += _TASK_FAIL_INCREMENT
-                tasks[n] = task_starters[n]()
-                no_fail = False
-                if debug:
-                    print("Task wurde vorzeitig beendet - versuche Neustart!")
-
-        if task_errors > _TASK_FAIL_MAX:
-            all_running = False
-            if debug:
-                print("Mehrfache Task-Fehler, Neustart!")
-
-        if no_fail and (task_errors > 0):
-            task_errors -= 1
-            if debug:
-                print("Task Error Counter:", task_errors)
-
-        if all_running:
-            if debug:
-                print("Alle Tasks laufen.")
-            watchdog.feed()
-        await asyncio.sleep(_TASK_CHECK_TIME)
+    await sysfunct.start_and_check_tasks(task_starters)
 
 try:
     asyncio.run(main())
