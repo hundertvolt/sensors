@@ -427,4 +427,7 @@ raw `readfrom_mem`/`writeto_mem`/`readfrom_into`/`writeto`/`scan` only, letting 
 `*_I2C`/`*_Reader` logic (bit-packing, CRC, locking, error paths) run against a real
 dict-of-registers fake. `src/README.md` section 12's parameter-combination/boundary/NaN-inf
 coverage requirements apply to any pure-computation helper a new driver adds (compensation math,
-tick conversion) the same as they do to `math_helpers.py`.
+tick conversion) the same as they do to `math_helpers.py`. For I2C fault injection specifically,
+real hardware only ever raises `OSError(EIO)` (NAK/bus fault) or `OSError(ETIMEDOUT)`
+(bus-busy/clock-stretch) — never `ENODEV`, which is `SoftI2C`-specific; don't inject a fault code
+a real bus can't actually produce.

@@ -1,6 +1,8 @@
 # tests/
 
 Unit tests for `src/` (fully-reviewed code moved out of `improved-quality/` — see CLAUDE.md).
+Current total: 1392 tests across 23 `tests/test_*.py` files (verify via
+`grep -c '^def test_' tests/test_*.py` if this looks stale).
 
 ## Why not pytest
 

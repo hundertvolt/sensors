@@ -68,6 +68,18 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
     list/deque/buffer sized from external or caller-supplied input must clamp the size *before* the
     allocation, not just catch `MemoryError` reactively — see `base_classes.py`'s `LockableBuffer`/
     `print_log.py`'s `PrintLogHistory` for the established clamp-then-allocate pattern.
+  - **`machine.Timer.init()` can raise `OSError(ENOMEM)` if the RP2040's alarm pool is exhausted** —
+    confirmed against real `ports/rp2/machine_timer.c` source. Every `Timer.init()` call site in this
+    codebase must handle it (degrade gracefully if a safe fallback exists, otherwise let the failure
+    stay isolated to whatever that one timer was for) — see `system_service.py` for the established
+    pattern. `Timer()`'s bare constructor and `Timer.deinit()` never allocate/raise; `WDT.feed()` is a
+    bare register write and cannot raise either.
+  - **`MemoryError` is not an `OSError` subclass in MicroPython** — an `except OSError:` alone is
+    blind to allocation failure; anywhere an `OSError` is caught around a call that could also
+    plausibly exhaust memory, catch `(OSError, MemoryError)` instead.
+  - **`struct.pack()`/`pack_into()` silently zero-pad or truncate on a value/argument-count
+    mismatch instead of raising**, unlike CPython. Don't rely on a mismatch surfacing as an
+    exception; validate shape before packing if it matters.
 - **Always check current MicroPython and Microdot documentation before asserting how an API
   behaves** — do not rely on training-data memory for either. This has already caught real
   discrepancies once; treat it as a standing requirement for every session, not a one-time step.
@@ -123,7 +135,7 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
 - **No unit tests against the current (deployed, pre-refactor) codebase — `python/`, `modules/`.**
   The agreed plan is: fully understand the current system first, confirm what's already
   transferred into `improved-quality/`, and write tests as part of that refactor — not before, and
-  not against the current code. This does **not** contradict BACKLOG.md's detailed testing
+  not against the current code. This does **not** contradict `tests/README.md`'s testing
   requirements (tests under a real MicroPython Unix-port interpreter, `uv`-managed venv, mocking
   boundary, etc.) — those describe what the *refactored* code must eventually have. **First
   concrete instance**: `src/math_helpers.py` has a full `tests/test_math_helpers.py` suite,
@@ -184,6 +196,8 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
 - Prefer flagging genuinely ambiguous/architecturally significant decisions to the project owner
   over guessing — several open questions in BACKLOG.md exist precisely because the code's actual
   intent wasn't obvious from reading it alone.
+- When changing a sensor driver's behavior, verify against the legacy driver's own actually-proven
+  field behavior, not just judged correct against internal code-review logic in isolation.
 
 ## Code quality tooling
 
@@ -416,9 +430,22 @@ need to go deeper:
   `asy_ntp_client.py`/`asy_dns_client.py` and retired the lock entirely (see "Hard rules" above and
   BACKLOG.md); don't assume the two describe the same current state.
 - `python/CommonDrivers/async_manager.py` — `ConfigManager`, `DataManager`,
-  `TimeCounterManager`, `LockedValue`/`Flag`.
+  `TimeCounterManager`, `LockedValue`/`Flag`. `src/config_manager.py`'s `ConfigManager` replaces
+  this in the refactor (see README.md's "Config management" bullet). Its config is loaded once at
+  `__init__` and served entirely from an in-memory cache thereafter — a deliberate consequence is
+  that a read can no longer detect the on-disk file being corrupted/deleted out-of-band after a
+  valid `__init__`; the cache is the sole source of truth, and a later `write_config()` silently
+  *repairs* an externally-corrupted file from it. Accepted given this device is the file's only
+  writer.
 - `python/IndividualDrivers/asy_fram_driver.py` / `asy_fram_manager.py` — raw SPI FRAM driver +
-  chunk allocator with dual-copy redundancy (arzi/neu/wozi only, not dev).
+  chunk allocator with dual-copy redundancy (arzi/neu/wozi only, not dev). `src/`'s promoted
+  versions keep the same design: each chunk stores two redundant copies plus a busy/idle status
+  byte guarding both reads and writes (MB85RS64V reads are destructively read internally, so a
+  power loss mid-read is as real a risk as mid-write); "both copies valid but different" is a hard
+  failure (no generation counter to say which is newer), never silently guessed.
+  `AsyFramTimestampedChunk.write()`/`write_into()` return `(ntp_synced, utc, success)` — `success`
+  is the *third* element, not first, unlike every other bool-returning method in this codebase;
+  don't reorder it, callers already unpack it this way.
 - **SCD30's `AmbPres` (ambient-pressure compensation) is stored in the sensor's own internal
   non-volatile memory as a one-time-set value, not a continuously-updated live input.** This is why
   it's a static config value on every unit — including wozi, which has a live BMP388 — and why
@@ -429,8 +456,7 @@ need to go deeper:
   hand-rolled loop inside each file's `main()`, not a shared module — duplicated per device file.
   `improved-quality/sensortask-wozi.py` no longer matches this: its `main()` now calls
   `system_service.py`'s real `start_and_check_tasks()`/`start_timers()` instead of reimplementing
-  the loop — see BACKLOG.md's "Resolved" note on this fix. Don't assume the two describe the same
-  current state.
+  the loop. Don't assume the two describe the same current state.
 - **Functional behaviors confirmed intentional by the project owner, not obvious from the code
   alone — don't "fix" any of these:**
   - Air-quality warning LED sequencing (one color per condition, paused between flashes rather than

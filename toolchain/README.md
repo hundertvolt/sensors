@@ -210,68 +210,19 @@ works. The Unix port from step 8 is the only build artifact kept as a standing d
 
 ## Evidence this actually works
 
-Claims above that are checkable were checked, not just written down. The bullets mentioning a
-specific "three checks"/"four checks" count below predate the 8-step frozen-bytecode chain
-described in "Verification" above and refer to the simpler build-and-run-a-sample-script design
-that chain replaced — they're kept as evidence for the still-true claims in each bullet
-(clean-chroot install, the update path, environment isolation, the locale bug fix), not as a
-description of the current step count.
-
-- **Restructured into the 8-step frozen-bytecode chain**: re-ran `test` against an existing
-  `v1.28.0` toolchain twice while building the new `run_verification_sequence()`. The first pass
-  caught a real bug: `freeze(".")` in the generated manifests froze every `.py` file sitting next
-  to the test module, including the manifest files themselves (`MPY manifest_unix.py` showed up
-  in the build log where only `MPY frozen_verify_test.py` was expected) — harmless in practice but
-  sloppy, so the test module was moved into its own dedicated subdirectory
-  (`FROZEN_MODULE_SUBDIR`) that only ever contains that one file. Second pass confirmed the fix:
-  `frozen_verify_test.py` is the only extra frozen module in both the Unix port and RP2 builds,
-  the frozen import prints `FROZEN_VERIFY_OK: micropython` with no source file on disk, step 7
-  removes both `ports/rp2/build-RPI_PICO_W` and `ports/unix/build-standard`, and the final vanilla
-  Unix port rebuild's frozen-module list no longer includes `frozen_verify_test.py` anywhere.
-- **A genuinely clean Ubuntu 24.04 system, from scratch**: a `debootstrap`-built `noble` chroot
-  with nothing preinstalled beyond the minimal base (no build tools, no `git`/`curl`/`sudo`, no
-  `uv`, no apt cache beyond `main`) — the script installed every system dependency itself (after
-  enabling `universe`, see "Quick start" above) and passed all three checks in ~3 minutes, for
-  both the latest stable MicroPython release and the currently-deployed `v1.26.1` pin. **Re-run
-  after the Unix port build was added** (same from-scratch chroot recipe, `python3`/`pip`/`uv`
-  only — everything else, including `libffi-dev` for the Unix port's `ffi` module, installed by
-  the script itself): all four checks passed, including the Unix port build and its sample
-  script.
-- **The in-place update path**: existing `v1.26.1` install → re-run targeting the latest
-  release. Existing clones are fetched and re-checked-out rather than re-cloned, the derived
-  pico-sdk/picotool versions bump automatically, and only the affected pieces rebuild. **Verified
-  with the Unix port specifically**: built and ran the sample script against `v1.26.1` first
-  (`sys.implementation` correctly reported `(1, 26, 1, '')`), then re-ran targeting `v1.28.0`
-  against the same `--toolchain-dir` — the Unix port rebuilt and the sample script re-ran
-  correctly against the new version (`(1, 28, 0, '')`), with no leftover state from the old
-  build.
-- **`test` in isolation**: run against a `setup`-provisioned install, it completed in ~30s
-  (vs. minutes for `setup`), touched no network or apt state, and passed all three (now four)
-  checks. **`--clean` re-verified after the Unix port build was added**: confirmed it wipes
-  `ports/unix/build-standard` along with the other build-artifact directories, and a full
-  from-scratch rebuild afterward still passes all four checks.
-- **Environment isolation, adversarially**: ran both `setup` and `test` with a deliberately
-  hostile ambient environment — `CC`/`CXX` pointed at `/bin/false`, garbage `CFLAGS`/`CXXFLAGS`/
-  `LDFLAGS`/`MAKEFLAGS`, a bogus `PICO_SDK_PATH`/`PICO_BOARD`/`PYTHONPATH`/`CMAKE_INSTALL_PREFIX`/
-  `CMAKE_TOOLCHAIN_FILE`, and fake `cmake`/`arm-none-eabi-gcc`/`picotool` shell scripts (each just
-  printing a marker and exiting 1) placed earlier in `PATH` than the real toolchain. Before the
-  `network_env()`/`build_env()` split existed, `make submodules`'s internal `cmake` configure
-  pass picked up the fake `cmake` and failed outright — the concrete bug that motivated the split
-  in the first place, not a hypothetical one. After the fix, both `setup` and `test` completed
-  successfully with zero trace of any of the injected poison in the build logs.
-- **A real run on someone else's machine surfaced a second, subtler gap**: a full log from an
-  actual Ubuntu 24.04 dev machine (German locale) showed `git`/`apt` output in German
-  (`Klone nach`, `Submodul-Pfad ... ausgecheckt`) — meaning `LANG`/`LC_ALL` were still being
-  passed through from the caller's shell at the time. That's a real problem, not just cosmetic:
-  `build_firmware()`/`build_mpy_cross()`/`build_unix_port()` detect failure by grepping build
-  output for the literal English `error:`/`warning:` (there's no other machine-readable signal
-  from `make`/`gcc`), and
-  GCC/binutils diagnostics *can* be translated via gettext catalogs on a system where the
-  caller's locale has one installed — silently defeating that detection. Fixed by forcing
-  `LANG=C.UTF-8`/`LC_ALL=C.UTF-8` in `build_env()` instead of allowlisting them through.
-  Re-verified by re-running the full `setup` flow with `LANG=de_DE.UTF-8` set in the calling
-  shell (reproducing the exact locale from that log): `git` output was confirmed back to English
-  (`Cloning into ...` instead of `Klone nach ...`), and all three checks still passed.
+Verified end-to-end, not just written down: a genuinely clean Ubuntu 24.04 system (a
+`debootstrap`-built `noble` chroot with nothing preinstalled beyond the minimal base) installs
+every dependency itself and passes the full 8-step verification chain, for both the
+currently-deployed `v1.26.1` pin and the latest stable release; an in-place update from one
+pinned version to another re-checks out existing clones (no re-clone), rebuilds only the affected
+pieces, and leaves no stale state from the old build; `test` in isolation (no `setup`-only steps)
+completes in ~30s against an existing install with no network/apt access; and both `setup`/`test`
+were run against a deliberately hostile environment (poisoned `PATH` with fake `cmake`/
+`arm-none-eabi-gcc`/`picotool`, garbage `CFLAGS`/`CMAKE_*`/`PICO_SDK_PATH`, a non-English `LANG`)
+with zero trace of the injected poison surviving into the build — this is what "Environment
+isolation" above is verified against, not just designed against. See CLAUDE.md's "Pre-push
+verification" for the standing recipe to re-run this kind of check after a change to this script
+or `versions.toml`.
 
 ## Why not a full venv
 
