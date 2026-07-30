@@ -37,6 +37,8 @@ from asy_bmp3xx_driver import BMP3xx_Reader
 from asy_fram_manager import AsyFramManager
 from asy_i2c_driver import I2C
 from asy_ntp_client import asy_ntp_client
+from asy_scd30_driver import SCD30_Reader
+from asy_sgp40_driver import SGP40_Reader
 from asy_spi_driver import SPI
 from asy_wifi_service import asy_conn_time
 from crc_checks import CRC32
@@ -358,7 +360,11 @@ def test_calling_real_ntp_issynced_from_fram_write_into_does_not_block_on_a_conc
         await asyncio.sleep(0)
         assert conn.wifi_mode_lock.locked() is True  # ntp genuinely holds conn's own shared lock right now
         try:
-            _ntp_synced, _utc, write_ok = await asyncio.wait_for(chunk.write(b"12345678"), 0.2)
+            # 1.0s, not a razor-thin 0.2s: still a fraction of ntp_fetch_timeout_ms=2000 above (the
+            # real "stuck behind the lock" case this guards against), but with enough margin that
+            # ordinary scheduling jitter under load can't produce a false failure - this is checking
+            # "did it complete promptly," not pinning an exact latency.
+            _ntp_synced, _utc, write_ok = await asyncio.wait_for(chunk.write(b"12345678"), 1.0)
         except asyncio.TimeoutError:
             await _cancel(task)
             return False  # would mean ntp_issynced() got stuck behind the shared lock - a real bug
@@ -582,10 +588,97 @@ def test_system_service_restarts_a_real_sensor_reader_task_that_genuinely_gives_
 
     async def scenario() -> int:
         svc_task = asyncio.create_task(svc.start_and_check_tasks([spy_starter]))
-        for _ in range(200):  # bounded wait for the real read_loop()'s own init failure -> return False
+        for _ in range(200):  # bounded wait for the real read_loop()'s own init failure -> return False -
+            # a real sleep, not sleep(0): asy_i2c_driver.py's __probe_for_device() awaits two real
+            # 0.1s sleeps regardless of outcome, and sleep(0) never advances wall-clock time on this
+            # Unix-port event loop, so it can never observe those real sleeps completing.
             if starts and starts[0].done():
                 break
-            await asyncio.sleep(0)
+            await asyncio.sleep(0.01)
+        assert starts[0].done()  # the real read_loop() genuinely returned on its own (init failed)
+        await asyncio.sleep(2.5)  # real wall-clock wait for start_and_check_tasks()'s own 2s poll
+        await _cancel(svc_task)
+        return len(starts)
+
+    call_count = run(scenario())
+    assert call_count == 2  # the initial real start, plus one genuine restart by the real supervisor
+    counter = run(svc.get_error_counter())
+    assert counter["Tasks"]["ErrCount"] == 1  # the restart itself is persisted (wrnno=1), not silent
+
+
+_SCD30_ADDR = 0x61
+_SGP40_ADDR = 0x59
+
+
+def make_scd30_reader(max_i2c_err: int = 1) -> SCD30_Reader:
+    i2c = I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
+    return SCD30_Reader(i2c, irq_pin=5, max_i2c_err=max_i2c_err)
+
+
+async def _no_comp_data() -> "list[float | None]":
+    return [None, None]
+
+
+def make_sgp40_reader(cfg_path: str, max_i2c_err: int = 1) -> SGP40_Reader:
+    i2c = I2C(1, scl_pin=19, sda_pin=18, frequency=50000)
+    return SGP40_Reader(i2c, _no_comp_data, max_i2c_err=max_i2c_err, cfg_path=cfg_path)
+
+
+def test_system_service_restarts_a_real_scd30_reader_task_that_genuinely_gives_up() -> None:
+    # Same technique as the BMP3xx case above, generalized to the other real sensor Reader shape
+    # (plain SensorReader, no config schema) - the task-completeness audit that motivated this file's
+    # BMP3xx test flagged SCD30/SGP40 as the two remaining sensor Readers never driven through a
+    # real SystemService, only ever proven at the module level (test_asy_scd30_driver.py's own
+    # test_read_loop_returns_false_when_init_fails uses the identical NAK-the-address setup, just
+    # without a real supervisor watching it).
+    reader = make_scd30_reader(max_i2c_err=1)
+    fake_i2c: FakeI2C = reader.scd.i2c_scd30.i2c_device.i2c._i2c  # type: ignore[assignment]
+    fake_i2c.nak_addresses.add(_SCD30_ADDR)  # every real bus op fails - init itself never succeeds
+    svc = SystemService(_never_synced)
+    starts: list[asyncio.Task[bool]] = []
+
+    def spy_starter() -> "asyncio.Task[bool]":
+        t = reader.start_asy_read()
+        starts.append(t)
+        return t
+
+    async def scenario() -> int:
+        svc_task = asyncio.create_task(svc.start_and_check_tasks([spy_starter]))
+        for _ in range(200):  # bounded wait for the real read_loop()'s own init failure -> return False -
+            # a real sleep, not sleep(0): see the BMP3xx test above for why.
+            if starts and starts[0].done():
+                break
+            await asyncio.sleep(0.01)
+        assert starts[0].done()  # the real read_loop() genuinely returned on its own (init failed)
+        await asyncio.sleep(2.5)  # real wall-clock wait for start_and_check_tasks()'s own 2s poll
+        await _cancel(svc_task)
+        return len(starts)
+
+    call_count = run(scenario())
+    assert call_count == 2  # the initial real start, plus one genuine restart by the real supervisor
+    counter = run(svc.get_error_counter())
+    assert counter["Tasks"]["ErrCount"] == 1  # the restart itself is persisted (wrnno=1), not silent
+
+
+def test_system_service_restarts_a_real_sgp40_reader_task_that_genuinely_gives_up() -> None:
+    reader = make_sgp40_reader(_tmp_cfg_dir(), max_i2c_err=1)
+    fake_i2c: FakeI2C = reader.sgp.i2c_sgp40.i2c_device.i2c._i2c  # type: ignore[assignment]
+    fake_i2c.nak_addresses.add(_SGP40_ADDR)  # every real bus op fails - init itself never succeeds
+    svc = SystemService(_never_synced)
+    starts: list[asyncio.Task[bool]] = []
+
+    def spy_starter() -> "asyncio.Task[bool]":
+        t = reader.start_asy_read()
+        starts.append(t)
+        return t
+
+    async def scenario() -> int:
+        svc_task = asyncio.create_task(svc.start_and_check_tasks([spy_starter]))
+        for _ in range(200):  # bounded wait for the real read_loop()'s own init failure -> return False -
+            # a real sleep, not sleep(0): see the BMP3xx test above for why.
+            if starts and starts[0].done():
+                break
+            await asyncio.sleep(0.01)
         assert starts[0].done()  # the real read_loop() genuinely returned on its own (init failed)
         await asyncio.sleep(2.5)  # real wall-clock wait for start_and_check_tasks()'s own 2s poll
         await _cancel(svc_task)

@@ -885,6 +885,15 @@ def _sgp_cfg_dir(name: str) -> str:
         os.mkdir(path)
     except OSError:
         pass  # already exists
+    try:
+        # A directory persisting from a previous local run of this file (tests/_tmp is never wiped
+        # between invocations, unlike CI's always-fresh checkout) would otherwise let this test
+        # pollute its own next run - e.g. test_run_backup_updates_verify_when_backup_period_changes_
+        # after_init writes a real BackupPeriod here, silently turning its own "change it" step into
+        # a no-op on the following local rerun. Force a genuinely fresh config file every time.
+        os.remove(path + "/config_SGP40.cfg")
+    except OSError:
+        pass  # no config file yet - already fresh
     return path + "/"
 
 

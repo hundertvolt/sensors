@@ -20,7 +20,8 @@ def run(namespace: dict) -> None:
             value()
         except Exception as exc:
             failed += 1
-            print(f"FAIL {name}: {exc}")
+            print(f"FAIL {name}:")
+            sys.print_exception(exc)  # full traceback - a bare str(exc) is empty for AssertionError
         else:
             print(f"PASS {name}")
     print(f"{total - failed}/{total} passed")
