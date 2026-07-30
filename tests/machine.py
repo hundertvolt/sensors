@@ -117,7 +117,7 @@ class Pin:
     IRQ_FALLING = 0x04
     IRQ_RISING = 0x08
 
-    def __init__(self, id: int, mode: int = -1) -> None:
+    def __init__(self, id: int, mode: int = -1, pull: int = -1, *, value: "Any" = None) -> None:
         # Real rp2 Pin() raises for a genuinely invalid id (confirmed against ports/rp2/
         # machine_pin.c: TypeError for a non-int identifier, ValueError for one outside the
         # RP2040's real GPIO0-28 range) - validated here (previously not at all) since this is a
@@ -129,7 +129,11 @@ class Pin:
             raise ValueError("invalid pin")
         self.id = id
         self.mode = mode
-        self._value = 0
+        self.pull = pull
+        # Real rp2 Pin(): an initial value= is applied via the same path value() already uses -
+        # only meaningful for an OUT-mode pin, but the real constructor doesn't validate that
+        # either (it's silently inert on an IN pin), so this fake doesn't validate it either.
+        self._value = 0 if value is None else (1 if value else 0)
         self._irq_handler: Callable[[Pin], None] | None = None
         self._irq_trigger = self.IRQ_FALLING | self.IRQ_RISING
         self._irq_hard = False
@@ -146,6 +150,15 @@ class Pin:
             return self._value
         self._value = 1 if x else 0
         return None
+
+    def on(self) -> None:
+        self._value = 1
+
+    def off(self) -> None:
+        self._value = 0
+
+    def toggle(self) -> None:
+        self._value = 0 if self._value else 1
 
     def irq(
         self,
@@ -196,11 +209,6 @@ class I2C:
         self.nak_addresses: set[int] = set()  # convenience: EIO (no ACK) on every op to this address
         self.busy = False  # convenience: ETIMEDOUT (bus/clock-stretch timeout) on every op, any address
         self._faults: dict[str, list[Exception]] = {}  # op name -> FIFO queue, one exception per matching call
-        # A device that talks via plain write()/readinto() with no repeated-start register
-        # addressing (e.g. asy_scd30_driver.py's SCD30 - no readfrom_mem/writeto_mem involved at
-        # all) has no `registers` dict to prime; read_queue is a FIFO of byte strings that
-        # readfrom_into() below pops from instead, mirroring SPI's own read_queue/_next_read_bytes.
-        self.read_queue: list[bytes] = []
 
     def inject_fault(self, op: str, exc: Exception, times: int = 1) -> None:
         # Queues `exc` to be raised on the next `times` calls to the named op (readfrom_into,

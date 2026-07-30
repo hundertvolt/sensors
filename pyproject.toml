@@ -106,7 +106,7 @@ files = ["improved-quality", "src", "tests"]
 # improved-quality/microdot.py: see its own module docstring. tests/network.py: a bare top-level
 # `network.py` sitting inside a `files`-scanned root starts winning module resolution over
 # typings/'s real `network` stub *project-wide*, not just within tests/ - confirmed directly: with
-# it present, improved-quality/asy_wifi_service.py's own `import network` call sites silently lose
+# it present, src/asy_wifi_service.py's own `import network` call sites silently lose
 # their real stub types (e.g. WLAN.status()'s return narrows to Any instead of the real stub's
 # int), which masks (turns into a vaguer "Returning Any" note instead of the specific type
 # mismatch) an already-tracked pre-existing finding at _get_hotspot_stations() (declares ->

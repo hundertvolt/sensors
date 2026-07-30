@@ -18,11 +18,11 @@ import time
 from collections import namedtuple
 
 import network
-from captive_dns import DNSServer
 from machine import Pin, Timer
 from micropython import const
 
 from base_classes import LockedCounter, SensorReaderConfig
+from captive_dns import DNSServer
 from config_manager import make_dict
 
 try:
@@ -223,7 +223,7 @@ class asy_conn_time(SensorReaderConfig):
             return None
         if len(ifcfg) == 4:
             return ifcfg[0:4]
-        return None
+        return None  # type: ignore[unreachable]  # defensive: real WLAN.ifconfig() is a fixed 4-tuple per the stub
 
     def get_dns_server_ip(self) -> str | None:
         # asy_ntp_client.py's get_dns_server callback - the DHCP-assigned DNS server for
@@ -520,7 +520,7 @@ class asy_conn_time(SensorReaderConfig):
             # stations command needs no other status commands close before (and does not support "async with"!)
             stations = self.wlan.status("stations")
             self.pr.all(_NAME, "Connected stations:", stations)
-            return stations
+            return stations  # type: ignore[return-value]  # stub types status(str) as int; real AP-mode "stations" returns a list per MicroPython docs
         except Exception as e:  # observation-tier (polled every wifi_refresh_sec while hotspot is
             # active) - see _wlan_status_or_none()'s comment on why this stays silent, not err_s()
             self.pr.err(_NAME, "Verbundene Clients können nicht abgerufen werden:", e)

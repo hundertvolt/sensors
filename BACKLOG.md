@@ -633,9 +633,59 @@ most likely to be delayed by up to a minute exactly during periods of active WLA
 priority-inversion-shaped cost worth having in view but not a correctness bug.
 
 29 tests (`tests/test_asy_dns_client.py`) + 86 (`tests/test_asy_ntp_client.py`) +
-8 (`tests/test_ntp_wifi_dns_integration.py`); `asy_wifi_service.py` itself was still pending
-promotion to `src/` as of this integration session — see the promotion-readiness note in "Refactor
-targets not yet done" / this session's own follow-through below.
+8 (`tests/test_ntp_wifi_dns_integration.py`); `asy_wifi_service.py` itself was promoted to `src/`
+in the same integration session that merged this file's own promotion together with `captive_dns.py`'s
+(its blocking dependency — see that section above). No source-code behavior changed beyond the move
+itself and dropping now-unnecessary `sys.path`/`# type: ignore[import-not-found]` test workarounds,
+but the move surfaced real, previously-invisible findings the same way `asy_ntp_client.py`'s own
+promotion did (an unresolved import had typed the whole file `Any`, silently skipping every
+attribute-access check) — fixed rather than left as a new CI failure:
+
+- `tests/machine.py`'s fake `Pin` had no `value=`/`pull=` constructor keywords and no `on()`/
+  `off()`/`toggle()` methods — real `machine.Pin` has both (confirmed against the installed stub),
+  and `asy_wifi_service.py`'s LED-control code genuinely needs them (`Pin(led_pin, mode=Pin.OUT,
+  value=0)`, and assigning a `Pin` where the `LEDControl` `Protocol` is expected). Extended the fake
+  to match, rather than change real code that was already correct.
+- `_get_hotspot_stations()`'s declared `-> list[Any]` return doesn't match the real stub's typing of
+  `wlan.status(str) -> int` — a stub-precision gap (real AP-mode `"stations"` genuinely returns a
+  list per MicroPython's own docs, the stub just doesn't distinguish that overload), already flagged
+  as a known, tracked finding before promotion (see pyproject.toml's own `tests/network.py` exclude
+  comment) — suppressed with `# type: ignore[return-value]` plus the same explanation, not silently
+  reworked.
+- `get_wlan_ifconfig()`'s defensive `len(ifcfg) == 4` check makes the trailing `return None`
+  provably unreachable per the real stub's fixed-4-tuple typing — kept the defensive code (harmless,
+  and a stub/behavior change elsewhere could make it reachable again) with a `# type: ignore[unreachable]`
+  instead of deleting it.
+- `tests/machine.py`'s `I2C.__init__` had a genuine duplicate `self.read_queue: list[bytes] = []`
+  assignment with two near-identical explanatory comment blocks — a real merge artifact (two
+  branches independently adding the same fake-driver support, non-conflicting because they touched
+  different surrounding lines) rather than something either branch's own author wrote intentionally.
+  Deduplicated, keeping the first (class-level) explanation.
+- `client.wlan`/`conn.wlan` is typed against the real `network.WLAN` stub (deliberately — see
+  pyproject.toml's `tests/network.py` exclude comment, which protects `asy_wifi_service.py`'s own
+  real `import network` call sites from being masked to `Any`), but `tests/network.py`'s fake is
+  what's actually constructed at runtime and exposes test-only attributes (`raise_on`, `_status`,
+  `_ifconfig`, `_connected`, `_stations`, `if_id`, ...) the real stub has no reason to declare.
+  Rather than a `# type: ignore[attr-defined]` at each of ~60 call sites across two test files, added
+  one small `_wlan(client)`/`_wlan(conn)` helper per file that narrows to `Any` once, and mechanically
+  rewrote every `client.wlan.X`/`conn.wlan.X` to `_wlan(client).X`/`_wlan(conn).X`.
+- `get_error_counter()`'s `int | list[int] | list[str]` union indexed directly — added a `_last_err()`
+  helper in `test_asy_wifi_service.py`, the same pattern (scoped to this file's `"WIFI"` key) as
+  `test_asy_ntp_client.py`'s own established helper for `"NTP"`.
+- `client.cfgmgr.get_dict(...)`'s `dict[...] | None` return indexed directly without narrowing across
+  18 call sites — added `assert values is not None` after each, matching the established idiom.
+- Method-monkeypatching call sites (`client._select_wifi_mode = fake_select`, etc., ~20 sites) and two
+  duck-typed-fake-socket assignments (`client.dns_server.udps = fake_udps`) needed per-site
+  `# type: ignore[method-assign]`/`[assignment]`, matching `test_asy_udp_socket.py`'s/
+  `captive_dns.py`'s own established precedent for the identical pattern. One `Task[None] | None`
+  used before narrowing needed an `assert ... is not None`. Six stale `# type:
+  ignore[no-any-return]  # client: Any, see module note...` comments (left over from the
+  import being unresolved) were unused once the import resolved for real — removed.
+
+Verified: `scripts/lint.sh`/`scripts/typecheck.sh` both clean for `src`/`tests` (the CI-gated scope;
+`improved-quality/`'s own pre-existing findings are unaffected and out of scope). 140 tests
+(`tests/test_asy_wifi_service.py`), unchanged behaviorally by any of the above (every fix is
+type-checking-only).
 
 ### `asy_scd30_driver.py`
 
@@ -886,7 +936,7 @@ a real REST JSON schema change (field removal/rename) forced by the architectura
 optional.
 
 **Second reconciliation, once the `async_connect.py` split (see the `asy_wifi_service.py`/
-`asy_ntp_client.py`/`asy_dns_client.py` entry below) landed in the same file**: the two independent
+`asy_ntp_client.py`/`asy_dns_client.py` entry above) landed in the same file**: the two independent
 rewrites touched overlapping lines and needed hand-combining, not just concatenating. Final shape:
 `cfgmgr`'s `_DEFAULT_CONFIG` merge drops every `get_default_cfg()` call entirely (`SCD30_Reader`/
 `SGP40_Reader`/`BMP3xx_Reader` per the paragraph above, `asy_conn_time` because it now owns its own

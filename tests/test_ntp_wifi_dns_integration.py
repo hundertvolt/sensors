@@ -27,10 +27,6 @@ resolve_ipv4()/AsyUDPSocket themselves is already exhaustively covered by
 tests/test_asy_dns_client.py and tests/test_asy_ntp_client.py.
 """
 
-import sys
-
-sys.path.insert(0, "improved-quality")  # asy_wifi_service.py isn't promoted yet - see BACKLOG.md's captive_dns.py finding
-
 import asyncio
 import os
 import select
@@ -39,10 +35,10 @@ import struct
 import time
 
 import network
-from asy_wifi_service import asy_conn_time  # type: ignore[import-not-found]
 
 import asy_ntp_client as ntpmod
 from asy_ntp_client import asy_ntp_client
+from asy_wifi_service import asy_conn_time
 
 try:
     from typing import TYPE_CHECKING
@@ -58,6 +54,15 @@ if TYPE_CHECKING:
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
     return asyncio.run(coro)
+
+
+def _wlan(conn: asy_conn_time) -> "Any":
+    # _wlan(conn) is typed against the real network.WLAN stub (see pyproject.toml's own
+    # tests/network.py exclude comment); at runtime MICROPYPATH ordering constructs
+    # tests/network.py's fake instead, which exposes test-only attributes (raise_on, _status,
+    # _ifconfig, _connected, ...) the real stub has no reason to declare. Narrows to Any once,
+    # here, matching test_asy_wifi_service.py's own identical helper.
+    return conn.wlan
 
 
 _TMP_DIR = "tests/_tmp"
@@ -119,9 +124,9 @@ def connect_wlan(conn: asy_conn_time, dns_server: str = "192.0.2.53") -> None:
     # _conn_phase/_wlan_status_or_none()). Bypasses the real wlan_connect() state machine (out of
     # scope here - test_asy_wifi_service.py already covers that machine in isolation) to focus
     # purely on the two accessor methods this file's integration actually depends on.
-    conn.wlan._connected = True
-    conn.wlan._status = network.STAT_GOT_IP
-    conn.wlan._ifconfig = ("10.0.0.5", "255.255.255.0", "10.0.0.1", dns_server)
+    _wlan(conn)._connected = True
+    _wlan(conn)._status = network.STAT_GOT_IP
+    _wlan(conn)._ifconfig = ("10.0.0.5", "255.255.255.0", "10.0.0.1", dns_server)
 
 
 async def _tick(flag: "asyncio.ThreadSafeFlag", times: int = 1) -> None:
@@ -212,7 +217,7 @@ def test_get_dns_server_ip_real_wlan_exception_is_treated_as_none_not_propagated
     # proceeds with no server hint instead of the WLAN fault surfacing as a crash.
     conn = make_conn()
     connect_wlan(conn)
-    conn.wlan.raise_on["ifconfig"] = OSError("simulated WLAN hardware fault")
+    _wlan(conn).raise_on["ifconfig"] = OSError("simulated WLAN hardware fault")
     ntp = make_ntp(conn, "127.0.0.1")  # literal IP - resolve_ipv4() never touches the network
     run(ntp.pr.setup())
     dns_server = run(ntp._safe_get_dns_server())

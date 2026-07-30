@@ -155,10 +155,11 @@ is not a machine with memory or cycles to spare:
       A pure computation like `math_helpers.py` is inherently safe here, but this must be checked
       explicitly for anything that isn't.
 - [ ] If a function genuinely must do I/O or another long-running operation, it must be `async`
-      and yield control appropriately — coordinate with `async_connect.py`'s
-      `get_long_block_lock()` pattern (see CLAUDE.md's "Hard rules"), the project's standing
-      convention for anything that could otherwise stall timing-sensitive work like the Neopixel
-      animation. Never assume a one-off "it's probably fast enough."
+      and yield control appropriately, and must not stall timing-sensitive work like the Neopixel
+      animation (see CLAUDE.md's "Hard rules" — this is a standing design principle, not tied to
+      any specific mechanism; the `get_long_block_lock()` shared lock that once coordinated this
+      has since been retired along with its only real user, `socket.getaddrinfo()`). Never assume
+      a one-off "it's probably fast enough."
 
 ## 6. Typing
 

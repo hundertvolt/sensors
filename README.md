@@ -71,8 +71,11 @@ scripts/                 lint.sh / typecheck.sh / test.sh - manual code-quality 
   allocator handing out chunks stored as two redundant copies, so an abrupt power-loss or watchdog
   reset mid-write still leaves one valid copy to recover. Currently used for SGP40's VOC
   baseline/humidity-compensation backup.
-- **Networking** (`async_connect.py`) — STA-mode WiFi with captive-portal AP+hotspot fallback,
-  NTP client with hardcoded CET/CEST DST math.
+- **Networking** — split into three peers, wired together by each `sensortask-*.py`, not one
+  owning the others: `asy_wifi_service.py` (STA-mode WiFi with captive-portal AP+hotspot fallback),
+  `asy_ntp_client.py` (NTP client with CET/CEST DST math), and `asy_dns_client.py` (a non-blocking
+  DNS resolver replacing `socket.getaddrinfo()` — see BACKLOG.md). The deployed, pre-refactor
+  codebase (`python/`, `modules/`) still uses the older monolithic `async_connect.py`.
 - **Task supervisor** (`main()` in every `sensortask-*.py`) — two-tier self-healing: dead tasks are
   silently restarted (decaying error score); if the error score exceeds a threshold, the loop stops
   feeding the hardware watchdog and lets it force a hard reset. Units are meant to run for years

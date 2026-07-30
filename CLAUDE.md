@@ -411,8 +411,10 @@ need to go deeper:
   BACKLOG.md's config-duplication item).
 - `python/CommonDrivers/async_connect.py` — WiFi STA + AP/hotspot fallback + NTP client with
   manual CET/CEST DST math (`cettime()`); exposes `get_long_block_lock()`, a shared lock
-  serializing `socket.getaddrinfo()` against Neopixel animation — this pattern is now the general
-  convention for long-blocking operations, see "Hard rules" above.
+  serializing `socket.getaddrinfo()` against Neopixel animation. This is the deployed, pre-refactor
+  version only — `improved-quality/`/`src/` split this into `asy_wifi_service.py`/
+  `asy_ntp_client.py`/`asy_dns_client.py` and retired the lock entirely (see "Hard rules" above and
+  BACKLOG.md); don't assume the two describe the same current state.
 - `python/CommonDrivers/async_manager.py` — `ConfigManager`, `DataManager`,
   `TimeCounterManager`, `LockedValue`/`Flag`.
 - `python/IndividualDrivers/asy_fram_driver.py` / `asy_fram_manager.py` — raw SPI FRAM driver +
