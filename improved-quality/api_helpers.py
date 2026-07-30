@@ -555,7 +555,7 @@ def get_valid_values(
     return ret, True
 
 
-def time_to_dict(gmt_raw: Tuple[int] | None) -> Dict[str, int | float | str | None]:
+def time_to_dict(gmt_raw: Tuple[int, ...] | None) -> Dict[str, int | float | str | None]:
     timedict: Dict[str, int | float | str | None] = {
         "Year": None,
         "Month": None,
@@ -567,9 +567,11 @@ def time_to_dict(gmt_raw: Tuple[int] | None) -> Dict[str, int | float | str | No
     if gmt_raw is None:
         return timedict
 
-    gmt: Tuple[int, int, int, int, int, int, int, int, int] | None = (
-        gmt_raw if len(gmt_raw) == 9 else None
-    )
+    # time.gmtime()-shaped tuples are 8 elements on the real rp2 target (and on this file's own
+    # cettime() caller, which builds an explicit 8-field GMTimeStruct) or 9 elements on this
+    # project's Unix-port test interpreter (trailing isdst=0) - accept either shape; only indices
+    # 0-5 (year..sec) are ever read below, regardless of which shape was passed in.
+    gmt: Tuple[int, ...] | None = gmt_raw if len(gmt_raw) in (8, 9) else None
 
     if gmt is not None:
         timedict["Year"] = gmt[0]

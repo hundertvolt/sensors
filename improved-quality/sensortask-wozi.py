@@ -11,7 +11,8 @@ from asy_scd30_driver import SCD30_Reader
 from asy_sgp40_driver import SGP40_Reader
 from asy_bmp3xx_driver import BMP3xx_Reader
 from neopixel_signal import Neopixel_Signal
-from async_connect import asy_conn_time
+from asy_wifi_service import asy_conn_time
+from asy_ntp_client import asy_ntp_client
 from async_manager import LockedValue, ConfigManager
 from base_classes import LockedCounter
 from microdot import Microdot, send_file, Request, Response
@@ -69,32 +70,58 @@ debug = False
 watchdog = WDT(timeout=8000)
 cfgmgr = ConfigManager(
     _CFG_FILE_NAME,
-    json.loads(_DEFAULT_CONFIG) | asy_conn_time.get_default_cfg(),
+    json.loads(_DEFAULT_CONFIG),
     debug=debug,
 )
-# None of the three promoted sensor Readers contribute to the shared config.json anymore - see
-# BACKLOG.md's sensortask-wozi.py integration notes:
+# None of the promoted sensor Readers or asy_conn_time contribute to the shared config.json anymore
+# - see BACKLOG.md's sensortask-wozi.py integration notes:
 # - SGP40_Reader/BMP3xx_Reader (src/asy_sgp40_driver.py, src/asy_bmp3xx_driver.py) each own a
 #   private per-sensor config_<NAME>.cfg file via base_classes.py's SensorReaderConfig, and no
 #   longer expose a get_default_cfg() classmethod.
 # - SCD30_Reader (src/asy_scd30_driver.py) has no local config file at all - its params live
 #   on-sensor - so it never had a get_default_cfg() to call in the first place.
-# asy_conn_time: led_pin='LED' for onboard WiFi LED
-conn = asy_conn_time(cfgmgr, conn_fail_to_hotspot=5, hotspot_time_min=8, debug=debug)
+# - asy_conn_time (asy_wifi_service.py, promoted) now owns its own config_WIFI.cfg internally
+#   (base_classes.py's SensorReaderConfig, same as asy_ntp_client below) - no more
+#   externally-injected cfgmgr, no more get_default_cfg()/_DEFAULT_CONFIG merge step. Every REST
+#   route below that reads or writes a WIFI-schema field (Country/Hostname/SSID/PW/LedWifiOn) goes
+#   through conn.cfgmgr, not the shared cfgmgr above - see BACKLOG.md for the full writeup.
+conn = asy_conn_time(conn_fail_to_hotspot=5, hotspot_time_min=8, max_i2c_err=_MAX_I2C_ERR, debug=debug)
+# max_i2c_err: consecutive-failure-streak threshold, not literally about I2C - conn/ntp neither have
+# an I2C bus, they just inherit this generically-named base_classes.py parameter (see BACKLOG.md).
+# TODO: rename it project-wide to something bus-agnostic in a later, separate pass.
+# The leaf timeouts asy_ntp_client forwards to its own async DNS lookup/NTP fetch are set here, the
+# one place this class is instantiated - see BACKLOG.md's timing-restructure writeup for why these
+# (and not a hidden module constant, and not any computation inside asy_ntp_client.py itself) are
+# the only place a real device's timing behavior actually gets decided.
+_DNS_TIMEOUT_MS = const(500)  # per-server, per-attempt DNS lookup budget
+_DNS_TRIES = const(1)  # retry budget per DNS server
+_NTP_FETCH_TIMEOUT_MS = const(5000)  # timeout for the actual NTP request/reply round trip
+ntp = asy_ntp_client(
+    conn.get_wifi_mode_lock(),
+    conn.network_available,
+    conn.get_dns_server_ip,
+    max_i2c_err=_MAX_I2C_ERR,
+    dns_timeout_ms=_DNS_TIMEOUT_MS,
+    dns_tries=_DNS_TRIES,
+    ntp_fetch_timeout_ms=_NTP_FETCH_TIMEOUT_MS,
+    debug=debug,
+)
 app = Microdot()  # type: ignore[no-untyped-call]
 i2c0 = asy_i2c_driver.I2C(0, 13, 12, frequency=50000)
 i2c1 = asy_i2c_driver.I2C(1, 19, 18, frequency=50000)
 spi0 = asy_spi_driver.SPI(0, 2, 3, 4)
 fram = AsyFramManager(spi0, 1, max_size=0x2000, debug=debug)
-sysfunct = SystemService(conn.ntp_issynced, watchdog=watchdog, fram=fram, debug=debug)
+sysfunct = SystemService(ntp.ntp_issynced, watchdog=watchdog, fram=fram, debug=debug)
 # fram_storage/fram_ntp_callback replace the old ts_storage= kwarg - SGP40_Reader now carves its
 # own timestamped FRAM chunk internally (VOCAlgorithm.get_params_memsize(), not a class method on
-# SGP40_Reader itself anymore) instead of taking a pre-built chunk from the caller.
+# SGP40_Reader itself anymore) instead of taking a pre-built chunk from the caller. ntp_issynced now
+# lives on the promoted asy_ntp_client (ntp), not asy_conn_time (conn) - see BACKLOG.md's
+# sensortask-wozi.py integration notes.
 sgp_reader = SGP40_Reader(
     i2c1,
     sgp_comp_callback,
     fram_storage=fram,
-    fram_ntp_callback=conn.ntp_issynced,
+    fram_ntp_callback=ntp.ntp_issynced,
     max_i2c_err=_MAX_I2C_ERR,
     debug=debug,
 )
@@ -107,8 +134,7 @@ pixel = Neopixel_Signal(
     15,
     cfgmgr,
     airqual_meas_callback,
-    conn.cettime,
-    asy_long_block_lock=conn.get_long_block_lock(),
+    ntp.cettime,
     debug=debug,
 )
 conn.set_ext_led(pixel)  # callback for wifi led
@@ -187,12 +213,14 @@ async def network_status(request: Request) -> Dict[str, int | float | str | None
 
 @app.get("/net/config")  # type: ignore[no-untyped-call, misc]
 async def network_config(request: Request) -> Dict[str, int | float | str | None]:
-    cfg_data = await cfgmgr.get_dict(["Country", "Hostname", "SSID"])
+    cfg_data = await conn.cfgmgr.get_dict(["Country", "Hostname", "SSID"])
     if cfg_data is not None:
         cfg_data["PW"] = "********"
-    else:
-        # TODO Create full dict if None!
-        cfg_data["PW"] = None
+    # else: TODO Create full dict if None! Falls through and returns None below for now, matching
+    # /led/config's and /time/config's own "let it be None" convention elsewhere in this file - the
+    # previous `cfg_data["PW"] = None` here crashed with a real TypeError on this branch (assigning
+    # into a None object), reachable whenever conn.cfgmgr.valid is False (e.g. a corrupted
+    # config_WIFI.cfg), not just a hypothetical.
     return cfg_data
 
 
@@ -205,16 +233,18 @@ async def network_cmd(request: Request) -> Dict[str, str | int | JsonValidity]:
         if req_json["cmd"] == "setNetwork":
             if debug:
                 print("Received Set Network command.")
-            res, err = await init_json_from_cfg(cfgmgr, ["Hostname", "Country", "SSID", "PW"])
+            res, err = await init_json_from_cfg(conn.cfgmgr, ["Hostname", "Country", "SSID", "PW"])
             if err is not None:
                 return err
             if res is not None:
-                res = update_valid_json(req_json, "Hostname", "str", res, 1, 63, debug=debug)
+                res = update_valid_json(req_json, "Hostname", "str", res, 1, 32, debug=debug)
+                # 32, not 63: network.hostname()'s real, documented hard cap on rp2 (see
+                # asy_wifi_service.py's own _VAL_HOST schema, which this bound now matches).
                 res = update_valid_json(req_json, "Country", "str", res, 2, 2, debug=debug)
                 res = update_valid_json(req_json, "SSID", "str", res, 2, 32, debug=debug)
                 res = update_valid_json(req_json, "PW", "str", res, 8, 63, debug=debug)
                 return await cmd_post_check(
-                    res, cfgmgr, post_fct=conn.reconnect_wifi, debug=debug
+                    res, conn.cfgmgr, post_fct=conn.reconnect_wifi, debug=debug
                 )  # Reconnect WiFi with new config (has 5 sec delay)
     return generic_error_return()
 
@@ -224,14 +254,14 @@ async def network_cmd(request: Request) -> Dict[str, str | int | JsonValidity]:
 async def timing_status(
     request: Request,
 ) -> Dict[str, Dict[str, int | float | str | None]]:
-    synced = await conn.ntp_issynced()
+    synced = await ntp.ntp_issynced()
     gmt = time.gmtime()
     system: Dict[str, int | float | str | None] = {
         "Synced": "On" if synced else "Off",
         "Unix": time.mktime(gmt),  # type: ignore[call-arg]
     }
     utc = time_to_dict(gmt)
-    local = time_to_dict(await conn.cettime())
+    local = time_to_dict(await ntp.cettime())
 
     rtc_time = {"System": system, "UTC": utc, "Local": local}
     return rtc_time
@@ -273,7 +303,7 @@ async def timing_cmd(request: Request) -> Dict[str, str | int | JsonValidity]:
                     req_json, "DSTOffset", "int", res, -43200, 43200, debug=debug
                 )
                 return await cmd_post_check(
-                    res, cfgmgr, post_asy_fct=conn.ntp_force_sync, debug=debug
+                    res, cfgmgr, post_asy_fct=ntp.ntp_force_sync, debug=debug
                 )  # resync NTP with new config
     return generic_error_return()
 
@@ -452,7 +482,6 @@ async def led_config(request: Request):
     cfg_data = await cfgmgr.get_dict(
         [
             "LedAutoOn",
-            "LedWifiOn",
             "LedAutoOnH",
             "LedAutoOnM",
             "LedAutoOffH",
@@ -465,9 +494,15 @@ async def led_config(request: Request):
             "LedWarnHum",
         ]
     )
-    if cfg_data is not None:
+    # LedWifiOn lives in conn's own config_WIFI.cfg (asy_wifi_service.py), not the shared cfgmgr
+    # above - get_dict() returns None for the *whole* call if any requested key is unknown to that
+    # particular ConfigManager, so this needs its own separate read rather than one combined list.
+    wifi_led_data = await conn.cfgmgr.get_dict(["LedWifiOn"])
+    if cfg_data is not None and wifi_led_data is not None:
         cfg_data["LedAutoOn"] = to_switch(cfg_data["LedAutoOn"])
-        cfg_data["LedWifiOn"] = to_switch(cfg_data["LedWifiOn"])
+        cfg_data["LedWifiOn"] = to_switch(wifi_led_data["LedWifiOn"])
+    else:
+        cfg_data = None
 
     # TODO What if cfg_data is None
     return cfg_data
@@ -557,12 +592,12 @@ async def led_cmd(request: Request):
     if req_json["cmd"] == "setWiFiLED":
         if debug:
             print("Received Set WiFi LED command.")
-        res, err = await init_json_from_cfg(cfgmgr, ["LedWifiOn"])
+        res, err = await init_json_from_cfg(conn.cfgmgr, ["LedWifiOn"])
         if res is None:
             return err
         res = update_valid_json(req_json, "LedWifiOn", "switch", res, None, None, debug=debug)
-        res = await set_sensor_value(res, conn.set_wifi_led, cfgmgr, default=True, debug=debug)
-        return await cmd_post_check(res, cfgmgr, debug=debug)
+        res = await set_sensor_value(res, conn.set_wifi_led, conn.cfgmgr, default=True, debug=debug)
+        return await cmd_post_check(res, conn.cfgmgr, debug=debug)
 
 
 # System API
@@ -610,7 +645,7 @@ async def system_status(request: Request):
     system_data = {
         "Sys_Uptime": await sysfunct.get_uptime(),
         "Wifi_Uptime": await conn.get_wifi_uptime(),
-        "NTP_LastSync": await conn.get_last_ntp_sync(),
+        "NTP_LastSync": await ntp.get_last_ntp_sync(),
         "Boot_Signature": await sysfunct.get_boot_signature(),
         "Error_Status": to_switch(ErrorStatus),
         "Task_ErrCnt": Task_ErrCnt,
@@ -693,16 +728,18 @@ async def main():
         pixel.start_asy_auto_override,
         pixel.start_asy_airquality_signal,
         conn.start_asy_wlan_connect,
-        conn.start_asy_ntp_client,
-        conn.start_asy_ntp_refresh,
+        ntp.start_asy_ntp_client,
+        ntp.start_asy_ntp_refresh,
         conn.start_asy_uptime_counter,
+        ntp.start_asy_sync_age_counter,
         start_asy_webserver,
     ]
 
     timer_starters += [
         sysfunct.start_uptime_timer,
         conn.start_counter_timer,
-        conn.start_ntp_timer,
+        ntp.start_counter_timer,
+        ntp.start_ntp_timer,
     ]
 
     all_running = True
@@ -718,7 +755,7 @@ async def main():
         tasks.append(starter())
         await asyncio.sleep(1.0 / len(task_starters))
 
-
+    await ntp.ntp_force_sync()  # first sync
 
     task_errors = 0
     while True:
@@ -748,9 +785,6 @@ async def main():
                 print("Alle Tasks laufen.")
             watchdog.feed()
         await asyncio.sleep(_TASK_CHECK_TIME)
-
-
-        await conn.ntp_force_sync()  # first sync
 
 try:
     asyncio.run(main())

@@ -38,10 +38,13 @@ constraints.
   specifically — `asy_fram_manager.py`'s own promotion didn't add this wiring (out of scope for a
   quality audit).
 - **No standardized timeout/cancellation mechanism yet for blocking calls that genuinely can be
-  timeout-wrapped** (`socket.getaddrinfo()`, FRAM SPI transactions — anything that isn't a raw
-  blocking `machine.I2C` call mid-transaction, which can't be interrupted regardless; see CLAUDE.md
-  for why that case is different and already decided). Each such call currently uses its own
-  bespoke approach rather than one consistent mechanism applied everywhere.
+  timeout-wrapped** (FRAM SPI transactions, `src/asy_udp_socket.py`'s own `select.poll`-driven
+  `ready()`/`write_and_recvfrom()` — anything that isn't a raw blocking `machine.I2C` call
+  mid-transaction, which can't be interrupted regardless; see CLAUDE.md for why that case is
+  different and already decided, and why `socket.getaddrinfo()` turned out to belong in the *can't*
+  bucket instead, and is gone from this codebase entirely now — see the
+  `asy_wifi_service.py`/`asy_ntp_client.py`/`asy_dns_client.py` entry below). Each remaining call
+  currently uses its own bespoke approach rather than one consistent mechanism applied everywhere.
 - **Bus concurrency (`asyncio.Lock` + `async with`) needs a coverage audit** — no gaps, no
   deadlock/starvation. The `*_DeviceSession(Lockable)` pattern (an outer per-sensor lock around a
   whole write-then-read transaction, `asyncio.sleep(0)` yield between phases) is the pattern to
@@ -102,12 +105,16 @@ constraints.
 4. SCD30 `ForceCalRef` field procedure isn't written down anywhere — a real maintenance routine
    exists (confirmed by owner) but the actual steps (reference concentration, exposure
    conditions/timing, frequency) still need capturing from the owner.
-5. Does `config_manager.py`'s `write_config()` need `get_long_block_lock()` coordination? Its
+5. Does `config_manager.py`'s `write_config()` need long-block-lock-style coordination? Its
    `open()`+`json.dump()` has no yield point, the same shape `__init__`'s read path had before the
    cache-elimination redesign closed *that* concern. Whether a real RP2040 littlefs write of a
    small config file is fast enough not to matter is a hardware-timing question this dev
    environment can't verify — needs either a real-hardware measurement or an owner call on wiring
-   it in proactively.
+   it in proactively. **Note**: `get_long_block_lock()` itself has since been removed entirely (see
+   the `asy_wifi_service.py`/`asy_ntp_client.py`/`asy_dns_client.py` promotion entry) — this question
+   was never about that specific lock instance, and removing it neither resolves nor forecloses this
+   question. Answering "yes" here would mean designing a fresh coordination mechanism at that time,
+   not reusing or resurrecting anything already removed.
 6. `get_ambient_pressure()`'s read-back (SCD30) reuses the same command word used to *set* it —
    matches every sibling getter's pattern and the legacy driver, but neither Sensirion's own
    `embedded-scd` reference driver nor their `python-i2c-scd30` driver treats that command as
@@ -127,6 +134,15 @@ constraints.
 
 ## Deferred / explicitly out-of-scope work
 
+- **Rename `max_i2c_err`** (`base_classes.py`'s `SensorReaderConfig`/`SensorReader` constructor
+  parameter, and every promoted driver/service's own constructor that forwards it) to something
+  bus-agnostic — confirmed by the owner it's a generically-useful "consecutive-failure streak
+  before giving up and restarting the task" threshold via `_error_check()`, not literally about
+  I2C, and both `asy_wifi_service.py` and `asy_ntp_client.py` (neither has an I2C bus) already rely
+  on it under that misleading name. Deliberately not renamed yet (owner's own framing: "we will
+  rename it later in another context") — touches every promoted driver/service's constructor
+  signature and every test file that constructs one, a wider blast radius than any one promotion
+  pass.
 - **HTML/frontend automation & consistency** — known hand-written/brittle, not a priority; revisit
   after the Python-side refactor.
 - **UART sensor integration** (`asy_uart.py`/`asy_uart_comm.py`, unused by any deployed config) —
@@ -158,7 +174,7 @@ File-by-file review comparing `improved-quality/` against legacy equivalents (or
 there's no legacy equivalent), against `src/README.md`'s checklist. Real bugs, decisions, and
 deferred items below — process narrative (review-pass counts, "verified lint/typecheck/tests clean"
 after every change) is omitted; assume every change below was lint/type/test-clean before landing.
-Current total: 1021 tests across 17 `tests/test_*.py` files (verify via
+Current total: 1317 tests across 21 `tests/test_*.py` files (verify via
 `grep -c '^def test_' tests/test_*.py` if this looks stale).
 
 ### `math_helpers.py`
@@ -516,6 +532,109 @@ test environment can never produce a real string `addr[0]` from `recvfrom()` for
 so the branching tests drive `run()` through a duck-typed fake (`_FakeUDPS`) while `DNSQuery`/
 `response()` still execute unmocked underneath it.
 
+### `asy_wifi_service.py` + `asy_ntp_client.py` + `asy_dns_client.py`
+
+`async_connect.py` (monolithic WiFi+NTP client) split into three peers wired together by
+`sensortask-wozi.py`, not one owning the others: `asy_wifi_service.py`'s `asy_conn_time` (STA/AP
+connection state machine, now a `SensorReaderConfig` owning its own `config_WIFI.cfg`),
+`asy_ntp_client.py`'s `asy_ntp_client` (NTP sync, also a `SensorReaderConfig`), and
+`asy_dns_client.py` (new, stateless — see below). `conn` exposes `get_wifi_mode_lock()`/
+`network_available()`/`get_dns_server_ip()` as callbacks `ntp` takes as constructor arguments,
+rather than `ntp` reaching into `conn` directly.
+
+**`socket.getaddrinfo()` replaced entirely by a new non-blocking resolver, and the shared
+`get_long_block_lock()` mechanism retired along with it** (owner-requested: `getaddrinfo()` is a raw
+synchronous call with no coroutine boundary for `asyncio.wait_for()` to attach to — the same
+preemption gap as a wedged `machine.I2C` transaction, confirmed against real MicroPython issue
+reports — micropython#18797, micropython#8326, micropython-lib#1078 — not just reasoned about; see
+CLAUDE.md). `src/asy_dns_client.py` is a new, typed, never-raising, IPv4-only async DNS client built
+entirely on `asy_udp_socket.py`'s `AsyUDPSocket` (already non-blocking), inspired by (not ported
+from) `github.com/vshymanskyy/aiodns` (MIT-licensed, attributed in the module docstring) after
+studying its implementation in detail — deliberately narrower (no cache, no mDNS, IPv4 only), since
+this project's networking is IPv4-only throughout and the only caller resolves one rarely-changing
+hostname roughly once per sync cycle. Two real correctness gaps found in aiodns itself while
+studying it, fixed here rather than carried over: an off-by-one query-buffer size relying on
+`bytearray`'s incidental silent-resize behavior (this file computes the exact size upfront instead),
+and no RCODE check on the response (a SERVFAIL/NXDOMAIN with a stale nonzero answer count wouldn't
+have been caught) — `_parse_response()` here checks both QR and RCODE before reading an answer. One
+further bug in this file's own from-scratch code, found in a follow-up review: the compression-
+pointer check tested the leading byte for exact equality to `0xC0` instead of RFC 1035 §4.1.4's top-
+two-bits test (`(byte & 0xC0) == 0xC0`), silently misparsing a valid pointer whose target offset is
+`>= 256` — fixed to the bitmask test. `resolve_ipv4()` tries the WLAN's own DHCP-assigned DNS server
+first (`asy_wifi_service.py`'s new `get_dns_server_ip()`), then falls back to a small hardcoded
+public-resolver list (`8.8.8.8`, `1.1.1.1`); a literal IPv4 `NTP_Host` is returned unchanged, never
+touching the network. Traced every `asy_long_block_lock`/`get_long_block_lock()` reference across
+`improved-quality/` before removing anything (owner's explicit condition): exactly two real users
+existed (`asy_ntp_client.py`'s own now-removed `getaddrinfo()` call, and `neopixel_signal.py`'s
+LED-animation loop pausing itself around that one real block) — with `resolve_ipv4()` never blocking
+the event loop, there's no longer a real blocking operation for the lock to coordinate against;
+removed from both files and from `sensortask-wozi.py`'s wiring. **Does not resolve or foreclose**
+whether `config_manager.py`'s `write_config()` separately needs long-block coordination for its own
+littlefs write (see Open Questions below) — that question is independent of DNS resolution and
+remains exactly as open as before.
+
+**Real bug found and fixed — `get_dns_server_ip()` was structurally dead code on its one real call
+path.** `asy_ntp_client`/`asy_conn_time` share the exact same `wifi_mode_lock` `Lock` instance;
+`asy_ntp_time()` acquires it for the whole sync attempt before calling `get_dns_server_ip()` (via
+`conn`), but `get_dns_server_ip()` internally starts with `if self.wifi_mode_lock.locked(): return
+None` — a guard meant to detect "WLAN mid-mode-switch, unsafe to read `ifconfig()`". Since
+`asy_ntp_client` itself was the one holding the lock at that call site, `locked()` was always `True`
+there, so the DHCP-DNS-server feature silently never engaged in production — `resolve_ipv4()` always
+fell through to the hardcoded public fallback instead, with no test catching it (every NTP-side test
+replaces the callback with a lambda that ignores the lock; every wifi-service-side test calls it in
+isolation with no second lock-holder). Fixed by reading the DNS server *before* acquiring
+`wifi_mode_lock` (`_safe_get_dns_server()`), threading the captured value down as a plain parameter
+instead of invoking the callback while the lock is already held. A new
+`tests/test_ntp_wifi_dns_integration.py` (real, unmocked `asy_conn_time`/`asy_ntp_client` instances
+wired exactly like `sensortask-wozi.py`, not lambda-replaced peers) is what made this reproducible at
+all.
+
+**Real NTP correctness bugs found and fixed, independent of the DNS rework**: `_parse_ntp_reply()`'s
+except clause referenced `struct.error`, which doesn't exist on MicroPython (`hasattr(struct,
+"error")` is `False`; a too-short buffer raises plain `ValueError`) — referencing it inside an
+`except (...)` tuple raised `AttributeError` the moment a malformed reply was actually received,
+defeating the guard it was meant to be part of; dropped (`ValueError` was already in the same
+tuple). **NTP's 32-bit "seconds since 1900" field wraps in 2036** (era rollover, RFC 5905 §7.3) —
+`_parse_ntp_reply()` had no era-disambiguation or plausibility bound at all, so a post-2036 server
+reply landed on a deeply negative Unix timestamp that `time.gmtime()` does not reject (confirmed
+directly against both the Unix-port interpreter and real rp2's `timeutils.c`), silently accepted as
+a "successful" sync to a nonsense date. Fixed with a floor-and-ceiling plausibility window
+(2025-01-01 / 2100-01-01) plus one-era reinterpretation — a floor-only check can't actually reject
+anything once era-reinterpretation is in play, since some interpretation of any 32-bit value always
+looks post-floor with nothing to stop it; both bounds need bumping forward occasionally as time
+passes. **`_parse_ntp_reply()` also never checked the reply's Leap Indicator/Stratum before trusting
+its timestamp** — RFC 5905/4330 say to discard LI=3 ("clock unsynchronized") or Stratum=0
+(Kiss-of-Death/rate-limiting) replies; concretely, not hypothetically, a KoD reply's typically
+all-zero Transmit Timestamp passes the plausibility window above (era-1 reinterpretation of `0` lands
+exactly at `2036-02-07T06:28:16Z`, inside the window) — so a server telling us its own clock isn't
+trustworthy would have been silently accepted as a genuine sync. Fixed: rejects if LI is 3 or
+Stratum is 0, checked before anything else.
+
+**Real bug found in a downstream consumer, `api_helpers.py`'s `time_to_dict()`**: only filled in
+real values when its `gmt_raw` argument had exactly 9 elements — but both of its real callers
+(`sensortask-wozi.py`'s `/time/status` handler) hand it an **8**-element tuple on actual rp2
+hardware (this project's Unix-port test interpreter's own `time.gmtime()` returns 9 elements,
+trailing `isdst=0`, which is what let this go unnoticed). This wasn't a maybe/edge-case bug — on
+real deployed hardware, `/time/status`'s `"UTC"`/`"Local"` fields would have come back all-`None`
+unconditionally, even immediately after a fully successful live NTP sync. Fixed: accepts `len(gmt_raw)
+in (8, 9)`; only indices 0-5 (year..sec) are ever read regardless of which shape was passed.
+
+**Design-level findings, confirmed intentional by the project owner, not bugs** — see CLAUDE.md's
+"Functional behaviors confirmed intentional" block: STA never automatically falls back to hotspot
+mode again once it has connected successfully even once in a task's lifetime (only a human
+resubmitting WiFi credentials over the REST API, or a full task restart, resets this) is accepted as
+a deliberate trade-off for physically-accessible, easy-to-power-cycle devices, same as the already-
+documented permanent-WiFi-deactivation behavior. A related efficiency note left open, not acted on:
+`_switch_wlan_mode()`/the 60s STA-retry branch hold `wifi_mode_lock` for several seconds to a full
+minute at a time, and `asy_ntp_client`'s sync task acquires that same shared lock — so NTP sync is
+most likely to be delayed by up to a minute exactly during periods of active WLAN instability, a
+priority-inversion-shaped cost worth having in view but not a correctness bug.
+
+29 tests (`tests/test_asy_dns_client.py`) + 86 (`tests/test_asy_ntp_client.py`) +
+8 (`tests/test_ntp_wifi_dns_integration.py`); `asy_wifi_service.py` itself was still pending
+promotion to `src/` as of this integration session — see the promotion-readiness note in "Refactor
+targets not yet done" / this session's own follow-through below.
+
 ### `asy_scd30_driver.py`
 
 `SCD30_Reader` extends plain `SensorReader` (not `SensorReaderConfig`), deliberately — the SCD30 has
@@ -699,3 +818,14 @@ too). `SGP40_Reader`'s FRAM-chunk-based per-sensor memory-error counters (`get_m
 no longer exist — replaced with `AsyFramManager.get_error_counter()`'s single chip-wide `FRAM_ErrCnt`,
 a real REST JSON schema change (field removal/rename) forced by the architectural supersession, not
 optional.
+
+**Second reconciliation, once the `async_connect.py` split (see the `asy_wifi_service.py`/
+`asy_ntp_client.py`/`asy_dns_client.py` entry below) landed in the same file**: the two independent
+rewrites touched overlapping lines and needed hand-combining, not just concatenating. Final shape:
+`cfgmgr`'s `_DEFAULT_CONFIG` merge drops every `get_default_cfg()` call entirely (`SCD30_Reader`/
+`SGP40_Reader`/`BMP3xx_Reader` per the paragraph above, `asy_conn_time` because it now owns its own
+`config_WIFI.cfg` internally) — the shared `cfgmgr` now holds only the file's own local
+`_DEFAULT_CONFIG` (LED/warning-threshold settings), nothing sensor- or connectivity-related.
+`SystemService`/`SGP40_Reader`'s `fram_ntp_callback` both now take `ntp.ntp_issynced`, not
+`conn.ntp_issynced` — `ntp_issynced()` lives on the promoted `asy_ntp_client` (`ntp`) after the
+conn/ntp peer split, not on `asy_conn_time` (`conn`) anymore.

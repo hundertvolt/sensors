@@ -141,9 +141,18 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
   watchdog is the accepted backstop, not a software fix to chase.** MicroPython's cooperative
   scheduler can't preempt a synchronous `machine.I2C` call already in progress, so an asyncio-level
   timeout can't interrupt it either way. This is settled — don't re-propose an I2C-level timeout
-  mechanism. (Calls that genuinely *can* be timeout-wrapped — `socket.getaddrinfo()`, FRAM SPI,
-  anything not a raw blocking `machine.I2C` call mid-transaction — are a separate, still-open
-  question; see BACKLOG.md.)
+  mechanism. **`socket.getaddrinfo()` turned out to belong in this same "can't be timeout-wrapped"
+  bucket, not the "genuinely can" one** — confirmed against real MicroPython issue tracker reports
+  (micropython#18797, micropython#8326, micropython-lib#1078): it's a raw synchronous call with no
+  coroutine boundary for `asyncio.wait_for()` (or any asyncio-level timeout) to attach to, the same
+  preemption gap as a wedged `machine.I2C` transaction. This is now moot for DNS specifically —
+  `src/asy_ntp_client.py` no longer calls `socket.getaddrinfo()` at all; `src/asy_dns_client.py`
+  resolves hostnames with its own non-blocking UDP-based resolver instead (see its own module
+  docstring and BACKLOG.md). Calls that genuinely *can* be timeout-wrapped from within the asyncio
+  loop — FRAM SPI transactions, `src/asy_udp_socket.py`'s own `select.poll`-driven
+  `ready()`/`write_and_recvfrom(timeout_ms=..., tries=...)` — should standardize on one consistent
+  timeout/cancellation mechanism; re-check any new blocking-call candidate against this same
+  "does it have a coroutine boundary to attach a timeout to" question rather than assuming.
 - **Don't wrap every `asyncio` primitive call (`asyncio.sleep()`, `Lock.acquire()`, etc.) in
   `try`/`except` against a theoretical internal `MemoryError` as a blanket policy** — overkill and
   outside this project's own standard. Only worth closing when a concrete, non-hypothetical threat
@@ -153,11 +162,16 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
   unlike `python/CommonDrivers/microdot.py`/`improved-quality/microdot.py`, which stay hands-off/
   vendored (see above).
 - **Long-blocking operations must not stall timing-sensitive work.** Any new code that blocks the
-  event loop for a noticeable time (e.g. `socket.getaddrinfo()`) must not do so while
-  timing-sensitive work like the Neopixel animation needs to run — either avoid the block, or
-  coordinate via `async_connect.py`'s `get_long_block_lock()` pattern so timing-sensitive code runs
-  before/around it. This is a standing convention for all new code, not just the original
-  NTP-vs-Neopixel case it was written for.
+  event loop for a noticeable time must not do so while timing-sensitive work like the Neopixel
+  animation needs to run — either avoid the block, or coordinate so timing-sensitive code runs
+  before/around it. This is a standing design principle for all new code, not tied to any one past
+  case. **The `get_long_block_lock()` shared-lock mechanism itself has been retired** — its one real
+  user, `socket.getaddrinfo()`, was replaced by `src/asy_dns_client.py`'s non-blocking resolver (see
+  above and BACKLOG.md), so there is no longer a long-blocking network call in this codebase to
+  coordinate against Neopixel timing in the first place. `asy_ntp_client.py`/`neopixel_signal.py` no
+  longer reference the lock at all. If new code reintroduces a genuinely long blocking call, a
+  coordination mechanism would need to be designed fresh — don't assume the old lock still exists or
+  try to resurrect/reuse it.
 
 ## Working agreements
 
@@ -421,6 +435,10 @@ need to go deeper:
   - Permanent WiFi deactivation after a second STA failure streak (post-hotspot) is a deliberate
     safety feature, preventing an unclaimed hotspot from staying open indefinitely — a physical
     power-cycle is the accepted recovery path.
+  - STA never automatically falls back to hotspot mode again once it has connected successfully
+    even once in a task's lifetime — only a human resubmitting WiFi credentials over the REST API,
+    or a full task restart, resets this. Confirmed deliberate for physically-accessible, easy-to-
+    power-cycle devices, not an oversight — don't add an automatic repeat-fallback path.
   - The web UI intentionally shows raw sensor numbers only, no color-coding — the physical LED is
     the sufficient at-a-glance indicator.
   - SGP40 silently falling back to uncompensated VOC readings when SCD30 is down/stale, with no
