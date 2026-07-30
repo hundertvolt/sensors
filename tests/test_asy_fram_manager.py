@@ -599,8 +599,10 @@ def test_timestamped_write_require_ntp_refuses_when_not_synced_and_persists_noth
 
 
 def test_ntp_callback_raising_degrades_to_not_synced_instead_of_propagating() -> None:
-    # ntp_sync_callback is a caller-injected dependency (async_connect.py, not itself audited)
-    # that could legitimately misbehave - was called unguarded before this promotion.
+    # ntp_sync_callback is a caller-injected dependency (currently asy_ntp_client.py's ntp_issynced
+    # in sensortask-wozi.py's real wiring, promoted/audited) that this parameter's generic Callable
+    # type still doesn't statically rule out misbehaving - was called unguarded before this promotion.
+    # See tests/test_ntp_fram_system_integration.py for the same guard proven against the real object.
     manager, _chip = make_manager()
     run(setup_manager(manager))
     chunk = manager.get_timestamped_chunk(4, _raising_callback, crc=CRC_Pass())
