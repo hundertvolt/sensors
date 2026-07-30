@@ -839,6 +839,135 @@ def test_run_backs_off_on_a_genuinely_unexpected_exception_then_recovers() -> No
     assert elapsed_ms >= 3000  # proves the 3s backoff genuinely ran, unlike the malformed-data path
 
 
+# ---------------------------------------------------------------------------
+# debug=True logging - purely cosmetic print() calls, but a typo in one of the f-strings would
+# raise at runtime; no test above ever constructs a DNSServer/DNSQuery with debug=True and drives
+# it through a real request, so none of these print() call sites were ever actually executed.
+# ---------------------------------------------------------------------------
+
+
+def test_run_rejects_invalid_server_ip_or_netmask_with_debug_logging() -> None:
+    server = DNSServer(debug=True)
+
+    async def scenario() -> None:
+        await server.run("not-an-ip", "255.255.255.0")
+
+    run(scenario())  # must not raise despite the debug print along this early-return path
+    assert server.udps.sock is None
+
+
+def test_run_debug_logging_covers_the_full_request_reply_cycle() -> None:
+    # Drives, in one debug=True run: an off-subnet request (ignored), an on-subnet request (a
+    # normal reply), a reply sendto() reports as dropped, and invalid (None, None) recvfrom data -
+    # every print() call site inside the main loop except the two exception-handling ones (covered
+    # by the dedicated tests below).
+    query = make_query(["a", "io"])
+    fake = _FakeUDPS(
+        [
+            (query, ("10.0.0.9", 5000)),  # off-subnet - "Ignoring..." print
+            (None, None),  # invalid data/address - its own print
+            (query, ("127.0.0.5", 5001)),  # on-subnet - "Incoming..."/"Replying..." prints
+        ]
+    )
+    fake.sendto_results = [None]  # first real reply reports dropped - "dropped by sendto()" print
+
+    async def scenario() -> list[tuple[bytes, tuple[str, int]]]:
+        server = DNSServer(debug=True)
+        server.udps = fake  # type: ignore[assignment]
+        task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
+        try:
+            assert await _wait_until(lambda: len(fake.sent) >= 1)
+            return fake.sent
+        finally:
+            await _cancel(task)  # exercises the CancelledError/"DNS Server shutdown" print too
+
+    sent = run(scenario())
+    assert len(sent) == 1
+    assert sent[0][1] == ("127.0.0.5", 5001)
+
+
+def test_run_debug_logging_covers_the_backoff_and_recovery_path() -> None:
+    import captive_dns as captive_dns_module
+
+    real_dns_query = captive_dns_module.DNSQuery
+    calls = {"n": 0}
+
+    class _FlakyDNSQuery:
+        def __init__(self, data: bytes, debug: bool = False) -> None:
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError("simulated unexpected failure")
+            self._real = real_dns_query(data, debug=debug)
+            self.domain = self._real.domain
+
+        def response(self, ip: str) -> "bytes | None":
+            return self._real.response(ip)
+
+    query = make_query(["a", "io"])
+    fake = _FakeUDPS(
+        [
+            (query, ("127.0.0.5", 5000)),  # triggers the flaky first call - "DNS Server error:" print
+            (query, ("127.0.0.5", 5001)),  # recovers on the second, real attempt
+        ]
+    )
+
+    async def scenario() -> list[tuple[bytes, tuple[str, int]]]:
+        captive_dns_module.DNSQuery = _FlakyDNSQuery  # type: ignore[assignment,misc]
+        try:
+            server = DNSServer(debug=True)
+            server.udps = fake  # type: ignore[assignment]
+            task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
+            try:
+                assert await _wait_until(lambda: len(fake.sent) >= 1, timeout_ms=5000)
+                return fake.sent
+            finally:
+                await _cancel(task)
+        finally:
+            captive_dns_module.DNSQuery = real_dns_query  # type: ignore[misc]
+
+    sent = run(scenario())
+    assert len(sent) == 1  # the first (flaky) attempt logged its "DNS Server error:" print, then recovered
+    assert sent[0][1] == ("127.0.0.5", 5001)
+
+
+class _RaisingDisconnectUDPS(_FakeUDPS):
+    def __init__(self, exc: BaseException) -> None:
+        super().__init__([])
+        self._exc = exc
+
+    async def disconnect(self) -> None:
+        self.disconnect_called = True
+        raise self._exc
+
+
+def test_run_debug_logging_covers_disconnect_reporting_a_genuine_exception() -> None:
+    fake = _RaisingDisconnectUDPS(RuntimeError("simulated disconnect failure"))
+
+    async def scenario() -> None:
+        server = DNSServer(debug=True)
+        server.udps = fake  # type: ignore[assignment]
+        task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
+        await asyncio.sleep_ms(20)
+        await _cancel(task)  # disconnect()'s own exception must not escape cancellation either
+
+    run(scenario())  # must not raise despite disconnect() itself failing
+    assert fake.disconnect_called is True
+
+
+def test_run_debug_logging_covers_disconnect_reporting_a_second_cancellation() -> None:
+    fake = _RaisingDisconnectUDPS(asyncio.CancelledError())
+
+    async def scenario() -> None:
+        server = DNSServer(debug=True)
+        server.udps = fake  # type: ignore[assignment]
+        task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
+        await asyncio.sleep_ms(20)
+        await _cancel(task)
+
+    run(scenario())  # a second CancelledError delivered during cleanup must not escape either
+    assert fake.disconnect_called is True
+
+
 if __name__ == "__main__":
     import microtest
 
