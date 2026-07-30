@@ -684,6 +684,33 @@ def test_disconnect_clears_state_even_when_unregister_raises() -> None:
     assert sock_cleared and poller_cleared and not_connected
 
 
+class _RaisingCloseSocket:
+    def __init__(self, real: "Any") -> None:
+        self._real = real
+
+    def close(self) -> None:
+        raise OSError("simulated close failure")
+
+    def __getattr__(self, name: str) -> "Any":
+        return getattr(self._real, name)
+
+
+def test_disconnect_clears_state_even_when_sock_close_raises() -> None:
+    addr = make_addr()
+
+    async def scenario() -> tuple[bool, bool, bool]:
+        sock = AsyUDPSocket(addr, mode="server")
+        await sock._connect()
+        assert sock.connected
+        real_sock = sock.sock
+        sock.sock = _RaisingCloseSocket(real_sock)  # type: ignore[assignment]
+        await sock.disconnect()
+        return sock.sock is None, sock.poller is None, sock.connected is False
+
+    sock_cleared, poller_cleared, not_connected = run(scenario())
+    assert sock_cleared and poller_cleared and not_connected
+
+
 # ---------------------------------------------------------------------------
 # ready() must survive a concurrent disconnect() on the same instance
 # ---------------------------------------------------------------------------
