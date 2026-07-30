@@ -6,6 +6,7 @@ import socket
 import network
 from machine import Timer
 
+import asy_wifi_service
 from asy_udp_socket import AsyUDPSocket
 from asy_wifi_service import WIFI, asy_conn_time
 
@@ -198,6 +199,24 @@ async def _cancel(task: "asyncio.Task[Any]") -> None:
         await task
     except asyncio.CancelledError:
         pass
+
+
+class _FastAsyncSleep:
+    # _switch_wlan_mode()'s happy path makes several real asyncio.sleep() calls (2s+1s+1s settle
+    # time around deinit/reinit) - far too slow for a plain test. Same technique as
+    # test_asy_bmp3xx_driver.py's/test_asy_sgp40_driver.py's own _FastAsyncSleep. asyncio.sleep is a
+    # shared, process-wide function, restored on exit regardless of how the `with` block exits.
+    def __enter__(self) -> "_FastAsyncSleep":
+        self._real_sleep = asyncio.sleep
+
+        async def _fast(_seconds: float) -> None:
+            await self._real_sleep(0)
+
+        asyncio.sleep = _fast  # type: ignore[assignment]  # deliberate monkeypatch, not a real caller mismatch
+        return self
+
+    def __exit__(self, *exc_info: "Any") -> None:
+        asyncio.sleep = self._real_sleep
 
 
 # ---------------------------------------------------------------------------
@@ -1923,6 +1942,197 @@ def test_write_config_via_public_cfg_schema_round_trips_a_real_value() -> None:
     written, data = run(scenario())
     assert written
     assert data == {"Hostname": "NewName"}
+
+
+# ---------------------------------------------------------------------------
+# Task/timer starter methods (DRIVER_SPEC.md section 9) - get_task_starters()/get_timer_starters()'s
+# own shape is already checked above; the starter methods they return were never actually called.
+# ---------------------------------------------------------------------------
+
+
+def test_start_asy_wlan_connect_returns_a_real_task() -> None:
+    client = make_client()
+
+    async def scenario() -> bool:
+        task = client.start_asy_wlan_connect()
+        await asyncio.sleep(0)
+        is_task = isinstance(task, asyncio.Task)
+        await _cancel(task)
+        return is_task
+
+    assert run(scenario()) is True
+
+
+def test_start_asy_uptime_counter_returns_a_real_task() -> None:
+    client = make_client()
+
+    async def scenario() -> bool:
+        task = client.start_asy_uptime_counter()
+        await asyncio.sleep(0)
+        is_task = isinstance(task, asyncio.Task)
+        await _cancel(task)
+        return is_task
+
+    assert run(scenario()) is True
+
+
+def test_stop_counter_timer_deinits_the_counter_timer() -> None:
+    client = make_client()
+    client.start_counter_timer()
+    client.stop_counter_timer()
+    assert client.counter_timer.deinit_called is True
+
+
+# ---------------------------------------------------------------------------
+# _now() - the same OverflowError/OSError-past-2037-epoch guard as asy_ntp_client.py's/
+# system_service.py's own _now()/_ntp_boot_signature(), never exercised by any test here.
+# ---------------------------------------------------------------------------
+
+
+class _OverflowingTime:
+    # Same monkeypatch technique as test_system_service.py's own _OverflowingTime: asy_wifi_service's
+    # module-level `time` name is a plain, mutable module global (unlike the real `time` builtin
+    # module, which is read-only and can't have attributes assigned onto it directly).
+    def gmtime(self) -> "Any":
+        import time as _real_time
+
+        return _real_time.gmtime()
+
+    def mktime(self, _t: "Any") -> int:
+        raise OverflowError("past rp2's ~2037 32-bit epoch range")
+
+
+def test_now_returns_none_when_mktime_overflows() -> None:
+    client = make_client()
+    original_time = asy_wifi_service.time
+    asy_wifi_service.time = _OverflowingTime()  # type: ignore[assignment]  # deliberate monkeypatch, not a real caller mismatch
+    try:
+        result = client._now()
+    finally:
+        asy_wifi_service.time = original_time
+    assert result is None
+
+
+def test_update_wifi_snapshot_sets_ts_none_when_now_overflows() -> None:
+    client = make_client()
+    original_time = asy_wifi_service.time
+    asy_wifi_service.time = _OverflowingTime()  # type: ignore[assignment]  # deliberate monkeypatch, not a real caller mismatch
+    try:
+        run(client._update_wifi_snapshot(True))
+    finally:
+        asy_wifi_service.time = original_time
+    data = run(client.get_data())
+    assert data.TS is None
+    assert data.Mode == "STA"  # the rest of the snapshot is unaffected
+
+
+# ---------------------------------------------------------------------------
+# _switch_wlan_mode() - only its exception path was exercised above; this drives the real
+# deinit/reinit happy path (DRIVER_SPEC.md's "attempt operations" convention).
+# ---------------------------------------------------------------------------
+
+
+def test_switch_wlan_mode_success_deinits_and_recreates_the_wlan() -> None:
+    client = make_client()
+    original_wlan = _wlan(client)
+
+    async def scenario() -> None:
+        await client._switch_wlan_mode(network.AP_IF)
+
+    with _FastAsyncSleep():
+        run(scenario())
+    assert client.hw_op_failed is False
+    assert original_wlan.deinit_called is True
+    assert _wlan(client) is not original_wlan  # a fresh WLAN instance replaced it
+    assert _wlan(client).if_id == network.AP_IF
+    assert run(client.wifi_uptime.get_value()) == 0
+
+
+# ---------------------------------------------------------------------------
+# _get_hotspot_stations() / _hotspot_client_connected() - the finally-block lock release and the
+# "ledflash already running" cancel branch were never exercised.
+# ---------------------------------------------------------------------------
+
+
+def test_get_hotspot_stations_returns_the_real_station_list() -> None:
+    client = make_client()
+    _wlan(client)._stations = ["aa:bb:cc:dd:ee:ff"]
+    stations = run(client._get_hotspot_stations())
+    assert stations == ["aa:bb:cc:dd:ee:ff"]
+    assert not client.wifi_mode_lock.locked()  # released via the finally block
+
+
+def test_hotspot_client_connected_cancels_an_already_running_ledflash_task() -> None:
+    client = make_client()
+
+    async def scenario() -> bool:
+        client._hotspot_client_absent()  # starts a real ledflash task
+        first_flash = client.ledflash
+        assert first_flash is not None
+        client._hotspot_client_connected()  # must call first_flash.cancel() itself
+        done = False
+        try:
+            await asyncio.wait_for(first_flash, 1)
+        except asyncio.CancelledError:
+            done = True
+        except asyncio.TimeoutError:
+            done = False
+        return done
+
+    assert run(scenario()) is True
+    assert client.ledflash is None
+
+
+# ---------------------------------------------------------------------------
+# _poll_sta_connect_status() - only the WRONG_PASSWORD/NO_AP_FOUND branches were exercised above;
+# IDLE/CONNECTING/"obtaining IP" (status==2) are routine, silently-logged in-progress states.
+# ---------------------------------------------------------------------------
+
+
+def test_poll_sta_connect_status_idle_logs_and_keeps_polling() -> None:
+    client = make_client()
+    _wlan(client)._status = network.STAT_IDLE
+    run(client._poll_sta_connect_status())  # must not raise or set hw_op_failed
+    assert client.hw_op_failed is False
+
+
+def test_poll_sta_connect_status_connecting_logs_and_keeps_polling() -> None:
+    client = make_client()
+    _wlan(client)._status = network.STAT_CONNECTING
+    run(client._poll_sta_connect_status())
+    assert client.hw_op_failed is False
+
+
+def test_poll_sta_connect_status_obtaining_ip_logs_and_keeps_polling() -> None:
+    client = make_client()
+    _wlan(client)._status = 2  # not a named network.STAT_* constant yet - see this driver's own comment
+    run(client._poll_sta_connect_status())
+    assert client.hw_op_failed is False
+
+
+# ---------------------------------------------------------------------------
+# _start_hotspot() success branch - only the missing-config (wrnno=2) branch was exercised above;
+# a healthy config must actually reach set_wifi_led()/_activate_hotspot_ap().
+# ---------------------------------------------------------------------------
+
+
+def test_start_hotspot_valid_config_activates_the_ap() -> None:
+    client = make_client()
+
+    async def fake_select(_mode: "Any") -> None:
+        return None  # skips the real mode-switch dance (and its real asyncio.sleep()s) entirely
+
+    client._select_wifi_mode = fake_select  # type: ignore[method-assign, assignment]  # deliberate monkeypatch
+
+    async def scenario() -> None:
+        await client._start_hotspot()
+        assert client.dns_server_task is not None
+        await _cancel(client.dns_server_task)
+
+    run(scenario())
+    assert client.hotspot_started_once is True
+    assert client.hw_op_failed is False
+    assert {"essid": "SensorNode", "password": "12345678"} in _wlan(client).config_calls
 
 
 if __name__ == "__main__":

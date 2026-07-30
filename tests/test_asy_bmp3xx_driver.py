@@ -5,9 +5,10 @@ import struct
 
 from _fram_chip_fake import FakeMB85RS64V
 from machine import I2C as FakeI2C
+from machine import Timer as FakeTimer
 
 import asy_spi_driver
-from asy_bmp3xx_driver import BMP3XX_I2C, BMP3xx_Reader
+from asy_bmp3xx_driver import BMP3XX, BMP3XX_I2C, BMP3xx_Reader
 from asy_fram_manager import AsyFramManager
 from asy_i2c_driver import I2C
 from asy_spi_driver import SPI
@@ -51,6 +52,30 @@ if TYPE_CHECKING:
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
     return asyncio.run(coro)
+
+
+async def _settle(n: int = 5) -> None:
+    for _ in range(n):
+        await asyncio.sleep(0)
+
+
+class _FastAsyncSleep:
+    # I2CDevice.setup()'s __probe_for_device() makes two real 0.1s asyncio.sleep() calls (settle
+    # time around the probe write) - fine for a directly-`run()`-awaited coroutine, but far too
+    # slow for a test driving read_loop() as a background task through a bounded sleep(0) pump
+    # loop (same technique as test_asy_sgp40_driver.py's own _FastAsyncSleep). asyncio.sleep is a
+    # shared, process-wide function, restored on exit regardless of how the `with` block exits.
+    def __enter__(self) -> "_FastAsyncSleep":
+        self._real_sleep = asyncio.sleep
+
+        async def _fast(_seconds: float) -> None:
+            await self._real_sleep(0)
+
+        asyncio.sleep = _fast  # type: ignore[assignment]  # deliberate monkeypatch, not a real caller mismatch
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        asyncio.sleep = self._real_sleep
 
 
 _ADDR = 0x77
@@ -1226,6 +1251,294 @@ def test_reader_uses_fram_backed_print_log_when_fram_provided() -> None:
 
     rebooted_counters = run(reboot_scenario())
     assert rebooted_counters["BMP3XX"]["ErrCount"] == 1
+
+
+# ---------------------------------------------------------------------------
+# get_filter_coefficient()/_read_register() - deinitialized-bus fault path (asy_i2c_driver.py's
+# "self._i2c is None" sentinel turned into a raised OSError), the read-side counterpart of
+# test_bus_deinit_write_no_ops_silently_but_read_raises_oserror above.
+# ---------------------------------------------------------------------------
+
+
+def test_get_filter_coefficient_raises_oserror_on_deinitialized_bus() -> None:
+    i2c, bmp = ready_bmp()
+    i2c.deinit()
+    try:
+        run(bmp.get_filter_coefficient())
+        raised = False
+    except OSError as e:
+        raised = "failed to read filter coefficient" in str(e)
+    assert raised
+
+
+def test_read_byte_raises_oserror_on_deinitialized_bus() -> None:
+    i2c, bmp = make_bmp()
+    i2c.deinit()
+    try:
+        run(bmp._read_byte(_REGISTER_CHIPID))
+        raised = False
+    except OSError as e:
+        raised = "failed to read" in str(e)
+    assert raised
+
+
+# ---------------------------------------------------------------------------
+# Reader.get_data() / get_dict_data() (DRIVER_SPEC.md section 4.2) - never exercised by any test
+# above, unlike asy_scd30_driver.py's/asy_sgp40_driver.py's own test files.
+# ---------------------------------------------------------------------------
+
+
+def test_get_data_returns_all_none_before_any_successful_read() -> None:
+    reader = make_reader("get_data_initial")
+    assert run(reader.get_data()) == BMP3XX(None, None, None, None)
+
+
+def test_get_data_and_get_dict_data_reflect_a_stored_reading() -> None:
+    i2c, reader = make_clean_reader("get_data_stored")
+    seed_chip_id(i2c, _BMP388_CHIP_ID)
+    seed_calibration(i2c)
+    seed_status(i2c, 0x10 | 0x60)
+    seed_err(i2c, 0x00)
+    seed_data(i2c, _adc_to_data6(_ADC_P, _ADC_T))
+    assert run(reader._init_bmp())
+    results = run(reader._read_bmp())
+    run(reader._store_bmp(results))
+
+    data = run(reader.get_data())
+    assert data.Pres is not None
+    assert data.Temp is not None
+    assert data.SLPres is not None
+    assert data.TS is not None
+
+    as_dict = run(reader.get_dict_data())["BMP3XX"]
+    assert as_dict["Pres"] == data.Pres
+    assert as_dict["Temp"] == data.Temp
+    assert as_dict["SLPres"] == data.SLPres
+    assert as_dict["TS"] == data.TS
+
+
+# ---------------------------------------------------------------------------
+# Task/timer starters (DRIVER_SPEC.md section 9) - get_task_starters()/get_timer_starters()'s
+# shape was never checked, and none of the starter methods they return were ever actually called,
+# unlike asy_sgp40_driver.py's own test_start_asy_read_returns_a_real_task.
+# ---------------------------------------------------------------------------
+
+
+def test_get_task_starters_returns_read_and_trigger_starters() -> None:
+    reader = make_reader("task_starters")
+    assert reader.get_task_starters() == [reader.start_asy_read, reader.start_asy_trigger]
+
+
+def test_get_timer_starters_returns_the_trigger_timer_starter() -> None:
+    reader = make_reader("timer_starters")
+    assert reader.get_timer_starters() == [reader.start_timer]
+
+
+def test_start_asy_read_returns_a_real_task() -> None:
+    reader = make_reader("start_read")
+
+    async def scenario() -> bool:
+        task = reader.start_asy_read()
+        await asyncio.sleep(0)
+        is_task = isinstance(task, asyncio.Task)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        return is_task
+
+    assert run(scenario()) is True
+
+
+def test_start_asy_trigger_returns_a_real_task() -> None:
+    reader = make_reader("start_trigger")
+
+    async def scenario() -> bool:
+        task = reader.start_asy_trigger()
+        await asyncio.sleep(0)
+        is_task = isinstance(task, asyncio.Task)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        return is_task
+
+    assert run(scenario()) is True
+
+
+def test_start_timer_arms_a_real_periodic_timer_that_drives_base_trigger_event() -> None:
+    FakeTimer.all_timers.clear()
+    reader = make_reader("start_timer")
+    reader.start_timer()
+    assert reader.trigger_timer.mode == FakeTimer.PERIODIC
+    assert reader.trigger_timer.period == 1000
+
+    reader.trigger_timer.trigger()
+
+    async def scenario() -> bool:
+        fired = True
+        try:
+            await asyncio.wait_for(reader.base_trigger_event.wait(), 1)
+        except asyncio.TimeoutError:
+            fired = False
+        return fired
+
+    assert run(scenario()) is True
+    FakeTimer.all_timers.clear()
+
+
+def test_stop_timer_deinits_the_trigger_timer() -> None:
+    FakeTimer.all_timers.clear()
+    reader = make_reader("stop_timer")
+    reader.start_timer()
+    reader.stop_timer()
+    assert reader.trigger_timer.deinit_called is True
+    FakeTimer.all_timers.clear()
+
+
+# ---------------------------------------------------------------------------
+# _base_trigger() - the 1Hz base tick divided down by trigger_period into the "real" trigger_event
+# (DRIVER_SPEC.md section 9's "second small _base_trigger() task" pattern).
+# ---------------------------------------------------------------------------
+
+
+def test_base_trigger_sets_trigger_event_only_once_the_configured_period_elapses() -> None:
+    reader = make_reader("base_trigger")
+    run(reader.set_trigger_secs(3))
+
+    async def scenario() -> "tuple[int, int, bool]":
+        task = asyncio.create_task(reader._base_trigger())
+        await _settle(3)  # let _base_trigger() reach its first wait()
+        reader.base_trigger_event.set()
+        await _settle(3)
+        counter_after_1 = reader.trigger_counter
+        reader.base_trigger_event.set()
+        await _settle(3)
+        counter_after_2 = reader.trigger_counter
+        reader.base_trigger_event.set()
+        await _settle(3)
+        fired = True
+        try:
+            await asyncio.wait_for(reader.trigger_event.wait(), 1)
+        except asyncio.TimeoutError:
+            fired = False
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        return counter_after_1, counter_after_2, fired
+
+    counter_after_1, counter_after_2, fired = run(scenario())
+    assert counter_after_1 == 1
+    assert counter_after_2 == 2
+    assert fired is True
+    assert reader.trigger_counter == 0  # reset back to 0 once the period fires
+
+
+# ---------------------------------------------------------------------------
+# Reader-level set_temperature_oversampling()/set_filter_coefficient() - only their protocol-layer
+# counterparts and set_pressure_oversampling()'s own Reader wrapper were exercised above; these two
+# forwards share the same success/log-and-return-False shape (DRIVER_SPEC.md section 7).
+# ---------------------------------------------------------------------------
+
+
+def test_reader_set_temperature_oversampling_applies_the_value_and_returns_true() -> None:
+    i2c, reader = make_clean_reader("set_tov_ok")
+    assert run(reader.set_temperature_oversampling(8)) is True
+    assert run(reader.bmp.get_temperature_oversampling()) == 8
+
+
+def test_reader_set_temperature_oversampling_logs_and_returns_false_on_bus_failure() -> None:
+    reader = make_reader("set_tov_fail")
+
+    async def scenario() -> "tuple[bool, dict]":
+        ok = await reader.set_temperature_oversampling(4)
+        await reader.pr.setup()
+        counters = await reader.get_error_counter()
+        return ok, counters
+
+    ok, counters = run(scenario())
+    assert ok is False
+    assert counters["BMP3XX"]["ErrNum"][-1] == 18
+
+
+def test_reader_set_filter_coefficient_applies_the_value_and_returns_true() -> None:
+    i2c, reader = make_clean_reader("set_fc_ok")
+    assert run(reader.set_filter_coefficient(15)) is True
+    assert run(reader.bmp.get_filter_coefficient()) == 15
+
+
+def test_reader_set_filter_coefficient_logs_and_returns_false_on_bus_failure() -> None:
+    reader = make_reader("set_fc_fail")
+
+    async def scenario() -> "tuple[bool, dict]":
+        ok = await reader.set_filter_coefficient(31)
+        await reader.pr.setup()
+        counters = await reader.get_error_counter()
+        return ok, counters
+
+    ok, counters = run(scenario())
+    assert ok is False
+    assert counters["BMP3XX"]["ErrNum"][-1] == 20
+
+
+# ---------------------------------------------------------------------------
+# read_loop() - end-to-end wiring, driven via real trigger events and cancellation (matches
+# asy_scd30_driver.py's/asy_sgp40_driver.py's own read_loop() test convention).
+# ---------------------------------------------------------------------------
+
+
+def test_read_loop_stores_a_result_after_one_trigger() -> None:
+    i2c, reader = make_clean_reader("read_loop_happy")
+    seed_chip_id(i2c, _BMP388_CHIP_ID)
+    seed_calibration(i2c)
+    seed_status(i2c, 0x10 | 0x60)
+    seed_err(i2c, 0x00)
+    seed_data(i2c, _adc_to_data6(_ADC_P, _ADC_T))
+
+    async def scenario() -> BMP3XX:
+        task = asyncio.create_task(reader.read_loop())
+        await _settle(10)  # let _init_bmp() (real, but small: 2ms) settle-sleeps complete
+        reader.trigger_event.set()
+        await _settle(10)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        return await reader.get_data()
+
+    with _FastAsyncSleep():
+        data = run(scenario())
+    assert data.Pres is not None
+    assert data.Temp is not None
+    assert data.TS is not None
+
+
+def test_read_loop_gives_up_and_returns_false_after_max_errors() -> None:
+    i2c, reader = make_clean_reader("read_loop_giveup", max_i2c_err=2)
+    seed_chip_id(i2c, _BMP388_CHIP_ID)
+    seed_calibration(i2c)
+    seed_status(i2c, 0x10 | 0x60)
+    seed_err(i2c, 0x00)
+    seed_data(i2c, _adc_to_data6(_ADC_P, _ADC_T))
+
+    async def scenario() -> bool:
+        task = asyncio.create_task(reader.read_loop())
+        await _settle(10)
+        fake(i2c).nak_addresses.add(_ADDR)  # every read from here on fails
+        for _ in range(4):  # max_i2c_err=2 -> the 3rd consecutive failure crosses the threshold
+            reader.trigger_event.set()
+            await _settle(10)
+            if task.done():
+                return await task
+        raise AssertionError("read_loop never gave up")
+
+    with _FastAsyncSleep():
+        assert run(scenario()) is False
 
 
 if __name__ == "__main__":
