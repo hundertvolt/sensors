@@ -499,7 +499,7 @@ def test_resolve_ipv4_parse_response_raising_bounds_error_returns_none() -> None
     # prove resolve_ipv4() itself degrades cleanly (moves on / returns None) if it ever did.
     original_parse = asy_dns_client._parse_response
 
-    def raising_parse(rsp: bytes, query: bytes) -> "str | None":
+    def raising_parse(rsp: "bytes | bytearray", query: "bytes | bytearray") -> "str | None":
         raise IndexError("simulated residual bounds-math failure")
 
     asy_dns_client._parse_response = raising_parse
