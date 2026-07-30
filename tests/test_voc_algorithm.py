@@ -124,6 +124,36 @@ def test_process_sraw_clamped_to_20001_52767_window() -> None:
     assert algo.params.msraw == (52767 - 20000) * 65536
 
 
+def test_process_oscillating_extreme_readings_widens_the_variance_scaling() -> None:
+    # Found via direct tracing against the real interpreter: the mean/variance estimator's own
+    # "c > 1440.0 -> additional_scaling = 4.0" branch and the adaptive lowpass filter's
+    # "abs_delta < 0 -> negate" branch are both only reached once the internal variance estimate
+    # has genuinely grown large - a smoothly-varying reading (like the other process() tests above)
+    # never drives it there; sustained min/max oscillation across many cycles does.
+    algo = VOCAlgorithm()
+    algo.vocalgorithm_init()
+    last = 0
+    for i in range(400):
+        sraw = 20500 if i % 2 == 0 else 52500
+        last = algo.vocalgorithm_process(sraw)
+    assert 1 <= last <= 500  # still a valid index despite the adversarial input
+
+
+def test_process_sustained_extreme_low_then_high_readings_clamps_the_sigmoid() -> None:
+    # Found the same way: the mean/variance estimator's sigmoid clamp for x < -50.0 (returning its
+    # own sigmoid_l directly rather than computing a real division) is only reached after many
+    # cycles of one sustained extreme sraw value have pushed the running mean far enough from the
+    # current sample - a handful of cycles (like the tests above) never reach it.
+    algo = VOCAlgorithm()
+    algo.vocalgorithm_init()
+    last = 0
+    for _ in range(5000):
+        last = algo.vocalgorithm_process(20001)
+    for _ in range(3000):
+        last = algo.vocalgorithm_process(52767)
+    assert 1 <= last <= 500  # still a valid index despite the sustained-extreme input
+
+
 # ---------------------------------------------------------------------------
 # reset
 # ---------------------------------------------------------------------------
@@ -308,6 +338,26 @@ def test_fix16_exp_saturates_at_documented_bounds() -> None:
     assert algo._fix16_exp(algo._f16(11.0)) == 0x7FFFFFFF
     assert algo._fix16_exp(algo._f16(-12.0)) == 0
     assert algo._fix16_exp(algo._f16(0.0)) == algo._f16(1.0)  # e^0 == 1
+
+
+def test_fix16_div_dividing_the_minimum_value_takes_the_shifted_quotient_branch() -> None:
+    # Found via direct tracing against the real interpreter: dividing FIX16_MINIMUM
+    # (0x80000000) - the one value whose absolute magnitude doesn't fit back into a signed
+    # 32-bit remainder - is what actually drives _fix16_div()'s internal divider through its
+    # `divider & 0x80000000` branch (quotient |= bit / remainder -= divider), never exercised by
+    # the two ordinary divisions above. The raw return value here isn't itself masked to 32 bits
+    # (unlike a value built through _fix16_from_int()), so compare it mod 2**32 like every other
+    # bitwise/hex fix16 sentinel check in this file already does.
+    algo = VOCAlgorithm()
+    assert algo._fix16_div(-2147483648, 1) & 0xFFFFFFFF == 0  # FIX16_MINIMUM / 1 == 0
+
+
+def test_fix16_div_result_equal_to_minimum_returns_overflow_sentinel() -> None:
+    # A second, distinct FIX16_MINIMUM case: here the raw quotient itself comes out exactly at
+    # FIX16_MINIMUM before the final sign flip - negating it would overflow right back to the same
+    # bit pattern, so _fix16_div() reports it as an overflow rather than a real result.
+    algo = VOCAlgorithm()
+    assert algo._fix16_div(-2147483648, 65536) == 0x80000000  # _FIX16_OVERFLOW
 
 
 # ---------------------------------------------------------------------------
