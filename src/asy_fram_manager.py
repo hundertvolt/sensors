@@ -1,18 +1,7 @@
-"""Chunk-based storage manager for the FRAM chip (asy_fram_driver.py): dual-copy redundancy plus
-CRC gives each chunk resilience against a torn write (a status-byte busy/idle protocol detects a
-write interrupted by power loss) and silent bit rot (CRC-checked on every read, self-healing the
-other copy when only one is invalid). AsyFramManager is a bump-pointer allocator - get_chunk()/
-get_timestamped_chunk() carve out fixed offsets in call order, so every device's *instantiation
-order* of these calls is that device's on-chip layout and must stay identical across firmware
-versions for existing stored data to still decode correctly.
-
-Contract: every method returns a well-defined value (False/None, or an all-None/False tuple for
-the timestamped variant) - never raises. All chunks allocated from one AsyFramManager share that
-manager's own PrintLogHistory instance (passed as each chunk's `logger`), so error/warning codes
-threaded through `errno`/`wrnno` must stay unique across this whole file, not just per class - see
-BACKLOG.md for the full chunk-layout and error-numbering rationale, and for why "both copies valid
-but different" (an interrupted 2-copy write, no generation counter to say which is newer) is a
-deliberate hard failure rather than a guessed fallback.
+"""Chunk-based storage manager for the FRAM chip (asy_fram_driver.py): dual-copy redundancy plus a
+busy/idle status byte and CRC give each chunk resilience against a torn write and silent bit rot.
+AsyFramManager is a bump-pointer allocator (see CLAUDE.md for the instantiation-order/on-chip-layout
+contract). Every method returns a well-defined value - never raises.
 """
 
 import asyncio
@@ -353,7 +342,7 @@ class _AsyBaseFramChunk:
                 if await self._handle_status_bytes(fram, addr, _STATUS_UNINIT, False, 50) is None:
                     return False
                 # bytearray(n) zero-fills directly (same content as `[_STATUS_UNINIT] * n`) without
-                # building that list first - `[x] * n` can segfault uncatchably for large n (see BACKLOG.md).
+                # building that list first - `[x] * n` can segfault uncatchably for large n (CLAUDE.md).
                 res = await fram.set_values(bytearray(self.size + self.crc.length()), addr)
                 if not res:
                     await self.pr.err_s("FRAM write failed in _clear_chunk!", errno=57)

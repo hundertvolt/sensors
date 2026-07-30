@@ -1,17 +1,8 @@
-"""Async, non-blocking DNS resolver (IPv4 A-records only) built on asy_udp_socket.py's AsyUDPSocket.
-
-Inspired by github.com/vshymanskyy/aiodns (MIT license) after reading its design in detail, not a
-port of it - deliberately narrower (no cache, no mDNS, IPv4 only) since this project's only caller
-resolves one already-rarely-changing hostname roughly once per sync cycle. See BACKLOG.md for the
-full comparison, attribution, and two correctness gaps found in aiodns and fixed here instead of
-carried over.
-
-Contract: resolve_ipv4() never raises - returns the resolved dotted-quad str, or None on any
-failure (timeout, malformed/spoofed reply, NXDOMAIN/SERVFAIL, unreachable server, ...). A literal
-IPv4 host is returned unchanged, untouched by the network.
-
-Limitation: an answer's name is only followed when it's a bare compression pointer (RFC 1035
-SS4.1.4), not a full label decompressor - matches captive_dns.py's own precedent. See BACKLOG.md.
+"""Async, non-blocking IPv4 DNS resolver (A-records only) built on asy_udp_socket.py's AsyUDPSocket.
+Inspired by github.com/vshymanskyy/aiodns (MIT), not a port - deliberately narrower (no cache, no
+mDNS) for this project's single low-frequency caller. resolve_ipv4() never raises, returns the
+dotted-quad str or None; only bare compression-pointer names (RFC 1035 SS4.1.4) are followed,
+matching captive_dns.py's precedent.
 """
 
 import os
@@ -22,7 +13,7 @@ from asy_udp_socket import AsyUDPSocket
 
 _DNS_PORT = const(53)
 _DNS_TIMEOUT_MS = const(500)  # per-server, per-attempt budget - standalone default only, the real
-# caller (asy_ntp_client.py) always overrides it explicitly. See BACKLOG.md.
+# caller (asy_ntp_client.py) always overrides it explicitly.
 _DNS_TRIES = const(1)  # per-server retry budget - resolve_ipv4() already tries multiple servers.
 _DNS_RECV_BUF = const(512)  # RFC 1035 SS4.2.1's guaranteed-safe UDP message size.
 _FALLBACK_DNS_SERVERS: tuple[str, ...] = ("8.8.8.8", "1.1.1.1")  # tried after caller-supplied
@@ -45,8 +36,7 @@ def _is_ipv4_literal(host: str) -> bool:
 
 def _build_query(host: bytes, txn_id: bytes) -> bytearray:
     # RFC 1035 SS4.1.1/4.1.2 message: 12-byte header + QNAME + QTYPE + QCLASS. QNAME is exactly
-    # len(host) + 2 bytes on the wire regardless of label count - see BACKLOG.md for the exact-size
-    # vs. aiodns's own off-by-one comparison.
+    # len(host) + 2 bytes on the wire regardless of label count.
     qname_len = len(host) + 2
     query = bytearray(12 + qname_len + 4)  # header + QNAME + QTYPE(2) + QCLASS(2)
     query[0:2] = txn_id
@@ -79,8 +69,8 @@ def _parse_response(rsp: bytes | bytearray, query: bytes | bytearray) -> str | N
     # answer-section offset.
     pos = len(query)
     for _ in range(answer_count):
-        # Top-two-bits mask (RFC 1035 SS4.1.4: any 0xC0-0xFF leading byte), not `== 0xC0` - see
-        # BACKLOG.md for the real bug this fixed (a valid pointer to offset >= 256 was misread).
+        # Top-two-bits mask (RFC 1035 SS4.1.4: any 0xC0-0xFF leading byte), not `== 0xC0` - a
+        # bare `== 0xC0` would misread any valid pointer to offset >= 256.
         if pos + 12 > len(rsp) or (rsp[pos] & 0xC0) != 0xC0:
             break  # truncated, or a name that isn't a bare compression pointer
         rtype = (rsp[pos + 2] << 8) | rsp[pos + 3]

@@ -1,14 +1,7 @@
-"""Async NTP client + CET/CEST local-time helper (asy_ntp_client). Not a sensor (no I2C/SPI bus),
-but config-managed like every promoted driver: extends base_classes.py's SensorReaderConfig, owns
-its own config_NTP.cfg internally. See DRIVER_SPEC.md for the shared contract this follows and
-BACKLOG.md for the full design/verification history (RFC 5905 packet format, era rollover,
-Kiss-of-Death, the DNS-resolution rework replacing socket.getaddrinfo(), the
-wifi_mode_lock/get_dns_server dead-callback bug fix, and the timing restructure).
-
-Config setters are out of scope (DRIVER_SPEC.md section 5, project owner's stated decision) - only
-the getter quartet is implemented. Every errno/wrnno this file assigns starts at 11: base_classes.py's
-own _error_check()/_get_dict_cfg() already claim errno 1-4, and 10 is the shared "initial setup
-failed" convention (DRIVER_SPEC.md section 7) which doesn't apply here.
+"""Async NTP client + CET/CEST local-time helper. Not a sensor, but config-managed the same way:
+extends base_classes.py's SensorReaderConfig, owns its own config_NTP.cfg (see DRIVER_SPEC.md).
+Config setters are out of scope (DRIVER_SPEC.md section 5) - only the getter quartet is
+implemented. errno/wrnno numbering starts at 11 here (1-4/10 are base_classes.py's own).
 """
 
 import asyncio
@@ -42,20 +35,20 @@ _NTP_SYNC_RETRIES = const(3)  # try 3 times to connect to NTP server before stop
 _NTP_RETRY_INTERV = const(15)  # wait 15 secs before retrying to sync
 
 _NTP_UDP_PORT = 123  # RFC 5905's standard port; not const()-wrapped so tests can redirect it to a
-# fake server's ephemeral port (binding real port 123 needs root - see BACKLOG.md).
+# fake server's ephemeral port (binding real port 123 needs root).
 
 _NTP_EPOCH_DELTA = const(2208988800)  # 1900 -> 1970, RFC 5905's NTP-to-Unix epoch conversion
 _NTP_ERA_SECONDS = const(4294967296)  # 2**32 - one full NTP era (32-bit seconds field wraps ~2036)
 # Plausibility window for a parsed reply - floor+ceiling together reject implausible/corrupt data
-# even after era-reinterpretation (a floor alone can't - see BACKLOG.md). Bump both forward
-# occasionally to stay "recent enough"/"far enough out".
+# even after era-reinterpretation (a floor alone can't). Bump both forward occasionally to stay
+# "recent enough"/"far enough out".
 _NTP_MIN_PLAUSIBLE_UNIX_TIME = const(1735689600)  # 2025-01-01T00:00:00Z - predates this file itself
 _NTP_MAX_PLAUSIBLE_UNIX_TIME = const(4102444800)  # 2100-01-01T00:00:00Z - past the ~2036 era wrap
 
 _NTP_LI_UNSYNCHRONIZED = const(3)  # RFC 5905 Leap Indicator top-2-bits: 3 = server's own clock is
 # unsynchronized - its Transmit Timestamp can still look plausible, so needs its own check.
 _NTP_STRATUM_INVALID = const(0)  # RFC 5905/4330 stratum 0 = Kiss-o'-Death packet. Its Transmit
-# Timestamp is typically all-zero, which lands inside the plausibility window above - see BACKLOG.md.
+# Timestamp is typically all-zero, which lands inside the plausibility window above.
 
 # Schema tuples for ConfigManager.get_*_values() - min/max mirror sensortask-wozi.py's own
 # update_valid_json() REST bounds; defaults are the only source of truth for a fresh config_NTP.cfg.
@@ -78,7 +71,7 @@ class asy_ntp_client(SensorReaderConfig):
         get_dns_server: "Callable[[], str | None]",
         max_i2c_err: int = 5,
         dns_timeout_ms: int = 500,  # forwarded to resolve_ipv4() - sensortask-wozi.py decides the
-        # real value (see BACKLOG.md's timing-restructure writeup).
+        # real value.
         dns_tries: int = 1,  # forwarded to resolve_ipv4() - see dns_timeout_ms's own comment.
         ntp_fetch_timeout_ms: int = _NTP_CONN_TIMEOUT,  # forwarded to _fetch_ntp_reply()'s socket
         # call - same reasoning as dns_timeout_ms.
@@ -133,7 +126,7 @@ class asy_ntp_client(SensorReaderConfig):
                 mode=Timer.PERIODIC,
                 callback=lambda b: self.ntp_timer_trigger_event.set(),
             )
-        except OSError as e:  # alarm-pool exhaustion (ENOMEM, see BACKLOG.md) - degrades gracefully;
+        except OSError as e:  # alarm-pool exhaustion (ENOMEM, see CLAUDE.md) - degrades gracefully;
             # NTP refresh scheduling just never starts rather than crashing the caller.
             self.pr.err(_NAME, "Could not start NTP timer:", e)
 
@@ -242,7 +235,7 @@ class asy_ntp_client(SensorReaderConfig):
     async def _safe_get_dns_server(self) -> str | None:
         # Must be called before wifi_mode_lock.acquire(), never after: get_dns_server() gates on
         # wifi_mode_lock.locked() itself, which this file also holds during the sync attempt below -
-        # calling it from inside that section always returned None (real bug, see BACKLOG.md).
+        # calling it from inside that section always returned None.
         try:
             return self.get_dns_server()
         except Exception as e:  # caller-supplied callback - could legitimately misbehave
@@ -336,7 +329,7 @@ class asy_ntp_client(SensorReaderConfig):
             return tm
         except (IndexError, OverflowError, ValueError, OSError) as e:
             # malformed/truncated reply (MicroPython's struct raises plain ValueError, not
-            # struct.error - see BACKLOG.md) or an out-of-range timestamp - treat like no response.
+            # struct.error) or an out-of-range timestamp - treat like no response.
             await self.pr.err_s(_NAME, "Malformed NTP response, treating as no response:", e, errno=15)
             return None
 

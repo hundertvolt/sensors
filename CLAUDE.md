@@ -472,7 +472,10 @@ need to go deeper:
   failure (no generation counter to say which is newer), never silently guessed.
   `AsyFramTimestampedChunk.write()`/`write_into()` return `(ntp_synced, utc, success)` — `success`
   is the *third* element, not first, unlike every other bool-returning method in this codebase;
-  don't reorder it, callers already unpack it this way.
+  don't reorder it, callers already unpack it this way. `AsyFramManager` is a bump-pointer
+  allocator: `get_chunk()`/`get_timestamped_chunk()` carve out fixed offsets in call order, so a
+  device's *instantiation order* of these calls is its on-chip layout and must stay identical
+  across firmware versions for existing stored data to keep decoding correctly.
 - **SCD30's `AmbPres` (ambient-pressure compensation) is stored in the sensor's own internal
   non-volatile memory as a one-time-set value, not a continuously-updated live input.** This is why
   it's a static config value on every unit — including wozi, which has a live BMP388 — and why

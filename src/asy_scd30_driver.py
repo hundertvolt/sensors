@@ -1,14 +1,7 @@
 """Async I2C driver for the Sensirion SCD30 CO2/temperature/relative-humidity sensor. SCD30_I2C
-wraps the raw command set (16-bit commands, CRC-8 protected 2-byte reads/args, no repeated-start);
-SCD30_Reader is the SensorReader subclass that runs the periodic read loop plus the IRQ-pin
-self-healing trigger (the sensor's data-ready pin can be missed/stuck, so a timer re-arms it), and
-feeds CO2/Temp/Hum/WetBulb/DewPoint into the framework. Source: Sensirion CO2 Sensors SCD30
-Interface Description & Datasheet (datasheets/scd30/).
-
-Contract: SCD30_Reader's public getters/setters never raise - a getter returns None and a setter
-returns False on any failure (matching asy_bmp3xx_driver.py/asy_sgp40_driver.py). SCD30_I2C's own
-methods are the one exception (per src/README.md's raw-bus-call carve-out): they raise on a failed
-I2C transaction, a CRC mismatch, or an out-of-range argument - SCD30_Reader is what absorbs that.
+wraps the raw command set (16-bit commands, CRC-8 protected); SCD30_Reader runs the read loop plus
+an IRQ-pin self-healing trigger, feeding CO2/Temp/Hum/WetBulb/DewPoint (see DRIVER_SPEC.md). Source:
+Sensirion CO2 Sensors SCD30 Interface Description & Datasheet (datasheets/scd30/).
 """
 
 import asyncio
@@ -60,9 +53,8 @@ _VAL_ALT = const((("Altitude", "int", None, 0, 65535, None),))
 _VAL_CAL = const((("ForceCalRef", "int", None, 400, 2000, None),))
 _VAL_SC = const((("SelfCal", "bool", None, None, None, None),))
 # Deliberately no _VAL_* entry for "ContMeas" - the SCD30 can't report whether continuous
-# measurement is currently running, so it can't join this schema the way the other 6 fields do.
-# See BACKLOG.md ("asy_scd30_driver.py → src/") for the full finding.
-# no default value for config, params are stored on sensor
+# measurement is currently running, so it can't join this schema the way the other fields do.
+# No local default either: these params are stored on the sensor itself, not cached locally.
 
 _NAME = const("SCD30")
 SCD30 = namedtuple("SCD30", ("CO2", "Temp", "Hum", "WetBulb", "DewPoint", "TS"))
@@ -478,7 +470,7 @@ class SCD30_I2C:
     async def read_measurement(self) -> None:
         # Call exactly once per cycle (data-ready clears the instant it's read - Interface
         # Description 1.4.4); a second call would wipe fresh data back to None. If not ready,
-        # leaves the cache untouched, matching the legacy driver - see BACKLOG.md.
+        # leaves the cache untouched, matching the legacy driver.
         async with self.i2c_scd30 as scd30:
             async with scd30.i2c_device as i2c:
                 new_data = await self._read_dev_register(i2c, _CMD_GET_DATA_READY) > 0

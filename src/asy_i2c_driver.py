@@ -1,20 +1,8 @@
 """Async wrapper around machine.I2C: bus-level primitives (I2C) plus a per-device, lock-scoped
-wrapper (I2CDevice) used by every I2C sensor driver in this codebase (asy_scd30_driver.py,
-asy_sgp40_driver.py, asy_bmp3xx_driver.py).
-
-Shared contract: a method returns None (or no-ops, for a None-typed method) only for a
-non-hardware failure - the bus not being initialized (self._i2c is None, e.g. after deinit()),
-an out-of-range bit-field request, or a malformed reg_format for the struct-based helpers. A
-real I2C bus/device failure (OSError - NAK, timeout, no such device) is never caught here; it
-propagates to the caller, matching every existing Reader class's own try/except around a full
-read/write sequence (see e.g. asy_scd30_driver.py's SCD30_Reader._read_scd).
-
-This contract applies to ongoing operational calls, not one-time setup: I2C.__init__()/init()
-(constructs real Pin/machine.I2C objects, which can raise ValueError for a bad pin/port number -
-confirmed against current MicroPython docs) and I2CDevice.setup()'s probe (raises ValueError/
-RuntimeError - see its own comment) are deliberately allowed to raise. A misconfigured bus should
-fail loudly once at boot, the same way setup()'s probe already does, not silently produce a
-permanently-nonfunctional driver that then degrades every later call to None.
+wrapper (I2CDevice) used by every I2C sensor driver (asy_scd30_driver.py, asy_sgp40_driver.py,
+asy_bmp3xx_driver.py). A method returns None only for a non-hardware failure (uninitialized bus,
+out-of-range bit-field, malformed reg_format); a real OSError always propagates to the caller. One-
+time setup (__init__/init(), I2CDevice.setup()'s probe) is exempt and may raise.
 """
 
 import asyncio

@@ -1,36 +1,15 @@
 """Generic bit-banged CRC engine (MSB-first, no reflection, no final XOR). CRC8 (poly 0x31, init
-0xFF) is Sensirion's documented CRC-8, verified against real datasheet test vectors; CRC16 (poly
-0x1021, init 0xFFFF) is CRC-16/CCITT-FALSE; CRC32 (poly 0x04C11DB7, init 0xFFFFFFFF) is
-CRC-32/MPEG-2. CRC_Pass is a zero-length no-op.
-
-Shared contract: every public method returns None (or False for run_inc) - never raises - for
-invalid input (bad init/poly, buffer too small, insufficient data). **add()/check() are a
-deliberate, controlled exception to this**: unlike every other method here, they each allocate and
-return a *new* buffer sized to the message they're framing/verifying (`bytearr + crc_b` and
-`bytearr[0:n]`, respectively) instead of working in place via memoryview into a caller-owned
-buffer - a MemoryError from that allocation is allowed to propagate, the same schema every
-close-to-hardware driver in this codebase already uses for a controlled raise (e.g.
-asy_i2c_driver.py's/asy_spi_driver.py's own __init__ raising ValueError for a bad one-time-setup
-value). Every current caller of add()/check() must be, and is, proven to handle it: they're called
-from exactly one place in this codebase today (asy_uart_driver.py's write()/read_until_complete()),
-and both call sites wrap the call in try/except MemoryError - see that file's own module docstring
-and BACKLOG.md's `asy_uart_driver.py -> src/` entry for the audit confirming no other caller exists.
-add_into()/check_from()/run_inc()/check_inc() are not exempted the same way: they read/write a
-caller-supplied buffer via memoryview, with no allocation of their own proportional to message
-size, so the "never raises" contract above holds for them without qualification.
-
-run_inc()/check_inc() share mutable state (inc_crc, inc_count) on the instance across an
-incremental sequence, so a single instance must not be used for more than one concurrent
-sequence - give each concurrent caller its own instance rather than sharing one.
+0xFF) is Sensirion's documented CRC-8; CRC16 (poly 0x1021, init 0xFFFF) is CRC-16/CCITT-FALSE;
+CRC32 (poly 0x04C11DB7, init 0xFFFFFFFF) is CRC-32/MPEG-2. CRC_Pass is a zero-length no-op. Every
+public method returns None/False on invalid input - never raises - except add()/check(), which
+allocate a new buffer and let a MemoryError propagate (every caller must catch it; see
+asy_uart_driver.py). run_inc()/check_inc() share mutable state per instance - don't share one
+instance across concurrent sequences.
 """
 
-# Zero-padding limitation, inherent to this class of CRC rather than specific to this
-# implementation: once the running register reaches 0, any number of further 0x00 bytes leave it
-# at 0 (XOR with 0 is a no-op, and an all-zero register never sets the MSB, so the
-# polynomial-reduction step never fires). check()/check_from()/check_inc() therefore validate
-# successfully even when the caller-supplied length runs past the buffer's true end into trailing
-# zero bytes - they verify content integrity within the claimed length, not that the claimed
-# length itself is correct. Callers are responsible for supplying an accurate size.
+# Zero-padding limitation inherent to this CRC class: a register at 0 stays 0 through further 0x00
+# bytes, so check()/check_from()/check_inc() can't detect trailing zero-padding past the buffer's
+# true end - callers must supply an accurate length.
 
 import asyncio
 from struct import pack_into

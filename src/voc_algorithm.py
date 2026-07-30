@@ -1,10 +1,7 @@
-"""Sensirion's Gas Index Algorithm (VOC-only variant), fixed-point (Q16.16) port of the archived
-C reference (Sensirion/embedded-sgp, sgp40_voc_index/sensirion_voc_algorithm.c/.h) - verified
-constant-for-constant and against vocalgorithm_process()'s exact operation order. See BACKLOG.md
-for the naming/traceability rationale and vocalgorithm_proc_ser_des()'s full-state FRAM
-pack/unpack design (used by asy_sgp40_driver.py).
-
-Contract: every method returns a well-defined value, never raises.
+"""Sensirion's Gas Index Algorithm (VOC-only variant), fixed-point (Q16.16) port of the archived C
+reference (Sensirion/embedded-sgp, sgp40_voc_index/sensirion_voc_algorithm.c/.h) - verified
+constant-for-constant and against vocalgorithm_process()'s exact operation order. Every method
+returns a well-defined value, never raises.
 """
 
 import struct

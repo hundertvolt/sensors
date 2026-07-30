@@ -1,18 +1,9 @@
-"""Async wrapper around machine.UART: select.poll-driven non-blocking read/write (MicroPython's
-asyncio has no built-in UART-readiness primitive), lock-scoped via base_classes.Lockable so a whole
-read/write exchange runs atomically under `async with`. Optional per-instance CRC framing
-(crc_checks.py's CRC_Base family) adds/verifies a trailing CRC on read_until_complete/
-readinto_until_complete/write/writefrom.
-
-Not currently wired into any live caller in this codebase - python/IndividualDrivers/asy_uart_comm.py
-(its one existing consumer) is its own separate promotion, out of scope here. Whoever does wire this
-in: see BACKLOG.md for a Pico W GPIO23/24/25/29 wiring hazard worth knowing about first.
-
-Contract: every method but __init__()/init() returns its documented None/False sentinel, never
-raises - init() may raise ValueError for a bad pin/buffer/port_id, matching the other src/ drivers.
-write()/writefrom() retry until the whole buffer is sent, since real uart.write() can short-write.
-
-See BACKLOG.md's `asy_uart_driver.py -> src/` entries for the full verification rationale.
+"""Async wrapper around machine.UART: select.poll-driven non-blocking read/write, lock-scoped via
+base_classes.Lockable so a read/write exchange runs atomically under `async with`. Optional
+per-instance CRC framing (crc_checks.py's CRC_Base family) on read_until_complete/
+readinto_until_complete/write/writefrom. Not wired into any live caller yet (see BACKLOG.md).
+Whoever wires it in: GPIO24/25 and GPIO28/29 fall inside a UART pin-mux group and are
+wireless-reserved on Pico W - picking either pair for tx_pin/rx_pin silently collides with WiFi.
 """
 
 import asyncio
@@ -93,8 +84,7 @@ class UART(Lockable):
 
     def deinit(self) -> None:
         # machine.UART.deinit() actually turns off the hardware bus, not just drops the Python
-        # reference - confirmed never to raise itself, unlike poller.unregister() below, whose
-        # wrap is defensive against an upstream corner case - see BACKLOG.md for both.
+        # reference - confirmed never to raise itself, unlike poller.unregister() below.
         if self._uart is not None:
             if self.poller is not None:
                 try:
@@ -108,7 +98,9 @@ class UART(Lockable):
     def _active_uart(self) -> "_UART | None":
         # Shared entry guard for every read/write method - None unless called inside `async with
         # self:` on a live bus. Returns the narrowed UART (not bool) so mypy's None-narrowing works.
-        # See BACKLOG.md for why the lock check is kept here, unlike SPIDevice/I2CDevice.
+        # Kept deliberately, unlike SPIDevice/I2CDevice: cancel_read_timeout() runs from a different
+        # task and infers "a read is in flight" purely from asy_lock.locked() - a lock-less caller
+        # would be invisible to it, silently breaking cancellation.
         if not self.asy_lock.locked():
             return None
         return self._uart
@@ -125,7 +117,7 @@ class UART(Lockable):
     async def ready(self, mask: int, timeout_ms: int = -1) -> bool:
         # Busy-polls ipoll(0), yielding via sleep_ms(poll_wait_ms), until mask is satisfied, a
         # cancel is requested, or timeout_ms elapses (<=0 waits forever). Defensive against a
-        # concurrent deinit() nulling self.poller mid-loop - see BACKLOG.md.
+        # concurrent deinit() nulling self.poller mid-loop.
         if self._uart is None or self.poller is None:
             return False
         self.cancel = False
@@ -184,7 +176,7 @@ class UART(Lockable):
                 return None  # ready() timed out or was cancelled
         try:
             return await self.crc.check(msg)
-        except MemoryError:  # check()'s own bytearr[0:n] slice allocates a fresh copy - see BACKLOG.md
+        except MemoryError:  # check()'s own bytearr[0:n] slice allocates a fresh copy
             return None
 
     async def readinto(self, buf: bytearray, nbytes: int | None = None, timeout_ms: int = -1) -> int | None:
@@ -245,7 +237,7 @@ class UART(Lockable):
                     return None
                 try:
                     msg += add
-                except MemoryError:  # unbounded across rounds, unlike read_until_complete()'s nbytes cap - see BACKLOG.md
+                except MemoryError:  # unbounded across rounds, unlike read_until_complete()'s nbytes cap
                     return None
                 # `msg and` guards msg[-1]: readline() ready via poll can still return b"" (e.g. a
                 # zero-length read), which would otherwise index an empty bytearray and raise.
@@ -257,9 +249,9 @@ class UART(Lockable):
         return msg
 
     async def _write_all(self, uart: "_UART", buf: bytearray | memoryview) -> bool:
-        # rp2 uart.write() can short-write instead of raising (see BACKLOG.md) - retries with
-        # whatever's left until the whole buffer is out or a real failure gives up, the write-side
-        # counterpart of read_until_complete()'s own retry-until-done loop.
+        # rp2 uart.write() can short-write instead of raising - retries with whatever's left until
+        # the whole buffer is out or a real failure gives up, the write-side counterpart of
+        # read_until_complete()'s own retry-until-done loop.
         sent = 0
         total = len(buf)
         view = memoryview(buf)
@@ -277,7 +269,7 @@ class UART(Lockable):
         if uart is None:
             return False
         try:
-            framed = await self.crc.add(msg)  # add()'s own bytearr + crc_b allocates a fresh copy - see BACKLOG.md
+            framed = await self.crc.add(msg)  # add()'s own bytearr + crc_b allocates a fresh copy
         except MemoryError:
             return False
         if framed is None:

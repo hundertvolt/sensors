@@ -1,11 +1,8 @@
 """Leveled console logging (PrintLog), a bounded in-memory error/warning history (PrintLogHistory),
-and its optional FRAM-backed persistence (PrintLogHistoryStore), surviving a reboot.
-
-Contract: every method returns a well-defined value and never raises. PrintLogHistoryStore's FRAM
-calls are wrapped broadly, matching asy_fram_manager.py's own "never raises" contract (see
-BACKLOG.md) plus defense-in-depth against the general _FramManager/_FramChunk Protocol below;
-tests/test_print_log.py exercises this against the real AsyFramManager (tests/_fram_chip_fake.py's
-simulated chip) and every failure mode still reachable through it.
+and its optional FRAM-backed persistence (PrintLogHistoryStore), surviving a reboot. Every method
+returns a well-defined value, never raises - PrintLogHistoryStore's FRAM calls are wrapped broadly,
+matching asy_fram_manager.py's own contract plus defense-in-depth against the _FramManager/
+_FramChunk Protocol below.
 """
 
 import struct
@@ -28,7 +25,7 @@ if TYPE_CHECKING:
 
     # Narrow structural Protocols for the FRAM slice this file calls - kept even now that
     # asy_fram_manager.py is promoted to src/, avoiding a real runtime import cycle (it imports
-    # PrintLogHistory from here) and decoupling from its concrete chunk shapes - see BACKLOG.md.
+    # PrintLogHistory from here) and decoupling from its concrete chunk shapes.
     class _FramChunk(Protocol):
         def get_buffer(self) -> "LockableBuffer": ...
         # Any: real chunk classes narrow buf's type in a way that's contravariantly incompatible
@@ -126,7 +123,7 @@ class PrintLogHistory(PrintLog):
         super().__init__(level=level)
         # Clamp to [0, _MAX_CNT] (err_count's own uint16 range) before allocating: `[x] * n` can
         # segfault the interpreter uncatchably in a size range bytearray()'s own guards don't cover
-        # - see BACKLOG.md for the measured failure-size boundaries.
+        # - see CLAUDE.md's list-repeat-segfault gotcha for the measured failure-size boundaries.
         history_length = min(max(history_length, 0), _MAX_CNT)
         try:  # still reachable well below the overflow boundary on a genuinely memory-constrained device
             self.history = deque([_NO_ERR] * history_length, history_length)
@@ -209,7 +206,7 @@ class PrintLogHistory(PrintLog):
 
 
 class PrintLogHistoryStore(PrintLogHistory):
-    _HDR_FMT = "<H"  # explicit little-endian, no padding - bare format defaults to "@" here, not "<"; see BACKLOG.md
+    _HDR_FMT = "<H"  # explicit little-endian, no padding - bare format defaults to "@" here, not "<"
     _HDR_SIZE = struct.calcsize(_HDR_FMT)
 
     def __init__(self, fram: "_FramManager", history_length: int = 10, level: int | None = None) -> None:

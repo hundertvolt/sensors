@@ -1,19 +1,8 @@
-"""Async, non-blocking UDP wrapper around one socket.socket - cooperative send/receive driven by a
-hand-rolled select.poll loop (MicroPython's asyncio has no built-in UDP-readiness primitive). Three
-callers: asy_ntp_client.py's NTP client and asy_dns_client.py's resolve_ipv4() (both mode="client"),
-and captive_dns.py's DNSServer (mode="server"). Also usable as `async with AsyUDPSocket(...) as sock:`.
-
-Shared contract: every public I/O method (ready, sendto, write, recvfrom, write_and_recvfrom,
-disconnect) returns its documented None-shaped sentinel on OSError/MemoryError - never raises.
-__init__ is the one exception: mode/addr/conn_tries are validated eagerly and raise
-ValueError/TypeError for a structurally invalid value, since that's a programmer error, not a
-runtime network condition.
-
-Content-agnostic transport: never inspects datagram contents. mode="server" sockets receive from
-anyone; source-address trust there is the caller's concern, not this module's.
-
-See BACKLOG.md for the full design rationale (concurrency/locking, POSIX UDP properties relied
-on, bug history).
+"""Async, non-blocking UDP wrapper around one socket.socket, driven by a hand-rolled select.poll
+loop. Callers: asy_ntp_client.py/asy_dns_client.py (mode="client"), captive_dns.py's DNSServer
+(mode="server"); also usable as `async with AsyUDPSocket(...) as sock:`. Every I/O method returns
+its documented None-shaped sentinel, never raises (__init__ excepted). Content-agnostic: never
+inspects datagram contents; mode="server" source-address trust is the caller's concern.
 """
 
 import asyncio
@@ -50,7 +39,7 @@ class AsyUDPSocket:
         if isinstance(addr, tuple):
             if not (len(addr) == 2 and isinstance(addr[0], str) and isinstance(addr[1], int)):
                 raise TypeError(f"addr tuple must be (host: str, port: int), got {addr!r}")
-        elif not isinstance(addr, (bytes, bytearray)):  # type: ignore[unreachable]  # real at runtime; see BACKLOG.md
+        elif not isinstance(addr, (bytes, bytearray)):  # type: ignore[unreachable]  # real at runtime
             raise TypeError(f"addr must be a (host: str, port: int) tuple or a pre-resolved sockaddr, got {addr!r}")
         if not isinstance(conn_tries, int):
             raise TypeError(f"conn_tries must be an int, got {conn_tries!r}")

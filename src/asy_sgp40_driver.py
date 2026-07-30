@@ -1,14 +1,7 @@
-"""Sensirion SGP40 VOC sensor driver: SGP40_I2C (chip protocol) and SGP40_Reader (async
-framework-facing wrapper - trigger timer, read loop, error counting, config schema, FRAM
-backup/restore of voc_algorithm.py's VOCAlgorithm state), same shape as asy_scd30_driver.py/
-asy_bmp3xx_driver.py.
-
-Verified against Sensirion's SGP40 datasheet (datasheets/sgp40/, v1.2 - Feb 2022). See
-BACKLOG.md for the full review write-up.
-
-Shared contract: every method returns a well-defined value, never raises - except SGP40_I2C's
-raw bus-transaction calls (src/README.md section 2's I2C carve-out); every SGP40_Reader call
-into SGP40_I2C wraps a full read/write sequence in its own try/except.
+"""Sensirion SGP40 VOC sensor driver: SGP40_I2C (chip protocol) and SGP40_Reader (async wrapper -
+trigger timer, read loop, error counting, config schema, FRAM backup/restore of voc_algorithm.py's
+VOCAlgorithm state), same shape as asy_scd30_driver.py/asy_bmp3xx_driver.py (see DRIVER_SPEC.md).
+Verified against Sensirion's SGP40 datasheet (datasheets/sgp40/, v1.2 - Feb 2022).
 """
 
 import asyncio
@@ -89,7 +82,7 @@ class SGP40_Reader(SensorReaderConfig):
         else:
             try:  # broad on purpose, matching print_log.py's own FRAM-allocation guard - this
                 # matters more here since __init__ runs before any task supervisor exists to
-                # catch an escaped exception (see BACKLOG.md for the full rationale).
+                # catch an escaped exception.
                 self.ts_storage = fram_storage.get_timestamped_chunk(
                     VOCAlgorithm.get_params_memsize(), fram_ntp_callback, crc=CRC32()
                 )  # timestamped backup storage (FRAM)
@@ -101,7 +94,7 @@ class SGP40_Reader(SensorReaderConfig):
         self.restored_from: int | None = None
         self.reset = False
         # Two independent sub-parts of a pending reset, tracked separately since they can complete
-        # on different cycles (see reset_voc()/_read_sgp(), BACKLOG.md). Both start "done".
+        # on different cycles (see reset_voc()/_read_sgp()). Both start "done".
         self._reset_fram_cleared = True
         self._reset_algo_applied = True
 
@@ -312,7 +305,7 @@ class SGP40_Reader(SensorReaderConfig):
         self, buf: "AsyFramChunkTimestampedBuffer | None", serialize: bool, deserialize: bool
     ) -> tuple[SGP40, bool, bool]:
         # Snapshotted once at entry so a concurrent reset_voc(True) (e.g. a REST handler) only
-        # ever affects the *next* cycle, never this one (see BACKLOG.md for the two-part design).
+        # ever affects the *next* cycle, never this one.
         reset_now = self.reset
         if reset_now:
             self.pr.evt(_NAME, "Reset Trigger")
@@ -328,7 +321,7 @@ class SGP40_Reader(SensorReaderConfig):
                 if not self._reset_fram_cleared:
                     await self.pr.err_s(_NAME, "Fehler beim FRAM löschen!", errno=14)
 
-        try:  # caller-supplied callback, could legitimately misbehave (see BACKLOG.md)
+        try:  # caller-supplied callback, could legitimately misbehave
             comp_data = await self.comp_callback()  # [Temperature, Humidity]
         except Exception as e:
             await self.pr.err_s(_NAME, "Kompensationsdaten-Callback fehlgeschlagen:", e, errno=18)
@@ -429,7 +422,7 @@ class SGP40_I2C:
 
     async def initialize(self) -> None:
         # Only the serial-number read and self-test (datasheet Table 8) gate success - the
-        # feature-set check the legacy driver had isn't datasheet-documented; see BACKLOG.md.
+        # feature-set check the legacy driver had isn't datasheet-documented.
         async with self.i2c_sgp40 as sgp40:  # device session
             self._command_buffer[0] = 0x36
             self._command_buffer[1] = 0x82
@@ -439,7 +432,7 @@ class SGP40_I2C:
         if serialnumber[0] != 0x0000:
             # word[0]==0 isn't documented by Sensirion (no structural breakdown of the 3-word ID
             # given) or replicated by any other reference driver checked - unverified, inherited
-            # from Adafruit; kept since it's observed working on deployed hardware (see BACKLOG.md).
+            # from Adafruit; kept since it's observed working on deployed hardware.
             raise RuntimeError("Serial number does not match")
 
         async with self.i2c_sgp40 as sgp40:  # device session
@@ -449,7 +442,7 @@ class SGP40_I2C:
         if self_test is None:
             raise RuntimeError("No sensor response!")
         # Datasheet Table 13: only the high byte is the pass/fail marker (0xD4/0x4B); the low
-        # byte is documented as "ignore", not guaranteed zero - see BACKLOG.md.
+        # byte is documented as "ignore", not guaranteed zero.
         if (self_test[0] >> 8) != 0xD4:
             raise RuntimeError("Self test failed")
         await self._reset()

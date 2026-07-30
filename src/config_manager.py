@@ -1,13 +1,9 @@
 """Per-sensor JSON config storage - each sensor gets its own `config_<name>.cfg` file (see
-base_classes.py's SensorReaderConfig), validated against a schema of `_VAL_*` `const()` tuples
-(e.g. asy_bmp3xx_driver.py's `_VAL_SI`) each driver defines: (name, type, def, min, max, special).
-
-Shared contract: every public function/method returns a documented "invalid" sentinel
-(`[]`/`""`/`{}`/`None`/`True` per function) - never raises.
-
-`ConfigManager` reads the file once at `__init__` into `self._cache`; every `get_*`/`write_config`
-call after that reads/writes `_cache` directly, never re-opening the file. See BACKLOG.md for the
-full design rationale (why, the lock/cache-consistency reasoning, and the accepted trade-off).
+base_classes.py's SensorReaderConfig), validated against a schema of `_VAL_*` `const()` tuples:
+(name, type, default, min, max, special). Every public function/method returns a documented
+"invalid" sentinel, never raises. `ConfigManager` reads the file once at `__init__` into
+`self._cache`; every later `get_*`/`write_config` call reads/writes `_cache` directly (see
+CLAUDE.md for the cache-vs-external-corruption trade-off this implies).
 """
 
 import asyncio

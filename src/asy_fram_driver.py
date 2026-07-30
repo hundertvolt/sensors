@@ -1,21 +1,10 @@
 """Async SPI driver for one Fujitsu MB85RS64V FRAM chip (Adafruit's 8KB SPI FRAM breakout):
 raw byte-addressed get_values()/set_values() plus write protection. Source: Fujitsu MB85RS64V
-datasheet (DS501-00015), cross-checked against Adafruit's own Adafruit_FRAM_SPI reference driver.
-
-Data-integrity recovery (CRC, dual-copy redundancy) lives one layer up in asy_fram_manager.py -
-raw SPI write()/readinto() can't report a transfer fault, so this file only detects what it can
-observe directly: device-ID mismatch, a write-enable latch that didn't set/clear as commanded,
-and a stale write-protect assumption. All three self-heal to a safe state (uninitialized=True, or
-a failed write/protect-change reported as False) without raising, so a caller can recover via a
-fresh setup(), the same task-death-and-respawn pattern every sensor driver already relies on.
-
-Contract: every method returns a well-defined value and never raises, except three deliberately-
-allowed paths mirroring asy_spi_driver.py's own carve-outs, never silently caught here so upstream
-callers must handle them: __init__()'s ValueError for a bad pin/port (one-time, at-boot
-misconfiguration); setup()'s OSError for failed device identification (SPI's substitute for an
-I2C NAK); and SPIDevice's "not set up"/deinitialized-bus RuntimeError, only reachable via a
-caller-ordering bug or something else deinitializing the shared bus mid-operation. See BACKLOG.md
-for the full rationale and history behind each.
+datasheet (DS501-00015), cross-checked against Adafruit's Adafruit_FRAM_SPI reference driver.
+CRC/dual-copy data-integrity recovery lives one layer up in asy_fram_manager.py - this file only
+detects device-ID mismatch, a write-enable latch that didn't set/clear, and a stale write-protect
+assumption, self-healing to a safe state without raising (except __init__()'s/setup()'s one-time
+setup errors).
 """
 
 import asyncio
@@ -81,7 +70,7 @@ class FRAM_SPI(Lockable):
         self._wp = (await self._read_status() & _SR_WP_MASK) == _SR_WP_SET
         if self._wp_pin is not None:
             self._wp_pin.init(self._wp_pin.OUT)
-            self._wp_pin.value(not self._wp)  # WP is active-low (datasheet), see BACKLOG.md
+            self._wp_pin.value(not self._wp)  # WP is active-low (datasheet)
         self.uninitialized = False
         self.pr.one("SPI FRAM Driver Setup complete")
 
@@ -202,7 +191,7 @@ class FRAM_SPI(Lockable):
         return True
 
     async def set_write_protected(self, value: bool) -> bool:
-        # Always protects the entire array (BP0+BP1) - per-block ranges are unused. See BACKLOG.md.
+        # Always protects the entire array (BP0+BP1) - per-block ranges are unused.
         if self.uninitialized:
             self.pr.err("FRAM not initialized, run setup first!")
             return False
@@ -230,7 +219,7 @@ class FRAM_SPI(Lockable):
     def _setup_addr_buffer(self, addr: int, opcode: int) -> bytearray:
         # max_size is trusted as set up by the caller - this class's RDID check is hardwired to
         # one real 8KB chip (0x0000-0x1FFF); a wrong, too-large max_size here would validate
-        # addresses beyond that and let them silently alias on real hardware. See BACKLOG.md.
+        # addresses beyond that and let them silently alias on real hardware.
         if self._max_size > 0xFFFF:  # > 16bit address
             buffer = bytearray(4)
             buffer[1] = (addr >> 16) & 0xFF

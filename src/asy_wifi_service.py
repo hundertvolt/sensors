@@ -1,16 +1,8 @@
-"""Async WiFi connection/hotspot/LED service (asy_conn_time) - not a sensor (no I2C/SPI bus), but
-config-managed the same way as every promoted sensor driver: extends base_classes.py's
-SensorReaderConfig, owns its own config_WIFI.cfg internally. See DRIVER_SPEC.md for the shared
-contract this follows and BACKLOG.md for the full promotion/audit history (exception/blocking
-hardening passes, the hostname schema-cap fix, get_dns_server_ip(), and the _conn_phase
-state-machine consolidation this file uses instead of the hotspot_mode/wlan_connected_once/
-wlan_deactivated boolean trio it replaced).
-
-Shared convention: "attempt" operations (a mode switch, hotspot activation, a connect trigger, ...)
-persist a real errno via self.pr.err_s() and set self.hw_op_failed on a real exception, feeding
-wlan_connect()'s own _error_check() streak. Routine state *observations* (a status()/isconnected()/
-ifconfig() query) degrade silently via self.pr.err() instead, since these legitimately vary/fail on
-every tick. Errno numbering starts at 11 here, same convention as asy_ntp_client.py.
+"""Async WiFi connection/hotspot/LED service. Not a sensor, but config-managed the same way: extends
+base_classes.py's SensorReaderConfig, owns its own config_WIFI.cfg (see DRIVER_SPEC.md). "Attempt"
+operations persist a real errno via self.pr.err_s() and set self.hw_op_failed, feeding
+wlan_connect()'s _error_check() streak; routine state observations degrade silently via
+self.pr.err() instead. errno numbering starts at 11, same convention as asy_ntp_client.py.
 """
 
 import asyncio
@@ -46,7 +38,7 @@ except Exception:
 
 # Schema tuples for ConfigManager.get_*_values() - min/max mirror sensortask-wozi.py's REST bounds,
 # except SSID/PW's min is relaxed to 0 (fresh "" default) and Hostname's max is 32, network.hostname()'s
-# real hard cap, not the REST route's still-open 1-63 (see BACKLOG.md).
+# real hard cap, not the REST route's still-open 1-63.
 _VAL_SSID = const((("SSID", "str", "", 0, 32, None),))
 _VAL_PW = const((("PW", "str", "", 0, 63, None),))
 _VAL_CTRY = const((("Country", "str", "DE", 2, 2, None),))
@@ -59,10 +51,9 @@ WIFI = namedtuple("WIFI", ("Mode", "Connected", "IP", "TS"))
 _STA_DISCONNECT_WAIT_ITERS = const(20)  # 20 * 0.5s = 10s max wait for isconnected() to clear -
 # bounds _disconnect_sta_and_wait()'s loop; a real disconnect() completes far faster than this.
 
-# self._conn_phase - the connection state machine, replacing the hotspot_mode/wlan_connected_once/
-# wlan_deactivated boolean trio (only 4 of their 8 combinations were ever reachable - see BACKLOG.md
-# for the full trace). Not importable as a module attribute once const()-folded (see
-# tests/test_asy_wifi_service.py's own mirrored copy), same tradeoff as every constant here.
+# self._conn_phase - the connection state machine. Not importable as a module attribute once
+# const()-folded (see tests/test_asy_wifi_service.py's own mirrored copy), same tradeoff as every
+# constant here.
 _PHASE_STA_SEEKING = const(0)  # STA mode, has not connected successfully since the last reset
 _PHASE_STA_ESTABLISHED = const(1)  # STA mode, connected at least once since the last reset - live
 # wlan.isconnected() still distinguishes "connected" from "disconnected, retrying every 60s".
@@ -164,7 +155,7 @@ class asy_conn_time(SensorReaderConfig):
     async def get_data(self) -> WIFI:
         # Narrows _get_meas_data()'s generic NamedTuple to this Reader's concrete WIFI, matching
         # asy_ntp_client.py's own convention. Backed by time_counter()'s 1Hz cache push rather than
-        # a live lock-aware query - avoids a transient "unknown" reading mid-mode-switch (see BACKLOG.md).
+        # a live lock-aware query - avoids a transient "unknown" reading mid-mode-switch.
         return await self._get_meas_data()  # type: ignore[return-value]
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
@@ -228,8 +219,7 @@ class asy_conn_time(SensorReaderConfig):
 
     def get_dns_server_ip(self) -> str | None:
         # asy_ntp_client.py's get_dns_server callback - the DHCP-assigned DNS server for
-        # resolve_ipv4() to try first (see BACKLOG.md). Reuses get_wlan_ifconfig()'s own
-        # None-on-failure convention.
+        # resolve_ipv4() to try first. Reuses get_wlan_ifconfig()'s own None-on-failure convention.
         ifcfg = self.get_wlan_ifconfig()
         return None if ifcfg is None else ifcfg[3]
 
@@ -352,10 +342,9 @@ class asy_conn_time(SensorReaderConfig):
                     await self._run_hotspot_mode()
                 else:
                     await self._run_sta_mode()
-                # Consecutive-failure streak over real WLAN-hardware exceptions, independent from
-                # and coarser than connection_failures/conn_fail_to_hotspot's own AP-reachability-
-                # driven hotspot fallback: this one gives up on the whole task (matching a Reader's
-                # read_loop() returning False).
+                # Consecutive-failure streak over real WLAN-hardware exceptions (separate from
+                # connection_failures' AP-reachability fallback): gives up on the whole task,
+                # matching a Reader's read_loop() returning False.
                 if not await self._error_check((None,) if self.hw_op_failed else (1,), _NAME):
                     await self.pr.err_s(
                         _NAME, "Giving up after repeated WLAN hardware failures, restarting task.", errno=17
@@ -412,7 +401,7 @@ class asy_conn_time(SensorReaderConfig):
         leaving_hotspot = self._conn_phase == _PHASE_HOTSPOT
         if not leaving_hotspot:
             # _leave_hotspot_mode() below already lands on this same value via its own transition -
-            # only the plain-STA-reconnect path needs it set here (see BACKLOG.md for the full trace).
+            # only the plain-STA-reconnect path needs it set here.
             self._conn_phase = _PHASE_STA_SEEKING
         self.pr.evt(_NAME, "WLAN Reconnect ausgelöst!")
         await asyncio.sleep(5)  # allow final tasks of calling function

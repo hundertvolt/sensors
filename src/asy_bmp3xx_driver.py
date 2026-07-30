@@ -1,16 +1,7 @@
-"""Async I2C driver for the Bosch BMP384/BMP388/BMP390 pressure/temperature sensor (Sparkfun
-breakout; forced-mode single-shot reads only). BMP3XX_I2C is the sensor-protocol layer (register
-access, calibration, compensation math); BMP3xx_Reader is the asyncio task/config/data-distribution
-layer built on base_classes.py's SensorReaderConfig, the shared shape used by every *_Reader class.
-
-Verified against Bosch's BST-BMP388-DS001/BST-BMP384-DS003 datasheets (datasheets/bmp3xx/) and the
-official BMP3_SensorAPI reference driver - not training memory. See BACKLOG.md's
-"asy_bmp3xx_driver.py -> src/" entry for the full design/verification history.
-
-Shared contract: BMP3XX_I2C methods raise on any hardware/protocol failure rather than returning a
-sentinel, matching asy_i2c_driver.py's own bus-fault carve-out; set_pressure_oversampling()/
-set_temperature_oversampling()/set_filter_coefficient() additionally raise ValueError outside the
-sensor's own discrete oversampling/filter-coefficient domain.
+"""Async I2C driver for the Bosch BMP384/BMP388/BMP390 (Sparkfun breakout, forced-mode reads only).
+BMP3XX_I2C is the protocol layer; BMP3xx_Reader is the asyncio task/config layer (see
+DRIVER_SPEC.md). Verified against BST-BMP388-DS001/BST-BMP384-DS003 (datasheets/bmp3xx/) and the
+official BMP3_SensorAPI reference driver.
 """
 
 import asyncio
@@ -62,7 +53,7 @@ _MEAS_TIMEOUT_MS = const(300)  # datasheet sec 3.9.2: max ~129ms at x32/x32 osr;
 _OSR_SETTINGS = (1, 2, 4, 8, 16, 32)  # pressure and temperature oversampling settings
 # IIR filter coefficients (datasheet sec 4.3.20's CONFIG register: encoding index -> 2^index - 1,
 # not a power of two). Cross-checked against Bosch's reference driver, the Linux kernel IIO driver,
-# and both datasheets - see BACKLOG.md's "asy_bmp3xx_driver.py" entry for the full verification.
+# and both datasheets.
 _IIR_SETTINGS = (0, 1, 3, 7, 15, 31, 63, 127)
 
 _MIN_TRIGGER_SECS = const(1)
@@ -109,8 +100,7 @@ class BMP3xx_Reader(SensorReaderConfig):
         self.base_trigger_event = asyncio.ThreadSafeFlag()
         self.trigger_event = asyncio.ThreadSafeFlag()
         # Bare Timer() is valid on rp2 (id defaults to -1) despite the installed stub package
-        # requiring a positional id - a stub inaccuracy, not a code bug; see BACKLOG.md's Timer
-        # finding.
+        # requiring a positional id - a stub inaccuracy, not a code bug.
         self.trigger_timer = Timer()
         self.trigger_period = LockedValue(int(trigger_sec))
         self.trigger_counter = 0

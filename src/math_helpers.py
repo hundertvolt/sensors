@@ -1,13 +1,8 @@
 """Derived meteorological quantities from raw sensor readings (wet-bulb temperature, dew point,
-barometric pressure correction, absolute/relative humidity conversions).
-
-Shared contract for every function here: returns None - never raises - if an input is None, is
-outside the formula's validated domain (see each function's own comment for its range and
-source), or if the computation fails for any other reason (e.g. a NaN slipping through a sensor
-read). Assumes callers pass the annotated types (float | None) - MicroPython doesn't enforce this
-at runtime, but mypy does at every call site, so this module doesn't duplicate that check itself.
-This is deliberate for unattended, long-running operation: a transient bad reading from a sensor
-must degrade to "no value this cycle," not take down the calling task.
+barometric pressure correction, absolute/relative humidity conversions). Every function returns
+None - never raises - for a None, out-of-domain, or NaN input (see each function's own comment for
+its range/source), so a transient bad reading degrades to "no value this cycle" instead of
+crashing the calling task.
 """
 
 import math
@@ -35,7 +30,7 @@ def wet_bulb_temperature(temperature: float | None, humidity: float | None) -> f
 def dew_point(temperature: float | None, humidity: float | None) -> float | None:
     # Magnus-Tetens dew-point approximation (Sonntag 1990); coeff1/toffs pick the ice- vs
     # water-phase constants. The two branches are independently-fit curves, not one continuous
-    # formula - they disagree by ~1 degC right at the temperature==0 switch; not a bug, see BACKLOG.md.
+    # formula - they disagree by ~1 degC right at the temperature==0 switch; not a bug.
     if temperature is None or humidity is None:
         return None
     if not (-40.0 <= temperature <= 50.0 and 0.1 <= humidity <= 100.0):
@@ -57,7 +52,7 @@ def dew_point(temperature: float | None, humidity: float | None) -> float | None
 def altitude_baro(p0: float | None, dh: float | None, tmean: float | None) -> float | None:
     # Barometric formula: pressure at height offset dh from the p0 reference (callers pass a
     # negative dh to reduce a station reading to sea-level-equivalent pressure, not an altitude).
-    # p0/tmean range matches the BMP388/390 datasheet (its only caller); see BACKLOG.md.
+    # p0/tmean range matches the BMP388/390 datasheet (its only caller).
     if p0 is None or dh is None or tmean is None:
         return None
     if not (300.0 <= p0 <= 1250.0 and -9000.0 <= dh <= 9000.0 and -40.0 <= tmean <= 85.0):

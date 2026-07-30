@@ -1,15 +1,8 @@
-"""Shared base classes for improved-quality/ drivers: async-lock-guarded objects/buffers
-(Lockable, LockableBuffer), lock-protected scalars (LockedCounter, LockedFlag, LockedValue), and
-the sensor-driver base (SensorReader, SensorReaderConfig) with per-sensor error bookkeeping and
-optional JSON config storage.
-
-Shared contract: every method returns a well-defined value and never raises. SensorReader's
-optional `fram` selects in-memory vs. FRAM-backed logging (print_log.py); FRAM tests use the real
-AsyFramManager (asy_fram_manager.py) against tests/_fram_chip_fake.py's simulated chip - see
-BACKLOG.md.
-
-__init__ never calls `self.pr.setup()` (it's sync, setup() isn't) - the caller's own async setup
-must, or FRAM persistence stays inert; in-memory counting still works either way.
+"""Shared base classes: async-lock-guarded objects/buffers (Lockable, LockableBuffer), lock-
+protected scalars (LockedCounter, LockedFlag, LockedValue), and the sensor-driver base
+(SensorReader, SensorReaderConfig) with error bookkeeping and optional JSON config storage. Every
+method returns a well-defined value, never raises. `__init__` never calls `self.pr.setup()` (sync
+vs. async) - the caller's own async setup must, or FRAM persistence stays inert.
 """
 
 import asyncio
