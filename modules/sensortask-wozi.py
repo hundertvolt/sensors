@@ -370,7 +370,7 @@ async def sensor_cmd(request):
         res = await set_sensor_value(res, bmp_reader.set_pressure_oversampling, cfgmgr, getter=bmp_reader.get_pressure_oversampling, default=1, debug=debug)
         res = update_valid_json(req_json, "BMPTempOvers", "int", res, 0, 5, weight_fct=lambda x : 2 ** x, debug=debug)
         res = await set_sensor_value(res, bmp_reader.set_temperature_oversampling, cfgmgr, getter=bmp_reader.get_temperature_oversampling, default=1, debug=debug)
-        res = update_valid_json(req_json, "BMPFiltCoeff", "int", res, 0, 7, special_val=[0], weight_fct=lambda x : 2 ** x, debug=debug)
+        res = update_valid_json(req_json, "BMPFiltCoeff", "int", res, 0, 7, weight_fct=lambda x : 2 ** x - 1, debug=debug)
         res = await set_sensor_value(res, bmp_reader.set_filter_coefficient, cfgmgr, getter=bmp_reader.get_filter_coefficient, debug=debug)
         res = update_valid_json(req_json, "BMPPressOffset", "float", res, -500.0, 500.0, debug=debug)
         res = update_valid_json(req_json, "BMPTempOffset", "float", res, -10.0, 10.0, debug=debug)

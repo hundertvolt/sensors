@@ -69,13 +69,16 @@ debug = False
 watchdog = WDT(timeout=8000)
 cfgmgr = ConfigManager(
     _CFG_FILE_NAME,
-    json.loads(_DEFAULT_CONFIG)
-    | SCD30_Reader.get_default_cfg()
-    | SGP40_Reader.get_default_cfg()
-    | BMP3xx_Reader.get_default_cfg()
-    | asy_conn_time.get_default_cfg(),
+    json.loads(_DEFAULT_CONFIG) | asy_conn_time.get_default_cfg(),
     debug=debug,
 )
+# None of the three promoted sensor Readers contribute to the shared config.json anymore - see
+# BACKLOG.md's sensortask-wozi.py integration notes:
+# - SGP40_Reader/BMP3xx_Reader (src/asy_sgp40_driver.py, src/asy_bmp3xx_driver.py) each own a
+#   private per-sensor config_<NAME>.cfg file via base_classes.py's SensorReaderConfig, and no
+#   longer expose a get_default_cfg() classmethod.
+# - SCD30_Reader (src/asy_scd30_driver.py) has no local config file at all - its params live
+#   on-sensor - so it never had a get_default_cfg() to call in the first place.
 # asy_conn_time: led_pin='LED' for onboard WiFi LED
 conn = asy_conn_time(cfgmgr, conn_fail_to_hotspot=5, hotspot_time_min=8, debug=debug)
 app = Microdot()  # type: ignore[no-untyped-call]
@@ -84,16 +87,21 @@ i2c1 = asy_i2c_driver.I2C(1, 19, 18, frequency=50000)
 spi0 = asy_spi_driver.SPI(0, 2, 3, 4)
 fram = AsyFramManager(spi0, 1, max_size=0x2000, debug=debug)
 sysfunct = SystemService(conn.ntp_issynced, watchdog=watchdog, fram=fram, debug=debug)
-sgp_backup = fram.get_timestamped_chunk(SGP40_Reader.get_params_memsize(), conn.ntp_issynced)
+# fram_storage/fram_ntp_callback replace the old ts_storage= kwarg - SGP40_Reader now carves its
+# own timestamped FRAM chunk internally (VOCAlgorithm.get_params_memsize(), not a class method on
+# SGP40_Reader itself anymore) instead of taking a pre-built chunk from the caller.
 sgp_reader = SGP40_Reader(
     i2c1,
-    cfgmgr,
     sgp_comp_callback,
-    ts_storage=sgp_backup,
+    fram_storage=fram,
+    fram_ntp_callback=conn.ntp_issynced,
     max_i2c_err=_MAX_I2C_ERR,
     debug=debug,
 )
-bmp_reader = BMP3xx_Reader(i2c1, cfgmgr, max_i2c_err=_MAX_I2C_ERR, debug=debug)
+# address defaults to 0x77 (Sparkfun breakout's SDO-high default) - unlike SCD30_Reader/
+# SGP40_Reader's cfgmgr callback-based config, BMP3xx_Reader owns its own ConfigManager
+# internally (base_classes.py's SensorReaderConfig), so the system cfgmgr isn't passed here.
+bmp_reader = BMP3xx_Reader(i2c1, max_i2c_err=_MAX_I2C_ERR, debug=debug)
 scd_reader = SCD30_Reader(i2c0, 8, trigger_sec=3, max_i2c_err=_MAX_I2C_ERR, debug=debug)
 pixel = Neopixel_Signal(
     15,
@@ -411,8 +419,7 @@ async def sensor_cmd(request: Request):
             res,
             0,
             7,
-            special_val=[0],
-            weight_fct=lambda x: 2**x,
+            weight_fct=lambda x: 2**x - 1,
             debug=debug,
         )
         res = await set_sensor_value(
@@ -576,15 +583,25 @@ async def system_status(request: Request):
     else:
         sgpres = sgp_restored
 
-    sgp_fram_crit, sgp_fram_uncrit, sgp_fram_last = await sgp_reader.get_mem_error_counters()
-    SCD30_ErrCnt = await scd_reader.get_error_counter()
-    SGP40_ErrCnt = await sgp_reader.get_error_counter()
-    BMP388_ErrCnt = await bmp_reader.get_error_counter()
+    # get_mem_error_counters() (per-chunk crit/uncrit/last counters) no longer exists on the
+    # promoted SGP40_Reader - superseded by AsyFramManager.get_error_counter(), a single
+    # whole-chip-scope log shared by every driver's FRAM usage (see BACKLOG.md).
+    fram_err_log = await fram.get_error_counter()
+    FRAM_ErrCnt = fram_err_log["FRAM"]["ErrCount"]
+    # base_classes.py's SensorReader.get_error_counter() (used by every promoted *_Reader) returns
+    # print_log.py's get_log() shape - {"<NAME>": {"ErrCount": int, "ErrNum": [...], "ErrType":
+    # [...]}}, not a bare int; extract the count explicitly instead of comparing the whole dict
+    # below, to keep this endpoint's existing flat-int JSON contract unchanged.
+    _scd_err_count = (await scd_reader.get_error_counter())["SCD30"]["ErrCount"]
+    SCD30_ErrCnt = _scd_err_count if isinstance(_scd_err_count, int) else 0
+    _sgp_err_count = (await sgp_reader.get_error_counter())["SGP40"]["ErrCount"]
+    SGP40_ErrCnt = _sgp_err_count if isinstance(_sgp_err_count, int) else 0
+    _bmp_err_count = (await bmp_reader.get_error_counter())["BMP3XX"]["ErrCount"]
+    BMP388_ErrCnt = _bmp_err_count if isinstance(_bmp_err_count, int) else 0
     _task_err_cnt_val = await task_error_counter.get_value()  # never None: only ever incremented from its 0 default
     Task_ErrCnt = 0 if _task_err_cnt_val is None else _task_err_cnt_val
     ErrorStatus = (
-        (sgp_fram_crit > 0)
-        or (sgp_fram_uncrit > 0)
+        (FRAM_ErrCnt > 0)
         or (SCD30_ErrCnt > 0)
         or (BMP388_ErrCnt > 0)
         or (SGP40_ErrCnt > 0)
@@ -602,9 +619,7 @@ async def system_status(request: Request):
         "SGP40_ErrCnt": SGP40_ErrCnt,
         "SGP40_Backup_TS": sgpback,
         "SGP40_Restore_TS": sgpres,
-        "SGP40_MemErr_Critical": sgp_fram_crit,
-        "SGP40_MemErr_Uncritical": sgp_fram_uncrit,
-        "SGP40_MemErr_Last": sgp_fram_last,
+        "FRAM_ErrCnt": FRAM_ErrCnt,
         "BMP388_ErrCnt": BMP388_ErrCnt,
     }
     return system_data

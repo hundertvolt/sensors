@@ -7,6 +7,14 @@ for real against this fake instead of unavailable real hardware - the MicroPytho
 mem8/mem16/mem32/idle/time_pulse_us only). Only implements what these drivers' (and
 system_service.py's) own imports need; not a general-purpose machine stub.
 
+Pin.irq()/trigger_irq() (added for asy_scd30_driver.py, the first IRQ-pin driver reviewed): mirrors
+the Timer/trigger() pattern below - the real handler fires on every matching edge with no way for
+a test to wait on real elapsed time, so trigger_irq() fires it once, deterministically, standing in
+for one real edge interrupt. I2C's read_queue (added for the same driver): a device that talks via
+plain write()/readinto() with no repeated-start register addressing has no `registers` dict entry
+to prime, so readfrom_into() instead pops from this FIFO of byte strings, mirroring SPI's own
+read_queue/_next_read_bytes below.
+
 Timer/WDT/reset/bootloader (added for system_service.py): real rp2 Timers are software-scheduled
 virtual timers that fire their callback from an IRQ context whenever their period elapses, with no
 fixed count and no real return from a callback chain the test can observe mid-flight. This fake
@@ -16,6 +24,16 @@ can reach and manually `.trigger()` even an unstored, fire-and-forget instance (
 system_service.py's own `_timer_sequencer`, which never keeps a reference to the Timer it chains
 through). `reset()`/`bootloader()` real MCU calls never return at all; this fake just records that
 they were invoked instead of actually terminating the test process.
+
+`Timer` is also a second, separate reason this file has to exist beyond I2C/SPI mocking: it's what
+makes `from machine import Timer` in `src/asy_bmp3xx_driver.py` (and, eventually, the other
+`*_Reader` drivers using the same `start_timer()`/`stop_timer()` shape) resolve at all under
+mypy's `src tests` scope (see BACKLOG.md's "Timer mypy resolution" finding) - `tests` isn't on
+`mypy_path`, but mypy still treats every standalone `.py` file inside a directory passed via
+`files` as a top-level module by its own basename, so this file *is* what `machine` resolves to
+for any other checked file in the same run, same as at real runtime via `MICROPYPATH`. Before
+`Timer` existed here, any driver needing it hit "Module has no attribute Timer" under `src tests`
+even though the real `typings/machine.pyi` stub defines it correctly.
 
 Real RP2040 I2C error codes (confirmed against ports/rp2/machine_i2c.c, not guessed): the
 hardware I2C driver only ever raises OSError(errno.EIO) - covers a NAK/no response and any other
@@ -50,6 +68,11 @@ if TYPE_CHECKING:
 class Pin:
     IN = 0
     OUT = 1
+    # Real rp2 values (confirmed against ports/rp2/machine_pin.c: IRQ_RISING maps to the pico-sdk's
+    # GPIO_IRQ_EDGE_RISE=0x08, IRQ_FALLING to GPIO_IRQ_EDGE_FALL=0x04) - asy_scd30_driver.py only
+    # ever passes these back opaquely to irq(), but matching the real bit values costs nothing.
+    IRQ_FALLING = 0x04
+    IRQ_RISING = 0x08
 
     def __init__(self, id: int, mode: int = -1) -> None:
         # Real rp2 Pin() raises for a genuinely invalid id (confirmed against ports/rp2/
@@ -64,6 +87,9 @@ class Pin:
         self.id = id
         self.mode = mode
         self._value = 0
+        self._irq_handler: Callable[[Pin], None] | None = None
+        self._irq_trigger = self.IRQ_FALLING | self.IRQ_RISING
+        self._irq_hard = False
 
     def init(self, mode: int = -1, pull: int = -1) -> None:
         # Real machine.Pin.init(): omitted/-1 args leave the current setting untouched.
@@ -78,11 +104,41 @@ class Pin:
         self._value = 1 if x else 0
         return None
 
+    def irq(
+        self,
+        handler: "Callable[[Pin], None] | None" = None,
+        trigger: int = IRQ_FALLING | IRQ_RISING,
+        *,
+        hard: bool = False,
+    ) -> "Pin":
+        # Real rp2 Pin.irq() (confirmed against ports/rp2/machine_pin.c): a second call replaces
+        # the previous handler/trigger outright rather than stacking, and the real return value is
+        # the IRQ object itself - this fake stands in for that with the Pin instance, since nothing
+        # in this codebase inspects what irq() returns. The real handler fires on every matching
+        # edge until irq() is called again (handler=None or trigger=0 disables it), never just once;
+        # trigger_irq() below is how test code simulates one such edge deterministically, the same
+        # role Timer.trigger() plays for the fake Timer above.
+        self._irq_handler = handler
+        self._irq_trigger = trigger
+        self._irq_hard = hard
+        return self
+
+    def trigger_irq(self) -> None:
+        # No real-hardware equivalent - fires the currently-registered handler once, standing in
+        # for one real edge interrupt. No-op if irq() was never called or was disabled.
+        if self._irq_handler is not None:
+            self._irq_handler(self)
+
 
 class I2C:
     # Registers are a plain dict of (address, reg_addr) -> bytearray, seeded directly by a test
     # via .registers before exercising get_bits/set_bits/get_register_struct/set_register_struct
     # - a real round trip through readfrom_mem/writeto_mem, not a canned return value.
+    #
+    # read_queue is the raw-transaction counterpart (readfrom_into has no register address to key
+    # off of - a driver issuing its own command bytes via writeto() then reading a reply via
+    # readfrom_into(), e.g. asy_sgp40_driver.py's word-oriented protocol): a FIFO of byte strings a
+    # test primes before each expected readfrom_into() call, mirroring SPI's own read_queue below.
     def __init__(self, id: int, *, scl: Pin, sda: Pin, freq: int = 400000, timeout: int = 50000) -> None:
         self.id = id
         self.scl = scl
@@ -93,9 +149,15 @@ class I2C:
         self.deinit_count = 0
         self.log: list[tuple] = []
         self.registers: dict[tuple[int, int], bytearray] = {}
+        self.read_queue: list[bytes] = []
         self.nak_addresses: set[int] = set()  # convenience: EIO (no ACK) on every op to this address
         self.busy = False  # convenience: ETIMEDOUT (bus/clock-stretch timeout) on every op, any address
         self._faults: dict[str, list[Exception]] = {}  # op name -> FIFO queue, one exception per matching call
+        # A device that talks via plain write()/readinto() with no repeated-start register
+        # addressing (e.g. asy_scd30_driver.py's SCD30 - no readfrom_mem/writeto_mem involved at
+        # all) has no `registers` dict to prime; read_queue is a FIFO of byte strings that
+        # readfrom_into() below pops from instead, mirroring SPI's own read_queue/_next_read_bytes.
+        self.read_queue: list[bytes] = []
 
     def inject_fault(self, op: str, exc: Exception, times: int = 1) -> None:
         # Queues `exc` to be raised on the next `times` calls to the named op (readfrom_into,
@@ -127,9 +189,15 @@ class I2C:
             raise queue.pop(0)
         return sorted({addr for addr, _ in self.registers} - self.nak_addresses)
 
+    def _next_read_bytes(self, nbytes: int) -> bytes:
+        data = self.read_queue.pop(0) if self.read_queue else b""
+        return (data + bytes(nbytes))[:nbytes]  # always exactly nbytes, zero-padded/truncated like real hw
+
     def readfrom_into(self, address: int, buf: object, stop: bool = True) -> None:
         self._maybe_raise("readfrom_into", address)
-        self.log.append(("readfrom_into", address, bytes(buf), stop))  # type: ignore[call-overload]
+        data = self._next_read_bytes(len(buf))  # type: ignore[arg-type]
+        buf[:] = data  # type: ignore[index]
+        self.log.append(("readfrom_into", address, data, stop))
 
     def writeto(self, address: int, buf: object, stop: bool = True) -> int:
         self._maybe_raise("writeto", address)
