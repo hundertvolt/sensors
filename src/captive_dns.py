@@ -1,6 +1,6 @@
-"""Captive-portal DNS spoofer for hotspot/AP mode. Called only by async_connect.py's
-DNSServer.run() while the device broadcasts its fallback hotspot; every on-subnet query gets a
-canned A-record pointing back at the AP's own IP, landing any client on the config page.
+"""Captive-portal DNS spoofer for hotspot/AP mode. This file's own DNSServer.run() (started by
+asy_wifi_service.py) runs while the device broadcasts its fallback hotspot; every on-subnet query
+gets a canned A-record pointing back at the AP's own IP, landing any client on the config page.
 
 Malformed/off-subnet/truncated input is dropped, never raised - see BACKLOG.md for the full
 design rationale and review history.

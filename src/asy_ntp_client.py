@@ -251,7 +251,7 @@ class asy_ntp_client(SensorReaderConfig):
     async def _run_ntp_sync_attempt(self, dns_server: str | None) -> "tuple[tuple[int, ...] | None, bool]":
         try:
             network_ok = self.network_available()
-        except Exception as e:  # caller-supplied callback (async_connect.py) - could legitimately misbehave
+        except Exception as e:  # caller-supplied callback - could legitimately misbehave
             await self.pr.wrn_s(_NAME, "network_available() callback failed:", e, wrnno=1)
             network_ok = False
         if not network_ok:

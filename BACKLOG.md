@@ -443,8 +443,11 @@ fire-and-forget instance, matching real fire-and-forget IRQ usage.
 ### `asy_udp_socket.py` + `captive_dns.py`
 
 Async, non-blocking UDP wrapper around one `socket.socket` (cooperative `select.poll` loop, since
-MicroPython's `asyncio` has no built-in UDP-readiness primitive). Two callers: `async_connect.py`'s
-NTP client and `captive_dns.py`'s `DNSServer`.
+MicroPython's `asyncio` has no built-in UDP-readiness primitive). Three callers as of the four-branch
+merge: `asy_ntp_client.py`'s NTP client and `asy_dns_client.py`'s `resolve_ipv4()`, plus
+`captive_dns.py`'s `DNSServer`. (Written up below against the state at the time of this file's own
+promotion, when `async_connect.py` was still the only NTP caller and `asy_dns_client.py` didn't exist
+yet - findings/bug-history text further down is otherwise unaffected.)
 
 Real bugs found and fixed: **the class could not actually send or receive anything** — `sendto()`/
 `write()`/`recvfrom()` each started with `if self.sock is None: return None`, but `self.sock` is only

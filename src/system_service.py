@@ -148,7 +148,8 @@ class SystemService:
         # None if not synced yet or the sync/mktime computation itself failed; caller falls back to random after _NTP_WAIT_TIME.
         try:
             synced = await self.ntp_is_synced()
-        except Exception as e:  # caller-supplied callback (async_connect.py, not itself promoted/audited) - could legitimately misbehave
+        except Exception as e:  # caller-supplied callback - currently wired to asy_ntp_client.py's ntp_issynced
+            # (promoted/audited) in sensortask-wozi.py, but this parameter accepts any Callable, so the guard stays broad
             await self.pr.err_s("NTP sync callback failed:", e, errno=1)
             return None
         if not synced:

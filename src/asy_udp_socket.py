@@ -1,7 +1,7 @@
 """Async, non-blocking UDP wrapper around one socket.socket - cooperative send/receive driven by a
-hand-rolled select.poll loop (MicroPython's asyncio has no built-in UDP-readiness primitive). Two
-callers: async_connect.py's NTP client (mode="client") and captive_dns.py's DNSServer
-(mode="server"). Also usable as `async with AsyUDPSocket(...) as sock:`.
+hand-rolled select.poll loop (MicroPython's asyncio has no built-in UDP-readiness primitive). Three
+callers: asy_ntp_client.py's NTP client and asy_dns_client.py's resolve_ipv4() (both mode="client"),
+and captive_dns.py's DNSServer (mode="server"). Also usable as `async with AsyUDPSocket(...) as sock:`.
 
 Shared contract: every public I/O method (ready, sendto, write, recvfrom, write_and_recvfrom,
 disconnect) returns its documented None-shaped sentinel on OSError/MemoryError - never raises.
