@@ -1933,6 +1933,146 @@ def test_manager_reset_error_counter_clears_history() -> None:
     assert after["FRAM"]["ErrCount"] == 0
 
 
+# ---------------------------------------------------------------------------
+# Plain accessor methods (get_pause()/get_size() on both chunk classes, get_crc_buf() on both
+# buffer classes) - none of these were ever called directly by any test above.
+# ---------------------------------------------------------------------------
+
+
+def test_chunk_get_pause_reflects_the_manager_wide_pause_flag() -> None:
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(4, crc=CRC_Pass())
+    assert chunk is not None
+    assert run(chunk.get_pause()) is False
+    manager.set_pause(True)
+    assert run(chunk.get_pause()) is True
+    manager.set_pause(False)
+
+
+def test_chunk_get_size_returns_the_requested_payload_size() -> None:
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(6, crc=CRC_Pass())
+    assert chunk is not None
+    assert run(chunk.get_size()) == 6
+
+
+def test_timestamped_chunk_get_size_excludes_the_timestamp_field() -> None:
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_timestamped_chunk(6, _synced, crc=CRC_Pass())
+    assert chunk is not None
+    assert run(chunk.get_size()) == 6  # timestamp bytes are internal, not part of the caller's payload
+
+
+def test_chunk_buffer_get_crc_buf_returns_the_trailing_crc_slice() -> None:
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_chunk(4, crc=CRC8())
+    assert chunk is not None
+    buf = chunk.get_buffer()
+    crc_buf = buf.get_crc_buf()
+    assert crc_buf is not None
+    assert len(crc_buf) == CRC8().length()
+
+
+def test_timestamped_chunk_buffer_get_crc_buf_returns_the_trailing_crc_slice() -> None:
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_timestamped_chunk(4, _synced, crc=CRC8())
+    assert chunk is not None
+    buf = chunk.get_buffer()
+    crc_buf = buf.get_crc_buf()
+    assert crc_buf is not None
+    assert len(crc_buf) == CRC8().length()
+
+
+# ---------------------------------------------------------------------------
+# write_into()/read_into() timestamp pack/unpack exception handling - struct.pack_into()/
+# unpack_from() can't actually fail through real use (_TS_FMT's buffer is always allocated at
+# exactly struct.calcsize(_TS_FMT), and utc is always a plain non-negative int), so this
+# monkeypatches asy_fram_manager's own `struct` module reference the same way
+# test_ntp_boot_signature_mktime_overflow_returns_none_and_logs_once (tests/test_system_service.py)
+# fakes `time` for its own otherwise-unreachable branch.
+# ---------------------------------------------------------------------------
+
+
+class _RaisingPackInto:
+    def pack_into(self, fmt: str, buf: object, offset: int, *values: object) -> None:
+        raise ValueError("simulated pack_into failure")
+
+    def unpack_from(self, fmt: str, buf: object, offset: int = 0) -> tuple[int, ...]:
+        import struct as _real_struct
+
+        return _real_struct.unpack_from(fmt, buf, offset)
+
+    def calcsize(self, fmt: str) -> int:
+        import struct as _real_struct
+
+        return _real_struct.calcsize(fmt)
+
+
+def test_write_into_degrades_to_uninit_timestamp_when_pack_into_fails() -> None:
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_timestamped_chunk(4, _synced, crc=CRC_Pass())
+    assert chunk is not None
+    buf = chunk.get_buffer()
+    dbuf = buf.get_data_buf()
+    assert dbuf is not None
+    dbuf[:] = b"data"
+
+    original_struct = asy_fram_manager.struct
+    asy_fram_manager.struct = _RaisingPackInto()  # type: ignore[assignment]
+    try:
+        result = run(chunk.write_into(buf))
+    finally:
+        asy_fram_manager.struct = original_struct
+    # pack_into's own failure is swallowed (errno=82 logged) - the write itself still proceeds
+    # with whatever the tbuf ended up holding, matching this method's own "never raises" contract.
+    assert result[0] is True  # ntp_synced
+    assert result[2] is True  # the FRAM write itself still succeeded
+
+
+class _RaisingUnpackFrom:
+    def pack_into(self, fmt: str, buf: object, offset: int, *values: object) -> None:
+        import struct as _real_struct
+
+        _real_struct.pack_into(fmt, buf, offset, *values)
+
+    def unpack_from(self, fmt: str, buf: object, offset: int = 0) -> tuple[int, ...]:
+        raise ValueError("simulated unpack_from failure")
+
+    def calcsize(self, fmt: str) -> int:
+        import struct as _real_struct
+
+        return _real_struct.calcsize(fmt)
+
+
+def test_read_into_treats_unpack_from_failure_as_an_uninitialized_timestamp() -> None:
+    manager, _chip = make_manager()
+    run(setup_manager(manager))
+    chunk = manager.get_timestamped_chunk(4, _synced, crc=CRC_Pass())
+    assert chunk is not None
+    buf = chunk.get_buffer()
+    dbuf = buf.get_data_buf()
+    assert dbuf is not None
+    dbuf[:] = b"data"
+    assert run(chunk.write_into(buf))[2] is True
+
+    read_buf = chunk.get_buffer()
+    original_struct = asy_fram_manager.struct
+    asy_fram_manager.struct = _RaisingUnpackFrom()  # type: ignore[assignment]
+    try:
+        valid, ts, age = run(chunk.read_into(read_buf))
+    finally:
+        asy_fram_manager.struct = original_struct
+    assert valid is True  # the underlying FRAM read itself still succeeded
+    assert ts is None  # unpack failure treated the same as an uninitialized/never-written timestamp
+    assert age is None
+
+
 if __name__ == "__main__":
     import microtest
 
