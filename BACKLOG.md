@@ -134,6 +134,19 @@ constraints.
 8. BMP390's own datasheet isn't in `datasheets/bmp3xx/` (only BMP384/BMP388 are) — its `0x60` chip
    ID and assumed-identical register map/IIR table couldn't be verified against a real BMP390
    datasheet. Needs the owner to add the datasheet to close this.
+9. `asy_wifi_service.py` never configures `wlan.config(reconnects=...)`, so the RP2040 WLAN driver
+   may retry an STA connection internally forever and never actually settle on
+   `STAT_WRONG_PASSWORD`/`STAT_NO_AP_FOUND`/`STAT_CONNECT_FAIL` — meaning `_poll_sta_connect_status()`'s
+   dedicated handling of those three codes could be effectively unreachable on real hardware, and
+   `connection_failures` may really just be "didn't finish within the poll window," not a genuine
+   driver-reported failure. Trading this away would mean calling `wlan.config(reconnects=0)`, which
+   changes retry behavior in ways only the owner can weigh. Rediscovered during this file's original
+   promotion review; needs an owner call, not a unilateral fix.
+10. Whether a hot-unplugged/replugged I2C or SPI sensor fully recovers is only field-tested at the
+    task-death-and-respawn level (the whole `*_Reader` task dies and gets restarted by the
+    supervisor) — never confirmed as *complete* recovery of the underlying bus/device state itself.
+    Owner-flagged as "may be incomplete," to revisit/harden during the refactor rather than assume
+    solved.
 
 ## Deferred / explicitly out-of-scope work
 
@@ -172,6 +185,27 @@ constraints.
   single-LED dual-duty design, but no legend anywhere. Worth adding, low priority.
 - **FRAM SGP40 "0 = disabled" backup/staleness semantics need user-facing documentation** — the
   behavior itself is intentional (see CLAUDE.md), just undocumented for whoever configures a unit.
+- **`asy_wifi_service.py`'s getters hide two opposite locking contracts under one shape**:
+  `network_available()` requires the caller to already hold `wifi_mode_lock` (documented in-line),
+  while `get_wlan_ifconfig()`/`get_dns_server_ip()`/`get_wlan_rssi()`/`wlan_isconnected()` assume the
+  *caller does not* hold it (checking `.locked()` defensively instead). This exact mismatch already
+  caused one real bug (a fixed `get_dns_server_ip()` always returning `None`) — the underlying
+  inconsistency itself is unfixed, flagged as worth a naming/typing convention if a third such
+  callback is ever added, not urgent enough to redesign now.
+- **`config_manager.py`'s `make_dict()` has a `repr()`-parsing quirk with non-scalar fields**: it
+  splits a namedtuple's `repr()` on `"("`/`","`, so a field whose own value contains one of those
+  characters corrupts the result — a nested-tuple-valued field truncates every subsequent field out
+  of the returned dict silently, and a list-valued field (comma inside `[...]`) produces a garbage
+  key that collapses the whole dict to all-`None` via the outer `except Exception`. Dormant today —
+  every current config namedtuple (`SGP40`/`BMP3XX`/`NTP`/`SCD30`/`WIFI`) is flat scalar fields only
+  — but a real landmine for whoever adds a list/nested-tuple config field next; check this function
+  first if a promoted driver's config read-back silently comes back wrong/empty after such a change.
+- **`config_manager.py`'s three defensive `TypeError`/`AttributeError` catches** (non-string
+  filename, non-iterable `keys`, non-dict `data` passed to `write_config()`) are currently dead
+  weight — nothing in `src/`/`improved-quality/` calls these with malformed input today. Owner's
+  stated rationale for keeping them anyway: once the Microdot REST layer feeds real (untrusted)
+  request data into these paths, they stop being defensive-only and become load-bearing. Revisit
+  once that wiring exists, not before.
 
 ## `src/` promotion findings
 

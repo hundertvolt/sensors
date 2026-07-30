@@ -452,3 +452,5 @@ need to go deeper:
     the cause.
   - FRAM's 8KB allocation has plenty of headroom over SGP40's current ~250-byte usage for future
     FRAM-backed features.
+  - `asy_uart_driver.py` intentionally does not expose hardware flow control (`rts`/`cts`/`flow`) —
+    confirmed directly, not planned for the future either. Not a gap to revisit unprompted.
