@@ -440,6 +440,13 @@ def test_cancel_read_timeout_unblocks_a_pending_wait() -> None:
 def test_read_returns_bytes_once_ready() -> None:
     uart = make_uart()
     fake(uart).feed_rx(b"hello")
+    # _StepPoller, not the real select.poll() init() registers by default: the real poll/ioctl
+    # dispatch against tests/machine.py's pure-Python fake proved unreliable specifically on GitHub
+    # Actions runners (never locally) - see CLAUDE.md's "CI hang investigation" note. This and every
+    # other test below that used to rely on that path now use the same bounded test double already
+    # used elsewhere in this file - they're testing read/write/CRC assembly logic, not the poll/
+    # ioctl integration itself.
+    uart.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]
 
     async def scenario() -> bytes | None:
         async with uart:
@@ -464,6 +471,7 @@ def test_read_returns_none_on_timeout() -> None:
 def test_read_with_explicit_nbytes_reads_exactly_that_many_bytes() -> None:
     uart = make_uart()
     fake(uart).feed_rx(b"hello world")
+    uart.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]  # see test_read_returns_bytes_once_ready's comment
 
     async def scenario() -> bytes | None:
         async with uart:
@@ -476,6 +484,7 @@ def test_read_with_explicit_nbytes_reads_exactly_that_many_bytes() -> None:
 def test_readinto_fills_buffer_and_returns_count() -> None:
     uart = make_uart()
     fake(uart).feed_rx(b"hi")
+    uart.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]  # see test_read_returns_bytes_once_ready's comment
     buf = bytearray(4)
 
     async def scenario() -> int | None:
@@ -490,6 +499,7 @@ def test_readinto_fills_buffer_and_returns_count() -> None:
 def test_readinto_with_explicit_nbytes_reads_exactly_that_many_bytes() -> None:
     uart = make_uart()
     fake(uart).feed_rx(b"hello world")
+    uart.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]  # see test_read_returns_bytes_once_ready's comment
     buf = bytearray(11)
 
     async def scenario() -> int | None:
@@ -504,6 +514,7 @@ def test_readinto_with_explicit_nbytes_reads_exactly_that_many_bytes() -> None:
 def test_readline_returns_bytes_once_ready() -> None:
     uart = make_uart()
     fake(uart).feed_rx(b"line\n")
+    uart.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]  # see test_read_returns_bytes_once_ready's comment
 
     async def scenario() -> bytes | None:
         async with uart:
@@ -552,6 +563,7 @@ def test_read_until_complete_default_crc_is_pass_through() -> None:
     uart = make_uart()
     assert isinstance(uart.crc, CRC_Pass)
     fake(uart).feed_rx(b"raw")
+    uart.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]  # see test_read_returns_bytes_once_ready's comment
 
     async def scenario() -> bytearray | None:
         async with uart:
@@ -566,6 +578,7 @@ def test_read_until_complete_strips_and_verifies_real_crc() -> None:
     framed = run(CRC16().add(bytearray(b"hello")))
     assert framed is not None
     fake(uart).feed_rx(bytes(framed))
+    uart.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]  # see test_read_returns_bytes_once_ready's comment
 
     async def scenario() -> bytearray | None:
         async with uart:
@@ -581,6 +594,7 @@ def test_read_until_complete_bad_crc_returns_none() -> None:
     assert framed is not None
     framed[-1] ^= 0xFF  # corrupt the trailing CRC byte
     fake(uart).feed_rx(bytes(framed))
+    uart.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]  # see test_read_returns_bytes_once_ready's comment
 
     async def scenario() -> bytearray | None:
         async with uart:
@@ -607,6 +621,7 @@ def test_readinto_until_complete_fills_buffer_and_strips_crc() -> None:
     framed = run(CRC16().add(bytearray(b"world")))
     assert framed is not None
     fake(uart).feed_rx(bytes(framed))
+    uart.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]  # see test_read_returns_bytes_once_ready's comment
     buf = bytearray(16)
 
     async def scenario() -> int | None:
@@ -661,6 +676,7 @@ def test_readline_until_complete_survives_an_empty_readline_without_crashing() -
         return real_readline()
 
     fk.readline = patched_readline  # type: ignore[method-assign]
+    uart.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]  # see test_read_returns_bytes_once_ready's comment
 
     async def scenario() -> bytearray | None:
         async with uart:
@@ -692,6 +708,7 @@ def test_write_empty_message_succeeds_without_touching_the_bus() -> None:
 
 def test_write_default_crc_is_pass_through() -> None:
     uart = make_uart()
+    uart.poller = _StepPoller([select.POLLOUT])  # type: ignore[assignment]  # see test_read_returns_bytes_once_ready's comment
 
     async def scenario() -> bool:
         async with uart:
@@ -704,6 +721,7 @@ def test_write_default_crc_is_pass_through() -> None:
 
 def test_write_frames_with_configured_crc() -> None:
     uart = make_uart(crc=CRC16())
+    uart.poller = _StepPoller([select.POLLOUT])  # type: ignore[assignment]  # see test_read_returns_bytes_once_ready's comment
 
     async def scenario() -> bool:
         async with uart:
@@ -763,6 +781,7 @@ def test_write_waits_until_tx_becomes_writable() -> None:
 
 def test_writefrom_frames_with_crc_in_place() -> None:
     uart = make_uart(crc=CRC16())
+    uart.poller = _StepPoller([select.POLLOUT])  # type: ignore[assignment]  # see test_read_returns_bytes_once_ready's comment
     buf = bytearray(b"hello" + b"\x00" * 10)  # extra room for the trailing CRC
 
     async def scenario() -> bool:
@@ -798,6 +817,7 @@ def test_write_retries_after_a_short_write_until_everything_is_sent() -> None:
     # accept at most 3 bytes, so a 7-byte message needs 3 rounds (3+3+1) to fully send.
     uart = make_uart()
     fake(uart).write_limit = 3
+    uart.poller = _StepPoller([select.POLLOUT])  # type: ignore[assignment]  # see test_read_returns_bytes_once_ready's comment
 
     async def scenario() -> bool:
         async with uart:
@@ -815,6 +835,7 @@ def test_write_returns_false_when_uart_write_returns_none() -> None:
     # accepting anything at all, matching real MP_EAGAIN -> None (see module docstring).
     uart = make_uart()
     fake(uart).write_limit = 0
+    uart.poller = _StepPoller([select.POLLOUT])  # type: ignore[assignment]  # see test_read_returns_bytes_once_ready's comment
 
     async def scenario() -> bool:
         async with uart:
@@ -828,6 +849,7 @@ def test_write_returns_false_when_uart_write_returns_none() -> None:
 def test_writefrom_retries_after_a_short_write_until_everything_is_sent() -> None:
     uart = make_uart(crc=CRC16())
     fake(uart).write_limit = 4
+    uart.poller = _StepPoller([select.POLLOUT])  # type: ignore[assignment]  # see test_read_returns_bytes_once_ready's comment
     buf = bytearray(b"hello" + b"\x00" * 10)
 
     async def scenario() -> bool:
@@ -1041,6 +1063,7 @@ def test_read_until_complete_returns_none_on_crc_check_memoryerror() -> None:
     assert framed is not None
     fake(uart).feed_rx(bytes(framed))
     uart.crc = _MemoryErrorCRC(CRC16())  # type: ignore[assignment]
+    uart.poller = _StepPoller([select.POLLIN])  # type: ignore[assignment]  # see test_read_returns_bytes_once_ready's comment
 
     async def scenario() -> bytearray | None:
         async with uart:
