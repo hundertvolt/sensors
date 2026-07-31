@@ -1,18 +1,8 @@
 """Async wrapper around machine.SPI: SPI (bus primitives) plus SPIDevice (per-device, lock-scoped
-CS-pin wrapper). Sole consumer: asy_fram_driver.py's FRAM_SPI.
-
-Contract: a method returns None (or no-ops) only for a non-hardware failure - an uninitialized/
-deinitialized bus, or a mismatched write_readinto() buffer pair. Unlike I2C, real RP2040 SPI
-transfers have no error return at all once the bus is constructed (extmod/machine_spi.c) - no
-ACK/NAK concept, so write()/readinto() genuinely never raise. write_readinto() is the exception:
-machine.SPI.write_readinto() raises ValueError for mismatched buffer lengths, caught here and
-turned into None (mirrors asy_i2c_driver.py's malformed-reg_format handling).
-
-One-time setup is exempt from that contract and allowed to raise: SPI.__init__()/init() and
-SPIDevice.__init__() construct real Pin/machine.SPI objects (ValueError for a bad pin/port
-number); SPI.configure() can raise NotImplementedError for firstbit=SPI.LSB (rp2 only implements
-MSB, confirmed against ports/rp2/machine_spi.c) or RuntimeError if called on an uninitialized or
-unlocked bus - all programmer-error guards, not operational failures.
+CS-pin wrapper). Sole consumer: asy_fram_driver.py's FRAM_SPI. Unlike I2C, real RP2040 SPI transfers
+have no ACK/NAK concept once the bus is constructed, so write()/readinto() never raise;
+write_readinto() is the one exception (ValueError on mismatched buffer lengths, caught and turned
+into None). One-time setup (__init__/init(), configure()) is exempt and may raise.
 """
 
 import asyncio
@@ -119,11 +109,6 @@ class SPIDevice(Lockable):
         self.firstbit = firstbit
         self.uninitialized = True  # cs_pin isn't configured as an output until setup() runs
 
-    async def setup(self) -> None:
-        self.cs_pin.init(self.cs_pin.OUT)
-        self.cs_pin.value(not self.cs_active_value)
-        self.uninitialized = False
-
     async def __aenter__(self) -> "SPIDevice":
         # Pin.value() writes the GPIO register unconditionally regardless of direction, so
         # entering before setup() would silently fail to assert CS rather than raise.
@@ -158,6 +143,11 @@ class SPIDevice(Lockable):
         self.cs_pin.value(not self.cs_active_value)
         await asyncio.sleep(0.001)
         return await super().__aexit__(exc_type, exc_val, exc_tb)
+
+    async def setup(self) -> None:
+        self.cs_pin.init(self.cs_pin.OUT)
+        self.cs_pin.value(not self.cs_active_value)
+        self.uninitialized = False
 
     async def write(self, buf: bytes | bytearray | memoryview) -> None:
         self.spi.write(buf)

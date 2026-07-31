@@ -1,11 +1,8 @@
 """Generic system-housekeeping service shared by every sensortask-*.py device: uptime, a one-per-
-boot boot signature (NTP or random fallback), reboot/reboot-to-bootloader with FRAM storage-pause
-coordination, timed storage pause, the staggered driver-startup sequence, and the task supervisor
-loop (restart dead tasks, decay a failure counter, feed the watchdog, reboot past budget).
-
-Contract: every method returns a well-defined value and never raises - including caller-supplied
-callbacks/starters this file doesn't control. reboot_system()/reboot_bootloader() deliberately
-trigger a real reset after _RESET_DELAY; that's the intent, not a failure to guard against.
+boot boot signature, reboot/reboot-to-bootloader with FRAM storage-pause coordination, the
+staggered driver-startup sequence, and the task supervisor loop (restart dead tasks, decay a
+failure counter, feed the watchdog). Every method returns a well-defined value, never raises -
+reboot_system()/reboot_bootloader()'s real reset after _RESET_DELAY is the intent, not a failure.
 """
 
 import asyncio
@@ -70,28 +67,8 @@ class SystemService:
         self.boot_signature = LockedCounter(init_value=None, max_val=0xFFFFFFFF)
         self.watchdog = watchdog
         # Set when _reboot()'s reset_timer can't be armed, so the supervisor loop stops feeding the
-        # watchdog and lets it reset us instead (one-way, see BACKLOG.md).
+        # watchdog and lets it reset us instead (one-way).
         self._force_watchdog_starve = False
-
-    def start_asy_uptime_counter(self) -> asyncio.Task[None]:
-        evtloop = asyncio.get_event_loop()
-        return evtloop.create_task(self.status_counter())
-
-    def start_uptime_timer(self) -> None:
-        try:
-            self.uptime_timer.init(period=1000, mode=Timer.PERIODIC, callback=lambda b: self.uptime_event.set())
-        except OSError as e:  # alarm-pool exhaustion (ENOMEM) - degrades gracefully rather than rebooting;
-            # only uptime/boot-signature stay unresolved this boot (see BACKLOG.md).
-            self.pr.err("Could not arm uptime timer:", e)
-
-    def stop_uptime_timer(self) -> None:
-        self.uptime_timer.deinit()
-
-    def get_task_starters(self) -> "list[Callable[[], asyncio.Task[Any]]]":
-        return [self.start_asy_uptime_counter]
-
-    def get_timer_starters(self) -> "list[Callable[[], None]]":
-        return [self.start_uptime_timer]
 
     def _reboot(self, message: str, action: "Callable[[], None]") -> None:
         self.reset_timer.deinit()
@@ -103,52 +80,16 @@ class SystemService:
         try:
             self.reset_timer.init(period=_RESET_DELAY * 1000, mode=Timer.ONE_SHOT, callback=lambda b: action())
         except OSError as e:  # alarm-pool exhaustion (ENOMEM) - falls back to the same watchdog-starve
-            # backstop start_and_check_tasks() already uses past _TASK_FAIL_MAX (see BACKLOG.md).
+            # backstop start_and_check_tasks() already uses past _TASK_FAIL_MAX.
             self.pr.err("Could not arm reset timer, stopping watchdog feed instead:", e)
             self._force_watchdog_starve = True
-
-    def reboot_system(self) -> None:
-        self._reboot("Reboot triggered", system_reset)
-
-    def reboot_bootloader(self) -> None:
-        self._reboot("Reboot into bootloader triggered", system_bootloader)
-
-    def pause_permanent_storage(self, duration: int) -> None:
-        if self.storage_pause is not None:
-            duration = min(max(duration, 0), _MAX_STORAGE_PAUSE)
-            self.storage_timer.deinit()
-            if duration == 0:
-                self.pr.evt("Storage immediately unpaused.")
-                self.storage_pause(False)
-            else:
-                self.pr.evt("Storage paused for", duration, "seconds.")
-                self.storage_pause(True)
-                storage_pause = self.storage_pause  # local capture: mypy can't narrow a closed-over self attribute
-                try:
-                    self.storage_timer.init(
-                        period=duration * 1000,
-                        mode=Timer.ONE_SHOT,
-                        callback=lambda b: storage_pause(False),
-                    )
-                except OSError as e:  # alarm-pool exhaustion (ENOMEM) - without the auto-unpause timer,
-                    # storage would stay paused forever; safer to abort the pause than risk that.
-                    self.pr.err("Could not arm auto-unpause timer, aborting pause:", e)
-                    storage_pause(False)
-
-    async def get_uptime(self) -> int:
-        value = await self.uptime.get_value()  # never None: only ever set_value(0)/increment(), never a None sentinel
-        return 0 if value is None else value
-
-    async def get_boot_signature(self) -> int | None:
-        # None until resolved; then a UTC timestamp if NTP synced, else random after _NTP_WAIT_TIME -
-        # stable for the rest of this boot, so a later change means a reboot happened.
-        return await self.boot_signature.get_value()
 
     async def _ntp_boot_signature(self) -> int | None:
         # None if not synced yet or the sync/mktime computation itself failed; caller falls back to random after _NTP_WAIT_TIME.
         try:
             synced = await self.ntp_is_synced()
-        except Exception as e:  # caller-supplied callback (async_connect.py, not itself promoted/audited) - could legitimately misbehave
+        except Exception as e:  # caller-supplied callback - currently wired to asy_ntp_client.py's ntp_issynced
+            # (promoted/audited) in sensortask-wozi.py, but this parameter accepts any Callable, so the guard stays broad
             await self.pr.err_s("NTP sync callback failed:", e, errno=1)
             return None
         if not synced:
@@ -158,27 +99,6 @@ class SystemService:
         except (OverflowError, OSError) as e:  # rp2's mktime() raises OverflowError past its ~2037 32-bit epoch range
             await self.pr.err_s("Computing boot signature timestamp failed:", e, errno=2)
             return None
-
-    async def status_counter(self) -> None:
-        await self.uptime.set_value(0)
-        await self.boot_signature.set_value(None)
-        while True:
-            await self.uptime_event.wait()
-            uptime = await self.uptime.increment()
-            self.pr.all("System uptime incremented to", uptime)
-            if self.start_time_set:
-                continue
-            utc = await self._ntp_boot_signature()
-            if utc is not None:
-                await self.boot_signature.set_value(utc)
-                self.pr.one("System boot signature set by NTP.")
-                self.start_time_set = True
-            elif uptime >= _NTP_WAIT_TIME:
-                # get_rand_32()-seeded (pico-sdk pico_rand, real ring-oscillator entropy) - unique
-                # per boot, not a fixed/repeatable seed.
-                await self.boot_signature.set_value(random.getrandbits(32))
-                self.pr.one("System boot signature set by random number.")
-                self.start_time_set = True
 
     def _timer_sequencer(self, timers: "list[Callable[[], None]]", counter: int = 0) -> None:
         try:
@@ -206,25 +126,30 @@ class SystemService:
         self.pr.one("All timers running.")
         self.timers_running.set()
 
-    async def start_timers(self, timers: "list[Callable[[], None]]") -> None:
-        if not timers:  # nothing to sequence - avoid _timer_sequencer's timers[0] on an empty list
-            self.timers_running.set()
-            return
-        self._timer_sequencer(timers, counter=0)
-        await self.timers_running.wait()
-
-    async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
-        return await self.pr.get_log("Tasks")
-
-    async def reset_error_counter(self) -> None:
-        await self.pr.reset()
-
     async def _start_task(self, starter: "Callable[[], asyncio.Task[Any]]", n: int) -> "asyncio.Task[Any] | None":
         try:
             return starter()
         except Exception as e:  # driver-supplied starter (get_task_starters()) - could legitimately misbehave
             await self.pr.err_s("Task starter", n, "failed to start:", e, errno=3)
             return None
+
+    def start_asy_uptime_counter(self) -> asyncio.Task[None]:
+        evtloop = asyncio.get_event_loop()
+        return evtloop.create_task(self.status_counter())
+
+    def start_uptime_timer(self) -> None:
+        try:
+            self.uptime_timer.init(period=1000, mode=Timer.PERIODIC, callback=lambda b: self.uptime_event.set())
+        except OSError as e:  # alarm-pool exhaustion (ENOMEM) - degrades gracefully rather than rebooting;
+            # only uptime/boot-signature stay unresolved this boot.
+            self.pr.err("Could not arm uptime timer:", e)
+
+    async def start_timers(self, timers: "list[Callable[[], None]]") -> None:
+        if not timers:  # nothing to sequence - avoid _timer_sequencer's timers[0] on an empty list
+            self.timers_running.set()
+            return
+        self._timer_sequencer(timers, counter=0)
+        await self.timers_running.wait()
 
     async def start_and_check_tasks(self, task_starters: "list[Callable[[], asyncio.Task[Any]]]") -> None:
         await self.pr.setup()  # required for all logged warnings and errors
@@ -260,3 +185,76 @@ class SystemService:
                 return
 
             await asyncio.sleep(_TASK_CHECK_TIME)
+
+    def get_task_starters(self) -> "list[Callable[[], asyncio.Task[Any]]]":
+        return [self.start_asy_uptime_counter]
+
+    def get_timer_starters(self) -> "list[Callable[[], None]]":
+        return [self.start_uptime_timer]
+
+    async def get_uptime(self) -> int:
+        value = await self.uptime.get_value()  # never None: only ever set_value(0)/increment(), never a None sentinel
+        return 0 if value is None else value
+
+    async def get_boot_signature(self) -> int | None:
+        # None until resolved; then a UTC timestamp if NTP synced, else random after _NTP_WAIT_TIME -
+        # stable for the rest of this boot, so a later change means a reboot happened.
+        return await self.boot_signature.get_value()
+
+    async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
+        return await self.pr.get_log("Tasks")
+
+    def stop_uptime_timer(self) -> None:
+        self.uptime_timer.deinit()
+
+    def reboot_system(self) -> None:
+        self._reboot("Reboot triggered", system_reset)
+
+    def reboot_bootloader(self) -> None:
+        self._reboot("Reboot into bootloader triggered", system_bootloader)
+
+    def pause_permanent_storage(self, duration: int) -> None:
+        if self.storage_pause is not None:
+            duration = min(max(duration, 0), _MAX_STORAGE_PAUSE)
+            self.storage_timer.deinit()
+            if duration == 0:
+                self.pr.evt("Storage immediately unpaused.")
+                self.storage_pause(False)
+            else:
+                self.pr.evt("Storage paused for", duration, "seconds.")
+                self.storage_pause(True)
+                storage_pause = self.storage_pause  # local capture: mypy can't narrow a closed-over self attribute
+                try:
+                    self.storage_timer.init(
+                        period=duration * 1000,
+                        mode=Timer.ONE_SHOT,
+                        callback=lambda b: storage_pause(False),
+                    )
+                except OSError as e:  # alarm-pool exhaustion (ENOMEM) - without the auto-unpause timer,
+                    # storage would stay paused forever; safer to abort the pause than risk that.
+                    self.pr.err("Could not arm auto-unpause timer, aborting pause:", e)
+                    storage_pause(False)
+
+    async def status_counter(self) -> None:
+        await self.uptime.set_value(0)
+        await self.boot_signature.set_value(None)
+        while True:
+            await self.uptime_event.wait()
+            uptime = await self.uptime.increment()
+            self.pr.all("System uptime incremented to", uptime)
+            if self.start_time_set:
+                continue
+            utc = await self._ntp_boot_signature()
+            if utc is not None:
+                await self.boot_signature.set_value(utc)
+                self.pr.one("System boot signature set by NTP.")
+                self.start_time_set = True
+            elif uptime >= _NTP_WAIT_TIME:
+                # get_rand_32()-seeded (pico-sdk pico_rand, real ring-oscillator entropy) - unique
+                # per boot, not a fixed/repeatable seed.
+                await self.boot_signature.set_value(random.getrandbits(32))
+                self.pr.one("System boot signature set by random number.")
+                self.start_time_set = True
+
+    async def reset_error_counter(self) -> None:
+        await self.pr.reset()

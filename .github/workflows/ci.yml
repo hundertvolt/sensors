@@ -19,6 +19,7 @@ jobs:
     # plain `scripts/lint.sh`/`scripts/typecheck.sh` checks locally (still full-scope: see
     # scripts/typecheck.sh's `mypy "$@"` and ruff's own CLI-args-override-config behavior).
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - name: Install uv
@@ -33,7 +34,30 @@ jobs:
   unit-tests:
     # Tests run under a real MicroPython Unix-port interpreter, not CPython - see
     # BACKLOG.md's "Self-contained venv via uv" testing requirement and tests/README.md.
+    #
+    # needs: lint-and-typecheck - serializes the two jobs in this workflow instead of letting them
+    # run in parallel (the previous default). This dates from an earlier phase of the CI-hang
+    # investigation, when the leading theory was that concurrent job load on GitHub's shared
+    # runners caused the hang; that theory was wrong (see CLAUDE.md's "CI hang investigation" note
+    # for the real root cause and fix). Job sequencing didn't fix the hang and isn't required for
+    # it, but it's kept anyway - cheap, harmless, and removes one more source of self-inflicted
+    # concurrency as a standing precaution, per the project owner's direction that slower is fine
+    # but hanging never is.
+    #
+    # timeout-minutes is a job-level backstop, not the primary defense against hangs -
+    # scripts/test.sh itself wraps every individual test file in a per-file timeout (with two
+    # retries; see scripts/test.sh's own comment on that and on why it, like this job sequencing,
+    # turned out not to be what actually fixed the hang). That inner per-file timeout means any
+    # future hang would surface as a fast, attributable failure within minutes instead of silently
+    # consuming the whole job; timeout-minutes here only guards against a genuinely pathological
+    # run (many files hanging at once) rather than being the only thing standing between a stuck
+    # test and GitHub's own 360-minute hard limit (the scenario that produced the originally-
+    # observed 6-hour hang before timeout-minutes existed - see CLAUDE.md's "CI hang investigation"
+    # note). With a warm toolchain cache, a healthy run takes ~8-9 minutes total (plain + coverage
+    # passes combined - confirmed by direct local measurement).
+    needs: lint-and-typecheck
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - name: Install uv

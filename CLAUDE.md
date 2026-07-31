@@ -29,7 +29,7 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
     is explicitly meant to move the version target forward to whatever is the most recent *stable*
     release at that time (MicroPython, pico-sdk, picotool, Microdot) and to actively use relevant
     improvements/new features those releases introduced — not just reproduce 1.26-era behavior
-    under a newer version number. See BACKLOG.md's "Decided for the refactor" section.
+    under a newer version number.
   - **MicroPython 1.26 already bundles pico-sdk 2.1.1 as its internal `ports/rp2` submodule** —
     confirmed via web search, not training-data memory. Since pico-sdk 2.0.0, a standalone
     `picotool` build must match the pico-sdk major.minor version it's used against (enforced via
@@ -46,6 +46,40 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
   - Pico W's littlefs partition (~848KB) is smaller than plain Pico's (~1.37MB) because Pico W's
     firmware image is larger (CYW43 driver + WiFi/BT firmware blobs baked in) — the filesystem
     occupies whatever flash remains after the firmware image, not a fixed per-board reservation.
+  - **A soft `machine.Timer` callback (the default — no code in this repo passes `hard=True`) can
+    be silently dropped, not just delayed.** Confirmed against real `py/scheduler.c`/
+    `shared/runtime/mpirq.c`/`ports/rp2/machine_timer.c` source: firing dispatches via
+    `mp_sched_schedule()`, which returns `False` and drops the callback if MicroPython's
+    fixed-depth scheduler queue (`MICROPY_SCHEDULER_DEPTH=8` on rp2, shared by every soft
+    timer/IRQ on the device) is already full — no exception anywhere in that chain, and no way for
+    Python code to detect a dropped vs. not-yet-run callback. A periodic timer self-heals on the
+    next tick; a one-shot timer does not fire again. A software timeout to guard against this was
+    considered for `system_service.py`'s two exposed call sites (the reboot-reset timer,
+    `start_timers()`'s chained sequencer) and rejected: it would just be a second, uncoordinated
+    clock racing the real hardware watchdog every real deployment already arms, and the scenario it
+    defends against (no watchdog configured) is test-only. Don't re-propose a software-timeout
+    mitigation for this without a materially different justification.
+  - **`[x] * n` (list repeat) can segfault the whole interpreter process, not just raise, for n in
+    roughly 2⁶¹–2⁶³** — confirmed by direct reproduction (`[0] * (2**62)` → SIGSEGV, no `try/except`
+    catches it). Below ~2⁶¹ it raises `MemoryError` like `bytearray(n)`; at/above 2⁶³ it raises
+    `OverflowError`; the gap in between is the dangerous range, likely from the repeat's internal
+    `n * sizeof(pointer)` byte-count multiplication overflowing before being bounds-checked (`bytearray`
+    has no such intermediate multiplication, hence no gap). Any new code allocating a
+    list/deque/buffer sized from external or caller-supplied input must clamp the size *before* the
+    allocation, not just catch `MemoryError` reactively — see `base_classes.py`'s `LockableBuffer`/
+    `print_log.py`'s `PrintLogHistory` for the established clamp-then-allocate pattern.
+  - **`machine.Timer.init()` can raise `OSError(ENOMEM)` if the RP2040's alarm pool is exhausted** —
+    confirmed against real `ports/rp2/machine_timer.c` source. Every `Timer.init()` call site in this
+    codebase must handle it (degrade gracefully if a safe fallback exists, otherwise let the failure
+    stay isolated to whatever that one timer was for) — see `system_service.py` for the established
+    pattern. `Timer()`'s bare constructor and `Timer.deinit()` never allocate/raise; `WDT.feed()` is a
+    bare register write and cannot raise either.
+  - **`MemoryError` is not an `OSError` subclass in MicroPython** — an `except OSError:` alone is
+    blind to allocation failure; anywhere an `OSError` is caught around a call that could also
+    plausibly exhaust memory, catch `(OSError, MemoryError)` instead.
+  - **`struct.pack()`/`pack_into()` silently zero-pad or truncate on a value/argument-count
+    mismatch instead of raising**, unlike CPython. Don't rely on a mismatch surfacing as an
+    exception; validate shape before packing if it matters.
 - **Always check current MicroPython and Microdot documentation before asserting how an API
   behaves** — do not rely on training-data memory for either. This has already caught real
   discrepancies once; treat it as a standing requirement for every session, not a one-time step.
@@ -58,13 +92,22 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
   explicitly asked to have questioned and replaced (confirmed directly, not inferred) — they've
   been retired in favor of root-level `pyproject.toml` + `scripts/lint.sh`/`scripts/typecheck.sh`
   (see "Code quality tooling" below). Source files elsewhere in `improved-quality/` remain
-  read-only context until the refactor itself starts.
+  read-only context until the refactor itself starts. **The project owner can authorize a scoped
+  exception for a severity-justified fix** (precedent: the `ConfigManager`/`LockedValue`
+  wrong-module-import bug that would have crash-looped every deployed unit's boot) — this is a
+  standing, repeatable exception path, not a one-off; it still requires the owner's explicit
+  authorization each time, scoped narrowly to the specific fix, not a general license to edit
+  `improved-quality/` more broadly.
 - **`src/` is where files land once they're fully reviewed and tested** — formula/logic
   correctness checked, input validation and exception-safety audited, unit tests written and
   passing (see "Code quality tooling" below and `tests/README.md`), unlike `improved-quality/`'s
   WIP files above. **`src/README.md` is the full checklist** for what "fully reviewed and tested"
   actually requires — apply it to every file that makes this move, not just whichever ones already
-  have. Files in `src/` aren't automatically re-wired into any driver's actual import path for a
+  have. **For a new sensor driver specifically, `DRIVER_SPEC.md` (repo root) is the shared
+  architecture/interface spec** extracted from the three drivers already in `src/` — what shape
+  the code should take (layering, naming, error handling, config schema, ...), separate from
+  `src/README.md`'s "is it good enough to move" checklist. Files in `src/` aren't automatically
+  re-wired into any driver's actual import path for a
   real firmware build just by moving there — `improved-quality/` files keep importing them by
   their old unqualified name unchanged (e.g. `import math_helpers`, `from crc_checks import ...`),
   which still resolves correctly both because MicroPython's frozen-module namespace is flat (it
@@ -97,7 +140,7 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
 - **No unit tests against the current (deployed, pre-refactor) codebase — `python/`, `modules/`.**
   The agreed plan is: fully understand the current system first, confirm what's already
   transferred into `improved-quality/`, and write tests as part of that refactor — not before, and
-  not against the current code. This does **not** contradict BACKLOG.md's detailed testing
+  not against the current code. This does **not** contradict `tests/README.md`'s testing
   requirements (tests under a real MicroPython Unix-port interpreter, `uv`-managed venv, mocking
   boundary, etc.) — those describe what the *refactored* code must eventually have. **First
   concrete instance**: `src/math_helpers.py` has a full `tests/test_math_helpers.py` suite,
@@ -106,13 +149,48 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
   all tests indefinitely.
 - **Don't touch `sensors/config.json`-equivalent files or commit any real credentials.** A
   `.gitignore` covers per-device config/build artifacts, but still be deliberate about what you
-  stage — see BACKLOG.md's security notes for the one known real credential in this repo.
+  stage. **The one known real credential already in this repo**: a hardcoded hotspot fallback
+  password, present in both `python/CommonDrivers/async_connect.py` (deployed, pre-refactor) and
+  `src/asy_wifi_service.py` (promoted) — accepted risk (only exploitable by someone in physical
+  WiFi range of a unit that's already lost its real WiFi), not something to "fix" by
+  rotating/removing without the project owner's direction. `improved-quality/async_connect.py`
+  itself was removed once its functionality was fully promoted to `src/asy_wifi_service.py`/
+  `asy_ntp_client.py`/`asy_dns_client.py` — no import in the repo referenced it anymore.
+- **For a genuinely wedged I2C bus/sensor (e.g. SCD30 hanging mid-transaction), the hardware
+  watchdog is the accepted backstop, not a software fix to chase.** MicroPython's cooperative
+  scheduler can't preempt a synchronous `machine.I2C` call already in progress, so an asyncio-level
+  timeout can't interrupt it either way. This is settled — don't re-propose an I2C-level timeout
+  mechanism. **`socket.getaddrinfo()` turned out to belong in this same "can't be timeout-wrapped"
+  bucket, not the "genuinely can" one** — confirmed against real MicroPython issue tracker reports
+  (micropython#18797, micropython#8326, micropython-lib#1078): it's a raw synchronous call with no
+  coroutine boundary for `asyncio.wait_for()` (or any asyncio-level timeout) to attach to, the same
+  preemption gap as a wedged `machine.I2C` transaction. This is now moot for DNS specifically —
+  `src/asy_ntp_client.py` no longer calls `socket.getaddrinfo()` at all; `src/asy_dns_client.py`
+  resolves hostnames with its own non-blocking UDP-based resolver instead (see its own module
+  docstring and BACKLOG.md). Calls that genuinely *can* be timeout-wrapped from within the asyncio
+  loop — FRAM SPI transactions, `src/asy_udp_socket.py`'s own `select.poll`-driven
+  `ready()`/`write_and_recvfrom(timeout_ms=..., tries=...)` — should standardize on one consistent
+  timeout/cancellation mechanism; re-check any new blocking-call candidate against this same
+  "does it have a coroutine boundary to attach a timeout to" question rather than assuming.
+- **Don't wrap every `asyncio` primitive call (`asyncio.sleep()`, `Lock.acquire()`, etc.) in
+  `try`/`except` against a theoretical internal `MemoryError` as a blanket policy** — overkill and
+  outside this project's own standard. Only worth closing when a concrete, non-hypothetical threat
+  exists in a specific context (a real caller-supplied value reaching an unguarded
+  comparison/construct), not just "any `await` could theoretically raise."
+- **Adafruit-derived driver code is fair game to restructure/rewrite** (keeping attribution) —
+  unlike `python/CommonDrivers/microdot.py`/`improved-quality/microdot.py`, which stay hands-off/
+  vendored (see above).
 - **Long-blocking operations must not stall timing-sensitive work.** Any new code that blocks the
-  event loop for a noticeable time (e.g. `socket.getaddrinfo()`) must not do so while
-  timing-sensitive work like the Neopixel animation needs to run — either avoid the block, or
-  coordinate via `async_connect.py`'s `get_long_block_lock()` pattern so timing-sensitive code runs
-  before/around it. This is a standing convention for all new code, not just the original
-  NTP-vs-Neopixel case it was written for.
+  event loop for a noticeable time must not do so while timing-sensitive work like the Neopixel
+  animation needs to run — either avoid the block, or coordinate so timing-sensitive code runs
+  before/around it. This is a standing design principle for all new code, not tied to any one past
+  case. **The `get_long_block_lock()` shared-lock mechanism itself has been retired** — its one real
+  user, `socket.getaddrinfo()`, was replaced by `src/asy_dns_client.py`'s non-blocking resolver (see
+  above and BACKLOG.md), so there is no longer a long-blocking network call in this codebase to
+  coordinate against Neopixel timing in the first place. `asy_ntp_client.py`/`neopixel_signal.py` no
+  longer reference the lock at all. If new code reintroduces a genuinely long blocking call, a
+  coordination mechanism would need to be designed fresh — don't assume the old lock still exists or
+  try to resurrect/reuse it.
 
 ## Working agreements
 
@@ -122,9 +200,19 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
 - When a fact in this file or BACKLOG.md turns out to be stale (version drift, changed upstream
   API, etc.), update the doc in the same session rather than silently working around the
   discrepancy.
+- **Documentation contains current state, future targets, and rules/agreements — not the historic
+  path that got there.** BACKLOG.md is active working memory (open questions, deferred work,
+  in-flux decisions), not an append-only log of bugs found and fixed in already-shipped, tested
+  code; once an item is resolved, it comes out, migrated to CLAUDE.md/README.md if it's a
+  permanent fact worth keeping, or simply dropped if it was process narrative with no forward
+  value. This already had to be corrected once (a merge re-accumulated ~800 lines of per-file
+  "bug found, fixed" narrative in BACKLOG.md) — treat pruning history back out as routine
+  maintenance whenever an item resolves, not a one-off cleanup.
 - Prefer flagging genuinely ambiguous/architecturally significant decisions to the project owner
   over guessing — several open questions in BACKLOG.md exist precisely because the code's actual
   intent wasn't obvious from reading it alone.
+- When changing a sensor driver's behavior, verify against the legacy driver's own actually-proven
+  field behavior, not just judged correct against internal code-review logic in isolation.
 
 ## Code quality tooling
 
@@ -139,8 +227,9 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
 - **Scope is `improved-quality/`, `src/`, and `tests/`, for now.** The pre-refactor deployed
   codebase (`python/`, `modules/`) has no lint/type config yet; extending scope there is a separate
   future decision, not assumed by this setup.
-- **Unit tests run under a real MicroPython Unix-port interpreter, not pytest/CPython** — per
-  BACKLOG.md's "Self-contained venv via `uv`" requirement. `scripts/test.sh` builds that
+- **Unit tests run under a real MicroPython Unix-port interpreter, not pytest/CPython** — "as close
+  to the real environment as possible" means the actual runtime, not CPython plus MicroPython-
+  flavored stubs (see `tests/README.md`'s "Why not pytest"). `scripts/test.sh` builds that
   interpreter on first run (`toolchain/setup_toolchain.py`'s `setup` — building/verifying the
   Unix port is just part of what `setup`/`test` already do, there's no separate `unix`
   subcommand — cached under `$PICO_TOOLCHAIN_DIR`) and shells out to it once per `tests/test_*.py`
@@ -148,7 +237,7 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
   (`tests/microtest.py`) used in place of CPython's `unittest`.
 - **`scripts/test.sh --coverage` reports `src/` line coverage; it never gates anything** — no
   threshold is enforced anywhere, by design (confirmed directly, not a placeholder for a future
-  gate — see BACKLOG.md). Since `coverage.py` only runs under CPython while `src/` only ever runs
+  gate). Since `coverage.py` only runs under CPython while `src/` only ever runs
   under the real MicroPython Unix-port interpreter, collection (`tests/_coverage_runner.py`,
   `sys.settrace` inside MicroPython) and rendering (`scripts/_render_coverage.py`, a second
   self-contained `uv run` script, under CPython) are two separate stages glued together through
@@ -163,6 +252,32 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
   needs this repo registered at codecov.io plus a token/OIDC setup that hasn't happened yet, so
   that upload currently no-ops. Locally, `--coverage` only prints the output paths; nothing opens
   automatically. See README.md's "Test coverage" section for the full user-facing rundown.
+- **CI hang investigation (resolved)**: `unit-tests` hung intermittently and repeatedly, always the
+  same symptom — `test_asy_uart_driver.py`'s MicroPython process going completely silent for the
+  rest of the job (first seen as a full 6-hour stall before `timeout-minutes` existed; see PR
+  #24/#25's history). An early round of isolation (bisect-matrix runs, solo vs. concurrent-job-burst
+  comparisons) pointed at GitHub Actions runner-level contention and produced three successive
+  mitigations in `scripts/test.sh`/`ci.yml` (per-file `timeout`+retry, `stdbuf -oL -eL` line
+  buffering, `needs: lint-and-typecheck` job sequencing) — **none of which actually stopped the
+  hang**; they only turned a silent multi-hour stall into a fast, attributable ~12-13 minute
+  failure. The real root cause, found by adding a diagnostic `asyncio.wait_for(5)` bound around
+  the test file's own `run()` helper: ~17 tests in `test_asy_uart_driver.py` feed data via
+  `feed_rx()` then call `uart.read()`/`write()` with no explicit `timeout_ms`, hitting
+  `asy_uart_driver.py`'s `ready()`'s `timeout_ms=-1` (wait forever) branch — the only place in the
+  whole file relying on the *real* `select.poll()` to detect readiness via `tests/machine.py`'s
+  pure-Python `io.IOBase` fake UART's `ioctl()`, instead of the bounded `_StepPoller` test double
+  every other test in the file already used. On GitHub Actions specifically (never locally, including
+  under simulated single-core CPU contention), that real-poll/ioctl-on-a-non-fd-Python-object path
+  never detects readiness at all — confirmed deterministic, not intermittent, once the diagnostic
+  bound made the failure visible as `TimeoutError` instead of a silent stall. **Fix**: switched all
+  17 tests to the same `_StepPoller` double, removing the dependency entirely — verified with 21/21
+  clean CI jobs across three separate branches/configurations before landing on the real branch.
+  The three earlier mitigations (per-file timeout/retry, stdbuf, job sequencing) are kept as a
+  standing "hanging is never allowed" backstop against any *future* hang, not because they fixed
+  this one — an isolation test with all three reverted, running only the `_StepPoller` fix, passed
+  8/8 clean CI jobs on its own. Don't re-diagnose this specific symptom as a new code bug if it
+  recurs elsewhere; do treat any *new* file/test that leaves `uart.poller` (or an equivalent
+  fake-stream object) wired to a real `select.poll()` as a like-for-like risk.
 - **`ruff format` is deliberately not used anywhere** — line breaks are hand-chosen throughout this
   codebase; `line-length = 320` (ruff's own ceiling) plus an `E501` ignore keep this a non-issue even
   if `format` is ever run by accident. Lint rule selection (`E`/`F`/`W`/`I`/`UP`/`B`) is stricter
@@ -174,8 +289,7 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
   Confirmed safe at runtime on both the deployed 1.26 pin and the refactor's 1.28.0 target by
   testing directly against the pinned Unix-port interpreter (`int | None` in an unquoted, executed
   annotation works with no import needed) — MicroPython parses but never evaluates annotation
-  expressions at all (also documented in BACKLOG.md's PEP 604 entry, verified against current
-  MicroPython docs), so this isn't even a runtime-support question, just a style one. `typing.Union`
+  expressions at all, so this isn't even a runtime-support question, just a style one. `typing.Union`
   needs `from typing import Union`, which isn't guarded by `TYPE_CHECKING` in every file that still
   uses it and would raise `ImportError` on-device if actually reached at runtime — one more reason
   `|` is strictly better here, not just newer. This is already machine-enforced: ruff's `UP007` rule
@@ -188,8 +302,8 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
 - **mypy is stricter than default, short of `--strict`** (`disallow_untyped_defs`,
   `check_untyped_defs`, `warn_return_any`, `warn_unreachable`, `strict_equality`, etc., but not
   `disallow_any_generics`/`disallow_untyped_calls`/`disallow_subclassing_any`). Does **not** disable
-  the `assignment` error code — the old `improved-quality/mypy.ini` did, but BACKLOG.md records that
-  as never a deliberate choice.
+  the `assignment` error code — the old `improved-quality/mypy.ini` did, though that was never a
+  deliberate choice.
 - **MicroPython stubs**: `micropython-rp2-rpi_pico_w-stubs` (PyPI, board/version-specific, pulls in
   `micropython-stdlib-stubs`). Published by the same project as
   [`josverl/micropython-stubs`](https://github.com/josverl/micropython-stubs) — PyPI is just its
@@ -206,6 +320,20 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
   holds mypy/ruff/pytest's own dependencies breaks type-checking of those. Keep this isolation if
   you touch the stub setup — it's load-bearing, not incidental, confirmed by testing the collision
   directly in-session.
+- **`scripts/typecheck.sh`'s combined `mypy src tests` run resolves every `from machine import X`
+  project-wide to `tests/machine.py`'s fake module, not the real `typings/machine.pyi` board stub**
+  — confirmed directly by running `mypy src` alone (no `tests` in scope): the real stub's `Timer`
+  class has no zero-argument constructor overload (every overload requires a positional `id: int`
+  first argument) and doesn't declare `I2C.deinit()` at all, so an `src`-only run raises 13 errors
+  across `asy_ntp_client.py`/`asy_sgp40_driver.py`/`asy_scd30_driver.py`/`asy_bmp3xx_driver.py`
+  (bare `Timer()` construction) and `asy_i2c_driver.py` (`self._i2c.deinit()`) that never surface in
+  the actual, documented `mypy src tests` invocation. Both are real, working MicroPython patterns
+  (bare `Timer()` allocate-now/`init()`-later is valid runtime usage; `I2C.deinit()` releases the
+  peripheral's pins) — this is a **gap in the third-party `micropython-rp2-rpi_pico_w-stubs`
+  package**, not a bug in any promoted driver, and `tests/machine.py`'s fake happens to model both
+  correctly. Net effect: harmless today, but worth knowing that the real board stub's coverage is
+  incomplete for these two APIs specifically if a future `src`-only or `--strict`-adjacent
+  type-check run is ever added.
 - **`improved-quality/microdot.py` — not `python/CommonDrivers/microdot.py` from the hard rule
   above — is excluded from both tools' direct checks** (`pyproject.toml`'s `extend-exclude`/
   `exclude`): it's the only one of the two copies ruff/mypy ever look at in the first place, since
@@ -326,8 +454,7 @@ time), copy the working tree in the same way, then run `uv run toolchain/setup_t
 (a full build: ARM toolchain + firmware + `mpy-cross` + Unix port, several minutes, not seconds)
 instead of the lint/typecheck scripts. This is exactly how the Unix port addition (and later the
 frozen-bytecode verification chain) was verified — see `toolchain/README.md`'s "Verification" for
-what a passing run must show and "Evidence this actually works" for what's already been checked,
-plus BACKLOG.md's "Self-contained venv via uv" for that specific verification's results.
+what a passing run must show and "Evidence this actually works" for what's already been checked.
 
 ## Pull request workflow
 
@@ -353,17 +480,80 @@ need to go deeper:
   BACKLOG.md's config-duplication item).
 - `python/CommonDrivers/async_connect.py` — WiFi STA + AP/hotspot fallback + NTP client with
   manual CET/CEST DST math (`cettime()`); exposes `get_long_block_lock()`, a shared lock
-  serializing `socket.getaddrinfo()` against Neopixel animation — this pattern is now the general
-  convention for long-blocking operations, see "Hard rules" above.
+  serializing `socket.getaddrinfo()` against Neopixel animation. This is the deployed, pre-refactor
+  version only — `improved-quality/`/`src/` split this into `asy_wifi_service.py`/
+  `asy_ntp_client.py`/`asy_dns_client.py` and retired the lock entirely (see "Hard rules" above and
+  BACKLOG.md); don't assume the two describe the same current state.
 - `python/CommonDrivers/async_manager.py` — `ConfigManager`, `DataManager`,
-  `TimeCounterManager`, `LockedValue`/`Flag`.
+  `TimeCounterManager`, `LockedValue`/`Flag`. `src/config_manager.py`'s `ConfigManager` and
+  `src/base_classes.py`'s `LockedValue`/`LockedCounter`/`LockedFlag` (snake_case `set_value()`/
+  `get_value()`, unlike the old module's camelCase `setValue()`/`getValue()`) replace these in the
+  refactor (see README.md's "Config management" bullet). MicroPython's flat frozen-module
+  namespace means `import async_manager` silently resolves to whichever file defines that module
+  name — a new or promoted module must import `ConfigManager`/`LockedValue`/etc. from
+  `config_manager`/`base_classes` by name, never `async_manager`, or it gets the old,
+  incompatible classes with no import error to catch it. Its config is loaded once at
+  `__init__` and served entirely from an in-memory cache thereafter — a deliberate consequence is
+  that a read can no longer detect the on-disk file being corrupted/deleted out-of-band after a
+  valid `__init__`; the cache is the sole source of truth, and a later `write_config()` silently
+  *repairs* an externally-corrupted file from it. Accepted given this device is the file's only
+  writer. **Every module with user-settable configuration owns its own schema/config file** — a
+  global project convention, not limited to sensor drivers; `asy_wifi_service.py`,
+  `asy_ntp_client.py`, and `neopixel_signal.py` each follow it the same way every sensor `*_Reader`
+  does, replacing the single ad hoc top-level `ConfigManager` grab-bag the deployed codebase still
+  uses. A module whose own REST/caller layer needs to call `write_config()` directly against its
+  `cfgmgr` exposes the schema via a public `self.cfg_schema` attribute (see
+  `asy_wifi_service.py`/`asy_ntp_client.py`) rather than the caller reaching into a private
+  module-level schema constant — `base_classes.py`'s `SensorReaderConfig` doesn't provide this
+  itself, so any new module needing it adds the attribute the same way.
 - `python/IndividualDrivers/asy_fram_driver.py` / `asy_fram_manager.py` — raw SPI FRAM driver +
-  chunk allocator with dual-copy redundancy (arzi/neu/wozi only, not dev).
+  chunk allocator with dual-copy redundancy (arzi/neu/wozi only, not dev). `src/`'s promoted
+  versions keep the same design: each chunk stores two redundant copies plus a busy/idle status
+  byte guarding both reads and writes (MB85RS64V reads are destructively read internally, so a
+  power loss mid-read is as real a risk as mid-write); "both copies valid but different" is a hard
+  failure (no generation counter to say which is newer), never silently guessed.
+  `AsyFramTimestampedChunk.write()`/`write_into()` return `(ntp_synced, utc, success)` — `success`
+  is the *third* element, not first, unlike every other bool-returning method in this codebase;
+  don't reorder it, callers already unpack it this way. `AsyFramManager` is a bump-pointer
+  allocator: `get_chunk()`/`get_timestamped_chunk()` carve out fixed offsets in call order, so a
+  device's *instantiation order* of these calls is its on-chip layout and must stay identical
+  across firmware versions for existing stored data to keep decoding correctly.
 - **SCD30's `AmbPres` (ambient-pressure compensation) is stored in the sensor's own internal
   non-volatile memory as a one-time-set value, not a continuously-updated live input.** This is why
   it's a static config value on every unit — including wozi, which has a live BMP388 — and why
   `set_ambient_pressure` is called with `force=True` in the REST handler: resending the same value
   is also the SCD30's documented command to resume continuous measurement after it's been stopped.
   Don't "fix" this into a live BMP388→SCD30 feed; it's intentional, confirmed by the project owner.
-- Task supervisor lives in `main()` inside each `sensortask-*.py`, not in a shared module — it's
-  duplicated per device file today.
+- In the deployed, pre-refactor codebase (`modules/sensortask-*.py`), the task supervisor is a
+  hand-rolled loop inside each file's `main()`, not a shared module — duplicated per device file.
+  `improved-quality/sensortask-wozi.py` no longer matches this: its `main()` now calls
+  `system_service.py`'s real `start_and_check_tasks()`/`start_timers()` instead of reimplementing
+  the loop. Don't assume the two describe the same current state.
+- **Functional behaviors confirmed intentional by the project owner, not obvious from the code
+  alone — don't "fix" any of these:**
+  - Air-quality warning LED sequencing (one color per condition, paused between flashes rather than
+    combined) is exactly as designed.
+  - FRAM SGP40 backup "0 = disabled" semantics: `SGPBackupPeriod=0` disables periodic backup
+    writes, `SGPBackupMaxAge=0` disables the staleness check (currently undocumented user-facing —
+    see BACKLOG.md).
+  - Permanent WiFi deactivation after a second STA failure streak (post-hotspot) is a deliberate
+    safety feature, preventing an unclaimed hotspot from staying open indefinitely — a physical
+    power-cycle is the accepted recovery path.
+  - STA never automatically falls back to hotspot mode again once it has connected successfully
+    even once in a task's lifetime — only a human resubmitting WiFi credentials over the REST API,
+    or a full task restart, resets this. Confirmed deliberate for physically-accessible, easy-to-
+    power-cycle devices, not an oversight — don't add an automatic repeat-fallback path.
+  - The web UI intentionally shows raw sensor numbers only, no color-coding — the physical LED is
+    the sufficient at-a-glance indicator.
+  - SGP40 silently falling back to uncompensated VOC readings when SCD30 is down/stale, with no
+    distinct "degraded" signal, is acceptable as-is — SCD30's own error counter already surfaces
+    the cause.
+  - FRAM's 8KB allocation has plenty of headroom over SGP40's current ~250-byte usage for future
+    FRAM-backed features.
+  - `asy_uart_driver.py` intentionally does not expose hardware flow control (`rts`/`cts`/`flow`) —
+    confirmed directly, not planned for the future either. Not a gap to revisit unprompted.
+  - SCD30's `get_ambient_pressure()` read-back reuses the same command word used to *set* it —
+    matches every sibling getter's pattern and the legacy driver's own proven field behavior, even
+    though neither Sensirion's `embedded-scd` reference driver nor their `python-i2c-scd30` driver
+    documents that command as readable (their worked examples only show a write path for it). No
+    alternate documented read-back path exists to switch to regardless. Leave as-is.

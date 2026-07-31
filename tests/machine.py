@@ -3,9 +3,17 @@ I2C/SPI bus-transaction level (readfrom_mem/writeto_mem/readfrom_into/writeto/sc
 I2C; write/readinto/write_readinto/deinit for SPI), so asy_i2c_driver.py's/asy_spi_driver.py's
 own logic (bit-packing, byte order, buffer slicing, locking, error paths, CS-pin sequencing) runs
 for real against this fake instead of unavailable real hardware - the MicroPython Unix port's own
-`machine` module has no I2C/SPI/real Pin, Timer, or WDT (confirmed directly: PinBase/Signal/
+`machine` module has no I2C/SPI/real Pin, Timer, WDT, or RTC (confirmed directly: PinBase/Signal/
 mem8/mem16/mem32/idle/time_pulse_us only). Only implements what these drivers' (and
-system_service.py's) own imports need; not a general-purpose machine stub.
+system_service.py's/asy_ntp_client.py's) own imports need; not a general-purpose machine stub.
+
+Pin.irq()/trigger_irq() (added for asy_scd30_driver.py, the first IRQ-pin driver reviewed): mirrors
+the Timer/trigger() pattern below - the real handler fires on every matching edge with no way for
+a test to wait on real elapsed time, so trigger_irq() fires it once, deterministically, standing in
+for one real edge interrupt. I2C's read_queue (added for the same driver): a device that talks via
+plain write()/readinto() with no repeated-start register addressing has no `registers` dict entry
+to prime, so readfrom_into() instead pops from this FIFO of byte strings, mirroring SPI's own
+read_queue/_next_read_bytes below.
 
 Timer/WDT/reset/bootloader (added for system_service.py): real rp2 Timers are software-scheduled
 virtual timers that fire their callback from an IRQ context whenever their period elapses, with no
@@ -16,6 +24,16 @@ can reach and manually `.trigger()` even an unstored, fire-and-forget instance (
 system_service.py's own `_timer_sequencer`, which never keeps a reference to the Timer it chains
 through). `reset()`/`bootloader()` real MCU calls never return at all; this fake just records that
 they were invoked instead of actually terminating the test process.
+
+`Timer` is also a second, separate reason this file has to exist beyond I2C/SPI mocking: it's what
+makes `from machine import Timer` in `src/asy_bmp3xx_driver.py` (and, eventually, the other
+`*_Reader` drivers using the same `start_timer()`/`stop_timer()` shape) resolve at all under
+mypy's `src tests` scope (see BACKLOG.md's "Timer mypy resolution" finding) - `tests` isn't on
+`mypy_path`, but mypy still treats every standalone `.py` file inside a directory passed via
+`files` as a top-level module by its own basename, so this file *is* what `machine` resolves to
+for any other checked file in the same run, same as at real runtime via `MICROPYPATH`. Before
+`Timer` existed here, any driver needing it hit "Module has no attribute Timer" under `src tests`
+even though the real `typings/machine.pyi` stub defines it correctly.
 
 Real RP2040 I2C error codes (confirmed against ports/rp2/machine_i2c.c, not guessed): the
 hardware I2C driver only ever raises OSError(errno.EIO) - covers a NAK/no response and any other
@@ -33,9 +51,52 @@ NAK/busy-style fault-injection surface to model for those two methods, unlike `I
 length")` (mp_machine_spi_write_readinto(), shared by hardware and soft SPI alike) when its two
 buffers differ in length - modeled directly below since it's deterministic from the buffers a
 test passes in, not something that needs fault injection to trigger.
+
+`UART` (added for asy_uart_driver.py) is a different shape from `I2C`/`SPI` above: it's the first
+fake here that a driver actually registers with real `select.poll()` (asy_uart_driver.py's
+`ready()`), not just calls methods on directly. Confirmed against py/stream.h/extmod/modselect.c:
+`select.poll().register()` requires the object's C-level *type* to carry MicroPython's stream
+protocol slot - a plain `class Foo:` can't satisfy this no matter what Python methods it defines,
+`register()` raises `OSError` immediately otherwise. `io.IOBase` is the documented builtin base
+that does carry this slot, dispatching its C-level `ioctl` callback back into a Python-level
+`ioctl(self, req, arg)` override - so `UART` below subclasses it instead of a plain class.
+`req == 3` is `MP_STREAM_POLL` (py/stream.h); the expected return is the subset of `arg`'s
+requested bits (`select.POLLIN`/`POLLOUT`, numerically identical to `MP_STREAM_POLL_RD`/`_WR`)
+that are currently ready - not a bool. Real UART read/readinto/readline return `None` on no data
+available (see asy_uart_driver.py's own module docstring - confirmed via ports/rp2/machine_uart.c
+and py/stream.c that this is MP_EAGAIN, not a raised exception); this fake matches that for the
+same "called after ready() should return True" case. `write()` is the mirror-image case on the TX
+side - real `mp_machine_uart_write()` loops internally but can still return fewer bytes than given
+(a genuine short write, once its own internal per-byte timeout hits after some progress) or `None`
+(if that timeout hits before writing anything) - see `write()`'s own comment below for how this
+fake models both via `write_limit`.
+
+`UART.__init__`'s parameter validation mirrors `mp_machine_uart_init_helper()`/
+`mp_machine_uart_make_new()` (confirmed against ports/rp2/machine_uart.c, v1.28.0 - real numeric
+constants, not guessed): `id` must be `0` or `1` (RP2040 has exactly two UART peripherals) or
+`ValueError("UART(%d) doesn't exist")`; `rxbuf`/`txbuf` above `MAX_BUFFER_SIZE` (32766) raise
+`ValueError("rxbuf/txbuf too large")` (a value below `MIN_BUFFER_SIZE` (32) silently clamps up
+instead of raising - not modeled here since it doesn't affect the raise/no-raise contract this
+fake needs); `invert` outside `UART_INVERT_MASK` (`UART_INVERT_TX (1) | UART_INVERT_RX (2)` = `3`)
+raises `ValueError("bad inversion mask")`. `baudrate`/`bits`/`stop` are real `int` fields with no
+raising validation at all in this function - a non-positive value is silently ignored (keeps
+whatever was previously set / the hardware default) rather than rejected, confirmed directly from
+the source's own `if (args[ARG_baudrate].u_int > 0) { self->baudrate = ...}` shape - so this fake
+doesn't validate them either. **Deliberately not modeled**: real hardware also validates that
+`tx`/`rx` are GPIO pins actually muxable to the *chosen* UART peripheral's TX/RX role
+(`IS_VALID_TX`/`IS_VALID_RX`, e.g. UART0 only on GPIO 0/1, 12/13, 16/17 vs. UART1 only on GPIO
+4/5, 8/9) - that table lives in the RP2040 silicon datasheet, which isn't in this repo's
+`datasheets/` folder (only the Pico W *board* datasheet is, a different document); the pin/role
+mapping above was found via public web search, not the authoritative datasheet PDF, so it isn't
+encoded here as a raise condition - flagged per CLAUDE.md rather than silently assumed. The
+existing generic `Pin(id)` range check (`0 <= id <= 28`) still applies before a pin ever reaches
+`UART()`, since `asy_uart_driver.py`'s own `init()` always constructs `Pin(tx_pin)`/`Pin(rx_pin)`
+first.
 """
 
 import errno
+import io
+import select
 
 try:
     from typing import TYPE_CHECKING
@@ -50,8 +111,13 @@ if TYPE_CHECKING:
 class Pin:
     IN = 0
     OUT = 1
+    # Real rp2 values (confirmed against ports/rp2/machine_pin.c: IRQ_RISING maps to the pico-sdk's
+    # GPIO_IRQ_EDGE_RISE=0x08, IRQ_FALLING to GPIO_IRQ_EDGE_FALL=0x04) - asy_scd30_driver.py only
+    # ever passes these back opaquely to irq(), but matching the real bit values costs nothing.
+    IRQ_FALLING = 0x04
+    IRQ_RISING = 0x08
 
-    def __init__(self, id: int, mode: int = -1) -> None:
+    def __init__(self, id: int, mode: int = -1, pull: int = -1, *, value: "Any" = None) -> None:
         # Real rp2 Pin() raises for a genuinely invalid id (confirmed against ports/rp2/
         # machine_pin.c: TypeError for a non-int identifier, ValueError for one outside the
         # RP2040's real GPIO0-28 range) - validated here (previously not at all) since this is a
@@ -63,7 +129,14 @@ class Pin:
             raise ValueError("invalid pin")
         self.id = id
         self.mode = mode
-        self._value = 0
+        self.pull = pull
+        # Real rp2 Pin(): an initial value= is applied via the same path value() already uses -
+        # only meaningful for an OUT-mode pin, but the real constructor doesn't validate that
+        # either (it's silently inert on an IN pin), so this fake doesn't validate it either.
+        self._value = 0 if value is None else (1 if value else 0)
+        self._irq_handler: Callable[[Pin], None] | None = None
+        self._irq_trigger = self.IRQ_FALLING | self.IRQ_RISING
+        self._irq_hard = False
 
     def init(self, mode: int = -1, pull: int = -1) -> None:
         # Real machine.Pin.init(): omitted/-1 args leave the current setting untouched.
@@ -78,11 +151,50 @@ class Pin:
         self._value = 1 if x else 0
         return None
 
+    def on(self) -> None:
+        self._value = 1
+
+    def off(self) -> None:
+        self._value = 0
+
+    def toggle(self) -> None:
+        self._value = 0 if self._value else 1
+
+    def irq(
+        self,
+        handler: "Callable[[Pin], None] | None" = None,
+        trigger: int = IRQ_FALLING | IRQ_RISING,
+        *,
+        hard: bool = False,
+    ) -> "Pin":
+        # Real rp2 Pin.irq() (confirmed against ports/rp2/machine_pin.c): a second call replaces
+        # the previous handler/trigger outright rather than stacking, and the real return value is
+        # the IRQ object itself - this fake stands in for that with the Pin instance, since nothing
+        # in this codebase inspects what irq() returns. The real handler fires on every matching
+        # edge until irq() is called again (handler=None or trigger=0 disables it), never just once;
+        # trigger_irq() below is how test code simulates one such edge deterministically, the same
+        # role Timer.trigger() plays for the fake Timer above.
+        self._irq_handler = handler
+        self._irq_trigger = trigger
+        self._irq_hard = hard
+        return self
+
+    def trigger_irq(self) -> None:
+        # No real-hardware equivalent - fires the currently-registered handler once, standing in
+        # for one real edge interrupt. No-op if irq() was never called or was disabled.
+        if self._irq_handler is not None:
+            self._irq_handler(self)
+
 
 class I2C:
     # Registers are a plain dict of (address, reg_addr) -> bytearray, seeded directly by a test
     # via .registers before exercising get_bits/set_bits/get_register_struct/set_register_struct
     # - a real round trip through readfrom_mem/writeto_mem, not a canned return value.
+    #
+    # read_queue is the raw-transaction counterpart (readfrom_into has no register address to key
+    # off of - a driver issuing its own command bytes via writeto() then reading a reply via
+    # readfrom_into(), e.g. asy_sgp40_driver.py's word-oriented protocol): a FIFO of byte strings a
+    # test primes before each expected readfrom_into() call, mirroring SPI's own read_queue below.
     def __init__(self, id: int, *, scl: Pin, sda: Pin, freq: int = 400000, timeout: int = 50000) -> None:
         self.id = id
         self.scl = scl
@@ -93,6 +205,7 @@ class I2C:
         self.deinit_count = 0
         self.log: list[tuple] = []
         self.registers: dict[tuple[int, int], bytearray] = {}
+        self.read_queue: list[bytes] = []
         self.nak_addresses: set[int] = set()  # convenience: EIO (no ACK) on every op to this address
         self.busy = False  # convenience: ETIMEDOUT (bus/clock-stretch timeout) on every op, any address
         self._faults: dict[str, list[Exception]] = {}  # op name -> FIFO queue, one exception per matching call
@@ -127,9 +240,15 @@ class I2C:
             raise queue.pop(0)
         return sorted({addr for addr, _ in self.registers} - self.nak_addresses)
 
+    def _next_read_bytes(self, nbytes: int) -> bytes:
+        data = self.read_queue.pop(0) if self.read_queue else b""
+        return (data + bytes(nbytes))[:nbytes]  # always exactly nbytes, zero-padded/truncated like real hw
+
     def readfrom_into(self, address: int, buf: object, stop: bool = True) -> None:
         self._maybe_raise("readfrom_into", address)
-        self.log.append(("readfrom_into", address, bytes(buf), stop))  # type: ignore[call-overload]
+        data = self._next_read_bytes(len(buf))  # type: ignore[arg-type]
+        buf[:] = data  # type: ignore[index]
+        self.log.append(("readfrom_into", address, data, stop))
 
     def writeto(self, address: int, buf: object, stop: bool = True) -> int:
         self._maybe_raise("writeto", address)
@@ -238,6 +357,127 @@ class SPI:
         self.log.append(("write_readinto", bytes(buffer_out)))  # type: ignore[call-overload]
 
 
+class UART(io.IOBase):
+    # rx_queue is a test-fed FIFO of "received" bytes; writable gates POLLOUT readiness so a test
+    # can simulate a stalled/full TX path. Beyond __init__'s own real-hardware parameter validation
+    # and write()'s own write_limit (see each's docstring/comment), there's no further fault
+    # injection - unlike I2C, real UART read/readinto/readline can't raise or short-transfer, so
+    # there's nothing to inject into those specifically.
+    _MP_STREAM_POLL = 3  # py/stream.h - see module docstring
+    _MIN_BUFFER_SIZE = 32
+    _MAX_BUFFER_SIZE = 32766
+    _UART_INVERT_MASK = 3  # UART_INVERT_TX (1) | UART_INVERT_RX (2)
+
+    def __init__(
+        self,
+        id: int,
+        *,
+        tx: Pin,
+        rx: Pin,
+        baudrate: int = 9600,
+        bits: int = 8,
+        parity: int | None = None,
+        stop: int = 1,
+        rxbuf: int = 256,
+        txbuf: int = 256,
+        timeout: int = 0,
+        timeout_char: int = 1,
+        invert: int = 0,
+    ) -> None:
+        # Real mp_machine_uart_make_new()/init_helper() validation, in the same order the real
+        # source checks it (id, then invert, then rxbuf, then txbuf - matters for which exception
+        # surfaces first when more than one field is invalid at once) - see module docstring for
+        # the exact source-confirmed constants and what's deliberately NOT modeled.
+        if id not in (0, 1):
+            raise ValueError(f"UART({id}) doesn't exist")
+        if invert & ~self._UART_INVERT_MASK:
+            raise ValueError("bad inversion mask")
+        if rxbuf > self._MAX_BUFFER_SIZE:
+            raise ValueError("rxbuf too large")
+        if txbuf > self._MAX_BUFFER_SIZE:
+            raise ValueError("txbuf too large")
+        self.id = id
+        self.tx = tx
+        self.rx = rx
+        self.baudrate = baudrate
+        self.bits = bits
+        self.parity = parity
+        self.stop = stop
+        self.rxbuf = rxbuf
+        self.txbuf = txbuf
+        self.timeout = timeout
+        self.timeout_char = timeout_char
+        self.invert = invert
+        self.deinit_called = False
+        self.deinit_count = 0
+        self.log: list[tuple] = []
+        self.rx_queue = bytearray()
+        self.writable = True
+        self.write_limit: int | None = None  # test-only: caps bytes accepted per write() call - see write()
+
+    def feed_rx(self, data: bytes) -> None:  # test helper: queue bytes as if received over the wire
+        self.rx_queue += data
+
+    def ioctl(self, req: int, arg: int) -> int:
+        if req != self._MP_STREAM_POLL:
+            return 0
+        ready = 0
+        if (arg & select.POLLIN) and self.rx_queue:
+            ready |= select.POLLIN
+        if (arg & select.POLLOUT) and self.writable:
+            ready |= select.POLLOUT
+        return ready
+
+    def deinit(self) -> None:
+        self.deinit_called = True
+        self.deinit_count += 1
+        self.log.append(("deinit",))
+
+    def read(self, nbytes: int | None = None) -> bytes | None:
+        n = len(self.rx_queue) if nbytes is None else min(nbytes, len(self.rx_queue))
+        if n == 0:  # real UART: None on no data available, matches MP_EAGAIN (see module docstring)
+            return None
+        data = bytes(self.rx_queue[:n])
+        self.rx_queue = self.rx_queue[n:]  # MicroPython bytearray has no slice-delete, unlike CPython
+        self.log.append(("read", n))
+        return data
+
+    def readinto(self, buf: bytearray | memoryview, nbytes: int | None = None) -> int | None:
+        n = len(buf) if nbytes is None else min(nbytes, len(buf))
+        n = min(n, len(self.rx_queue))
+        if n == 0:
+            return None
+        buf[:n] = self.rx_queue[:n]
+        self.rx_queue = self.rx_queue[n:]  # MicroPython bytearray has no slice-delete, unlike CPython
+        self.log.append(("readinto", n))
+        return n
+
+    def readline(self) -> bytes | None:
+        if not self.rx_queue:
+            return None
+        idx = self.rx_queue.find(b"\n")
+        end = len(self.rx_queue) if idx == -1 else idx + 1
+        data = bytes(self.rx_queue[:end])
+        self.rx_queue = self.rx_queue[end:]  # MicroPython bytearray has no slice-delete, unlike CPython
+        self.log.append(("readline", len(data)))
+        return data
+
+    def write(self, buf: object) -> int | None:
+        # Real rp2 uart.write() can accept fewer bytes than given (its own internal per-byte
+        # timeout hit after some progress - returns that count) or none at all before that timeout
+        # (returns None, matching MP_EAGAIN) - confirmed against ports/rp2/machine_uart.c's own
+        # internal write loop, not guessed. write_limit (None by default = accept everything, the
+        # normal case) lets a test model either: 0 simulates a total send failure, and a positive
+        # count less than len(buf) simulates a genuine short write a caller must retry.
+        data = bytes(buf)  # type: ignore[call-overload]
+        if self.write_limit is not None:
+            data = data[: self.write_limit]
+            if not data:
+                return None
+        self.log.append(("write", data))
+        return len(data)
+
+
 class Timer:
     ONE_SHOT = 0
     PERIODIC = 1
@@ -283,6 +523,34 @@ class Timer:
         # waiting on this fake's `period` (which is never actually scheduled against real time).
         if self.callback is not None:
             self.callback(self)
+
+
+class RTC:
+    # Minimal fake for asy_ntp_client.py's RTC().datetime((...)) call: stores/returns whatever
+    # 8-tuple it's given, no validation - confirmed directly against the real
+    # ports/rp2/machine_rtc.c (v1.28.0) that the real setter reads all 8 elements but only ever
+    # uses indices 0/1/2/4/5/6 (year/month/day/hour/minute/second); index 3 (weekday) is extracted
+    # and never used/validated/written anywhere - so there's no real weekday-validity behavior for
+    # this fake to model in the first place (see BACKLOG.md for the fuller history: an earlier,
+    # web-search-only pass on this file mistakenly flagged the weekday value as possibly
+    # significant/validated upstream, since corrected against the actual source).
+    # State is class-level, not per-instance: real RTC is one physical peripheral - every RTC()
+    # call (the real class takes no useful constructor args on rp2) refers to the same hardware,
+    # so a test must be able to construct a fresh RTC() after the fact and still read back what an
+    # earlier RTC() instance set, exactly like the real singleton would.
+    raise_exc: "Exception | None" = None  # test-only fault injection, shared class attribute like Timer.raise_on_arm
+    _shared_datetime: tuple = (2000, 1, 1, 0, 0, 0, 0, 0)
+
+    def __init__(self, id: int = 0) -> None:
+        self.id = id
+
+    def datetime(self, dt: "tuple | None" = None) -> "tuple | None":
+        if RTC.raise_exc is not None:
+            raise RTC.raise_exc
+        if dt is None:
+            return RTC._shared_datetime
+        RTC._shared_datetime = tuple(dt)
+        return None
 
 
 class WDT:

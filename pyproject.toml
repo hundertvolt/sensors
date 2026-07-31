@@ -103,7 +103,21 @@ no_site_packages = true
 # list, which `exclude` can't then prune - passing the directory itself is what makes `exclude`
 # actually take effect during mypy's own directory walk.
 files = ["improved-quality", "src", "tests"]
-exclude = ["improved-quality/microdot\\.py$"]
+# improved-quality/microdot.py: see its own module docstring. tests/network.py: a bare top-level
+# `network.py` sitting inside a `files`-scanned root starts winning module resolution over
+# typings/'s real `network` stub *project-wide*, not just within tests/ - confirmed directly: with
+# it present, src/asy_wifi_service.py's own `import network` call sites silently lose
+# their real stub types (e.g. WLAN.status()'s return narrows to Any instead of the real stub's
+# int), which masks (turns into a vaguer "Returning Any" note instead of the specific type
+# mismatch) an already-tracked pre-existing finding at _get_hotspot_stations() (declares ->
+# list[Any] but returns wlan.status("stations")'s actual int-typed result per the real stub -
+# already present in the lint baseline, not something this exclude uncovers). Excluding it here
+# only skips *directly* type-checking tests/network.py's own body (never itself the source of a
+# finding) - tests/test_asy_wifi_service.py's own `import network` still resolves to the real stub
+# for its own checking, exactly like every other file. tests/network.py stays runtime-resolved via
+# MICROPYPATH's tests-before-.frozen ordering (see its own module docstring) - this exclude is
+# mypy-only, doesn't touch how the real MicroPython interpreter finds it.
+exclude = ["improved-quality/microdot\\.py$", "tests/network\\.py$"]
 
 show_error_context = true
 show_column_numbers = true

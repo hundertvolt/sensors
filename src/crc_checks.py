@@ -1,23 +1,15 @@
 """Generic bit-banged CRC engine (MSB-first, no reflection, no final XOR). CRC8 (poly 0x31, init
-0xFF) is Sensirion's documented CRC-8, verified against real datasheet test vectors; CRC16 (poly
-0x1021, init 0xFFFF) is CRC-16/CCITT-FALSE; CRC32 (poly 0x04C11DB7, init 0xFFFFFFFF) is
-CRC-32/MPEG-2. CRC_Pass is a zero-length no-op.
-
-Shared contract: every public method returns None (or False for run_inc) - never raises - for
-invalid input (bad init/poly, buffer too small, insufficient data).
-
-run_inc()/check_inc() share mutable state (inc_crc, inc_count) on the instance across an
-incremental sequence, so a single instance must not be used for more than one concurrent
-sequence - give each concurrent caller its own instance rather than sharing one.
+0xFF) is Sensirion's documented CRC-8; CRC16 (poly 0x1021, init 0xFFFF) is CRC-16/CCITT-FALSE;
+CRC32 (poly 0x04C11DB7, init 0xFFFFFFFF) is CRC-32/MPEG-2. CRC_Pass is a zero-length no-op. Every
+public method returns None/False on invalid input - never raises - except add()/check(), which
+allocate a new buffer and let a MemoryError propagate (every caller must catch it; see
+asy_uart_driver.py). run_inc()/check_inc() share mutable state per instance - don't share one
+instance across concurrent sequences.
 """
 
-# Zero-padding limitation, inherent to this class of CRC rather than specific to this
-# implementation: once the running register reaches 0, any number of further 0x00 bytes leave it
-# at 0 (XOR with 0 is a no-op, and an all-zero register never sets the MSB, so the
-# polynomial-reduction step never fires). check()/check_from()/check_inc() therefore validate
-# successfully even when the caller-supplied length runs past the buffer's true end into trailing
-# zero bytes - they verify content integrity within the claimed length, not that the claimed
-# length itself is correct. Callers are responsible for supplying an accurate size.
+# Zero-padding limitation inherent to this CRC class: a register at 0 stays 0 through further 0x00
+# bytes, so check()/check_from()/check_inc() can't detect trailing zero-padding past the buffer's
+# true end - callers must supply an accurate length.
 
 import asyncio
 from struct import pack_into
@@ -35,11 +27,6 @@ class CRC_Base:
         self.fmt = fmt
         self.inc_crc: int | None = None
         self.inc_count = 0
-
-    def length(self) -> int:
-        # CRC width in bytes; 0 in pass-through mode (CRC_Pass, or any width constructed with
-        # poly=None).
-        return self.num_bytes
 
     def _validate_init(self, init: int | None) -> int | None:
         # Defaults to all-bits-1 (the standard "no data seen yet" CRC register state) if unset;
@@ -62,6 +49,11 @@ class CRC_Base:
                 crc &= self.all_set  # Keep number of bits
             await asyncio.sleep(0)  # Yield control
         return crc
+
+    def length(self) -> int:
+        # CRC width in bytes; 0 in pass-through mode (CRC_Pass, or any width constructed with
+        # poly=None).
+        return self.num_bytes
 
     async def add(self, bytearr: bytearray, init: int | None = None) -> bytearray | None:
         # Appends this buffer's CRC to a new copy of it, ready to send/store.

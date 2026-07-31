@@ -53,6 +53,11 @@ async def setup_fram(fram: FRAM_SPI) -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_get_size_returns_the_configured_max_size() -> None:
+    fram, _chip = make_fram(max_size=0x1234)
+    assert run(fram.get_size()) == 0x1234
+
+
 def test_setup_succeeds_with_correct_device_id() -> None:
     fram, _chip = make_fram()
     run(setup_fram(fram))

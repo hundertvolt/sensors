@@ -1,15 +1,8 @@
-"""Shared base classes for improved-quality/ drivers: async-lock-guarded objects/buffers
-(Lockable, LockableBuffer), lock-protected scalars (LockedCounter, LockedFlag, LockedValue), and
-the sensor-driver base (SensorReader, SensorReaderConfig) with per-sensor error bookkeeping and
-optional JSON config storage.
-
-Shared contract: every method returns a well-defined value and never raises. SensorReader's
-optional `fram` selects in-memory vs. FRAM-backed logging (print_log.py); FRAM tests use the real
-AsyFramManager (asy_fram_manager.py) against tests/_fram_chip_fake.py's simulated chip - see
-BACKLOG.md.
-
-__init__ never calls `self.pr.setup()` (it's sync, setup() isn't) - the caller's own async setup
-must, or FRAM persistence stays inert; in-memory counting still works either way.
+"""Shared base classes: async-lock-guarded objects/buffers (Lockable, LockableBuffer), lock-
+protected scalars (LockedCounter, LockedFlag, LockedValue), and the sensor-driver base
+(SensorReader, SensorReaderConfig) with error bookkeeping and optional JSON config storage. Every
+method returns a well-defined value, never raises. `__init__` never calls `self.pr.setup()` (sync
+vs. async) - the caller's own async setup must, or FRAM persistence stays inert.
 """
 
 import asyncio
@@ -98,21 +91,6 @@ class LockedCounter:
             return None
         return min(max(value, 0), self.max_val)
 
-    async def set_value(self, value: int | None) -> None:
-        async with self.value_lock:
-            self.value = self._clamp(value)
-
-    async def get_value(self) -> int | None:
-        async with self.value_lock:
-            ret = self.value
-        return ret
-
-    async def increment(self) -> int:  # None counts as 0 - first increment turns "never happened" into a real count
-        return await self._step(1)
-
-    async def decrement(self) -> int:
-        return await self._step(-1)
-
     async def _step(self, delta: int) -> int:
         async with self.value_lock:
             current = 0 if self.value is None else self.value
@@ -120,11 +98,31 @@ class LockedCounter:
             self.value = current
         return current
 
+    async def get_value(self) -> int | None:
+        async with self.value_lock:
+            ret = self.value
+        return ret
+
+    async def set_value(self, value: int | None) -> None:
+        async with self.value_lock:
+            self.value = self._clamp(value)
+
+    async def increment(self) -> int:  # None counts as 0 - first increment turns "never happened" into a real count
+        return await self._step(1)
+
+    async def decrement(self) -> int:
+        return await self._step(-1)
+
 
 class LockedFlag:
     def __init__(self, init_value: bool = False) -> None:
         self.value = init_value
         self.value_lock = asyncio.Lock()
+
+    async def get_value(self) -> bool:
+        async with self.value_lock:
+            ret = self.value
+        return ret
 
     async def set_true(self) -> None:
         async with self.value_lock:
@@ -134,25 +132,20 @@ class LockedFlag:
         async with self.value_lock:
             self.value = False
 
-    async def get_value(self) -> bool:
-        async with self.value_lock:
-            ret = self.value
-        return ret
-
 
 class LockedValue:
     def __init__(self, init_value: int | float) -> None:
         self.value = init_value
         self.value_lock = asyncio.Lock()
 
-    async def set_value(self, value: int | float) -> None:
-        async with self.value_lock:
-            self.value = value
-
     async def get_value(self) -> int | float:
         async with self.value_lock:
             ret = self.value
         return ret
+
+    async def set_value(self, value: int | float) -> None:
+        async with self.value_lock:
+            self.value = value
 
 
 class SensorReader:
@@ -174,13 +167,6 @@ class SensorReader:
         self._datalock = asyncio.Lock()
         self.max_i2c_err = max_i2c_err
         self._err_cnt_internal = 0
-
-    async def reset_error_counter(self) -> None:
-        # Resets both counters this file tracks, not just pr's persisted history/err_count -
-        # _err_cnt_internal is the separate consecutive-failure streak _error_check's give-up
-        # decision relies on, and must not survive a reset the caller expects to be total.
-        self._err_cnt_internal = 0
-        await self.pr.reset()
 
     async def _error_check(self, results: "MeasDataType", name: str, condition: bool = True) -> bool:
         # centralizes the increment/decrement-error-counter-and-decide-to-give-up logic every
@@ -237,6 +223,13 @@ class SensorReader:
                 await self.pr.err_s("Error reading config from sensor:", e, errno=4)
 
         return ret
+
+    async def reset_error_counter(self) -> None:
+        # Resets both counters this file tracks, not just pr's persisted history/err_count -
+        # _err_cnt_internal is the separate consecutive-failure streak _error_check's give-up
+        # decision relies on, and must not survive a reset the caller expects to be total.
+        self._err_cnt_internal = 0
+        await self.pr.reset()
 
 
 class SensorReaderConfig(SensorReader):

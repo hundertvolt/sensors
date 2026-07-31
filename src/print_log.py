@@ -1,11 +1,8 @@
 """Leveled console logging (PrintLog), a bounded in-memory error/warning history (PrintLogHistory),
-and its optional FRAM-backed persistence (PrintLogHistoryStore), surviving a reboot.
-
-Contract: every method returns a well-defined value and never raises. PrintLogHistoryStore's FRAM
-calls are wrapped broadly, matching asy_fram_manager.py's own "never raises" contract (see
-BACKLOG.md) plus defense-in-depth against the general _FramManager/_FramChunk Protocol below;
-tests/test_print_log.py exercises this against the real AsyFramManager (tests/_fram_chip_fake.py's
-simulated chip) and every failure mode still reachable through it.
+and its optional FRAM-backed persistence (PrintLogHistoryStore), surviving a reboot. Every method
+returns a well-defined value, never raises - PrintLogHistoryStore's FRAM calls are wrapped broadly,
+matching asy_fram_manager.py's own contract plus defense-in-depth against the _FramManager/
+_FramChunk Protocol below.
 """
 
 import struct
@@ -28,7 +25,7 @@ if TYPE_CHECKING:
 
     # Narrow structural Protocols for the FRAM slice this file calls - kept even now that
     # asy_fram_manager.py is promoted to src/, avoiding a real runtime import cycle (it imports
-    # PrintLogHistory from here) and decoupling from its concrete chunk shapes - see BACKLOG.md.
+    # PrintLogHistory from here) and decoupling from its concrete chunk shapes.
     class _FramChunk(Protocol):
         def get_buffer(self) -> "LockableBuffer": ...
         # Any: real chunk classes narrow buf's type in a way that's contravariantly incompatible
@@ -63,6 +60,19 @@ class PrintLog:
         self.level = _LOG_OFF
         self.set_level(level)
 
+    def get_level(self) -> int:
+        return self.level
+
+    def set_level(self, level: int | None) -> None:  # clamps to the valid [off, all] range instead of rejecting
+        if level is None:
+            self.level = _LOG_OFF
+        elif level < _LOG_OFF:
+            self.level = _LOG_OFF
+        elif level > _LOG_ALL:
+            self.level = _LOG_ALL
+        else:
+            self.level = level
+
     @staticmethod
     def level_off() -> int:
         return _LOG_OFF
@@ -86,19 +96,6 @@ class PrintLog:
     @staticmethod
     def level_info() -> int:
         return _LOG_ALL
-
-    def set_level(self, level: int | None) -> None:  # clamps to the valid [off, all] range instead of rejecting
-        if level is None:
-            self.level = _LOG_OFF
-        elif level < _LOG_OFF:
-            self.level = _LOG_OFF
-        elif level > _LOG_ALL:
-            self.level = _LOG_ALL
-        else:
-            self.level = level
-
-    def get_level(self) -> int:
-        return self.level
 
     def err(self, *args: "Any", **kwargs: "Any") -> None:
         if self.level >= _LOG_ERR:
@@ -126,7 +123,7 @@ class PrintLogHistory(PrintLog):
         super().__init__(level=level)
         # Clamp to [0, _MAX_CNT] (err_count's own uint16 range) before allocating: `[x] * n` can
         # segfault the interpreter uncatchably in a size range bytearray()'s own guards don't cover
-        # - see BACKLOG.md for the measured failure-size boundaries.
+        # - see CLAUDE.md's list-repeat-segfault gotcha for the measured failure-size boundaries.
         history_length = min(max(history_length, 0), _MAX_CNT)
         try:  # still reachable well below the overflow boundary on a genuinely memory-constrained device
             self.history = deque([_NO_ERR] * history_length, history_length)
@@ -135,9 +132,6 @@ class PrintLogHistory(PrintLog):
             self.history = deque([], 0)
         self.err_count = 0
         self.initialized = False
-
-    async def setup(self) -> None:  # no persistence to load in the pure in-memory case
-        self.initialized = True
 
     async def _write(self) -> bool:
         return True
@@ -170,6 +164,26 @@ class PrintLogHistory(PrintLog):
         if not await self._write():
             self._diag("PrintLog: History write failed!")
 
+    async def get_log(self, name: str) -> dict[str, dict[str, int | list[int] | list[str]]]:
+        # Reverses _store_err()'s encoding: 0x00/0x80 are "nothing recorded"; else shift back by
+        # _NO_ERR/_NO_WRN to recover the original error/warning code.
+        err_num = []
+        err_type = []
+        for errno in self.history:
+            if errno == _NO_ERR or errno == _NO_WRN:
+                err_num.append(errno)
+                err_type.append("N")
+            elif errno <= _MAX_ERR:
+                err_num.append(errno - _NO_ERR)
+                err_type.append("E")
+            elif errno <= _MAX_WRN:
+                err_num.append(errno - _NO_WRN)
+                err_type.append("W")
+        return {name: {"ErrCount": self.err_count, "ErrNum": err_num, "ErrType": err_type}}
+
+    async def setup(self) -> None:  # no persistence to load in the pure in-memory case
+        self.initialized = True
+
     async def err_s(self, *args: "Any", errno: int = _NO_ERR, **kwargs: "Any") -> None:
         await self._store_err(_NO_ERR, _MAX_ERR, errno)
         if self.level >= _LOG_ERR:
@@ -190,26 +204,9 @@ class PrintLogHistory(PrintLog):
         if not await self._write():
             self._diag("PrintLog: History reset write failed!")
 
-    async def get_log(self, name: str) -> dict[str, dict[str, int | list[int] | list[str]]]:
-        # Reverses _store_err()'s encoding: 0x00/0x80 are "nothing recorded"; else shift back by
-        # _NO_ERR/_NO_WRN to recover the original error/warning code.
-        err_num = []
-        err_type = []
-        for errno in self.history:
-            if errno == _NO_ERR or errno == _NO_WRN:
-                err_num.append(errno)
-                err_type.append("N")
-            elif errno <= _MAX_ERR:
-                err_num.append(errno - _NO_ERR)
-                err_type.append("E")
-            elif errno <= _MAX_WRN:
-                err_num.append(errno - _NO_WRN)
-                err_type.append("W")
-        return {name: {"ErrCount": self.err_count, "ErrNum": err_num, "ErrType": err_type}}
-
 
 class PrintLogHistoryStore(PrintLogHistory):
-    _HDR_FMT = "<H"  # explicit little-endian, no padding - bare format defaults to "@" here, not "<"; see BACKLOG.md
+    _HDR_FMT = "<H"  # explicit little-endian, no padding - bare format defaults to "@" here, not "<"
     _HDR_SIZE = struct.calcsize(_HDR_FMT)
 
     def __init__(self, fram: "_FramManager", history_length: int = 10, level: int | None = None) -> None:
@@ -225,16 +222,6 @@ class PrintLogHistoryStore(PrintLogHistory):
             self.fram = None
         if self.fram is None:
             self._diag("PrintLog: FRAM allocation failed!")
-
-    async def setup(self) -> None:
-        if self.fram is None or self.initialized:
-            return
-        if await self._read():
-            self.initialized = True
-        elif await self._write():
-            self.initialized = True
-        else:
-            self._diag("PrintLog: FRAM setup failed!")
 
     async def _write(self) -> bool:
         if self.fram is None:
@@ -263,3 +250,13 @@ class PrintLogHistoryStore(PrintLogHistory):
             return True
         except Exception:
             return False
+
+    async def setup(self) -> None:
+        if self.fram is None or self.initialized:
+            return
+        if await self._read():
+            self.initialized = True
+        elif await self._write():
+            self.initialized = True
+        else:
+            self._diag("PrintLog: FRAM setup failed!")

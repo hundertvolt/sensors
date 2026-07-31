@@ -1,18 +1,7 @@
-"""Chunk-based storage manager for the FRAM chip (asy_fram_driver.py): dual-copy redundancy plus
-CRC gives each chunk resilience against a torn write (a status-byte busy/idle protocol detects a
-write interrupted by power loss) and silent bit rot (CRC-checked on every read, self-healing the
-other copy when only one is invalid). AsyFramManager is a bump-pointer allocator - get_chunk()/
-get_timestamped_chunk() carve out fixed offsets in call order, so every device's *instantiation
-order* of these calls is that device's on-chip layout and must stay identical across firmware
-versions for existing stored data to still decode correctly.
-
-Contract: every method returns a well-defined value (False/None, or an all-None/False tuple for
-the timestamped variant) - never raises. All chunks allocated from one AsyFramManager share that
-manager's own PrintLogHistory instance (passed as each chunk's `logger`), so error/warning codes
-threaded through `errno`/`wrnno` must stay unique across this whole file, not just per class - see
-BACKLOG.md for the full chunk-layout and error-numbering rationale, and for why "both copies valid
-but different" (an interrupted 2-copy write, no generation counter to say which is newer) is a
-deliberate hard failure rather than a guessed fallback.
+"""Chunk-based storage manager for the FRAM chip (asy_fram_driver.py): dual-copy redundancy plus a
+busy/idle status byte and CRC give each chunk resilience against a torn write and silent bit rot.
+AsyFramManager is a bump-pointer allocator (see CLAUDE.md for the instantiation-order/on-chip-layout
+contract). Every method returns a well-defined value - never raises.
 """
 
 import asyncio
@@ -74,14 +63,6 @@ class _AsyBaseFramChunk:
         # fram's lock only serializes one block at a time (released between block 0 and block 1);
         # this one serializes this chunk's own write()/read()/clear() end to end, across both blocks.
         self._op_lock = asyncio.Lock()
-
-    async def set_verify(self, value: int) -> None:
-        self.pr.evt("FRAM verification set to", value, "write cycles.")
-        self.verify_counter = 0
-        self._verify = value
-
-    async def get_verify(self) -> int:
-        return self._verify
 
     async def _write(self, buf: bytearray, override_pause: bool = False) -> bool:
         async with self._op_lock:  # serializes this chunk's own writes/reads/clears end to end
@@ -166,21 +147,6 @@ class _AsyBaseFramChunk:
                 return False
             self.pr.all("Both blocks valid and data verified")
             return True
-
-    async def clear(self, override_pause: bool = False) -> bool:
-        async with self._op_lock:  # serializes this chunk's own writes/reads/clears end to end
-            if (not override_pause) and (self._mempause()):
-                await self.pr.wrn_s("FRAM communication paused, not clearing FRAM!", wrnno=80)
-                return False
-            for n in range(len(self.block_addr)):
-                if not await self._clear_chunk(self.block_addr[n]):
-                    await self.pr.err_s("Clearing chunks failed!", errno=80)
-                    return False
-                self.pr.evt("Block", n, "cleared")
-            return True
-
-    async def get_pause(self) -> bool:
-        return self._mempause()
 
     async def _read_into(self, buf: bytearray, addr: int) -> tuple[bool, bool]:
         valid = True
@@ -353,7 +319,7 @@ class _AsyBaseFramChunk:
                 if await self._handle_status_bytes(fram, addr, _STATUS_UNINIT, False, 50) is None:
                     return False
                 # bytearray(n) zero-fills directly (same content as `[_STATUS_UNINIT] * n`) without
-                # building that list first - `[x] * n` can segfault uncatchably for large n (see BACKLOG.md).
+                # building that list first - `[x] * n` can segfault uncatchably for large n (CLAUDE.md).
                 res = await fram.set_values(bytearray(self.size + self.crc.length()), addr)
                 if not res:
                     await self.pr.err_s("FRAM write failed in _clear_chunk!", errno=57)
@@ -362,6 +328,29 @@ class _AsyBaseFramChunk:
                 await self.pr.err_s("General write error in _clear_chunk:", e, errno=58)
                 return False
         return True
+
+    async def get_verify(self) -> int:
+        return self._verify
+
+    async def get_pause(self) -> bool:
+        return self._mempause()
+
+    async def set_verify(self, value: int) -> None:
+        self.pr.evt("FRAM verification set to", value, "write cycles.")
+        self.verify_counter = 0
+        self._verify = value
+
+    async def clear(self, override_pause: bool = False) -> bool:
+        async with self._op_lock:  # serializes this chunk's own writes/reads/clears end to end
+            if (not override_pause) and (self._mempause()):
+                await self.pr.wrn_s("FRAM communication paused, not clearing FRAM!", wrnno=80)
+                return False
+            for n in range(len(self.block_addr)):
+                if not await self._clear_chunk(self.block_addr[n]):
+                    await self.pr.err_s("Clearing chunks failed!", errno=80)
+                    return False
+                self.pr.evt("Block", n, "cleared")
+            return True
 
 
 class AsyFramChunkBuffer(LockableBuffer):
@@ -499,7 +488,8 @@ class AsyFramTimestampedChunk(_AsyBaseFramChunk):
         require_ntp: bool = False,
         override_pause: bool = False,
     ) -> tuple[bool, int | None, bool]:
-        try:  # caller-supplied callback (async_connect.py, not itself promoted/audited) - could legitimately misbehave
+        try:  # caller-supplied callback - currently wired to asy_ntp_client.py's ntp_issynced (promoted/audited)
+            # in sensortask-wozi.py, but this parameter accepts any Callable, so the guard stays broad
             ntp_synced = await self.ntp_sync_callback()
         except Exception as e:
             await self.pr.err_s("NTP sync callback failed:", e, errno=85)
@@ -563,7 +553,8 @@ class AsyFramTimestampedChunk(_AsyBaseFramChunk):
             ts = None
         else:
             self.pr.evt("FRAM read data timestamp is valid")
-            try:  # caller-supplied callback (async_connect.py, not itself promoted/audited) - could legitimately misbehave
+            try:  # caller-supplied callback - currently wired to asy_ntp_client.py's ntp_issynced (promoted/audited)
+                # in sensortask-wozi.py, but this parameter accepts any Callable, so the guard stays broad
                 ntp_synced = await self.ntp_sync_callback()
             except Exception as e:
                 await self.pr.err_s("NTP sync callback failed:", e, errno=87)
@@ -587,24 +578,8 @@ class AsyFramManager:
         self._pause = False
         self.fram = FRAM_SPI(spi_bus, spi_cs, max_size=self.size, logger=self.pr)
 
-    async def setup(self) -> bool:
-        await self.pr.setup()  # required for all logged warnings and errors
-        try:
-            await self.fram.setup()
-        except Exception as e:
-            await self.pr.err_s("FRAM Setup failed:", e, errno=83)
-            return False
-        return True
-
     async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
         return await self.pr.get_log("FRAM")
-
-    async def reset_error_counter(self) -> None:
-        await self.pr.reset()
-
-    def set_pause(self, value: bool) -> None:
-        self.pr.evt("Storage pause set to", value)
-        self._pause = value
 
     def get_pause(self) -> bool:
         return self._pause
@@ -689,3 +664,19 @@ class AsyFramManager:
             "Bytes allocated.",
         )
         return chunk
+
+    def set_pause(self, value: bool) -> None:
+        self.pr.evt("Storage pause set to", value)
+        self._pause = value
+
+    async def setup(self) -> bool:
+        await self.pr.setup()  # required for all logged warnings and errors
+        try:
+            await self.fram.setup()
+        except Exception as e:
+            await self.pr.err_s("FRAM Setup failed:", e, errno=83)
+            return False
+        return True
+
+    async def reset_error_counter(self) -> None:
+        await self.pr.reset()

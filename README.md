@@ -35,6 +35,9 @@ python/
 improved-quality/        WIP refactor target (out of scope for day-to-day work; see CLAUDE.md)
 src/                     Files moved out of improved-quality/ once fully reviewed/tested - see
                           src/README.md for the promotion checklist
+DRIVER_SPEC.md           Shared sensor driver architecture/interface spec - what a new driver's
+                          code should look like; src/README.md's checklist is how you know it's
+                          good enough
 tests/                   Unit tests for src/, run under a real MicroPython interpreter - see
                           tests/README.md
 toolchain/               MicroPython/pico-sdk/picotool build-environment installer
@@ -58,9 +61,15 @@ scripts/                 lint.sh / typecheck.sh / test.sh - manual code-quality 
 - **Bus layer** — `asy_i2c_driver.py`/`asy_spi_driver.py` wrap `machine.I2C`/`machine.SPI` with an
   `asyncio.Lock` and a CircuitPython-style `async with device as dev:` pattern so multiple sensors
   can share one physical bus.
-- **Config management** (`async_manager.ConfigManager`) — flat JSON file on the flash filesystem.
-  Self-heals on corruption/missing keys by overwriting the *entire* file with hardcoded defaults —
-  see BACKLOG.md, this is a known data-loss risk on firmware upgrades that add config keys.
+- **Config management** — the deployed, pre-refactor codebase (`python/`, `modules/`) uses
+  `async_manager.ConfigManager`: one ad hoc top-level instance per device, flat JSON file on the
+  flash filesystem, self-heals on corruption/missing keys by overwriting the *entire* file with
+  hardcoded defaults (a known data-loss risk on firmware upgrades that add config keys — see
+  BACKLOG.md). `src/config_manager.py`'s `ConfigManager` replaces this in the refactor: every
+  module with user-settable configuration (each sensor `*_Reader`, `asy_wifi_service.py`,
+  `asy_ntp_client.py`, `neopixel_signal.py`, ...) owns its own schema (a `ConfigSchema` tuple) and
+  its own config file/instance via a public `cfg_schema` attribute, instead of one shared grab-bag —
+  see `DRIVER_SPEC.md` and CLAUDE.md's "Code quality tooling"/BACKLOG.md for the migration state.
 - **REST API pipeline** (`api_helpers.py`) — every `PUT` handler follows `cmd_pre_check` →
   `init_json_from_cfg` → `update_valid_json` → `set_sensor_value` → `cmd_post_check` (validate →
   load current → per-field validate → apply to sensor → persist + post-hooks).
@@ -68,8 +77,11 @@ scripts/                 lint.sh / typecheck.sh / test.sh - manual code-quality 
   allocator handing out chunks stored as two redundant copies, so an abrupt power-loss or watchdog
   reset mid-write still leaves one valid copy to recover. Currently used for SGP40's VOC
   baseline/humidity-compensation backup.
-- **Networking** (`async_connect.py`) — STA-mode WiFi with captive-portal AP+hotspot fallback,
-  NTP client with hardcoded CET/CEST DST math.
+- **Networking** — split into three peers, wired together by each `sensortask-*.py`, not one
+  owning the others: `asy_wifi_service.py` (STA-mode WiFi with captive-portal AP+hotspot fallback),
+  `asy_ntp_client.py` (NTP client with CET/CEST DST math), and `asy_dns_client.py` (a non-blocking
+  DNS resolver replacing `socket.getaddrinfo()` — see BACKLOG.md). The deployed, pre-refactor
+  codebase (`python/`, `modules/`) still uses the older monolithic `async_connect.py`.
 - **Task supervisor** (`main()` in every `sensortask-*.py`) — two-tier self-healing: dead tasks are
   silently restarted (decaying error score); if the error score exceeds a threshold, the loop stops
   feeding the hardware watchdog and lets it force a hard reset. Units are meant to run for years
@@ -190,7 +202,7 @@ verification chain (`run_verification_sequence()`), each step gating the next:
 5. Import the frozen module *by name* inside that Unix port binary (no source `.py` file anywhere
    on disk) and check its result — proves `mpy-cross` and the Unix port build both actually work.
    This is the host-side interpreter used for running tests later, see "Code quality tooling"
-   below and BACKLOG.md's "Self-contained venv via uv".
+   below and `tests/README.md`'s "Why not pytest".
 6. Build the RP2 firmware for the target board with the same test module frozen in — zero
    errors/warnings (build-only; there's no RP2 hardware here to run it on).
 7. Clean up the frozen-bytecode build artifacts from steps 4–6.
@@ -222,8 +234,7 @@ and bus/sensor fault recovery considerably beyond what's described above, and ad
 mypy, ruff, and a CI pipeline (including a real firmware build, eventually — the current pipeline
 covers lint/type-check/unit-tests only) that don't exist for the current codebase at all. Files
 move to `src/` once fully reviewed and tested against that bar — see `src/` and `tests/` in
-"Repository layout" above. See BACKLOG.md's "Final-goal requirements for the refactor" for the
-full, detailed target.
+"Repository layout" above. See BACKLOG.md's "Refactor targets not yet done" for what's still open.
 
 ## Code quality tooling
 
@@ -296,5 +307,8 @@ non-gating, `continue-on-error: true` steps:
 ## Further reading
 
 - **CLAUDE.md** — AI-session operating constraints and architecture reference.
-- **BACKLOG.md** — the project's running knowledge base; see its own opening paragraph for the
-  full scope.
+- **BACKLOG.md** — active open questions and not-yet-done work; see its own opening paragraph for
+  the full scope. Resolved items move into this file or CLAUDE.md instead of staying there.
+- **DRIVER_SPEC.md** — the shared sensor driver architecture/interface spec extracted from the
+  three drivers already in `src/`; what a new driver's code should look like, given a datasheet
+  and the developer's own design decisions.

@@ -1,13 +1,9 @@
 """Per-sensor JSON config storage - each sensor gets its own `config_<name>.cfg` file (see
-base_classes.py's SensorReaderConfig), validated against a schema of `_VAL_*` `const()` tuples
-(e.g. asy_bmp3xx_driver.py's `_VAL_SI`) each driver defines: (name, type, def, min, max, special).
-
-Shared contract: every public function/method returns a documented "invalid" sentinel
-(`[]`/`""`/`{}`/`None`/`True` per function) - never raises.
-
-`ConfigManager` reads the file once at `__init__` into `self._cache`; every `get_*`/`write_config`
-call after that reads/writes `_cache` directly, never re-opening the file. See BACKLOG.md for the
-full design rationale (why, the lock/cache-consistency reasoning, and the accepted trade-off).
+base_classes.py's SensorReaderConfig), validated against a schema of `_VAL_*` `const()` tuples:
+(name, type, default, min, max, special). Every public function/method returns a documented
+"invalid" sentinel, never raises. `ConfigManager` reads the file once at `__init__` into
+`self._cache`; every later `get_*`/`write_config` call reads/writes `_cache` directly (see
+CLAUDE.md for the cache-vs-external-corruption trade-off this implies).
 """
 
 import asyncio
@@ -220,19 +216,6 @@ class ConfigManager:
             self.pr.err("Error writing config", self.config_file, "- config is not valid:", e)
             return
 
-    async def get_dict(self, keys: "list[str]") -> "dict[str, int | float | str | bool | None] | None":
-        # Reads _cache directly - no lock needed (write_config never awaits mid-mutation, so no
-        # partial state is observable here; see module docstring for the cache design).
-        if not self.valid:
-            self.pr.err(self.config_file, "- Config is not valid, cannot read!")
-            return None
-        self.pr.all(self.config_file, "- Reading config data into dict.")
-        try:
-            return {key: self._cache[key] for key in keys}
-        except (KeyError, TypeError) as e:  # unknown key, or a non-iterable/malformed keys param
-            self.pr.err(self.config_file, "- Config read error:", e)
-            return None
-
     async def _get_values(self, keys: "ConfigSchema") -> "list[Any] | None":
         if not self.valid:
             self.pr.err(self.config_file, "- Config is not valid, cannot read!")
@@ -251,6 +234,19 @@ class ConfigManager:
         try:
             return [converter(v) for v in values]
         except (TypeError, ValueError):
+            return None
+
+    async def get_dict(self, keys: "list[str]") -> "dict[str, int | float | str | bool | None] | None":
+        # Reads _cache directly - no lock needed (write_config never awaits mid-mutation, so no
+        # partial state is observable here; see module docstring for the cache design).
+        if not self.valid:
+            self.pr.err(self.config_file, "- Config is not valid, cannot read!")
+            return None
+        self.pr.all(self.config_file, "- Reading config data into dict.")
+        try:
+            return {key: self._cache[key] for key in keys}
+        except (KeyError, TypeError) as e:  # unknown key, or a non-iterable/malformed keys param
+            self.pr.err(self.config_file, "- Config read error:", e)
             return None
 
     async def get_int_values(self, keys: "ConfigSchema") -> "list[int] | None":

@@ -9,6 +9,12 @@ an uncaught exception, safe to run unattended and uninterrupted indefinitely, re
 RP2040's limited resources, never blocks, and always returns a well-defined value — each expanded
 below.
 
+For a *new sensor driver* specifically, see `../DRIVER_SPEC.md` first — the shared architecture/
+interface shape (layering, naming, error handling, config schema, ...) extracted from the three
+drivers already promoted here. This checklist is how you know a file (that spec's shape or any
+other) is good enough to move; `DRIVER_SPEC.md` is what shape a sensor driver's code should take
+in the first place.
+
 Out of scope for this checklist: setting up the CI pipeline itself and the MicroPython Unix-port
 toolchain build — that's already done (see BACKLOG.md/`toolchain/README.md`) and is a one-time
 project-level setup, not something each new file redoes. What follows is what changes, and what
@@ -114,8 +120,7 @@ you check, per file.
 
 ## 3. Stability for indefinite, unattended operation
 
-These units run for years without a reboot (see CLAUDE.md/BACKLOG.md's "No leaks, no drift"). For
-any file moving to `src/`:
+These units run for years without a reboot. For any file moving to `src/`:
 
 - [ ] No unbounded growth: no list/dict/buffer that grows with each call and is never trimmed, no
       accumulating counters that assume they'll be reset externally without confirming they are.
@@ -150,10 +155,11 @@ is not a machine with memory or cycles to spare:
       A pure computation like `math_helpers.py` is inherently safe here, but this must be checked
       explicitly for anything that isn't.
 - [ ] If a function genuinely must do I/O or another long-running operation, it must be `async`
-      and yield control appropriately — coordinate with `async_connect.py`'s
-      `get_long_block_lock()` pattern (see CLAUDE.md's "Hard rules"), the project's standing
-      convention for anything that could otherwise stall timing-sensitive work like the Neopixel
-      animation. Never assume a one-off "it's probably fast enough."
+      and yield control appropriately, and must not stall timing-sensitive work like the Neopixel
+      animation (see CLAUDE.md's "Hard rules" — this is a standing design principle, not tied to
+      any specific mechanism; the `get_long_block_lock()` shared lock that once coordinated this
+      has since been retired along with its only real user, `socket.getaddrinfo()`). Never assume
+      a one-off "it's probably fast enough."
 
 ## 6. Typing
 
@@ -280,13 +286,17 @@ is not a machine with memory or cycles to spare:
 - [ ] Keep the control flow simple and in a consistent order: `None`-check, then range-check
       (plain guard clause, no `try` needed if it can't raise), then the `try`-wrapped computation.
 - [ ] **Keep documentation itself concise — a module docstring is a short header, not an essay.**
-      State the file's purpose and shared contract in a few short paragraphs and point to
-      BACKLOG.md for the full design rationale/history, rather than duplicating that rationale in
-      the file. Per-function/inline comments stay within **3 lines, prefer fewer** — a block
-      running longer than that is a sign the detail belongs in BACKLOG.md instead, not in the file
-      itself. (`config_manager.py`'s module docstring was cut from 34 lines to a 9-line header this
-      way, and four inline comment blocks from 4-7 lines down to 2, with zero behavior change — see
-      BACKLOG.md for the full cache/schema design rationale this trim moved out of the file.)
+      State the file's purpose and shared contract in a few short paragraphs. A genuinely
+      permanent design fact belongs in CLAUDE.md/DRIVER_SPEC.md as current-state documentation,
+      not spelled out at length in the file itself; a still-open question or deferred item belongs
+      in BACKLOG.md instead — BACKLOG.md is active working memory, not a place to archive design
+      history once it's settled. Per-function/inline comments stay within **3 lines, prefer
+      fewer** — a block running longer than that is a sign the detail belongs in one of those
+      other docs, not in the file itself. (`config_manager.py`'s module docstring was cut from 34
+      lines to a 9-line header this way, and four inline comment blocks from 4-7 lines down to 2,
+      with zero behavior change — its cache-based design's one real consequence, that a corrupted
+      on-disk file is silently repaired from cache rather than detected, is now a permanent fact in
+      CLAUDE.md's architecture reference instead of an essay in the file.)
 
 ## 12. Unit tests
 
