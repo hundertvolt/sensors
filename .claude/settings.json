@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__github__pull_request_read",
+      "mcp__github__get_job_logs",
+      "mcp__github__actions_get",
+      "mcp__github__actions_list",
+      "mcp__github__list_pull_requests",
+      "Bash(source .venv/bin/activate)",
+      "Bash(scripts/typecheck.sh *)",
+      "Bash(bash scripts/typecheck.sh *)",
+      "Bash(ruff check *)",
+      "Bash(mypy *)",
+      "Bash(scripts/test.sh)",
+      "Bash(scripts/test.sh *)",
+      "Bash(scripts/lint.sh)",
+      "Bash(scripts/lint.sh *)",
+      "Bash(git push origin debug/uart-ci-hang-investigation)",
+      "Bash(git push -u origin debug/uart-ci-hang-investigation)",
+      "Bash(git push origin debug/uart-ci-hang-investigation*)",
+      "Bash(git commit -m *)",
+      "mcp__github__actions_run_trigger",
+      "mcp__github__update_pull_request"
+    ]
+  }
+}
