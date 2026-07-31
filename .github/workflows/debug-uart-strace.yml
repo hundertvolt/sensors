@@ -8,8 +8,17 @@ name: TEMP - Diagnose UART hang via strace/gdb
 # outcomes and instead runs the real script in the background, waits for it to reach the known
 # stall point, then attaches strace/gdb directly to the stuck MicroPython process to see the
 # actual blocked syscall/backtrace - real evidence instead of another A/B guess.
+#
+# Trigger is `push` to this branch specifically, not `pull_request` like the other debug
+# workflows here - every hang observed so far happened on a fresh push, which (via the open PR's
+# pull_request event) fires ~13-16 jobs simultaneously across every workflow on this branch,
+# while 4/4 solo reruns of this same job via rerun_workflow_run came back clean. `push` lets this
+# job fire completely alone (no open PR needed, and ci.yml's own `push` trigger only matches
+# `main`) to test directly whether the hang depends on that concurrent-job burst rather than on
+# anything push-specific.
 on:
-  pull_request:
+  push:
+    branches: [debug/uart-ci-hang-investigation]
 
 jobs:
   diagnose:
