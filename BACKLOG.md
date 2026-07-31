@@ -152,6 +152,25 @@ constraints.
     `sensortask-wozi.py`/`neopixel_signal.py`, several test files), a real blast-radius decision
     similar in shape to the already-deferred `max_i2c_err` rename. Needs an owner call on whether to
     rename (and to what) or accept the mismatch permanently, not a unilateral fix.
+11. **CI's `unit-tests` job hung for the full 6 real hours until GitHub's own hard job-timeout
+    force-cancelled it** (PR #24, run `30588026943`, head commit `c5478f0`) — the log shows every
+    prior test file completing normally through `tests/test_asy_spi_driver.py`, then
+    `== Running tests/test_asy_uart_driver.py` printed with zero `PASS`/`FAIL` output afterward
+    until the cancellation. **Not reproduced locally**: the same file, against the same cached
+    Unix-port binary, passed 68/68 in under a second across 5 consecutive runs (deterministic test
+    order each time — MicroPython's `globals()` iteration wasn't hash-randomized between runs in
+    this environment). Every *other* CI run on this branch was cancelled early by the workflow's
+    own `cancel-in-progress` concurrency group reacting to the next push, so this is the first run
+    that ran long enough, undisturbed, to reveal the hang — earlier runs may have hit the exact
+    same thing and nobody could tell. `select.poll()` on the fake `UART(io.IOBase)` dispatches to a
+    pure-Python `ioctl()` override (see `tests/machine.py`'s own docstring), not a real OS
+    fd/epoll_wait, so a host-kernel/runner difference explaining this seems unlikely on its face,
+    but wasn't ruled out. Mitigated with `timeout-minutes` on both CI jobs (`.github/workflows/
+    ci.yml`) so a recurrence fails fast and visibly instead of silently burning 6 hours — that is a
+    genuine improvement regardless of root cause, but **does not explain or fix the hang itself**.
+    Needs either a clean reproduction (re-running CI, ideally with the cache forced cold to rule out
+    a corrupted cached binary) or owner input on whether it's worth chasing further if it doesn't
+    recur.
 
 ## Deferred / explicitly out-of-scope work
 

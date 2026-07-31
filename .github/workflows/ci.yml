@@ -19,6 +19,7 @@ jobs:
     # plain `scripts/lint.sh`/`scripts/typecheck.sh` checks locally (still full-scope: see
     # scripts/typecheck.sh's `mypy "$@"` and ruff's own CLI-args-override-config behavior).
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - name: Install uv
@@ -33,7 +34,15 @@ jobs:
   unit-tests:
     # Tests run under a real MicroPython Unix-port interpreter, not CPython - see
     # BACKLOG.md's "Self-contained venv via uv" testing requirement and tests/README.md.
+    #
+    # timeout-minutes caps this job well under GitHub's own 360-minute hard limit: without it, a
+    # genuine hang (confirmed once - see BACKLOG.md's "CI unit-tests job hung for 6 real hours"
+    # item) silently burns the full 6 hours before GitHub force-cancels it, instead of failing
+    # fast with an actionable signal. 30 min is generous headroom over a cold-cache toolchain
+    # build (several minutes, see toolchain/README.md) plus two full suite runs (plain + coverage;
+    # a warm-cache run completes in well under a minute locally).
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - name: Install uv
