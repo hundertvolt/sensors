@@ -1,17 +1,16 @@
 name: TEMP - Debug UART test hang
 
 # TEMPORARY, throwaway debugging workflow - lives only on the debug/uart-ci-hang-investigation
-# branch, not merged into any real PR. Only runs on manual dispatch (never on push/pull_request),
-# so it can't interfere with the real ci.yml pipeline or add noise to any PR's checks. Isolates
-# just tests/test_asy_uart_driver.py (via tests/_debug_uart_runner.py, also temp/debug-only) and
+# branch, via a disposable draft PR that will be closed (never merged) once done. Separate from
+# the real ci.yml pipeline - only runs here, doesn't touch or replace it. Isolates just
+# tests/test_asy_uart_driver.py (via tests/_debug_uart_runner.py, also temp/debug-only) and
 # repeats it several times in one short job, to reproduce - fast and cheaply, directly on a real
 # GitHub Actions runner - the unit-tests job hang seen on PR #24 that never reproduces locally.
+# pull_request (not workflow_dispatch): GitHub only allows dispatching a workflow by name once
+# it exists on the default branch, which this throwaway file will never be merged into: a
+# pull_request trigger runs the workflow file as it exists on the PR's own head branch instead.
 on:
-  workflow_dispatch:
-    inputs:
-      iterations:
-        description: "How many times to repeat the run"
-        default: "15"
+  pull_request:
 
 jobs:
   debug-uart:
@@ -34,7 +33,7 @@ jobs:
       - name: Repeat the instrumented uart test run
         run: |
           bin="$HOME/pico-toolchain/micropython/ports/unix/build-standard/micropython"
-          for i in $(seq 1 "${{ github.event.inputs.iterations }}"); do
+          for i in $(seq 1 15); do
             echo "=== iteration $i ==="
             if ! MICROPYPATH="src:tests:.frozen" stdbuf -oL -eL timeout 90 "$bin" tests/_debug_uart_runner.py; then
               ec=$?
