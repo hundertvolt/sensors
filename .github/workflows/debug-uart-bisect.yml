@@ -22,6 +22,29 @@ on:
   pull_request:
 
 jobs:
+  verbatim-script:
+    # Separate from the matrix below: runs the REAL, unmodified scripts/test.sh (no stdbuf, no
+    # per-file timeout, the actual tests/test_*.py glob covering all files) as its own isolated
+    # job - not inside the shared-concurrency-group ci.yml workflow. If this hangs too, the exact
+    # mechanics of scripts/test.sh (or the full file count) are the trigger, not "which specific
+    # files precede uart" (already ruled out by every bisect matrix entry below passing). If this
+    # does NOT hang, something specific to ci.yml's own job context/steps is implicated instead.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install uv
+        run: pip install uv
+      - name: Cache MicroPython Unix port build
+        uses: actions/cache@v6
+        with:
+          path: ~/pico-toolchain
+          key: unix-port-${{ runner.os }}-${{ hashFiles('toolchain/versions.toml', 'toolchain/setup_toolchain.py') }}
+      - name: Run the real scripts/test.sh, unmodified
+        run: scripts/test.sh
+        env:
+          SKIP_APT: "0"
+
   bisect:
     strategy:
       fail-fast: false
