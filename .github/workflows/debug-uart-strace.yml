@@ -14,7 +14,7 @@ on:
 jobs:
   diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - name: Install uv
@@ -42,18 +42,14 @@ jobs:
           script_pid=$!
           echo "scripts/test.sh started as PID $script_pid, logging to $log"
 
-          reached=0
-          for i in $(seq 1 60); do
-            sleep 2
-            if grep -q "== Running tests/test_asy_uart_driver.py" "$log" 2>/dev/null; then
-              echo "uart file reached at poll $i (~$((i * 2))s in)"
-              reached=1
-              break
-            fi
-          done
-
-          if [ "$reached" -ne 1 ]; then
-            echo "Never reached the uart file within the poll window - dumping log and bailing"
+          # Event-driven wait instead of coarse polling: blocks until the line actually appears
+          # (via tail -F following the growing log) or a generous 480s (8min) ceiling elapses -
+          # comfortably above the ~3m48s a full healthy local run of the WHOLE suite takes, since
+          # reaching just the ~9 files before uart should be well under that.
+          if timeout 480 grep -qm1 "== Running tests/test_asy_uart_driver.py" <(tail -n +1 -F "$log"); then
+            echo "uart file reached"
+          else
+            echo "Never reached the uart file within 480s - dumping log and bailing"
             cat "$log"
             kill "$script_pid" 2>/dev/null
             exit 1
