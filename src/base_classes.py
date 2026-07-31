@@ -98,14 +98,14 @@ class LockedCounter:
             self.value = current
         return current
 
-    async def set_value(self, value: int | None) -> None:
-        async with self.value_lock:
-            self.value = self._clamp(value)
-
     async def get_value(self) -> int | None:
         async with self.value_lock:
             ret = self.value
         return ret
+
+    async def set_value(self, value: int | None) -> None:
+        async with self.value_lock:
+            self.value = self._clamp(value)
 
     async def increment(self) -> int:  # None counts as 0 - first increment turns "never happened" into a real count
         return await self._step(1)
@@ -119,6 +119,11 @@ class LockedFlag:
         self.value = init_value
         self.value_lock = asyncio.Lock()
 
+    async def get_value(self) -> bool:
+        async with self.value_lock:
+            ret = self.value
+        return ret
+
     async def set_true(self) -> None:
         async with self.value_lock:
             self.value = True
@@ -127,25 +132,20 @@ class LockedFlag:
         async with self.value_lock:
             self.value = False
 
-    async def get_value(self) -> bool:
-        async with self.value_lock:
-            ret = self.value
-        return ret
-
 
 class LockedValue:
     def __init__(self, init_value: int | float) -> None:
         self.value = init_value
         self.value_lock = asyncio.Lock()
 
-    async def set_value(self, value: int | float) -> None:
-        async with self.value_lock:
-            self.value = value
-
     async def get_value(self) -> int | float:
         async with self.value_lock:
             ret = self.value
         return ret
+
+    async def set_value(self, value: int | float) -> None:
+        async with self.value_lock:
+            self.value = value
 
 
 class SensorReader:

@@ -207,27 +207,11 @@ class BMP3xx_Reader(SensorReaderConfig):
             # crashing the caller (this sensor just never gets triggered this cycle).
             self.pr.err(_NAME, "Could not start timer:", e)
 
-    def stop_timer(self) -> None:
-        self.trigger_timer.deinit()
-
     def get_task_starters(self) -> "list[Callable[[], asyncio.Task[Any]]]":
         return [self.start_asy_read, self.start_asy_trigger]
 
     def get_timer_starters(self) -> "list[Callable[[], None]]":
         return [self.start_timer]
-
-    async def set_trigger_secs(self, value: int | float) -> None:
-        try:
-            # int(float('inf'))/int(float('-inf')) raise OverflowError, not ValueError - confirmed
-            # against the real MicroPython Unix-port interpreter; +-inf is a legitimate int | float
-            # input this must degrade cleanly for, not crash on.
-            trigger_secs = int(value)
-            if not (_MIN_TRIGGER_SECS <= trigger_secs <= _MAX_TRIGGER_SECS):
-                raise ValueError(f"trigger interval must be between {_MIN_TRIGGER_SECS} and {_MAX_TRIGGER_SECS} seconds")
-        except (TypeError, ValueError, OverflowError) as e:
-            await self.pr.err_s(_NAME, "Error setting trigger interval:", e, errno=21)
-            return
-        await self.trigger_period.set_value(trigger_secs)
 
     async def get_data(self) -> BMP3XX:
         # Narrows _get_meas_data()'s generic "NamedTuple" to this Reader's concrete BMP3XX;
@@ -249,17 +233,6 @@ class BMP3xx_Reader(SensorReaderConfig):
             callback=self._read_sensor_dict,
         )
 
-    async def read_loop(self) -> bool:
-        if not await self._init_bmp():  # init sensor at startup
-            return False  # break and restart if init fails
-        while True:
-            await self.trigger_event.wait()  # wait for read trigger event
-            self.pr.evt(_NAME, "sensor trigger")
-            results = await self._read_bmp()  # read data
-            if not await self._error_check(results, _NAME):  # check and count errors
-                return False  # break and restart if too many errors
-            await self._store_bmp(results)  # store data in result buffer
-
     # Selected low-level driver forwards below: each failure is logged via self.pr (not swallowed
     # silently) so a transient bus fault on a REST-triggered config get/set stays visible in the
     # sensor's own error history, not just a bare None/False back to the caller.
@@ -270,6 +243,33 @@ class BMP3xx_Reader(SensorReaderConfig):
             await self.pr.err_s(_NAME, "Error reading pressure oversampling:", e, errno=15)
             return None
 
+    async def get_temperature_oversampling(self) -> int | None:
+        try:
+            return await self.bmp.get_temperature_oversampling()
+        except Exception as e:
+            await self.pr.err_s(_NAME, "Error reading temperature oversampling:", e, errno=17)
+            return None
+
+    async def get_filter_coefficient(self) -> int | None:
+        try:
+            return await self.bmp.get_filter_coefficient()
+        except Exception as e:
+            await self.pr.err_s(_NAME, "Error reading filter coefficient:", e, errno=19)
+            return None
+
+    async def set_trigger_secs(self, value: int | float) -> None:
+        try:
+            # int(float('inf'))/int(float('-inf')) raise OverflowError, not ValueError - confirmed
+            # against the real MicroPython Unix-port interpreter; +-inf is a legitimate int | float
+            # input this must degrade cleanly for, not crash on.
+            trigger_secs = int(value)
+            if not (_MIN_TRIGGER_SECS <= trigger_secs <= _MAX_TRIGGER_SECS):
+                raise ValueError(f"trigger interval must be between {_MIN_TRIGGER_SECS} and {_MAX_TRIGGER_SECS} seconds")
+        except (TypeError, ValueError, OverflowError) as e:
+            await self.pr.err_s(_NAME, "Error setting trigger interval:", e, errno=21)
+            return
+        await self.trigger_period.set_value(trigger_secs)
+
     async def set_pressure_oversampling(self, oversample: int) -> bool:
         try:
             await self.bmp.set_pressure_oversampling(oversample)
@@ -277,13 +277,6 @@ class BMP3xx_Reader(SensorReaderConfig):
         except Exception as e:
             await self.pr.err_s(_NAME, "Error setting pressure oversampling:", e, errno=16)
             return False
-
-    async def get_temperature_oversampling(self) -> int | None:
-        try:
-            return await self.bmp.get_temperature_oversampling()
-        except Exception as e:
-            await self.pr.err_s(_NAME, "Error reading temperature oversampling:", e, errno=17)
-            return None
 
     async def set_temperature_oversampling(self, oversample: int) -> bool:
         try:
@@ -293,13 +286,6 @@ class BMP3xx_Reader(SensorReaderConfig):
             await self.pr.err_s(_NAME, "Error setting temperature oversampling:", e, errno=18)
             return False
 
-    async def get_filter_coefficient(self) -> int | None:
-        try:
-            return await self.bmp.get_filter_coefficient()
-        except Exception as e:
-            await self.pr.err_s(_NAME, "Error reading filter coefficient:", e, errno=19)
-            return None
-
     async def set_filter_coefficient(self, coef: int) -> bool:
         try:
             await self.bmp.set_filter_coefficient(coef)
@@ -307,6 +293,20 @@ class BMP3xx_Reader(SensorReaderConfig):
         except Exception as e:
             await self.pr.err_s(_NAME, "Error setting filter coefficient:", e, errno=20)
             return False
+
+    def stop_timer(self) -> None:
+        self.trigger_timer.deinit()
+
+    async def read_loop(self) -> bool:
+        if not await self._init_bmp():  # init sensor at startup
+            return False  # break and restart if init fails
+        while True:
+            await self.trigger_event.wait()  # wait for read trigger event
+            self.pr.evt(_NAME, "sensor trigger")
+            results = await self._read_bmp()  # read data
+            if not await self._error_check(results, _NAME):  # check and count errors
+                return False  # break and restart if too many errors
+            await self._store_bmp(results)  # store data in result buffer
 
 
 class BMP3xx_DeviceSession(Lockable):
@@ -469,18 +469,6 @@ class BMP3XX_I2C:
             raise OSError(f"failed to read {length} bytes from register {register:#x}")
         return value
 
-    async def setup(self, sea_level_pressure: float = 1013.25, wait_time: float = 0.002) -> None:
-        async with self.i2c_bmp3xx as bmp3xx:  # device session
-            async with bmp3xx.i2c_device as i2c:  # bus session
-                await i2c.setup()
-        chip_id = await self._read_byte(_REGISTER_CHIPID)
-        if chip_id not in (_BMP388_CHIP_ID, _BMP390_CHIP_ID):
-            raise RuntimeError(f"Failed to find BMP3XX! Chip ID {hex(chip_id)}")
-        await self._read_coefficients()
-        await self.reset()
-        self.sea_level_pressure = sea_level_pressure  # in hPa
-        self._wait_time = wait_time  # change this value to have faster reads if needed
-
     async def get_pressure(self) -> float:
         # The pressure in hPa.
         res = await self._read()
@@ -512,15 +500,9 @@ class BMP3XX_I2C:
         # The pressure oversampling setting.
         return await self._get_osr_setting(0)
 
-    async def set_pressure_oversampling(self, oversample: int) -> None:
-        await self._set_osr_setting(0, oversample)
-
     async def get_temperature_oversampling(self) -> int:
         # The temperature oversampling setting.
         return await self._get_osr_setting(3)
-
-    async def set_temperature_oversampling(self, oversample: int) -> None:
-        await self._set_osr_setting(3, oversample)
 
     async def get_filter_coefficient(self) -> int:
         # The IIR filter coefficient.
@@ -531,12 +513,30 @@ class BMP3XX_I2C:
             raise OSError("failed to read filter coefficient")
         return _IIR_SETTINGS[iir]
 
+    async def set_pressure_oversampling(self, oversample: int) -> None:
+        await self._set_osr_setting(0, oversample)
+
+    async def set_temperature_oversampling(self, oversample: int) -> None:
+        await self._set_osr_setting(3, oversample)
+
     async def set_filter_coefficient(self, coef: int) -> None:
         if coef not in _IIR_SETTINGS:
             raise ValueError(f"Filter coefficient must be one of: {_IIR_SETTINGS}")
         async with self.i2c_bmp3xx as bmp3xx:  # device session
             async with bmp3xx.i2c_device as i2c:  # bus session
                 await i2c.set_bits(3, _REGISTER_CONFIG, 1, _IIR_SETTINGS.index(coef))
+
+    async def setup(self, sea_level_pressure: float = 1013.25, wait_time: float = 0.002) -> None:
+        async with self.i2c_bmp3xx as bmp3xx:  # device session
+            async with bmp3xx.i2c_device as i2c:  # bus session
+                await i2c.setup()
+        chip_id = await self._read_byte(_REGISTER_CHIPID)
+        if chip_id not in (_BMP388_CHIP_ID, _BMP390_CHIP_ID):
+            raise RuntimeError(f"Failed to find BMP3XX! Chip ID {hex(chip_id)}")
+        await self._read_coefficients()
+        await self.reset()
+        self.sea_level_pressure = sea_level_pressure  # in hPa
+        self._wait_time = wait_time  # change this value to have faster reads if needed
 
     async def reset(self) -> None:
         # Soft reset via CMD register (datasheet sec 4.3.22, cmd 0xB6); all config reverts to

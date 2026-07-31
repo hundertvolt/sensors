@@ -560,9 +560,6 @@ class asy_conn_time(SensorReaderConfig):
             # crashing the caller (uptime counting just never starts this cycle).
             self.pr.err(_NAME, "Could not start counter timer:", e)
 
-    def stop_counter_timer(self) -> None:
-        self.counter_timer.deinit()
-
     def get_task_starters(self) -> "list[Callable[[], asyncio.Task[Any]]]":
         return [self.start_asy_wlan_connect, self.start_asy_uptime_counter]
 
@@ -586,19 +583,6 @@ class asy_conn_time(SensorReaderConfig):
 
     async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
         return await self.pr.get_log(_NAME)
-
-    def reconnect_wifi(self) -> None:
-        self.hotspot_timer.deinit()
-        self.hotspot_timer_running = False
-        if self.ledflash is not None:
-            self.ledflash.cancel()
-            self.ledflash = None
-        self.reconn_wifi = True
-
-    def wlan_isconnected(self) -> bool:
-        if self.wifi_mode_lock.locked():
-            return False
-        return self._wlan_isconnected_or_false()
 
     def get_wlan_ifconfig(self) -> tuple[str, str, str, str] | None:
         if self.wifi_mode_lock.locked():
@@ -634,8 +618,9 @@ class asy_conn_time(SensorReaderConfig):
     def get_wifi_mode_lock(self) -> asyncio.Lock:
         return self.wifi_mode_lock
 
-    def network_available(self) -> bool:  # caller must already hold wifi_mode_lock
-        return (self._conn_phase != _PHASE_HOTSPOT) and (self._wlan_status_or_none() == network.STAT_GOT_IP)
+    async def get_wifi_uptime(self) -> int:
+        value = await self.wifi_uptime.get_value()  # never None: never constructed/set with a None sentinel
+        return 0 if value is None else value
 
     def set_ext_led(self, ext_led: LEDControl) -> None:  # for post-setting ext_led at any time
         self.ext_led = ext_led  # if called even after init, call set_wifi_led(True) to init LED
@@ -651,9 +636,24 @@ class asy_conn_time(SensorReaderConfig):
             self._led_off()
             self.led = None
 
-    async def get_wifi_uptime(self) -> int:
-        value = await self.wifi_uptime.get_value()  # never None: never constructed/set with a None sentinel
-        return 0 if value is None else value
+    def stop_counter_timer(self) -> None:
+        self.counter_timer.deinit()
+
+    def reconnect_wifi(self) -> None:
+        self.hotspot_timer.deinit()
+        self.hotspot_timer_running = False
+        if self.ledflash is not None:
+            self.ledflash.cancel()
+            self.ledflash = None
+        self.reconn_wifi = True
+
+    def wlan_isconnected(self) -> bool:
+        if self.wifi_mode_lock.locked():
+            return False
+        return self._wlan_isconnected_or_false()
+
+    def network_available(self) -> bool:  # caller must already hold wifi_mode_lock
+        return (self._conn_phase != _PHASE_HOTSPOT) and (self._wlan_status_or_none() == network.STAT_GOT_IP)
 
     async def wlan_connect(self) -> None:  # Funktion: WLAN-Verbindung
         await self.pr.setup()  # required for all logged warnings and errors (base_classes.py's own

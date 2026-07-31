@@ -137,38 +137,6 @@ class FRAM_SPI(Lockable):
         buffer[0] = opcode
         return buffer
 
-    async def setup(self) -> None:
-        await self._spidev.setup()
-        if not await self._check_device_id():
-            raise OSError("FRAM SPI device not found.")
-        # WPEN/BP0/BP1 are nonvolatile (datasheet) - re-sync _wp from hardware, not the ctor's wp=.
-        self._wp = (await self._read_status() & _SR_WP_MASK) == _SR_WP_SET
-        if self._wp_pin is not None:
-            self._wp_pin.init(self._wp_pin.OUT)
-            self._wp_pin.value(not self._wp)  # WP is active-low (datasheet)
-        self.uninitialized = False
-        self.pr.one("SPI FRAM Driver Setup complete")
-
-    async def verify_present(self) -> bool:
-        # Re-probe entry point (cheaper than a full setup()); reverts to uninitialized=True on
-        # failure. Wait is bounded, not a bare `async with self:`, since asyncio.Lock isn't
-        # reentrant and a caller nesting this inside its own `async with fram:` would else hang.
-        if self.uninitialized:
-            self.pr.err("FRAM not initialized, run setup first!")
-            return False
-        try:
-            await asyncio.wait_for(self.asy_lock.acquire(), _VERIFY_PRESENT_LOCK_TIMEOUT_S)
-        except asyncio.TimeoutError:
-            self.pr.err("FRAM verify_present: lock busy, giving up.")
-            return False
-        try:
-            present = await self._check_device_id()
-            if not present:
-                self.uninitialized = True
-        finally:
-            self.asy_lock.release()
-        return present
-
     async def get_write_protected(self) -> bool:
         # With a wp_pin, protection is tied to that physical pin's own value; without one, this
         # is the cached value from the last verified set_write_protected() call (see there for
@@ -231,3 +199,35 @@ class FRAM_SPI(Lockable):
             self._wp_pin.value(not value)  # WP active-low, see setup()
         self.pr.evt("FRAM Write Protection set to", value)
         return True
+
+    async def setup(self) -> None:
+        await self._spidev.setup()
+        if not await self._check_device_id():
+            raise OSError("FRAM SPI device not found.")
+        # WPEN/BP0/BP1 are nonvolatile (datasheet) - re-sync _wp from hardware, not the ctor's wp=.
+        self._wp = (await self._read_status() & _SR_WP_MASK) == _SR_WP_SET
+        if self._wp_pin is not None:
+            self._wp_pin.init(self._wp_pin.OUT)
+            self._wp_pin.value(not self._wp)  # WP is active-low (datasheet)
+        self.uninitialized = False
+        self.pr.one("SPI FRAM Driver Setup complete")
+
+    async def verify_present(self) -> bool:
+        # Re-probe entry point (cheaper than a full setup()); reverts to uninitialized=True on
+        # failure. Wait is bounded, not a bare `async with self:`, since asyncio.Lock isn't
+        # reentrant and a caller nesting this inside its own `async with fram:` would else hang.
+        if self.uninitialized:
+            self.pr.err("FRAM not initialized, run setup first!")
+            return False
+        try:
+            await asyncio.wait_for(self.asy_lock.acquire(), _VERIFY_PRESENT_LOCK_TIMEOUT_S)
+        except asyncio.TimeoutError:
+            self.pr.err("FRAM verify_present: lock busy, giving up.")
+            return False
+        try:
+            present = await self._check_device_id()
+            if not present:
+                self.uninitialized = True
+        finally:
+            self.asy_lock.release()
+        return present

@@ -296,12 +296,6 @@ class asy_ntp_client(SensorReaderConfig):
         except OSError as e:  # alarm-pool exhaustion (ENOMEM) - same graceful degradation as start_ntp_timer()
             self.pr.err(_NAME, "Could not start counter timer:", e)
 
-    def stop_ntp_timer(self) -> None:
-        self.ntp_timer.deinit()
-
-    def stop_counter_timer(self) -> None:
-        self.counter_timer.deinit()
-
     def get_task_starters(self) -> "list[Callable[[], asyncio.Task[Any]]]":
         return [self.start_asy_ntp_client, self.start_asy_ntp_refresh, self.start_asy_sync_age_counter]
 
@@ -323,6 +317,16 @@ class asy_ntp_client(SensorReaderConfig):
     async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
         return await self.pr.get_log(_NAME)
 
+    async def get_last_ntp_sync(self) -> int | None:  # None = never synced yet
+        age = (await self.get_data()).LastSyncAge
+        return None if age is None else int(age)
+
+    def stop_ntp_timer(self) -> None:
+        self.ntp_timer.deinit()
+
+    def stop_counter_timer(self) -> None:
+        self.counter_timer.deinit()
+
     async def ntp_issynced(self) -> bool:
         return bool((await self.get_data()).Synced)
 
@@ -332,10 +336,6 @@ class asy_ntp_client(SensorReaderConfig):
         self.ntp_retries = 0
         self.ntp_sync_trigger_event.set()
         self.pr.evt(_NAME, "Force resync triggered.")
-
-    async def get_last_ntp_sync(self) -> int | None:  # None = never synced yet
-        age = (await self.get_data()).LastSyncAge
-        return None if age is None else int(age)
 
     async def asy_ntp_time(self) -> None:  # Funktion: Zeit per NTP holen
         await self.pr.setup()  # required for all logged warnings and errors (base_classes.py's own

@@ -329,13 +329,16 @@ class _AsyBaseFramChunk:
                 return False
         return True
 
+    async def get_verify(self) -> int:
+        return self._verify
+
+    async def get_pause(self) -> bool:
+        return self._mempause()
+
     async def set_verify(self, value: int) -> None:
         self.pr.evt("FRAM verification set to", value, "write cycles.")
         self.verify_counter = 0
         self._verify = value
-
-    async def get_verify(self) -> int:
-        return self._verify
 
     async def clear(self, override_pause: bool = False) -> bool:
         async with self._op_lock:  # serializes this chunk's own writes/reads/clears end to end
@@ -348,9 +351,6 @@ class _AsyBaseFramChunk:
                     return False
                 self.pr.evt("Block", n, "cleared")
             return True
-
-    async def get_pause(self) -> bool:
-        return self._mempause()
 
 
 class AsyFramChunkBuffer(LockableBuffer):
@@ -578,24 +578,8 @@ class AsyFramManager:
         self._pause = False
         self.fram = FRAM_SPI(spi_bus, spi_cs, max_size=self.size, logger=self.pr)
 
-    async def setup(self) -> bool:
-        await self.pr.setup()  # required for all logged warnings and errors
-        try:
-            await self.fram.setup()
-        except Exception as e:
-            await self.pr.err_s("FRAM Setup failed:", e, errno=83)
-            return False
-        return True
-
     async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
         return await self.pr.get_log("FRAM")
-
-    async def reset_error_counter(self) -> None:
-        await self.pr.reset()
-
-    def set_pause(self, value: bool) -> None:
-        self.pr.evt("Storage pause set to", value)
-        self._pause = value
 
     def get_pause(self) -> bool:
         return self._pause
@@ -680,3 +664,19 @@ class AsyFramManager:
             "Bytes allocated.",
         )
         return chunk
+
+    def set_pause(self, value: bool) -> None:
+        self.pr.evt("Storage pause set to", value)
+        self._pause = value
+
+    async def setup(self) -> bool:
+        await self.pr.setup()  # required for all logged warnings and errors
+        try:
+            await self.fram.setup()
+        except Exception as e:
+            await self.pr.err_s("FRAM Setup failed:", e, errno=83)
+            return False
+        return True
+
+    async def reset_error_counter(self) -> None:
+        await self.pr.reset()

@@ -352,9 +352,6 @@ class SGP40_Reader(SensorReaderConfig):
             # crashing the caller (this sensor just never gets triggered this cycle).
             self.pr.err(_NAME, "Could not start timer:", e)
 
-    def stop_timer(self) -> None:
-        self.trigger_timer.deinit()
-
     def get_task_starters(self) -> "list[Callable[[], asyncio.Task[Any]]]":
         return [self.start_asy_read]
 
@@ -379,6 +376,9 @@ class SGP40_Reader(SensorReaderConfig):
 
     async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
         return await self.pr.get_log(_NAME)
+
+    def stop_timer(self) -> None:
+        self.trigger_timer.deinit()
 
     async def reset_voc(self, flag: bool) -> None:
         if flag:
@@ -472,6 +472,17 @@ class SGP40_I2C:
 
         return readdata_buffer
 
+    async def get_raw(self) -> int | None:
+        # recycle a single buffer
+        async with self.i2c_sgp40 as sgp40:  # device session
+            self._command_buffer = self._measure_command
+            # 100ms: >3x margin over the datasheet's 30ms typ/max measurement duration (Table 8)
+            read_value = await self._read_word_from_command(sgp40, delay_ms=100)
+            self._command_buffer = bytearray(2)
+        if read_value is None:
+            return None
+        return read_value[0]
+
     async def setup(self) -> None:
         async with self.i2c_sgp40 as sgp40:  # device session
             async with sgp40.i2c_device as i2c:  # bus session
@@ -504,17 +515,6 @@ class SGP40_I2C:
         if (self_test[0] >> 8) != 0xD4:
             raise RuntimeError("Self test failed")
         await self._reset()
-
-    async def get_raw(self) -> int | None:
-        # recycle a single buffer
-        async with self.i2c_sgp40 as sgp40:  # device session
-            self._command_buffer = self._measure_command
-            # 100ms: >3x margin over the datasheet's 30ms typ/max measurement duration (Table 8)
-            read_value = await self._read_word_from_command(sgp40, delay_ms=100)
-            self._command_buffer = bytearray(2)
-        if read_value is None:
-            return None
-        return read_value[0]
 
     async def measure_raw(self, temperature: float = 25, relative_humidity: float = 50) -> int | None:
         # Humidity/temperature-compensated raw gas value (datasheet Table 9, command 0x260F).

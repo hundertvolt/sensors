@@ -166,9 +166,6 @@ class SCD30_Reader(SensorReader):
             handler=lambda b: self.irq_trigger_event.set(),
         )
 
-    def stop_timer(self) -> None:
-        self.start_trigger_timer.deinit()
-
     def get_task_starters(self) -> "list[Callable[[], asyncio.Task[Any]]]":
         return [self.start_asy_read, self.start_asy_init]
 
@@ -194,6 +191,99 @@ class SCD30_Reader(SensorReader):
 
     async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
         return await self.pr.get_log(_NAME)
+
+    async def get_measurement_interval(self) -> int | None:
+        try:
+            return await self.scd.get_measurement_interval()
+        except Exception as e:
+            await self.pr.err_s(_NAME, "Error reading measurement interval:", e, errno=13)
+            return None
+
+    async def get_self_calibration_enabled(self) -> bool | None:
+        try:
+            return await self.scd.get_self_calibration_enabled()
+        except Exception as e:
+            await self.pr.err_s(_NAME, "Error reading self calibration enabled:", e, errno=15)
+            return None
+
+    async def get_ambient_pressure(self) -> int | None:
+        try:
+            return await self.scd.get_ambient_pressure()
+        except Exception as e:
+            await self.pr.err_s(_NAME, "Error reading ambient pressure:", e, errno=17)
+            return None
+
+    async def get_altitude(self) -> int | None:
+        try:
+            return await self.scd.get_altitude()
+        except Exception as e:
+            await self.pr.err_s(_NAME, "Error reading altitude:", e, errno=19)
+            return None
+
+    async def get_temperature_offset(self) -> float | None:
+        try:
+            return await self.scd.get_temperature_offset()
+        except Exception as e:
+            await self.pr.err_s(_NAME, "Error reading temperature offset:", e, errno=21)
+            return None
+
+    async def get_forced_recalibration_reference(self) -> int | None:
+        try:
+            return await self.scd.get_forced_recalibration_reference()
+        except Exception as e:
+            await self.pr.err_s(_NAME, "Error reading forced recalibration reference:", e, errno=23)
+            return None
+
+    async def set_measurement_interval(self, value: int) -> bool:
+        try:
+            await self.scd.set_measurement_interval(value)
+            return True
+        except Exception as e:
+            await self.pr.err_s(_NAME, "Error setting measurement interval:", e, errno=14)
+            return False
+
+    async def set_self_calibration_enabled(self, enabled: bool) -> bool:
+        try:
+            await self.scd.set_self_calibration_enabled(enabled)
+            return True
+        except Exception as e:
+            await self.pr.err_s(_NAME, "Error setting self calibration enabled:", e, errno=16)
+            return False
+
+    async def set_ambient_pressure(self, pressure_mbar: int | float) -> bool:
+        try:
+            await self.scd.set_ambient_pressure(pressure_mbar)
+            return True
+        except Exception as e:
+            await self.pr.err_s(_NAME, "Error setting ambient pressure:", e, errno=18)
+            return False
+
+    async def set_altitude(self, altitude: int) -> bool:
+        try:
+            await self.scd.set_altitude(altitude)
+            return True
+        except Exception as e:
+            await self.pr.err_s(_NAME, "Error setting altitude:", e, errno=20)
+            return False
+
+    async def set_temperature_offset(self, offset: int | float) -> bool:
+        try:
+            await self.scd.set_temperature_offset(offset)
+            return True
+        except Exception as e:
+            await self.pr.err_s(_NAME, "Error setting temperature offset:", e, errno=22)
+            return False
+
+    async def set_forced_recalibration_reference(self, reference_value: int) -> bool:
+        try:
+            await self.scd.set_forced_recalibration_reference(reference_value)
+            return True
+        except Exception as e:
+            await self.pr.err_s(_NAME, "Error setting forced recalibration reference:", e, errno=24)
+            return False
+
+    def stop_timer(self) -> None:
+        self.start_trigger_timer.deinit()
 
     async def read_loop(self) -> bool:
         if not await self._init_scd():
@@ -230,96 +320,6 @@ class SCD30_Reader(SensorReader):
             return True
         except Exception as e:
             await self.pr.err_s(_NAME, "Error stopping continuous measurement:", e, errno=12)
-            return False
-
-    async def get_measurement_interval(self) -> int | None:
-        try:
-            return await self.scd.get_measurement_interval()
-        except Exception as e:
-            await self.pr.err_s(_NAME, "Error reading measurement interval:", e, errno=13)
-            return None
-
-    async def set_measurement_interval(self, value: int) -> bool:
-        try:
-            await self.scd.set_measurement_interval(value)
-            return True
-        except Exception as e:
-            await self.pr.err_s(_NAME, "Error setting measurement interval:", e, errno=14)
-            return False
-
-    async def get_self_calibration_enabled(self) -> bool | None:
-        try:
-            return await self.scd.get_self_calibration_enabled()
-        except Exception as e:
-            await self.pr.err_s(_NAME, "Error reading self calibration enabled:", e, errno=15)
-            return None
-
-    async def set_self_calibration_enabled(self, enabled: bool) -> bool:
-        try:
-            await self.scd.set_self_calibration_enabled(enabled)
-            return True
-        except Exception as e:
-            await self.pr.err_s(_NAME, "Error setting self calibration enabled:", e, errno=16)
-            return False
-
-    async def get_ambient_pressure(self) -> int | None:
-        try:
-            return await self.scd.get_ambient_pressure()
-        except Exception as e:
-            await self.pr.err_s(_NAME, "Error reading ambient pressure:", e, errno=17)
-            return None
-
-    async def set_ambient_pressure(self, pressure_mbar: int | float) -> bool:
-        try:
-            await self.scd.set_ambient_pressure(pressure_mbar)
-            return True
-        except Exception as e:
-            await self.pr.err_s(_NAME, "Error setting ambient pressure:", e, errno=18)
-            return False
-
-    async def get_altitude(self) -> int | None:
-        try:
-            return await self.scd.get_altitude()
-        except Exception as e:
-            await self.pr.err_s(_NAME, "Error reading altitude:", e, errno=19)
-            return None
-
-    async def set_altitude(self, altitude: int) -> bool:
-        try:
-            await self.scd.set_altitude(altitude)
-            return True
-        except Exception as e:
-            await self.pr.err_s(_NAME, "Error setting altitude:", e, errno=20)
-            return False
-
-    async def get_temperature_offset(self) -> float | None:
-        try:
-            return await self.scd.get_temperature_offset()
-        except Exception as e:
-            await self.pr.err_s(_NAME, "Error reading temperature offset:", e, errno=21)
-            return None
-
-    async def set_temperature_offset(self, offset: int | float) -> bool:
-        try:
-            await self.scd.set_temperature_offset(offset)
-            return True
-        except Exception as e:
-            await self.pr.err_s(_NAME, "Error setting temperature offset:", e, errno=22)
-            return False
-
-    async def get_forced_recalibration_reference(self) -> int | None:
-        try:
-            return await self.scd.get_forced_recalibration_reference()
-        except Exception as e:
-            await self.pr.err_s(_NAME, "Error reading forced recalibration reference:", e, errno=23)
-            return None
-
-    async def set_forced_recalibration_reference(self, reference_value: int) -> bool:
-        try:
-            await self.scd.set_forced_recalibration_reference(reference_value)
-            return True
-        except Exception as e:
-            await self.pr.err_s(_NAME, "Error setting forced recalibration reference:", e, errno=24)
             return False
 
 
@@ -377,6 +377,81 @@ class SCD30_I2C:
             raise RuntimeError("CRC check failed while reading data")
         return cast(int, unpack_from(">H", self._buffer)[0])
 
+    async def get_measurement_interval(self) -> int:
+        return await self._read_register(_CMD_SET_MEASUREMENT_INTERVAL)
+
+    async def get_self_calibration_enabled(self) -> bool:
+        return await self._read_register(_CMD_AUTOMATIC_SELF_CALIBRATION) == 1
+
+    async def get_ambient_pressure(self) -> int:
+        return await self._read_register(_CMD_CONTINUOUS_MEASUREMENT)
+
+    async def get_altitude(self) -> int:
+        return await self._read_register(_CMD_SET_ALTITUDE_COMPENSATION)
+
+    async def get_temperature_offset(self) -> float:
+        raw_offset = await self._read_register(_CMD_SET_TEMPERATURE_OFFSET)
+        return raw_offset / 100.0
+
+    async def get_forced_recalibration_reference(self) -> int:
+        # Volatile readback: always returns 400 after a power cycle regardless of the last FRC
+        # value applied - the calibration curve update itself is permanent, just not this readback.
+        return await self._read_register(_CMD_SET_FORCED_RECALIBRATION_FACTOR)
+
+    async def get_CO2(self) -> float | None:
+        # Pure cache read from the last read_measurement() call, no I2C of its own - see
+        # read_measurement()'s comment for why these getters must never re-check data-ready.
+        return self._co2
+
+    async def get_temperature(self) -> float | None:
+        return self._temperature
+
+    async def get_relative_humidity(self) -> float | None:
+        return self._relative_humidity
+
+    async def set_measurement_interval(self, value: int) -> None:
+        # NVM-persisted - survives reset() and power cycles.
+        if value < 2 or value > 1800:
+            raise ValueError("measurement_interval must be from 2-1800 seconds")
+        await self._send_command(_CMD_SET_MEASUREMENT_INTERVAL, value)
+
+    async def set_self_calibration_enabled(self, enabled: bool) -> None:
+        # NVM-persisted - survives reset() and power cycles.
+        await self._send_command(_CMD_AUTOMATIC_SELF_CALIBRATION, enabled)
+        if enabled:
+            await asyncio.sleep(0.01)
+
+    async def set_ambient_pressure(self, pressure_mbar: int | float) -> None:
+        # 0x0010 doubles as "trigger continuous measurement" and is NVM-persisted (Interface
+        # Description 1.4.1). Validated before truncating - int(-0.5) == 0 would otherwise slip
+        # through as the "disable" value instead of being rejected; NaN is rejected explicitly too.
+        if pressure_mbar != pressure_mbar:  # NaN is the only value unequal to itself
+            raise ValueError("ambient_pressure must not be NaN")
+        if pressure_mbar != 0 and (pressure_mbar > 1400 or pressure_mbar < 700):
+            raise ValueError("ambient_pressure must be from 700 to 1400 mBar")
+        await self._send_command(_CMD_CONTINUOUS_MEASUREMENT, int(pressure_mbar))
+
+    async def set_altitude(self, altitude: int) -> None:
+        # NVM-persisted. Validated before truncating - see set_ambient_pressure()'s comment for
+        # why int(-0.5) == 0 would otherwise slip through.
+        if altitude < 0 or altitude > 65535:
+            raise ValueError("altitude must be from 0 to 65535 meters")
+        await self._send_command(_CMD_SET_ALTITUDE_COMPENSATION, int(altitude))
+
+    async def set_temperature_offset(self, offset: float | int) -> None:
+        # NVM-persisted - survives reset() and power cycles. NaN rejected explicitly first - see
+        # set_ambient_pressure()'s comment.
+        if offset != offset:  # NaN is the only value unequal to itself
+            raise ValueError("temperature_offset must not be NaN")
+        if offset < 0 or offset > 655.35:
+            raise ValueError("temperature_offset must be from 0 to 655.35 degrees Celsius")
+        await self._send_command(_CMD_SET_TEMPERATURE_OFFSET, int(offset * 100))
+
+    async def set_forced_recalibration_reference(self, reference_value: int) -> None:
+        if reference_value < 400 or reference_value > 2000:
+            raise ValueError("forced_recalibration_reference must be from 400 to 2000 ppm")
+        await self._send_command(_CMD_SET_FORCED_RECALIBRATION_FACTOR, reference_value)
+
     async def setup(self) -> None:
         async with self.i2c_scd30 as scd30:
             async with scd30.i2c_device as i2c:
@@ -395,81 +470,6 @@ class SCD30_I2C:
     async def stop_continuous_measurement(self) -> None:
         # Turn off continuous measurement (turn on with ambient pressure command)
         await self._send_command(_CMD_STOP_CONTINUOUS_MEASUREMENT)
-
-    async def get_measurement_interval(self) -> int:
-        return await self._read_register(_CMD_SET_MEASUREMENT_INTERVAL)
-
-    async def set_measurement_interval(self, value: int) -> None:
-        # NVM-persisted - survives reset() and power cycles.
-        if value < 2 or value > 1800:
-            raise ValueError("measurement_interval must be from 2-1800 seconds")
-        await self._send_command(_CMD_SET_MEASUREMENT_INTERVAL, value)
-
-    async def get_self_calibration_enabled(self) -> bool:
-        return await self._read_register(_CMD_AUTOMATIC_SELF_CALIBRATION) == 1
-
-    async def set_self_calibration_enabled(self, enabled: bool) -> None:
-        # NVM-persisted - survives reset() and power cycles.
-        await self._send_command(_CMD_AUTOMATIC_SELF_CALIBRATION, enabled)
-        if enabled:
-            await asyncio.sleep(0.01)
-
-    async def get_ambient_pressure(self) -> int:
-        return await self._read_register(_CMD_CONTINUOUS_MEASUREMENT)
-
-    async def set_ambient_pressure(self, pressure_mbar: int | float) -> None:
-        # 0x0010 doubles as "trigger continuous measurement" and is NVM-persisted (Interface
-        # Description 1.4.1). Validated before truncating - int(-0.5) == 0 would otherwise slip
-        # through as the "disable" value instead of being rejected; NaN is rejected explicitly too.
-        if pressure_mbar != pressure_mbar:  # NaN is the only value unequal to itself
-            raise ValueError("ambient_pressure must not be NaN")
-        if pressure_mbar != 0 and (pressure_mbar > 1400 or pressure_mbar < 700):
-            raise ValueError("ambient_pressure must be from 700 to 1400 mBar")
-        await self._send_command(_CMD_CONTINUOUS_MEASUREMENT, int(pressure_mbar))
-
-    async def get_altitude(self) -> int:
-        return await self._read_register(_CMD_SET_ALTITUDE_COMPENSATION)
-
-    async def set_altitude(self, altitude: int) -> None:
-        # NVM-persisted. Validated before truncating - see set_ambient_pressure()'s comment for
-        # why int(-0.5) == 0 would otherwise slip through.
-        if altitude < 0 or altitude > 65535:
-            raise ValueError("altitude must be from 0 to 65535 meters")
-        await self._send_command(_CMD_SET_ALTITUDE_COMPENSATION, int(altitude))
-
-    async def get_temperature_offset(self) -> float:
-        raw_offset = await self._read_register(_CMD_SET_TEMPERATURE_OFFSET)
-        return raw_offset / 100.0
-
-    async def set_temperature_offset(self, offset: float | int) -> None:
-        # NVM-persisted - survives reset() and power cycles. NaN rejected explicitly first - see
-        # set_ambient_pressure()'s comment.
-        if offset != offset:  # NaN is the only value unequal to itself
-            raise ValueError("temperature_offset must not be NaN")
-        if offset < 0 or offset > 655.35:
-            raise ValueError("temperature_offset must be from 0 to 655.35 degrees Celsius")
-        await self._send_command(_CMD_SET_TEMPERATURE_OFFSET, int(offset * 100))
-
-    async def get_forced_recalibration_reference(self) -> int:
-        # Volatile readback: always returns 400 after a power cycle regardless of the last FRC
-        # value applied - the calibration curve update itself is permanent, just not this readback.
-        return await self._read_register(_CMD_SET_FORCED_RECALIBRATION_FACTOR)
-
-    async def set_forced_recalibration_reference(self, reference_value: int) -> None:
-        if reference_value < 400 or reference_value > 2000:
-            raise ValueError("forced_recalibration_reference must be from 400 to 2000 ppm")
-        await self._send_command(_CMD_SET_FORCED_RECALIBRATION_FACTOR, reference_value)
-
-    async def get_CO2(self) -> float | None:
-        # Pure cache read from the last read_measurement() call, no I2C of its own - see
-        # read_measurement()'s comment for why these getters must never re-check data-ready.
-        return self._co2
-
-    async def get_temperature(self) -> float | None:
-        return self._temperature
-
-    async def get_relative_humidity(self) -> float | None:
-        return self._relative_humidity
 
     async def read_measurement(self) -> None:
         # Call exactly once per cycle (data-ready clears the instant it's read - Interface

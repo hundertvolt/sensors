@@ -60,6 +60,19 @@ class PrintLog:
         self.level = _LOG_OFF
         self.set_level(level)
 
+    def get_level(self) -> int:
+        return self.level
+
+    def set_level(self, level: int | None) -> None:  # clamps to the valid [off, all] range instead of rejecting
+        if level is None:
+            self.level = _LOG_OFF
+        elif level < _LOG_OFF:
+            self.level = _LOG_OFF
+        elif level > _LOG_ALL:
+            self.level = _LOG_ALL
+        else:
+            self.level = level
+
     @staticmethod
     def level_off() -> int:
         return _LOG_OFF
@@ -83,19 +96,6 @@ class PrintLog:
     @staticmethod
     def level_info() -> int:
         return _LOG_ALL
-
-    def set_level(self, level: int | None) -> None:  # clamps to the valid [off, all] range instead of rejecting
-        if level is None:
-            self.level = _LOG_OFF
-        elif level < _LOG_OFF:
-            self.level = _LOG_OFF
-        elif level > _LOG_ALL:
-            self.level = _LOG_ALL
-        else:
-            self.level = level
-
-    def get_level(self) -> int:
-        return self.level
 
     def err(self, *args: "Any", **kwargs: "Any") -> None:
         if self.level >= _LOG_ERR:
@@ -164,6 +164,23 @@ class PrintLogHistory(PrintLog):
         if not await self._write():
             self._diag("PrintLog: History write failed!")
 
+    async def get_log(self, name: str) -> dict[str, dict[str, int | list[int] | list[str]]]:
+        # Reverses _store_err()'s encoding: 0x00/0x80 are "nothing recorded"; else shift back by
+        # _NO_ERR/_NO_WRN to recover the original error/warning code.
+        err_num = []
+        err_type = []
+        for errno in self.history:
+            if errno == _NO_ERR or errno == _NO_WRN:
+                err_num.append(errno)
+                err_type.append("N")
+            elif errno <= _MAX_ERR:
+                err_num.append(errno - _NO_ERR)
+                err_type.append("E")
+            elif errno <= _MAX_WRN:
+                err_num.append(errno - _NO_WRN)
+                err_type.append("W")
+        return {name: {"ErrCount": self.err_count, "ErrNum": err_num, "ErrType": err_type}}
+
     async def setup(self) -> None:  # no persistence to load in the pure in-memory case
         self.initialized = True
 
@@ -186,23 +203,6 @@ class PrintLogHistory(PrintLog):
             return
         if not await self._write():
             self._diag("PrintLog: History reset write failed!")
-
-    async def get_log(self, name: str) -> dict[str, dict[str, int | list[int] | list[str]]]:
-        # Reverses _store_err()'s encoding: 0x00/0x80 are "nothing recorded"; else shift back by
-        # _NO_ERR/_NO_WRN to recover the original error/warning code.
-        err_num = []
-        err_type = []
-        for errno in self.history:
-            if errno == _NO_ERR or errno == _NO_WRN:
-                err_num.append(errno)
-                err_type.append("N")
-            elif errno <= _MAX_ERR:
-                err_num.append(errno - _NO_ERR)
-                err_type.append("E")
-            elif errno <= _MAX_WRN:
-                err_num.append(errno - _NO_WRN)
-                err_type.append("W")
-        return {name: {"ErrCount": self.err_count, "ErrNum": err_num, "ErrType": err_type}}
 
 
 class PrintLogHistoryStore(PrintLogHistory):

@@ -60,6 +60,90 @@ class I2C:
         else:
             bus.writeto_mem(address, reg_addr, buf, addrsize=addrsize)
 
+    def get_bits(
+        self,
+        address: int,
+        num_bits: int,
+        reg_addr: int,
+        start_bit: int,
+        reg_width: int = 1,
+        lsb_first: bool = True,
+        addrsize: int | None = None,
+    ) -> int | None:
+        # Reads an arbitrary bit-field out of a reg_width-byte register.
+        if self._i2c is None or not self._bitfield_range_ok(num_bits, start_bit, reg_width):
+            return None
+        mem_value = self._readfrom_mem(self._i2c, address, reg_addr, reg_width, addrsize)
+        reg = self._bytes_to_int(mem_value, lsb_first)
+        return (reg & self._bitmask(num_bits, start_bit)) >> start_bit
+
+    def get_register_struct(
+        self, address: int, reg_addr: int, reg_format: str, addrsize: int | None = None
+    ) -> int | float | bytes | None:
+        # Byte order comes from reg_format's own prefix (e.g. ">H"). MicroPython's struct has no
+        # '?' typecode, so bool never appears in the return. A zero-field format ("" or "2x")
+        # unpacks to an empty tuple despite nonzero calcsize; the check below guards that.
+        if self._i2c is None:
+            return None
+        try:
+            size = struct.calcsize(reg_format)
+        except ValueError:  # malformed reg_format
+            return None
+        raw = self._readfrom_mem(self._i2c, address, reg_addr, size, addrsize)
+        try:
+            unpacked = struct.unpack(reg_format, memoryview(raw))
+        except ValueError:  # malformed reg_format
+            return None
+        if not unpacked:
+            return None
+        value = unpacked[0]
+        if isinstance(value, (int, float, bytes)):
+            return value
+        return None
+
+    def set_bits(
+        self,
+        address: int,
+        num_bits: int,
+        reg_addr: int,
+        start_bit: int,
+        value: int,
+        reg_width: int = 1,
+        lsb_first: bool = True,
+        addrsize: int | None = None,
+    ) -> None:
+        # Read-modify-write counterpart of get_bits(). Byte order is derived from lsb_first
+        # alone. value is masked to num_bits before being shifted in, so an out-of-range value
+        # can't corrupt the bits just above the intended field.
+        if self._i2c is None or not self._bitfield_range_ok(num_bits, start_bit, reg_width):
+            return
+        mem_value = self._readfrom_mem(self._i2c, address, reg_addr, reg_width, addrsize)
+        reg = self._bytes_to_int(mem_value, lsb_first)
+        reg &= ~self._bitmask(num_bits, start_bit)
+        reg |= (value & self._bitmask(num_bits, 0)) << start_bit
+        self._writeto_mem(
+            self._i2c, address, reg_addr, reg.to_bytes(reg_width, "little" if lsb_first else "big"), addrsize
+        )
+
+    def set_register_struct(
+        self,
+        address: int,
+        reg_addr: int,
+        reg_format: str,
+        value: int | float | bytes | bytearray,
+        addrsize: int | None = None,
+    ) -> None:
+        # Byte order comes from reg_format's own prefix, matching get_register_struct(). Unlike
+        # CPython, struct.pack silently truncates/zero-pads a value that doesn't fit reg_format
+        # instead of raising; a type mismatch (e.g. int vs. "4s") raises TypeError, both caught below.
+        if self._i2c is None:
+            return
+        try:
+            packed = struct.pack(reg_format, value)
+        except (ValueError, TypeError):
+            return
+        self._writeto_mem(self._i2c, address, reg_addr, packed, addrsize)
+
     def init(
         self,
         port_id: int,
@@ -145,90 +229,6 @@ class I2C:
         self.writeto(address, buffer_out, out_start, out_end, stop=out_stop)
         self.readfrom_into(address, buffer_in, in_start, in_end, stop=in_stop)
 
-    def get_bits(
-        self,
-        address: int,
-        num_bits: int,
-        reg_addr: int,
-        start_bit: int,
-        reg_width: int = 1,
-        lsb_first: bool = True,
-        addrsize: int | None = None,
-    ) -> int | None:
-        # Reads an arbitrary bit-field out of a reg_width-byte register.
-        if self._i2c is None or not self._bitfield_range_ok(num_bits, start_bit, reg_width):
-            return None
-        mem_value = self._readfrom_mem(self._i2c, address, reg_addr, reg_width, addrsize)
-        reg = self._bytes_to_int(mem_value, lsb_first)
-        return (reg & self._bitmask(num_bits, start_bit)) >> start_bit
-
-    def set_bits(
-        self,
-        address: int,
-        num_bits: int,
-        reg_addr: int,
-        start_bit: int,
-        value: int,
-        reg_width: int = 1,
-        lsb_first: bool = True,
-        addrsize: int | None = None,
-    ) -> None:
-        # Read-modify-write counterpart of get_bits(). Byte order is derived from lsb_first
-        # alone. value is masked to num_bits before being shifted in, so an out-of-range value
-        # can't corrupt the bits just above the intended field.
-        if self._i2c is None or not self._bitfield_range_ok(num_bits, start_bit, reg_width):
-            return
-        mem_value = self._readfrom_mem(self._i2c, address, reg_addr, reg_width, addrsize)
-        reg = self._bytes_to_int(mem_value, lsb_first)
-        reg &= ~self._bitmask(num_bits, start_bit)
-        reg |= (value & self._bitmask(num_bits, 0)) << start_bit
-        self._writeto_mem(
-            self._i2c, address, reg_addr, reg.to_bytes(reg_width, "little" if lsb_first else "big"), addrsize
-        )
-
-    def get_register_struct(
-        self, address: int, reg_addr: int, reg_format: str, addrsize: int | None = None
-    ) -> int | float | bytes | None:
-        # Byte order comes from reg_format's own prefix (e.g. ">H"). MicroPython's struct has no
-        # '?' typecode, so bool never appears in the return. A zero-field format ("" or "2x")
-        # unpacks to an empty tuple despite nonzero calcsize; the check below guards that.
-        if self._i2c is None:
-            return None
-        try:
-            size = struct.calcsize(reg_format)
-        except ValueError:  # malformed reg_format
-            return None
-        raw = self._readfrom_mem(self._i2c, address, reg_addr, size, addrsize)
-        try:
-            unpacked = struct.unpack(reg_format, memoryview(raw))
-        except ValueError:  # malformed reg_format
-            return None
-        if not unpacked:
-            return None
-        value = unpacked[0]
-        if isinstance(value, (int, float, bytes)):
-            return value
-        return None
-
-    def set_register_struct(
-        self,
-        address: int,
-        reg_addr: int,
-        reg_format: str,
-        value: int | float | bytes | bytearray,
-        addrsize: int | None = None,
-    ) -> None:
-        # Byte order comes from reg_format's own prefix, matching get_register_struct(). Unlike
-        # CPython, struct.pack silently truncates/zero-pads a value that doesn't fit reg_format
-        # instead of raising; a type mismatch (e.g. int vs. "4s") raises TypeError, both caught below.
-        if self._i2c is None:
-            return
-        try:
-            packed = struct.pack(reg_format, value)
-        except (ValueError, TypeError):
-            return
-        self._writeto_mem(self._i2c, address, reg_addr, packed, addrsize)
-
 
 class I2CDevice(Lockable):
     # Binds an I2C bus to one device address and the bus's shared asyncio lock, so consecutive
@@ -251,6 +251,54 @@ class I2CDevice(Lockable):
             await asyncio.sleep(0.1)
         if acked is None:
             raise RuntimeError("I2C bus not initialized")
+
+    async def get_bits(
+        self,
+        num_bits: int,
+        reg_addr: int,
+        start_bit: int,
+        reg_width: int = 1,
+        lsb_first: bool = True,
+        addrsize: int | None = None,
+    ) -> int | None:
+        return self.i2c.get_bits(
+            self.device_address, num_bits, reg_addr, start_bit, reg_width, lsb_first, addrsize
+        )
+
+    async def get_register_struct(
+        self, reg_addr: int, reg_format: str, addrsize: int | None = None
+    ) -> int | float | bytes | None:
+        return self.i2c.get_register_struct(self.device_address, reg_addr, reg_format, addrsize)
+
+    async def set_bits(
+        self,
+        num_bits: int,
+        reg_addr: int,
+        start_bit: int,
+        value: int,
+        reg_width: int = 1,
+        lsb_first: bool = True,
+        addrsize: int | None = None,
+    ) -> None:
+        self.i2c.set_bits(
+            self.device_address,
+            num_bits,
+            reg_addr,
+            start_bit,
+            value,
+            reg_width,
+            lsb_first,
+            addrsize,
+        )
+
+    async def set_register_struct(
+        self,
+        reg_addr: int,
+        reg_format: str,
+        value: int | float | bytes | bytearray,
+        addrsize: int | None = None,
+    ) -> None:
+        self.i2c.set_register_struct(self.device_address, reg_addr, reg_format, value, addrsize)
 
     async def setup(self, probe: bool = True) -> None:
         if probe:
@@ -295,51 +343,3 @@ class I2CDevice(Lockable):
             out_stop=out_stop,
             in_stop=in_stop,
         )
-
-    async def get_bits(
-        self,
-        num_bits: int,
-        reg_addr: int,
-        start_bit: int,
-        reg_width: int = 1,
-        lsb_first: bool = True,
-        addrsize: int | None = None,
-    ) -> int | None:
-        return self.i2c.get_bits(
-            self.device_address, num_bits, reg_addr, start_bit, reg_width, lsb_first, addrsize
-        )
-
-    async def set_bits(
-        self,
-        num_bits: int,
-        reg_addr: int,
-        start_bit: int,
-        value: int,
-        reg_width: int = 1,
-        lsb_first: bool = True,
-        addrsize: int | None = None,
-    ) -> None:
-        self.i2c.set_bits(
-            self.device_address,
-            num_bits,
-            reg_addr,
-            start_bit,
-            value,
-            reg_width,
-            lsb_first,
-            addrsize,
-        )
-
-    async def get_register_struct(
-        self, reg_addr: int, reg_format: str, addrsize: int | None = None
-    ) -> int | float | bytes | None:
-        return self.i2c.get_register_struct(self.device_address, reg_addr, reg_format, addrsize)
-
-    async def set_register_struct(
-        self,
-        reg_addr: int,
-        reg_format: str,
-        value: int | float | bytes | bytearray,
-        addrsize: int | None = None,
-    ) -> None:
-        self.i2c.set_register_struct(self.device_address, reg_addr, reg_format, value, addrsize)
