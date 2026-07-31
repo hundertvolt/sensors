@@ -66,6 +66,20 @@ failed=0
 # process is gone even if SIGTERM alone doesn't land. Worst case for one stuck file is
 # 3 * (180 + 10)s = ~9.5 minutes, still comfortably under the job cap even if it happens more
 # than once in the same run.
+#
+# stdbuf -oL -eL forces line buffering instead of MicroPython's default full block buffering
+# (4096 bytes) whenever stdout isn't a tty - true for any GH Actions step, confirmed against
+# both the MicroPython community's own documented buffering behavior and this project's own
+# isolation testing (every job that wrapped invocations with stdbuf never hung, even under the
+# exact concurrent-job conditions that reliably hung the unwrapped binary). Without it, a large
+# buffered write can block indefinitely if GitHub's own log-streaming pipeline briefly backs up
+# on the read end (a documented class of issue against actions/runner) - and since MicroPython's
+# asyncio is single-threaded and cooperative, one blocked write() call freezes the entire
+# process, matching the observed "zero further output, ever" symptom exactly. Small, immediate,
+# line-buffered writes are far less likely to ever need to wait on a stalled reader in the first
+# place. Kept alongside the per-file timeout/retry above, not instead of it: this addresses the
+# suspected root cause directly, the timeout/retry remains as the hard guarantee that a job can
+# never actually hang even if this turns out not to be the whole story.
 per_file_timeout_s="${PER_FILE_TIMEOUT_S:-180}"
 max_attempts=3
 for test_file in tests/test_*.py; do
@@ -81,7 +95,7 @@ for test_file in tests/test_*.py; do
         cmd=("$test_file")
     fi
     for attempt in $(seq 1 "$max_attempts"); do
-        if MICROPYPATH="src:tests:.frozen" timeout --kill-after=10 "$per_file_timeout_s" "$micropython_bin" "${cmd[@]}"; then
+        if MICROPYPATH="src:tests:.frozen" stdbuf -oL -eL timeout --kill-after=10 "$per_file_timeout_s" "$micropython_bin" "${cmd[@]}"; then
             ec=0
         else
             ec=$?
