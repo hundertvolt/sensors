@@ -1,0 +1,86 @@
+name: TEMP - Bisect UART hang (parallel)
+
+# TEMPORARY, throwaway debugging workflow - lives only on the debug/uart-ci-hang-investigation
+# branch (via disposable draft PR #25, never to be merged). PR #24's unit-tests job hung twice in
+# a row, always right at "== Running tests/test_asy_uart_driver.py" with total silence until the
+# 30-minute timeout - but the SAME file run in isolation 15x back-to-back (debug-uart-hang.yml)
+# passed cleanly in 19 seconds. That means the hang depends on context: something about reaching
+# this file *after* the ~9 files that precede it alphabetically in the real scripts/test.sh loop.
+#
+# Each test file already runs as its own fresh micropython child process (scripts/test.sh spawns
+# one per file), so this can't be live Python state carrying over - if it's real, it's an
+# OS-level/runner-level resource (fds, ephemeral ports, inotify watches, zombie processes, ...)
+# that accumulates across sequential spawns specifically on a GH Actions runner.
+#
+# This bisects it with a single parallel matrix instead of serial 30-minute waits: one job per
+# single preceding file + uart (does any ONE specific predecessor trigger it alone?), one job with
+# NO preceding file (control, already known-good), and one job with ALL preceding files + uart (the
+# full real-order reproduction, as a sanity check that this matrix approach still reproduces it at
+# all). fail-fast: false so one hang doesn't cancel the others - the whole point is comparing all
+# outcomes side by side.
+on:
+  pull_request:
+
+jobs:
+  bisect:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: control-uart-alone
+            files: "tests/test_asy_uart_driver.py"
+          - label: bmp3xx-then-uart
+            files: "tests/test_asy_bmp3xx_driver.py tests/test_asy_uart_driver.py"
+          - label: dns_client-then-uart
+            files: "tests/test_asy_dns_client.py tests/test_asy_uart_driver.py"
+          - label: fram_driver-then-uart
+            files: "tests/test_asy_fram_driver.py tests/test_asy_uart_driver.py"
+          - label: fram_manager-then-uart
+            files: "tests/test_asy_fram_manager.py tests/test_asy_uart_driver.py"
+          - label: i2c-then-uart
+            files: "tests/test_asy_i2c_driver.py tests/test_asy_uart_driver.py"
+          - label: ntp-then-uart
+            files: "tests/test_asy_ntp_client.py tests/test_asy_uart_driver.py"
+          - label: scd30-then-uart
+            files: "tests/test_asy_scd30_driver.py tests/test_asy_uart_driver.py"
+          - label: sgp40-then-uart
+            files: "tests/test_asy_sgp40_driver.py tests/test_asy_uart_driver.py"
+          - label: spi-then-uart
+            files: "tests/test_asy_spi_driver.py tests/test_asy_uart_driver.py"
+          - label: full-repro-all-preceding-then-uart
+            files: >-
+              tests/test_asy_bmp3xx_driver.py tests/test_asy_dns_client.py
+              tests/test_asy_fram_driver.py tests/test_asy_fram_manager.py
+              tests/test_asy_i2c_driver.py tests/test_asy_ntp_client.py
+              tests/test_asy_scd30_driver.py tests/test_asy_sgp40_driver.py
+              tests/test_asy_spi_driver.py tests/test_asy_uart_driver.py
+      max-parallel: 11
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    name: bisect (${{ matrix.label }})
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install uv
+        run: pip install uv
+      - name: Cache MicroPython Unix port build
+        uses: actions/cache@v6
+        with:
+          path: ~/pico-toolchain
+          key: unix-port-${{ runner.os }}-${{ hashFiles('toolchain/versions.toml', 'toolchain/setup_toolchain.py') }}
+      - name: Build toolchain if not cached
+        run: |
+          if [ ! -x "$HOME/pico-toolchain/micropython/ports/unix/build-standard/micropython" ]; then
+            uv run toolchain/setup_toolchain.py setup --toolchain-dir "$HOME/pico-toolchain"
+          fi
+      - name: Run this chunk's files in sequence (mirrors scripts/test.sh's own loop)
+        run: |
+          bin="$HOME/pico-toolchain/micropython/ports/unix/build-standard/micropython"
+          for f in ${{ matrix.files }}; do
+            echo "== Running $f"
+            if ! MICROPYPATH="src:tests:.frozen" stdbuf -oL -eL timeout 120 "$bin" "$f"; then
+              ec=$?
+              echo "STALLED/FAILED on $f (exit=$ec)"
+              exit "$ec"
+            fi
+          done
+          echo "chunk fully passed: ${{ matrix.label }}"
