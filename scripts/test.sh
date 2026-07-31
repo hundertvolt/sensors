@@ -54,32 +54,26 @@ fi
 
 failed=0
 # Per-file timeout with two retries (three attempts total), not just the job-level
-# timeout-minutes in ci.yml: a real, reproducible intermittent hang was tracked down to GitHub
-# Actions runner-level contention under concurrent job load (not a bug in any test file or src/
-# module - see CLAUDE.md's "CI hang investigation" note), surfacing as a specific test_*.py
-# file's MicroPython process going completely silent for the rest of the job. 180s is a
-# deliberate multiple of the slowest observed healthy file (test_asy_sgp40_driver.py's real-time
-# FRAM backup/restore tests, ~90s worst case seen in CI) - generous enough to never
-# false-positive-kill a legitimately slow file, while being far below the 30-minute job cap. Two
-# retries absorb transient contention without ever failing the whole job for infra noise; a third
-# consecutive timeout on the same file is treated as a real failure. --kill-after guarantees the
-# process is gone even if SIGTERM alone doesn't land. Worst case for one stuck file is
-# 3 * (180 + 10)s = ~9.5 minutes, still comfortably under the job cap even if it happens more
-# than once in the same run.
+# timeout-minutes in ci.yml. This dates from an earlier phase of the CI-hang investigation, when
+# the leading theory was GitHub Actions runner-level contention; that theory was wrong (see
+# CLAUDE.md's "CI hang investigation" note for the real root cause: 17 tests in
+# test_asy_uart_driver.py relying on real select.poll() against a fake UART, fixed by swapping in
+# _StepPoller). This timeout/retry, and the stdbuf line-buffering below, didn't fix the hang and
+# aren't required for it (an isolation test with both reverted, running only the _StepPoller fix,
+# passed 8/8 clean CI jobs) - they're kept as a standing "hanging is never allowed" backstop
+# against any *future* hang, not as the fix for this one. 180s is a deliberate multiple of the
+# slowest observed healthy file (test_asy_sgp40_driver.py's real-time FRAM backup/restore tests,
+# ~90s worst case seen in CI) - generous enough to never false-positive-kill a legitimately slow
+# file, while being far below the 30-minute job cap. Two retries absorb transient contention
+# without ever failing the whole job for infra noise; a third consecutive timeout on the same
+# file is treated as a real failure. --kill-after guarantees the process is gone even if SIGTERM
+# alone doesn't land. Worst case for one stuck file is 3 * (180 + 10)s = ~9.5 minutes, still
+# comfortably under the job cap even if it happens more than once in the same run.
 #
 # stdbuf -oL -eL forces line buffering instead of MicroPython's default full block buffering
-# (4096 bytes) whenever stdout isn't a tty - true for any GH Actions step, confirmed against
-# both the MicroPython community's own documented buffering behavior and this project's own
-# isolation testing (every job that wrapped invocations with stdbuf never hung, even under the
-# exact concurrent-job conditions that reliably hung the unwrapped binary). Without it, a large
-# buffered write can block indefinitely if GitHub's own log-streaming pipeline briefly backs up
-# on the read end (a documented class of issue against actions/runner) - and since MicroPython's
-# asyncio is single-threaded and cooperative, one blocked write() call freezes the entire
-# process, matching the observed "zero further output, ever" symptom exactly. Small, immediate,
-# line-buffered writes are far less likely to ever need to wait on a stalled reader in the first
-# place. Kept alongside the per-file timeout/retry above, not instead of it: this addresses the
-# suspected root cause directly, the timeout/retry remains as the hard guarantee that a job can
-# never actually hang even if this turns out not to be the whole story.
+# (4096 bytes) whenever stdout isn't a tty - true for any GH Actions step. Harmless and cheap to
+# keep even though it turned out not to be what was causing the hang (see above); small,
+# immediate, line-buffered writes are still a reasonable default for CI log output.
 per_file_timeout_s="${PER_FILE_TIMEOUT_S:-180}"
 max_attempts=3
 for test_file in tests/test_*.py; do
