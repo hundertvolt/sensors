@@ -53,6 +53,35 @@ if [ "$coverage" = "1" ]; then
 fi
 
 failed=0
+# Per-file timeout with two retries (three attempts total), not just the job-level
+# timeout-minutes in ci.yml: a real, reproducible intermittent hang was tracked down to GitHub
+# Actions runner-level contention under concurrent job load (not a bug in any test file or src/
+# module - see CLAUDE.md's "CI hang investigation" note), surfacing as a specific test_*.py
+# file's MicroPython process going completely silent for the rest of the job. 180s is a
+# deliberate multiple of the slowest observed healthy file (test_asy_sgp40_driver.py's real-time
+# FRAM backup/restore tests, ~90s worst case seen in CI) - generous enough to never
+# false-positive-kill a legitimately slow file, while being far below the 30-minute job cap. Two
+# retries absorb transient contention without ever failing the whole job for infra noise; a third
+# consecutive timeout on the same file is treated as a real failure. --kill-after guarantees the
+# process is gone even if SIGTERM alone doesn't land. Worst case for one stuck file is
+# 3 * (180 + 10)s = ~9.5 minutes, still comfortably under the job cap even if it happens more
+# than once in the same run.
+#
+# stdbuf -oL -eL forces line buffering instead of MicroPython's default full block buffering
+# (4096 bytes) whenever stdout isn't a tty - true for any GH Actions step, confirmed against
+# both the MicroPython community's own documented buffering behavior and this project's own
+# isolation testing (every job that wrapped invocations with stdbuf never hung, even under the
+# exact concurrent-job conditions that reliably hung the unwrapped binary). Without it, a large
+# buffered write can block indefinitely if GitHub's own log-streaming pipeline briefly backs up
+# on the read end (a documented class of issue against actions/runner) - and since MicroPython's
+# asyncio is single-threaded and cooperative, one blocked write() call freezes the entire
+# process, matching the observed "zero further output, ever" symptom exactly. Small, immediate,
+# line-buffered writes are far less likely to ever need to wait on a stalled reader in the first
+# place. Kept alongside the per-file timeout/retry above, not instead of it: this addresses the
+# suspected root cause directly, the timeout/retry remains as the hard guarantee that a job can
+# never actually hang even if this turns out not to be the whole story.
+per_file_timeout_s="${PER_FILE_TIMEOUT_S:-180}"
+max_attempts=3
 for test_file in tests/test_*.py; do
     echo "== Running $test_file"
     # .frozen must be included explicitly: MICROPYPATH replaces MicroPython's default sys.path
@@ -61,14 +90,29 @@ for test_file in tests/test_*.py; do
     # this breaks `import asyncio` for any async src/ file with no import error pointing at why.
     if [ "$coverage" = "1" ]; then
         raw_out="$raw_dir/$(basename "$test_file" .py).json"
-        if ! MICROPYPATH="src:tests:.frozen" "$micropython_bin" tests/_coverage_runner.py "$test_file" "$raw_out"; then
-            failed=1
-        fi
+        cmd=(tests/_coverage_runner.py "$test_file" "$raw_out")
     else
-        if ! MICROPYPATH="src:tests:.frozen" "$micropython_bin" "$test_file"; then
-            failed=1
-        fi
+        cmd=("$test_file")
     fi
+    for attempt in $(seq 1 "$max_attempts"); do
+        if MICROPYPATH="src:tests:.frozen" stdbuf -oL -eL timeout --kill-after=10 "$per_file_timeout_s" "$micropython_bin" "${cmd[@]}"; then
+            ec=0
+        else
+            ec=$?
+        fi
+        if [ "$ec" -eq 0 ]; then
+            break
+        elif [ "$ec" -eq 124 ] && [ "$attempt" -lt "$max_attempts" ]; then
+            echo "== $test_file exceeded ${per_file_timeout_s}s on attempt $attempt/$max_attempts - retrying in case of transient runner contention" >&2
+            continue
+        else
+            if [ "$ec" -eq 124 ]; then
+                echo "== $test_file exceeded ${per_file_timeout_s}s on all $max_attempts attempts - treating as a real failure instead of hanging the job" >&2
+            fi
+            failed=1
+            break
+        fi
+    done
 done
 
 if [ "$coverage" = "1" ]; then
