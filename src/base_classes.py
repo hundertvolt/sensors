@@ -91,6 +91,13 @@ class LockedCounter:
             return None
         return min(max(value, 0), self.max_val)
 
+    async def _step(self, delta: int) -> int:
+        async with self.value_lock:
+            current = 0 if self.value is None else self.value
+            current = min(max(current + delta, 0), self.max_val)
+            self.value = current
+        return current
+
     async def set_value(self, value: int | None) -> None:
         async with self.value_lock:
             self.value = self._clamp(value)
@@ -105,13 +112,6 @@ class LockedCounter:
 
     async def decrement(self) -> int:
         return await self._step(-1)
-
-    async def _step(self, delta: int) -> int:
-        async with self.value_lock:
-            current = 0 if self.value is None else self.value
-            current = min(max(current + delta, 0), self.max_val)
-            self.value = current
-        return current
 
 
 class LockedFlag:
@@ -168,13 +168,6 @@ class SensorReader:
         self.max_i2c_err = max_i2c_err
         self._err_cnt_internal = 0
 
-    async def reset_error_counter(self) -> None:
-        # Resets both counters this file tracks, not just pr's persisted history/err_count -
-        # _err_cnt_internal is the separate consecutive-failure streak _error_check's give-up
-        # decision relies on, and must not survive a reset the caller expects to be total.
-        self._err_cnt_internal = 0
-        await self.pr.reset()
-
     async def _error_check(self, results: "MeasDataType", name: str, condition: bool = True) -> bool:
         # centralizes the increment/decrement-error-counter-and-decide-to-give-up logic every
         # sensortask-*.py driver used to hand-roll separately; False tells the caller to give up
@@ -230,6 +223,13 @@ class SensorReader:
                 await self.pr.err_s("Error reading config from sensor:", e, errno=4)
 
         return ret
+
+    async def reset_error_counter(self) -> None:
+        # Resets both counters this file tracks, not just pr's persisted history/err_count -
+        # _err_cnt_internal is the separate consecutive-failure streak _error_check's give-up
+        # decision relies on, and must not survive a reset the caller expects to be total.
+        self._err_cnt_internal = 0
+        await self.pr.reset()
 
 
 class SensorReaderConfig(SensorReader):

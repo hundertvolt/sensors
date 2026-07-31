@@ -27,6 +27,39 @@ class I2C:
         self.async_lock = asyncio.Lock()
         self.init(port_id, scl_pin, sda_pin, frequency, timeout)
 
+    @staticmethod
+    def _bitfield_range_ok(num_bits: int, start_bit: int, reg_width: int) -> bool:
+        # Shared range guard for get_bits()/set_bits(): field must fit inside reg_width bytes.
+        return num_bits > 0 and start_bit >= 0 and reg_width > 0 and start_bit + num_bits <= reg_width * 8
+
+    @staticmethod
+    def _bitmask(num_bits: int, start_bit: int) -> int:
+        return ((1 << num_bits) - 1) << start_bit
+
+    @staticmethod
+    def _bytes_to_int(mem_value: bytes, lsb_first: bool) -> int:
+        # Shared byte-order reconstruction for get_bits()/set_bits(): lsb_first says whether
+        # mem_value[0] is the least- or most-significant byte.
+        reg = 0
+        order = range(len(mem_value) - 1, -1, -1) if lsb_first else range(len(mem_value))
+        for i in order:
+            reg = (reg << 8) | mem_value[i]
+        return reg
+
+    @staticmethod
+    def _readfrom_mem(bus: _I2C, address: int, reg_addr: int, nbytes: int, addrsize: int | None) -> bytes:
+        # addrsize=None omits the kwarg instead of duplicating machine.I2C's own default (8).
+        if addrsize is None:
+            return bus.readfrom_mem(address, reg_addr, nbytes)
+        return bus.readfrom_mem(address, reg_addr, nbytes, addrsize=addrsize)
+
+    @staticmethod
+    def _writeto_mem(bus: _I2C, address: int, reg_addr: int, buf: bytes, addrsize: int | None) -> None:
+        if addrsize is None:
+            bus.writeto_mem(address, reg_addr, buf)
+        else:
+            bus.writeto_mem(address, reg_addr, buf, addrsize=addrsize)
+
     def init(
         self,
         port_id: int,
@@ -111,39 +144,6 @@ class I2C:
         # (write without a stop, then a read that does stop) is expressible; pass out_stop=False.
         self.writeto(address, buffer_out, out_start, out_end, stop=out_stop)
         self.readfrom_into(address, buffer_in, in_start, in_end, stop=in_stop)
-
-    @staticmethod
-    def _bitfield_range_ok(num_bits: int, start_bit: int, reg_width: int) -> bool:
-        # Shared range guard for get_bits()/set_bits(): field must fit inside reg_width bytes.
-        return num_bits > 0 and start_bit >= 0 and reg_width > 0 and start_bit + num_bits <= reg_width * 8
-
-    @staticmethod
-    def _bitmask(num_bits: int, start_bit: int) -> int:
-        return ((1 << num_bits) - 1) << start_bit
-
-    @staticmethod
-    def _bytes_to_int(mem_value: bytes, lsb_first: bool) -> int:
-        # Shared byte-order reconstruction for get_bits()/set_bits(): lsb_first says whether
-        # mem_value[0] is the least- or most-significant byte.
-        reg = 0
-        order = range(len(mem_value) - 1, -1, -1) if lsb_first else range(len(mem_value))
-        for i in order:
-            reg = (reg << 8) | mem_value[i]
-        return reg
-
-    @staticmethod
-    def _readfrom_mem(bus: _I2C, address: int, reg_addr: int, nbytes: int, addrsize: int | None) -> bytes:
-        # addrsize=None omits the kwarg instead of duplicating machine.I2C's own default (8).
-        if addrsize is None:
-            return bus.readfrom_mem(address, reg_addr, nbytes)
-        return bus.readfrom_mem(address, reg_addr, nbytes, addrsize=addrsize)
-
-    @staticmethod
-    def _writeto_mem(bus: _I2C, address: int, reg_addr: int, buf: bytes, addrsize: int | None) -> None:
-        if addrsize is None:
-            bus.writeto_mem(address, reg_addr, buf)
-        else:
-            bus.writeto_mem(address, reg_addr, buf, addrsize=addrsize)
 
     def get_bits(
         self,
@@ -238,6 +238,20 @@ class I2CDevice(Lockable):
         super().__init__(asy_lock=self.i2c.async_lock)
         self.device_address = device_address
 
+    async def __probe_for_device(self) -> None:
+        # Try to write zero bytes to the device address: an OSError means no device ACKed it.
+        # writeto() returning None (bus not initialized, e.g. deinit() was called on the shared
+        # I2C instance) is a distinct failure from "no device" and gets its own message.
+        try:
+            await asyncio.sleep(0.1)
+            acked = self.i2c.writeto(self.device_address, b"")
+        except OSError:
+            raise ValueError(f"No I2C device at address: {self.device_address:#x}") from None
+        finally:
+            await asyncio.sleep(0.1)
+        if acked is None:
+            raise RuntimeError("I2C bus not initialized")
+
     async def setup(self, probe: bool = True) -> None:
         if probe:
             await self.__probe_for_device()
@@ -329,17 +343,3 @@ class I2CDevice(Lockable):
         addrsize: int | None = None,
     ) -> None:
         self.i2c.set_register_struct(self.device_address, reg_addr, reg_format, value, addrsize)
-
-    async def __probe_for_device(self) -> None:
-        # Try to write zero bytes to the device address: an OSError means no device ACKed it.
-        # writeto() returning None (bus not initialized, e.g. deinit() was called on the shared
-        # I2C instance) is a distinct failure from "no device" and gets its own message.
-        try:
-            await asyncio.sleep(0.1)
-            acked = self.i2c.writeto(self.device_address, b"")
-        except OSError:
-            raise ValueError(f"No I2C device at address: {self.device_address:#x}") from None
-        finally:
-            await asyncio.sleep(0.1)
-        if acked is None:
-            raise RuntimeError("I2C bus not initialized")

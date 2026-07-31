@@ -64,14 +64,6 @@ class _AsyBaseFramChunk:
         # this one serializes this chunk's own write()/read()/clear() end to end, across both blocks.
         self._op_lock = asyncio.Lock()
 
-    async def set_verify(self, value: int) -> None:
-        self.pr.evt("FRAM verification set to", value, "write cycles.")
-        self.verify_counter = 0
-        self._verify = value
-
-    async def get_verify(self) -> int:
-        return self._verify
-
     async def _write(self, buf: bytearray, override_pause: bool = False) -> bool:
         async with self._op_lock:  # serializes this chunk's own writes/reads/clears end to end
             if (not override_pause) and (self._mempause()):
@@ -155,21 +147,6 @@ class _AsyBaseFramChunk:
                 return False
             self.pr.all("Both blocks valid and data verified")
             return True
-
-    async def clear(self, override_pause: bool = False) -> bool:
-        async with self._op_lock:  # serializes this chunk's own writes/reads/clears end to end
-            if (not override_pause) and (self._mempause()):
-                await self.pr.wrn_s("FRAM communication paused, not clearing FRAM!", wrnno=80)
-                return False
-            for n in range(len(self.block_addr)):
-                if not await self._clear_chunk(self.block_addr[n]):
-                    await self.pr.err_s("Clearing chunks failed!", errno=80)
-                    return False
-                self.pr.evt("Block", n, "cleared")
-            return True
-
-    async def get_pause(self) -> bool:
-        return self._mempause()
 
     async def _read_into(self, buf: bytearray, addr: int) -> tuple[bool, bool]:
         valid = True
@@ -351,6 +328,29 @@ class _AsyBaseFramChunk:
                 await self.pr.err_s("General write error in _clear_chunk:", e, errno=58)
                 return False
         return True
+
+    async def set_verify(self, value: int) -> None:
+        self.pr.evt("FRAM verification set to", value, "write cycles.")
+        self.verify_counter = 0
+        self._verify = value
+
+    async def get_verify(self) -> int:
+        return self._verify
+
+    async def clear(self, override_pause: bool = False) -> bool:
+        async with self._op_lock:  # serializes this chunk's own writes/reads/clears end to end
+            if (not override_pause) and (self._mempause()):
+                await self.pr.wrn_s("FRAM communication paused, not clearing FRAM!", wrnno=80)
+                return False
+            for n in range(len(self.block_addr)):
+                if not await self._clear_chunk(self.block_addr[n]):
+                    await self.pr.err_s("Clearing chunks failed!", errno=80)
+                    return False
+                self.pr.evt("Block", n, "cleared")
+            return True
+
+    async def get_pause(self) -> bool:
+        return self._mempause()
 
 
 class AsyFramChunkBuffer(LockableBuffer):

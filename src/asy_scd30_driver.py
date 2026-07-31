@@ -89,48 +89,6 @@ class SCD30_Reader(SensorReader):
         self.irq_trigger_event = ThreadSafeFlag()
         self.scd_timer_triggers = 0
 
-    def start_asy_read(self) -> asyncio.Task[bool]:
-        evtloop = asyncio.get_event_loop()
-        return evtloop.create_task(self.read_loop())
-
-    def start_asy_init(self) -> asyncio.Task[None]:
-        evtloop = asyncio.get_event_loop()
-        return evtloop.create_task(self.scd_init_irq())
-
-    def start_timer(self) -> None:
-        try:
-            self.start_trigger_timer.init(
-                period=500,
-                mode=Timer.PERIODIC,
-                callback=lambda b: self.start_trigger_event.set(),
-            )
-        except OSError as e:  # alarm-pool exhaustion (ENOMEM) - degrades gracefully instead of
-            # crashing the caller (this sensor just never gets triggered this cycle).
-            self.pr.err(_NAME, "Could not start timer:", e)
-        self.irq_pin.irq(
-            trigger=self.irq_pin.IRQ_RISING,
-            handler=lambda b: self.irq_trigger_event.set(),
-        )
-
-    def stop_timer(self) -> None:
-        self.start_trigger_timer.deinit()
-
-    def get_task_starters(self) -> "list[Callable[[], asyncio.Task[Any]]]":
-        return [self.start_asy_read, self.start_asy_init]
-
-    def get_timer_starters(self) -> "list[Callable[[], None]]":
-        return [self.start_timer]
-
-    async def get_data(self) -> SCD30:
-        # Narrows _get_meas_data()'s generic "NamedTuple" to this Reader's concrete SCD30;
-        # typing.cast() isn't usable (no runtime presence on MicroPython) so this identity return
-        # does the same job - see DRIVER_SPEC.md's get_data() narrowing convention.
-        return await self._get_meas_data()  # type: ignore[return-value]
-
-    async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
-        data = await self.get_data()
-        return make_dict(data)
-
     async def _read_sensor_dict(self) -> dict[str, int | float | str | bool | None]:
         ret: dict[str, int | float | str | bool | None] = {
             name_cfg(_VAL_TO): await self.get_temperature_offset(),
@@ -141,16 +99,6 @@ class SCD30_Reader(SensorReader):
             name_cfg(_VAL_SC): await self.get_self_calibration_enabled(),
         }
         return ret  # only for callback in _get_dict_cfg, is automatically inside try-except!
-
-    async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
-        return await self._get_dict_cfg(
-            _NAME,
-            _VAL_TO + _VAL_MI + _VAL_AP + _VAL_ALT + _VAL_CAL + _VAL_SC,
-            callback=self._read_sensor_dict,
-        )
-
-    async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
-        return await self.pr.get_log(_NAME)
 
     async def _init_scd(self) -> bool:
         # Continuous measurement isn't (re)started here - it's NVM-persisted and provisioned
@@ -194,6 +142,58 @@ class SCD30_Reader(SensorReader):
             )
         )
         self.pr.all(_NAME, "Daten gespeichert")
+
+    def start_asy_read(self) -> asyncio.Task[bool]:
+        evtloop = asyncio.get_event_loop()
+        return evtloop.create_task(self.read_loop())
+
+    def start_asy_init(self) -> asyncio.Task[None]:
+        evtloop = asyncio.get_event_loop()
+        return evtloop.create_task(self.scd_init_irq())
+
+    def start_timer(self) -> None:
+        try:
+            self.start_trigger_timer.init(
+                period=500,
+                mode=Timer.PERIODIC,
+                callback=lambda b: self.start_trigger_event.set(),
+            )
+        except OSError as e:  # alarm-pool exhaustion (ENOMEM) - degrades gracefully instead of
+            # crashing the caller (this sensor just never gets triggered this cycle).
+            self.pr.err(_NAME, "Could not start timer:", e)
+        self.irq_pin.irq(
+            trigger=self.irq_pin.IRQ_RISING,
+            handler=lambda b: self.irq_trigger_event.set(),
+        )
+
+    def stop_timer(self) -> None:
+        self.start_trigger_timer.deinit()
+
+    def get_task_starters(self) -> "list[Callable[[], asyncio.Task[Any]]]":
+        return [self.start_asy_read, self.start_asy_init]
+
+    def get_timer_starters(self) -> "list[Callable[[], None]]":
+        return [self.start_timer]
+
+    async def get_data(self) -> SCD30:
+        # Narrows _get_meas_data()'s generic "NamedTuple" to this Reader's concrete SCD30;
+        # typing.cast() isn't usable (no runtime presence on MicroPython) so this identity return
+        # does the same job - see DRIVER_SPEC.md's get_data() narrowing convention.
+        return await self._get_meas_data()  # type: ignore[return-value]
+
+    async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
+        data = await self.get_data()
+        return make_dict(data)
+
+    async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
+        return await self._get_dict_cfg(
+            _NAME,
+            _VAL_TO + _VAL_MI + _VAL_AP + _VAL_ALT + _VAL_CAL + _VAL_SC,
+            callback=self._read_sensor_dict,
+        )
+
+    async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
+        return await self.pr.get_log(_NAME)
 
     async def read_loop(self) -> bool:
         if not await self._init_scd():
@@ -340,6 +340,43 @@ class SCD30_I2C:
         self._relative_humidity: float | None = None
         self._co2: float | None = None
 
+    async def _send_command(self, command: int, arguments: int | None = None) -> None:
+        async with self.i2c_scd30 as scd30:
+            async with scd30.i2c_device as i2c:
+                await self._send_dev_command(i2c, command, arguments)
+
+    async def _send_dev_command(self, i2c: I2CDevice, command: int, arguments: int | None = None) -> None:
+        # if there is an argument, calculate the CRC and include it as well.
+        self._buffer[0] = command >> 8
+        self._buffer[1] = command & 0xFF
+        end_byte = 2
+        if arguments is not None:
+            self._buffer[2] = arguments >> 8
+            self._buffer[3] = arguments & 0xFF
+            if await self.crc.add_into(self._buffer, 2, start=2) != 3:
+                raise RuntimeError("CRC generation failed!")
+            end_byte = 5
+        await i2c.write(self._buffer, end=end_byte)
+        await asyncio.sleep(0.05)  # delay for response
+
+    async def _read_register(self, reg_addr: int) -> int:
+        async with self.i2c_scd30 as scd30:
+            async with scd30.i2c_device as i2c:
+                ret = await self._read_dev_register(i2c, reg_addr)
+        return ret
+
+    async def _read_dev_register(self, i2c: I2CDevice, reg_addr: int) -> int:
+        self._buffer[0] = reg_addr >> 8
+        self._buffer[1] = reg_addr & 0xFF
+        await i2c.write(self._buffer, end=2)
+        # Separate readinto: the SCD30 has no repeated-start, so this stops the bus first; the
+        # delay clears the datasheet's >3ms minimum (Interface Description 1.4.4).
+        await asyncio.sleep(0.05)
+        await i2c.readinto(self._buffer, end=3)
+        if await self.crc.check_from(self._buffer, 3) != 2:
+            raise RuntimeError("CRC check failed while reading data")
+        return cast(int, unpack_from(">H", self._buffer)[0])
+
     async def setup(self) -> None:
         async with self.i2c_scd30 as scd30:
             async with scd30.i2c_device as i2c:
@@ -433,43 +470,6 @@ class SCD30_I2C:
 
     async def get_relative_humidity(self) -> float | None:
         return self._relative_humidity
-
-    async def _send_command(self, command: int, arguments: int | None = None) -> None:
-        async with self.i2c_scd30 as scd30:
-            async with scd30.i2c_device as i2c:
-                await self._send_dev_command(i2c, command, arguments)
-
-    async def _send_dev_command(self, i2c: I2CDevice, command: int, arguments: int | None = None) -> None:
-        # if there is an argument, calculate the CRC and include it as well.
-        self._buffer[0] = command >> 8
-        self._buffer[1] = command & 0xFF
-        end_byte = 2
-        if arguments is not None:
-            self._buffer[2] = arguments >> 8
-            self._buffer[3] = arguments & 0xFF
-            if await self.crc.add_into(self._buffer, 2, start=2) != 3:
-                raise RuntimeError("CRC generation failed!")
-            end_byte = 5
-        await i2c.write(self._buffer, end=end_byte)
-        await asyncio.sleep(0.05)  # delay for response
-
-    async def _read_register(self, reg_addr: int) -> int:
-        async with self.i2c_scd30 as scd30:
-            async with scd30.i2c_device as i2c:
-                ret = await self._read_dev_register(i2c, reg_addr)
-        return ret
-
-    async def _read_dev_register(self, i2c: I2CDevice, reg_addr: int) -> int:
-        self._buffer[0] = reg_addr >> 8
-        self._buffer[1] = reg_addr & 0xFF
-        await i2c.write(self._buffer, end=2)
-        # Separate readinto: the SCD30 has no repeated-start, so this stops the bus first; the
-        # delay clears the datasheet's >3ms minimum (Interface Description 1.4.4).
-        await asyncio.sleep(0.05)
-        await i2c.readinto(self._buffer, end=3)
-        if await self.crc.check_from(self._buffer, 3) != 2:
-            raise RuntimeError("CRC check failed while reading data")
-        return cast(int, unpack_from(">H", self._buffer)[0])
 
     async def read_measurement(self) -> None:
         # Call exactly once per cycle (data-ready clears the instant it's read - Interface

@@ -70,6 +70,69 @@ class SystemService:
         # watchdog and lets it reset us instead (one-way).
         self._force_watchdog_starve = False
 
+    def _reboot(self, message: str, action: "Callable[[], None]") -> None:
+        self.reset_timer.deinit()
+        self.storage_timer.deinit()
+        self.pr.evt(message)
+        if self.storage_pause is not None:
+            self.storage_pause(True)
+            self.pr.evt("Storage paused")
+        try:
+            self.reset_timer.init(period=_RESET_DELAY * 1000, mode=Timer.ONE_SHOT, callback=lambda b: action())
+        except OSError as e:  # alarm-pool exhaustion (ENOMEM) - falls back to the same watchdog-starve
+            # backstop start_and_check_tasks() already uses past _TASK_FAIL_MAX.
+            self.pr.err("Could not arm reset timer, stopping watchdog feed instead:", e)
+            self._force_watchdog_starve = True
+
+    async def _ntp_boot_signature(self) -> int | None:
+        # None if not synced yet or the sync/mktime computation itself failed; caller falls back to random after _NTP_WAIT_TIME.
+        try:
+            synced = await self.ntp_is_synced()
+        except Exception as e:  # caller-supplied callback - currently wired to asy_ntp_client.py's ntp_issynced
+            # (promoted/audited) in sensortask-wozi.py, but this parameter accepts any Callable, so the guard stays broad
+            await self.pr.err_s("NTP sync callback failed:", e, errno=1)
+            return None
+        if not synced:
+            return None
+        try:
+            return time.mktime(time.gmtime())
+        except (OverflowError, OSError) as e:  # rp2's mktime() raises OverflowError past its ~2037 32-bit epoch range
+            await self.pr.err_s("Computing boot signature timestamp failed:", e, errno=2)
+            return None
+
+    def _timer_sequencer(self, timers: "list[Callable[[], None]]", counter: int = 0) -> None:
+        try:
+            timers[counter]()
+        except Exception as e:
+            # driver-supplied starter - could misbehave; sync Timer-callback context (no event loop),
+            # so only pr.err() is usable, not the async err_s().
+            self.pr.err("Timer starter", counter, "failed:", e)
+        else:
+            self.pr.evt("Timer started:", counter)
+        counter += 1
+        if counter < len(timers):
+            delay = int(_TIMER_BASE_PERIOD / (len(timers) + 1))
+            try:
+                # one delay after each start, also (virtually) for last one
+                Timer(
+                    period=delay,
+                    mode=Timer.ONE_SHOT,
+                    callback=lambda b: self._timer_sequencer(timers, counter=counter),
+                )
+                return
+            except OSError as e:  # alarm-pool exhaustion (ENOMEM) - stop sequencing rather than
+                # leaving start_timers() waiting on timers_running forever.
+                self.pr.err("Could not schedule the next timer starter, stopping early:", e)
+        self.pr.one("All timers running.")
+        self.timers_running.set()
+
+    async def _start_task(self, starter: "Callable[[], asyncio.Task[Any]]", n: int) -> "asyncio.Task[Any] | None":
+        try:
+            return starter()
+        except Exception as e:  # driver-supplied starter (get_task_starters()) - could legitimately misbehave
+            await self.pr.err_s("Task starter", n, "failed to start:", e, errno=3)
+            return None
+
     def start_asy_uptime_counter(self) -> asyncio.Task[None]:
         evtloop = asyncio.get_event_loop()
         return evtloop.create_task(self.status_counter())
@@ -89,20 +152,6 @@ class SystemService:
 
     def get_timer_starters(self) -> "list[Callable[[], None]]":
         return [self.start_uptime_timer]
-
-    def _reboot(self, message: str, action: "Callable[[], None]") -> None:
-        self.reset_timer.deinit()
-        self.storage_timer.deinit()
-        self.pr.evt(message)
-        if self.storage_pause is not None:
-            self.storage_pause(True)
-            self.pr.evt("Storage paused")
-        try:
-            self.reset_timer.init(period=_RESET_DELAY * 1000, mode=Timer.ONE_SHOT, callback=lambda b: action())
-        except OSError as e:  # alarm-pool exhaustion (ENOMEM) - falls back to the same watchdog-starve
-            # backstop start_and_check_tasks() already uses past _TASK_FAIL_MAX.
-            self.pr.err("Could not arm reset timer, stopping watchdog feed instead:", e)
-            self._force_watchdog_starve = True
 
     def reboot_system(self) -> None:
         self._reboot("Reboot triggered", system_reset)
@@ -141,22 +190,6 @@ class SystemService:
         # stable for the rest of this boot, so a later change means a reboot happened.
         return await self.boot_signature.get_value()
 
-    async def _ntp_boot_signature(self) -> int | None:
-        # None if not synced yet or the sync/mktime computation itself failed; caller falls back to random after _NTP_WAIT_TIME.
-        try:
-            synced = await self.ntp_is_synced()
-        except Exception as e:  # caller-supplied callback - currently wired to asy_ntp_client.py's ntp_issynced
-            # (promoted/audited) in sensortask-wozi.py, but this parameter accepts any Callable, so the guard stays broad
-            await self.pr.err_s("NTP sync callback failed:", e, errno=1)
-            return None
-        if not synced:
-            return None
-        try:
-            return time.mktime(time.gmtime())
-        except (OverflowError, OSError) as e:  # rp2's mktime() raises OverflowError past its ~2037 32-bit epoch range
-            await self.pr.err_s("Computing boot signature timestamp failed:", e, errno=2)
-            return None
-
     async def status_counter(self) -> None:
         await self.uptime.set_value(0)
         await self.boot_signature.set_value(None)
@@ -178,32 +211,6 @@ class SystemService:
                 self.pr.one("System boot signature set by random number.")
                 self.start_time_set = True
 
-    def _timer_sequencer(self, timers: "list[Callable[[], None]]", counter: int = 0) -> None:
-        try:
-            timers[counter]()
-        except Exception as e:
-            # driver-supplied starter - could misbehave; sync Timer-callback context (no event loop),
-            # so only pr.err() is usable, not the async err_s().
-            self.pr.err("Timer starter", counter, "failed:", e)
-        else:
-            self.pr.evt("Timer started:", counter)
-        counter += 1
-        if counter < len(timers):
-            delay = int(_TIMER_BASE_PERIOD / (len(timers) + 1))
-            try:
-                # one delay after each start, also (virtually) for last one
-                Timer(
-                    period=delay,
-                    mode=Timer.ONE_SHOT,
-                    callback=lambda b: self._timer_sequencer(timers, counter=counter),
-                )
-                return
-            except OSError as e:  # alarm-pool exhaustion (ENOMEM) - stop sequencing rather than
-                # leaving start_timers() waiting on timers_running forever.
-                self.pr.err("Could not schedule the next timer starter, stopping early:", e)
-        self.pr.one("All timers running.")
-        self.timers_running.set()
-
     async def start_timers(self, timers: "list[Callable[[], None]]") -> None:
         if not timers:  # nothing to sequence - avoid _timer_sequencer's timers[0] on an empty list
             self.timers_running.set()
@@ -216,13 +223,6 @@ class SystemService:
 
     async def reset_error_counter(self) -> None:
         await self.pr.reset()
-
-    async def _start_task(self, starter: "Callable[[], asyncio.Task[Any]]", n: int) -> "asyncio.Task[Any] | None":
-        try:
-            return starter()
-        except Exception as e:  # driver-supplied starter (get_task_starters()) - could legitimately misbehave
-            await self.pr.err_s("Task starter", n, "failed to start:", e, errno=3)
-            return None
 
     async def start_and_check_tasks(self, task_starters: "list[Callable[[], asyncio.Task[Any]]]") -> None:
         await self.pr.setup()  # required for all logged warnings and errors

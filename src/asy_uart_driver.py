@@ -47,6 +47,32 @@ class UART(Lockable):
         self.crc = CRC_Pass() if crc is None else crc
         self.init(port_id, tx_pin, rx_pin, baudrate, bits, parity, stop, rxbuf, txbuf, timeout, timeout_char, invert)
 
+    def _active_uart(self) -> "_UART | None":
+        # Shared entry guard for every read/write method - None unless called inside `async with
+        # self:` on a live bus. Returns the narrowed UART (not bool) so mypy's None-narrowing works.
+        # Kept deliberately, unlike SPIDevice/I2CDevice: cancel_read_timeout() runs from a different
+        # task and infers "a read is in flight" purely from asy_lock.locked() - a lock-less caller
+        # would be invisible to it, silently breaking cancellation.
+        if not self.asy_lock.locked():
+            return None
+        return self._uart
+
+    async def _write_all(self, uart: "_UART", buf: bytearray | memoryview) -> bool:
+        # rp2 uart.write() can short-write instead of raising - retries with whatever's left until
+        # the whole buffer is out or a real failure gives up, the write-side counterpart of
+        # read_until_complete()'s own retry-until-done loop.
+        sent = 0
+        total = len(buf)
+        view = memoryview(buf)
+        while sent < total:
+            if not await self.ready(select.POLLOUT):
+                return False
+            n = uart.write(view[sent:])
+            if n is None:
+                return False
+            sent += n
+        return True
+
     def init(
         self,
         port_id: int,
@@ -94,16 +120,6 @@ class UART(Lockable):
             self._uart.deinit()
             self._uart = None
             self.poller = None
-
-    def _active_uart(self) -> "_UART | None":
-        # Shared entry guard for every read/write method - None unless called inside `async with
-        # self:` on a live bus. Returns the narrowed UART (not bool) so mypy's None-narrowing works.
-        # Kept deliberately, unlike SPIDevice/I2CDevice: cancel_read_timeout() runs from a different
-        # task and infers "a read is in flight" purely from asy_lock.locked() - a lock-less caller
-        # would be invisible to it, silently breaking cancellation.
-        if not self.asy_lock.locked():
-            return None
-        return self._uart
 
     async def cancel_read_timeout(self) -> bool:
         # Lets another task abort this instance's in-flight ready()/read wait from the outside -
@@ -247,22 +263,6 @@ class UART(Lockable):
             else:
                 return None  # ready() timed out or was cancelled
         return msg
-
-    async def _write_all(self, uart: "_UART", buf: bytearray | memoryview) -> bool:
-        # rp2 uart.write() can short-write instead of raising - retries with whatever's left until
-        # the whole buffer is out or a real failure gives up, the write-side counterpart of
-        # read_until_complete()'s own retry-until-done loop.
-        sent = 0
-        total = len(buf)
-        view = memoryview(buf)
-        while sent < total:
-            if not await self.ready(select.POLLOUT):
-                return False
-            n = uart.write(view[sent:])
-            if n is None:
-                return False
-            sent += n
-        return True
 
     async def write(self, msg: bytearray) -> bool:  # write msg (+ CRC, if configured), retrying until it's all sent
         uart = self._active_uart()

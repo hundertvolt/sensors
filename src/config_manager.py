@@ -216,19 +216,6 @@ class ConfigManager:
             self.pr.err("Error writing config", self.config_file, "- config is not valid:", e)
             return
 
-    async def get_dict(self, keys: "list[str]") -> "dict[str, int | float | str | bool | None] | None":
-        # Reads _cache directly - no lock needed (write_config never awaits mid-mutation, so no
-        # partial state is observable here; see module docstring for the cache design).
-        if not self.valid:
-            self.pr.err(self.config_file, "- Config is not valid, cannot read!")
-            return None
-        self.pr.all(self.config_file, "- Reading config data into dict.")
-        try:
-            return {key: self._cache[key] for key in keys}
-        except (KeyError, TypeError) as e:  # unknown key, or a non-iterable/malformed keys param
-            self.pr.err(self.config_file, "- Config read error:", e)
-            return None
-
     async def _get_values(self, keys: "ConfigSchema") -> "list[Any] | None":
         if not self.valid:
             self.pr.err(self.config_file, "- Config is not valid, cannot read!")
@@ -247,6 +234,19 @@ class ConfigManager:
         try:
             return [converter(v) for v in values]
         except (TypeError, ValueError):
+            return None
+
+    async def get_dict(self, keys: "list[str]") -> "dict[str, int | float | str | bool | None] | None":
+        # Reads _cache directly - no lock needed (write_config never awaits mid-mutation, so no
+        # partial state is observable here; see module docstring for the cache design).
+        if not self.valid:
+            self.pr.err(self.config_file, "- Config is not valid, cannot read!")
+            return None
+        self.pr.all(self.config_file, "- Reading config data into dict.")
+        try:
+            return {key: self._cache[key] for key in keys}
+        except (KeyError, TypeError) as e:  # unknown key, or a non-iterable/malformed keys param
+            self.pr.err(self.config_file, "- Config read error:", e)
             return None
 
     async def get_int_values(self, keys: "ConfigSchema") -> "list[int] | None":

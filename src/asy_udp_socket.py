@@ -95,6 +95,25 @@ class AsyUDPSocket:
                 if not self.connected:
                     await self._disconnect_locked()
 
+    async def _disconnect_locked(self) -> None:
+        # Actual teardown, assuming self._connect_lock is already held - split out so _connect()'s
+        # self-heal path can call this directly without deadlocking on the same non-reentrant lock.
+        # State is cleared eagerly so a failure partway through can't leave it half-connected.
+        if self.sock is not None:
+            sock, poller = self.sock, self.poller
+            self.sock = None
+            self.poller = None
+            self.connected = False
+            try:
+                if poller is not None:
+                    poller.unregister(sock)
+            except (OSError, MemoryError):
+                pass
+            try:
+                sock.close()
+            except (OSError, MemoryError):
+                pass
+
     async def ready(self, mask: int, timeout_ms: int = -1, wait_time_ms: int = 20) -> bool:
         # Busy-polls ipoll(0), yielding via sleep_ms(wait_time_ms) each cycle, until mask (or a
         # real POLLERR/POLLHUP, always reported) is satisfied or timeout_ms elapses (<=0 waits
@@ -174,22 +193,3 @@ class AsyUDPSocket:
         # disconnect() concurrent with an in-flight _connect() retry could crash it.
         async with self._connect_lock:
             await self._disconnect_locked()
-
-    async def _disconnect_locked(self) -> None:
-        # Actual teardown, assuming self._connect_lock is already held - split out so _connect()'s
-        # self-heal path can call this directly without deadlocking on the same non-reentrant lock.
-        # State is cleared eagerly so a failure partway through can't leave it half-connected.
-        if self.sock is not None:
-            sock, poller = self.sock, self.poller
-            self.sock = None
-            self.poller = None
-            self.connected = False
-            try:
-                if poller is not None:
-                    poller.unregister(sock)
-            except (OSError, MemoryError):
-                pass
-            try:
-                sock.close()
-            except (OSError, MemoryError):
-                pass

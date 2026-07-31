@@ -172,10 +172,6 @@ class VOCAlgorithm:
     def __init__(self) -> None:
         self.params = DFRobot_vocalgorithmParams()
 
-    @staticmethod
-    def get_params_memsize() -> int:
-        return _VOC_PARAMS_MEMSIZE
-
     def _f16(self, x: float) -> int:
         if x >= 0:
             return int((x) * 65536.0 + 0.5)
@@ -321,20 +317,6 @@ class VOCAlgorithm:
             arg >>= 3
         return res
 
-    def vocalgorithm_reset(self) -> None:
-        self.params.reset()
-        self.vocalgorithm_init()
-
-    def vocalgorithm_init(self) -> None:
-        self.params.mvoc_index_offset = self._f16(_VOCALGORITHM_VOC_INDEX_OFFSET_DEFAULT)
-        self.params.mtau_mean_variance_hours = self._f16(_VOCALGORITHM_TAU_MEAN_VARIANCE_HOURS)
-        self.params.mgating_max_duration_minutes = self._f16(_VOCALGORITHM_GATING_MAX_DURATION_MINUTES)
-        self.params.msraw_std_initial = self._f16(_VOCALGORITHM_SRAW_STD_INITIAL)
-        self.params.muptime = self._f16(0.0)
-        self.params.msraw = self._f16(0.0)
-        self.params.mvoc_index = 0
-        self._vocalgorithm__init_instances()
-
     def _vocalgorithm__init_instances(self) -> None:
         self._vocalgorithm__mean_variance_estimator__init()
         self._vocalgorithm__mean_variance_estimator__set_parameters(
@@ -377,46 +359,6 @@ class VOCAlgorithm:
         self.params.mgating_max_duration_minutes = self._fix16_from_int(gating_max_duration_minutes)
         self.params.msraw_std_initial = self._fix16_from_int(std_initial)
         self._vocalgorithm__init_instances()
-
-    def vocalgorithm_process(self, sraw: int) -> int:
-        if self.params.muptime <= self._f16(_VOCALGORITHM_INITIAL_BLACKOUT):
-            self.params.muptime = self.params.muptime + self._f16(_VOCALGORITHM_SAMPLING_INTERVAL)
-        else:
-            if (sraw > 0) and (sraw < 65000):
-                if sraw < 20001:
-                    sraw = 20001
-                elif sraw > 52767:
-                    sraw = 52767
-                self.params.msraw = self._fix16_from_int(sraw - 20000)
-            self.params.mvoc_index = self._vocalgorithm__mox_model__process(self.params.msraw)
-            self.params.mvoc_index = self._vocalgorithm__sigmoid_scaled__process(self.params.mvoc_index)
-            self.params.mvoc_index = self._vocalgorithm__adaptive_lowpass__process(self.params.mvoc_index)
-            if self.params.mvoc_index < self._f16(0.5):
-                self.params.mvoc_index = self._f16(0.5)
-            if self.params.msraw > self._f16(0.0):
-                self._vocalgorithm__mean_variance_estimator__process(self.params.msraw, self.params.mvoc_index)
-                self._vocalgorithm__mox_model__set_parameters(
-                    self._vocalgorithm__mean_variance_estimator__get_std(),
-                    self._vocalgorithm__mean_variance_estimator__get_mean(),
-                )
-        voc_index = self._fix16_cast_to_int(self.params.mvoc_index + self._f16(0.5))
-        return voc_index
-
-    def vocalgorithm_proc_ser_des(
-        self,
-        sraw: int,
-        buf: bytearray | memoryview | None = None,
-        serialize: bool = False,
-        deserialize: bool = False,
-        offset: int = 0,
-    ) -> tuple[int, bool, bool]:
-        serialized = deserialized = False
-        if buf is not None and deserialize:
-            deserialized = self.params.unpack_from(buf, offset=offset)
-        voc_index = self.vocalgorithm_process(sraw)
-        if buf is not None and serialize:
-            serialized = self.params.pack_into(buf, offset=offset)
-        return voc_index, serialized, deserialized
 
     def _vocalgorithm__mean_variance_estimator__init(self) -> None:
         self._vocalgorithm__mean_variance_estimator__set_parameters(self._f16(0.0), self._f16(0.0), self._f16(0.0))
@@ -801,3 +743,61 @@ class VOCAlgorithm:
             self._fix16_mul((self._f16(1.0) - a3), self.params.m_adaptive_lowpass_x3)
         ) + (self._fix16_mul(a3, sample))
         return self.params.m_adaptive_lowpass_x3
+
+    @staticmethod
+    def get_params_memsize() -> int:
+        return _VOC_PARAMS_MEMSIZE
+
+    def vocalgorithm_reset(self) -> None:
+        self.params.reset()
+        self.vocalgorithm_init()
+
+    def vocalgorithm_init(self) -> None:
+        self.params.mvoc_index_offset = self._f16(_VOCALGORITHM_VOC_INDEX_OFFSET_DEFAULT)
+        self.params.mtau_mean_variance_hours = self._f16(_VOCALGORITHM_TAU_MEAN_VARIANCE_HOURS)
+        self.params.mgating_max_duration_minutes = self._f16(_VOCALGORITHM_GATING_MAX_DURATION_MINUTES)
+        self.params.msraw_std_initial = self._f16(_VOCALGORITHM_SRAW_STD_INITIAL)
+        self.params.muptime = self._f16(0.0)
+        self.params.msraw = self._f16(0.0)
+        self.params.mvoc_index = 0
+        self._vocalgorithm__init_instances()
+
+    def vocalgorithm_process(self, sraw: int) -> int:
+        if self.params.muptime <= self._f16(_VOCALGORITHM_INITIAL_BLACKOUT):
+            self.params.muptime = self.params.muptime + self._f16(_VOCALGORITHM_SAMPLING_INTERVAL)
+        else:
+            if (sraw > 0) and (sraw < 65000):
+                if sraw < 20001:
+                    sraw = 20001
+                elif sraw > 52767:
+                    sraw = 52767
+                self.params.msraw = self._fix16_from_int(sraw - 20000)
+            self.params.mvoc_index = self._vocalgorithm__mox_model__process(self.params.msraw)
+            self.params.mvoc_index = self._vocalgorithm__sigmoid_scaled__process(self.params.mvoc_index)
+            self.params.mvoc_index = self._vocalgorithm__adaptive_lowpass__process(self.params.mvoc_index)
+            if self.params.mvoc_index < self._f16(0.5):
+                self.params.mvoc_index = self._f16(0.5)
+            if self.params.msraw > self._f16(0.0):
+                self._vocalgorithm__mean_variance_estimator__process(self.params.msraw, self.params.mvoc_index)
+                self._vocalgorithm__mox_model__set_parameters(
+                    self._vocalgorithm__mean_variance_estimator__get_std(),
+                    self._vocalgorithm__mean_variance_estimator__get_mean(),
+                )
+        voc_index = self._fix16_cast_to_int(self.params.mvoc_index + self._f16(0.5))
+        return voc_index
+
+    def vocalgorithm_proc_ser_des(
+        self,
+        sraw: int,
+        buf: bytearray | memoryview | None = None,
+        serialize: bool = False,
+        deserialize: bool = False,
+        offset: int = 0,
+    ) -> tuple[int, bool, bool]:
+        serialized = deserialized = False
+        if buf is not None and deserialize:
+            deserialized = self.params.unpack_from(buf, offset=offset)
+        voc_index = self.vocalgorithm_process(sraw)
+        if buf is not None and serialize:
+            serialized = self.params.pack_into(buf, offset=offset)
+        return voc_index, serialized, deserialized

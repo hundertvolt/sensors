@@ -105,60 +105,6 @@ class BMP3xx_Reader(SensorReaderConfig):
         self.trigger_period = LockedValue(int(trigger_sec))
         self.trigger_counter = 0
 
-    def start_asy_read(self) -> asyncio.Task[bool]:
-        evtloop = asyncio.get_event_loop()
-        return evtloop.create_task(self.read_loop())
-
-    def start_asy_trigger(self) -> asyncio.Task[None]:
-        evtloop = asyncio.get_event_loop()
-        return evtloop.create_task(self._base_trigger())
-
-    def start_timer(self) -> None:
-        try:
-            self.trigger_timer.init(
-                period=1000,
-                mode=Timer.PERIODIC,
-                callback=lambda b: self.base_trigger_event.set(),
-            )
-        except OSError as e:  # alarm-pool exhaustion (ENOMEM) - degrades gracefully instead of
-            # crashing the caller (this sensor just never gets triggered this cycle).
-            self.pr.err(_NAME, "Could not start timer:", e)
-
-    def stop_timer(self) -> None:
-        self.trigger_timer.deinit()
-
-    def get_task_starters(self) -> "list[Callable[[], asyncio.Task[Any]]]":
-        return [self.start_asy_read, self.start_asy_trigger]
-
-    def get_timer_starters(self) -> "list[Callable[[], None]]":
-        return [self.start_timer]
-
-    async def set_trigger_secs(self, value: int | float) -> None:
-        try:
-            # int(float('inf'))/int(float('-inf')) raise OverflowError, not ValueError - confirmed
-            # against the real MicroPython Unix-port interpreter; +-inf is a legitimate int | float
-            # input this must degrade cleanly for, not crash on.
-            trigger_secs = int(value)
-            if not (_MIN_TRIGGER_SECS <= trigger_secs <= _MAX_TRIGGER_SECS):
-                raise ValueError(f"trigger interval must be between {_MIN_TRIGGER_SECS} and {_MAX_TRIGGER_SECS} seconds")
-        except (TypeError, ValueError, OverflowError) as e:
-            await self.pr.err_s(_NAME, "Error setting trigger interval:", e, errno=21)
-            return
-        await self.trigger_period.set_value(trigger_secs)
-
-    async def get_data(self) -> BMP3XX:
-        # Narrows _get_meas_data()'s generic "NamedTuple" to this Reader's concrete BMP3XX;
-        # typing.cast() isn't usable (no runtime presence on MicroPython) so this identity return
-        # does the same job - see DRIVER_SPEC.md's get_data() narrowing convention.
-        return await self._get_meas_data()  # type: ignore[return-value]
-
-    async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
-        data = await self.get_data()
-        return make_dict(data)
-
-    async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
-        return await self.pr.get_log(_NAME)
-
     async def _read_sensor_dict(self) -> dict[str, int | float | str | bool | None]:
         ret: dict[str, int | float | str | bool | None] = {
             name_cfg(_VAL_POV): await self.get_pressure_oversampling(),
@@ -166,13 +112,6 @@ class BMP3xx_Reader(SensorReaderConfig):
             name_cfg(_VAL_FC): await self.get_filter_coefficient(),
         }
         return ret  # only for callback in _get_dict_cfg, is automatically inside try-except!
-
-    async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
-        return await self._get_dict_cfg(
-            _NAME,
-            _VAL_SI + _VAL_POV + _VAL_TOV + _VAL_FC + _VAL_PO + _VAL_TO + _VAL_SLO + _VAL_ATM,
-            callback=self._read_sensor_dict,
-        )
 
     async def _base_trigger(self) -> None:
         self.trigger_counter = 0
@@ -249,6 +188,67 @@ class BMP3xx_Reader(SensorReaderConfig):
         self.pr.all(_NAME, "Daten gespeichert")
         return
 
+    def start_asy_read(self) -> asyncio.Task[bool]:
+        evtloop = asyncio.get_event_loop()
+        return evtloop.create_task(self.read_loop())
+
+    def start_asy_trigger(self) -> asyncio.Task[None]:
+        evtloop = asyncio.get_event_loop()
+        return evtloop.create_task(self._base_trigger())
+
+    def start_timer(self) -> None:
+        try:
+            self.trigger_timer.init(
+                period=1000,
+                mode=Timer.PERIODIC,
+                callback=lambda b: self.base_trigger_event.set(),
+            )
+        except OSError as e:  # alarm-pool exhaustion (ENOMEM) - degrades gracefully instead of
+            # crashing the caller (this sensor just never gets triggered this cycle).
+            self.pr.err(_NAME, "Could not start timer:", e)
+
+    def stop_timer(self) -> None:
+        self.trigger_timer.deinit()
+
+    def get_task_starters(self) -> "list[Callable[[], asyncio.Task[Any]]]":
+        return [self.start_asy_read, self.start_asy_trigger]
+
+    def get_timer_starters(self) -> "list[Callable[[], None]]":
+        return [self.start_timer]
+
+    async def set_trigger_secs(self, value: int | float) -> None:
+        try:
+            # int(float('inf'))/int(float('-inf')) raise OverflowError, not ValueError - confirmed
+            # against the real MicroPython Unix-port interpreter; +-inf is a legitimate int | float
+            # input this must degrade cleanly for, not crash on.
+            trigger_secs = int(value)
+            if not (_MIN_TRIGGER_SECS <= trigger_secs <= _MAX_TRIGGER_SECS):
+                raise ValueError(f"trigger interval must be between {_MIN_TRIGGER_SECS} and {_MAX_TRIGGER_SECS} seconds")
+        except (TypeError, ValueError, OverflowError) as e:
+            await self.pr.err_s(_NAME, "Error setting trigger interval:", e, errno=21)
+            return
+        await self.trigger_period.set_value(trigger_secs)
+
+    async def get_data(self) -> BMP3XX:
+        # Narrows _get_meas_data()'s generic "NamedTuple" to this Reader's concrete BMP3XX;
+        # typing.cast() isn't usable (no runtime presence on MicroPython) so this identity return
+        # does the same job - see DRIVER_SPEC.md's get_data() narrowing convention.
+        return await self._get_meas_data()  # type: ignore[return-value]
+
+    async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
+        data = await self.get_data()
+        return make_dict(data)
+
+    async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
+        return await self.pr.get_log(_NAME)
+
+    async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
+        return await self._get_dict_cfg(
+            _NAME,
+            _VAL_SI + _VAL_POV + _VAL_TOV + _VAL_FC + _VAL_PO + _VAL_TO + _VAL_SLO + _VAL_ATM,
+            callback=self._read_sensor_dict,
+        )
+
     async def read_loop(self) -> bool:
         if not await self._init_bmp():  # init sensor at startup
             return False  # break and restart if init fails
@@ -323,45 +323,6 @@ class BMP3XX_I2C:
         self._wait_time = 0.002  # just init with default here, set in setup()
         self.sea_level_pressure = 1013.25  # just init with default here, set in setup()
 
-    async def setup(self, sea_level_pressure: float = 1013.25, wait_time: float = 0.002) -> None:
-        async with self.i2c_bmp3xx as bmp3xx:  # device session
-            async with bmp3xx.i2c_device as i2c:  # bus session
-                await i2c.setup()
-        chip_id = await self._read_byte(_REGISTER_CHIPID)
-        if chip_id not in (_BMP388_CHIP_ID, _BMP390_CHIP_ID):
-            raise RuntimeError(f"Failed to find BMP3XX! Chip ID {hex(chip_id)}")
-        await self._read_coefficients()
-        await self.reset()
-        self.sea_level_pressure = sea_level_pressure  # in hPa
-        self._wait_time = wait_time  # change this value to have faster reads if needed
-
-    async def get_pressure(self) -> float:
-        # The pressure in hPa.
-        res = await self._read()
-        return res[0] / 100
-
-    async def get_temperature(self) -> float:
-        # The temperature in degrees Celsius.
-        res = await self._read()
-        return res[1]
-
-    async def get_pressure_and_temperature(self) -> tuple[float, float]:
-        # Pressure (hPa) and temperature (degC) from one measurement cycle, so the two are never
-        # up to a whole conversion apart in time - unlike calling get_pressure()/get_temperature()
-        # separately, which each trigger their own full conversion.
-        pressure, temperature = await self._read()
-        return pressure / 100, temperature
-
-    async def get_altitude(self) -> float:
-        # The altitude in meters based on the currently set sea level pressure.
-        # see https://www.weather.gov/media/epz/wxcalc/pressureAltitude.pdf
-        if self.sea_level_pressure <= 0:
-            # A non-positive base here otherwise raises a confusing TypeError/ZeroDivisionError
-            # from Python's numeric tower (confirmed against the real Unix-port interpreter) -
-            # replaced with one clear, deliberate error instead.
-            raise ValueError(f"sea_level_pressure must be positive, got {self.sea_level_pressure}")
-        return float(44307.7 * (1.0 - (await self.get_pressure() / self.sea_level_pressure) ** 0.190284))
-
     async def _get_osr_setting(self, start_bit: int) -> int:
         # Shared by get_pressure_oversampling()/get_temperature_oversampling() - osr_p and osr_t
         # are both 3-bit fields in the same OSR register (datasheet sec 4.3.17), differing only in
@@ -388,36 +349,6 @@ class BMP3XX_I2C:
             async with bmp3xx.i2c_device as i2c:  # bus session
                 await i2c.set_bits(3, _REGISTER_OSR, start_bit, _OSR_SETTINGS.index(oversample))
 
-    async def get_pressure_oversampling(self) -> int:
-        # The pressure oversampling setting.
-        return await self._get_osr_setting(0)
-
-    async def set_pressure_oversampling(self, oversample: int) -> None:
-        await self._set_osr_setting(0, oversample)
-
-    async def get_temperature_oversampling(self) -> int:
-        # The temperature oversampling setting.
-        return await self._get_osr_setting(3)
-
-    async def set_temperature_oversampling(self, oversample: int) -> None:
-        await self._set_osr_setting(3, oversample)
-
-    async def get_filter_coefficient(self) -> int:
-        # The IIR filter coefficient.
-        async with self.i2c_bmp3xx as bmp3xx:  # device session
-            async with bmp3xx.i2c_device as i2c:  # bus session
-                iir = await i2c.get_bits(3, _REGISTER_CONFIG, 1)
-        if iir is None:
-            raise OSError("failed to read filter coefficient")
-        return _IIR_SETTINGS[iir]
-
-    async def set_filter_coefficient(self, coef: int) -> None:
-        if coef not in _IIR_SETTINGS:
-            raise ValueError(f"Filter coefficient must be one of: {_IIR_SETTINGS}")
-        async with self.i2c_bmp3xx as bmp3xx:  # device session
-            async with bmp3xx.i2c_device as i2c:  # bus session
-                await i2c.set_bits(3, _REGISTER_CONFIG, 1, _IIR_SETTINGS.index(coef))
-
     async def _wait_status_bits(self, bmp3xx: "BMP3xx_DeviceSession", mask: int, timeout_ms: int) -> None:
         # Polls STATUS until every bit in mask is set, or raises OSError after timeout_ms - bounds
         # an otherwise-unbounded loop if a bus disturbance leaves STATUS never reporting ready.
@@ -431,20 +362,6 @@ class BMP3XX_I2C:
             if time.ticks_diff(time.ticks_ms(), start) >= timeout_ms:
                 raise OSError(f"STATUS bits {mask:#x} not set within {timeout_ms}ms")
             await asyncio.sleep(self._wait_time)
-
-    async def reset(self) -> None:
-        # Soft reset via CMD register (datasheet sec 4.3.22, cmd 0xB6); all config reverts to
-        # default. Matches Bosch's reference sequence (bmp3_soft_reset()): wait cmd_rdy, settle
-        # 2ms, verify via ERR_REG's cmd_err - a blind write can be ignored/corrupted on a bad bus.
-        async with self.i2c_bmp3xx as bmp3xx:  # device session
-            await self._wait_status_bits(bmp3xx, _STATUS_CMD_RDY, _CMD_RDY_TIMEOUT_MS)
-            async with bmp3xx.i2c_device as i2c:  # bus session
-                await i2c.set_register_struct(_REGISTER_CMD, "B", 0xB6)
-            await asyncio.sleep(0.002)  # datasheet-confirmed 2ms post-reset settle time
-            async with bmp3xx.i2c_device as i2c:  # bus session
-                err = await i2c.get_register_struct(_REGISTER_ERR, "B")
-        if isinstance(err, int) and err & _ERR_CMD:
-            raise RuntimeError("reset command rejected (ERR_REG cmd_err set)")
 
     async def _read(self) -> tuple[float, float]:
         # Returns a (pressure_pa, temperature_degC) tuple. The whole cycle (trigger, poll, data
@@ -551,3 +468,86 @@ class BMP3XX_I2C:
         if not isinstance(value, bytes) or len(value) != length:
             raise OSError(f"failed to read {length} bytes from register {register:#x}")
         return value
+
+    async def setup(self, sea_level_pressure: float = 1013.25, wait_time: float = 0.002) -> None:
+        async with self.i2c_bmp3xx as bmp3xx:  # device session
+            async with bmp3xx.i2c_device as i2c:  # bus session
+                await i2c.setup()
+        chip_id = await self._read_byte(_REGISTER_CHIPID)
+        if chip_id not in (_BMP388_CHIP_ID, _BMP390_CHIP_ID):
+            raise RuntimeError(f"Failed to find BMP3XX! Chip ID {hex(chip_id)}")
+        await self._read_coefficients()
+        await self.reset()
+        self.sea_level_pressure = sea_level_pressure  # in hPa
+        self._wait_time = wait_time  # change this value to have faster reads if needed
+
+    async def get_pressure(self) -> float:
+        # The pressure in hPa.
+        res = await self._read()
+        return res[0] / 100
+
+    async def get_temperature(self) -> float:
+        # The temperature in degrees Celsius.
+        res = await self._read()
+        return res[1]
+
+    async def get_pressure_and_temperature(self) -> tuple[float, float]:
+        # Pressure (hPa) and temperature (degC) from one measurement cycle, so the two are never
+        # up to a whole conversion apart in time - unlike calling get_pressure()/get_temperature()
+        # separately, which each trigger their own full conversion.
+        pressure, temperature = await self._read()
+        return pressure / 100, temperature
+
+    async def get_altitude(self) -> float:
+        # The altitude in meters based on the currently set sea level pressure.
+        # see https://www.weather.gov/media/epz/wxcalc/pressureAltitude.pdf
+        if self.sea_level_pressure <= 0:
+            # A non-positive base here otherwise raises a confusing TypeError/ZeroDivisionError
+            # from Python's numeric tower (confirmed against the real Unix-port interpreter) -
+            # replaced with one clear, deliberate error instead.
+            raise ValueError(f"sea_level_pressure must be positive, got {self.sea_level_pressure}")
+        return float(44307.7 * (1.0 - (await self.get_pressure() / self.sea_level_pressure) ** 0.190284))
+
+    async def get_pressure_oversampling(self) -> int:
+        # The pressure oversampling setting.
+        return await self._get_osr_setting(0)
+
+    async def set_pressure_oversampling(self, oversample: int) -> None:
+        await self._set_osr_setting(0, oversample)
+
+    async def get_temperature_oversampling(self) -> int:
+        # The temperature oversampling setting.
+        return await self._get_osr_setting(3)
+
+    async def set_temperature_oversampling(self, oversample: int) -> None:
+        await self._set_osr_setting(3, oversample)
+
+    async def get_filter_coefficient(self) -> int:
+        # The IIR filter coefficient.
+        async with self.i2c_bmp3xx as bmp3xx:  # device session
+            async with bmp3xx.i2c_device as i2c:  # bus session
+                iir = await i2c.get_bits(3, _REGISTER_CONFIG, 1)
+        if iir is None:
+            raise OSError("failed to read filter coefficient")
+        return _IIR_SETTINGS[iir]
+
+    async def set_filter_coefficient(self, coef: int) -> None:
+        if coef not in _IIR_SETTINGS:
+            raise ValueError(f"Filter coefficient must be one of: {_IIR_SETTINGS}")
+        async with self.i2c_bmp3xx as bmp3xx:  # device session
+            async with bmp3xx.i2c_device as i2c:  # bus session
+                await i2c.set_bits(3, _REGISTER_CONFIG, 1, _IIR_SETTINGS.index(coef))
+
+    async def reset(self) -> None:
+        # Soft reset via CMD register (datasheet sec 4.3.22, cmd 0xB6); all config reverts to
+        # default. Matches Bosch's reference sequence (bmp3_soft_reset()): wait cmd_rdy, settle
+        # 2ms, verify via ERR_REG's cmd_err - a blind write can be ignored/corrupted on a bad bus.
+        async with self.i2c_bmp3xx as bmp3xx:  # device session
+            await self._wait_status_bits(bmp3xx, _STATUS_CMD_RDY, _CMD_RDY_TIMEOUT_MS)
+            async with bmp3xx.i2c_device as i2c:  # bus session
+                await i2c.set_register_struct(_REGISTER_CMD, "B", 0xB6)
+            await asyncio.sleep(0.002)  # datasheet-confirmed 2ms post-reset settle time
+            async with bmp3xx.i2c_device as i2c:  # bus session
+                err = await i2c.get_register_struct(_REGISTER_ERR, "B")
+        if isinstance(err, int) and err & _ERR_CMD:
+            raise RuntimeError("reset command rejected (ERR_REG cmd_err set)")

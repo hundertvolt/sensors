@@ -133,9 +133,6 @@ class PrintLogHistory(PrintLog):
         self.err_count = 0
         self.initialized = False
 
-    async def setup(self) -> None:  # no persistence to load in the pure in-memory case
-        self.initialized = True
-
     async def _write(self) -> bool:
         return True
 
@@ -166,6 +163,9 @@ class PrintLogHistory(PrintLog):
             return
         if not await self._write():
             self._diag("PrintLog: History write failed!")
+
+    async def setup(self) -> None:  # no persistence to load in the pure in-memory case
+        self.initialized = True
 
     async def err_s(self, *args: "Any", errno: int = _NO_ERR, **kwargs: "Any") -> None:
         await self._store_err(_NO_ERR, _MAX_ERR, errno)
@@ -223,16 +223,6 @@ class PrintLogHistoryStore(PrintLogHistory):
         if self.fram is None:
             self._diag("PrintLog: FRAM allocation failed!")
 
-    async def setup(self) -> None:
-        if self.fram is None or self.initialized:
-            return
-        if await self._read():
-            self.initialized = True
-        elif await self._write():
-            self.initialized = True
-        else:
-            self._diag("PrintLog: FRAM setup failed!")
-
     async def _write(self) -> bool:
         if self.fram is None:
             return False
@@ -260,3 +250,13 @@ class PrintLogHistoryStore(PrintLogHistory):
             return True
         except Exception:
             return False
+
+    async def setup(self) -> None:
+        if self.fram is None or self.initialized:
+            return
+        if await self._read():
+            self.initialized = True
+        elif await self._write():
+            self.initialized = True
+        else:
+            self._diag("PrintLog: FRAM setup failed!")

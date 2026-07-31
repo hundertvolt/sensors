@@ -109,11 +109,6 @@ class SPIDevice(Lockable):
         self.firstbit = firstbit
         self.uninitialized = True  # cs_pin isn't configured as an output until setup() runs
 
-    async def setup(self) -> None:
-        self.cs_pin.init(self.cs_pin.OUT)
-        self.cs_pin.value(not self.cs_active_value)
-        self.uninitialized = False
-
     async def __aenter__(self) -> "SPIDevice":
         # Pin.value() writes the GPIO register unconditionally regardless of direction, so
         # entering before setup() would silently fail to assert CS rather than raise.
@@ -148,6 +143,11 @@ class SPIDevice(Lockable):
         self.cs_pin.value(not self.cs_active_value)
         await asyncio.sleep(0.001)
         return await super().__aexit__(exc_type, exc_val, exc_tb)
+
+    async def setup(self) -> None:
+        self.cs_pin.init(self.cs_pin.OUT)
+        self.cs_pin.value(not self.cs_active_value)
+        self.uninitialized = False
 
     async def write(self, buf: bytes | bytearray | memoryview) -> None:
         self.spi.write(buf)

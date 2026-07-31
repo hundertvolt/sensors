@@ -107,51 +107,6 @@ class asy_ntp_client(SensorReaderConfig):
         self.ntp_retry_timer = Timer()
         self.counter_timer = Timer()
 
-    def start_asy_ntp_client(self) -> asyncio.Task[None]:
-        evtloop = asyncio.get_event_loop()
-        return evtloop.create_task(self.asy_ntp_time())
-
-    def start_asy_ntp_refresh(self) -> asyncio.Task[None]:
-        evtloop = asyncio.get_event_loop()
-        return evtloop.create_task(self.ntp_time_hours_counter())
-
-    def start_asy_sync_age_counter(self) -> asyncio.Task[None]:
-        evtloop = asyncio.get_event_loop()
-        return evtloop.create_task(self.time_counter())
-
-    def start_ntp_timer(self) -> None:
-        try:
-            self.ntp_timer.init(
-                period=_NTP_CHECK_INTERV * 1000,
-                mode=Timer.PERIODIC,
-                callback=lambda b: self.ntp_timer_trigger_event.set(),
-            )
-        except OSError as e:  # alarm-pool exhaustion (ENOMEM, see CLAUDE.md) - degrades gracefully;
-            # NTP refresh scheduling just never starts rather than crashing the caller.
-            self.pr.err(_NAME, "Could not start NTP timer:", e)
-
-    def start_counter_timer(self) -> None:
-        try:
-            self.counter_timer.init(
-                period=1000,
-                mode=Timer.PERIODIC,
-                callback=lambda b: self.time_counter_trigger_event.set(),
-            )
-        except OSError as e:  # alarm-pool exhaustion (ENOMEM) - same graceful degradation as start_ntp_timer()
-            self.pr.err(_NAME, "Could not start counter timer:", e)
-
-    def stop_ntp_timer(self) -> None:
-        self.ntp_timer.deinit()
-
-    def stop_counter_timer(self) -> None:
-        self.counter_timer.deinit()
-
-    def get_task_starters(self) -> "list[Callable[[], asyncio.Task[Any]]]":
-        return [self.start_asy_ntp_client, self.start_asy_ntp_refresh, self.start_asy_sync_age_counter]
-
-    def get_timer_starters(self) -> "list[Callable[[], None]]":
-        return [self.start_ntp_timer, self.start_counter_timer]
-
     def _now(self) -> int | None:
         try:
             return time.mktime(time.gmtime())
@@ -177,60 +132,6 @@ class asy_ntp_client(SensorReaderConfig):
         new_value = min(current + 1, 0xFFFFFFFF)
         await self._set_meas_data(NTP(data.Synced, new_value, data.TS))
         return new_value
-
-    async def get_data(self) -> NTP:
-        # Narrows _get_meas_data()'s generic NamedTuple to this Reader's concrete NTP - typing.cast()
-        # isn't usable on MicroPython, so this identity return does the same job.
-        return await self._get_meas_data()  # type: ignore[return-value]
-
-    async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
-        data = await self.get_data()
-        return make_dict(data)
-
-    async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
-        return await self._get_dict_cfg(_NAME, _VAL_NH + _VAL_NOS + _VAL_NIH + _VAL_GMT + _VAL_DST)
-
-    async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
-        return await self.pr.get_log(_NAME)
-
-    async def ntp_issynced(self) -> bool:
-        return bool((await self.get_data()).Synced)
-
-    async def ntp_force_sync(self) -> None:
-        await self._set_last_sync_age(None)
-        self.ntp_retry_timer.deinit()
-        self.ntp_retries = 0
-        self.ntp_sync_trigger_event.set()
-        self.pr.evt(_NAME, "Force resync triggered.")
-
-    async def get_last_ntp_sync(self) -> int | None:  # None = never synced yet
-        age = (await self.get_data()).LastSyncAge
-        return None if age is None else int(age)
-
-    async def asy_ntp_time(self) -> None:  # Funktion: Zeit per NTP holen
-        await self.pr.setup()  # required for all logged warnings and errors (base_classes.py's own
-        # __init__ never calls this - matches every _init_<sensor>() in the three promoted drivers)
-        self._err_cnt_internal = 0  # fresh failure streak each task (re)start, same as _init_<sensor>()
-        await self._set_meas_data(NTP(False, None, self._now()))
-        while True:
-            await self.ntp_sync_trigger_event.wait()
-            self.pr.evt(_NAME, "NTP sync starting.")
-            dns_server = await self._safe_get_dns_server()  # must be read before acquiring
-            # wifi_mode_lock below - see _safe_get_dns_server()'s own comment.
-            await self.wifi_mode_lock.acquire()
-            try:
-                tm, network_ok = await self._run_ntp_sync_attempt(dns_server)
-            finally:
-                try:
-                    self.wifi_mode_lock.release()
-                except RuntimeError:  # in case it's already released somehow
-                    pass
-            # Consecutive-failure streak over real sync attempts, independent from and coarser than
-            # _handle_ntp_sync_failure()'s own short-term retry loop. condition=network_ok excludes
-            # "network wasn't up yet" from counting; narrows tm to just its presence/absence.
-            if not await self._error_check((None if tm is None else tm[0],), _NAME, condition=network_ok):
-                await self.pr.err_s(_NAME, "Giving up after repeated sync failures, restarting task.", errno=20)
-                return
 
     async def _safe_get_dns_server(self) -> str | None:
         # Must be called before wifi_mode_lock.acquire(), never after: get_dns_server() gates on
@@ -361,6 +262,105 @@ class asy_ntp_client(SensorReaderConfig):
         self.ntp_retries = 0
         await self._set_meas_data(NTP(True, 0, self._now()))
         self.pr.one(_NAME, "RTC set to:", tm)
+
+    def start_asy_ntp_client(self) -> asyncio.Task[None]:
+        evtloop = asyncio.get_event_loop()
+        return evtloop.create_task(self.asy_ntp_time())
+
+    def start_asy_ntp_refresh(self) -> asyncio.Task[None]:
+        evtloop = asyncio.get_event_loop()
+        return evtloop.create_task(self.ntp_time_hours_counter())
+
+    def start_asy_sync_age_counter(self) -> asyncio.Task[None]:
+        evtloop = asyncio.get_event_loop()
+        return evtloop.create_task(self.time_counter())
+
+    def start_ntp_timer(self) -> None:
+        try:
+            self.ntp_timer.init(
+                period=_NTP_CHECK_INTERV * 1000,
+                mode=Timer.PERIODIC,
+                callback=lambda b: self.ntp_timer_trigger_event.set(),
+            )
+        except OSError as e:  # alarm-pool exhaustion (ENOMEM, see CLAUDE.md) - degrades gracefully;
+            # NTP refresh scheduling just never starts rather than crashing the caller.
+            self.pr.err(_NAME, "Could not start NTP timer:", e)
+
+    def start_counter_timer(self) -> None:
+        try:
+            self.counter_timer.init(
+                period=1000,
+                mode=Timer.PERIODIC,
+                callback=lambda b: self.time_counter_trigger_event.set(),
+            )
+        except OSError as e:  # alarm-pool exhaustion (ENOMEM) - same graceful degradation as start_ntp_timer()
+            self.pr.err(_NAME, "Could not start counter timer:", e)
+
+    def stop_ntp_timer(self) -> None:
+        self.ntp_timer.deinit()
+
+    def stop_counter_timer(self) -> None:
+        self.counter_timer.deinit()
+
+    def get_task_starters(self) -> "list[Callable[[], asyncio.Task[Any]]]":
+        return [self.start_asy_ntp_client, self.start_asy_ntp_refresh, self.start_asy_sync_age_counter]
+
+    def get_timer_starters(self) -> "list[Callable[[], None]]":
+        return [self.start_ntp_timer, self.start_counter_timer]
+
+    async def get_data(self) -> NTP:
+        # Narrows _get_meas_data()'s generic NamedTuple to this Reader's concrete NTP - typing.cast()
+        # isn't usable on MicroPython, so this identity return does the same job.
+        return await self._get_meas_data()  # type: ignore[return-value]
+
+    async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
+        data = await self.get_data()
+        return make_dict(data)
+
+    async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
+        return await self._get_dict_cfg(_NAME, _VAL_NH + _VAL_NOS + _VAL_NIH + _VAL_GMT + _VAL_DST)
+
+    async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
+        return await self.pr.get_log(_NAME)
+
+    async def ntp_issynced(self) -> bool:
+        return bool((await self.get_data()).Synced)
+
+    async def ntp_force_sync(self) -> None:
+        await self._set_last_sync_age(None)
+        self.ntp_retry_timer.deinit()
+        self.ntp_retries = 0
+        self.ntp_sync_trigger_event.set()
+        self.pr.evt(_NAME, "Force resync triggered.")
+
+    async def get_last_ntp_sync(self) -> int | None:  # None = never synced yet
+        age = (await self.get_data()).LastSyncAge
+        return None if age is None else int(age)
+
+    async def asy_ntp_time(self) -> None:  # Funktion: Zeit per NTP holen
+        await self.pr.setup()  # required for all logged warnings and errors (base_classes.py's own
+        # __init__ never calls this - matches every _init_<sensor>() in the three promoted drivers)
+        self._err_cnt_internal = 0  # fresh failure streak each task (re)start, same as _init_<sensor>()
+        await self._set_meas_data(NTP(False, None, self._now()))
+        while True:
+            await self.ntp_sync_trigger_event.wait()
+            self.pr.evt(_NAME, "NTP sync starting.")
+            dns_server = await self._safe_get_dns_server()  # must be read before acquiring
+            # wifi_mode_lock below - see _safe_get_dns_server()'s own comment.
+            await self.wifi_mode_lock.acquire()
+            try:
+                tm, network_ok = await self._run_ntp_sync_attempt(dns_server)
+            finally:
+                try:
+                    self.wifi_mode_lock.release()
+                except RuntimeError:  # in case it's already released somehow
+                    pass
+            # Consecutive-failure streak over real sync attempts, independent from and coarser than
+            # _handle_ntp_sync_failure()'s own short-term retry loop. condition=network_ok excludes
+            # "network wasn't up yet" from counting; narrows tm to just its presence/absence.
+            if not await self._error_check((None if tm is None else tm[0],), _NAME, condition=network_ok):
+                await self.pr.err_s(_NAME, "Giving up after repeated sync failures, restarting task.", errno=20)
+                return
 
     async def ntp_time_hours_counter(self) -> None:  # Timer für NTP Refresh
         self.ntp_sec_count = 0

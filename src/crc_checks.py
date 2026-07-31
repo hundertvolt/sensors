@@ -28,11 +28,6 @@ class CRC_Base:
         self.inc_crc: int | None = None
         self.inc_count = 0
 
-    def length(self) -> int:
-        # CRC width in bytes; 0 in pass-through mode (CRC_Pass, or any width constructed with
-        # poly=None).
-        return self.num_bytes
-
     def _validate_init(self, init: int | None) -> int | None:
         # Defaults to all-bits-1 (the standard "no data seen yet" CRC register state) if unset;
         # rejects anything outside the CRC's valid bit width.
@@ -54,6 +49,11 @@ class CRC_Base:
                 crc &= self.all_set  # Keep number of bits
             await asyncio.sleep(0)  # Yield control
         return crc
+
+    def length(self) -> int:
+        # CRC width in bytes; 0 in pass-through mode (CRC_Pass, or any width constructed with
+        # poly=None).
+        return self.num_bytes
 
     async def add(self, bytearr: bytearray, init: int | None = None) -> bytearray | None:
         # Appends this buffer's CRC to a new copy of it, ready to send/store.
