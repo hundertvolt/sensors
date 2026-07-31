@@ -18,8 +18,20 @@ if TYPE_CHECKING:
     T = TypeVar("T")
 
 
-def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
-    return asyncio.run(coro)
+def run(coro: "Coroutine[Any, Any, T]") -> "T":
+    # Bounded via wait_for(), not a bare asyncio.run(coro): several tests below feed data via
+    # feed_rx() and then call uart.read()/write() with no explicit timeout_ms, which hits
+    # asy_uart_driver.py's ready()'s timeout_ms=-1 (wait forever) branch and depends entirely on
+    # the real select.poll() detecting readiness via tests/machine.py's fake UART's ioctl() - the
+    # one mechanism in this file not exercised through the bounded _StepPoller test double. Investigated
+    # as the leading suspect for a real, reproducible CI-only hang (always this file, never locally -
+    # see CLAUDE.md's "CI hang investigation" note) that 20/20 recent CI runs hit regardless of
+    # per-file timeout/retry/stdbuf mitigations already in scripts/test.sh. 5s is generous next to
+    # the tightest existing inner bound already in this file (wait_for(task, 2)) while guaranteeing
+    # this test file itself can never hang the whole suite even if that poll path genuinely misbehaves
+    # again - a TimeoutError here surfaces as a normal, fast FAIL through microtest's own exception
+    # handling, not a silent stall.
+    return asyncio.run(asyncio.wait_for(coro, 5))
 
 
 def make_uart(**kwargs: "Any") -> UART:
