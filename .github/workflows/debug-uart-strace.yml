@@ -1,0 +1,99 @@
+name: TEMP - Diagnose UART hang via strace/gdb
+
+# TEMPORARY, throwaway debugging workflow - debug/uart-ci-hang-investigation branch only, never
+# merged. Prior experiments (debug-uart-hang.yml, debug-uart-bisect.yml) narrowed this down to:
+# the hang reproduces when running the REAL, unmodified scripts/test.sh (no stdbuf, no per-file
+# timeout, real full test_*.py glob) but NOT in 22/22 reimplementations that wrap each invocation
+# differently, and NOT in 15+ local runs of the file alone. This job stops comparing black-box
+# outcomes and instead runs the real script in the background, waits for it to reach the known
+# stall point, then attaches strace/gdb directly to the stuck MicroPython process to see the
+# actual blocked syscall/backtrace - real evidence instead of another A/B guess.
+on:
+  pull_request:
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install uv
+        run: pip install uv
+      - name: Cache MicroPython Unix port build
+        uses: actions/cache@v6
+        with:
+          path: ~/pico-toolchain
+          key: unix-port-${{ runner.os }}-${{ hashFiles('toolchain/versions.toml', 'toolchain/setup_toolchain.py') }}
+      - name: Build toolchain if not cached
+        run: |
+          if [ ! -x "$HOME/pico-toolchain/micropython/ports/unix/build-standard/micropython" ]; then
+            uv run toolchain/setup_toolchain.py setup --toolchain-dir "$HOME/pico-toolchain"
+          fi
+      - name: Install strace/gdb, relax ptrace scope
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq strace gdb
+          sudo sysctl -w kernel.yama.ptrace_scope=0 || true
+      - name: Run the real scripts/test.sh in the background, catch it mid-hang, introspect
+        run: |
+          set +e
+          log="$RUNNER_TEMP/test_run.log"
+          bash scripts/test.sh > "$log" 2>&1 &
+          script_pid=$!
+          echo "scripts/test.sh started as PID $script_pid, logging to $log"
+
+          reached=0
+          for i in $(seq 1 60); do
+            sleep 2
+            if grep -q "== Running tests/test_asy_uart_driver.py" "$log" 2>/dev/null; then
+              echo "uart file reached at poll $i (~$((i * 2))s in)"
+              reached=1
+              break
+            fi
+          done
+
+          if [ "$reached" -ne 1 ]; then
+            echo "Never reached the uart file within the poll window - dumping log and bailing"
+            cat "$log"
+            kill "$script_pid" 2>/dev/null
+            exit 1
+          fi
+
+          # Give it a real chance to finish fast (proving no hang this run) before treating it as stuck -
+          # every other file in the suite completes its own full test count in well under this window.
+          sleep 20
+
+          mp_pid=$(pgrep -f "micropython.*test_asy_uart_driver.py" | head -1)
+          if [ -z "$mp_pid" ]; then
+            echo "=== No lingering process for the uart file - it finished within 20s this run (no hang) ==="
+            wait "$script_pid"
+            ec=$?
+            tail -60 "$log"
+            exit "$ec"
+          fi
+
+          echo "=== Still running 20s after starting the uart file - PID $mp_pid. This is the hang. Introspecting. ==="
+          echo "--- /proc/$mp_pid/status ---"
+          sudo cat "/proc/$mp_pid/status" 2>&1 || true
+          echo "--- /proc/$mp_pid/wchan (kernel function it's blocked in) ---"
+          sudo cat "/proc/$mp_pid/wchan" 2>&1; echo || true
+          echo "--- /proc/$mp_pid/stack (kernel-level blocking stack, if accessible) ---"
+          sudo cat "/proc/$mp_pid/stack" 2>&1 || true
+          echo "--- /proc/$mp_pid/fd listing ---"
+          sudo ls -la "/proc/$mp_pid/fd/" 2>&1 || true
+          echo "--- strace -p $mp_pid for 5s (making any syscalls at all, or truly frozen?) ---"
+          sudo timeout 5 strace -p "$mp_pid" -f -tt -o "$RUNNER_TEMP/strace.log" 2>&1
+          echo "--- strace output ---"
+          cat "$RUNNER_TEMP/strace.log" 2>&1 || true
+          echo "--- gdb: full backtrace of every thread ---"
+          sudo gdb -p "$mp_pid" -batch \
+            -ex "thread apply all bt full" \
+            -ex "detach" \
+            -ex "quit" 2>&1
+
+          echo "=== Cleaning up ==="
+          sudo kill -9 "$mp_pid" 2>/dev/null || true
+          kill -9 "$script_pid" 2>/dev/null || true
+          echo "=== Tail of captured test output ==="
+          tail -60 "$log"
+          exit 1
