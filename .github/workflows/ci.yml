@@ -35,9 +35,21 @@ jobs:
     # Tests run under a real MicroPython Unix-port interpreter, not CPython - see
     # BACKLOG.md's "Self-contained venv via uv" testing requirement and tests/README.md.
     #
+    # needs: lint-and-typecheck - deliberately serializes the two jobs in this workflow instead of
+    # letting them run in parallel (the previous default). The CI hang this job used to suffer
+    # correlates with concurrent job load on GitHub's shared runners (see below and CLAUDE.md's
+    # "CI hang investigation" note) - even just these two jobs of our own running at the same
+    # instant is concurrent load we can eliminate outright, so we do, rather than leaving it to
+    # retries alone to paper over. This can't control contention from other GitHub Actions
+    # customers' jobs sharing the same infrastructure, only from our own workflow's self-inflicted
+    # concurrency - but that's the lever actually within this repo's control. Costs a bit of total
+    # wall-clock time (lint/typecheck's ~15s now happens before, not alongside, unit-tests) -
+    # accepted tradeoff per the project owner's explicit direction (slower is fine, hanging never
+    # is).
+    #
     # timeout-minutes is a job-level backstop, not the primary defense against hangs anymore -
-    # scripts/test.sh itself now wraps every individual test file in a per-file timeout (with one
-    # retry) after a real, reproducible intermittent hang was root-caused to GitHub Actions
+    # scripts/test.sh itself now wraps every individual test file in a per-file timeout (with two
+    # retries) after a real, reproducible intermittent hang was root-caused to GitHub Actions
     # runner-level contention under concurrent job load (not a bug in any test file or src/
     # module - confirmed via extensive isolation: 22/22 clean bisect-matrix runs ruling out any
     # specific file/ordering, 7/7 clean solo (non-concurrent) runs, vs. repeated identical stalls
@@ -50,6 +62,7 @@ jobs:
     # this fix existed). With a warm toolchain cache, a healthy run takes ~8-9 minutes total (plain
     # + coverage passes combined - confirmed by direct local measurement, not the "well under a
     # minute" this comment used to (incorrectly) claim).
+    needs: lint-and-typecheck
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
