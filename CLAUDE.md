@@ -252,21 +252,32 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
   needs this repo registered at codecov.io plus a token/OIDC setup that hasn't happened yet, so
   that upload currently no-ops. Locally, `--coverage` only prints the output paths; nothing opens
   automatically. See README.md's "Test coverage" section for the full user-facing rundown.
-- **CI hang investigation (resolved)**: `unit-tests` hung intermittently and repeatedly — always
-  the same symptom, a specific `test_*.py` file's MicroPython process going completely silent for
-  the rest of the job (first seen as a full 6-hour stall before `timeout-minutes` existed; see PR
-  #24/#25's history). Extensive isolation on a disposable branch (parallel bisect-matrix runs
-  replaying every candidate file/ordering combination — 22/22 clean; solo, non-concurrent runs of
-  the exact same script — 7/7 clean; vs. repeated identical stalls whenever the same script ran
-  alongside many other GitHub Actions jobs at once) root-caused this to **GitHub Actions
-  runner-level resource contention under concurrent job load**, not a bug in any test file, driver,
-  or `src/` module — confirmed by direct evidence, not guessed. **Fix**: `scripts/test.sh` wraps
-  every individual test file invocation in a `timeout` (with one retry) sized as a generous
-  multiple of the slowest observed healthy file, so a stall now surfaces as a fast, attributable
-  per-file failure within minutes instead of silently consuming the whole job. `ci.yml`'s
-  `timeout-minutes` remains as an outer backstop for a genuinely pathological run, not the primary
-  defense anymore. Don't re-diagnose this as a code bug if it recurs — check whether the per-file
-  timeout actually fired (its own log line says so) before assuming something new is wrong.
+- **CI hang investigation (resolved)**: `unit-tests` hung intermittently and repeatedly, always the
+  same symptom — `test_asy_uart_driver.py`'s MicroPython process going completely silent for the
+  rest of the job (first seen as a full 6-hour stall before `timeout-minutes` existed; see PR
+  #24/#25's history). An early round of isolation (bisect-matrix runs, solo vs. concurrent-job-burst
+  comparisons) pointed at GitHub Actions runner-level contention and produced three successive
+  mitigations in `scripts/test.sh`/`ci.yml` (per-file `timeout`+retry, `stdbuf -oL -eL` line
+  buffering, `needs: lint-and-typecheck` job sequencing) — **none of which actually stopped the
+  hang**; they only turned a silent multi-hour stall into a fast, attributable ~12-13 minute
+  failure. The real root cause, found by adding a diagnostic `asyncio.wait_for(5)` bound around
+  the test file's own `run()` helper: ~17 tests in `test_asy_uart_driver.py` feed data via
+  `feed_rx()` then call `uart.read()`/`write()` with no explicit `timeout_ms`, hitting
+  `asy_uart_driver.py`'s `ready()`'s `timeout_ms=-1` (wait forever) branch — the only place in the
+  whole file relying on the *real* `select.poll()` to detect readiness via `tests/machine.py`'s
+  pure-Python `io.IOBase` fake UART's `ioctl()`, instead of the bounded `_StepPoller` test double
+  every other test in the file already used. On GitHub Actions specifically (never locally, including
+  under simulated single-core CPU contention), that real-poll/ioctl-on-a-non-fd-Python-object path
+  never detects readiness at all — confirmed deterministic, not intermittent, once the diagnostic
+  bound made the failure visible as `TimeoutError` instead of a silent stall. **Fix**: switched all
+  17 tests to the same `_StepPoller` double, removing the dependency entirely — verified with 21/21
+  clean CI jobs across three separate branches/configurations before landing on the real branch.
+  The three earlier mitigations (per-file timeout/retry, stdbuf, job sequencing) are kept as a
+  standing "hanging is never allowed" backstop against any *future* hang, not because they fixed
+  this one — an isolation test with all three reverted, running only the `_StepPoller` fix, passed
+  8/8 clean CI jobs on its own. Don't re-diagnose this specific symptom as a new code bug if it
+  recurs elsewhere; do treat any *new* file/test that leaves `uart.poller` (or an equivalent
+  fake-stream object) wired to a real `select.poll()` as a like-for-like risk.
 - **`ruff format` is deliberately not used anywhere** — line breaks are hand-chosen throughout this
   codebase; `line-length = 320` (ruff's own ceiling) plus an `E501` ignore keep this a non-issue even
   if `format` is ever run by accident. Lint rule selection (`E`/`F`/`W`/`I`/`UP`/`B`) is stricter
