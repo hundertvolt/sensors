@@ -35,12 +35,21 @@ jobs:
     # Tests run under a real MicroPython Unix-port interpreter, not CPython - see
     # BACKLOG.md's "Self-contained venv via uv" testing requirement and tests/README.md.
     #
-    # timeout-minutes caps this job well under GitHub's own 360-minute hard limit: without it, a
-    # genuine hang (confirmed once - see BACKLOG.md's "CI unit-tests job hung for 6 real hours"
-    # item) silently burns the full 6 hours before GitHub force-cancels it, instead of failing
-    # fast with an actionable signal. 30 min is generous headroom over a cold-cache toolchain
-    # build (several minutes, see toolchain/README.md) plus two full suite runs (plain + coverage;
-    # a warm-cache run completes in well under a minute locally).
+    # timeout-minutes is a job-level backstop, not the primary defense against hangs anymore -
+    # scripts/test.sh itself now wraps every individual test file in a per-file timeout (with one
+    # retry) after a real, reproducible intermittent hang was root-caused to GitHub Actions
+    # runner-level contention under concurrent job load (not a bug in any test file or src/
+    # module - confirmed via extensive isolation: 22/22 clean bisect-matrix runs ruling out any
+    # specific file/ordering, 7/7 clean solo (non-concurrent) runs, vs. repeated identical stalls
+    # under a full concurrent-job burst - see CLAUDE.md's "CI hang investigation" note). That
+    # inner per-file timeout means a real hang now surfaces as a fast, attributable failure within
+    # minutes instead of silently consuming the whole job; timeout-minutes here only guards
+    # against a genuinely pathological run (many files hanging at once) rather than being the
+    # only thing standing between a stuck test and GitHub's own 360-minute hard limit (the
+    # scenario that produced the originally-observed 6-hour hang - see BACKLOG.md's history before
+    # this fix existed). With a warm toolchain cache, a healthy run takes ~8-9 minutes total (plain
+    # + coverage passes combined - confirmed by direct local measurement, not the "well under a
+    # minute" this comment used to (incorrectly) claim).
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

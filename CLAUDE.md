@@ -252,6 +252,21 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
   needs this repo registered at codecov.io plus a token/OIDC setup that hasn't happened yet, so
   that upload currently no-ops. Locally, `--coverage` only prints the output paths; nothing opens
   automatically. See README.md's "Test coverage" section for the full user-facing rundown.
+- **CI hang investigation (resolved)**: `unit-tests` hung intermittently and repeatedly — always
+  the same symptom, a specific `test_*.py` file's MicroPython process going completely silent for
+  the rest of the job (first seen as a full 6-hour stall before `timeout-minutes` existed; see PR
+  #24/#25's history). Extensive isolation on a disposable branch (parallel bisect-matrix runs
+  replaying every candidate file/ordering combination — 22/22 clean; solo, non-concurrent runs of
+  the exact same script — 7/7 clean; vs. repeated identical stalls whenever the same script ran
+  alongside many other GitHub Actions jobs at once) root-caused this to **GitHub Actions
+  runner-level resource contention under concurrent job load**, not a bug in any test file, driver,
+  or `src/` module — confirmed by direct evidence, not guessed. **Fix**: `scripts/test.sh` wraps
+  every individual test file invocation in a `timeout` (with one retry) sized as a generous
+  multiple of the slowest observed healthy file, so a stall now surfaces as a fast, attributable
+  per-file failure within minutes instead of silently consuming the whole job. `ci.yml`'s
+  `timeout-minutes` remains as an outer backstop for a genuinely pathological run, not the primary
+  defense anymore. Don't re-diagnose this as a code bug if it recurs — check whether the per-file
+  timeout actually fired (its own log line says so) before assuming something new is wrong.
 - **`ruff format` is deliberately not used anywhere** — line breaks are hand-chosen throughout this
   codebase; `line-length = 320` (ruff's own ceiling) plus an `E501` ignore keep this a non-issue even
   if `format` is ever run by accident. Lint rule selection (`E`/`F`/`W`/`I`/`UP`/`B`) is stricter

@@ -53,6 +53,17 @@ if [ "$coverage" = "1" ]; then
 fi
 
 failed=0
+# Per-file timeout with one retry, not just the job-level timeout-minutes in ci.yml: a real,
+# reproducible intermittent hang was tracked down to GitHub Actions runner-level contention under
+# concurrent job load (not a bug in any test file or src/ module - see CLAUDE.md's "CI hang
+# investigation" note), surfacing as a specific test_*.py file's MicroPython process going
+# completely silent for the rest of the job. 180s is a deliberate multiple of the slowest observed
+# healthy file (test_asy_sgp40_driver.py's real-time FRAM backup/restore tests, ~90s worst case
+# seen in CI) - generous enough to never false-positive-kill a legitimately slow file, while being
+# far below the 30-minute job cap. A single retry absorbs a one-off transient stall without ever
+# failing the whole job for infra noise; a second timeout on the same file is treated as a real
+# failure. --kill-after guarantees the process is gone even if SIGTERM alone doesn't land.
+per_file_timeout_s="${PER_FILE_TIMEOUT_S:-180}"
 for test_file in tests/test_*.py; do
     echo "== Running $test_file"
     # .frozen must be included explicitly: MICROPYPATH replaces MicroPython's default sys.path
@@ -61,14 +72,29 @@ for test_file in tests/test_*.py; do
     # this breaks `import asyncio` for any async src/ file with no import error pointing at why.
     if [ "$coverage" = "1" ]; then
         raw_out="$raw_dir/$(basename "$test_file" .py).json"
-        if ! MICROPYPATH="src:tests:.frozen" "$micropython_bin" tests/_coverage_runner.py "$test_file" "$raw_out"; then
-            failed=1
-        fi
+        cmd=(tests/_coverage_runner.py "$test_file" "$raw_out")
     else
-        if ! MICROPYPATH="src:tests:.frozen" "$micropython_bin" "$test_file"; then
-            failed=1
-        fi
+        cmd=("$test_file")
     fi
+    for attempt in 1 2; do
+        if MICROPYPATH="src:tests:.frozen" timeout --kill-after=10 "$per_file_timeout_s" "$micropython_bin" "${cmd[@]}"; then
+            ec=0
+        else
+            ec=$?
+        fi
+        if [ "$ec" -eq 0 ]; then
+            break
+        elif [ "$ec" -eq 124 ] && [ "$attempt" -eq 1 ]; then
+            echo "== $test_file exceeded ${per_file_timeout_s}s on attempt 1 - retrying once in case of transient runner contention" >&2
+            continue
+        else
+            if [ "$ec" -eq 124 ]; then
+                echo "== $test_file exceeded ${per_file_timeout_s}s again on retry - treating as a real failure instead of hanging the job" >&2
+            fi
+            failed=1
+            break
+        fi
+    done
 done
 
 if [ "$coverage" = "1" ]; then
