@@ -1,0 +1,45 @@
+name: TEMP - Debug UART test hang
+
+# TEMPORARY, throwaway debugging workflow - lives only on the debug/uart-ci-hang-investigation
+# branch, not merged into any real PR. Only runs on manual dispatch (never on push/pull_request),
+# so it can't interfere with the real ci.yml pipeline or add noise to any PR's checks. Isolates
+# just tests/test_asy_uart_driver.py (via tests/_debug_uart_runner.py, also temp/debug-only) and
+# repeats it several times in one short job, to reproduce - fast and cheaply, directly on a real
+# GitHub Actions runner - the unit-tests job hang seen on PR #24 that never reproduces locally.
+on:
+  workflow_dispatch:
+    inputs:
+      iterations:
+        description: "How many times to repeat the run"
+        default: "15"
+
+jobs:
+  debug-uart:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install uv
+        run: pip install uv
+      - name: Cache MicroPython Unix port build
+        uses: actions/cache@v6
+        with:
+          path: ~/pico-toolchain
+          key: unix-port-${{ runner.os }}-${{ hashFiles('toolchain/versions.toml', 'toolchain/setup_toolchain.py') }}
+      - name: Build toolchain if not cached
+        run: |
+          if [ ! -x "$HOME/pico-toolchain/micropython/ports/unix/build-standard/micropython" ]; then
+            uv run toolchain/setup_toolchain.py setup --toolchain-dir "$HOME/pico-toolchain"
+          fi
+      - name: Repeat the instrumented uart test run
+        run: |
+          bin="$HOME/pico-toolchain/micropython/ports/unix/build-standard/micropython"
+          for i in $(seq 1 "${{ github.event.inputs.iterations }}"); do
+            echo "=== iteration $i ==="
+            if ! MICROPYPATH="src:tests:.frozen" stdbuf -oL -eL timeout 90 "$bin" tests/_debug_uart_runner.py; then
+              ec=$?
+              echo "iteration $i exit=$ec (non-zero or timed out - stopping here)"
+              exit "$ec"
+            fi
+            echo "iteration $i: clean pass"
+          done
