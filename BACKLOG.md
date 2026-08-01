@@ -65,10 +65,31 @@ constraints.
 - **Neopixel warning-flash sequencing and the task-supervisor error-budget counter** are both
   behaviorally correct and intentional as designed, but flagged by the owner as implementable more
   efficiently — worth a cleaner implementation in the refactor without changing observed behavior.
-- **`improved-quality/microdot.py` is a confirmed *unintentional* fork of vendored Microdot**
-  (owner-confirmed). Action when refactor work resumes: revert it to match upstream exactly, no
-  behavioral additions ever. Not touched now (`improved-quality/` source stays out of routine
-  editing) — distinct from `python/CommonDrivers/microdot.py`, which still matches upstream.
+- **No `@app.errorhandler` registrations exist anywhere yet** (confirmed: neither
+  `improved-quality/sensortask-wozi.py` nor the deployed `python/CommonDrivers/`-based app
+  registers any). See CLAUDE.md's "Microdot / REST layer" section for what Microdot itself already
+  guarantees (every route-handler exception, including `MemoryError`, is already caught per-request
+  and can't crash the server) versus what's still missing at our own layer. Concrete work once the
+  api_helpers/base-class setter consolidation (above) is designed:
+  - A catch-all `@app.errorhandler(Exception)` that logs via our own `pr.err_s(...)` (Microdot's own
+    default `print_exception()` never reaches `PrintLog`/FRAM) and returns the consolidated
+    `{"res": "ERR", ...}` reply shape — the single seam where "any internal or external error must
+    be answered with an appropriate REST reply" actually gets satisfied for the whole app, not
+    per-handler.
+  - Explicit handlers for at least 400/404/405/413/500 so Microdot's bare default text bodies
+    (`'Not found', 404` etc.) never reach a client unshaped.
+  - A decision on whether route handlers use `abort()`/`HTTPException` (resolved via the
+    status-code error-handler path) or always return our own error dict directly — mixing both
+    without care means two different reply shapes for the same kind of error.
+  - Any registered handler must itself be defensive: a second exception raised inside an error
+    handler is swallowed silently by Microdot (falls back to a bare generic 500) rather than
+    crashing, but that also means a bug in the handler silently loses whatever it was trying to do
+    (e.g. the logging call itself).
+  - Whatever a route handler returns must stay JSON-serializable end to end (ties to the
+    native-JSON-types rework already in progress) — a non-serializable value fails inside
+    `Response.__init__`'s `json.dumps()`, which Microdot still contains (falls into the same
+    generic-500 path) but silently masks the real cause as a generic error unless our own handler
+    logs it.
 - **Rough sequencing, not a committed plan**: (1) dev/build environment setup (genericized
   `build-*.sh`/toolchain paths) — everything else touching CI/firmware depends on this; (2) the
   structural patterns above (per-sensor config, generalized error-counter bookkeeping) are largely
@@ -152,6 +173,23 @@ constraints.
     `sensortask-wozi.py`/`neopixel_signal.py`, several test files), a real blast-radius decision
     similar in shape to the already-deferred `max_i2c_err` rename. Needs an owner call on whether to
     rename (and to what) or accept the mismatch permanently, not a unilateral fix.
+11. **Does MicroPython's `asyncio.start_server()` isolate each accepted connection in its own Task,
+    the same way CPython's does?** Needs checking against the real pinned MicroPython Unix-port
+    interpreter or authoritative source/docs, not assumed from CPython parity (per CLAUDE.md's
+    standing verify-don't-assume rule). This determines the actual blast radius of the one confirmed
+    gap in Microdot's own per-request safety net: a non-`OSError` exception escaping
+    `Response.write()`/`handle_request()` (see CLAUDE.md's "Microdot / REST layer"). If connections
+    are isolated Tasks, only that one client is affected and the outer Microdot server task (and
+    `system_service.py`'s task-supervisor restart, already wired up and already sufficient for a
+    fully-dead server task) never even notices. If not, a single bad connection could take down the
+    whole `start_server()` accept loop, making that already-in-place supervisor restart
+    load-bearing for recovery rather than a backstop that's rarely exercised. Worth resolving before
+    treating "Microdot restarts itself when it crashes" as settled, since it changes whether any
+    extra per-connection containment work is needed on top of what already exists.
+12. **`pyproject.toml`'s ruff `extend-exclude` and mypy `exclude` still list the now-deleted
+    `improved-quality/microdot.py` path** — dead/inert, not a functional bug (`ext/microdot.py` was
+    never in either tool's scan scope to begin with — see CLAUDE.md's "Microdot / REST layer"), but
+    worth a one-line cleanup next time `pyproject.toml` is touched for something else.
 
 ## Deferred / explicitly out-of-scope work
 
