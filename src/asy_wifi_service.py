@@ -37,10 +37,20 @@ except Exception:
 
 
 # Schema tuples for ConfigManager.get_*_values() - min/max mirror sensortask-wozi.py's REST bounds,
-# except SSID/PW's min is relaxed to 0 (fresh "" default) and Hostname's max is 32, network.hostname()'s
-# real hard cap, not the REST route's still-open 1-63.
+# except Hostname's max is 32, network.hostname()'s real hard cap, not the REST route's still-open
+# 1-63.
+#
+# SSID: 0-32 octets is the real 802.11 SSID length range, and 0 is doing double duty here as this
+# driver's own "not configured yet" sentinel (see _attempt_sta_connect()'s `if ssid == "":` branch,
+# which routes straight to hotspot fallback) - min=0 is correct on both counts, not a relaxation.
+#
+# PW: WPA2-PSK's real ASCII passphrase length is 8-63 characters *when used* - a 1-7 character
+# password isn't just weak, WPA2 itself would refuse it. An empty PW is a separate, equally real
+# case (an intentionally open/unsecured network), not a short password - special="" carries that
+# through the existing single-value bypass mechanism (same shape as SCD30's AmbPres=0) rather than
+# being folded into the general 8-63 range.
 _VAL_SSID = const((("SSID", "str", "", 0, 32, None),))
-_VAL_PW = const((("PW", "str", "", 0, 63, None),))
+_VAL_PW = const((("PW", "str", "", 8, 63, ""),))
 _VAL_CTRY = const((("Country", "str", "DE", 2, 2, None),))
 _VAL_HOST = const((("Hostname", "str", "SensorNode", 1, 32, None),))
 _VAL_LED = const((("LedWifiOn", "bool", True, None, None, None),))
@@ -116,6 +126,11 @@ class asy_conn_time(SensorReaderConfig):
         self.connection_failures = 0
         self.hotspot_started_once = False
         self.hw_op_failed = False  # this loop iteration's flag feeding _error_check(), see wlan_connect()
+        # SSID/PW/Country/Hostname are persist-only (read fresh from cfgmgr at the top of every
+        # connection attempt - see _attempt_sta_connect()/_start_hotspot()); LedWifiOn is the one
+        # field with a real live push, registered once here (project decision - constant at
+        # runtime, no per-call plumbing needed).
+        self._push_callbacks["LedWifiOn"] = self._push_wifi_led
 
     def _now(self) -> int | None:
         try:
@@ -624,7 +639,9 @@ class asy_conn_time(SensorReaderConfig):
     def set_ext_led(self, ext_led: LEDControl) -> None:  # for post-setting ext_led at any time
         self.ext_led = ext_led  # if called even after init, call set_wifi_led(True) to init LED
 
-    async def set_wifi_led(self, status: bool) -> None:
+    async def set_wifi_led(self, status: bool) -> bool:
+        # Uniform setter return contract (project-wide decision): always True here - pure attribute
+        # assignment plus _led_off()'s own already-defensive degrade-on-raise, nothing to reject.
         if status:  # try to turn on
             if self.led is None:  # LED is actually off
                 if self.led_pin is None:  # no gpio led defined
@@ -634,6 +651,17 @@ class asy_conn_time(SensorReaderConfig):
         else:  # turn off
             self._led_off()
             self.led = None
+        return True
+
+    async def _push_wifi_led(self, value: int | float | str | bool | None) -> bool:
+        # self._push_callbacks' shape (base_classes.py) is one Callable per field, all sharing the
+        # same wide value type - this narrows to set_wifi_led's real bool parameter. _set_dict_cfg
+        # only ever invokes a push callback with an already schema-validated value (a real bool, by
+        # construction, since LedWifiOn's schema type is "bool") - the isinstance check is for the
+        # type checker and as defense-in-depth, not a scenario a real caller can actually trigger.
+        if not isinstance(value, bool):
+            return False
+        return await self.set_wifi_led(value)
 
     def stop_counter_timer(self) -> None:
         self.counter_timer.deinit()
