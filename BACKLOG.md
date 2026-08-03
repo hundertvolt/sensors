@@ -69,6 +69,106 @@ constraints.
   (owner-confirmed). Action when refactor work resumes: revert it to match upstream exactly, no
   behavioral additions ever. Not touched now (`improved-quality/` source stays out of routine
   editing) — distinct from `python/CommonDrivers/microdot.py`, which still matches upstream.
+- **Microdot hardening design (webserver robustness) — plan settled, not yet implemented.** Triggered
+  by a real incident: on 2026-08-03, `sensortask-arzi`/`sensortask-neu` (legacy, pre-refactor) both
+  went permanently REST-API-unreachable for hours with the watchdog never firing, root-caused to
+  vendored `python/CommonDrivers/microdot.py`'s `Request.create()`/`Response.write()` having zero
+  read/write timeout anywhere on the per-connection stream (`stream.readline()`/`readexactly()`/
+  `awrite()`/`drain()`) — a client that opens a TCP connection and then goes silent (matches that
+  day's independently-observed network flakiness) leaves that connection's task parked on an `await`
+  forever: alive from asyncio's point of view, invisible to `start_and_check_tasks()`'s `.done()`
+  check, costing zero CPU, so the main loop/watchdog-feed keeps running fine while the wedged
+  connection permanently occupies one of RP2040/lwIP's small fixed socket-pool slots. Confirmed
+  against live upstream `miguelgrinberg/microdot` (`main` branch) this isn't a vendoring gap fixable
+  by upgrading: current Microdot has zero "timeout" occurrences anywhere in `microdot.py`. Its
+  changelog shows a "socket read timeout to abort incomplete requests" *did* exist (v1.2.2,
+  2023-03-03; refined v1.3.1) but predates v2.0.0's (2023-12-22) "asyncio is now the core
+  implementation" redesign and was never reimplemented for the asyncio server — a standing upstream
+  gap for 2+ years, not something a version bump resolves. `improved-quality/sensortask-wozi.py` has
+  the identical unwrapped `app.start_server()` call, so this isn't fixed on the refactor branch
+  either yet.
+
+  **Decided (owner, 2026-08-03) — don't re-litigate without new information:**
+  - Scope: **refactor-only** (`src/`, `improved-quality/`, future `sensortask-*.py`). Legacy
+    `python/CommonDrivers/` stays untouched under the standing "don't edit without authorization"
+    rule — accepted as residual risk until the refactor replaces it, *not* proposed for a scoped
+    backport despite today's real outage.
+  - Defense shape: **layered** — per-connection timeout as the primary defense, plus whole-server
+    restart as a backstop for anything the per-connection layer misses (e.g. a hang inside Microdot's
+    own routing/dispatch logic, not just stream I/O).
+  - Detection signal: **per-connection open-count leak tracking only** — no active self-test/loopback
+    probe, no unconditional periodic restart. Both were offered and explicitly not chosen — don't
+    re-add either as "obviously also worth having" without asking again.
+  - Timeout sizing: **generous**, tuned around worst-case legitimate conditions (weak WiFi, larger
+    page transfers) — a wedged connection may tie up its socket a while longer before reclaim, but a
+    slow legitimate client is never the one getting cut off.
+  - Tunables (timeouts, concurrent-connection threshold, restart grace period): **hardcoded internal
+    constants, not REST/config-exposed** — same treatment as `WDT` timeout / `_TASK_FAIL_MAX` today,
+    so nothing (including a REST caller) can accidentally weaken the safety net.
+
+  **Design sketch (composition, not subclassing or editing Microdot):**
+  1. Don't call `app.start_server()`/`app.shutdown()` at all. Call `asyncio.start_server()` ourselves
+     with our own `serve(reader, writer)` callback (the same primitive Microdot's own `start_server()`
+     uses internally), keeping the returned `Server` object under our control for restart. This keeps
+     the *only* real coupling point to Microdot's internals down to one clearly-scoped call —
+     `await app.handle_request(wrapped_reader, wrapped_writer)` — `app` itself (the `Microdot()`
+     instance with all its `@app.get/put/...`-registered routes) is reused unchanged across restarts,
+     since routes live in `app.url_map`, independent of the transport object being replaced.
+  2. Before calling `handle_request`, wrap the real `reader`/`writer` in a thin proxy (our own class)
+     forwarding every method Microdot's code actually calls on them (`readline`, `readexactly`,
+     `awrite`, `aclose`, `close`, `wait_closed`, `get_extra_info` — enumerate exhaustively by grepping
+     `python/CommonDrivers/microdot.py` for every `reader.`/`writer.`/`stream.` call site, not
+     guessed), each wrapped in its own `asyncio.wait_for(..., _CONN_TIMEOUT_S)`. A timeout raises an
+     ordinary exception from inside the proxy call (not a cancellation reaching into Microdot's own
+     code) — Microdot's existing `except Exception as exc: print_exception(exc)` around
+     `Request.create()` already handles this correctly (aborts the request, still runs the normal
+     `writer.aclose()` cleanup path), so this deliberately sidesteps needing to know how MicroPython's
+     `asyncio.CancelledError` interacts with a broad `except Exception` inside a cancelled task's
+     frame, rather than resolving that uncertainty. **Verify before implementing**: confirm on the
+     real Unix-port interpreter that `asyncio.wait_for()` wrapping a stream read that never becomes
+     ready actually raises `TimeoutError` promptly rather than hanging (should hold — MicroPython's
+     stream reads yield through the scheduler's IOQueue, a real coroutine boundary, unlike the
+     wedged-I2C case CLAUDE.md already rules out) — this is the one load-bearing runtime-behavior
+     assumption the whole design rests on; check it first.
+  3. Our `serve()` wrapper increments a `LockedCounter`-style open-connection count on accept,
+     decrements it in a `finally` regardless of outcome (timeout, success, exception) — the count must
+     never leak even if `handle_request` misbehaves in some new way not anticipated here.
+  4. Whole-server restart: when the open-count stays at/above a threshold (set with real margin below
+     RP2040/lwIP's actual concurrent-socket ceiling — **that ceiling itself isn't known/verified yet,
+     see companion open question below**) for longer than a grace period (avoid overreacting to a
+     brief legitimate burst), close our own `Server` object (`server.close()` + `await
+     server.wait_closed()`) so the outer task returns on its own — no forced `task.cancel()` needed in
+     the common case. Register this webserver-starter in the *existing* `start_and_check_tasks()` task
+     list like any other task; once it actually returns/dies, requirement "graceful restart" and
+     "last-resort watchdog escalation" (via `task_errors`/`_TASK_FAIL_MAX`/`_force_watchdog_starve`)
+     are already fully handled by `system_service.py`'s existing, tested supervisor — **no new restart
+     or watchdog-escalation machinery needs to be built**, only that the webserver task needs to
+     become capable of actually dying, which is exactly the gap steps 1-3 close. A secondary, harder
+     timeout that force-cancels the outer server task if `close()`/`wait_closed()` doesn't return
+     within a further grace period is the belt-and-suspenders fallback in case that assumption doesn't
+     hold on real hardware.
+  5. Soak-test before trusting this in the field: repeated (100s+) start/wedge/reclaim/restart cycles
+     under the Unix-port interpreter checking `gc.mem_free()` stays flat, matching this project's
+     existing "never trust a resource-lifecycle claim without directly testing it" standard (FRAM
+     `LockableBuffer` clamp-then-allocate, `AsyUDPSocket`'s self-healing `_connect()`, etc.). Test
+     doubles for the reader/writer must be step-driven fakes, never anything backed by a real
+     `select.poll()` — this is exactly the CI-hang class already root-caused and fixed once in
+     `test_asy_uart_driver.py` (see "CI hang investigation" above); don't reintroduce it here.
+  6. New module follows the project's existing "never raises" convention throughout (see
+     `base_classes.py`/`system_service.py` module docstrings) — any failure inside the wrapper itself
+     (not just inside Microdot) degrades to logging via `pr.err_s`/`wrn_s` and treating that one
+     connection as expendable, never propagates out of the connection task.
+
+  **Companion open question this design surfaces (not previously tracked)**: the actual concurrent-
+  socket/TCP-PCB ceiling for MicroPython's rp2 port (lwIP-backed) isn't verified anywhere in this
+  repo — needed to set a real-margin threshold for step 4 above. Check the port's own `lwipopts.h`/
+  current MicroPython rp2-port docs directly rather than assuming a number from general lwIP
+  knowledge.
+
+  Suggested module name/location once implementation starts: `asy_webserver_service.py` in `src/`,
+  matching `asy_wifi_service.py`/`asy_ntp_client.py`'s naming and the "every module owns its own
+  schema" convention — though per the tunable-exposure decision above, this module's own safety
+  constants deliberately have no config schema/REST surface.
 - **Rough sequencing, not a committed plan**: (1) dev/build environment setup (genericized
   `build-*.sh`/toolchain paths) — everything else touching CI/firmware depends on this; (2) the
   structural patterns above (per-sensor config, generalized error-counter bookkeeping) are largely
