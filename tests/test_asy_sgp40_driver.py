@@ -885,7 +885,11 @@ def test_no_push_callbacks_are_registered_for_any_sgp_field() -> None:
 
 
 def test_set_dict_cfg_works_out_of_the_box_with_zero_driver_changes() -> None:
-    reader = make_reader()
+    # Isolated cfg dir (see _sgp_cfg_dir() below), not the shared make_reader() config path - this
+    # test actually persists non-default values, and the shared path is only safe for tests that
+    # never write, same reasoning as every other config-writing test in this file.
+    cfg_dir = _sgp_cfg_dir("setdictzero")
+    reader = SGP40_Reader(make_i2c(), _comp_data, max_i2c_err=2, cfg_path=cfg_dir)
     results = run(reader._set_dict_cfg({"BackupPeriod": 30, "WaitTimeNTP": 60}, reader.get_cfg_schema()))
     assert results == {"BackupPeriod": "Valid", "WaitTimeNTP": "Valid"}
     stored = run(reader.cfgmgr.get_dict(["BackupPeriod", "WaitTimeNTP"]))

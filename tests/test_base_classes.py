@@ -1112,6 +1112,28 @@ def test_set_dict_cfg_set_mgr_cfg_override_raising_marks_every_field_failed() ->
         _remove(path_prefix + "config_raisingmgr.cfg")
 
 
+def test_set_dict_cfg_set_mgr_cfg_override_malformed_result_marks_every_field_failed() -> None:
+    # Same defensive posture as the raising-override test above, for the other way a misbehaving
+    # override can fail: returning successfully but with a "results" that isn't the WriteValidity
+    # dict the rest of _set_dict_cfg assumes (e.g. results.get(key) below would otherwise raise
+    # AttributeError, uncaught - base_classes.py's own contract is that no method here ever raises).
+    class MalformedSetMgrCfgReader(SensorReaderConfig):
+        async def _set_mgr_cfg(
+            self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "cm.ConfigSchema"
+        ) -> "tuple[bool, cm.WriteValidity]":
+            return True, "not a dict"  # type: ignore[return-value]  # deliberately malformed, simulating a misbehaving override
+
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_malformedmgr.cfg")
+    try:
+        reader = MalformedSetMgrCfgReader(Meas(20.0, 50), 3, "malformedmgr", _VAL_SI, cfg_path=path_prefix)
+        results = run(reader._set_dict_cfg({"SampleInterv": 42}, _VAL_SI))
+        assert results == {"SampleInterv": "Failed"}
+        assert reader.pr.err_count == 1
+    finally:
+        _remove(path_prefix + "config_malformedmgr.cfg")
+
+
 def test_set_dict_cfg_empty_data_returns_empty_result() -> None:
     path_prefix = _tmp_path("") + "/"
     _remove(path_prefix + "config_emptyset.cfg")

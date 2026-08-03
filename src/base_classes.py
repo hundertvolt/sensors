@@ -288,8 +288,11 @@ class SensorReaderConfig(SensorReader):
         # one key (ConfigManager.write_config's own per-key tolerance), never the whole request.
         try:  # _set_mgr_cfg is an overridable extension point - the call itself, not just its
             # result, could misbehave on a misbehaving subclass override (mirrors _get_dict_cfg's
-            # own _get_mgr_cfg handling).
+            # own _get_mgr_cfg handling) - the isinstance check below extends that same defense to
+            # a malformed *shape* of an otherwise-successful return, not just a raised exception.
             persisted, results = await self._set_mgr_cfg(data, cfg_vals)
+            if not isinstance(results, dict):
+                raise TypeError("_set_mgr_cfg returned a non-dict result")
         except Exception as e:
             await self.pr.err_s("Error writing config dict:", e, errno=5)
             persisted, results = False, {}
