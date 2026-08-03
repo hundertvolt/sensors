@@ -456,14 +456,14 @@ def test_error_check_recovers_after_a_success() -> None:
 def test_reset_voc_true_sets_the_reset_flag() -> None:
     reader = make_reader()
     assert reader.reset is False
-    run(reader.reset_voc(True))
+    assert run(reader.reset_voc(True)) is True  # uniform setter return contract: True = applied
     assert reader.reset is True
 
 
 def test_reset_voc_false_is_a_no_op() -> None:
     reader = make_reader()
     reader.reset = True
-    run(reader.reset_voc(False))
+    assert run(reader.reset_voc(False)) is False  # uniform setter return contract: False = no-op
     assert reader.reset is True  # unchanged - reset_voc's own documented contract
 
 
@@ -867,6 +867,29 @@ _SGP_CFG_FILE = "config_SGP40.cfg"
 _VAL_BP = (("BackupPeriod", "int", 1, 0, 1440, None),)
 _VAL_BMAX = (("BackupMaxAge", "int", 7200, 0, 10080, None),)
 _VAL_WT = (("WaitTimeNTP", "int", 30, 0, 600, None),)
+
+
+def test_get_cfg_schema_matches_the_public_attribute() -> None:
+    # get_cfg_schema() is inherited for free from base_classes.py's SensorReaderConfig.
+    reader = make_reader()
+    assert reader.get_cfg_schema() == reader.cfg_schema
+    assert reader.get_cfg_schema() == (_VAL_BP + _VAL_BMAX + _VAL_WT)
+
+
+def test_no_push_callbacks_are_registered_for_any_sgp_field() -> None:
+    # BackupPeriod/BackupMaxAge/WaitTimeNTP are persist-only: _check_storage()/_init_sgp() read
+    # them fresh from cfgmgr every cycle, nothing needs a live push on write - same shape as
+    # asy_ntp_client.py's fields.
+    reader = make_reader()
+    assert reader._push_callbacks == {}
+
+
+def test_set_dict_cfg_works_out_of_the_box_with_zero_driver_changes() -> None:
+    reader = make_reader()
+    results = run(reader._set_dict_cfg({"BackupPeriod": 30, "WaitTimeNTP": 60}, reader.get_cfg_schema()))
+    assert results == {"BackupPeriod": "Valid", "WaitTimeNTP": "Valid"}
+    stored = run(reader.cfgmgr.get_dict(["BackupPeriod", "WaitTimeNTP"]))
+    assert stored == {"BackupPeriod": 30, "WaitTimeNTP": 60}
 
 
 def _sgp_cfg_dir(name: str) -> str:

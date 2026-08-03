@@ -380,7 +380,10 @@ class SGP40_Reader(SensorReaderConfig):
     def stop_timer(self) -> None:
         self.trigger_timer.deinit()
 
-    async def reset_voc(self, flag: bool) -> None:
+    async def reset_voc(self, flag: bool) -> bool:
+        # Uniform setter return contract (project-wide decision): True = applied, False = no-op.
+        # flag=False deliberately does nothing (see test_reset_voc_false_is_a_no_op's own contract
+        # note) - only flag=True actually triggers a reset.
         if flag:
             self.reset = True
             # A fresh request always restarts both sub-parts' tracking, even if a previous reset was
@@ -388,6 +391,8 @@ class SGP40_Reader(SensorReaderConfig):
             # not silently considered already-satisfied by an earlier, unrelated reset's bookkeeping.
             self._reset_fram_cleared = False
             self._reset_algo_applied = False
+            return True
+        return False
 
     async def read_loop(self) -> bool:
         if not await self._init_sgp():  # init sensor at startup
