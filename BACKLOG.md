@@ -22,16 +22,6 @@ constraints.
   real MicroPython object rather than reimplementing its interface — turning this on will need a
   real typing strategy for those wrappers (e.g. `Protocol` classes matching just the overridden
   methods, plus `__getattr__` delegation) worked out first, not just a flag flip.
-- **Per-driver REST config setters are a known gap, deliberately not closed sensor-by-sensor.**
-  `get_dict_cfg()` gives every `*_Reader` a generic, schema-driven way to *read back* its config;
-  there's no equivalent generic *write* path — each REST handler still calls `set_*` methods one
-  field at a time by hand, and several config values accepted by a REST handler (SGP40's
-  `BackupPeriod`/`BackupMaxAge`/`WaitTimeNTP`) have no setter on the driver at all, so the write is
-  a silent no-op against real hardware. Deferred on purpose until all three sensors (SCD30/SGP40/
-  BMP3xx) were promoted to `src/` — **that's now done** — so a single consolidated generic-setter
-  mechanism can be designed once across all of them (applies to `config_manager.py`'s own
-  `ConfigManager` too: typed getters exist, no matching typed setters, only untyped
-  `write_config(dict, schema)`).
 - **FRAM bus-recovery is only partially wired up.** `asy_fram_driver.py`'s own `src/` promotion
   added device-identification/write-protect verification, but there's still no periodic/triggered
   re-probe policy (`verify_present()`/`get_write_protected()`/`set_write_protected()` have zero
@@ -61,7 +51,7 @@ constraints.
   a single shared enum), but predefine a small set of common error *classes* so the same number
   means the same or an equivalent condition across different drivers, beyond just the one
   already-consistent case. No scheme (numbering ranges, category list, how a driver opts in)
-  designed yet — out of scope until config setters (above) are done.
+  designed yet.
 - **Neopixel warning-flash sequencing and the task-supervisor error-budget counter** are both
   behaviorally correct and intentional as designed, but flagged by the owner as implementable more
   efficiently — worth a cleaner implementation in the refactor without changing observed behavior.
@@ -69,8 +59,14 @@ constraints.
   `improved-quality/sensortask-wozi.py` nor the deployed `python/CommonDrivers/`-based app
   registers any). See CLAUDE.md's "Microdot / REST layer" section for what Microdot itself already
   guarantees (every route-handler exception, including `MemoryError`, is already caught per-request
-  and can't crash the server) versus what's still missing at our own layer. Concrete work once the
-  api_helpers/base-class setter consolidation (above) is designed:
+  and can't crash the server) versus what's still missing at our own layer. The base-class/
+  `api_response.py` setter+response-envelope consolidation this depended on is now done (see
+  DRIVER_SPEC.md section 5) — `handle_set_cmd()` already provides its own defense-in-depth
+  try/except around one endpoint's dispatch, returning the consolidated `{"res": "ERR", ...}` shape
+  via `make_response()`. What's still missing is wiring an actual `@app.errorhandler` registration
+  into the real, live Microdot app in `improved-quality/sensortask-wozi.py` — out of scope for this
+  pass under CLAUDE.md's hard rule on editing `improved-quality/` source without a scoped,
+  project-owner-authorized exception. Concrete work once that wiring pass happens:
   - A catch-all `@app.errorhandler(Exception)` that logs via our own `pr.err_s(...)` (Microdot's own
     default `print_exception()` never reaches `PrintLog`/FRAM) and returns the consolidated
     `{"res": "ERR", ...}` reply shape — the single seam where "any internal or external error must

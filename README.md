@@ -68,11 +68,19 @@ scripts/                 lint.sh / typecheck.sh / test.sh - manual code-quality 
   BACKLOG.md). `src/config_manager.py`'s `ConfigManager` replaces this in the refactor: every
   module with user-settable configuration (each sensor `*_Reader`, `asy_wifi_service.py`,
   `asy_ntp_client.py`, `neopixel_signal.py`, ...) owns its own schema (a `ConfigSchema` tuple) and
-  its own config file/instance via a public `cfg_schema` attribute, instead of one shared grab-bag —
-  see `DRIVER_SPEC.md` and CLAUDE.md's "Code quality tooling"/BACKLOG.md for the migration state.
-- **REST API pipeline** (`api_helpers.py`) — every `PUT` handler follows `cmd_pre_check` →
+  its own config file/instance via a public `cfg_schema` attribute (also available through the
+  base-class-owned `get_cfg_schema()` getter), instead of one shared grab-bag — see `DRIVER_SPEC.md`
+  and CLAUDE.md's "Code quality tooling"/BACKLOG.md for the migration state.
+- **REST API pipeline** — the deployed pipeline (`improved-quality/api_helpers.py`, left
+  untouched/read-only as WIP reference) has every `PUT` handler follow `cmd_pre_check` →
   `init_json_from_cfg` → `update_valid_json` → `set_sensor_value` → `cmd_post_check` (validate →
-  load current → per-field validate → apply to sensor → persist + post-hooks).
+  load current → per-field validate → apply to sensor → persist + post-hooks). `src/api_response.py`
+  is its generalized replacement (not yet wired into any live REST handler — that's a separate,
+  still out-of-scope pass, see BACKLOG.md): `base_classes.py`'s `_set_dict_cfg()` gives every
+  `SensorReaderConfig` a generic, schema-driven setter mirroring `get_dict_cfg()`'s existing
+  generic getter, and `api_response.py`'s `make_response()`/`parse_cmd_request()`/`handle_set_cmd()`
+  replace the old per-endpoint validate→apply→persist glue with one small, open-catalog response
+  envelope — see `DRIVER_SPEC.md` section 5 for the full mechanism.
 - **FRAM storage** (`asy_fram_driver.py`/`asy_fram_manager.py`, arzi/neu/wozi only) — a bump
   allocator handing out chunks stored as two redundant copies, so an abrupt power-loss or watchdog
   reset mid-write still leaves one valid copy to recover. Currently used for SGP40's VOC

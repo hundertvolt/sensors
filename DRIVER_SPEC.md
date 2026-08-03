@@ -261,28 +261,114 @@ covering *all* its fields, since none have any other storage.)
 ## 5. Config schema system (`config_manager.py`)
 
 Each field is a 6-tuple: `(name: str, type: "int"|"float"|"str"|"bool", default, min, max,
-special)`. `special` is a sentinel value that bypasses the min/max range check via
-`type_or_range_error`'s `check_special` — use it for an "unset"/"disabled" value that's outside
-the field's normal operating range (e.g. SCD30's `AmbPres` field uses `special=0` for "ambient
-pressure compensation not yet set" — see CLAUDE.md). A field with `default=None` and a non-`None`
-`special` is a "special-alone" field: valid but never written to the JSON file — used for a
-field that's entirely sensor-managed with no meaningful local default at all.
+special)`. `special` is either a single sentinel value or a **discrete allowed-value set** (a
+tuple/list of values), both bypassing the min/max range check via `type_or_range_error`'s
+`check_special`:
+
+- **Single-value special** — an "unset"/"disabled" value that's outside the field's normal
+  operating range (e.g. SCD30's `AmbPres` field uses `special=0` for "ambient pressure
+  compensation not yet set" — see CLAUDE.md). A field with `default=None` and a non-`None`
+  single-value `special` is a "special-alone" field: valid but never written to the JSON file —
+  used for a field that's entirely sensor-managed with no meaningful local default at all.
+- **Discrete allowed-value set** (`special` is a tuple/list) — for a field whose legal values
+  aren't a continuous range at all, e.g. BMP3xx's `PressOvers`/`TempOvers` (only `1/2/4/8/16/32`
+  are real oversampling multipliers) or a closed string enum. Set `min`/`max` to `None` for a pure
+  enumeration (no separate continuous range at all); combine a real range with a small discrete
+  set of extra bypass values by passing both. Every element of the set must match the field's own
+  declared `type`, checked the same "malformed special rejects every value" way a wrong-typed
+  single-value special already does. A schema constant embedded this way (e.g. BMP3xx's
+  `_OSR_SETTINGS`) must itself be `micropython.const()`-wrapped if it's referenced inside another
+  `const()`-wrapped schema tuple — `const()` only folds references to other `const()`-defined
+  names, not plain module-level variables (confirmed directly against the pinned interpreter: a
+  plain-tuple reference inside a `const()` expression raises `SyntaxError: not a constant`).
 
 One JSON file per sensor: `config_<name>.cfg` (written by `SensorReaderConfig.__init__` via
 `ConfigManager(cfg_path + "config_" + name + ".cfg", default_vals, self.pr)`). Loaded once at
 `ConfigManager.__init__`, cached in `self._cache`, and only re-synced to disk by
 `write_config()` — every `get_*` call reads the cache directly, no per-call file I/O.
 
-**Config setters wired to REST endpoints are explicitly out of scope for a driver's initial
-promotion** (project owner's stated decision, see CLAUDE.md) — the schema, `ConfigManager`, and
-`write_config()` all already exist generically; what's deferred is the per-driver REST
-handler wiring a config *setter* through `api_helpers.py`'s validate→apply→persist pipeline.
-Getters (`get_dict_cfg()`) are expected from every driver; setters are a later, separate pass.
-When that pass happens: `SensorReaderConfig` doesn't itself expose the schema tuple it was built
-with, so a driver whose REST handler needs to call `self.cfgmgr.write_config(data, cfg_vals)`
-directly should store it as a public `self.cfg_schema` attribute in `__init__` (the convention
-`asy_wifi_service.py`/`asy_ntp_client.py` already use for the same reason), not have the caller
-reach into a private module-level schema constant.
+### 5.1 `get_cfg_schema()`
+
+`SensorReaderConfig.__init__` captures whatever `default_vals` a subclass passes it as
+`self.cfg_schema`, and exposes it through a plain sync `get_cfg_schema()` method — no I/O or
+locking involved (unlike `_get_mgr_cfg`/`_get_dict_cfg`), so this is deliberately not `async`.
+Every subclass gets this for free from the schema it already passes into `super().__init__()`;
+no subclass-local assignment is needed (`asy_bmp3xx_driver.py`/`asy_sgp40_driver.py` never had
+one). `self.cfg_schema` itself stays a public attribute too, not just the getter — existing
+callers (the legacy REST layer) already reach into it directly. A module that predates
+`SensorReaderConfig` and can't yet extend it (`improved-quality/neopixel_signal.py`, still WIP)
+implements its own local `get_cfg_schema()` with the same name/signature/behavior instead.
+
+### 5.2 Setter dispatch (`_set_mgr_cfg`/`_set_dict_cfg`, `base_classes.py`)
+
+Config setters are implemented, mirroring the getter pair (section 4.4) one level down:
+
+- **`_set_mgr_cfg(data, cfg_vals) -> (bool, WriteValidity)`** — an overridable extension point
+  (only defined on `SensorReaderConfig`, not the plain `SensorReader` base — unlike reads, a
+  generic write is fundamentally schema-validation-driven and needs a real `ConfigManager` to
+  validate against, so there's no meaningful stub for a class with no schema at all; SCD30 keeps
+  its own hand-rolled setters instead of using this path, see CLAUDE.md). The concrete
+  implementation delegates to `self.cfgmgr.write_config(data, cfg_vals)`; a subclass with a
+  fundamentally different persistence backend (the "hypothetical sensor with onboard nonvolatile
+  storage" case) could override this alone and still reuse `_set_dict_cfg`'s orchestration —
+  storage location stays fully abstracted away from the caller.
+- **`_set_dict_cfg(data, cfg_vals) -> WriteValidity`** — persists first (`_set_mgr_cfg`), then
+  pushes live only the fields that both actually changed (`"Valid"`, not `"Unchanged"` — no
+  generic force-resend semantics; SCD30's `AmbPres` is the only case that ever needed that, and it
+  doesn't use this path) and have a registered push callback. Every field is reported
+  independently in the returned dict, including an unrecognized key (matches
+  `ConfigManager.write_config()`'s own existing per-key tolerance — one bad key never invalidates
+  the rest of a multi-field request). A whole-operation persist failure (invalid `ConfigManager`,
+  or an internal write error) marks every requested key `"Failed"`, not `"Invalid"`.
+- **`self._push_callbacks`** — a plain `{field_name: async_push_fn}` dict, initialized empty in
+  `SensorReaderConfig.__init__` and populated by each subclass's own `__init__`, once, at
+  construction time (project decision: no central field→module registry anywhere — each module
+  is self-contained/"plugin-style", bringing everything it needs). A field with no entry is
+  persist-only (`asy_ntp_client.py`/`asy_sgp40_driver.py`'s config fields all fall in this
+  category — those two files needed **zero** source changes to gain full setter support, purely
+  from inheriting `_set_dict_cfg`). A push callback's signature is always the wide
+  `Callable[[int | float | str | bool | None], Coroutine[Any, Any, bool]]` (matching every real
+  setter's now-uniform bool return contract — see below); a real setter with a narrower parameter
+  type needs a thin type-narrowing wrapper registered instead of the setter itself (e.g.
+  `asy_wifi_service.py`'s `_push_wifi_led`), using `type(value) is not <T>` (not `isinstance`, to
+  correctly exclude `bool` from an `int` field the same way `config_manager.py`'s own
+  `type_or_range_error` already does).
+
+**Every setter method's return contract is now uniformly `bool`** (`True` = applied,
+`False` = rejected/failed) — a project-wide fix applied while wiring this pass; a driver adding a
+new setter should follow this from the start rather than returning `None`.
+
+### 5.3 Response envelope (`api_response.py`)
+
+Replaces `improved-quality/api_helpers.py`'s ad hoc `cmd_post_check`/`special_err`/
+`generic_error_return` pipeline (left as read-only WIP reference, not edited or deleted). Same
+wire shape as before (`{"res": "OK"|"ERR", "code": int, "descr": str, "result": ...}`):
+
+- `make_response(code, descr=None, result=None)` — a small standard code catalog (`0`–`5`, `100`)
+  with per-call text override, plus support for an entirely custom `(code, descr)` pair outside
+  the catalog — generalizes the legacy `special_err` closed `Literal` enum into an open set.
+- `parse_cmd_request(request, keys)` — request-body parsing + `"cmd"` validation, mirroring
+  `cmd_pre_check()`. Decoupled from `microdot.Request`'s concrete type via a local `Protocol`
+  (mirrors `print_log.py`'s own `_FramManager`/`_FramChunk` Protocols) rather than importing
+  `ext/microdot.py`, which isn't on this project's mypy search path.
+- `handle_set_cmd(reader, data, cfg_vals, post_fct=None, post_asy_fct=None, ok_descr=None)` —
+  orchestrates `_set_dict_cfg()` plus one optional post-write hook (fires at most once per call,
+  only if at least one field actually changed — one hook per endpoint, not one per field, matching
+  the legacy pipeline's own `post_fct`/`post_asy_fct` semantics), wrapped in its own try/except as
+  defense-in-depth on top of Microdot's blanket per-request catch (project decision, based on
+  prior field experience with Microdot behaving unexpectedly) — `reader._set_dict_cfg()` already
+  catches its own internal failure modes, so what actually reaches this outer catch is almost
+  always a caller-supplied `post_fct`/`post_asy_fct` raising.
+- A per-field validation failure (including an unrecognized key) never demotes the overall
+  response below `"OK"`/code `0` — the request was validly processed and dispatched; per-field
+  detail lives entirely in `"result"`. See `tests/test_setter_microdot_integration.py` for a real
+  `ext/microdot.py` (v2.6.2) end-to-end proof of this whole pipeline, dispatched through
+  Microdot's own real `dispatch_request()`.
+
+Wiring an actual REST endpoint handler in `improved-quality/sensortask-wozi.py` to call these
+(replacing its own `cmd_pre_check`/`update_valid_json`/`cmd_post_check`/`set_sensor_value` calls)
+is a separate, still out-of-scope pass — that file stays untouched under CLAUDE.md's hard rule on
+editing `improved-quality/` source without a scoped, project-owner-authorized exception.
 
 ## 6. Data model (`config_manager.py`'s `make_dict()`)
 
