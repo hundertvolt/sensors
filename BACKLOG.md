@@ -176,6 +176,29 @@ constraints.
      (not just inside Microdot) degrades to logging via `pr.err_s`/`wrn_s` and treating that one
      connection as expendable, never propagates out of the connection task.
 
+  **Confirmed boundary (cross-checked against the concurrent setter-dispatch/`api_response.py` work,
+  PR #26, by reading `ext/microdot.py` v2.6.2's actual source, not assumed)**: `handle_request()`'s
+  shape is exactly `req = await Request.create(...)` → `res = await self.dispatch_request(req)` →
+  `await res.write(writer)` — every unbounded stream read/write (`Request.create()`'s
+  `_safe_readline`/`readexactly`, `Response.write()`'s `awrite`) sits strictly *before* or *after*
+  `dispatch_request()`, never inside it. `dispatch_request()`'s route-handler invocation only ever
+  touches an already-fully-materialized `Request` (headers/body fully read by the time
+  `Request.create()` returns) and produces a `Response` with no socket I/O of its own — verified
+  directly for `src/api_response.py`'s `parse_cmd_request()`/`handle_set_cmd()` and
+  `base_classes.py`'s `_set_dict_cfg()`, none of which touch the transport, so none of this PR's new
+  setter-dispatch/response-envelope code is exposed to (or needs to defend against) the incident.
+  Two direct payoffs for this design once implementation starts:
+  - Step 1's claim that `await app.handle_request(wrapped_reader, wrapped_writer)` is the *only* real
+    coupling point to Microdot's internals is now verified, not just architecturally assumed — the
+    reader/writer proxy from step 2 is sufficient on its own; no route-handler/`dispatch_request()`-
+    level wrapping is ever needed alongside it.
+  - `tests/test_setter_microdot_integration.py`'s existing pattern of dispatching via
+    `app.dispatch_request(req)` on a hand-built `Request` (bypassing `Request.create()`/
+    `handle_request()`/`start_server()` entirely) is the *correct* boundary for testing route-
+    handler/business logic, not a coverage gap it should be extended to close — a hang-simulating
+    fake stream belongs exclusively to this future module's own step 5 soak test above, never to
+    that integration test file.
+
   **Companion open question this design surfaces (not previously tracked)**: the actual concurrent-
   socket/TCP-PCB ceiling for MicroPython's rp2 port (lwIP-backed) isn't verified anywhere in this
   repo — needed to set a real-margin threshold for step 4 above. Check the port's own `lwipopts.h`/
