@@ -50,19 +50,25 @@ _STATUS_DATA_READY = const(0x60)  # STATUS bits 5+6: drdy_press | drdy_temp (sec
 _CMD_RDY_TIMEOUT_MS = const(50)  # cmd_rdy clears near-instantly outside an in-flight command
 _MEAS_TIMEOUT_MS = const(300)  # datasheet sec 3.9.2: max ~129ms at x32/x32 osr; generous margin
 
-_OSR_SETTINGS = (1, 2, 4, 8, 16, 32)  # pressure and temperature oversampling settings
+_OSR_SETTINGS = const((1, 2, 4, 8, 16, 32))  # pressure and temperature oversampling settings -
+# const()-wrapped (unlike before) so it can be embedded directly in _VAL_POV/_VAL_TOV's own
+# const() schema tuples below as a discrete allowed-value set; .index()/`in` behave identically on
+# the folded literal.
 # IIR filter coefficients (datasheet sec 4.3.20's CONFIG register: encoding index -> 2^index - 1,
 # not a power of two). Cross-checked against Bosch's reference driver, the Linux kernel IIO driver,
 # and both datasheets.
-_IIR_SETTINGS = (0, 1, 3, 7, 15, 31, 63, 127)
+_IIR_SETTINGS = const((0, 1, 3, 7, 15, 31, 63, 127))
 
 _MIN_TRIGGER_SECS = const(1)
 _MAX_TRIGGER_SECS = const(3600)
 
 _VAL_SI = const((("SampleInterv", "int", 2, _MIN_TRIGGER_SECS, _MAX_TRIGGER_SECS, None),))
-_VAL_POV = const((("PressOvers", "int", 1, 1, 32, None),))
-_VAL_TOV = const((("TempOvers", "int", 1, 1, 32, None),))
-_VAL_FC = const((("FiltCoeff", "int", 0, 0, 127, None),))
+# PressOvers/TempOvers/FiltCoeff are genuine discrete allowed-value sets, not continuous ranges -
+# a plain min/max (the old shape) wrongly accepted e.g. PressOvers=20, which _set_osr_setting()
+# would then reject at the hardware layer (see BACKLOG.md's architecture-review note, now closed).
+_VAL_POV = const((("PressOvers", "int", 1, None, None, _OSR_SETTINGS),))
+_VAL_TOV = const((("TempOvers", "int", 1, None, None, _OSR_SETTINGS),))
+_VAL_FC = const((("FiltCoeff", "int", 0, None, None, _IIR_SETTINGS),))
 _VAL_PO = const((("PressOffset", "float", 0.0, -500.0, 500.0, None),))
 _VAL_TO = const((("TempOffset", "float", 0.0, -10.0, 10.0, None),))
 _VAL_SLO = const((("SeaLevelOffs", "float", 0.0, -1000.0, 5000.0, None),))
@@ -104,6 +110,14 @@ class BMP3xx_Reader(SensorReaderConfig):
         self.trigger_timer = Timer()
         self.trigger_period = LockedValue(int(trigger_sec))
         self.trigger_counter = 0
+        # PressOffset/TempOffset/SeaLevelOffs/MeanAtmTemp are persist-only (read fresh from cfgmgr
+        # every _store_bmp() cycle - pure compensation-math inputs, nothing to push). SampleInterv
+        # and the three hardware-facing fields each have a real live effect, registered once here
+        # (project decision - constant at runtime, no per-call plumbing needed).
+        self._push_callbacks[name_cfg(_VAL_SI)] = self._push_trigger_secs
+        self._push_callbacks[name_cfg(_VAL_POV)] = self._push_pressure_oversampling
+        self._push_callbacks[name_cfg(_VAL_TOV)] = self._push_temperature_oversampling
+        self._push_callbacks[name_cfg(_VAL_FC)] = self._push_filter_coefficient
 
     async def _read_sensor_dict(self) -> dict[str, int | float | str | bool | None]:
         ret: dict[str, int | float | str | bool | None] = {
@@ -257,7 +271,34 @@ class BMP3xx_Reader(SensorReaderConfig):
             await self.pr.err_s(_NAME, "Error reading filter coefficient:", e, errno=19)
             return None
 
-    async def set_trigger_secs(self, value: int | float) -> None:
+    # self._push_callbacks' shape (base_classes.py) is one Callable per field, all sharing the same
+    # wide value type - these narrow to each real setter's own parameter type. _set_dict_cfg only
+    # ever invokes a push callback with an already schema-validated value (a real int, by
+    # construction, since every field registered below has schema type "int") - the type checks are
+    # for the type checker and as defense-in-depth, not a scenario a real caller can actually
+    # trigger. `type(value) is not int`, not isinstance(), to exclude bool the same precise way
+    # config_manager.py's own type_or_range_error() already does.
+    async def _push_trigger_secs(self, value: int | float | str | bool | None) -> bool:
+        if type(value) is not int:
+            return False
+        return await self.set_trigger_secs(value)
+
+    async def _push_pressure_oversampling(self, value: int | float | str | bool | None) -> bool:
+        if type(value) is not int:
+            return False
+        return await self.set_pressure_oversampling(value)
+
+    async def _push_temperature_oversampling(self, value: int | float | str | bool | None) -> bool:
+        if type(value) is not int:
+            return False
+        return await self.set_temperature_oversampling(value)
+
+    async def _push_filter_coefficient(self, value: int | float | str | bool | None) -> bool:
+        if type(value) is not int:
+            return False
+        return await self.set_filter_coefficient(value)
+
+    async def set_trigger_secs(self, value: int | float) -> bool:
         try:
             # int(float('inf'))/int(float('-inf')) raise OverflowError, not ValueError - confirmed
             # against the real MicroPython Unix-port interpreter; +-inf is a legitimate int | float
@@ -267,8 +308,9 @@ class BMP3xx_Reader(SensorReaderConfig):
                 raise ValueError(f"trigger interval must be between {_MIN_TRIGGER_SECS} and {_MAX_TRIGGER_SECS} seconds")
         except (TypeError, ValueError, OverflowError) as e:
             await self.pr.err_s(_NAME, "Error setting trigger interval:", e, errno=21)
-            return
+            return False
         await self.trigger_period.set_value(trigger_secs)
+        return True
 
     async def set_pressure_oversampling(self, oversample: int) -> bool:
         try:
@@ -337,7 +379,12 @@ class BMP3XX_I2C:
         # bare IndexError leak out of this protocol-layer failure.
         if osr >= len(_OSR_SETTINGS):
             raise OSError(f"OSR bit-field at bit {start_bit} read back reserved encoding {osr}")
-        return _OSR_SETTINGS[osr]
+        # micropython-stubs' const() stub is a constrained TypeVar over bare Tuple (not a
+        # parameterized tuple[int, ...]) - indexing a const()-wrapped tuple loses its element type
+        # to Any in mypy's eyes, even though it's genuinely int at runtime. Explicit int narrows it
+        # back rather than silently returning Any from a function declared -> int.
+        result: int = _OSR_SETTINGS[osr]
+        return result
 
     async def _set_osr_setting(self, start_bit: int, oversample: int) -> None:
         if oversample not in _OSR_SETTINGS:
@@ -511,7 +558,9 @@ class BMP3XX_I2C:
                 iir = await i2c.get_bits(3, _REGISTER_CONFIG, 1)
         if iir is None:
             raise OSError("failed to read filter coefficient")
-        return _IIR_SETTINGS[iir]
+        # See _get_osr_setting()'s own comment on why this needs an explicit int narrowing.
+        result: int = _IIR_SETTINGS[iir]
+        return result
 
     async def set_pressure_oversampling(self, oversample: int) -> None:
         await self._set_osr_setting(0, oversample)
