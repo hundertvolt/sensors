@@ -83,12 +83,11 @@ class asy_conn_time(SensorReaderConfig):
         history_length: int = 10,
         debug: int | None = None,
     ) -> None:
-        self.cfg_schema = _VAL_SSID + _VAL_PW + _VAL_CTRY + _VAL_HOST + _VAL_LED
         super().__init__(
             WIFI(None, None, None, None),
             max_i2c_err,
             _NAME,
-            self.cfg_schema,
+            _VAL_SSID + _VAL_PW + _VAL_CTRY + _VAL_HOST + _VAL_LED,
             cfg_path=cfg_path,
             fram=fram,
             history_length=history_length,

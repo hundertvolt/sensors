@@ -21,14 +21,18 @@ if TYPE_CHECKING:
 
     T = TypeVar("T", int, float, str)
 
-    # One schema field: (name, type, def, min, max, special) - see module docstring.
+    # One schema field: (name, type, def, min, max, special) - see module docstring. "special" is
+    # either a single bypass value (the original shape: an exact-match exception to min/max, e.g.
+    # SCD30's AmbPres=0) or a tuple of allowed values (a discrete allowed-value set, e.g. BMP3xx's
+    # OSR/IIR settings or a closed string enum like systemCmd - see type_or_range_error). A pure
+    # enumeration field sets min/max to None and relies on the discrete set alone.
     FieldSchema = tuple[
         str,
         str,
         "int | float | str | bool | None",
         "int | float | None",
         "int | float | None",
-        "int | float | str | None",
+        "int | float | str | tuple[int, ...] | tuple[float, ...] | tuple[str, ...] | None",
     ]
     ConfigSchema = tuple[FieldSchema, ...]
 
@@ -70,6 +74,24 @@ def make_dict(nt: "NamedTuple") -> "dict[str, dict[str, int | float | str | None
         return {name: {key: None for key in keys}}
 
 
+def _special_bypass(check_val: "Any", val_special: "Any", scalar_type: type, check_special: bool) -> "bool | None":
+    # Shared by every non-bool branch of type_or_range_error: val_special is either a single
+    # scalar (the original exact-match bypass) or a tuple/list of scalars (a discrete allowed-value
+    # set). Returns True/False to short-circuit the caller (malformed special, or a valid bypass
+    # match), or None to fall through to the branch's own ordinary min/max range check.
+    if type(val_special) in (tuple, list):
+        if any(type(v) is not scalar_type for v in val_special):
+            return True  # malformed set (wrong-typed element) - reject regardless of check_val
+        if check_special and check_val in val_special:
+            return False
+        return None
+    if type(val_special) is not scalar_type:
+        return True  # malformed scalar special - reject regardless of check_val
+    if check_special and check_val == val_special:
+        return False
+    return None
+
+
 def type_or_range_error(
     check_val: "Any", field: "FieldSchema", check_special: bool = True
 ) -> bool:  # True if check_val doesn't satisfy field's own type/min/max(/special) schema entry
@@ -80,30 +102,27 @@ def type_or_range_error(
             if type(check_val) is not int:
                 return True
             if val_special is not None:
-                if type(val_special) is not int:
-                    return True
-                if check_special and check_val == val_special:
-                    return False
+                bypass = _special_bypass(check_val, val_special, int, check_special)
+                if bypass is not None:
+                    return bypass
             if type(val_max) is int and type(val_min) is int and val_min <= check_val <= val_max:
                 return False
         elif val_type == "float":  # check for float and bounds
             if type(check_val) is not float:
                 return True
             if val_special is not None:
-                if type(val_special) is not float:
-                    return True
-                if check_special and check_val == val_special:
-                    return False
+                bypass = _special_bypass(check_val, val_special, float, check_special)
+                if bypass is not None:
+                    return bypass
             if type(val_max) is float and type(val_min) is float and val_min <= check_val <= val_max:
                 return False
         elif val_type == "str":  # check for str and length bounds
             if type(check_val) is not str:
                 return True
             if val_special is not None:
-                if type(val_special) is not str:
-                    return True
-                if check_special and check_val == val_special:
-                    return False
+                bypass = _special_bypass(check_val, val_special, str, check_special)
+                if bypass is not None:
+                    return bypass
             if type(val_max) is int and type(val_min) is int and val_min <= len(check_val) <= val_max:
                 return False
         elif val_type == "bool":  # check for bool
@@ -120,9 +139,14 @@ def check_cfg_get_default(
     try:  # returns flag if value is used for storage and if the default, if valid
         _name, _type, def_val, _min, _max, special_val = field  # wrong length/shape -> ValueError, caught below
         use_value = True
-        # special: def is None but special has a value -> use special as a non-stored mock default;
-        # check_special=True lets type_or_range_error's own special-equality shortcut accept it.
-        if def_val is None and special_val is not None:
+        # special: def is None but special has a scalar value -> use special as a non-stored mock
+        # default; check_special=True lets type_or_range_error's own special-equality shortcut
+        # accept it. A tuple/list special (discrete allowed-value set) has no single scalar to
+        # substitute - def_val stays None and fails the type_or_range_error self-check below the
+        # same way a genuinely absent default does, correctly flagging a special-only discrete-set
+        # field (no real per-field use case for one - see AmbPres-style single-value specials for
+        # the only "special-only, not stored" shape that's actually used) as a malformed schema.
+        if def_val is None and special_val is not None and not isinstance(special_val, (tuple, list)):
             def_val = special_val
             use_value = False
         if type_or_range_error(def_val, field, check_special=True):

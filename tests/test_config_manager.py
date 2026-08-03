@@ -280,6 +280,122 @@ def test_type_or_range_error_str_malformed_special_type_rejects_any_value() -> N
     assert cm.type_or_range_error("abc", field, check_special=True) is True
 
 
+# ---------------------------------------------------------------------------
+# type_or_range_error / check_cfg_get_default - discrete allowed-value-set special (a tuple of
+# values instead of a single scalar): covers BMP3xx's OSR/IIR settings (pure enumeration, no
+# continuous range at all - min/max both None) and systemCmd-style closed string enums, without
+# changing the FieldSchema tuple's shape or disturbing the existing single-scalar special path.
+# ---------------------------------------------------------------------------
+
+
+def test_type_or_range_error_int_discrete_set_membership() -> None:
+    # A pure enumeration field (e.g. BMP3xx's _OSR_SETTINGS): min/max disabled (None), special
+    # holds every legal value as a tuple - membership in the tuple is the only way to pass.
+    field: cm.FieldSchema = ("X", "int", None, None, None, (1, 2, 4, 8, 16, 32))
+    assert cm.type_or_range_error(1, field) is False
+    assert cm.type_or_range_error(32, field) is False
+    assert cm.type_or_range_error(16, field) is False
+    assert cm.type_or_range_error(3, field) is True  # not one of the allowed discrete values
+    assert cm.type_or_range_error(0, field) is True
+
+
+def test_type_or_range_error_int_discrete_set_check_special_false_rejects_membership() -> None:
+    field: cm.FieldSchema = ("X", "int", None, None, None, (1, 2, 4, 8, 16, 32))
+    assert cm.type_or_range_error(8, field, check_special=False) is True
+
+
+def test_type_or_range_error_int_discrete_set_malformed_element_type_rejects_any_value() -> None:
+    # Same "malformed special always rejects, regardless of check_val/check_special" contract as
+    # the scalar-special case (test_type_or_range_error_int_malformed_special_type_rejects_any_value
+    # above) - one wrong-typed element among otherwise-good ones is enough to reject the whole field.
+    field: cm.FieldSchema = ("X", "int", None, None, None, (1, 2, "4", 8))  # type: ignore[assignment]
+    assert cm.type_or_range_error(1, field, check_special=True) is True
+    assert cm.type_or_range_error(1, field, check_special=False) is True
+
+
+def test_type_or_range_error_int_discrete_set_bool_element_rejected_like_scalar_case() -> None:
+    # `type(check_val) is not int` already distinguishes bool from int for the checked value; the
+    # same distinction must hold for a discrete-set element (bool subclasses int in Python/
+    # MicroPython, but `type(v) is int` still correctly excludes it).
+    field: cm.FieldSchema = ("X", "int", None, None, None, (1, True, 8))  # bool subclasses int for mypy - no ignore needed here, only at runtime (type() is int excludes it)
+    assert cm.type_or_range_error(1, field) is True  # malformed set (a bool element) rejects everything
+
+
+def test_type_or_range_error_str_discrete_set_membership() -> None:
+    # systemCmd's shape: a closed string enum, no continuous length range at all.
+    field: cm.FieldSchema = ("X", "str", None, None, None, ("reboot", "bootloader", "mempause"))
+    assert cm.type_or_range_error("reboot", field) is False
+    assert cm.type_or_range_error("bootloader", field) is False
+    assert cm.type_or_range_error("mempause", field) is False
+    assert cm.type_or_range_error("unknown", field) is True
+    assert cm.type_or_range_error("", field) is True
+
+
+def test_type_or_range_error_str_discrete_set_malformed_element_type_rejects_any_value() -> None:
+    field: cm.FieldSchema = ("X", "str", None, None, None, ("reboot", 1, "mempause"))  # type: ignore[assignment]
+    assert cm.type_or_range_error("reboot", field) is True
+
+
+def test_type_or_range_error_float_discrete_set_membership() -> None:
+    field: cm.FieldSchema = ("X", "float", None, None, None, (1.0, 2.5, 10.0))
+    assert cm.type_or_range_error(2.5, field) is False
+    assert cm.type_or_range_error(3.0, field) is True
+
+
+def test_type_or_range_error_float_discrete_set_malformed_element_type_rejects_any_value() -> None:
+    field: cm.FieldSchema = ("X", "float", None, None, None, (1.0, 2))  # int literal 2 is mypy-assignable to float (numeric tower) - no ignore needed; runtime type(2) is not float still rejects it
+    assert cm.type_or_range_error(1.0, field) is True
+
+
+def test_type_or_range_error_discrete_set_alongside_a_real_range() -> None:
+    # A range PLUS extra discrete bypass values outside it (not a pure enumeration) - the existing
+    # single-scalar-special shape generalizes to "any of several" without disturbing the ordinary
+    # range check for values that satisfy it directly.
+    field: cm.FieldSchema = ("X", "int", None, 10, 20, (0, 99))
+    assert cm.type_or_range_error(15, field) is False  # in range, discrete set not even needed
+    assert cm.type_or_range_error(0, field) is False  # bypasses via the discrete set
+    assert cm.type_or_range_error(99, field) is False
+    assert cm.type_or_range_error(5, field) is True  # neither in range nor in the discrete set
+
+
+def test_type_or_range_error_discrete_set_empty_tuple_rejects_every_value() -> None:
+    # An empty discrete set is a valid (if degenerate) authoring shape - not None, so it's still
+    # "special is not None", but nothing can ever be a member of an empty tuple. min/max also None,
+    # so there is no other way to pass - every value is rejected.
+    field: cm.FieldSchema = ("X", "int", None, None, None, ())
+    assert cm.type_or_range_error(1, field) is True
+    assert cm.type_or_range_error(0, field) is True
+
+
+def test_type_or_range_error_discrete_set_accepts_a_list_not_just_a_tuple() -> None:
+    # Schema authors write tuples (const()-folded) in practice, but the check itself shouldn't care
+    # whether the special collection is a tuple or a plain list.
+    field: cm.FieldSchema = ("X", "int", None, None, None, [1, 2, 4, 8])  # type: ignore[assignment]
+    assert cm.type_or_range_error(4, field) is False
+    assert cm.type_or_range_error(5, field) is True
+
+
+def test_check_cfg_get_default_discrete_set_with_real_default() -> None:
+    # A real, stored discrete-set field (e.g. BMPPressOvers) with a genuine scalar default that is
+    # itself one of the allowed set's members.
+    field: cm.FieldSchema = ("OSR", "int", 8, None, None, (1, 2, 4, 8, 16, 32))
+    assert cm.check_cfg_get_default(field) == (True, 8)
+
+
+def test_check_cfg_get_default_discrete_set_default_not_in_set_is_invalid() -> None:
+    field: cm.FieldSchema = ("OSR", "int", 3, None, None, (1, 2, 4, 8, 16, 32))
+    assert cm.check_cfg_get_default(field) == (True, None)  # 3 isn't a legal OSR value
+
+
+def test_check_cfg_get_default_discrete_set_special_only_field_is_rejected() -> None:
+    # def=None with a tuple special has no real scalar to fall back to (unlike the single-scalar
+    # special-only case, e.g. AmbPres) - the substituted "default" (the tuple itself) fails its own
+    # type_or_range_error self-check (wrong type, not a member of itself), so this is correctly
+    # treated as a malformed schema rather than silently accepted.
+    field: cm.FieldSchema = ("X", "int", None, None, None, (1, 2, 4, 8, 16, 32))
+    assert cm.check_cfg_get_default(field) == (True, None)
+
+
 def test_type_or_range_error_str_zero_length_boundary() -> None:
     field: cm.FieldSchema = ("X", "str", None, 0, 4, None)
     assert cm.type_or_range_error("", field) is False  # empty string accepted at the min=0 boundary

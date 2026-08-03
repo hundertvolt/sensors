@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from typing import Any, NamedTuple, TypeVar
 
     from asy_fram_manager import AsyFramManager
-    from config_manager import ConfigSchema
+    from config_manager import ConfigSchema, WriteValidity
 
     LockableType = TypeVar("LockableType", bound="Lockable")
     MeasDataType = TypeVar("MeasDataType", bound=tuple[int | float | None, ...])
@@ -245,11 +245,72 @@ class SensorReaderConfig(SensorReader):
         debug: int | None = None,
     ) -> None:
         super().__init__(init_data, max_i2c_err, fram, history_length, debug)
+        self.cfg_schema = default_vals
         self.cfgmgr = ConfigManager(
             cfg_path + "config_" + name + ".cfg",
             default_vals,
             self.pr,
         )
+        # Per-field live-push callbacks, module-local and registered once here at construction
+        # (project decision - constant at runtime, no per-call plumbing needed): a subclass adds
+        # its own {field_name: async_push_fn} entries after calling super().__init__(). A field
+        # with no entry is persist-only, exactly like most of today's schema fields already are.
+        self._push_callbacks: "dict[str, Callable[[int | float | str | bool | None], Coroutine[Any, Any, bool]]]" = {}
+
+    def get_cfg_schema(self) -> "ConfigSchema":
+        # Single source of truth for every subclass's schema - captured once, right here, from
+        # whatever default_vals a subclass already passes into super().__init__(). No I/O or
+        # locking involved (unlike _get_mgr_cfg/_get_dict_cfg below), so this stays a plain sync
+        # call. self.cfg_schema itself stays a public attribute too - existing callers reach into
+        # it directly (see CLAUDE.md's "Microdot / REST layer" section and DRIVER_SPEC.md section 5).
+        return self.cfg_schema
 
     async def _get_mgr_cfg(self, cfg: list[str]) -> dict[str, int | float | str | bool | None] | None:
         return await self.cfgmgr.get_dict(cfg)
+
+    async def _set_mgr_cfg(
+        self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "ConfigSchema"
+    ) -> "tuple[bool, WriteValidity]":
+        # Overridable extension point, mirroring _get_mgr_cfg: the concrete implementation here
+        # delegates to the real ConfigManager, but a subclass with a fundamentally different
+        # persistence backend (the "hypothetical sensor with onboard nonvolatile storage" case)
+        # could override this alone and still reuse _set_dict_cfg's per-field push orchestration -
+        # storage location stays fully abstracted away from callers of _set_dict_cfg.
+        return await self.cfgmgr.write_config(data, cfg_vals)
+
+    async def _set_dict_cfg(
+        self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "ConfigSchema"
+    ) -> "WriteValidity":
+        # Setter mirror of _get_dict_cfg: persist first (so a value that made it onto the device is
+        # always the value still there after an unplanned reset - project decision), then push live
+        # only the fields that actually changed ("Valid") and have a registered callback. Every
+        # field is reported individually - an unknown key or an out-of-range value only fails that
+        # one key (ConfigManager.write_config's own per-key tolerance), never the whole request.
+        try:  # _set_mgr_cfg is an overridable extension point - the call itself, not just its
+            # result, could misbehave on a misbehaving subclass override (mirrors _get_dict_cfg's
+            # own _get_mgr_cfg handling).
+            persisted, results = await self._set_mgr_cfg(data, cfg_vals)
+        except Exception as e:
+            await self.pr.err_s("Error writing config dict:", e, errno=5)
+            persisted, results = False, {}
+
+        if not persisted:
+            # Whole-operation failure (invalid ConfigManager, or an internal write error) - nothing
+            # was stored, so every requested key is "Failed", not "Invalid" (which would misleadingly
+            # suggest the values themselves were the problem) and nothing is pushed live either.
+            return {key: "Failed" for key in data}
+
+        for key, value in data.items():
+            if results.get(key) != "Valid":
+                continue  # only an actual, successfully-persisted change gets pushed live
+            callback = self._push_callbacks.get(key)
+            if callback is None:
+                continue  # persist-only field, nothing to push
+            try:
+                pushed = await callback(value)
+            except Exception as e:  # callback is caller-supplied; its runtime behavior isn't statically known
+                await self.pr.err_s("Error pushing", key, "to sensor:", e, errno=6)
+                pushed = False
+            if not pushed:
+                results[key] = "Failed"
+        return results

@@ -706,6 +706,49 @@ def test_sensorreaderconfig_wires_a_real_configmanager() -> None:
         _remove(path_prefix + "config_temp.cfg")
 
 
+def test_sensorreaderconfig_get_cfg_schema_returns_the_schema_it_was_built_with() -> None:
+    # Base-class-owned getter (mirrors _get_mgr_cfg/_get_dict_cfg's "define once, inherit
+    # everywhere" shape): every SensorReaderConfig subclass gets this for free from the schema it
+    # already passes into super().__init__(), whether or not the subclass itself keeps a local
+    # reference. self.cfg_schema stays a public attribute too (existing callers - the legacy REST
+    # layer, this file's own earlier tests - already read it directly).
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_getschema.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "getschema", _VAL_SI, cfg_path=path_prefix)
+        assert reader.get_cfg_schema() == _VAL_SI
+        assert reader.cfg_schema == _VAL_SI
+    finally:
+        _remove(path_prefix + "config_getschema.cfg")
+
+
+def test_sensorreaderconfig_get_cfg_schema_is_a_plain_sync_call() -> None:
+    # Deliberately sync, unlike _get_mgr_cfg/_get_dict_cfg: the schema is static, fixed at
+    # construction, no I/O or locking involved - calling it directly (no run()/await) is the point.
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_syncschema.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "syncschema", _VAL_SI, cfg_path=path_prefix)
+        result = reader.get_cfg_schema()
+        assert result == _VAL_SI
+    finally:
+        _remove(path_prefix + "config_syncschema.cfg")
+
+
+def test_sensorreaderconfig_get_cfg_schema_reflects_a_concatenated_multi_field_schema() -> None:
+    # Every real driver passes a concatenated multi-tuple schema (e.g. asy_bmp3xx_driver.py's
+    # _VAL_SI + _VAL_POV + ...), not a single-field one - confirms the getter returns the exact
+    # concatenated object, not just a single-field happy path.
+    combined = _VAL_SI + _VAL_BOOL
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_combinedschema.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "combinedschema", combined, cfg_path=path_prefix)
+        assert reader.get_cfg_schema() == combined
+    finally:
+        _remove(path_prefix + "config_combinedschema.cfg")
+
+
 def test_sensorreaderconfig_is_a_sensorreader_with_a_real_mgr_cfg_override() -> None:
     # Inheritance-level check: SensorReaderConfig IS-A SensorReader, and _get_mgr_cfg's override
     # actually replaces the base class's always-{} stub rather than just adding cfgmgr alongside it.
@@ -854,6 +897,251 @@ def test_sensorreaderconfig_write_config_is_reflected_by_get_dict_cfg() -> None:
         assert result == {"Sensor": {"SampleInterv": 42}}
     finally:
         _remove(path_prefix + "config_writeback.cfg")
+
+
+# ---------------------------------------------------------------------------
+# SensorReaderConfig - generic setter dispatch (_set_mgr_cfg / _set_dict_cfg), mirroring
+# _get_mgr_cfg/_get_dict_cfg's "base-class-owned orchestration, per-field push via a callback"
+# shape. Only defined on SensorReaderConfig (not the plain SensorReader base) - unlike reads, a
+# generic write is fundamentally schema-validation-driven (it needs a real ConfigManager to
+# validate+persist against), so there's no meaningful stub for a class with no cfgmgr at all (see
+# asy_scd30_driver.py, which has no schema and keeps its own hand-rolled setters instead of using
+# this path). Persist-first, then push (project decision): a value is only ever pushed live to
+# hardware once it has actually been safely written to flash, so a value that made it onto the
+# device is always the value that will still be there after an unplanned reset. Push only fires for
+# an actual change ("Valid"), never for "Unchanged" - no generic force-resend semantics (SCD30's
+# AmbPres is the only real case that ever needed that, and it doesn't use this path at all).
+# ---------------------------------------------------------------------------
+
+
+def test_set_mgr_cfg_delegates_to_the_real_configmanager() -> None:
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_setmgr.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "setmgr", _VAL_SI, cfg_path=path_prefix)
+        ok, results = run(reader._set_mgr_cfg({"SampleInterv": 42}, _VAL_SI))
+        assert ok is True
+        assert results == {"SampleInterv": "Valid"}
+        assert run(reader._get_dict_cfg("Sensor", _VAL_SI)) == {"Sensor": {"SampleInterv": 42}}
+    finally:
+        _remove(path_prefix + "config_setmgr.cfg")
+
+
+def test_set_dict_cfg_persist_only_field_with_no_push_callback_registered() -> None:
+    # Matches asy_ntp_client.py's real shape today: every field is persist-only, zero setter
+    # methods, self._push_callbacks stays the empty dict SensorReaderConfig.__init__ defaults it to.
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_persistonly.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "persistonly", _VAL_SI, cfg_path=path_prefix)
+        results = run(reader._set_dict_cfg({"SampleInterv": 42}, _VAL_SI))
+        assert results == {"SampleInterv": "Valid"}
+        assert run(reader._get_dict_cfg("Sensor", _VAL_SI)) == {"Sensor": {"SampleInterv": 42}}
+    finally:
+        _remove(path_prefix + "config_persistonly.cfg")
+
+
+def test_set_dict_cfg_registered_push_callback_is_invoked_with_the_new_value() -> None:
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_pushed.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushed", _VAL_SI, cfg_path=path_prefix)
+        seen: "list[int | float | str | bool | None]" = []
+
+        async def push(value: "int | float | str | bool | None") -> bool:
+            seen.append(value)
+            return True
+
+        reader._push_callbacks["SampleInterv"] = push
+        results = run(reader._set_dict_cfg({"SampleInterv": 42}, _VAL_SI))
+        assert results == {"SampleInterv": "Valid"}
+        assert seen == [42]
+    finally:
+        _remove(path_prefix + "config_pushed.cfg")
+
+
+def test_set_dict_cfg_push_callback_returning_false_marks_the_field_failed() -> None:
+    # Uniform bool setter-return contract: False means the hardware push was rejected. The value is
+    # still persisted (persist-first already happened) - only the reported status changes.
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_pushfail.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushfail", _VAL_SI, cfg_path=path_prefix)
+
+        async def push(value: "int | float | str | bool | None") -> bool:
+            return False
+
+        reader._push_callbacks["SampleInterv"] = push
+        results = run(reader._set_dict_cfg({"SampleInterv": 42}, _VAL_SI))
+        assert results == {"SampleInterv": "Failed"}
+        assert run(reader._get_dict_cfg("Sensor", _VAL_SI)) == {"Sensor": {"SampleInterv": 42}}  # persisted anyway
+    finally:
+        _remove(path_prefix + "config_pushfail.cfg")
+
+
+def test_set_dict_cfg_push_callback_raising_marks_the_field_failed_and_logs() -> None:
+    # callback is caller-supplied (each module's own bound method) - its runtime behavior isn't
+    # statically known, same reasoning as _get_dict_cfg's own callback handling.
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_pushraise.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushraise", _VAL_SI, cfg_path=path_prefix)
+
+        async def push(value: "int | float | str | bool | None") -> bool:
+            raise RuntimeError("sensor push failed")
+
+        reader._push_callbacks["SampleInterv"] = push
+        run(reader.pr.setup()) if hasattr(reader.pr, "setup") else None
+        results = run(reader._set_dict_cfg({"SampleInterv": 42}, _VAL_SI))
+        assert results == {"SampleInterv": "Failed"}
+        assert reader.pr.err_count == 1
+    finally:
+        _remove(path_prefix + "config_pushraise.cfg")
+
+
+def test_set_dict_cfg_invalid_value_is_reported_and_never_pushed() -> None:
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_invalidnopush.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "invalidnopush", _VAL_SI, cfg_path=path_prefix)
+        called = False
+
+        async def push(value: "int | float | str | bool | None") -> bool:
+            nonlocal called
+            called = True
+            return True
+
+        reader._push_callbacks["SampleInterv"] = push
+        results = run(reader._set_dict_cfg({"SampleInterv": 9999}, _VAL_SI))  # out of [1, 3600]
+        assert results == {"SampleInterv": "Invalid"}
+        assert called is False
+        assert run(reader._get_dict_cfg("Sensor", _VAL_SI)) == {"Sensor": {"SampleInterv": 2}}  # untouched default
+    finally:
+        _remove(path_prefix + "config_invalidnopush.cfg")
+
+
+def test_set_dict_cfg_unchanged_value_is_reported_and_never_pushed() -> None:
+    # No generic force-resend semantics: an unchanged value is a no-op for the hardware, matching
+    # the legacy pipeline's own default (set_sensor_value only pushes on prev_updated or force=True).
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_unchangednopush.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "unchangednopush", _VAL_SI, cfg_path=path_prefix)
+        called = False
+
+        async def push(value: "int | float | str | bool | None") -> bool:
+            nonlocal called
+            called = True
+            return True
+
+        reader._push_callbacks["SampleInterv"] = push
+        results = run(reader._set_dict_cfg({"SampleInterv": 2}, _VAL_SI))  # 2 is the schema default already
+        assert results == {"SampleInterv": "Unchanged"}
+        assert called is False
+    finally:
+        _remove(path_prefix + "config_unchangednopush.cfg")
+
+
+def test_set_dict_cfg_unknown_key_is_reported_invalid_individually_not_whole_request() -> None:
+    # Final project decision: an unrecognized key is just another per-field "Invalid" outcome
+    # (matching ConfigManager.write_config's own existing per-key tolerance) - it does not
+    # invalidate the rest of a multi-field request.
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_unknownkey.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "unknownkey", _VAL_SI, cfg_path=path_prefix)
+        results = run(reader._set_dict_cfg({"SampleInterv": 42, "NoSuchField": 1}, _VAL_SI))
+        assert results == {"SampleInterv": "Valid", "NoSuchField": "Invalid"}
+        assert run(reader._get_dict_cfg("Sensor", _VAL_SI)) == {"Sensor": {"SampleInterv": 42}}
+    finally:
+        _remove(path_prefix + "config_unknownkey.cfg")
+
+
+def test_set_dict_cfg_multi_field_request_reports_each_field_independently() -> None:
+    combined = _VAL_SI + _VAL_BOOL
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_multifield.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "multifield", combined, cfg_path=path_prefix)
+        pushed: "list[str]" = []
+
+        async def push_bool(value: "int | float | str | bool | None") -> bool:
+            pushed.append("SelfCal")
+            return True
+
+        reader._push_callbacks["SelfCal"] = push_bool
+        results = run(reader._set_dict_cfg({"SampleInterv": 9999, "SelfCal": True}, combined))
+        assert results == {"SampleInterv": "Invalid", "SelfCal": "Valid"}
+        assert pushed == ["SelfCal"]
+    finally:
+        _remove(path_prefix + "config_multifield.cfg")
+
+
+def test_set_dict_cfg_whole_persist_failure_marks_every_field_failed() -> None:
+    # A genuinely invalid ConfigManager (e.g. malformed schema) makes write_config() itself return
+    # (False, {}) - every key in the request comes back "Failed", not silently dropped or "Invalid"
+    # (which would misleadingly suggest the values themselves were the problem).
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_wholefail.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "wholefail", (), cfg_path=path_prefix)
+        assert reader.cfgmgr.valid is False
+        results = run(reader._set_dict_cfg({"SampleInterv": 42, "Other": 1}, ()))
+        assert results == {"SampleInterv": "Failed", "Other": "Failed"}
+    finally:
+        _remove(path_prefix + "config_wholefail.cfg")
+
+
+def test_set_dict_cfg_set_mgr_cfg_override_raising_marks_every_field_failed() -> None:
+    # _set_mgr_cfg is an overridable extension point (mirrors _get_mgr_cfg) - the call itself,
+    # not just its result, could misbehave on a misbehaving subclass override.
+    class RaisingSetMgrCfgReader(SensorReaderConfig):
+        async def _set_mgr_cfg(
+            self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "cm.ConfigSchema"
+        ) -> "tuple[bool, cm.WriteValidity]":
+            raise RuntimeError("simulated persistence failure")
+
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_raisingmgr.cfg")
+    try:
+        reader = RaisingSetMgrCfgReader(Meas(20.0, 50), 3, "raisingmgr", _VAL_SI, cfg_path=path_prefix)
+        results = run(reader._set_dict_cfg({"SampleInterv": 42}, _VAL_SI))
+        assert results == {"SampleInterv": "Failed"}
+        assert reader.pr.err_count == 1
+    finally:
+        _remove(path_prefix + "config_raisingmgr.cfg")
+
+
+def test_set_dict_cfg_empty_data_returns_empty_result() -> None:
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_emptyset.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "emptyset", _VAL_SI, cfg_path=path_prefix)
+        assert run(reader._set_dict_cfg({}, _VAL_SI)) == {}
+    finally:
+        _remove(path_prefix + "config_emptyset.cfg")
+
+
+def test_set_dict_cfg_push_callbacks_default_to_empty_and_are_per_instance() -> None:
+    # Registered once per instance at construction time (project decision), never shared/leaked
+    # across two separate instances of the same class.
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_percallback1.cfg")
+    _remove(path_prefix + "config_percallback2.cfg")
+    try:
+        reader1 = SensorReaderConfig(Meas(20.0, 50), 3, "percallback1", _VAL_SI, cfg_path=path_prefix)
+        reader2 = SensorReaderConfig(Meas(20.0, 50), 3, "percallback2", _VAL_SI, cfg_path=path_prefix)
+        assert reader1._push_callbacks == {}
+        assert reader1._push_callbacks is not reader2._push_callbacks
+
+        async def push(value: "int | float | str | bool | None") -> bool:
+            return True
+
+        reader1._push_callbacks["SampleInterv"] = push
+        assert reader2._push_callbacks == {}
+    finally:
+        _remove(path_prefix + "config_percallback1.cfg")
+        _remove(path_prefix + "config_percallback2.cfg")
 
 
 if __name__ == "__main__":
