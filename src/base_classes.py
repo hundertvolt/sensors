@@ -255,7 +255,7 @@ class SensorReaderConfig(SensorReader):
         # (project decision - constant at runtime, no per-call plumbing needed): a subclass adds
         # its own {field_name: async_push_fn} entries after calling super().__init__(). A field
         # with no entry is persist-only, exactly like most of today's schema fields already are.
-        self._push_callbacks: "dict[str, Callable[[int | float | str | bool | None], Coroutine[Any, Any, bool]]]" = {}
+        self._push_callbacks: dict[str, Callable[[int | float | str | bool | None], Coroutine[Any, Any, bool]]] = {}
 
     def get_cfg_schema(self) -> "ConfigSchema":
         # Single source of truth for every subclass's schema - captured once, right here, from

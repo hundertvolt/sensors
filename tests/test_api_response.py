@@ -1,10 +1,10 @@
 import asyncio
 import os
+from collections import namedtuple
 
 import api_response as ar
 import config_manager as cm
 from base_classes import SensorReaderConfig
-from collections import namedtuple
 
 try:
     from typing import TYPE_CHECKING

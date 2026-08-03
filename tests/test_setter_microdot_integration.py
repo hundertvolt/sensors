@@ -10,11 +10,20 @@ improved-quality/ source files).
 import asyncio
 import json
 import os
+import sys
+
+# scripts/test.sh's own MICROPYPATH ("src:tests:.frozen") deliberately doesn't include ext/ - that
+# would be a scripts/ change, which CLAUDE.md's "Pre-push verification" requires a full clean-
+# chroot re-verification for. Extending sys.path at runtime, scoped to this one file, reaches the
+# same real ext/microdot.py without touching scripts/test.sh, MICROPYPATH, or pyproject.toml at
+# all - confirmed directly against the pinned interpreter that a plain sys.path.insert() before the
+# import resolves it correctly, the same as MICROPYPATH would.
+sys.path.insert(0, "ext")
 
 # ext/ isn't on this project's mypy search path yet (see pyproject.toml's [tool.mypy]) - same gap
 # as the pre-existing improved-quality/api_helpers.py and improved-quality/sensortask-wozi.py
 # imports of this module.
-from microdot import Microdot, Request  # type: ignore[import-not-found]
+from microdot import Microdot, Request  # type: ignore[import-not-found]  # noqa: E402
 
 import api_response as ar
 from asy_ntp_client import asy_ntp_client

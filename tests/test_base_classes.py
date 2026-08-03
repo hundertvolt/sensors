@@ -946,7 +946,7 @@ def test_set_dict_cfg_registered_push_callback_is_invoked_with_the_new_value() -
     _remove(path_prefix + "config_pushed.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushed", _VAL_SI, cfg_path=path_prefix)
-        seen: "list[int | float | str | bool | None]" = []
+        seen: list[int | float | str | bool | None] = []
 
         async def push(value: "int | float | str | bool | None") -> bool:
             seen.append(value)
@@ -1063,7 +1063,7 @@ def test_set_dict_cfg_multi_field_request_reports_each_field_independently() -> 
     _remove(path_prefix + "config_multifield.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "multifield", combined, cfg_path=path_prefix)
-        pushed: "list[str]" = []
+        pushed: list[str] = []
 
         async def push_bool(value: "int | float | str | bool | None") -> bool:
             pushed.append("SelfCal")

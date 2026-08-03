@@ -1441,6 +1441,38 @@ def test_set_dict_cfg_multi_field_discrete_and_continuous_together() -> None:
     assert run(reader.cfgmgr.get_dict(["PressOffset"])) == {"PressOffset": 12.5}
 
 
+def test_set_dict_cfg_temperature_oversampling_end_to_end_persists_and_pushes() -> None:
+    i2c, reader = make_clean_reader("set_dict_cfg_tov")
+    seed_status(i2c, 0x10 | 0x60)
+    seed_err(i2c, 0x00)
+    results = run(reader._set_dict_cfg({"TempOvers": 4}, reader.get_cfg_schema()))
+    assert results == {"TempOvers": "Valid"}
+    assert run(reader.cfgmgr.get_dict(["TempOvers"])) == {"TempOvers": 4}
+    assert run(reader.bmp.get_temperature_oversampling()) == 4
+
+
+def test_set_dict_cfg_sample_interv_end_to_end_persists_and_pushes() -> None:
+    # SampleInterv's "push" is a pure in-memory software knob (trigger_period), not I2C - no bus
+    # seeding needed.
+    reader = make_reader("set_dict_cfg_si")
+    results = run(reader._set_dict_cfg({"SampleInterv": 45}, reader.get_cfg_schema()))
+    assert results == {"SampleInterv": "Valid"}
+    assert run(reader.cfgmgr.get_dict(["SampleInterv"])) == {"SampleInterv": 45}
+    assert run(reader.trigger_period.get_value()) == 45
+
+
+def test_push_wrapper_functions_reject_a_non_int_value_defensively() -> None:
+    # _set_dict_cfg only ever invokes these with an already schema-validated int (see each
+    # wrapper's own comment) - calling them directly with the wrong type exercises the defensive
+    # branch a real caller can't actually reach.
+    reader = make_reader("push_wrapper_reject")
+    for wrapper_name in ("_push_trigger_secs", "_push_pressure_oversampling", "_push_temperature_oversampling", "_push_filter_coefficient"):
+        wrapper = getattr(reader, wrapper_name)
+        assert run(wrapper("not an int")) is False
+        assert run(wrapper(1.5)) is False
+        assert run(wrapper(True)) is False  # bool is not int for this purpose, matching config_manager.py
+
+
 def test_get_timer_starters_returns_the_trigger_timer_starter() -> None:
     reader = make_reader("timer_starters")
     assert reader.get_timer_starters() == [reader.start_timer]
