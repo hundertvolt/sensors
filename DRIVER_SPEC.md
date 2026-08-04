@@ -324,9 +324,10 @@ Config setters are implemented, mirroring the getter pair (section 4.4) one leve
   `SensorReaderConfig.__init__` and populated by each subclass's own `__init__`, once, at
   construction time (project decision: no central field→module registry anywhere — each module
   is self-contained/"plugin-style", bringing everything it needs). A field with no entry is
-  persist-only (`asy_ntp_client.py`/`asy_sgp40_driver.py`'s config fields all fall in this
-  category — those two files needed **zero** source changes to gain full setter support, purely
-  from inheriting `_set_dict_cfg`). A push callback's signature is always the wide
+  persist-only (`asy_ntp_client.py`'s config fields, and `asy_sgp40_driver.py`'s
+  `BackupPeriod`/`BackupMaxAge`/`WaitTimeNTP`, all fall in this category — those files needed
+  **zero** source changes to gain full setter support for those fields, purely from inheriting
+  `_set_dict_cfg`). A push callback's signature is always the wide
   `Callable[[int | float | str | bool | None], Coroutine[Any, Any, bool]]` (matching every real
   setter's now-uniform bool return contract — see below); a real setter with a narrower parameter
   type needs a thin type-narrowing wrapper registered instead of the setter itself (e.g.
@@ -337,6 +338,38 @@ Config setters are implemented, mirroring the getter pair (section 4.4) one leve
 **Every setter method's return contract is now uniformly `bool`** (`True` = applied,
 `False` = rejected/failed) — a project-wide fix applied while wiring this pass; a driver adding a
 new setter should follow this from the start rather than returning `None`.
+
+### 5.2.1 Command-only trigger fields (replaces legacy's `cmd_keys`)
+
+The legacy `api_helpers.py` pipeline had a separate `cmd_keys` parameter for a field that's
+validated and reported alongside real config fields but deliberately never persisted (e.g. SGP40's
+`SGPResetVOC`, dispatched to `reset_voc()`). The new schema-driven dispatch has no separate
+mechanism for this — it reuses section 5's existing **special-alone field** convention instead
+(`default=None` + a non-tuple `special`, the same shape SCD30's `AmbPres` already uses), applied
+here to a `"bool"`-typed field for the first time: `_VAL_RESET = (("SGPResetVOC", "bool", None,
+None, None, True),)`, with a push callback registered exactly like any other live field. This
+needs no new code anywhere — two existing, already-tested behaviors combine to produce exactly the
+right semantics for a repeatable trigger:
+
+- `type_or_range_error`'s `"bool"` branch never inspects `special` at all (a longstanding,
+  deliberate asymmetry — see `config_manager.py`'s own test coverage), so both `True` and `False`
+  are always structurally valid regardless of what `special` is set to.
+- `ConfigManager.write_config()`'s `not use_value` branch (a special-alone field is never actually
+  stored) always reports `"Valid"`, never `"Unchanged"` — there's no previous stored value to
+  compare against, so the push callback re-fires on *every* request, not just the first time the
+  value changes. This is exactly the "each request is its own independent trigger" semantic
+  `reset_voc()` needs, unlike an ordinary field's "only push on an actual change" default.
+
+**One consequence a driver adding a command-only trigger field must handle explicitly**:
+`ConfigManager.get_dict()` (used by `_get_mgr_cfg`/`_get_dict_cfg`) is all-or-nothing across its
+requested keys — a special-alone field is never in `self._cache`, so including it in a
+`get_dict_cfg()` read would raise `KeyError` internally and fail the *entire* read, not just that
+one field (see `config_manager.py`'s own `test_configmanager_special_only_field_not_persisted`).
+`get_dict_cfg()` must therefore keep passing its own explicit, narrower field list rather than
+`self.get_cfg_schema()` — `asy_sgp40_driver.py`'s `get_dict_cfg()` still passes
+`_VAL_BP + _VAL_BMAX + _VAL_WT` only, deliberately excluding `_VAL_RESET`, even though
+`get_cfg_schema()` (used for the *setter* side, `_set_dict_cfg(data, reader.get_cfg_schema())`)
+includes it.
 
 ### 5.3 Response envelope (`api_response.py`)
 

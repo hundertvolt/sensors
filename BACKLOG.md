@@ -55,55 +55,58 @@ constraints.
 - **Neopixel warning-flash sequencing and the task-supervisor error-budget counter** are both
   behaviorally correct and intentional as designed, but flagged by the owner as implementable more
   efficiently — worth a cleaner implementation in the refactor without changing observed behavior.
-- **Three legacy REST wire-format/protocol conventions have no equivalent yet in the new
+- **Three legacy REST wire-format/protocol conventions had no direct 1:1 equivalent in the new
   schema-driven setter dispatch (`base_classes.py`'s `_set_dict_cfg`/`api_response.py`'s
   `handle_set_cmd`) — found while auditing the new mechanism against `python/CommonDrivers/
-  api_helpers.py`'s actual legacy behavior (not just against its own internal design), each real
-  and owner-decidable, not yet decided:**
-  - **BMP3xx's `PressOvers`/`TempOvers`/`FiltCoeff` wire format changed from index to real value,
-    unnoticed until this cross-check.** The legacy `modules/sensortask-wozi.py` REST handler
-    (`setBMP`) accepts a **0-5 (OSR) / 0-7 (IIR) index** on the wire and converts it server-side via
+  api_helpers.py`'s actual legacy behavior (not just against its own internal design). All three
+  were raised with and confirmed by the project owner directly; all three are now settled (kept
+  here as the record of what changed from legacy and why, not as open questions):**
+  - **Settled: BMP3xx's `PressOvers`/`TempOvers`/`FiltCoeff` wire format is deliberately the raw
+    value, not the legacy index.** The legacy `modules/sensortask-wozi.py` REST handler (`setBMP`)
+    accepted a **0-5 (OSR) / 0-7 (IIR) index** and converted it server-side via
     `update_valid_json(..., weight_fct=lambda x: 2**x, ...)` (or `2**x - 1` for IIR) into the real
     oversampling multiplier / filter coefficient before validating/persisting/pushing it. The new
     `_VAL_POV`/`_VAL_TOV`/`_VAL_FC` schema (`asy_bmp3xx_driver.py`) validates the **raw multiplier/
     coefficient value directly** against `_OSR_SETTINGS`/`_IIR_SETTINGS` (confirmed correct against
     the real BMP388 datasheet's OSR/IIR tables — see `datasheets/bmp3xx/bst-bmp388-ds001.pdf` sec
-    3.4.1/3.4.3, Table 6-8) — there is no index-to-value conversion step anywhere in the new path.
-    A legacy-shaped client sending an index (e.g. `5` meaning ×32) would now be silently
-    misinterpreted as the literal value `5`, which isn't even a member of the allowed set and gets
-    rejected as `"Invalid"` — never silently corrupted, but a real behavior change from "applies the
-    intended oversampling" to "rejected." Needs an explicit decision once the REST-wiring pass
-    starts: keep the wire format index-based (add the `weight_fct`-equivalent conversion back, at
-    the REST-route layer rather than the schema layer, since `type_or_range_error` has no unit-
-    conversion concept), or intentionally simplify to the real-value wire format the schema already
-    validates (a deliberate, documented breaking change for any existing client code built against
-    the old index-based API).
-  - **The legacy pipeline's global "empty string on the wire means leave this field unchanged"
-    convention has no equivalent.** `update_valid_json()` (the legacy per-field validator) special-
-    cases `json_in[json_key] == ""` as `"Unchanged"` (skip) for *every* field of *every* type, on
-    *every* endpoint — letting a client always resend a full payload and blank out only the fields
-    it doesn't want touched. `type_or_range_error()`/`ConfigManager.write_config()` have no such
-    global bypass: an empty string is validated against that field's real type/min/max like any
-    other value, and fails for most string fields with `min > 0` (e.g. `Hostname`, `min=1`) instead
-    of being silently skipped. The natural new-model equivalent is "omit the key from the request
-    dict entirely" (already how `_set_dict_cfg` behaves — an absent key is simply never touched),
-    which is arguably cleaner, but is a different client-side contract than legacy's "always send
-    every field." Whichever REST route(s) get built on top of `handle_set_cmd()` need to decide, and
-    document, which convention their clients (including the existing web UI, if it's reused as-is)
-    actually rely on.
-  - **Legacy's `cmd_keys` mechanism (a command-only, non-persisted field reported alongside real
-    config fields in the same response) has no schema-level equivalent.** `api_helpers.py`'s
-    `init_json_from_cfg(cfg, keys, cmd_keys={...})` lets one field (e.g. SGP40's `SGPResetVOC`,
-    dispatched to `sgp_reader.reset_voc()`) be validated and reported in `json_validity` exactly
-    like a real config field, while being explicitly popped out before the actual `write_config()`
-    call so it's never persisted. `ConfigSchema`/`_set_dict_cfg` has no concept of a schema field
-    that's real-and-validated-and-dispatched but deliberately never stored — `reset_voc()` currently
-    has no path into the new generalized dispatch at all (it isn't in `SGP40_Reader`'s schema, which
-    covers `BackupPeriod`/`BackupMaxAge`/`WaitTimeNTP` only). Whoever wires `setSGP` (or any future
-    endpoint with a command-only field) needs either a schema-level "special-alone, callback-only"
-    field kind, or a documented convention for handling it entirely outside `_set_dict_cfg` (e.g. a
-    separate `post_fct`/dedicated dispatch, with its own entry manually merged into the response
-    `result` dict) — not yet decided either way.
+    3.4.1/3.4.3, Table 6-8), with no index-to-value conversion step anywhere in the new path.
+    **Owner-confirmed this is the intended, final wire format** — a deliberate, accepted breaking
+    change from the legacy index-based API, not an oversight to fix. Nothing further to do here.
+  - **Settled: the legacy pipeline's global "empty string on the wire means leave this field
+    unchanged" convention is deliberately abandoned, replaced by "an omitted key means don't
+    change."** `update_valid_json()` (the legacy per-field validator) special-cased
+    `json_in[json_key] == ""` as `"Unchanged"` (skip) for *every* field of *every* type, on *every*
+    endpoint — letting a client always resend a full payload and blank out only the fields it
+    didn't want touched. `type_or_range_error()`/`ConfigManager.write_config()` have no such global
+    bypass, and **this is intentional, not a gap**: `_set_dict_cfg` already only ever touches keys
+    actually present in its `data` argument (`for key, value in data.items()`) — an absent key is
+    never validated, never reported, never persisted, never pushed. **This existing behavior is
+    already the full equivalent the owner agreed to** — a client that wants to leave a field
+    untouched omits its key from the request body entirely, rather than sending `""`. No code
+    change was needed; the mechanism already existed by construction. Whichever REST route(s) get
+    built on top of `handle_set_cmd()` should build its request body from only the keys the client
+    actually sent (already how every test in `test_setter_microdot_integration.py`/
+    `test_api_response.py` constructs `data`), not synthesize a full payload the way
+    `init_json_from_cfg()` used to.
+  - **Settled and implemented: legacy's `cmd_keys` mechanism (a command-only, non-persisted field
+    reported alongside real config fields in the same response, e.g. SGP40's `SGPResetVOC` →
+    `sgp_reader.reset_voc()`) is replaced by reusing the schema's existing "special-alone" field
+    convention** (`check_cfg_get_default`'s `def=None` + non-tuple `special` — already used for
+    SCD30's `AmbPres`), owner-confirmed as the intended shape. `asy_sgp40_driver.py`'s
+    `_VAL_RESET = (("SGPResetVOC", "bool", None, None, None, True),)` is included in the schema
+    passed to `super().__init__()` (so `get_cfg_schema()`/`_set_dict_cfg()` validate and dispatch
+    it like any real field), with a push callback (`_push_reset_voc`) registered to `reset_voc()`.
+    No new mechanism was needed in `base_classes.py`/`config_manager.py` at all — two already-
+    existing, already-tested behaviors combine to produce exactly the right semantics:
+    `type_or_range_error`'s `"bool"` branch ignores `special` entirely (a longstanding, deliberate
+    asymmetry), so both `True`/`False` are always structurally valid; and
+    `ConfigManager.write_config()`'s `not use_value` branch for a special-alone field always
+    reports `"Valid"`, never `"Unchanged"` (no previous stored value to compare against) — so the
+    push callback reliably re-fires on *every* request, matching `reset_voc()`'s repeatable-trigger
+    contract, not just an ordinary field's "only push on an actual change" default. See
+    DRIVER_SPEC.md section 5.2.1 for the full pattern (including the one consequence a driver using
+    this must handle: `get_dict_cfg()` must keep excluding the field from its own read, since
+    `ConfigManager.get_dict()` is all-or-nothing and the field is never in `_cache`).
 - **No `@app.errorhandler` registrations exist anywhere yet** (confirmed: neither
   `improved-quality/sensortask-wozi.py` nor the deployed `python/CommonDrivers/`-based app
   registers any). See CLAUDE.md's "Microdot / REST layer" section for what Microdot itself already

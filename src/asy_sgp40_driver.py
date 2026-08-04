@@ -15,7 +15,7 @@ from micropython import const
 
 from asy_i2c_driver import I2CDevice
 from base_classes import Lockable, SensorReaderConfig
-from config_manager import make_dict
+from config_manager import make_dict, name_cfg
 from crc_checks import CRC8, CRC32
 from voc_algorithm import VOCAlgorithm
 
@@ -39,6 +39,18 @@ _MAX_NTP_WAITTIME = const(600)  # 600s = 10min
 _VAL_BP = const((("BackupPeriod", "int", 1, 0, 1440, None),))
 _VAL_BMAX = const((("BackupMaxAge", "int", 7200, 0, 10080, None),))
 _VAL_WT = const((("WaitTimeNTP", "int", 30, 0, 600, None),))
+# Command-only trigger, not a persisted config value - reuses the schema's existing "special-alone"
+# convention (def=None + a non-tuple special, same shape as SCD30's AmbPres) rather than a new
+# mechanism: type_or_range_error's "bool" branch ignores "special" entirely (a longstanding,
+# deliberate asymmetry - see config_manager.py's own test coverage), so both True and False are
+# always structurally valid; ConfigManager.write_config()'s "not use_value" branch for a
+# special-alone field always reports "Valid" (never "Unchanged" - there's no stored previous value
+# to compare against), so every request reliably re-fires the push callback below, matching
+# reset_voc()'s own repeatable-trigger contract. Deliberately excluded from get_dict_cfg()'s own
+# schema argument (see that method) - ConfigManager.get_dict() is all-or-nothing per requested key,
+# and this key is never in _cache at all (see config_manager.py's own "special-only" tests), so
+# including it there would break every other field's read too.
+_VAL_RESET = const((("SGPResetVOC", "bool", None, None, None, True),))
 
 _NAME = const("SGP40")
 # VOC/Raw/TS also doubles as the full result of a read (see _read_sgp/_store_sgp) - no separate
@@ -63,13 +75,17 @@ class SGP40_Reader(SensorReaderConfig):
             SGP40(None, None, None),
             max_i2c_err,
             _NAME,
-            _VAL_BP + _VAL_BMAX + _VAL_WT,
+            _VAL_BP + _VAL_BMAX + _VAL_WT + _VAL_RESET,
             cfg_path=cfg_path,
             fram=fram_storage,
             history_length=history_length,
             debug=debug,
         )
         self.sgp = SGP40_I2C(i2c)
+        # SGPResetVOC is command-only (see _VAL_RESET above) - registered the same way as every
+        # other module's real live-push field (project decision - constant at runtime, no per-call
+        # plumbing needed), just never persisted.
+        self._push_callbacks[name_cfg(_VAL_RESET)] = self._push_reset_voc
         self.trigger_event = asyncio.ThreadSafeFlag()
         self.trigger_timer = Timer()
         self.backup_counter = 0
@@ -372,6 +388,9 @@ class SGP40_Reader(SensorReaderConfig):
         return make_dict(data)
 
     async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
+        # Deliberately excludes _VAL_RESET (SGPResetVOC) - see that const's own comment: it's never
+        # in cfgmgr's _cache (special-alone, not persisted), and ConfigManager.get_dict() is
+        # all-or-nothing per requested key, so including it here would break this whole read.
         return await self._get_dict_cfg(_NAME, _VAL_BP + _VAL_BMAX + _VAL_WT)
 
     async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
@@ -379,6 +398,16 @@ class SGP40_Reader(SensorReaderConfig):
 
     def stop_timer(self) -> None:
         self.trigger_timer.deinit()
+
+    async def _push_reset_voc(self, value: int | float | str | bool | None) -> bool:
+        # self._push_callbacks' shape (base_classes.py) is one Callable per field, all sharing the
+        # same wide value type - this narrows to reset_voc's real bool parameter. _set_dict_cfg only
+        # ever invokes a push callback with an already schema-validated value (a real bool, by
+        # construction, since SGPResetVOC's schema type is "bool") - the isinstance check is for the
+        # type checker and as defense-in-depth, not a scenario a real caller can actually trigger.
+        if not isinstance(value, bool):
+            return False
+        return await self.reset_voc(value)
 
     async def reset_voc(self, flag: bool) -> bool:
         # Uniform setter return contract (project-wide decision): True = applied, False = no-op.
