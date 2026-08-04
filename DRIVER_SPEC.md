@@ -371,6 +371,20 @@ one field (see `config_manager.py`'s own `test_configmanager_special_only_field_
 `get_cfg_schema()` (used for the *setter* side, `_set_dict_cfg(data, reader.get_cfg_schema())`)
 includes it.
 
+**A second, real consequence found and fixed in this same pass**: a push callback's return value
+means "push succeeded/failed" to `_set_dict_cfg` (`False` → `"Failed"` status plus a
+`_recover_failed_push()` attempt — section 5.2.2), but `reset_voc(flag)`'s own contract uses
+`False` to mean "no-op, `flag` was `False`" (see its docstring/tests), not "failed". The naive
+`_push_reset_voc` originally forwarded `reset_voc()`'s return value directly, so a client sending
+the entirely valid `{"SGPResetVOC": false}` was misreported as `"Failed"`. Fixed by having
+`_push_reset_voc` report success unconditionally once the type check passes — it always reports
+success unless the field type is wrong. **Any command-only/repeatable-trigger field whose real
+setter has its own "no-op vs. applied" return contract distinct from "push succeeded/failed" needs
+the same normalization in its own push-callback wrapper** — don't forward a setter's own return
+value as the push-callback's success signal unless the two contracts actually mean the same thing.
+`improved-quality/sensortask-wozi.py`'s `_scd_apply_field`/SCD30's `stop_continuous_measurement()`
+hit the identical shape (inverted: `True` input is the no-op there) and needed the same fix.
+
 ### 5.2.2 Failed-push recovery chain (replaces legacy's `set_sensor_value` fallback)
 
 Legacy's `set_sensor_value()` guaranteed the config file never ends up holding a value that failed
@@ -389,6 +403,11 @@ push callback returns/raises failure — adapted to two things that changed sinc
   field with no entry just skips straight to the next rung), and the "default" is simply pulled
   from the schema's own `def` value via `check_cfg_get_default` — no separate parameter needed since
   the schema already carries a canonical default per field.
+- **A getter's return value is validated against its own field's schema before being accepted** —
+  a getter reads live, possibly-adversarial hardware state, so a value outside the field's own
+  type/range/discrete-set (e.g. a corrupted register read-back) is treated the same as the getter
+  raising: fall through to the next rung, rather than attempting (and silently failing) a persist
+  through `_set_mgr_cfg` that would leave the recovery attempt doing nothing.
 
 The corrected value is written straight back through `_set_mgr_cfg`, deliberately **not** through
 `_push_callbacks` — re-pushing a recovered/default value to the sensor would risk looping on a
@@ -436,6 +455,18 @@ exception to CLAUDE.md's hard rule on editing `improved-quality/` source, since 
 `api_helpers.py`'s last remaining importer and removing it required migrating its call sites. See
 BACKLOG.md's writeup for what changed along the way (a real config-file disconnect bug fixed for
 `setSGP`/`setBMP`, plus the wire-name/wire-format consequences).
+
+**One real bug this migration surfaced, worth knowing for any future module in the same shape**:
+`asy_conn_time` owns exactly one schema/`cfgmgr` for all of `SSID`/`PW`/`Country`/`Hostname`/
+`LedWifiOn`, but two separate routes (`/net/cmd`'s `setNetwork`, `/led/cmd`'s `setWiFiLED`) each
+only own their own subset of those fields (matching the legacy handler's own per-route scoping).
+Passing `reader.get_cfg_schema()` (the *whole* schema) to `handle_set_cmd()` from both routes would
+let `setNetwork` accept/persist `LedWifiOn` (and spuriously fire `reconnect_wifi()` for an LED-only
+change) and let `setWiFiLED` silently accept/persist `SSID`/`PW`/`Country`/`Hostname` with no
+reconnect at all. `sensortask-wozi.py`'s `_cfg_subset(schema, keys)` narrows `get_cfg_schema()`'s
+tuple down to a named subset before passing it to `handle_set_cmd()` — any future module whose
+single schema is split across more than one REST route needs the same per-route narrowing, not
+`get_cfg_schema()`'s full return value handed to each route unchanged.
 
 ## 6. Data model (`config_manager.py`'s `make_dict()`)
 
