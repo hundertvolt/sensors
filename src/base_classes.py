@@ -7,7 +7,7 @@ vs. async) - the caller's own async setup must, or FRAM persistence stays inert.
 
 import asyncio
 
-from config_manager import ConfigManager, check_cfg_get_default, schema_dict, schema_names
+from config_manager import ConfigManager, check_cfg_get_default, schema_dict, schema_names, type_or_range_error
 from print_log import PrintLogHistory, PrintLogHistoryStore
 
 try:
@@ -378,6 +378,15 @@ class SensorReaderConfig(SensorReader):
                 recovered = await getter()
             except Exception as e:  # getter is caller-supplied; its runtime behavior isn't statically known
                 await self.pr.err_s("Error reading", key, "back from sensor:", e, errno=8)
+                recovered = None
+            # A getter is caller-supplied and reads live, possibly-adversarial hardware state - its
+            # return value isn't statically known to satisfy this field's own schema (e.g. a
+            # corrupted register read-back). Treating an out-of-schema value the same as a raised
+            # exception (fall through to the next rung) keeps this cascade's own invariant that
+            # every rung it actually accepts is schema-valid - matters because _set_mgr_cfg below is
+            # the last check before persisting, and a value it rejects would leave this recovery
+            # attempt silently doing nothing instead of falling further back.
+            if recovered is not None and type_or_range_error(recovered, field):
                 recovered = None
         if recovered is None:
             recovered = old_values.get(key, default_val)

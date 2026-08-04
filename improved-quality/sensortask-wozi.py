@@ -169,6 +169,24 @@ _FIELD_SCD_FORCE_CAL_REF: "cm.FieldSchema" = ("ForceCalRef", "int", 400, 400, 20
 _FIELD_SCD_SELF_CAL: "cm.FieldSchema" = ("SelfCal", "bool", False, None, None, None)
 _FIELD_SCD_CONT_MEAS: "cm.FieldSchema" = ("ContMeas", "bool", True, None, None, None)
 
+# ContMeas=True (matches _FIELD_SCD_CONT_MEAS's own default - "keep measuring") is a legitimate,
+# already-tested no-op: scd_reader.stop_continuous_measurement()'s own documented contract returns
+# False for it, meaning "nothing to do", not "failed" (see test_reader_stop_continuous_measurement_
+# true_is_a_pure_noop in tests/test_asy_scd30_driver.py) - only a real stop attempt (value=False)
+# can genuinely fail (a bus fault) and must still surface as such. _scd_apply_field() below has no
+# way to know this per-field nuance on its own (it just does "Valid" if applied else "Failed"), so
+# this thin wrapper normalizes the no-op case to True before that generic check ever sees it -
+# mirrors the identical bug already fixed in asy_sgp40_driver.py's _push_reset_voc for the exact
+# same reason (a setter's own True=applied/False=no-op contract must not be forwarded as a push-
+# success/failure signal without this normalization). Legacy's set_sensor_value() never hit this:
+# it only checked whether the setter call raised, never inspected a return value.
+async def _push_cont_meas(value: bool) -> bool:
+    if value:
+        await scd_reader.stop_continuous_measurement(True)
+        return True
+    return await scd_reader.stop_continuous_measurement(False)
+
+
 # (key, field, setter) - iterated in the same order the old handler validated them in. Every SCD30
 # setter already never raises and self-logs via its own self.pr (see asy_scd30_driver.py's own
 # module docstring/DRIVER_SPEC.md section 7) - the try/except below is defense-in-depth against a
@@ -181,7 +199,7 @@ _SCD_SET_FIELDS: "Tuple[Tuple[str, cm.FieldSchema, Callable[[Any], Coroutine[Any
     ("Altitude", _FIELD_SCD_ALTITUDE, scd_reader.set_altitude),
     ("ForceCalRef", _FIELD_SCD_FORCE_CAL_REF, scd_reader.set_forced_recalibration_reference),
     ("SelfCal", _FIELD_SCD_SELF_CAL, scd_reader.set_self_calibration_enabled),
-    ("ContMeas", _FIELD_SCD_CONT_MEAS, scd_reader.stop_continuous_measurement),
+    ("ContMeas", _FIELD_SCD_CONT_MEAS, _push_cont_meas),
 )
 
 
@@ -200,6 +218,21 @@ async def _scd_apply_field(data: Dict[str, Any], key: str, field: "cm.FieldSchem
         await scd_reader.pr.err_s("Error setting", key, "on SCD30:", e, errno=30)
         applied = False
     return "Valid" if applied else "Failed"
+
+
+def _cfg_subset(schema: "cm.ConfigSchema", keys: "Tuple[str, ...]") -> "cm.ConfigSchema":
+    # asy_conn_time (conn) owns exactly one schema/cfgmgr for all of SSID/PW/Country/Hostname/
+    # LedWifiOn, but /net/cmd's setNetwork and /led/cmd's setWiFiLED are two separate routes that
+    # each only own a subset of those fields (matches the legacy handler's own scoping - see
+    # modules/sensortask-wozi.py's setNetwork/setWiFiLED, each of which only ever touched its own
+    # named subset of cfgmgr's keys). Passing conn.get_cfg_schema() (the whole thing) to both routes
+    # would let setNetwork accept/persist LedWifiOn (and spuriously fire reconnect_wifi() for an
+    # LED-only change) and let setWiFiLED silently accept/persist SSID/PW/Country/Hostname with no
+    # reconnect at all - this narrows each route back to its own real field subset, the same way
+    # ConfigManager.write_config()'s own per-key "not found, skipping" handles a genuinely unknown
+    # key: a field outside `keys` is reported "Invalid" for that route, never silently applied.
+    fields = cm.schema_dict(schema)
+    return tuple(fields[k] for k in keys if k in fields)
 
 
 async def _write_cfg_only(write_cfgmgr: "ConfigManager", data: Dict[str, int | float | str | bool | None], cfg_vals: "cm.ConfigSchema") -> "ar.ResponseEnvelope":
@@ -332,9 +365,13 @@ async def network_cmd(request: Request) -> "ar.ResponseEnvelope":
     # handler's own 2 - a small, pre-existing divergence between this route's old hand-rolled check
     # and the schema this route now defers to entirely; flagged in BACKLOG.md, not silently changed
     # back, since asy_wifi_service.py's schema is the intended single source of truth going forward.
+    #
+    # Scoped to SSID/PW/Country/Hostname only (see _cfg_subset's own comment) - matches legacy's own
+    # setNetwork scoping; LedWifiOn lives in this same cfgmgr but belongs to /led/cmd's setWiFiLED
+    # below, not here.
     fields = {k: v for k, v in data.items() if k != "cmd"}
     return await ar.handle_set_cmd(
-        conn, fields, conn.get_cfg_schema(), post_fct=conn.reconnect_wifi
+        conn, fields, _cfg_subset(conn.get_cfg_schema(), ("SSID", "PW", "Country", "Hostname")), post_fct=conn.reconnect_wifi
     )  # Reconnect WiFi with new config (has 5 sec delay)
 
 
@@ -535,7 +572,10 @@ async def led_cmd(request: Request) -> "ar.ResponseEnvelope":
     if data["cmd"] == "setWiFiLED":
         if debug:
             print("Received Set WiFi LED command.")
-        return await ar.handle_set_cmd(conn, fields, conn.get_cfg_schema())
+        # Scoped to LedWifiOn only (see _cfg_subset's own comment / /net/cmd's matching note above)
+        # - matches legacy's own setWiFiLED scoping; SSID/PW/Country/Hostname live in this same
+        # cfgmgr but belong to /net/cmd's setNetwork, not here.
+        return await ar.handle_set_cmd(conn, fields, _cfg_subset(conn.get_cfg_schema(), ("LedWifiOn",)))
 
     return ar.make_response(100)  # unreachable - parse_cmd_request already restricted cmd above
 

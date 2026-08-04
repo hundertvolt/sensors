@@ -405,9 +405,18 @@ class SGP40_Reader(SensorReaderConfig):
         # ever invokes a push callback with an already schema-validated value (a real bool, by
         # construction, since SGPResetVOC's schema type is "bool") - the isinstance check is for the
         # type checker and as defense-in-depth, not a scenario a real caller can actually trigger.
+        #
+        # Deliberately does NOT forward reset_voc()'s own return value as this wrapper's result:
+        # reset_voc() uses False to mean "no-op, flag was False" (see its own docstring), not "push
+        # failed" - _set_dict_cfg's push-callback contract is the latter (False -> "Failed" status
+        # plus a _recover_failed_push() attempt). Conflating the two would misreport a legitimate
+        # `SGPResetVOC: false` request as a failure and spuriously invoke the recovery chain. There
+        # is no real failure mode here - reset_voc() is a pure in-memory flag set that never fails
+        # once the type check above has passed - so this always reports success.
         if not isinstance(value, bool):
             return False
-        return await self.reset_voc(value)
+        await self.reset_voc(value)
+        return True
 
     async def reset_voc(self, flag: bool) -> bool:
         # Uniform setter return contract (project-wide decision): True = applied, False = no-op.

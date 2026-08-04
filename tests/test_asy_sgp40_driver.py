@@ -473,6 +473,16 @@ def test_push_reset_voc_wrapper_delegates_to_reset_voc() -> None:
     assert reader.reset is True
 
 
+def test_push_reset_voc_wrapper_reports_success_even_when_flag_is_false() -> None:
+    # reset_voc(False) is a legitimate no-op (see test_reset_voc_false_is_a_no_op), not a push
+    # failure - the wrapper must not forward reset_voc()'s own False-means-no-op return value as
+    # its own False-means-push-failed result, or _set_dict_cfg would misreport a valid
+    # `SGPResetVOC: false` request as "Failed" and spuriously run the recovery chain.
+    reader = make_reader()
+    assert run(reader._push_reset_voc(False)) is True
+    assert reader.reset is False
+
+
 def test_push_reset_voc_wrapper_rejects_a_non_bool_value_defensively() -> None:
     # _set_dict_cfg only ever invokes a push callback with an already schema-validated value (real
     # bool, by construction) - this guards the type for the checker and as defense-in-depth, not
@@ -512,6 +522,18 @@ def test_set_dict_cfg_reset_voc_re_fires_every_time_not_just_on_change() -> None
     assert first == {"SGPResetVOC": "Valid"}
     assert second == {"SGPResetVOC": "Valid"}
     assert reader.reset is True  # the second request re-armed it
+
+
+def test_set_dict_cfg_reset_voc_false_reports_valid_not_failed() -> None:
+    # End-to-end regression test for the _push_reset_voc fix above: a real REST-style request of
+    # `{"SGPResetVOC": false}` is a legitimate, well-defined no-op (matches reset_voc(False)'s own
+    # contract) and must surface as "Valid", not "Failed" - and must not trigger the sensor read
+    # nor leave anything for _recover_failed_push to (harmlessly) no-op through.
+    cfg_dir = _sgp_cfg_dir("resetvoc_false")
+    reader = SGP40_Reader(make_i2c(), _comp_data, max_i2c_err=2, cfg_path=cfg_dir)
+    results = run(reader._set_dict_cfg({"SGPResetVOC": False}, reader.get_cfg_schema()))
+    assert results == {"SGPResetVOC": "Valid"}
+    assert reader.reset is False
 
 
 def test_get_dict_cfg_unaffected_by_the_command_only_reset_field_in_the_schema() -> None:

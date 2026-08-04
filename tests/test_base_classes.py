@@ -1072,6 +1072,38 @@ def test_set_dict_cfg_failed_push_falls_back_to_old_value_when_getter_raises() -
         _remove(path_prefix + "config_pushfailgetterraise.cfg")
 
 
+def test_set_dict_cfg_failed_push_getter_returning_out_of_schema_value_falls_through() -> None:
+    # A getter reads live, possibly-adversarial hardware state - its return value isn't statically
+    # known to satisfy this field's own schema (e.g. a corrupted register read-back). This must be
+    # treated the same as the getter raising (test above): fall through to the next rung (the
+    # pre-write snapshot), not silently accept/attempt-persist a value _set_mgr_cfg would itself
+    # reject as "Invalid", which would otherwise leave the recovery attempt doing nothing.
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_pushfailgetteroor.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushfailgetteroor", _VAL_SI, cfg_path=path_prefix)
+
+        async def push_ok(value: "int | float | str | bool | None") -> bool:
+            return True
+
+        async def push_fail(value: "int | float | str | bool | None") -> bool:
+            return False
+
+        async def oor_getter() -> "int | float | str | bool | None":
+            return 99999  # outside _VAL_SI's 1-3600 range - not a valid SampleInterv value
+
+        reader._push_callbacks["SampleInterv"] = push_ok
+        run(reader._set_dict_cfg({"SampleInterv": 5}, _VAL_SI))
+
+        reader._push_callbacks["SampleInterv"] = push_fail
+        reader._get_callbacks["SampleInterv"] = oor_getter
+        results = run(reader._set_dict_cfg({"SampleInterv": 42}, _VAL_SI))
+        assert results == {"SampleInterv": "Failed"}
+        assert run(reader._get_dict_cfg("Sensor", _VAL_SI)) == {"Sensor": {"SampleInterv": 5}}
+    finally:
+        _remove(path_prefix + "config_pushfailgetteroor.cfg")
+
+
 def test_set_dict_cfg_failed_push_on_first_ever_request_recovers_to_schema_default() -> None:
     # No prior successful write and no getter registered - the pre-write snapshot itself is just
     # the freshly-created config's own default, so the fallback chain's last rung (the schema
