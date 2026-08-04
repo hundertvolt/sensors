@@ -27,6 +27,7 @@ sys.path.insert(0, "ext")
 from microdot import Microdot, Request  # type: ignore[import-not-found]  # noqa: E402
 
 import api_response as ar
+import config_manager as cm
 from asy_bmp3xx_driver import BMP3xx_Reader
 from asy_i2c_driver import I2C
 from asy_ntp_client import asy_ntp_client
@@ -108,7 +109,20 @@ class _FakeRequest:
 # sensortask-*.py route will (mirrors the real, existing /net/cmd "setNetwork" handler's shape:
 # one cmd, a fixed field list, one post_fct hook) - driven against mocked request data of varying
 # quality (fine/partial/garbage), without a real Microdot app or real sockets.
+#
+# asy_conn_time owns one schema/cfgmgr for all of SSID/PW/Country/Hostname/LedWifiOn, but the real
+# /net/cmd (setNetwork) and /led/cmd (setWiFiLED) routes each only own their own subset of those
+# fields (improved-quality/sensortask-wozi.py's own _cfg_subset()) - passing the *whole* schema to
+# both would let setNetwork accept/persist LedWifiOn (and spuriously fire reconnect_wifi() for an
+# LED-only change) and let setWiFiLED silently accept/persist SSID/PW/Country/Hostname with no
+# reconnect at all. _wifi_field_schema() below mirrors that same scoping locally, since this file
+# never imports sensortask-wozi.py itself (see its own module docstring).
 # ---------------------------------------------------------------------------
+
+
+def _wifi_field_schema(client: asy_conn_time, keys: "tuple[str, ...]") -> "cm.ConfigSchema":
+    fields = cm.schema_dict(client.get_cfg_schema())
+    return tuple(fields[k] for k in keys if k in fields)
 
 
 async def _simulated_set_network_endpoint(client: asy_conn_time, request: "Any") -> "ar.ResponseEnvelope":
@@ -117,9 +131,20 @@ async def _simulated_set_network_endpoint(client: asy_conn_time, request: "Any")
         return err
     assert data is not None
     fields = {k: v for k, v in data.items() if k != "cmd"}
+    net_schema = _wifi_field_schema(client, ("SSID", "PW", "Country", "Hostname"))
     return await ar.handle_set_cmd(
-        client, fields, client.get_cfg_schema(), post_fct=client.reconnect_wifi, ok_descr="Network settings updated"
+        client, fields, net_schema, post_fct=client.reconnect_wifi, ok_descr="Network settings updated"
     )
+
+
+async def _simulated_set_wifi_led_endpoint(client: asy_conn_time, request: "Any") -> "ar.ResponseEnvelope":
+    data, err = ar.parse_cmd_request(request, ["setWiFiLED"])
+    if err is not None:
+        return err
+    assert data is not None
+    fields = {k: v for k, v in data.items() if k != "cmd"}
+    led_schema = _wifi_field_schema(client, ("LedWifiOn",))
+    return await ar.handle_set_cmd(client, fields, led_schema)
 
 
 def test_mocked_request_fine_data_applies_and_reports_ok() -> None:
@@ -195,6 +220,62 @@ def test_mocked_request_empty_body_dict_is_valid_but_changes_nothing() -> None:
     resp = run(_simulated_set_network_endpoint(client, req))
     assert resp == {"res": "OK", "code": 0, "descr": "Network settings updated", "result": {}}
     assert client.reconn_wifi is False  # nothing changed, post_fct never fires
+
+
+# ---------------------------------------------------------------------------
+# setNetwork/setWiFiLED field scoping - regression coverage for the cross-route schema leakage bug
+# found in improved-quality/sensortask-wozi.py: asy_conn_time owns one schema for both routes'
+# fields, so passing the *whole* schema to either route (instead of each route's own real subset)
+# would let setNetwork accept/persist LedWifiOn (and spuriously reconnect for an LED-only change)
+# and let setWiFiLED silently accept/persist SSID/PW/Country/Hostname with no reconnect at all.
+# ---------------------------------------------------------------------------
+
+
+def test_mocked_set_network_rejects_led_wifi_on_and_does_not_reconnect() -> None:
+    client = make_wifi_client()
+    req = _FakeRequest({"cmd": "setNetwork", "LedWifiOn": False})  # not setNetwork's field
+    resp = run(_simulated_set_network_endpoint(client, req))
+    assert resp["res"] == "OK"
+    assert resp["result"] == {"LedWifiOn": "Invalid"}
+    assert client.reconn_wifi is False  # nothing setNetwork actually owns changed
+
+
+def test_mocked_set_network_hostname_change_still_reconnects_alongside_rejected_led_field() -> None:
+    client = make_wifi_client()
+    req = _FakeRequest({"cmd": "setNetwork", "Hostname": "NewHost", "LedWifiOn": False})
+    resp = run(_simulated_set_network_endpoint(client, req))
+    assert resp["result"] == {"Hostname": "Valid", "LedWifiOn": "Invalid"}
+    assert client.reconn_wifi is True  # Hostname is a real setNetwork field and did change
+
+
+def test_mocked_set_wifi_led_rejects_ssid_and_leaves_it_untouched() -> None:
+    client = make_wifi_client()
+    req = _FakeRequest({"cmd": "setWiFiLED", "SSID": "Hacked"})  # not setWiFiLED's field
+    resp = run(_simulated_set_wifi_led_endpoint(client, req))
+    assert resp["res"] == "OK"
+    assert resp["result"] == {"SSID": "Invalid"}
+    assert run(client.cfgmgr.get_dict(["SSID"])) == {"SSID": ""}  # untouched default, not "Hacked"
+
+
+def test_mocked_set_wifi_led_applies_its_own_field() -> None:
+    client = make_wifi_client()
+    req = _FakeRequest({"cmd": "setWiFiLED", "LedWifiOn": False})
+    resp = run(_simulated_set_wifi_led_endpoint(client, req))
+    assert resp["result"] == {"LedWifiOn": "Valid"}
+    assert run(client.cfgmgr.get_dict(["LedWifiOn"])) == {"LedWifiOn": False}
+
+
+def test_real_microdot_set_network_rejects_led_field_end_to_end() -> None:
+    # Reuses the module's own _wifi_app() helper (defined further below, alongside the other real-
+    # Microdot setter tests) - already wires /net/cmd to _simulated_set_network_endpoint.
+    client = make_wifi_client()
+    app = _wifi_app(client)
+    req = _make_request(app, "PUT", "/net/cmd", {"cmd": "setNetwork", "LedWifiOn": True})
+    res = run(app.dispatch_request(req))
+    assert res.status_code == 200
+    body = json.loads(res.body)
+    assert body["result"] == {"LedWifiOn": "Invalid"}
+    assert client.reconn_wifi is False
 
 
 # ---------------------------------------------------------------------------
