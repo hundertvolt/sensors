@@ -251,16 +251,11 @@ class SensorReaderConfig(SensorReader):
             default_vals,
             self.pr,
         )
-        # Per-field live-push callbacks, module-local and registered once here at construction
-        # (project decision - constant at runtime, no per-call plumbing needed): a subclass adds
-        # its own {field_name: async_push_fn} entries after calling super().__init__(). A field
-        # with no entry is persist-only, exactly like most of today's schema fields already are.
+        # Per-field live-push callbacks: a subclass registers {field_name: async_push_fn} entries
+        # after super().__init__(); a field with no entry is persist-only (see DRIVER_SPEC.md §5.2).
         self._push_callbacks: dict[str, Callable[[int | float | str | bool | None], Coroutine[Any, Any, bool]]] = {}
-        # Per-field live read-back callbacks, same registration shape as _push_callbacks - used
-        # only by _set_dict_cfg's failed-push recovery chain below to ask "what does the sensor
-        # actually have right now" before falling further back. A field with no entry here simply
-        # skips straight to the next fallback rung; registering one is optional, unlike push
-        # callbacks which are the whole point of a field having one.
+        # Per-field live read-back for _recover_failed_push's fallback chain below (optional, unlike
+        # _push_callbacks); a field with no entry skips to the next rung (see DRIVER_SPEC.md §5.2.2).
         self._get_callbacks: dict[str, Callable[[], Coroutine[Any, Any, int | float | str | bool | None]]] = {}
 
     async def _get_mgr_cfg(self, cfg: list[str]) -> dict[str, int | float | str | bool | None] | None:
@@ -269,26 +264,16 @@ class SensorReaderConfig(SensorReader):
     async def _set_mgr_cfg(
         self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "ConfigSchema"
     ) -> "tuple[bool, WriteValidity]":
-        # Overridable extension point, mirroring _get_mgr_cfg: the concrete implementation here
-        # delegates to the real ConfigManager, but a subclass with a fundamentally different
-        # persistence backend (the "hypothetical sensor with onboard nonvolatile storage" case)
-        # could override this alone and still reuse _set_dict_cfg's per-field push orchestration -
-        # storage location stays fully abstracted away from callers of _set_dict_cfg.
+        # Overridable extension point mirroring _get_mgr_cfg - a subclass with a different
+        # persistence backend can override just this and still reuse _set_dict_cfg's orchestration.
         return await self.cfgmgr.write_config(data, cfg_vals)
 
     async def _set_dict_cfg(
         self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "ConfigSchema"
     ) -> "WriteValidity":
-        # Setter mirror of _get_dict_cfg: persist first (so a value that made it onto the device is
-        # always the value still there after an unplanned reset - project decision), then push live
-        # only the fields that actually changed ("Valid") and have a registered callback. Every
-        # field is reported individually - an unknown key or an out-of-range value only fails that
-        # one key (ConfigManager.write_config's own per-key tolerance), never the whole request.
-        #
-        # Snapshot each requested field's pre-write value before persisting overwrites it - this is
-        # the one rung of _recover_failed_push's fallback chain that only exists here, before the
-        # write below, mirroring legacy set_sensor_value()'s "fall back to the stored config" step
-        # (which ran against a config that hadn't been touched yet).
+        # Setter mirror of _get_dict_cfg (see DRIVER_SPEC.md §5.2): persist first, then push live only
+        # changed fields with a callback. Snapshot each field's pre-write value first - the one
+        # _recover_failed_push rung that only exists here, before the write below overwrites it.
         try:  # _get_mgr_cfg is an overridable extension point, same defense as _get_dict_cfg's own use of it
             old_values = await self._get_mgr_cfg(list(data.keys()))
         except Exception as e:
@@ -315,11 +300,9 @@ class SensorReaderConfig(SensorReader):
             return {key: "Failed" for key in data}
 
         for key in data:
-            # Defense-in-depth against a misbehaving _set_mgr_cfg override that reports persisted=True
-            # but returns a results dict missing one of the requested keys (the real ConfigManager-
-            # backed implementation never does this - write_config() always accounts for every key in
-            # data) - without this, such a key would simply vanish from the returned dict instead of
-            # being reported, breaking this method's own "every field reported independently" contract.
+            # Defense-in-depth: a misbehaving _set_mgr_cfg override could report persisted=True but
+            # omit a key from results (the real ConfigManager-backed path never does) - without this,
+            # that key would silently vanish instead of being reported.
             results.setdefault(key, "Failed")
 
         for key, value in data.items():
@@ -344,17 +327,9 @@ class SensorReaderConfig(SensorReader):
         old_values: "dict[str, int | float | str | bool | None]",
         cfg_vals: "ConfigSchema",
     ) -> None:
-        # Mirrors legacy set_sensor_value()'s getter/previous-config/default fallback chain: a
-        # failed live push must not permanently leave the config file holding a value that was
-        # requested but never confirmed applied to the hardware (persist-first already wrote it
-        # before this push was even attempted - see _set_dict_cfg above). Recover, in order: a live
-        # read-back from the sensor itself (most authoritative, via _get_callbacks), else the value
-        # that was stored before this request (old_values, snapshotted in _set_dict_cfg before the
-        # overwrite), else the schema's own default for this field. The corrected value is written
-        # straight back through _set_mgr_cfg, deliberately bypassing _push_callbacks entirely so a
-        # persistently-failing push can't loop. The field's caller-visible status in _set_dict_cfg's
-        # returned dict stays "Failed" regardless, matching legacy exactly (the client is told the
-        # truth: their request wasn't applied) - only the underlying persisted value is repaired.
+        # Recovery chain for a failed live push (see DRIVER_SPEC.md §5.2.2): live read-back via
+        # _get_callbacks, else old_values' pre-write snapshot, else the schema default - written
+        # back through _set_mgr_cfg only, bypassing _push_callbacks so a failing push can't loop.
         field = schema_dict(cfg_vals).get(key)
         if field is None:
             return  # shouldn't happen - key was already validated against cfg_vals above
@@ -371,13 +346,9 @@ class SensorReaderConfig(SensorReader):
             except Exception as e:  # getter is caller-supplied; its runtime behavior isn't statically known
                 await self.pr.err_s("Error reading", key, "back from sensor:", e, errno=8)
                 recovered = None
-            # A getter is caller-supplied and reads live, possibly-adversarial hardware state - its
-            # return value isn't statically known to satisfy this field's own schema (e.g. a
-            # corrupted register read-back). Treating an out-of-schema value the same as a raised
-            # exception (fall through to the next rung) keeps this cascade's own invariant that
-            # every rung it actually accepts is schema-valid - matters because _set_mgr_cfg below is
-            # the last check before persisting, and a value it rejects would leave this recovery
-            # attempt silently doing nothing instead of falling further back.
+            # A getter reads live, possibly-adversarial hardware state - a value outside this
+            # field's own schema is treated the same as a raised exception (fall through), so
+            # every rung this cascade accepts is guaranteed schema-valid before it's persisted.
             if recovered is not None and type_or_range_error(recovered, field):
                 recovered = None
         if recovered is None:
@@ -389,9 +360,6 @@ class SensorReaderConfig(SensorReader):
             await self.pr.err_s("Error correcting", key, "after failed push:", e, errno=9)
 
     def get_cfg_schema(self) -> "ConfigSchema":
-        # Single source of truth for every subclass's schema - captured once, right here, from
-        # whatever default_vals a subclass already passes into super().__init__(). No I/O or
-        # locking involved (unlike _get_mgr_cfg/_get_dict_cfg below), so this stays a plain sync
-        # call. self.cfg_schema itself stays a public attribute too - existing callers reach into
-        # it directly (see CLAUDE.md's "Microdot / REST layer" section and DRIVER_SPEC.md section 5).
+        # Captured once from super().__init__()'s default_vals; sync (no I/O/locking involved).
+        # self.cfg_schema stays a public attribute too - see DRIVER_SPEC.md §5.1.
         return self.cfg_schema

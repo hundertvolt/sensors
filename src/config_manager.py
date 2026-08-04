@@ -22,10 +22,8 @@ if TYPE_CHECKING:
     T = TypeVar("T", int, float, str)
 
     # One schema field: (name, type, def, min, max, special) - see module docstring. "special" is
-    # either a single bypass value (the original shape: an exact-match exception to min/max, e.g.
-    # SCD30's AmbPres=0) or a tuple of allowed values (a discrete allowed-value set, e.g. BMP3xx's
-    # OSR/IIR settings or a closed string enum like systemCmd - see type_or_range_error). A pure
-    # enumeration field sets min/max to None and relies on the discrete set alone.
+    # a single bypass value (exact-match exception to min/max, e.g. SCD30's AmbPres=0) or a tuple
+    # of allowed values (a discrete set, e.g. BMP3xx's OSR/IIR settings - see type_or_range_error).
     FieldSchema = tuple[
         str,
         str,
@@ -40,10 +38,9 @@ from print_log import PrintLog
 
 
 def _special_bypass(check_val: "Any", val_special: "Any", scalar_type: type, check_special: bool) -> "bool | None":
-    # Shared by every non-bool branch of type_or_range_error: val_special is either a single
-    # scalar (the original exact-match bypass) or a tuple/list of scalars (a discrete allowed-value
-    # set). Returns True/False to short-circuit the caller (malformed special, or a valid bypass
-    # match), or None to fall through to the branch's own ordinary min/max range check.
+    # Shared by every non-bool branch of type_or_range_error: val_special is a single scalar or a
+    # tuple/list of scalars (see ConfigSchema above). Returns True/False to short-circuit the
+    # caller (malformed special, or a valid bypass match), or None to fall to the range check.
     if type(val_special) in (tuple, list):
         if any(type(v) is not scalar_type for v in val_special):
             return True  # malformed set (wrong-typed element) - reject regardless of check_val
@@ -139,13 +136,9 @@ def check_cfg_get_default(
     try:  # returns flag if value is used for storage and if the default, if valid
         _name, _type, def_val, _min, _max, special_val = field  # wrong length/shape -> ValueError, caught below
         use_value = True
-        # special: def is None but special has a scalar value -> use special as a non-stored mock
-        # default; check_special=True lets type_or_range_error's own special-equality shortcut
-        # accept it. A tuple/list special (discrete allowed-value set) has no single scalar to
-        # substitute - def_val stays None and fails the type_or_range_error self-check below the
-        # same way a genuinely absent default does, correctly flagging a special-only discrete-set
-        # field (no real per-field use case for one - see AmbPres-style single-value specials for
-        # the only "special-only, not stored" shape that's actually used) as a malformed schema.
+        # special-alone field: def is None but special has a scalar value -> use special as a
+        # non-stored mock default (check_special=True accepts it via the special-equality
+        # shortcut). A tuple/list special has no scalar to substitute - flagged as malformed.
         if def_val is None and special_val is not None and not isinstance(special_val, (tuple, list)):
             def_val = special_val
             use_value = False

@@ -25,11 +25,9 @@ if TYPE_CHECKING:
     ResponseEnvelope = dict[str, "str | int | dict[str, Any]"]
 
     class _RequestLike(Protocol):
-        # Structural stand-in for microdot.Request (ext/microdot.py - not on this project's mypy
-        # search path, see pyproject.toml's [tool.mypy] mypy_path/files) - mirrors print_log.py's
-        # own _FramManager/_FramChunk Protocols: describes only the one property parse_cmd_request
-        # actually touches, so this module stays decoupled from microdot's concrete shape and needs
-        # no import of it at all, typed or otherwise.
+        # Structural stand-in for microdot.Request (not on this project's mypy search path) -
+        # mirrors print_log.py's own _FramManager/_FramChunk Protocols: describes only the one
+        # property parse_cmd_request actually touches, no import of microdot needed at all.
         @property
         def json(self) -> "Any": ...
 
@@ -61,12 +59,9 @@ def make_response(code: int, descr: "str | None" = None, result: "dict[str, Any]
 
 
 def parse_cmd_request(request: "_RequestLike", keys: "list[str]") -> "tuple[dict[str, Any] | None, ResponseEnvelope | None]":
-    # Mirrors improved-quality/api_helpers.py's cmd_pre_check(): parse the request body, then
-    # validate a "cmd" field against the caller's own allowed-command list - unchanged in spirit
-    # from the legacy pipeline, this part never needed special_err's closed-enum generalization.
-    # One deliberate precision improvement over the legacy version: a syntactically valid but
-    # non-dict JSON body (e.g. a bare list or string) is treated as a genuinely invalid request
-    # (code 1) rather than falling through to "cmd specifier missing" (code 2).
+    # Parse the request body, then validate a "cmd" field against the caller's own allowed-command
+    # list. A syntactically valid but non-dict JSON body (e.g. a bare list or string) is treated as
+    # a genuinely invalid request (code 1), not "cmd specifier missing" (code 2).
     try:
         req_json = request.json
     except Exception:  # request.json has no internal guarding (see CLAUDE.md) - a malformed body
@@ -89,12 +84,9 @@ async def handle_set_cmd(
     post_asy_fct: "Callable[[], Coroutine[Any, Any, None]] | None" = None,
     ok_descr: "str | None" = None,
 ) -> "ResponseEnvelope":
-    # Persist+push already happened, individually per field, inside reader._set_dict_cfg() (see
-    # base_classes.py) - a per-field failure there is detail carried in "result", never a reason to
-    # report the overall request as ERR: the request itself was validly processed and dispatched.
-    # The one post-write hook fires at most once per call, only if at least one field actually
-    # changed (project decision: one hook per endpoint, not one per field) - mirrors the legacy
-    # pipeline's post_fct/post_asy_fct, unconditional on every field that changed alike.
+    # Persist+push already happened per field inside reader._set_dict_cfg() (base_classes.py) - a
+    # per-field failure is detail carried in "result", never a reason to report the overall request
+    # as ERR. The post-write hook fires at most once per call, only if a field actually changed.
     try:
         results = await reader._set_dict_cfg(data, cfg_vals)
         if any(status == "Valid" for status in results.values()):
@@ -104,10 +96,8 @@ async def handle_set_cmd(
                 await post_asy_fct()
         return make_response(0, descr=ok_descr, result=results)
     except Exception as e:
-        # Defense-in-depth: reader._set_dict_cfg() already catches its own internal failure modes
-        # (a misbehaving _set_mgr_cfg override, a raising push callback - see base_classes.py), so
-        # what actually reaches here is almost always a caller-supplied post_fct/post_asy_fct
-        # raising, or some other genuinely unexpected failure - either way, always produce a
-        # precise, on-brand reply here rather than relying solely on Microdot's own blanket catch.
+        # Defense-in-depth: reader._set_dict_cfg() already catches its own internal failure modes,
+        # so what reaches here is almost always a caller-supplied post_fct/post_asy_fct raising -
+        # produce a precise, on-brand reply rather than relying solely on Microdot's blanket catch.
         await reader.pr.err_s("Unhandled error in setter dispatch:", e, errno=1)
         return make_response(100)

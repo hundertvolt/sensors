@@ -50,13 +50,10 @@ _STATUS_DATA_READY = const(0x60)  # STATUS bits 5+6: drdy_press | drdy_temp (sec
 _CMD_RDY_TIMEOUT_MS = const(50)  # cmd_rdy clears near-instantly outside an in-flight command
 _MEAS_TIMEOUT_MS = const(300)  # datasheet sec 3.9.2: max ~129ms at x32/x32 osr; generous margin
 
-_OSR_SETTINGS = const((1, 2, 4, 8, 16, 32))  # pressure and temperature oversampling settings -
-# const()-wrapped (unlike before) so it can be embedded directly in _VAL_POV/_VAL_TOV's own
-# const() schema tuples below as a discrete allowed-value set; .index()/`in` behave identically on
-# the folded literal.
-# IIR filter coefficients (datasheet sec 4.3.20's CONFIG register: encoding index -> 2^index - 1,
-# not a power of two). Cross-checked against Bosch's reference driver, the Linux kernel IIO driver,
-# and both datasheets.
+_OSR_SETTINGS = const((1, 2, 4, 8, 16, 32))  # pressure/temperature oversampling settings -
+# const()-wrapped so it can embed in _VAL_POV/_VAL_TOV's own const() schema tuples below.
+# IIR filter coefficients (datasheet sec 4.3.20 CONFIG register: index -> 2^index - 1). Cross-
+# checked against Bosch's reference driver, the Linux kernel IIO driver, and both datasheets.
 _IIR_SETTINGS = const((0, 1, 3, 7, 15, 31, 63, 127))
 
 _MIN_TRIGGER_SECS = const(1)
@@ -110,19 +107,15 @@ class BMP3xx_Reader(SensorReaderConfig):
         self.trigger_timer = Timer()
         self.trigger_period = LockedValue(int(trigger_sec))
         self.trigger_counter = 0
-        # PressOffset/TempOffset/SeaLevelOffs/MeanAtmTemp are persist-only (read fresh from cfgmgr
-        # every _store_bmp() cycle - pure compensation-math inputs, nothing to push). SampleInterv
-        # and the three hardware-facing fields each have a real live effect, registered once here
-        # (project decision - constant at runtime, no per-call plumbing needed).
+        # PressOffset/TempOffset/SeaLevelOffs/MeanAtmTemp are persist-only compensation-math inputs
+        # (nothing to push); SampleInterv and the three hardware-facing fields have a live effect.
         self._push_callbacks[name_cfg(_VAL_SI)] = self._push_trigger_secs
         self._push_callbacks[name_cfg(_VAL_POV)] = self._push_pressure_oversampling
         self._push_callbacks[name_cfg(_VAL_TOV)] = self._push_temperature_oversampling
         self._push_callbacks[name_cfg(_VAL_FC)] = self._push_filter_coefficient
-        # Live sensor read-back for _set_dict_cfg's failed-push recovery chain (base_classes.py) -
-        # matches legacy's set_sensor_value(..., getter=bmp_reader.get_*, ...) call sites exactly for
-        # these three fields; SampleInterv has no hardware read-back (it's a pure software timing
-        # knob, set_trigger_secs() never actually fails - see its own comment), so it's intentionally
-        # left with no entry here, same as legacy never passed a getter for it either.
+        # Live sensor read-back for _set_dict_cfg's failed-push recovery chain (DRIVER_SPEC.md
+        # §5.2.2); SampleInterv is a pure software timing knob with no hardware read-back, so it
+        # intentionally has no entry here.
         self._get_callbacks[name_cfg(_VAL_POV)] = self.get_pressure_oversampling
         self._get_callbacks[name_cfg(_VAL_TOV)] = self.get_temperature_oversampling
         self._get_callbacks[name_cfg(_VAL_FC)] = self.get_filter_coefficient
@@ -377,10 +370,8 @@ class BMP3XX_I2C:
         # bare IndexError leak out of this protocol-layer failure.
         if osr >= len(_OSR_SETTINGS):
             raise OSError(f"OSR bit-field at bit {start_bit} read back reserved encoding {osr}")
-        # micropython-stubs' const() stub is a constrained TypeVar over bare Tuple (not a
-        # parameterized tuple[int, ...]) - indexing a const()-wrapped tuple loses its element type
-        # to Any in mypy's eyes, even though it's genuinely int at runtime. Explicit int narrows it
-        # back rather than silently returning Any from a function declared -> int.
+        # micropython-stubs' const() stub types indexing as Any even though it's genuinely int at
+        # runtime - explicit int narrows it back rather than returning Any from a -> int function.
         result: int = _OSR_SETTINGS[osr]
         return result
 
