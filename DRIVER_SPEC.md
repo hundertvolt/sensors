@@ -441,20 +441,28 @@ wire shape as before (`{"res": "OK"|"ERR", "code": int, "descr": str, "result": 
   defense-in-depth on top of Microdot's blanket per-request catch (project decision, based on
   prior field experience with Microdot behaving unexpectedly) — `reader._set_dict_cfg()` already
   catches its own internal failure modes, so what actually reaches this outer catch is almost
-  always a caller-supplied `post_fct`/`post_asy_fct` raising.
+  always a caller-supplied `post_fct`/`post_asy_fct` raising. Build `data` from only the keys the
+  client actually sent — an omitted key is never validated/persisted/pushed (`_set_dict_cfg` only
+  iterates `data.items()`); this is the full replacement for the legacy pipeline's `""`-string-
+  means-unchanged convention, not a gap.
 - A per-field validation failure (including an unrecognized key) never demotes the overall
   response below `"OK"`/code `0` — the request was validly processed and dispatched; per-field
   detail lives entirely in `"result"`. See `tests/test_setter_microdot_integration.py` for a real
   `ext/microdot.py` (v2.6.2) end-to-end proof of this whole pipeline, dispatched through
   Microdot's own real `dispatch_request()`.
 
-**Done (2026-08-04)**: every REST endpoint handler in `improved-quality/sensortask-wozi.py` now
-calls these directly, replacing its own `cmd_pre_check`/`update_valid_json`/`cmd_post_check`/
-`set_sensor_value`/`api_helpers.py` calls entirely — done under a scoped, project-owner-authorized
-exception to CLAUDE.md's hard rule on editing `improved-quality/` source, since that file was
-`api_helpers.py`'s last remaining importer and removing it required migrating its call sites. See
-BACKLOG.md's writeup for what changed along the way (a real config-file disconnect bug fixed for
-`setSGP`/`setBMP`, plus the wire-name/wire-format consequences).
+Every REST endpoint handler in `improved-quality/sensortask-wozi.py` now calls these directly
+(under a scoped, project-owner-authorized exception to CLAUDE.md's hard rule on editing
+`improved-quality/` source, since that file was `improved-quality/api_helpers.py`'s last remaining
+importer). `setSGP`/`setBMP` route directly through `sgp_reader.get_cfg_schema()`/
+`bmp_reader.get_cfg_schema()` now, not a separate `config_SYSTEM.cfg` — the legacy handlers wrote
+into that parallel file, which neither driver's own logic ever read, so a REST client setting these
+fields never actually reached the sensor; routing through the real schema fixed that disconnect.
+Two wire-format conventions apply project-wide as a result: a field's wire name drops any redundant
+per-driver prefix (`"BackupPeriod"`, not `"SGPBackupPeriod"` — the endpoint itself already scopes
+the field set), and every bool-typed field is native JSON `true`/`false`, replacing the legacy
+`"switch"` `"On"`/`"Off"` string dtype everywhere it had a live route. The HTML/JS frontend has not
+been updated to match either change yet (see BACKLOG.md).
 
 **One real bug this migration surfaced, worth knowing for any future module in the same shape**:
 `asy_conn_time` owns exactly one schema/`cfgmgr` for all of `SSID`/`PW`/`Country`/`Hostname`/

@@ -620,6 +620,14 @@ REST layer still has to add.
   than being silently contained at a level the supervisor never observes (see BACKLOG.md for the
   still-open question of exactly what "crashes" means at the per-connection level on MicroPython's
   `asyncio`).
+- **Each accepted connection runs in its own independent `asyncio.Task`** (confirmed against
+  `extmod/asyncio/stream.py`'s `Server._serve()`, which calls `core.create_task(cb(s2s, s2s))` per
+  accepted connection — the same isolation CPython's `asyncio.start_server()` gives). Combined with
+  the blanket per-request catch above, the one confirmed gap (a non-`OSError` escaping
+  `Response.write()`/`handle_request()`) only ever takes down that one client's connection Task —
+  the rest of the Microdot server, including its accept loop, keeps running unaffected. "Microdot
+  restarts itself when it crashes" (the task-supervisor point above) stays a backstop for a fully-
+  dead server task, not something made load-bearing by this one gap.
 - `errorhandler()`'s two lookup keys are independent and easy to conflate: **numeric HTTP status
   code** (`@app.errorhandler(404)`, also what `abort()`/`HTTPException` resolves through — matched
   by `exc.status_code`, never by exception class) versus **Python exception class**

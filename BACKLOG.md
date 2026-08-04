@@ -55,134 +55,6 @@ constraints.
 - **Neopixel warning-flash sequencing and the task-supervisor error-budget counter** are both
   behaviorally correct and intentional as designed, but flagged by the owner as implementable more
   efficiently — worth a cleaner implementation in the refactor without changing observed behavior.
-- **Three legacy REST wire-format/protocol conventions had no direct 1:1 equivalent in the new
-  schema-driven setter dispatch (`base_classes.py`'s `_set_dict_cfg`/`api_response.py`'s
-  `handle_set_cmd`) — found while auditing the new mechanism against `python/CommonDrivers/
-  api_helpers.py`'s actual legacy behavior (not just against its own internal design). All three
-  were raised with and confirmed by the project owner directly; all three are now settled (kept
-  here as the record of what changed from legacy and why, not as open questions):**
-  - **Settled: BMP3xx's `PressOvers`/`TempOvers`/`FiltCoeff` wire format is deliberately the raw
-    value, not the legacy index.** The legacy `modules/sensortask-wozi.py` REST handler (`setBMP`)
-    accepted a **0-5 (OSR) / 0-7 (IIR) index** and converted it server-side via
-    `update_valid_json(..., weight_fct=lambda x: 2**x, ...)` (or `2**x - 1` for IIR) into the real
-    oversampling multiplier / filter coefficient before validating/persisting/pushing it. The new
-    `_VAL_POV`/`_VAL_TOV`/`_VAL_FC` schema (`asy_bmp3xx_driver.py`) validates the **raw multiplier/
-    coefficient value directly** against `_OSR_SETTINGS`/`_IIR_SETTINGS` (confirmed correct against
-    the real BMP388 datasheet's OSR/IIR tables — see `datasheets/bmp3xx/bst-bmp388-ds001.pdf` sec
-    3.4.1/3.4.3, Table 6-8), with no index-to-value conversion step anywhere in the new path.
-    **Owner-confirmed this is the intended, final wire format** — a deliberate, accepted breaking
-    change from the legacy index-based API, not an oversight to fix. Nothing further to do here.
-  - **Settled: the legacy pipeline's global "empty string on the wire means leave this field
-    unchanged" convention is deliberately abandoned, replaced by "an omitted key means don't
-    change."** `update_valid_json()` (the legacy per-field validator) special-cased
-    `json_in[json_key] == ""` as `"Unchanged"` (skip) for *every* field of *every* type, on *every*
-    endpoint — letting a client always resend a full payload and blank out only the fields it
-    didn't want touched. `type_or_range_error()`/`ConfigManager.write_config()` have no such global
-    bypass, and **this is intentional, not a gap**: `_set_dict_cfg` already only ever touches keys
-    actually present in its `data` argument (`for key, value in data.items()`) — an absent key is
-    never validated, never reported, never persisted, never pushed. **This existing behavior is
-    already the full equivalent the owner agreed to** — a client that wants to leave a field
-    untouched omits its key from the request body entirely, rather than sending `""`. No code
-    change was needed; the mechanism already existed by construction. Whichever REST route(s) get
-    built on top of `handle_set_cmd()` should build its request body from only the keys the client
-    actually sent (already how every test in `test_setter_microdot_integration.py`/
-    `test_api_response.py` constructs `data`), not synthesize a full payload the way
-    `init_json_from_cfg()` used to.
-  - **Settled and implemented: legacy's `cmd_keys` mechanism (a command-only, non-persisted field
-    reported alongside real config fields in the same response, e.g. SGP40's `SGPResetVOC` →
-    `sgp_reader.reset_voc()`) is replaced by reusing the schema's existing "special-alone" field
-    convention** (`check_cfg_get_default`'s `def=None` + non-tuple `special` — already used for
-    SCD30's `AmbPres`), owner-confirmed as the intended shape. `asy_sgp40_driver.py`'s
-    `_VAL_RESET = (("SGPResetVOC", "bool", None, None, None, True),)` is included in the schema
-    passed to `super().__init__()` (so `get_cfg_schema()`/`_set_dict_cfg()` validate and dispatch
-    it like any real field), with a push callback (`_push_reset_voc`) registered to `reset_voc()`.
-    No new mechanism was needed in `base_classes.py`/`config_manager.py` at all — two already-
-    existing, already-tested behaviors combine to produce exactly the right semantics:
-    `type_or_range_error`'s `"bool"` branch ignores `special` entirely (a longstanding, deliberate
-    asymmetry), so both `True`/`False` are always structurally valid; and
-    `ConfigManager.write_config()`'s `not use_value` branch for a special-alone field always
-    reports `"Valid"`, never `"Unchanged"` (no previous stored value to compare against) — so the
-    push callback reliably re-fires on *every* request, matching `reset_voc()`'s repeatable-trigger
-    contract, not just an ordinary field's "only push on an actual change" default. See
-    DRIVER_SPEC.md section 5.2.1 for the full pattern (including the one consequence a driver using
-    this must handle: `get_dict_cfg()` must keep excluding the field from its own read, since
-    `ConfigManager.get_dict()` is all-or-nothing and the field is never in `_cache`).
-- **A follow-up, full function-by-function re-audit of `python/CommonDrivers/api_helpers.py` (2026-08-04)
-  against `base_classes.py`/`config_manager.py`/`api_response.py` found two more points worth
-  recording, and prompted the removal of `improved-quality/api_helpers.py` (see below):**
-  - **Confirmed, no gap: legacy's `"switch"` dtype (`update_valid_json`'s `"On"`/`"Off"` string
-    convention, converted via `toSwitch()`/`to_switch()`) has no equivalent in
-    `config_manager.py`'s `type_or_range_error()` — and needs none.** Every promoted bool field
-    (`asy_scd30_driver.py`'s `SelfCal`, `asy_sgp40_driver.py`'s `SGPResetVOC`,
-    `asy_wifi_service.py`'s `LedWifiOn`) already uses schema type `"bool"` end-to-end, sent/received
-    as a native JSON `true`/`false`, not an `"On"`/`"Off"` string — already implemented and exercised
-    by real tests (not something newly changed by this audit), just not previously called out
-    explicitly as a legacy convention with no direct equivalent. Nothing to do here.
-  - **Settled and implemented: `set_sensor_value()`'s getter/previous-config/default
-    failure-recovery chain is reintroduced as `base_classes.py`'s `_recover_failed_push()`, called
-    from `_set_dict_cfg()` whenever a push callback fails.** Owner-confirmed intent (2026-08-04):
-    the mechanism exists so the persisted config always ends up holding a *valid* value even after a
-    failed live push, not a value the client requested but that never actually reached the sensor.
-    Adapted to the new architecture's realities rather than ported 1:1, since persist-first (an
-    already-settled ordering — see its own comment) means the "previous stored config" rung no
-    longer exists by the time a push fails unless it's captured first:
-    - `_set_dict_cfg()` snapshots each requested field's pre-write value (via `_get_mgr_cfg`) *before*
-      persisting, so that rung survives the overwrite.
-    - A new, optional per-field registry, `self._get_callbacks` (mirrors `self._push_callbacks`'
-      registration shape exactly), lets a driver plug in a live sensor read-back where one exists -
-      this is the new mechanism replacing legacy's caller-supplied `getter` function argument.
-    - On push failure, `_recover_failed_push()` tries, in order: the live getter (if registered),
-      else the pre-write snapshot, else the schema's own `def` value (no separate `default=` argument
-      needed anymore, unlike legacy - the schema already carries a canonical default per field) - then
-      writes the recovered value straight back through `_set_mgr_cfg` (bypassing `_push_callbacks`
-      entirely, so a persistently-failing push can't loop).
-    - Confirmed scope, matching `set_sensor_value`'s own gate exactly: only fields whose *this-request*
-      push actually failed enter the chain - untouched/unchanged fields never did in legacy either.
-      A command-only/special-alone field (`check_cfg_get_default`'s `use_value=False`) skips the
-      chain entirely, mirroring legacy's own `cmd_keys` exclusion - there is nothing to persist-correct
-      for a field that's never in `ConfigManager`'s `_cache` to begin with.
-    - The field's caller-visible status in the returned dict stays `"Failed"` regardless of whether
-      the correction succeeded - matches legacy exactly (the client is told the truth about their
-      request; the persisted-value repair happens silently underneath).
-    See `tests/test_base_classes.py`'s dedicated recovery-chain tests for coverage of every rung
-    (getter wins, getter raises falls to snapshot, first-ever-request falls to default, special-alone
-    exclusion, snapshot-read exception, correction-write exception) - `src/base_classes.py` is at
-    100% line coverage including this method.
-  - **`python/CommonDrivers/api_helpers.py` (deployed legacy) stays as-is, permanently out of
-    scope** — owner-confirmed (2026-08-04): it's `from api_helpers import *`-imported by all four
-    deployed `modules/sensortask-*.py` files, and the deployed codebase itself isn't being touched by
-    this refactor.
-  - **Done: `improved-quality/api_helpers.py` migrated away from and removed (2026-08-04), under a
-    scoped, owner-authorized exception to the usual "don't edit `improved-quality/` source" hard
-    rule** — `improved-quality/sensortask-wozi.py` was its last remaining importer. Every route now
-    goes through `api_response.py`'s `parse_cmd_request()`/`handle_set_cmd()`/`make_response()`, or -
-    for fields with no `SensorReaderConfig`-backed schema at all (SCD30's own hand-rolled setters;
-    the LED-only/system-only commands that never persisted anything to begin with) - a small local
-    per-field `config_manager.py.type_or_range_error()` check. One real bug surfaced and fixed along
-    the way, not just a mechanical import removal: the old residual "system-level config" schema
-    (`_VAL_SGP_SYS_FIELDS`/`_VAL_BMP_SYS_FIELDS`, `config_SYSTEM.cfg` - now removed entirely) was a
-    **separate, parallel config file** from `sgp_reader`'s/`bmp_reader`'s own real
-    `config_SGP40.cfg`/`config_BMP3XX.cfg`, with even different defaults - the old `setSGP`/`setBMP`
-    handlers persisted into it, but neither promoted driver's actual internal logic ever read from
-    it, so a REST client setting these fields never actually changed real sensor behavior. Both
-    routes now go directly through `sgp_reader.get_cfg_schema()`/`bmp_reader.get_cfg_schema()`
-    instead, fixing the disconnect as a direct consequence. Two further, deliberate consequences
-    (matching already-settled decisions elsewhere in this refactor, not new policy calls made here):
-    the wire field names for `setSGP`/`setBMP` drop their redundant `"SGP"`/`"BMP"` prefix to match
-    each driver's own real schema field names directly (e.g. `"BackupPeriod"` not
-    `"SGPBackupPeriod"`); and every bool-typed field project-wide (including this file's own
-    `Error_Status`/`Synced` status fields and `/led/config`'s `LedAutoOn`/`LedWifiOn`) is native JSON
-    `true`/`false` now, completing the "switch" dtype's retirement (see the bullet above) everywhere
-    it had a live route, not just where it was previously already true by construction.
-    `asy_bmp3xx_driver.py` also gained `_get_callbacks` registrations for `PressOvers`/`TempOvers`/
-    `FiltCoeff` (live sensor read-back for `_recover_failed_push()`), matching `setBMP`'s legacy
-    `getter=` arguments exactly rather than leaving them as a silent gap. **Not touched**: the
-    HTML/JS frontend (known brittle, explicitly deferred elsewhere in this file) - it will need
-    matching updates for the wire-name/wire-format changes above whenever it's next touched.
-    Verified via full `scripts/lint.sh`/`scripts/typecheck.sh`/`scripts/test.sh` (32/32 tests still
-    green; lint findings dropped 71→37, mypy 83→45 across the whole repo as a direct, expected
-    consequence of the deletion). `python/CommonDrivers/api_helpers.py` (the deployed legacy copy)
-    remains, per the item above - out of scope, not this file.
 - **No `@app.errorhandler` registrations exist anywhere yet** (confirmed: neither
   `improved-quality/sensortask-wozi.py` nor the deployed `python/CommonDrivers/`-based app
   registers any). See CLAUDE.md's "Microdot / REST layer" section for what Microdot itself already
@@ -420,19 +292,6 @@ constraints.
     `sensortask-wozi.py`/`neopixel_signal.py`, several test files), a real blast-radius decision
     similar in shape to the already-deferred `max_i2c_err` rename. Needs an owner call on whether to
     rename (and to what) or accept the mismatch permanently, not a unilateral fix.
-11. ~~Does MicroPython's `asyncio.start_server()` isolate each accepted connection in its own
-    Task?~~ **Resolved: yes, confirmed directly against source.** Checked
-    `extmod/asyncio/stream.py` in the pinned toolchain checkout (`/root/pico-toolchain/micropython`,
-    `v1.28.0` — matches the refactor's own forward version target, not the deployed-only 1.26 pin;
-    see CLAUDE.md's "Platform target"): `Server._serve()`'s accept loop calls
-    `core.create_task(cb(s2s, s2s))` for every accepted connection (line 174) — each connection gets
-    its own independent Task, the same isolation CPython's `asyncio.start_server()` gives. Consequence
-    for the one confirmed gap in Microdot's own per-request safety net (a non-`OSError` exception
-    escaping `Response.write()`/`handle_request()` — see CLAUDE.md's "Microdot / REST layer"): only
-    that one client's connection Task is affected; the outer `_serve()` accept loop and the rest of
-    the Microdot server keep running unaffected. "Microdot restarts itself when it crashes" (via
-    `system_service.py`'s existing task supervisor) stays a backstop for a fully-dead server task,
-    not something made load-bearing by this gap.
 
 ## Deferred / explicitly out-of-scope work
 
@@ -446,7 +305,9 @@ constraints.
   signature and every test file that constructs one, a wider blast radius than any one promotion
   pass.
 - **HTML/frontend automation & consistency** — known hand-written/brittle, not a priority; revisit
-  after the Python-side refactor.
+  after the Python-side refactor. Concretely stale now: the frontend still sends the pre-migration
+  `setSGP`/`setBMP` field names/formats (see DRIVER_SPEC.md section 5.3's wire-format note) — not
+  updated to match.
 - **UART sensor integration** — `asy_uart_driver.py` is promoted to `src/` but deliberately not
   wired into any `sensortask-*.py`; `asy_uart_comm.py` (its one real consumer) is its own separate,
   still out-of-scope promotion. Unused by any deployed config — wiring it in is after the refactor
