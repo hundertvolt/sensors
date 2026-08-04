@@ -429,10 +429,13 @@ wire shape as before (`{"res": "OK"|"ERR", "code": int, "descr": str, "result": 
   `ext/microdot.py` (v2.6.2) end-to-end proof of this whole pipeline, dispatched through
   Microdot's own real `dispatch_request()`.
 
-Wiring an actual REST endpoint handler in `improved-quality/sensortask-wozi.py` to call these
-(replacing its own `cmd_pre_check`/`update_valid_json`/`cmd_post_check`/`set_sensor_value` calls)
-is a separate, still out-of-scope pass — that file stays untouched under CLAUDE.md's hard rule on
-editing `improved-quality/` source without a scoped, project-owner-authorized exception.
+**Done (2026-08-04)**: every REST endpoint handler in `improved-quality/sensortask-wozi.py` now
+calls these directly, replacing its own `cmd_pre_check`/`update_valid_json`/`cmd_post_check`/
+`set_sensor_value`/`api_helpers.py` calls entirely — done under a scoped, project-owner-authorized
+exception to CLAUDE.md's hard rule on editing `improved-quality/` source, since that file was
+`api_helpers.py`'s last remaining importer and removing it required migrating its call sites. See
+BACKLOG.md's writeup for what changed along the way (a real config-file disconnect bug fixed for
+`setSGP`/`setBMP`, plus the wire-name/wire-format consequences).
 
 ## 6. Data model (`config_manager.py`'s `make_dict()`)
 

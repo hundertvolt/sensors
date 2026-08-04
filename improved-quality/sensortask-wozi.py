@@ -16,55 +16,48 @@ from config_manager import ConfigManager
 from microdot import Microdot, send_file, Request, Response
 from machine import Timer, WDT
 from micropython import const
-from api_helpers import (
-    JsonValidity,
-    init_json_from_cfg,
-    init_json_from_ext,
-    cmd_pre_check,
-    update_valid_json,
-    cmd_post_check,
-    to_switch,
-    set_sensor_value,
-    get_valid_values,
-    generic_error_return,
-    time_to_dict,
-)
-from typing import List, Callable, Dict
+import api_response as ar
+import config_manager as cm
+from typing import Any, Callable, Coroutine, Dict, List, Tuple
 
 _MAX_I2C_ERR = const(5)
 _FRAM_PAUSE_SEC = const(300)  # 5min communication pause for FRAM
 
-# Residual system-level config: fields with no per-driver setter/schema of their own yet (the
-# generic REST config-setter mechanism is deferred, tracked separately in BACKLOG.md - not part of
-# this fix) - own schema, own config_SYSTEM.cfg file, same global scheme every other module with
-# user-settable configuration now follows (LED config moved into neopixel_signal.py itself; NTP
-# timing config already lives on ntp.cfgmgr - see /time/*, /led/* routes below). Ranges/defaults for
-# the BMP fields mirror asy_bmp3xx_driver.py's own internal schema (_VAL_SI/_VAL_POV/etc.) exactly,
-# since these are REST-layer aliases of the same real fields, not independently-designed values.
-_VAL_SGP_BACKUP_PERIOD = const((("SGPBackupPeriod", "int", 0, 0, 1440, None),))
-_VAL_SGP_BACKUP_MAXAGE = const((("SGPBackupMaxAge", "int", 0, 0, 10080, None),))
-_VAL_SGP_WAIT_NTP = const((("SGPWaitTimeNTP", "int", 60, 0, 600, None),))
-_VAL_BMP_SAMPLE_INTERV = const((("BMPSampleInterv", "int", 2, 1, 3600, None),))
-_VAL_BMP_PRESS_OVERS = const((("BMPPressOvers", "int", 1, 1, 32, None),))
-_VAL_BMP_TEMP_OVERS = const((("BMPTempOvers", "int", 1, 1, 32, None),))
-_VAL_BMP_FILT_COEFF = const((("BMPFiltCoeff", "int", 0, 0, 127, None),))
-_VAL_BMP_PRESS_OFFSET = const((("BMPPressOffset", "float", 0.0, -500.0, 500.0, None),))
-_VAL_BMP_TEMP_OFFSET = const((("BMPTempOffset", "float", 0.0, -10.0, 10.0, None),))
-_VAL_BMP_SEALEVEL_OFFS = const((("BMPSeaLevelOffs", "float", 0.0, -1000.0, 5000.0, None),))
-_VAL_BMP_MEAN_ATM_TEMP = const((("BMPMeanAtmTemp", "float", 15.0, -50.0, 50.0, None),))
-
-_VAL_SGP_SYS_FIELDS = _VAL_SGP_BACKUP_PERIOD + _VAL_SGP_BACKUP_MAXAGE + _VAL_SGP_WAIT_NTP
-_VAL_BMP_SYS_FIELDS = (
-    _VAL_BMP_SAMPLE_INTERV
-    + _VAL_BMP_PRESS_OVERS
-    + _VAL_BMP_TEMP_OVERS
-    + _VAL_BMP_FILT_COEFF
-    + _VAL_BMP_PRESS_OFFSET
-    + _VAL_BMP_TEMP_OFFSET
-    + _VAL_BMP_SEALEVEL_OFFS
-    + _VAL_BMP_MEAN_ATM_TEMP
-)
-_VAL_SYSTEM_FIELDS = _VAL_SGP_SYS_FIELDS + _VAL_BMP_SYS_FIELDS
+# api_helpers.py migration (2026-08-04, owner-authorized scoped exception to the usual
+# "don't edit improved-quality/ source" rule - this file was its last remaining importer): every
+# route below now goes through api_response.py's parse_cmd_request()/handle_set_cmd()/
+# make_response(), or - for fields with no SensorReaderConfig-backed schema at all (SCD30's own
+# hand-rolled setters, the LED-only/system-only commands below that never persisted anything to
+# begin with) - a small local per-field cm.type_or_range_error() check, matching the same result
+# shape without needing base_classes.py's full push-dispatch machinery where it was never used.
+#
+# One real bug surfaced and fixed along the way, not just a mechanical import removal: the old
+# residual "system-level config" schema below (_VAL_SGP_SYS_FIELDS/_VAL_BMP_SYS_FIELDS, config_
+# SYSTEM.cfg) was a SEPARATE, PARALLEL config file from sgp_reader's/bmp_reader's own real
+# config_SGP40.cfg/config_BMP3XX.cfg - the setSGP/setBMP handlers below persisted into the former,
+# but neither promoted driver's actual internal logic ever reads from it (each reads only its own
+# cfgmgr - see asy_sgp40_driver.py's/asy_bmp3xx_driver.py's own __init__/_setup()), so a REST client
+# setting these fields never actually changed real sensor behavior, only a dead, disconnected copy
+# of the same-named settings with even different defaults from the real ones. The migration below
+# routes these fields directly through sgp_reader.get_cfg_schema()/bmp_reader.get_cfg_schema()
+# instead, which fixes this disconnect as a direct consequence (writes now reach the config file
+# each driver's own logic actually reads) - see BACKLOG.md for the full writeup. The now-fully-
+# superseded _VAL_SGP_SYS_FIELDS/_VAL_BMP_SYS_FIELDS/_VAL_SYSTEM_FIELDS consts and the standalone
+# config_SYSTEM.cfg-backed `cfgmgr` are removed entirely - nothing else in this file used them.
+#
+# Two consequences worth knowing (both deliberate, matching already-settled decisions elsewhere in
+# this same refactor, not new policy calls): (1) the wire field names for setSGP/setBMP drop their
+# "SGP"/"BMP" prefix to match each driver's own real schema field names directly (e.g.
+# "BackupPeriod" not "SGPBackupPeriod") - the endpoint itself is already scoped by command name, so
+# the prefix was redundant; (2) setBMP's PressOvers/TempOvers/FiltCoeff now take the raw
+# multiplier/coefficient value on the wire, not the legacy 0-5/0-7 index - already the owner-
+# confirmed, settled wire format for these fields (see BACKLOG.md's "raw value" item), just not
+# previously reachable through this specific route. Every bool-typed field project-wide (LedWifiOn,
+# SelfCal, SGPResetVOC, ContMeas, and this file's own Error_Status/Synced status fields) is native
+# JSON true/false end to end now too, completing the same already-settled convention (legacy's
+# "switch"/"On"/"Off" string dtype has no equivalent anywhere in config_manager.py and needs none).
+# The HTML/JS frontend is unchanged by this pass (known brittle, explicitly deferred - see
+# BACKLOG.md) and will need matching updates whenever it's next touched.
 
 
 async def sgp_comp_callback() -> List[float | None]:
@@ -133,9 +126,6 @@ i2c1 = asy_i2c_driver.I2C(1, 19, 18, frequency=50000)
 spi0 = asy_spi_driver.SPI(0, 2, 3, 4)
 fram = AsyFramManager(spi0, 1, max_size=0x2000, debug=debug)
 sysfunct = SystemService(ntp.ntp_issynced, watchdog=watchdog, fram=fram, debug=debug)
-# Residual system-level config (see _VAL_SYSTEM_FIELDS above) - reuses sysfunct's own logger
-# (self.pr) rather than a second, separately-tracked PrintLog instance.
-cfgmgr = ConfigManager("config_SYSTEM.cfg", _VAL_SYSTEM_FIELDS, sysfunct.pr)
 # fram_storage/fram_ntp_callback replace the old ts_storage= kwarg - SGP40_Reader now carves its
 # own timestamped FRAM chunk internally (VOCAlgorithm.get_params_memsize(), not a class method on
 # SGP40_Reader itself anymore) instead of taking a pre-built chunk from the caller. ntp_issynced now
@@ -162,6 +152,91 @@ pixel = Neopixel_Signal(
 )
 conn.set_ext_led(pixel)  # callback for wifi led
 timers_running = ThreadSafeFlag()
+
+
+# *** api_helpers.py replacement helpers ***
+# Fields below have no SensorReaderConfig-backed schema/cfgmgr of their own (SCD30's own hand-rolled
+# setters; LED-only/system-only commands that never persisted anything) - validated directly against
+# a local FieldSchema tuple via cm.type_or_range_error(), the same primitive base_classes.py's own
+# push-dispatch mechanism uses internally, without needing the rest of that machinery.
+_FIELD_SCD_TEMP_OFFS: "cm.FieldSchema" = ("TempOffs", "float", 0.0, 0.0, 655.35, None)
+_FIELD_SCD_MEAS_INT: "cm.FieldSchema" = ("MeasInt", "int", 2, 2, 1800, None)
+# special=0: matches SCD30's own documented AmbPres=0 "disable compensation" convention (see
+# CLAUDE.md) - a bypass value outside the ordinary 700-1400 hPa range.
+_FIELD_SCD_AMB_PRES: "cm.FieldSchema" = ("AmbPres", "int", 0, 700, 1400, 0)
+_FIELD_SCD_ALTITUDE: "cm.FieldSchema" = ("Altitude", "int", 0, 0, 65535, None)
+_FIELD_SCD_FORCE_CAL_REF: "cm.FieldSchema" = ("ForceCalRef", "int", 400, 400, 2000, None)
+_FIELD_SCD_SELF_CAL: "cm.FieldSchema" = ("SelfCal", "bool", False, None, None, None)
+_FIELD_SCD_CONT_MEAS: "cm.FieldSchema" = ("ContMeas", "bool", True, None, None, None)
+
+# (key, field, setter) - iterated in the same order the old handler validated them in. Every SCD30
+# setter already never raises and self-logs via its own self.pr (see asy_scd30_driver.py's own
+# module docstring/DRIVER_SPEC.md section 7) - the try/except below is defense-in-depth against a
+# future change to that contract, matching every other caller-supplied-callback call site in this
+# codebase (e.g. base_classes.py's own _push_callbacks dispatch).
+_SCD_SET_FIELDS: "Tuple[Tuple[str, cm.FieldSchema, Callable[[Any], Coroutine[Any, Any, bool]]], ...]" = (
+    ("TempOffs", _FIELD_SCD_TEMP_OFFS, scd_reader.set_temperature_offset),
+    ("MeasInt", _FIELD_SCD_MEAS_INT, scd_reader.set_measurement_interval),
+    ("AmbPres", _FIELD_SCD_AMB_PRES, scd_reader.set_ambient_pressure),
+    ("Altitude", _FIELD_SCD_ALTITUDE, scd_reader.set_altitude),
+    ("ForceCalRef", _FIELD_SCD_FORCE_CAL_REF, scd_reader.set_forced_recalibration_reference),
+    ("SelfCal", _FIELD_SCD_SELF_CAL, scd_reader.set_self_calibration_enabled),
+    ("ContMeas", _FIELD_SCD_CONT_MEAS, scd_reader.stop_continuous_measurement),
+)
+
+
+async def _scd_apply_field(data: Dict[str, Any], key: str, field: "cm.FieldSchema", setter: Callable[[Any], Coroutine[Any, Any, bool]]) -> str | None:
+    # None means "not requested" - matches the project-wide omitted-key convention (see BACKLOG.md's
+    # "Settled" item on this), unlike this file's own lightCmdLED/pauseAutoLED commands below, which
+    # are genuinely single-shot commands rather than a partial config update.
+    if key not in data:
+        return None
+    value = data[key]
+    if cm.type_or_range_error(value, field):
+        return "Invalid"
+    try:
+        applied = await setter(value)
+    except Exception as e:  # setter is caller-supplied; its runtime behavior isn't statically known
+        await scd_reader.pr.err_s("Error setting", key, "on SCD30:", e, errno=30)
+        applied = False
+    return "Valid" if applied else "Failed"
+
+
+async def _write_cfg_only(write_cfgmgr: "ConfigManager", data: Dict[str, int | float | str | bool | None], cfg_vals: "cm.ConfigSchema") -> "ar.ResponseEnvelope":
+    # For a config owner with no SensorReaderConfig/_set_dict_cfg of its own (Neopixel_Signal) and
+    # no field that needs a live push callback either (every Led* field is polled by pixel's own
+    # task, never pushed immediately) - persists directly through the real ConfigManager instance
+    # the owner already exposes, in the same response-envelope shape handle_set_cmd() produces.
+    persisted, results = await write_cfgmgr.write_config(data, cfg_vals)
+    if not persisted:
+        results = {key: "Failed" for key in data}
+    return ar.make_response(0, result=results)
+
+
+def _time_to_dict(gmt_raw: "Tuple[int, ...] | None") -> Dict[str, int | float | str | None]:
+    # Relocated verbatim from the now-removed api_helpers.py's own time_to_dict().
+    timedict: Dict[str, int | float | str | None] = {
+        "Year": None,
+        "Month": None,
+        "Day": None,
+        "Hour": None,
+        "Min": None,
+        "Sec": None,
+    }
+    if gmt_raw is None:
+        return timedict
+    # time.gmtime()-shaped tuples are 8 elements on the real rp2 target or 9 elements on this
+    # project's Unix-port test interpreter (trailing isdst=0) - accept either shape; only indices
+    # 0-5 (year..sec) are ever read below, regardless of which shape was passed in.
+    gmt: "Tuple[int, ...] | None" = gmt_raw if len(gmt_raw) in (8, 9) else None
+    if gmt is not None:
+        timedict["Year"] = gmt[0]
+        timedict["Month"] = gmt[1]
+        timedict["Day"] = gmt[2]
+        timedict["Hour"] = gmt[3]
+        timedict["Min"] = gmt[4]
+        timedict["Sec"] = gmt[5]
+    return timedict
 
 
 def start_asy_webserver() -> asyncio.Task[None]:
@@ -246,43 +321,36 @@ async def network_config(request: Request) -> Dict[str, int | float | str | bool
 
 
 @app.put("/net/cmd")  # type: ignore[no-untyped-call, misc]
-async def network_cmd(request: Request) -> Dict[str, str | int | JsonValidity]:
-    req_json, err_msg = cmd_pre_check(request, ["setNetwork"])
-    if err_msg is not None:
-        return err_msg
-    if req_json is not None:
-        if req_json["cmd"] == "setNetwork":
-            if debug:
-                print("Received Set Network command.")
-            res, err = await init_json_from_cfg(conn.cfgmgr, ["Hostname", "Country", "SSID", "PW"])
-            if err is not None:
-                return err
-            if res is not None:
-                res = update_valid_json(req_json, "Hostname", "str", res, 1, 32, debug=debug)
-                # 32, not 63: network.hostname()'s real, documented hard cap on rp2 (see
-                # asy_wifi_service.py's own _VAL_HOST schema, which this bound now matches).
-                res = update_valid_json(req_json, "Country", "str", res, 2, 2, debug=debug)
-                res = update_valid_json(req_json, "SSID", "str", res, 2, 32, debug=debug)
-                res = update_valid_json(req_json, "PW", "str", res, 8, 63, debug=debug)
-                return await cmd_post_check(
-                    res, conn.cfgmgr, conn.cfg_schema, post_fct=conn.reconnect_wifi, debug=debug
-                )  # Reconnect WiFi with new config (has 5 sec delay)
-    return generic_error_return()
+async def network_cmd(request: Request) -> "ar.ResponseEnvelope":
+    data, err = ar.parse_cmd_request(request, ["setNetwork"])
+    if err is not None:
+        return err
+    assert data is not None
+    if debug:
+        print("Received Set Network command.")
+    # SSID's own min length is 0 here (asy_wifi_service.py's real _VAL_SSID), not the legacy
+    # handler's own 2 - a small, pre-existing divergence between this route's old hand-rolled check
+    # and the schema this route now defers to entirely; flagged in BACKLOG.md, not silently changed
+    # back, since asy_wifi_service.py's schema is the intended single source of truth going forward.
+    fields = {k: v for k, v in data.items() if k != "cmd"}
+    return await ar.handle_set_cmd(
+        conn, fields, conn.get_cfg_schema(), post_fct=conn.reconnect_wifi
+    )  # Reconnect WiFi with new config (has 5 sec delay)
 
 
 # Timing API
 @app.get("/time/status")  # type: ignore[no-untyped-call, misc]
 async def timing_status(
     request: Request,
-) -> Dict[str, Dict[str, int | float | str | None]]:
+) -> Dict[str, Dict[str, int | float | str | bool | None]]:
     synced = await ntp.ntp_issynced()
     gmt = time.gmtime()
-    system: Dict[str, int | float | str | None] = {
-        "Synced": "On" if synced else "Off",
+    system: Dict[str, int | float | str | bool | None] = {
+        "Synced": synced,
         "Unix": time.mktime(gmt),  # type: ignore[call-arg]
     }
-    utc = time_to_dict(gmt)
-    local = time_to_dict(await ntp.cettime())
+    utc = _time_to_dict(gmt)
+    local = _time_to_dict(await ntp.cettime())
 
     rtc_time = {"System": system, "UTC": utc, "Local": local}
     return rtc_time
@@ -298,35 +366,17 @@ async def timing_config(request: Request) -> Dict[str, int | float | str | bool 
 
 
 @app.put("/time/cmd")  # type: ignore[no-untyped-call, misc]
-async def timing_cmd(request: Request) -> Dict[str, str | int | JsonValidity]:
-    req_json, err_msg = cmd_pre_check(request, ["setTiming"])
-    if err_msg is not None:
-        return err_msg
-    if req_json is not None:
-        if req_json["cmd"] == "setTiming":
-            if debug:
-                print("Received Set Timing command.")
-            res, err = await init_json_from_cfg(
-                ntp.cfgmgr, ["NTP_Host", "NTP_Offset_S", "NTP_Interv_H", "GMTOffset", "DSTOffset"]
-            )
-            if err is not None:
-                return err
-            if res is not None:
-                res = update_valid_json(req_json, "NTP_Host", "str", res, 3, 1024, debug=debug)
-                res = update_valid_json(
-                    req_json, "NTP_Offset_S", "int", res, -43200, 43200, debug=debug
-                )
-                res = update_valid_json(req_json, "NTP_Interv_H", "int", res, 1, 24, debug=debug)
-                res = update_valid_json(
-                    req_json, "GMTOffset", "int", res, -43200, 43200, debug=debug
-                )
-                res = update_valid_json(
-                    req_json, "DSTOffset", "int", res, -43200, 43200, debug=debug
-                )
-                return await cmd_post_check(
-                    res, ntp.cfgmgr, ntp.cfg_schema, post_asy_fct=ntp.ntp_force_sync, debug=debug
-                )  # resync NTP with new config
-    return generic_error_return()
+async def timing_cmd(request: Request) -> "ar.ResponseEnvelope":
+    data, err = ar.parse_cmd_request(request, ["setTiming"])
+    if err is not None:
+        return err
+    assert data is not None
+    if debug:
+        print("Received Set Timing command.")
+    fields = {k: v for k, v in data.items() if k != "cmd"}
+    return await ar.handle_set_cmd(
+        ntp, fields, ntp.get_cfg_schema(), post_asy_fct=ntp.ntp_force_sync
+    )  # resync NTP with new config
 
 
 # Sensors API
@@ -347,148 +397,39 @@ async def sensor_config(request: Request) -> Dict[str, Dict[str, int | float | s
 
 
 @app.put("/sensors/cmd")  # type: ignore[no-untyped-call, misc]
-async def sensor_cmd(request: Request):
-    req_json, err_msg = cmd_pre_check(request, ["setSCD", "setSGP", "setBMP"])
-    if req_json is None:
-        return err_msg
-    if req_json["cmd"] == "setSCD":
+async def sensor_cmd(request: Request) -> "ar.ResponseEnvelope":
+    data, err = ar.parse_cmd_request(request, ["setSCD", "setSGP", "setBMP"])
+    if err is not None:
+        return err
+    assert data is not None
+    fields = {k: v for k, v in data.items() if k != "cmd"}
+
+    if data["cmd"] == "setSCD":
         if debug:
             print("Received Set SCD30 Sensor command.")
-        if debug:
-            print(req_json)
-        data = {}
-        try:
-            data["TempOffs"] = await scd_reader.get_temperature_offset()
-            data["MeasInt"] = (await scd_reader.get_measurement_interval(),)
-            data["AmbPres"] = (await scd_reader.get_ambient_pressure(),)
-            data["Altitude"] = (await scd_reader.get_altitude(),)
-            data["ForceCalRef"] = (await scd_reader.get_forced_recalibration_reference(),)
-            data["SelfCal"] = (await scd_reader.get_self_calibration_enabled(),)
-            data["ContMeas"] = True  # not readable from sensor, just as reference for parsing
-            valid = True
-        except:
-            valid = False
+        # SCD30 has no schema/cfgmgr of its own (params live on-sensor, see CLAUDE.md) - nothing
+        # here was ever persisted anywhere (legacy passed cfg=None/"datamanager = None --> Don't
+        # write system config here" too), so there's no config file to correct on a failed setter
+        # either - just validate, call the setter, report the outcome, matching each field's own
+        # already-exception-safe contract (see asy_scd30_driver.py's own module docstring).
+        results: Dict[str, str] = {}
+        for key, field, setter in _SCD_SET_FIELDS:
+            status = await _scd_apply_field(fields, key, field, setter)
+            if status is not None:
+                results[key] = status
+        return ar.make_response(0, result=results)
 
-        res, err = await init_json_from_ext(valid, data)
-        if res is None:
-            return err
-        res = update_valid_json(req_json, "TempOffs", "float", res, 0.0, 655.35, debug=debug)
-        res = await set_sensor_value(res, scd_reader.set_temperature_offset, cfgmgr, debug=debug)
-        res = update_valid_json(req_json, "MeasInt", "int", res, 2, 1800, debug=debug)
-        res = await set_sensor_value(res, scd_reader.set_measurement_interval, cfgmgr, debug=debug)
-        res = update_valid_json(
-            req_json, "AmbPres", "int", res, 700, 1400, special_val=[0], debug=debug
-        )
-        res = await set_sensor_value(
-            res, scd_reader.set_ambient_pressure, cfgmgr, force=True, debug=debug
-        )
-        res = update_valid_json(req_json, "Altitude", "int", res, 0, 65535, debug=debug)
-        res = await set_sensor_value(res, scd_reader.set_altitude, cfgmgr, debug=debug)
-        res = update_valid_json(req_json, "ForceCalRef", "int", res, 400, 2000, debug=debug)
-        res = await set_sensor_value(
-            res, scd_reader.set_forced_recalibration_reference, cfgmgr, debug=debug
-        )
-        res = update_valid_json(req_json, "SelfCal", "switch", res, None, None, debug=debug)
-        res = await set_sensor_value(
-            res, scd_reader.set_self_calibration_enabled, cfgmgr, debug=debug
-        )
-        res = update_valid_json(
-            req_json, "ContMeas", "switch", res, None, None, debug=debug
-        )  # only understands "Off"
-        res = await set_sensor_value(
-            res, scd_reader.stop_continuous_measurement, cfgmgr, debug=debug
-        )
-        return await cmd_post_check(
-            res, None, debug=debug
-        )  # datamanager = None --> Don't write system config here
-
-    if req_json["cmd"] == "setSGP":
+    if data["cmd"] == "setSGP":
         if debug:
             print("Received Set SGP40 Sensor command.")
-        res, err = await init_json_from_cfg(
-            cfgmgr,
-            ["SGPBackupPeriod", "SGPBackupMaxAge", "SGPWaitTimeNTP"],
-            cmd_keys={"SGPResetVOC": False},
-        )
-        if res is None:
-            return err
-        res = update_valid_json(req_json, "SGPBackupPeriod", "int", res, 0, 1440, debug=debug)
-        res = update_valid_json(req_json, "SGPBackupMaxAge", "int", res, 0, 10080, debug=debug)
-        res = update_valid_json(req_json, "SGPWaitTimeNTP", "int", res, 0, 600, debug=debug)
-        res = update_valid_json(
-            req_json, "SGPResetVOC", "switch", res, None, None, debug=debug
-        )  # only understands "On"
-        res = await set_sensor_value(res, sgp_reader.reset_voc, cfgmgr, default=False, debug=debug)
-        return await cmd_post_check(res, cfgmgr, _VAL_SGP_SYS_FIELDS, debug=debug)  # don't save reset flag
+        return await ar.handle_set_cmd(sgp_reader, fields, sgp_reader.get_cfg_schema())
 
-    if req_json["cmd"] == "setBMP":
+    if data["cmd"] == "setBMP":
         if debug:
             print("Received Set BMP3xx Sensor command.")
-        res, err = await init_json_from_cfg(
-            cfgmgr,
-            [
-                "BMPSampleInterv",
-                "BMPPressOvers",
-                "BMPTempOvers",
-                "BMPFiltCoeff",
-                "BMPPressOffset",
-                "BMPTempOffset",
-                "BMPSeaLevelOffs",
-                "BMPMeanAtmTemp",
-            ],
-        )
-        if res is None:
-            return err
-        res = update_valid_json(req_json, "BMPSampleInterv", "int", res, 1, 3600, debug=debug)
-        res = await set_sensor_value(res, bmp_reader.set_trigger_secs, cfgmgr, debug=debug)
-        res = update_valid_json(
-            req_json, "BMPPressOvers", "int", res, 0, 5, weight_fct=lambda x: 2**x, debug=debug
-        )
-        res = await set_sensor_value(
-            res,
-            bmp_reader.set_pressure_oversampling,
-            cfgmgr,
-            getter=bmp_reader.get_pressure_oversampling,
-            default=1,
-            debug=debug,
-        )
-        res = update_valid_json(
-            req_json, "BMPTempOvers", "int", res, 0, 5, weight_fct=lambda x: 2**x, debug=debug
-        )
-        res = await set_sensor_value(
-            res,
-            bmp_reader.set_temperature_oversampling,
-            cfgmgr,
-            getter=bmp_reader.get_temperature_oversampling,
-            default=1,
-            debug=debug,
-        )
-        res = update_valid_json(
-            req_json,
-            "BMPFiltCoeff",
-            "int",
-            res,
-            0,
-            7,
-            weight_fct=lambda x: 2**x - 1,
-            debug=debug,
-        )
-        res = await set_sensor_value(
-            res,
-            bmp_reader.set_filter_coefficient,
-            cfgmgr,
-            getter=bmp_reader.get_filter_coefficient,
-            debug=debug,
-        )
-        res = update_valid_json(
-            req_json, "BMPPressOffset", "float", res, -500.0, 500.0, debug=debug
-        )
-        res = update_valid_json(req_json, "BMPTempOffset", "float", res, -10.0, 10.0, debug=debug)
-        res = update_valid_json(
-            req_json, "BMPSeaLevelOffs", "float", res, -1000.0, 5000.0, debug=debug
-        )
-        res = update_valid_json(req_json, "BMPMeanAtmTemp", "float", res, -50.0, 50.0, debug=debug)
-        return await cmd_post_check(res, cfgmgr, _VAL_BMP_SYS_FIELDS, debug=debug)
+        return await ar.handle_set_cmd(bmp_reader, fields, bmp_reader.get_cfg_schema())
+
+    return ar.make_response(100)  # unreachable - parse_cmd_request already restricted cmd above
 
 
 # LED API
@@ -519,113 +460,84 @@ async def led_config(request: Request):
     # - get_dict() returns None for the *whole* call if any requested key is unknown to that
     # particular ConfigManager, so this needs its own separate read rather than one combined list.
     wifi_led_data = await conn.cfgmgr.get_dict(["LedWifiOn"])
-    _led_auto_on = cfg_data["LedAutoOn"] if cfg_data is not None else None
-    _led_wifi_on = wifi_led_data["LedWifiOn"] if wifi_led_data is not None else None
-    if (
-        cfg_data is not None
-        and wifi_led_data is not None
-        and isinstance(_led_auto_on, bool)
-        and isinstance(_led_wifi_on, bool)
-    ):
-        cfg_data["LedAutoOn"] = to_switch(_led_auto_on)
-        cfg_data["LedWifiOn"] = to_switch(_led_wifi_on)
+    if cfg_data is not None and wifi_led_data is not None:
+        cfg_data["LedWifiOn"] = wifi_led_data["LedWifiOn"]
     else:
         cfg_data = None
+    # LedAutoOn/LedWifiOn are already native bool here (see this file's own top-of-file note) -
+    # get_dict() forwards each config's stored value unconverted, same as every other bool-typed
+    # field project-wide; no to_switch() conversion needed or wanted anymore.
 
     # TODO What if cfg_data is None
     return cfg_data
 
 
+_FIELD_LED_R: "cm.FieldSchema" = ("r", "int", 0, 0, 255, None)
+_FIELD_LED_G: "cm.FieldSchema" = ("g", "int", 0, 0, 255, None)
+_FIELD_LED_B: "cm.FieldSchema" = ("b", "int", 0, 0, 255, None)
+_FIELD_LED_T: "cm.FieldSchema" = ("t", "float", 1.0, 0.5, 60.0, None)
+_FIELD_LED_PAUSE_TIME: "cm.FieldSchema" = ("pauseTime", "int", 0, 0, 3600, None)
+
+
 @app.put("/led/cmd")  # type: ignore[no-untyped-call, misc]
-async def led_cmd(request: Request):
-    req_json, err_msg = cmd_pre_check(
+async def led_cmd(request: Request) -> "ar.ResponseEnvelope":
+    data, err = ar.parse_cmd_request(
         request, ["lightCmdLED", "pauseAutoLED", "setAutoLED", "setWiFiLED"]
     )
-    if req_json is None:
-        return err_msg
-    if req_json["cmd"] == "lightCmdLED":
+    if err is not None:
+        return err
+    assert data is not None
+    fields = {k: v for k, v in data.items() if k != "cmd"}
+
+    if data["cmd"] == "lightCmdLED":
         if debug:
             print("Received LED Color command.")
-        default = {"r": 0, "g": 0, "b": 0, "t": 1.0}
-        res, err = await init_json_from_ext(True, default)
-        if res is None:
-            return err
-        res = update_valid_json(req_json, "r", "int", res, 0, 255, debug=debug)
-        res = update_valid_json(req_json, "g", "int", res, 0, 255, debug=debug)
-        res = update_valid_json(req_json, "b", "int", res, 0, 255, debug=debug)
-        res = update_valid_json(req_json, "t", "float", res, 0.5, 60.0, debug=debug)
-        values, valid = get_valid_values(res, ["r", "g", "b", "t"])
-        err = None
-        if valid:
-            if not pixel.led_signal(values["r"], values["g"], values["b"], values["t"]):
-                err = "busyLED"
+        # Unlike a config field, a missing r/g/b/t here is genuinely invalid, not "leave
+        # unchanged" - this command always needs all four to mean anything, matching legacy's own
+        # behavior for this one request shape (it never used the omitted-key/empty-string
+        # convention for this specific command either).
+        rgb: Dict[str, int] = {"r": 0, "g": 0, "b": 0}
+        t: float = 1.0
+        invalid = False
+        for key, field in (("r", _FIELD_LED_R), ("g", _FIELD_LED_G), ("b", _FIELD_LED_B)):
+            if key not in fields or cm.type_or_range_error(fields[key], field):
+                invalid = True
+            else:
+                rgb[key] = fields[key]
+        if "t" not in fields or cm.type_or_range_error(fields["t"], _FIELD_LED_T):
+            invalid = True
         else:
-            err = "invalidLED"
-        return await cmd_post_check(
-            res, None, special_err=err, debug=debug
-        )  # don't save anything, use special error in case
+            t = fields["t"]
+        if invalid:
+            return ar.make_response(7, descr="Incomplete or invalid LED command")
+        # led_signal()'s own t parameter is annotated int in neopixel_signal.py despite genuinely
+        # needing a float flash-duration value (0.5-60.0s) - a pre-existing, out-of-scope-to-fix
+        # annotation mismatch in that file, not something this migration introduces or should paper
+        # over by widening this route's own, correctly-typed float validation.
+        if not pixel.led_signal(rgb["r"], rgb["g"], rgb["b"], t):  # type: ignore[arg-type]
+            return ar.make_response(8, descr="LED is busy")
+        return ar.make_response(0)
 
-    if req_json["cmd"] == "pauseAutoLED":
+    if data["cmd"] == "pauseAutoLED":
         if debug:
             print("Received Pause Auto LED command.")
-        default = {"pauseTime": 0}
-        res, err = await init_json_from_ext(True, default)
-        if res is None:
-            return err
-        res = update_valid_json(req_json, "pauseTime", "int", res, 0, 3600, debug=debug)
-        values, valid = get_valid_values(res, ["pauseTime"])
-        err = None
-        if valid:
-            await pixel.set_override_led(values["pauseTime"])
-        else:
-            err = "pauseLED"
-        return await cmd_post_check(
-            res, None, special_err=err, debug=debug
-        )  # don't save anything, use special error in case
+        pause_time = fields.get("pauseTime")
+        if pause_time is None or cm.type_or_range_error(pause_time, _FIELD_LED_PAUSE_TIME):
+            return ar.make_response(9, descr="Invalid Auto LED Pause time")
+        await pixel.set_override_led(pause_time)
+        return ar.make_response(0, result={"pauseTime": "Valid"})
 
-    if req_json["cmd"] == "setAutoLED":
+    if data["cmd"] == "setAutoLED":
         if debug:
             print("Received Set Auto LED command.")
-        res, err = await init_json_from_cfg(
-            pixel.cfgmgr,
-            [
-                "LedAutoOn",
-                "LedAutoOnH",
-                "LedAutoOnM",
-                "LedAutoOffH",
-                "LedAutoOffM",
-                "LedAutoFlashBri",
-                "LedAutoInterv",
-                "LedAutoFlashDur",
-                "LedWarnCO2",
-                "LedWarnVOC",
-                "LedWarnHum",
-            ],
-        )
-        if res is None:
-            return err
-        res = update_valid_json(req_json, "LedAutoOn", "switch", res, None, None, debug=debug)
-        res = update_valid_json(req_json, "LedAutoOnH", "int", res, 0, 23, debug=debug)
-        res = update_valid_json(req_json, "LedAutoOnM", "int", res, 0, 59, debug=debug)
-        res = update_valid_json(req_json, "LedAutoOffH", "int", res, 0, 23, debug=debug)
-        res = update_valid_json(req_json, "LedAutoOffM", "int", res, 0, 59, debug=debug)
-        res = update_valid_json(req_json, "LedAutoFlashBri", "int", res, 1, 255, debug=debug)
-        res = update_valid_json(req_json, "LedAutoInterv", "float", res, 60.0, 3600.0, debug=debug)
-        res = update_valid_json(req_json, "LedAutoFlashDur", "float", res, 0.5, 10.0, debug=debug)
-        res = update_valid_json(req_json, "LedWarnCO2", "int", res, 0, 3000, debug=debug)
-        res = update_valid_json(req_json, "LedWarnVOC", "int", res, 0, 500, debug=debug)
-        res = update_valid_json(req_json, "LedWarnHum", "float", res, 0.0, 100.0, debug=debug)
-        return await cmd_post_check(res, pixel.cfgmgr, pixel.cfg_schema, debug=debug)
+        return await _write_cfg_only(pixel.cfgmgr, fields, pixel.cfg_schema)
 
-    if req_json["cmd"] == "setWiFiLED":
+    if data["cmd"] == "setWiFiLED":
         if debug:
             print("Received Set WiFi LED command.")
-        res, err = await init_json_from_cfg(conn.cfgmgr, ["LedWifiOn"])
-        if res is None:
-            return err
-        res = update_valid_json(req_json, "LedWifiOn", "switch", res, None, None, debug=debug)
-        res = await set_sensor_value(res, conn.set_wifi_led, conn.cfgmgr, default=True, debug=debug)
-        return await cmd_post_check(res, conn.cfgmgr, conn.cfg_schema, debug=debug)
+        return await ar.handle_set_cmd(conn, fields, conn.get_cfg_schema())
+
+    return ar.make_response(100)  # unreachable - parse_cmd_request already restricted cmd above
 
 
 # System API
@@ -685,7 +597,7 @@ async def system_status(request: Request):
         "Wifi_Uptime": await conn.get_wifi_uptime(),
         "NTP_LastSync": await ntp.get_last_ntp_sync(),
         "Boot_Signature": await sysfunct.get_boot_signature(),
-        "Error_Status": to_switch(ErrorStatus),
+        "Error_Status": ErrorStatus,
         "Task_ErrCnt": Task_ErrCnt,
         "Task_LastErr": Task_LastErr,
         "SCD30_ErrCnt": SCD30_ErrCnt,
@@ -698,48 +610,30 @@ async def system_status(request: Request):
     return system_data
 
 
+_FIELD_SYS_CONTENT: "cm.FieldSchema" = ("content", "str", "reboot", 0, 0, ("reboot", "bootloader", "mempause"))
+
+
 @app.put("/system/cmd")  # type: ignore[no-untyped-call, misc]
-async def system_cmd(request: Request):
-    req_json, err_msg = cmd_pre_check(request, ["systemCmd"])
-    if req_json is None:
-        return err_msg
-    if req_json["cmd"] == "systemCmd":
-        if debug:
-            print("Received System command.")
-        default = {"content": ""}
-        res, err = await init_json_from_ext(True, default)
-        if res is None:
-            return err
-        res = update_valid_json(
-            req_json,
-            "content",
-            "str",
-            res,
-            0,
-            0,
-            special_val=["reboot", "bootloader", "mempause"],
-            debug=debug,
-        )  # only special values are valid
-        values, valid = get_valid_values(res, ["content"])
-        err = None
-        descr = ""
-        if valid:
-            if values["content"] == "reboot":
-                descr = "Rebooting system now!"
-                sysfunct.reboot_system()
-            elif values["content"] == "bootloader":
-                descr = "Rebooting into bootloader!"
-                sysfunct.reboot_bootloader()
-            elif values["content"] == "mempause":
-                descr = "Pausing memory communication for " + str(_FRAM_PAUSE_SEC) + " seconds!"
-                sysfunct.pause_permanent_storage(_FRAM_PAUSE_SEC)
-            else:
-                err = "sysCmd"
-        else:
-            err = "sysCmd"
-        return await cmd_post_check(
-            res, None, special_err=err, ok_descr=descr, debug=debug
-        )  # don't save anything, use special error in case
+async def system_cmd(request: Request) -> "ar.ResponseEnvelope":
+    data, err = ar.parse_cmd_request(request, ["systemCmd"])
+    if err is not None:
+        return err
+    assert data is not None
+    if debug:
+        print("Received System command.")
+    content = data.get("content")
+    if content is None or cm.type_or_range_error(content, _FIELD_SYS_CONTENT):
+        return ar.make_response(10, descr="Invalid or unknown system command")
+    if content == "reboot":
+        descr = "Rebooting system now!"
+        sysfunct.reboot_system()
+    elif content == "bootloader":
+        descr = "Rebooting into bootloader!"
+        sysfunct.reboot_bootloader()
+    else:  # "mempause" - the only remaining member of the discrete allowed-value set above
+        descr = "Pausing memory communication for " + str(_FRAM_PAUSE_SEC) + " seconds!"
+        sysfunct.pause_permanent_storage(_FRAM_PAUSE_SEC)
+    return ar.make_response(0, descr=descr, result={"content": "Valid"})
 
 
 # Main Function

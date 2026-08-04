@@ -71,16 +71,18 @@ scripts/                 lint.sh / typecheck.sh / test.sh - manual code-quality 
   its own config file/instance via a public `cfg_schema` attribute (also available through the
   base-class-owned `get_cfg_schema()` getter), instead of one shared grab-bag — see `DRIVER_SPEC.md`
   and CLAUDE.md's "Code quality tooling"/BACKLOG.md for the migration state.
-- **REST API pipeline** — the deployed pipeline (`improved-quality/api_helpers.py`, left
-  untouched/read-only as WIP reference) has every `PUT` handler follow `cmd_pre_check` →
+- **REST API pipeline** — the *deployed* pipeline (`python/CommonDrivers/api_helpers.py`, left
+  untouched/out of scope — see CLAUDE.md) has every `PUT` handler follow `cmd_pre_check` →
   `init_json_from_cfg` → `update_valid_json` → `set_sensor_value` → `cmd_post_check` (validate →
-  load current → per-field validate → apply to sensor → persist + post-hooks). `src/api_response.py`
-  is its generalized replacement (not yet wired into any live REST handler — that's a separate,
-  still out-of-scope pass, see BACKLOG.md): `base_classes.py`'s `_set_dict_cfg()` gives every
-  `SensorReaderConfig` a generic, schema-driven setter mirroring `get_dict_cfg()`'s existing
-  generic getter, and `api_response.py`'s `make_response()`/`parse_cmd_request()`/`handle_set_cmd()`
-  replace the old per-endpoint validate→apply→persist glue with one small, open-catalog response
-  envelope — see `DRIVER_SPEC.md` section 5 for the full mechanism.
+  load current → per-field validate → apply to sensor → persist + post-hooks).
+  `src/api_response.py` is its generalized replacement, and is now wired into every real REST
+  handler in `improved-quality/sensortask-wozi.py` (`improved-quality/api_helpers.py`'s own copy of
+  the old pipeline has been removed entirely, once that file was fully migrated off it — see
+  BACKLOG.md): `base_classes.py`'s `_set_dict_cfg()` gives every `SensorReaderConfig` a generic,
+  schema-driven setter mirroring `get_dict_cfg()`'s existing generic getter, and
+  `api_response.py`'s `make_response()`/`parse_cmd_request()`/`handle_set_cmd()` replace the old
+  per-endpoint validate→apply→persist glue with one small, open-catalog response envelope — see
+  `DRIVER_SPEC.md` section 5 for the full mechanism.
 - **FRAM storage** (`asy_fram_driver.py`/`asy_fram_manager.py`, arzi/neu/wozi only) — a bump
   allocator handing out chunks stored as two redundant copies, so an abrupt power-loss or watchdog
   reset mid-write still leaves one valid copy to recover. Currently used for SGP40's VOC

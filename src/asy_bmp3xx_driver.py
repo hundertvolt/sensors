@@ -118,6 +118,14 @@ class BMP3xx_Reader(SensorReaderConfig):
         self._push_callbacks[name_cfg(_VAL_POV)] = self._push_pressure_oversampling
         self._push_callbacks[name_cfg(_VAL_TOV)] = self._push_temperature_oversampling
         self._push_callbacks[name_cfg(_VAL_FC)] = self._push_filter_coefficient
+        # Live sensor read-back for _set_dict_cfg's failed-push recovery chain (base_classes.py) -
+        # matches legacy's set_sensor_value(..., getter=bmp_reader.get_*, ...) call sites exactly for
+        # these three fields; SampleInterv has no hardware read-back (it's a pure software timing
+        # knob, set_trigger_secs() never actually fails - see its own comment), so it's intentionally
+        # left with no entry here, same as legacy never passed a getter for it either.
+        self._get_callbacks[name_cfg(_VAL_POV)] = self.get_pressure_oversampling
+        self._get_callbacks[name_cfg(_VAL_TOV)] = self.get_temperature_oversampling
+        self._get_callbacks[name_cfg(_VAL_FC)] = self.get_filter_coefficient
 
     async def _read_sensor_dict(self) -> dict[str, int | float | str | bool | None]:
         ret: dict[str, int | float | str | bool | None] = {

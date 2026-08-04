@@ -109,7 +109,7 @@ constraints.
     `ConfigManager.get_dict()` is all-or-nothing and the field is never in `_cache`).
 - **A follow-up, full function-by-function re-audit of `python/CommonDrivers/api_helpers.py` (2026-08-04)
   against `base_classes.py`/`config_manager.py`/`api_response.py` found two more points worth
-  recording, plus confirmed neither existing `api_helpers.py` copy can be deleted yet:**
+  recording, and prompted the removal of `improved-quality/api_helpers.py` (see below):**
   - **Confirmed, no gap: legacy's `"switch"` dtype (`update_valid_json`'s `"On"`/`"Off"` string
     convention, converted via `toSwitch()`/`to_switch()`) has no equivalent in
     `config_manager.py`'s `type_or_range_error()` — and needs none.** Every promoted bool field
@@ -151,10 +151,38 @@ constraints.
   - **`python/CommonDrivers/api_helpers.py` (deployed legacy) stays as-is, permanently out of
     scope** — owner-confirmed (2026-08-04): it's `from api_helpers import *`-imported by all four
     deployed `modules/sensortask-*.py` files, and the deployed codebase itself isn't being touched by
-    this refactor. `improved-quality/api_helpers.py` (the WIP typed copy) is being actively migrated
-    away from under a scoped, owner-authorized exception to the usual "don't edit
-    `improved-quality/` source" hard rule (see the next item) - once
-    `improved-quality/sensortask-wozi.py` no longer imports from it, it becomes deletable.
+    this refactor.
+  - **Done: `improved-quality/api_helpers.py` migrated away from and removed (2026-08-04), under a
+    scoped, owner-authorized exception to the usual "don't edit `improved-quality/` source" hard
+    rule** — `improved-quality/sensortask-wozi.py` was its last remaining importer. Every route now
+    goes through `api_response.py`'s `parse_cmd_request()`/`handle_set_cmd()`/`make_response()`, or -
+    for fields with no `SensorReaderConfig`-backed schema at all (SCD30's own hand-rolled setters;
+    the LED-only/system-only commands that never persisted anything to begin with) - a small local
+    per-field `config_manager.py.type_or_range_error()` check. One real bug surfaced and fixed along
+    the way, not just a mechanical import removal: the old residual "system-level config" schema
+    (`_VAL_SGP_SYS_FIELDS`/`_VAL_BMP_SYS_FIELDS`, `config_SYSTEM.cfg` - now removed entirely) was a
+    **separate, parallel config file** from `sgp_reader`'s/`bmp_reader`'s own real
+    `config_SGP40.cfg`/`config_BMP3XX.cfg`, with even different defaults - the old `setSGP`/`setBMP`
+    handlers persisted into it, but neither promoted driver's actual internal logic ever read from
+    it, so a REST client setting these fields never actually changed real sensor behavior. Both
+    routes now go directly through `sgp_reader.get_cfg_schema()`/`bmp_reader.get_cfg_schema()`
+    instead, fixing the disconnect as a direct consequence. Two further, deliberate consequences
+    (matching already-settled decisions elsewhere in this refactor, not new policy calls made here):
+    the wire field names for `setSGP`/`setBMP` drop their redundant `"SGP"`/`"BMP"` prefix to match
+    each driver's own real schema field names directly (e.g. `"BackupPeriod"` not
+    `"SGPBackupPeriod"`); and every bool-typed field project-wide (including this file's own
+    `Error_Status`/`Synced` status fields and `/led/config`'s `LedAutoOn`/`LedWifiOn`) is native JSON
+    `true`/`false` now, completing the "switch" dtype's retirement (see the bullet above) everywhere
+    it had a live route, not just where it was previously already true by construction.
+    `asy_bmp3xx_driver.py` also gained `_get_callbacks` registrations for `PressOvers`/`TempOvers`/
+    `FiltCoeff` (live sensor read-back for `_recover_failed_push()`), matching `setBMP`'s legacy
+    `getter=` arguments exactly rather than leaving them as a silent gap. **Not touched**: the
+    HTML/JS frontend (known brittle, explicitly deferred elsewhere in this file) - it will need
+    matching updates for the wire-name/wire-format changes above whenever it's next touched.
+    Verified via full `scripts/lint.sh`/`scripts/typecheck.sh`/`scripts/test.sh` (32/32 tests still
+    green; lint findings dropped 71→37, mypy 83→45 across the whole repo as a direct, expected
+    consequence of the deletion). `python/CommonDrivers/api_helpers.py` (the deployed legacy copy)
+    remains, per the item above - out of scope, not this file.
 - **No `@app.errorhandler` registrations exist anywhere yet** (confirmed: neither
   `improved-quality/sensortask-wozi.py` nor the deployed `python/CommonDrivers/`-based app
   registers any). See CLAUDE.md's "Microdot / REST layer" section for what Microdot itself already
