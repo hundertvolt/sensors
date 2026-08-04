@@ -257,12 +257,15 @@ def test_mocked_set_wifi_led_rejects_ssid_and_leaves_it_untouched() -> None:
     assert run(client.cfgmgr.get_dict(["SSID"])) == {"SSID": ""}  # untouched default, not "Hacked"
 
 
-def test_mocked_set_wifi_led_applies_its_own_field() -> None:
+def test_mocked_set_wifi_led_applies_its_own_field_without_reconnecting() -> None:
     client = make_wifi_client()
     req = _FakeRequest({"cmd": "setWiFiLED", "LedWifiOn": False})
     resp = run(_simulated_set_wifi_led_endpoint(client, req))
     assert resp["result"] == {"LedWifiOn": "Valid"}
     assert run(client.cfgmgr.get_dict(["LedWifiOn"])) == {"LedWifiOn": False}
+    # setWiFiLED (unlike setNetwork) passes no post_fct at all - toggling the WiFi status LED must
+    # never reconnect the WiFi connection.
+    assert client.reconn_wifi is False
 
 
 def test_real_microdot_set_network_rejects_led_field_end_to_end() -> None:

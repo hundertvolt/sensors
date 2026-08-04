@@ -626,6 +626,31 @@ def test_led_wifi_on_push_callback_is_registered_at_construction() -> None:
     assert "LedWifiOn" in client._push_callbacks
 
 
+def test_push_callbacks_registered_for_led_wifi_on_only() -> None:
+    # Exhaustive, not just "LedWifiOn is present": SSID/PW/Country/Hostname are persist-only and
+    # must have no push entry, and - the concrete concern this guards - set_ext_led() (the plain,
+    # REST-unreachable method sensortask-wozi.py calls once at boot to lazily hand this client its
+    # Neopixel-as-WiFi-LED controller, see its own module-level `conn.set_ext_led(pixel)` call) must
+    # never end up registered here either. It takes an LEDControl object, not a schema-typed
+    # int/float/str/bool, so it couldn't be dispatched through _set_dict_cfg even if it were
+    # registered - this test is the direct, explicit proof that it isn't, rather than relying on
+    # that type mismatch alone.
+    client = make_client(ext_led=FakeLED())
+    assert set(client._push_callbacks) == {"LedWifiOn"}
+
+
+def test_set_ext_led_never_touches_push_callbacks_or_triggers_a_reconnect() -> None:
+    # set_ext_led() is a plain attribute assignment (self.ext_led = ext_led), called once at
+    # startup, never through the generic setter dispatch and never over REST - confirms it has no
+    # side effect on either mechanism a REST-reachable setter would need to avoid.
+    client = make_client(ext_led=None)
+    assert client.reconn_wifi is False
+    client.set_ext_led(FakeLED())
+    assert client.ext_led is not None
+    assert set(client._push_callbacks) == {"LedWifiOn"}  # unchanged
+    assert client.reconn_wifi is False  # no reconnect side effect
+
+
 def test_led_wifi_on_push_callback_applies_the_value_through_set_wifi_led() -> None:
     led = FakeLED()
     client = make_client(ext_led=led)
