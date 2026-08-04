@@ -118,43 +118,43 @@ constraints.
     as a native JSON `true`/`false`, not an `"On"`/`"Off"` string — already implemented and exercised
     by real tests (not something newly changed by this audit), just not previously called out
     explicitly as a legacy convention with no direct equivalent. Nothing to do here.
-  - **Documented, not owner-confirmed: `set_sensor_value()`'s getter/previous-config/default
-    failure-recovery chain has no equivalent in `_set_dict_cfg()`'s push-callback step, and this is
-    believed low-risk but hasn't been explicitly signed off.** Legacy: on a setter exception, it
-    tried `getter()` (re-read actual sensor state), then the previous config value, then a hardcoded
-    default — actively correcting the persisted config back toward *confirmed hardware state* on a
-    failed write. New: `_set_dict_cfg` persists the client's requested value *before* attempting the
-    push (an intentional, documented ordering — see its own comment, "a value that made it onto the
-    device is always the value still there after an unplanned reset"); if the push callback then
-    fails, the field is reported `"Failed"` in the response, but the persisted config is **not**
-    rolled back or corrected — confirmed by
-    `test_setter_microdot_integration.py`'s `test_real_microdot_setter_end_to_end_i2c_bus_fault_surfaces_as_failed_not_500`,
-    which asserts the config keeps the requested value even though the push itself failed. Risk
-    analysis (not an owner sign-off): every schema bound has already been validated against the real
-    datasheet (see the "Datasheet/spec validation" audit pass), so a push failure through this path
-    should only ever be a *transient* fault (wedged/busy I2C bus), not a hardware-rejected value —
-    the persisted value is never actually wrong, just not-yet-confirmed-applied, and self-heals on
-    the next successful write (client retry, or the next task-restart's own `init_hw()`-style
-    boot-time config re-push, e.g. `asy_bmp3xx_driver.py`'s `_setup()`). This is a real,
-    deliberate-but-unflagged behavioral difference from legacy, not a silent loss — recorded here for
-    the owner to weigh in on if the risk analysis above doesn't hold in practice.
-  - **Neither `python/CommonDrivers/api_helpers.py` (deployed legacy) nor
-    `improved-quality/api_helpers.py` (WIP typed copy) can be deleted yet — both are still
-    load-bearing for real, active dependents outside this refactor pass's scope.**
-    `python/CommonDrivers/api_helpers.py` is `from api_helpers import *`-imported by all four deployed
-    `modules/sensortask-*.py` files — deleting it would break every currently-shipped unit.
-    `improved-quality/api_helpers.py` is `from api_helpers import (...)`-imported by
-    `improved-quality/sensortask-wozi.py` for real, still-unmigrated functionality: the "residual
-    system-level config" fields with no per-driver schema of their own yet (`SGPBackupPeriod`/
-    `SGPBackupMaxAge`/`SGPWaitTimeNTP`/`BMPSampleInterv`/etc. — see this file's own "Config-duplication
-    centralization" deferred item), LED/system command handling, and `time_to_dict()` (used by the
-    `/time/*` status routes). None of these route handlers have been ported onto the new
-    `parse_cmd_request()`/`handle_set_cmd()` mechanism yet — that porting is real, additional work
-    against `improved-quality/sensortask-wozi.py`'s own source, out of scope for this pass under
-    CLAUDE.md's hard rule on editing `improved-quality/` source without a scoped, owner-authorized
-    exception. Once that porting happens and `improved-quality/sensortask-wozi.py` no longer imports
-    from it, `improved-quality/api_helpers.py` becomes deletable; the deployed legacy copy stays
-    until the deployed codebase itself is retired, which is out of scope entirely.
+  - **Settled and implemented: `set_sensor_value()`'s getter/previous-config/default
+    failure-recovery chain is reintroduced as `base_classes.py`'s `_recover_failed_push()`, called
+    from `_set_dict_cfg()` whenever a push callback fails.** Owner-confirmed intent (2026-08-04):
+    the mechanism exists so the persisted config always ends up holding a *valid* value even after a
+    failed live push, not a value the client requested but that never actually reached the sensor.
+    Adapted to the new architecture's realities rather than ported 1:1, since persist-first (an
+    already-settled ordering — see its own comment) means the "previous stored config" rung no
+    longer exists by the time a push fails unless it's captured first:
+    - `_set_dict_cfg()` snapshots each requested field's pre-write value (via `_get_mgr_cfg`) *before*
+      persisting, so that rung survives the overwrite.
+    - A new, optional per-field registry, `self._get_callbacks` (mirrors `self._push_callbacks`'
+      registration shape exactly), lets a driver plug in a live sensor read-back where one exists -
+      this is the new mechanism replacing legacy's caller-supplied `getter` function argument.
+    - On push failure, `_recover_failed_push()` tries, in order: the live getter (if registered),
+      else the pre-write snapshot, else the schema's own `def` value (no separate `default=` argument
+      needed anymore, unlike legacy - the schema already carries a canonical default per field) - then
+      writes the recovered value straight back through `_set_mgr_cfg` (bypassing `_push_callbacks`
+      entirely, so a persistently-failing push can't loop).
+    - Confirmed scope, matching `set_sensor_value`'s own gate exactly: only fields whose *this-request*
+      push actually failed enter the chain - untouched/unchanged fields never did in legacy either.
+      A command-only/special-alone field (`check_cfg_get_default`'s `use_value=False`) skips the
+      chain entirely, mirroring legacy's own `cmd_keys` exclusion - there is nothing to persist-correct
+      for a field that's never in `ConfigManager`'s `_cache` to begin with.
+    - The field's caller-visible status in the returned dict stays `"Failed"` regardless of whether
+      the correction succeeded - matches legacy exactly (the client is told the truth about their
+      request; the persisted-value repair happens silently underneath).
+    See `tests/test_base_classes.py`'s dedicated recovery-chain tests for coverage of every rung
+    (getter wins, getter raises falls to snapshot, first-ever-request falls to default, special-alone
+    exclusion, snapshot-read exception, correction-write exception) - `src/base_classes.py` is at
+    100% line coverage including this method.
+  - **`python/CommonDrivers/api_helpers.py` (deployed legacy) stays as-is, permanently out of
+    scope** — owner-confirmed (2026-08-04): it's `from api_helpers import *`-imported by all four
+    deployed `modules/sensortask-*.py` files, and the deployed codebase itself isn't being touched by
+    this refactor. `improved-quality/api_helpers.py` (the WIP typed copy) is being actively migrated
+    away from under a scoped, owner-authorized exception to the usual "don't edit
+    `improved-quality/` source" hard rule (see the next item) - once
+    `improved-quality/sensortask-wozi.py` no longer imports from it, it becomes deletable.
 - **No `@app.errorhandler` registrations exist anywhere yet** (confirmed: neither
   `improved-quality/sensortask-wozi.py` nor the deployed `python/CommonDrivers/`-based app
   registers any). See CLAUDE.md's "Microdot / REST layer" section for what Microdot itself already

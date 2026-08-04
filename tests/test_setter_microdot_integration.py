@@ -342,7 +342,13 @@ def test_real_microdot_setter_end_to_end_i2c_bus_fault_surfaces_as_failed_not_50
     body = json.loads(res.body)
     assert body["res"] == "OK"  # the request itself was validly processed and dispatched
     assert body["result"] == {"PressOvers": "Failed"}
-    assert run(reader.cfgmgr.get_dict(["PressOvers"])) == {"PressOvers": 8}  # persisted despite the failed push
+    # base_classes.py's failed-push recovery chain corrects the persisted value back rather than
+    # leaving it at the requested-but-never-applied 8. This is a fresh reader with the bus dead
+    # from the start (no successful prior write, no getter registered), so the pre-write snapshot
+    # rung itself resolves to the schema default (1) - the fallback chain's last rung, complementing
+    # test_asy_bmp3xx_driver.py's own test which distinguishes the pre-write-snapshot rung from this
+    # one directly.
+    assert run(reader.cfgmgr.get_dict(["PressOvers"])) == {"PressOvers": 1}
 
 
 # ---------------------------------------------------------------------------

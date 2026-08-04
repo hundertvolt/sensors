@@ -93,6 +93,7 @@ Meas = namedtuple("Meas", ["temp", "hum"])
 _TMP_DIR = "tests/_tmp"
 _VAL_SI: "cm.ConfigSchema" = (("SampleInterv", "int", 2, 1, 3600, None),)
 _VAL_BOOL: "cm.ConfigSchema" = (("SelfCal", "bool", False, None, None, None),)
+_VAL_SPECIAL: "cm.ConfigSchema" = (("Trigger", "bool", None, None, None, True),)  # special-alone, mirrors asy_sgp40_driver.py's SGPResetVOC
 
 
 def _tmp_path(name: str) -> str:
@@ -961,20 +962,33 @@ def test_set_dict_cfg_registered_push_callback_is_invoked_with_the_new_value() -
 
 
 def test_set_dict_cfg_push_callback_returning_false_marks_the_field_failed() -> None:
-    # Uniform bool setter-return contract: False means the hardware push was rejected. The value is
-    # still persisted (persist-first already happened) - only the reported status changes.
+    # Uniform bool setter-return contract: False means the hardware push was rejected. persist-first
+    # still writes the requested value before the push is attempted, but a failed push now triggers
+    # _recover_failed_push, which corrects the persisted value back to what it was immediately
+    # before this request (no getter registered here, so the pre-write snapshot - not the schema
+    # default - wins) - only the underlying persisted value changes, the reported status stays
+    # "Failed" either way.
     path_prefix = _tmp_path("") + "/"
     _remove(path_prefix + "config_pushfail.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushfail", _VAL_SI, cfg_path=path_prefix)
 
-        async def push(value: "int | float | str | bool | None") -> bool:
+        async def push_ok(value: "int | float | str | bool | None") -> bool:
+            return True
+
+        async def push_fail(value: "int | float | str | bool | None") -> bool:
             return False
 
-        reader._push_callbacks["SampleInterv"] = push
+        # Establish a stored value (5) distinct from both the incoming request (42) and the schema
+        # default (2), so the assertion below can only pass if the pre-write snapshot rung of the
+        # fallback chain is the one actually used.
+        reader._push_callbacks["SampleInterv"] = push_ok
+        run(reader._set_dict_cfg({"SampleInterv": 5}, _VAL_SI))
+
+        reader._push_callbacks["SampleInterv"] = push_fail
         results = run(reader._set_dict_cfg({"SampleInterv": 42}, _VAL_SI))
         assert results == {"SampleInterv": "Failed"}
-        assert run(reader._get_dict_cfg("Sensor", _VAL_SI)) == {"Sensor": {"SampleInterv": 42}}  # persisted anyway
+        assert run(reader._get_dict_cfg("Sensor", _VAL_SI)) == {"Sensor": {"SampleInterv": 5}}
     finally:
         _remove(path_prefix + "config_pushfail.cfg")
 
@@ -997,6 +1011,184 @@ def test_set_dict_cfg_push_callback_raising_marks_the_field_failed_and_logs() ->
         assert reader.pr.err_count == 1
     finally:
         _remove(path_prefix + "config_pushraise.cfg")
+
+
+def test_set_dict_cfg_failed_push_recovers_via_getter_when_registered() -> None:
+    # The getter rung (self._get_callbacks) is authoritative when present - it wins over both the
+    # pre-write snapshot and the schema default, since it reflects what the sensor actually has
+    # right now, the most trustworthy source of truth for what the persisted value should become.
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_pushfailgetter.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushfailgetter", _VAL_SI, cfg_path=path_prefix)
+
+        async def push_ok(value: "int | float | str | bool | None") -> bool:
+            return True
+
+        async def push_fail(value: "int | float | str | bool | None") -> bool:
+            return False
+
+        async def getter() -> "int | float | str | bool | None":
+            return 99  # distinct from both the pre-write value (5) and the request (42)
+
+        reader._push_callbacks["SampleInterv"] = push_ok
+        run(reader._set_dict_cfg({"SampleInterv": 5}, _VAL_SI))
+
+        reader._push_callbacks["SampleInterv"] = push_fail
+        reader._get_callbacks["SampleInterv"] = getter
+        results = run(reader._set_dict_cfg({"SampleInterv": 42}, _VAL_SI))
+        assert results == {"SampleInterv": "Failed"}
+        assert run(reader._get_dict_cfg("Sensor", _VAL_SI)) == {"Sensor": {"SampleInterv": 99}}
+    finally:
+        _remove(path_prefix + "config_pushfailgetter.cfg")
+
+
+def test_set_dict_cfg_failed_push_falls_back_to_old_value_when_getter_raises() -> None:
+    # getter is caller-supplied, same as a push callback - a raising getter must not crash the
+    # recovery attempt, just fall through to the next rung (the pre-write snapshot).
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_pushfailgetterraise.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushfailgetterraise", _VAL_SI, cfg_path=path_prefix)
+
+        async def push_ok(value: "int | float | str | bool | None") -> bool:
+            return True
+
+        async def push_fail(value: "int | float | str | bool | None") -> bool:
+            return False
+
+        async def bad_getter() -> "int | float | str | bool | None":
+            raise RuntimeError("sensor unreadable")
+
+        reader._push_callbacks["SampleInterv"] = push_ok
+        run(reader._set_dict_cfg({"SampleInterv": 5}, _VAL_SI))
+
+        reader._push_callbacks["SampleInterv"] = push_fail
+        reader._get_callbacks["SampleInterv"] = bad_getter
+        results = run(reader._set_dict_cfg({"SampleInterv": 42}, _VAL_SI))
+        assert results == {"SampleInterv": "Failed"}
+        assert run(reader._get_dict_cfg("Sensor", _VAL_SI)) == {"Sensor": {"SampleInterv": 5}}
+    finally:
+        _remove(path_prefix + "config_pushfailgetterraise.cfg")
+
+
+def test_set_dict_cfg_failed_push_on_first_ever_request_recovers_to_schema_default() -> None:
+    # No prior successful write and no getter registered - the pre-write snapshot itself is just
+    # the freshly-created config's own default, so the fallback chain's last rung (the schema
+    # default) is what actually ends up (re)persisted.
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_pushfailfirst.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushfailfirst", _VAL_SI, cfg_path=path_prefix)
+
+        async def push_fail(value: "int | float | str | bool | None") -> bool:
+            return False
+
+        reader._push_callbacks["SampleInterv"] = push_fail
+        results = run(reader._set_dict_cfg({"SampleInterv": 42}, _VAL_SI))
+        assert results == {"SampleInterv": "Failed"}
+        assert run(reader._get_dict_cfg("Sensor", _VAL_SI)) == {"Sensor": {"SampleInterv": 2}}
+    finally:
+        _remove(path_prefix + "config_pushfailfirst.cfg")
+
+
+def test_set_dict_cfg_failed_push_on_special_alone_field_skips_recovery_entirely() -> None:
+    # Mirrors legacy's cmd_keys exclusion from the getter/config/default fallback chain: a
+    # command-only/special-alone field (e.g. a trigger) has nothing to persist-correct - it's never
+    # in ConfigManager's _cache to begin with. A getter that raises if ever called proves the
+    # recovery path returns immediately without reaching it.
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_pushfailtrigger.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushfailtrigger", _VAL_SPECIAL, cfg_path=path_prefix)
+
+        async def push_fail(value: "int | float | str | bool | None") -> bool:
+            return False
+
+        async def must_not_be_called() -> "int | float | str | bool | None":
+            raise AssertionError("getter must never be called for a special-alone field")
+
+        reader._push_callbacks["Trigger"] = push_fail
+        reader._get_callbacks["Trigger"] = must_not_be_called
+        results = run(reader._set_dict_cfg({"Trigger": True}, _VAL_SPECIAL))
+        assert results == {"Trigger": "Failed"}
+    finally:
+        _remove(path_prefix + "config_pushfailtrigger.cfg")
+
+
+def test_set_dict_cfg_old_value_snapshot_read_exception_falls_back_to_default() -> None:
+    # _get_mgr_cfg is the same overridable extension point _get_dict_cfg already defends against -
+    # _set_dict_cfg's own pre-write snapshot read gets identical defense: a raising override must
+    # not crash the whole call, just degrade the fallback chain straight to the schema default.
+    class RaisingGetMgrCfgReader(SensorReaderConfig):
+        async def _get_mgr_cfg(self, cfg: "list[str]") -> "dict[str, int | float | str | bool | None] | None":
+            raise RuntimeError("simulated read failure")
+
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_pushfailsnapraise.cfg")
+    try:
+        reader = RaisingGetMgrCfgReader(Meas(20.0, 50), 3, "pushfailsnapraise", _VAL_SI, cfg_path=path_prefix)
+
+        async def push_fail(value: "int | float | str | bool | None") -> bool:
+            return False
+
+        reader._push_callbacks["SampleInterv"] = push_fail
+        results = run(reader._set_dict_cfg({"SampleInterv": 42}, _VAL_SI))
+        assert results == {"SampleInterv": "Failed"}
+        assert reader.pr.err_count >= 1  # the snapshot-read failure was logged, not silently swallowed
+        # _get_dict_cfg would hit the same raising override, so verify directly against the real
+        # ConfigManager instead of through the reader's own (overridden) getter path.
+        assert run(reader.cfgmgr.get_dict(["SampleInterv"])) == {"SampleInterv": 2}
+    finally:
+        _remove(path_prefix + "config_pushfailsnapraise.cfg")
+
+
+def test_recover_failed_push_unknown_key_is_a_defensive_noop() -> None:
+    # Unreachable via _set_dict_cfg's own normal flow (a key only ever reaches _recover_failed_push
+    # after already being validated present in cfg_vals), but exercised directly the same way this
+    # file's other "shouldn't happen" branches (e.g. MissingKeySetMgrCfgReader) are - proves the
+    # defensive early return actually holds, not just that it's never hit in practice.
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_recoverunknown.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "recoverunknown", _VAL_SI, cfg_path=path_prefix)
+        run(reader._recover_failed_push("NoSuchField", {}, _VAL_SI))  # must not raise
+    finally:
+        _remove(path_prefix + "config_recoverunknown.cfg")
+
+
+def test_set_dict_cfg_recover_failed_push_correction_write_exception_is_caught() -> None:
+    # _set_mgr_cfg is the same overridable extension point _set_dict_cfg's own initial persist call
+    # already defends against - the correction write inside _recover_failed_push needs the same
+    # defense: a second call that raises (the initial persist succeeds, only the correction fails)
+    # must not crash the whole request.
+    class FlakyOnSecondWriteReader(SensorReaderConfig):
+        def __init__(self, *args: "Any", **kwargs: "Any") -> None:
+            super().__init__(*args, **kwargs)
+            self._write_calls = 0
+
+        async def _set_mgr_cfg(
+            self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "cm.ConfigSchema"
+        ) -> "tuple[bool, cm.WriteValidity]":
+            self._write_calls += 1
+            if self._write_calls == 1:
+                return await super()._set_mgr_cfg(data, cfg_vals)
+            raise RuntimeError("simulated correction-write failure")
+
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_pushfailcorrectionraise.cfg")
+    try:
+        reader = FlakyOnSecondWriteReader(Meas(20.0, 50), 3, "pushfailcorrectionraise", _VAL_SI, cfg_path=path_prefix)
+
+        async def push_fail(value: "int | float | str | bool | None") -> bool:
+            return False
+
+        reader._push_callbacks["SampleInterv"] = push_fail
+        results = run(reader._set_dict_cfg({"SampleInterv": 42}, _VAL_SI))
+        assert results == {"SampleInterv": "Failed"}
+        assert reader.pr.err_count >= 1
+    finally:
+        _remove(path_prefix + "config_pushfailcorrectionraise.cfg")
 
 
 def test_set_dict_cfg_invalid_value_is_reported_and_never_pushed() -> None:

@@ -7,7 +7,7 @@ vs. async) - the caller's own async setup must, or FRAM persistence stays inert.
 
 import asyncio
 
-from config_manager import ConfigManager, schema_names
+from config_manager import ConfigManager, check_cfg_get_default, schema_dict, schema_names
 from print_log import PrintLogHistory, PrintLogHistoryStore
 
 try:
@@ -256,6 +256,12 @@ class SensorReaderConfig(SensorReader):
         # its own {field_name: async_push_fn} entries after calling super().__init__(). A field
         # with no entry is persist-only, exactly like most of today's schema fields already are.
         self._push_callbacks: dict[str, Callable[[int | float | str | bool | None], Coroutine[Any, Any, bool]]] = {}
+        # Per-field live read-back callbacks, same registration shape as _push_callbacks - used
+        # only by _set_dict_cfg's failed-push recovery chain below to ask "what does the sensor
+        # actually have right now" before falling further back. A field with no entry here simply
+        # skips straight to the next fallback rung; registering one is optional, unlike push
+        # callbacks which are the whole point of a field having one.
+        self._get_callbacks: dict[str, Callable[[], Coroutine[Any, Any, int | float | str | bool | None]]] = {}
 
     def get_cfg_schema(self) -> "ConfigSchema":
         # Single source of truth for every subclass's schema - captured once, right here, from
@@ -286,6 +292,19 @@ class SensorReaderConfig(SensorReader):
         # only the fields that actually changed ("Valid") and have a registered callback. Every
         # field is reported individually - an unknown key or an out-of-range value only fails that
         # one key (ConfigManager.write_config's own per-key tolerance), never the whole request.
+        #
+        # Snapshot each requested field's pre-write value before persisting overwrites it - this is
+        # the one rung of _recover_failed_push's fallback chain that only exists here, before the
+        # write below, mirroring legacy set_sensor_value()'s "fall back to the stored config" step
+        # (which ran against a config that hadn't been touched yet).
+        try:  # _get_mgr_cfg is an overridable extension point, same defense as _get_dict_cfg's own use of it
+            old_values = await self._get_mgr_cfg(list(data.keys()))
+        except Exception as e:
+            await self.pr.err_s("Error reading previous config for fallback:", e, errno=7)
+            old_values = None
+        if old_values is None:
+            old_values = {}
+
         try:  # _set_mgr_cfg is an overridable extension point - the call itself, not just its
             # result, could misbehave on a misbehaving subclass override (mirrors _get_dict_cfg's
             # own _get_mgr_cfg handling) - the isinstance check below extends that same defense to
@@ -324,4 +343,46 @@ class SensorReaderConfig(SensorReader):
                 pushed = False
             if not pushed:
                 results[key] = "Failed"
+                await self._recover_failed_push(key, old_values, cfg_vals)
         return results
+
+    async def _recover_failed_push(
+        self,
+        key: str,
+        old_values: "dict[str, int | float | str | bool | None]",
+        cfg_vals: "ConfigSchema",
+    ) -> None:
+        # Mirrors legacy set_sensor_value()'s getter/previous-config/default fallback chain: a
+        # failed live push must not permanently leave the config file holding a value that was
+        # requested but never confirmed applied to the hardware (persist-first already wrote it
+        # before this push was even attempted - see _set_dict_cfg above). Recover, in order: a live
+        # read-back from the sensor itself (most authoritative, via _get_callbacks), else the value
+        # that was stored before this request (old_values, snapshotted in _set_dict_cfg before the
+        # overwrite), else the schema's own default for this field. The corrected value is written
+        # straight back through _set_mgr_cfg, deliberately bypassing _push_callbacks entirely so a
+        # persistently-failing push can't loop. The field's caller-visible status in _set_dict_cfg's
+        # returned dict stays "Failed" regardless, matching legacy exactly (the client is told the
+        # truth: their request wasn't applied) - only the underlying persisted value is repaired.
+        field = schema_dict(cfg_vals).get(key)
+        if field is None:
+            return  # shouldn't happen - key was already validated against cfg_vals above
+        use_value, default_val = check_cfg_get_default(field)
+        if not use_value:
+            return  # command-only/special-alone field (e.g. a trigger) - nothing to persist-correct,
+            # mirrors legacy's own cmd_keys exclusion from this exact fallback chain
+
+        recovered: int | float | str | bool | None = None
+        getter = self._get_callbacks.get(key)
+        if getter is not None:
+            try:
+                recovered = await getter()
+            except Exception as e:  # getter is caller-supplied; its runtime behavior isn't statically known
+                await self.pr.err_s("Error reading", key, "back from sensor:", e, errno=8)
+                recovered = None
+        if recovered is None:
+            recovered = old_values.get(key, default_val)
+
+        try:
+            await self._set_mgr_cfg({key: recovered}, cfg_vals)
+        except Exception as e:
+            await self.pr.err_s("Error correcting", key, "after failed push:", e, errno=9)

@@ -371,6 +371,37 @@ one field (see `config_manager.py`'s own `test_configmanager_special_only_field_
 `get_cfg_schema()` (used for the *setter* side, `_set_dict_cfg(data, reader.get_cfg_schema())`)
 includes it.
 
+### 5.2.2 Failed-push recovery chain (replaces legacy's `set_sensor_value` fallback)
+
+Legacy's `set_sensor_value()` guaranteed the config file never ends up holding a value that failed
+to actually reach the sensor: on a setter exception it tried, in order, a live `getter()` read-back,
+the previous config value, then a hardcoded default, and persisted whichever one it landed on.
+`_set_dict_cfg()` reintroduces this as `_recover_failed_push()`, called automatically whenever a
+push callback returns/raises failure — adapted to two things that changed since legacy:
+
+- **Persist-first means "the previous config value" no longer exists by the time a push fails** —
+  `_set_dict_cfg()` already overwrote it. `_set_dict_cfg()` therefore snapshots every requested
+  field's pre-write value (via `_get_mgr_cfg`) *before* persisting, specifically so this fallback
+  rung survives the overwrite.
+- **There's no caller-supplied `getter`/`default` function argument anymore** — a driver instead
+  registers an optional per-field live read-back in `self._get_callbacks` (same
+  `{field_name: async_fn}` shape as `self._push_callbacks`, added in `__init__` the same way; a
+  field with no entry just skips straight to the next rung), and the "default" is simply pulled
+  from the schema's own `def` value via `check_cfg_get_default` — no separate parameter needed since
+  the schema already carries a canonical default per field.
+
+The corrected value is written straight back through `_set_mgr_cfg`, deliberately **not** through
+`_push_callbacks` — re-pushing a recovered/default value to the sensor would risk looping on a
+persistently-failing field. A command-only/special-alone field (section 5.2.1) is skipped entirely
+(`check_cfg_get_default`'s `use_value=False`), mirroring legacy's own `cmd_keys` exclusion from this
+exact fallback — there's nothing to persist-correct for a field that's never in `ConfigManager`'s
+`_cache`. The field's caller-visible status in `_set_dict_cfg()`'s returned dict stays `"Failed"`
+regardless of whether the correction itself succeeds, matching legacy exactly: the client is told
+the truth about their request; the persisted-value repair happens silently underneath. See
+`tests/test_base_classes.py` for coverage of every rung (getter wins over the snapshot, a raising
+getter falls through to it, a first-ever request falls through to the schema default, the
+special-alone exclusion, and both the snapshot-read and correction-write failure paths).
+
 ### 5.3 Response envelope (`api_response.py`)
 
 Replaces `improved-quality/api_helpers.py`'s ad hoc `cmd_post_check`/`special_err`/
