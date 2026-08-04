@@ -8,6 +8,7 @@ improved-quality/ source files).
 """
 
 import asyncio
+import errno as errno_mod
 import json
 import os
 import sys
@@ -316,6 +317,17 @@ def _nak_i2c_address(i2c: I2C, address: int) -> None:
     real_i2c.nak_addresses.add(address)
 
 
+def _fault_i2c_write(i2c: I2C, exc: Exception) -> None:
+    # Narrower than _nak_i2c_address above: fails only the write half of a read-modify-write
+    # register access (writeto_mem), leaving reads - and therefore a registered _get_callbacks
+    # getter - fully functional. Same i2c._i2c narrowing as _nak_i2c_address.
+    from machine import I2C as _FakeI2C
+
+    real_i2c = i2c._i2c
+    assert isinstance(real_i2c, _FakeI2C)
+    real_i2c.inject_fault("writeto_mem", exc)
+
+
 def _bmp_app(reader: BMP3xx_Reader) -> Microdot:
     app = Microdot()
 
@@ -349,6 +361,29 @@ def test_real_microdot_setter_end_to_end_i2c_bus_fault_surfaces_as_failed_not_50
     # test_asy_bmp3xx_driver.py's own test which distinguishes the pre-write-snapshot rung from this
     # one directly.
     assert run(reader.cfgmgr.get_dict(["PressOvers"])) == {"PressOvers": 1}
+
+
+def test_real_microdot_setter_end_to_end_write_only_fault_recovers_via_live_getter() -> None:
+    # Same real dispatch path as the test above, but with a narrower, more realistic fault (the
+    # write half only, see _fault_i2c_write) that leaves the registered _get_callbacks getter
+    # functional - proving the getter rung actually resolves end to end through a real Microdot
+    # request, not just when synthetically driven at the base_classes.py/driver level.
+    i2c = I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
+    reader = BMP3xx_Reader(i2c, address=0x77, cfg_path=_tmp_cfg_dir())
+    run(reader.bmp.set_pressure_oversampling(2))  # desync: real sensor register = 2, cfgmgr = 1 (default)
+    assert run(reader.cfgmgr.get_dict(["PressOvers"])) == {"PressOvers": 1}
+
+    _fault_i2c_write(i2c, OSError(errno_mod.EIO, "no ACK on write"))
+    app = _bmp_app(reader)
+    req = _make_request(app, "PUT", "/sensors/cmd", {"cmd": "setBMP", "PressOvers": 8})
+    res = run(app.dispatch_request(req))
+    assert res.status_code == 200
+    body = json.loads(res.body)
+    assert body["res"] == "OK"
+    assert body["result"] == {"PressOvers": "Failed"}
+    # Recovered via the live getter (2, the sensor's real state) - neither the requested-but-failed
+    # 8 nor cfgmgr's own pre-write snapshot (1).
+    assert run(reader.cfgmgr.get_dict(["PressOvers"])) == {"PressOvers": 2}
 
 
 # ---------------------------------------------------------------------------

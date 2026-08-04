@@ -1421,9 +1421,11 @@ def test_set_dict_cfg_pressure_oversampling_bus_failure_reports_field_as_failed(
     # Persisted successfully (config write has no hardware dependency), but the live push fails -
     # per-field status reflects the push outcome, not the persist outcome, once persist succeeded.
     # base_classes.py's failed-push recovery chain then corrects the persisted value back to what
-    # it was before this request (BMP3xx registers no _get_callbacks, so the pre-write snapshot is
-    # the fallback rung that wins here) - established as 4 first, distinct from both the requested
-    # 8 and the schema default (1), so the assertion below can only pass via that specific rung.
+    # it was before this request. BMP3xx does register a _get_callbacks entry for this field, but a
+    # blanket address NAK (unlike the write-only fault injected below) fails the getter's own read
+    # too, so this specific test still falls through to the pre-write snapshot rung - established as
+    # 4 first, distinct from both the requested 8 and the schema default (1), so the assertion below
+    # can only pass via that specific rung.
     i2c, reader = make_clean_reader("set_dict_cfg_pov_busfail")
     seed_status(i2c, 0x10 | 0x60)
     seed_err(i2c, 0x00)
@@ -1433,6 +1435,29 @@ def test_set_dict_cfg_pressure_oversampling_bus_failure_reports_field_as_failed(
     results = run(reader._set_dict_cfg({"PressOvers": 8}, reader.get_cfg_schema()))
     assert results == {"PressOvers": "Failed"}
     assert run(reader.cfgmgr.get_dict(["PressOvers"])) == {"PressOvers": 4}  # corrected, not left at 8
+
+
+def test_set_dict_cfg_pressure_oversampling_write_fails_but_getter_recovers_real_sensor_value() -> None:
+    # A more realistic, narrower fault than the blanket NAK above: only the write half of
+    # set_bits()'s read-modify-write fails (inject_fault on writeto_mem specifically), leaving reads
+    # - and therefore the registered _get_callbacks getter - fully functional. Desyncs the sensor's
+    # real register state (pushed directly via reader.bmp, bypassing _set_dict_cfg/cfgmgr entirely)
+    # from cfgmgr's own persisted value (left at its schema default, 1), so a passing assertion can
+    # only come from the getter rung actually being queried and winning - not from it coincidentally
+    # agreeing with the pre-write snapshot the way the blanket-NAK test above can't help but do.
+    i2c, reader = make_clean_reader("set_dict_cfg_pov_getter_recovers")
+    seed_status(i2c, 0x10 | 0x60)
+    seed_err(i2c, 0x00)
+    run(reader.bmp.set_pressure_oversampling(2))
+    assert run(reader.cfgmgr.get_dict(["PressOvers"])) == {"PressOvers": 1}  # untouched schema default
+
+    fake(i2c).inject_fault("writeto_mem", OSError(errno_mod.EIO, "no ACK on write"))
+    results = run(reader._set_dict_cfg({"PressOvers": 8}, reader.get_cfg_schema()))
+    assert results == {"PressOvers": "Failed"}
+    # Recovered via the live getter (2, the sensor's real state) - neither the requested-but-failed
+    # 8 nor cfgmgr's own pre-write snapshot (1).
+    assert run(reader.cfgmgr.get_dict(["PressOvers"])) == {"PressOvers": 2}
+    assert run(reader.bmp.get_pressure_oversampling()) == 2  # sensor register itself untouched
 
 
 def test_set_dict_cfg_multi_field_discrete_and_continuous_together() -> None:

@@ -1191,6 +1191,45 @@ def test_set_dict_cfg_recover_failed_push_correction_write_exception_is_caught()
         _remove(path_prefix + "config_pushfailcorrectionraise.cfg")
 
 
+def test_set_dict_cfg_multiple_fields_recover_independently_via_different_rungs() -> None:
+    # Two fields in the same request, both pushes failing, each resolving through a *different*
+    # fallback rung - proves the recovery chain is genuinely per-field independent, not just
+    # correct for a single isolated failure (mirrors this file's own "multiple invalid fields"
+    # tests, applied to the recovery chain instead of plain validation).
+    combined = _VAL_SI + _VAL_BOOL
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_pushfailmulti.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushfailmulti", combined, cfg_path=path_prefix)
+
+        async def push_ok(value: "int | float | str | bool | None") -> bool:
+            return True
+
+        async def push_fail(value: "int | float | str | bool | None") -> bool:
+            return False
+
+        async def getter() -> "int | float | str | bool | None":
+            return 77  # distinct from both the pre-write value (5) and the request (99)
+
+        # Establish distinct pre-write values for both fields.
+        reader._push_callbacks["SampleInterv"] = push_ok
+        reader._push_callbacks["SelfCal"] = push_ok
+        run(reader._set_dict_cfg({"SampleInterv": 5, "SelfCal": True}, combined))
+
+        # SampleInterv has a getter registered (wins); SelfCal doesn't (falls to the pre-write
+        # snapshot, True).
+        reader._push_callbacks["SampleInterv"] = push_fail
+        reader._push_callbacks["SelfCal"] = push_fail
+        reader._get_callbacks["SampleInterv"] = getter
+        results = run(reader._set_dict_cfg({"SampleInterv": 99, "SelfCal": False}, combined))
+        assert results == {"SampleInterv": "Failed", "SelfCal": "Failed"}
+        assert run(reader._get_dict_cfg("Sensor", combined)) == {
+            "Sensor": {"SampleInterv": 77, "SelfCal": True}
+        }
+    finally:
+        _remove(path_prefix + "config_pushfailmulti.cfg")
+
+
 def test_set_dict_cfg_invalid_value_is_reported_and_never_pushed() -> None:
     path_prefix = _tmp_path("") + "/"
     _remove(path_prefix + "config_invalidnopush.cfg")
