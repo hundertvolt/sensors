@@ -39,6 +39,24 @@ if TYPE_CHECKING:
 from print_log import PrintLog
 
 
+def _special_bypass(check_val: "Any", val_special: "Any", scalar_type: type, check_special: bool) -> "bool | None":
+    # Shared by every non-bool branch of type_or_range_error: val_special is either a single
+    # scalar (the original exact-match bypass) or a tuple/list of scalars (a discrete allowed-value
+    # set). Returns True/False to short-circuit the caller (malformed special, or a valid bypass
+    # match), or None to fall through to the branch's own ordinary min/max range check.
+    if type(val_special) in (tuple, list):
+        if any(type(v) is not scalar_type for v in val_special):
+            return True  # malformed set (wrong-typed element) - reject regardless of check_val
+        if check_special and check_val in val_special:
+            return False
+        return None
+    if type(val_special) is not scalar_type:
+        return True  # malformed scalar special - reject regardless of check_val
+    if check_special and check_val == val_special:
+        return False
+    return None
+
+
 def schema_names(schema: "ConfigSchema") -> "list[str]":  # field names, in schema order (duplicates preserved); malformed input -> []
     try:
         return [field[0] for field in schema]
@@ -72,24 +90,6 @@ def make_dict(nt: "NamedTuple") -> "dict[str, dict[str, int | float | str | None
         return {name: {key: getattr(nt, key) for key in keys}}
     except Exception:
         return {name: {key: None for key in keys}}
-
-
-def _special_bypass(check_val: "Any", val_special: "Any", scalar_type: type, check_special: bool) -> "bool | None":
-    # Shared by every non-bool branch of type_or_range_error: val_special is either a single
-    # scalar (the original exact-match bypass) or a tuple/list of scalars (a discrete allowed-value
-    # set). Returns True/False to short-circuit the caller (malformed special, or a valid bypass
-    # match), or None to fall through to the branch's own ordinary min/max range check.
-    if type(val_special) in (tuple, list):
-        if any(type(v) is not scalar_type for v in val_special):
-            return True  # malformed set (wrong-typed element) - reject regardless of check_val
-        if check_special and check_val in val_special:
-            return False
-        return None
-    if type(val_special) is not scalar_type:
-        return True  # malformed scalar special - reject regardless of check_val
-    if check_special and check_val == val_special:
-        return False
-    return None
 
 
 def type_or_range_error(

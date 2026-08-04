@@ -86,17 +86,17 @@ class LockedCounter:
         self.value = self._clamp(init_value)
         self.value_lock = asyncio.Lock()
 
-    def _clamp(self, value: int | None) -> int | None:  # None = "never happened" sentinel; real values clamp into [0, max_val]
-        if value is None:
-            return None
-        return min(max(value, 0), self.max_val)
-
     async def _step(self, delta: int) -> int:
         async with self.value_lock:
             current = 0 if self.value is None else self.value
             current = min(max(current + delta, 0), self.max_val)
             self.value = current
         return current
+
+    def _clamp(self, value: int | None) -> int | None:  # None = "never happened" sentinel; real values clamp into [0, max_val]
+        if value is None:
+            return None
+        return min(max(value, 0), self.max_val)
 
     async def get_value(self) -> int | None:
         async with self.value_lock:
@@ -168,29 +168,9 @@ class SensorReader:
         self.max_i2c_err = max_i2c_err
         self._err_cnt_internal = 0
 
-    async def _error_check(self, results: "MeasDataType", name: str, condition: bool = True) -> bool:
-        # centralizes the increment/decrement-error-counter-and-decide-to-give-up logic every
-        # sensortask-*.py driver used to hand-roll separately; False tells the caller to give up
-        # (triggers the task supervisor's own reset), True to keep going.
-        if any(res is None for res in results) and condition:
-            self._err_cnt_internal += 1
-            await self.pr.err_s(name + " Fehlerzähler erhöht auf", self._err_cnt_internal, errno=1)
-            if self._err_cnt_internal > self.max_i2c_err:
-                await self.pr.err_s(name + " Maximale Fehleranzahl erreicht!", errno=2)
-                return False  # Abbruch der Schleife führt zu Task-Reset
-        else:
-            if self._err_cnt_internal > 0:
-                self._err_cnt_internal -= 1
-                self.pr.err(name + " Fehlerzähler zurück auf", self._err_cnt_internal)
-        return True
-
     async def _get_meas_data(self) -> "NamedTuple":
         async with self._datalock:
             return self._datastruct
-
-    async def _set_meas_data(self, data: "NamedTuple") -> None:
-        async with self._datalock:
-            self._datastruct = data
 
     async def _get_mgr_cfg(self, cfg: list[str]) -> dict[str, int | float | str | bool | None] | None:
         return {}
@@ -223,6 +203,26 @@ class SensorReader:
                 await self.pr.err_s("Error reading config from sensor:", e, errno=4)
 
         return ret
+
+    async def _set_meas_data(self, data: "NamedTuple") -> None:
+        async with self._datalock:
+            self._datastruct = data
+
+    async def _error_check(self, results: "MeasDataType", name: str, condition: bool = True) -> bool:
+        # centralizes the increment/decrement-error-counter-and-decide-to-give-up logic every
+        # sensortask-*.py driver used to hand-roll separately; False tells the caller to give up
+        # (triggers the task supervisor's own reset), True to keep going.
+        if any(res is None for res in results) and condition:
+            self._err_cnt_internal += 1
+            await self.pr.err_s(name + " Fehlerzähler erhöht auf", self._err_cnt_internal, errno=1)
+            if self._err_cnt_internal > self.max_i2c_err:
+                await self.pr.err_s(name + " Maximale Fehleranzahl erreicht!", errno=2)
+                return False  # Abbruch der Schleife führt zu Task-Reset
+        else:
+            if self._err_cnt_internal > 0:
+                self._err_cnt_internal -= 1
+                self.pr.err(name + " Fehlerzähler zurück auf", self._err_cnt_internal)
+        return True
 
     async def reset_error_counter(self) -> None:
         # Resets both counters this file tracks, not just pr's persisted history/err_count -
@@ -262,14 +262,6 @@ class SensorReaderConfig(SensorReader):
         # skips straight to the next fallback rung; registering one is optional, unlike push
         # callbacks which are the whole point of a field having one.
         self._get_callbacks: dict[str, Callable[[], Coroutine[Any, Any, int | float | str | bool | None]]] = {}
-
-    def get_cfg_schema(self) -> "ConfigSchema":
-        # Single source of truth for every subclass's schema - captured once, right here, from
-        # whatever default_vals a subclass already passes into super().__init__(). No I/O or
-        # locking involved (unlike _get_mgr_cfg/_get_dict_cfg below), so this stays a plain sync
-        # call. self.cfg_schema itself stays a public attribute too - existing callers reach into
-        # it directly (see CLAUDE.md's "Microdot / REST layer" section and DRIVER_SPEC.md section 5).
-        return self.cfg_schema
 
     async def _get_mgr_cfg(self, cfg: list[str]) -> dict[str, int | float | str | bool | None] | None:
         return await self.cfgmgr.get_dict(cfg)
@@ -395,3 +387,11 @@ class SensorReaderConfig(SensorReader):
             await self._set_mgr_cfg({key: recovered}, cfg_vals)
         except Exception as e:
             await self.pr.err_s("Error correcting", key, "after failed push:", e, errno=9)
+
+    def get_cfg_schema(self) -> "ConfigSchema":
+        # Single source of truth for every subclass's schema - captured once, right here, from
+        # whatever default_vals a subclass already passes into super().__init__(). No I/O or
+        # locking involved (unlike _get_mgr_cfg/_get_dict_cfg below), so this stays a plain sync
+        # call. self.cfg_schema itself stays a public attribute too - existing callers reach into
+        # it directly (see CLAUDE.md's "Microdot / REST layer" section and DRIVER_SPEC.md section 5).
+        return self.cfg_schema
