@@ -303,6 +303,14 @@ class SensorReaderConfig(SensorReader):
             # suggest the values themselves were the problem) and nothing is pushed live either.
             return {key: "Failed" for key in data}
 
+        for key in data:
+            # Defense-in-depth against a misbehaving _set_mgr_cfg override that reports persisted=True
+            # but returns a results dict missing one of the requested keys (the real ConfigManager-
+            # backed implementation never does this - write_config() always accounts for every key in
+            # data) - without this, such a key would simply vanish from the returned dict instead of
+            # being reported, breaking this method's own "every field reported independently" contract.
+            results.setdefault(key, "Failed")
+
         for key, value in data.items():
             if results.get(key) != "Valid":
                 continue  # only an actual, successfully-persisted change gets pushed live

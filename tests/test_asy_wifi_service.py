@@ -655,6 +655,27 @@ def test_set_dict_cfg_led_wifi_on_end_to_end_persists_and_pushes() -> None:
     assert run(client.cfgmgr.get_dict(["LedWifiOn"])) == {"LedWifiOn": False}  # persisted too
 
 
+def test_set_dict_cfg_multiple_invalid_fields_reported_independently() -> None:
+    # Mirrors asy_ntp_client.py's own multi-invalid _set_dict_cfg coverage
+    # (test_set_dict_cfg_invalid_field_reported_individually_others_still_apply) - this driver had
+    # no multi-field _set_dict_cfg test at all beyond the single-field LedWifiOn one above, despite
+    # having four persist-only string fields each with their own real min/max/special validation.
+    led = FakeLED()
+    client = make_client(ext_led=led)
+    results = run(
+        client._set_dict_cfg(
+            # LedWifiOn's schema default is True - False here is a real change, not the "Unchanged"
+            # no-push outcome True would trivially produce.
+            {"Hostname": "NewHost", "PW": "short", "Country": "United States", "LedWifiOn": False},
+            client.get_cfg_schema(),
+        )
+    )
+    assert results == {"Hostname": "Valid", "PW": "Invalid", "Country": "Invalid", "LedWifiOn": "Valid"}
+    assert client.led is None  # pushed: LedWifiOn=False turns the LED off and clears it
+    stored = run(client.cfgmgr.get_dict(["Hostname", "PW", "Country"]))
+    assert stored == {"Hostname": "NewHost", "PW": "", "Country": "DE"}  # both invalid, left at their defaults
+
+
 # ---------------------------------------------------------------------------
 # _VAL_PW bounds - WPA2-PSK ASCII passphrase spec (8-63 chars if used; empty is its own distinct
 # "open network, no security" case, not just a short/weak password) - see CLAUDE.md/DRIVER_SPEC.md

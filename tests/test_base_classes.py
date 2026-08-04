@@ -1077,6 +1077,36 @@ def test_set_dict_cfg_multi_field_request_reports_each_field_independently() -> 
         _remove(path_prefix + "config_multifield.cfg")
 
 
+def test_set_dict_cfg_multiple_invalid_fields_neither_pushed() -> None:
+    # Multiple simultaneously-invalid fields, each with its own registered push callback: confirms
+    # per-field independence holds through the push layer too, not just the persist layer already
+    # covered by test_config_manager.py's own test_write_config_multiple_keys_mixed_outcomes_in_one_call
+    # - neither invalid field's callback fires, and both are left at their untouched defaults.
+    combined = _VAL_SI + _VAL_BOOL
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_multiinvalid.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "multiinvalid", combined, cfg_path=path_prefix)
+        pushed: list[str] = []
+
+        async def push_int(value: "int | float | str | bool | None") -> bool:
+            pushed.append("SampleInterv")
+            return True
+
+        async def push_bool(value: "int | float | str | bool | None") -> bool:
+            pushed.append("SelfCal")
+            return True
+
+        reader._push_callbacks["SampleInterv"] = push_int
+        reader._push_callbacks["SelfCal"] = push_bool
+        results = run(reader._set_dict_cfg({"SampleInterv": 9999, "SelfCal": "not a bool"}, combined))
+        assert results == {"SampleInterv": "Invalid", "SelfCal": "Invalid"}
+        assert pushed == []
+        assert run(reader._get_dict_cfg("Sensor", combined)) == {"Sensor": {"SampleInterv": 2, "SelfCal": False}}
+    finally:
+        _remove(path_prefix + "config_multiinvalid.cfg")
+
+
 def test_set_dict_cfg_whole_persist_failure_marks_every_field_failed() -> None:
     # A genuinely invalid ConfigManager (e.g. malformed schema) makes write_config() itself return
     # (False, {}) - every key in the request comes back "Failed", not silently dropped or "Invalid"
@@ -1132,6 +1162,29 @@ def test_set_dict_cfg_set_mgr_cfg_override_malformed_result_marks_every_field_fa
         assert reader.pr.err_count == 1
     finally:
         _remove(path_prefix + "config_malformedmgr.cfg")
+
+
+def test_set_dict_cfg_set_mgr_cfg_override_missing_key_marks_it_failed() -> None:
+    # A different malformed-override shape from the two tests above (raising, or returning a
+    # non-dict): here the override reports persisted=True with a real dict, but one that's simply
+    # missing a key the caller asked about - the real ConfigManager-backed _set_mgr_cfg never does
+    # this (write_config() always accounts for every key in data), but a subclass override could.
+    # Without a fallback, that key would silently vanish from the returned dict instead of being
+    # reported, breaking the "every field reported independently" contract this file documents.
+    class MissingKeySetMgrCfgReader(SensorReaderConfig):
+        async def _set_mgr_cfg(
+            self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "cm.ConfigSchema"
+        ) -> "tuple[bool, cm.WriteValidity]":
+            return True, {}  # reports success but never mentions any of the requested keys
+
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_missingkeymgr.cfg")
+    try:
+        reader = MissingKeySetMgrCfgReader(Meas(20.0, 50), 3, "missingkeymgr", _VAL_SI, cfg_path=path_prefix)
+        results = run(reader._set_dict_cfg({"SampleInterv": 42}, _VAL_SI))
+        assert results == {"SampleInterv": "Failed"}
+    finally:
+        _remove(path_prefix + "config_missingkeymgr.cfg")
 
 
 def test_set_dict_cfg_empty_data_returns_empty_result() -> None:

@@ -26,6 +26,8 @@ sys.path.insert(0, "ext")
 from microdot import Microdot, Request  # type: ignore[import-not-found]  # noqa: E402
 
 import api_response as ar
+from asy_bmp3xx_driver import BMP3xx_Reader
+from asy_i2c_driver import I2C
 from asy_ntp_client import asy_ntp_client
 from asy_wifi_service import asy_conn_time
 
@@ -65,7 +67,7 @@ def _tmp_cfg_dir() -> str:
         os.mkdir(path)
     except OSError:
         pass  # already exists from a stale previous run
-    for stale in ("config_WIFI.cfg", "config_NTP.cfg"):
+    for stale in ("config_WIFI.cfg", "config_NTP.cfg", "config_BMP3XX.cfg"):
         try:
             os.remove(path + "/" + stale)
         except OSError:
@@ -288,6 +290,59 @@ def test_real_microdot_handler_raising_is_caught_by_microdots_own_blanket_catch(
     req = _make_request(app, "PUT", "/boom", {})
     res = run(app.dispatch_request(req))
     assert res.status_code == 500
+
+
+# ---------------------------------------------------------------------------
+# Real Microdot end-to-end with a real sensor driver (BMP3xx), not just the software-only WiFi/NTP
+# readers above - proves a genuine hardware/communication fault (a wedged I2C bus, the same failure
+# mode a disconnected/dead sensor produces) propagates all the way through _set_dict_cfg's push
+# callback, handle_set_cmd's envelope, and real Microdot dispatch as a per-field "Failed" status
+# inside a normal 200 JSON response - never as a raised exception or a bare Microdot 500. This is
+# the one place CLAUDE.md's "Microdot / REST layer" blanket-catch guarantee and DRIVER_SPEC.md's
+# layer-3 "never raises" contract are proven to hold *together*, end-to-end, not just individually.
+# ---------------------------------------------------------------------------
+
+
+def _nak_i2c_address(i2c: I2C, address: int) -> None:
+    # Same real-fake-I2C access as test_asy_bmp3xx_driver.py's own fake() helper - i2c._i2c is
+    # typed I2C-or-None (only None before setup()/first use), so this narrows it the same way
+    # fake()'s own -> FakeI2C return annotation does, rather than an inline type: ignore at the
+    # call site (which mypy would flag as "union-attr", not "attr-defined", and is easy to get
+    # subtly wrong - confirmed directly by getting exactly that mismatch here first).
+    from machine import I2C as _FakeI2C
+
+    real_i2c = i2c._i2c
+    assert isinstance(real_i2c, _FakeI2C)
+    real_i2c.nak_addresses.add(address)
+
+
+def _bmp_app(reader: BMP3xx_Reader) -> Microdot:
+    app = Microdot()
+
+    @app.put("/sensors/cmd")
+    async def sensor_cmd(request: Request) -> "ar.ResponseEnvelope":
+        data, err = ar.parse_cmd_request(request, ["setBMP"])
+        if err is not None:
+            return err
+        assert data is not None
+        fields = {k: v for k, v in data.items() if k != "cmd"}
+        return await ar.handle_set_cmd(reader, fields, reader.get_cfg_schema())
+
+    return app
+
+
+def test_real_microdot_setter_end_to_end_i2c_bus_fault_surfaces_as_failed_not_500() -> None:
+    i2c = I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
+    reader = BMP3xx_Reader(i2c, address=0x77, cfg_path=_tmp_cfg_dir())
+    _nak_i2c_address(i2c, 0x77)  # bus genuinely unreachable, like a dead/disconnected sensor
+    app = _bmp_app(reader)
+    req = _make_request(app, "PUT", "/sensors/cmd", {"cmd": "setBMP", "PressOvers": 8})
+    res = run(app.dispatch_request(req))
+    assert res.status_code == 200  # our own precise envelope, not a raised exception or bare 500
+    body = json.loads(res.body)
+    assert body["res"] == "OK"  # the request itself was validly processed and dispatched
+    assert body["result"] == {"PressOvers": "Failed"}
+    assert run(reader.cfgmgr.get_dict(["PressOvers"])) == {"PressOvers": 8}  # persisted despite the failed push
 
 
 # ---------------------------------------------------------------------------

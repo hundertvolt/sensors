@@ -1441,6 +1441,24 @@ def test_set_dict_cfg_multi_field_discrete_and_continuous_together() -> None:
     assert run(reader.cfgmgr.get_dict(["PressOffset"])) == {"PressOffset": 12.5}
 
 
+def test_set_dict_cfg_multiple_simultaneously_invalid_discrete_fields_neither_pushed() -> None:
+    # Both PressOvers and FiltCoeff invalid at once - not just one invalid amid otherwise-valid
+    # fields, as test_set_dict_cfg_multi_field_discrete_and_continuous_together above already
+    # covers. Confirms independence holds and neither push callback fires when two discrete-set
+    # fields in the same request are both out of their allowed value set, while a third, valid
+    # field in the same call still persists and pushes normally.
+    i2c, reader = make_clean_reader("set_dict_cfg_multi_invalid")
+    seed_status(i2c, 0x10 | 0x60)
+    seed_err(i2c, 0x00)
+    results = run(reader._set_dict_cfg({"PressOvers": 20, "FiltCoeff": 99, "TempOvers": 4}, reader.get_cfg_schema()))
+    assert results == {"PressOvers": "Invalid", "FiltCoeff": "Invalid", "TempOvers": "Valid"}
+    assert run(reader.cfgmgr.get_dict(["PressOvers", "FiltCoeff"])) == {
+        "PressOvers": 1,
+        "FiltCoeff": 0,
+    }  # both untouched, still their schema defaults
+    assert run(reader.bmp.get_temperature_oversampling()) == 4  # the one valid field still pushed
+
+
 def test_set_dict_cfg_temperature_oversampling_end_to_end_persists_and_pushes() -> None:
     i2c, reader = make_clean_reader("set_dict_cfg_tov")
     seed_status(i2c, 0x10 | 0x60)
