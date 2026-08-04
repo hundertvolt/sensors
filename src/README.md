@@ -345,6 +345,22 @@ is not a machine with memory or cycles to spare:
       after a rebase), re-check for duplicated or conflicting mechanisms and reconcile docs
       carefully — don't leave two contradictory descriptions of the same thing.
 
+## 15. Method ordering within a class
+
+- [ ] Within each class, order methods private-first, then public: a) private (`_`-prefixed)
+      methods on top, b) public methods on the bottom.
+- [ ] Within each of those two groups, order by role (omit a category entirely if the class has no
+      methods of that kind): 1. Starters (`start_*`/`stop_*`/`get_*_starters`), 2. Getters,
+      3. Setters, 4. Others. Keep each sub-bucket's original relative order among its own members.
+- [ ] `__init__` and other dunders always stay first in the class, ahead of this scheme, untouched.
+- [ ] This is a pure reorder: it must not change any method's body, decorators, or docstring/
+      comments, and must not change the file's module-level statements (imports, constants, module
+      functions) at all — verify with an AST-level comparison against the pre-reorder version (per-
+      class multiset of method name + full source text, decorators and trailing same-line comments
+      included), not just a visual diff, since a manual reorder can silently drop a decorator or a
+      trailing `# type: ignore` comment. The existing test suite must still pass unchanged, and
+      lint/typecheck finding counts must match the pre-reorder baseline exactly.
+
 ## Only then
 
 Move the file into `src/`, and only after all of the above is actually done and passing — not
