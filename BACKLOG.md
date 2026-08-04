@@ -107,6 +107,54 @@ constraints.
     DRIVER_SPEC.md section 5.2.1 for the full pattern (including the one consequence a driver using
     this must handle: `get_dict_cfg()` must keep excluding the field from its own read, since
     `ConfigManager.get_dict()` is all-or-nothing and the field is never in `_cache`).
+- **A follow-up, full function-by-function re-audit of `python/CommonDrivers/api_helpers.py` (2026-08-04)
+  against `base_classes.py`/`config_manager.py`/`api_response.py` found two more points worth
+  recording, plus confirmed neither existing `api_helpers.py` copy can be deleted yet:**
+  - **Confirmed, no gap: legacy's `"switch"` dtype (`update_valid_json`'s `"On"`/`"Off"` string
+    convention, converted via `toSwitch()`/`to_switch()`) has no equivalent in
+    `config_manager.py`'s `type_or_range_error()` — and needs none.** Every promoted bool field
+    (`asy_scd30_driver.py`'s `SelfCal`, `asy_sgp40_driver.py`'s `SGPResetVOC`,
+    `asy_wifi_service.py`'s `LedWifiOn`) already uses schema type `"bool"` end-to-end, sent/received
+    as a native JSON `true`/`false`, not an `"On"`/`"Off"` string — already implemented and exercised
+    by real tests (not something newly changed by this audit), just not previously called out
+    explicitly as a legacy convention with no direct equivalent. Nothing to do here.
+  - **Documented, not owner-confirmed: `set_sensor_value()`'s getter/previous-config/default
+    failure-recovery chain has no equivalent in `_set_dict_cfg()`'s push-callback step, and this is
+    believed low-risk but hasn't been explicitly signed off.** Legacy: on a setter exception, it
+    tried `getter()` (re-read actual sensor state), then the previous config value, then a hardcoded
+    default — actively correcting the persisted config back toward *confirmed hardware state* on a
+    failed write. New: `_set_dict_cfg` persists the client's requested value *before* attempting the
+    push (an intentional, documented ordering — see its own comment, "a value that made it onto the
+    device is always the value still there after an unplanned reset"); if the push callback then
+    fails, the field is reported `"Failed"` in the response, but the persisted config is **not**
+    rolled back or corrected — confirmed by
+    `test_setter_microdot_integration.py`'s `test_real_microdot_setter_end_to_end_i2c_bus_fault_surfaces_as_failed_not_500`,
+    which asserts the config keeps the requested value even though the push itself failed. Risk
+    analysis (not an owner sign-off): every schema bound has already been validated against the real
+    datasheet (see the "Datasheet/spec validation" audit pass), so a push failure through this path
+    should only ever be a *transient* fault (wedged/busy I2C bus), not a hardware-rejected value —
+    the persisted value is never actually wrong, just not-yet-confirmed-applied, and self-heals on
+    the next successful write (client retry, or the next task-restart's own `init_hw()`-style
+    boot-time config re-push, e.g. `asy_bmp3xx_driver.py`'s `_setup()`). This is a real,
+    deliberate-but-unflagged behavioral difference from legacy, not a silent loss — recorded here for
+    the owner to weigh in on if the risk analysis above doesn't hold in practice.
+  - **Neither `python/CommonDrivers/api_helpers.py` (deployed legacy) nor
+    `improved-quality/api_helpers.py` (WIP typed copy) can be deleted yet — both are still
+    load-bearing for real, active dependents outside this refactor pass's scope.**
+    `python/CommonDrivers/api_helpers.py` is `from api_helpers import *`-imported by all four deployed
+    `modules/sensortask-*.py` files — deleting it would break every currently-shipped unit.
+    `improved-quality/api_helpers.py` is `from api_helpers import (...)`-imported by
+    `improved-quality/sensortask-wozi.py` for real, still-unmigrated functionality: the "residual
+    system-level config" fields with no per-driver schema of their own yet (`SGPBackupPeriod`/
+    `SGPBackupMaxAge`/`SGPWaitTimeNTP`/`BMPSampleInterv`/etc. — see this file's own "Config-duplication
+    centralization" deferred item), LED/system command handling, and `time_to_dict()` (used by the
+    `/time/*` status routes). None of these route handlers have been ported onto the new
+    `parse_cmd_request()`/`handle_set_cmd()` mechanism yet — that porting is real, additional work
+    against `improved-quality/sensortask-wozi.py`'s own source, out of scope for this pass under
+    CLAUDE.md's hard rule on editing `improved-quality/` source without a scoped, owner-authorized
+    exception. Once that porting happens and `improved-quality/sensortask-wozi.py` no longer imports
+    from it, `improved-quality/api_helpers.py` becomes deletable; the deployed legacy copy stays
+    until the deployed codebase itself is retired, which is out of scope entirely.
 - **No `@app.errorhandler` registrations exist anywhere yet** (confirmed: neither
   `improved-quality/sensortask-wozi.py` nor the deployed `python/CommonDrivers/`-based app
   registers any). See CLAUDE.md's "Microdot / REST layer" section for what Microdot itself already
@@ -344,23 +392,19 @@ constraints.
     `sensortask-wozi.py`/`neopixel_signal.py`, several test files), a real blast-radius decision
     similar in shape to the already-deferred `max_i2c_err` rename. Needs an owner call on whether to
     rename (and to what) or accept the mismatch permanently, not a unilateral fix.
-11. **Does MicroPython's `asyncio.start_server()` isolate each accepted connection in its own Task,
-    the same way CPython's does?** Needs checking against the real pinned MicroPython Unix-port
-    interpreter or authoritative source/docs, not assumed from CPython parity (per CLAUDE.md's
-    standing verify-don't-assume rule). This determines the actual blast radius of the one confirmed
-    gap in Microdot's own per-request safety net: a non-`OSError` exception escaping
-    `Response.write()`/`handle_request()` (see CLAUDE.md's "Microdot / REST layer"). If connections
-    are isolated Tasks, only that one client is affected and the outer Microdot server task (and
-    `system_service.py`'s task-supervisor restart, already wired up and already sufficient for a
-    fully-dead server task) never even notices. If not, a single bad connection could take down the
-    whole `start_server()` accept loop, making that already-in-place supervisor restart
-    load-bearing for recovery rather than a backstop that's rarely exercised. Worth resolving before
-    treating "Microdot restarts itself when it crashes" as settled, since it changes whether any
-    extra per-connection containment work is needed on top of what already exists.
-12. **`pyproject.toml`'s ruff `extend-exclude` and mypy `exclude` still list the now-deleted
-    `improved-quality/microdot.py` path** — dead/inert, not a functional bug (`ext/microdot.py` was
-    never in either tool's scan scope to begin with — see CLAUDE.md's "Microdot / REST layer"), but
-    worth a one-line cleanup next time `pyproject.toml` is touched for something else.
+11. ~~Does MicroPython's `asyncio.start_server()` isolate each accepted connection in its own
+    Task?~~ **Resolved: yes, confirmed directly against source.** Checked
+    `extmod/asyncio/stream.py` in the pinned toolchain checkout (`/root/pico-toolchain/micropython`,
+    `v1.28.0` — matches the refactor's own forward version target, not the deployed-only 1.26 pin;
+    see CLAUDE.md's "Platform target"): `Server._serve()`'s accept loop calls
+    `core.create_task(cb(s2s, s2s))` for every accepted connection (line 174) — each connection gets
+    its own independent Task, the same isolation CPython's `asyncio.start_server()` gives. Consequence
+    for the one confirmed gap in Microdot's own per-request safety net (a non-`OSError` exception
+    escaping `Response.write()`/`handle_request()` — see CLAUDE.md's "Microdot / REST layer"): only
+    that one client's connection Task is affected; the outer `_serve()` accept loop and the rest of
+    the Microdot server keep running unaffected. "Microdot restarts itself when it crashes" (via
+    `system_service.py`'s existing task supervisor) stays a backstop for a fully-dead server task,
+    not something made load-bearing by this gap.
 
 ## Deferred / explicitly out-of-scope work
 
