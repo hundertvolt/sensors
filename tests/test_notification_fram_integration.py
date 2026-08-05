@@ -9,6 +9,7 @@ chain down to the simulated chip, not mocked at AsyFramManager's own boundary.
 """
 
 import asyncio
+import os
 
 from _fram_chip_fake import FakeMB85RS64V
 
@@ -34,6 +35,38 @@ if TYPE_CHECKING:
     T = TypeVar("T")
 
 _FIELD_WARN_CO2 = (("WarnCO2", "int", 1600, 0, 3000, None),)
+
+_TMP_DIR = "tests/_tmp"
+_next_dir = 0
+
+
+def _remove_any(path: str) -> None:
+    try:
+        os.remove(path)
+    except OSError:
+        try:
+            os.rmdir(path)
+        except OSError:
+            pass
+
+
+def _tmp_cfg_dir() -> str:
+    # NotificationCoordinator is a real SensorReaderConfig - it writes a real config_NOTIFY.cfg via
+    # cfg_path even in a FRAM-focused test, same as every other test file's own _tmp_cfg_dir()
+    # isolates that write from the repo root.
+    global _next_dir
+    try:
+        os.mkdir(_TMP_DIR)
+    except OSError:
+        pass
+    _next_dir += 1
+    path = _TMP_DIR + "/notify_fram_" + str(_next_dir)
+    try:
+        os.mkdir(path)
+    except OSError:
+        pass
+    _remove_any(path + "/config_NOTIFY.cfg")
+    return path + "/"
 
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
@@ -64,11 +97,11 @@ def make_pixel(manager: AsyFramManager) -> NeopixelDriver:
     return NeopixelDriver(0, fram=manager)
 
 
-def make_notify(manager: AsyFramManager) -> NotificationCoordinator:
+def make_notify(manager: AsyFramManager, cfg_path: str) -> NotificationCoordinator:
     # Same registration order/shape every time this helper is called - required for the FRAM
     # layout (built once in finalize()) to decode identically across a simulated reboot, matching
     # the "number and order of registered signals stays constant" invariant this design relies on.
-    coordinator = NotificationCoordinator(_request_signal_stub, _local_time_stub, fram=manager)
+    coordinator = NotificationCoordinator(_request_signal_stub, _local_time_stub, cfg_path=cfg_path, fram=manager)
     coordinator.register(NotificationSignal("WarnCO2", _value_stub, _FIELD_WARN_CO2, (1, 0, 0)))
     coordinator.finalize()
     return coordinator
@@ -78,7 +111,7 @@ def test_driver_and_notify_service_get_two_independent_non_overlapping_fram_chun
     manager, _chip = make_manager()
     run(manager.setup())
     pixel = make_pixel(manager)
-    notify = make_notify(manager)
+    notify = make_notify(manager, _tmp_cfg_dir())
 
     async def scenario() -> None:
         await pixel.pr.setup()
@@ -96,7 +129,7 @@ def test_driver_and_notify_service_errors_stay_in_separate_histories() -> None:
     manager, _chip = make_manager()
     run(manager.setup())
     pixel = make_pixel(manager)
-    notify = make_notify(manager)
+    notify = make_notify(manager, _tmp_cfg_dir())
 
     async def scenario() -> "tuple[dict, dict]":
         await pixel.pr.setup()
@@ -116,10 +149,13 @@ def test_driver_and_notify_service_errors_stay_in_separate_histories() -> None:
 
 
 def test_both_histories_survive_a_simulated_reboot() -> None:
+    cfg_path = _tmp_cfg_dir()  # same path across the simulated reboot, matching a real device's
+    # config file persisting across a reboot too - the FRAM-side assertions below don't depend on
+    # this, but it's the correct shape to model.
     manager1, chip = make_manager()
     run(manager1.setup())
     pixel1 = make_pixel(manager1)
-    notify1 = make_notify(manager1)
+    notify1 = make_notify(manager1, cfg_path)
 
     async def before_reboot() -> None:
         await pixel1.pr.setup()
@@ -133,7 +169,7 @@ def test_both_histories_survive_a_simulated_reboot() -> None:
     manager2.fram._spidev.spi._spi = chip  # same underlying chip, fresh manager/driver/coordinator objects
     run(manager2.setup())
     pixel2 = make_pixel(manager2)
-    notify2 = make_notify(manager2)  # same registration order/shape as before the reboot
+    notify2 = make_notify(manager2, cfg_path)  # same registration order/shape as before the reboot
 
     async def after_reboot() -> "tuple[dict, dict]":
         await pixel2.pr.setup()

@@ -52,9 +52,11 @@ constraints.
   means the same or an equivalent condition across different drivers, beyond just the one
   already-consistent case. No scheme (numbering ranges, category list, how a driver opts in)
   designed yet.
-- **Neopixel warning-flash sequencing and the task-supervisor error-budget counter** are both
-  behaviorally correct and intentional as designed, but flagged by the owner as implementable more
-  efficiently — worth a cleaner implementation in the refactor without changing observed behavior.
+- **The task-supervisor error-budget counter** is behaviorally correct and intentional as designed,
+  but flagged by the owner as implementable more efficiently — worth a cleaner implementation in
+  the refactor without changing observed behavior. (Neopixel warning-flash sequencing was the other
+  half of this item - resolved by the `src/asy_neopixel_driver.py`/`src/asy_notification_service.py`
+  promotion, see CLAUDE.md.)
 - **No `@app.errorhandler` registrations exist anywhere yet** (confirmed: neither
   `improved-quality/sensortask-wozi.py` nor the deployed `python/CommonDrivers/`-based app
   registers any). See CLAUDE.md's "Microdot / REST layer" section for what Microdot itself already
@@ -289,7 +291,7 @@ constraints.
     inherited from the pre-refactor code's `asy_conn_time()` (a plain coroutine function, not a
     class, in `python/CommonDrivers/async_connect.py`) for continuity during promotion, not an
     oversight — but renaming now would touch every import/instantiation site (production
-    `sensortask-wozi.py`/`neopixel_signal.py`, several test files), a real blast-radius decision
+    `sensortask-wozi.py`, several test files), a real blast-radius decision
     similar in shape to the already-deferred `max_i2c_err` rename. Needs an owner call on whether to
     rename (and to what) or accept the mismatch permanently, not a unilateral fix.
 
