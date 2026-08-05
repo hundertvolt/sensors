@@ -49,10 +49,8 @@ class UART(Lockable):
 
     def _active_uart(self) -> "_UART | None":
         # Shared entry guard for every read/write method - None unless called inside `async with
-        # self:` on a live bus. Returns the narrowed UART (not bool) so mypy's None-narrowing works.
-        # Kept deliberately, unlike SPIDevice/I2CDevice: cancel_read_timeout() runs from a different
-        # task and infers "a read is in flight" purely from asy_lock.locked() - a lock-less caller
-        # would be invisible to it, silently breaking cancellation.
+        # self:` on a live bus. Kept deliberately, unlike SPIDevice/I2CDevice: cancel_read_timeout()
+        # infers "a read is in flight" purely from asy_lock.locked() - a lock-less caller is invisible to it.
         if not self.asy_lock.locked():
             return None
         return self._uart

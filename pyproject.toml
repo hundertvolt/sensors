@@ -52,10 +52,9 @@ target-version = "py310"
 # ceiling for this setting) keeps length-based wrapping a non-issue on the off chance format is
 # ever run locally, on top of the E501 opt-out below.
 line-length = 320
-# microdot.py is vendored third-party code (see CLAUDE.md) - not ours to restyle or lint. Code
-# that *uses* its API is still fully linted/type-checked; this only excludes the vendored file
-# itself.
-extend-exclude = ["improved-quality/microdot.py"]
+# Note: improved-quality/microdot.py (an unintentional fork of vendored Microdot) has been removed
+# entirely - replaced by ext/microdot.py, which was never in ruff's scan scope to begin with (see
+# CLAUDE.md's "Microdot / REST layer"). No exclude entry is needed here anymore.
 
 [tool.ruff.lint]
 select = [
@@ -80,9 +79,8 @@ ignore = [
 # typeshed with typings/stdlib (installed by scripts/typecheck.sh), so MicroPython's own
 # time/math/select/errno/... signatures win over CPython's; mypy_path adds typings/'s
 # board-specific top-level modules (machine, network, rp2/, ...). follow_imports=silent also
-# means imported-but-not-directly-checked modules (e.g. vendored microdot.py, see files/exclude
-# below) still get their types used for call-site checking elsewhere, without their own internal
-# issues being reported.
+# means imported-but-not-directly-checked modules still get their types used for call-site
+# checking elsewhere, without their own internal issues being reported.
 platform = "linux"
 python_version = "3.10"  # same reasoning as [tool.ruff]'s target-version above - the checked
 # code's syntax floor (MicroPython/PEP 604), not the interpreter mypy itself runs under

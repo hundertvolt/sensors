@@ -456,15 +456,95 @@ def test_error_check_recovers_after_a_success() -> None:
 def test_reset_voc_true_sets_the_reset_flag() -> None:
     reader = make_reader()
     assert reader.reset is False
-    run(reader.reset_voc(True))
+    assert run(reader.reset_voc(True)) is True  # uniform setter return contract: True = applied
     assert reader.reset is True
 
 
 def test_reset_voc_false_is_a_no_op() -> None:
     reader = make_reader()
     reader.reset = True
-    run(reader.reset_voc(False))
+    assert run(reader.reset_voc(False)) is False  # uniform setter return contract: False = no-op
     assert reader.reset is True  # unchanged - reset_voc's own documented contract
+
+
+def test_push_reset_voc_wrapper_delegates_to_reset_voc() -> None:
+    reader = make_reader()
+    assert run(reader._push_reset_voc(True)) is True
+    assert reader.reset is True
+
+
+def test_push_reset_voc_wrapper_reports_success_even_when_flag_is_false() -> None:
+    # reset_voc(False) is a legitimate no-op (see test_reset_voc_false_is_a_no_op), not a push
+    # failure - the wrapper must not forward reset_voc()'s own False-means-no-op return value as
+    # its own False-means-push-failed result, or _set_dict_cfg would misreport a valid
+    # `SGPResetVOC: false` request as "Failed" and spuriously run the recovery chain.
+    reader = make_reader()
+    assert run(reader._push_reset_voc(False)) is True
+    assert reader.reset is False
+
+
+def test_push_reset_voc_wrapper_rejects_a_non_bool_value_defensively() -> None:
+    # _set_dict_cfg only ever invokes a push callback with an already schema-validated value (real
+    # bool, by construction) - this guards the type for the checker and as defense-in-depth, not
+    # because a real caller can reach it with the wrong type.
+    reader = make_reader()
+    assert run(reader._push_reset_voc("not a bool")) is False
+    assert run(reader._push_reset_voc(1)) is False
+    assert reader.reset is False
+
+
+def test_set_dict_cfg_reset_voc_triggers_the_reset_and_is_never_persisted() -> None:
+    # The "direct trigger mechanism" replacing legacy's cmd_keys: SGPResetVOC is a real schema
+    # field, validated and dispatched through the exact same generic _set_dict_cfg() path as any
+    # other field, but its special-alone shape (def=None, special=True) means ConfigManager never
+    # stores it - ConfigManager.write_config()'s own ".- Key ... is valid but not in storage"
+    # behavior, exercised here end-to-end through the real driver.
+    cfg_dir = _sgp_cfg_dir("resetvoc_trigger")
+    reader = SGP40_Reader(make_i2c(), _comp_data, max_i2c_err=2, cfg_path=cfg_dir)
+    results = run(reader._set_dict_cfg({"SGPResetVOC": True}, reader.get_cfg_schema()))
+    assert results == {"SGPResetVOC": "Valid"}
+    assert reader.reset is True
+    with open(cfg_dir + _SGP_CFG_FILE) as f:
+        assert "SGPResetVOC" not in f.read()  # never written to disk
+
+
+def test_set_dict_cfg_reset_voc_re_fires_every_time_not_just_on_change() -> None:
+    # Unlike an ordinary field (which only pushes on "Valid", i.e. an actual change from the
+    # previous stored value), a special-alone field has no previous value to compare against -
+    # ConfigManager.write_config() always reports it "Valid", so sending the identical value twice
+    # in a row still re-triggers the push callback both times. This is the repeatable-trigger
+    # semantic reset_voc() itself needs (e.g. two separate REST requests each meaning "reset now").
+    cfg_dir = _sgp_cfg_dir("resetvoc_refire")
+    reader = SGP40_Reader(make_i2c(), _comp_data, max_i2c_err=2, cfg_path=cfg_dir)
+    first = run(reader._set_dict_cfg({"SGPResetVOC": True}, reader.get_cfg_schema()))
+    reader.reset = False  # simulate the reset having already completed and cleared by read_loop()
+    second = run(reader._set_dict_cfg({"SGPResetVOC": True}, reader.get_cfg_schema()))
+    assert first == {"SGPResetVOC": "Valid"}
+    assert second == {"SGPResetVOC": "Valid"}
+    assert reader.reset is True  # the second request re-armed it
+
+
+def test_set_dict_cfg_reset_voc_false_reports_valid_not_failed() -> None:
+    # End-to-end regression test for the _push_reset_voc fix above: a real REST-style request of
+    # `{"SGPResetVOC": false}` is a legitimate, well-defined no-op (matches reset_voc(False)'s own
+    # contract) and must surface as "Valid", not "Failed" - and must not trigger the sensor read
+    # nor leave anything for _recover_failed_push to (harmlessly) no-op through.
+    cfg_dir = _sgp_cfg_dir("resetvoc_false")
+    reader = SGP40_Reader(make_i2c(), _comp_data, max_i2c_err=2, cfg_path=cfg_dir)
+    results = run(reader._set_dict_cfg({"SGPResetVOC": False}, reader.get_cfg_schema()))
+    assert results == {"SGPResetVOC": "Valid"}
+    assert reader.reset is False
+
+
+def test_get_dict_cfg_unaffected_by_the_command_only_reset_field_in_the_schema() -> None:
+    # get_dict_cfg() deliberately passes its own explicit BackupPeriod/BackupMaxAge/WaitTimeNTP
+    # schema, not reader.get_cfg_schema() (which now includes SGPResetVOC) - confirms that
+    # exclusion actually holds end-to-end: a real read still succeeds and reports exactly the three
+    # persisted fields, not a broken/partial read from ConfigManager.get_dict()'s all-or-nothing
+    # behavior on a key that's never in _cache (see asy_sgp40_driver.py's _VAL_RESET comment).
+    reader = make_reader()
+    result = run(reader.get_dict_cfg())
+    assert result == {"SGP40": {"BackupPeriod": 1, "BackupMaxAge": 7200, "WaitTimeNTP": 30}}
 
 
 def test_reset_never_drops_but_each_sub_part_completes_at_most_once() -> None:
@@ -867,6 +947,36 @@ _SGP_CFG_FILE = "config_SGP40.cfg"
 _VAL_BP = (("BackupPeriod", "int", 1, 0, 1440, None),)
 _VAL_BMAX = (("BackupMaxAge", "int", 7200, 0, 10080, None),)
 _VAL_WT = (("WaitTimeNTP", "int", 30, 0, 600, None),)
+_VAL_RESET = (("SGPResetVOC", "bool", None, None, None, True),)
+
+
+def test_get_cfg_schema_matches_the_public_attribute() -> None:
+    # get_cfg_schema() is inherited for free from base_classes.py's SensorReaderConfig.
+    reader = make_reader()
+    assert reader.get_cfg_schema() == reader.cfg_schema
+    assert reader.get_cfg_schema() == (_VAL_BP + _VAL_BMAX + _VAL_WT + _VAL_RESET)
+
+
+def test_push_callbacks_registered_only_for_the_command_only_reset_field() -> None:
+    # BackupPeriod/BackupMaxAge/WaitTimeNTP are persist-only: _check_storage()/_init_sgp() read
+    # them fresh from cfgmgr every cycle, nothing needs a live push on write - same shape as
+    # asy_ntp_client.py's fields. SGPResetVOC is the one exception: a command-only trigger (see
+    # asy_sgp40_driver.py's _VAL_RESET comment), registered the same way as every other module's
+    # real live-push field.
+    reader = make_reader()
+    assert set(reader._push_callbacks) == {"SGPResetVOC"}
+
+
+def test_set_dict_cfg_works_out_of_the_box_with_zero_driver_changes() -> None:
+    # Isolated cfg dir (see _sgp_cfg_dir() below), not the shared make_reader() config path - this
+    # test actually persists non-default values, and the shared path is only safe for tests that
+    # never write, same reasoning as every other config-writing test in this file.
+    cfg_dir = _sgp_cfg_dir("setdictzero")
+    reader = SGP40_Reader(make_i2c(), _comp_data, max_i2c_err=2, cfg_path=cfg_dir)
+    results = run(reader._set_dict_cfg({"BackupPeriod": 30, "WaitTimeNTP": 60}, reader.get_cfg_schema()))
+    assert results == {"BackupPeriod": "Valid", "WaitTimeNTP": "Valid"}
+    stored = run(reader.cfgmgr.get_dict(["BackupPeriod", "WaitTimeNTP"]))
+    assert stored == {"BackupPeriod": 30, "WaitTimeNTP": 60}
 
 
 def _sgp_cfg_dir(name: str) -> str:

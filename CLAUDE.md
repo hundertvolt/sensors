@@ -133,7 +133,13 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
 - **`python/CommonDrivers/microdot.py` is vendored third-party code** — verified to match current
   upstream Microdot exactly (`send_file()` signature, `Request.json` behavior). Don't restyle or
   "clean up" it; if you need to change its behavior, treat that as a deliberate fork decision, not
-  routine editing.
+  routine editing. **`ext/microdot.py` is the same policy applied to the refactor target**: a plain,
+  unmodified vendored copy of upstream Microdot (pinned to tag `v2.6.2`), replacing the
+  `improved-quality/microdot.py` copy that had drifted into an unintentional fork (removed). No
+  edits, no restyling, ever — any behavior change needed is handled by wrapping/calling it from our
+  own code (see "Microdot / REST layer" below), never by touching this file. `src/` and `ext/` are
+  copied flat into one directory and frozen together for the refactored firmware build, which is why
+  they live at the same directory depth in the repo.
 - **`dev` config is a bench rig only** — its quirks (e.g. LED/Neopixel REST routes referencing an
   object that's never instantiated) are explicitly out of scope. Don't fix them as if they were
   bugs.
@@ -178,8 +184,8 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
   exists in a specific context (a real caller-supplied value reaching an unguarded
   comparison/construct), not just "any `await` could theoretically raise."
 - **Adafruit-derived driver code is fair game to restructure/rewrite** (keeping attribution) —
-  unlike `python/CommonDrivers/microdot.py`/`improved-quality/microdot.py`, which stay hands-off/
-  vendored (see above).
+  unlike `python/CommonDrivers/microdot.py`/`ext/microdot.py`, which stay hands-off/vendored (see
+  above).
 - **Long-blocking operations must not stall timing-sensitive work.** Any new code that blocks the
   event loop for a noticeable time must not do so while timing-sensitive work like the Neopixel
   animation needs to run — either avoid the block, or coordinate so timing-sensitive code runs
@@ -334,18 +340,15 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
   correctly. Net effect: harmless today, but worth knowing that the real board stub's coverage is
   incomplete for these two APIs specifically if a future `src`-only or `--strict`-adjacent
   type-check run is ever added.
-- **`improved-quality/microdot.py` — not `python/CommonDrivers/microdot.py` from the hard rule
-  above — is excluded from both tools' direct checks** (`pyproject.toml`'s `extend-exclude`/
-  `exclude`): it's the only one of the two copies ruff/mypy ever look at in the first place, since
-  `python/` isn't in either tool's scope at all (see "Scope" above) — there's nothing to exclude
-  for the `python/CommonDrivers/` copy. Code that *imports* the `improved-quality/` copy is still
-  fully checked; mypy's `follow_imports`/`follow_imports_for_stubs` settings make this work for
-  both regular Python files and the `.pyi` stub files in `typings/` (stub files are otherwise
-  exempt from `follow_imports` by default — a real, tested distinction, not a guess). Unlike the
-  vendored `python/` copy, this `improved-quality/` copy is a confirmed *unintentional* fork (see
-  BACKLOG.md's "`improved-quality/microdot.py` fork" finding) slated for reversion during the
-  refactor — the exclude just keeps it out of lint/type findings until then, it isn't an
-  endorsement of the drift.
+- **`improved-quality/microdot.py` no longer exists** — it was a confirmed *unintentional* fork of
+  vendored Microdot, removed and replaced with a fresh, unmodified sync at `ext/microdot.py`
+  (pinned to tag `v2.6.2`; see "Hard rules" above and "Microdot / REST layer" below).
+  `pyproject.toml`'s `extend-exclude`/`exclude` entries still reference the old
+  `improved-quality/microdot.py` path — now dead/inert (matches nothing), not a functional problem
+  since ruff/mypy were never pointed at `ext/` in the first place (`scripts/lint.sh` passes explicit
+  `improved-quality src tests` paths, and mypy's `files` list is exactly those three directories —
+  `ext/` was never in scope and needs no exclude entry of its own), but worth tidying up as cheap
+  doc/config hygiene next time `pyproject.toml` is touched (see BACKLOG.md).
 
 ## Pre-push verification (clean Ubuntu 24.04)
 
@@ -557,3 +560,86 @@ need to go deeper:
     though neither Sensirion's `embedded-scd` reference driver nor their `python-i2c-scd30` driver
     documents that command as readable (their worked examples only show a write path for it). No
     alternate documented read-back path exists to switch to regardless. Leave as-is.
+
+## Microdot / REST layer
+
+`ext/microdot.py` is vendored, unmodified upstream Microdot (currently pinned to tag `v2.6.2` — see
+"Hard rules" for the vendoring policy: it's treated as a plain external resource, no edits, no
+"cleanup" of its style). The facts below were confirmed by reading its actual source directly
+(`Microdot.dispatch_request()`/`handle_request()`/`Response.write()`/`Request.json` in
+`ext/microdot.py`), not assumed from Microdot's docs or training memory — treat this section as the
+standing reference for how much stability Microdot already gives us for free versus what our own
+REST layer still has to add.
+
+- **Every exception raised by our own code inside a route handler — including a before/after-request
+  hook, and including `MemoryError` — is already caught by Microdot itself, per request, and can
+  never crash the server.** `dispatch_request()` wraps the whole handler chain (before-request
+  hooks → route handler → response coercion, which includes `json.dumps()` of a returned dict/list
+  → after-request hooks) in one `except HTTPException` / `except Exception`. An `HTTPException`
+  (from `abort()`) resolves by **numeric status code** through `self.error_handlers`; any other
+  exception resolves by **exact exception class**, then by walking the class's MRO — so a single
+  `@app.errorhandler(Exception)` registration is reachable as a catch-all fallback from any
+  exception subtype, without needing one registration per exception type. With no handler
+  registered at all (today's state, in both `improved-quality/sensortask-wozi.py` and the deployed
+  `python/CommonDrivers/microdot.py` app — confirmed, neither registers any `errorhandler`),
+  Microdot's own bare default response is used (`'Internal server error', 500`, or `'Not found',
+  404`, etc.) — safe, but not one of our own reply shapes.
+- **The one place this blanket catch does *not* cover: exceptions raised while writing the response
+  itself.** `Response.write()` (and the `handle_request()` code that calls it) only catches
+  `OSError`, and only mutes a short allow-list of expected socket errors (broken pipe, connection
+  reset, write to an already-closed socket — `MUTED_SOCKET_ERRORS`); anything else — a non-`OSError`
+  from a streamed body's `.read()`/generator, or an unmuted `OSError` — propagates all the way out of
+  the per-connection handler coroutine uncaught. This is the one genuine "a reply may not be
+  possible" case: by the time this code runs, the response is already (partially) in flight, so
+  there is no remaining hook to convert the failure into a REST reply — the client runs into a
+  timeout instead, exactly as expected/accepted.
+- Microdot's own exception logging (`print_exception(exc)`, a bare MicroPython traceback dump) is
+  **not** wired into this project's own `PrintLog`/FRAM-backed logging in any way. Anything caught
+  by Microdot's blanket per-request catch that we want reflected in our own error counters/history
+  has to come from an `@app.errorhandler` we register ourselves calling into `pr.err_s(...)` (or
+  equivalent) — Microdot's default handling alone leaves no trace anywhere a deployed, headless unit
+  can be expected to surface.
+- `Request.json` has no internal guarding at all (`json.loads(self.body.decode())`, no try/except) —
+  a malformed body or bad encoding raises straight out of the property access. Given the point
+  above, this is already contained by Microdot's own blanket catch either way; guarding it ourselves
+  (as `cmd_pre_check` already does, legacy and WIP alike) is about producing a precise, on-brand
+  error reply instead of a generic 500, not about crash prevention.
+- Request size is already bounded by Microdot itself before any handler runs:
+  `Request.max_content_length` (16KB default) → 413 for an oversized body,
+  `Request.max_readline` (2KB default) → guards a single request/header line. This project's JSON
+  payloads are tiny; the defaults are already generous headroom on a 264KB-SRAM target, no override
+  needed — just worth knowing the guard already exists rather than re-adding one at our own layer.
+- The Microdot server task is already wired into `system_service.py`'s generic
+  `start_and_check_tasks()` supervisor exactly like every other sensor task (see
+  `improved-quality/sensortask-wozi.py`'s `main()`: `start_asy_webserver()` is one of the plain
+  `task_starters`). A Microdot task that terminates — by returning or by an exception escaping it —
+  is detected the same way any other dead task is (`task.done()`) and restarted automatically, with
+  the same decaying failure counter and eventual full-reboot fallback as any other task.
+  **"Restart Microdot if it crashes" is therefore already implemented generically — it does not need
+  Microdot-specific supervisor code —** provided the failure actually terminates that task rather
+  than being silently contained at a level the supervisor never observes (see BACKLOG.md for the
+  still-open question of exactly what "crashes" means at the per-connection level on MicroPython's
+  `asyncio`).
+- **Each accepted connection runs in its own independent `asyncio.Task`** (confirmed against
+  `extmod/asyncio/stream.py`'s `Server._serve()`, which calls `core.create_task(cb(s2s, s2s))` per
+  accepted connection — the same isolation CPython's `asyncio.start_server()` gives). Combined with
+  the blanket per-request catch above, the one confirmed gap (a non-`OSError` escaping
+  `Response.write()`/`handle_request()`) only ever takes down that one client's connection Task —
+  the rest of the Microdot server, including its accept loop, keeps running unaffected. "Microdot
+  restarts itself when it crashes" (the task-supervisor point above) stays a backstop for a fully-
+  dead server task, not something made load-bearing by this one gap.
+- `errorhandler()`'s two lookup keys are independent and easy to conflate: **numeric HTTP status
+  code** (`@app.errorhandler(404)`, also what `abort()`/`HTTPException` resolves through — matched
+  by `exc.status_code`, never by exception class) versus **Python exception class**
+  (`@app.errorhandler(SomeException)`, matched by exact class then MRO walk). Registering
+  `@app.errorhandler(HTTPException)` would never fire for an `abort()` call; the status-code form is
+  required for that.
+- The deployed, out-of-scope `python/CommonDrivers/microdot.py` copy already implements essentially
+  the same protective architecture (blanket per-request catch, exception-class + status-code error
+  handlers with MRO fallback) — this safety model predates the `ext/microdot.py` v2.6.2 vendoring
+  done this session, it is not a new v2.6.2-only improvement. One confirmed version-drift detail:
+  the deployed copy's `HTTPException` branch invokes a registered status-code handler directly
+  rather than through the async-safe `invoke_handler()` wrapper v2.6.2 uses uniformly (so a
+  registered handler there would need to be a plain sync callable) — irrelevant today since neither
+  app currently registers any handlers, but worth remembering if the current deployed codebase's
+  REST layer is ever touched again before the refactor lands.

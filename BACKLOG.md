@@ -22,16 +22,6 @@ constraints.
   real MicroPython object rather than reimplementing its interface — turning this on will need a
   real typing strategy for those wrappers (e.g. `Protocol` classes matching just the overridden
   methods, plus `__getattr__` delegation) worked out first, not just a flag flip.
-- **Per-driver REST config setters are a known gap, deliberately not closed sensor-by-sensor.**
-  `get_dict_cfg()` gives every `*_Reader` a generic, schema-driven way to *read back* its config;
-  there's no equivalent generic *write* path — each REST handler still calls `set_*` methods one
-  field at a time by hand, and several config values accepted by a REST handler (SGP40's
-  `BackupPeriod`/`BackupMaxAge`/`WaitTimeNTP`) have no setter on the driver at all, so the write is
-  a silent no-op against real hardware. Deferred on purpose until all three sensors (SCD30/SGP40/
-  BMP3xx) were promoted to `src/` — **that's now done** — so a single consolidated generic-setter
-  mechanism can be designed once across all of them (applies to `config_manager.py`'s own
-  `ConfigManager` too: typed getters exist, no matching typed setters, only untyped
-  `write_config(dict, schema)`).
 - **FRAM bus-recovery is only partially wired up.** `asy_fram_driver.py`'s own `src/` promotion
   added device-identification/write-protect verification, but there's still no periodic/triggered
   re-probe policy (`verify_present()`/`get_write_protected()`/`set_write_protected()` have zero
@@ -61,14 +51,41 @@ constraints.
   a single shared enum), but predefine a small set of common error *classes* so the same number
   means the same or an equivalent condition across different drivers, beyond just the one
   already-consistent case. No scheme (numbering ranges, category list, how a driver opts in)
-  designed yet — out of scope until config setters (above) are done.
+  designed yet.
 - **Neopixel warning-flash sequencing and the task-supervisor error-budget counter** are both
   behaviorally correct and intentional as designed, but flagged by the owner as implementable more
   efficiently — worth a cleaner implementation in the refactor without changing observed behavior.
-- **`improved-quality/microdot.py` is a confirmed *unintentional* fork of vendored Microdot**
-  (owner-confirmed). Action when refactor work resumes: revert it to match upstream exactly, no
-  behavioral additions ever. Not touched now (`improved-quality/` source stays out of routine
-  editing) — distinct from `python/CommonDrivers/microdot.py`, which still matches upstream.
+- **No `@app.errorhandler` registrations exist anywhere yet** (confirmed: neither
+  `improved-quality/sensortask-wozi.py` nor the deployed `python/CommonDrivers/`-based app
+  registers any). See CLAUDE.md's "Microdot / REST layer" section for what Microdot itself already
+  guarantees (every route-handler exception, including `MemoryError`, is already caught per-request
+  and can't crash the server) versus what's still missing at our own layer. The base-class/
+  `api_response.py` setter+response-envelope consolidation this depended on is now done (see
+  DRIVER_SPEC.md section 5) — `handle_set_cmd()` already provides its own defense-in-depth
+  try/except around one endpoint's dispatch, returning the consolidated `{"res": "ERR", ...}` shape
+  via `make_response()`. What's still missing is wiring an actual `@app.errorhandler` registration
+  into the real, live Microdot app in `improved-quality/sensortask-wozi.py` — out of scope for this
+  pass under CLAUDE.md's hard rule on editing `improved-quality/` source without a scoped,
+  project-owner-authorized exception. Concrete work once that wiring pass happens:
+  - A catch-all `@app.errorhandler(Exception)` that logs via our own `pr.err_s(...)` (Microdot's own
+    default `print_exception()` never reaches `PrintLog`/FRAM) and returns the consolidated
+    `{"res": "ERR", ...}` reply shape — the single seam where "any internal or external error must
+    be answered with an appropriate REST reply" actually gets satisfied for the whole app, not
+    per-handler.
+  - Explicit handlers for at least 400/404/405/413/500 so Microdot's bare default text bodies
+    (`'Not found', 404` etc.) never reach a client unshaped.
+  - A decision on whether route handlers use `abort()`/`HTTPException` (resolved via the
+    status-code error-handler path) or always return our own error dict directly — mixing both
+    without care means two different reply shapes for the same kind of error.
+  - Any registered handler must itself be defensive: a second exception raised inside an error
+    handler is swallowed silently by Microdot (falls back to a bare generic 500) rather than
+    crashing, but that also means a bug in the handler silently loses whatever it was trying to do
+    (e.g. the logging call itself).
+  - Whatever a route handler returns must stay JSON-serializable end to end (ties to the
+    native-JSON-types rework already in progress) — a non-serializable value fails inside
+    `Response.__init__`'s `json.dumps()`, which Microdot still contains (falls into the same
+    generic-500 path) but silently masks the real cause as a generic error unless our own handler
+    logs it.
 - **Microdot hardening design (webserver robustness) — plan settled, not yet implemented.** Triggered
   by a real incident: on 2026-08-03, `sensortask-arzi`/`sensortask-neu` (legacy, pre-refactor) both
   went permanently REST-API-unreachable for hours with the watchdog never firing, root-caused to
@@ -158,6 +175,29 @@ constraints.
      `base_classes.py`/`system_service.py` module docstrings) — any failure inside the wrapper itself
      (not just inside Microdot) degrades to logging via `pr.err_s`/`wrn_s` and treating that one
      connection as expendable, never propagates out of the connection task.
+
+  **Confirmed boundary (cross-checked against the concurrent setter-dispatch/`api_response.py` work,
+  PR #26, by reading `ext/microdot.py` v2.6.2's actual source, not assumed)**: `handle_request()`'s
+  shape is exactly `req = await Request.create(...)` → `res = await self.dispatch_request(req)` →
+  `await res.write(writer)` — every unbounded stream read/write (`Request.create()`'s
+  `_safe_readline`/`readexactly`, `Response.write()`'s `awrite`) sits strictly *before* or *after*
+  `dispatch_request()`, never inside it. `dispatch_request()`'s route-handler invocation only ever
+  touches an already-fully-materialized `Request` (headers/body fully read by the time
+  `Request.create()` returns) and produces a `Response` with no socket I/O of its own — verified
+  directly for `src/api_response.py`'s `parse_cmd_request()`/`handle_set_cmd()` and
+  `base_classes.py`'s `_set_dict_cfg()`, none of which touch the transport, so none of this PR's new
+  setter-dispatch/response-envelope code is exposed to (or needs to defend against) the incident.
+  Two direct payoffs for this design once implementation starts:
+  - Step 1's claim that `await app.handle_request(wrapped_reader, wrapped_writer)` is the *only* real
+    coupling point to Microdot's internals is now verified, not just architecturally assumed — the
+    reader/writer proxy from step 2 is sufficient on its own; no route-handler/`dispatch_request()`-
+    level wrapping is ever needed alongside it.
+  - `tests/test_setter_microdot_integration.py`'s existing pattern of dispatching via
+    `app.dispatch_request(req)` on a hand-built `Request` (bypassing `Request.create()`/
+    `handle_request()`/`start_server()` entirely) is the *correct* boundary for testing route-
+    handler/business logic, not a coverage gap it should be extended to close — a hang-simulating
+    fake stream belongs exclusively to this future module's own step 5 soak test above, never to
+    that integration test file.
 
   **Companion open question this design surfaces (not previously tracked)**: the actual concurrent-
   socket/TCP-PCB ceiling for MicroPython's rp2 port (lwIP-backed) isn't verified anywhere in this
@@ -265,7 +305,9 @@ constraints.
   signature and every test file that constructs one, a wider blast radius than any one promotion
   pass.
 - **HTML/frontend automation & consistency** — known hand-written/brittle, not a priority; revisit
-  after the Python-side refactor.
+  after the Python-side refactor. Concretely stale now: the frontend still sends the pre-migration
+  `setSGP`/`setBMP` field names/formats (see DRIVER_SPEC.md section 5.3's wire-format note) — not
+  updated to match.
 - **UART sensor integration** — `asy_uart_driver.py` is promoted to `src/` but deliberately not
   wired into any `sensortask-*.py`; `asy_uart_comm.py` (its one real consumer) is its own separate,
   still out-of-scope promotion. Unused by any deployed config — wiring it in is after the refactor
@@ -327,3 +369,21 @@ constraints.
   `asy_ntp_client.py`'s sync task waits on that same shared lock — NTP sync can be delayed up to a
   minute during active WLAN instability. A priority-inversion-shaped cost worth having in view, not
   a correctness bug; not acted on.
+- **Firmware build script should strip `if TYPE_CHECKING:` blocks from its temp frozen-copy, not
+  the real `src`/`ext` files.** `mpy-cross` does not dead-code-eliminate `if TYPE_CHECKING:` the way
+  it does an `if micropython.const(0):` branch — confirmed empirically (compiled real `src/*.py` +
+  `ext/microdot.py` with this repo's own `mpy-cross`): the guarded imports/Protocol classes/type
+  aliases fully survive into the `.mpy` bytecode (their qstrs included) since `TYPE_CHECKING` is a
+  plain runtime-checked global, not a compile-time constant. Stripping these blocks (via an `ast`
+  transform: parse → drop `if TYPE_CHECKING:`/its defining `try/except ImportError` header → re-parse
+  the unparsed output as a validity check → hand that to `mpy-cross`) saved ~3.6KB across the current
+  22 promoted files (108,339 → 104,748 bytes total), all still compiled clean. Safe specifically
+  because nothing on this platform ever does runtime annotation introspection (no `typing` module,
+  no `get_type_hints()` on-device) — the guarded names are only ever reached via string-literal
+  forward-ref annotations that MicroPython never evaluates anyway, so deleting the block changes
+  nothing observable. Directly grows the Pico W littlefs partition, which is whatever flash remains
+  after the firmware image (see CLAUDE.md's "Platform target"). Prototype lives in this session's
+  scratch, not the repo — reimplement as a proper `scripts/`-housed step when the build script itself
+  gets built, matching only a bare `TYPE_CHECKING`/`mod.TYPE_CHECKING` test (leave any compound
+  condition untouched rather than guess) and sanity-`ast.parse()`-checking its own output before
+  compiling.

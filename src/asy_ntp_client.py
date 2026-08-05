@@ -1,7 +1,9 @@
 """Async NTP client + CET/CEST local-time helper. Not a sensor, but config-managed the same way:
 extends base_classes.py's SensorReaderConfig, owns its own config_NTP.cfg (see DRIVER_SPEC.md).
-Config setters are out of scope (DRIVER_SPEC.md section 5) - only the getter quartet is
-implemented. errno/wrnno numbering starts at 11 here (1-4/10 are base_classes.py's own).
+Every field is persist-only - nothing here needs a live push, so base_classes.py's generic
+_set_dict_cfg() already provides full setter support with zero changes to this file (no
+self._push_callbacks entries registered). errno/wrnno numbering starts at 11 here (1-4/10 are
+base_classes.py's own).
 """
 
 import asyncio
@@ -80,13 +82,12 @@ class asy_ntp_client(SensorReaderConfig):
         history_length: int = 10,
         debug: int | None = None,
     ) -> None:
-        self.cfg_schema = _VAL_NH + _VAL_NOS + _VAL_NIH + _VAL_GMT + _VAL_DST
         super().__init__(
             NTP(False, None, None),
             max_i2c_err,  # consecutive failed-sync-attempt streak before asy_ntp_time() gives up and
             # lets the task supervisor restart this task - see that method's own _error_check() call.
             _NAME,
-            self.cfg_schema,
+            _VAL_NH + _VAL_NOS + _VAL_NIH + _VAL_GMT + _VAL_DST,
             cfg_path=cfg_path,
             fram=fram,
             history_length=history_length,
@@ -113,26 +114,6 @@ class asy_ntp_client(SensorReaderConfig):
         except (OverflowError, OSError):  # rp2's mktime()/gmtime() raise past its ~2037 32-bit epoch range
             return None
 
-    async def _set_synced(self, value: bool) -> None:
-        # Uncontended asyncio.Lock.acquire() never yields (extmod/asyncio/lock.py), so nothing can
-        # run between this get and the following set. Uses get_data() so the NTP fields are typed,
-        # not the base class's generic NamedTuple.
-        data = await self.get_data()
-        await self._set_meas_data(NTP(value, data.LastSyncAge, data.TS))
-
-    async def _set_last_sync_age(self, value: int | None) -> None:
-        data = await self.get_data()
-        await self._set_meas_data(NTP(data.Synced, value, data.TS))
-
-    async def _increment_last_sync_age(self) -> int | None:
-        # None counts as 0 - the first increment after a fresh sync turns "just synced" into a
-        # real age of 1, matching base_classes.py's LockedCounter.increment() this replaces.
-        data = await self.get_data()
-        current = 0 if data.LastSyncAge is None else data.LastSyncAge
-        new_value = min(current + 1, 0xFFFFFFFF)
-        await self._set_meas_data(NTP(data.Synced, new_value, data.TS))
-        return new_value
-
     async def _safe_get_dns_server(self) -> str | None:
         # Must be called before wifi_mode_lock.acquire(), never after: get_dns_server() gates on
         # wifi_mode_lock.locked() itself, which this file also holds during the sync attempt below -
@@ -142,36 +123,6 @@ class asy_ntp_client(SensorReaderConfig):
         except Exception as e:  # caller-supplied callback - could legitimately misbehave
             await self.pr.wrn_s(_NAME, "get_dns_server() callback failed:", e, wrnno=3)
             return None
-
-    async def _run_ntp_sync_attempt(self, dns_server: str | None) -> "tuple[tuple[int, ...] | None, bool]":
-        try:
-            network_ok = self.network_available()
-        except Exception as e:  # caller-supplied callback - could legitimately misbehave
-            await self.pr.wrn_s(_NAME, "network_available() callback failed:", e, wrnno=1)
-            network_ok = False
-        if not network_ok:
-            self.pr.all(_NAME, "Network not available, skipping sync attempt.")
-            return None, False
-        ntp_config = await self._get_ntp_config()
-        if ntp_config is None:
-            await self._set_synced(False)
-            await self.pr.err_s(_NAME, "Missing NTP configuration!", errno=11)
-            return None, True
-        ntp_host, ntp_offs = ntp_config
-        addr = await self._resolve_ntp_server(ntp_host[0], dns_server)
-        if addr is None:
-            await self._handle_ntp_sync_failure()
-            return None, True
-        msg = await self._fetch_ntp_reply(addr)
-        if msg is None:
-            await self._handle_ntp_sync_failure()
-            return None, True
-        tm = await self._parse_ntp_reply(msg, ntp_offs[0])
-        if tm is None:
-            await self._handle_ntp_sync_failure()
-        else:
-            await self._handle_ntp_sync_success(tm)
-        return tm, True
 
     async def _get_ntp_config(self) -> tuple[list[str], list[int]] | None:
         ntp_host = await self.cfgmgr.get_str_values(_VAL_NH)
@@ -203,6 +154,56 @@ class asy_ntp_client(SensorReaderConfig):
         )
         await cli.disconnect()
         return msg
+
+    async def _set_synced(self, value: bool) -> None:
+        # Uncontended asyncio.Lock.acquire() never yields (extmod/asyncio/lock.py), so nothing can
+        # run between this get and the following set. Uses get_data() so the NTP fields are typed,
+        # not the base class's generic NamedTuple.
+        data = await self.get_data()
+        await self._set_meas_data(NTP(value, data.LastSyncAge, data.TS))
+
+    async def _set_last_sync_age(self, value: int | None) -> None:
+        data = await self.get_data()
+        await self._set_meas_data(NTP(data.Synced, value, data.TS))
+
+    async def _increment_last_sync_age(self) -> int | None:
+        # None counts as 0 - the first increment after a fresh sync turns "just synced" into a
+        # real age of 1, matching base_classes.py's LockedCounter.increment() this replaces.
+        data = await self.get_data()
+        current = 0 if data.LastSyncAge is None else data.LastSyncAge
+        new_value = min(current + 1, 0xFFFFFFFF)
+        await self._set_meas_data(NTP(data.Synced, new_value, data.TS))
+        return new_value
+
+    async def _run_ntp_sync_attempt(self, dns_server: str | None) -> "tuple[tuple[int, ...] | None, bool]":
+        try:
+            network_ok = self.network_available()
+        except Exception as e:  # caller-supplied callback - could legitimately misbehave
+            await self.pr.wrn_s(_NAME, "network_available() callback failed:", e, wrnno=1)
+            network_ok = False
+        if not network_ok:
+            self.pr.all(_NAME, "Network not available, skipping sync attempt.")
+            return None, False
+        ntp_config = await self._get_ntp_config()
+        if ntp_config is None:
+            await self._set_synced(False)
+            await self.pr.err_s(_NAME, "Missing NTP configuration!", errno=11)
+            return None, True
+        ntp_host, ntp_offs = ntp_config
+        addr = await self._resolve_ntp_server(ntp_host[0], dns_server)
+        if addr is None:
+            await self._handle_ntp_sync_failure()
+            return None, True
+        msg = await self._fetch_ntp_reply(addr)
+        if msg is None:
+            await self._handle_ntp_sync_failure()
+            return None, True
+        tm = await self._parse_ntp_reply(msg, ntp_offs[0])
+        if tm is None:
+            await self._handle_ntp_sync_failure()
+        else:
+            await self._handle_ntp_sync_success(tm)
+        return tm, True
 
     async def _parse_ntp_reply(self, msg: bytes, ntp_offset_s: int) -> tuple[int, ...] | None:
         try:
@@ -302,6 +303,12 @@ class asy_ntp_client(SensorReaderConfig):
     def get_timer_starters(self) -> "list[Callable[[], None]]":
         return [self.start_ntp_timer, self.start_counter_timer]
 
+    def stop_ntp_timer(self) -> None:
+        self.ntp_timer.deinit()
+
+    def stop_counter_timer(self) -> None:
+        self.counter_timer.deinit()
+
     async def get_data(self) -> NTP:
         # Narrows _get_meas_data()'s generic NamedTuple to this Reader's concrete NTP - typing.cast()
         # isn't usable on MicroPython, so this identity return does the same job.
@@ -321,14 +328,40 @@ class asy_ntp_client(SensorReaderConfig):
         age = (await self.get_data()).LastSyncAge
         return None if age is None else int(age)
 
-    def stop_ntp_timer(self) -> None:
-        self.ntp_timer.deinit()
-
-    def stop_counter_timer(self) -> None:
-        self.counter_timer.deinit()
-
     async def ntp_issynced(self) -> bool:
         return bool((await self.get_data()).Synced)
+
+    async def cettime(
+        self,
+    ) -> GMTimeStruct | None:  # Umrechnung Lokalzeit
+        if not (await self.ntp_issynced()):
+            return None
+        time_offs = await self.cfgmgr.get_int_values(_VAL_GMT + _VAL_DST)
+        if time_offs is None or len(time_offs) != 2:
+            return None
+        try:
+            year = time.gmtime()[0]  # get current year
+            HHMarch = time.mktime(
+                (year, 3, (31 - (int(5 * year / 4 + 4)) % 7), 1, 0, 0, 0, 0, 0)
+            )  # Time of March change to CEST
+            HHOctober = time.mktime(
+                (year, 10, (31 - (int(5 * year / 4 + 1)) % 7), 1, 0, 0, 0, 0, 0)
+            )  # Time of October change to CET
+            now = time.time()
+            if now < HHMarch:  # we are before last sunday of march
+                cet = time.gmtime(now + time_offs[0])  # GMTOffset -> CET:  UTC+1H
+            elif now < HHOctober:  # we are before last sunday of october
+                cet = time.gmtime(now + time_offs[0] + time_offs[1])  # GMTOffset + DSTOffset-> CEST: UTC+2H
+            else:  # we are after last sunday of october
+                cet = time.gmtime(now + time_offs[0])  # GMTOffset -> CET:  UTC+1H
+        except (OverflowError, ValueError, OSError) as e:
+            # rp2's mktime()/gmtime() raise OverflowError past its ~2037 32-bit epoch range - treat
+            # exactly like "not ready" instead of crashing the caller.
+            await self.pr.err_s(_NAME, "Time calculation failed:", e, errno=19)
+            return None
+        if len(cet) == 8:
+            return GMTimeStruct(*cet)
+        return None
 
     async def ntp_force_sync(self) -> None:
         await self._set_last_sync_age(None)
@@ -385,38 +418,6 @@ class asy_ntp_client(SensorReaderConfig):
                 self.ntp_sec_count = 0
                 self.pr.evt(_NAME, "NTP resync triggered.")
             del ntp_interv
-
-    async def cettime(
-        self,
-    ) -> GMTimeStruct | None:  # Umrechnung Lokalzeit
-        if not (await self.ntp_issynced()):
-            return None
-        time_offs = await self.cfgmgr.get_int_values(_VAL_GMT + _VAL_DST)
-        if time_offs is None or len(time_offs) != 2:
-            return None
-        try:
-            year = time.gmtime()[0]  # get current year
-            HHMarch = time.mktime(
-                (year, 3, (31 - (int(5 * year / 4 + 4)) % 7), 1, 0, 0, 0, 0, 0)
-            )  # Time of March change to CEST
-            HHOctober = time.mktime(
-                (year, 10, (31 - (int(5 * year / 4 + 1)) % 7), 1, 0, 0, 0, 0, 0)
-            )  # Time of October change to CET
-            now = time.time()
-            if now < HHMarch:  # we are before last sunday of march
-                cet = time.gmtime(now + time_offs[0])  # GMTOffset -> CET:  UTC+1H
-            elif now < HHOctober:  # we are before last sunday of october
-                cet = time.gmtime(now + time_offs[0] + time_offs[1])  # GMTOffset + DSTOffset-> CEST: UTC+2H
-            else:  # we are after last sunday of october
-                cet = time.gmtime(now + time_offs[0])  # GMTOffset -> CET:  UTC+1H
-        except (OverflowError, ValueError, OSError) as e:
-            # rp2's mktime()/gmtime() raise OverflowError past its ~2037 32-bit epoch range - treat
-            # exactly like "not ready" instead of crashing the caller.
-            await self.pr.err_s(_NAME, "Time calculation failed:", e, errno=19)
-            return None
-        if len(cet) == 8:
-            return GMTimeStruct(*cet)
-        return None
 
     async def time_counter(self) -> None:
         await self._set_last_sync_age(None)

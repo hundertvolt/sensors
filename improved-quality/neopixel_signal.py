@@ -90,6 +90,15 @@ class Neopixel_Signal:
         )
         self.measurements_callback = asy_airquality_meas_callback  # expects [CO2, Humidity, VOC]
 
+    def get_cfg_schema(self) -> Any:
+        # Scoped exception to the "don't edit improved-quality/ source files" rule (CLAUDE.md),
+        # authorized directly by the project owner for this one addition: this class predates
+        # base_classes.py's SensorReaderConfig.get_cfg_schema() and doesn't extend that hierarchy
+        # (still WIP, pending a future promotion/refactor - see CLAUDE.md), so it can't inherit the
+        # getter. Same name/signature/behavior as the inherited one, kept isolated to this one
+        # method - no other change to this file's structure.
+        return self.cfg_schema
+
     def start_asy_neopixel_led_overl(self) -> asyncio.Task[None]:
         evtloop = asyncio.get_event_loop()
         return evtloop.create_task(self._led_overl_signal())

@@ -24,7 +24,7 @@ _PHASE_DEACTIVATED = 3
 # Same reasoning as the phase constants above, for asy_wifi_service.py's own _VAL_SSID/_VAL_PW/
 # _VAL_CTRY/_VAL_HOST/_VAL_LED schema tuples - not importable once const()-folded, so mirrored here.
 _VAL_SSID = (("SSID", "str", "", 0, 32, None),)
-_VAL_PW = (("PW", "str", "", 0, 63, None),)
+_VAL_PW = (("PW", "str", "", 8, 63, ""),)
 _VAL_CTRY = (("Country", "str", "DE", 2, 2, None),)
 _VAL_HOST = (("Hostname", "str", "SensorNode", 1, 32, None),)
 _VAL_LED = (("LedWifiOn", "bool", True, None, None, None),)
@@ -603,6 +603,149 @@ def test_led_toggle_degrades_gracefully_when_a_misbehaving_ext_led_raises() -> N
     client = make_client(ext_led=led)
     run(client.set_wifi_led(True))
     client._led_toggle()  # must not raise
+
+
+def test_set_wifi_led_returns_true_uniform_setter_contract() -> None:
+    # Project-wide decision: every setter returns bool (True = applied), not None. set_wifi_led
+    # can't actually fail (pure attribute assignment plus _led_off()'s own already-defensive
+    # degrade-on-raise), so it's always True - but the contract itself must hold everywhere.
+    client = make_client(ext_led=FakeLED())
+    assert run(client.set_wifi_led(True)) is True
+    assert run(client.set_wifi_led(False)) is True
+
+
+# ---------------------------------------------------------------------------
+# _push_wifi_led / self._push_callbacks - the generic setter dispatch's per-field live-push
+# registration (base_classes.py's _set_dict_cfg), registered once at construction (project
+# decision), not passed per-call.
+# ---------------------------------------------------------------------------
+
+
+def test_led_wifi_on_push_callback_is_registered_at_construction() -> None:
+    client = make_client(ext_led=FakeLED())
+    assert "LedWifiOn" in client._push_callbacks
+
+
+def test_push_callbacks_registered_for_led_wifi_on_only() -> None:
+    # Exhaustive, not just "LedWifiOn is present": SSID/PW/Country/Hostname are persist-only and
+    # must have no push entry, and - the concrete concern this guards - set_ext_led() (the plain,
+    # REST-unreachable method sensortask-wozi.py calls once at boot to lazily hand this client its
+    # Neopixel-as-WiFi-LED controller, see its own module-level `conn.set_ext_led(pixel)` call) must
+    # never end up registered here either. It takes an LEDControl object, not a schema-typed
+    # int/float/str/bool, so it couldn't be dispatched through _set_dict_cfg even if it were
+    # registered - this test is the direct, explicit proof that it isn't, rather than relying on
+    # that type mismatch alone.
+    client = make_client(ext_led=FakeLED())
+    assert set(client._push_callbacks) == {"LedWifiOn"}
+
+
+def test_set_ext_led_never_touches_push_callbacks_or_triggers_a_reconnect() -> None:
+    # set_ext_led() is a plain attribute assignment (self.ext_led = ext_led), called once at
+    # startup, never through the generic setter dispatch and never over REST - confirms it has no
+    # side effect on either mechanism a REST-reachable setter would need to avoid.
+    client = make_client(ext_led=None)
+    assert client.reconn_wifi is False
+    client.set_ext_led(FakeLED())
+    assert client.ext_led is not None
+    assert set(client._push_callbacks) == {"LedWifiOn"}  # unchanged
+    assert client.reconn_wifi is False  # no reconnect side effect
+
+
+def test_led_wifi_on_push_callback_applies_the_value_through_set_wifi_led() -> None:
+    led = FakeLED()
+    client = make_client(ext_led=led)
+    callback = client._push_callbacks["LedWifiOn"]
+    assert run(callback(True)) is True
+    assert client.led is led
+
+
+def test_led_wifi_on_push_callback_rejects_a_non_bool_value_defensively() -> None:
+    # _set_dict_cfg only ever invokes a push callback with an already schema-validated value (real
+    # bool, by construction) - this guards the type for the checker and as defense-in-depth, not
+    # because a real caller can reach it with the wrong type.
+    client = make_client(ext_led=FakeLED())
+    callback = client._push_callbacks["LedWifiOn"]
+    assert run(callback("not a bool")) is False
+    assert run(callback(1)) is False
+
+
+def test_set_dict_cfg_led_wifi_on_end_to_end_persists_and_pushes() -> None:
+    # Full integration: the generic dispatch persists LedWifiOn to config_WIFI.cfg *and* pushes it
+    # live through set_wifi_led, in one call - exactly the shape a future REST endpoint will use.
+    led = FakeLED()
+    client = make_client(ext_led=led)
+    results = run(client._set_dict_cfg({"LedWifiOn": False}, client.get_cfg_schema()))
+    assert results == {"LedWifiOn": "Valid"}
+    assert client.led is None  # pushed: turned off and cleared
+    assert run(client.cfgmgr.get_dict(["LedWifiOn"])) == {"LedWifiOn": False}  # persisted too
+
+
+def test_set_dict_cfg_multiple_invalid_fields_reported_independently() -> None:
+    # Mirrors asy_ntp_client.py's own multi-invalid _set_dict_cfg coverage
+    # (test_set_dict_cfg_invalid_field_reported_individually_others_still_apply) - this driver had
+    # no multi-field _set_dict_cfg test at all beyond the single-field LedWifiOn one above, despite
+    # having four persist-only string fields each with their own real min/max/special validation.
+    led = FakeLED()
+    client = make_client(ext_led=led)
+    results = run(
+        client._set_dict_cfg(
+            # LedWifiOn's schema default is True - False here is a real change, not the "Unchanged"
+            # no-push outcome True would trivially produce.
+            {"Hostname": "NewHost", "PW": "short", "Country": "United States", "LedWifiOn": False},
+            client.get_cfg_schema(),
+        )
+    )
+    assert results == {"Hostname": "Valid", "PW": "Invalid", "Country": "Invalid", "LedWifiOn": "Valid"}
+    assert client.led is None  # pushed: LedWifiOn=False turns the LED off and clears it
+    stored = run(client.cfgmgr.get_dict(["Hostname", "PW", "Country"]))
+    assert stored == {"Hostname": "NewHost", "PW": "", "Country": "DE"}  # both invalid, left at their defaults
+
+
+# ---------------------------------------------------------------------------
+# _VAL_PW bounds - WPA2-PSK ASCII passphrase spec (8-63 chars if used; empty is its own distinct
+# "open network, no security" case, not just a short/weak password) - see CLAUDE.md/DRIVER_SPEC.md
+# for the reasoning; SSID's own 0-32 bound was already correct and needed no change.
+# ---------------------------------------------------------------------------
+
+
+def test_pw_empty_string_is_valid_via_the_open_network_special_bypass() -> None:
+    client = make_client_with_json(
+        '{"SSID": "MyNetwork", "PW": "", "Country": "US", "Hostname": "TestNode", "LedWifiOn": false}'
+    )
+    values = run(client.cfgmgr.get_dict(["PW"]))
+    assert values == {"PW": ""}
+
+
+def test_pw_below_wpa2_minimum_length_falls_back_to_default() -> None:
+    # 7 characters - one short of WPA2-PSK's real 8-character minimum - is neither the empty-string
+    # special case nor a valid in-range password, so it's rejected like any other out-of-range value.
+    json_text = '{"SSID": "MyNetwork", "PW": "short12", "Country": "US", "Hostname": "TestNode", "LedWifiOn": false}'
+    client = make_client_with_json(json_text)
+    values = run(client.cfgmgr.get_dict(["PW"]))
+    assert values == {"PW": ""}  # defaulted, not the too-short value
+
+
+def test_pw_at_wpa2_minimum_length_is_accepted() -> None:
+    json_text = '{"SSID": "MyNetwork", "PW": "exactly8", "Country": "US", "Hostname": "TestNode", "LedWifiOn": false}'
+    client = make_client_with_json(json_text)
+    values = run(client.cfgmgr.get_dict(["PW"]))
+    assert values == {"PW": "exactly8"}
+
+
+def test_write_config_pw_below_minimum_is_marked_invalid_not_silently_dropped() -> None:
+    client = make_client()
+    ok, results = run(client.cfgmgr.write_config({"PW": "short"}, client.get_cfg_schema()))
+    assert ok is True
+    assert results == {"PW": "Invalid"}
+    assert run(client.cfgmgr.get_dict(["PW"])) == {"PW": ""}  # untouched default
+
+
+def test_write_config_pw_empty_string_is_valid_and_resets_to_open_network() -> None:
+    client = make_client_with_json(_VALID_JSON)  # starts with a real "supersecret" password
+    ok, results = run(client.cfgmgr.write_config({"PW": ""}, client.get_cfg_schema()))
+    assert ok is True
+    assert results == {"PW": "Valid"}
+    assert run(client.cfgmgr.get_dict(["PW"])) == {"PW": ""}
 
 
 # ---------------------------------------------------------------------------
@@ -1927,6 +2070,14 @@ def test_cfg_schema_matches_what_cfgmgr_was_built_with() -> None:
     # private, underscore-prefixed module-level const.
     client = make_client()
     assert client.cfg_schema == (_VAL_SSID + _VAL_PW + _VAL_CTRY + _VAL_HOST + _VAL_LED)
+
+
+def test_get_cfg_schema_matches_the_public_attribute() -> None:
+    # get_cfg_schema() is the new, base-class-owned access path (see base_classes.py) - cfg_schema
+    # itself stays a public attribute too, for the legacy REST layer's own direct reads.
+    client = make_client()
+    assert client.get_cfg_schema() == client.cfg_schema
+    assert client.get_cfg_schema() == (_VAL_SSID + _VAL_PW + _VAL_CTRY + _VAL_HOST + _VAL_LED)
 
 
 def test_write_config_via_public_cfg_schema_round_trips_a_real_value() -> None:

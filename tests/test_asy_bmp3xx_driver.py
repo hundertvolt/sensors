@@ -939,26 +939,34 @@ def test_reader_set_pressure_oversampling_logs_and_returns_false_on_bus_failure(
 # ---------------------------------------------------------------------------
 
 _VAL_SI = (("SampleInterv", "int", 2, 1, 3600, None),)
-_VAL_POV = (("PressOvers", "int", 1, 1, 32, None),)
-_VAL_TOV = (("TempOvers", "int", 1, 1, 32, None),)
-_VAL_FC = (("FiltCoeff", "int", 0, 0, 127, None),)
+_VAL_POV = (("PressOvers", "int", 1, None, None, _OSR_SETTINGS),)
+_VAL_TOV = (("TempOvers", "int", 1, None, None, _OSR_SETTINGS),)
+_VAL_FC = (("FiltCoeff", "int", 0, None, None, _IIR_SETTINGS),)
 _VAL_PO = (("PressOffset", "float", 0.0, -500.0, 500.0, None),)
 _VAL_TO = (("TempOffset", "float", 0.0, -10.0, 10.0, None),)
 _VAL_SLO = (("SeaLevelOffs", "float", 0.0, -1000.0, 5000.0, None),)
 _VAL_ATM = (("MeanAtmTemp", "float", 15.0, -50.0, 50.0, None),)
 _FULL_SCHEMA = _VAL_SI + _VAL_POV + _VAL_TOV + _VAL_FC + _VAL_PO + _VAL_TO + _VAL_SLO + _VAL_ATM
 
-# name -> (type, min, max), mirroring each _VAL_* tuple's own (name, type, def, min, max, special)
+# name -> (type, min, max), mirroring each _VAL_* tuple's own (name, type, def, min, max, special) -
+# only the genuinely continuous-range fields; PressOvers/TempOvers/FiltCoeff are discrete allowed-
+# value sets now (see _DISCRETE_FIELDS below), where "midpoint"/"one below min" have no meaning.
 _FIELD_BOUNDS = {
     "SampleInterv": ("int", 1, 3600),
-    "PressOvers": ("int", 1, 32),
-    "TempOvers": ("int", 1, 32),
-    "FiltCoeff": ("int", 0, 127),
     "PressOffset": ("float", -500.0, 500.0),
     "TempOffset": ("float", -10.0, 10.0),
     "SeaLevelOffs": ("float", -1000.0, 5000.0),
     "MeanAtmTemp": ("float", -50.0, 50.0),
 }
+
+# name -> its own legal discrete value set, mirroring _VAL_POV/_VAL_TOV/_VAL_FC's "special" slot.
+_DISCRETE_FIELDS: "dict[str, tuple[int, ...]]" = {
+    "PressOvers": _OSR_SETTINGS,
+    "TempOvers": _OSR_SETTINGS,
+    "FiltCoeff": _IIR_SETTINGS,
+}
+
+_ALL_FIELD_NAMES = list(_FIELD_BOUNDS) + list(_DISCRETE_FIELDS)
 
 
 def _midpoint(kind: str, lo: "int | float", hi: "int | float") -> "int | float":
@@ -1008,7 +1016,7 @@ def test_config_write_rejects_bool_for_int_field_despite_bool_being_an_int_subcl
 
 def test_config_write_rejects_multiple_invalid_fields_while_keeping_valid_ones() -> None:
     i2c, reader = make_clean_reader("cfg_multi_invalid")
-    before = run(reader.cfgmgr.get_dict(list(_FIELD_BOUNDS)))
+    before = run(reader.cfgmgr.get_dict(_ALL_FIELD_NAMES))
     assert before is not None
     mixed: dict[str, int | float | str | bool | None] = {
         "SampleInterv": 300,  # valid
@@ -1026,7 +1034,7 @@ def test_config_write_rejects_multiple_invalid_fields_while_keeping_valid_ones()
         assert results[name] == "Invalid"
     for name in ("SampleInterv", "TempOvers", "PressOffset", "SeaLevelOffs", "MeanAtmTemp"):
         assert results[name] == "Valid"
-    after = run(reader.cfgmgr.get_dict(list(_FIELD_BOUNDS)))
+    after = run(reader.cfgmgr.get_dict(_ALL_FIELD_NAMES))
     assert after is not None
     assert after["PressOvers"] == before["PressOvers"]
     assert after["FiltCoeff"] == before["FiltCoeff"]
@@ -1039,11 +1047,15 @@ def test_config_write_rejects_multiple_invalid_fields_while_keeping_valid_ones()
 
 
 def test_init_bmp_fails_and_logs_when_stored_oversampling_is_outside_hardware_domain() -> None:
-    # The config schema's own PressOvers range (1-32) is wider than the sensor's real discrete
-    # domain (1/2/4/8/16/32) - see BACKLOG.md's architecture-review note. A value in-schema but
-    # not hardware-valid (e.g. 20) is accepted by write_config() but rejected by the sensor at
-    # apply time; confirms this fails cleanly (logged, _init_bmp() returns False) instead of
-    # raising out of read_loop()'s caller.
+    # Historically the config schema's own PressOvers range was a plain 1-32 continuous range,
+    # wider than the sensor's real discrete domain (1/2/4/8/16/32) - see BACKLOG.md's architecture-
+    # review note. config_manager.py's discrete-allowed-value-set validator now closes that gap:
+    # write_config() itself rejects 20 as "Invalid" (see
+    # test_write_config_rejects_a_value_outside_the_discrete_osr_domain below), so this now
+    # simulates a stale config file written before that fix existed - same direct-cache-poke
+    # technique as test_init_bmp_soft_degrades_on_out_of_range_stored_sample_interval - to confirm
+    # _init_bmp() still degrades cleanly (logged, returns False) for a hardware-invalid value that
+    # slipped past validation some other way, not just a freshly-rejected one.
     i2c, reader = make_clean_reader("init_bad_osr_value")
     seed_chip_id(i2c, _BMP388_CHIP_ID)
     seed_calibration(i2c)
@@ -1051,8 +1063,59 @@ def test_init_bmp_fails_and_logs_when_stored_oversampling_is_outside_hardware_do
     seed_err(i2c, 0x00)
     ok, results = run(reader.cfgmgr.write_config({"PressOvers": 20}, _FULL_SCHEMA))
     assert ok is True
-    assert results["PressOvers"] == "Valid"  # the schema/hardware discrepancy itself
+    assert results["PressOvers"] == "Invalid"  # now correctly rejected at the schema layer
+    reader.cfgmgr._cache["PressOvers"] = 20  # simulate a stale value from before this fix existed
     assert run(reader._init_bmp()) is False
+
+
+# ---------------------------------------------------------------------------
+# Discrete allowed-value-set fields (PressOvers/TempOvers/FiltCoeff) - config_manager.py's
+# discrete-set validator, exercised end-to-end through the real ConfigManager. Closes the
+# schema/hardware discrepancy the test above used to document.
+# ---------------------------------------------------------------------------
+
+
+def test_config_write_accepts_every_legal_discrete_value() -> None:
+    i2c, reader = make_clean_reader("discrete_valid")
+    for name, legal_values in _DISCRETE_FIELDS.items():
+        for value in legal_values:
+            ok, results = run(reader.cfgmgr.write_config({name: value}, _FULL_SCHEMA))
+            assert ok is True
+            assert results[name] in ("Valid", "Unchanged")
+            stored = run(reader.cfgmgr.get_dict([name]))
+            assert stored is not None
+            assert stored[name] == value
+
+
+def test_write_config_rejects_a_value_outside_the_discrete_osr_domain() -> None:
+    # 20 is an "in type, in old-range" int that was never a real legal OSR value (only
+    # 1/2/4/8/16/32 are) - exactly the gap this validator closes.
+    i2c, reader = make_clean_reader("discrete_invalid_osr")
+    for name in ("PressOvers", "TempOvers"):
+        before = run(reader.cfgmgr.get_dict([name]))
+        assert before is not None
+        ok, results = run(reader.cfgmgr.write_config({name: 20}, _FULL_SCHEMA))
+        assert ok is True
+        assert results[name] == "Invalid"
+        after = run(reader.cfgmgr.get_dict([name]))
+        assert after == before  # untouched
+
+
+def test_write_config_rejects_a_value_outside_the_discrete_iir_domain() -> None:
+    # 100 is in the old [0, 127] range but not one of the real encoded IIR coefficients.
+    i2c, reader = make_clean_reader("discrete_invalid_iir")
+    before = run(reader.cfgmgr.get_dict(["FiltCoeff"]))
+    ok, results = run(reader.cfgmgr.write_config({"FiltCoeff": 100}, _FULL_SCHEMA))
+    assert ok is True
+    assert results["FiltCoeff"] == "Invalid"
+    assert run(reader.cfgmgr.get_dict(["FiltCoeff"])) == before
+
+
+def test_write_config_rejects_wrong_type_for_a_discrete_field() -> None:
+    i2c, reader = make_clean_reader("discrete_wrong_type")
+    ok, results = run(reader.cfgmgr.write_config({"PressOvers": "8"}, _FULL_SCHEMA))
+    assert ok is True
+    assert results["PressOvers"] == "Invalid"
 
 
 # ---------------------------------------------------------------------------
@@ -1327,6 +1390,138 @@ def test_get_data_and_get_dict_data_reflect_a_stored_reading() -> None:
 def test_get_task_starters_returns_read_and_trigger_starters() -> None:
     reader = make_reader("task_starters")
     assert reader.get_task_starters() == [reader.start_asy_read, reader.start_asy_trigger]
+
+
+def test_get_cfg_schema_matches_the_full_schema() -> None:
+    # get_cfg_schema() is inherited for free from base_classes.py's SensorReaderConfig - no
+    # BMP3xx_Reader-specific code needed, unlike asy_wifi_service.py/asy_ntp_client.py, which used
+    # to assign self.cfg_schema locally before this getter existed.
+    reader = make_reader("cfg_schema")
+    assert reader.get_cfg_schema() == _FULL_SCHEMA
+    assert reader.get_cfg_schema() == reader.cfg_schema
+
+
+def test_push_callbacks_registered_for_every_live_field_only() -> None:
+    reader = make_reader("push_callbacks")
+    assert set(reader._push_callbacks) == {"SampleInterv", "PressOvers", "TempOvers", "FiltCoeff"}
+    # PressOffset/TempOffset/SeaLevelOffs/MeanAtmTemp are persist-only compensation-math inputs.
+
+
+def test_set_dict_cfg_pressure_oversampling_end_to_end_persists_and_pushes() -> None:
+    i2c, reader = make_clean_reader("set_dict_cfg_pov")
+    seed_status(i2c, 0x10 | 0x60)
+    seed_err(i2c, 0x00)
+    results = run(reader._set_dict_cfg({"PressOvers": 8}, reader.get_cfg_schema()))
+    assert results == {"PressOvers": "Valid"}
+    assert run(reader.cfgmgr.get_dict(["PressOvers"])) == {"PressOvers": 8}  # persisted
+    assert run(reader.bmp.get_pressure_oversampling()) == 8  # pushed live to the sensor
+
+
+def test_set_dict_cfg_pressure_oversampling_bus_failure_reports_field_as_failed() -> None:
+    # Persisted successfully (config write has no hardware dependency), but the live push fails -
+    # per-field status reflects the push outcome, not the persist outcome, once persist succeeded.
+    # base_classes.py's failed-push recovery chain then corrects the persisted value back to what
+    # it was before this request. BMP3xx does register a _get_callbacks entry for this field, but a
+    # blanket address NAK (unlike the write-only fault injected below) fails the getter's own read
+    # too, so this specific test still falls through to the pre-write snapshot rung - established as
+    # 4 first, distinct from both the requested 8 and the schema default (1), so the assertion below
+    # can only pass via that specific rung.
+    i2c, reader = make_clean_reader("set_dict_cfg_pov_busfail")
+    seed_status(i2c, 0x10 | 0x60)
+    seed_err(i2c, 0x00)
+    run(reader._set_dict_cfg({"PressOvers": 4}, reader.get_cfg_schema()))
+
+    fake(i2c).nak_addresses.add(_ADDR)
+    results = run(reader._set_dict_cfg({"PressOvers": 8}, reader.get_cfg_schema()))
+    assert results == {"PressOvers": "Failed"}
+    assert run(reader.cfgmgr.get_dict(["PressOvers"])) == {"PressOvers": 4}  # corrected, not left at 8
+
+
+def test_set_dict_cfg_pressure_oversampling_write_fails_but_getter_recovers_real_sensor_value() -> None:
+    # A more realistic, narrower fault than the blanket NAK above: only the write half of
+    # set_bits()'s read-modify-write fails (inject_fault on writeto_mem specifically), leaving reads
+    # - and therefore the registered _get_callbacks getter - fully functional. Desyncs the sensor's
+    # real register state (pushed directly via reader.bmp, bypassing _set_dict_cfg/cfgmgr entirely)
+    # from cfgmgr's own persisted value (left at its schema default, 1), so a passing assertion can
+    # only come from the getter rung actually being queried and winning - not from it coincidentally
+    # agreeing with the pre-write snapshot the way the blanket-NAK test above can't help but do.
+    i2c, reader = make_clean_reader("set_dict_cfg_pov_getter_recovers")
+    seed_status(i2c, 0x10 | 0x60)
+    seed_err(i2c, 0x00)
+    run(reader.bmp.set_pressure_oversampling(2))
+    assert run(reader.cfgmgr.get_dict(["PressOvers"])) == {"PressOvers": 1}  # untouched schema default
+
+    fake(i2c).inject_fault("writeto_mem", OSError(errno_mod.EIO, "no ACK on write"))
+    results = run(reader._set_dict_cfg({"PressOvers": 8}, reader.get_cfg_schema()))
+    assert results == {"PressOvers": "Failed"}
+    # Recovered via the live getter (2, the sensor's real state) - neither the requested-but-failed
+    # 8 nor cfgmgr's own pre-write snapshot (1).
+    assert run(reader.cfgmgr.get_dict(["PressOvers"])) == {"PressOvers": 2}
+    assert run(reader.bmp.get_pressure_oversampling()) == 2  # sensor register itself untouched
+
+
+def test_set_dict_cfg_multi_field_discrete_and_continuous_together() -> None:
+    i2c, reader = make_clean_reader("set_dict_cfg_multi")
+    seed_status(i2c, 0x10 | 0x60)
+    seed_err(i2c, 0x00)
+    results = run(
+        reader._set_dict_cfg(
+            {"PressOvers": 20, "FiltCoeff": 15, "PressOffset": 12.5}, reader.get_cfg_schema()
+        )
+    )
+    assert results == {"PressOvers": "Invalid", "FiltCoeff": "Valid", "PressOffset": "Valid"}
+    assert run(reader.bmp.get_filter_coefficient()) == 15
+    assert run(reader.cfgmgr.get_dict(["PressOffset"])) == {"PressOffset": 12.5}
+
+
+def test_set_dict_cfg_multiple_simultaneously_invalid_discrete_fields_neither_pushed() -> None:
+    # Both PressOvers and FiltCoeff invalid at once - not just one invalid amid otherwise-valid
+    # fields, as test_set_dict_cfg_multi_field_discrete_and_continuous_together above already
+    # covers. Confirms independence holds and neither push callback fires when two discrete-set
+    # fields in the same request are both out of their allowed value set, while a third, valid
+    # field in the same call still persists and pushes normally.
+    i2c, reader = make_clean_reader("set_dict_cfg_multi_invalid")
+    seed_status(i2c, 0x10 | 0x60)
+    seed_err(i2c, 0x00)
+    results = run(reader._set_dict_cfg({"PressOvers": 20, "FiltCoeff": 99, "TempOvers": 4}, reader.get_cfg_schema()))
+    assert results == {"PressOvers": "Invalid", "FiltCoeff": "Invalid", "TempOvers": "Valid"}
+    assert run(reader.cfgmgr.get_dict(["PressOvers", "FiltCoeff"])) == {
+        "PressOvers": 1,
+        "FiltCoeff": 0,
+    }  # both untouched, still their schema defaults
+    assert run(reader.bmp.get_temperature_oversampling()) == 4  # the one valid field still pushed
+
+
+def test_set_dict_cfg_temperature_oversampling_end_to_end_persists_and_pushes() -> None:
+    i2c, reader = make_clean_reader("set_dict_cfg_tov")
+    seed_status(i2c, 0x10 | 0x60)
+    seed_err(i2c, 0x00)
+    results = run(reader._set_dict_cfg({"TempOvers": 4}, reader.get_cfg_schema()))
+    assert results == {"TempOvers": "Valid"}
+    assert run(reader.cfgmgr.get_dict(["TempOvers"])) == {"TempOvers": 4}
+    assert run(reader.bmp.get_temperature_oversampling()) == 4
+
+
+def test_set_dict_cfg_sample_interv_end_to_end_persists_and_pushes() -> None:
+    # SampleInterv's "push" is a pure in-memory software knob (trigger_period), not I2C - no bus
+    # seeding needed.
+    reader = make_reader("set_dict_cfg_si")
+    results = run(reader._set_dict_cfg({"SampleInterv": 45}, reader.get_cfg_schema()))
+    assert results == {"SampleInterv": "Valid"}
+    assert run(reader.cfgmgr.get_dict(["SampleInterv"])) == {"SampleInterv": 45}
+    assert run(reader.trigger_period.get_value()) == 45
+
+
+def test_push_wrapper_functions_reject_a_non_int_value_defensively() -> None:
+    # _set_dict_cfg only ever invokes these with an already schema-validated int (see each
+    # wrapper's own comment) - calling them directly with the wrong type exercises the defensive
+    # branch a real caller can't actually reach.
+    reader = make_reader("push_wrapper_reject")
+    for wrapper_name in ("_push_trigger_secs", "_push_pressure_oversampling", "_push_temperature_oversampling", "_push_filter_coefficient"):
+        wrapper = getattr(reader, wrapper_name)
+        assert run(wrapper("not an int")) is False
+        assert run(wrapper(1.5)) is False
+        assert run(wrapper(True)) is False  # bool is not int for this purpose, matching config_manager.py
 
 
 def test_get_timer_starters_returns_the_trigger_timer_starter() -> None:

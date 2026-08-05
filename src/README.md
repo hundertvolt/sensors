@@ -231,9 +231,9 @@ is not a machine with memory or cycles to spare:
       `ucollections`, ...) — MicroPython consolidated these to their plain names years ago; the
       `u`-prefixed forms still work as aliases today but are the clearest tell that a file predates
       that consolidation. (`crc_checks.py` already uses the modern `asyncio`/`struct` names; other
-      `improved-quality/` files — e.g. `base_classes.py`'s `from uasyncio import Lock` — still use
-      the old prefixed form, a real, present instance of this in the codebase today, not a
-      hypothetical concern.)
+      `improved-quality/` files — e.g. `neopixel_signal.py`/`sensortask-wozi.py`'s
+      `from uasyncio import ...` — still use the old prefixed form, a real, present instance of this
+      in the codebase today, not a hypothetical concern.)
 - [ ] Same "without changing functionality" hard constraint as section 8 applies when a
       modernization is purely a rewrite for currentness — the existing test suite must still pass
       unchanged. If a newer API's *semantics* genuinely differ from what the old pattern did (not
@@ -344,6 +344,22 @@ is not a machine with memory or cycles to spare:
 - [ ] If working in parallel with other sessions touching the same shared infrastructure (e.g.
       after a rebase), re-check for duplicated or conflicting mechanisms and reconcile docs
       carefully — don't leave two contradictory descriptions of the same thing.
+
+## 15. Method ordering within a class
+
+- [ ] Within each class, order methods private-first, then public: a) private (`_`-prefixed)
+      methods on top, b) public methods on the bottom.
+- [ ] Within each of those two groups, order by role (omit a category entirely if the class has no
+      methods of that kind): 1. Starters (`start_*`/`stop_*`/`get_*_starters`), 2. Getters,
+      3. Setters, 4. Others. Keep each sub-bucket's original relative order among its own members.
+- [ ] `__init__` and other dunders always stay first in the class, ahead of this scheme, untouched.
+- [ ] This is a pure reorder: it must not change any method's body, decorators, or docstring/
+      comments, and must not change the file's module-level statements (imports, constants, module
+      functions) at all — verify with an AST-level comparison against the pre-reorder version (per-
+      class multiset of method name + full source text, decorators and trailing same-line comments
+      included), not just a visual diff, since a manual reorder can silently drop a decorator or a
+      trailing `# type: ignore` comment. The existing test suite must still pass unchanged, and
+      lint/typecheck finding counts must match the pre-reorder baseline exactly.
 
 ## Only then
 

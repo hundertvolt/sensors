@@ -7,7 +7,7 @@ vs. async) - the caller's own async setup must, or FRAM persistence stays inert.
 
 import asyncio
 
-from config_manager import ConfigManager, schema_names
+from config_manager import ConfigManager, check_cfg_get_default, schema_dict, schema_names, type_or_range_error
 from print_log import PrintLogHistory, PrintLogHistoryStore
 
 try:
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from typing import Any, NamedTuple, TypeVar
 
     from asy_fram_manager import AsyFramManager
-    from config_manager import ConfigSchema
+    from config_manager import ConfigSchema, WriteValidity
 
     LockableType = TypeVar("LockableType", bound="Lockable")
     MeasDataType = TypeVar("MeasDataType", bound=tuple[int | float | None, ...])
@@ -86,17 +86,17 @@ class LockedCounter:
         self.value = self._clamp(init_value)
         self.value_lock = asyncio.Lock()
 
-    def _clamp(self, value: int | None) -> int | None:  # None = "never happened" sentinel; real values clamp into [0, max_val]
-        if value is None:
-            return None
-        return min(max(value, 0), self.max_val)
-
     async def _step(self, delta: int) -> int:
         async with self.value_lock:
             current = 0 if self.value is None else self.value
             current = min(max(current + delta, 0), self.max_val)
             self.value = current
         return current
+
+    def _clamp(self, value: int | None) -> int | None:  # None = "never happened" sentinel; real values clamp into [0, max_val]
+        if value is None:
+            return None
+        return min(max(value, 0), self.max_val)
 
     async def get_value(self) -> int | None:
         async with self.value_lock:
@@ -168,29 +168,9 @@ class SensorReader:
         self.max_i2c_err = max_i2c_err
         self._err_cnt_internal = 0
 
-    async def _error_check(self, results: "MeasDataType", name: str, condition: bool = True) -> bool:
-        # centralizes the increment/decrement-error-counter-and-decide-to-give-up logic every
-        # sensortask-*.py driver used to hand-roll separately; False tells the caller to give up
-        # (triggers the task supervisor's own reset), True to keep going.
-        if any(res is None for res in results) and condition:
-            self._err_cnt_internal += 1
-            await self.pr.err_s(name + " Fehlerzähler erhöht auf", self._err_cnt_internal, errno=1)
-            if self._err_cnt_internal > self.max_i2c_err:
-                await self.pr.err_s(name + " Maximale Fehleranzahl erreicht!", errno=2)
-                return False  # Abbruch der Schleife führt zu Task-Reset
-        else:
-            if self._err_cnt_internal > 0:
-                self._err_cnt_internal -= 1
-                self.pr.err(name + " Fehlerzähler zurück auf", self._err_cnt_internal)
-        return True
-
     async def _get_meas_data(self) -> "NamedTuple":
         async with self._datalock:
             return self._datastruct
-
-    async def _set_meas_data(self, data: "NamedTuple") -> None:
-        async with self._datalock:
-            self._datastruct = data
 
     async def _get_mgr_cfg(self, cfg: list[str]) -> dict[str, int | float | str | bool | None] | None:
         return {}
@@ -224,6 +204,26 @@ class SensorReader:
 
         return ret
 
+    async def _set_meas_data(self, data: "NamedTuple") -> None:
+        async with self._datalock:
+            self._datastruct = data
+
+    async def _error_check(self, results: "MeasDataType", name: str, condition: bool = True) -> bool:
+        # centralizes the increment/decrement-error-counter-and-decide-to-give-up logic every
+        # sensortask-*.py driver used to hand-roll separately; False tells the caller to give up
+        # (triggers the task supervisor's own reset), True to keep going.
+        if any(res is None for res in results) and condition:
+            self._err_cnt_internal += 1
+            await self.pr.err_s(name + " Fehlerzähler erhöht auf", self._err_cnt_internal, errno=1)
+            if self._err_cnt_internal > self.max_i2c_err:
+                await self.pr.err_s(name + " Maximale Fehleranzahl erreicht!", errno=2)
+                return False  # Abbruch der Schleife führt zu Task-Reset
+        else:
+            if self._err_cnt_internal > 0:
+                self._err_cnt_internal -= 1
+                self.pr.err(name + " Fehlerzähler zurück auf", self._err_cnt_internal)
+        return True
+
     async def reset_error_counter(self) -> None:
         # Resets both counters this file tracks, not just pr's persisted history/err_count -
         # _err_cnt_internal is the separate consecutive-failure streak _error_check's give-up
@@ -245,11 +245,121 @@ class SensorReaderConfig(SensorReader):
         debug: int | None = None,
     ) -> None:
         super().__init__(init_data, max_i2c_err, fram, history_length, debug)
+        self.cfg_schema = default_vals
         self.cfgmgr = ConfigManager(
             cfg_path + "config_" + name + ".cfg",
             default_vals,
             self.pr,
         )
+        # Per-field live-push callbacks: a subclass registers {field_name: async_push_fn} entries
+        # after super().__init__(); a field with no entry is persist-only (see DRIVER_SPEC.md §5.2).
+        self._push_callbacks: dict[str, Callable[[int | float | str | bool | None], Coroutine[Any, Any, bool]]] = {}
+        # Per-field live read-back for _recover_failed_push's fallback chain below (optional, unlike
+        # _push_callbacks); a field with no entry skips to the next rung (see DRIVER_SPEC.md §5.2.2).
+        self._get_callbacks: dict[str, Callable[[], Coroutine[Any, Any, int | float | str | bool | None]]] = {}
 
     async def _get_mgr_cfg(self, cfg: list[str]) -> dict[str, int | float | str | bool | None] | None:
         return await self.cfgmgr.get_dict(cfg)
+
+    async def _set_mgr_cfg(
+        self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "ConfigSchema"
+    ) -> "tuple[bool, WriteValidity]":
+        # Overridable extension point mirroring _get_mgr_cfg - a subclass with a different
+        # persistence backend can override just this and still reuse _set_dict_cfg's orchestration.
+        return await self.cfgmgr.write_config(data, cfg_vals)
+
+    async def _set_dict_cfg(
+        self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "ConfigSchema"
+    ) -> "WriteValidity":
+        # Setter mirror of _get_dict_cfg (see DRIVER_SPEC.md §5.2): persist first, then push live only
+        # changed fields with a callback. Snapshot each field's pre-write value first - the one
+        # _recover_failed_push rung that only exists here, before the write below overwrites it.
+        try:  # _get_mgr_cfg is an overridable extension point, same defense as _get_dict_cfg's own use of it
+            old_values = await self._get_mgr_cfg(list(data.keys()))
+        except Exception as e:
+            await self.pr.err_s("Error reading previous config for fallback:", e, errno=7)
+            old_values = None
+        if old_values is None:
+            old_values = {}
+
+        try:  # _set_mgr_cfg is an overridable extension point - the call itself, not just its
+            # result, could misbehave on a misbehaving subclass override (mirrors _get_dict_cfg's
+            # own _get_mgr_cfg handling) - the isinstance check below extends that same defense to
+            # a malformed *shape* of an otherwise-successful return, not just a raised exception.
+            persisted, results = await self._set_mgr_cfg(data, cfg_vals)
+            if not isinstance(results, dict):
+                raise TypeError("_set_mgr_cfg returned a non-dict result")
+        except Exception as e:
+            await self.pr.err_s("Error writing config dict:", e, errno=5)
+            persisted, results = False, {}
+
+        if not persisted:
+            # Whole-operation failure (invalid ConfigManager, or an internal write error) - nothing
+            # was stored, so every requested key is "Failed", not "Invalid" (which would misleadingly
+            # suggest the values themselves were the problem) and nothing is pushed live either.
+            return {key: "Failed" for key in data}
+
+        for key in data:
+            # Defense-in-depth: a misbehaving _set_mgr_cfg override could report persisted=True but
+            # omit a key from results (the real ConfigManager-backed path never does) - without this,
+            # that key would silently vanish instead of being reported.
+            results.setdefault(key, "Failed")
+
+        for key, value in data.items():
+            if results.get(key) != "Valid":
+                continue  # only an actual, successfully-persisted change gets pushed live
+            callback = self._push_callbacks.get(key)
+            if callback is None:
+                continue  # persist-only field, nothing to push
+            try:
+                pushed = await callback(value)
+            except Exception as e:  # callback is caller-supplied; its runtime behavior isn't statically known
+                await self.pr.err_s("Error pushing", key, "to sensor:", e, errno=6)
+                pushed = False
+            if not pushed:
+                results[key] = "Failed"
+                await self._recover_failed_push(key, old_values, cfg_vals)
+        return results
+
+    async def _recover_failed_push(
+        self,
+        key: str,
+        old_values: "dict[str, int | float | str | bool | None]",
+        cfg_vals: "ConfigSchema",
+    ) -> None:
+        # Recovery chain for a failed live push (see DRIVER_SPEC.md §5.2.2): live read-back via
+        # _get_callbacks, else old_values' pre-write snapshot, else the schema default - written
+        # back through _set_mgr_cfg only, bypassing _push_callbacks so a failing push can't loop.
+        field = schema_dict(cfg_vals).get(key)
+        if field is None:
+            return  # shouldn't happen - key was already validated against cfg_vals above
+        use_value, default_val = check_cfg_get_default(field)
+        if not use_value:
+            return  # command-only/special-alone field (e.g. a trigger) - nothing to persist-correct,
+            # mirrors legacy's own cmd_keys exclusion from this exact fallback chain
+
+        recovered: int | float | str | bool | None = None
+        getter = self._get_callbacks.get(key)
+        if getter is not None:
+            try:
+                recovered = await getter()
+            except Exception as e:  # getter is caller-supplied; its runtime behavior isn't statically known
+                await self.pr.err_s("Error reading", key, "back from sensor:", e, errno=8)
+                recovered = None
+            # A getter reads live, possibly-adversarial hardware state - a value outside this
+            # field's own schema is treated the same as a raised exception (fall through), so
+            # every rung this cascade accepts is guaranteed schema-valid before it's persisted.
+            if recovered is not None and type_or_range_error(recovered, field):
+                recovered = None
+        if recovered is None:
+            recovered = old_values.get(key, default_val)
+
+        try:
+            await self._set_mgr_cfg({key: recovered}, cfg_vals)
+        except Exception as e:
+            await self.pr.err_s("Error correcting", key, "after failed push:", e, errno=9)
+
+    def get_cfg_schema(self) -> "ConfigSchema":
+        # Captured once from super().__init__()'s default_vals; sync (no I/O/locking involved).
+        # self.cfg_schema stays a public attribute too - see DRIVER_SPEC.md §5.1.
+        return self.cfg_schema

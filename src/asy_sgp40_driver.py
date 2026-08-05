@@ -15,7 +15,7 @@ from micropython import const
 
 from asy_i2c_driver import I2CDevice
 from base_classes import Lockable, SensorReaderConfig
-from config_manager import make_dict
+from config_manager import make_dict, name_cfg
 from crc_checks import CRC8, CRC32
 from voc_algorithm import VOCAlgorithm
 
@@ -39,6 +39,10 @@ _MAX_NTP_WAITTIME = const(600)  # 600s = 10min
 _VAL_BP = const((("BackupPeriod", "int", 1, 0, 1440, None),))
 _VAL_BMAX = const((("BackupMaxAge", "int", 7200, 0, 10080, None),))
 _VAL_WT = const((("WaitTimeNTP", "int", 30, 0, 600, None),))
+# Command-only trigger, not a persisted config value - reuses the schema's "special-alone" field
+# convention (def=None + a non-tuple special, see DRIVER_SPEC.md §5.2.1). Deliberately excluded
+# from get_dict_cfg()'s own schema argument below - this key is never in ConfigManager's _cache.
+_VAL_RESET = const((("SGPResetVOC", "bool", None, None, None, True),))
 
 _NAME = const("SGP40")
 # VOC/Raw/TS also doubles as the full result of a read (see _read_sgp/_store_sgp) - no separate
@@ -63,13 +67,17 @@ class SGP40_Reader(SensorReaderConfig):
             SGP40(None, None, None),
             max_i2c_err,
             _NAME,
-            _VAL_BP + _VAL_BMAX + _VAL_WT,
+            _VAL_BP + _VAL_BMAX + _VAL_WT + _VAL_RESET,
             cfg_path=cfg_path,
             fram=fram_storage,
             history_length=history_length,
             debug=debug,
         )
         self.sgp = SGP40_I2C(i2c)
+        # SGPResetVOC is command-only (see _VAL_RESET above) - registered the same way as every
+        # other module's real live-push field (project decision - constant at runtime, no per-call
+        # plumbing needed), just never persisted.
+        self._push_callbacks[name_cfg(_VAL_RESET)] = self._push_reset_voc
         self.trigger_event = asyncio.ThreadSafeFlag()
         self.trigger_timer = Timer()
         self.backup_counter = 0
@@ -97,40 +105,6 @@ class SGP40_Reader(SensorReaderConfig):
         # on different cycles (see reset_voc()/_read_sgp()). Both start "done".
         self._reset_fram_cleared = True
         self._reset_algo_applied = True
-
-    async def _init_sgp(self) -> bool:
-        await self.pr.setup()  # required for all logged warnings and errors
-        self._err_cnt_internal = 0
-        self.backup_counter = 0
-        self.voc_init = 0
-        self.voc_write = 0
-        try:
-            await self.sgp.setup()
-        except Exception as e:
-            await self.pr.err_s(_NAME, "Error in initial setup:", e, errno=10)
-            return False  # error
-
-        if self.ts_storage is None:
-            self.pr.one(_NAME, "initialized without storage")
-            return True  # no storage configured
-
-        cfg_values = await self.cfgmgr.get_int_values(_VAL_BP + _VAL_WT)
-        if cfg_values is None or len(cfg_values) != 2:
-            await self.pr.err_s(_NAME, "Error reading config data!", errno=11)
-            return False  # error
-
-        if cfg_values[0] > 0:  # backup verification period setting
-            await self.ts_storage.set_verify(
-                int(math.ceil((10 * _FRAM_VERIFY_MINS) / cfg_values[0]) * 0.1)  # SGPBackupPeriod
-            )
-
-        if cfg_values[1] >= 1:  # more than 1s waittime for ntp
-            if cfg_values[1] > _MAX_NTP_WAITTIME:  # limit if more than 10min
-                cfg_values[1] = _MAX_NTP_WAITTIME
-            self.voc_init = cfg_values[1]  # SGPWaitTimeNTP
-            self.voc_write = cfg_values[1]  # SGPWaitTimeNTP
-        self.pr.one(_NAME, "initialized with storage")
-        return True
 
     async def _check_storage(
         self,
@@ -171,6 +145,118 @@ class SGP40_Reader(SensorReaderConfig):
         # the declared return type, without a runtime-unsafe typing.cast (see module docstring)
         backup_period, backup_maxage, wait_ntp = cfg_values
         return buf, serialize, deserialize, (backup_period, backup_maxage, wait_ntp)
+
+    async def _read_sgp(
+        self, buf: "AsyFramChunkTimestampedBuffer | None", serialize: bool, deserialize: bool
+    ) -> tuple[SGP40, bool, bool]:
+        # Snapshotted once at entry so a concurrent reset_voc(True) (e.g. a REST handler) only
+        # ever affects the *next* cycle, never this one.
+        reset_now = self.reset
+        if reset_now:
+            self.pr.evt(_NAME, "Reset Trigger")
+            self.backup_counter = 0
+            serialize = False
+            deserialize = False
+            self.last_backup = None
+            self.restored_from = None
+            if self.ts_storage is None:
+                self._reset_fram_cleared = True  # nothing to clear - vacuously satisfied
+            elif not self._reset_fram_cleared:
+                self._reset_fram_cleared = await self.ts_storage.clear()
+                if not self._reset_fram_cleared:
+                    await self.pr.err_s(_NAME, "Fehler beim FRAM löschen!", errno=14)
+
+        try:  # caller-supplied callback, could legitimately misbehave
+            comp_data = await self.comp_callback()  # [Temperature, Humidity]
+        except Exception as e:
+            await self.pr.err_s(_NAME, "Kompensationsdaten-Callback fehlgeschlagen:", e, errno=18)
+            comp_data = [None, None]
+        if len(comp_data) != 2 or comp_data[0] is None or comp_data[1] is None:
+            await self.pr.wrn_s(_NAME, "hat keine Kompensationsdaten!", wrnno=14)
+            if deserialize:
+                self.pr.evt(_NAME, "Initialisierung wird wiederholt...")
+                self.voc_init = 1  # retry init if triggered and no compensation data is available
+                self.backup_counter = 0  # no backup if restore is pending
+            return SGP40(None, None, None), False, False
+
+        try:
+            timestamp = time.mktime(time.gmtime())
+            # Applies the software reset at most once per pending request; vocalgorithm_reset()
+            # never raises, so this half is guaranteed applied regardless of I2C outcome below.
+            reset_for_measure = reset_now and not self._reset_algo_applied
+            if reset_for_measure:
+                self._reset_algo_applied = True
+            (
+                voc_index,
+                raw,
+                serialized,
+                deserialized,
+            ) = await self.sgp.measure_index_and_raw(
+                temperature=float(comp_data[0]),
+                relative_humidity=float(comp_data[1]),
+                reset=reset_for_measure,
+                buf=None if buf is None else buf.get_data_buf(),
+                serialize=serialize,
+                deserialize=deserialize,
+            )
+            if reset_now and self._reset_algo_applied and self._reset_fram_cleared:
+                self.reset = False
+            self.pr.all(_NAME, "gelesen")
+
+            if deserialize:
+                if deserialized:
+                    self.pr.one(_NAME, "Restore erfolgreich angewandt")
+                else:
+                    await self.pr.err_s(_NAME, "Fehler beim Deserialisieren!", errno=15)
+
+            if serialize:
+                if serialized:
+                    self.pr.evt(_NAME, "Backupdaten erfolgreich erstellt")
+                else:
+                    await self.pr.err_s(_NAME, "Fehler beim Serialisieren!", errno=16)
+
+        except Exception as e:
+            # I2C failed, but a pending reset_for_measure already completed above regardless.
+            if reset_now and self._reset_algo_applied and self._reset_fram_cleared:
+                self.reset = False
+            voc_index = raw = timestamp = None
+            serialized = False
+            await self.pr.err_s(_NAME, "Lesefehler:", e, errno=17)
+        return SGP40(voc_index, raw, timestamp), True, serialized
+
+    async def _init_sgp(self) -> bool:
+        await self.pr.setup()  # required for all logged warnings and errors
+        self._err_cnt_internal = 0
+        self.backup_counter = 0
+        self.voc_init = 0
+        self.voc_write = 0
+        try:
+            await self.sgp.setup()
+        except Exception as e:
+            await self.pr.err_s(_NAME, "Error in initial setup:", e, errno=10)
+            return False  # error
+
+        if self.ts_storage is None:
+            self.pr.one(_NAME, "initialized without storage")
+            return True  # no storage configured
+
+        cfg_values = await self.cfgmgr.get_int_values(_VAL_BP + _VAL_WT)
+        if cfg_values is None or len(cfg_values) != 2:
+            await self.pr.err_s(_NAME, "Error reading config data!", errno=11)
+            return False  # error
+
+        if cfg_values[0] > 0:  # backup verification period setting
+            await self.ts_storage.set_verify(
+                int(math.ceil((10 * _FRAM_VERIFY_MINS) / cfg_values[0]) * 0.1)  # SGPBackupPeriod
+            )
+
+        if cfg_values[1] >= 1:  # more than 1s waittime for ntp
+            if cfg_values[1] > _MAX_NTP_WAITTIME:  # limit if more than 10min
+                cfg_values[1] = _MAX_NTP_WAITTIME
+            self.voc_init = cfg_values[1]  # SGPWaitTimeNTP
+            self.voc_write = cfg_values[1]  # SGPWaitTimeNTP
+        self.pr.one(_NAME, "initialized with storage")
+        return True
 
     async def _run_restore(
         self,
@@ -253,89 +339,20 @@ class SGP40_Reader(SensorReaderConfig):
         self.last_backup = ts
         return
 
-    async def _read_sgp(
-        self, buf: "AsyFramChunkTimestampedBuffer | None", serialize: bool, deserialize: bool
-    ) -> tuple[SGP40, bool, bool]:
-        # Snapshotted once at entry so a concurrent reset_voc(True) (e.g. a REST handler) only
-        # ever affects the *next* cycle, never this one.
-        reset_now = self.reset
-        if reset_now:
-            self.pr.evt(_NAME, "Reset Trigger")
-            self.backup_counter = 0
-            serialize = False
-            deserialize = False
-            self.last_backup = None
-            self.restored_from = None
-            if self.ts_storage is None:
-                self._reset_fram_cleared = True  # nothing to clear - vacuously satisfied
-            elif not self._reset_fram_cleared:
-                self._reset_fram_cleared = await self.ts_storage.clear()
-                if not self._reset_fram_cleared:
-                    await self.pr.err_s(_NAME, "Fehler beim FRAM löschen!", errno=14)
-
-        try:  # caller-supplied callback, could legitimately misbehave
-            comp_data = await self.comp_callback()  # [Temperature, Humidity]
-        except Exception as e:
-            await self.pr.err_s(_NAME, "Kompensationsdaten-Callback fehlgeschlagen:", e, errno=18)
-            comp_data = [None, None]
-        if len(comp_data) != 2 or comp_data[0] is None or comp_data[1] is None:
-            await self.pr.wrn_s(_NAME, "hat keine Kompensationsdaten!", wrnno=14)
-            if deserialize:
-                self.pr.evt(_NAME, "Initialisierung wird wiederholt...")
-                self.voc_init = 1  # retry init if triggered and no compensation data is available
-                self.backup_counter = 0  # no backup if restore is pending
-            return SGP40(None, None, None), False, False
-
-        try:
-            timestamp = time.mktime(time.gmtime())
-            # Applies the software reset at most once per pending request; vocalgorithm_reset()
-            # never raises, so this half is guaranteed applied regardless of I2C outcome below.
-            reset_for_measure = reset_now and not self._reset_algo_applied
-            if reset_for_measure:
-                self._reset_algo_applied = True
-            (
-                voc_index,
-                raw,
-                serialized,
-                deserialized,
-            ) = await self.sgp.measure_index_and_raw(
-                temperature=float(comp_data[0]),
-                relative_humidity=float(comp_data[1]),
-                reset=reset_for_measure,
-                buf=None if buf is None else buf.get_data_buf(),
-                serialize=serialize,
-                deserialize=deserialize,
-            )
-            if reset_now and self._reset_algo_applied and self._reset_fram_cleared:
-                self.reset = False
-            self.pr.all(_NAME, "gelesen")
-
-            if deserialize:
-                if deserialized:
-                    self.pr.one(_NAME, "Restore erfolgreich angewandt")
-                else:
-                    await self.pr.err_s(_NAME, "Fehler beim Deserialisieren!", errno=15)
-
-            if serialize:
-                if serialized:
-                    self.pr.evt(_NAME, "Backupdaten erfolgreich erstellt")
-                else:
-                    await self.pr.err_s(_NAME, "Fehler beim Serialisieren!", errno=16)
-
-        except Exception as e:
-            # I2C failed, but a pending reset_for_measure already completed above regardless.
-            if reset_now and self._reset_algo_applied and self._reset_fram_cleared:
-                self.reset = False
-            voc_index = raw = timestamp = None
-            serialized = False
-            await self.pr.err_s(_NAME, "Lesefehler:", e, errno=17)
-        return SGP40(voc_index, raw, timestamp), True, serialized
-
     async def _store_sgp(self, data: SGP40) -> None:
         if data.VOC is None or data.Raw is None or data.TS is None:
             return  # don't run on invalid data
         await self._set_meas_data(data)
         self.pr.all(_NAME, "Daten gespeichert")
+
+    async def _push_reset_voc(self, value: int | float | str | bool | None) -> bool:
+        # Narrows _push_callbacks' wide value type to reset_voc's real bool parameter. Deliberately
+        # does NOT forward reset_voc()'s own return value: it uses False for "no-op" (see its own
+        # docstring), not "push failed" (DRIVER_SPEC.md §5.2.1) - always reports success once typed.
+        if not isinstance(value, bool):
+            return False
+        await self.reset_voc(value)
+        return True
 
     def start_asy_read(self) -> asyncio.Task[bool]:
         evtloop = asyncio.get_event_loop()
@@ -358,6 +375,9 @@ class SGP40_Reader(SensorReaderConfig):
     def get_timer_starters(self) -> "list[Callable[[], None]]":
         return [self.start_timer]
 
+    def stop_timer(self) -> None:
+        self.trigger_timer.deinit()
+
     async def get_mem_status(self) -> tuple[int | None, int | None]:
         return self.last_backup, self.restored_from
 
@@ -372,15 +392,18 @@ class SGP40_Reader(SensorReaderConfig):
         return make_dict(data)
 
     async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
+        # Deliberately excludes _VAL_RESET (SGPResetVOC) - see that const's own comment: it's never
+        # in cfgmgr's _cache (special-alone, not persisted), and ConfigManager.get_dict() is
+        # all-or-nothing per requested key, so including it here would break this whole read.
         return await self._get_dict_cfg(_NAME, _VAL_BP + _VAL_BMAX + _VAL_WT)
 
     async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
         return await self.pr.get_log(_NAME)
 
-    def stop_timer(self) -> None:
-        self.trigger_timer.deinit()
-
-    async def reset_voc(self, flag: bool) -> None:
+    async def reset_voc(self, flag: bool) -> bool:
+        # Uniform setter return contract (project-wide decision): True = applied, False = no-op.
+        # flag=False deliberately does nothing (see test_reset_voc_false_is_a_no_op's own contract
+        # note) - only flag=True actually triggers a reset.
         if flag:
             self.reset = True
             # A fresh request always restarts both sub-parts' tracking, even if a previous reset was
@@ -388,6 +411,8 @@ class SGP40_Reader(SensorReaderConfig):
             # not silently considered already-satisfied by an earlier, unrelated reset's bookkeeping.
             self._reset_fram_cleared = False
             self._reset_algo_applied = False
+            return True
+        return False
 
     async def read_loop(self) -> bool:
         if not await self._init_sgp():  # init sensor at startup
@@ -418,31 +443,6 @@ class SGP40_I2C:
         self._measure_command = bytearray(b"\x26\x0f\x80\x00\xa2\x66\x66\x93")
         self._voc_algorithm: VOCAlgorithm | None = None
 
-    async def _reset(self) -> None:
-        # True I2C general-call reset (datasheet Table 17): 0x06 to the reserved address 0x00,
-        # broadcast to every device on the bus. A NAK (OSError) is expected, not a failure.
-        async with self.i2c_sgp40 as sgp40:  # shared-bus lock: a general call affects every device
-            try:
-                sgp40.i2c_device.i2c.writeto(0x00, b"\x06")
-            except OSError:
-                pass
-        await asyncio.sleep(1)
-
-    @staticmethod
-    def _celsius_to_ticks(temperature: float, buf: bytearray | memoryview) -> None:
-        # Temperature-to-ticks, datasheet Table 10: 25C->0x6666, -45C->0x0000, 130C->0xFFFF.
-        # Rounds to nearest (matching _relative_humidity_to_ticks below) rather than truncating.
-        temp_ticks = int(((temperature + 45) * 65535) / 175 + 0.5) & 0xFFFF
-        buf[0] = (temp_ticks >> 8) & 0xFF  # most significant byte
-        buf[1] = temp_ticks & 0xFF  # least significant byte
-
-    @staticmethod
-    def _relative_humidity_to_ticks(humidity: float, buf: bytearray | memoryview) -> None:
-        # Relative-humidity-to-ticks, datasheet Table 10: 50%->0x8000, 0%->0x0000, 100%->0xFFFF.
-        humidity_ticks = int((humidity * 65535) / 100 + 0.5) & 0xFFFF
-        buf[0] = (humidity_ticks >> 8) & 0xFF  # most significant byte
-        buf[1] = humidity_ticks & 0xFF  # least significant byte
-
     async def _read_word_from_command(
         self,
         sgp40: SGP40_DeviceSession,
@@ -472,6 +472,31 @@ class SGP40_I2C:
 
         return readdata_buffer
 
+    async def _reset(self) -> None:
+        # True I2C general-call reset (datasheet Table 17): 0x06 to the reserved address 0x00,
+        # broadcast to every device on the bus. A NAK (OSError) is expected, not a failure.
+        async with self.i2c_sgp40 as sgp40:  # shared-bus lock: a general call affects every device
+            try:
+                sgp40.i2c_device.i2c.writeto(0x00, b"\x06")
+            except OSError:
+                pass
+        await asyncio.sleep(1)
+
+    @staticmethod
+    def _celsius_to_ticks(temperature: float, buf: bytearray | memoryview) -> None:
+        # Temperature-to-ticks, datasheet Table 10: 25C->0x6666, -45C->0x0000, 130C->0xFFFF.
+        # Rounds to nearest (matching _relative_humidity_to_ticks below) rather than truncating.
+        temp_ticks = int(((temperature + 45) * 65535) / 175 + 0.5) & 0xFFFF
+        buf[0] = (temp_ticks >> 8) & 0xFF  # most significant byte
+        buf[1] = temp_ticks & 0xFF  # least significant byte
+
+    @staticmethod
+    def _relative_humidity_to_ticks(humidity: float, buf: bytearray | memoryview) -> None:
+        # Relative-humidity-to-ticks, datasheet Table 10: 50%->0x8000, 0%->0x0000, 100%->0xFFFF.
+        humidity_ticks = int((humidity * 65535) / 100 + 0.5) & 0xFFFF
+        buf[0] = (humidity_ticks >> 8) & 0xFF  # most significant byte
+        buf[1] = humidity_ticks & 0xFF  # least significant byte
+
     async def get_raw(self) -> int | None:
         # recycle a single buffer
         async with self.i2c_sgp40 as sgp40:  # device session
@@ -482,39 +507,6 @@ class SGP40_I2C:
         if read_value is None:
             return None
         return read_value[0]
-
-    async def setup(self) -> None:
-        async with self.i2c_sgp40 as sgp40:  # device session
-            async with sgp40.i2c_device as i2c:  # bus session
-                await i2c.setup()
-        await self.initialize()
-
-    async def initialize(self) -> None:
-        # Only the serial-number read and self-test (datasheet Table 8) gate success - the
-        # feature-set check the legacy driver had isn't datasheet-documented.
-        async with self.i2c_sgp40 as sgp40:  # device session
-            self._command_buffer[0] = 0x36
-            self._command_buffer[1] = 0x82
-            serialnumber = await self._read_word_from_command(sgp40, delay_ms=3)
-        if serialnumber is None:
-            raise RuntimeError("No sensor response!")
-        if serialnumber[0] != 0x0000:
-            # word[0]==0 isn't documented by Sensirion (no structural breakdown of the 3-word ID
-            # given) or replicated by any other reference driver checked - unverified, inherited
-            # from Adafruit; kept since it's observed working on deployed hardware.
-            raise RuntimeError("Serial number does not match")
-
-        async with self.i2c_sgp40 as sgp40:  # device session
-            self._command_buffer[0] = 0x28
-            self._command_buffer[1] = 0x0E
-            self_test = await self._read_word_from_command(sgp40, delay_ms=500)
-        if self_test is None:
-            raise RuntimeError("No sensor response!")
-        # Datasheet Table 13: only the high byte is the pass/fail marker (0xD4/0x4B); the low
-        # byte is documented as "ignore", not guaranteed zero.
-        if (self_test[0] >> 8) != 0xD4:
-            raise RuntimeError("Self test failed")
-        await self._reset()
 
     async def measure_raw(self, temperature: float = 25, relative_humidity: float = 50) -> int | None:
         # Humidity/temperature-compensated raw gas value (datasheet Table 9, command 0x260F).
@@ -557,3 +549,36 @@ class SGP40_I2C:
             raw, buf, serialize=serialize, deserialize=deserialize, offset=offset
         )
         return voc_index, raw, serialized, deserialized
+
+    async def setup(self) -> None:
+        async with self.i2c_sgp40 as sgp40:  # device session
+            async with sgp40.i2c_device as i2c:  # bus session
+                await i2c.setup()
+        await self.initialize()
+
+    async def initialize(self) -> None:
+        # Only the serial-number read and self-test (datasheet Table 8) gate success - the
+        # feature-set check the legacy driver had isn't datasheet-documented.
+        async with self.i2c_sgp40 as sgp40:  # device session
+            self._command_buffer[0] = 0x36
+            self._command_buffer[1] = 0x82
+            serialnumber = await self._read_word_from_command(sgp40, delay_ms=3)
+        if serialnumber is None:
+            raise RuntimeError("No sensor response!")
+        if serialnumber[0] != 0x0000:
+            # word[0]==0 isn't documented by Sensirion (no structural breakdown of the 3-word ID
+            # given) or replicated by any other reference driver checked - unverified, inherited
+            # from Adafruit; kept since it's observed working on deployed hardware.
+            raise RuntimeError("Serial number does not match")
+
+        async with self.i2c_sgp40 as sgp40:  # device session
+            self._command_buffer[0] = 0x28
+            self._command_buffer[1] = 0x0E
+            self_test = await self._read_word_from_command(sgp40, delay_ms=500)
+        if self_test is None:
+            raise RuntimeError("No sensor response!")
+        # Datasheet Table 13: only the high byte is the pass/fail marker (0xD4/0x4B); the low
+        # byte is documented as "ignore", not guaranteed zero.
+        if (self_test[0] >> 8) != 0xD4:
+            raise RuntimeError("Self test failed")
+        await self._reset()

@@ -2200,6 +2200,42 @@ def test_integration_recovers_on_retry_after_one_dropped_request() -> None:
     assert run(scenario())
 
 
+def test_get_cfg_schema_matches_the_public_attribute() -> None:
+    # get_cfg_schema() is the new, base-class-owned access path (see base_classes.py) - cfg_schema
+    # itself stays a public attribute too, for the legacy REST layer's own direct reads.
+    client = make_client()
+    assert client.get_cfg_schema() == client.cfg_schema
+    assert client.get_cfg_schema() == (_VAL_NH + _VAL_NOS + _VAL_NIH + _VAL_GMT + _VAL_DST)
+
+
+def test_set_dict_cfg_works_out_of_the_box_with_zero_driver_changes() -> None:
+    # Every NTP field is persist-only (this file's own module docstring: "Config setters are out
+    # of scope... only the getter quartet is implemented" predates this generalization pass) - no
+    # asy_ntp_client.py source change was needed to gain setter support at all, since
+    # base_classes.py's generic _set_dict_cfg() already covers the "persist, nothing to push"
+    # case for free. This is exactly the abstraction the design was meant to prove out.
+    client = make_client()
+    results = run(client._set_dict_cfg({"NTP_Host": "time.example.org", "NTP_Interv_H": 6}, client.get_cfg_schema()))
+    assert results == {"NTP_Host": "Valid", "NTP_Interv_H": "Valid"}
+    stored = run(client.cfgmgr.get_dict(["NTP_Host", "NTP_Interv_H"]))
+    assert stored == {"NTP_Host": "time.example.org", "NTP_Interv_H": 6}
+
+
+def test_set_dict_cfg_invalid_field_reported_individually_others_still_apply() -> None:
+    client = make_client()
+    results = run(client._set_dict_cfg({"NTP_Interv_H": 999, "GMTOffset": 7200}, client.get_cfg_schema()))
+    assert results == {"NTP_Interv_H": "Invalid", "GMTOffset": "Valid"}
+    stored = run(client.cfgmgr.get_dict(["NTP_Interv_H", "GMTOffset"]))
+    assert stored == {"NTP_Interv_H": 12, "GMTOffset": 7200}  # Interv_H untouched default, GMTOffset applied
+
+
+def test_no_push_callbacks_are_registered_for_any_ntp_field() -> None:
+    # Confirms the persist-only design explicitly, not just implicitly via the absence of a push:
+    # every NTP field goes straight to cfgmgr with nothing live to update.
+    client = make_client()
+    assert client._push_callbacks == {}
+
+
 def test_cfg_schema_matches_what_cfgmgr_was_built_with() -> None:
     # Regression check for the sensortask-wozi.py integration bug where a shared REST helper
     # (api_helpers.py's cmd_post_check()) needed each module's own schema to call the promoted
