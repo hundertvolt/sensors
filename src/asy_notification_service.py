@@ -269,9 +269,13 @@ class NotificationCoordinator(SensorReaderConfig):
         while True:
             secs = await self.override_secs.decrement()
             if secs > 0:
-                self._auto_active = False
+                if self._auto_active:
+                    self._auto_active = False
+                    self.pr.evt(_NAME, "LED Override active.")
             else:
-                self._auto_active = True
+                if not self._auto_active:
+                    self._auto_active = True
+                    self.pr.evt(_NAME, "LED Override off.")
             await asyncio.sleep(1)
 
     async def monitor_loop(self) -> None:
