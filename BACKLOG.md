@@ -369,3 +369,21 @@ constraints.
   `asy_ntp_client.py`'s sync task waits on that same shared lock — NTP sync can be delayed up to a
   minute during active WLAN instability. A priority-inversion-shaped cost worth having in view, not
   a correctness bug; not acted on.
+- **Firmware build script should strip `if TYPE_CHECKING:` blocks from its temp frozen-copy, not
+  the real `src`/`ext` files.** `mpy-cross` does not dead-code-eliminate `if TYPE_CHECKING:` the way
+  it does an `if micropython.const(0):` branch — confirmed empirically (compiled real `src/*.py` +
+  `ext/microdot.py` with this repo's own `mpy-cross`): the guarded imports/Protocol classes/type
+  aliases fully survive into the `.mpy` bytecode (their qstrs included) since `TYPE_CHECKING` is a
+  plain runtime-checked global, not a compile-time constant. Stripping these blocks (via an `ast`
+  transform: parse → drop `if TYPE_CHECKING:`/its defining `try/except ImportError` header → re-parse
+  the unparsed output as a validity check → hand that to `mpy-cross`) saved ~3.6KB across the current
+  22 promoted files (108,339 → 104,748 bytes total), all still compiled clean. Safe specifically
+  because nothing on this platform ever does runtime annotation introspection (no `typing` module,
+  no `get_type_hints()` on-device) — the guarded names are only ever reached via string-literal
+  forward-ref annotations that MicroPython never evaluates anyway, so deleting the block changes
+  nothing observable. Directly grows the Pico W littlefs partition, which is whatever flash remains
+  after the firmware image (see CLAUDE.md's "Platform target"). Prototype lives in this session's
+  scratch, not the repo — reimplement as a proper `scripts/`-housed step when the build script itself
+  gets built, matching only a bare `TYPE_CHECKING`/`mod.TYPE_CHECKING` test (leave any compound
+  condition untouched rather than guess) and sanity-`ast.parse()`-checking its own output before
+  compiling.
