@@ -28,6 +28,28 @@ constraints.
   callers anywhere) and no task supervisor for FRAM specifically. Whoever wires this up must wrap
   the calls in the same `try/except Exception` discipline this file's other methods already use —
   `asy_fram_driver.py` doesn't catch its own inherited `RuntimeError` path on these three itself.
+- **Every deliberate system reset (reboot, bootloader entry, or a deliberate watchdog-starve
+  give-up) must pause FRAM operations first and give it a brief wait before the reset actually
+  happens** — a real risk (mid-write/mid-read power loss, MB85RS64V reads are destructively
+  read-then-rewritten internally per CLAUDE.md) that a reset triggered while a FRAM transaction is
+  in flight could corrupt data, same class of concern as the dual-copy/status-byte design
+  `asy_fram_manager.py` already guards against for power loss but not specifically for a
+  self-triggered reset racing an in-progress transaction. Owner-flagged as important for the final
+  wiring-up of this refactor's task/reset plumbing, likely needing rework across several files, not
+  just one. **Current state, confirmed by reading `system_service.py` directly**: `_reboot()`
+  (backing both `reboot_system()`/`reboot_bootloader()`) already calls `self.storage_pause(True)`
+  before arming the `_RESET_DELAY`-second (4s) delayed reset timer, and already does so before the
+  `_force_watchdog_starve` fallback too (armed when the reset timer itself can't be allocated) - so
+  the one existing deliberate-reset path already pauses-then-waits. Confirmed via grep that
+  `machine.reset()`/`machine.bootloader()`/`WDT()` have no other call site anywhere in `src/` or
+  `improved-quality/` today. What's still open: (1) explicitly verifying this is genuinely
+  sufficient "wait" (the `_RESET_DELAY` timer path is clearly bounded; the watchdog-starve path's
+  effective wait is just however long is left before the 8s-capped `WDT` fires on its own, not an
+  explicit deliberate pause - worth confirming that's actually enough margin for FRAM's own
+  in-flight transaction time), and (2) making sure this invariant is *actively preserved*, not just
+  true by chance, as more of the refactor's task/reset wiring lands - a future reset/reboot call
+  site added anywhere other than through `SystemService._reboot()` would silently reintroduce the
+  gap.
 - **No standardized timeout/cancellation mechanism yet for blocking calls that genuinely can be
   timeout-wrapped** (FRAM SPI transactions, `src/asy_udp_socket.py`'s own `select.poll`-driven
   `ready()`/`write_and_recvfrom()` — anything that isn't a raw blocking `machine.I2C` call
