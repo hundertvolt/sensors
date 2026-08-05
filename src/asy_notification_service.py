@@ -77,7 +77,7 @@ _VAL_OWN_SCHEMA = _VAL_INT_FIELDS + _VAL_FLOAT_FIELDS + _VAL_BOOL_FIELDS
 
 # Minimal but real measurement snapshot (DRIVER_SPEC.md's get_data()/get_dict_data() shape, same as
 # every other Reader) - whether anything was triggered as of the most recently completed poll cycle.
-NotifData = namedtuple("NotifData", ("Triggered", "TS"))
+NOTIFY = namedtuple("NOTIFY", ("Triggered", "TS"))
 
 
 class NotificationSignal:
@@ -195,7 +195,7 @@ class NotificationCoordinator(SensorReaderConfig):
             await self.pr.err_s(_NAME, notif.name, "request_signal_cb failed:", e, errno=4)
 
     async def _store_notif_data(self, any_triggered: bool) -> None:
-        await self._set_meas_data(NotifData(any_triggered, self._now()))
+        await self._set_meas_data(NOTIFY(any_triggered, self._now()))
 
     def start_asy_notify_monitor(self) -> "asyncio.Task[None]":
         evtloop = asyncio.get_event_loop()
@@ -211,7 +211,7 @@ class NotificationCoordinator(SensorReaderConfig):
     def get_timer_starters(self) -> "list[Callable[[], None]]":
         return []  # no machine.Timer anywhere in this file (DRIVER_SPEC.md section 9 shape)
 
-    async def get_data(self) -> NotifData:
+    async def get_data(self) -> NOTIFY:
         return await self._get_meas_data()  # type: ignore[return-value]
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
@@ -250,7 +250,7 @@ class NotificationCoordinator(SensorReaderConfig):
             self._reject_registration("(coordinator)", "finalize() called again, ignoring", 4)
             return
         super().__init__(
-            NotifData(False, None),
+            NOTIFY(False, None),
             self._max_i2c_err,
             _NAME,
             self._combined_schema(),

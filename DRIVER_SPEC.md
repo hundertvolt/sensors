@@ -44,6 +44,16 @@ One file per sensor: `asy_<sensor>_driver.py`. Within it:
 - `<SENSOR> = namedtuple("<SENSOR>", (...))` — the measurement result shape, always ending in a
   `TS` (timestamp) field. Field names become the keys `make_dict()` (config_manager.py) exposes
   over the config dict pipeline — see section 6.
+- **`_NAME`'s string content and the namedtuple's own type-name string must be identical, always**
+  — not just similar/related. Confirmed as a deliberate, checkable convention (not a coincidence of
+  the three original drivers): `asy_sgp40_driver.py`'s `_NAME = const("SGP40")` pairs with
+  `SGP40 = namedtuple("SGP40", ...)`, and `asy_wifi_service.py`/`asy_bmp3xx_driver.py`/
+  `asy_scd30_driver.py`/`asy_ntp_client.py` all follow the same pairing — define the two right next
+  to each other (as all of those do) specifically so a mismatch is visually obvious at review time.
+  A class with no namedtuple at all (no `SensorReader`/`SensorReaderConfig` measurement data - e.g.
+  a pure hardware-control class like `asy_neopixel_driver.py`'s `NeopixelDriver`) is exempt from
+  this pairing by construction, since there's nothing to match against; `_NAME` there still exists
+  purely as the `self.pr.*(_NAME, ...)` logging tag.
 - `_VAL_<ABBREV> = const((("<FieldName>", "<type>", default, min, max, special),))` — one schema
   tuple per config field (section 5). `<ABBREV>` is a short mnemonic (`_VAL_SI`, `_VAL_POV`, ...),
   concatenated with `+` wherever a full schema is needed (`_VAL_SI + _VAL_POV + ...`).
