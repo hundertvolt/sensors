@@ -41,12 +41,9 @@ from base_classes import LockedCounter, SensorReaderConfig
 from config_manager import make_dict, name_cfg, schema_names
 
 try:
-    from typing import TYPE_CHECKING, cast
+    from typing import TYPE_CHECKING
 except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
     TYPE_CHECKING = False
-
-    def cast(typ: object, val: "Any") -> "Any":  # type: ignore[no-redef]  # no-op at runtime either way
-        return val
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
@@ -174,20 +171,12 @@ class NotificationCoordinator(SensorReaderConfig):
         if value is None:
             notif.triggered = False
             return False
-        key = name_cfg(notif.field_schema)
-        threshold_dict = await self.cfgmgr.get_dict([key])
-        if threshold_dict is None or key not in threshold_dict:
+        thresholds = await self.cfgmgr.get_float_values(notif.field_schema)  # works for an "int" schema field too - float(cached_int) never raises
+        if thresholds is None or len(thresholds) != 1:
             await self.pr.err_s(_NAME, notif.name, "Threshold config read failed!", errno=2)
             notif.triggered = False
             return False
-        # cast(), not a runtime isinstance check: get_dict()'s return type is generic
-        # (dict[str, int | float | str | bool | None]) since it serves every field type in the
-        # schema, but this field's own schema entry fixes it to "int"/"float" - ConfigManager
-        # enforces that at every write (see config_manager.py's type_or_range_error()), so the
-        # value here is guaranteed int/float already. cast() is mypy-only narrowing, no runtime
-        # check - NaN/inf degrade cleanly through the comparison below either way (both sides of a
-        # NaN comparison are always False; inf/-inf compare normally, neither raises).
-        threshold = cast("int | float", threshold_dict[key])
+        threshold = thresholds[0]
         triggered = (value >= threshold) if notif.above else (value <= threshold)
         notif.triggered = triggered
         return triggered
@@ -235,6 +224,9 @@ class NotificationCoordinator(SensorReaderConfig):
         value = await self.override_secs.get_value()  # never None: never constructed/set with a None sentinel
         return 0 if value is None else value
 
+    async def set_override_led(self, secs: int) -> None:
+        await self.override_secs.set_value(secs)  # LockedCounter clamps into [0, _MAX_OVERRIDE_TIME] itself
+
     def register(self, notif: NotificationSignal) -> None:
         if self._finalized:
             self._reject_registration(notif.name, "register() called after finalize(), ignoring", 3)
@@ -265,9 +257,6 @@ class NotificationCoordinator(SensorReaderConfig):
             debug=self._debug,
         )
         self._finalized = True
-
-    async def set_override_led(self, secs: int) -> None:
-        await self.override_secs.set_value(secs)  # LockedCounter clamps into [0, _MAX_OVERRIDE_TIME] itself
 
     async def auto_led_override(self) -> None:
         self._auto_active = True

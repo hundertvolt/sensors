@@ -22,6 +22,7 @@ serves the unrelated WiFi-status LED use case, unchanged.
 """
 
 import asyncio
+import math
 
 import neopixel
 from machine import Pin
@@ -44,26 +45,17 @@ _NAME = const("NEOPIXEL")
 
 
 def _clamp_byte(value: "int | float") -> int:
-    # request_signal()/led_signal()/led_overl_bri are correctly-typed int/float (every caller is
-    # our own code, not guarded against here) but can still legitimately be NaN/inf - a real
-    # NeoPixel's __setitem__ writes straight into a bytearray (confirmed against micropython-lib's
-    # real neopixel.py: `self.buf[...] = v[i]`), which raises ValueError for an out-of-range int;
-    # int(float('nan')) raises ValueError and int(float('inf'))/int(float('-inf')) raise
-    # OverflowError (confirmed directly against the real MicroPython 1.28.0 Unix-port interpreter -
-    # CPython's own int() does the same). Both excluded explicitly before the conversion.
-    if value != value or value in (float("inf"), float("-inf")):  # NaN/inf
+    # See module docstring's NaN/inf paragraph. math.isnan/isinf convert int->float internally
+    # (confirmed against py/modmath.c), so this is exact for both int and float input.
+    if math.isnan(value) or math.isinf(value):
         return 0
     return min(max(int(value), 0), 255)
 
 
 def _safe_duration(value: "int | float") -> "int | float":
-    # rgbt[3]/ext_rgbt[3] ("t") is a correctly-typed float that can still be +/-inf, same caveat as
-    # _clamp_byte() above. inf passes neopixel_signal()'s own "t >= 0.1" floor check (inf >= 0.1 is
-    # True) and then raises OverflowError out of the steps computation right after (same
-    # int()-on-inf failure mode as _clamp_byte(), confirmed the same way). NaN already degrades
-    # safely on its own - a NaN comparison is always False, so the floor check already falls
-    # through to 0.1 - left untouched here.
-    if value in (float("inf"), float("-inf")):
+    # See module docstring's NaN/inf paragraph - NaN needs no guard here (a NaN floor-check
+    # comparison in neopixel_signal() is already always False, falling through to the 0.1 floor).
+    if math.isinf(value):
         return 0.0
     return value
 

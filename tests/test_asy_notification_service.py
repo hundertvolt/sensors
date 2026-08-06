@@ -664,6 +664,39 @@ def test_check_one_above_false_boundary_and_direction() -> None:
     assert above is False
 
 
+def test_check_one_nan_value_never_triggers() -> None:
+    # NaN comparisons are always False on both sides - matches _check_one()'s own inline comment.
+    coordinator, _clock, _cb = make_coordinator()
+    above_signal, _fv = make_signal("WarnCO2", above=True, value=float("nan"))
+    below_signal, _fv2 = make_signal("WarnVOC", above=False, value=float("nan"))
+    coordinator.register(above_signal)
+    coordinator.register(below_signal)
+    coordinator.finalize()
+
+    async def scenario() -> "tuple[bool, bool]":
+        return await coordinator._check_one(above_signal), await coordinator._check_one(below_signal)
+
+    above_triggered, below_triggered = run(scenario())
+    assert above_triggered is False
+    assert below_triggered is False
+
+
+def test_check_one_infinite_value_triggers_in_the_expected_direction() -> None:
+    coordinator, _clock, _cb = make_coordinator()
+    above_signal, _fv = make_signal("WarnCO2", above=True, value=float("inf"))
+    below_signal, _fv2 = make_signal("WarnVOC", above=False, value=float("-inf"))
+    coordinator.register(above_signal)
+    coordinator.register(below_signal)
+    coordinator.finalize()
+
+    async def scenario() -> "tuple[bool, bool]":
+        return await coordinator._check_one(above_signal), await coordinator._check_one(below_signal)
+
+    above_triggered, below_triggered = run(scenario())
+    assert above_triggered is True  # +inf >= any finite threshold
+    assert below_triggered is True  # -inf <= any finite threshold
+
+
 def test_check_one_none_value_is_not_triggered_no_crash() -> None:
     coordinator, _clock, _cb = make_coordinator()
     signal, fv = make_signal("WarnCO2", value=None)
