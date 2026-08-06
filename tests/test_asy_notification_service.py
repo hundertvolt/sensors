@@ -222,6 +222,23 @@ def test_finalize_called_twice_is_a_no_op_second_time() -> None:
     assert coordinator.get_cfg_schema() == schema_before
 
 
+def test_finalize_with_list_wrapped_field_schema_does_not_raise() -> None:
+    # register()'s own validation (name_cfg() -> schema_names()) only requires field_schema to be a
+    # single-item *iterable* - a list works there just as well as a tuple, since schema_names()
+    # just iterates it. A future module passing field_schema=[the_tuple] instead of (the_tuple,) (an
+    # easy typo) would previously pass register() cleanly and then raise TypeError out of
+    # finalize()'s own "tuple + list" concatenation. Regression test for that gap.
+    coordinator, _clock, _cb = make_coordinator()
+    fv = FakeValue(1)
+    list_schema = [("WarnCO2", "int", 1600, 0, 3000, None)]  # list, not tuple - the typo case
+    notif = NotificationSignal("WarnCO2", fv.get, list_schema, (1, 0, 0))  # type: ignore[arg-type]
+    coordinator.register(notif)
+    assert coordinator._registered == [notif]  # accepted at register() time - shape looks valid
+    coordinator.finalize()  # must not raise TypeError here
+    names = [f[0] for f in coordinator.get_cfg_schema()]
+    assert "WarnCO2" in names
+
+
 # ---------------------------------------------------------------------------
 # Combined config/persistence (single shared ConfigManager, post-finalize)
 # ---------------------------------------------------------------------------
@@ -1015,6 +1032,59 @@ def test_local_time_callback_raises_treated_as_none() -> None:
     run(scenario())
     assert len(cb.calls) == 0
     assert coordinator.pr.err_count >= 1
+
+
+class _MalformedTime:
+    # No .hour/.minute at all - simulates a future/misbehaving local_time_callback that succeeds
+    # (doesn't raise) but returns an object of the wrong shape.
+    pass
+
+
+def test_local_time_callback_malformed_return_shape_no_crash() -> None:
+    # _safe_local_time() only catches an exception raised by the callback itself - a successful but
+    # shapeless/wrong-typed return (missing .hour/.minute, or .hour/.minute of the wrong type) would
+    # previously raise AttributeError/TypeError out of monitor_loop()'s own cur_time.hour/.minute
+    # access and kill the task. Regression test for that gap.
+    cb = FakeSignalCb()
+    clock = FakeClock()
+    clock.value = _MalformedTime()  # type: ignore[assignment]
+    coordinator, _clock, _cb = make_coordinator(local_time=clock, signal_cb=cb)
+    signal, _fv = make_signal("WarnCO2", value=2000)
+    coordinator.register(signal)
+    coordinator.finalize()
+
+    async def scenario() -> None:
+        await coordinator._set_dict_cfg({"Interv": 3600.0, "FlashDur": 0.01}, coordinator.get_cfg_schema())
+        task = coordinator.start_asy_notify_monitor()
+        await _one_cycle(coordinator, task)
+
+    run(scenario())  # must not raise
+    assert len(cb.calls) == 0  # the malformed time is treated as "can't tell if in window" - no trigger
+
+
+def test_local_time_callback_wrong_typed_hour_minute_no_crash() -> None:
+    # A different malformation: .hour/.minute exist but aren't ints (e.g. a future callback
+    # returning string-formatted fields). Must degrade the same way as a missing attribute, not a
+    # different one, and definitely not raise.
+    class _StringTime:
+        hour = "12"
+        minute = "00"
+
+    cb = FakeSignalCb()
+    clock = FakeClock()
+    clock.value = _StringTime()  # type: ignore[assignment]
+    coordinator, _clock, _cb = make_coordinator(local_time=clock, signal_cb=cb)
+    signal, _fv = make_signal("WarnCO2", value=2000)
+    coordinator.register(signal)
+    coordinator.finalize()
+
+    async def scenario() -> None:
+        await coordinator._set_dict_cfg({"Interv": 3600.0, "FlashDur": 0.01}, coordinator.get_cfg_schema())
+        task = coordinator.start_asy_notify_monitor()
+        await _one_cycle(coordinator, task)
+
+    run(scenario())  # must not raise
+    assert len(cb.calls) == 0
 
 
 def test_auto_on_false_blocks_all_checks_regardless_of_window() -> None:

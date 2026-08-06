@@ -50,8 +50,25 @@ def _clamp_byte(value: "int | float | Any") -> int:
     # the actual hardware-write boundary, so no caller - current or future - can crash this task.
     try:
         return min(max(int(value), 0), 255)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):  # int(float('inf'))/int(float('-inf')) raise
+        # OverflowError specifically, not ValueError - confirmed directly against the real
+        # MicroPython 1.28.0 Unix-port interpreter (CPython's own int() does the same).
         return 0
+
+
+def _safe_duration(value: "int | float | Any") -> "int | float":
+    # rgbt[3]/ext_rgbt[3] ("t") is only type/range-hinted at request_signal()/led_signal()'s
+    # callers, same caveat as the byte channels _clamp_byte() guards above. A non-numeric value
+    # would raise TypeError out of neopixel_signal()'s own "t >= 0.1" floor check below; +/-inf
+    # passes that check (inf >= 0.1 is True) and then raises OverflowError out of the steps
+    # computation right after (same int()-on-inf failure mode as _clamp_byte(), confirmed the same
+    # way). NaN already degrades safely on its own - a NaN comparison is always False, so the floor
+    # check already falls through to 0.1 - left untouched here.
+    if not isinstance(value, (int, float)):
+        return 0.0
+    if value in (float("inf"), float("-inf")):
+        return 0.0
+    return value
 
 
 class NeopixelDriver:
@@ -161,7 +178,8 @@ class NeopixelDriver:
         while True:
             await self.start_signal_event.wait()
             self.pr.evt(_NAME, "Signal started.")
-            t = self.rgbt[3] if self.rgbt[3] >= 0.1 else 0.1  # time
+            raw_t = _safe_duration(self.rgbt[3])
+            t = raw_t if raw_t >= 0.1 else 0.1  # time
             steps = int(t * 0.5 * self.neopixel_freq)  # num steps for one dim half
             steps = steps if steps >= 1 else 1  # a low enough neopixel_freq could otherwise reach 0
             # here and divide by zero below - see this file's own regression test for the exact

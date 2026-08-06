@@ -131,7 +131,13 @@ class NotificationCoordinator(SensorReaderConfig):
     def _combined_schema(self) -> "ConfigSchema":
         combined: ConfigSchema = _VAL_OWN_SCHEMA
         for notif in self._registered:
-            combined = combined + notif.field_schema
+            # tuple(...) rather than a bare "+": register()'s own name_cfg() check only proves
+            # field_schema is a single-item *iterable* (schema_names() iterates it, doesn't require
+            # a tuple specifically - see config_manager.py), so a future module passing a list-
+            # wrapped field_schema (an easy [x] vs. (x,) typo) would pass register() cleanly and
+            # then raise TypeError here (tuple.__add__ rejects a list) - the one point in the whole
+            # staged-registration handshake that ran with no defense at all.
+            combined = combined + tuple(notif.field_schema)
         return combined
 
     def _reject_registration(self, name: str, reason: str, wrnno: int) -> None:
@@ -311,10 +317,26 @@ class NotificationCoordinator(SensorReaderConfig):
                 any_triggered = False
                 if auto_on and self._auto_active:
                     cur_time = await self._safe_local_time()
-                    if cur_time is not None:  # no NTP sync, missing config, or a raising callback
+                    # _safe_local_time() only catches an exception raised by the callback itself -
+                    # a successful-but-malformed return (missing/wrong-typed .hour/.minute, e.g. a
+                    # future local_time_callback returning a raw int timestamp) would otherwise
+                    # raise AttributeError/TypeError below and kill this task. hour/minute are read
+                    # via getattr so a non-None-but-shapeless cur_time (no .hour attr at all)
+                    # degrades the same way as a missing/wrong-typed one, not just a raise.
+                    hour = getattr(cur_time, "hour", None)
+                    minute = getattr(cur_time, "minute", None)
+                    # isinstance checks inlined directly into the condition (not hoisted into a
+                    # separate bool) so mypy can actually narrow hour/minute from "Any | None" to
+                    # "int" inside this block - a hoisted bool loses that narrowing entirely.
+                    if (
+                        isinstance(hour, int)
+                        and not isinstance(hour, bool)
+                        and isinstance(minute, int)
+                        and not isinstance(minute, bool)
+                    ):  # no NTP sync, missing config, a raising callback, or a malformed return
                         on_min_of_day = (on_h * 60) + on_m
                         off_min_of_day = (off_h * 60) + off_m
-                        cur_min_of_day = (cur_time.hour * 60) + cur_time.minute
+                        cur_min_of_day = (hour * 60) + minute
                         if on_min_of_day <= cur_min_of_day <= off_min_of_day:
                             for notif in self._registered:
                                 if await self._check_one(notif):
