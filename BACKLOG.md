@@ -11,8 +11,46 @@ constraints.
 
 Owner intent, captured 2026-08-06 for a future session — a deep pass over the *entire* current
 `src/` contents (not just whatever file was most recently promoted), aimed at getting the codebase
-ready to be wired up together in `sensortask-*.py`. Goals/lenses for that pass, in the owner's own
-framing:
+ready to be wired up together in `sensortask-*.py`.
+
+### Required kickoff procedure (owner-specified, 2026-08-06) — do not start coding first
+
+The audit itself must open with a planning sequence, not with picking a file and starting in:
+
+1. Read the goals/lenses list below in full, and this file's other still-open items relevant to
+   `src/`.
+2. Read the full project documentation (all markdown per the "Documentation sweep" item below,
+   plus every module's own docstring/comments) before touching any code.
+3. Read the actual project files — every current `src/` file plus `improved-quality/sensortask-
+   wozi.py` (per the "sensortask-wozi wiring study" item below) — not just the docs describing
+   them.
+4. From steps 1-3, produce a **detailed, fine-grained action list** of the concrete steps the audit
+   actually consists of (not the high-level goals/lenses below restated — the real, file-by-file/
+   check-by-check breakdown those goals expand into).
+5. **Second pass over that list**: validate it's complete and detailed enough to actually execute
+   against — not a first draft treated as final.
+6. **For each step in the list, identify the appropriate external reference material** (datasheet,
+   upstream repo, MicroPython dev-forum/issue-tracker discussion, official docs, ...) and actually
+   read it *before* doing that step — matching this project's own standing rule (see
+   `src/README.md` section 1) of verifying against current authoritative sources rather than
+   training memory.
+7. **Add an explicit goal definition to each step** — what "done" concretely means for that step,
+   not just what to look at.
+8. **Add quality measures to each step and its goal(s)** — the specific, checkable bar that step
+   must clear before it counts as complete (mirroring `src/README.md`'s promotion checklist's own
+   shape: concrete, verifiable criteria, not "looks fine").
+9. **Reality-check the resulting goals against the actual code** — for each step, confirm its goal
+   and quality measures are sufficient and correct against what the real files actually contain,
+   before treating the plan as final (a goal written before actually reading the relevant code can
+   be wrong or incomplete in ways only visible once you look).
+10. **Stop and hold one feedback/discussion round with the project owner once the list reaches this
+    point** — do not proceed into actually making changes on the strength of a self-validated plan
+    alone. This is a deliberate, required checkpoint, not an optional courtesy.
+
+Only after that discussion round concludes does the audit itself (the goals/lenses below) actually
+start.
+
+Goals/lenses for that pass, in the owner's own framing:
 
 - **Lean, catch-all error handling over defensive pre-checks, everywhere** — the same correction
   already applied to `asy_neopixel_driver.py`/`asy_notification_service.py` this session (prefer a
