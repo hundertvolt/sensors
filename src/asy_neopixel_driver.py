@@ -15,14 +15,14 @@ straight into a bytearray, which raises `ValueError` for an out-of-range int. Ev
 `request_signal()`/`led_signal()` is our own code, correctly typed (int/float) and trusted as such -
 not guarded against here (see CLAUDE.md's "don't add validation for scenarios that can't happen").
 The one thing that isn't a type violation is NaN/inf: a correctly-typed float can still legitimately
-be either, and `int()` raises ValueError/OverflowError for them - `_clamp_byte()`/`_safe_duration()`
-guard exactly that one case, at the actual hardware-write boundary, nothing broader. Only
+be either, and `int()` raises ValueError/OverflowError for them - `_clamp_byte()` and
+`neopixel_signal()`'s own duration-to-steps conversion each wrap just that one `int()` call in a
+try/except, at the actual hardware-write boundary, nothing broader. Only
 `on()`/`off()`/`toggle()` satisfy asy_wifi_service.py's LEDControl Protocol, so this driver also
 serves the unrelated WiFi-status LED use case, unchanged.
 """
 
 import asyncio
-import math
 
 import neopixel
 from machine import Pin
@@ -45,19 +45,10 @@ _NAME = const("NEOPIXEL")
 
 
 def _clamp_byte(value: "int | float") -> int:
-    # See module docstring's NaN/inf paragraph. math.isnan/isinf convert int->float internally
-    # (confirmed against py/modmath.c), so this is exact for both int and float input.
-    if math.isnan(value) or math.isinf(value):
+    try:
+        return min(max(int(value), 0), 255)
+    except (ValueError, OverflowError):  # NaN/inf - see module docstring's NaN/inf paragraph
         return 0
-    return min(max(int(value), 0), 255)
-
-
-def _safe_duration(value: "int | float") -> "int | float":
-    # See module docstring's NaN/inf paragraph - NaN needs no guard here (a NaN floor-check
-    # comparison in neopixel_signal() is already always False, falling through to the 0.1 floor).
-    if math.isinf(value):
-        return 0.0
-    return value
 
 
 class NeopixelDriver:
@@ -167,9 +158,11 @@ class NeopixelDriver:
         while True:
             await self.start_signal_event.wait()
             self.pr.evt(_NAME, "Signal started.")
-            raw_t = _safe_duration(self.rgbt[3])
-            t = raw_t if raw_t >= 0.1 else 0.1  # time
-            steps = int(t * 0.5 * self.neopixel_freq)  # num steps for one dim half
+            t = self.rgbt[3] if self.rgbt[3] >= 0.1 else 0.1  # time; a NaN comparison is always False, floor kicks in
+            try:
+                steps = int(t * 0.5 * self.neopixel_freq)  # num steps for one dim half
+            except OverflowError:  # t is +inf - see module docstring's NaN/inf paragraph
+                steps = 1
             steps = steps if steps >= 1 else 1  # a low enough neopixel_freq could otherwise reach 0
             # here and divide by zero below - see this file's own regression test for the exact
             # boundary (freq=1 at the floor t).

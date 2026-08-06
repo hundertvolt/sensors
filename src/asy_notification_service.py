@@ -172,11 +172,11 @@ class NotificationCoordinator(SensorReaderConfig):
             notif.triggered = False
             return False
         thresholds = await self.cfgmgr.get_float_values(notif.field_schema)  # works for an "int" schema field too - float(cached_int) never raises
-        if thresholds is None or len(thresholds) != 1:
+        if thresholds is None:
             await self.pr.err_s(_NAME, notif.name, "Threshold config read failed!", errno=2)
             notif.triggered = False
             return False
-        threshold = thresholds[0]
+        threshold = thresholds[0]  # exactly one field - register() rejects any other shape
         triggered = (value >= threshold) if notif.above else (value <= threshold)
         notif.triggered = triggered
         return triggered

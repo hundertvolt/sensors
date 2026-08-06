@@ -1,6 +1,6 @@
 import asyncio
 
-from asy_neopixel_driver import NeopixelDriver, _clamp_byte, _safe_duration
+from asy_neopixel_driver import NeopixelDriver, _clamp_byte
 
 try:
     from typing import TYPE_CHECKING
@@ -538,20 +538,10 @@ def test_request_signal_infinite_rgb_clamped_not_raised() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _safe_duration() - rgbt[3]/ext_rgbt[3] ("t") is a correctly-typed float that can still be +/-inf,
-# same caveat as the rgb channels above. inf passes the "t >= 0.1" floor check in neopixel_signal()
-# (inf >= 0.1 is True) and then raises OverflowError out of the steps computation right after.
+# rgbt[3]/ext_rgbt[3] ("t") is a correctly-typed float that can still be +/-inf, same caveat as the
+# rgb channels above. inf passes neopixel_signal()'s own "t >= 0.1" floor check (inf >= 0.1 is True)
+# and then raises OverflowError out of the steps computation, caught there directly - see the module.
 # ---------------------------------------------------------------------------
-
-
-def test_safe_duration_direct() -> None:
-    assert _safe_duration(0.1) == 0.1
-    assert _safe_duration(5) == 5
-    assert _safe_duration(0) == 0
-    assert _safe_duration(float("inf")) == 0.0
-    assert _safe_duration(float("-inf")) == 0.0
-    nan = _safe_duration(float("nan"))
-    assert nan != nan  # NaN passes through unchanged - the existing ">= 0.1" floor already handles it
 
 
 def test_request_signal_infinite_duration_falls_back_to_floor_not_raised() -> None:
@@ -565,6 +555,21 @@ def test_request_signal_infinite_duration_falls_back_to_floor_not_raised() -> No
         return result
 
     result = run(scenario())  # would raise OverflowError computing steps if unclamped
+    assert result is True
+    assert _pixel(driver).writes[-1][0] == (0, 0, 0)
+
+
+def test_request_signal_nan_duration_falls_back_to_floor_not_raised() -> None:
+    driver = make_driver(neopixel_freq=20)
+
+    async def scenario() -> bool:
+        tasks = await _start_all_tasks(driver)
+        result = await driver.request_signal(10, 0, 0, float("nan"))
+        await asyncio.sleep(0.15)  # only survivable if t fell back to the 0.1s floor - NaN >= 0.1 is False
+        await _cancel_all(tasks)
+        return result
+
+    result = run(scenario())
     assert result is True
     assert _pixel(driver).writes[-1][0] == (0, 0, 0)
 
