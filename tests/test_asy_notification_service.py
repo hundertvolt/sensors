@@ -284,7 +284,7 @@ def test_write_all_valid_fields_at_once_succeeds() -> None:
     signal, _fv = make_signal("WarnCO2")
     coordinator.register(signal)
     coordinator.finalize()
-    data: "dict[str, int | float | str | bool | None]" = {
+    data: dict[str, int | float | str | bool | None] = {
         "OnH": 8,
         "OnM": 30,
         "OffH": 20,
