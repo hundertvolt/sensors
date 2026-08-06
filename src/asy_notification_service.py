@@ -1,34 +1,10 @@
-"""Generic threshold-triggered LED notification signalling: `NotificationSignal` (a plain,
-dependency-free per-condition data holder) and `NotificationCoordinator` (owns everything shared -
-sleep-window/interval/`AutoOn`/global flash brightness+duration, the override/pause countdown, one
-combined `ConfigManager`, one combined `PrintLogHistory`(Store)). Promoted from
+"""Generic threshold-triggered LED notification signalling: `NotificationSignal` (per-condition data
+holder) and `NotificationCoordinator` (shared sleep-window/interval/`AutoOn`/flash brightness+
+duration, one combined `ConfigManager`/`PrintLogHistory`(Store)). Promoted from
 improved-quality/neopixel_signal.py's `airquality_auto_signal()`/`auto_led_override()` (see
-CLAUDE.md/BACKLOG.md); drives a real LED through `request_signal_cb` (matches
-asy_neopixel_driver.py's `request_signal()` signature), kept fully decoupled from any concrete LED
-implementation.
-
-Staged registration, deferred construction: construct every `NotificationSignal`, call
-`register()` for each - in the order checks should run, since that order becomes the poll loop's
-own deterministic check order - then call `finalize()` exactly once, before any task starter runs.
-`finalize()` is the single point `self.pr`/`self.cfgmgr` come into existence, built from this
-class's own static schema plus every registered signal's one field. This is safe specifically
-because the number and order of registered signals is guaranteed constant once `finalize()` has
-run (a one-time boot handshake, not a runtime-mutable registry) - achieved with zero changes to
-`ConfigManager`/`PrintLogHistory`(Store)/`base_classes.py` themselves.
-
-`register()`/`finalize()` are both plain sync calls (matching every other module's plain sync
-`__init__`-time wiring), but a rejected registration still needs `self.pr.wrn_s()` - async, and
-`self.pr` may not exist yet pre-`finalize()`. Resolved by buffering every rejection's message and
-draining it from `monitor_loop()` at the top of every cycle (in addition to right after
-`self.pr.setup()`), rather than firing an async task from sync code with no guaranteed running
-loop - a real rejection is still always logged, just on the next cycle boundary rather than
-instantly.
-
-`NotificationSignal.color` is a per-channel weight (0 or 1 per channel, e.g. `(1, 0, 0)` for a
-pure-red condition), not an absolute color - it is scaled by the coordinator's own shared `FlashBri`
-at trigger time, so one global brightness setting really does apply to every registered condition
-(matches today's CO2/VOC/Humidity red/green/blue scheme exactly when each uses a single-channel
-weight).
+CLAUDE.md/BACKLOG.md); drives an LED through `request_signal_cb`, decoupled from any concrete LED
+implementation. Registration is staged: `register()` each signal, then `finalize()` once - see
+their own comments below.
 """
 
 import asyncio
@@ -70,9 +46,8 @@ _VAL_AUTO_ON = const((("AutoOn", "bool", True, None, None, None),))
 _VAL_INT_FIELDS = _VAL_ON_H + _VAL_ON_M + _VAL_OFF_H + _VAL_OFF_M + _VAL_FLASH_BRI
 _VAL_FLOAT_FIELDS = _VAL_INTERV + _VAL_FLASH_DUR
 _VAL_BOOL_FIELDS = _VAL_AUTO_ON
-# The coordinator's own static schema fragment - stays const()-folded. The full combined schema
-# built in finalize() cannot be (it's assembled at runtime from however many signals registered) -
-# see finalize()'s own comment.
+# Own static schema fragment - stays const()-folded, unlike the full combined schema finalize()
+# assembles at runtime from however many signals registered.
 _VAL_OWN_SCHEMA = _VAL_INT_FIELDS + _VAL_FLOAT_FIELDS + _VAL_BOOL_FIELDS
 
 # Minimal but real measurement snapshot (DRIVER_SPEC.md's get_data()/get_dict_data() shape, same as
@@ -92,7 +67,7 @@ class NotificationSignal:
         self.name = name
         self.get_value = get_value
         self.field_schema = field_schema
-        self.color = color
+        self.color = color  # per-channel weight (0/1), scaled by FlashBri at trigger time
         self.above = above
         # Only ever touched by the coordinator's single poll-loop task - no lock needed (see
         # src/README.md section 4's "don't add locking just in case").
@@ -111,8 +86,8 @@ class NotificationCoordinator(SensorReaderConfig):
         history_length: int = 10,
         debug: int | None = None,
     ) -> None:
-        # Deferred construction (see module docstring): super().__init__() only runs inside
-        # finalize() - self.pr/self.cfgmgr/self.cfg_schema don't exist until then.
+        # Deferred: super().__init__() only runs inside finalize(), once every signal is
+        # registered - self.pr/self.cfgmgr/self.cfg_schema don't exist until then.
         self._request_signal_cb = request_signal_cb
         self._local_time_callback = local_time_callback
         self._max_i2c_err = max_i2c_err
@@ -122,8 +97,8 @@ class NotificationCoordinator(SensorReaderConfig):
         self._debug = debug
         self._registered: list[NotificationSignal] = []
         self._finalized = False
-        # Buffered rejection messages - see module docstring on why register()/finalize() can't
-        # just call self.pr.wrn_s() directly from their own sync bodies.
+        # Buffered: register()/finalize() are sync and self.pr may not exist yet, so rejections
+        # drain via monitor_loop() instead of calling the async self.pr.wrn_s() directly.
         self._pending_wrn: list[tuple[str, int]] = []
         self.override_secs = LockedCounter(max_val=_MAX_OVERRIDE_TIME)
         self._auto_active = True
@@ -227,7 +202,7 @@ class NotificationCoordinator(SensorReaderConfig):
     async def set_override_led(self, secs: int) -> None:
         await self.override_secs.set_value(secs)  # LockedCounter clamps into [0, _MAX_OVERRIDE_TIME] itself
 
-    def register(self, notif: NotificationSignal) -> None:
+    def register(self, notif: NotificationSignal) -> None:  # call once per signal, in check order, before finalize()
         if self._finalized:
             self._reject_registration(notif.name, "register() called after finalize(), ignoring", 3)
             return
@@ -242,7 +217,7 @@ class NotificationCoordinator(SensorReaderConfig):
             return
         self._registered.append(notif)
 
-    def finalize(self) -> None:
+    def finalize(self) -> None:  # call exactly once, after all register() calls, before any task starter runs
         if self._finalized:
             self._reject_registration("(coordinator)", "finalize() called again, ignoring", 4)
             return

@@ -1,25 +1,8 @@
-"""Pure Neopixel LED hardware service: overlay switch/toggle, a dimmed ramp-up/ramp-down signal,
-and the internal arbitration between the overlay, an internal (`request_signal()`) trigger, and an
-external (`led_signal()`) trigger for the one shared physical pixel. Promoted from
-improved-quality/neopixel_signal.py's proven arbitration mechanism (see BACKLOG.md/CLAUDE.md) -
-`request_signal()` is a near-zero-risk rename/expose of that file's own `_led_int_signal_starter`,
-same body/contract: it returns once the request is queued, not once its ramp finishes.
-
-No config schema (confirmed by the project owner, not a placeholder): `neopixel_pin`/
-`neopixel_freq`/`led_overl_bri` stay plain constructor arguments, matching today's actual deployed
-behavior. Near-zero error surface: a real rp2 NeoPixel.write() is a single busy-wait bit-bang call
-with no error return at all (confirmed against ports/rp2/machine_bitstream.c, v1.28.0) - there is no
-`err_s()`/`wrn_s()` call anywhere in this file because write() itself never fails. `__setitem__` is a
-different story (confirmed against micropython-lib's real neopixel.py source): it writes each channel
-straight into a bytearray, which raises `ValueError` for an out-of-range int. Every caller of
-`request_signal()`/`led_signal()` is our own code, correctly typed (int/float) and trusted as such -
-not guarded against here (see CLAUDE.md's "don't add validation for scenarios that can't happen").
-The one thing that isn't a type violation is NaN/inf: a correctly-typed float can still legitimately
-be either, and `int()` raises ValueError/OverflowError for them - `_clamp_byte()` and
-`neopixel_signal()`'s own duration-to-steps conversion each wrap just that one `int()` call in a
-try/except, at the actual hardware-write boundary, nothing broader. Only
-`on()`/`off()`/`toggle()` satisfy asy_wifi_service.py's LEDControl Protocol, so this driver also
-serves the unrelated WiFi-status LED use case, unchanged.
+"""Pure Neopixel LED hardware service: overlay switch/toggle, a dimmed ramp-up/ramp-down signal, and
+internal (`request_signal()`)/external (`led_signal()`) arbitration for the one shared physical
+pixel. Promoted from improved-quality/neopixel_signal.py's proven arbitration mechanism (see
+CLAUDE.md/BACKLOG.md). No config schema (confirmed by the project owner). Also satisfies
+asy_wifi_service.py's LEDControl Protocol via `on()`/`off()`/`toggle()`.
 """
 
 import asyncio
@@ -47,7 +30,7 @@ _NAME = const("NEOPIXEL")
 def _clamp_byte(value: "int | float") -> int:
     try:
         return min(max(int(value), 0), 255)
-    except (ValueError, OverflowError):  # NaN/inf - see module docstring's NaN/inf paragraph
+    except (ValueError, OverflowError):  # NaN/inf: int() raises for both
         return 0
 
 
@@ -161,11 +144,9 @@ class NeopixelDriver:
             t = self.rgbt[3] if self.rgbt[3] >= 0.1 else 0.1  # time; a NaN comparison is always False, floor kicks in
             try:
                 steps = int(t * 0.5 * self.neopixel_freq)  # num steps for one dim half
-            except OverflowError:  # t is +inf - see module docstring's NaN/inf paragraph
+            except OverflowError:  # t is +inf
                 steps = 1
-            steps = steps if steps >= 1 else 1  # a low enough neopixel_freq could otherwise reach 0
-            # here and divide by zero below - see this file's own regression test for the exact
-            # boundary (freq=1 at the floor t).
+            steps = steps if steps >= 1 else 1  # avoid 0 steps (low freq) and a divide-by-zero below
             steps_inv = 1.0 / steps
             r_s = _clamp_byte(self.rgbt[0]) * steps_inv  # red
             g_s = _clamp_byte(self.rgbt[1]) * steps_inv  # green
