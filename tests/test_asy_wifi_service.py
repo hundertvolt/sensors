@@ -1258,6 +1258,7 @@ def test_print_wlan_diagnostics_does_not_raise_on_success() -> None:
 def test_print_wlan_diagnostics_degrades_gracefully_when_ifconfig_raises() -> None:
     client = make_client(debug=5)
     _wlan(client).raise_on["ifconfig"] = RuntimeError("simulated hardware fault")
+    print("(expected) simulating a hardware fault - the following 'WLAN diagnostic read failed' is intentional")
     client._print_wlan_diagnostics()  # must not raise
 
 

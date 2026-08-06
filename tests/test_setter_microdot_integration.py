@@ -372,6 +372,7 @@ def test_real_microdot_handler_raising_is_caught_by_microdots_own_blanket_catch(
     async def boom(request: Request) -> None:
         raise RuntimeError("simulated handler bug")
 
+    print("(expected) the traceback below is Microdot's own internal exception logging, triggered on purpose")
     req = _make_request(app, "PUT", "/boom", {})
     res = run(app.dispatch_request(req))
     assert res.status_code == 500

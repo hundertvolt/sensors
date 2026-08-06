@@ -545,6 +545,7 @@ def test_start_ntp_timer_fires_the_trigger_event() -> None:
 
 def test_start_ntp_timer_degrades_gracefully_when_alarm_pool_exhausted() -> None:
     client = make_client(debug=1)
+    print("(expected) simulating alarm-pool exhaustion - the following 'Could not start NTP timer' is intentional")
     with _RaiseOnArm():
         client.start_ntp_timer()  # must not raise despite the timer failing to arm
     assert client.ntp_timer.period == -1  # never actually armed

@@ -114,6 +114,7 @@ def test_level_constants_are_ordered() -> None:
 
 
 def test_logging_methods_never_raise_at_any_level() -> None:
+    print("(expected) the single-letter lines below are every log level firing on purpose, not real errors")
     for level in (PrintLog.level_off(), PrintLog.level_err(), PrintLog.level_info()):
         pr = PrintLog(level)
         pr.err("e")
