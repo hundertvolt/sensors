@@ -78,6 +78,34 @@ framing:
   audit's scope as a real pass, not just a review — this both tests the guideline's own
   effectiveness (a guideline that can't actually resolve a real file's style is incomplete) and
   finally harmonizes the code itself.
+- **Study `improved-quality/sensortask-wozi.py` itself, in depth, before consolidating anything** —
+  the actual integration target the whole audit is preparing `src/` to fit, not just another file
+  to read alongside it. Specifically trace: import structure and instantiation order (bump-allocator-
+  style modules like `AsyFramManager` depend on call order for on-chip layout — see CLAUDE.md — so
+  this file's construction sequence is itself load-bearing, not incidental); the dependency graph
+  between modules as wired here (who holds a reference to whom, e.g. `NotificationCoordinator`'s
+  `request_signal_cb` into `NeopixelDriver`); how `get_task_starters()`/`get_timer_starters()` are
+  actually collected and handed to `system_service.py`'s task/timer supervisor; how task death,
+  restart, and the decaying error-score/watchdog escalation actually observe and react to each
+  registered task; and any shared/common structures spanning modules — in particular the locked
+  measurement-data array/pattern each `*_Reader` exposes and how a REST handler actually reads
+  through it today. For each already-promoted `src/` module, confirm it actually fits this real
+  wiring shape (not just its own isolated review) — an adaptation surfacing now, before final wiring,
+  is cheap; the same gap surfacing only when `sensortask-*.py` itself is rewritten against the
+  refactor would not be. Treat mismatches found here as real audit findings across the whole `src/`
+  scope, not just notes on `sensortask-wozi.py` itself.
+- **Prepare a common, module-side story for exposing FRAM-backed error/trace history over the API,
+  before the API layer itself needs it.** The legacy codebase only ever tracked a last-error value
+  plus a counter; every promoted module now has `PrintLogHistory`/`PrintLogHistoryStore`'s much
+  richer in-memory-or-FRAM trace history behind it (see CLAUDE.md/`tests/README.md`), and more
+  modules keep gaining one as they're promoted. Audit whether every module's own history is already
+  exposed through a consistent shape (`get_error_counter()`'s existing dict contract per
+  DRIVER_SPEC.md section 4.2 is the closest existing precedent — confirm it actually generalizes to
+  every current and upcoming module, not just the three original sensor drivers) so that when the
+  REST layer is actually wired to surface this, it can do so the same way for every module instead of
+  improvising a one-off shape per endpoint. This is preparation, not new REST wiring itself — the
+  goal is that nothing about a module's own error-history shape needs to change once that wiring
+  starts.
 
 Not started yet — this is a placeholder for a dedicated future session/pass, not a task to pick up
 opportunistically mid-promotion.
