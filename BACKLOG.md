@@ -52,7 +52,8 @@ framing:
   integration, not just restore a pass. **Never drop a test as part of this** — every existing test
   gets updated, improved, or extended, never deleted outright.
 - **Documentation sweep as part of the same pass**: all markdown (README.md, CLAUDE.md,
-  BACKLOG.md, DRIVER_SPEC.md, `tests/README.md`, `toolchain/README.md`) and all in-code comments,
+  BACKLOG.md, DRIVER_SPEC.md, `src/README.md`, `tests/README.md`, `toolchain/README.md`) and all
+  in-code comments,
   including comments already present in the not-yet-promoted `sensortask-*.py` files. Many open
   items (in this file and inline) were flagged early in the promotion process as deferred/
   unknown-scope/needs-discussion — revisit every one of them with the fuller picture the codebase
@@ -393,6 +394,11 @@ opportunistically mid-promotion.
 
 ## Deferred / explicitly out-of-scope work
 
+- **`pyproject.toml`'s mypy `exclude` list still has a dead regex entry for
+  `improved-quality/microdot.py`** (removed — see CLAUDE.md's "Microdot / REST layer"), matching
+  nothing today, harmless but worth deleting (along with its now-dangling "see its own module
+  docstring" comment) next time `pyproject.toml` is touched for another reason — not urgent enough
+  to be the sole reason to trigger CLAUDE.md's "Pre-push verification" chroot recipe on its own.
 - **Rename `max_i2c_err`** (`base_classes.py`'s `SensorReaderConfig`/`SensorReader` constructor
   parameter, and every promoted driver/service's own constructor that forwards it) to something
   bus-agnostic — confirmed by the owner it's a generically-useful "consecutive-failure streak
@@ -474,8 +480,10 @@ opportunistically mid-promotion.
   aliases fully survive into the `.mpy` bytecode (their qstrs included) since `TYPE_CHECKING` is a
   plain runtime-checked global, not a compile-time constant. Stripping these blocks (via an `ast`
   transform: parse → drop `if TYPE_CHECKING:`/its defining `try/except ImportError` header → re-parse
-  the unparsed output as a validity check → hand that to `mpy-cross`) saved ~3.6KB across the current
-  22 promoted files (108,339 → 104,748 bytes total), all still compiled clean. Safe specifically
+  the unparsed output as a validity check → hand that to `mpy-cross`) saved ~3.6KB across the 22
+  files promoted to `src/` at the time of this measurement (108,339 → 104,748 bytes total; `src/`
+  has since grown past 22 files, so a re-run today would save more, not less) — all still compiled
+  clean. Safe specifically
   because nothing on this platform ever does runtime annotation introspection (no `typing` module,
   no `get_type_hints()` on-device) — the guarded names are only ever reached via string-literal
   forward-ref annotations that MicroPython never evaluates anyway, so deleting the block changes

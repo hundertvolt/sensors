@@ -231,9 +231,9 @@ is not a machine with memory or cycles to spare:
       `ucollections`, ...) — MicroPython consolidated these to their plain names years ago; the
       `u`-prefixed forms still work as aliases today but are the clearest tell that a file predates
       that consolidation. (`crc_checks.py` already uses the modern `asyncio`/`struct` names; other
-      `improved-quality/` files — e.g. `neopixel_signal.py`/`sensortask-wozi.py`'s
-      `from uasyncio import ...` — still use the old prefixed form, a real, present instance of this
-      in the codebase today, not a hypothetical concern.)
+      `improved-quality/` files — e.g. `sensortask-wozi.py`'s `from uasyncio import ...` — still use
+      the old prefixed form, a real, present instance of this in the codebase today, not a
+      hypothetical concern.)
 - [ ] Same "without changing functionality" hard constraint as section 8 applies when a
       modernization is purely a rewrite for currentness — the existing test suite must still pass
       unchanged. If a newer API's *semantics* genuinely differ from what the old pattern did (not

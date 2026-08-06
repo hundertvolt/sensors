@@ -305,9 +305,10 @@ locking involved (unlike `_get_mgr_cfg`/`_get_dict_cfg`), so this is deliberatel
 Every subclass gets this for free from the schema it already passes into `super().__init__()`;
 no subclass-local assignment is needed (`asy_bmp3xx_driver.py`/`asy_sgp40_driver.py` never had
 one). `self.cfg_schema` itself stays a public attribute too, not just the getter — existing
-callers (the legacy REST layer) already reach into it directly. A module that predates
-`SensorReaderConfig` and can't yet extend it (`improved-quality/neopixel_signal.py`, still WIP)
-implements its own local `get_cfg_schema()` with the same name/signature/behavior instead.
+callers (the legacy REST layer) already reach into it directly. No current `src/` module needs a
+local `get_cfg_schema()` reimplementation — every `SensorReaderConfig` subclass gets it from the
+base class for free; `asy_neopixel_driver.py`'s `NeopixelDriver` is the one class with no schema
+at all (see section 2), so it has no `get_cfg_schema()` either.
 
 ### 5.2 Setter dispatch (`_set_mgr_cfg`/`_set_dict_cfg`, `base_classes.py`)
 
