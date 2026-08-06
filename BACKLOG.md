@@ -7,6 +7,47 @@ operating constraints/architecture reference) or README.md (human-facing orienta
 migrated there rather than duplicated here. See README.md for orientation, CLAUDE.md for operating
 constraints.
 
+## Planned: full `src/` audit (not started)
+
+Owner intent, captured 2026-08-06 for a future session — a deep pass over the *entire* current
+`src/` contents (not just whatever file was most recently promoted), aimed at getting the codebase
+ready to be wired up together in `sensortask-*.py`. Goals/lenses for that pass, in the owner's own
+framing:
+
+- **Lean, catch-all error handling over defensive pre-checks, everywhere** — the same correction
+  already applied to `asy_neopixel_driver.py`/`asy_notification_service.py` this session (prefer a
+  try/except wrapping the actual computation over explicit isinstance/NaN/length pre-checks; this
+  is a small, resource-limited device, not a context that benefits from exhaustively enumerating
+  every possible bad input up front). Check every file for the same over-guarding pattern, not just
+  the two already fixed.
+- **Trust the type contracts** — no runtime checking for type violations our own code can't
+  actually produce; we own every caller.
+- **Simplify without changing behavior** — actively look for code that's more complex than it needs
+  to be and flatten/simplify it, preserving observed behavior.
+- **Global style/handling consistency** — the same coding style and the same handling of equivalent
+  situations everywhere. Concrete example already found and missed once: `cettime()`/`_now()`
+  already had an established simple try/except pattern for NaN/inf/overflow that a newer file
+  didn't follow at first — the audit should actively hunt for other files that reinvent a handling
+  scheme something else in `src/` already settled, not just check each file in isolation.
+- **Hunt for repeated/boilerplate/schematic code across files** that would be better shared —
+  candidate for a helper function or pushed down into `base_classes.py` instead of being
+  copy-pasted per module.
+- **The audit's purpose is wiring-readiness** — anything found that would cause a problem once
+  `src/` modules are actually wired together (not just a style nit) should be fixed as part of the
+  audit itself, not just noted.
+- **Documentation sweep as part of the same pass**: all markdown (README.md, CLAUDE.md,
+  BACKLOG.md, DRIVER_SPEC.md, `tests/README.md`, `toolchain/README.md`) and all in-code comments,
+  including comments already present in the not-yet-promoted `sensortask-*.py` files. Many open
+  items (in this file and inline) were flagged early in the promotion process as deferred/
+  unknown-scope/needs-discussion — revisit every one of them with the fuller picture the codebase
+  has now instead of leaving the old flag standing by default; most should now be answerable,
+  fixable, or resolvable outright, some will need a real discussion (do those step by step, not
+  silently), and by the end the only open items left should be ones that are genuinely still open
+  because they depend on the not-yet-written `sensortask-*.py` wiring itself.
+
+Not started yet — this is a placeholder for a dedicated future session/pass, not a task to pick up
+opportunistically mid-promotion.
+
 ## Refactor targets not yet done
 
 - **Bare `except:` is forbidden in refactored code** (`except Exception:` or narrower required).
