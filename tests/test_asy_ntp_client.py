@@ -228,6 +228,7 @@ def test_two_clients_with_different_cfg_paths_have_independent_configs() -> None
 
 
 def test_debug_level_propagates_to_the_inherited_pr_logger() -> None:
+    print("(expected) debug=3 makes the fresh ConfigManager below log its normal first-use config-file creation")
     client = make_client(debug=3)
     assert client.pr.get_level() == 3
 
