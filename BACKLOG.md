@@ -44,6 +44,13 @@ framing:
   This check is also a standing practice going forward independent of this one-off audit — see
   CLAUDE.md's "Platform target" section (duplicated there deliberately, since this audit-list entry
   itself goes away once the audit is done).
+- **Scan every test file exercising `src/` (and `ext/microdot.py`) for mocks of a module that has
+  since been promoted into `src/` itself** — a test written while some dependency was still
+  unpromoted may still be patching/faking that dependency instead of exercising the real, now-
+  existing promoted module. Each occurrence found is also a chance to strengthen coverage, not just
+  swap the mock out: once the real module is wired in, add or enrich tests to actually exercise the
+  integration, not just restore a pass. **Never drop a test as part of this** — every existing test
+  gets updated, improved, or extended, never deleted outright.
 - **Documentation sweep as part of the same pass**: all markdown (README.md, CLAUDE.md,
   BACKLOG.md, DRIVER_SPEC.md, `tests/README.md`, `toolchain/README.md`) and all in-code comments,
   including comments already present in the not-yet-promoted `sensortask-*.py` files. Many open
