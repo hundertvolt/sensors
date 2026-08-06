@@ -60,6 +60,23 @@ framing:
   fixable, or resolvable outright, some will need a real discussion (do those step by step, not
   silently), and by the end the only open items left should be ones that are genuinely still open
   because they depend on the not-yet-written `sensortask-*.py` wiring itself.
+- **Consolidate a single, comprehensive project code-style guideline, then re-apply it to
+  harmonize every file.** At an appropriate point within the audit (after the style-consistency/
+  boilerplate/currency findings above have actually been gathered across every `src/` file, not
+  before): extract the coding/error-handling/calling/writing style actually used across all of
+  `src/`, pick the best and most appropriate pattern wherever files disagree, and consolidate that
+  into one detailed guideline document with no stylistic noise/ambiguity left between files. Blend
+  in the existing style-bearing docs rather than leaving them freestanding — pull in the "Recipe
+  list" and `DRIVER_SPEC.md` (already confirmed broader than just drivers) as source material, not
+  as documents to keep separately. The result is a single guideline with multiple sections (driver
+  creation as one of them, but several more — general module structure, error handling, config
+  schema conventions, comment/docstring length, etc.), detailed enough to make all project code
+  harmonic and optimal, and **replaces** both the recipe list and `DRIVER_SPEC.md` (their content
+  folded in, not left as duplicates) as the one basis any new file added to the project going
+  forward is written against. Once drafted, apply the guideline against every file already in the
+  audit's scope as a real pass, not just a review — this both tests the guideline's own
+  effectiveness (a guideline that can't actually resolve a real file's style is incomplete) and
+  finally harmonizes the code itself.
 
 Not started yet — this is a placeholder for a dedicated future session/pass, not a task to pick up
 opportunistically mid-promotion.
