@@ -9,7 +9,13 @@ No config schema (confirmed by the project owner, not a placeholder): `neopixel_
 `neopixel_freq`/`led_overl_bri` stay plain constructor arguments, matching today's actual deployed
 behavior. Near-zero error surface: a real rp2 NeoPixel.write() is a single busy-wait bit-bang call
 with no error return at all (confirmed against ports/rp2/machine_bitstream.c, v1.28.0) - there is no
-`err_s()`/`wrn_s()` call anywhere in this file because there is no failure path to report; only
+`err_s()`/`wrn_s()` call anywhere in this file because write() itself never fails. `__setitem__` is a
+different story (confirmed against micropython-lib's real neopixel.py source): it writes each channel
+straight into a bytearray, which raises `ValueError`/`TypeError` for an out-of-range or non-int
+value - `request_signal()`/`led_signal()` are only type/range-hinted at their current callers (REST
+validation, config-schema bounds), not enforced by this driver itself, so `_clamp_byte()` guards every
+write to the physical pixel (both the ramp signal and the overlay) against a misbehaving caller -
+current or future - instead of relying on every caller getting it right forever. Only
 `on()`/`off()`/`toggle()` satisfy asy_wifi_service.py's LEDControl Protocol, so this driver also
 serves the unrelated WiFi-status LED use case, unchanged.
 """
@@ -34,6 +40,18 @@ if TYPE_CHECKING:
     from asy_fram_manager import AsyFramManager
 
 _NAME = const("NEOPIXEL")
+
+
+def _clamp_byte(value: "int | float | Any") -> int:
+    # request_signal()/led_signal() callers (and this driver's own led_overl_bri) are only
+    # type/range-hinted, not enforced - a real NeoPixel's __setitem__ writes straight into a
+    # bytearray (confirmed against micropython-lib's real neopixel.py: `self.buf[...] = v[i]`),
+    # which raises ValueError for an out-of-range int and TypeError for a non-int. Clamped here, at
+    # the actual hardware-write boundary, so no caller - current or future - can crash this task.
+    try:
+        return min(max(int(value), 0), 255)
+    except (TypeError, ValueError):
+        return 0
 
 
 class NeopixelDriver:
@@ -70,7 +88,8 @@ class NeopixelDriver:
         while True:
             await self.led_overl_start.wait()
             async with self.led_overl_lock:
-                self.led_overl_rgb = (self.led_overl_bri,) * 3 if self.led_overl_on else (0, 0, 0)
+                bri = _clamp_byte(self.led_overl_bri)
+                self.led_overl_rgb = (bri,) * 3 if self.led_overl_on else (0, 0, 0)
                 self.pixel[0] = self.led_overl_rgb
                 self.pixel.write()
 
@@ -148,9 +167,9 @@ class NeopixelDriver:
             # here and divide by zero below - see this file's own regression test for the exact
             # boundary (freq=1 at the floor t).
             steps_inv = 1.0 / steps
-            r_s = self.rgbt[0] * steps_inv  # red
-            g_s = self.rgbt[1] * steps_inv  # green
-            b_s = self.rgbt[2] * steps_inv  # blue
+            r_s = _clamp_byte(self.rgbt[0]) * steps_inv  # red
+            g_s = _clamp_byte(self.rgbt[1]) * steps_inv  # green
+            b_s = _clamp_byte(self.rgbt[2]) * steps_inv  # blue
 
             async with self.led_overl_lock:
                 for n in range(1, steps + 1):

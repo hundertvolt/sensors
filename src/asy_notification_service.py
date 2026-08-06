@@ -171,6 +171,12 @@ class NotificationCoordinator(SensorReaderConfig):
         if value is None:
             notif.triggered = False
             return False
+        if not isinstance(value, (int, float)) or isinstance(value, bool):  # get_value() is
+            # caller-supplied and only type-hinted, not enforced - mirrors the threshold isinstance
+            # check below so a misbehaving callback can't reach the comparison with a non-numeric
+            # value and raise an uncaught TypeError out of monitor_loop()'s for-loop.
+            notif.triggered = False
+            return False
         key = name_cfg(notif.field_schema)
         threshold_dict = await self.cfgmgr.get_dict([key])
         if threshold_dict is None or key not in threshold_dict:

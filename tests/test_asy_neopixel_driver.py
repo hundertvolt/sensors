@@ -1,6 +1,6 @@
 import asyncio
 
-from asy_neopixel_driver import NeopixelDriver
+from asy_neopixel_driver import NeopixelDriver, _clamp_byte
 
 try:
     from typing import TYPE_CHECKING
@@ -495,6 +495,88 @@ def test_in_memory_variant_works_without_fram() -> None:
 
     run(scenario())
     assert _pixel(driver).writes[-1][0] == (0, 0, 0)
+
+
+# ---------------------------------------------------------------------------
+# _clamp_byte() - a real NeoPixel's __setitem__ writes straight into a bytearray and raises
+# ValueError/TypeError for an out-of-range or non-int value (confirmed against micropython-lib's
+# real neopixel.py source) - request_signal()/led_signal()/led_overl_bri are only type/range-hinted
+# at their current callers, not enforced by this driver, so every write to the physical pixel must
+# survive a misbehaving caller (current or future) without raising.
+# ---------------------------------------------------------------------------
+
+
+def test_clamp_byte_direct() -> None:
+    assert _clamp_byte(0) == 0
+    assert _clamp_byte(255) == 255
+    assert _clamp_byte(-1) == 0
+    assert _clamp_byte(256) == 255
+    assert _clamp_byte(300) == 255
+    assert _clamp_byte(3.9) == 3  # int() truncates, matches every other rgb value in this file
+    assert _clamp_byte("nope") == 0
+    assert _clamp_byte(None) == 0
+    assert _clamp_byte(True) == 1  # bool is a legitimate int subtype for a byte value
+
+
+def test_request_signal_out_of_range_rgb_clamped_not_raised() -> None:
+    driver = make_driver()
+
+    async def scenario() -> None:
+        tasks = await _start_all_tasks(driver)
+        await driver.request_signal(300, -5, 999, 0.1)  # a future misbehaving caller
+        await asyncio.sleep(0.15)
+        await _cancel_all(tasks)
+
+    run(scenario())  # would raise ValueError out of the pixel write if unclamped
+    writes = [w[0] for w in _pixel(driver).writes]
+    assert any(w[0] == 255 for w in writes)  # 300 clamped to the byte ceiling
+    assert all(w[1] == 0 for w in writes)  # -5 clamped to the floor
+    assert any(w[2] == 255 for w in writes)  # 999 clamped to the byte ceiling
+    assert writes[-1] == (0, 0, 0)
+
+
+def test_led_signal_out_of_range_rgb_clamped_not_raised() -> None:
+    driver = make_driver()
+
+    async def scenario() -> None:
+        tasks = await _start_all_tasks(driver)
+        driver.led_signal(-10, 500, 0, 0.1)
+        await asyncio.sleep(0.15)
+        await _cancel_all(tasks)
+
+    run(scenario())
+    writes = [w[0] for w in _pixel(driver).writes]
+    assert all(w[0] == 0 for w in writes)
+    assert any(w[1] == 255 for w in writes)
+
+
+def test_request_signal_non_numeric_rgb_clamped_to_zero_not_raised() -> None:
+    driver = make_driver()
+
+    async def scenario() -> None:
+        tasks = await _start_all_tasks(driver)
+        await driver.request_signal("red", None, 100, 0.1)  # type: ignore[arg-type]
+        await asyncio.sleep(0.15)
+        await _cancel_all(tasks)
+
+    run(scenario())  # would raise TypeError/ValueError out of the pixel write if unclamped
+    writes = [w[0] for w in _pixel(driver).writes]
+    assert all(w[0] == 0 for w in writes)
+    assert all(w[1] == 0 for w in writes)
+    assert any(w[2] == 100 for w in writes)
+
+
+def test_overlay_bri_out_of_range_clamped_not_raised() -> None:
+    driver = make_driver(led_overl_bri=999)
+
+    async def scenario() -> None:
+        tasks = await _start_all_tasks(driver)
+        driver.on()
+        await asyncio.sleep(0.05)
+        await _cancel_all(tasks)
+
+    run(scenario())  # would raise ValueError out of the pixel write if unclamped
+    assert _pixel(driver).writes[-1][0] == (255, 255, 255)
 
 
 # ---------------------------------------------------------------------------

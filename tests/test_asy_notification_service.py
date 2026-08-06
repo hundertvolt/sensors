@@ -260,6 +260,255 @@ def test_invalid_write_on_one_field_does_not_affect_others() -> None:
     run(scenario())
 
 
+# ---------------------------------------------------------------------------
+# Exhaustive config field validation (write_config()'s Valid/Invalid contract) - every field in the
+# combined schema (the coordinator's own 8 static fields plus a registered signal's own field),
+# every valid boundary, single invalid values on both sides of every bound, wrong types, and
+# multi-field invalid/valid recombinations in one write.
+# ---------------------------------------------------------------------------
+
+# name -> (min, max, "int"|"float") for the coordinator's own numeric-bounded static fields.
+_INT_FLOAT_FIELD_BOUNDS: "dict[str, tuple[int | float, int | float, str]]" = {
+    "OnH": (0, 23, "int"),
+    "OnM": (0, 59, "int"),
+    "OffH": (0, 23, "int"),
+    "OffM": (0, 59, "int"),
+    "FlashBri": (1, 255, "int"),
+    "Interv": (60.0, 3600.0, "float"),
+    "FlashDur": (0.5, 10.0, "float"),
+}
+
+
+def test_write_all_valid_fields_at_once_succeeds() -> None:
+    coordinator, _clock, _cb = make_coordinator()
+    signal, _fv = make_signal("WarnCO2")
+    coordinator.register(signal)
+    coordinator.finalize()
+    data: "dict[str, int | float | str | bool | None]" = {
+        "OnH": 8,
+        "OnM": 30,
+        "OffH": 20,
+        "OffM": 15,
+        "FlashBri": 100,
+        "Interv": 120.0,
+        "FlashDur": 1.5,
+        "AutoOn": False,
+        "WarnCO2": 1800,
+    }
+
+    async def scenario() -> "dict[str, Any]":
+        return await coordinator._set_dict_cfg(data, coordinator.get_cfg_schema())
+
+    results = run(scenario())
+    assert all(v == "Valid" for v in results.values()), results
+
+
+def test_each_int_float_field_boundary_values_accepted() -> None:
+    coordinator, _clock, _cb = make_coordinator()
+    signal, _fv = make_signal("WarnCO2")
+    coordinator.register(signal)
+    coordinator.finalize()
+
+    async def write_one(key: str, value: "Any") -> str:
+        results = await coordinator._set_dict_cfg({key: value}, coordinator.get_cfg_schema())
+        return results[key]
+
+    async def scenario() -> None:
+        for field, (lo, hi, _kind) in _INT_FLOAT_FIELD_BOUNDS.items():
+            # "Unchanged" (not just "Valid") also proves acceptance: write_config() only reaches its
+            # changed-vs-same-as-cache comparison after type_or_range_error() has already passed -
+            # a couple of these fields' own schema defaults happen to sit exactly at their own lo
+            # bound (OnM/OffM both default to 0), so writing lo there is a same-value "Unchanged".
+            assert await write_one(field, lo) in ("Valid", "Unchanged"), field
+            assert await write_one(field, hi) in ("Valid", "Unchanged"), field
+
+    run(scenario())
+
+
+def test_each_int_float_field_just_outside_bounds_rejected() -> None:
+    coordinator, _clock, _cb = make_coordinator()
+    signal, _fv = make_signal("WarnCO2")
+    coordinator.register(signal)
+    coordinator.finalize()
+
+    async def write_one(key: str, value: "Any") -> str:
+        results = await coordinator._set_dict_cfg({key: value}, coordinator.get_cfg_schema())
+        return results[key]
+
+    async def scenario() -> None:
+        for field, (lo, hi, kind) in _INT_FLOAT_FIELD_BOUNDS.items():
+            below = (lo - 1) if kind == "int" else (lo - 1.0)
+            above = (hi + 1) if kind == "int" else (hi + 1.0)
+            assert await write_one(field, below) == "Invalid", field
+            assert await write_one(field, above) == "Invalid", field
+
+    run(scenario())
+
+
+def test_each_field_wrong_type_rejected() -> None:
+    coordinator, _clock, _cb = make_coordinator()
+    signal, _fv = make_signal("WarnCO2")
+    coordinator.register(signal)
+    coordinator.finalize()
+
+    async def write_one(key: str, value: "Any") -> str:
+        results = await coordinator._set_dict_cfg({key: value}, coordinator.get_cfg_schema())
+        return results[key]
+
+    async def scenario() -> None:
+        assert await write_one("OnH", "10") == "Invalid"  # str instead of int
+        assert await write_one("OnH", True) == "Invalid"  # bool instead of int - type(), not isinstance()
+        assert await write_one("Interv", 100) == "Invalid"  # int instead of float
+        assert await write_one("FlashDur", "2.0") == "Invalid"  # str instead of float
+        assert await write_one("AutoOn", 1) == "Invalid"  # int instead of bool
+        assert await write_one("AutoOn", "true") == "Invalid"  # str instead of bool
+        assert await write_one("WarnCO2", 1500.0) == "Invalid"  # float instead of int
+
+    run(scenario())
+
+
+def test_auto_on_bool_both_values_valid() -> None:
+    coordinator, _clock, _cb = make_coordinator()
+    coordinator.finalize()
+
+    async def scenario() -> "tuple[str, str]":
+        r1 = await coordinator._set_dict_cfg({"AutoOn": False}, coordinator.get_cfg_schema())
+        r2 = await coordinator._set_dict_cfg({"AutoOn": True}, coordinator.get_cfg_schema())
+        return r1["AutoOn"], r2["AutoOn"]
+
+    r1, r2 = run(scenario())
+    assert r1 == "Valid"
+    assert r2 == "Valid"
+
+
+def test_unknown_field_key_reported_invalid_and_ignored() -> None:
+    coordinator, _clock, _cb = make_coordinator()
+    coordinator.finalize()
+
+    async def scenario() -> "dict[str, Any]":
+        return await coordinator._set_dict_cfg({"NotARealField": 1}, coordinator.get_cfg_schema())
+
+    results = run(scenario())
+    assert results["NotARealField"] == "Invalid"
+
+
+def test_registered_int_field_boundaries_and_type_enforced() -> None:
+    # A registered NotificationSignal's own field goes through the exact same combined-schema path
+    # as the coordinator's own static fields above - proven here with its real WarnCO2 bounds
+    # (0-3000), not just the coordinator's own 8 fields.
+    coordinator, _clock, _cb = make_coordinator()
+    signal, _fv = make_signal("WarnCO2")
+    coordinator.register(signal)
+    coordinator.finalize()
+
+    async def write_one(value: "Any") -> str:
+        results = await coordinator._set_dict_cfg({"WarnCO2": value}, coordinator.get_cfg_schema())
+        return results["WarnCO2"]
+
+    async def scenario() -> "tuple[str, str, str, str, str]":
+        lo = await write_one(0)
+        hi = await write_one(3000)
+        below = await write_one(-1)
+        above = await write_one(3001)
+        wrong_type = await write_one(1500.0)
+        return lo, hi, below, above, wrong_type
+
+    lo, hi, below, above, wrong_type = run(scenario())
+    assert lo == "Valid"
+    assert hi == "Valid"
+    assert below == "Invalid"
+    assert above == "Invalid"
+    assert wrong_type == "Invalid"
+
+
+def test_registered_float_field_boundaries_and_type_enforced() -> None:
+    # A second registered signal with a float-typed field (WarnHum's real production shape) -
+    # proves the combined schema isn't accidentally int-only.
+    coordinator, _clock, _cb = make_coordinator()
+    fv = FakeValue(50.0)
+    field_schema = (("WarnHum", "float", 65.0, 0.0, 100.0, None),)
+    signal = NotificationSignal("WarnHum", fv.get, field_schema, (0, 0, 1))
+    coordinator.register(signal)
+    coordinator.finalize()
+
+    async def write_one(value: "Any") -> str:
+        results = await coordinator._set_dict_cfg({"WarnHum": value}, coordinator.get_cfg_schema())
+        return results["WarnHum"]
+
+    async def scenario() -> "tuple[str, str, str, str, str]":
+        lo = await write_one(0.0)
+        hi = await write_one(100.0)
+        below = await write_one(-0.1)
+        above = await write_one(100.1)
+        wrong_type = await write_one(50)  # int instead of float
+        return lo, hi, below, above, wrong_type
+
+    lo, hi, below, above, wrong_type = run(scenario())
+    assert lo == "Valid"
+    assert hi == "Valid"
+    assert below == "Invalid"
+    assert above == "Invalid"
+    assert wrong_type == "Invalid"
+
+
+def test_multiple_invalid_fields_in_one_write_each_reported_independently() -> None:
+    coordinator, _clock, _cb = make_coordinator()
+    signal, _fv = make_signal("WarnCO2")
+    coordinator.register(signal)
+    coordinator.finalize()
+
+    async def scenario() -> "tuple[dict[str, Any], dict[str, Any]]":
+        results = await coordinator._set_dict_cfg(
+            {
+                "OnH": 24,  # invalid: above max
+                "OnM": -1,  # invalid: below min
+                "FlashBri": 100,  # valid
+                "Interv": "300",  # invalid: wrong type
+                "WarnCO2": 5000,  # invalid: above max
+                "AutoOn": False,  # valid
+            },
+            coordinator.get_cfg_schema(),
+        )
+        after = await coordinator.get_dict_cfg()
+        return results, after
+
+    results, after = run(scenario())
+    assert results["OnH"] == "Invalid"
+    assert results["OnM"] == "Invalid"
+    assert results["FlashBri"] == "Valid"
+    assert results["Interv"] == "Invalid"
+    assert results["WarnCO2"] == "Invalid"
+    assert results["AutoOn"] == "Valid"
+    # the valid fields actually persisted despite invalid siblings in the same call...
+    assert after["NOTIFY"]["FlashBri"] == 100
+    assert after["NOTIFY"]["AutoOn"] is False
+    # ...and the invalid ones were left completely untouched at their schema defaults
+    assert after["NOTIFY"]["OnH"] == 10
+    assert after["NOTIFY"]["OnM"] == 0
+    assert after["NOTIFY"]["Interv"] == 300.0
+    assert after["NOTIFY"]["WarnCO2"] == 1600
+
+
+def test_all_fields_invalid_in_one_write_none_persist() -> None:
+    coordinator, _clock, _cb = make_coordinator()
+    signal, _fv = make_signal("WarnCO2")
+    coordinator.register(signal)
+    coordinator.finalize()
+
+    async def scenario() -> "tuple[dict[str, Any], dict[str, Any], dict[str, Any]]":
+        before = await coordinator.get_dict_cfg()
+        results = await coordinator._set_dict_cfg(
+            {"OnH": 99, "FlashBri": -5, "Interv": 0.0, "WarnCO2": -1, "AutoOn": "nope"},
+            coordinator.get_cfg_schema(),
+        )
+        after = await coordinator.get_dict_cfg()
+        return results, before, after
+
+    results, before, after = run(scenario())
+    assert all(v == "Invalid" for v in results.values()), results
+    assert after == before  # every field rejected - nothing at all changed from the pre-write state
+
+
 def test_fram_backed_variant_survives_a_reboot() -> None:
     class _FakeFramChunk:
         def __init__(self) -> None:
@@ -478,6 +727,61 @@ def test_check_one_last_value_and_triggered_reflect_most_recent_call_only() -> N
 
     run(scenario())
     assert signal.last_value == 0
+    assert signal.triggered is False
+
+
+def test_check_one_value_wrong_type_from_callback_not_triggered_no_crash() -> None:
+    # get_value() is only type-hinted (int | float | None), not enforced - a misbehaving callback
+    # returning e.g. a str/list/dict must not reach the >=/<= comparison and raise an uncaught
+    # TypeError, the same defense the threshold side of this comparison already had.
+    coordinator, _clock, _cb = make_coordinator()
+    signal, fv = make_signal("WarnCO2", value=1600)
+    coordinator.register(signal)
+    coordinator.finalize()
+
+    async def check(value: "Any") -> bool:
+        fv.value = value
+        return await coordinator._check_one(signal)
+
+    async def scenario() -> "tuple[bool, bool, bool, bool]":
+        return await check("1600"), await check([1600]), await check({"v": 1600}), await check(object())
+
+    results = run(scenario())
+    assert results == (False, False, False, False)
+    assert signal.triggered is False
+
+
+def test_check_one_value_bool_from_callback_is_rejected_like_threshold_bool() -> None:
+    # bool is technically an int subtype but is excluded the same way the threshold-side check
+    # already excludes it - a callback returning True/False (not a real numeric reading) must not
+    # silently compare as 1/0.
+    coordinator, _clock, _cb = make_coordinator()
+    signal, fv = make_signal("WarnCO2", value=True)
+    coordinator.register(signal)
+    coordinator.finalize()
+
+    async def scenario() -> bool:
+        return await coordinator._check_one(signal)
+
+    assert run(scenario()) is False
+    assert signal.triggered is False
+
+
+def test_check_one_threshold_wrong_type_in_cache_not_triggered_no_crash() -> None:
+    # Mirrors the value-side tests above but for the threshold read from config - a corrupted cache
+    # entry (bypassing write_config()'s own type_or_range_error gate, the only way to get a
+    # non-numeric threshold in there at all) must not reach the comparison either. Same direct-cache
+    # tampering technique as test_malformed_own_config_read_degrades_gracefully_and_keeps_retrying.
+    coordinator, _clock, _cb = make_coordinator()
+    signal, fv = make_signal("WarnCO2", value=2000)
+    coordinator.register(signal)
+    coordinator.finalize()
+    coordinator.cfgmgr._cache["WarnCO2"] = "not a number"
+
+    async def scenario() -> bool:
+        return await coordinator._check_one(signal)
+
+    assert run(scenario()) is False
     assert signal.triggered is False
 
 
