@@ -35,6 +35,15 @@ framing:
 - **The audit's purpose is wiring-readiness** — anything found that would cause a problem once
   `src/` modules are actually wired together (not just a style nit) should be fixed as part of the
   audit itself, not just noted.
+- **Thorough currency check against the pinned MicroPython version's own source, current rp2 port
+  docs, and MicroPython dev-forum/issue-tracker findings** — for every MicroPython-facing
+  construct/function in `src/`, check not just "is this correct" but "is there now a newer/better
+  way MicroPython added to do this," and that error handling around it is clean/complete. Examples:
+  newly widened type support for `micropython.const()`, or real `asyncio` timeout/cancellation
+  support having been added to something that previously lacked it (e.g. `socket.getaddrinfo()`).
+  This check is also a standing practice going forward independent of this one-off audit — see
+  CLAUDE.md's "Platform target" section (duplicated there deliberately, since this audit-list entry
+  itself goes away once the audit is done).
 - **Documentation sweep as part of the same pass**: all markdown (README.md, CLAUDE.md,
   BACKLOG.md, DRIVER_SPEC.md, `tests/README.md`, `toolchain/README.md`) and all in-code comments,
   including comments already present in the not-yet-promoted `sensortask-*.py` files. Many open

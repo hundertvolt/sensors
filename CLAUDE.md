@@ -83,6 +83,17 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
 - **Always check current MicroPython and Microdot documentation before asserting how an API
   behaves** — do not rely on training-data memory for either. This has already caught real
   discrepancies once; treat it as a standing requirement for every session, not a one-time step.
+- **Whenever the pinned MicroPython version changes (and periodically otherwise), re-check every
+  MicroPython-facing code construct against the current pinned version's own source, the current
+  rp2 port documentation, and MicroPython developer-forum/issue-tracker findings** — not just "is
+  this still correct," but specifically "is there now a newer/better/more-complete way to do this
+  that a stale construct is missing out on." Examples of the kind of thing this is meant to catch:
+  a newly widened set of types accepted by `micropython.const()`, or real `asyncio`-level
+  timeout/cancellation support being added to something that previously had none (e.g.
+  `socket.getaddrinfo()` — see the "wedged I2C bus" hard rule above for its current
+  can't-be-timeout-wrapped status, which is exactly the kind of fact a version bump could change
+  and silently invalidate). This is a standing practice, not a one-time pass — repeat it every time
+  `toolchain/versions.toml`'s MicroPython `ref` moves.
 
 ## Hard rules
 
