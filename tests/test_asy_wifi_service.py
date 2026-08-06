@@ -262,6 +262,7 @@ def test_start_counter_timer_degrades_gracefully_when_alarm_pool_exhausted() -> 
 
 
 def test_debug_level_propagates_to_the_inherited_pr_logger() -> None:
+    print("(expected) debug=3 makes the fresh ConfigManager below log its normal first-use config-file creation")
     client = make_client(debug=3)
     assert client.pr.get_level() == 3
 
@@ -1250,14 +1251,20 @@ def test_deactivate_wlan_permanently_sets_state_even_when_the_hardware_call_rais
 
 
 def test_print_wlan_diagnostics_does_not_raise_on_success() -> None:
+    print(
+        "(expected) debug=5 makes the fresh ConfigManager below log its normal first-use config-file "
+        "creation, then the real WLAN diagnostics dump below is the point of this test"
+    )
     client = make_client(debug=5)  # PrintLog.level_info() - pr.all() actually prints, not gated off
     _wlan(client)._ifconfig = ("10.0.0.5", "255.255.255.0", "10.0.0.1", "8.8.8.8")
     client._print_wlan_diagnostics()  # must not raise
 
 
 def test_print_wlan_diagnostics_degrades_gracefully_when_ifconfig_raises() -> None:
+    print("(expected) debug=5 makes the fresh ConfigManager below log its normal first-use config-file creation")
     client = make_client(debug=5)
     _wlan(client).raise_on["ifconfig"] = RuntimeError("simulated hardware fault")
+    print("(expected) simulating a hardware fault - the following 'WLAN diagnostic read failed' is intentional")
     client._print_wlan_diagnostics()  # must not raise
 
 

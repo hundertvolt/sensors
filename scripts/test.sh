@@ -23,6 +23,19 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
+# The Unix port links the host's real libc time.h, so time.mktime()/time.gmtime()/time.localtime()
+# observe whatever $TZ the calling shell happens to have - unlike the deployed rp2 firmware, whose
+# ports/rp2/datetime_patch.c overrides mktime()/localtime_r() with shared/timeutils' pure,
+# TZ-agnostic epoch arithmetic (confirmed directly against both C sources). src/'s
+# "time.mktime(time.gmtime())" idiom (asy_fram_manager.py, system_service.py, and others) is a
+# no-op round trip only under TZ=UTC - libc's mktime() otherwise reinterprets gmtime()'s
+# already-UTC fields as local time and subtracts the zone offset, corrupting the "current UTC
+# timestamp" idiom by a deterministic, non-flaky ~1-2 hours (confirmed by direct reproduction: a
+# non-UTC $TZ makes tests/test_ntp_fram_system_integration.py's two live-clock assertions fail
+# every time, not intermittently). Pinning TZ=UTC here makes every test run reproduce CI's
+# GitHub-hosted-runner behavior (implicitly UTC) regardless of the developer's own machine.
+export TZ=UTC
+
 coverage=0
 for arg in "$@"; do
     case "$arg" in

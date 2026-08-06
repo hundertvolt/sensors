@@ -284,6 +284,32 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
   8/8 clean CI jobs on its own. Don't re-diagnose this specific symptom as a new code bug if it
   recurs elsewhere; do treat any *new* file/test that leaves `uart.poller` (or an equivalent
   fake-stream object) wired to a real `select.poll()` as a like-for-like risk.
+- **Non-UTC-host test failures (resolved)**: on a developer machine whose system timezone isn't
+  UTC, `tests/test_ntp_fram_system_integration.py`'s
+  `test_fram_write_into_gets_a_real_valid_timestamp_once_the_real_ntp_chain_is_synced` and
+  `test_system_service_boot_signature_resolves_via_the_real_ntp_chain_once_synced` failed every
+  run (deterministic, not flaky) with a bare `AssertionError` at their final `abs(... -
+  int(time.time())) < 5` line, while CI (GitHub-hosted `ubuntu-latest`, always UTC) stayed green.
+  Root cause, confirmed directly against both the real MicroPython v1.28.0 Unix-port source and a
+  live reproduction: the Unix port's `time.mktime()` (`ports/unix/modtime.c`) calls straight
+  through to the host's real libc `mktime()`, which — per POSIX, and unlike the deployed rp2
+  firmware — interprets its input `struct tm` as **local time** and converts using the process's
+  `$TZ`. `src/asy_fram_manager.py`'s and `src/system_service.py`'s (and every other driver's)
+  `time.mktime(time.gmtime())` idiom for "current UTC timestamp" is therefore only a true no-op
+  round trip under `TZ=UTC`; under e.g. `TZ=Europe/Berlin` it silently comes back ~1 hour off
+  (`tm_isdst` is forced to `0` by `gmtime()`'s 9-tuple, so it's standard-time offset, not the
+  actual current DST offset), reproduced identically both with a hand-rolled snippet and by
+  literally re-running the two failing tests with only `$TZ` changed (12/12 pass under `TZ=UTC`,
+  the same 2/12 fail under `TZ=Europe/Berlin`, same line numbers, same "10/12 passed"). **Not a
+  production bug**: confirmed directly from `ports/rp2/datetime_patch.c` that the deployed
+  firmware overrides libc's `mktime()`/`localtime_r()` with `shared/timeutils`' pure, TZ-agnostic
+  epoch arithmetic — real hardware has no `$TZ` concept and this idiom round-trips exactly there
+  regardless. **Fix**: `scripts/test.sh` now does `export TZ=UTC` before invoking the Unix-port
+  binary (for both the plain and `--coverage` passes, and every test file), pinning every local
+  test run to the same UTC behavior GitHub's runners already gave for free — verified with a full
+  99/99-passing `scripts/test.sh` run under `TZ=Europe/Berlin` in the calling shell after the fix.
+  Don't re-diagnose a consistent (not intermittent) failure isolated to this file's two live-clock
+  assertions as a new code bug — check the runner's `$TZ` first.
 - **`ruff format` is deliberately not used anywhere** — line breaks are hand-chosen throughout this
   codebase; `line-length = 320` (ruff's own ceiling) plus an `E501` ignore keep this a non-issue even
   if `format` is ever run by accident. Lint rule selection (`E`/`F`/`W`/`I`/`UP`/`B`) is stricter

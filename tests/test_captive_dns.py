@@ -848,6 +848,7 @@ def test_run_backs_off_on_a_genuinely_unexpected_exception_then_recovers() -> No
 
 def test_run_rejects_invalid_server_ip_or_netmask_with_debug_logging() -> None:
     server = DNSServer(debug=True)
+    print("(expected) passing a deliberately invalid server_ip - the following 'invalid server_ip/netmask' is intentional")
 
     async def scenario() -> None:
         await server.run("not-an-ip", "255.255.255.0")
@@ -870,6 +871,11 @@ def test_run_debug_logging_covers_the_full_request_reply_cycle() -> None:
         ]
     )
     fake.sendto_results = [None]  # first real reply reports dropped - "dropped by sendto()" print
+
+    print(
+        "(expected) driving an off-subnet request, malformed data, and a simulated dropped reply - "
+        "the following 'Ignoring...'/'Invalid...'/'dropped by sendto()' lines are all intentional"
+    )
 
     async def scenario() -> list[tuple[bytes, tuple[str, int]]]:
         server = DNSServer(debug=True)
@@ -911,6 +917,8 @@ def test_run_debug_logging_covers_the_backoff_and_recovery_path() -> None:
         ]
     )
 
+    print("(expected) simulating one flaky DNSQuery parse - the following 'DNS Server error:' is intentional, recovery follows")
+
     async def scenario() -> list[tuple[bytes, tuple[str, int]]]:
         captive_dns_module.DNSQuery = _FlakyDNSQuery  # type: ignore[assignment,misc]
         try:
@@ -942,6 +950,7 @@ class _RaisingDisconnectUDPS(_FakeUDPS):
 
 def test_run_debug_logging_covers_disconnect_reporting_a_genuine_exception() -> None:
     fake = _RaisingDisconnectUDPS(RuntimeError("simulated disconnect failure"))
+    print("(expected) simulating disconnect() raising - the following 'error during disconnect' is intentional")
 
     async def scenario() -> None:
         server = DNSServer(debug=True)

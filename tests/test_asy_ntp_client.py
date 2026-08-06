@@ -228,6 +228,7 @@ def test_two_clients_with_different_cfg_paths_have_independent_configs() -> None
 
 
 def test_debug_level_propagates_to_the_inherited_pr_logger() -> None:
+    print("(expected) debug=3 makes the fresh ConfigManager below log its normal first-use config-file creation")
     client = make_client(debug=3)
     assert client.pr.get_level() == 3
 
@@ -545,6 +546,7 @@ def test_start_ntp_timer_fires_the_trigger_event() -> None:
 
 def test_start_ntp_timer_degrades_gracefully_when_alarm_pool_exhausted() -> None:
     client = make_client(debug=1)
+    print("(expected) simulating alarm-pool exhaustion - the following 'Could not start NTP timer' is intentional")
     with _RaiseOnArm():
         client.start_ntp_timer()  # must not raise despite the timer failing to arm
     assert client.ntp_timer.period == -1  # never actually armed
