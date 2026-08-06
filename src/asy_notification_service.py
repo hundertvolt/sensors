@@ -41,9 +41,12 @@ from base_classes import LockedCounter, SensorReaderConfig
 from config_manager import make_dict, name_cfg, schema_names
 
 try:
-    from typing import TYPE_CHECKING
+    from typing import TYPE_CHECKING, cast
 except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
     TYPE_CHECKING = False
+
+    def cast(typ: object, val: "Any") -> "Any":  # type: ignore[no-redef]  # no-op at runtime either way
+        return val
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
@@ -131,13 +134,7 @@ class NotificationCoordinator(SensorReaderConfig):
     def _combined_schema(self) -> "ConfigSchema":
         combined: ConfigSchema = _VAL_OWN_SCHEMA
         for notif in self._registered:
-            # tuple(...) rather than a bare "+": register()'s own name_cfg() check only proves
-            # field_schema is a single-item *iterable* (schema_names() iterates it, doesn't require
-            # a tuple specifically - see config_manager.py), so a future module passing a list-
-            # wrapped field_schema (an easy [x] vs. (x,) typo) would pass register() cleanly and
-            # then raise TypeError here (tuple.__add__ rejects a list) - the one point in the whole
-            # staged-registration handshake that ran with no defense at all.
-            combined = combined + tuple(notif.field_schema)
+            combined = combined + notif.field_schema
         return combined
 
     def _reject_registration(self, name: str, reason: str, wrnno: int) -> None:
@@ -177,24 +174,20 @@ class NotificationCoordinator(SensorReaderConfig):
         if value is None:
             notif.triggered = False
             return False
-        if not isinstance(value, (int, float)) or isinstance(value, bool):  # get_value() is
-            # caller-supplied and only type-hinted, not enforced - mirrors the threshold isinstance
-            # check below so a misbehaving callback can't reach the comparison with a non-numeric
-            # value and raise an uncaught TypeError out of monitor_loop()'s for-loop.
-            notif.triggered = False
-            return False
         key = name_cfg(notif.field_schema)
         threshold_dict = await self.cfgmgr.get_dict([key])
         if threshold_dict is None or key not in threshold_dict:
             await self.pr.err_s(_NAME, notif.name, "Threshold config read failed!", errno=2)
             notif.triggered = False
             return False
-        threshold = threshold_dict[key]
-        if not isinstance(threshold, (int, float)) or isinstance(threshold, bool):
-            notif.triggered = False
-            return False
-        # NaN/inf degrade cleanly through these comparisons already (both sides of a NaN
-        # comparison are always False - see math_helpers.py's own precedent) - no extra guard needed.
+        # cast(), not a runtime isinstance check: get_dict()'s return type is generic
+        # (dict[str, int | float | str | bool | None]) since it serves every field type in the
+        # schema, but this field's own schema entry fixes it to "int"/"float" - ConfigManager
+        # enforces that at every write (see config_manager.py's type_or_range_error()), so the
+        # value here is guaranteed int/float already. cast() is mypy-only narrowing, no runtime
+        # check - NaN/inf degrade cleanly through the comparison below either way (both sides of a
+        # NaN comparison are always False; inf/-inf compare normally, neither raises).
+        threshold = cast("int | float", threshold_dict[key])
         triggered = (value >= threshold) if notif.above else (value <= threshold)
         notif.triggered = triggered
         return triggered
@@ -317,26 +310,10 @@ class NotificationCoordinator(SensorReaderConfig):
                 any_triggered = False
                 if auto_on and self._auto_active:
                     cur_time = await self._safe_local_time()
-                    # _safe_local_time() only catches an exception raised by the callback itself -
-                    # a successful-but-malformed return (missing/wrong-typed .hour/.minute, e.g. a
-                    # future local_time_callback returning a raw int timestamp) would otherwise
-                    # raise AttributeError/TypeError below and kill this task. hour/minute are read
-                    # via getattr so a non-None-but-shapeless cur_time (no .hour attr at all)
-                    # degrades the same way as a missing/wrong-typed one, not just a raise.
-                    hour = getattr(cur_time, "hour", None)
-                    minute = getattr(cur_time, "minute", None)
-                    # isinstance checks inlined directly into the condition (not hoisted into a
-                    # separate bool) so mypy can actually narrow hour/minute from "Any | None" to
-                    # "int" inside this block - a hoisted bool loses that narrowing entirely.
-                    if (
-                        isinstance(hour, int)
-                        and not isinstance(hour, bool)
-                        and isinstance(minute, int)
-                        and not isinstance(minute, bool)
-                    ):  # no NTP sync, missing config, a raising callback, or a malformed return
+                    if cur_time is not None:  # no NTP sync, missing config, or a raising callback
                         on_min_of_day = (on_h * 60) + on_m
                         off_min_of_day = (off_h * 60) + off_m
-                        cur_min_of_day = (hour * 60) + minute
+                        cur_min_of_day = (cur_time.hour * 60) + cur_time.minute
                         if on_min_of_day <= cur_min_of_day <= off_min_of_day:
                             for notif in self._registered:
                                 if await self._check_one(notif):

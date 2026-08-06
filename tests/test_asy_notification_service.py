@@ -222,23 +222,6 @@ def test_finalize_called_twice_is_a_no_op_second_time() -> None:
     assert coordinator.get_cfg_schema() == schema_before
 
 
-def test_finalize_with_list_wrapped_field_schema_does_not_raise() -> None:
-    # register()'s own validation (name_cfg() -> schema_names()) only requires field_schema to be a
-    # single-item *iterable* - a list works there just as well as a tuple, since schema_names()
-    # just iterates it. A future module passing field_schema=[the_tuple] instead of (the_tuple,) (an
-    # easy typo) would previously pass register() cleanly and then raise TypeError out of
-    # finalize()'s own "tuple + list" concatenation. Regression test for that gap.
-    coordinator, _clock, _cb = make_coordinator()
-    fv = FakeValue(1)
-    list_schema = [("WarnCO2", "int", 1600, 0, 3000, None)]  # list, not tuple - the typo case
-    notif = NotificationSignal("WarnCO2", fv.get, list_schema, (1, 0, 0))  # type: ignore[arg-type]
-    coordinator.register(notif)
-    assert coordinator._registered == [notif]  # accepted at register() time - shape looks valid
-    coordinator.finalize()  # must not raise TypeError here
-    names = [f[0] for f in coordinator.get_cfg_schema()]
-    assert "WarnCO2" in names
-
-
 # ---------------------------------------------------------------------------
 # Combined config/persistence (single shared ConfigManager, post-finalize)
 # ---------------------------------------------------------------------------
@@ -747,61 +730,6 @@ def test_check_one_last_value_and_triggered_reflect_most_recent_call_only() -> N
     assert signal.triggered is False
 
 
-def test_check_one_value_wrong_type_from_callback_not_triggered_no_crash() -> None:
-    # get_value() is only type-hinted (int | float | None), not enforced - a misbehaving callback
-    # returning e.g. a str/list/dict must not reach the >=/<= comparison and raise an uncaught
-    # TypeError, the same defense the threshold side of this comparison already had.
-    coordinator, _clock, _cb = make_coordinator()
-    signal, fv = make_signal("WarnCO2", value=1600)
-    coordinator.register(signal)
-    coordinator.finalize()
-
-    async def check(value: "Any") -> bool:
-        fv.value = value
-        return await coordinator._check_one(signal)
-
-    async def scenario() -> "tuple[bool, bool, bool, bool]":
-        return await check("1600"), await check([1600]), await check({"v": 1600}), await check(object())
-
-    results = run(scenario())
-    assert results == (False, False, False, False)
-    assert signal.triggered is False
-
-
-def test_check_one_value_bool_from_callback_is_rejected_like_threshold_bool() -> None:
-    # bool is technically an int subtype but is excluded the same way the threshold-side check
-    # already excludes it - a callback returning True/False (not a real numeric reading) must not
-    # silently compare as 1/0.
-    coordinator, _clock, _cb = make_coordinator()
-    signal, fv = make_signal("WarnCO2", value=True)
-    coordinator.register(signal)
-    coordinator.finalize()
-
-    async def scenario() -> bool:
-        return await coordinator._check_one(signal)
-
-    assert run(scenario()) is False
-    assert signal.triggered is False
-
-
-def test_check_one_threshold_wrong_type_in_cache_not_triggered_no_crash() -> None:
-    # Mirrors the value-side tests above but for the threshold read from config - a corrupted cache
-    # entry (bypassing write_config()'s own type_or_range_error gate, the only way to get a
-    # non-numeric threshold in there at all) must not reach the comparison either. Same direct-cache
-    # tampering technique as test_malformed_own_config_read_degrades_gracefully_and_keeps_retrying.
-    coordinator, _clock, _cb = make_coordinator()
-    signal, fv = make_signal("WarnCO2", value=2000)
-    coordinator.register(signal)
-    coordinator.finalize()
-    coordinator.cfgmgr._cache["WarnCO2"] = "not a number"
-
-    async def scenario() -> bool:
-        return await coordinator._check_one(signal)
-
-    assert run(scenario()) is False
-    assert signal.triggered is False
-
-
 def test_check_one_never_raises() -> None:
     coordinator, _clock, _cb = make_coordinator()
     signal, fv = make_signal("WarnCO2")
@@ -1032,59 +960,6 @@ def test_local_time_callback_raises_treated_as_none() -> None:
     run(scenario())
     assert len(cb.calls) == 0
     assert coordinator.pr.err_count >= 1
-
-
-class _MalformedTime:
-    # No .hour/.minute at all - simulates a future/misbehaving local_time_callback that succeeds
-    # (doesn't raise) but returns an object of the wrong shape.
-    pass
-
-
-def test_local_time_callback_malformed_return_shape_no_crash() -> None:
-    # _safe_local_time() only catches an exception raised by the callback itself - a successful but
-    # shapeless/wrong-typed return (missing .hour/.minute, or .hour/.minute of the wrong type) would
-    # previously raise AttributeError/TypeError out of monitor_loop()'s own cur_time.hour/.minute
-    # access and kill the task. Regression test for that gap.
-    cb = FakeSignalCb()
-    clock = FakeClock()
-    clock.value = _MalformedTime()  # type: ignore[assignment]
-    coordinator, _clock, _cb = make_coordinator(local_time=clock, signal_cb=cb)
-    signal, _fv = make_signal("WarnCO2", value=2000)
-    coordinator.register(signal)
-    coordinator.finalize()
-
-    async def scenario() -> None:
-        await coordinator._set_dict_cfg({"Interv": 3600.0, "FlashDur": 0.01}, coordinator.get_cfg_schema())
-        task = coordinator.start_asy_notify_monitor()
-        await _one_cycle(coordinator, task)
-
-    run(scenario())  # must not raise
-    assert len(cb.calls) == 0  # the malformed time is treated as "can't tell if in window" - no trigger
-
-
-def test_local_time_callback_wrong_typed_hour_minute_no_crash() -> None:
-    # A different malformation: .hour/.minute exist but aren't ints (e.g. a future callback
-    # returning string-formatted fields). Must degrade the same way as a missing attribute, not a
-    # different one, and definitely not raise.
-    class _StringTime:
-        hour = "12"
-        minute = "00"
-
-    cb = FakeSignalCb()
-    clock = FakeClock()
-    clock.value = _StringTime()  # type: ignore[assignment]
-    coordinator, _clock, _cb = make_coordinator(local_time=clock, signal_cb=cb)
-    signal, _fv = make_signal("WarnCO2", value=2000)
-    coordinator.register(signal)
-    coordinator.finalize()
-
-    async def scenario() -> None:
-        await coordinator._set_dict_cfg({"Interv": 3600.0, "FlashDur": 0.01}, coordinator.get_cfg_schema())
-        task = coordinator.start_asy_notify_monitor()
-        await _one_cycle(coordinator, task)
-
-    run(scenario())  # must not raise
-    assert len(cb.calls) == 0
 
 
 def test_auto_on_false_blocks_all_checks_regardless_of_window() -> None:

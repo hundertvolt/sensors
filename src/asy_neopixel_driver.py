@@ -11,11 +11,12 @@ behavior. Near-zero error surface: a real rp2 NeoPixel.write() is a single busy-
 with no error return at all (confirmed against ports/rp2/machine_bitstream.c, v1.28.0) - there is no
 `err_s()`/`wrn_s()` call anywhere in this file because write() itself never fails. `__setitem__` is a
 different story (confirmed against micropython-lib's real neopixel.py source): it writes each channel
-straight into a bytearray, which raises `ValueError`/`TypeError` for an out-of-range or non-int
-value - `request_signal()`/`led_signal()` are only type/range-hinted at their current callers (REST
-validation, config-schema bounds), not enforced by this driver itself, so `_clamp_byte()` guards every
-write to the physical pixel (both the ramp signal and the overlay) against a misbehaving caller -
-current or future - instead of relying on every caller getting it right forever. Only
+straight into a bytearray, which raises `ValueError` for an out-of-range int. Every caller of
+`request_signal()`/`led_signal()` is our own code, correctly typed (int/float) and trusted as such -
+not guarded against here (see CLAUDE.md's "don't add validation for scenarios that can't happen").
+The one thing that isn't a type violation is NaN/inf: a correctly-typed float can still legitimately
+be either, and `int()` raises ValueError/OverflowError for them - `_clamp_byte()`/`_safe_duration()`
+guard exactly that one case, at the actual hardware-write boundary, nothing broader. Only
 `on()`/`off()`/`toggle()` satisfy asy_wifi_service.py's LEDControl Protocol, so this driver also
 serves the unrelated WiFi-status LED use case, unchanged.
 """
@@ -42,30 +43,26 @@ if TYPE_CHECKING:
 _NAME = const("NEOPIXEL")
 
 
-def _clamp_byte(value: "int | float | Any") -> int:
-    # request_signal()/led_signal() callers (and this driver's own led_overl_bri) are only
-    # type/range-hinted, not enforced - a real NeoPixel's __setitem__ writes straight into a
-    # bytearray (confirmed against micropython-lib's real neopixel.py: `self.buf[...] = v[i]`),
-    # which raises ValueError for an out-of-range int and TypeError for a non-int. Clamped here, at
-    # the actual hardware-write boundary, so no caller - current or future - can crash this task.
-    try:
-        return min(max(int(value), 0), 255)
-    except (TypeError, ValueError, OverflowError):  # int(float('inf'))/int(float('-inf')) raise
-        # OverflowError specifically, not ValueError - confirmed directly against the real
-        # MicroPython 1.28.0 Unix-port interpreter (CPython's own int() does the same).
+def _clamp_byte(value: "int | float") -> int:
+    # request_signal()/led_signal()/led_overl_bri are correctly-typed int/float (every caller is
+    # our own code, not guarded against here) but can still legitimately be NaN/inf - a real
+    # NeoPixel's __setitem__ writes straight into a bytearray (confirmed against micropython-lib's
+    # real neopixel.py: `self.buf[...] = v[i]`), which raises ValueError for an out-of-range int;
+    # int(float('nan')) raises ValueError and int(float('inf'))/int(float('-inf')) raise
+    # OverflowError (confirmed directly against the real MicroPython 1.28.0 Unix-port interpreter -
+    # CPython's own int() does the same). Both excluded explicitly before the conversion.
+    if value != value or value in (float("inf"), float("-inf")):  # NaN/inf
         return 0
+    return min(max(int(value), 0), 255)
 
 
-def _safe_duration(value: "int | float | Any") -> "int | float":
-    # rgbt[3]/ext_rgbt[3] ("t") is only type/range-hinted at request_signal()/led_signal()'s
-    # callers, same caveat as the byte channels _clamp_byte() guards above. A non-numeric value
-    # would raise TypeError out of neopixel_signal()'s own "t >= 0.1" floor check below; +/-inf
-    # passes that check (inf >= 0.1 is True) and then raises OverflowError out of the steps
-    # computation right after (same int()-on-inf failure mode as _clamp_byte(), confirmed the same
-    # way). NaN already degrades safely on its own - a NaN comparison is always False, so the floor
-    # check already falls through to 0.1 - left untouched here.
-    if not isinstance(value, (int, float)):
-        return 0.0
+def _safe_duration(value: "int | float") -> "int | float":
+    # rgbt[3]/ext_rgbt[3] ("t") is a correctly-typed float that can still be +/-inf, same caveat as
+    # _clamp_byte() above. inf passes neopixel_signal()'s own "t >= 0.1" floor check (inf >= 0.1 is
+    # True) and then raises OverflowError out of the steps computation right after (same
+    # int()-on-inf failure mode as _clamp_byte(), confirmed the same way). NaN already degrades
+    # safely on its own - a NaN comparison is always False, so the floor check already falls
+    # through to 0.1 - left untouched here.
     if value in (float("inf"), float("-inf")):
         return 0.0
     return value

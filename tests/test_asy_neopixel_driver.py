@@ -499,10 +499,9 @@ def test_in_memory_variant_works_without_fram() -> None:
 
 # ---------------------------------------------------------------------------
 # _clamp_byte() - a real NeoPixel's __setitem__ writes straight into a bytearray and raises
-# ValueError/TypeError for an out-of-range or non-int value (confirmed against micropython-lib's
-# real neopixel.py source) - request_signal()/led_signal()/led_overl_bri are only type/range-hinted
-# at their current callers, not enforced by this driver, so every write to the physical pixel must
-# survive a misbehaving caller (current or future) without raising.
+# ValueError for an out-of-range int (confirmed against micropython-lib's real neopixel.py source).
+# request_signal()/led_signal()/led_overl_bri are correctly-typed int/float (every caller is our own
+# code, not guarded against here) but can still legitimately be out-of-range or NaN/inf.
 # ---------------------------------------------------------------------------
 
 
@@ -513,8 +512,6 @@ def test_clamp_byte_direct() -> None:
     assert _clamp_byte(256) == 255
     assert _clamp_byte(300) == 255
     assert _clamp_byte(3.9) == 3  # int() truncates, matches every other rgb value in this file
-    assert _clamp_byte("nope") == 0
-    assert _clamp_byte(None) == 0
     assert _clamp_byte(True) == 1  # bool is a legitimate int subtype for a byte value
     # int(float('inf'))/int(float('-inf')) raise OverflowError specifically, not ValueError -
     # confirmed directly against the real MicroPython 1.28.0 Unix-port interpreter. Regression test
@@ -541,10 +538,9 @@ def test_request_signal_infinite_rgb_clamped_not_raised() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _safe_duration() - rgbt[3]/ext_rgbt[3] ("t") is only type/range-hinted at request_signal()/
-# led_signal()'s callers, same caveat as the rgb channels above. A non-numeric t raises TypeError
-# out of the "t >= 0.1" floor check in neopixel_signal(); t=inf passes that check and then raises
-# OverflowError out of the steps computation right after.
+# _safe_duration() - rgbt[3]/ext_rgbt[3] ("t") is a correctly-typed float that can still be +/-inf,
+# same caveat as the rgb channels above. inf passes the "t >= 0.1" floor check in neopixel_signal()
+# (inf >= 0.1 is True) and then raises OverflowError out of the steps computation right after.
 # ---------------------------------------------------------------------------
 
 
@@ -554,9 +550,6 @@ def test_safe_duration_direct() -> None:
     assert _safe_duration(0) == 0
     assert _safe_duration(float("inf")) == 0.0
     assert _safe_duration(float("-inf")) == 0.0
-    assert _safe_duration("nope") == 0.0
-    assert _safe_duration(None) == 0.0
-    assert _safe_duration([1, 2]) == 0.0
     nan = _safe_duration(float("nan"))
     assert nan != nan  # NaN passes through unchanged - the existing ">= 0.1" floor already handles it
 
@@ -573,19 +566,6 @@ def test_request_signal_infinite_duration_falls_back_to_floor_not_raised() -> No
 
     result = run(scenario())  # would raise OverflowError computing steps if unclamped
     assert result is True
-    assert _pixel(driver).writes[-1][0] == (0, 0, 0)
-
-
-def test_led_signal_non_numeric_duration_falls_back_to_floor_not_raised() -> None:
-    driver = make_driver(neopixel_freq=20)
-
-    async def scenario() -> None:
-        tasks = await _start_all_tasks(driver)
-        driver.led_signal(10, 0, 0, "bad")  # type: ignore[arg-type]
-        await asyncio.sleep(0.15)
-        await _cancel_all(tasks)
-
-    run(scenario())  # would raise TypeError out of the ">= 0.1" comparison if unclamped
     assert _pixel(driver).writes[-1][0] == (0, 0, 0)
 
 
@@ -619,22 +599,6 @@ def test_led_signal_out_of_range_rgb_clamped_not_raised() -> None:
     writes = [w[0] for w in _pixel(driver).writes]
     assert all(w[0] == 0 for w in writes)
     assert any(w[1] == 255 for w in writes)
-
-
-def test_request_signal_non_numeric_rgb_clamped_to_zero_not_raised() -> None:
-    driver = make_driver()
-
-    async def scenario() -> None:
-        tasks = await _start_all_tasks(driver)
-        await driver.request_signal("red", None, 100, 0.1)  # type: ignore[arg-type]
-        await asyncio.sleep(0.15)
-        await _cancel_all(tasks)
-
-    run(scenario())  # would raise TypeError/ValueError out of the pixel write if unclamped
-    writes = [w[0] for w in _pixel(driver).writes]
-    assert all(w[0] == 0 for w in writes)
-    assert all(w[1] == 0 for w in writes)
-    assert any(w[2] == 100 for w in writes)
 
 
 def test_overlay_bri_out_of_range_clamped_not_raised() -> None:
