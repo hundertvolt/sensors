@@ -627,6 +627,12 @@ async def system_status(request: Request):
     SGP40_ErrCnt = _sgp_err_count if isinstance(_sgp_err_count, int) else 0
     _bmp_err_count = (await bmp_reader.get_error_counter())["BMP3XX"]["ErrCount"]
     BMP388_ErrCnt = _bmp_err_count if isinstance(_bmp_err_count, int) else 0
+    # notify_service (asy_notification_service.py) has real, loggable failure paths of its own
+    # (get_value callback exceptions, threshold config read failures, request_signal_cb failures,
+    # local_time_callback failures - errno 1-4) that the old Neopixel_Signal never had (bare
+    # PrintLog, no counting at all) - surfaced here the same way every sibling driver already is.
+    _notify_err_count = (await notify_service.get_error_counter())["NOTIFY"]["ErrCount"]
+    NOTIFY_ErrCnt = _notify_err_count if isinstance(_notify_err_count, int) else 0
     # sysfunct.get_error_counter()'s "Tasks" log now supersedes the old hand-rolled
     # task_error_counter/last_task_err LockedCounter/LockedValue pair, once main() switched to the
     # real, tested start_and_check_tasks() supervisor - same dict shape every *_Reader already uses.
@@ -645,6 +651,7 @@ async def system_status(request: Request):
         or (BMP388_ErrCnt > 0)
         or (SGP40_ErrCnt > 0)
         or (Task_ErrCnt > 0)
+        or (NOTIFY_ErrCnt > 0)
     )
     system_data = {
         "Sys_Uptime": await sysfunct.get_uptime(),
@@ -660,6 +667,7 @@ async def system_status(request: Request):
         "SGP40_Restore_TS": sgpres,
         "FRAM_ErrCnt": FRAM_ErrCnt,
         "BMP388_ErrCnt": BMP388_ErrCnt,
+        "NOTIFY_ErrCnt": NOTIFY_ErrCnt,
     }
     return system_data
 
