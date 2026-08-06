@@ -44,6 +44,16 @@ One file per sensor: `asy_<sensor>_driver.py`. Within it:
 - `<SENSOR> = namedtuple("<SENSOR>", (...))` — the measurement result shape, always ending in a
   `TS` (timestamp) field. Field names become the keys `make_dict()` (config_manager.py) exposes
   over the config dict pipeline — see section 6.
+- **`_NAME`'s string content and the namedtuple's own type-name string must be identical, always**
+  — not just similar/related. Confirmed as a deliberate, checkable convention (not a coincidence of
+  the three original drivers): `asy_sgp40_driver.py`'s `_NAME = const("SGP40")` pairs with
+  `SGP40 = namedtuple("SGP40", ...)`, and `asy_wifi_service.py`/`asy_bmp3xx_driver.py`/
+  `asy_scd30_driver.py`/`asy_ntp_client.py` all follow the same pairing — define the two right next
+  to each other (as all of those do) specifically so a mismatch is visually obvious at review time.
+  A class with no namedtuple at all (no `SensorReader`/`SensorReaderConfig` measurement data - e.g.
+  a pure hardware-control class like `asy_neopixel_driver.py`'s `NeopixelDriver`) is exempt from
+  this pairing by construction, since there's nothing to match against; `_NAME` there still exists
+  purely as the `self.pr.*(_NAME, ...)` logging tag.
 - `_VAL_<ABBREV> = const((("<FieldName>", "<type>", default, min, max, special),))` — one schema
   tuple per config field (section 5). `<ABBREV>` is a short mnemonic (`_VAL_SI`, `_VAL_POV`, ...),
   concatenated with `+` wherever a full schema is needed (`_VAL_SI + _VAL_POV + ...`).
@@ -295,9 +305,10 @@ locking involved (unlike `_get_mgr_cfg`/`_get_dict_cfg`), so this is deliberatel
 Every subclass gets this for free from the schema it already passes into `super().__init__()`;
 no subclass-local assignment is needed (`asy_bmp3xx_driver.py`/`asy_sgp40_driver.py` never had
 one). `self.cfg_schema` itself stays a public attribute too, not just the getter — existing
-callers (the legacy REST layer) already reach into it directly. A module that predates
-`SensorReaderConfig` and can't yet extend it (`improved-quality/neopixel_signal.py`, still WIP)
-implements its own local `get_cfg_schema()` with the same name/signature/behavior instead.
+callers (the legacy REST layer) already reach into it directly. No current `src/` module needs a
+local `get_cfg_schema()` reimplementation — every `SensorReaderConfig` subclass gets it from the
+base class for free; `asy_neopixel_driver.py`'s `NeopixelDriver` is the one class with no schema
+at all (see section 2), so it has no `get_cfg_schema()` either.
 
 ### 5.2 Setter dispatch (`_set_mgr_cfg`/`_set_dict_cfg`, `base_classes.py`)
 

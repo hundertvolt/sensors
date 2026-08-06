@@ -67,10 +67,10 @@ scripts/                 lint.sh / typecheck.sh / test.sh - manual code-quality 
   hardcoded defaults (a known data-loss risk on firmware upgrades that add config keys — see
   BACKLOG.md). `src/config_manager.py`'s `ConfigManager` replaces this in the refactor: every
   module with user-settable configuration (each sensor `*_Reader`, `asy_wifi_service.py`,
-  `asy_ntp_client.py`, `neopixel_signal.py`, ...) owns its own schema (a `ConfigSchema` tuple) and
-  its own config file/instance via a public `cfg_schema` attribute (also available through the
-  base-class-owned `get_cfg_schema()` getter), instead of one shared grab-bag — see `DRIVER_SPEC.md`
-  and CLAUDE.md's "Code quality tooling"/BACKLOG.md for the migration state.
+  `asy_ntp_client.py`, `asy_notification_service.py`, ...) owns its own schema (a `ConfigSchema`
+  tuple) and its own config file/instance via a public `cfg_schema` attribute (also available
+  through the base-class-owned `get_cfg_schema()` getter), instead of one shared grab-bag — see
+  `DRIVER_SPEC.md` and CLAUDE.md's "Code quality tooling"/BACKLOG.md for the migration state.
 - **REST API pipeline** — the *deployed* pipeline (`python/CommonDrivers/api_helpers.py`, left
   untouched/out of scope — see CLAUDE.md) has every `PUT` handler follow `cmd_pre_check` →
   `init_json_from_cfg` → `update_valid_json` → `set_sensor_value` → `cmd_post_check` (validate →
@@ -87,6 +87,13 @@ scripts/                 lint.sh / typecheck.sh / test.sh - manual code-quality 
   allocator handing out chunks stored as two redundant copies, so an abrupt power-loss or watchdog
   reset mid-write still leaves one valid copy to recover. Currently used for SGP40's VOC
   baseline/humidity-compensation backup.
+- **LED notification signalling** — split into `asy_neopixel_driver.py` (pure LED hardware:
+  overlay toggle, dimmed ramp-up/ramp-down, internal/external arbitration for the one shared
+  pixel; no config schema) and `asy_notification_service.py` (`NotificationCoordinator`: generic
+  threshold-triggered signalling replacing the legacy file's hardcoded CO2/VOC/Humidity checks,
+  driving the LED through the former's `request_signal()`). Promoted from
+  `improved-quality/neopixel_signal.py` — see CLAUDE.md's architecture reference for the full
+  split rationale.
 - **Networking** — split into three peers, wired together by each `sensortask-*.py`, not one
   owning the others: `asy_wifi_service.py` (STA-mode WiFi with captive-portal AP+hotspot fallback),
   `asy_ntp_client.py` (NTP client with CET/CEST DST math), and `asy_dns_client.py` (a non-blocking

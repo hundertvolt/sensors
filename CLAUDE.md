@@ -83,6 +83,17 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
 - **Always check current MicroPython and Microdot documentation before asserting how an API
   behaves** — do not rely on training-data memory for either. This has already caught real
   discrepancies once; treat it as a standing requirement for every session, not a one-time step.
+- **Whenever the pinned MicroPython version changes (and periodically otherwise), re-check every
+  MicroPython-facing code construct against the current pinned version's own source, the current
+  rp2 port documentation, and MicroPython developer-forum/issue-tracker findings** — not just "is
+  this still correct," but specifically "is there now a newer/better/more-complete way to do this
+  that a stale construct is missing out on." Examples of the kind of thing this is meant to catch:
+  a newly widened set of types accepted by `micropython.const()`, or real `asyncio`-level
+  timeout/cancellation support being added to something that previously had none (e.g.
+  `socket.getaddrinfo()` — see the "wedged I2C bus" hard rule above for its current
+  can't-be-timeout-wrapped status, which is exactly the kind of fact a version bump could change
+  and silently invalidate). This is a standing practice, not a one-time pass — repeat it every time
+  `toolchain/versions.toml`'s MicroPython `ref` moves.
 
 ## Hard rules
 
@@ -193,8 +204,9 @@ README.md for human-facing orientation and BACKLOG.md for the open-questions/def
   case. **The `get_long_block_lock()` shared-lock mechanism itself has been retired** — its one real
   user, `socket.getaddrinfo()`, was replaced by `src/asy_dns_client.py`'s non-blocking resolver (see
   above and BACKLOG.md), so there is no longer a long-blocking network call in this codebase to
-  coordinate against Neopixel timing in the first place. `asy_ntp_client.py`/`neopixel_signal.py` no
-  longer reference the lock at all. If new code reintroduces a genuinely long blocking call, a
+  coordinate against Neopixel timing in the first place. `asy_ntp_client.py`/`src/asy_neopixel_driver.py`/
+  `src/asy_notification_service.py` (the promoted split of the former `neopixel_signal.py` - see
+  below) no longer reference the lock at all. If new code reintroduces a genuinely long blocking call, a
   coordination mechanism would need to be designed fresh — don't assume the old lock still exists or
   try to resurrect/reuse it.
 
@@ -528,9 +540,11 @@ need to go deeper:
   *repairs* an externally-corrupted file from it. Accepted given this device is the file's only
   writer. **Every module with user-settable configuration owns its own schema/config file** — a
   global project convention, not limited to sensor drivers; `asy_wifi_service.py`,
-  `asy_ntp_client.py`, and `neopixel_signal.py` each follow it the same way every sensor `*_Reader`
-  does, replacing the single ad hoc top-level `ConfigManager` grab-bag the deployed codebase still
-  uses. A module whose own REST/caller layer needs to call `write_config()` directly against its
+  `asy_ntp_client.py`, and `src/asy_notification_service.py`'s `NotificationCoordinator` each follow
+  it the same way every sensor `*_Reader` does, replacing the single ad hoc top-level `ConfigManager`
+  grab-bag the deployed codebase still uses. (`src/asy_neopixel_driver.py`'s `NeopixelDriver` is the
+  one deliberate exception - no config schema at all, confirmed by the project owner; see its own
+  entry below.) A module whose own REST/caller layer needs to call `write_config()` directly against its
   `cfgmgr` exposes the schema via a public `self.cfg_schema` attribute (see
   `asy_wifi_service.py`/`asy_ntp_client.py`) rather than the caller reaching into a private
   module-level schema constant — `base_classes.py`'s `SensorReaderConfig` doesn't provide this
@@ -553,6 +567,38 @@ need to go deeper:
   `set_ambient_pressure` is called with `force=True` in the REST handler: resending the same value
   is also the SCD30's documented command to resume continuous measurement after it's been stopped.
   Don't "fix" this into a live BMP388→SCD30 feed; it's intentional, confirmed by the project owner.
+- **`improved-quality/neopixel_signal.py` (LED hardware control + hardcoded CO2/VOC/Humidity
+  threshold monitoring combined in one file) is promoted and split into two `src/` files** - the old
+  file is deleted, `improved-quality/sensortask-wozi.py` wires the two replacements directly.
+  - `src/asy_neopixel_driver.py`'s `NeopixelDriver` — pure LED hardware service: overlay
+    switch/toggle, the dimmed ramp-up/ramp-down signal, and the internal/external
+    (`request_signal()`/`led_signal()`) arbitration for the one shared physical pixel, unchanged
+    from the original file's proven mechanism (`request_signal()` returns once a request is queued,
+    not once its ramp finishes — preserve this exact contract if touching this file again). No
+    config schema at all (confirmed by the project owner) and no namedtuple/measurement data, so it
+    doesn't extend `SensorReaderConfig` — the one exception to this codebase's own `_NAME`/namedtuple
+    pairing convention (see DRIVER_SPEC.md section 2). Also serves `asy_wifi_service.py`'s
+    `LEDControl` Protocol (`ext_led=`) unchanged.
+  - `src/asy_notification_service.py`'s `NotificationSignal` (a plain, dependency-free per-condition
+    data holder) + `NotificationCoordinator(SensorReaderConfig)` (generic threshold-triggered
+    signalling, replacing the old file's hardcoded three-condition logic) — owns sleep-window/
+    interval/`AutoOn`/global `FlashBri`/`FlashDur`, the override/pause countdown, one combined
+    `ConfigManager`, and one combined `PrintLogHistory`(Store) covering its own fields plus every
+    registered `NotificationSignal`'s threshold field. **Staged registration, deferred
+    construction**: `__init__()` only stashes constructor args; `register()` (sync) accepts
+    `NotificationSignal`s in check-order; `finalize()` (sync, exactly once) builds the combined
+    schema and is the single point `self.pr`/`self.cfgmgr` actually come into existence, via a
+    delayed `super().__init__()` call — the whole mechanism achieved with zero changes to
+    `ConfigManager`/`PrintLogHistory`(Store)/`base_classes.py` themselves, relying on the guarantee
+    that the number/order of registered signals stays constant once `finalize()` has run (a one-time
+    boot handshake). `register()`/`finalize()` are sync but can't call the async `self.pr.wrn_s()`
+    directly (and `self.pr` may not exist yet pre-`finalize()`) — rejections are buffered and
+    drained by `monitor_loop()` each cycle instead. `NotificationSignal.color` is a per-channel
+    weight (0/1), not an absolute color — scaled by the shared `FlashBri` at trigger time, which is
+    what makes one global brightness setting actually apply to every registered condition.
+  - Config field names drop the "Led" prefix everywhere (`WarnCO2` not `LedWarnCO2`) — a deliberate
+    wire-format change; the (already known-brittle, deferred — see BACKLOG.md) frontend isn't
+    updated to match yet.
 - In the deployed, pre-refactor codebase (`modules/sensortask-*.py`), the task supervisor is a
   hand-rolled loop inside each file's `main()`, not a shared module — duplicated per device file.
   `improved-quality/sensortask-wozi.py` no longer matches this: its `main()` now calls

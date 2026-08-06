@@ -9,10 +9,10 @@ from asy_fram_manager import AsyFramManager
 from asy_scd30_driver import SCD30_Reader
 from asy_sgp40_driver import SGP40_Reader
 from asy_bmp3xx_driver import BMP3xx_Reader
-from neopixel_signal import Neopixel_Signal
+from asy_neopixel_driver import NeopixelDriver
+from asy_notification_service import NotificationCoordinator, NotificationSignal
 from asy_wifi_service import asy_conn_time
 from asy_ntp_client import asy_ntp_client
-from config_manager import ConfigManager
 from microdot import Microdot, send_file, Request, Response
 from machine import Timer, WDT
 from micropython import const
@@ -70,15 +70,25 @@ async def sgp_comp_callback() -> List[float | None]:
         return [None, None]
 
 
-async def airqual_meas_callback() -> List[int | float | None]:
+async def co2_value_callback() -> int | float | None:
     scd_data = await scd_reader.get_data()
+    if scd_data is None or scd_data.CO2 is None:
+        return None
+    return float(scd_data.CO2)
+
+
+async def voc_value_callback() -> int | float | None:
     sgp_data = await sgp_reader.get_data()
-    if scd_data is None or sgp_data is None:
-        return [None, None, None]
-    try:
-        return [float(scd_data.CO2), float(scd_data.Hum), int(sgp_data.VOC)]
-    except:
-        return [None, None, None]
+    if sgp_data is None or sgp_data.VOC is None:
+        return None
+    return int(sgp_data.VOC)
+
+
+async def hum_value_callback() -> int | float | None:
+    scd_data = await scd_reader.get_data()
+    if scd_data is None or scd_data.Hum is None:
+        return None
+    return float(scd_data.Hum)
 
 
 debug = False
@@ -95,10 +105,17 @@ watchdog = WDT(timeout=8000)
 #   externally-injected cfgmgr, no more get_default_cfg()/_DEFAULT_CONFIG merge step. Every REST
 #   route below that reads or writes a WIFI-schema field (Country/Hostname/SSID/PW/LedWifiOn) goes
 #   through conn.cfgmgr, not a shared cfgmgr - see BACKLOG.md for the full writeup.
-# - Neopixel_Signal (neopixel_signal.py, promoted) now owns its own config_NEOPIXEL.cfg internally
-#   too - every REST route below that reads or writes an LedAuto*/LedWarn* field goes through
-#   pixel.cfgmgr. NTP_Host/NTP_Offset_S/NTP_Interv_H/GMTOffset/DSTOffset already live on
-#   ntp.cfgmgr (asy_ntp_client.py's own schema) - /time/* below goes through that, not a shared one.
+# - Neopixel_Signal (neopixel_signal.py) is now split into two promoted src/ files (see CLAUDE.md/
+#   BACKLOG.md): asy_neopixel_driver.py's NeopixelDriver (pure LED hardware - overlay, dimmed ramp
+#   signal, request_signal()/led_signal() arbitration; deliberately has no config schema of its own,
+#   confirmed by the project owner - neopixel_pin/neopixel_freq/led_overl_bri stay plain constructor
+#   args) and asy_notification_service.py's NotificationCoordinator (generic threshold-triggered
+#   signalling, owns its own config_NOTIFY.cfg via staged registration - see that module's own
+#   docstring). Every REST route below that reads or writes an Auto*/Warn* field now goes through
+#   notify_service.cfgmgr, not pixel.cfgmgr - field names drop the "Led" prefix as a deliberate
+#   wire-format change (WarnCO2 not LedWarnCO2; the frontend isn't updated to match yet, see
+#   BACKLOG.md). NTP_Host/NTP_Offset_S/NTP_Interv_H/GMTOffset/DSTOffset already live on ntp.cfgmgr
+#   (asy_ntp_client.py's own schema) - /time/* below goes through that, not a shared one.
 conn = asy_conn_time(conn_fail_to_hotspot=5, hotspot_time_min=8, max_i2c_err=_MAX_I2C_ERR, debug=debug)
 # max_i2c_err: consecutive-failure-streak threshold, not literally about I2C - conn/ntp neither have
 # an I2C bus, they just inherit this generically-named base_classes.py parameter (see BACKLOG.md).
@@ -144,12 +161,26 @@ sgp_reader = SGP40_Reader(
 # internally (base_classes.py's SensorReaderConfig), so the system cfgmgr isn't passed here.
 bmp_reader = BMP3xx_Reader(i2c1, max_i2c_err=_MAX_I2C_ERR, debug=debug)
 scd_reader = SCD30_Reader(i2c0, 8, trigger_sec=3, max_i2c_err=_MAX_I2C_ERR, debug=debug)
-pixel = Neopixel_Signal(
-    15,
-    airqual_meas_callback,
+pixel = NeopixelDriver(15, fram=fram, debug=debug)
+# Staged registration (see asy_notification_service.py's own module docstring): construct every
+# NotificationSignal, register() each in the same order the original file's hardcoded
+# CO2/VOC/Humidity if-blocks checked them in (this becomes the poll loop's own deterministic check
+# order), then finalize() exactly once - the one point notify_service.pr/notify_service.cfgmgr
+# actually come into existence - before get_task_starters() is ever called on it below.
+notify_service = NotificationCoordinator(
+    pixel.request_signal,
     ntp.cettime,
+    max_i2c_err=_MAX_I2C_ERR,
+    fram=fram,
     debug=debug,
 )
+_FIELD_WARN_CO2: "cm.ConfigSchema" = (("WarnCO2", "int", 1600, 0, 3000, None),)
+_FIELD_WARN_VOC: "cm.ConfigSchema" = (("WarnVOC", "int", 350, 0, 500, None),)
+_FIELD_WARN_HUM: "cm.ConfigSchema" = (("WarnHum", "float", 65.0, 0.0, 100.0, None),)
+notify_service.register(NotificationSignal("WarnCO2", co2_value_callback, _FIELD_WARN_CO2, (1, 0, 0)))
+notify_service.register(NotificationSignal("WarnVOC", voc_value_callback, _FIELD_WARN_VOC, (0, 1, 0)))
+notify_service.register(NotificationSignal("WarnHum", hum_value_callback, _FIELD_WARN_HUM, (0, 0, 1)))
+notify_service.finalize()
 conn.set_ext_led(pixel)  # callback for wifi led
 timers_running = ThreadSafeFlag()
 
@@ -233,17 +264,6 @@ def _cfg_subset(schema: "cm.ConfigSchema", keys: "Tuple[str, ...]") -> "cm.Confi
     # key: a field outside `keys` is reported "Invalid" for that route, never silently applied.
     fields = cm.schema_dict(schema)
     return tuple(fields[k] for k in keys if k in fields)
-
-
-async def _write_cfg_only(write_cfgmgr: "ConfigManager", data: Dict[str, int | float | str | bool | None], cfg_vals: "cm.ConfigSchema") -> "ar.ResponseEnvelope":
-    # For a config owner with no SensorReaderConfig/_set_dict_cfg of its own (Neopixel_Signal) and
-    # no field that needs a live push callback either (every Led* field is polled by pixel's own
-    # task, never pushed immediately) - persists directly through the real ConfigManager instance
-    # the owner already exposes, in the same response-envelope shape handle_set_cmd() produces.
-    persisted, results = await write_cfgmgr.write_config(data, cfg_vals)
-    if not persisted:
-        results = {key: "Failed" for key in data}
-    return ar.make_response(0, result=results)
 
 
 def _time_to_dict(gmt_raw: "Tuple[int, ...] | None") -> Dict[str, int | float | str | None]:
@@ -472,36 +492,25 @@ async def sensor_cmd(request: Request) -> "ar.ResponseEnvelope":
 # LED API
 @app.get("/led/status")  # type: ignore[no-untyped-call, misc]
 async def led_status(request: Request):
-    pausetime = await pixel.get_override_led()
+    pausetime = await notify_service.get_override_led()
     return {"pauseTime": pausetime}
 
 
 @app.get("/led/config")  # type: ignore[no-untyped-call, misc]
 async def led_config(request: Request):
-    cfg_data = await pixel.cfgmgr.get_dict(
-        [
-            "LedAutoOn",
-            "LedAutoOnH",
-            "LedAutoOnM",
-            "LedAutoOffH",
-            "LedAutoOffM",
-            "LedAutoFlashBri",
-            "LedAutoInterv",
-            "LedAutoFlashDur",
-            "LedWarnCO2",
-            "LedWarnVOC",
-            "LedWarnHum",
-        ]
-    )
-    # LedWifiOn lives in conn's own config_WIFI.cfg (asy_wifi_service.py), not pixel's cfgmgr above
-    # - get_dict() returns None for the *whole* call if any requested key is unknown to that
-    # particular ConfigManager, so this needs its own separate read rather than one combined list.
+    # notify_service.get_cfg_schema() already covers its own 8 fields plus every registered
+    # signal's field in one combined schema (see asy_notification_service.py's own docstring on
+    # staged registration + finalize()) - no hardcoded field list to keep in sync anymore.
+    cfg_data = await notify_service.cfgmgr.get_dict(cm.schema_names(notify_service.get_cfg_schema()))
+    # LedWifiOn lives in conn's own config_WIFI.cfg (asy_wifi_service.py), not notify_service's
+    # cfgmgr above - get_dict() returns None for the *whole* call if any requested key is unknown
+    # to that particular ConfigManager, so this needs its own separate read rather than one combined list.
     wifi_led_data = await conn.cfgmgr.get_dict(["LedWifiOn"])
     if cfg_data is not None and wifi_led_data is not None:
         cfg_data["LedWifiOn"] = wifi_led_data["LedWifiOn"]
     else:
         cfg_data = None
-    # LedAutoOn/LedWifiOn are already native bool here (see this file's own top-of-file note) -
+    # AutoOn/LedWifiOn are already native bool here (see this file's own top-of-file note) -
     # get_dict() forwards each config's stored value unconverted, same as every other bool-typed
     # field project-wide; no to_switch() conversion needed or wanted anymore.
 
@@ -547,11 +556,10 @@ async def led_cmd(request: Request) -> "ar.ResponseEnvelope":
             t = fields["t"]
         if invalid:
             return ar.make_response(7, descr="Incomplete or invalid LED command")
-        # led_signal()'s own t parameter is annotated int in neopixel_signal.py despite genuinely
-        # needing a float flash-duration value (0.5-60.0s) - a pre-existing, out-of-scope-to-fix
-        # annotation mismatch in that file, not something this migration introduces or should paper
-        # over by widening this route's own, correctly-typed float validation.
-        if not pixel.led_signal(rgb["r"], rgb["g"], rgb["b"], t):  # type: ignore[arg-type]
+        # asy_neopixel_driver.py's led_signal() correctly types t as float (the old neopixel_signal.py's
+        # t: int annotation mismatch is fixed as part of this file's promotion - see CLAUDE.md) - no
+        # type: ignore needed here anymore.
+        if not pixel.led_signal(rgb["r"], rgb["g"], rgb["b"], t):
             return ar.make_response(8, descr="LED is busy")
         return ar.make_response(0)
 
@@ -561,13 +569,19 @@ async def led_cmd(request: Request) -> "ar.ResponseEnvelope":
         pause_time = fields.get("pauseTime")
         if pause_time is None or cm.type_or_range_error(pause_time, _FIELD_LED_PAUSE_TIME):
             return ar.make_response(9, descr="Invalid Auto LED Pause time")
-        await pixel.set_override_led(pause_time)
+        await notify_service.set_override_led(pause_time)
         return ar.make_response(0, result={"pauseTime": "Valid"})
 
     if data["cmd"] == "setAutoLED":
         if debug:
             print("Received Set Auto LED command.")
-        return await _write_cfg_only(pixel.cfgmgr, fields, pixel.cfg_schema)
+        # Unlike the old Neopixel_Signal (no SensorReaderConfig of its own, hence the now-removed
+        # _write_cfg_only helper), notify_service is a real SensorReaderConfig - handle_set_cmd()
+        # is the standard path every other real Reader route (setSGP/setBMP/setTiming) already
+        # uses. No field here registers a live-push callback (every Auto*/Warn* field is polled by
+        # notify_service's own task each cycle, never pushed immediately), so this is a pure
+        # persist-and-report, identical in effect to the old helper - just via the shared path.
+        return await ar.handle_set_cmd(notify_service, fields, notify_service.get_cfg_schema())
 
     if data["cmd"] == "setWiFiLED":
         if debug:
@@ -613,6 +627,12 @@ async def system_status(request: Request):
     SGP40_ErrCnt = _sgp_err_count if isinstance(_sgp_err_count, int) else 0
     _bmp_err_count = (await bmp_reader.get_error_counter())["BMP3XX"]["ErrCount"]
     BMP388_ErrCnt = _bmp_err_count if isinstance(_bmp_err_count, int) else 0
+    # notify_service (asy_notification_service.py) has real, loggable failure paths of its own
+    # (get_value callback exceptions, threshold config read failures, request_signal_cb failures,
+    # local_time_callback failures - errno 1-4) that the old Neopixel_Signal never had (bare
+    # PrintLog, no counting at all) - surfaced here the same way every sibling driver already is.
+    _notify_err_count = (await notify_service.get_error_counter())["NOTIFY"]["ErrCount"]
+    NOTIFY_ErrCnt = _notify_err_count if isinstance(_notify_err_count, int) else 0
     # sysfunct.get_error_counter()'s "Tasks" log now supersedes the old hand-rolled
     # task_error_counter/last_task_err LockedCounter/LockedValue pair, once main() switched to the
     # real, tested start_and_check_tasks() supervisor - same dict shape every *_Reader already uses.
@@ -631,6 +651,7 @@ async def system_status(request: Request):
         or (BMP388_ErrCnt > 0)
         or (SGP40_ErrCnt > 0)
         or (Task_ErrCnt > 0)
+        or (NOTIFY_ErrCnt > 0)
     )
     system_data = {
         "Sys_Uptime": await sysfunct.get_uptime(),
@@ -646,6 +667,7 @@ async def system_status(request: Request):
         "SGP40_Restore_TS": sgpres,
         "FRAM_ErrCnt": FRAM_ErrCnt,
         "BMP388_ErrCnt": BMP388_ErrCnt,
+        "NOTIFY_ErrCnt": NOTIFY_ErrCnt,
     }
     return system_data
 
@@ -692,13 +714,10 @@ async def main():
         + sgp_reader.get_timer_starters()
     )
 
+    task_starters += pixel.get_task_starters() + notify_service.get_task_starters()
+
     task_starters += [
         sysfunct.start_asy_uptime_counter,
-        pixel.start_asy_neopixel_led_overl,
-        pixel.start_asy_ext_cmd_watcher,
-        pixel.start_asy_neopixel_signal,
-        pixel.start_asy_auto_override,
-        pixel.start_asy_airquality_signal,
         conn.start_asy_wlan_connect,
         ntp.start_asy_ntp_client,
         ntp.start_asy_ntp_refresh,
