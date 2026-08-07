@@ -59,6 +59,29 @@ reference), confirmed by reading every `import`/`from` statement in `src/` this 
 good news for the eventual rewrite: the dependency graph is already a clean DAG at the Python-import
 level, and the *runtime* object graph above is the only thing a rewrite needs to reproduce.
 
+## New structural fallout from AUDIT_PLAN.md's resolved `ConfigManager` setup()-ripple decision
+
+The owner resolved (see `AUDIT_PLAN.md`'s Open Decisions Log, Clusters 2/3/7/9) to extend the
+sync-`__init__`/async-`setup()` readiness-gate scheme up through `ConfigManager` →
+`SensorReaderConfig` → every concrete `SensorReaderConfig` subclass. Concretely, this means
+`sensortask-wozi.py`'s construction sites for `bmp_reader` (`BMP3xx_Reader`), `sgp_reader`
+(`SGP40_Reader`), and `notify_service` (`NotificationCoordinator`) each need an added
+`await x.setup()` call after construction — `scd_reader` (`SCD30_Reader`) and `pixel`
+(`NeopixelDriver`) are exempt (plain `SensorReader` subclasses, no `ConfigManager`).
+
+**This breaks a load-bearing assumption of the current construction order**: every step in "Current
+construction order" below is a plain, synchronous, module-level statement today. The moment any one
+of them needs `await`, the whole sequence (or at least everything from the first `await`ed step
+onward) has to run inside an async context — `sensortask-wozi.py` can no longer be a flat sequence of
+top-level statements the way it is now. This audit doesn't need to resolve *how* Stage 1's rewrite
+handles that (out of scope — Stage 1 itself is a later session's job), but Stage 1 must not be
+blindsided by it: whatever shape the rewrite takes (an `async def main()` wrapping construction, a
+staged boot sequence, etc.), it needs to preserve the FRAM chunk-order determinism rule
+(`AUDIT_PLAN.md`'s "FRAM chunk determinism rule") across that change — an `await`-ed setup step is
+still a single, unconditional, deterministic point in the sequence, so the rule itself doesn't break,
+but it's worth being explicit that "deterministic" now has to be verified across an async sequence,
+not just a synchronous one.
+
 ## Already-found gaps in the current file (mechanical fixes, allowed now per owner authorization — no full promotion)
 
 - Three `# TODO` None-handling gaps: `/net/config`, `/time/config`, `/led/config` GET handlers

@@ -478,22 +478,21 @@ work and sets `self.valid` on completion, exactly like `FRAM_SPI.setup()`/`SPIDe
 already do; **every** genuine error path in that logic (not just the subset that happened to already
 be `async def`) uses real `err_s`/`wrn_s` with its own errno/wrnno; `get_error_counter()` exists and
 returns the same dict shape `get_log()` already returns elsewhere; the one current call site
-(`base_classes.py`'s `SensorReaderConfig.__init__`) passes `name` instead of `self.pr` *and* is
-updated, as part of *this* cluster (not deferred to Cluster 3), to no longer expect `self.valid` to
-be reliably known immediately after construction — see the new open decision below on how far that
-ripples; the owner-side cross-reference logging line (Cluster 3's job, verified here too) actually
-appears paired with each `ConfigManager` log line in a real run; `lint.sh`/`typecheck.sh`/`test.sh`
-green; every existing `config_manager` test passes unchanged or is mechanically extended for the
-`name`-instead-of-`logger` signature change and the new `setup()` call; no test dropped.
+(`base_classes.py`'s `SensorReaderConfig.__init__`) passes `name` instead of `self.pr` as part of
+*this* cluster (not deferred to Cluster 3, to keep the build green the moment this cluster lands —
+see Cluster 3); the owner-side cross-reference logging line (Cluster 3's job, verified here too)
+actually appears paired with each `ConfigManager` log line in a real run; `lint.sh`/`typecheck.sh`/
+`test.sh` green; every existing `config_manager` test passes unchanged or is mechanically extended
+for the `name`-instead-of-`logger` signature change and the new `setup()` call; no test dropped.
 
 **External references**: none — pure internal Python/MicroPython logic, no hardware/protocol
 dependency. Standing MicroPython-currency check only (confirm `json`/file-I/O idioms used here
 haven't been superseded between 1.26 and the refactor's target version — no discrepancy expected,
 not previously flagged as one).
 
-**Status**: `[ ]` not started. Depends on Cluster 1. Design finalized (option 3, above) — not
-blocked on a decision anymore, but see the new open decision logged below: how far the resulting
-"construction no longer means ready" change ripples into `base_classes.py`/every driver.
+**Status**: `[ ]` not started. Depends on Cluster 1. Design finalized (option 3, above); the ripple
+question is also resolved now (owner: extend the pattern upward — see Open Decisions Log and Cluster
+3) — no longer blocked on anything, but Cluster 3's own scope grew as a direct result: see there.
 
 ## Cluster 3 — `base_classes.py`
 
@@ -504,7 +503,9 @@ use the owning instance's name automatically (they already call `self.pr.*`, so 
 out of Cluster 1's change for free — verify, don't assume); add the caller-side cross-reference
 logging Cluster 2 needs (a line logged via `self.pr` whenever `_get_mgr_cfg`/`_set_mgr_cfg`
 actually calls into `self.cfgmgr`, so it pairs with `ConfigManager`'s own line for a human/future-
-rsyslog reader).
+rsyslog reader); **give `SensorReaderConfig` its own `async def setup()`** (owner-resolved scope
+addition — see Open Decisions Log) that awaits `self.cfgmgr.setup()`, extending the project-wide
+readiness-gate scheme one level up instead of carving out a `ConfigManager`-only exception.
 
 **Already read in full this session** — concrete plan:
 
@@ -528,15 +529,28 @@ rsyslog reader).
   2 itself (to keep the build green the moment Cluster 2 lands, since it's the one real call site
   for a signature Cluster 2 is changing), not deferred here. Cluster 3's own job on this line is only
   the `super().__init__(..., name=name)` forward.
-- **New consequence of Cluster 2's resolved async-`setup()` redesign, found during this pass — not
-  yet a decision, see "Open decisions" below**: once `ConfigManager` needs `await cfgmgr.setup()`
-  before `self.valid` is trustworthy, `SensorReaderConfig.__init__` (itself synchronous, calling
-  `ConfigManager(...)` synchronously today) can no longer treat config data as ready immediately
-  after construction either. This means the same sync-`__init__`/async-`setup()` split likely needs
-  to extend one level up, to `SensorReaderConfig` itself — and potentially, transitively, to every
-  concrete `*_Reader`/`*Config` subclass that currently assumes its config is valid right after
-  `__init__` returns. This is a real scope question for Cluster 3, not a mechanical detail — logged
-  as a new open decision below rather than resolved here.
+- **Resolved consequence of Cluster 2's async-`setup()` redesign** (owner decision: extend the
+  pattern upward, not carve out an exception — see Open Decisions Log): `SensorReaderConfig` gains
+  its own `async def setup(self) -> None: await self.cfgmgr.setup()`, following the exact same
+  sync-`__init__`/async-`setup()` shape as `FRAM_SPI`/`SPIDevice`. `SensorReaderConfig.__init__`
+  itself stays synchronous (it only constructs `self.cfgmgr = ConfigManager(...)`, cheap and
+  non-blocking, matching `ConfigManager.__init__`'s own new stash-only shape) — the new `setup()` is
+  the only place anything is `await`ed. **Scope, precisely**: this new `setup()` is needed on every
+  concrete `SensorReaderConfig` subclass — confirmed today that's `BMP3xx_Reader`, `SGP40_Reader`,
+  `NotificationCoordinator` (each has a real config schema) — but **not** on plain `SensorReader`
+  subclasses with no `ConfigManager` at all (`SCD30_Reader`, `NeopixelDriver` — see
+  `WIRING_CONTRACT.md`/CLAUDE.md for why each of those two is exempt). Each affected subclass's own
+  cluster (7 for the two drivers, 9 for `NotificationCoordinator`) is responsible for making sure its
+  own construction site in `sensortask-wozi.py` actually calls `await x.setup()` — that's new scope
+  for those clusters, not just this one. The structural fallout for `sensortask-wozi.py` itself
+  (today's module-level construction is fully synchronous, and can't stay that way once any
+  construction step needs an `await`) doesn't need resolving in this audit — Stage 1's real rewrite
+  is out of scope — but is recorded in `WIRING_CONTRACT.md` so Stage 1 isn't blindsided by it.
+  `NotificationCoordinator` specifically needs one more hop worth flagging for Cluster 9: its
+  existing `register()`/`finalize()` staged-construction is sync (forced by
+  `sensortask-wozi.py`'s non-async caller) and calls a deferred `super().__init__()` — that part is
+  unaffected, but `NotificationCoordinator` still needs its own `setup()` (inherited or overridden)
+  actually invoked, after `finalize()`, wherever `sensortask-wozi.py` ends up calling it.
 - `_error_check(results, name, condition=True)` — the `name` parameter is used exactly once, to
   build `name + " Fehlerzähler erhöht auf"`/`name + " Maximale Fehleranzahl erreicht!"` (string
   concatenation, a different shape from every other file's `(self.name, "message")` positional
@@ -562,22 +576,26 @@ rsyslog reader).
 
 **Quality measure**: `SensorReader.__init__` accepts `name: str = ""` (transitional default, not
 required — see the correction above) and `logger: PrintLog | None = None`, reusing a passed logger
-instead of constructing a fresh one;
-`SensorReaderConfig.__init__` forwards its existing `name` both to `super().__init__()` and into
-`ConfigManager`'s new `name` parameter (Cluster 2); `_error_check`'s `name` parameter is removed
+instead of constructing a fresh one; `SensorReaderConfig.__init__` forwards its existing `name` to
+`super().__init__()` (the separate `ConfigManager` call-site swap is Cluster 2's own job, already
+done by the time this cluster lands — see there); `SensorReaderConfig` gains a working
+`async def setup()` that awaits `self.cfgmgr.setup()`; `_error_check`'s `name` parameter is removed
 only after every current call site is individually confirmed to pass exactly its own `_NAME` (not
-just assumed); the six identified `err_s`/`wrn_s` calls in `_get_dict_cfg`/`_set_dict_cfg`/
+just assumed); the nine identified `err_s`/`wrn_s` calls in `_get_dict_cfg`/`_set_dict_cfg`/
 `_recover_failed_push` are confirmed to carry the right name with zero code change; a
 cross-reference logging line is added at each real `self.cfgmgr` access point in `_get_mgr_cfg`/
 `_set_mgr_cfg`; `lint.sh`/`typecheck.sh`/`test.sh` green; every current subclass across `src/`
-(every `*_Reader`) still constructs successfully once its own cluster updates its call site; no
-test dropped.
+(every `*_Reader`) still constructs successfully once its own cluster updates its call site, and
+every `SensorReaderConfig` subclass specifically (`BMP3xx_Reader`/`SGP40_Reader`/
+`NotificationCoordinator`) is confirmed to need its own `await x.setup()` added at its
+`sensortask-wozi.py` construction site once its own cluster lands; no test dropped.
 
 **External references**: none beyond the standing MicroPython-currency check already covered by
 CLAUDE.md's "Platform target" section (`asyncio.Lock`/`Event` usage in this file, already current
 as of the last check — re-confirm only if `toolchain/versions.toml`'s pin has moved since).
 
-**Status**: `[ ]` not started. Depends on Clusters 1-2.
+**Status**: `[ ]` not started. Depends on Clusters 1-2. Scope grew (owner-approved) to include
+`SensorReaderConfig.setup()` — see above.
 
 ## Cluster 4 — `asy_i2c_driver.py`, `asy_spi_driver.py`
 
@@ -728,17 +746,23 @@ this line, added per the roadmap table), 1, 3-4.
 **Goal**: strip manual `_NAME` arguments (name now automatic); close out Cluster 4's bus-layer
 upstream-coverage verification from the caller side; re-verify FRAM determinism for
 `SGP40_Reader`'s VOC-backup chunk and any `PrintLogHistoryStore` instance; German-language log
-strings → English.
+strings → English. **New, owner-approved scope**: `BMP3xx_Reader` and `SGP40_Reader` (both real
+`SensorReaderConfig` subclasses, per Cluster 3's resolved setup()-ripple decision) need their
+`sensortask-wozi.py` construction sites updated to `await` the new `setup()` — check first whether
+either driver already defines its own async setup/init method (e.g. for hardware init) that the
+inherited `SensorReaderConfig.setup()` should be unified with rather than duplicated; don't assume a
+brand-new, separate call is right without checking the real file.
 
 **All three files now read in full this session** (correcting the earlier grep-only estimates):
 
 - **German-string count was significantly undercounted** — the original grep only searched a fixed
   word list and missed common phrases. Real counts: `asy_bmp3xx_driver.py` — "gelesen", "Daten
   gespeichert" (2, not 1). `asy_scd30_driver.py` — "gelesen", "Daten gespeichert" (2, not 1), plus
-  one German *code comment* (line 300: "CO2 Sensor IRQ triggern falls es nicht läuft...") — worth
-  a top-level question at Cluster 10 on whether English-standardization extends to comments or only
-  logged strings, since the original decision ("switch to English... print strings") only said
-  strings explicitly. `asy_sgp40_driver.py` — roughly 26 German phrases (backup/restore/reset
+  one German *code comment* (line 300: "CO2 Sensor IRQ triggern falls es nicht läuft..."). **Owner
+  decision**: English-standardization scope extends to comments too, not just logged strings —
+  translate this comment as part of Cluster 7's own SCD30 work below, not deferred to Cluster 10; if
+  any other German code comment turns up elsewhere in `src/` during execution, the same call applies
+  there too. `asy_sgp40_driver.py` — roughly 26 German phrases (backup/restore/reset
   messages throughout `_check_storage`/`_read_sgp`/`_run_restore`/`_run_backup`), not 13. Re-sweep
   properly (read the whole file, not a fixed grep word list) when each file's cluster actually
   executes — don't trust the old counts as a checklist.
@@ -762,10 +786,11 @@ accidental overlap, though they're different `name`s/logger instances so numeric
 drivers is fine by design — only *within* one driver's own numbering does it matter).
 
 **Quality measure**: manual `_NAME` arguments stripped from every `err_s`/`wrn_s`/`evt`/`one`/`all`/
-`get_log()` call site in all three files; every German string (BMP3xx: "gelesen", "Daten
-gespeichert"; SCD30: same two plus the line-300 code comment, pending Cluster 10's comments-in-scope
-decision; SGP40: ~26 phrases across `_check_storage`/`_read_sgp`/`_run_restore`/`_run_backup`)
-replaced with an equivalent English string, no meaning lost; Cluster 4's bus-layer upstream-coverage
+`get_log()` call site in all three files; every German string *and* the one known German code
+comment (BMP3xx: "gelesen", "Daten gespeichert"; SCD30: same two strings plus the line-300 comment —
+comments confirmed in scope, owner decision; SGP40: ~26 phrases across
+`_check_storage`/`_read_sgp`/`_run_restore`/`_run_backup`) replaced with an equivalent English
+version, no meaning lost; Cluster 4's bus-layer upstream-coverage
 check closed from this side (every `I2CDevice` call confirmed wrapped and logged at this layer);
 FRAM determinism re-confirmed for `SGP40_Reader`'s VOC-backup chunk; each driver's existing
 errno/wrnno ranges (BMP3xx 10-21, SCD30 10-24, SGP40 10-18/10-14) re-confirmed internally consistent
@@ -847,7 +872,12 @@ issue-tracker finding has landed since the last check, not a fresh investigation
 **Goal**: strip manual `_NAME` arguments; re-verify FRAM determinism for every `fram=`-constructed
 instance here (`NeopixelDriver`, `NotificationCoordinator`, `SystemService`); confirm no German
 strings remain; add `system_service.py`'s missing `_NAME` constant (see "Logging & naming scheme"
-above — it's one of the files with zero identifying calls today).
+above — it's one of the files with zero identifying calls today). **New, owner-approved scope**:
+`NotificationCoordinator` (a real `SensorReaderConfig` subclass, per Cluster 3's resolved
+setup()-ripple decision) needs its own `setup()` actually invoked somewhere after its existing sync
+`register()`/`finalize()` staged construction — check how that interacts with the deferred
+`super().__init__()` call inside `finalize()` before assuming the two mechanisms compose cleanly;
+update its `sensortask-wozi.py` construction site to `await` it once the design is confirmed.
 
 **All three files now read in full this session** (correcting the earlier grep-only estimates):
 
@@ -1089,33 +1119,24 @@ fixes, specifically so it would validate the corrected state rather than redisco
 
 ## Open decisions log
 
-**One outstanding open decision, found during this session's completeness/consistency pass** (not
-resolved here — genuinely architectural, needs owner input per the standing "escalate top-level
-decisions" agreement):
+No outstanding open decisions right now.
 
-- **How far does `ConfigManager`'s new async-`setup()` requirement ripple upward?** Cluster 2's
-  resolved design (below) means `self.valid` is no longer reliably known immediately after
-  `ConfigManager.__init__()` returns — a caller must `await cfgmgr.setup()` first.
-  `base_classes.py`'s `SensorReaderConfig.__init__` constructs a `ConfigManager` synchronously today
-  and is the one real call site. What's to decide:
-  1. **Give `SensorReaderConfig` its own `async def setup()`** (same sync-`__init__`/async-`setup()`
-     split, one level up) that awaits `cfgmgr.setup()`. Consistent with the project-wide readiness-
-     gate scheme, but every concrete `*_Reader`/`*Config` subclass across Clusters 6-9 then also
-     needs an explicit `await`ed setup call added wherever it's constructed in
-     `sensortask-wozi.py` — a real, multi-file blast radius beyond what those clusters currently
-     scope for (they currently assume only naming/logging changes, not a new lifecycle step).
-  2. **`SensorReaderConfig.__init__` awaits `cfgmgr.setup()` itself via a different mechanism**
-     (e.g. only if it can be structured so construction stays effectively synchronous from the
-     caller's perspective) — needs a concrete design, not yet sketched; unclear if MicroPython's
-     asyncio gives a clean way to do this without turning `__init__` itself into something
-     `async`, which Python's object model doesn't support directly.
-  3. **Keep `ConfigManager.__init__` doing its own synchronous best-effort load** (today's shape)
-     and only add the async `setup()` as an *additional*, optional re-validation entry point,
-     dropping the "genuinely awaitable `__init__`-time failures" goal rather than chasing it fully.
-     Smallest blast radius, but doesn't fully deliver Cluster 2's own stated goal.
-  Consequence either way: this changes Cluster 2's real scope (and possibly Clusters 3/6-9's) more
-  than the "logging/naming only, no behavior change" framing those clusters currently carry — worth
-  the owner's explicit call before Cluster 2 is actually executed, not just before Cluster 10.
+**Resolved — `ConfigManager`'s async-`setup()` ripple (owner decision: extend the pattern
+upward)**: `SensorReaderConfig` gains its own `async def setup()` (same sync-`__init__`/
+async-`setup()` split, one level up) that awaits `self.cfgmgr.setup()`, keeping the project-wide
+readiness-gate scheme consistent rather than carving out a one-off exception for `ConfigManager`.
+**Accepted consequence, scoped precisely** (see Cluster 3 for the concrete design, Clusters 7-9 for
+where it lands, `WIRING_CONTRACT.md` for the wiring-level fallout): every concrete
+`SensorReaderConfig` subclass's own construction site in `sensortask-wozi.py` needs an added, awaited
+`await x.setup()` call — this affects `BMP3xx_Reader`/`SGP40_Reader`/`NotificationCoordinator`
+(confirmed `SensorReaderConfig` subclasses, i.e. ones with a real config schema) but **not**
+`SCD30_Reader`/`NeopixelDriver` (confirmed plain `SensorReader` subclasses with no `ConfigManager` at
+all — see CLAUDE.md's own note on `NeopixelDriver`'s deliberate no-config-schema exception and
+`WIRING_CONTRACT.md`'s note on `SCD30_Reader`'s on-sensor-only params). The bigger structural
+consequence: `sensortask-wozi.py`'s current module-level construction sequence is entirely
+synchronous top-to-bottom; it can no longer stay that way once any construction step needs an
+`await`. This doesn't need resolving now — Stage 1's actual rewrite is out of this audit's scope —
+but it must be recorded so Stage 1 isn't blindsided by it; carried into `WIRING_CONTRACT.md` below.
 
 **Resolved**: `config_manager.py`'s `__init__`-time errors (Cluster 2) — option 3 chosen (move the
 loading/validation logic into an async `setup()`), now backed by real, already-proven precedent
@@ -1123,8 +1144,10 @@ loading/validation logic into an async `setup()`), now backed by real, already-p
 being a speculative redesign — see "Standing conventions"'s readiness-gate scheme above for the
 full, harmonized rule this now follows, including the correction that `ConfigManager` keeps its
 existing sentinel-returning (never-raises) failure reporting unchanged — only *when* the work runs
-moves, not *how* failure is reported. **The ripple-effect question above is new and separate from
-this resolution — the "move work into `setup()`" decision itself is not being reopened.**
+moves, not *how* failure is reported.
+
+**Resolved**: English-standardization scope (Cluster 7) — extends to code comments, not just logged
+strings; see Cluster 7's own SCD30 entry.
 
 New decisions get logged here, batched 5-10 at a time, framed as what's-to-decide/scope/
 consequences, as clusters actually turn them up.
