@@ -107,7 +107,11 @@ Goals/lenses for that pass, in the owner's own framing:
   into one detailed guideline document with no stylistic noise/ambiguity left between files. Blend
   in the existing style-bearing docs rather than leaving them freestanding — pull in the "Recipe
   list" and `DRIVER_SPEC.md` (already confirmed broader than just drivers) as source material, not
-  as documents to keep separately. The result is a single guideline with multiple sections (driver
+  as documents to keep separately. **"Recipe list" is currently a dead reference** — checked the
+  full repo history (`git log --all -S "Recipe list"`), no file by that name or anything close to
+  it exists or ever existed. Flagged during the doc-scatter cleanup pass rather than silently
+  dropped or guessed at; needs the project owner to say what it's meant to point to before this
+  item can actually pull it in. The result is a single guideline with multiple sections (driver
   creation as one of them, but several more — general module structure, error handling, config
   schema conventions, comment/docstring length, etc.), detailed enough to make all project code
   harmonic and optimal, and **replaces** both the recipe list and `DRIVER_SPEC.md` (their content

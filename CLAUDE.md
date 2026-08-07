@@ -1,7 +1,9 @@
 # CLAUDE.md
 
 Operating constraints and architecture reference for AI sessions working in this repo. See
-README.md for human-facing orientation and BACKLOG.md for the open-questions/deferred-work list.
+README.md for human-facing orientation, and README.md's "Further reading" section for the
+complete map of every other supporting doc in the repo (BACKLOG.md's open-questions/deferred-work
+list included) — that section is the single place the list is kept, not duplicated here.
 
 ## Datasheets
 

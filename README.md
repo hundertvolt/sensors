@@ -323,9 +323,51 @@ non-gating, `continue-on-error: true` steps:
 
 ## Further reading
 
-- **CLAUDE.md** — AI-session operating constraints and architecture reference.
-- **BACKLOG.md** — active open questions and not-yet-done work; see its own opening paragraph for
-  the full scope. Resolved items move into this file or CLAUDE.md instead of staying there.
+Every supporting doc in the repo, in one place — added to as a first pass at pulling scattered
+specs/guidelines into a single map rather than leaving them locatable only by cross-reference.
+When a new doc is added, add it here too instead of letting the map go stale again.
+
+**Standing operating docs** (permanent, kept current):
+
+- **CLAUDE.md** — AI-session operating constraints and the deep architecture reference; start here
+  for anything about how this codebase actually works or how AI sessions should operate in it.
+- **BACKLOG.md** — active open questions, not-yet-done refactor targets, and deferred/out-of-scope
+  work; see its own opening paragraph for the full scope. Resolved items move into this file or
+  CLAUDE.md instead of staying there — it's working memory, not a changelog.
+
+**Standing specs** (permanent, code-facing):
+
 - **DRIVER_SPEC.md** — the shared sensor driver architecture/interface spec extracted from the
-  three drivers already in `src/`; what a new driver's code should look like, given a datasheet
-  and the developer's own design decisions.
+  three drivers already in `src/`: what a new driver's code should look like (layering, naming,
+  error handling, config schema, ...), given a datasheet and the developer's own design decisions.
+  Despite the name, its own opening note says it's broader than drivers alone — the shared
+  infrastructure classes it builds on (`base_classes.py`, `config_manager.py`, `print_log.py`,
+  `system_service.py`) apply beyond sensor drivers too.
+- **`src/README.md`** — the checklist for "is this file good enough to move into `src/`"
+  (correctness, exception-safety, typing, API consistency, ...) — a different question from
+  `DRIVER_SPEC.md`'s "what shape should the code take"; the two are meant to be read together for
+  a new driver, and each cross-references the other.
+- **`tests/README.md`** — why unit tests run under a real MicroPython Unix-port interpreter rather
+  than pytest/CPython, how to run them, the raw-bus-transaction mocking boundary, and the coverage
+  pipeline.
+- **`toolchain/README.md`** — how the MicroPython/pico-sdk/picotool build-environment installer
+  works, why it isn't just `apt install`, environment isolation, and what verification evidence
+  already exists for it.
+
+**Temporary planning docs** (deleted once their purpose is served — not meant to accumulate):
+
+- **AUDIT_PLAN.md** — the master action list for the planned full `src/` audit (see BACKLOG.md's
+  "Planned: full `src/` audit"): Definition of Done, per-cluster goals/quality measures, and the
+  standing conventions settled during pre-audit planning. Deleted once the audit is agreed done;
+  anything permanent it settles migrates into CLAUDE.md/README.md/DRIVER_SPEC.md first.
+  **Eventually supersedes both `DRIVER_SPEC.md` and `src/README.md`**, per its own Cluster 10 goal
+  of consolidating them into one style guideline — not done yet, tracked there, not here.
+- **WIRING_CONTRACT.md** — seed document for the eventual real rewrite of
+  `improved-quality/sensortask-wozi.py`'s construction sequence (the audit's "Stage 1," out of the
+  audit's own scope): real FRAM-chunk construction order, the constructor-injection dependency
+  graph between modules, and mechanical gaps already found. Deleted once that rewrite lands.
+
+**Known gap**: BACKLOG.md's "Refactor targets not yet done" section references a "Recipe list" as
+existing style-bearing source material to fold into the eventual consolidated guideline alongside
+`DRIVER_SPEC.md` — no file by that name (or close to it) exists anywhere in the repo's history.
+Flagged, not resolved; needs the project owner to say what it's meant to point to.
