@@ -78,7 +78,8 @@ if the stub-file indirection itself becomes annoying, not done as part of this c
 ## Table of contents
 
 - **Part A — Repository & Architecture Overview**: repository layout, architecture at a glance,
-  refactor status.
+  refactor status, the deep module-by-module architecture reference, the Microdot/REST layer
+  contract, and datasheets.
 - **Part B — Toolchain & Build**: the MicroPython/pico-sdk/picotool/cross-compiler installer, and
   building this project's own firmware.
 - **Part C — Sensor Driver Architecture Specification**: the shared contract a new sensor driver
@@ -112,6 +113,7 @@ python/
 improved-quality/        WIP refactor target (out of scope for day-to-day work; see CLAUDE.md)
 src/                     Files moved out of improved-quality/ once fully reviewed/tested - see
                           Part D below for the promotion checklist
+SPECIFICATION.md         This file - the central specification (repo root)
 DRIVER_SPEC.md           Stub -> Part C below: shared sensor driver architecture/interface spec
 tests/                   Unit tests for src/, run under a real MicroPython interpreter - see
                           Part E below
@@ -1990,10 +1992,10 @@ otherwise reach a math-domain error inside it.
 
 # Part F — Platform Target & MicroPython Runtime Facts
 
-Folded in from `CLAUDE.md`'s "Platform target" section (and the genuinely spec-shaped items from
-its "Hard rules" section) — the load-bearing hardware/runtime constraints referenced throughout
-Parts C-E above. `CLAUDE.md` keeps the original; see this document's front matter for why both
-copies exist.
+Folded in from `CLAUDE.md`'s former "Platform target" section (and the genuinely spec-shaped items
+from its "Hard rules" section) — the load-bearing hardware/runtime constraints referenced
+throughout Parts C-E above. This is now the sole copy; `CLAUDE.md` carries only short pointers to
+this Part — see this document's front matter for that tradeoff.
 
 ## F.1 Core platform facts
 
