@@ -2,10 +2,11 @@
 
 Working document for the full `src/` audit (see BACKLOG.md's "Planned: full `src/` audit" for the
 original goals/lenses this expands on). **Temporary**: this file is deleted once the project owner
-agrees the audit is finished — it is not meant to persist the way CLAUDE.md/README.md/DRIVER_SPEC.md
-do. Anything here that turns out to be a permanent fact worth keeping migrates into those docs
-before this file goes away, matching BACKLOG.md's own "resolved items get pruned, not left to rot"
-rule.
+agrees the audit is finished — it is not meant to persist the way CLAUDE.md/README.md/
+`SPECIFICATION.md` do. Anything here that turns out to be a permanent fact worth keeping migrates
+into those docs before this file goes away, matching BACKLOG.md's own "resolved items get pruned,
+not left to rot" rule. (`DRIVER_SPEC.md` is now a stub pointing into `SPECIFICATION.md` — see a
+later doc-scatter-cleanup pass, folded in mid-audit-planning.)
 
 This file is written to be self-contained: everything decided during the pre-audit planning
 conversation is captured here directly, not referenced back to that conversation.
@@ -64,9 +65,12 @@ item's own "done" note says what was actually checked, not just that related wor
 
 The audit is finished when, for every file in `src/`:
 
-1. It conforms to the eventual consolidated style guideline (the planned successor to
-   `src/README.md`'s checklist + `DRIVER_SPEC.md` — see Cluster 10). Until that guideline exists,
-   "done" means passing `src/README.md`'s full 15-section checklist plus every convention fixed in
+1. It conforms to the eventual consolidated style guideline (Cluster 10's harmonization pass over
+   `SPECIFICATION.md`'s Parts C/D — see Cluster 10; a doc-scatter cleanup already moved
+   `DRIVER_SPEC.md`'s and `src/README.md`'s content there verbatim/unaudited, so Cluster 10 now
+   edits those Parts in place against real per-file findings rather than producing a new merged
+   document). Until that harmonization pass runs, "done" means passing `SPECIFICATION.md` Part D's
+   full 16-section checklist (`src/README.md`'s former content) plus every convention fixed in
    this document.
 2. The project-wide dependency graph stays a clean DAG — no import cycles, verified, not assumed.
 3. Cross-file API shapes (setter/getter contracts, config-schema conventions, the logging/naming
@@ -321,9 +325,11 @@ statements, not assumed. Foundational → dependency clusters → global, per th
 | 9 | `asy_neopixel_driver.py`, `asy_notification_service.py`, `system_service.py` | base_classes, config_manager, print_log, asy_fram_manager |
 | 10 | Global pass | everything |
 
-Cluster 10 covers: style-guideline consolidation (replacing `src/README.md` + `DRIVER_SPEC.md`),
-error-code convention pass 2, `sensortask-wozi.py` mechanical fixes + the full `WIRING_CONTRACT.md`
-study, whole-system integration test scoping, and re-checking every cross-cluster item flagged
+Cluster 10 covers: style-guideline harmonization (editing `SPECIFICATION.md`'s Parts C/D, which
+already hold `DRIVER_SPEC.md`'s/`src/README.md`'s former content verbatim, against real per-file
+findings — not producing a new document), error-code convention pass 2, `sensortask-wozi.py`
+mechanical fixes + the full `WIRING_CONTRACT.md` study, whole-system integration test scoping, and
+re-checking every cross-cluster item flagged
 along the way (bus-layer/UDP/DNS-client upstream-coverage verification, FRAM determinism on every
 touched file).
 
@@ -956,9 +962,12 @@ ready to execute.
 
 ## Cluster 10 — Global pass
 
-**Goal**: style-guideline consolidation (replaces `src/README.md` + `DRIVER_SPEC.md`, folds in both
-plus everything settled in this document); error-code convention pass 2 (assign real numbers using
-the pass-1 inventory, extend `DRIVER_SPEC.md` section 7 with the running list); full
+**Goal**: style-guideline harmonization pass over `SPECIFICATION.md`'s Parts C (driver spec) and D
+(`src/` checklist) — a doc-scatter cleanup already moved `DRIVER_SPEC.md`'s/`src/README.md`'s
+content there verbatim and unaudited (plus everything settled in this document), so this cluster's
+job is editing those Parts in place against real per-file audit findings, not producing a new
+merged file; error-code convention pass 2 (assign real numbers using
+the pass-1 inventory, extend `SPECIFICATION.md` Part C.7 with the running list); full
 `WIRING_CONTRACT.md` study of `sensortask-wozi.py`; whole-system integration test scoping (mirrors
 the real multi-module wiring shape, not just today's pairwise chains); re-confirm every
 cross-cluster item closes cleanly (bus-layer/UDP/DNS-client verification, FRAM determinism,
@@ -971,19 +980,19 @@ readiness-gate question itself is also already resolved — confirmed neither ne
 readiness-gate table — so Cluster 10's job on that specific item is only to re-confirm the
 resolution still holds after every other cluster's edits land, not to reopen it).
 
-**Quality measure**: a single consolidated style-guideline document exists, superseding
-`src/README.md`'s checklist + `DRIVER_SPEC.md`'s architecture spec, incorporating every convention
-fixed in this audit (logging/naming, readiness-gate scheme, FRAM determinism rule, error-code
-convention); `DRIVER_SPEC.md` section 7 carries the full errno/wrnno pass-2 numbering table, real
-numbers assigned per module from the pass-1 inventory already gathered per-cluster above, with no
-unresolved overlap *within* any one module's own range; `WIRING_CONTRACT.md`'s full study is
-complete — the Stage-1 wiring successor's construction order, dependency graph, and every forward
-API note are concretely documented, not just seeded; whole-system integration test scope is written
-down (which multi-module chains need coverage beyond today's pairwise ones); every cross-cluster
-item listed in the Goal above is individually reconfirmed closed, not just listed as expected to be;
-`lint.sh`/`typecheck.sh`/`test.sh` green project-wide; `AUDIT_PLAN.md`/`WIRING_CONTRACT.md` are
-ready for deletion per their own stated temporary-file policy, with every permanent fact already
-migrated into CLAUDE.md/README.md/DRIVER_SPEC.md before deletion.
+**Quality measure**: `SPECIFICATION.md`'s Parts C/D read as one harmonized style guideline,
+incorporating every convention fixed in this audit (logging/naming, readiness-gate scheme, FRAM
+determinism rule, error-code convention) with no cross-file inconsistency left unresolved; Part
+C.7 carries the full errno/wrnno pass-2 numbering table, real numbers assigned per module from the
+pass-1 inventory already gathered per-cluster above, with no unresolved overlap *within* any one
+module's own range; `WIRING_CONTRACT.md`'s full study is complete — the Stage-1 wiring successor's
+construction order, dependency graph, and every forward API note are concretely documented, not
+just seeded; whole-system integration test scope is written down (which multi-module chains need
+coverage beyond today's pairwise ones); every cross-cluster item listed in the Goal above is
+individually reconfirmed closed, not just listed as expected to be; `lint.sh`/`typecheck.sh`/
+`test.sh` green project-wide; `AUDIT_PLAN.md`/`WIRING_CONTRACT.md` are ready for deletion per their
+own stated temporary-file policy, with every permanent fact already migrated into
+CLAUDE.md/README.md/`SPECIFICATION.md` before deletion.
 
 **External references**: current MicroPython/rp2-port documentation and dev-forum/issue-tracker
 findings (standing per-session currency check, CLAUDE.md's own requirement); current
