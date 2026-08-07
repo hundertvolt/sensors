@@ -263,11 +263,62 @@ whatever version each file's patterns predate (per `src/README.md` section 9).
 **Goal**: implement the name-baking change (see "Logging & naming scheme" above) — the foundational
 change every later cluster depends on.
 
-**Quality measure**: `PrintLog.__init__`/subclasses take `name: str`; `get_log()` returns the
-identical dict shape as today sourced from `self.name`; every existing `tests/test_print_log.py`
-test passes (extended, not dropped, for the new required parameter); no other file touched yet.
+**Verified this session** (design trialed, then reverted — code not landed, kept here so execution
+doesn't need to re-derive it):
 
-**Status**: `[ ]` not started.
+- Blast radius is bigger than "print_log.py alone" once actually traced: `get_log()` has 8 external
+  callers today (`asy_bmp3xx_driver.py`, `asy_fram_manager.py`, `asy_notification_service.py`,
+  `asy_ntp_client.py`, `asy_scd30_driver.py`, `asy_sgp40_driver.py`, `asy_wifi_service.py`,
+  `system_service.py`), each still passing an explicit name (`get_log(_NAME)`, `get_log("FRAM")`,
+  `get_log("Tasks")`). Making `name` a required constructor arg is fine (nothing outside this file
+  constructs `PrintLog`/`PrintLogHistory`/`PrintLogHistoryStore` positionally in a way that would
+  collide — checked `src/*.py` and `tests/*.py` directly), but `get_log()` itself must **not**
+  drop its `name` parameter outright or all 8 call sites break immediately, which would blow this
+  cluster's "no other file touched" boundary. Fix: keep `get_log(name: str | None = None)` as a
+  **transitional backward-compatible override** — `None` (the new default for any caller not yet
+  passing one) falls back to `self.name`; an explicit value still works exactly as today. Each of
+  the 8 callers drops its now-redundant explicit argument as part of *its own* cluster (7, 8, 6, 9
+  respectively), not as part of Cluster 1.
+- Same reasoning applies to `name` on the constructors themselves: give `PrintLog.__init__` a
+  default (`name: str = ""`), not a bare required parameter — every other file in `src/` still
+  constructs `PrintLogHistory(history_length, debug)`/`PrintLogHistoryStore(fram, history_length,
+  debug)` positionally without a name until *their own* cluster adds one. Accept the known,
+  temporary cosmetic cost: between Cluster 1 landing and each later cluster passing a real name,
+  console output shows an empty-string prefix (`print("", "message", ...)`) — harmless, self-heals
+  cluster by cluster, not worth engineering around.
+- Concrete signature changes: `PrintLog.__init__(self, level: int | None = None, name: str = "")`,
+  storing `self.name = name`; `err`/`wrn`/`one`/`evt`/`all`/`_diag`/`err_s`/`wrn_s` each change
+  their `print(*args, **kwargs)` call to `print(self.name, *args, **kwargs)`;
+  `PrintLogHistory.__init__`/`PrintLogHistoryStore.__init__` each gain and forward `name: str = ""`
+  to `super().__init__(..., name=name)`.
+- Checked `tests/test_print_log.py` in full: **no existing test asserts on raw `print()` output** —
+  only on `err_count`/`history` contents/`get_log()`'s dict/FRAM byte layout — so prepending
+  `self.name` to every print call is safe and breaks nothing. Only one existing test
+  (`test_get_log_classifies_error_warning_and_clear_entries`) passes `get_log("Sensor")` explicitly
+  — keeps passing unchanged under the backward-compatible design above.
+- New tests to add (trialed, all passed except one — see below): name defaults to `""`; name is
+  stored verbatim when given; `PrintLogHistory`/`PrintLogHistoryStore` forward `name` to the base
+  class; `get_log()` with no argument uses `self.name`; `get_log()` with no argument and no name set
+  falls back to `""`.
+- **One test-authoring mistake found while trialing this** (not a `print_log.py` bug — diagnosed
+  after reverting, worth recording so it isn't repeated): a trial test constructed
+  `PrintLogHistory(history_length=2, name="SGP40")`, called `err_s("e", errno=1)` once, then
+  asserted `get_log()` returns exactly `{"SGP40": {"ErrCount": 1, "ErrNum": [1], "ErrType":
+  ["E"]}}`. That's wrong — the history deque starts pre-filled with `_NO_ERR` entries
+  (`[0, 0]` for `history_length=2`), and one `err_s()` call only overwrites the oldest slot, leaving
+  `[0, 1]` — so the correct expectation is `ErrNum: [0, 1]`, `ErrType: ["N", "E"]` (exactly the same
+  "leftover initial slot" shape the already-existing `test_get_log_classifies_error_warning_and_
+  clear_entries` correctly accounts for). Fix when writing this test for real: either assert the
+  `[0, 1]`/`["N", "E"]` shape, or construct with `history_length=1` so no initial slot survives.
+
+**Quality measure**: `PrintLog.__init__`/subclasses take `name: str = ""`; `get_log()` stays
+backward-compatible via its `name: str | None = None` override, returning the identical dict shape
+as today; every existing `tests/test_print_log.py` test passes unchanged; every new test above
+passes (including the one that failed during the trial — must be root-caused, not just retried);
+no other file touched in this cluster.
+
+**Status**: `[ ]` not started (a full implementation was trialed and reverted this session — see
+above — no code currently landed).
 
 ## Cluster 2 — `config_manager.py`
 
