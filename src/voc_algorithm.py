@@ -171,6 +171,20 @@ class DFRobot_vocalgorithmParams:
 class VOCAlgorithm:
     def __init__(self) -> None:
         self.params = DFRobot_vocalgorithmParams()
+        # Precomputed once for _fix16_exp() - these never change between calls, and it's called
+        # several times per vocalgorithm_process() invocation (see SPECIFICATION.md C.11 point 6).
+        self._exp_pos_values = (
+            self._f16(2.7182818),
+            self._f16(1.1331485),
+            self._f16(1.0157477),
+            self._f16(1.0019550),
+        )
+        self._exp_neg_values = (
+            self._f16(0.3678794),
+            self._f16(0.8824969),
+            self._f16(0.9844964),
+            self._f16(0.9980488),
+        )
 
     def _f16(self, x: float) -> int:
         if x >= 0:
@@ -287,27 +301,15 @@ class VOCAlgorithm:
 
     def _fix16_exp(self, x: float) -> int:
         x = int(x)
-        exp_pos_values = [
-            self._f16(2.7182818),
-            self._f16(1.1331485),
-            self._f16(1.0157477),
-            self._f16(1.0019550),
-        ]
-        exp_neg_values = [
-            self._f16(0.3678794),
-            self._f16(0.8824969),
-            self._f16(0.9844964),
-            self._f16(0.9980488),
-        ]
         if x >= self._f16(10.3972):
             return _FIX16_MAXIMUM
         if x <= self._f16(-11.7835):
             return 0
         if x < 0:
             x = -x
-            exp_values = exp_neg_values
+            exp_values = self._exp_neg_values
         else:
-            exp_values = exp_pos_values
+            exp_values = self._exp_pos_values
         res = _FIX16_ONE
         arg = _FIX16_ONE
         for i in range(0, 4):

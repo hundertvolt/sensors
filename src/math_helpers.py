@@ -28,9 +28,13 @@ def wet_bulb_temperature(temperature: float | None, humidity: float | None) -> f
 
 
 def dew_point(temperature: float | None, humidity: float | None) -> float | None:
-    # Magnus-Tetens dew-point approximation (Sonntag 1990); coeff1/toffs pick the ice- vs
-    # water-phase constants. The two branches are independently-fit curves, not one continuous
-    # formula - they disagree by ~1 degC right at the temperature==0 switch; not a bug.
+    # Magnus-Tetens dew-point approximation; coeff1/toffs pick the ice- vs water-phase constants.
+    # Water branch (temperature >= 0) uses Alduchov & Eskridge's (1996) refit of the Magnus
+    # coefficients (17.625/243.04, re-optimized against reference vapor-pressure data, accurate to
+    # ~0.4% over -40-60 degC) - not Sonntag's own 1990 values (17.62/243.12). Ice branch uses
+    # Sonntag (1990)'s own values (22.46/272.62), which Alduchov & Eskridge's paper doesn't
+    # re-derive. The two branches are independently-fit curves, not one continuous formula - they
+    # disagree by ~1 degC right at the temperature==0 switch; not a bug.
     if temperature is None or humidity is None:
         return None
     if not (-40.0 <= temperature <= 50.0 and 0.1 <= humidity <= 100.0):
