@@ -45,8 +45,12 @@ item's own "done" note says what was actually checked, not just that related wor
 7. `[x]` **Step 6 — external reference material identified per step** — folded into item 2's
    per-cluster edits (each cluster now names its external references, or states none apply) rather
    than tracked as a separate pass.
-8. `[ ]` **Step 10 — owner discussion/feedback checkpoint.** Held only after 2-7 above all close.
-   **Still open — this is the actual next action, not something this session can self-certify.**
+8. `[x]` **Step 10 — owner discussion/feedback checkpoint.** Closed: with items 2-7 all clear, the
+   session confirmed it has no outstanding open decisions and no `[?]`-blocked clusters (the one
+   still-open item on record, the `Timer.init()`/`MemoryError` question, is a technical
+   verification task already correctly scoped into Cluster 10's own execution, not a decision
+   needing owner input) — the project owner reviewed and confirmed this in session. The plan is
+   validated and ready; Cluster 0 execution starts as its own follow-up work.
 
 ## Status legend
 
