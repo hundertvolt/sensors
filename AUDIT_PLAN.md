@@ -326,7 +326,67 @@ above — no code currently landed).
 `errno`/`wrnno` list — new, doesn't exist today), and the caller-side cross-reference logging
 convention (the *owner* logs its own line whenever it accesses the config manager).
 
-**Status**: `[ ]` not started. Depends on Cluster 1.
+**Verified this session** (read the full file — 340 lines, ~29 existing `self.pr.*` call sites, all
+currently tagged only with `self.config_file`, the JSON filename, never a `_NAME`-style constant):
+
+- `ConfigManager.__init__(self, filename, cfg_vals, logger: "PrintLog")` currently receives its
+  *owner's own* `self.pr` directly and reuses it verbatim — this is the one thing that actually
+  changes shape: giving `ConfigManager` its own distinct `"CFGMGR_" + name` identity means it can no
+  longer just reuse whatever `logger` object its owner passes in (that object is the owner's,
+  carries the owner's own name once Cluster 1 lands — reusing it here would mislabel every
+  config-related log line as coming from the owner, not from config management). `ConfigManager`
+  needs to construct its **own** internal `PrintLogHistory` instance from a plain `name: str`
+  parameter instead of receiving an external `logger`. Concretely: replace the `logger: PrintLog`
+  parameter with `name: str`, add `self.pr = PrintLogHistory(name="CFGMGR_" + name)` (in-memory
+  only — no FRAM-backing needed; config read/write failures don't need reboot-survival the way
+  sensor error history does, and `ConfigManager` never receives a `fram=` argument today). The one
+  current call site (`base_classes.py`'s `SensorReaderConfig.__init__`:
+  `ConfigManager(cfg_path + "config_" + name + ".cfg", default_vals, self.pr)`) changes to pass
+  `name` instead of `self.pr`.
+- `ConfigManager` currently has **no `get_error_counter()`/`get_log()`-equivalent method at all** —
+  add one (`async def get_error_counter(self) -> ...: return await self.pr.get_log()`), matching
+  every other module's shape, so its own error history becomes REST-surfaceable someday the same
+  way (ties to the still-open "FRAM-backed error/trace history exposed consistently" goal from
+  BACKLOG.md's original audit list).
+- **Real architectural fork found, needs a decision — see "Open decisions" below**: most of this
+  file's genuinely important error conditions (empty defaults, an invalid default value, a
+  first-time-write failure) happen inside `__init__`, which is synchronous — it cannot `await`, so
+  it can never call the async `err_s`/`wrn_s`. Only the methods that are already `async def`
+  (`_get_values`, `get_dict`, `get_int_values`/`get_float_values`/`get_str_values`/`get_bool_values`,
+  `write_config`) can legitimately gain persisted logging without a bigger redesign.
+- `self.config_file` stays in each message's text as extra detail (which specific file, useful even
+  though `self.name` now also identifies the module) — not worth stripping, harmless and mildly
+  useful for debugging.
+- Provisional severity split for the pass-1 errno/wrnno inventory (final numbers assigned in
+  Cluster 10): genuine errors (`err`→`err_s`, in every already-async method) — "Config is not
+  valid, cannot read!", "Config read error:", "Key X not found, skipping!", "Type/range error in X",
+  "Key X not found in config file, ignoring!", "Error writing config data:". Warnings (`wrn`→`wrn_s`,
+  same constraint) — none of the current `wrn` calls are in an async method today (they're all in
+  `__init__`), so this list is empty until/unless the fork below is resolved in favor of deferred
+  logging.
+
+**Open decision needed**: how to handle `__init__`-time failures under the "add real err_s/wrn_s
+logging" goal, given `__init__` can't await:
+1. **Leave them as-is** — `__init__`-time failures stay non-persisted `err`/`wrn` (console-visible,
+   not counted/retrievable via `get_error_counter()`); only the already-async methods gain real
+   persisted logging. Simple, zero blast radius, but the most consequential failures (a config file
+   that's outright invalid at boot) are exactly the ones that stay uncounted.
+2. **Defer via a buffer, drained at the first real async call** — `asy_notification_service.py`
+   already has a working precedent for this exact "sync method needs to log something async" shape
+   (`register()`/`finalize()` are sync, so real rejections are buffered and drained by
+   `monitor_loop()` each cycle — see that file's own module docstring). `ConfigManager` could buffer
+   `__init__`-time failures the same way, drained the first time any of its async methods runs. More
+   consistent, but adds real state/complexity to a class that's currently simple and synchronous
+   end-to-end, and — unlike `NotificationCoordinator`'s periodic `monitor_loop()` — `ConfigManager`
+   has no natural periodic drain point of its own; it'd have to piggyback on whichever async method
+   the owner happens to call first.
+3. **Bigger redesign**: move the loading/validation logic out of `__init__` into an async `setup()`
+   (matching `PrintLogHistoryStore`'s own pattern) so `__init__`-time failures become genuinely
+   awaitable. Real blast radius — every `ConfigManager` construction site project-wide would need a
+   `await cfgmgr.setup()` added, and `self.valid` would no longer be reliably known immediately after
+   construction, unlike today. Touches far more than this one file.
+
+**Status**: `[ ]` not started. Depends on Cluster 1. Blocked on the decision above.
 
 ## Cluster 3 — `base_classes.py`
 
@@ -334,7 +394,36 @@ convention (the *owner* logs its own line whenever it accesses the config manage
 redundant `name` parameter (verify true redundancy first); thread the config-push/pull methods
 (`_set_mgr_cfg`, `_set_dict_cfg`, `_recover_failed_push`) so their `err_s`/`wrn_s` calls correctly
 use the owning instance's name automatically (they already call `self.pr.*`, so this should fall
-out of Cluster 1's change for free — verify, don't assume).
+out of Cluster 1's change for free — verify, don't assume); add the caller-side cross-reference
+logging Cluster 2 needs (a line logged via `self.pr` whenever `_get_mgr_cfg`/`_set_mgr_cfg`
+actually calls into `self.cfgmgr`, so it pairs with `ConfigManager`'s own line for a human/future-
+rsyslog reader).
+
+**Already read in full this session** — concrete plan:
+
+- `SensorReader.__init__(self, init_data, max_i2c_err, fram=None, history_length=10, debug=None)`
+  gains `name: str` (new, required — every real subclass already has its own `_NAME` to pass) and
+  `logger: PrintLog | None = None` (mirrors `FRAM_SPI`'s existing `logger=` parameter shape). When
+  `logger` is given, reuse it instead of constructing a fresh `PrintLogHistory`/`Store` — the
+  reach-through mechanism for directly-bound sibling objects.
+- `SensorReaderConfig.__init__` already takes `name: str` (currently only used for the config
+  filename) — forward it to `super().__init__(..., name=name)` too, and pass it into
+  `ConfigManager(cfg_path + "config_" + name + ".cfg", name, ...)` per Cluster 2's redesign
+  (replacing the current `self.pr` argument).
+- `_error_check(results, name, condition=True)` — the `name` parameter is used exactly once, to
+  build `name + " Fehlerzähler erhöht auf"`/`name + " Maximale Fehleranzahl erreicht!"` (string
+  concatenation, a different shape from every other file's `(self.name, "message")` positional
+  convention — also needs fixing to match, not just simplifying). Every call site
+  (`self._error_check(results, _NAME)`, one per driver's `read_loop()`) passes exactly its own
+  `_NAME` — never a different name — so dropping the parameter and using `self.pr.err_s("Fehlerzähler
+  erhöht auf", ...)` (name now automatic) is safe. Verify this holds for every current caller before
+  dropping, per the plan's own standing rule, not just assumed from this read.
+- Six `err_s`/`wrn_s` calls in `_get_dict_cfg`/`_set_dict_cfg`/`_recover_failed_push` (lines ~191,
+  194, 200, 203, 280, 293, 317, 347, 360 as read this session) already call `self.pr.err_s(...)`/
+  `self.pr.wrn_s(...)` with no name argument at all — these get the right name for free once
+  Cluster 1 lands, no code change needed here beyond confirming it (these are exactly the methods
+  Cluster 2's cross-reference logging needs a line added to, around the `self.cfgmgr`/`_get_mgr_cfg`/
+  `_set_mgr_cfg` calls specifically).
 
 **Status**: `[ ]` not started. Depends on Clusters 1-2.
 
@@ -343,6 +432,20 @@ out of Cluster 1's change for free — verify, don't assume).
 **Goal**: **no logging added** (reverted — see above). Verify every real caller of `I2CDevice`/
 `SPIDevice` across every current sensor driver and `FRAM_SPI` genuinely wraps and logs each call
 site per `src/README.md` section 2's carve-out instructions. Fix the caller if a gap is found.
+
+**Already read both files in full this session** — the exact surface to verify against every
+caller: `I2CDevice`'s public methods are `get_bits`, `get_register_struct`, `set_bits`,
+`set_register_struct`, `setup`, `readinto`, `write`, `write_then_readinto` (three real callers:
+`asy_bmp3xx_driver.py`, `asy_scd30_driver.py`, `asy_sgp40_driver.py` — Cluster 7).
+`SPIDevice`'s are `write`, `readinto`, `write_readinto`, `setup` (one real caller: `FRAM_SPI` —
+Cluster 6). Confirmed directly: `SPIDevice.write`/`readinto` genuinely cannot raise on rp2 hardware
+(no ACK/NAK concept once the bus is constructed); `write_readinto` only raises a caller-input
+`ValueError` on a buffer-length mismatch, already caught inside `asy_spi_driver.py` itself and
+turned into `None` — so SPI's fault surface is already fully closed *at this layer*, nothing to
+verify upstream for SPI specifically. I2C is the real work: `I2CDevice`'s methods forward straight
+to `machine.I2C`'s own calls, which raise real `OSError` on a hardware fault — every one of the
+eight methods' use across all three sensor drivers needs its call site confirmed inside a
+`try/except` at the Reader layer when Cluster 7 is reached.
 
 **Status**: `[ ]` not started. Depends on Cluster 3. Can't fully close until Cluster 7 (the real
 callers) is also in view.
@@ -353,6 +456,19 @@ callers) is also in view.
 verified single-construction-safe. `asy_dns_client.py` gets no logger (reverted) — same
 upstream-coverage verification as Cluster 4, against `asy_ntp_client.py` (Cluster 8).
 
+**Verified this session — real finding**: `captive_dns.py` doesn't use `PrintLog` at all today.
+`DNSServer`/`DNSQuery` both use a completely different, ad hoc scheme: a plain `debug: bool = False`
+constructor flag gating raw `print(...)` calls directly, not `self.pr`/`PrintLog`'s leveled system
+every other class in `src/` uses. This is a bigger, real inconsistency to fix, not just "add a
+name": `debug` needs to become `debug: int | None` (matching every other class's constructor
+signature, forwarded as `PrintLog`'s level) and every raw `print(...)` call becomes a real
+`self.pr.evt(...)`/`self.pr.err_s(...)`/`self.pr.wrn_s(...)` call through a real `PrintLogHistory`
+instance named `"DNSSRV"`. `DNSQuery` is constructed fresh on every single incoming DNS request
+(inside `DNSServer.run()`'s loop) — same "ephemeral, can't hold its own meaningful history" shape
+already established for `AsyUDPSocket` — so it should receive/reuse `DNSServer`'s own `self.pr`
+reference (passed in as a constructor parameter) rather than getting an independent instance of its
+own.
+
 **Status**: `[ ]` not started. Depends on Cluster 0 (asy_udp_socket), Cluster 3.
 
 ## Cluster 6 — `asy_fram_driver.py`, `asy_fram_manager.py`, `asy_uart_driver.py`
@@ -361,6 +477,34 @@ upstream-coverage verification as Cluster 4, against `asy_ntp_client.py` (Cluste
 precedented, just needs identity). Re-verify the FRAM determinism rule against every current
 chunk-owning caller (see Cluster 7/9 — cross-cluster). `asy_uart_driver.py`: read for style ideas
 now, defer its formal pass to Cluster 10 per the "harmonize late" decision.
+
+**Verified this session** (read `asy_fram_driver.py` in full):
+
+- No structural change needed for the name itself — `FRAM_SPI` already receives `AsyFramManager`'s
+  own shared `self.pr` via its existing `logger: PrintLog` constructor parameter (confirmed:
+  `self.pr = logger`). Once that shared instance gets `name="FRAM"` in `AsyFramManager.__init__`,
+  every one of `FRAM_SPI`'s existing calls (`self.pr.wrn(...)` ×3, `self.pr.err(...)` ×5,
+  `self.pr.evt(...)` ×1, `self.pr.one(...)` ×1) gets the right prefix automatically — zero code
+  change in `asy_fram_driver.py` itself for the naming part.
+- **Real finding, separate from naming**: none of `FRAM_SPI`'s 8 error/warning calls are persisted
+  (`err_s`/`wrn_s`) — they're all non-counted `err`/`wrn`. Genuinely actionable hardware-fault
+  signals live here (WEL latch didn't set/clear, write-protect readback mismatch, device not
+  initialized, address range invalid, lock-timeout on `verify_present()`) — good candidates to
+  upgrade to persisted logging under the "add/complete logging" rule, same errno-space as
+  `AsyFramManager`'s existing `errno=60-88` range (Cluster 10 pass-2 assigns exact numbers, picking
+  up where that range currently ends). All 8 calls are already inside `async def` methods (no
+  `ConfigManager`-style sync-`__init__` constraint here) — nothing blocking this beyond the pass-2
+  numbering itself.
+- `asy_fram_manager.py`: already read most of it via earlier greps this session — `AsyFramManager`
+  constructs `self.pr = PrintLogHistory(history_length, debug)` (in-memory, correctly avoiding a
+  recursive FRAM-into-FRAM dependency for its own log) and already has ~35 `err_s`/`wrn_s`/`evt`/
+  `one`/`all` calls with real `errno=60-88`/`wrnno=60-80` numbering — just needs `name="FRAM"`
+  added to that one constructor call, nothing else.
+- FRAM determinism (see standing rule): `AsyFramManager` and `SGP40_Reader`'s VOC-backup chunk are
+  the two real chunk-owning call sites today (see `WIRING_CONTRACT.md`) — already verified safe
+  this session (both unconditional, once-only, module-level constructions). Re-confirm holds once
+  this cluster's own edits land — a naming-only change shouldn't affect construction order, but
+  verify rather than assume.
 
 **Status**: `[ ]` not started. Depends on Clusters 1, 3-4.
 
@@ -372,7 +516,19 @@ upstream-coverage verification from the caller side; re-verify FRAM determinism 
 strings → English (confirmed count: `asy_sgp40_driver.py` ×13, `asy_bmp3xx_driver.py`/
 `asy_scd30_driver.py` ×1 each).
 
-**Status**: `[ ]` not started. Depends on Clusters 0-4, 6.
+**Existing errno/wrnno inventory** (grepped this session, feeds Cluster 10's pass-1): BMP3xx
+`errno=10-21` (grouped: 10=init, 11-14=config read/write, 15-20=oversampling/filter forwards,
+21=trigger-interval); SCD30 `errno=10-24` (10=init, 11=read, 12=stop-continuous-measurement,
+13-24=per-field get/set forwards in pairs); SGP40 `errno=10-18` + `wrnno=10-14` (10=init,
+11-12=config, 13-18=backup read/write/serialize, `wrnno`=backup-missing/stale conditions). All
+three already follow the shared `errno=10`="init failed" convention — nothing to fix there, just
+confirm it still holds once Cluster 6's FRAM errno range is finalized (no accidental overlap,
+though they're different `name`s/logger instances so numeric overlap across drivers is fine by
+design — only *within* one driver's own numbering does it matter).
+
+**Status**: `[ ]` not started. Depends on Clusters 0-4, 6. A full line-by-line read of these three
+(large — 20-30KB each) is deferred to actual cluster execution; this entry captures what's already
+known from this session's greps, not a substitute for that read.
 
 ## Cluster 8 — `asy_wifi_service.py`, `asy_ntp_client.py`
 
@@ -380,7 +536,18 @@ strings → English (confirmed count: `asy_sgp40_driver.py` ×13, `asy_bmp3xx_dr
 `asy_dns_client.py` upstream-coverage verification from the caller side; German-language log
 strings → English (confirmed count: `asy_wifi_service.py` ×4).
 
-**Status**: `[ ]` not started. Depends on Clusters 0, 2-3, 5.
+**Already read `asy_wifi_service.py`'s constructor in full this session** — confirmed `DNSServer`
+is constructed exactly once inside `asy_conn_time.__init__` (line 106), itself only ever
+instantiated once at module level (see the FRAM determinism verification already done). Existing
+errno/wrnno inventory: `asy_wifi_service.py` `errno=11-18` (11=mode-switch, 12=hotspot-activate,
+13=STA-connect-attempt, 14=STA-poll, 15-16=STA-disconnect/deactivate, 18=disconnect-timeout) +
+`wrnno=1-7` (1-3=missing-config per connection phase, 4-7=WLAN status conditions); `asy_ntp_client.py`
+`errno=11-20` (11=missing-config, 12-13=DNS/address resolution, 14-15=NTP response validation,
+16-17=retry-timer/max-retries, 19=time-calc, 18/20=missing-config-interval-fallback/give-up) +
+`wrnno=1-3` (callback failures: `network_available()`, `get_dns_server()`).
+
+**Status**: `[ ]` not started. Depends on Clusters 0, 2-3, 5. A full line-by-line read of both files
+is deferred to actual cluster execution.
 
 ## Cluster 9 — `asy_neopixel_driver.py`, `asy_notification_service.py`, `system_service.py`
 
@@ -389,7 +556,26 @@ instance here (`NeopixelDriver`, `NotificationCoordinator`, `SystemService`); co
 strings remain (none found in `asy_neopixel_driver.py` this session; `system_service.py` had 3 —
 recheck).
 
-**Status**: `[ ]` not started. Depends on Clusters 1-3, 6.
+**Already read `system_service.py`'s `start_and_check_tasks()`/`start_timers()` in full this
+session** (used to verify the FRAM determinism rule — see above): task restarts only re-invoke an
+already-captured starter callable, never re-run `__init__`, confirmed safe. Existing errno/wrnno
+inventory: `system_service.py` `errno=1-4` (1=NTP-sync-callback, 2=boot-signature-timestamp,
+3=task-starter-failed, 4=task-error-budget-exceeded-rebooting) + `wrnno`=task-restart-per-index
+(`wrnno=n+1`, dynamic per task, not a fixed small set — worth a note in Cluster 10's taxonomy since
+it's a different shape than every other module's fixed wrnno list); `asy_notification_service.py`
+`errno=1-4` (1=value-callback-failed, 2=threshold-config-read-failed, 3=local-time-callback-failed,
+4=request_signal_cb-failed) + `wrnno=1-5`.
+
+**Relevant precedent for Cluster 2's open decision**: `asy_notification_service.py`'s `register()`/
+`finalize()` are sync (can't call async `self.pr.wrn_s()` directly, same shape as
+`config_manager.py`'s sync `__init__` problem) — already solved here via a buffer drained by
+`monitor_loop()` each cycle (see that file's own module docstring). `ConfigManager` has no natural
+periodic loop to drain into, so this precedent doesn't transfer mechanically, but it's the
+concrete existing example option 2 of Cluster 2's decision refers to.
+
+**Status**: `[ ]` not started. Depends on Clusters 1-3, 6. `asy_neopixel_driver.py`/
+`asy_notification_service.py` full reads deferred to actual cluster execution (structure already
+known from this session's greps: both consistently pass `_NAME` at every call site already).
 
 ## Cluster 10 — Global pass
 
@@ -407,6 +593,27 @@ cross-cluster item closes cleanly (bus-layer/UDP/DNS-client verification, FRAM d
 
 ## Open decisions log
 
-None outstanding right now — every top-level decision surfaced during pre-audit planning is
-resolved and captured above. New ones get logged here, batched 5-10 at a time, framed as
-what's-to-decide/scope/consequences, as clusters actually turn them up.
+One found while fleshing out Clusters 2-9's detail:
+
+**1. `config_manager.py`'s `__init__`-time errors, under the new "add real err_s/wrn_s logging"
+goal** (Cluster 2). *What's to decide*: most of `ConfigManager`'s genuinely important error
+conditions (empty schema defaults, an invalid default value, a first-time-write failure) happen
+inside the synchronous `__init__`, which can never call the async `err_s`/`wrn_s` — so they can't
+become persisted/counted history without either accepting that gap or a real redesign. *Scope*: one
+file (`config_manager.py`), but option 3 below would touch every `ConfigManager` construction site
+project-wide. *Options and consequences*:
+  1. Leave `__init__`-time failures as non-persisted (console-only), only upgrade the
+     already-`async def` methods (`get_dict`, `write_config`, etc.). Zero blast radius, but the
+     single most consequential failure class (an invalid config file at boot) stays uncounted.
+  2. Buffer `__init__`-time failures, drain them at the first real async call — `asy_notification_
+     service.py`'s `register()`/`finalize()` already solves the identical "sync method, needs async
+     logging" shape this way (drained by its own periodic `monitor_loop()`). `ConfigManager` has no
+     equivalent natural drain point, so it'd have to piggyback on whichever async method its owner
+     calls first — workable, but real added state/complexity to a currently-simple class.
+  3. Move the loading/validation logic into an async `setup()` (matching `PrintLogHistoryStore`'s
+     own pattern), making `__init__`-time failures genuinely awaitable. Real project-wide blast
+     radius — every construction site needs an added `await cfgmgr.setup()`, and `self.valid` is no
+     longer reliably known immediately after construction the way it is today.
+
+New decisions get logged here, batched 5-10 at a time, framed as what's-to-decide/scope/
+consequences, as clusters actually turn them up.
