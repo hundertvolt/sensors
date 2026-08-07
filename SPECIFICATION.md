@@ -1373,6 +1373,18 @@ and its config read-back comes back silently wrong/empty.
   a `read_loop()` failure already is. (BMP3xx established this pattern first; SCD30's forwards
   originally didn't follow it and were brought in line with it — see any of SCD30's forwards for
   the now-shared shape.)
+- **An owned helper with no registered `get_task_starters()`/`get_timer_starters()` entry of its
+  own may still own an independent, uniquely-named `PrintLogHistory` instead of sharing its
+  owner's `self.pr`** — settled via project-owner decision (2026-08-07) for `captive_dns.py`'s
+  `DNSServer` (owned/lifecycle-managed by `asy_conn_time`, not itself a registered `Reader`):
+  it gets its own `"DNSSRV"`-named `PrintLogHistory` rather than reusing `asy_conn_time`'s. The
+  rationale is one level up from C.7 itself — at the `sensortask`/wiring level, multiple owned
+  helpers' independent histories are expected to be folded into one combined REST-facing endpoint
+  (e.g. a "networking" endpoint aggregating `asy_conn_time`/`asy_dns_client`/`DNSServer`) rather
+  than merged at the `self.pr` level, so C.7 doesn't need to pick a single shared-vs-independent
+  rule — both are valid, and which one a given owned helper uses is a wiring-layer decision, not a
+  per-class one. See `WIRING_CONTRACT.md` for where that aggregation actually lands once it's
+  designed.
 
 ## C.8 Concurrency & locking model
 

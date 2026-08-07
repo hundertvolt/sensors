@@ -694,24 +694,21 @@ touches `base_classes.py` at all, so that was a copy-paste error, not a real dep
   `get_dns_server` callback happens to return a well-typed value; nothing enforces that at
   runtime. Add the same guard `_fetch_ntp_reply()` already uses, closing the gap between the two
   files' otherwise-identical pattern.
-- `captive_dns.py::_ipv4_to_int()` and `asy_dns_client.py::_is_ipv4_literal()` take opposite design
-  stances on the same problem (IPv4-string validation): `asy_dns_client.py`'s own comment states a
-  deliberate principle — avoid `int()`'s exceptions for control flow, prefer `isdigit()` checks —
-  while `captive_dns.py`'s helper raises `ValueError` on malformed/out-of-range input and relies on
-  every caller catching it broadly. Both are safe today, but this is a real D.10 cross-file
-  inconsistency between two sibling files solving the same kind of problem differently — reconcile
-  (pick one stance) or document explicitly why the two differ, as part of this cluster's work.
-- **Open decision, not resolved here — needs project-owner input**: `captive_dns.py`'s `DNSServer`
-  doesn't extend `SensorReader`/`SensorReaderConfig` (this cluster's own goal above already covers
-  giving it a real `PrintLogHistory` instead of bare `print()`), but Part C.7's error/logging
-  contract has no explicit accommodation for a helper class that's instantiated and lifecycle-owned
-  by a `Reader` (here, `asy_conn_time`) rather than being a registered `Reader` itself. Once this
-  cluster gives `DNSServer` its own `"DNSSRV"`-named `PrintLogHistory` (per the Goal above), decide
-  whether it should instead share the *owning* `asy_conn_time`'s own `self.pr` (so its errors land
-  in the same history/errno stream as the rest of WiFi/DNS), or whether C.7 should explicitly
-  document "an owned helper with no registered `get_task_starters()`/`get_timer_starters()` entry
-  of its own may own an independent `PrintLogHistory` instead" as an accepted variant. Flag to the
-  project owner rather than picking silently — added to the Open Decisions Log below.
+- **Resolved (owner decision, 2026-08-07): standardize on `asy_dns_client.py`'s `isdigit()`-check
+  stance.** `captive_dns.py::_ipv4_to_int()` and `asy_dns_client.py::_is_ipv4_literal()` took
+  opposite design stances on the same problem (IPv4-string validation) — one raising `ValueError`
+  on malformed input, the other deliberately avoiding exceptions for control flow. This cluster's
+  execution rewrites `_ipv4_to_int()` to the `isdigit()`-check style, removing its `ValueError`
+  raise; every current caller that catches that `ValueError` needs its catch removed/adjusted to
+  match the new never-raises shape. Closes the D.10 cross-file inconsistency.
+- **Resolved (owner decision, 2026-08-07): `DNSServer` gets its own independent `"DNSSRV"`-named
+  `PrintLogHistory`**, not `asy_conn_time`'s shared `self.pr` — per the Goal above. The owner's
+  stated rationale: at the `sensortask` wiring level, `DNSServer`'s history is expected to later
+  fold into one combined "Networking" REST endpoint alongside `asy_conn_time`/`asy_dns_client`
+  (already anticipated in `WIRING_CONTRACT.md`'s "Forward API-design notes"), so keeping it
+  independent now is the better fit than merging into `asy_conn_time`'s stream. Recorded as an
+  accepted C.7 pattern in `SPECIFICATION.md` (see C.7's new "owned helper" bullet) — no longer an
+  open decision.
 
 ## Cluster 6 — `asy_fram_driver.py`, `asy_fram_manager.py` (`asy_uart_driver.py` listed for context only — harmonize-late, not touched here)
 
@@ -1326,14 +1323,20 @@ fixes, specifically so it would validate the corrected state rather than redisco
 
 ## Open decisions log
 
-**Open — `captive_dns.py`'s `DNSServer` error-reporting ownership (bidirectional Part C/D
-cross-check, 2026-08-07, needs project-owner input, see Cluster 5)**: once Cluster 5 gives
-`DNSServer` a real `PrintLogHistory` (already its own Goal, replacing today's bare `print()`),
-should it get its own independent, `"DNSSRV"`-named instance, or share the *owning*
-`asy_conn_time`'s own `self.pr` so its errors land in the same history/errno stream as the rest of
-WiFi/DNS? Either is workable; Part C.7 currently has no documented stance on which an "owned
-helper, not a registered `Reader`" class should do. Not resolved here — flagged for the project
-owner to pick before Cluster 5 executes.
+**Resolved — `captive_dns.py`'s `DNSServer` error-reporting ownership (owner decision: own
+independent `"DNSSRV"`-named `PrintLogHistory`, not `asy_conn_time`'s shared `self.pr`)**: once
+Cluster 5 gives `DNSServer` a real `PrintLogHistory` (already its own Goal, replacing today's bare
+`print()`), it gets its own instance rather than sharing its owner's. Rationale: at the
+`sensortask` wiring level, `DNSServer`'s history is expected to later fold into one combined
+"Networking" REST endpoint alongside `asy_conn_time`/`asy_dns_client` (already anticipated in
+`WIRING_CONTRACT.md`), so independence now is the better fit than merging streams early. Recorded
+as an accepted C.7 pattern in `SPECIFICATION.md` ("owned helper" bullet).
+
+**Resolved — `captive_dns.py`/`asy_dns_client.py` IPv4-validation stance (owner decision:
+standardize on `asy_dns_client.py`'s `isdigit()`-check, no-exceptions style)**: `_ipv4_to_int()`
+gets rewritten to match `_is_ipv4_literal()`'s never-raises shape as part of Cluster 5's execution;
+its current callers' `ValueError` catches come out with it. Closes the D.10 cross-file
+inconsistency flagged in Cluster 5's findings.
 
 **Resolved — `ConfigManager`'s async-`setup()` ripple (owner decision: extend the pattern
 upward)**: `SensorReaderConfig` gains its own `async def setup()` (same sync-`__init__`/
