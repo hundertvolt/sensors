@@ -443,8 +443,26 @@ as today; every existing `tests/test_print_log.py` test passes unchanged; every 
 passes (including the one that failed during the trial — must be root-caused, not just retried);
 no other file touched in this cluster.
 
-**Status**: `[ ]` not started (a full implementation was trialed and reverted this session — see
-above — no code currently landed).
+**Status**: `[x]` done. **Executed 2026-08-07**: implemented exactly the design trialed above, no
+deviation — `PrintLog.__init__(self, level: int | None = None, name: str = "") -> None` stores
+`self.name`; `err`/`wrn`/`one`/`evt`/`all`/`_diag`/`err_s`/`wrn_s` all now call
+`print(self.name, *args, **kwargs)` (`_diag` has no `**kwargs`, matching its existing signature);
+`PrintLogHistory.__init__`/`PrintLogHistoryStore.__init__` each gained `name: str = ""` and forward
+it to `super().__init__(..., name=name)`; `get_log(self, name: str | None = None)` falls back to
+`self.name` when `name` is `None`, otherwise uses the explicit value exactly as before. Verified no
+other file's construction call needed updating — `base_classes.py`, `asy_fram_manager.py`,
+`system_service.py`, `asy_neopixel_driver.py` all construct `PrintLogHistory`/`PrintLogHistoryStore`
+positionally as `(history_length, debug)`/`(fram, history_length, debug)`, unaffected by a new
+trailing default parameter (grepped `src/` directly to confirm, per the cluster's own "no other file
+touched" boundary). Added 6 new tests to `tests/test_print_log.py`: `test_name_defaults_to_empty_
+string`, `test_name_is_stored_verbatim_when_given`, `test_printloghistory_forwards_name_to_the_base_
+class`, `test_printloghistorystore_forwards_name_to_the_base_class`, `test_get_log_with_no_argument_
+and_no_name_set_falls_back_to_empty_string`, `test_get_log_with_no_argument_uses_self_name` (built
+with `history_length=1` specifically to avoid the leftover-initial-slot test-authoring mistake
+recorded above), and `test_get_log_explicit_name_still_overrides_self_name`. `lint.sh`/`typecheck.sh`
+stayed at the pre-existing `improved-quality/`-only baseline (30/44 errors respectively, zero in
+`src/`/`tests/`); `scripts/test.sh` full suite passed 54/54 in `test_print_log.py` (all pre-existing
+tests unchanged, all new tests passing) with zero `FAIL` lines suite-wide.
 
 ## Cluster 2 — `config_manager.py`
 

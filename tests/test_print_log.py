@@ -131,6 +131,16 @@ def test_set_level_exact_boundary_values_pass_through_unclamped() -> None:
     assert pr.get_level() == PrintLog.level_info()
 
 
+def test_name_defaults_to_empty_string() -> None:
+    pr = PrintLog()
+    assert pr.name == ""
+
+
+def test_name_is_stored_verbatim_when_given() -> None:
+    pr = PrintLog(name="SGP40")
+    assert pr.name == "SGP40"
+
+
 # ---------------------------------------------------------------------------
 # PrintLogHistory - bounded in-memory error/warning history
 # ---------------------------------------------------------------------------
@@ -216,6 +226,35 @@ def test_get_log_classifies_error_warning_and_clear_entries() -> None:
     # remaining oldest slot is still the initial _NO_ERR -> "N", 0
     log = run(hist.get_log("Sensor"))
     assert log == {"Sensor": {"ErrCount": 2, "ErrNum": [0, 5, 2], "ErrType": ["N", "E", "W"]}}
+
+
+def test_printloghistory_forwards_name_to_the_base_class() -> None:
+    hist = PrintLogHistory(history_length=2, name="SGP40")
+    assert hist.name == "SGP40"
+
+
+def test_get_log_with_no_argument_and_no_name_set_falls_back_to_empty_string() -> None:
+    hist = PrintLogHistory(history_length=1)
+    log = run(hist.get_log())
+    assert "" in log
+
+
+def test_get_log_with_no_argument_uses_self_name() -> None:
+    # Regression coverage for a real test-authoring mistake caught while trialing this design:
+    # history_length=1 leaves no initial _NO_ERR slot to survive a single err_s() call, so this
+    # assertion doesn't depend on the "leftover initial slot" shape
+    # test_get_log_classifies_error_warning_and_clear_entries above already covers.
+    hist = PrintLogHistory(history_length=1, name="SGP40")
+    run(hist.err_s("e", errno=1))
+    log = run(hist.get_log())
+    assert log == {"SGP40": {"ErrCount": 1, "ErrNum": [1], "ErrType": ["E"]}}
+
+
+def test_get_log_explicit_name_still_overrides_self_name() -> None:
+    hist = PrintLogHistory(history_length=1, name="SGP40")
+    log = run(hist.get_log("Override"))
+    assert "Override" in log
+    assert "SGP40" not in log
 
 
 def test_err_s_errno_at_exact_max_err_boundary_is_recorded() -> None:
@@ -342,6 +381,12 @@ def test_printloghistorystore_allocates_a_chunk_from_the_fram_manager() -> None:
     manager, _chip = make_fram_manager()
     store = PrintLogHistoryStore(manager, history_length=4)
     assert store.fram is not None
+
+
+def test_printloghistorystore_forwards_name_to_the_base_class() -> None:
+    manager, _chip = make_fram_manager()
+    store = PrintLogHistoryStore(manager, history_length=4, name="FRAM")
+    assert store.name == "FRAM"
 
 
 def test_printloghistorystore_out_of_memory_leaves_fram_none_and_never_raises() -> None:

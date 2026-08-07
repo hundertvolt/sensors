@@ -56,9 +56,10 @@ _MAX_CNT = const(0xFFFF)
 
 
 class PrintLog:
-    def __init__(self, level: int | None = None) -> None:
+    def __init__(self, level: int | None = None, name: str = "") -> None:
         self.level = _LOG_OFF
         self.set_level(level)
+        self.name = name
 
     def get_level(self) -> int:
         return self.level
@@ -99,28 +100,28 @@ class PrintLog:
 
     def err(self, *args: "Any", **kwargs: "Any") -> None:
         if self.level >= _LOG_ERR:
-            print(*args, **kwargs)
+            print(self.name, *args, **kwargs)
 
     def wrn(self, *args: "Any", **kwargs: "Any") -> None:
         if self.level >= _LOG_WARN:
-            print(*args, **kwargs)
+            print(self.name, *args, **kwargs)
 
     def one(self, *args: "Any", **kwargs: "Any") -> None:
         if self.level >= _LOG_ONCE:
-            print(*args, **kwargs)
+            print(self.name, *args, **kwargs)
 
     def evt(self, *args: "Any", **kwargs: "Any") -> None:
         if self.level >= _LOG_EVENT:
-            print(*args, **kwargs)
+            print(self.name, *args, **kwargs)
 
     def all(self, *args: "Any", **kwargs: "Any") -> None:
         if self.level >= _LOG_ALL:
-            print(*args, **kwargs)
+            print(self.name, *args, **kwargs)
 
 
 class PrintLogHistory(PrintLog):
-    def __init__(self, history_length: int = 10, level: int | None = None) -> None:
-        super().__init__(level=level)
+    def __init__(self, history_length: int = 10, level: int | None = None, name: str = "") -> None:
+        super().__init__(level=level, name=name)
         # Clamp to [0, _MAX_CNT] (err_count's own uint16 range) before allocating: `[x] * n` can
         # segfault the interpreter uncatchably in a size range bytearray()'s own guards don't cover
         # - see CLAUDE.md's list-repeat-segfault gotcha for the measured failure-size boundaries.
@@ -141,7 +142,7 @@ class PrintLogHistory(PrintLog):
 
     def _diag(self, *args: "Any") -> None:  # internal-failure prints, gated on any logging being enabled at all
         if self.level > _LOG_OFF:
-            print(*args)
+            print(self.name, *args)
 
     async def _store_err(self, min_e: int, max_e: int, errno: int) -> None:
         # errno<=_NO_ERR (0) is the shared "nothing to record" sentinel for err_s()/wrn_s() alike;
@@ -164,9 +165,14 @@ class PrintLogHistory(PrintLog):
         if not await self._write():
             self._diag("PrintLog: History write failed!")
 
-    async def get_log(self, name: str) -> dict[str, dict[str, int | list[int] | list[str]]]:
+    async def get_log(self, name: str | None = None) -> dict[str, dict[str, int | list[int] | list[str]]]:
         # Reverses _store_err()'s encoding: 0x00/0x80 are "nothing recorded"; else shift back by
-        # _NO_ERR/_NO_WRN to recover the original error/warning code.
+        # _NO_ERR/_NO_WRN to recover the original error/warning code. name=None (the default for any
+        # caller not yet passing one - transitional, until each caller drops its own explicit
+        # argument as part of its own cluster) falls back to self.name; an explicit value still
+        # overrides it exactly as before this parameter had a default.
+        if name is None:
+            name = self.name
         err_num = []
         err_type = []
         for errno in self.history:
@@ -187,12 +193,12 @@ class PrintLogHistory(PrintLog):
     async def err_s(self, *args: "Any", errno: int = _NO_ERR, **kwargs: "Any") -> None:
         await self._store_err(_NO_ERR, _MAX_ERR, errno)
         if self.level >= _LOG_ERR:
-            print(*args, **kwargs)
+            print(self.name, *args, **kwargs)
 
     async def wrn_s(self, *args: "Any", wrnno: int = _NO_ERR, **kwargs: "Any") -> None:
         await self._store_err(_NO_WRN, _MAX_WRN, wrnno)
         if self.level >= _LOG_WARN:
-            print(*args, **kwargs)
+            print(self.name, *args, **kwargs)
 
     async def reset(self) -> None:
         self.history.extend([_NO_ERR] * len(self.history))
@@ -209,8 +215,8 @@ class PrintLogHistoryStore(PrintLogHistory):
     _HDR_FMT = "<H"  # explicit little-endian, no padding - bare format defaults to "@" here, not "<"
     _HDR_SIZE = struct.calcsize(_HDR_FMT)
 
-    def __init__(self, fram: "_FramManager", history_length: int = 10, level: int | None = None) -> None:
-        super().__init__(history_length=history_length, level=level)
+    def __init__(self, fram: "_FramManager", history_length: int = 10, level: int | None = None, name: str = "") -> None:
+        super().__init__(history_length=history_length, level=level, name=name)
         # len(self.history) is fixed for this object's lifetime (deque maxlen never changes), so
         # this format string is cached once here instead of being rebuilt on every _write()/_read().
         self._history_fmt = "B" * len(self.history)
