@@ -214,26 +214,24 @@ The condensed version is A.2 above. Key modules if you need to go deeper (folded
   `TimeCounterManager`, `LockedValue`/`Flag`. `src/config_manager.py`'s `ConfigManager` and
   `src/base_classes.py`'s `LockedValue`/`LockedCounter`/`LockedFlag` (snake_case `set_value()`/
   `get_value()`, unlike the old module's camelCase `setValue()`/`getValue()`) replace these in the
-  refactor (see A.2's "Config management" bullet). MicroPython's flat frozen-module
-  namespace means `import async_manager` silently resolves to whichever file defines that module
-  name — a new or promoted module must import `ConfigManager`/`LockedValue`/etc. from
-  `config_manager`/`base_classes` by name, never `async_manager`, or it gets the old,
+  refactor — see A.2's "Config management" bullet for the class-replacement summary and the
+  project-wide "every module owns its own schema" convention, not restated here. MicroPython's
+  flat frozen-module namespace means `import async_manager` silently resolves to whichever file
+  defines that module name — a new or promoted module must import `ConfigManager`/`LockedValue`/
+  etc. from `config_manager`/`base_classes` by name, never `async_manager`, or it gets the old,
   incompatible classes with no import error to catch it. Its config is loaded once at
   `__init__` and served entirely from an in-memory cache thereafter — a deliberate consequence is
   that a read can no longer detect the on-disk file being corrupted/deleted out-of-band after a
   valid `__init__`; the cache is the sole source of truth, and a later `write_config()` silently
   *repairs* an externally-corrupted file from it. Accepted given this device is the file's only
-  writer. **Every module with user-settable configuration owns its own schema/config file** — a
-  global project convention, not limited to sensor drivers; `asy_wifi_service.py`,
-  `asy_ntp_client.py`, and `src/asy_notification_service.py`'s `NotificationCoordinator` each follow
-  it the same way every sensor `*_Reader` does, replacing the single ad hoc top-level `ConfigManager`
-  grab-bag the deployed codebase still uses. (`src/asy_neopixel_driver.py`'s `NeopixelDriver` is the
-  one deliberate exception - no config schema at all, confirmed by the project owner; see its own
-  entry below.) A module whose own REST/caller layer needs to call `write_config()` directly against its
-  `cfgmgr` exposes the schema via a public `self.cfg_schema` attribute (see
-  `asy_wifi_service.py`/`asy_ntp_client.py`) rather than the caller reaching into a private
-  module-level schema constant — `base_classes.py`'s `SensorReaderConfig` doesn't provide this
-  itself, so any new module needing it adds the attribute the same way.
+  writer. Two details beyond A.2's summary: `src/asy_neopixel_driver.py`'s `NeopixelDriver` is the
+  one deliberate exception to the "every module owns a schema" convention — no config schema at
+  all, confirmed by the project owner (see its own entry below). And a module whose own
+  REST/caller layer needs to call `write_config()` directly against its `cfgmgr` exposes the
+  schema via a public `self.cfg_schema` attribute (see `asy_wifi_service.py`/`asy_ntp_client.py`)
+  rather than the caller reaching into a private module-level schema constant —
+  `base_classes.py`'s `SensorReaderConfig` doesn't provide this itself, so any new module needing
+  it adds the attribute the same way.
 - `python/IndividualDrivers/asy_fram_driver.py` / `asy_fram_manager.py` — raw SPI FRAM driver +
   chunk allocator with dual-copy redundancy (arzi/neu/wozi only, not dev). `src/`'s promoted
   versions keep the same design: each chunk stores two redundant copies plus a busy/idle status
