@@ -124,15 +124,17 @@ The audit is finished when, for every file in `src/`:
   name is sufficient: `"FRAM"`. (`FRAM_SPI` itself has no `errno`/`wrnno` usage today — only two
   informational `evt`/`one` calls — so there's no numbering overlap to separate.)
 - **Bus layer** (`asy_i2c_driver.py`/`asy_spi_driver.py`) — **reverted**, no logging added here.
-  Verified against `DRIVER_SPEC.md` section 3 ("layer 2... raises on any real failure — this is the
-  layer that does *not* return sentinels") and section 7 ("a per-field get/set forward... always
-  logs on failure"): every real bus fault already surfaces to and gets logged by exactly one
-  upstream owner (the `*_Reader`). Adding bus-layer logging would duplicate the same event under a
-  second tag with no new information. Cluster 4's real work is the inverse of what was originally
-  planned: **verify** every current `I2CDevice`/`SPIDevice` call site is genuinely wrapped by an
-  upstream `try/except` (per `src/README.md` section 2's own standing instruction for this exact
-  carve-out — "verify, don't assume, that every upstream caller closes the gap"), and fix the
-  *caller* if a gap is found — never add logging to the bus layer itself.
+  Verified against `SPECIFICATION.md` Part C.3 ("layer 2... raises on any real failure — this is the
+  layer that does *not* return sentinels") and C.7 ("a per-field get/set forward... always
+  logs on failure") — the current, authoritative location of this content (`DRIVER_SPEC.md` is now
+  a stub pointing there, kept only so old links resolve): every real bus fault already surfaces to
+  and gets logged by exactly one upstream owner (the `*_Reader`). Adding bus-layer logging would
+  duplicate the same event under a second tag with no new information. Cluster 4's real work is the
+  inverse of what was originally planned: **verify** every current `I2CDevice`/`SPIDevice` call site
+  is genuinely wrapped by an upstream `try/except` (per `SPECIFICATION.md` D.2's own standing
+  instruction for this exact carve-out — "verify, don't assume, that every upstream caller closes
+  the gap"; `src/README.md` is likewise now a stub pointing there), and fix the *caller* if a gap is
+  found — never add logging to the bus layer itself.
 - **`asy_udp_socket.py`/`asy_dns_client.py`** — same reverted treatment as the bus layer, same
   reason (`asy_udp_socket.py`'s own module docstring: "every I/O method returns its documented
   None-shaped sentinel, never raises" — confirmed by reading the file; every failure already
@@ -203,9 +205,10 @@ per cluster above is drawn from those full reads, not the original greps): every
 `errno`/`wrnno` value in every file, plus every new logging call
 this audit adds (mainly `config_manager.py`'s new `CFGMGR_*` instances, plus whatever the
 stricter "verify upstream" check turns up as genuine gaps elsewhere). Pass 2: assign real numbers
-per module, consistent with the inventory, extending `DRIVER_SPEC.md` section 7's existing
-per-driver-numbering convention and its one existing cross-module precedent (`errno=10` = init
-failure). Output is a running list (lives in `DRIVER_SPEC.md` section 7, permanent, not deleted
+per module, consistent with the inventory, extending `SPECIFICATION.md` Part C.7's existing
+per-driver-numbering convention (`DRIVER_SPEC.md` is now a stub pointing there) and its one existing
+cross-module precedent (`errno=10` = init
+failure). Output is a running list (lives in `SPECIFICATION.md` Part C.7, permanent, not deleted
 with this file) so a new module's numbering is easy to pick consistently — convention only, nothing
 enforced/registry-like.
 
@@ -338,17 +341,19 @@ touched file).
 ## Cluster 0 — foundational, no internal dependencies
 
 **Goal**: confirm these five files (already read in full this session) hold up against the current
-conventions above and `src/README.md`'s full checklist; they were largely already mature/reviewed
-before this audit started, so this is closer to re-verification than first review.
+conventions above and `SPECIFICATION.md` Part D's full checklist (`src/README.md`'s former content
+— that file is now a stub pointing there); they were largely already mature/reviewed before this
+audit started, so this is closer to re-verification than first review.
 
-**Quality measure**: each file passes `src/README.md` sections 1-15 with findings either fixed or
-explicitly flagged; `lint.sh`/`typecheck.sh`/`test.sh` stay green; no behavior change without an
-explicit flag-and-ask per section 1.
+**Quality measure**: each file passes `SPECIFICATION.md` Part D (D.0-D.16) with findings either
+fixed or explicitly flagged — including `voc_algorithm.py`'s already-filed `_fix16_exp()` D.4
+finding below, not just future findings; `lint.sh`/`typecheck.sh`/`test.sh` stay green; no behavior
+change without an explicit flag-and-ask per D.1.
 
 | File | Status | Notes |
 |---|---|---|
-| `math_helpers.py` | `[ ]` | Already cited (Stull 2011, Magnus-Tetens/Sonntag 1990, ideal gas barometric formula) and range-checked; already has a full test suite (`tests/test_math_helpers.py`). Re-verify citations against current sources per `src/README.md` section 1 (standing requirement, not one-time), confirm no MicroPython-currency drift (section 9). No logging (exempt, pure computation) — no naming-scheme work here. |
-| `crc_checks.py` | `[ ]` | Already cited (Sensirion CRC-8 poly 0x31/init 0xFF; CRC-16/CCITT-FALSE; CRC-32/MPEG-2), already the source of several `src/README.md` rules. Re-verify same as above. No logging (exempt). |
+| `math_helpers.py` | `[ ]` | Already cited (Stull 2011, Magnus-Tetens/Sonntag 1990, ideal gas barometric formula) and range-checked; already has a full test suite (`tests/test_math_helpers.py`). Re-verify citations against current sources per `SPECIFICATION.md` D.1 (standing requirement, not one-time), confirm no MicroPython-currency drift (D.9). No logging (exempt, pure computation) — no naming-scheme work here. |
+| `crc_checks.py` | `[ ]` | Already cited (Sensirion CRC-8 poly 0x31/init 0xFF; CRC-16/CCITT-FALSE; CRC-32/MPEG-2), already the source of several `SPECIFICATION.md` Part D rules. Re-verify same as above. No logging (exempt). |
 | `voc_algorithm.py` | `[ ]` | **Read in full this session.** Confirmed a direct, faithful port of Sensirion's fixed-point reference (variable/method names trace the C source 1:1, e.g. `_vocalgorithm__mean_variance_estimator___calculate_gamma`) — deliberately non-idiomatic by design, not a style problem to clean up. `pack_into`/`unpack_from` already catch broadly and return bool, matching the "never raises" contract. No findings beyond re-verifying the reference is still current (standing check). No logging (exempt, confirmed). **New finding (bidirectional Part C/D cross-check, 2026-08-07)**: `_fix16_exp()` rebuilds two 4-element lists from `self._f16(...)` of hardcoded constants on every single call, even though those constants never change between calls — real, avoidable per-call allocation (D.4) on a function called several times per `vocalgorithm_process()` invocation, which itself runs on SGP40's fixed 1 Hz cadence (C.11 point 6). Precompute once (module-level `const()` tuple or an instance attribute built in `__init__`) — a pure D.8-style improvement, zero behavior change, worth fixing as part of this file's own promotion pass. |
 | `api_response.py` | `[ ]` | Clean, function-based, no internal deps. One `err_s` call (line 102) currently has no name — **will be fixed automatically once Cluster 1 lands** (it already calls `reader.pr.err_s(...)`, which will carry the right name once `PrintLog` does). Can't be marked fully done until Cluster 1 closes. |
 | `asy_udp_socket.py` | `[ ]` | Confirmed: every I/O method already returns its documented sentinel, never raises (`__init__` excepted, by design). No logging added (see reverted decision above). **Can't be marked fully done until Cluster 5 and Cluster 8 both close** — needs `asy_dns_client.py`/`captive_dns.py`/`asy_ntp_client.py` in view to verify the upstream-coverage claim, not just this file alone. |
@@ -361,7 +366,7 @@ coefficients, ideal-gas barometric formula (already cited, standard physics — 
 only), Sensirion's CRC-8 spec, CRC-16/CCITT-FALSE and CRC-32/MPEG-2 standard definitions,
 Sensirion's `embedded-sgp` VOC algorithm reference (already available at the cited repo — re-check
 it's still current/hasn't been re-published elsewhere), current MicroPython changelog since
-whatever version each file's patterns predate (per `src/README.md` section 9).
+whatever version each file's patterns predate (per `SPECIFICATION.md` D.9).
 
 ---
 
@@ -612,7 +617,7 @@ as of the last check — re-confirm only if `toolchain/versions.toml`'s pin has 
 
 **Goal**: **no logging added** (reverted — see above). Verify every real caller of `I2CDevice`/
 `SPIDevice` across every current sensor driver and `FRAM_SPI` genuinely wraps and logs each call
-site per `src/README.md` section 2's carve-out instructions. Fix the caller if a gap is found.
+site per `SPECIFICATION.md` D.2's carve-out instructions. Fix the caller if a gap is found.
 
 **Already read both files in full this session** — the exact surface to verify against every
 caller: `I2CDevice`'s public methods are `get_bits`, `get_register_struct`, `set_bits`,
@@ -647,9 +652,13 @@ callers) is also in view.
 
 ## Cluster 5 — `asy_dns_client.py`, `captive_dns.py`
 
-**Goal**: `captive_dns.py`'s `DNSServer` gets its own name/logger (proposed `"DNSSRV"`) — already
+**Goal**: `captive_dns.py`'s `DNSServer` gets its own name/logger (proposed `"DNSSRV"`, owner-resolved
+as an *independent* instance, not shared with `asy_conn_time` — see Open Decisions Log) — already
 verified single-construction-safe. `asy_dns_client.py` gets no logger (reverted) — same
-upstream-coverage verification as Cluster 4, against `asy_ntp_client.py` (Cluster 8).
+upstream-coverage verification as Cluster 4, against `asy_ntp_client.py` (Cluster 8). **Also in
+scope, owner-resolved this session**: unify `captive_dns.py`/`asy_dns_client.py`'s IPv4-validation
+stance on the `isdigit()`-check style, and close `resolve_ipv4()`'s missing construction guard (see
+New findings below).
 
 **Verified this session — real finding**: `captive_dns.py` doesn't use `PrintLog` at all today.
 `DNSServer`/`DNSQuery` both use a completely different, ad hoc scheme: a plain `debug: bool = False`
@@ -669,9 +678,13 @@ own.
 `DNSServer` named `"DNSSRV"`; `DNSQuery` receives/reuses `DNSServer`'s own `self.pr` reference
 rather than constructing its own; every existing `print()` call site converted to the matching
 `evt`/`err_s`/`wrn_s` call with a real errno/wrnno; `asy_dns_client.py`'s "no logging needed" claim
-reconfirmed jointly with Cluster 8 (can't close from this cluster alone); `lint.sh`/`typecheck.sh`/
+reconfirmed jointly with Cluster 8 (can't close from this cluster alone); **this cluster's New
+findings below also close**: `resolve_ipv4()` wraps its `AsyUDPSocket` construction in the same
+guard `_fetch_ntp_reply()` already uses; `_ipv4_to_int()` is rewritten to the `isdigit()`-check,
+never-raises style (matching `_is_ipv4_literal()`), with every caller's now-dead `ValueError` catch
+removed; `lint.sh`/`typecheck.sh`/
 `test.sh` green; new/extended tests cover the converted logging paths (malformed query, off-subnet
-drop, `_ipv4_to_int` failure path); no test dropped.
+drop, `_ipv4_to_int`'s new never-raises behavior in place of its old failure path); no test dropped.
 
 **External references**: RFC 1035 sections 4.1.1/4.1.2/4.1.4 (DNS message format) — already
 correctly cited in `captive_dns.py`'s own comments; re-verify the citation is still accurate as
@@ -766,7 +779,11 @@ upgraded to `err_s`/`wrn_s` sharing `AsyFramManager`'s errno space (Cluster 10 a
 numbers, continuing from the corrected `10-88` range); FRAM determinism re-confirmed for every
 chunk-owning construction (`fram`, `sgp_reader`, `pixel`, `notify_service`) after the naming change
 lands — a naming-only change shouldn't move construction order, but this gets verified, not
-assumed; `lint.sh`/`typecheck.sh`/`test.sh` green; no test dropped. `asy_uart_driver.py` itself
+assumed; **this cluster's New findings below also close**: `_check_device_id()`/`_read_status()`/
+`_setup_addr_buffer()` pre-allocate their scratch buffers once (in `__init__`) instead of
+reallocating on every call, matching `SCD30_I2C`'s buffer-reuse pattern and restoring the C.3
+scratch-buffer rule C.3.1 already cites this file for; `lint.sh`/`typecheck.sh`/`test.sh` green; no
+test dropped. `asy_uart_driver.py` itself
 stays untouched this cluster (harmonize-late decision), confirmed still orphaned (zero real
 callers) before deferring it again.
 
@@ -868,7 +885,13 @@ conventions"); Cluster 4's bus-layer upstream-coverage
 check closed from this side (every `I2CDevice` call confirmed wrapped and logged at this layer);
 FRAM determinism re-confirmed for `SGP40_Reader`'s VOC-backup chunk; each driver's existing
 errno/wrnno ranges (BMP3xx 10-21, SCD30 10-24, SGP40 10-18/10-14) re-confirmed internally consistent
-after the string changes (numbering itself doesn't move, only string content does); `lint.sh`/
+after the string changes (numbering itself doesn't move, only string content does); **this cluster's
+New findings below also close**: `SCD30_Reader.stop_timer()`/`stop_continuous_measurement()`
+reordered to sit with the other Starters, matching BMP3xx/SGP40's D.15 placement;
+`asy_sgp40_driver.py::_read_word_from_command()`/`get_raw()` reuse a pre-sized buffer instead of
+reallocating on SGP40's 1 Hz cadence; `asy_sgp40_driver.py::_reset()` nests the shared bus lock
+(`async with sgp40.i2c_device as i2c:`) like every other SGP40 transaction, closing the C.8
+locking gap; `lint.sh`/
 `typecheck.sh`/`test.sh` green; no test dropped.
 
 **External references**: Bosch BMP388/BMP390 datasheet, Sensirion SCD30 datasheet, Sensirion SGP40
@@ -960,7 +983,15 @@ needs none — already fully English, confirmed); all six `Timer.init()` `except
 upstream-coverage check closed from this side; FRAM determinism re-confirmed for `DNSServer`'s
 single construction inside `asy_conn_time.__init__`; existing errno/wrnno ranges
 (`asy_wifi_service.py` 11-18/1-7, `asy_ntp_client.py` 11-20/1-3) re-confirmed internally consistent;
-`lint.sh`/`typecheck.sh`/`test.sh` green; no test dropped.
+**this cluster's New findings below also close**: `_hotspot_client_absent()`/`reconnect_wifi()`'s
+`Timer.ONE_SHOT` callback no longer does business logic directly — either switched to `PERIODIC`
+with idempotent-safe logic, or the work moved into a `ThreadSafeFlag`-woken coroutine with a
+periodic self-heal check (see finding for the fix shape) — this is the high-priority item, verify
+it's actually closed, not just attempted; `asy_ntp_client.py`'s constructor reorders its
+driver-specific knobs (`dns_timeout_ms`/`dns_tries`/`ntp_fetch_timeout_ms`) to precede
+`max_i2c_err`, matching C.2 and `asy_wifi_service.py`'s own constructor; `asy_wifi_service.py`'s
+`LEDControl(Protocol)` moves inside an `if TYPE_CHECKING:` guard, matching every other `Protocol` in
+the codebase; `lint.sh`/`typecheck.sh`/`test.sh` green; no test dropped.
 
 **External references**: none beyond the standing MicroPython network/socket/DNS-currency check
 already covered by CLAUDE.md's "wedged I2C bus"/`socket.getaddrinfo()` findings (both files already
@@ -1074,7 +1105,14 @@ sentinel-based guard added so `get_dict_cfg()`/`monitor_loop()`/`get_error_count
 `NotificationCoordinator` fail cleanly (documented sentinel, not a bare `AttributeError`) if called
 before `finalize()` runs, reusing/renaming `_finalized`; existing errno/wrnno inventories
 (`system_service.py` 1-4/dynamic-per-task, `asy_notification_service.py` 1-4/1-5) re-confirmed
-internally consistent; `lint.sh`/`typecheck.sh`/`test.sh` green; no test dropped.
+internally consistent; **this cluster's New findings below also close**: `monitor_loop()` either
+gains a real `self._error_check()` call using the already-accepted `max_i2c_err`, or the class stops
+accepting that constructor parameter — one or the other, not left silently inert (decide which
+during this cluster's execution, per the finding); `system_service.py::stop_uptime_timer()`
+reordered into the Starters bucket per D.15, matching `asy_wifi_service.py`/`asy_ntp_client.py`'s
+own `stop_*` placement; `SystemService.__init__`'s hand-duplicated fram-vs-memory `self.pr`
+selection branch extracted into one shared helper both it and `SensorReader.__init__` call;
+`lint.sh`/`typecheck.sh`/`test.sh` green; no test dropped.
 
 **External references**: none beyond what's already cited inside `asy_neopixel_driver.py` itself
 (no separate hardware datasheet — the NeoPixel timing protocol is already correctly implemented and
@@ -1174,8 +1212,12 @@ timer/task-lifecycle stops; F.4 broadened from an Adafruit-only rule into a real
 covering `voc_algorithm.py`'s opposite, keep-it-literal Sensirion-derived treatment). Where the
 code itself genuinely deviated from or was missing something Part C/D correctly requires, the
 finding was filed as a new action item in the relevant cluster's own section above (0, 5, 6, 7, 8,
-9) rather than fixed silently here, plus one genuinely open, owner-facing design question in the
-Open decisions log below (`DNSServer`'s error-reporting ownership). This doesn't close Cluster 10
+9) rather than fixed silently here. Two genuinely open, owner-facing design questions came out of
+this pass — `DNSServer`'s error-reporting ownership and the `captive_dns.py`/`asy_dns_client.py`
+IPv4-validation stance split — both logged in the Open decisions log below and **both resolved by
+the project owner later the same day** (own independent `"DNSSRV"` history; standardize on the
+`isdigit()`-check style — see the log for the full rationale of each, already folded into Cluster
+5's own Goal/Quality measure/New findings above). This doesn't close Cluster 10
 itself — the pass-2 errno numbering, `WIRING_CONTRACT.md` study, and integration-test scoping below
 are all still unstarted — but the harmonization half of this cluster's Goal has real, applied
 content behind it now, not just a plan.
@@ -1318,6 +1360,51 @@ No new contradictions found on this pass — every direction-independent fact ch
 itself wherever it's stated, including the ones this session's own completeness/convergence passes
 already had to fix. This is expected rather than a coincidence: this check ran last, after those
 fixes, specifically so it would validate the corrected state rather than rediscover the same issues.
+
+### Post-cross-check convergence pass log (2026-08-07)
+
+A fresh forward-then-backward read, run after the bidirectional Part C/D cross-check (Cluster 10's
+first real installment, above) and after resolving its two open decisions — specifically checking
+whether that batch of new material integrated cleanly into the rest of the document, not
+re-litigating anything the four earlier passes above already cleared. Four real findings, all fixed
+in place:
+
+1. **Stale doc citations, three different counts for the same thing.** Cluster 0/4 and the
+   "Standing conventions"/"Error-code convention" sections still cited `src/README.md section N` /
+   `DRIVER_SPEC.md section N` directly — both files were converted into stubs pointing at
+   `SPECIFICATION.md` Parts D/C during an earlier doc-scatter cleanup, so those citations pointed at
+   unnumbered stub text. Worse, three different section counts for the same checklist were in play:
+   Cluster 0's Quality measure said "sections 1-15," the Definition of Done said "full 16-section
+   checklist," and the real `SPECIFICATION.md` Part D has D.0-D.16 (17 named sections, D.0 being a
+   genuinely new addition not present in the original `src/README.md`). Confirmed by content-matching
+   (not by assuming a numeric offset) that the old numbering maps 1:1 onto `D.N`/`C.N` — e.g. old
+   "section 2's verify-upstream-caller instruction" is `D.2`'s own text verbatim, old "section 9" is
+   `D.9` verbatim. Fixed every live citation across the document to point at `SPECIFICATION.md`
+   Part C/D directly, by section letter+number, not at the stub files by old numbering.
+2. **Quality-measure completeness gap, Clusters 5/6/7/8/9.** Each of these clusters' "New findings"
+   block (added by the bidirectional cross-check) lists real, concrete action items, but none of them
+   had been folded into that cluster's own Quality measure — the checklist that actually defines
+   "done" for the cluster and the thing an executor would check against. Since Clusters 5-9's Quality
+   measures are written as closed, exhaustive lists (unlike Cluster 0's, which has a blanket "findings
+   either fixed or explicitly flagged" catch-all), a new finding filed only in prose risked being
+   silently missed at execution time. Fixed by appending each cluster's own New-findings items to its
+   Quality measure explicitly (the hotspot-timer fix, SGP40 bus-lock/buffer findings, FRAM buffer
+   pre-allocation, SCD30 method reorder, NTP client constructor reorder, `LEDControl` `TYPE_CHECKING`
+   guard, `NotificationCoordinator`'s `_error_check()` question, `system_service.py`'s reorder/DRY
+   findings, and Cluster 5's `resolve_ipv4()`/`_ipv4_to_int()` items below).
+3. **Stale narrative, Cluster 10's own "first installment" paragraph.** Still described `DNSServer`'s
+   error-reporting ownership as "genuinely open" and didn't mention the IPv4-validation-stance
+   decision at all — both were resolved by the project owner later the same session. Fixed to state
+   both are resolved, with a pointer to the Open Decisions Log and to where each resolution is now
+   folded into Cluster 5's own Goal/Quality measure.
+4. **Minor Goal omission, Cluster 5.** The IPv4-validation-stance unification is now real,
+   owner-resolved scope for this cluster's execution, but wasn't mentioned in the cluster's own Goal
+   paragraph (only in "New findings"/Quality measure). Added a sentence naming it explicitly, matching
+   how every other owner-resolved scope addition in this document is announced at the Goal level.
+
+No other issues found on this pass — the Open Decisions Log, roadmap table, readiness-gate table,
+and every other cross-referenced fact checked in the four earlier passes above still agree with
+themselves after this batch of edits.
 
 ---
 
