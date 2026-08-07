@@ -78,10 +78,12 @@ When a new doc is added, add it here too instead of letting the map go stale aga
 
 **Standing operating docs** (permanent, kept current):
 
-- **CLAUDE.md** — AI-session operating constraints; hard rules, working agreements, PR workflow,
-  pre-push verification, and its own Microdot/architecture deep-dive. Start here for how AI
-  sessions should operate in this repo. (Some of its architecture/Microdot content is also
-  duplicated into `SPECIFICATION.md` — see that document's front matter for why.)
+- **CLAUDE.md** — AI-session operating constraints: hard rules, working agreements, PR workflow,
+  pre-push verification. Start here for how AI sessions should operate in this repo. Its former
+  Platform-target/Architecture-reference/Microdot content now lives solely in `SPECIFICATION.md`
+  (Parts F/A.4/A.5) — CLAUDE.md carries short pointers to those spots instead of restating them,
+  so read `SPECIFICATION.md` directly for that material (see its front matter for the tradeoff
+  this creates: that content is no longer auto-loaded into every session for free).
 - **BACKLOG.md** — active open questions, not-yet-done refactor targets, and deferred/out-of-scope
   work; see its own opening paragraph for the full scope. Resolved items move into this file or
   CLAUDE.md instead of staying there — it's working memory, not a changelog.

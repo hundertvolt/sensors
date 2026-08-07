@@ -14,13 +14,11 @@ represents a substantive change to any rule, only to where it's written down.
 
 **What's deliberately *not* in this document, and why:**
 
-- **`CLAUDE.md` stays separate and untouched.** It's the file auto-loaded into every AI session's
-  context as operating instructions — hard rules, working agreements, the pre-push verification
-  recipe, PR workflow, and its own architecture-reference/Microdot deep-dive. That's a different
-  kind of content (session operating constraints) from what was actually scattered and hard to
-  find (code/architecture specifications), and moving it would risk breaking the auto-load
-  guarantee that makes CLAUDE.md useful in the first place. Cross-references from this document to
-  CLAUDE.md point at the real file, unchanged.
+- **`CLAUDE.md` stays separate.** It's the file auto-loaded into every AI session's context as
+  operating instructions — hard rules, working agreements, the pre-push verification recipe, PR
+  workflow. That's a different kind of content (session operating constraints) from what was
+  actually scattered and hard to find (code/architecture specifications). Cross-references from
+  this document to CLAUDE.md point at the real file.
 - **`BACKLOG.md`, `AUDIT_PLAN.md`, `WIRING_CONTRACT.md` stay separate.** By their own stated
   nature they are not specifications: `BACKLOG.md` is active working memory (open questions,
   deferred work) that churns as items resolve; `AUDIT_PLAN.md`/`WIRING_CONTRACT.md` are explicitly
@@ -35,16 +33,19 @@ elsewhere in the repo still resolve to a real file. Their full content lives in 
 "Repository layout"/"Architecture at a glance"/"Refactor in progress"/"Building this project's
 firmware" sections moved into Part A/B below, replaced there with a pointer.
 
-**A second pass folded in the genuinely specification-shaped material from `CLAUDE.md` too** —
-its "Platform target" facts (Part F below), "Architecture reference" deep-dive (A.4), and
-"Microdot / REST layer" contract (A.5) are duplicated here, verbatim, alongside everything else.
-This is deliberate, bounded duplication, not a regression back into scattering: `CLAUDE.md` stays
-the auto-loaded original (every AI session sees it automatically; this document isn't loaded the
-same way), and the two copies describe settled facts that don't change often — if one is ever
-edited, check the other. What did *not* get pulled in from `CLAUDE.md`: its Hard rules/Working
-agreements/PR workflow/Pre-push verification recipe/Code quality tooling sections, which are
-session-operating-procedure and dev-tooling-narrative content, not architecture/interface
-specification — CLAUDE.md remains their one home.
+**A second pass folded in the genuinely specification-shaped material from `CLAUDE.md` too, then
+removed it from `CLAUDE.md` once the merge was verified complete** — its former "Platform target"
+facts (now Part F below), "Architecture reference" deep-dive (now A.4), and "Microdot / REST
+layer" contract (now A.5) live here as the single copy; `CLAUDE.md` now carries only short
+pointers to this document at each of those spots. This *is* a real tradeoff, worth stating
+plainly: `CLAUDE.md` is auto-loaded into every AI session's context automatically, this document
+is not, so a session that never opens `SPECIFICATION.md` no longer gets these facts for free the
+way it used to. Accepted deliberately in favor of true single-sourcing — if this tradeoff turns
+out to bite in practice, the fix is re-duplicating the highest-value load-bearing facts back into
+CLAUDE.md, not reverting the whole consolidation. What stayed in `CLAUDE.md` outright (never
+duplicated here): its Hard rules/Working agreements/PR workflow/Pre-push verification recipe/Code
+quality tooling sections, which are session-operating-procedure and dev-tooling-narrative content,
+not architecture/interface specification.
 
 **A third pass scanned `BACKLOG.md` for settled facts that had landed there instead of a proper
 spec doc** — working memory accumulates this easily, since a still-open action item often
@@ -56,13 +57,23 @@ contracts (C.8), `make_dict()`'s `repr()`-parsing landmine on non-scalar fields 
 dead-code-eliminating `TYPE_CHECKING` blocks (D.6). In every case the surrounding *action item*
 (harden the reset margin, rename the parameter, fix the lock-contract mismatch, strip
 `TYPE_CHECKING` blocks from the build, ...) is genuinely still open work and stays in
-`BACKLOG.md` — only the already-settled fact moved/duplicated here.
+`BACKLOG.md`, in full — only the already-settled fact was extracted here; `BACKLOG.md` was not
+trimmed, since the fact was only ever a fragment of a still-open item there, not a full duplicate
+of it.
 
-**Not every cross-reference throughout the repo's other docs (`CLAUDE.md`, `BACKLOG.md`,
-`AUDIT_PLAN.md`, `WIRING_CONTRACT.md`) was rewritten to point directly here** — there are dozens,
-and the stub files above mean they still resolve correctly via one extra hop. Worth doing as a
-follow-up pass if the stub-file indirection itself becomes annoying, not done as part of this
-cleanup.
+**Verified nothing was lost in this consolidation**: every original source file's content
+(`DRIVER_SPEC.md`, `src/README.md`, `tests/README.md`, `toolchain/README.md`, README.md's moved
+sections, CLAUDE.md's three folded sections) was diffed line-by-line against this document before
+the sources were trimmed. Every apparent gap traced to either an intentional cross-reference
+rename (a `"section 4"`/`"see X below"` pointer rewritten to this document's own Part/section
+labels) or content that was already fully present via a fuller sibling source (README's toolchain
+cheat-sheet restated facts `toolchain/README.md`/Part B already carried in full) — never a
+genuine loss.
+
+**Not every cross-reference throughout the repo's other docs (`BACKLOG.md`, `AUDIT_PLAN.md`,
+`WIRING_CONTRACT.md`) was rewritten to point directly here** — there are dozens, and the stub
+files above mean they still resolve correctly via one extra hop. Worth doing as a follow-up pass
+if the stub-file indirection itself becomes annoying, not done as part of this cleanup.
 
 ## Table of contents
 
