@@ -46,11 +46,12 @@ item's own "done" note says what was actually checked, not just that related wor
    per-cluster edits (each cluster now names its external references, or states none apply) rather
    than tracked as a separate pass.
 8. `[x]` **Step 10 — owner discussion/feedback checkpoint.** Closed: with items 2-7 all clear, the
-   session confirmed it has no outstanding open decisions and no `[?]`-blocked clusters (the one
-   still-open item on record, the `Timer.init()`/`MemoryError` question, is a technical
-   verification task already correctly scoped into Cluster 10's own execution, not a decision
-   needing owner input) — the project owner reviewed and confirmed this in session. The plan is
-   validated and ready; Cluster 0 execution starts as its own follow-up work.
+   session confirmed it has no outstanding open decisions and no `[?]`-blocked clusters — the
+   project owner reviewed and confirmed this in session, and in the same discussion resolved the
+   `Timer.init()`/`MemoryError` item (defensive `except (OSError, MemoryError)` widening across
+   Clusters 7-9, regardless of the separate one-time MicroPython-source verification carried into
+   Cluster 10 — see the Open decisions log). The plan is validated and ready; Cluster 0 execution
+   starts as its own follow-up work.
 
 ## Status legend
 
@@ -297,7 +298,7 @@ actually executed:
 | `NotificationCoordinator` (Cluster 9) | `_finalized` exists but doesn't guard `get_dict_cfg()`/`monitor_loop()`/etc. against being called too early — real gap, not just a naming mismatch | Add the guard, sentinel-based (never-raises contract inherited from `SensorReaderConfig`), reusing/renaming `_finalized` |
 | `AsyFramManager.setup()`, `I2CDevice.setup()` | No readiness flag at all | **Resolved, confirmed by reading both files in full — neither needs one.** `AsyFramManager.get_chunk()`/`get_timestamped_chunk()` are pure bookkeeping (offset arithmetic, no hardware access), so they're safe before `setup()` runs; real hardware access always goes through the shared `self.fram` (`FRAM_SPI`), which already has its own `uninitialized` guard — a second gate at the manager level would be redundant. `I2CDevice` has no unconfigured-hardware-state risk the way `SPIDevice`'s CS pin does: the underlying `I2C` bus is fully ready immediately from `I2C.__init__` itself, and `I2CDevice.setup()` only performs an *optional* identity probe with no state transition to guard against. |
 
-**Cross-cutting confirmation, not a finding to act on**: every `Timer.init()` call site's `except OSError as e: self.pr.err(...)` (never `err_s`) is correct as-is, not a gap — confirmed via `system_service.py`'s own explicit comment on `_timer_sequencer()`: a `Timer`-callback-invoked context has no running event loop, so only the synchronous `pr.err()` is callable there at all, `err_s()` genuinely cannot be `await`ed. This pattern repeats identically across every `start_timer()`/`_reboot()`/`pause_permanent_storage()` in `asy_bmp3xx_driver.py`, `asy_scd30_driver.py`, `asy_sgp40_driver.py`, `asy_wifi_service.py` (×3), `asy_ntp_client.py` (×3), and `system_service.py` (×4) — don't "fix" any of these into persisted logging during their clusters. One separate, still-open, correctly-scoped check: whether `Timer.init()` can also raise a genuine `MemoryError` distinct from the `OSError(ENOMEM)` CLAUDE.md already documents — worth verifying against current MicroPython source once, not per-file (Cluster 10).
+**Cross-cutting confirmation, partly a real finding**: every `Timer.init()` call site's `except OSError as e: self.pr.err(...)` (never `err_s`) is correct as-is on the sync-vs-async question — confirmed via `system_service.py`'s own explicit comment on `_timer_sequencer()`: a `Timer`-callback-invoked context has no running event loop, so only the synchronous `pr.err()` is callable there at all, `err_s()` genuinely cannot be `await`ed. Don't touch that part. **But the `except` clause itself is a real, if minor, gap**: it catches only `OSError`, not `(OSError, MemoryError)`, and `Timer.init()`'s documented failure mode (`OSError(ENOMEM)` on RP2040 alarm-pool exhaustion) is exactly the allocation-adjacent case CLAUDE.md's own standing rule already covers ("anywhere an `OSError` is caught around a call that could also plausibly exhaust memory, catch `(OSError, MemoryError)` instead") — an earlier pass through this document called the bare `except OSError` "correct as-is, not a gap," which was wrong against that existing rule. **Resolved, owner-confirmed**: widen every one of these sites to `except (OSError, MemoryError) as e:` regardless of how hard the failure is to provoke in practice — cheap, defensive, no behavior change on the success path. This repeats identically across every `start_timer()`/`_reboot()`/`pause_permanent_storage()` in `asy_bmp3xx_driver.py`, `asy_scd30_driver.py`, `asy_sgp40_driver.py` (Cluster 7, ×1 each), `asy_wifi_service.py` (×3)/`asy_ntp_client.py` (×3) (Cluster 8), and `system_service.py` (×4) (Cluster 9) — each of those clusters now carries this as a real action item, not a no-op confirmation. Separately, still worth doing once (not per-file): verify against current MicroPython source whether `Timer.init()` can raise a genuine `MemoryError` distinct from `OSError(ENOMEM)` — informational, doesn't gate the defensive catch above either way (Cluster 10).
 
 ---
 
@@ -771,8 +772,9 @@ brand-new, separate call is right without checking the real file.
   properly (read the whole file, not a fixed grep word list) when each file's cluster actually
   executes — don't trust the old counts as a checklist.
 - Every `Timer.init()` `except OSError` site in these three files (`start_timer()` ×3, one per
-  driver) is correctly non-persisted — see the cross-cutting confirmation in "Standing
-  conventions" above, don't "fix" these.
+  driver) keeps its non-persisted `pr.err()` logging as-is — see the cross-cutting confirmation in
+  "Standing conventions" above — but widen the clause to `except (OSError, MemoryError) as e:`, the
+  resolved defensive-catch decision.
 - Bus-layer surface confirmed exactly matches Cluster 4's inventory: all three protocol classes
   (`BMP3XX_I2C`, `SCD30_I2C`, `SGP40_I2C`) call `I2CDevice`'s methods only from inside their own
   `try`-wrapped `_read_*`/`_init_*`/get-set-forward methods at the Reader layer — no call site found
@@ -794,7 +796,9 @@ drivers is fine by design — only *within* one driver's own numbering does it m
 comment (BMP3xx: "gelesen", "Daten gespeichert"; SCD30: same two strings plus the line-300 comment —
 comments confirmed in scope, owner decision; SGP40: ~26 phrases across
 `_check_storage`/`_read_sgp`/`_run_restore`/`_run_backup`) replaced with an equivalent English
-version, no meaning lost; Cluster 4's bus-layer upstream-coverage
+version, no meaning lost; each driver's one `start_timer()` `except OSError` widened to
+`except (OSError, MemoryError) as e:` (resolved defensive-catch decision, see "Standing
+conventions"); Cluster 4's bus-layer upstream-coverage
 check closed from this side (every `I2CDevice` call confirmed wrapped and logged at this layer);
 FRAM determinism re-confirmed for `SGP40_Reader`'s VOC-backup chunk; each driver's existing
 errno/wrnno ranges (BMP3xx 10-21, SCD30 10-24, SGP40 10-18/10-14) re-confirmed internally consistent
@@ -810,7 +814,10 @@ scope (logging/naming/language only) doesn't call for.
 
 ## Cluster 8 — `asy_wifi_service.py`, `asy_ntp_client.py`
 
-**Goal**: strip manual `_NAME` arguments; close out Cluster 5's `asy_udp_socket.py`/
+**Goal**: strip manual `_NAME` arguments; widen this cluster's six `Timer.init()` `except OSError`
+sites (`asy_wifi_service.py` ×3, `asy_ntp_client.py` ×3) to `except (OSError, MemoryError) as e:`,
+the resolved defensive-catch decision (see "Standing conventions" above) — logging behavior
+unchanged, only the caught exception types widen; close out Cluster 5's `asy_udp_socket.py`/
 `asy_dns_client.py` upstream-coverage verification from the caller side; German-language log
 strings → English.
 
@@ -858,7 +865,8 @@ in `asy_wifi_service.py` (attempt-tier via `err_s`+`hw_op_failed` vs. observatio
 module docstring against the post-edit code, not assumed; line 521's magic number replaced with a
 named constant (`_STAT_OBTAINING_IP` or equivalent) matching the surrounding `network.STAT_*`
 branches; ~30+ German phrases in `asy_wifi_service.py` converted to English (`asy_ntp_client.py`
-needs none — already fully English, confirmed); Cluster 5's `asy_udp_socket.py`/`asy_dns_client.py`
+needs none — already fully English, confirmed); all six `Timer.init()` `except OSError` sites
+(three per file) widened to `except (OSError, MemoryError) as e:`; Cluster 5's `asy_udp_socket.py`/`asy_dns_client.py`
 upstream-coverage check closed from this side; FRAM determinism re-confirmed for `DNSServer`'s
 single construction inside `asy_conn_time.__init__`; existing errno/wrnno ranges
 (`asy_wifi_service.py` 11-18/1-7, `asy_ntp_client.py` 11-20/1-3) re-confirmed internally consistent;
@@ -876,7 +884,9 @@ issue-tracker finding has landed since the last check, not a fresh investigation
 **Goal**: strip manual `_NAME` arguments; re-verify FRAM determinism for every `fram=`-constructed
 instance here (`NeopixelDriver`, `NotificationCoordinator`, `SystemService`); confirm no German
 strings remain; add `system_service.py`'s missing `_NAME` constant (see "Logging & naming scheme"
-above — it's one of the files with zero identifying calls today). **New, owner-approved scope**:
+above — it's one of the files with zero identifying calls today); widen `system_service.py`'s four
+`Timer.init()` `except OSError` sites to `except (OSError, MemoryError) as e:`, the resolved
+defensive-catch decision (see "Standing conventions" above). **New, owner-approved scope**:
 `NotificationCoordinator` (a real `SensorReaderConfig` subclass, per Cluster 3's resolved
 setup()-ripple decision) needs its own `setup()` actually invoked somewhere after its existing sync
 `register()`/`finalize()` staged construction — check how that interacts with the deferred
@@ -927,7 +937,9 @@ contract (not raising — corrected from an earlier version of this plan, see "S
 
 **Quality measure**: `_NAME` args stripped from `asy_neopixel_driver.py` (a no-op confirmation —
 already compliant) and `system_service.py` (a real `_NAME` constant added where none exists today);
-`system_service.py`'s 4 German strings converted to English; FRAM determinism re-confirmed for
+`system_service.py`'s 4 German strings converted to English; `system_service.py`'s four
+`Timer.init()` `except OSError` sites widened to `except (OSError, MemoryError) as e:`; FRAM
+determinism re-confirmed for
 `NeopixelDriver`/`NotificationCoordinator`/`SystemService`'s chunk-owning constructions; a real
 sentinel-based guard added so `get_dict_cfg()`/`monitor_loop()`/`get_error_counter()`/etc. on
 `NotificationCoordinator` fail cleanly (documented sentinel, not a bare `AttributeError`) if called
@@ -950,12 +962,14 @@ the pass-1 inventory, extend `DRIVER_SPEC.md` section 7 with the running list); 
 `WIRING_CONTRACT.md` study of `sensortask-wozi.py`; whole-system integration test scoping (mirrors
 the real multi-module wiring shape, not just today's pairwise chains); re-confirm every
 cross-cluster item closes cleanly (bus-layer/UDP/DNS-client verification, FRAM determinism,
-`asy_uart_driver.py`'s deferred harmonization, and the still-open question of whether `Timer.init()`
-can also raise a genuine `MemoryError` distinct from the documented `OSError(ENOMEM)` case — see
-"Standing conventions" above; the `AsyFramManager.setup()`/`I2CDevice.setup()` readiness-gate
-question itself is already resolved — confirmed neither needs one, see the readiness-gate table —
-so Cluster 10's job on that specific item is only to re-confirm the resolution still holds after
-every other cluster's edits land, not to reopen it).
+`asy_uart_driver.py`'s deferred harmonization, and a one-time, informational check of whether
+`Timer.init()` can also raise a genuine `MemoryError` distinct from the documented `OSError(ENOMEM)`
+case — see "Standing conventions" above; the defensive `except (OSError, MemoryError)` widening
+itself is already resolved and applied per-cluster in 7-9 regardless of this check's outcome, so
+this is a documentation confirmation, not a gate; the `AsyFramManager.setup()`/`I2CDevice.setup()`
+readiness-gate question itself is also already resolved — confirmed neither needs one, see the
+readiness-gate table — so Cluster 10's job on that specific item is only to re-confirm the
+resolution still holds after every other cluster's edits land, not to reopen it).
 
 **Quality measure**: a single consolidated style-guideline document exists, superseding
 `src/README.md`'s checklist + `DRIVER_SPEC.md`'s architecture spec, incorporating every convention
@@ -1152,6 +1166,22 @@ moves, not *how* failure is reported.
 
 **Resolved**: English-standardization scope (Cluster 7) — extends to code comments, not just logged
 strings; see Cluster 7's own SCD30 entry.
+
+**Resolved — `Timer.init()`'s `except OSError` sites widen to `except (OSError, MemoryError)`
+(owner decision: catch defensively regardless, don't gate on proving the failure mode first)**:
+every `start_timer()`/`_reboot()`/`pause_permanent_storage()` `Timer.init()` call site across
+`asy_bmp3xx_driver.py`/`asy_scd30_driver.py`/`asy_sgp40_driver.py` (Cluster 7, ×1 each),
+`asy_wifi_service.py`/`asy_ntp_client.py` (Cluster 8, ×3 each), and `system_service.py` (Cluster 9,
+×4) widens its bare `except OSError as e:` to `except (OSError, MemoryError) as e:`; the sync-only
+`pr.err()` logging inside stays unchanged (that part was already correct — no running event loop in
+a `Timer`-callback context). **This corrects an earlier mistake in this document**: a prior pass
+called the bare `except OSError` "correct as-is, not a gap" — wrong against CLAUDE.md's own
+already-standing rule that any `OSError` catch around a call that could plausibly exhaust memory
+should also catch `MemoryError`, which `Timer.init()`'s documented `OSError(ENOMEM)` alarm-pool-
+exhaustion failure mode qualifies for. Whether `Timer.init()` can *also* raise a genuine
+`MemoryError` distinct from that `OSError(ENOMEM)` case remains a separate, one-time, informational
+verification against current MicroPython source (Cluster 10) — it doesn't gate this defensive catch
+either way, cheap insurance either way.
 
 New decisions get logged here, batched 5-10 at a time, framed as what's-to-decide/scope/
 consequences, as clusters actually turn them up.
