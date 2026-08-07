@@ -199,6 +199,55 @@ guideline ideas (it's a real, already-promoted file), but its own formal harmoni
 late, after the style guideline (Cluster 10) has converged — "pick up the spirit early, harmonize
 late."
 
+### Sync-`__init__`/async-`setup()` readiness-gate scheme
+
+Project-wide rule for any class whose real construction work needs an `await` (I/O, or just calling
+an inherited async logging method) but is currently attempted inside a synchronous `__init__`.
+Already proven in `asy_fram_driver.py`'s `FRAM_SPI` and `asy_spi_driver.py`'s `SPIDevice` before this
+audit — this makes it the standard everywhere, not just those two:
+
+- `__init__` stays synchronous, stashes constructor args, sets a readiness gate to "not ready."
+- An explicit `async def setup()` does the real deferred work, flips the gate to "ready" on success.
+- **Gate name/polarity is standardized**: `self.initialized: bool = False` → `True`, replacing ad
+  hoc names/polarities (`FRAM_SPI`/`SPIDevice`'s current `uninitialized` — inverted, gets renamed
+  and flipped, naming-only change) — *except* where the underlying meaning is genuinely different
+  from "has setup run," not just differently spelled: `ConfigManager.valid` stays `valid` on
+  purpose (it means "setup ran *and* produced trustworthy data," a real distinction every current
+  caller already relies on — see Cluster 2). Don't force an identical name onto a genuinely
+  different meaning.
+- A `Type | None`-typed attribute stays the *complementary* mechanism for one specific sub-resource
+  that can independently fail *during* an otherwise-successful `setup()` (`PrintLogHistoryStore.fram`
+  is the existing example) — answers "did this one piece work," not "has setup run at all." Not a
+  competing choice against the bool gate; both can coexist on the same class.
+- **Response to "called before setup() ran" is *not* a free stylistic choice** — it must match
+  whatever raise/never-raise contract the class already declares in its own module docstring, not a
+  blanket rule:
+  - A class documented as "never raises" (every `SensorReader`/`SensorReaderConfig` subclass,
+    `PrintLog` family, `ConfigManager`) returns its documented sentinel and logs, exactly like every
+    other failure mode that class already handles — confirmed this holds for `FRAM_SPI` specifically
+    (its own docstring: "self-healing to a safe state without raising, except `__init__`/`setup()`'s
+    one-time setup errors" — its current sentinel-returning behavior for `get_write_protected()`/
+    `get_values()`/etc. was already correct; an earlier version of this plan wrongly proposed
+    changing it to raise, corrected here).
+  - `SPIDevice.__aenter__`'s raise is a structural necessity of Python's `async with` protocol (no
+    sentinel-return option exists for a failed `__aenter__`), not a stylistic precedent — doesn't
+    extend to any other method on any other class.
+- **Verify, don't assume, for every class this scheme touches**: check that file's own module
+  docstring for an already-declared raise/never-raise contract before deciding the response shape —
+  don't default to copying whichever example was read most recently (the mistake corrected above).
+
+**Known occurrences, checked this session** — not yet exhaustive, recheck when each cluster is
+actually executed:
+
+| Class | Current shape | What changes |
+|---|---|---|
+| `FRAM_SPI` (Cluster 6) | `uninitialized`, sentinel-returning | Rename/flip flag only, no behavior change |
+| `SPIDevice` (Cluster 4) | `uninitialized`, raises in `__aenter__` | Rename/flip flag; raise stays (protocol necessity) |
+| `PrintLogHistoryStore` (Cluster 1) | `initialized` + `fram: Chunk \| None`, sentinel-returning | Already matches the target shape — no change |
+| `ConfigManager` (Cluster 2) | `valid`, computed synchronously in `__init__`, sentinel-returning | Move the work into `async def setup()`; keep `valid`'s name and sentinel-returning behavior unchanged |
+| `NotificationCoordinator` (Cluster 9) | `_finalized` exists but doesn't guard `get_dict_cfg()`/`monitor_loop()`/etc. against being called too early — real gap, not just a naming mismatch | Add the guard, sentinel-based (never-raises contract inherited from `SensorReaderConfig`), reusing/renaming `_finalized` |
+| `AsyFramManager.setup()`, `I2CDevice.setup()` | No readiness flag at all | Not yet verified whether they need one — `I2CDevice`'s `setup()` only does an optional identity probe (no state transition to guard), and every sensor `*_Reader`'s own control flow already prevents any method from running before its own `_init_<sensor>()` succeeds, so there may be nothing to add here. Confirm during Clusters 4/6, don't assume either way. |
+
 ---
 
 ## Cluster roadmap
@@ -476,7 +525,9 @@ own.
 **Goal**: thread the shared `"FRAM"` name through the existing `logger=` sharing mechanism (already
 precedented, just needs identity). Re-verify the FRAM determinism rule against every current
 chunk-owning caller (see Cluster 7/9 — cross-cluster). `asy_uart_driver.py`: read for style ideas
-now, defer its formal pass to Cluster 10 per the "harmonize late" decision.
+now, defer its formal pass to Cluster 10 per the "harmonize late" decision. Apply the readiness-gate
+naming scheme (see "Standing conventions" above) to `FRAM_SPI`'s `uninitialized` flag — rename/flip
+polarity only, its sentinel-returning behavior is already correct and does not change.
 
 **Verified this session** (read `asy_fram_driver.py` in full):
 
@@ -566,12 +617,21 @@ it's a different shape than every other module's fixed wrnno list); `asy_notific
 `errno=1-4` (1=value-callback-failed, 2=threshold-config-read-failed, 3=local-time-callback-failed,
 4=request_signal_cb-failed) + `wrnno=1-5`.
 
-**Relevant precedent for Cluster 2's open decision**: `asy_notification_service.py`'s `register()`/
-`finalize()` are sync (can't call async `self.pr.wrn_s()` directly, same shape as
-`config_manager.py`'s sync `__init__` problem) — already solved here via a buffer drained by
-`monitor_loop()` each cycle (see that file's own module docstring). `ConfigManager` has no natural
-periodic loop to drain into, so this precedent doesn't transfer mechanically, but it's the
-concrete existing example option 2 of Cluster 2's decision refers to.
+**Cluster 2's decision is now resolved** (option 3, backed by real precedent — `FRAM_SPI`/
+`SPIDevice` already do exactly this). `asy_notification_service.py`'s `register()`/`finalize()`
+buffering stays as-is — it doesn't transfer to `ConfigManager` and doesn't get replaced, since it
+solves a different problem (both are forced synchronous by `sensortask-wozi.py`'s non-async
+module-level caller, not by deferred construction — checked in detail, see the "Standing
+conventions" readiness-gate scheme above).
+
+**Real gap found and added to this cluster's scope while checking that**: nothing today guards
+`get_dict_cfg()`/`monitor_loop()`/`get_error_counter()`/etc. against being called before
+`finalize()` runs — `self.cfg_schema` doesn't exist as an attribute until `finalize()`'s deferred
+`super().__init__()` call, so an early call crashes with a bare `AttributeError` deep inside
+`_get_dict_cfg`, not a clean, documented error. `self._finalized` already exists and already gates
+`register()`/`finalize()` themselves against double-calls — it just isn't used to gate every other
+method yet. Add that guard, sentinel-based per `NotificationCoordinator`'s inherited never-raises
+contract (not raising — corrected from an earlier version of this plan, see "Standing conventions").
 
 **Status**: `[ ]` not started. Depends on Clusters 1-3, 6. `asy_neopixel_driver.py`/
 `asy_notification_service.py` full reads deferred to actual cluster execution (structure already
@@ -585,7 +645,9 @@ the pass-1 inventory, extend `DRIVER_SPEC.md` section 7 with the running list); 
 `WIRING_CONTRACT.md` study of `sensortask-wozi.py`; whole-system integration test scoping (mirrors
 the real multi-module wiring shape, not just today's pairwise chains); re-confirm every
 cross-cluster item closes cleanly (bus-layer/UDP/DNS-client verification, FRAM determinism,
-`asy_uart_driver.py`'s deferred harmonization).
+`asy_uart_driver.py`'s deferred harmonization, and whether `AsyFramManager.setup()`/
+`I2CDevice.setup()` need a readiness gate of their own — see "Standing conventions"'s table, not
+yet resolved either way).
 
 **Status**: `[ ]` not started. Depends on everything.
 
@@ -593,27 +655,15 @@ cross-cluster item closes cleanly (bus-layer/UDP/DNS-client verification, FRAM d
 
 ## Open decisions log
 
-One found while fleshing out Clusters 2-9's detail:
+No outstanding open decisions right now.
 
-**1. `config_manager.py`'s `__init__`-time errors, under the new "add real err_s/wrn_s logging"
-goal** (Cluster 2). *What's to decide*: most of `ConfigManager`'s genuinely important error
-conditions (empty schema defaults, an invalid default value, a first-time-write failure) happen
-inside the synchronous `__init__`, which can never call the async `err_s`/`wrn_s` — so they can't
-become persisted/counted history without either accepting that gap or a real redesign. *Scope*: one
-file (`config_manager.py`), but option 3 below would touch every `ConfigManager` construction site
-project-wide. *Options and consequences*:
-  1. Leave `__init__`-time failures as non-persisted (console-only), only upgrade the
-     already-`async def` methods (`get_dict`, `write_config`, etc.). Zero blast radius, but the
-     single most consequential failure class (an invalid config file at boot) stays uncounted.
-  2. Buffer `__init__`-time failures, drain them at the first real async call — `asy_notification_
-     service.py`'s `register()`/`finalize()` already solves the identical "sync method, needs async
-     logging" shape this way (drained by its own periodic `monitor_loop()`). `ConfigManager` has no
-     equivalent natural drain point, so it'd have to piggyback on whichever async method its owner
-     calls first — workable, but real added state/complexity to a currently-simple class.
-  3. Move the loading/validation logic into an async `setup()` (matching `PrintLogHistoryStore`'s
-     own pattern), making `__init__`-time failures genuinely awaitable. Real project-wide blast
-     radius — every construction site needs an added `await cfgmgr.setup()`, and `self.valid` is no
-     longer reliably known immediately after construction the way it is today.
+**Resolved**: `config_manager.py`'s `__init__`-time errors (Cluster 2) — option 3 chosen (move the
+loading/validation logic into an async `setup()`), now backed by real, already-proven precedent
+(`FRAM_SPI`/`SPIDevice` already use this exact sync-`__init__`/async-`setup()` split) rather than
+being a speculative redesign — see "Standing conventions"'s readiness-gate scheme above for the
+full, harmonized rule this now follows, including the correction that `ConfigManager` keeps its
+existing sentinel-returning (never-raises) failure reporting unchanged — only *when* the work runs
+moves, not *how* failure is reported.
 
 New decisions get logged here, batched 5-10 at a time, framed as what's-to-decide/scope/
 consequences, as clusters actually turn them up.
