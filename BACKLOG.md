@@ -142,7 +142,7 @@ Goals/lenses for that pass, in the owner's own framing:
   richer in-memory-or-FRAM trace history behind it (see CLAUDE.md/`tests/README.md`), and more
   modules keep gaining one as they're promoted. Audit whether every module's own history is already
   exposed through a consistent shape (`get_error_counter()`'s existing dict contract per
-  DRIVER_SPEC.md section 4.2 is the closest existing precedent — confirm it actually generalizes to
+  `SPECIFICATION.md` Part C.4.2 is the closest existing precedent — confirm it actually generalizes to
   every current and upcoming module, not just the three original sensor drivers) so that when the
   REST layer is actually wired to surface this, it can do so the same way for every module instead of
   improvising a one-off shape per endpoint. This is preparation, not new REST wiring itself — the
@@ -208,11 +208,11 @@ opportunistically mid-promotion.
   whole write-then-read transaction, `asyncio.sleep(0)` yield between phases) is the pattern to
   verify/extend, not start from scratch. (The one concrete gap this audit had already turned up —
   SCD30's low-level getter/setter forwards not logging via `self.pr.err_s()`, unlike BMP3xx's — is
-  now fixed; see DRIVER_SPEC.md section 7 for the settled forward-logging convention every driver
+  now fixed; see `SPECIFICATION.md` Part C.7 for the settled forward-logging convention every driver
   now follows. The broader "no gaps, no deadlock/starvation" audit itself is still open.)
 - **Common driver error classes across sensors — future direction, not designed or implemented
   yet.** Each driver currently defines and reports its own `errno`/`wrnno` values independently
-  (see DRIVER_SPEC.md section 7); the one exception is `errno=10` ("initial setup failed"), which
+  (see `SPECIFICATION.md` Part C.7); the one exception is `errno=10` ("initial setup failed"), which
   all three drivers already use for the same situation by independent convergence rather than by
   any enforced scheme. Project owner's stated direction: keep per-driver definition/reporting (not
   a single shared enum), but predefine a small set of common error *classes* so the same number
@@ -230,7 +230,7 @@ opportunistically mid-promotion.
   guarantees (every route-handler exception, including `MemoryError`, is already caught per-request
   and can't crash the server) versus what's still missing at our own layer. The base-class/
   `api_response.py` setter+response-envelope consolidation this depended on is now done (see
-  DRIVER_SPEC.md section 5) — `handle_set_cmd()` already provides its own defense-in-depth
+  `SPECIFICATION.md` Part C.5) — `handle_set_cmd()` already provides its own defense-in-depth
   try/except around one endpoint's dispatch, returning the consolidated `{"res": "ERR", ...}` shape
   via `make_response()`. What's still missing is wiring an actual `@app.errorhandler` registration
   into the real, live Microdot app in `improved-quality/sensortask-wozi.py` — out of scope for this
@@ -480,7 +480,7 @@ opportunistically mid-promotion.
   pass.
 - **HTML/frontend automation & consistency** — known hand-written/brittle, not a priority; revisit
   after the Python-side refactor. Concretely stale now: the frontend still sends the pre-migration
-  `setSGP`/`setBMP` field names/formats (see DRIVER_SPEC.md section 5.3's wire-format note) — not
+  `setSGP`/`setBMP` field names/formats (see `SPECIFICATION.md` Part C.5.3's wire-format note) — not
   updated to match.
 - **UART sensor integration** — `asy_uart_driver.py` is promoted to `src/` but deliberately not
   wired into any `sensortask-*.py`; `asy_uart_comm.py` (its one real consumer) is its own separate,
