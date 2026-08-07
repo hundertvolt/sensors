@@ -792,7 +792,9 @@ def _tmp_cfg_path(name: str) -> str:
 def make_reader(name: str) -> BMP3xx_Reader:
     i2c = make_i2c()
     fake(i2c).nak_addresses.add(_ADDR)  # every bus op on this address fails
-    return BMP3xx_Reader(i2c, address=_ADDR, cfg_path=_tmp_cfg_path(name))
+    reader = BMP3xx_Reader(i2c, address=_ADDR, cfg_path=_tmp_cfg_path(name))
+    run(reader.cfgmgr.setup())
+    return reader
 
 
 def make_clean_reader(name: str, max_i2c_err: int = 5) -> "tuple[I2C, BMP3xx_Reader]":
@@ -800,6 +802,7 @@ def make_clean_reader(name: str, max_i2c_err: int = 5) -> "tuple[I2C, BMP3xx_Rea
     # tests seed exactly the registers they need for setup()/reads to succeed.
     i2c = make_i2c()
     reader = BMP3xx_Reader(i2c, address=_ADDR, max_i2c_err=max_i2c_err, cfg_path=_tmp_cfg_path(name))
+    run(reader.cfgmgr.setup())
     return i2c, reader
 
 

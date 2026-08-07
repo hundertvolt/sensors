@@ -195,6 +195,7 @@ def test_register_after_finalize_is_rejected() -> None:
     a, _ = make_signal("WarnCO2")
     coordinator.register(a)
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
     late, _ = make_signal("WarnVOC")
     coordinator.register(late)
     assert coordinator._registered == [a]
@@ -207,6 +208,7 @@ def test_finalize_builds_the_exact_combined_schema() -> None:
     coordinator.register(a)
     coordinator.register(b)
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
     names = [f[0] for f in coordinator.get_cfg_schema()]
     assert names == ["OnH", "OnM", "OffH", "OffM", "FlashBri", "Interv", "FlashDur", "AutoOn", "WarnCO2", "WarnVOC"]
     assert len(names) == len(set(names))  # no duplicates
@@ -217,8 +219,10 @@ def test_finalize_called_twice_is_a_no_op_second_time() -> None:
     a, _ = make_signal("WarnCO2")
     coordinator.register(a)
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
     schema_before = coordinator.get_cfg_schema()
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
     assert coordinator.get_cfg_schema() == schema_before
 
 
@@ -232,6 +236,7 @@ def test_combined_fields_round_trip_through_get_and_set_dict_cfg() -> None:
     a, _ = make_signal("WarnCO2")
     coordinator.register(a)
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
 
     async def scenario() -> "dict[str, dict[str, int | float | str | bool | None]]":
         await coordinator._set_dict_cfg({"FlashBri": 100, "WarnCO2": 1234}, coordinator.get_cfg_schema())
@@ -247,6 +252,7 @@ def test_invalid_write_on_one_field_does_not_affect_others() -> None:
     a, _ = make_signal("WarnCO2")
     coordinator.register(a)
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
 
     async def scenario() -> "dict[str, Any]":
         before = await coordinator.get_dict_cfg()
@@ -284,6 +290,7 @@ def test_write_all_valid_fields_at_once_succeeds() -> None:
     signal, _fv = make_signal("WarnCO2")
     coordinator.register(signal)
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
     data: dict[str, int | float | str | bool | None] = {
         "OnH": 8,
         "OnM": 30,
@@ -308,6 +315,7 @@ def test_each_int_float_field_boundary_values_accepted() -> None:
     signal, _fv = make_signal("WarnCO2")
     coordinator.register(signal)
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
 
     async def write_one(key: str, value: "Any") -> str:
         results = await coordinator._set_dict_cfg({key: value}, coordinator.get_cfg_schema())
@@ -330,6 +338,7 @@ def test_each_int_float_field_just_outside_bounds_rejected() -> None:
     signal, _fv = make_signal("WarnCO2")
     coordinator.register(signal)
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
 
     async def write_one(key: str, value: "Any") -> str:
         results = await coordinator._set_dict_cfg({key: value}, coordinator.get_cfg_schema())
@@ -350,6 +359,7 @@ def test_each_field_wrong_type_rejected() -> None:
     signal, _fv = make_signal("WarnCO2")
     coordinator.register(signal)
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
 
     async def write_one(key: str, value: "Any") -> str:
         results = await coordinator._set_dict_cfg({key: value}, coordinator.get_cfg_schema())
@@ -370,6 +380,7 @@ def test_each_field_wrong_type_rejected() -> None:
 def test_auto_on_bool_both_values_valid() -> None:
     coordinator, _clock, _cb = make_coordinator()
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
 
     async def scenario() -> "tuple[str, str]":
         r1 = await coordinator._set_dict_cfg({"AutoOn": False}, coordinator.get_cfg_schema())
@@ -384,6 +395,7 @@ def test_auto_on_bool_both_values_valid() -> None:
 def test_unknown_field_key_reported_invalid_and_ignored() -> None:
     coordinator, _clock, _cb = make_coordinator()
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
 
     async def scenario() -> "dict[str, Any]":
         return await coordinator._set_dict_cfg({"NotARealField": 1}, coordinator.get_cfg_schema())
@@ -400,6 +412,7 @@ def test_registered_int_field_boundaries_and_type_enforced() -> None:
     signal, _fv = make_signal("WarnCO2")
     coordinator.register(signal)
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
 
     async def write_one(value: "Any") -> str:
         results = await coordinator._set_dict_cfg({"WarnCO2": value}, coordinator.get_cfg_schema())
@@ -430,6 +443,7 @@ def test_registered_float_field_boundaries_and_type_enforced() -> None:
     signal = NotificationSignal("WarnHum", fv.get, field_schema, (0, 0, 1))
     coordinator.register(signal)
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
 
     async def write_one(value: "Any") -> str:
         results = await coordinator._set_dict_cfg({"WarnHum": value}, coordinator.get_cfg_schema())
@@ -456,6 +470,7 @@ def test_multiple_invalid_fields_in_one_write_each_reported_independently() -> N
     signal, _fv = make_signal("WarnCO2")
     coordinator.register(signal)
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
 
     async def scenario() -> "tuple[dict[str, Any], dict[str, Any]]":
         results = await coordinator._set_dict_cfg(
@@ -494,6 +509,7 @@ def test_all_fields_invalid_in_one_write_none_persist() -> None:
     signal, _fv = make_signal("WarnCO2")
     coordinator.register(signal)
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
 
     async def scenario() -> "tuple[dict[str, Any], dict[str, Any], dict[str, Any]]":
         before = await coordinator.get_dict_cfg()
@@ -544,6 +560,7 @@ def test_fram_backed_variant_survives_a_reboot() -> None:
     a1, _ = make_signal("WarnCO2")
     coordinator1.register(a1)
     coordinator1.finalize()
+    run(coordinator1.cfgmgr.setup())
 
     async def scenario1() -> None:
         await coordinator1.pr.setup()
@@ -557,6 +574,7 @@ def test_fram_backed_variant_survives_a_reboot() -> None:
     a2, _ = make_signal("WarnCO2")
     coordinator2.register(a2)
     coordinator2.finalize()
+    run(coordinator2.cfgmgr.setup())
 
     async def scenario2() -> None:
         await coordinator2.pr.setup()
@@ -579,6 +597,7 @@ def test_signal_value_failure_and_own_time_callback_failure_share_one_history() 
     coordinator, _clock, _cb = make_coordinator(local_time=clock, signal_cb=cb)
     coordinator.register(signal)
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
 
     async def scenario() -> None:
         await coordinator.pr.setup()
@@ -604,6 +623,7 @@ def test_two_signals_failures_share_one_errno_but_distinct_names_in_message() ->
     coordinator.register(a)
     coordinator.register(b)
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
 
     async def scenario() -> None:
         await coordinator.pr.setup()
@@ -631,6 +651,7 @@ def test_check_one_above_true_boundary_and_direction() -> None:
     signal, fv = make_signal("WarnCO2", above=True, value=1600)  # default threshold is 1600
     coordinator.register(signal)
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
 
     async def check(value: "int | float | None") -> bool:
         fv.value = value
@@ -650,6 +671,7 @@ def test_check_one_above_false_boundary_and_direction() -> None:
     signal, fv = make_signal("WarnCO2", above=False, value=1600)
     coordinator.register(signal)
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
 
     async def check(value: "int | float | None") -> bool:
         fv.value = value
@@ -672,6 +694,7 @@ def test_check_one_nan_value_never_triggers() -> None:
     coordinator.register(above_signal)
     coordinator.register(below_signal)
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
 
     async def scenario() -> "tuple[bool, bool]":
         return await coordinator._check_one(above_signal), await coordinator._check_one(below_signal)
@@ -688,6 +711,7 @@ def test_check_one_infinite_value_triggers_in_the_expected_direction() -> None:
     coordinator.register(above_signal)
     coordinator.register(below_signal)
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
 
     async def scenario() -> "tuple[bool, bool]":
         return await coordinator._check_one(above_signal), await coordinator._check_one(below_signal)
@@ -702,6 +726,7 @@ def test_check_one_none_value_is_not_triggered_no_crash() -> None:
     signal, fv = make_signal("WarnCO2", value=None)
     coordinator.register(signal)
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
 
     async def scenario() -> bool:
         return await coordinator._check_one(signal)
@@ -718,6 +743,7 @@ def test_check_one_get_value_raises_is_caught_and_logged_and_treated_as_none() -
     fv.raise_exc = RuntimeError("sensor boom")
     coordinator.register(signal)
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
 
     async def scenario() -> bool:
         await coordinator.pr.setup()
@@ -737,6 +763,7 @@ def test_check_one_indefinite_logging_no_cap() -> None:
     fv.raise_exc = RuntimeError("boom")
     coordinator.register(signal)
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
 
     async def scenario() -> None:
         await coordinator.pr.setup()
@@ -752,6 +779,7 @@ def test_check_one_last_value_and_triggered_reflect_most_recent_call_only() -> N
     signal, fv = make_signal("WarnCO2", value=2000)  # triggered
     coordinator.register(signal)
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
 
     async def scenario() -> None:
         await coordinator._check_one(signal)
@@ -768,6 +796,7 @@ def test_check_one_never_raises() -> None:
     signal, fv = make_signal("WarnCO2")
     coordinator.register(signal)
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
 
     async def scenario() -> None:
         await coordinator.pr.setup()
@@ -794,6 +823,7 @@ def test_all_triggered_signals_fire_in_registration_order_sequentially() -> None
     for s in (a, b, c):
         coordinator.register(s)
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
 
     async def scenario() -> None:
         # FlashDur's real schema minimum is 0.5 - each triggered signal costs a real 2*0.5=1.0s
@@ -816,6 +846,7 @@ def test_only_triggered_signals_call_request_signal_cb_others_skipped_no_gap() -
     coordinator.register(a)
     coordinator.register(b)
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
 
     async def scenario() -> None:
         await coordinator._set_dict_cfg({"Interv": 3600.0, "FlashDur": 0.5}, coordinator.get_cfg_schema())
@@ -840,6 +871,7 @@ def test_settle_sleep_happens_only_after_a_triggered_flash() -> None:
     for s in (a, b, c):
         coordinator.register(s)
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
 
     async def scenario() -> None:
         await coordinator._set_dict_cfg({"Interv": 3600.0, "FlashDur": 0.5}, coordinator.get_cfg_schema())
@@ -863,6 +895,7 @@ def test_registration_order_drives_poll_order_not_construction_order() -> None:
     coordinator.register(a)
     coordinator.register(b)
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
 
     async def scenario() -> None:
         await coordinator._set_dict_cfg({"Interv": 3600.0, "FlashDur": 0.5}, coordinator.get_cfg_schema())
@@ -885,6 +918,7 @@ def test_flashes_run_strictly_sequentially_not_interleaved() -> None:
     coordinator.register(a)
     coordinator.register(b)
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
 
     async def scenario() -> None:
         await coordinator._set_dict_cfg({"Interv": 3600.0, "FlashDur": 0.5}, coordinator.get_cfg_schema())
@@ -914,6 +948,7 @@ def test_sleep_window_boundaries_inclusive() -> None:
     signal, _fv = make_signal("WarnCO2", value=2000)
     coordinator.register(signal)
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
 
     async def run_at(hour: int, minute: int) -> int:
         clock.value = _FakeTime(hour, minute)
@@ -945,6 +980,7 @@ def test_sleep_window_just_after_off_bound_is_excluded() -> None:
     signal, _fv = make_signal("WarnCO2", value=2000)
     coordinator.register(signal)
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
     clock.value = _FakeTime(18, 1)
 
     async def scenario() -> None:
@@ -966,6 +1002,7 @@ def test_local_time_callback_returns_none_no_checks_run_no_crash() -> None:
     signal, _fv = make_signal("WarnCO2", value=2000)
     coordinator.register(signal)
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
 
     async def scenario() -> None:
         await coordinator._set_dict_cfg({"Interv": 3600.0, "FlashDur": 0.01}, coordinator.get_cfg_schema())
@@ -984,6 +1021,7 @@ def test_local_time_callback_raises_treated_as_none() -> None:
     signal, _fv = make_signal("WarnCO2", value=2000)
     coordinator.register(signal)
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
 
     async def scenario() -> None:
         await coordinator._set_dict_cfg({"Interv": 3600.0, "FlashDur": 0.01}, coordinator.get_cfg_schema())
@@ -1002,6 +1040,7 @@ def test_auto_on_false_blocks_all_checks_regardless_of_window() -> None:
     signal, _fv = make_signal("WarnCO2", value=2000)
     coordinator.register(signal)
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
 
     async def scenario() -> None:
         await coordinator._set_dict_cfg({"AutoOn": False, "Interv": 3600.0, "FlashDur": 0.01}, coordinator.get_cfg_schema())
@@ -1026,6 +1065,7 @@ def test_override_active_blocks_checks_and_resumes_after_countdown() -> None:
     # operand gates correctly and the other doesn't.
     coordinator, _clock, _cb = make_coordinator()
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
 
     async def scenario() -> "tuple[bool, bool, bool]":
         override_task = coordinator.start_asy_auto_override()
@@ -1058,6 +1098,7 @@ def test_malformed_own_config_read_degrades_gracefully_and_keeps_retrying() -> N
     signal, _fv = make_signal("WarnCO2", value=2000)
     coordinator.register(signal)
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
 
     async def scenario() -> bool:
         # Corrupt the cache directly to simulate a malformed read without touching ConfigManager
@@ -1084,6 +1125,7 @@ def test_next_sleep_secs_subtracts_elapsed_time() -> None:
 
     coordinator, _clock, _cb = make_coordinator()
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
     t0 = time.ticks_ms()
     time.sleep_ms(50)
     result = coordinator._next_sleep_secs(60.0, t0)
@@ -1095,6 +1137,7 @@ def test_next_sleep_secs_floors_at_point_one_when_elapsed_exceeds_interv() -> No
 
     coordinator, _clock, _cb = make_coordinator()
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
     t0_100s_ago = time.ticks_add(time.ticks_ms(), -100000)  # simulate 100s already elapsed
     result = coordinator._next_sleep_secs(60.0, t0_100s_ago)
     assert result == 0.1
@@ -1109,6 +1152,7 @@ def test_zero_registered_signals_just_sleeps_no_crash() -> None:
     coordinator, clock, cb = make_coordinator()
     clock.value = _FakeTime(12, 0)
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
 
     async def scenario() -> bool:
         await coordinator._set_dict_cfg({"Interv": 3600.0}, coordinator.get_cfg_schema())
@@ -1134,6 +1178,7 @@ def test_request_signal_cb_raising_is_caught_and_the_loop_continues() -> None:
     coordinator.register(a)
     coordinator.register(b)
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
 
     async def scenario() -> None:
         await coordinator._set_dict_cfg({"Interv": 3600.0, "FlashDur": 0.5}, coordinator.get_cfg_schema())
@@ -1149,6 +1194,7 @@ def test_request_signal_cb_raising_is_caught_and_the_loop_continues() -> None:
 def test_get_task_starters_and_get_timer_starters_shape() -> None:
     coordinator, _clock, _cb = make_coordinator()
     coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
     starters = coordinator.get_task_starters()
     assert len(starters) == 2
     for s in starters:

@@ -191,7 +191,9 @@ def _make_reader(name: str, cfg_vals: "cm.ConfigSchema" = _VAL_SI) -> "tuple[Sen
     path_prefix = _tmp_path("") + "/"
     path = path_prefix + "config_" + name + ".cfg"
     _remove(path)
-    return SensorReaderConfig(Meas(20.0, 50), 3, name, cfg_vals, cfg_path=path_prefix), path
+    reader = SensorReaderConfig(Meas(20.0, 50), 3, name, cfg_vals, cfg_path=path_prefix)
+    run(reader.cfgmgr.setup())
+    return reader, path
 
 
 def test_handle_set_cmd_valid_change_returns_ok_with_per_field_result() -> None:

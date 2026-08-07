@@ -102,7 +102,9 @@ def _tmp_cfg_dir() -> str:
 def make_conn(cfg_path: "str | None" = None) -> asy_conn_time:
     if cfg_path is None:
         cfg_path = _tmp_cfg_dir()
-    return asy_conn_time(led_pin=None, cfg_path=cfg_path)
+    conn = asy_conn_time(led_pin=None, cfg_path=cfg_path)
+    run(conn.cfgmgr.setup())
+    return conn
 
 
 def make_ntp(conn: asy_conn_time, ntp_host: str, cfg_path: "str | None" = None) -> asy_ntp_client:
@@ -115,7 +117,9 @@ def make_ntp(conn: asy_conn_time, ntp_host: str, cfg_path: "str | None" = None) 
         # One single f-string, not a plain-string-literal-adjacent-to-an-f-string concatenation -
         # same MicroPython gotcha test_asy_ntp_client.py's own _client_with_offsets() documents.
         f.write(f'{{"NTP_Host": "{ntp_host}", "NTP_Offset_S": 0, "NTP_Interv_H": 12, "GMTOffset": 0, "DSTOffset": 0}}')
-    return asy_ntp_client(conn.get_wifi_mode_lock(), conn.network_available, conn.get_dns_server_ip, cfg_path=cfg_path)
+    ntp = asy_ntp_client(conn.get_wifi_mode_lock(), conn.network_available, conn.get_dns_server_ip, cfg_path=cfg_path)
+    run(ntp.cfgmgr.setup())
+    return ntp
 
 
 def connect_wlan(conn: asy_conn_time, dns_server: str = "192.0.2.53") -> None:

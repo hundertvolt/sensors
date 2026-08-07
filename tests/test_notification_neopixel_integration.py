@@ -99,6 +99,7 @@ def test_real_threshold_crossing_produces_an_actual_ramp_with_scaled_color() -> 
     signal = NotificationSignal("WarnCO2", get_value, (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
     notify.register(signal)
     notify.finalize()
+    run(notify.cfgmgr.setup())
 
     async def scenario() -> None:
         await notify._set_dict_cfg({"Interv": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
@@ -126,6 +127,7 @@ def test_multiple_simultaneous_crossings_produce_sequential_correctly_colored_ra
     notify.register(co2)
     notify.register(voc)
     notify.finalize()
+    run(notify.cfgmgr.setup())
 
     async def scenario() -> None:
         await notify._set_dict_cfg({"Interv": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
@@ -152,6 +154,7 @@ def test_led_signal_during_notification_triggered_animation_is_queued_and_eventu
     signal = NotificationSignal("WarnCO2", get_value, (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
     notify.register(signal)
     notify.finalize()
+    run(notify.cfgmgr.setup())
 
     async def scenario() -> bool:
         await notify._set_dict_cfg({"Interv": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())

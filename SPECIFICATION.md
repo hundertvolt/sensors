@@ -1067,12 +1067,15 @@ tuple/list of values), both bypassing the min/max range check via `type_or_range
   plain-tuple reference inside a `const()` expression raises `SyntaxError: not a constant`).
 
 One JSON file per sensor: `config_<name>.cfg` (written by `SensorReaderConfig.__init__` via
-`ConfigManager(cfg_path + "config_" + name + ".cfg", default_vals, self.pr)`). Loaded once at
-`ConfigManager.__init__`, cached in `self._cache`, and only re-synced to disk by
-`write_config()` — every `get_*` call reads the cache directly, no per-call file I/O.
+`ConfigManager(cfg_path + "config_" + name + ".cfg", default_vals, name)` — `ConfigManager`
+builds its own `"CFGMGR_" + name`-identified `PrintLogHistory` internally rather than reusing its
+owner's, see CLAUDE.md's Cluster 2 note). `__init__` only stashes constructor args (synchronous,
+cheap); the real load happens once in `async def setup()`, cached in `self._cache`, and only
+re-synced to disk by `write_config()` — every `get_*` call reads the cache directly, no per-call
+file I/O.
 
 `ConfigManager` also carries three defensive type-mismatch catches, spread across three different
-methods rather than bunched into one — `__init__`'s `except (MemoryError, OSError, TypeError)`
+methods rather than bunched into one — `setup()`'s `except (MemoryError, OSError, TypeError)`
 (a non-string filename), `get_dict()`'s `except (KeyError, TypeError)` (a non-iterable/malformed
 `keys` argument), and `write_config()`'s own `except (MemoryError, OSError, ValueError,
 AttributeError)` (an `AttributeError` from calling `.items()` on a non-dict `data` argument — the

@@ -105,7 +105,7 @@ def make_client(
         get_dns_server = lambda: None  # noqa: E731
     if cfg_path is None:
         cfg_path = _tmp_cfg_dir()
-    return asy_ntp_client(
+    client = asy_ntp_client(
         wifi_mode_lock,
         network_available,
         get_dns_server,
@@ -117,6 +117,8 @@ def make_client(
         cfg_path=cfg_path,
         fram=fram,
     )
+    run(client.cfgmgr.setup())
+    return client
 
 
 def make_client_with_json(json_text: str) -> asy_ntp_client:

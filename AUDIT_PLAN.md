@@ -535,9 +535,67 @@ dependency. Standing MicroPython-currency check only (confirm `json`/file-I/O id
 haven't been superseded between 1.26 and the refactor's target version — no discrepancy expected,
 not previously flagged as one).
 
-**Status**: `[ ]` not started. Depends on Cluster 1. Design finalized (option 3, above); the ripple
-question is also resolved now (owner: extend the pattern upward — see Open Decisions Log and Cluster
-3) — no longer blocked on anything, but Cluster 3's own scope grew as a direct result: see there.
+**Status**: `[x]` done.
+
+**Executed 2026-08-07**: `ConfigManager.__init__(self, filename, cfg_vals, name: str)` replaces the
+`logger: PrintLog` parameter with a plain `name: str`; it now only stashes constructor args
+(`self.config_file`, `self.cfg_vals`, `self.valid = False`, `self._cache = {}`) plus builds its own
+`self.pr = PrintLogHistory(name="CFGMGR_" + name)` (in-memory only, matching the design). A new
+`async def setup()` does the real load/validate/first-write work that used to live in `__init__`,
+following `FRAM_SPI`/`SpiDevice`'s established sync-`__init__`/async-`setup()` split. Every genuine
+error path in `setup()` and the three already-async methods (`_get_values`, `get_dict`,
+`write_config`) now uses real `err_s`/`wrn_s` with its own errno/wrnno — sequential in source order,
+`errno=1..14`, `wrnno=1..6` (final numbers still subject to Cluster 10's own inventory pass, per the
+plan's own "provisional" framing). A new `async def get_error_counter()` returns
+`await self.pr.get_log()`, matching every other module's shape. The one current call site
+(`base_classes.py`'s `SensorReaderConfig.__init__`) now passes `name` instead of `self.pr` to
+`ConfigManager(...)`, done as part of this cluster per its own Quality measure — no other line in
+`base_classes.py` was touched (`SensorReaderConfig.setup()` itself remains Cluster 3's own job, not
+pulled forward). `SPECIFICATION.md`'s "Microdot / REST layer" background section (the `ConfigManager`
+paragraph describing its constructor/loading shape) was updated to match — a stale-doc fix in the
+same session per CLAUDE.md's own working agreement, not a scope expansion.
+
+**Real ripple discovered and fixed this session** (an owner-approved scope call, made explicitly
+after flagging it rather than guessing — see the session's own decision log): moving the real load
+out of `__init__` into `async def setup()` meant every test across the repo that constructs a
+`SensorReaderConfig`-family object (`SensorReaderConfig` itself, `BMP3xx_Reader`, `SGP40_Reader`,
+`NotificationCoordinator`, `asy_ntp_client`, `asy_conn_time` — every concrete class with a real
+config schema) and then reads/writes through its `cfgmgr` needed an explicit
+`run(x.cfgmgr.setup())` (or, inside an already-running `async def` helper, `await x.cfgmgr.setup()`)
+added right after construction — otherwise `cfgmgr.valid` simply stays `False` forever and every
+config read silently returns `None`. Fixed mechanically, scope held constant (assertions/test intent
+left unchanged, only the missing `setup()` call added), across: `tests/test_config_manager.py` (the
+file's own `_make()` helper plus ~26 direct construction sites), `tests/test_base_classes.py` (~40
+sites across `SensorReaderConfig` and five locally-defined subclasses, one test rewritten in place —
+`test_sensorreaderconfig_shares_the_same_logger_instance_with_its_configmanager` asserted
+`reader.cfgmgr.pr is reader.pr`, which is now permanently false by design, not just missing a
+`setup()` call, since `ConfigManager` builds its own separate `PrintLogHistory` — inverted to `is
+not` and renamed), `tests/test_api_response.py`, `tests/test_asy_bmp3xx_driver.py`,
+`tests/test_asy_notification_service.py` (staged `register()`/`finalize()` construction — the fix
+lands right after each of the 46 `.finalize()` calls, not at construction time, since `self.cfgmgr`
+doesn't exist until `finalize()` runs), `tests/test_asy_sgp40_driver.py`, `tests/test_asy_ntp_client.py`,
+`tests/test_asy_wifi_service.py`, `tests/test_notification_neopixel_integration.py`,
+`tests/test_notification_scd30_integration.py`, `tests/test_ntp_fram_system_integration.py`,
+`tests/test_ntp_wifi_dns_integration.py`, `tests/test_setter_microdot_integration.py`.
+`tests/test_neopixel_wifi_integration.py` and `tests/test_notification_fram_integration.py` also
+construct one of these classes but never exercise a `cfgmgr`-dependent read/write path, so needed no
+change — confirmed by running each individually, not assumed. **A real bug surfaced and fixed during
+this ripple fix, not just a missing call**: a first mechanical pass over `test_asy_sgp40_driver.py`
+blanket-inserted `run(x.cfgmgr.setup())` after every construction, including ones inside nested
+`async def scenario():` helpers already running under `run(scenario())` — nested `run()` (i.e.
+nested `asyncio.run()`) inside an already-running event loop doesn't raise a catchable Python
+exception on this MicroPython build, it **segfaults the interpreter**. Caught by the segfault itself
+(17/98 tests had printed `PASS`, then the process died with no `FAIL` line and no traceback), fixed
+by identifying every insertion's enclosing function (sync vs. `async def`) programmatically and
+switching the 17 async-context ones to `await x.cfgmgr.setup()` instead. Worth remembering for any
+future mechanical test edit that adds a `run(...)` call: always check whether the insertion point is
+already inside a running coroutine first.
+
+Verified: `lint.sh` (30 errors)/`typecheck.sh` (44 errors) both match the established
+`improved-quality/`-only baseline exactly, zero new findings in `src/`/`tests/`; `test.sh` full
+31-file suite green, 0 `FAIL` lines, including 6 new tests added to `tests/test_config_manager.py`
+(`name`-forwarding, `get_error_counter()` shape, directory-path/corrupt-JSON errors actually
+recorded via `err_s`/`wrn_s` — not just printed).
 
 ## Cluster 3 — `base_classes.py`
 

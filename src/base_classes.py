@@ -249,7 +249,7 @@ class SensorReaderConfig(SensorReader):
         self.cfgmgr = ConfigManager(
             cfg_path + "config_" + name + ".cfg",
             default_vals,
-            self.pr,
+            name,
         )
         # Per-field live-push callbacks: a subclass registers {field_name: async_push_fn} entries
         # after super().__init__(); a field with no entry is persist-only (see DRIVER_SPEC.md §5.2).

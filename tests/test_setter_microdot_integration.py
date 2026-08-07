@@ -78,17 +78,21 @@ def _tmp_cfg_dir() -> str:
 
 
 def make_wifi_client() -> asy_conn_time:
-    return asy_conn_time(led_pin=None, cfg_path=_tmp_cfg_dir())
+    client = asy_conn_time(led_pin=None, cfg_path=_tmp_cfg_dir())
+    run(client.cfgmgr.setup())
+    return client
 
 
 def make_ntp_client() -> asy_ntp_client:
     wifi_mode_lock = asyncio.Lock()
-    return asy_ntp_client(
+    client = asy_ntp_client(
         wifi_mode_lock,
         network_available=lambda: True,
         get_dns_server=lambda: None,
         cfg_path=_tmp_cfg_dir(),
     )
+    run(client.cfgmgr.setup())
+    return client
 
 
 class _FakeRequest:
@@ -431,6 +435,7 @@ def _bmp_app(reader: BMP3xx_Reader) -> Microdot:
 def test_real_microdot_setter_end_to_end_i2c_bus_fault_surfaces_as_failed_not_500() -> None:
     i2c = I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
     reader = BMP3xx_Reader(i2c, address=0x77, cfg_path=_tmp_cfg_dir())
+    run(reader.cfgmgr.setup())
     _nak_i2c_address(i2c, 0x77)  # bus genuinely unreachable, like a dead/disconnected sensor
     app = _bmp_app(reader)
     req = _make_request(app, "PUT", "/sensors/cmd", {"cmd": "setBMP", "PressOvers": 8})
@@ -455,6 +460,7 @@ def test_real_microdot_setter_end_to_end_write_only_fault_recovers_via_live_gett
     # request, not just when synthetically driven at the base_classes.py/driver level.
     i2c = I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
     reader = BMP3xx_Reader(i2c, address=0x77, cfg_path=_tmp_cfg_dir())
+    run(reader.cfgmgr.setup())
     run(reader.bmp.set_pressure_oversampling(2))  # desync: real sensor register = 2, cfgmgr = 1 (default)
     assert run(reader.cfgmgr.get_dict(["PressOvers"])) == {"PressOvers": 1}
 

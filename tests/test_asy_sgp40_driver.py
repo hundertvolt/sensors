@@ -323,7 +323,9 @@ async def _comp_data() -> list[float | None]:
 
 def make_reader(**kwargs: object) -> SGP40_Reader:
     kwargs.setdefault("cfg_path", _tmp_path("") + "/")
-    return SGP40_Reader(make_i2c(), _comp_data, max_i2c_err=2, **kwargs)  # type: ignore[arg-type]
+    reader = SGP40_Reader(make_i2c(), _comp_data, max_i2c_err=2, **kwargs)  # type: ignore[arg-type]
+    run(reader.cfgmgr.setup())
+    return reader
 
 
 def test_init_sgp_resets_the_real_base_class_error_counter() -> None:
@@ -341,6 +343,7 @@ def test_init_sgp_resets_the_real_base_class_error_counter() -> None:
 
 def test_read_sgp_without_compensation_data_returns_all_none() -> None:
     reader = SGP40_Reader(make_i2c(), _no_comp_data, max_i2c_err=2, cfg_path=_tmp_path("") + "/")
+    run(reader.cfgmgr.setup())
     data, compensated, serialized = run(reader._read_sgp(None, False, False))
     assert data == SGP40(None, None, None)
     assert compensated is False
@@ -501,6 +504,7 @@ def test_set_dict_cfg_reset_voc_triggers_the_reset_and_is_never_persisted() -> N
     # behavior, exercised here end-to-end through the real driver.
     cfg_dir = _sgp_cfg_dir("resetvoc_trigger")
     reader = SGP40_Reader(make_i2c(), _comp_data, max_i2c_err=2, cfg_path=cfg_dir)
+    run(reader.cfgmgr.setup())
     results = run(reader._set_dict_cfg({"SGPResetVOC": True}, reader.get_cfg_schema()))
     assert results == {"SGPResetVOC": "Valid"}
     assert reader.reset is True
@@ -516,6 +520,7 @@ def test_set_dict_cfg_reset_voc_re_fires_every_time_not_just_on_change() -> None
     # semantic reset_voc() itself needs (e.g. two separate REST requests each meaning "reset now").
     cfg_dir = _sgp_cfg_dir("resetvoc_refire")
     reader = SGP40_Reader(make_i2c(), _comp_data, max_i2c_err=2, cfg_path=cfg_dir)
+    run(reader.cfgmgr.setup())
     first = run(reader._set_dict_cfg({"SGPResetVOC": True}, reader.get_cfg_schema()))
     reader.reset = False  # simulate the reset having already completed and cleared by read_loop()
     second = run(reader._set_dict_cfg({"SGPResetVOC": True}, reader.get_cfg_schema()))
@@ -531,6 +536,7 @@ def test_set_dict_cfg_reset_voc_false_reports_valid_not_failed() -> None:
     # nor leave anything for _recover_failed_push to (harmlessly) no-op through.
     cfg_dir = _sgp_cfg_dir("resetvoc_false")
     reader = SGP40_Reader(make_i2c(), _comp_data, max_i2c_err=2, cfg_path=cfg_dir)
+    run(reader.cfgmgr.setup())
     results = run(reader._set_dict_cfg({"SGPResetVOC": False}, reader.get_cfg_schema()))
     assert results == {"SGPResetVOC": "Valid"}
     assert reader.reset is False
@@ -562,6 +568,7 @@ def test_reset_never_drops_but_each_sub_part_completes_at_most_once() -> None:
         max_i2c_err=5,
         cfg_path=_tmp_path("") + "/",
     )
+    run(reader.cfgmgr.setup())
     fake_bus = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
     queue_successful_init(fake_bus)
     run(reader._init_sgp())
@@ -615,6 +622,7 @@ def test_reset_retries_only_the_fram_half_once_the_algo_half_already_succeeded()
         max_i2c_err=5,
         cfg_path=_tmp_path("") + "/",
     )
+    run(reader.cfgmgr.setup())
     fake_bus = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
     queue_successful_init(fake_bus)
     run(reader._init_sgp())
@@ -709,6 +717,7 @@ def test_run_backup_genuine_fram_write_failure_is_logged_as_an_error() -> None:
         max_i2c_err=5,
         cfg_path=_tmp_path("") + "/",
     )
+    run(reader.cfgmgr.setup())
     fake_bus = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
     queue_successful_init(fake_bus)
     run(reader._init_sgp())
@@ -742,6 +751,7 @@ def test_run_restore_applies_backup_anyway_once_wait_time_ntp_budget_is_exhauste
             max_i2c_err=5,
             cfg_path=_tmp_path("") + "/",
         )
+        await writer.cfgmgr.setup()
         fake_bus = bus(writer.sgp.i2c_sgp40.i2c_device.i2c)
         queue_successful_init(fake_bus)
         await writer._init_sgp()
@@ -757,6 +767,7 @@ def test_run_restore_applies_backup_anyway_once_wait_time_ntp_budget_is_exhauste
             max_i2c_err=5,
             cfg_path=_tmp_path("") + "/",
         )
+        await reader.cfgmgr.setup()
         fake_bus2 = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
         queue_successful_init(fake_bus2)
         await reader._init_sgp()
@@ -789,6 +800,7 @@ def test_run_backup_writes_without_timestamp_once_wait_time_ntp_budget_is_exhaus
             max_i2c_err=5,
             cfg_path=_tmp_path("") + "/",
         )
+        await writer.cfgmgr.setup()
         fake_bus = bus(writer.sgp.i2c_sgp40.i2c_device.i2c)
         queue_successful_init(fake_bus)
         await writer._init_sgp()
@@ -822,6 +834,7 @@ def test_check_storage_backup_counter_wraps_before_it_could_overflow() -> None:
         max_i2c_err=5,
         cfg_path=cfg_dir,
     )
+    run(reader.cfgmgr.setup())
     fake_bus = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
     queue_successful_init(fake_bus)
     run(reader._init_sgp())
@@ -846,6 +859,7 @@ def test_init_sgp_sets_verify_to_the_documented_formula() -> None:
         max_i2c_err=5,
         cfg_path=cfg_dir,
     )
+    run(reader.cfgmgr.setup())
     fake_bus = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
     queue_successful_init(fake_bus)
     assert run(reader._init_sgp()) is True
@@ -873,6 +887,7 @@ def test_simultaneous_restore_and_backup_in_one_cycle_reads_then_rewrites_the_sa
             max_i2c_err=5,
             cfg_path=_tmp_path("") + "/",
         )
+        await writer.cfgmgr.setup()
         fake_bus = bus(writer.sgp.i2c_sgp40.i2c_device.i2c)
         queue_successful_init(fake_bus)
         await writer._init_sgp()
@@ -893,6 +908,7 @@ def test_simultaneous_restore_and_backup_in_one_cycle_reads_then_rewrites_the_sa
             max_i2c_err=5,
             cfg_path=_tmp_path("") + "/",
         )
+        await reader.cfgmgr.setup()
         fake_bus2 = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
         queue_successful_init(fake_bus2)
         await reader._init_sgp()
@@ -973,6 +989,7 @@ def test_set_dict_cfg_works_out_of_the_box_with_zero_driver_changes() -> None:
     # never write, same reasoning as every other config-writing test in this file.
     cfg_dir = _sgp_cfg_dir("setdictzero")
     reader = SGP40_Reader(make_i2c(), _comp_data, max_i2c_err=2, cfg_path=cfg_dir)
+    run(reader.cfgmgr.setup())
     results = run(reader._set_dict_cfg({"BackupPeriod": 30, "WaitTimeNTP": 60}, reader.get_cfg_schema()))
     assert results == {"BackupPeriod": "Valid", "WaitTimeNTP": "Valid"}
     stored = run(reader.cfgmgr.get_dict(["BackupPeriod", "WaitTimeNTP"]))
@@ -1021,6 +1038,7 @@ def test_get_dict_cfg_reports_schema_defaults_when_no_config_file_exists() -> No
     # them back through the real driver + ConfigManager instead of importing the tuples directly.
     cfg_dir = _sgp_cfg_dir("defaults")
     reader = SGP40_Reader(make_i2c(), _comp_data, max_i2c_err=2, cfg_path=cfg_dir)
+    run(reader.cfgmgr.setup())
     cfg = run(reader.get_dict_cfg())
     assert cfg["SGP40"] == {"BackupPeriod": 1, "BackupMaxAge": 7200, "WaitTimeNTP": 30}
 
@@ -1029,6 +1047,7 @@ def test_get_dict_cfg_reports_all_valid_minimum_boundary_values() -> None:
     cfg_dir = _sgp_cfg_dir("minbound")
     _write_sgp_cfg(cfg_dir, {"BackupPeriod": 0, "BackupMaxAge": 0, "WaitTimeNTP": 0})
     reader = SGP40_Reader(make_i2c(), _comp_data, max_i2c_err=2, cfg_path=cfg_dir)
+    run(reader.cfgmgr.setup())
     cfg = run(reader.get_dict_cfg())
     assert cfg["SGP40"] == {"BackupPeriod": 0, "BackupMaxAge": 0, "WaitTimeNTP": 0}
 
@@ -1037,6 +1056,7 @@ def test_get_dict_cfg_reports_all_valid_maximum_boundary_values() -> None:
     cfg_dir = _sgp_cfg_dir("maxbound")
     _write_sgp_cfg(cfg_dir, {"BackupPeriod": 1440, "BackupMaxAge": 10080, "WaitTimeNTP": 600})
     reader = SGP40_Reader(make_i2c(), _comp_data, max_i2c_err=2, cfg_path=cfg_dir)
+    run(reader.cfgmgr.setup())
     cfg = run(reader.get_dict_cfg())
     assert cfg["SGP40"] == {"BackupPeriod": 1440, "BackupMaxAge": 10080, "WaitTimeNTP": 600}
 
@@ -1045,6 +1065,7 @@ def test_get_dict_cfg_reports_a_typical_valid_custom_combination() -> None:
     cfg_dir = _sgp_cfg_dir("typical")
     _write_sgp_cfg(cfg_dir, {"BackupPeriod": 60, "BackupMaxAge": 1440, "WaitTimeNTP": 120})
     reader = SGP40_Reader(make_i2c(), _comp_data, max_i2c_err=2, cfg_path=cfg_dir)
+    run(reader.cfgmgr.setup())
     cfg = run(reader.get_dict_cfg())
     assert cfg["SGP40"] == {"BackupPeriod": 60, "BackupMaxAge": 1440, "WaitTimeNTP": 120}
 
@@ -1053,6 +1074,7 @@ def test_config_single_invalid_backup_period_defaults_only_that_field() -> None:
     cfg_dir = _sgp_cfg_dir("badbp")
     _write_sgp_cfg(cfg_dir, {"BackupPeriod": 1441, "BackupMaxAge": 1440, "WaitTimeNTP": 120})
     reader = SGP40_Reader(make_i2c(), _comp_data, max_i2c_err=2, cfg_path=cfg_dir)
+    run(reader.cfgmgr.setup())
     cfg = run(reader.get_dict_cfg())
     assert cfg["SGP40"] == {"BackupPeriod": 1, "BackupMaxAge": 1440, "WaitTimeNTP": 120}  # only BP reverted
 
@@ -1061,6 +1083,7 @@ def test_config_single_invalid_backup_max_age_defaults_only_that_field() -> None
     cfg_dir = _sgp_cfg_dir("badbmax")
     _write_sgp_cfg(cfg_dir, {"BackupPeriod": 60, "BackupMaxAge": -1, "WaitTimeNTP": 120})
     reader = SGP40_Reader(make_i2c(), _comp_data, max_i2c_err=2, cfg_path=cfg_dir)
+    run(reader.cfgmgr.setup())
     cfg = run(reader.get_dict_cfg())
     assert cfg["SGP40"] == {"BackupPeriod": 60, "BackupMaxAge": 7200, "WaitTimeNTP": 120}
 
@@ -1069,6 +1092,7 @@ def test_config_single_invalid_wait_time_ntp_defaults_only_that_field() -> None:
     cfg_dir = _sgp_cfg_dir("badwt")
     _write_sgp_cfg(cfg_dir, {"BackupPeriod": 60, "BackupMaxAge": 1440, "WaitTimeNTP": 601})
     reader = SGP40_Reader(make_i2c(), _comp_data, max_i2c_err=2, cfg_path=cfg_dir)
+    run(reader.cfgmgr.setup())
     cfg = run(reader.get_dict_cfg())
     assert cfg["SGP40"] == {"BackupPeriod": 60, "BackupMaxAge": 1440, "WaitTimeNTP": 30}
 
@@ -1077,6 +1101,7 @@ def test_config_two_invalid_fields_each_independently_defaulted() -> None:
     cfg_dir = _sgp_cfg_dir("badtwo")
     _write_sgp_cfg(cfg_dir, {"BackupPeriod": -5, "BackupMaxAge": 1440, "WaitTimeNTP": 99999})
     reader = SGP40_Reader(make_i2c(), _comp_data, max_i2c_err=2, cfg_path=cfg_dir)
+    run(reader.cfgmgr.setup())
     cfg = run(reader.get_dict_cfg())
     assert cfg["SGP40"] == {"BackupPeriod": 1, "BackupMaxAge": 1440, "WaitTimeNTP": 30}
 
@@ -1085,6 +1110,7 @@ def test_config_all_three_fields_invalid_falls_back_to_full_defaults() -> None:
     cfg_dir = _sgp_cfg_dir("badall")
     _write_sgp_cfg(cfg_dir, {"BackupPeriod": -1, "BackupMaxAge": 999999, "WaitTimeNTP": -30})
     reader = SGP40_Reader(make_i2c(), _comp_data, max_i2c_err=2, cfg_path=cfg_dir)
+    run(reader.cfgmgr.setup())
     cfg = run(reader.get_dict_cfg())
     assert cfg["SGP40"] == {"BackupPeriod": 1, "BackupMaxAge": 7200, "WaitTimeNTP": 30}
     # driver must still init cleanly despite an all-invalid config file already on disk
@@ -1097,6 +1123,7 @@ def test_config_wrong_type_values_single_and_combined() -> None:
     cfg_dir = _sgp_cfg_dir("wrongtype")
     _write_sgp_cfg(cfg_dir, {"BackupPeriod": "sixty", "BackupMaxAge": 1440, "WaitTimeNTP": 12.5})
     reader = SGP40_Reader(make_i2c(), _comp_data, max_i2c_err=2, cfg_path=cfg_dir)
+    run(reader.cfgmgr.setup())
     cfg = run(reader.get_dict_cfg())
     assert cfg["SGP40"] == {"BackupPeriod": 1, "BackupMaxAge": 1440, "WaitTimeNTP": 30}
 
@@ -1105,6 +1132,7 @@ def test_config_missing_keys_use_defaults() -> None:
     cfg_dir = _sgp_cfg_dir("missing")
     _write_sgp_cfg(cfg_dir, {"BackupMaxAge": 1440})  # BackupPeriod, WaitTimeNTP both absent
     reader = SGP40_Reader(make_i2c(), _comp_data, max_i2c_err=2, cfg_path=cfg_dir)
+    run(reader.cfgmgr.setup())
     cfg = run(reader.get_dict_cfg())
     assert cfg["SGP40"] == {"BackupPeriod": 1, "BackupMaxAge": 1440, "WaitTimeNTP": 30}
 
@@ -1124,6 +1152,7 @@ def test_init_sgp_applies_custom_wait_time_ntp_from_valid_config() -> None:
         max_i2c_err=2,
         cfg_path=cfg_dir,
     )
+    run(reader.cfgmgr.setup())
     fake_bus = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
     queue_successful_init(fake_bus)
     assert run(reader._init_sgp()) is True
@@ -1272,6 +1301,7 @@ def test_fram_backup_writes_and_restore_recovers_full_algorithm_state() -> None:
             max_i2c_err=5,
             cfg_path=_tmp_path("") + "/",
         )
+        await writer.cfgmgr.setup()
         fake_bus = bus(writer.sgp.i2c_sgp40.i2c_device.i2c)
         queue_successful_init(fake_bus)
         assert await writer._init_sgp() is True
@@ -1292,6 +1322,7 @@ def test_fram_backup_writes_and_restore_recovers_full_algorithm_state() -> None:
             max_i2c_err=5,
             cfg_path=_tmp_path("") + "/",
         )
+        await reader.cfgmgr.setup()
         fake_bus2 = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
         queue_successful_init(fake_bus2)
         assert await reader._init_sgp() is True
@@ -1347,6 +1378,7 @@ def test_fram_restore_rejects_backup_older_than_backup_max_age() -> None:
             max_i2c_err=5,
             cfg_path=_tmp_path("") + "/",
         )
+        await writer.cfgmgr.setup()
         fake_bus = bus(writer.sgp.i2c_sgp40.i2c_device.i2c)
         queue_successful_init(fake_bus)
         await writer._init_sgp()
@@ -1368,6 +1400,7 @@ def test_fram_restore_rejects_backup_older_than_backup_max_age() -> None:
             max_i2c_err=5,
             cfg_path=_tmp_path("") + "/",
         )
+        await reader.cfgmgr.setup()
         fake_bus2 = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
         queue_successful_init(fake_bus2)
         await reader._init_sgp()
@@ -1390,6 +1423,7 @@ def test_fram_restore_finds_no_backup_on_a_never_written_chunk() -> None:
             max_i2c_err=5,
             cfg_path=_tmp_path("") + "/",
         )
+        await reader.cfgmgr.setup()
         fake_bus = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
         queue_successful_init(fake_bus)
         await reader._init_sgp()
@@ -1416,6 +1450,7 @@ def test_fram_backup_without_ntp_sync_is_deferred_not_lost() -> None:
             max_i2c_err=5,
             cfg_path=_tmp_path("") + "/",
         )
+        await writer.cfgmgr.setup()
         fake_bus = bus(writer.sgp.i2c_sgp40.i2c_device.i2c)
         queue_successful_init(fake_bus)
         await writer._init_sgp()
@@ -1445,6 +1480,7 @@ def test_read_sgp_comp_callback_exception_is_caught_not_propagated() -> None:
     # Regression test: comp_callback() used to be called unwrapped, unlike every other
     # caller-supplied callback in this codebase (e.g. asy_fram_manager.py's ntp_sync_callback).
     reader = SGP40_Reader(make_i2c(), _raising_comp_callback, max_i2c_err=2, cfg_path=_tmp_path("") + "/")
+    run(reader.cfgmgr.setup())
     run(reader.pr.setup())
     data, compensated, serialized = run(reader._read_sgp(None, False, False))
     assert data == SGP40(None, None, None)
@@ -1541,6 +1577,7 @@ def test_reader_with_fram_storage_gets_a_fram_backed_print_log() -> None:
         max_i2c_err=2,
         cfg_path=_tmp_path("") + "/",
     )
+    run(reader.cfgmgr.setup())
     assert isinstance(reader.pr, PrintLogHistoryStore)
 
 
@@ -1566,6 +1603,7 @@ def test_reader_survives_get_timestamped_chunk_raising_instead_of_returning_none
         max_i2c_err=2,
         cfg_path=_tmp_path("") + "/",
     )
+    run(reader.cfgmgr.setup())
     assert reader.ts_storage is None
     assert isinstance(reader.pr, PrintLogHistoryStore)  # print-log FRAM persistence is unaffected
 
@@ -1583,6 +1621,7 @@ def test_sgp40_error_log_survives_a_simulated_reboot_via_fram() -> None:
             max_i2c_err=2,
             cfg_path=_tmp_path("") + "/",
         )
+        await reader.cfgmgr.setup()
         await reader.pr.setup()
         await reader.pr.err_s("SGP40", "simulated fault", errno=1)
 
@@ -1596,6 +1635,7 @@ def test_sgp40_error_log_survives_a_simulated_reboot_via_fram() -> None:
             max_i2c_err=2,
             cfg_path=_tmp_path("") + "/",
         )
+        await reader2.cfgmgr.setup()
         await reader2.pr.setup()  # loads the persisted history back from FRAM
         log = await reader2.get_error_counter()
         err_count = log["SGP40"]["ErrCount"]
@@ -1634,6 +1674,7 @@ def test_init_sgp_fails_and_logs_when_config_data_unreadable() -> None:
         max_i2c_err=5,
         cfg_path=_tmp_path("") + "/",
     )
+    run(reader.cfgmgr.setup())
     fake_bus = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
     queue_successful_init(fake_bus)
     reader.cfgmgr.valid = False  # simulate an unreadable/corrupted per-sensor config file
@@ -1658,6 +1699,7 @@ def test_init_sgp_caps_a_stale_out_of_schema_wait_time_ntp() -> None:
         max_i2c_err=5,
         cfg_path=_tmp_path("") + "/",
     )
+    run(reader.cfgmgr.setup())
     fake_bus = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
     queue_successful_init(fake_bus)
     reader.cfgmgr._cache["WaitTimeNTP"] = 9999
@@ -1677,6 +1719,7 @@ def test_check_storage_fails_and_logs_when_config_data_unreadable() -> None:
         max_i2c_err=5,
         cfg_path=_tmp_path("") + "/",
     )
+    run(reader.cfgmgr.setup())
     fake_bus = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
     queue_successful_init(fake_bus)
     assert run(reader._init_sgp()) is True
@@ -1708,6 +1751,7 @@ def test_run_restore_backup_without_timestamp_clears_voc_init_and_still_restores
             max_i2c_err=5,
             cfg_path=_tmp_path("") + "/",
         )
+        await writer.cfgmgr.setup()
         fake_bus = bus(writer.sgp.i2c_sgp40.i2c_device.i2c)
         queue_successful_init(fake_bus)
         await writer._init_sgp()
@@ -1724,6 +1768,7 @@ def test_run_restore_backup_without_timestamp_clears_voc_init_and_still_restores
             max_i2c_err=5,
             cfg_path=_tmp_path("") + "/",
         )
+        await reader.cfgmgr.setup()
         fake_bus2 = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
         queue_successful_init(fake_bus2)
         await reader._init_sgp()
@@ -1753,6 +1798,7 @@ def test_run_restore_valid_timestamp_but_unknown_age_waits_for_ntp() -> None:
             max_i2c_err=5,
             cfg_path=_tmp_path("") + "/",
         )
+        await writer.cfgmgr.setup()
         fake_bus = bus(writer.sgp.i2c_sgp40.i2c_device.i2c)
         queue_successful_init(fake_bus)
         await writer._init_sgp()
@@ -1768,6 +1814,7 @@ def test_run_restore_valid_timestamp_but_unknown_age_waits_for_ntp() -> None:
             max_i2c_err=5,
             cfg_path=_tmp_path("") + "/",
         )
+        await reader.cfgmgr.setup()
         fake_bus2 = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
         queue_successful_init(fake_bus2)
         await reader._init_sgp()
@@ -1795,6 +1842,7 @@ def test_run_backup_updates_verify_when_backup_period_changes_after_init() -> No
         max_i2c_err=5,
         cfg_path=_sgp_cfg_dir("verify_change"),  # fresh, isolated config file - this test writes to it
     )
+    run(reader.cfgmgr.setup())
     fake_bus = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
     queue_successful_init(fake_bus)
     run(reader._init_sgp())
@@ -1822,6 +1870,7 @@ def test_run_backup_resyncs_with_timestamp_once_ntp_available_again() -> None:
         max_i2c_err=5,
         cfg_path=_sgp_cfg_dir("resync_with_ts"),
     )
+    run(reader.cfgmgr.setup())
     fake_bus = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
     queue_successful_init(fake_bus)
     run(reader._init_sgp())
@@ -1853,6 +1902,7 @@ def test_read_sgp_reset_without_fram_storage_completes_immediately() -> None:
 
 def test_read_sgp_retries_deserialize_when_compensation_data_missing() -> None:
     reader = SGP40_Reader(make_i2c(), _no_comp_data, max_i2c_err=2, cfg_path=_tmp_path("") + "/")
+    run(reader.cfgmgr.setup())
     reader.voc_init = 0
     run(reader._read_sgp(None, False, True))  # deserialize=True, but no compensation data available
     assert reader.voc_init == 1  # retry scheduled for the next cycle

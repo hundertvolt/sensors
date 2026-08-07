@@ -108,7 +108,9 @@ def _tmp_cfg_dir() -> str:
 
 
 def make_conn() -> asy_conn_time:
-    return asy_conn_time(led_pin=None, cfg_path=_tmp_cfg_dir())
+    conn = asy_conn_time(led_pin=None, cfg_path=_tmp_cfg_dir())
+    run(conn.cfgmgr.setup())
+    return conn
 
 
 def make_ntp(
@@ -120,7 +122,7 @@ def make_ntp(
     cfg_path = _tmp_cfg_dir()
     with open(cfg_path + "config_NTP.cfg", "w") as f:
         f.write(f'{{"NTP_Host": "{ntp_host}", "NTP_Offset_S": 0, "NTP_Interv_H": 12, "GMTOffset": 0, "DSTOffset": 0}}')
-    return asy_ntp_client(
+    ntp = asy_ntp_client(
         conn.get_wifi_mode_lock(),
         conn.network_available,
         conn.get_dns_server_ip,
@@ -128,6 +130,8 @@ def make_ntp(
         cfg_path=cfg_path,
         ntp_fetch_timeout_ms=ntp_fetch_timeout_ms,
     )
+    run(ntp.cfgmgr.setup())
+    return ntp
 
 
 def connect_wlan(conn: asy_conn_time, dns_server: str = "192.0.2.53") -> None:
@@ -565,7 +569,9 @@ _BMP_ADDR = 0x77
 
 def make_bmp_reader(cfg_path: str, max_i2c_err: int = 1) -> BMP3xx_Reader:
     i2c = I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
-    return BMP3xx_Reader(i2c, address=_BMP_ADDR, max_i2c_err=max_i2c_err, cfg_path=cfg_path)
+    reader = BMP3xx_Reader(i2c, address=_BMP_ADDR, max_i2c_err=max_i2c_err, cfg_path=cfg_path)
+    run(reader.cfgmgr.setup())
+    return reader
 
 
 async def _never_synced() -> bool:
@@ -621,7 +627,9 @@ async def _no_comp_data() -> "list[float | None]":
 
 def make_sgp40_reader(cfg_path: str, max_i2c_err: int = 1) -> SGP40_Reader:
     i2c = I2C(1, scl_pin=19, sda_pin=18, frequency=50000)
-    return SGP40_Reader(i2c, _no_comp_data, max_i2c_err=max_i2c_err, cfg_path=cfg_path)
+    reader = SGP40_Reader(i2c, _no_comp_data, max_i2c_err=max_i2c_err, cfg_path=cfg_path)
+    run(reader.cfgmgr.setup())
+    return reader
 
 
 def test_system_service_restarts_a_real_scd30_reader_task_that_genuinely_gives_up() -> None:

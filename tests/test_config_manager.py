@@ -3,7 +3,6 @@ import json
 import os
 
 import config_manager as cm
-from print_log import PrintLog
 
 try:
     from typing import TYPE_CHECKING
@@ -73,7 +72,9 @@ def _remove(path: str) -> None:
 def _make(name: str, cfg_vals: "cm.ConfigSchema" = _SCHEMA) -> "tuple[cm.ConfigManager, str]":
     path = _tmp_path(name)
     _remove(path)
-    return cm.ConfigManager(path, cfg_vals, PrintLog()), path
+    mgr = cm.ConfigManager(path, cfg_vals, "TEST")
+    run(mgr.setup())
+    return mgr, path
 
 
 # ---------------------------------------------------------------------------
@@ -611,7 +612,8 @@ def test_configmanager_directory_path_is_invalid() -> None:
     _remove(path)
     os.mkdir(path)
     try:
-        mgr = cm.ConfigManager(path, _SCHEMA, PrintLog())
+        mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
+        run(mgr.setup())
         assert mgr.valid is False
     finally:
         os.rmdir(path)
@@ -627,15 +629,16 @@ def test_configmanager_empty_schema_is_invalid() -> None:
 
 def test_configmanager_non_string_filename_returns_invalid_not_uncaught() -> None:
     # os.stat()/open() raise TypeError (not OSError) for a non-string path on this interpreter -
-    # __init__ must treat that the same as "file not found" rather than letting it propagate.
+    # setup() must treat that the same as "file not found" rather than letting it propagate.
     bad_filenames: list[Any] = [None, 123, ["x"], {}, 12.5]
     for bad_filename in bad_filenames:
-        mgr = cm.ConfigManager(bad_filename, _VAL_INT, PrintLog())
+        mgr = cm.ConfigManager(bad_filename, _VAL_INT, "TEST")
+        run(mgr.setup())
         assert mgr.valid is False
 
 
 def test_configmanager_none_or_non_iterable_schema_is_invalid() -> None:
-    # schema_dict() already tolerates these (returns {}); __init__ must fail the same way an
+    # schema_dict() already tolerates these (returns {}); setup() must fail the same way an
     # explicitly empty schema (()) does, not just avoid crashing.
     mgr, path = _make("noneschema.cfg", cfg_vals=None)  # type: ignore[arg-type]
     try:
@@ -655,7 +658,8 @@ def test_configmanager_corrupt_json_falls_back_to_defaults() -> None:
     with open(path, "w") as f:
         f.write("{not valid json")
     try:
-        mgr = cm.ConfigManager(path, _SCHEMA, PrintLog())
+        mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
+        run(mgr.setup())
         assert mgr.valid is True
         with open(path) as f:
             assert json.load(f)["Count"] == 5  # rewritten with defaults
@@ -674,7 +678,8 @@ def test_configmanager_raw_nan_token_treated_as_corrupt_not_a_raise() -> None:
     with open(path, "w") as f:
         f.write('{"Offset": nan}')
     try:
-        mgr = cm.ConfigManager(path, _VAL_FLOAT, PrintLog())
+        mgr = cm.ConfigManager(path, _VAL_FLOAT, "TEST")
+        run(mgr.setup())
         assert mgr.valid is True
         assert run(mgr.get_dict(["Offset"])) == {"Offset": 1.5}  # rebuilt from the schema default
     finally:
@@ -694,7 +699,8 @@ def test_configmanager_value_omitted_json_quirk_self_heals() -> None:
     with open(path, "w") as f:
         f.write('{"Count": , "Offset": 1.5, "Name": "abc", "Enabled": true}')
     try:
-        mgr = cm.ConfigManager(path, _SCHEMA, PrintLog())
+        mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
+        run(mgr.setup())
         assert mgr.valid is True
         assert run(mgr.get_dict(["Count"])) == {"Count": 5}  # rebuilt from the schema default
     finally:
@@ -707,7 +713,8 @@ def test_configmanager_valid_existing_non_default_value_preserved() -> None:
     with open(path, "w") as f:
         json.dump({"Count": 7, "Offset": 1.5, "Name": "abc", "Enabled": True}, f)
     try:
-        mgr = cm.ConfigManager(path, _SCHEMA, PrintLog())
+        mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
+        run(mgr.setup())
         assert mgr.valid is True
         assert run(mgr.get_dict(["Count"])) == {"Count": 7}  # not overwritten back to the default (5)
     finally:
@@ -720,7 +727,8 @@ def test_configmanager_missing_key_filled_with_default() -> None:
     with open(path, "w") as f:
         json.dump({"Offset": 1.5, "Name": "abc", "Enabled": True}, f)  # "Count" missing
     try:
-        mgr = cm.ConfigManager(path, _SCHEMA, PrintLog())
+        mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
+        run(mgr.setup())
         assert mgr.valid is True
         assert run(mgr.get_dict(["Count"])) == {"Count": 5}
     finally:
@@ -733,7 +741,8 @@ def test_configmanager_out_of_range_value_replaced_with_default() -> None:
     with open(path, "w") as f:
         json.dump({"Count": 999, "Offset": 1.5, "Name": "abc", "Enabled": True}, f)
     try:
-        mgr = cm.ConfigManager(path, _SCHEMA, PrintLog())
+        mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
+        run(mgr.setup())
         assert run(mgr.get_dict(["Count"])) == {"Count": 5}
     finally:
         _remove(path)
@@ -745,7 +754,8 @@ def test_configmanager_extraneous_key_removed_from_file() -> None:
     with open(path, "w") as f:
         json.dump({"Count": 5, "Offset": 1.5, "Name": "abc", "Enabled": True, "Ghost": 1}, f)
     try:
-        mgr = cm.ConfigManager(path, _SCHEMA, PrintLog())
+        mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
+        run(mgr.setup())
         assert mgr.valid is True
         with open(path) as f:
             assert "Ghost" not in json.load(f)
@@ -869,7 +879,7 @@ def test_schema_names_and_schema_dict_on_large_mixed_schema() -> None:
 
 def test_configmanager_one_malformed_field_among_valid_fields_invalidates_whole_config() -> None:
     # A single malformed field (wrong length, missing "special") among otherwise-good fields fails
-    # check_cfg_get_default's self-check the same way write_config's per-key loop does - __init__
+    # check_cfg_get_default's self-check the same way write_config's per-key loop does - setup()
     # aborts for the whole schema, not just the bad field.
     bad_schema = _VAL_INT + (("Bad", "int", 1, 0, 10),)  # missing "special"
     mgr, path = _make("onebadfield.cfg", cfg_vals=bad_schema)  # type: ignore[arg-type]
@@ -885,13 +895,14 @@ def test_configmanager_non_string_field_name_quirk() -> None:
     # from _cache (see module docstring), which is keyed by the schema's own original (still-int)
     # name - never round-tripped through JSON - so a read using that same int key now succeeds,
     # not the reverse: the "123" string key that's actually on disk no longer matches anything,
-    # since _cache is never rebuilt from the file after __init__. Never crashes either way; a real
+    # since _cache is never rebuilt from the file after setup(). Never crashes either way; a real
     # driver would never author a name like this.
     bad_name_schema = ((123, "int", 5, 0, 10, None),)
     path = _tmp_path("badname.cfg")
     _remove(path)
     try:
-        mgr = cm.ConfigManager(path, bad_name_schema, PrintLog())  # type: ignore[arg-type]
+        mgr = cm.ConfigManager(path, bad_name_schema, "TEST")  # type: ignore[arg-type]
+        run(mgr.setup())
         assert mgr.valid is True
         with open(path) as f:
             assert json.load(f) == {"123": 5}
@@ -910,7 +921,8 @@ def test_configmanager_stale_special_only_key_removed_from_file() -> None:
     with open(path, "w") as f:
         json.dump({"Count": 5, "Offset": 1.5, "Name": "abc", "Enabled": True, "Special": 3}, f)
     try:
-        mgr = cm.ConfigManager(path, _SCHEMA, PrintLog())
+        mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
+        run(mgr.setup())
         assert mgr.valid is True
         with open(path) as f:
             assert "Special" not in json.load(f)
@@ -924,7 +936,8 @@ def test_configmanager_file_is_json_array_not_dict() -> None:
     with open(path, "w") as f:
         f.write("[1, 2, 3]")
     try:
-        mgr = cm.ConfigManager(path, _SCHEMA, PrintLog())
+        mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
+        run(mgr.setup())
         assert mgr.valid is True
         with open(path) as f:
             assert json.load(f)["Count"] == 5  # rewritten with defaults
@@ -938,7 +951,8 @@ def test_configmanager_file_is_json_scalar_not_dict() -> None:
     with open(path, "w") as f:
         f.write("42")
     try:
-        mgr = cm.ConfigManager(path, _SCHEMA, PrintLog())
+        mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
+        run(mgr.setup())
         assert mgr.valid is True
     finally:
         _remove(path)
@@ -949,7 +963,8 @@ def test_configmanager_empty_file_falls_back_to_defaults() -> None:
     _remove(path)
     open(path, "w").close()  # 0 bytes - not even "{}"
     try:
-        mgr = cm.ConfigManager(path, _SCHEMA, PrintLog())
+        mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
+        run(mgr.setup())
         assert mgr.valid is True
         with open(path) as f:
             assert json.load(f)["Count"] == 5
@@ -963,7 +978,8 @@ def test_configmanager_all_keys_missing_uses_all_defaults() -> None:
     with open(path, "w") as f:
         json.dump({}, f)  # valid dict, but zero of the schema's keys present
     try:
-        mgr = cm.ConfigManager(path, _SCHEMA, PrintLog())
+        mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
+        run(mgr.setup())
         assert mgr.valid is True
         assert run(mgr.get_dict(["Count", "Offset", "Name", "Enabled"])) == {
             "Count": 5,
@@ -981,7 +997,8 @@ def test_configmanager_multiple_out_of_range_values_each_independently_defaulted
     with open(path, "w") as f:
         json.dump({"Count": 999, "Offset": 999.9, "Name": "abc", "Enabled": True}, f)
     try:
-        mgr = cm.ConfigManager(path, _SCHEMA, PrintLog())
+        mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
+        run(mgr.setup())
         assert mgr.valid is True
         assert run(mgr.get_dict(["Count", "Offset"])) == {"Count": 5, "Offset": 1.5}
     finally:
@@ -995,7 +1012,8 @@ def test_configmanager_wrong_type_stored_value_replaced_with_default() -> None:
         with open(path, "w") as f:
             json.dump({"Count": bad_value, "Offset": 1.5, "Name": "abc", "Enabled": True}, f)
         try:
-            mgr = cm.ConfigManager(path, _SCHEMA, PrintLog())
+            mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
+            run(mgr.setup())
             assert mgr.valid is True
             assert run(mgr.get_dict(["Count"])) == {"Count": 5}
         finally:
@@ -1008,7 +1026,8 @@ def test_configmanager_extraneous_and_missing_key_combined() -> None:
     with open(path, "w") as f:
         json.dump({"Offset": 1.5, "Name": "abc", "Enabled": True, "Ghost": 1}, f)  # "Count" missing, "Ghost" extra
     try:
-        mgr = cm.ConfigManager(path, _SCHEMA, PrintLog())
+        mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
+        run(mgr.setup())
         assert mgr.valid is True
         with open(path) as f:
             on_disk = json.load(f)
@@ -1019,11 +1038,12 @@ def test_configmanager_extraneous_and_missing_key_combined() -> None:
 
 
 def test_configmanager_parent_directory_missing_leaves_invalid() -> None:
-    # Exercises both OSError paths in __init__: os.stat() fails on the initial read (line ~156),
-    # and open(..., "w") also fails on the fallback write (line ~212) - neither is reachable in
-    # isolation without a nonexistent parent directory, since every other test's tmp dir exists.
+    # Exercises both OSError paths in setup(): os.stat() fails on the initial read, and
+    # open(..., "w") also fails on the fallback write - neither is reachable in isolation without
+    # a nonexistent parent directory, since every other test's tmp dir exists.
     path = _TMP_DIR + "/no_such_subdir/x.cfg"
-    mgr = cm.ConfigManager(path, _SCHEMA, PrintLog())
+    mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
+    run(mgr.setup())
     assert mgr.valid is False
 
 
@@ -1032,7 +1052,8 @@ def test_get_dict_on_invalid_manager_returns_none() -> None:
     _remove(path)
     os.mkdir(path)
     try:
-        mgr = cm.ConfigManager(path, _SCHEMA, PrintLog())
+        mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
+        run(mgr.setup())
         assert run(mgr.get_dict(["Count"])) is None
     finally:
         os.rmdir(path)
@@ -1043,7 +1064,8 @@ def test_get_int_values_on_invalid_manager_returns_none() -> None:
     _remove(path)
     os.mkdir(path)
     try:
-        mgr = cm.ConfigManager(path, _SCHEMA, PrintLog())
+        mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
+        run(mgr.setup())
         assert mgr.valid is False
         assert run(mgr.get_int_values(_VAL_INT)) is None
     finally:
@@ -1055,7 +1077,8 @@ def test_get_float_values_on_invalid_manager_returns_none() -> None:
     _remove(path)
     os.mkdir(path)
     try:
-        mgr = cm.ConfigManager(path, _SCHEMA, PrintLog())
+        mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
+        run(mgr.setup())
         assert mgr.valid is False
         assert run(mgr.get_float_values(_VAL_FLOAT)) is None
     finally:
@@ -1067,7 +1090,8 @@ def test_get_str_values_on_invalid_manager_returns_none() -> None:
     _remove(path)
     os.mkdir(path)
     try:
-        mgr = cm.ConfigManager(path, _SCHEMA, PrintLog())
+        mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
+        run(mgr.setup())
         assert mgr.valid is False
         assert run(mgr.get_str_values(_VAL_STR)) is None
     finally:
@@ -1079,7 +1103,8 @@ def test_get_bool_values_on_invalid_manager_returns_none() -> None:
     _remove(path)
     os.mkdir(path)
     try:
-        mgr = cm.ConfigManager(path, _SCHEMA, PrintLog())
+        mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
+        run(mgr.setup())
         assert mgr.valid is False
         assert run(mgr.get_bool_values(_VAL_BOOL)) is None
     finally:
@@ -1114,7 +1139,7 @@ def test_get_dict_multiple_keys_one_missing_aborts_whole_read() -> None:
 
 def test_get_dict_serves_cached_value_even_if_file_deleted_after_init() -> None:
     # Deliberate consequence of _cache (see module docstring): get_dict never re-opens the file, so
-    # deleting it out-of-band after a valid __init__ has no effect on subsequent reads at all -
+    # deleting it out-of-band after a valid setup() has no effect on subsequent reads at all -
     # unlike the pre-cache design, which re-read (and so would have failed) here.
     mgr, path = _make("deletedafterinit.cfg")
     try:
@@ -1207,7 +1232,7 @@ def test_get_str_values_accepts_any_value() -> None:
 
 def test_get_bool_values_wrong_cached_type_returns_none() -> None:
     # bool(v) never raises (unlike int()/float()/str()), so a wrong-typed cached value must be
-    # rejected by explicit isinstance check instead of relying on a conversion exception. __init__
+    # rejected by explicit isinstance check instead of relying on a conversion exception. setup()
     # and write_config both validate before ever storing into _cache, so a real driver can't
     # actually get a wrong-typed value in there - poke _cache directly to exercise this
     # defense-in-depth path (reads must still reject it if it's ever there).
@@ -1397,7 +1422,8 @@ def test_write_config_on_invalid_manager_returns_false() -> None:
     _remove(path)
     os.mkdir(path)
     try:
-        mgr = cm.ConfigManager(path, _SCHEMA, PrintLog())
+        mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
+        run(mgr.setup())
         ok, results = run(mgr.write_config({"Count": 1}, _VAL_INT))
         assert (ok, results) == (False, {})
     finally:
@@ -1452,7 +1478,7 @@ def test_write_config_multiple_keys_mixed_outcomes_in_one_call() -> None:
 
 def test_write_config_malformed_schema_entry_aborts_whole_call() -> None:
     # A schema self-check failure for ANY key hard-aborts the entire call (return False, {}),
-    # discarding even an already-valid key's would-be result - matches __init__'s own all-or-
+    # discarding even an already-valid key's would-be result - matches setup()'s own all-or-
     # nothing treatment of a malformed schema, not a partial-failure design.
     mgr, path = _make("malformedschema.cfg")
     try:
@@ -1512,7 +1538,8 @@ def test_write_config_genuine_write_failure_leaves_cache_unchanged() -> None:
         pass  # already exists
     path = subdir + "/writefail.cfg"
     _remove(path)
-    mgr = cm.ConfigManager(path, _VAL_INT, PrintLog())
+    mgr = cm.ConfigManager(path, _VAL_INT, "TEST")
+    run(mgr.setup())
     try:
         assert mgr.valid is True
         os.remove(path)
@@ -1650,6 +1677,77 @@ def test_concurrent_writes_are_serialized_not_lost() -> None:
     try:
         run(scenario())
         assert run(mgr.get_dict(["Count", "Offset"])) == {"Count": 9, "Offset": 9.5}
+    finally:
+        _remove(path)
+
+
+# ---------------------------------------------------------------------------
+# name identity / err_s/wrn_s error history / get_error_counter (Cluster 2's name-baking and real
+# error-history logging, applied to ConfigManager)
+# ---------------------------------------------------------------------------
+
+
+def test_configmanager_builds_its_own_cfgmgr_prefixed_name() -> None:
+    mgr, path = _make("namecheck.cfg")
+    try:
+        assert mgr.pr.name == "CFGMGR_TEST"
+    finally:
+        _remove(path)
+
+
+def test_get_error_counter_matches_pr_get_log_shape() -> None:
+    mgr, path = _make("errcounter.cfg")
+    try:
+        assert run(mgr.get_error_counter()) == run(mgr.pr.get_log())
+    finally:
+        _remove(path)
+
+
+def test_configmanager_setup_directory_path_error_recorded_via_err_s() -> None:
+    # setup()'s own "exists but is not a file" branch uses err_s (real, counted history), not a
+    # bare err() print that would leave get_error_counter()'s count at zero.
+    path = _tmp_path("direrr.cfg")
+    _remove(path)
+    os.mkdir(path)
+    try:
+        mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
+        run(mgr.setup())
+        assert mgr.valid is False
+        log = run(mgr.get_error_counter())
+        assert log["CFGMGR_TEST"]["ErrCount"] == 1
+    finally:
+        os.rmdir(path)
+
+
+def test_get_error_counter_accumulates_across_later_calls_too() -> None:
+    # get_dict()'s own "Config is not valid, cannot read!" err_s() call (an already-async method,
+    # unrelated to setup()'s own error above) adds to the same running count, not a separate one.
+    path = _tmp_path("direrr2.cfg")
+    _remove(path)
+    os.mkdir(path)
+    try:
+        mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
+        run(mgr.setup())
+        run(mgr.get_dict(["Count"]))
+        log = run(mgr.get_error_counter())
+        assert log["CFGMGR_TEST"]["ErrCount"] == 2
+    finally:
+        os.rmdir(path)
+
+
+def test_configmanager_corrupt_json_warning_recorded_via_wrn_s() -> None:
+    # setup()'s "JSON Data ... is invalid" branch uses wrn_s (real, counted history) - the file
+    # still self-heals to valid despite the recorded warning.
+    path = _tmp_path("wrnhistory.cfg")
+    _remove(path)
+    with open(path, "w") as f:
+        f.write("{not valid json")
+    try:
+        mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
+        run(mgr.setup())
+        assert mgr.valid is True
+        log = run(mgr.get_error_counter())
+        assert log["CFGMGR_TEST"]["ErrCount"] == 1
     finally:
         _remove(path)
 

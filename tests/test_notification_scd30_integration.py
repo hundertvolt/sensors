@@ -135,6 +135,7 @@ def make_stack(scd_reader: SCD30_Reader) -> "tuple[NeopixelDriver, NotificationC
     signal = NotificationSignal("WarnCO2", get_co2, (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
     notify.register(signal)
     notify.finalize()
+    run(notify.cfgmgr.setup())
     return pixel, notify
 
 

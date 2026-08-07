@@ -1,9 +1,10 @@
 """Per-sensor JSON config storage - each sensor gets its own `config_<name>.cfg` file (see
 base_classes.py's SensorReaderConfig), validated against a schema of `_VAL_*` `const()` tuples:
 (name, type, default, min, max, special). Every public function/method returns a documented
-"invalid" sentinel, never raises. `ConfigManager` reads the file once at `__init__` into
-`self._cache`; every later `get_*`/`write_config` call reads/writes `_cache` directly (see
-CLAUDE.md for the cache-vs-external-corruption trade-off this implies).
+"invalid" sentinel, never raises. `__init__` only stashes constructor args (cheap, synchronous);
+`ConfigManager` reads the file once, in `async def setup()`, into `self._cache` - every later
+`get_*`/`write_config` call reads/writes `_cache` directly (see CLAUDE.md for the
+cache-vs-external-corruption trade-off this implies).
 """
 
 import asyncio
@@ -34,7 +35,7 @@ if TYPE_CHECKING:
     ]
     ConfigSchema = tuple[FieldSchema, ...]
 
-from print_log import PrintLog
+from print_log import PrintLogHistory
 
 
 def _special_bypass(check_val: "Any", val_special: "Any", scalar_type: type, check_special: bool) -> "bool | None":
@@ -154,12 +155,15 @@ if TYPE_CHECKING:
 
 
 class ConfigManager:
-    def __init__(self, filename: str, cfg_vals: "ConfigSchema", logger: "PrintLog") -> None:
-        self.pr = logger
+    def __init__(self, filename: str, cfg_vals: "ConfigSchema", name: str) -> None:
+        self.pr = PrintLogHistory(name="CFGMGR_" + name)
         self.config_lock = asyncio.Lock()
         self.config_file = filename
+        self.cfg_vals = cfg_vals
         self.valid = False
         self._cache: dict[str, int | float | str | bool | None] = {}
+
+    async def setup(self) -> None:
         data: dict[str, Any] | None = None
         try:
             if (os.stat(self.config_file)[0] & 0x4000) == 0:  # 0x4000 = MP_S_IFDIR, MicroPython's own
@@ -171,20 +175,20 @@ class ConfigManager:
                             self.pr.one("JSON Data in config file", self.config_file, "found.")
                         else:  # generally valid json but not a dict
                             data = None
-                            self.pr.wrn("Data in config file", self.config_file, "has wrong format.")
+                            await self.pr.wrn_s("Data in config file", self.config_file, "has wrong format.", wrnno=1)
                     except ValueError as e:  # malformed json
-                        self.pr.wrn("JSON Data in config file", self.config_file, "is invalid:", e)
+                        await self.pr.wrn_s("JSON Data in config file", self.config_file, "is invalid:", e, wrnno=2)
             else:  # filename exists but is a directory and cannot be used
-                self.pr.err(self.config_file, "exists but is not a file, cannot write!")
+                await self.pr.err_s(self.config_file, "exists but is not a file, cannot write!", errno=1)
                 return
         except (MemoryError, OSError, TypeError) as e:  # missing/unreadable file, bad filename type,
             # or json.load() exhausting the heap on a huge/corrupt file - same "degrade, don't
             # propagate" treatment as the other two causes.
-            self.pr.wrn("Config file", self.config_file, "not found:", e)
+            await self.pr.wrn_s("Config file", self.config_file, "not found:", e, wrnno=3)
 
-        defaults = schema_dict(cfg_vals)
+        defaults = schema_dict(self.cfg_vals)
         if len(defaults) == 0:  # default config contains no values
-            self.pr.err(self.config_file, "- Defaults are empty, config is not valid!")
+            await self.pr.err_s(self.config_file, "- Defaults are empty, config is not valid!", errno=2)
             return
 
         rewrite = False  # don't write file unless required
@@ -192,7 +196,7 @@ class ConfigManager:
         for key, field in defaults.items():  # iterate through default config
             use_value, default_val = check_cfg_get_default(field)  # read and selfcheck
             if default_val is None:  # invalid config, no default or special-alone value
-                self.pr.err(self.config_file, "- Default Key", key, "Error or None, config is not valid!")
+                await self.pr.err_s(self.config_file, "- Default Key", key, "Error or None, config is not valid!", errno=3)
                 return
             if not use_value:  # special-alone value
                 continue  # not used for storage, skip loop iteration
@@ -203,13 +207,13 @@ class ConfigManager:
                 if type_or_range_error(new_cfg, field):  # if new_cfg is None or any other error
                     rewrite = True
                     new_cfg = default_val
-                    self.pr.wrn(self.config_file, "- Key", key, "has error or is missing, using default!")
+                    await self.pr.wrn_s(self.config_file, "- Key", key, "has error or is missing, using default!", wrnno=4)
             valid_cfg[key] = new_cfg
         if data is None:  # no file -> always create
             rewrite = True
         elif len(data) != 0:  # unexpected keys remaining from existing file
             rewrite = True
-            self.pr.wrn(self.config_file, "- Removed invalid keys from config file!")
+            await self.pr.wrn_s(self.config_file, "- Removed invalid keys from config file!", wrnno=5)
 
         if not rewrite:
             self._cache = valid_cfg
@@ -218,7 +222,7 @@ class ConfigManager:
             return
 
         if len(valid_cfg) == 0:
-            self.pr.wrn(self.config_file, "- Default config valid but no storage values!")
+            await self.pr.wrn_s(self.config_file, "- Default config valid but no storage values!", wrnno=6)
 
         self.pr.one(self.config_file, "- Writing configuration file!")
         try:
@@ -230,18 +234,21 @@ class ConfigManager:
             return
         except (MemoryError, OSError, TypeError) as e:  # write failed, filename isn't a string, or
             # json.dump() exhausts the heap serializing valid_cfg
-            self.pr.err("Error writing config", self.config_file, "- config is not valid:", e)
+            await self.pr.err_s("Error writing config", self.config_file, "- config is not valid:", e, errno=4)
             return
+
+    async def get_error_counter(self) -> "dict[str, dict[str, int | list[int] | list[str]]]":
+        return await self.pr.get_log()
 
     async def _get_values(self, keys: "ConfigSchema") -> "list[Any] | None":
         if not self.valid:
-            self.pr.err(self.config_file, "- Config is not valid, cannot read!")
+            await self.pr.err_s(self.config_file, "- Config is not valid, cannot read!", errno=5)
             return None
         self.pr.all(self.config_file, "- Reading config data into list.")
         try:
             return [self._cache[key] for key in schema_names(keys)]
         except KeyError as e:  # unknown key
-            self.pr.err(self.config_file, "- Config read error:", e)
+            await self.pr.err_s(self.config_file, "- Config read error:", e, errno=6)
             return None
 
     async def _get_converted_values(self, keys: "ConfigSchema", converter: "Callable[[Any], T]") -> "list[T] | None":
@@ -257,13 +264,13 @@ class ConfigManager:
         # Reads _cache directly - no lock needed (write_config never awaits mid-mutation, so no
         # partial state is observable here; see module docstring for the cache design).
         if not self.valid:
-            self.pr.err(self.config_file, "- Config is not valid, cannot read!")
+            await self.pr.err_s(self.config_file, "- Config is not valid, cannot read!", errno=7)
             return None
         self.pr.all(self.config_file, "- Reading config data into dict.")
         try:
             return {key: self._cache[key] for key in keys}
         except (KeyError, TypeError) as e:  # unknown key, or a non-iterable/malformed keys param
-            self.pr.err(self.config_file, "- Config read error:", e)
+            await self.pr.err_s(self.config_file, "- Config read error:", e, errno=8)
             return None
 
     async def get_int_values(self, keys: "ConfigSchema") -> "list[int] | None":
@@ -287,7 +294,7 @@ class ConfigManager:
         self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "ConfigSchema"
     ) -> "tuple[bool, WriteValidity]":
         if not self.valid:
-            self.pr.err(self.config_file, "- Config is not valid, cannot write!")
+            await self.pr.err_s(self.config_file, "- Config is not valid, cannot write!", errno=9)
             return False, {}
         async with self.config_lock:
             try:
@@ -297,17 +304,17 @@ class ConfigManager:
                 dict_results: WriteValidity = {}
                 for key, value in data.items():
                     if key not in defaults:
-                        self.pr.err(self.config_file, "- Key", key, "not found, skipping!")
+                        await self.pr.err_s(self.config_file, "- Key", key, "not found, skipping!", errno=10)
                         dict_results[key] = "Invalid"
                         continue
                     use_value, default_val = check_cfg_get_default(defaults[key])
                     if default_val is None:
-                        self.pr.err(self.config_file, "- Default Key", key, "Error or None, no data written!")
+                        await self.pr.err_s(self.config_file, "- Default Key", key, "Error or None, no data written!", errno=11)
                         return False, {}
                     # Sentinel values are validated against their own definition (check_special bypass);
                     # non-sentinel values still go through the ordinary range check.
                     if type_or_range_error(value, defaults[key]):
-                        self.pr.err(self.config_file, "- Type / range error in", key, "- skipping!")
+                        await self.pr.err_s(self.config_file, "- Type / range error in", key, "- skipping!", errno=12)
                         dict_results[key] = "Invalid"
                         continue
                     if not use_value:
@@ -316,7 +323,7 @@ class ConfigManager:
                         continue  # not used for storage
                     if key not in new_cache:
                         dict_results[key] = "Failed"
-                        self.pr.err(self.config_file, "- Key", key, "not found in config file, ignoring!")
+                        await self.pr.err_s(self.config_file, "- Key", key, "not found in config file, ignoring!", errno=13)
                         continue
                     if new_cache[key] != value:
                         new_cache[key] = value
@@ -335,5 +342,5 @@ class ConfigManager:
             except (MemoryError, OSError, ValueError, AttributeError) as e:  # file errors, a non-dict
                 # `data` param (AttributeError on .items()), or json.dump() exhausting the heap;
                 # ValueError is defensive since dump() no longer reads/reparses json here.
-                self.pr.err(self.config_file, "- Error writing config data:", e)
+                await self.pr.err_s(self.config_file, "- Error writing config data:", e, errno=14)
                 return False, {}

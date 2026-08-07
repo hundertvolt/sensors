@@ -151,7 +151,7 @@ def make_client(
 ) -> asy_conn_time:
     if cfg_path is None:
         cfg_path = _tmp_cfg_dir()
-    return asy_conn_time(
+    client = asy_conn_time(
         conn_fail_to_hotspot=conn_fail_to_hotspot,
         led_pin=None,  # tests/machine.py's fake Pin doesn't accept the real Pin(..., value=0) kwarg
         # asy_wifi_service.py passes - every LED test below goes through ext_led instead, which
@@ -163,6 +163,8 @@ def make_client(
         cfg_path=cfg_path,
         debug=debug,
     )
+    run(client.cfgmgr.setup())
+    return client
 
 
 def make_client_with_json(json_text: str, **kwargs: "Any") -> asy_conn_time:
