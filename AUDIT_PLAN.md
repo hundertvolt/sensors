@@ -350,23 +350,34 @@ fixed or explicitly flagged — including `voc_algorithm.py`'s already-filed `_f
 finding below, not just future findings; `lint.sh`/`typecheck.sh`/`test.sh` stay green; no behavior
 change without an explicit flag-and-ask per D.1.
 
+**Executed 2026-08-07**: `lint.sh`/`typecheck.sh` confirmed green for these five files (all
+findings in both runs are pre-existing and confined to `improved-quality/sensortask-wozi.py`, out
+of this cluster's scope); `test.sh` passed in full (exit 0, zero `FAIL` lines across every
+`tests/test_*.py` file, including `test_fix16_exp_saturates_at_documented_bounds` confirming the
+`_fix16_exp()` fix below is behavior-identical). Commits `c2b4239` (this cluster) on top of
+`20a2417` (the BACKLOG.md citation-staleness fix found while verifying no open topics remained
+before starting this cluster).
+
 | File | Status | Notes |
 |---|---|---|
-| `math_helpers.py` | `[ ]` | Already cited (Stull 2011, Magnus-Tetens/Sonntag 1990, ideal gas barometric formula) and range-checked; already has a full test suite (`tests/test_math_helpers.py`). Re-verify citations against current sources per `SPECIFICATION.md` D.1 (standing requirement, not one-time), confirm no MicroPython-currency drift (D.9). No logging (exempt, pure computation) — no naming-scheme work here. |
-| `crc_checks.py` | `[ ]` | Already cited (Sensirion CRC-8 poly 0x31/init 0xFF; CRC-16/CCITT-FALSE; CRC-32/MPEG-2), already the source of several `SPECIFICATION.md` Part D rules. Re-verify same as above. No logging (exempt). |
-| `voc_algorithm.py` | `[ ]` | **Read in full this session.** Confirmed a direct, faithful port of Sensirion's fixed-point reference (variable/method names trace the C source 1:1, e.g. `_vocalgorithm__mean_variance_estimator___calculate_gamma`) — deliberately non-idiomatic by design, not a style problem to clean up. `pack_into`/`unpack_from` already catch broadly and return bool, matching the "never raises" contract. No findings beyond re-verifying the reference is still current (standing check). No logging (exempt, confirmed). **New finding (bidirectional Part C/D cross-check, 2026-08-07)**: `_fix16_exp()` rebuilds two 4-element lists from `self._f16(...)` of hardcoded constants on every single call, even though those constants never change between calls — real, avoidable per-call allocation (D.4) on a function called several times per `vocalgorithm_process()` invocation, which itself runs on SGP40's fixed 1 Hz cadence (C.11 point 6). Precompute once (module-level `const()` tuple or an instance attribute built in `__init__`) — a pure D.8-style improvement, zero behavior change, worth fixing as part of this file's own promotion pass. |
-| `api_response.py` | `[ ]` | Clean, function-based, no internal deps. One `err_s` call (line 102) currently has no name — **will be fixed automatically once Cluster 1 lands** (it already calls `reader.pr.err_s(...)`, which will carry the right name once `PrintLog` does). Can't be marked fully done until Cluster 1 closes. |
-| `asy_udp_socket.py` | `[ ]` | Confirmed: every I/O method already returns its documented sentinel, never raises (`__init__` excepted, by design). No logging added (see reverted decision above). **Can't be marked fully done until Cluster 5 and Cluster 8 both close** — needs `asy_dns_client.py`/`captive_dns.py`/`asy_ntp_client.py` in view to verify the upstream-coverage claim, not just this file alone. |
+| `math_helpers.py` | `[x]` | `wet_bulb_temperature()`'s Stull (2011) formula and its 5-99% RH / -20-50 degC validity range re-verified word-for-word against the paper — no changes needed. **Real citation fix found and applied**: `dew_point()`'s module comment attributed its water-branch constants (`17.625`/`243.04`) to Sonntag (1990); verified against real sources that these are actually Alduchov & Eskridge's (1996) refit of the Magnus formula (re-optimized to ~0.4% accuracy over -40-60 degC) — Sonntag's own published water-branch values are `17.62`/`243.12`. The ice-branch constants (`22.46`/`272.62`) do match Sonntag (1996's paper doesn't re-derive the ice branch). Comment corrected to attribute each branch to its real source; zero behavior/coefficient change. `altitude_baro()`'s ideal-gas constants (g/M/R) are exact SI/CODATA values, unchanged. No MicroPython-currency drift (D.9) — `math` module usage is all stable, long-standing API. |
+| `crc_checks.py` | `[x]` | All three CRC definitions re-verified against real sources, not just re-asserted: Sensirion CRC-8 (poly `0x31`, init `0xFF`, no reflection, final XOR `0x00`) confirmed directly against `datasheets/scd30/Sensirion_CO2_Sensors_SCD30_Interface_Description.pdf`'s own checksum section, and the file's exact bit-banged algorithm reproduces the datasheet's own worked example (`CRC(0xBEEF) = 0x92`) exactly. CRC-16/CCITT-FALSE and CRC-32/MPEG-2 parameter sets (poly/init/refin/refout/xorout) confirmed against the standard CRC catalogue. No code changes needed. No MicroPython-currency drift (D.9) — already uses `asyncio`/`struct` (not `u`-prefixed), already benefits from 1.26's bytearray/memoryview slicing optimization per its own docstring. |
+| `voc_algorithm.py` | `[x]` | **`_fix16_exp()`'s filed D.4 finding fixed**: the two 4-element constant lists (`exp_pos_values`/`exp_neg_values`) are now precomputed once in `__init__` as instance tuples (`self._exp_pos_values`/`self._exp_neg_values`), reusing the exact same `self._f16(...)` calls rather than duplicating that rounding logic at module level — avoids the previous per-call allocation with zero behavior change, confirmed by the full existing test suite (including the boundary-saturation test) passing unchanged. Still a direct, faithful port of Sensirion's fixed-point reference otherwise; no other findings. |
+| `api_response.py` | `[~]` | Re-verified against Part D — clean, function-based, already the project's own exemplar for the `TYPE_CHECKING`-guard pattern (D.6) and envelope-shape consistency (D.10). No changes needed. One `err_s` call (line 102) still has no name — **still can't be marked fully done until Cluster 1 lands** (unchanged from before this pass; not force-closed). |
+| `asy_udp_socket.py` | `[~]` | Re-verified against Part D — every I/O method still returns its documented sentinel, never raises (`__init__` excepted, by design); no MicroPython-currency drift (`select.poll`/`ipoll` usage, `micropython.const`, no `u`-prefixed imports). No changes needed. **Still can't be marked fully done until Cluster 5 and Cluster 8 both close** (unchanged from before this pass) — needs `asy_dns_client.py`/`captive_dns.py`/`asy_ntp_client.py` in view to verify the upstream-coverage claim. |
 
 **Open decisions for this cluster**: none — both partial-closure dependencies above are sequencing
 facts, not decisions needing input.
 
-**External references needed**: Stull (2011) wet-bulb paper, Sonntag (1990) Magnus-Tetens
-coefficients, ideal-gas barometric formula (already cited, standard physics — re-verify constants
-only), Sensirion's CRC-8 spec, CRC-16/CCITT-FALSE and CRC-32/MPEG-2 standard definitions,
-Sensirion's `embedded-sgp` VOC algorithm reference (already available at the cited repo — re-check
-it's still current/hasn't been re-published elsewhere), current MicroPython changelog since
-whatever version each file's patterns predate (per `SPECIFICATION.md` D.9).
+**External references needed**: Stull (2011) wet-bulb paper (re-verified, matches exactly — see
+table above), Alduchov & Eskridge (1996)/Sonntag (1990) Magnus-Tetens coefficients (re-verified,
+citation corrected — see table above), ideal-gas barometric formula (re-verified, exact SI/CODATA
+constants, no change), Sensirion's CRC-8 spec (re-verified directly against the SCD30 datasheet
+PDF), CRC-16/CCITT-FALSE and CRC-32/MPEG-2 standard definitions (re-verified against the standard
+CRC catalogue), Sensirion's `embedded-sgp` VOC algorithm reference (still current, no re-derivation
+needed for this cluster's one finding), current MicroPython changelog since whatever version each
+file's patterns predate (checked per `SPECIFICATION.md` D.9, no drift found in any of the five
+files).
 
 ---
 
