@@ -14,6 +14,17 @@ Companion file: `WIRING_CONTRACT.md` (also temporary) — the `improved-quality/
 instantiation-order/dependency study. Seeded now with what's already been found; the deep study
 happens at Cluster 10.
 
+**Kickoff-procedure status** (BACKLOG.md's "Required kickoff procedure," steps 1-9): steps 1-2 done
+from the start; **step 3 ("read the actual project files — every current `src/` file... not just
+the docs describing them") is now genuinely complete** — every file in `src/` plus
+`improved-quality/sensortask-wozi.py` has been read in full this session, not just grepped.
+Steps 4/7/8 (the action list itself, goals, quality measures) are what this document is; step 9
+(reality-check against the actual code) has already surfaced and corrected real findings throughout
+(see each cluster's own notes) rather than being a final rubber-stamp pass. Step 5 (a dedicated
+second validation pass over the whole list) has happened incrementally through this session's many
+rounds of revision, not as one separate, discrete pass — worth keeping in mind if a future session
+wants that as an explicit, final check before step 10's close-out.
+
 ## Status legend
 
 `[ ]` not started · `[~]` in progress · `[x]` done · `[?]` blocked on an owner decision (see
@@ -246,7 +257,9 @@ actually executed:
 | `PrintLogHistoryStore` (Cluster 1) | `initialized` + `fram: Chunk \| None`, sentinel-returning | Already matches the target shape — no change |
 | `ConfigManager` (Cluster 2) | `valid`, computed synchronously in `__init__`, sentinel-returning | Move the work into `async def setup()`; keep `valid`'s name and sentinel-returning behavior unchanged |
 | `NotificationCoordinator` (Cluster 9) | `_finalized` exists but doesn't guard `get_dict_cfg()`/`monitor_loop()`/etc. against being called too early — real gap, not just a naming mismatch | Add the guard, sentinel-based (never-raises contract inherited from `SensorReaderConfig`), reusing/renaming `_finalized` |
-| `AsyFramManager.setup()`, `I2CDevice.setup()` | No readiness flag at all | Not yet verified whether they need one — `I2CDevice`'s `setup()` only does an optional identity probe (no state transition to guard), and every sensor `*_Reader`'s own control flow already prevents any method from running before its own `_init_<sensor>()` succeeds, so there may be nothing to add here. Confirm during Clusters 4/6, don't assume either way. |
+| `AsyFramManager.setup()`, `I2CDevice.setup()` | No readiness flag at all | **Resolved, confirmed by reading both files in full — neither needs one.** `AsyFramManager.get_chunk()`/`get_timestamped_chunk()` are pure bookkeeping (offset arithmetic, no hardware access), so they're safe before `setup()` runs; real hardware access always goes through the shared `self.fram` (`FRAM_SPI`), which already has its own `uninitialized` guard — a second gate at the manager level would be redundant. `I2CDevice` has no unconfigured-hardware-state risk the way `SPIDevice`'s CS pin does: the underlying `I2C` bus is fully ready immediately from `I2C.__init__` itself, and `I2CDevice.setup()` only performs an *optional* identity probe with no state transition to guard against. |
+
+**Cross-cutting confirmation, not a finding to act on**: every `Timer.init()` call site's `except OSError as e: self.pr.err(...)` (never `err_s`) is correct as-is, not a gap — confirmed via `system_service.py`'s own explicit comment on `_timer_sequencer()`: a `Timer`-callback-invoked context has no running event loop, so only the synchronous `pr.err()` is callable there at all, `err_s()` genuinely cannot be `await`ed. This pattern repeats identically across every `start_timer()`/`_reboot()`/`pause_permanent_storage()` in `asy_bmp3xx_driver.py`, `asy_scd30_driver.py`, `asy_sgp40_driver.py`, `asy_wifi_service.py` (×3), `asy_ntp_client.py` (×3), and `system_service.py` (×4) — don't "fix" any of these into persisted logging during their clusters. One separate, still-open, correctly-scoped check: whether `Timer.init()` can also raise a genuine `MemoryError` distinct from the `OSError(ENOMEM)` CLAUDE.md already documents — worth verifying against current MicroPython source once, not per-file (Cluster 10).
 
 ---
 
@@ -291,7 +304,7 @@ explicit flag-and-ask per section 1.
 |---|---|---|
 | `math_helpers.py` | `[ ]` | Already cited (Stull 2011, Magnus-Tetens/Sonntag 1990, ideal gas barometric formula) and range-checked; already has a full test suite (`tests/test_math_helpers.py`). Re-verify citations against current sources per `src/README.md` section 1 (standing requirement, not one-time), confirm no MicroPython-currency drift (section 9). No logging (exempt, pure computation) — no naming-scheme work here. |
 | `crc_checks.py` | `[ ]` | Already cited (Sensirion CRC-8 poly 0x31/init 0xFF; CRC-16/CCITT-FALSE; CRC-32/MPEG-2), already the source of several `src/README.md` rules. Re-verify same as above. No logging (exempt). |
-| `voc_algorithm.py` | `[ ]` | Already verified "constant-for-constant" against Sensirion's archived C reference (`embedded-sgp`). Re-verify the reference is still the right one / hasn't been superseded; confirm MicroPython currency. No logging (exempt). |
+| `voc_algorithm.py` | `[ ]` | **Read in full this session.** Confirmed a direct, faithful port of Sensirion's fixed-point reference (variable/method names trace the C source 1:1, e.g. `_vocalgorithm__mean_variance_estimator___calculate_gamma`) — deliberately non-idiomatic by design, not a style problem to clean up. `pack_into`/`unpack_from` already catch broadly and return bool, matching the "never raises" contract. No findings beyond re-verifying the reference is still current (standing check). No logging (exempt, confirmed). |
 | `api_response.py` | `[ ]` | Clean, function-based, no internal deps. One `err_s` call (line 102) currently has no name — **will be fixed automatically once Cluster 1 lands** (it already calls `reader.pr.err_s(...)`, which will carry the right name once `PrintLog` does). Can't be marked fully done until Cluster 1 closes. |
 | `asy_udp_socket.py` | `[ ]` | Confirmed: every I/O method already returns its documented sentinel, never raises (`__init__` excepted, by design). No logging added (see reverted decision above). **Can't be marked fully done until Cluster 5 and Cluster 8 both close** — needs `asy_dns_client.py`/`captive_dns.py`/`asy_ntp_client.py` in view to verify the upstream-coverage claim, not just this file alone. |
 
@@ -541,16 +554,27 @@ polarity only, its sentinel-returning behavior is already correct and does not c
   (`err_s`/`wrn_s`) — they're all non-counted `err`/`wrn`. Genuinely actionable hardware-fault
   signals live here (WEL latch didn't set/clear, write-protect readback mismatch, device not
   initialized, address range invalid, lock-timeout on `verify_present()`) — good candidates to
-  upgrade to persisted logging under the "add/complete logging" rule, same errno-space as
-  `AsyFramManager`'s existing `errno=60-88` range (Cluster 10 pass-2 assigns exact numbers, picking
-  up where that range currently ends). All 8 calls are already inside `async def` methods (no
-  `ConfigManager`-style sync-`__init__` constraint here) — nothing blocking this beyond the pass-2
-  numbering itself.
-- `asy_fram_manager.py`: already read most of it via earlier greps this session — `AsyFramManager`
-  constructs `self.pr = PrintLogHistory(history_length, debug)` (in-memory, correctly avoiding a
-  recursive FRAM-into-FRAM dependency for its own log) and already has ~35 `err_s`/`wrn_s`/`evt`/
-  `one`/`all` calls with real `errno=60-88`/`wrnno=60-80` numbering — just needs `name="FRAM"`
-  added to that one constructor call, nothing else.
+  upgrade to persisted logging under the "add/complete logging" rule, sharing `AsyFramManager`'s
+  errno-space (Cluster 10 pass-2 assigns exact numbers, picking up where that range currently
+  ends — see the corrected inventory below). All 8 calls are already inside `async def` methods
+  (no `ConfigManager`-style sync-`__init__` constraint here) — nothing blocking this beyond the
+  pass-2 numbering itself.
+- **`asy_fram_manager.py` now read in full this session** (correcting the earlier grep-only
+  estimate): `AsyFramManager` constructs `self.pr = PrintLogHistory(history_length, debug)`
+  (in-memory, correctly avoiding a recursive FRAM-into-FRAM dependency for its own log), and every
+  chunk class (`_AsyBaseFramChunk`, `AsyFramChunk`, `AsyFramTimestampedChunk`) shares that exact
+  same `self.pr` instance too (passed down as `logger=` at construction) — the "shared logger"
+  design already extends all the way down to individual chunk objects, not just
+  `AsyFramManager`/`FRAM_SPI`. The real numbering spans roughly **`errno=10-88`**, not `60-88` as
+  the earlier grep-based estimate had it: `_handle_status_bytes`/`_set_check_sb` compute their own
+  errno dynamically from caller-supplied bases (10 in `_write_chunk`, 30 in `_read_chunk`, 50 in
+  `_clear_chunk`, each spanning up to base+6), plus fixed values 17/18/19/26 (`_write_chunk`),
+  37/38/39/46/47/48 (`_read_chunk`), 57/58 (`_clear_chunk`), 60-73/80 (`_AsyBaseFramChunk`'s
+  `_write`/`_read`/`clear`), 81/84 (`AsyFramChunk`/buffer-size checks), 82/85/86/87/88
+  (`AsyFramTimestampedChunk`'s timestamp handling), 83 (`AsyFramManager.setup()` itself). Numeric
+  overlap with other drivers' own 10-24-style ranges is fine (different `name`s once Cluster 1
+  lands) — this correction only matters for FRAM's own *internal* consistency check and for
+  correctly seeding Cluster 10's pass-1 inventory.
 - FRAM determinism (see standing rule): `AsyFramManager` and `SGP40_Reader`'s VOC-backup chunk are
   the two real chunk-owning call sites today (see `WIRING_CONTRACT.md`) — already verified safe
   this session (both unconditional, once-only, module-level constructions). Re-confirm holds once
@@ -564,57 +588,118 @@ polarity only, its sentinel-returning behavior is already correct and does not c
 **Goal**: strip manual `_NAME` arguments (name now automatic); close out Cluster 4's bus-layer
 upstream-coverage verification from the caller side; re-verify FRAM determinism for
 `SGP40_Reader`'s VOC-backup chunk and any `PrintLogHistoryStore` instance; German-language log
-strings → English (confirmed count: `asy_sgp40_driver.py` ×13, `asy_bmp3xx_driver.py`/
-`asy_scd30_driver.py` ×1 each).
+strings → English.
 
-**Existing errno/wrnno inventory** (grepped this session, feeds Cluster 10's pass-1): BMP3xx
-`errno=10-21` (grouped: 10=init, 11-14=config read/write, 15-20=oversampling/filter forwards,
-21=trigger-interval); SCD30 `errno=10-24` (10=init, 11=read, 12=stop-continuous-measurement,
-13-24=per-field get/set forwards in pairs); SGP40 `errno=10-18` + `wrnno=10-14` (10=init,
-11-12=config, 13-18=backup read/write/serialize, `wrnno`=backup-missing/stale conditions). All
-three already follow the shared `errno=10`="init failed" convention — nothing to fix there, just
-confirm it still holds once Cluster 6's FRAM errno range is finalized (no accidental overlap,
-though they're different `name`s/logger instances so numeric overlap across drivers is fine by
-design — only *within* one driver's own numbering does it matter).
+**All three files now read in full this session** (correcting the earlier grep-only estimates):
 
-**Status**: `[ ]` not started. Depends on Clusters 0-4, 6. A full line-by-line read of these three
-(large — 20-30KB each) is deferred to actual cluster execution; this entry captures what's already
-known from this session's greps, not a substitute for that read.
+- **German-string count was significantly undercounted** — the original grep only searched a fixed
+  word list and missed common phrases. Real counts: `asy_bmp3xx_driver.py` — "gelesen", "Daten
+  gespeichert" (2, not 1). `asy_scd30_driver.py` — "gelesen", "Daten gespeichert" (2, not 1), plus
+  one German *code comment* (line 300: "CO2 Sensor IRQ triggern falls es nicht läuft...") — worth
+  a top-level question at Cluster 10 on whether English-standardization extends to comments or only
+  logged strings, since the original decision ("switch to English... print strings") only said
+  strings explicitly. `asy_sgp40_driver.py` — roughly 26 German phrases (backup/restore/reset
+  messages throughout `_check_storage`/`_read_sgp`/`_run_restore`/`_run_backup`), not 13. Re-sweep
+  properly (read the whole file, not a fixed grep word list) when each file's cluster actually
+  executes — don't trust the old counts as a checklist.
+- Every `Timer.init()` `except OSError` site in these three files (`start_timer()` ×3, one per
+  driver) is correctly non-persisted — see the cross-cutting confirmation in "Standing
+  conventions" above, don't "fix" these.
+- Bus-layer surface confirmed exactly matches Cluster 4's inventory: all three protocol classes
+  (`BMP3XX_I2C`, `SCD30_I2C`, `SGP40_I2C`) call `I2CDevice`'s methods only from inside their own
+  `try`-wrapped `_read_*`/`_init_*`/get-set-forward methods at the Reader layer — no call site found
+  outside that wrapping, closing Cluster 4's upstream-coverage check from this side (final
+  confirmation still wants Cluster 4's own file in view too, per that cluster's own note).
+
+**Existing errno/wrnno inventory, confirmed accurate by the full read** (feeds Cluster 10's
+pass-1): BMP3xx `errno=10-21` (10=init, 11-14=config read/write, 15-20=oversampling/filter
+forwards, 21=trigger-interval); SCD30 `errno=10-24` (10=init, 11=read, 12=stop-continuous-
+measurement, 13-24=per-field get/set forwards in pairs); SGP40 `errno=10-18` + `wrnno=10-14`
+(10=init, 11-12=config, 13-18=backup read/write/serialize, `wrnno`=backup-missing/stale
+conditions). All three already follow the shared `errno=10`="init failed" convention — nothing to
+fix there, just confirm it still holds once Cluster 6's FRAM errno range is finalized (no
+accidental overlap, though they're different `name`s/logger instances so numeric overlap across
+drivers is fine by design — only *within* one driver's own numbering does it matter).
+
+**Status**: `[ ]` not started. Depends on Clusters 0-4, 6. Full reads done — ready to execute.
 
 ## Cluster 8 — `asy_wifi_service.py`, `asy_ntp_client.py`
 
 **Goal**: strip manual `_NAME` arguments; close out Cluster 5's `asy_udp_socket.py`/
 `asy_dns_client.py` upstream-coverage verification from the caller side; German-language log
-strings → English (confirmed count: `asy_wifi_service.py` ×4).
+strings → English.
 
-**Already read `asy_wifi_service.py`'s constructor in full this session** — confirmed `DNSServer`
-is constructed exactly once inside `asy_conn_time.__init__` (line 106), itself only ever
-instantiated once at module level (see the FRAM determinism verification already done). Existing
-errno/wrnno inventory: `asy_wifi_service.py` `errno=11-18` (11=mode-switch, 12=hotspot-activate,
-13=STA-connect-attempt, 14=STA-poll, 15-16=STA-disconnect/deactivate, 18=disconnect-timeout) +
-`wrnno=1-7` (1-3=missing-config per connection phase, 4-7=WLAN status conditions); `asy_ntp_client.py`
-`errno=11-20` (11=missing-config, 12-13=DNS/address resolution, 14-15=NTP response validation,
-16-17=retry-timer/max-retries, 19=time-calc, 18/20=missing-config-interval-fallback/give-up) +
-`wrnno=1-3` (callback failures: `network_available()`, `get_dns_server()`).
+**Both files now read in full this session** (correcting the earlier grep-only estimates):
 
-**Status**: `[ ]` not started. Depends on Clusters 0, 2-3, 5. A full line-by-line read of both files
-is deferred to actual cluster execution.
+- `asy_wifi_service.py`'s German-string count was significantly undercounted (the original grep
+  only searched a fixed word list) — real count is roughly 30+ phrases throughout (connection
+  state transitions, hotspot messages, LED diagnostics), not 4. Re-sweep properly when this
+  cluster executes.
+- **`asy_wifi_service.py` has a deliberate, already-documented two-tier logging design — don't
+  flatten it into uniform `err_s()` calls.** Its own module docstring states this explicitly:
+  "'Attempt' operations persist a real errno via `self.pr.err_s()` and set `self.hw_op_failed`...
+  routine state observations degrade silently via `self.pr.err()` instead." Confirmed in the code:
+  every `wlan.status()`/`ifconfig()`/LED on-off-toggle observation call is intentionally
+  non-persisted (matches "observation-tier" per its own comments), while every real connection
+  *attempt* (mode switch, hotspot activate, STA connect, disconnect) is already `err_s()` with a
+  real errno. This is the same lean-vs-complete distinction the audit's own general logging rule
+  already allows for ("in a sensible way") — apply it as intentional here, not as a gap.
+- **Small, real finding**: `asy_wifi_service.py` line 521, `elif status == 2: # not defined by
+  constant in class yet!` — a literal magic number with a comment flagging it as unfinished.
+  Should become a proper named constant (e.g. `_STAT_OBTAINING_IP`), matching every other
+  `network.STAT_*` branch around it.
+- `asy_ntp_client.py` has **zero** German strings — already fully English, no work needed there for
+  the language-standardization goal.
+- FRAM determinism re-confirmed: `DNSServer` is constructed exactly once inside
+  `asy_conn_time.__init__` (line 106), itself only ever instantiated once at module level — already
+  verified safe earlier this session, holds under the full read too.
+
+**Existing errno/wrnno inventory, confirmed accurate by the full read**: `asy_wifi_service.py`
+`errno=11-18` (11=mode-switch, 12=hotspot-activate, 13=STA-connect-attempt, 14=STA-poll,
+15-16=STA-disconnect/deactivate, 18=disconnect-timeout) + `wrnno=1-7` (1-3=missing-config per
+connection phase, 4-7=WLAN status conditions); `asy_ntp_client.py` `errno=11-20` (11=missing-config,
+12-13=DNS/address resolution, 14-15=NTP response validation, 16-17=retry-timer/max-retries,
+19=time-calc, 18/20=missing-config-interval-fallback/give-up) + `wrnno=1-3` (callback failures:
+`network_available()`, `get_dns_server()`). Both already state in their own docstrings that
+`errno`/`wrnno` numbering starts at 11, leaving room below for `base_classes.py`'s own shared range
+(confirmed by that file's own full read earlier this session: `errno=1-9`, `wrnno=1-2`, used by
+every `SensorReader`/`SensorReaderConfig` subclass's inherited `_error_check`/`_get_dict_cfg`/
+`_set_dict_cfg`/`_recover_failed_push` methods) — confirms this convention is already deliberate,
+not accidental, worth carrying into Cluster 10's pass-2 taxonomy as a documented precedent.
+
+**Status**: `[ ]` not started. Depends on Clusters 0, 2-3, 5. Full reads done — ready to execute.
 
 ## Cluster 9 — `asy_neopixel_driver.py`, `asy_notification_service.py`, `system_service.py`
 
 **Goal**: strip manual `_NAME` arguments; re-verify FRAM determinism for every `fram=`-constructed
 instance here (`NeopixelDriver`, `NotificationCoordinator`, `SystemService`); confirm no German
-strings remain (none found in `asy_neopixel_driver.py` this session; `system_service.py` had 3 —
-recheck).
+strings remain; add `system_service.py`'s missing `_NAME` constant (see "Logging & naming scheme"
+above — it's one of the files with zero identifying calls today).
 
-**Already read `system_service.py`'s `start_and_check_tasks()`/`start_timers()` in full this
-session** (used to verify the FRAM determinism rule — see above): task restarts only re-invoke an
-already-captured starter callable, never re-run `__init__`, confirmed safe. Existing errno/wrnno
-inventory: `system_service.py` `errno=1-4` (1=NTP-sync-callback, 2=boot-signature-timestamp,
-3=task-starter-failed, 4=task-error-budget-exceeded-rebooting) + `wrnno`=task-restart-per-index
-(`wrnno=n+1`, dynamic per task, not a fixed small set — worth a note in Cluster 10's taxonomy since
-it's a different shape than every other module's fixed wrnno list); `asy_notification_service.py`
-`errno=1-4` (1=value-callback-failed, 2=threshold-config-read-failed, 3=local-time-callback-failed,
+**All three files now read in full this session** (correcting the earlier grep-only estimates):
+
+- `asy_neopixel_driver.py` — confirmed already fully compliant: consistent `_NAME`-first calls
+  throughout, no German strings, no findings. Ready as-is once Cluster 1 lands.
+- `asy_uart_driver.py` (read ahead of its own late harmonization pass, per the "pick up the spirit
+  early" decision) — confirmed clean and consistent with every other bus-adjacent class (matches
+  `asy_i2c_driver.py`/`asy_spi_driver.py`'s own "never raises except one-time setup" shape), no
+  `self.pr`/logging at all (matches its own "harmonize late" scoping, nothing to add prematurely).
+- `system_service.py`'s German-string count was undercounted (fixed word list missed one) — real
+  count is 4: "Task wurde beendet - versuche Neustart...", "Alle Tasks laufen.", "Task Fehlerzähler
+  reduziert auf", "Task Fehlerzähler über...Reboot ausgelöst!".
+- **`_timer_sequencer()`'s own code comment is the source of the cross-cutting Timer/sync-context
+  confirmation** already folded into "Standing conventions" above — worth noting here since this is
+  the file that made it explicit: "sync Timer-callback context (no event loop), so only `pr.err()`
+  is usable, not the async `err_s()`."
+
+Task restarts only re-invoke an already-captured starter callable, never re-run `__init__` —
+confirmed safe (used to verify the FRAM determinism rule earlier this session). Existing
+errno/wrnno inventory, confirmed accurate by the full read: `system_service.py` `errno=1-4`
+(1=NTP-sync-callback, 2=boot-signature-timestamp, 3=task-starter-failed,
+4=task-error-budget-exceeded-rebooting) + `wrnno`=task-restart-per-index (`wrnno=n+1`, dynamic per
+task, not a fixed small set — worth a note in Cluster 10's taxonomy since it's a different shape
+than every other module's fixed wrnno list); `asy_notification_service.py` `errno=1-4`
+(1=value-callback-failed, 2=threshold-config-read-failed, 3=local-time-callback-failed,
 4=request_signal_cb-failed) + `wrnno=1-5`.
 
 **Cluster 2's decision is now resolved** (option 3, backed by real precedent — `FRAM_SPI`/
@@ -633,9 +718,8 @@ conventions" readiness-gate scheme above).
 method yet. Add that guard, sentinel-based per `NotificationCoordinator`'s inherited never-raises
 contract (not raising — corrected from an earlier version of this plan, see "Standing conventions").
 
-**Status**: `[ ]` not started. Depends on Clusters 1-3, 6. `asy_neopixel_driver.py`/
-`asy_notification_service.py` full reads deferred to actual cluster execution (structure already
-known from this session's greps: both consistently pass `_NAME` at every call site already).
+**Status**: `[ ]` not started. Depends on Clusters 1-3, 6. Full reads done for all three files —
+ready to execute.
 
 ## Cluster 10 — Global pass
 
