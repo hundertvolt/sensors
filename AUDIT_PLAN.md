@@ -349,7 +349,7 @@ explicit flag-and-ask per section 1.
 |---|---|---|
 | `math_helpers.py` | `[ ]` | Already cited (Stull 2011, Magnus-Tetens/Sonntag 1990, ideal gas barometric formula) and range-checked; already has a full test suite (`tests/test_math_helpers.py`). Re-verify citations against current sources per `src/README.md` section 1 (standing requirement, not one-time), confirm no MicroPython-currency drift (section 9). No logging (exempt, pure computation) — no naming-scheme work here. |
 | `crc_checks.py` | `[ ]` | Already cited (Sensirion CRC-8 poly 0x31/init 0xFF; CRC-16/CCITT-FALSE; CRC-32/MPEG-2), already the source of several `src/README.md` rules. Re-verify same as above. No logging (exempt). |
-| `voc_algorithm.py` | `[ ]` | **Read in full this session.** Confirmed a direct, faithful port of Sensirion's fixed-point reference (variable/method names trace the C source 1:1, e.g. `_vocalgorithm__mean_variance_estimator___calculate_gamma`) — deliberately non-idiomatic by design, not a style problem to clean up. `pack_into`/`unpack_from` already catch broadly and return bool, matching the "never raises" contract. No findings beyond re-verifying the reference is still current (standing check). No logging (exempt, confirmed). |
+| `voc_algorithm.py` | `[ ]` | **Read in full this session.** Confirmed a direct, faithful port of Sensirion's fixed-point reference (variable/method names trace the C source 1:1, e.g. `_vocalgorithm__mean_variance_estimator___calculate_gamma`) — deliberately non-idiomatic by design, not a style problem to clean up. `pack_into`/`unpack_from` already catch broadly and return bool, matching the "never raises" contract. No findings beyond re-verifying the reference is still current (standing check). No logging (exempt, confirmed). **New finding (bidirectional Part C/D cross-check, 2026-08-07)**: `_fix16_exp()` rebuilds two 4-element lists from `self._f16(...)` of hardcoded constants on every single call, even though those constants never change between calls — real, avoidable per-call allocation (D.4) on a function called several times per `vocalgorithm_process()` invocation, which itself runs on SGP40's fixed 1 Hz cadence (C.11 point 6). Precompute once (module-level `const()` tuple or an instance attribute built in `__init__`) — a pure D.8-style improvement, zero behavior change, worth fixing as part of this file's own promotion pass. |
 | `api_response.py` | `[ ]` | Clean, function-based, no internal deps. One `err_s` call (line 102) currently has no name — **will be fixed automatically once Cluster 1 lands** (it already calls `reader.pr.err_s(...)`, which will carry the right name once `PrintLog` does). Can't be marked fully done until Cluster 1 closes. |
 | `asy_udp_socket.py` | `[ ]` | Confirmed: every I/O method already returns its documented sentinel, never raises (`__init__` excepted, by design). No logging added (see reverted decision above). **Can't be marked fully done until Cluster 5 and Cluster 8 both close** — needs `asy_dns_client.py`/`captive_dns.py`/`asy_ntp_client.py` in view to verify the upstream-coverage claim, not just this file alone. |
 
@@ -684,6 +684,35 @@ table, now added). **Correction from an earlier draft**: this section previously
 Cluster 3 as a dependency; neither `DNSServer` nor `DNSQuery` is a `SensorReader` subclass or
 touches `base_classes.py` at all, so that was a copy-paste error, not a real dependency — removed.
 
+**New findings (bidirectional Part C/D cross-check, 2026-08-07)**:
+
+- `asy_dns_client.py::resolve_ipv4()` constructs `AsyUDPSocket((server, port), mode="client")`
+  with no `try`/`except`, even though `AsyUDPSocket.__init__` is the one method its own module
+  docstring flags as able to raise (`ValueError`/`TypeError`), and the structurally identical
+  construction in `asy_ntp_client.py::_fetch_ntp_reply()` already wraps it. `resolve_ipv4()`'s own
+  docstring promises "never raises" — currently only true because every real caller's
+  `get_dns_server` callback happens to return a well-typed value; nothing enforces that at
+  runtime. Add the same guard `_fetch_ntp_reply()` already uses, closing the gap between the two
+  files' otherwise-identical pattern.
+- `captive_dns.py::_ipv4_to_int()` and `asy_dns_client.py::_is_ipv4_literal()` take opposite design
+  stances on the same problem (IPv4-string validation): `asy_dns_client.py`'s own comment states a
+  deliberate principle — avoid `int()`'s exceptions for control flow, prefer `isdigit()` checks —
+  while `captive_dns.py`'s helper raises `ValueError` on malformed/out-of-range input and relies on
+  every caller catching it broadly. Both are safe today, but this is a real D.10 cross-file
+  inconsistency between two sibling files solving the same kind of problem differently — reconcile
+  (pick one stance) or document explicitly why the two differ, as part of this cluster's work.
+- **Open decision, not resolved here — needs project-owner input**: `captive_dns.py`'s `DNSServer`
+  doesn't extend `SensorReader`/`SensorReaderConfig` (this cluster's own goal above already covers
+  giving it a real `PrintLogHistory` instead of bare `print()`), but Part C.7's error/logging
+  contract has no explicit accommodation for a helper class that's instantiated and lifecycle-owned
+  by a `Reader` (here, `asy_conn_time`) rather than being a registered `Reader` itself. Once this
+  cluster gives `DNSServer` its own `"DNSSRV"`-named `PrintLogHistory` (per the Goal above), decide
+  whether it should instead share the *owning* `asy_conn_time`'s own `self.pr` (so its errors land
+  in the same history/errno stream as the rest of WiFi/DNS), or whether C.7 should explicitly
+  document "an owned helper with no registered `get_task_starters()`/`get_timer_starters()` entry
+  of its own may own an independent `PrintLogHistory` instead" as an accepted variant. Flag to the
+  project owner rather than picking silently — added to the Open Decisions Log below.
+
 ## Cluster 6 — `asy_fram_driver.py`, `asy_fram_manager.py` (`asy_uart_driver.py` listed for context only — harmonize-late, not touched here)
 
 **Goal**: thread the shared `"FRAM"` name through the existing `logger=` sharing mechanism (already
@@ -752,6 +781,40 @@ behavior, which isn't expected (logging/naming only, no protocol change).
 **Status**: `[ ]` not started. Depends on Clusters 0 (crc_checks — omitted from an earlier draft of
 this line, added per the roadmap table), 1, 3-4.
 
+**New findings (bidirectional Part C/D cross-check, 2026-08-07)**:
+
+- `FRAM_SPI._check_device_id()`/`_read_status()`/`_setup_addr_buffer()` each allocate a fresh
+  `bytearray` on every call instead of a buffer sized once in `__init__` and reused — a real,
+  checkable divergence from C.3's scratch-buffer rule, notable because C.3.1 cites this exact file
+  as its only real SPI-driver example of that rule. Buffers are small (1-4 bytes), so impact is
+  low-medium, but `_setup_addr_buffer()` runs on every chunk read/write via `asy_fram_manager.py`,
+  so it's not a rare path. Pre-allocate once, matching `SCD30_I2C`'s buffer-reuse pattern, as part
+  of this cluster's own pass over the file.
+- `asy_uart_driver.py` (tracked separately, harmonize-late — the two findings below are logged now
+  so they aren't lost, but stay deferred to this file's actual Cluster-10 harmonization pass):
+  1. **Undocumented/unverified bus fault surface.** `asy_i2c_driver.py`'s and `asy_spi_driver.py`'s
+     module docstrings each state their bus's raise-vs-sentinel contract explicitly (I2C: a real
+     `OSError` always propagates; SPI: `write()`/`readinto()` never raise on rp2). `asy_uart_driver.py`'s
+     docstring states nothing about whether `machine.UART`'s methods can raise `OSError` on a real
+     rp2 hardware fault (framing/overrun), and no call site (`read()`/`readinto()`/`readline()`/the
+     raw `uart.write()` in `_write_all()`) is wrapped in `try`/`except`. This is exactly the kind of
+     gap C.3.1 instructs a reviewer to check for by name (verify per-bus, don't assume I2C's/SPI's
+     shape transfers) — needs a real verification against MicroPython's rp2-port UART source before
+     this file's harmonization can close, plus either exception-wrapping or an explicit, verified
+     "cannot raise" docstring contract to match its siblings.
+  2. **Three real architectural choices with no Part C counterpart**, to reconcile or document once
+     this file is actually harmonized: (a) a single `UART(Lockable)` class merges what C.1/C.8 treat
+     as two separate layers (bus primitive + per-device session) into one, with one lock — plausible
+     for a point-to-point bus with no multi-device sharing, but never reconciled against C.8's
+     explicit two-lock model; (b) CRC framing lives directly inside this otherwise protocol-agnostic
+     bus-wrapper layer, unlike `I2C`/`SPI`, which have zero CRC awareness and leave all framing to
+     the layer-2 protocol class — blurs the layer-1/layer-2 boundary C.1 establishes for the other
+     two buses; (c) `cancel_read_timeout()` is a real, sensible externally-triggerable cancel for
+     another coroutine's in-flight indefinite `ready()` wait, with no documented counterpart in C.9's
+     timer/task/IRQ contract. None of these are bugs, but Part C currently has nothing to say about
+     any of them — decide during this file's harmonization whether they become documented precedent
+     (extending C.1/C.8/C.9 for a third bus type) or get restructured to match I2C/SPI's shape.
+
 ## Cluster 7 — `asy_bmp3xx_driver.py`, `asy_scd30_driver.py`, `asy_sgp40_driver.py`
 
 **Goal**: strip manual `_NAME` arguments (name now automatic); close out Cluster 4's bus-layer
@@ -817,6 +880,30 @@ if any oversampling/filter/compensation/backup-timing formula is touched, which 
 scope (logging/naming/language only) doesn't call for.
 
 **Status**: `[ ]` not started. Depends on Clusters 0-4, 6. Full reads done — ready to execute.
+
+**New findings (bidirectional Part C/D cross-check, 2026-08-07)**:
+
+- `asy_scd30_driver.py`: `SCD30_Reader.stop_timer()`/`stop_continuous_measurement()` are placed
+  after every getter/setter (near the file's end) instead of with the other Starters, unlike
+  `BMP3xx_Reader`/`SGP40_Reader`, which both correctly place `stop_timer()` immediately after
+  `get_timer_starters()` per D.15. A real, checkable D.10/D.15 divergence between SCD30 and its two
+  sibling drivers — pure reorder, no behavior risk, but worth fixing alongside this cluster's own
+  D.15 pass (`stop_continuous_measurement()` itself belongs in Setters/Others regardless, per
+  D.15's own clarified `stop_*` wording — see `SPECIFICATION.md` D.15).
+- `asy_sgp40_driver.py::_read_word_from_command()`/`get_raw()` allocate a fresh `bytearray`/list on
+  every call on SGP40's fixed 1 Hz cadence, instead of reusing pre-sized buffers the way
+  `SCD30_I2C` does with its own single `self._buffer` — real, indefinite per-second GC churn (D.4).
+  A second small pre-allocated buffer swapped by reference (instead of `get_raw()`'s
+  `self._command_buffer = bytearray(2)` reallocation) would close this cheaply.
+- `asy_sgp40_driver.py::_reset()` (the I2C general-call/reset broadcast) only acquires
+  `SGP40_DeviceSession`'s own device-session lock — it reaches directly into
+  `sgp40.i2c_device.i2c.writeto(0x00, b"\x06")` rather than going through
+  `async with sgp40.i2c_device as i2c:`, so the shared *bus* lock (C.8's lock 1) is never held for
+  this call, unlike every other SGP40 transaction in the file. Since a general call is explicitly
+  meant to affect every device on the bus, a concurrent transaction from another sensor sharing the
+  same physical I2C bus could genuinely interleave with it. Real C.8 locking gap, worth fixing as
+  part of this cluster's own pass over the file (nest the bus lock the same way every other method
+  here already does).
 
 ## Cluster 8 — `asy_wifi_service.py`, `asy_ntp_client.py`
 
@@ -884,6 +971,45 @@ avoid the documented can't-be-timeout-wrapped traps) — re-verify no new releva
 issue-tracker finding has landed since the last check, not a fresh investigation from scratch.
 
 **Status**: `[ ]` not started. Depends on Clusters 0, 2-3, 5. Full reads done — ready to execute.
+
+**New findings (bidirectional Part C/D cross-check, 2026-08-07)**:
+
+- **High priority — real reliability gap, not just a style nit.**
+  `asy_wifi_service.py::_hotspot_client_absent()` arms `hotspot_timer` as `Timer.ONE_SHOT` with
+  `callback=lambda b: self.reconnect_wifi()`. `reconnect_wifi()` does real work — `Timer.deinit()`,
+  attribute mutation, `asyncio.Task.cancel()` — directly inside what fires as the Timer callback,
+  contradicting C.9's "never business logic inside a Timer callback" rule. This combines badly with
+  two other facts already on record elsewhere in this project: (1) `SPECIFICATION.md` Part F's
+  documented soft-callback-drop risk (a soft callback can be silently dropped if MicroPython's
+  fixed-depth scheduler queue is full, with no exception anywhere in that chain), and (2) this is a
+  `ONE_SHOT` timer, not `PERIODIC` — C.9 already flags `ONE_SHOT` as the risky choice for exactly
+  this reason, since a periodic timer self-heals on its next tick but a dropped one-shot never fires
+  again. Verified directly: `hotspot_timer_running` is only ever cleared by `reconnect_wifi()`
+  itself or by the two other explicit call sites (`_hotspot_client_connected()`,
+  `_handle_reconnect_trigger()`) — nothing periodically re-arms it. If this specific callback is
+  ever silently dropped, `_hotspot_client_absent()`'s own `if not self.hotspot_timer_running:` guard
+  never re-fires, and the device can be left stuck in hotspot mode indefinitely with no further
+  reconnect attempt ever made — unlike `system_service.py`'s own `ONE_SHOT` sites, which have the
+  hardware watchdog as a real backstop, this one has none (hotspot mode itself doesn't feed the
+  watchdog the same way). Recommend either switching to `Timer.PERIODIC` with idempotent-safe
+  callback logic, or keeping `ONE_SHOT` but moving the real work out of the callback into a
+  `ThreadSafeFlag`-woken coroutine per C.9's standard shape, with a periodic self-heal check
+  alongside it (mirroring SCD30's own IRQ self-heal task for the same class of problem). Flag this
+  for attention within Cluster 8's own scope, not deferred to Cluster 10.
+- `asy_ntp_client.py`'s constructor places its own driver-specific optional knobs
+  (`dns_timeout_ms`, `dns_tries`, `ntp_fetch_timeout_ms`) *after* `max_i2c_err` instead of before
+  it — C.2 states the order as driver-specific knobs (the same role `trigger_sec` plays), then
+  `max_i2c_err`, then `cfg_path`. `asy_wifi_service.py`'s own constructor gets this right
+  (`conn_fail_to_hotspot`/`led_pin`/`ext_led`/`wifi_refresh_sec`/`hotspot_time_min` all precede
+  `max_i2c_err`), making this a real, checkable inconsistency between the two files this cluster
+  covers together. Low/medium severity — reorder as part of this cluster's own pass.
+- `asy_wifi_service.py`'s `LEDControl(Protocol)` is defined unconditionally at module level via a
+  bare `try/except Exception: class Protocol: pass` fallback, instead of the `if TYPE_CHECKING:`
+  guard D.6 mandates and every other `Protocol` in the codebase actually uses (`print_log.py`'s
+  `_FramChunk`/`_FramManager`, `api_response.py`'s `_RequestLike`, both fully inside
+  `TYPE_CHECKING`). Nothing in the codebase ever subclasses or instantiates `LEDControl` at
+  runtime, so it's purely an annotation aid that should be guarded the same way its siblings are —
+  real, avoidable D.6/D.10 divergence with a small but real frozen-build cost.
 
 ## Cluster 9 — `asy_neopixel_driver.py`, `asy_notification_service.py`, `system_service.py`
 
@@ -960,6 +1086,35 @@ out of this cluster's scope to touch, since this cluster is logging/naming/guard
 **Status**: `[ ]` not started. Depends on Clusters 1-3, 6. Full reads done for all three files —
 ready to execute.
 
+**New findings (bidirectional Part C/D cross-check, 2026-08-07)** — distinct from the
+already-tracked "guard against calling before `finalize()`" gap above, which is about a different
+failure mode:
+
+- `NotificationCoordinator.monitor_loop()` never calls `self._error_check()`, despite the class
+  accepting and storing `max_i2c_err` and passing it into `SensorReaderConfig.__init__` via
+  `finalize()`. The inherited consecutive-failure-streak machinery (`_err_cnt_internal`/
+  `_error_check`, C.7) is entirely dead for this class today: a config-read failure just logs a
+  warning (`wrn_s(..., wrnno=5)`) and falls back to a fixed 600s interval forever, with no
+  failure-streak threshold and no path to ever signal failure to the task supervisor via this
+  mechanism (a separate mechanism — the task itself raising — still applies, but that's not what
+  `max_i2c_err`'s presence in the constructor implies to a caller). Either wire in a real
+  `_error_check()` call in `monitor_loop()`'s own cycle, or stop accepting `max_i2c_err` in the
+  constructor if it's genuinely not meaningful for this class's failure mode — decide which as part
+  of this cluster's own pass, don't leave the parameter silently inert.
+- `system_service.py::stop_uptime_timer()` is placed after the Getters group
+  (`get_uptime`/`get_boot_signature`/`get_error_counter`) instead of grouped with the rest of the
+  Starters bucket, per D.15. Both `asy_wifi_service.py::stop_counter_timer()` and
+  `asy_ntp_client.py::stop_ntp_timer()`/`stop_counter_timer()` place their `stop_*` methods
+  correctly — `system_service.py` is the outlier against its own siblings' established D.15
+  ordering. Pure reorder, fold into this cluster's own D.15 pass.
+- `SystemService.__init__` hand-duplicates `SensorReader.__init__`'s fram-vs-memory `self.pr`
+  selection branch nearly verbatim (plus one extra `self.storage_pause = fram.set_pause` line in
+  the fram branch), even though `SystemService` doesn't subclass `SensorReader`/
+  `SensorReaderConfig` at all — so a future change to that selection logic has to be kept in sync
+  by hand across two copies that have already started to diverge slightly. Worth extracting a
+  small shared helper (e.g. in `print_log.py`) both call, as part of this cluster's own work on
+  `system_service.py`.
+
 ## Cluster 10 — Global pass
 
 **Goal**: style-guideline harmonization pass over `SPECIFICATION.md`'s Parts C (driver spec) and D
@@ -1002,6 +1157,31 @@ v2.6.2 docs (already vendored/verified — re-check only if any Cluster-10 wirin
 Microdot's own behavior, not expected).
 
 **Status**: `[ ]` not started. Depends on everything.
+
+**First real installment of this cluster's own harmonization goal, done early (2026-08-07)**: a
+full bidirectional cross-check between `SPECIFICATION.md`'s Parts C/D and the entire current state
+of `src/` (all 22 files, via four parallel per-group audits plus direct verification of every
+highest-severity claim before acting on it). Where the code's own established pattern was sound
+and Part C/D's text was incomplete, imprecise, or factually wrong about it, the guideline text
+itself was corrected in place (not the code) — see `SPECIFICATION.md` Parts C.3/C.3.1/C.4.3/C.4.4/
+C.5/C.5.2/C.7/C.9/D.15/F.4 for the specific fixes (log-method inventory gained `pr.err`/`pr.wrn`;
+C.7's errno numbering now states `base_classes.py`'s own reserved `1`-`9`/`1`-`2` range and the
+dynamic-`wrnno` variant; C.5's "three catches in `write_config()`" claim corrected to name which
+method each catch actually lives in, plus two undocumented `ConfigManager` accessor groups added;
+C.5.2's `isinstance`-vs-`type()` convention scoped correctly to `int` fields, fixing a wrong
+worked-example citation; C.3's scratch-buffer rule scoped to raw-I/O protocol classes; C.3.1's
+`FRAM_SPI` citation corrected to describe its real merged-class structure; C.4.3/C.4.4 gained two
+real, previously-undocumented patterns (staged `register()`/`finalize()` construction, `callback=`
+used for sanitization); C.9 gained the mode-scoped-task opt-out; D.15's `stop_*` wildcard scoped to
+timer/task-lifecycle stops; F.4 broadened from an Adafruit-only rule into a real two-vendor policy
+covering `voc_algorithm.py`'s opposite, keep-it-literal Sensirion-derived treatment). Where the
+code itself genuinely deviated from or was missing something Part C/D correctly requires, the
+finding was filed as a new action item in the relevant cluster's own section above (0, 5, 6, 7, 8,
+9) rather than fixed silently here, plus one genuinely open, owner-facing design question in the
+Open decisions log below (`DNSServer`'s error-reporting ownership). This doesn't close Cluster 10
+itself — the pass-2 errno numbering, `WIRING_CONTRACT.md` study, and integration-test scoping below
+are all still unstarted — but the harmonization half of this cluster's Goal has real, applied
+content behind it now, not just a plan.
 
 ---
 
@@ -1146,7 +1326,14 @@ fixes, specifically so it would validate the corrected state rather than redisco
 
 ## Open decisions log
 
-No outstanding open decisions right now.
+**Open — `captive_dns.py`'s `DNSServer` error-reporting ownership (bidirectional Part C/D
+cross-check, 2026-08-07, needs project-owner input, see Cluster 5)**: once Cluster 5 gives
+`DNSServer` a real `PrintLogHistory` (already its own Goal, replacing today's bare `print()`),
+should it get its own independent, `"DNSSRV"`-named instance, or share the *owning*
+`asy_conn_time`'s own `self.pr` so its errors land in the same history/errno stream as the rest of
+WiFi/DNS? Either is workable; Part C.7 currently has no documented stance on which an "owned
+helper, not a registered `Reader`" class should do. Not resolved here — flagged for the project
+owner to pick before Cluster 5 executes.
 
 **Resolved — `ConfigManager`'s async-`setup()` ripple (owner decision: extend the pattern
 upward)**: `SensorReaderConfig` gains its own `async def setup()` (same sync-`__init__`/

@@ -809,10 +809,21 @@ One file per sensor: `asy_<sensor>_driver.py`. Within it:
 
 ## C.3 Layer 2: `*_I2C`/`*_SPI` protocol class
 
-Owns one `*_DeviceSession`, a pre-allocated scratch buffer (`self._buffer`/
-`self._command_buffer`, sized once in `__init__`, reused every call — no per-call allocation,
-per Part D.4), and any chip-specific cached state (SCD30's last-read
+Owns one `*_DeviceSession`, and any chip-specific cached state (SCD30's last-read
 temperature/humidity/CO2; SGP40's `VOCAlgorithm` instance).
+
+**The pre-allocated scratch buffer below is required only for a protocol class doing raw
+`write()`/`readinto()`/`writeto()`/`readfrom_into()` I/O itself** (`self._buffer`/
+`self._command_buffer`, sized once in `__init__`, reused every call — no per-call allocation,
+per Part D.4; `SCD30_I2C`/`SGP40_I2C` are the real examples). A protocol class built entirely on
+`I2CDevice.get_register_struct()`/`get_bits()` (`BMP3XX_I2C`) has no scratch buffer of its own at
+all, by design — those helpers already allocate internally on every call via `readfrom_mem()`
+(`asy_i2c_driver.py`), so there is nothing local left to pre-allocate. Both are conformant; the
+buffer requirement scopes to whichever concrete I/O style a protocol class actually uses, not
+every protocol class unconditionally. **This carve-out doesn't extend to a class that *does* build
+its own raw scratch buffers but still allocates a fresh one on every call anyway** (`FRAM_SPI`'s
+`_check_device_id()`/`_read_status()`/`_setup_addr_buffer()` are a real, current instance of this —
+see C.3.1) — that's a genuine D.4 violation, not an example of this exemption.
 
 **Contract: raises on any real failure — this is the layer that does *not* return sentinels.**
 
@@ -836,8 +847,13 @@ temperature/humidity/CO2; SGP40's `VOCAlgorithm` instance).
 - Every multi-transaction sequence that must not be interleaved by another coroutine (e.g.
   write-command-then-read-reply into a shared buffer) holds the `*_DeviceSession`'s own lock for
   the whole sequence — `async with self.i2c_<sensor> as dev: async with dev.i2c_device as i2c: ...`
-  nested twice if the sequence itself needs two separate bus transactions with a delay between
-  them (see `SCD30_I2C._read_dev_register`'s write-then-sleep-then-readinto).
+  — with the bus-lock `async with` block re-entered (nested a second time inside the same
+  device-session acquisition) if the sequence needs more than one separate bus transaction (see
+  `SCD30_I2C.read_measurement()`'s three-transaction sequence). A sequence that only needs a single
+  continuous bus-lock hold spanning an internal delay — write, `asyncio.sleep()`, then readinto,
+  all under the *same* `async with dev.i2c_device as i2c:` block — doesn't need a second nesting at
+  all (see `SCD30_I2C._read_dev_register`, which receives an already-open `i2c: I2CDevice` from its
+  caller and never re-enters the bus lock itself).
 - Compensation/calibration math (BMP3xx's coefficient decode, SGP40's tick conversions) lives
   here, cited against the datasheet section it implements (see Part D.1 and C.11 below).
 - Datasheet-documented operating-range checks belong here too, where the raw ADC/compensated
@@ -855,10 +871,19 @@ specific, not a general SPI-sensor pattern). Treat this as a starting point that
 scrutiny — datasheet cross-checks and real-hardware testing both — the first time it's actually
 used, not as settled precedent the way C.1-C.2 are.
 
-The general structure is identical to the I2C case (C.1-C.2): `*_DeviceSession(Lockable)`
-wraps an `SPIDevice` instead of an `I2CDevice`; the protocol class becomes `*_SPI`; the `*_Reader`
-layer is unchanged (it only ever calls the protocol class, never the bus directly, so nothing
-about layer 3 depends on which bus layer 2 uses). What genuinely differs:
+The general structure follows the I2C case (C.1-C.2): a `Lockable`-based session object wraps an
+`SPIDevice` instead of an `I2CDevice`; the protocol class becomes `*_SPI`; the `*_Reader` layer is
+unchanged (it only ever calls the protocol class, never the bus directly, so nothing about layer 3
+depends on which bus layer 2 uses). **`FRAM_SPI` itself, the one real example, does not actually
+split this into two classes** — unlike the I2C drivers' `<Sensor>_DeviceSession(Lockable)` +
+`<Sensor>_I2C` pair (C.2), `FRAM_SPI` extends `Lockable` directly and owns `self._spidev =
+SPIDevice(...)` itself, with no separate `FRAM_DeviceSession` class anywhere. Both of C.8's lock
+layers are still genuinely present (`FRAM_SPI.asy_lock` as the device-session lock, `SPIDevice`'s
+own bus lock underneath) — merging the two classes doesn't collapse the two lock layers, it just
+means one class holds both roles. A new SPI sensor driver may follow either shape (the two-class
+split for consistency with the I2C drivers, or `FRAM_SPI`'s merged single-class form) as long as
+both lock layers stay genuinely distinct; don't assume a two-class split is required just because
+C.1-C.2 phrase the I2C convention that way. What genuinely differs from the I2C case:
 
 - **No bus-level presence probe exists for SPI, unlike I2C.** `I2CDevice.setup()` has
   `__probe_for_device()` — a zero-byte write that raises `ValueError` on a NAK, catching "wrong
@@ -987,6 +1012,16 @@ NVM-only fields looks the same to `get_dict_cfg()`'s caller as one with 8-and-0 
 (SCD30) — only the schema tuple passed to `_get_dict_cfg()` and the `callback`'s own field list
 change.
 
+**A `SensorReaderConfig` subclass whose own field set isn't fixed at class-definition time needs a
+different construction shape than the single-shot `__init__` above.**
+`asy_notification_service.py`'s `NotificationCoordinator` is the current example: it deliberately
+defers calling `super().__init__()` (and therefore `self.pr`/`self.cfgmgr`/`self.cfg_schema`)
+until an explicit `finalize()` call, after zero or more `register()` calls have assembled a
+combined config schema at runtime from whatever's registered. This is a legitimate, deliberate
+variant of the C.4.3 construction contract for a driver whose schema is composed dynamically,
+not a shortcut — everything else in C.4-C.5 (the getter/setter dispatch, `get_cfg_schema()`)
+still applies unchanged once `finalize()` has run.
+
 ### C.4.4 `get_dict_cfg()`'s `callback` parameter
 
 `_get_dict_cfg(name, cfg_vals, callback=None)` (`base_classes.py`) merges the config manager's
@@ -997,6 +1032,15 @@ only by the local schema cache needs no callback entry, its stored value is alre
 only ones the sensor itself reports back; SGP40 passes no callback at all, since all 3 of its
 fields are pure software knobs; SCD30 — no `SensorReaderConfig`, see C.4.3 — passes a callback
 covering *all* its fields, since none have any other storage.)
+
+**A second, legitimate reason to pass `callback=` for a field with no live-sensor counterpart at
+all: sanitizing a sensitive stored value before it's ever returned to a caller.**
+`asy_wifi_service.py`'s `get_dict_cfg()` passes `callback=self._mask_pw`, which unconditionally
+overwrites the persisted `PW` field with a fixed mask string rather than reconciling against any
+live reading — `_get_dict_cfg()`'s merge logic doesn't care what a callback's return value actually
+represents, so this reuse works without any new mechanism. A field whose stored value should never
+be echoed back verbatim (a credential, a secret) is a second real use case for `callback=`, not
+just live-sensor reconciliation.
 
 ## C.5 Config schema system (`config_manager.py`)
 
@@ -1027,13 +1071,28 @@ One JSON file per sensor: `config_<name>.cfg` (written by `SensorReaderConfig.__
 `ConfigManager.__init__`, cached in `self._cache`, and only re-synced to disk by
 `write_config()` — every `get_*` call reads the cache directly, no per-call file I/O.
 
-`write_config()` also carries three defensive `TypeError`/`AttributeError` catches (non-string
-filename, non-iterable `keys`, non-dict `data`) that are currently dead weight — nothing in
-`src/`/`improved-quality/` calls it with malformed input today, since every call site is
-type-checked at the mypy boundary. Kept deliberately anyway: once the Microdot REST layer feeds
-real, untrusted request data into this path, these catches stop being defensive-only and become
-load-bearing. Don't remove them as "unreachable dead code" — they're pre-positioned for wiring
-that hasn't landed yet (see BACKLOG.md).
+`ConfigManager` also carries three defensive type-mismatch catches, spread across three different
+methods rather than bunched into one — `__init__`'s `except (MemoryError, OSError, TypeError)`
+(a non-string filename), `get_dict()`'s `except (KeyError, TypeError)` (a non-iterable/malformed
+`keys` argument), and `write_config()`'s own `except (MemoryError, OSError, ValueError,
+AttributeError)` (an `AttributeError` from calling `.items()` on a non-dict `data` argument — the
+one of the three that's actually inside `write_config()`; it has no `TypeError` catch of its own).
+All three are currently dead weight — nothing in `src/`/`improved-quality/` calls any of them with
+malformed input today, since every call site is type-checked at the mypy boundary. Kept
+deliberately anyway: once the Microdot REST layer feeds real, untrusted request data into these
+paths, the catches stop being defensive-only and become load-bearing. Don't remove them as
+"unreachable dead code" — they're pre-positioned for wiring that hasn't landed yet (see
+BACKLOG.md).
+
+`ConfigManager` also exposes four typed accessor methods — `get_int_values()`/`get_float_values()`/
+`get_str_values()`/`get_bool_values()` — a driver's typed-read half of the config API, returning
+already-narrowed values straight from `self._cache` for a given key list without the caller doing
+its own `isinstance`/cast dance on `get_dict()`'s wider value type. Real `src/` drivers/services
+already call these directly (not just `get_dict()`); a new driver's own field getters should reach
+for whichever of these matches a field's declared schema type, the same way. A single-field
+convenience wrapper, `name_cfg(schema) -> str`, also exists alongside `schema_names()`/
+`schema_dict()` for the common case of pulling one field's own name back out of a one-field schema
+tuple.
 
 ### C.5.1 `get_cfg_schema()`
 
@@ -1079,10 +1138,17 @@ Config setters are implemented, mirroring the getter pair (C.4.4) one level down
   `_set_dict_cfg`). A push callback's signature is always the wide
   `Callable[[int | float | str | bool | None], Coroutine[Any, Any, bool]]` (matching every real
   setter's now-uniform bool return contract — see below); a real setter with a narrower parameter
-  type needs a thin type-narrowing wrapper registered instead of the setter itself (e.g.
-  `asy_wifi_service.py`'s `_push_wifi_led`), using `type(value) is not <T>` (not `isinstance`, to
-  correctly exclude `bool` from an `int` field the same way `config_manager.py`'s own
-  `type_or_range_error` already does).
+  type needs a thin type-narrowing wrapper registered instead of the setter itself. **For an
+  `int`-typed field specifically**, narrow with `type(value) is not int` — not `isinstance(value,
+  int)` — to correctly exclude `bool` (a subclass of `int` in Python) the same way
+  `config_manager.py`'s own `type_or_range_error` already does (`asy_bmp3xx_driver.py`'s four push
+  callbacks — oversampling ×2, filter coefficient, trigger interval — all follow this). **For a
+  `bool`-typed field, this `int`/`bool`-subclass concern doesn't apply at all** — there's no
+  further subclass of `bool` to wrongly admit — so `isinstance(value, bool)` and `type(value) is
+  not bool` are equivalent, and the two real bool-field wrappers (`asy_wifi_service.py`'s
+  `_push_wifi_led`, `asy_sgp40_driver.py`'s `_push_reset_voc`) both use `isinstance`. Match
+  whichever of the two a field's own type actually calls for, not `type(value) is not <T>`
+  unconditionally.
 
 **Every setter method's return contract is now uniformly `bool`** (`True` = applied,
 `False` = rejected/failed) — a project-wide fix applied while wiring this pass; a driver adding a
@@ -1248,25 +1314,51 @@ and its config read-back comes back silently wrong/empty.
   (FRAM-backed, survives reboot) depending on whether the `Reader`'s `fram` constructor argument
   was given — chosen automatically inside `SensorReader.__init__`, transparent to everything
   above it. A new driver never picks between the two itself.
-- Log-level methods: `pr.one`/`pr.evt`/`pr.all` (sync, unconditional print gated on level, no
-  history entry) for informational/trace messages; `pr.err_s`/`pr.wrn_s` (async, `await` required
-  — they persist to `self.history`/FRAM) for anything that should count against
-  `get_error_counter()`'s reported `ErrCount`/`ErrNum`/`ErrType`.
+- Log-level methods, two tiers: `pr.one`/`pr.evt`/`pr.all` (sync, unconditional print gated on
+  level, no history entry) for informational/trace messages; `pr.err_s`/`pr.wrn_s` (async, `await`
+  required — they persist to `self.history`/FRAM) for anything that should count against
+  `get_error_counter()`'s reported `ErrCount`/`ErrNum`/`ErrType`. **A third pair, `pr.err`/`pr.wrn`,
+  is the sync, non-persisting counterpart of `err_s`/`wrn_s`** — same print-only/level-gated/
+  no-history shape as `pr.one`/`pr.evt`/`pr.all`, just named for the error/warn levels instead —
+  used project-wide (every current driver/service) for two real, recurring situations: (1) a
+  genuinely sync call site that can't `await` (e.g. a `Timer.init()` failure handler inside
+  `start_timer()`, which isn't itself `async`), and (2) a routine, expected state observation that
+  shouldn't count toward `get_error_counter()`'s history at all — `asy_wifi_service.py`'s own
+  module docstring states this second distinction explicitly: "'Attempt' operations persist a real
+  errno via `self.pr.err_s()`...; routine state observations degrade silently via `self.pr.err()`
+  instead." Choose `err`/`wrn` over `err_s`/`wrn_s` for either reason, not just when `async` isn't
+  available.
 - `errno=`/`wrnno=` are small positive integers, defined and reported **per driver** — each
-  driver owns and reports its own error list, there is no project-wide numbering a new driver
-  must slot into. Within that per-driver list, group sequentially by the method that raises it
-  (BMP3xx: 10=init, 11-14=config read/write, 15-20=oversampling/filter forwards, 21=trigger-
-  interval) — a representative pattern worth following, not a fixed convention to match
-  number-for-number.
-- **One number is already a de facto shared convention, worth keeping deliberately**: `errno=10`
-  means "error in initial sensor setup" (`_init_<sensor>()`'s own `self.<protocol>.setup()`
-  failure) in all three current drivers, independently arrived at. A new driver should use
-  `errno=10` for the same situation, for the same reason any of the three already do — not
-  because it's enforced anywhere, but because it costs nothing to match and helps a human
-  scanning `get_error_counter()` output across sensors recognize the same failure class at a
-  glance. A broader, deliberate scheme of shared common-error *classes* (not just this one
-  precedent) across drivers is a real future direction — see BACKLOG.md's "common driver error
-  classes" entry — not implemented yet and out of scope for a driver's initial promotion.
+  driver owns and reports its own error list on top of a small, already-reserved shared base. Within
+  that per-driver list, group sequentially by the method that raises it (BMP3xx: 10=init, 11-14=
+  config read/write, 15-20=oversampling/filter forwards, 21=trigger-interval) — a representative
+  pattern worth following, not a fixed convention to match number-for-number.
+- **`base_classes.py` itself already reserves `errno=1`-`9`/`wrnno=1`-`2`, inherited unmodified by
+  every `SensorReader`/`SensorReaderConfig` subclass** — `_error_check()` (`errno=1`/`2`),
+  `_get_dict_cfg()` (`wrnno=1`, `errno=3`/`4`), and `_set_dict_cfg()`/`_recover_failed_push()`
+  (`errno=5`-`9`). Every driver-owned `errno`/`wrnno` list therefore isn't independent of the
+  others the way "per driver, no project-wide numbering" alone would suggest — it's scoped
+  starting from whatever the shared base class has already claimed, since a driver's own numbers
+  land in the *same* `self.pr.history`/`get_error_counter()` stream the base class's calls already
+  populate. **This is also the real reason `errno=10` for "initial setup failed" isn't purely
+  coincidental convergence**: it's the first number free after the base class's own reserved 1-9,
+  not just three drivers independently picking the same number for unrelated reasons. A new
+  driver's own numbering should start at 10 (or higher) for exactly this reason — starting lower
+  would collide with a base-class entry already using that number for something unrelated
+  (e.g. a driver-chosen `errno=3` would be indistinguishable in `get_error_counter()`'s history
+  from a `_get_dict_cfg()` internal failure). A broader, deliberate scheme of shared common-error
+  *classes* (not just this base-range reservation) across drivers is a real future direction — see
+  BACKLOG.md's "common driver error classes" entry — not implemented yet and out of scope for a
+  driver's initial promotion.
+- **A driver/service whose error sources aren't a fixed, enumerable-ahead-of-time list can assign
+  `wrnno`/`errno` dynamically instead of from a fixed per-number catalog** — `system_service.py`
+  assigns a task-supervisor warning's `wrnno` from that task's own position in a dynamically
+  registered task list (`wrnno=n + 1`), since there's no fixed roster of tasks to enumerate in
+  advance the way a single sensor's own fixed method list allows. This is an accepted variant of
+  the "small positive integers, defined and reported per driver" rule above for a genuinely
+  dynamic/enumerable error source, not a departure from it — the numbers still mean something
+  stable *within one run*, just not a fixed number-to-meaning mapping across runs the way a static
+  per-driver catalog gives you.
 - `_error_check(results, name, condition=True) -> bool` (`base_classes.py`) is the shared
   consecutive-failure-streak counter every `read_loop()` calls once per cycle with that cycle's
   results tuple — returns `False` (give up, triggers task-supervisor restart) once
@@ -1323,6 +1415,15 @@ minute during active WLAN instability), not a correctness bug.
   ```
   even if trivially one-element lists — `system_service.py`'s `start_and_check_tasks()`/
   `start_timers()` discover and supervise every driver generically through these, never by name.
+  **This is the boot-time-lifecycle discovery mechanism, not the only legitimate way a
+  `Reader`/service may ever start a task.** A task whose lifecycle is tied to a runtime mode
+  transition rather than to boot itself — `asy_wifi_service.py`'s hotspot-mode DNS server task,
+  started with a raw `evtloop.create_task(...)` when hotspot mode is entered and cancelled/
+  recreated as `_conn_phase` changes — is deliberately outside `get_task_starters()`'s generic
+  supervision, because its lifecycle is owned and driven by the module itself, not by
+  `system_service.py`'s boot sequence. This is a legitimate opt-out for a genuinely mode-scoped
+  task, not a gap in the discovery mechanism — a task with a real boot-time lifecycle still belongs
+  in `get_task_starters()`.
 - Triggering a periodic read uses `machine.Timer` (default **soft**, no `hard=True` anywhere in
   this codebase) whose callback only ever calls `.set()` on an `asyncio.ThreadSafeFlag` — never
   `time.sleep()`, never business logic, inside a Timer callback. The read loop's own
@@ -1767,6 +1868,13 @@ is not a machine with memory or cycles to spare:
 - [ ] Within each of those two groups, order by role (omit a category entirely if the class has no
       methods of that kind): 1. Starters (`start_*`/`stop_*`/`get_*_starters`), 2. Getters,
       3. Setters, 4. Others. Keep each sub-bucket's original relative order among its own members.
+      **The Starters bucket's `stop_*` covers a task/timer-lifecycle stop paired with a `start_*`
+      of the same resource** (e.g. `stop_timer()` alongside `start_timer()`/`get_timer_starters()`)
+      — not every method whose name happens to start with "stop". A setter-shaped business-logic
+      method that's merely named `stop_<something>` (e.g. a sensor command like
+      `stop_continuous_measurement()`, which stops a *sensor mode*, not this driver's own
+      task/timer) belongs in Setters or Others per its actual role, not in the Starters bucket by
+      name alone.
 - [ ] `__init__` and other dunders always stay first in the class, ahead of this scheme, untouched.
 - [ ] This is a pure reorder: it must not change any method's body, decorators, or docstring/
       comments, and must not change the file's module-level statements (imports, constants, module
@@ -2113,8 +2221,20 @@ split of the former `neopixel_signal.py` — see A.4 above) no longer reference 
 new code reintroduces a genuinely long blocking call, a coordination mechanism would need to be
 designed fresh — don't assume the old lock still exists or try to resurrect/reuse it.
 
-## F.4 Adafruit-derived driver code
+## F.4 Vendor-derived code: two opposite policies by vendor, not one blanket rule
 
-Adafruit-derived driver code is fair game to restructure/rewrite (keeping attribution) — unlike
-`python/CommonDrivers/microdot.py`/`ext/microdot.py`, which stay hands-off/vendored (see A.5
-above).
+Two vendors' code is currently vendored into this project, under **opposite** editing policies —
+"vendor-derived" alone doesn't imply either one, so check which vendor before assuming:
+
+- **Adafruit-derived driver code is fair game to restructure/rewrite (keeping attribution)** —
+  unlike `python/CommonDrivers/microdot.py`/`ext/microdot.py`, which stay hands-off/vendored (see
+  A.5 above).
+- **Sensirion-derived reference-algorithm ports stay literal, the opposite of the Adafruit
+  policy.** `voc_algorithm.py` (`VOCAlgorithm`) is a direct, deliberate port of Sensirion's
+  fixed-point reference implementation (`embedded-sgp`'s VOC algorithm, cited in C.11 point 7)
+  — its internal naming traces the original C source 1:1 (e.g.
+  `_vocalgorithm__mean_variance_estimator___calculate_gamma`) on purpose, so that this file stays
+  diffable against Sensirion's own reference if it's ever updated. Don't restructure/rename/
+  "clean up" this file's internals the way Adafruit-derived code is fair game for — a genuine bug
+  fix or a real behavior-preserving optimization (see D.8) is still in scope, the same as for any
+  other file going through Part D's checklist; a stylistic rewrite for idiomaticity is not.
