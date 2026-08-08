@@ -1,7 +1,7 @@
 import frozen_html  # type: ignore[import-not-found] # noqa: F401
 import time
 import asyncio
-from uasyncio import ThreadSafeFlag
+from asyncio import ThreadSafeFlag
 from system_service import SystemService
 import asy_i2c_driver
 import asy_spi_driver
@@ -418,7 +418,8 @@ async def timing_config(request: Request) -> Dict[str, int | float | str | bool 
     ntp_data = await ntp.cfgmgr.get_dict(
         ["NTP_Host", "NTP_Offset_S", "NTP_Interv_H", "GMTOffset", "DSTOffset"]
     )
-    # TODO what if ntp_data is None
+    # get_dict() returns None if ntp.cfgmgr.valid is False (e.g. a corrupted config_NTP.cfg) -
+    # matches /net/config's/led/config's own "let it be None" convention, not an unhandled gap.
     return ntp_data
 
 
@@ -514,7 +515,8 @@ async def led_config(request: Request):
     # get_dict() forwards each config's stored value unconverted, same as every other bool-typed
     # field project-wide; no to_switch() conversion needed or wanted anymore.
 
-    # TODO What if cfg_data is None
+    # cfg_data ends up None if either underlying cfgmgr is invalid (see the `else` above) -
+    # matches /net/config's/time/config's own "let it be None" convention, not an unhandled gap.
     return cfg_data
 
 

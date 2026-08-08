@@ -84,14 +84,19 @@ not just a synchronous one.
 
 ## Already-found gaps in the current file (mechanical fixes, allowed now per owner authorization — no full promotion)
 
-- Three `# TODO` None-handling gaps: `/net/config`, `/time/config`, `/led/config` GET handlers
-  don't define what happens when the underlying `cfgmgr.get_dict()` call returns `None` (one
-  sibling case, `/net/config`'s `PW` assignment, already crashed for real and was fixed — see the
-  file's own top-of-file migration comment).
-- Old-style `from uasyncio import ThreadSafeFlag` import (should be `from asyncio import
-  ThreadSafeFlag` per current MicroPython naming — `src/README.md` section 9's exact example case).
-- `_MAX_I2C_ERR = const(5)` — the project-wide `max_i2c_err` rename (BACKLOG.md, deferred) hasn't
-  reached this file yet either.
+**Closed, Cluster 10**: the two remaining `# TODO` None-handling comments (`/time/config`,
+`/led/config`) were stale, not real gaps — both routes already returned `None` safely (the one real
+crash, `/net/config`'s `PW` assignment into a `None` dict, was already fixed in an earlier session,
+per the file's own top-of-file migration comment). Reworded both comments to state the actual,
+already-correct behavior (matches `/net/config`'s own established "let it be `None`" convention)
+instead of reading like an open question. The old-style `from uasyncio import ThreadSafeFlag`
+import is fixed to `from asyncio import ThreadSafeFlag` (current MicroPython naming — `uasyncio`
+stays a compatibility alias, `asyncio` is the name every other import in this file and across
+`src/` already uses).
+
+**Still deliberately deferred**: `_MAX_I2C_ERR = const(5)` — the project-wide `max_i2c_err` rename
+(BACKLOG.md, deferred) hasn't reached this file, matching `SPECIFICATION.md` C.2's own explicit
+"don't rename it unilaterally" instruction — not a gap to close here.
 
 ## Forward API-design notes (not this audit's scope — recorded for whenever the REST layer is next touched)
 
@@ -103,5 +108,15 @@ not just a synchronous one.
 
 ## Status
 
-`[ ]` Full Cluster 10 study not yet started — this document currently only reflects what surfaced
-incidentally while reading the file for the logging/naming design work.
+`[x]` **Full Cluster 10 study done (2026-08-08)**. Re-read `improved-quality/sensortask-wozi.py`'s
+entire module-level construction sequence and every `import`/`from` statement in full, against the
+current post-Cluster-9 state of `src/` — the "Current construction order" and "Dependency graph"
+sections above are reconfirmed accurate, unchanged since they were first seeded (Cluster 9's own
+edits touched only `system_service.py`/`asy_notification_service.py`/`asy_neopixel_driver.py`
+internals, not this file's construction sequence or any cross-module reference). The "Already-found
+gaps" section above is updated to reflect the two mechanical fixes closed this cluster. The
+"New structural fallout" section's analysis (every `SensorReaderConfig` subclass's construction site
+needing an added `await x.setup()`, and the resulting break of the current flat synchronous
+construction sequence) is reconfirmed still accurate and still unresolved — genuinely Stage 1's job,
+not this audit's, per the Open Decisions Log's own framing. No new dependency-graph or
+construction-order finding surfaced from this full re-read beyond what was already seeded.

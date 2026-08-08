@@ -4,6 +4,19 @@ per-instance CRC framing (crc_checks.py's CRC_Base family) on read_until_complet
 readinto_until_complete/write/writefrom. Not wired into any live caller yet (see BACKLOG.md).
 Whoever wires it in: GPIO24/25 and GPIO28/29 fall inside a UART pin-mux group and are
 wireless-reserved on Pico W - picking either pair for tx_pin/rx_pin silently collides with WiFi.
+
+Raise contract, verified against ports/rp2/machine_uart.c at the pinned MicroPython v1.28.0 tag
+(Cluster 10's own one-time check, closing SPECIFICATION.md C.3.1's "undocumented bus fault surface"
+finding): a hardware-level framing/parity/overrun error on rp2 is detected at the C level but never
+raised as an exception - a framing/parity error still delivers the (corrupted) byte, an overrun
+silently drops one, a break condition is silently skipped. read()/readinto()/readline() therefore
+never raise OSError for a real hardware fault the way asy_i2c_driver.py's methods do; write() can
+genuinely short-write instead of raising, exactly as _write_all()'s own comment already documents.
+This class never assumes otherwise (every method here already returns a plain None/False sentinel,
+never raises), so no code change follows from this - it's a confirmation, not a gap. ready()'s own
+`except (OSError, MemoryError, TypeError):` around poll().ipoll() stays as defensive insurance
+against poll()/ipoll() itself, not against a UART hardware fault, which - per the above - has no
+exception path to catch in the first place.
 """
 
 import asyncio

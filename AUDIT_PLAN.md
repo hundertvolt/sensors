@@ -86,6 +86,25 @@ The audit is finished when, for every file in `src/`:
 7. `lint.sh`/`typecheck.sh`/`test.sh` all green; no test dropped (only extended/adapted); coverage
    recorded before/after and never silently regressed.
 
+**Satisfied as of Cluster 10 (2026-08-08), closing the audit**: every criterion above is now met —
+(1) `SPECIFICATION.md` Parts C/D carry the fully harmonized style guideline, including this
+session's own second harmonization installment (C.3.2, C.4.3, C.7/C.7.1, C.9, C.13, A.4); (2) no
+import cycle found across any cluster's own full-file reads, `WIRING_CONTRACT.md`'s dependency graph
+confirms a clean DAG; (3) `WIRING_CONTRACT.md`'s full Cluster 10 study confirms the real wiring
+shape is mechanical to build against, with every forward gap (the `ConfigManager` setup()-ripple's
+structural fallout) explicitly recorded for Stage 1, not silently left for that session to
+rediscover; (4)-(6) every cluster's own Quality measure confirmed these per-file, cluster by
+cluster; (7) confirmed green this cluster, 1751/1751 tests passing, 0 `FAIL`. Every permanent fact
+that lived only in this file's own "Standing conventions" (the readiness-gate scheme, the FRAM
+determinism rule, the error-code convention's pass-2 output, the `Timer.init()`/`MemoryError`
+finding) is now migrated into `SPECIFICATION.md`; `WIRING_CONTRACT.md`'s own forward-looking content
+(construction order, dependency graph, Stage-1 fallout notes) has no other permanent home and is
+expected to be consulted directly by whichever future session does Stage 1, rather than migrated
+elsewhere. Both this file and `WIRING_CONTRACT.md` are therefore believed ready for deletion per
+their own stated temporary-file policy — **actual deletion still needs the project owner's explicit
+agreement** (CLAUDE.md: "this file is deleted once the project owner agrees the audit is
+finished"), not assumed from this checklist alone.
+
 ---
 
 ## Standing conventions (decided during pre-audit planning — apply throughout, don't re-litigate)
@@ -1812,7 +1831,7 @@ findings (standing per-session currency check, CLAUDE.md's own requirement); cur
 v2.6.2 docs (already vendored/verified — re-check only if any Cluster-10 wiring note touches
 Microdot's own behavior, not expected).
 
-**Status**: `[ ]` not started. Depends on everything.
+**Status**: `[x]` done. Depends on everything.
 
 **First real installment of this cluster's own harmonization goal, done early (2026-08-07)**: a
 full bidirectional cross-check between `SPECIFICATION.md`'s Parts C/D and the entire current state
@@ -1842,6 +1861,96 @@ the project owner later the same day** (own independent `"DNSSRV"` history; stan
 itself — the pass-2 errno numbering, `WIRING_CONTRACT.md` study, and integration-test scoping below
 are all still unstarted — but the harmonization half of this cluster's Goal has real, applied
 content behind it now, not just a plan.
+
+**Executed 2026-08-08 — the rest of Cluster 10's Goal, closing the whole audit**:
+
+- **Harmonization pass, second installment**: folded every cross-cluster convention that had only
+  ever lived in this document's own "Standing conventions" section into `SPECIFICATION.md` as a
+  permanent fact, closing the gap the Definition of Done's "ready for deletion" bar requires.
+  New/extended sections: `SPECIFICATION.md` C.13 ("Readiness-gate scheme," the full sync-`__init__`/
+  async-`setup()` pattern, gate naming/polarity, the raise-vs-sentinel response rule, the staged
+  `register()`/`finalize()` variant); C.4.3 (extended — every method reachable before `finalize()`
+  needs its own guard, not just the two staging methods, closing the exact gap
+  `NotificationCoordinator` had); C.7 (`make_logger()` documented as the shared helper
+  `SystemService`/any future non-`SensorReader` class should call instead of hand-duplicating the
+  fram-vs-memory branch) plus a new C.7.1 running `errno`/`wrnno` table (error-code convention pass
+  2 — see below); C.9 (`Timer.init()`'s `except (OSError, MemoryError)` widening convention, with
+  the one-time MicroPython-source verification folded in — see below); a new C.3.2 ("UART variant")
+  resolving `asy_uart_driver.py`'s three flagged architectural findings as accepted precedent (see
+  below); A.4's `AsyFramManager` bullet extended with the full FRAM chunk determinism rule
+  (previously only in this document's own "Standing conventions," now permanent).
+- **Error-code convention, pass 2**: `SPECIFICATION.md` C.7.1 now carries the full running table —
+  every module's real, already-assigned `errno`/`wrnno` range (compiled from every cluster's own
+  pass-1 inventory above, cross-checked against the actual current source, not re-derived from
+  scratch) plus the shared conventions (`base_classes.py`'s reserved 1-9/1-2 range, the `errno=10`
+  "init failed" precedent, `system_service.py`'s dynamic-per-index variant). No unresolved overlap
+  found *within* any one module's own range — `config_manager.py`'s Cluster-2-era "provisional,
+  final numbers assigned in Cluster 10" framing is now resolved: the real numbers already landed in
+  code (`errno=1..14`, `wrnno=1..6`) are confirmed final, no renumbering needed. `asy_fram_manager.py`/
+  `asy_fram_driver.py`'s combined `10-97`/`81-83` range (Cluster 6's own corrected inventory) is
+  likewise confirmed final as recorded.
+- **`asy_uart_driver.py` harmonized** (deferred since Cluster 6 per the "pick up the spirit early,
+  harmonize late" decision): verified against `ports/rp2/machine_uart.c` at the pinned MicroPython
+  v1.28.0 tag that a hardware-level framing/parity/overrun error on rp2 is detected at the C level
+  but never raised as an exception (corrupted/dropped bytes, no exception path) — closes Cluster 6's
+  "undocumented bus fault surface" finding; the file's own docstring now states this explicitly, no
+  code change needed since every method already returned a sentinel rather than assuming a raise.
+  The three architectural findings (merged bus+session class, CRC framing inside the bus-wrapper
+  layer, `cancel_read_timeout()`'s no-C.9-counterpart shape) are resolved as accepted, documented
+  precedent in `SPECIFICATION.md` C.3.2 for a genuinely point-to-point, no-multi-device-sharing bus —
+  none were bugs, so no restructuring was applied to this already-tested, unwired module.
+- **`Timer.init()`/`MemoryError` one-time informational check** (Standing Conventions' own
+  "Cross-cutting confirmation," deferred to Cluster 10): verified against
+  `ports/rp2/machine_timer.c` at the pinned v1.28.0 tag — `Timer.init()`'s own documented failure
+  mode is exactly `OSError(MP_ENOMEM)` from `alarm_pool_add_alarm_in_us()`; no separate
+  `Timer.init()`-specific `MemoryError` path exists distinct from that. The one real allocation in a
+  `Timer`'s lifecycle happens once, at construction (`mp_obj_malloc_with_finaliser()` inside
+  `machine_timer_make_new()`), not inside `init()` itself. Confirms the already-applied
+  `except (OSError, MemoryError)` widening (Clusters 7-9) was correctly unconditional "cheap
+  insurance," not gated on a Timer-init-specific mode that turned out not to exist — informational
+  only, no code change. Documented in `SPECIFICATION.md` C.9.
+- **`WIRING_CONTRACT.md`'s full Cluster 10 study**: done — see that document's own "Status" section.
+  Re-read `improved-quality/sensortask-wozi.py`'s entire construction sequence and every
+  `import`/`from` statement against the current post-Cluster-9 state; construction order and
+  dependency graph both reconfirmed unchanged from what was already seeded. Two of the file's three
+  "already-found gaps" closed as mechanical, owner-authorized fixes (per the standing
+  `improved-quality/sensortask-wozi.py` exception): `from uasyncio import ThreadSafeFlag` →
+  `from asyncio import ThreadSafeFlag`; the two remaining stale `# TODO` None-handling comments
+  (`/time/config`, `/led/config`) reworded to state their actual, already-correct "let it be `None`"
+  behavior (matching `/net/config`'s own established convention) instead of reading like an open
+  bug — neither route ever actually crashed, only the comments were stale. `_MAX_I2C_ERR`'s rename
+  stays deliberately deferred, per `SPECIFICATION.md` C.2's own explicit instruction.
+- **Whole-system integration test scope**: written down in `BACKLOG.md`'s "Deferred /
+  explicitly out-of-scope work" (not `SPECIFICATION.md` — this is future test-writing work, not a
+  current-state architecture fact) — five concrete multi-module chains beyond today's
+  pairwise/triple coverage (full boot-sequence, task-supervisor restart end-to-end, WiFi
+  hotspot/DNS/LED, SGP40 VOC-backup reboot-survival, multi-sensor REST read aggregation), each
+  flagged as realistically only testable once Stage 1's real wiring successor exists.
+- **Cross-cluster items re-confirmed closing cleanly**: bus-layer (`asy_i2c_driver.py`/
+  `asy_spi_driver.py`)/`asy_udp_socket.py`/`asy_dns_client.py` (client side) — reconfirmed via direct
+  grep that none of Cluster 9's edits (`asy_neopixel_driver.py`/`asy_notification_service.py`/
+  `system_service.py`, none of which touch a bus/UDP/DNS-client call site) introduced any new
+  logging gap or new caller needing upstream-coverage verification; still cleanly "no logging
+  needed," as Clusters 4/5/8 already established. FRAM determinism — reconfirmed via the
+  `WIRING_CONTRACT.md` study above, no change since Cluster 9's naming-only edits to
+  `system_service.py`/`asy_neopixel_driver.py`/`asy_notification_service.py` touched any
+  construction-order-relevant code. The `AsyFramManager.setup()`/`I2CDevice.setup()`
+  readiness-gate question — reconfirmed still correctly resolved (neither needs a gate), no new
+  finding.
+
+**Quality measure verification**: `lint.sh` (30 errors) / `typecheck.sh` (44 errors) both match the
+established `improved-quality/`-only baseline exactly, zero new findings in `src/`/`tests/` from
+this cluster's edits (documentation plus the two mechanical `improved-quality/sensortask-wozi.py`
+fixes and `src/asy_uart_driver.py`'s docstring-only change). `test.sh` full 31-file suite green,
+1751/1751 passed, 0 `FAIL` lines, no test dropped.
+
+**External references re-checked**: `ports/rp2/machine_uart.c` and `ports/rp2/machine_timer.c` at
+the pinned MicroPython v1.28.0 tag — both fetched and read directly this cluster (not from memory)
+for the UART raise-contract and `Timer.init()`/`MemoryError` questions above; both findings are now
+folded into `SPECIFICATION.md` C.3.2/C.9 as permanent facts, not left as loose citations here. No
+other external reference applies to this cluster's own work — the harmonization/error-code/wiring-
+study/integration-scoping items are all internal documentation and cross-file consistency work, not
+hardware-datasheet-dependent.
 
 ---
 

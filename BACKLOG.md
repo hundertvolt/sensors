@@ -536,6 +536,31 @@ opportunistically mid-promotion.
   stated rationale for keeping them anyway: once the Microdot REST layer feeds real (untrusted)
   request data into these paths, they stop being defensive-only and become load-bearing. Revisit
   once that wiring exists, not before.
+- **Whole-system integration test scope** (`AUDIT_PLAN.md` Cluster 10's own scoping item — recorded
+  here since it's future test-writing work, not a current-state fact `SPECIFICATION.md` documents).
+  Today's integration tests are all pairwise-or-triple chains (FRAM+notification,
+  notification+neopixel, notification+SCD30, NTP+FRAM+system, NTP+WiFi+DNS, setter+Microdot) — real
+  and valuable, but none exercises the *actual* multi-module wiring shape `WIRING_CONTRACT.md`
+  documents. Chains genuinely missing coverage, to write once Stage 1's real `sensortask-wozi.py`
+  successor exists to exercise them against (most can't be meaningfully tested *before* that, since
+  today's `improved-quality/sensortask-wozi.py` construction sequence is still fully synchronous —
+  see the `ConfigManager` setup()-ripple open decision):
+  - **Full boot-sequence chain**: `conn` → `ntp` → `sysfunct` → every reader → `pixel` →
+    `notify_service`, constructed in the real order, verifying FRAM chunk determinism holds
+    end-to-end (not just per-component) and that every `SensorReaderConfig` subclass's new
+    `await x.setup()` call actually lands before its first real config read.
+  - **Task-supervisor restart, end-to-end**: `system_service.py`'s `start_and_check_tasks()`
+    actually restarting a failed reader task drawn from the real, full registered task list (today's
+    coverage exercises individual readers' own give-up behavior, never the supervisor discovering
+    and restarting one through `get_task_starters()` against the real wiring).
+  - **WiFi hotspot/DNS/LED chain**: `conn`'s hotspot-mode `DNSServer` task lifecycle plus
+    `pixel`'s WiFi-status LED (`conn.set_ext_led(pixel)`) through a real mode transition, not just
+    `captive_dns.py`/`asy_wifi_service.py` pairwise.
+  - **SGP40 VOC-backup reboot-survival, full chain**: FRAM chunk 2 write → simulated reboot → real
+    restore, through the actual `sgp_reader`/`fram` construction order, not a synthetic chunk.
+  - **Multi-sensor REST read aggregation**: `/sensors/status`/`/sensors/config`'s real
+    `get_dict_data()`/`get_dict_cfg()` merge across all three readers through Microdot end-to-end —
+    today's `setter+Microdot` integration test only covers the write path for one driver at a time.
 - **`asy_i2c_driver.py`'s `get_bits`/`set_bits`/`get_register_struct` still call the allocating
   `readfrom_mem()` rather than zero-copy `readfrom_mem_into()`** — no real caller needs the
   zero-copy path yet, but worth doing before `asy_isl29125_driver.py` (its one plausible future

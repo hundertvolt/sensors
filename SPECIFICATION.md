@@ -244,6 +244,20 @@ The condensed version is A.2 above. Key modules if you need to go deeper (folded
   allocator: `get_chunk()`/`get_timestamped_chunk()` carve out fixed offsets in call order, so a
   device's *instantiation order* of these calls is its on-chip layout and must stay identical
   across firmware versions for existing stored data to keep decoding correctly.
+  **FRAM chunk determinism rule** (no deallocation exists — intentional, bump allocator by design;
+  byte-offset/placement doesn't matter): what must hold, verified per file touching a FRAM-backed
+  class, not assumed, is that **every FRAM-chunk-owning object's construction (and therefore its
+  one-time `get_chunk()`/`get_timestamped_chunk()` call) is deterministic across every system
+  event, especially reboot** — an unconditional, fixed-position statement in the wiring sequence,
+  never inside a branch, a loop with variable order, or anything a task restart could re-enter.
+  Verified true today: task-level restarts (`system_service.py`'s `start_and_check_tasks()`) only
+  re-invoke an already-captured `task_starters[n]` callable on the *existing* object, never re-run
+  `__init__`; a full reboot replays `improved-quality/sensortask-wozi.py`'s entire module-level
+  construction sequence from scratch, and every current FRAM-chunk-owning construction (`fram`,
+  `sgp_reader`'s VOC-backup chunk, `pixel`, `notify_service`) is an unconditional top-level
+  statement, confirmed by direct reading, not assumption. Before adding any *new* FRAM-backed class
+  (a new driver, or a currently-in-memory-only logger — e.g. a `CFGMGR_*` or `"DNSSRV"` logger ever
+  becoming FRAM-backed), prove single, deterministic construction first, not after.
   **Every deliberate system reset already pauses FRAM first, confirmed directly** (found during a
   BACKLOG.md scan for settled facts sitting in working memory): `system_service.py`'s `_reboot()`
   (backing both `reboot_system()`/`reboot_bootloader()`) calls `self.storage_pause(True)` before
@@ -915,6 +929,53 @@ C.1-C.2 phrase the I2C convention that way. What genuinely differs from the I2C 
   (`asy_spi_driver.py`) is already transparent to the protocol layer, the same way `I2CDevice`'s
   bus session is.
 
+### C.3.2 UART variant — orphan module, harmonized late, precedent now settled
+
+**`asy_uart_driver.py`'s `UART(Lockable)` is a real, promoted, tested module with zero live callers
+anywhere in `src/`/`improved-quality/` today** (see BACKLOG.md) — it was read early for style ideas
+per the "pick up the spirit early, harmonize late" decision, then formally reconciled against this
+Part at Cluster 10, once the rest of the style guideline had converged. Three real architectural
+choices, flagged during Cluster 6's cross-check, are resolved here as accepted, documented
+precedent — none were bugs, and none needed a code change:
+
+- **One merged `UART(Lockable)` class, not a `*_DeviceSession(Lockable)` + `*_I2C`/`*_SPI` pair.**
+  C.1/C.2's two-layer split exists to separate "one physical bus, possibly shared by several
+  devices" (layer 1, one lock per bus) from "one logical multi-transaction operation on one device"
+  (layer 2, a second lock per device-session). UART has no bus-sharing concept at all — one UART
+  peripheral is wired to exactly one point-to-point link, so there is only ever one "device" per
+  bus instance and the two lock layers collapse onto the same object without losing any real
+  distinction. `FRAM_SPI` (C.3.1) already established that a merged single-class shape is legitimate
+  when both lock layers are still genuinely present under the hood; `UART`'s single
+  `Lockable.asy_lock` plays both roles the same way, and is the accepted shape for any future
+  point-to-point (non-multi-device) bus wrapper.
+- **CRC framing lives inside the bus-wrapper class itself** (`self.crc: CRC_Base`, applied inside
+  `read_until_complete()`/`readinto_until_complete()`/`write()`/`writefrom()`), unlike `I2CDevice`/
+  `SPIDevice`, which have zero CRC awareness and leave all framing to the layer-2 protocol class.
+  Accepted as UART-specific, not a precedent that blurs C.1's layer-1/layer-2 boundary for I2C/SPI:
+  a point-to-point serial link has no register/command addressing scheme of its own the way I2C/SPI
+  do, so there is no natural "layer 2" above it to own framing instead — CRC framing is optional
+  (`CRC_Pass()` by default) and belongs to *this* layer specifically because there's no other layer
+  for it to belong to.
+- **`cancel_read_timeout()`** — a real, sensible externally-triggerable cancel for another
+  coroutine's in-flight indefinite `ready()` wait. Accepted as a legitimate extension to C.9's
+  timer/task/IRQ contract for any bus wrapper that exposes an unbounded (`timeout_ms=-1`) wait: a
+  second coroutine holding no lock of its own can still request cancellation of the lock-holder's
+  in-flight wait via a plain `asyncio.Event`-based handshake (`self.cancel`/`self.cancelled`), no
+  `Timer`/IRQ involved. Not currently needed by any I2C/SPI driver (none of their waits are
+  unbounded the way UART's default `timeout_ms=-1` is), but the pattern is now documented precedent
+  for one that does.
+- **Raise contract, verified against `ports/rp2/machine_uart.c` at the pinned MicroPython v1.28.0
+  tag**: a hardware-level framing/parity/overrun error on rp2 is detected at the C level but never
+  raised as an exception — a framing/parity error still delivers the (corrupted) byte, an overrun
+  silently drops one, a break condition is silently skipped; `write()` can genuinely short-write
+  instead of raising. Unlike `asy_i2c_driver.py` (raises `OSError` on a real transaction fault, C.3)
+  or `asy_spi_driver.py` (cannot raise on rp2 at all, C.3), `machine.UART` occupies a third, distinct
+  position: no raise path exists for a hardware fault, but the failure isn't silently invisible
+  either — it's baked into the returned bytes with no separate signal. `asy_uart_driver.py` already
+  matches this correctly (every method returns a plain sentinel, never raises); confirming the real
+  hardware contract closes the C.3.1 finding that flagged this as unverified, with no code change
+  required.
+
 ## C.4 Layer 3: `*_Reader(SensorReader | SensorReaderConfig)`
 
 **Contract: never raises.** Every public method returns a well-defined sentinel (`None`/`False`/
@@ -1021,6 +1082,17 @@ combined config schema at runtime from whatever's registered. This is a legitima
 variant of the C.4.3 construction contract for a driver whose schema is composed dynamically,
 not a shortcut — everything else in C.4-C.5 (the getter/setter dispatch, `get_cfg_schema()`)
 still applies unchanged once `finalize()` has run.
+
+**Every method reachable before `finalize()` has run must guard against it explicitly, not just
+`register()`/`finalize()` themselves.** A staged-construction class's `self.pr`/`self.cfgmgr`/
+`self.cfg_schema` genuinely don't exist yet in the window between `__init__()` returning and
+`finalize()` running — any public method callable in that window needs its own sentinel-based
+early-return guard (a private `self._finalized: bool` flag, checked first, matching the class's own
+declared never-raises contract — C.4 above), not just the two staging methods. `NotificationCoordinator`
+is the current example: `get_data()`, `get_dict_cfg()`, `get_error_counter()`, `reset_error_counter()`,
+`monitor_loop()`, `auto_led_override()`, and its own `setup()` override all gained this guard —
+found as a real gap (only `register()`/`finalize()` were guarded, every other method would raise a
+bare `AttributeError` if called first) and closed during this project's audit, not a hypothetical.
 
 ### C.4.4 `get_dict_cfg()`'s `callback` parameter
 
@@ -1325,6 +1397,14 @@ and its config read-back comes back silently wrong/empty.
   name-baking change) and `logger: PrintLogHistory | None = None` — passing an existing logger
   reuses it instead of constructing a fresh one, the reach-through mechanism for a directly-bound
   sibling object that should share one identity/history instead of getting its own.
+- **The same fram-vs-memory selection logic is also available standalone**, as `print_log.py`'s
+  module-level `make_logger(fram, history_length, debug, name) -> PrintLogHistory` — the exact
+  branch `SensorReader.__init__` runs internally, extracted so a non-`SensorReader` class needing
+  the identical choice (`system_service.py`'s `SystemService`, which owns its own error history but
+  isn't a sensor driver and has nothing to inherit the branch from) doesn't hand-duplicate it. Any
+  future class in the same position — owns a `PrintLogHistory(Store)`, takes a `fram=` constructor
+  argument, but doesn't subclass `SensorReader` — should call `make_logger()` rather than
+  reimplementing the `if fram is None: ... else: ...` branch a third time.
 - Log-level methods, two tiers: `pr.one`/`pr.evt`/`pr.all` (sync, unconditional print gated on
   level, no history entry) for informational/trace messages; `pr.err_s`/`pr.wrn_s` (async, `await`
   required — they persist to `self.history`/FRAM) for anything that should count against
@@ -1400,6 +1480,37 @@ and its config read-back comes back silently wrong/empty.
   per-class one. See `WIRING_CONTRACT.md` for where that aggregation actually lands once it's
   designed.
 
+### C.7.1 Running `errno`/`wrnno` table (error-code convention, pass 2)
+
+Real numbers, per module, as actually assigned in the promoted code — not a global registry (each
+module's own `self.pr`/history stream is independent, so numeric overlap *between* rows is expected
+and harmless; only overlap *within* one row's own range would be a real bug). Kept here permanently
+(unlike `AUDIT_PLAN.md`, which is temporary) so a new module's numbering has a real precedent list to
+extend, per the "Error-code convention" pass-1/pass-2 process this table is pass 2's own output.
+
+| Module (`self.pr`'s name) | `errno` range | `wrnno` range | Notes |
+|---|---|---|---|
+| `base_classes.py` (inherited by every `SensorReader`/`SensorReaderConfig` subclass) | 1-9 | 1-2 | Reserved base range — see the bullet above; every driver's own numbering starts at 10+ to avoid colliding with this. |
+| `config_manager.py` (`"CFGMGR_" + name`, per instance) | 1-14 | 1-6 | Sequential in source order (`setup()`'s load/validate/first-write paths, then the three already-async accessor methods). |
+| `asy_fram_manager.py`/`asy_fram_driver.py` (shared `"FRAM"` logger — `AsyFramManager`, its chunk classes, and `FRAM_SPI` all share one stream) | 10-97 | 81-83 | `AsyFramManager`/chunks: ~10-88 (dynamic bases 10/`_write_chunk`, 30/`_read_chunk`, 50/`_clear_chunk`, each +0-6, plus fixed values through the chunk classes and `setup()`). `FRAM_SPI`: 89-97, continuing sequentially from where the manager's range ends (not-initialized ×5, invalid-range ×2, readback mismatch, lock-timeout) + `wrnno=81-83` (WRDI-stuck, WEL-didn't-set ×2). |
+| `asy_bmp3xx_driver.py` (`"BMP3XX"`) | 10-21 | — | 10=init, 11-14=config read/write, 15-20=oversampling/filter forwards, 21=trigger-interval. |
+| `asy_scd30_driver.py` (`"SCD30"`) | 10-24 | — | 10=init, 11=read, 12=stop-continuous-measurement, 13-24=per-field get/set forwards in pairs. |
+| `asy_sgp40_driver.py` (`"SGP40"`) | 10-18 | 10-14 | 10=init, 11-12=config, 13-18=VOC-backup read/write/serialize; `wrnno`=backup-missing/stale conditions. |
+| `asy_wifi_service.py` (`"WIFI"`, `asy_conn_time`) | 11-18 | 1-7 | 11=mode-switch, 12=hotspot-activate, 13=STA-connect-attempt, 14=STA-poll, 15-16=STA-disconnect/deactivate, 18=disconnect-timeout; `wrnno` 1-3=missing-config per connection phase, 4-7=WLAN status conditions. |
+| `asy_ntp_client.py` (`"NTP"`) | 11-20 | 1-3 | 11=missing-config, ..., 19=time-calc, 18/20=missing-config-interval-fallback/give-up; `wrnno`=callback failures. |
+| `captive_dns.py` (`"DNSSRV"`, `DNSServer`) | 1-3 | 1-2 | 1=invalid server_ip/netmask at startup, 2=unexpected loop exception, 3=disconnect-cleanup exception; `wrnno` 1=dropped `sendto()` reply, 2=invalid recvfrom data/address. |
+| `system_service.py` (`"SYSTEM"`) | 1-4 | dynamic (`n + 1`) | 4=task-error-budget-exceeded-rebooting; `wrnno` assigned per task-supervisor index — see the "dynamic assignment" bullet above, not a fixed catalog. |
+| `asy_notification_service.py` (`"NOTIFY"`) | 1-4 | 1-5 | 4=`request_signal_cb` callback failure. |
+| `asy_neopixel_driver.py` (`"NEOPIXEL"`) | — | — | No persisted logging today — only informational `evt()` calls, nothing that fails in a way worth counting against `get_error_counter()`. |
+| `asy_i2c_driver.py`/`asy_spi_driver.py`, `asy_udp_socket.py`, `asy_dns_client.py` (client side) | — | — | Deliberately no logging (reverted) — every real failure already surfaces to and gets logged by exactly one upstream owner; see the standing "Bus layer"/"`asy_udp_socket.py`/`asy_dns_client.py`" conventions above. |
+| `asy_uart_driver.py` | — | — | Orphan module, zero live callers — no `self.pr` at all (C.3.2); would follow this same table's shape once wired in and given an owner. |
+
+Cross-module precedent worth repeating from the bullet above: `errno=10` means "init failed"
+almost everywhere a driver reaches that number, purely because it's the first number free after
+`base_classes.py`'s own reserved 1-9 — not independent convergence. A new module should follow the
+same reasoning (start its own numbering at 10+, use 10 for init failure if it has one), not treat
+this table as a lookup requiring a specific unused global number.
+
 ## C.8 Concurrency & locking model
 
 Two independent lock layers, both needed:
@@ -1469,6 +1580,23 @@ minute during active WLAN instability), not a correctness bug.
   `trigger_period` to the user-configured interval) runs a second small `_base_trigger()` task
   that counts base ticks and sets the "real" `trigger_event` once the configured interval is
   reached — rather than reprogramming the `Timer`'s own period at runtime.
+- **Every `Timer.init()` call site's failure handler catches `except (OSError, MemoryError) as e:`,
+  not a bare `except OSError:`** — a project-wide defensive widening (`asy_bmp3xx_driver.py`,
+  `asy_scd30_driver.py`, `asy_sgp40_driver.py`, `asy_wifi_service.py`, `asy_ntp_client.py`,
+  `system_service.py`), matching CLAUDE.md's general "an `OSError` catch around a call that could
+  plausibly exhaust memory should also catch `MemoryError`" rule. **Verified against
+  `ports/rp2/machine_timer.c` at the pinned MicroPython v1.28.0 tag (Cluster 10's one-time,
+  informational check)**: `Timer.init()`'s own documented failure mode is exactly
+  `OSError(MP_ENOMEM)`, raised when `alarm_pool_add_alarm_in_us()` reports the RP2040's small,
+  fixed hardware alarm pool is exhausted — there is no separate, `Timer.init()`-specific
+  `MemoryError` path distinct from that `OSError`. The one real allocation in a `Timer`'s lifecycle
+  (`mp_obj_malloc_with_finaliser()`, which — like any MicroPython object allocation — could
+  theoretically raise `MemoryError` on a GC-heap-exhausted device) happens once, at construction
+  (`Timer(...)`), not inside `init()`/`start_timer()`'s own call. The `MemoryError` half of the
+  catch is therefore genuinely cheap, generic insurance against that construction-time or
+  general-heap-exhaustion scenario, not a proven `Timer.init()`-internal failure mode — confirms the
+  widening was correct to apply unconditionally rather than gated on proving the mode first, exactly
+  as the project owner's original decision assumed.
 
 ## C.10 Typing conventions
 
@@ -1526,6 +1654,56 @@ tick conversion) the same as they do to `math_helpers.py`. For I2C fault injecti
 real hardware only ever raises `OSError(EIO)` (NAK/bus fault) or `OSError(ETIMEDOUT)`
 (bus-busy/clock-stretch) — never `ENODEV`, which is `SoftI2C`-specific; don't inject a fault code
 a real bus can't actually produce.
+
+## C.13 Readiness-gate scheme (sync `__init__` / async `setup()`)
+
+Project-wide pattern for any class whose real construction work needs an `await` (I/O, or just
+calling an inherited async logging method) but starts out attempted inside a synchronous
+`__init__`. First proven by `asy_fram_driver.py`'s `FRAM_SPI` and `asy_spi_driver.py`'s
+`SPIDevice`; now the standard for any class in the same position (`ConfigManager`,
+`NotificationCoordinator`'s staged `register()`/`finalize()` variant — C.4.3).
+
+- `__init__` stays synchronous: it only stashes constructor arguments and sets a readiness gate to
+  "not ready." An explicit `async def setup()` does the real deferred work and flips the gate to
+  "ready" on success.
+- **Gate name/polarity is standardized**: `self.initialized: bool = False` → `True` — *except*
+  where the underlying meaning is genuinely different from "has setup run," not just differently
+  spelled. `ConfigManager.valid` stays `valid` on purpose: it means "setup ran *and* produced
+  trustworthy data," a real distinction every current caller already relies on, not just a
+  differently-named identical concept. Don't force a uniform name onto a genuinely different
+  meaning.
+- A `Type | None`-typed attribute is the *complementary* mechanism for one specific sub-resource
+  that can independently fail *during* an otherwise-successful `setup()` (`PrintLogHistoryStore.fram`
+  is the example — a `PrintLogHistory` still works, just without FRAM persistence, if its own FRAM
+  chunk allocation failed). Not a competing choice against the bool gate — both can coexist on the
+  same class, answering different questions ("has setup run at all" vs. "did this one piece work").
+- **The response to "called before `setup()` ran" is never a free stylistic choice — it must match
+  whatever raise/never-raise contract the class already declares in its own module docstring.**
+  - A class documented as "never raises" (every `SensorReader`/`SensorReaderConfig` subclass,
+    `PrintLog` family, `ConfigManager`) returns its documented sentinel and logs, exactly like every
+    other failure mode that class already handles. This holds even for `FRAM_SPI` specifically,
+    whose own docstring promises "self-healing to a safe state without raising, except
+    `__init__`/`setup()`'s one-time setup errors" — its pre-`setup()` sentinel-returning behavior
+    was already correct.
+  - `SPIDevice.__aenter__`'s raise is a structural necessity of Python's `async with` protocol (no
+    sentinel-return option exists for a failed `__aenter__`), not a stylistic precedent — it doesn't
+    extend to any other method on any other class.
+  - **Verify per class, don't assume**: check the specific class's own module docstring for an
+    already-declared raise/never-raise contract before deciding the response shape, rather than
+    copying whichever example was read most recently.
+- **Not every readiness question needs a gate at all.** `AsyFramManager.get_chunk()`/
+  `get_timestamped_chunk()` are pure bookkeeping (offset arithmetic, no hardware access) — safe
+  before any `setup()` runs, and real hardware access always goes through `self.fram` (`FRAM_SPI`),
+  which already has its own gate; a second one at the manager level would be redundant.
+  `I2CDevice.setup()` performs only an *optional* identity probe with no state transition to
+  guard — the underlying `I2C` bus is fully ready immediately from `I2C.__init__` itself, unlike
+  `SPIDevice`'s CS-pin configuration. Add a gate because a class's own construction genuinely has an
+  unready window to guard, not by default.
+- **A staged, multi-call construction variant exists alongside single-shot `setup()`** —
+  `NotificationCoordinator`'s deferred `register()`×N → `finalize()` shape (C.4.3). The same rules
+  above apply once translated: every method reachable in the pre-`finalize()` window needs its own
+  guard, not just the staging methods themselves (C.4.3's own note on this, closing a real gap found
+  in this codebase — only `register()`/`finalize()` were originally guarded).
 
 ---
 
