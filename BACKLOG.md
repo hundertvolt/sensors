@@ -7,7 +7,7 @@ operating constraints/architecture reference) or README.md (human-facing orienta
 migrated there rather than duplicated here. See README.md for orientation, CLAUDE.md for operating
 constraints.
 
-## Planned: full `src/` audit (not started)
+## Planned: full `src/` audit (under way — see AUDIT_PLAN.md)
 
 Owner intent, captured 2026-08-06 for a future session — a deep pass over the *entire* current
 `src/` contents (not just whatever file was most recently promoted), aimed at getting the codebase
@@ -539,7 +539,8 @@ opportunistically mid-promotion.
 - **Whole-system integration test scope** (`AUDIT_PLAN.md` Cluster 10's own scoping item — recorded
   here since it's future test-writing work, not a current-state fact `SPECIFICATION.md` documents).
   Today's integration tests are all pairwise-or-triple chains (FRAM+notification,
-  notification+neopixel, notification+SCD30, NTP+FRAM+system, NTP+WiFi+DNS, setter+Microdot) — real
+  notification+neopixel, notification+SCD30 (both its WarnCO2 and WarnHum signals),
+  notification+SGP40 (WarnVOC), NTP+FRAM+system, NTP+WiFi+DNS, setter+Microdot) — real
   and valuable, but none exercises the *actual* multi-module wiring shape `WIRING_CONTRACT.md`
   documents. Chains genuinely missing coverage, to write once Stage 1's real `sensortask-wozi.py`
   successor exists to exercise them against (most can't be meaningfully tested *before* that, since

@@ -125,6 +125,17 @@ async def co2_value_callback(scd_reader: SCD30_Reader) -> "int | float | None":
     return float(scd_data.CO2)
 
 
+async def hum_value_callback(scd_reader: SCD30_Reader) -> "int | float | None":
+    # Verbatim mirror of improved-quality/sensortask-wozi.py's own hum_value_callback() body -
+    # same SCD30_Reader instance backs both WarnCO2 and WarnHum in the real wiring (one sensor,
+    # two notification signals off its own .Hum/.CO2 fields), but no test file exercised the real
+    # WarnHum chain before this one - only WarnCO2 had integration coverage.
+    scd_data = await scd_reader.get_data()
+    if scd_data is None or scd_data.Hum is None:
+        return None
+    return float(scd_data.Hum)
+
+
 def make_stack(scd_reader: SCD30_Reader) -> "tuple[NeopixelDriver, NotificationCoordinator]":
     pixel = NeopixelDriver(0, neopixel_freq=100)
 
@@ -133,6 +144,23 @@ def make_stack(scd_reader: SCD30_Reader) -> "tuple[NeopixelDriver, NotificationC
 
     notify = NotificationCoordinator(pixel.request_signal, _local_time, cfg_path=_tmp_cfg_dir())
     signal = NotificationSignal("WarnCO2", get_co2, (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
+    notify.register(signal)
+    notify.finalize()
+    run(notify.cfgmgr.setup())
+    return pixel, notify
+
+
+def make_hum_stack(scd_reader: SCD30_Reader) -> "tuple[NeopixelDriver, NotificationCoordinator]":
+    # Separate stack (own pixel/notify instance) rather than a second signal registered on
+    # make_stack()'s own notify - matches WarnCO2's own test scope of one signal per scenario, and
+    # avoids the two signals' ramps overlapping in the same pixel.pixel.writes trace.
+    pixel = NeopixelDriver(0, neopixel_freq=100)
+
+    async def get_hum() -> "int | float | None":
+        return await hum_value_callback(scd_reader)
+
+    notify = NotificationCoordinator(pixel.request_signal, _local_time, cfg_path=_tmp_cfg_dir())
+    signal = NotificationSignal("WarnHum", get_hum, (("WarnHum", "float", 65.0, 0.0, 100.0, None),), (0, 0, 1))
     notify.register(signal)
     notify.finalize()
     run(notify.cfgmgr.setup())
@@ -170,6 +198,34 @@ def test_real_sensor_reading_above_threshold_flows_through_to_a_real_ramp() -> N
     run(scenario())
     writes = [w[0] for w in pixel.pixel.writes]
     assert (200, 0, 0) in writes  # scaled by the default FlashBri=200, pure red channel
+    assert writes[-1] == (0, 0, 0)
+    log = run(scd_reader.get_error_counter())
+    assert log["SCD30"]["ErrCount"] == 0
+    notify_log = run(notify.get_error_counter())
+    assert notify_log["NOTIFY"]["ErrCount"] == 0
+
+
+def test_real_humidity_reading_above_threshold_flows_through_to_a_real_ramp() -> None:
+    # Same real read chain as the WarnCO2 test above, driving WarnHum instead - the one other real
+    # signal this SCD30_Reader instance backs in the actual wiring (see hum_value_callback() above).
+    scd_reader, i2c = make_scd_reader()
+    i2c.read_queue.append(register_frame(1))
+    i2c.read_queue.append(data_frame(800.0, 22.0, 70.0))  # CO2 well under threshold, Hum above the 65.0 default
+    pixel, notify = make_hum_stack(scd_reader)
+
+    async def scenario() -> None:
+        results = await scd_reader._read_scd()
+        assert await scd_reader._error_check(results)
+        await scd_reader._store_scd(results)
+
+        await notify._set_dict_cfg({"Interv": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
+        tasks = [s() for s in pixel.get_task_starters()] + [s() for s in notify.get_task_starters()]
+        await asyncio.sleep(1.3)
+        await _cancel_all(tasks)
+
+    run(scenario())
+    writes = [w[0] for w in pixel.pixel.writes]
+    assert (0, 0, 200) in writes  # scaled by the default FlashBri=200, pure blue channel (WarnHum's color)
     assert writes[-1] == (0, 0, 0)
     log = run(scd_reader.get_error_counter())
     assert log["SCD30"]["ErrCount"] == 0

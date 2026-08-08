@@ -272,6 +272,20 @@ The condensed version is A.2 above. Key modules if you need to go deeper (folded
   `set_ambient_pressure` is called with `force=True` in the REST handler: resending the same value
   is also the SCD30's documented command to resume continuous measurement after it's been stopped.
   Don't "fix" this into a live BMP388→SCD30 feed; it's intentional, confirmed by the project owner.
+- **SGP40's VOC index is a deviation-from-learned-baseline number, not an absolute-concentration
+  one — confirmed directly against `voc_algorithm.py`'s real Sensirion Gas Index Algorithm port
+  while calibrating a real threshold-crossing integration test (see
+  `tests/test_notification_sgp40_integration.py`'s own module docstring for the full derivation).**
+  Three facts worth knowing before writing any test or reasoning about real-world VOC behavior: (1)
+  `_VOCALGORITHM_INITIAL_BLACKOUT = 45` sampling intervals must elapse before the index moves off 0
+  at all; (2) under *any* constant raw-tick input, however extreme, the index converges toward 100
+  (the algorithm's own "clean air" baseline) — a real spike needs a genuine step change away from
+  whatever raw value the sensor has already been reporting, not just a high absolute value; (3) a
+  *higher* raw tick count reads as *cleaner* air on this driver's convention (index moves down as
+  raw goes up, and vice versa) — the inverse of what "raw" might suggest. None of this is a bug;
+  it's how Sensirion's own reference algorithm is designed to work, and `asy_sgp40_driver.py`
+  already treats `VOC` as an opaque index throughout (see F.4 below for why this file's internals
+  stay a literal, undisturbed port).
 - **`improved-quality/neopixel_signal.py` (LED hardware control + hardcoded CO2/VOC/Humidity
   threshold monitoring combined in one file) is promoted and split into two `src/` files** - the old
   file is deleted, `improved-quality/sensortask-wozi.py` wires the two replacements directly.

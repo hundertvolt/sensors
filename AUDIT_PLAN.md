@@ -1952,6 +1952,79 @@ other external reference applies to this cluster's own work — the harmonizatio
 study/integration-scoping items are all internal documentation and cross-file consistency work, not
 hardware-datasheet-dependent.
 
+### Post-Cluster-10 continuation — a BACKLOG.md goal the cluster list itself never captured
+
+**Correction, owner-flagged (2026-08-08)**: the "closing the whole audit" framing on this cluster's
+own Definition-of-Done entry above was premature. The 0-10 **cluster action list** is genuinely
+done, but the **audit itself** — BACKLOG.md's original "Planned: full `src/` audit" goals/lenses
+list, which the cluster list was derived from — is still under way; this document stays open, not
+deleted, until the owner says otherwise. Concretely: comparing the cluster list against BACKLOG.md's
+original goals/lenses line by line found one lens that never made it into any cluster's own action
+items anywhere — "scan every test file exercising `src/` ... for mocks of a module that has since
+been promoted into `src/` itself" (grepped the word "mock" across this entire 2000+-line document
+before this pass: zero hits).
+
+**Mock-scan, executed**: every `class Fake*`/`class Mock*`/`class Stub*`/`class Dummy*` definition
+and every `monkeypatch`/module-attribute-swap site across all 31 `tests/test_*.py` files plus
+`tests/_fram_chip_fake.py` was enumerated and individually classified against `SPECIFICATION.md`
+E.4's documented mocking-boundary convention. Result: **no gap found** — every fake in the suite is
+either (a) a hardware/external-peer simulator at the documented boundary (`tests/machine.py`,
+`tests/_fram_chip_fake.py`, `test_asy_dns_client.py`'s/`test_ntp_wifi_dns_integration.py`'s/
+`test_ntp_fram_system_integration.py`'s `FakeNtpServer`/`FakeDNSServer` — real sockets playing an
+external network peer, not a mock of any `src/` class), or (b) a deliberate Protocol-boundary unit
+double **already paired with a real-chain integration test exercising the same scenario through the
+genuine promoted module** — confirmed individually, not assumed: `test_asy_wifi_service.py`'s
+`FakeLED` ↔ `test_neopixel_wifi_integration.py`'s real `NeopixelDriver`; `test_asy_neopixel_driver.py`'s
+`_FakeFramChunk`/`_FakeFramManager` (its own reboot-survival test) ↔
+`test_notification_fram_integration.py`'s `test_both_histories_survive_a_simulated_reboot` (same
+scenario, real `AsyFramManager`); `test_captive_dns.py`'s `_FakeUDPS` ↔ that same file's own
+real-socket test at the bottom (explicitly documented in-file as a Unix-port-test-environment
+workaround, not a stand-in for `AsyUDPSocket`'s real behavior). No test file anywhere in `tests/`
+locally redefines a class shadowing a promoted `src/` class by name (verified directly — the only
+`class UART` match in the whole directory is `tests/machine.py`'s own hardware-level fake, a
+different class from `src/asy_uart_driver.py`'s `UART` wrapper).
+
+**Real gap found instead, while applying the owner's own follow-up instruction to "always search for
+opportunities for extending tests, their depth, their scope" and "think of what could all happen in
+the integration path"**: `NotificationCoordinator`'s real wiring (per
+`improved-quality/sensortask-wozi.py`) backs three signals off two real sensors —
+`WarnCO2`/`WarnHum` off `SCD30_Reader`, `WarnVOC` off `SGP40_Reader` — but only `WarnCO2` had a real
+end-to-end integration test (`test_notification_scd30_integration.py`). `WarnVOC`'s entire real chain
+(SGP40 → NotificationCoordinator → NeopixelDriver) had zero integration coverage — only unit-level
+(`test_asy_sgp40_driver.py` in isolation, `test_notification_neopixel_integration.py` with a stubbed
+value callback) — and `WarnHum` had none either, despite sharing an already-integration-tested reader
+with `WarnCO2`.
+
+**Fixed**:
+- New `tests/test_notification_sgp40_integration.py` (3 tests, mirrors
+  `test_notification_scd30_integration.py`'s own structure): a real threshold-crossing test (driving
+  `SGP40_Reader._read_sgp()`/`_error_check()`/`_store_sgp()` directly through the real
+  `voc_algorithm.py` algorithm — required first calibrating its real convergence behavior against the
+  actual source, since a naive "one elevated raw reading" approach produces `VOC=0` every time; see
+  the new `SPECIFICATION.md` bullet next to the `AmbPres` note, and the test file's own module
+  docstring, for the calibrated recipe), an I2C-NAK-fault isolation test, and a
+  fault-then-recovery test.
+- Extended `tests/test_notification_scd30_integration.py` with
+  `test_real_humidity_reading_above_threshold_flows_through_to_a_real_ramp` plus a `make_hum_stack()`
+  helper, mirroring the existing `WarnCO2` test exactly but for `WarnHum`.
+- **A real bug found and fixed while writing the new SGP40 test, not a pre-existing one**: an early
+  draft of the I2C-fault test called the new file's own `_drive_one_cycle()` helper (which wraps each
+  step in a sync `run()`/`asyncio.run()`) from inside an already-running `scenario()` coroutine —
+  the exact nested-`asyncio.run()` segfault `test_notification_scd30_integration.py`'s own comment
+  already documents as a known MicroPython-asyncio gotcha (no clean `RuntimeError`, a real
+  interpreter crash). Caught immediately by actually running the new file (`PASS`/`PASS`, then a
+  bare "Segmentation fault" with no third `PASS` line) rather than assuming it would work; fixed by
+  awaiting the three calls directly inside `scenario()` instead, matching the established pattern.
+
+**Quality measure verification**: `lint.sh` (30 errors) / `typecheck.sh` (44 errors) both confirmed
+back at the established `improved-quality/`-only baseline after fixing one genuine new-file finding
+(`tests/test_notification_sgp40_integration.py`'s own `make_sgp_reader()` had a copy-pasted
+`# type: ignore[return-value]` from `test_notification_scd30_integration.py`'s `make_scd_reader()`
+that mypy correctly flagged as unused once the return type was annotated `tuple[SGP40_Reader, Any]`
+— fixed by removing it, not by suppressing the check). `test.sh` full suite run — see the run started
+this session; both new/modified files individually confirmed passing (3/3, 4/4) before the full-suite
+run.
+
 ---
 
 ## Validation pipeline logs
