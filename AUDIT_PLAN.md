@@ -298,8 +298,8 @@ actually executed:
 
 | Class | Current shape | What changes |
 |---|---|---|
-| `FRAM_SPI` (Cluster 6) | `uninitialized`, sentinel-returning | Rename/flip flag only, no behavior change |
-| `SPIDevice` (Cluster 4) | `uninitialized`, raises in `__aenter__` | Rename/flip flag; raise stays (protocol necessity) |
+| `FRAM_SPI` (Cluster 6) | `initialized`, sentinel-returning | Done — renamed/flipped, no behavior change |
+| `SPIDevice` (Cluster 4, actually done post-Cluster-6) | `initialized`, raises in `__aenter__` | Done — renamed/flipped; raise stays (protocol necessity) |
 | `PrintLogHistoryStore` (Cluster 1) | `initialized` + `fram: Chunk \| None`, sentinel-returning | Already matches the target shape — no change |
 | `ConfigManager` (Cluster 2) | `valid`, computed synchronously in `__init__`, sentinel-returning | Move the work into `async def setup()`; keep `valid`'s name and sentinel-returning behavior unchanged |
 | `NotificationCoordinator` (Cluster 9) | `_finalized` exists but doesn't guard `get_dict_cfg()`/`monitor_loop()`/etc. against being called too early — real gap, not just a naming mismatch | Add the guard, sentinel-based (never-raises contract inherited from `SensorReaderConfig`), reusing/renaming `_finalized` |
@@ -1111,16 +1111,20 @@ item below:
   tests' `async with fram: return await ...` pattern fixed by matching the file's own established
   `ok = await ...; return ok` shape used everywhere else in this file); no test dropped.
 
-**Incidental finding, not fixed here**: the "Standing conventions" readiness-gate table (above)
-lists `SPIDevice` (`asy_spi_driver.py`)'s own `uninitialized`→`initialized` rename under Cluster 4,
-alongside `FRAM_SPI`'s (assigned to this cluster). Cluster 4's own executed section, however,
-redefined its goal as a narrower verification-only pass ("no logging added (reverted)") and does not
-mention the `SPIDevice` rename at all — it was never actually done, and Cluster 4 is already marked
-`[x]` done with no note deferring it. This is exactly the kind of cross-section discrepancy the
-project's "flag, don't guess" agreement calls for surfacing rather than silently fixing — out of
-this cluster's own scope (`asy_spi_driver.py` isn't one of Cluster 6's files), so left for the
-project owner to decide: fold into Cluster 10's harmonization pass, or treat as a small standalone
-fix whenever `asy_spi_driver.py` is next touched.
+**Incidental finding, flagged then resolved same session**: the "Standing conventions" readiness-gate
+table (above) lists `SPIDevice` (`asy_spi_driver.py`)'s own `uninitialized`→`initialized` rename under
+Cluster 4, alongside `FRAM_SPI`'s (assigned to this cluster). Cluster 4's own executed section, however,
+redefined its goal as a narrower verification-only pass ("no logging added (reverted)") and never
+actually did the `SPIDevice` rename, despite Cluster 4 already being marked `[x]` done with no note
+deferring it. Flagged per the project's "flag, don't guess" agreement rather than silently fixed, then
+the project owner asked for it to be closed out immediately rather than left open. **Done, same
+session as Cluster 6 itself**: `asy_spi_driver.py`'s `SPIDevice.uninitialized` → `initialized`, polarity
+flipped, at all 3 sites (`__init__`, `__aenter__`'s guard, `setup()`) — naming/polarity only, the
+`__aenter__` raise (a structural `async with` protocol necessity, not a stylistic choice) is unchanged.
+`tests/test_asy_spi_driver.py`'s one `device.uninitialized` assertion pair updated to match. Readiness-
+gate table above updated to mark both rows done. `lint.sh`/`typecheck.sh`/`test.sh` all green (0 new
+findings); `test_asy_spi_driver.py` 43/43, `test_asy_fram_driver.py`/`test_asy_fram_manager.py`/the
+three FRAM integration test files reconfirmed unaffected — no test dropped.
 
 **New findings (bidirectional Part C/D cross-check, 2026-08-07)**:
 
