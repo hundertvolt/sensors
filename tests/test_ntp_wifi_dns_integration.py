@@ -431,9 +431,9 @@ def test_dns_resolution_totally_unreachable_through_the_real_chain_persists_errn
         asy_dns_client._FALLBACK_DNS_SERVERS = original_fallback
     assert run(ntp.ntp_issynced()) is False
     counter = run(ntp.get_error_counter())
-    # index -1, not -2, is base_classes.py's own _error_check() streak-counter log (errno=1, "Fehlerzähler
-    # erhöht auf") - it always logs once more right after a failed attempt, on top of this file's own
-    # errno=12 "No valid NTP server" - see that method's own comment in base_classes.py.
+    # index -1, not -2, is base_classes.py's own _error_check() streak-counter log (errno=1, "Error
+    # counter increased to") - it always logs once more right after a failed attempt, on top of this
+    # file's own errno=12 "No valid NTP server" - see that method's own comment in base_classes.py.
     err_num, err_type = counter["NTP"]["ErrNum"], counter["NTP"]["ErrType"]
     assert isinstance(err_num, list) and isinstance(err_type, list)
     assert err_num[-2] == 12

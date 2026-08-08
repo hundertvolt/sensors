@@ -10,7 +10,7 @@ vs. async) - the caller's own async setup must, or FRAM persistence stays inert.
 import asyncio
 
 from config_manager import ConfigManager, check_cfg_get_default, schema_dict, schema_names, type_or_range_error
-from print_log import PrintLogHistory, PrintLogHistoryStore
+from print_log import PrintLogHistory, make_logger
 
 try:
     from typing import TYPE_CHECKING
@@ -163,12 +163,8 @@ class SensorReader:
     ) -> None:
         if logger is not None:  # reach-through: reuse a directly-bound sibling object's own logger
             self.pr = logger
-        elif fram is None:
-            self.pr = PrintLogHistory(history_length, debug, name=name)
-            self.pr.one("Init with memory logging.")
         else:
-            self.pr = PrintLogHistoryStore(fram, history_length, debug, name=name)
-            self.pr.one("Init with FRAM logging.")
+            self.pr = make_logger(fram, history_length, debug, name)
         self._datastruct = init_data
         self._datalock = asyncio.Lock()
         self.max_i2c_err = max_i2c_err
@@ -221,14 +217,14 @@ class SensorReader:
         # parameter here - self.pr already carries it (see print_log.py's name-baking change).
         if any(res is None for res in results) and condition:
             self._err_cnt_internal += 1
-            await self.pr.err_s("Fehlerzähler erhöht auf", self._err_cnt_internal, errno=1)
+            await self.pr.err_s("Error counter increased to", self._err_cnt_internal, errno=1)
             if self._err_cnt_internal > self.max_i2c_err:
-                await self.pr.err_s("Maximale Fehleranzahl erreicht!", errno=2)
-                return False  # Abbruch der Schleife führt zu Task-Reset
+                await self.pr.err_s("Maximum error count reached!", errno=2)
+                return False  # breaking the loop triggers a task reset
         else:
             if self._err_cnt_internal > 0:
                 self._err_cnt_internal -= 1
-                self.pr.err("Fehlerzähler zurück auf", self._err_cnt_internal)
+                self.pr.err("Error counter back to", self._err_cnt_internal)
         return True
 
     async def reset_error_counter(self) -> None:

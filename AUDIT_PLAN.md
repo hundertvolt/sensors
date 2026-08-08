@@ -302,7 +302,7 @@ actually executed:
 | `SPIDevice` (Cluster 4, actually done post-Cluster-6) | `initialized`, raises in `__aenter__` | Done — renamed/flipped; raise stays (protocol necessity) |
 | `PrintLogHistoryStore` (Cluster 1) | `initialized` + `fram: Chunk \| None`, sentinel-returning | Already matches the target shape — no change |
 | `ConfigManager` (Cluster 2) | `valid`, computed synchronously in `__init__`, sentinel-returning | Move the work into `async def setup()`; keep `valid`'s name and sentinel-returning behavior unchanged |
-| `NotificationCoordinator` (Cluster 9) | `_finalized` exists but doesn't guard `get_dict_cfg()`/`monitor_loop()`/etc. against being called too early — real gap, not just a naming mismatch | Add the guard, sentinel-based (never-raises contract inherited from `SensorReaderConfig`), reusing/renaming `_finalized` |
+| `NotificationCoordinator` (Cluster 9) | `_finalized` exists but doesn't guard `get_dict_cfg()`/`monitor_loop()`/etc. against being called too early — real gap, not just a naming mismatch | Done — `get_data()`/`get_dict_cfg()`/`get_error_counter()`/`reset_error_counter()`/`monitor_loop()`/`auto_led_override()`/`setup()` all gained a sentinel-based `_finalized` guard |
 | `AsyFramManager.setup()`, `I2CDevice.setup()` | No readiness flag at all | **Resolved, confirmed by reading both files in full — neither needs one.** `AsyFramManager.get_chunk()`/`get_timestamped_chunk()` are pure bookkeeping (offset arithmetic, no hardware access), so they're safe before `setup()` runs; real hardware access always goes through the shared `self.fram` (`FRAM_SPI`), which already has its own `uninitialized` guard — a second gate at the manager level would be redundant. `I2CDevice` has no unconfigured-hardware-state risk the way `SPIDevice`'s CS pin does: the underlying `I2C` bus is fully ready immediately from `I2C.__init__` itself, and `I2CDevice.setup()` only performs an *optional* identity probe with no state transition to guard against. |
 
 **Cross-cutting confirmation, partly a real finding**: every `Timer.init()` call site's `except OSError as e: self.pr.err(...)` (never `err_s`) is correct as-is on the sync-vs-async question — confirmed via `system_service.py`'s own explicit comment on `_timer_sequencer()`: a `Timer`-callback-invoked context has no running event loop, so only the synchronous `pr.err()` is callable there at all, `err_s()` genuinely cannot be `await`ed. Don't touch that part. **But the `except` clause itself is a real, if minor, gap**: it catches only `OSError`, not `(OSError, MemoryError)`, and `Timer.init()`'s documented failure mode (`OSError(ENOMEM)` on RP2040 alarm-pool exhaustion) is exactly the allocation-adjacent case CLAUDE.md's own standing rule already covers ("anywhere an `OSError` is caught around a call that could also plausibly exhaust memory, catch `(OSError, MemoryError)` instead") — an earlier pass through this document called the bare `except OSError` "correct as-is, not a gap," which was wrong against that existing rule. **Resolved, owner-confirmed**: widen every one of these sites to `except (OSError, MemoryError) as e:` regardless of how hard the failure is to provoke in practice — cheap, defensive, no behavior change on the success path. This repeats identically across every `start_timer()`/`_reboot()`/`pause_permanent_storage()` in `asy_bmp3xx_driver.py`, `asy_scd30_driver.py`, `asy_sgp40_driver.py` (Cluster 7, ×1 each), `asy_wifi_service.py` (×3)/`asy_ntp_client.py` (×3) (Cluster 8), and `system_service.py` (×4) (Cluster 9) — each of those clusters now carries this as a real action item, not a no-op confirmation. Separately, still worth doing once (not per-file): verify against current MicroPython source whether `Timer.init()` can raise a genuine `MemoryError` distinct from `OSError(ENOMEM)` — informational, doesn't gate the defensive catch above either way (Cluster 10).
@@ -1640,8 +1640,107 @@ selection branch extracted into one shared helper both it and `SensorReader.__in
 (no separate hardware datasheet — the NeoPixel timing protocol is already correctly implemented and
 out of this cluster's scope to touch, since this cluster is logging/naming/guard-clause work only).
 
-**Status**: `[ ]` not started. Depends on Clusters 1-3, 6. Full reads done for all three files —
-ready to execute.
+**Status**: `[x]` done.
+
+**Executed 2026-08-08**: `_NAME` args stripped from every `self.pr.*` call in all three files.
+`asy_neopixel_driver.py` turned out **not** to already be fully compliant as this section's earlier
+"read in full" note claimed (that note predates Cluster 1 landing) — its constructor never passed
+`name=` into `PrintLogHistory`/`PrintLogHistoryStore` at all (so `self.pr.name` was `""`), while
+every individual call site manually threaded `_NAME` as its own first argument. Fixed by baking
+`name=_NAME` into construction (via the new shared `make_logger()` helper — see below) and stripping
+the 6 now-redundant manual `_NAME` args (`_led_ext_signal_starter()` ×2, `led_signal()`,
+`request_signal()` ×2, `neopixel_signal()`). `asy_notification_service.py` had 8 manual `_NAME` args
+stripped from `err_s`/`wrn_s`/`evt` calls (its own constructor already bakes `name=_NAME` correctly
+via `finalize()`'s `super().__init__()`, so no construction-site fix was needed there); its two
+non-logging `_NAME` uses (`_get_dict_cfg(_NAME, ...)`'s dict key, `get_log(_NAME)`) were handled per
+the established Cluster 7/8 distinction — the dict-key use stays, the `get_log()` one was stripped
+since that method already defaults to `self.name`. `system_service.py` had zero `self.pr.*` calls
+with a manual name arg to strip (consistent with its own missing-`_NAME` gap below) — nothing to
+strip, but its constructor gained the same `name=` bake-in fix.
+
+`system_service.py`'s missing `_NAME` constant (the Goal's own flagged gap) fixed: added
+`_NAME = const("SYSTEM")` and threaded it through `make_logger()`. Its own `get_error_counter()`
+deliberately keeps `self.pr.get_log("Tasks")` unchanged — confirmed via `sensortask-wozi.py`'s own
+`sysfunct.get_error_counter()["Tasks"]` call site that `"Tasks"` is a real, load-bearing key
+distinct from `_NAME`, not something to normalize away. Its 4 German strings translated: "Task wurde
+beendet - versuche Neustart, Fehlerzähler erhöht auf" → "Task ended - attempting restart, error
+counter increased to", "Alle Tasks laufen." → "All tasks running.", "Task Fehlerzähler reduziert
+auf" → "Task error counter reduced to", "Task Fehlerzähler über...Reboot ausgelöst!" → "Task error
+counter above...reboot triggered!". Its 4 `Timer.init()` `except OSError` sites (`_reboot()`'s
+`reset_timer`, `_timer_sequencer()`'s per-step `Timer(...)`, `start_uptime_timer()`'s `uptime_timer`,
+`pause_permanent_storage()`'s `storage_timer`) widened to `except (OSError, MemoryError) as e:`.
+`stop_uptime_timer()` moved to sit immediately after `get_timer_starters()`, matching
+`asy_wifi_service.py`/`asy_ntp_client.py`'s own D.15 `stop_*` placement (was previously stranded
+after the Getters group).
+
+**New, owner-approved scope — `NotificationCoordinator` readiness guards and `setup()`**: every
+method that touches state only created inside `finalize()`'s deferred `super().__init__()` call
+(`get_data()`, `get_dict_cfg()`, `get_error_counter()`, `reset_error_counter()`, `monitor_loop()`,
+`auto_led_override()`, plus a new `setup()` override) now starts with `if not self._finalized:`,
+returning a documented sentinel (`NOTIFY(False, None)` / `{_NAME: {}}` /
+`{_NAME: {"ErrCount": 0, "ErrNum": [], "ErrType": []}}` / a plain no-op return for the two task-loop
+coroutines and `setup()`/`reset_error_counter()`) instead of letting a caller-ordering bug surface as
+a bare `AttributeError` — matches the class's own inherited never-raises contract, per the Goal's
+"sentinel-based" correction. `get_dict_data()` needed no guard of its own since it calls the
+now-guarded `get_data()` internally. The `sensortask-wozi.py` await-`setup()` construction-site edit
+this section's Goal originally called for turned out to already be resolved by exact precedent:
+Cluster 7 hit the identical question for `BMP3xx_Reader`/`SGP40_Reader` and concluded the actual
+edit lands in `improved-quality/sensortask-wozi.py`, which is out of routine-editing scope per
+CLAUDE.md's hard rules, and that Stage 1's real rewrite (not this audit) is where the module-level
+construction's fully-synchronous shape gets resolved — the same resolution applies here verbatim, so
+no `sensortask-wozi.py` edit was made for `notify_service` either; `NotificationCoordinator.setup()`
+exists and is correctly guarded, ready for whenever that rewire happens.
+
+**New, owner-approved scope — `monitor_loop()`'s dead `max_i2c_err`**: this section's own filed
+finding (`NotificationCoordinator.monitor_loop()` accepting and storing `max_i2c_err` but never
+calling `self._error_check()`) is resolved by wiring it in: the existing own-config-read-failure
+check (`cfg_int is None or ...`) now also feeds `self._error_check((None,) if cfg_read_failed else
+(1,))` once per cycle, and `monitor_loop()` returns (letting the task supervisor restart it) once the
+consecutive-failure streak crosses `max_i2c_err` — matching every other Reader's own `read_loop()`
+give-up shape (C.7). The existing `wrn_s(..., wrnno=5)` warning on a failed read is unchanged and
+still fires every cycle; `_error_check()`'s own errno=1/2 logging is additive on top, the same
+dual-logging shape already established elsewhere (a specific message plus the generic streak
+message). A mypy narrowing regression surfaced implementing this the first way (extracting the
+failure condition into a standalone `cfg_read_failed` boolean broke the `else` branch's `cfg_int`/
+`cfg_float`/`cfg_bool` None-narrowing) — fixed by keeping the original inline `is None`-chained `if`
+as the actual branch condition (so mypy's flow-sensitive narrowing still applies in the `else`) and
+only setting `cfg_read_failed = True`/`False` inside each branch, rather than computing it as a
+separate expression up front.
+
+**Incidental fix — shared `make_logger()` helper (this section's own filed finding, `SystemService
+.__init__`'s hand-duplicated fram-vs-memory branch)**: extracted into `print_log.py` as a new
+module-level `make_logger(fram, history_length, debug, name) -> PrintLogHistory` function (the
+fram-vs-memory `PrintLogHistory`/`PrintLogHistoryStore` selection plus its own `.one("Init with
+...")` log line, identical in both former copies). `base_classes.py::SensorReader.__init__` and
+`system_service.py::SystemService.__init__` both now call it instead of hand-rolling the branch;
+`SystemService.__init__`'s one extra line (`self.storage_pause = fram.set_pause`) stays the caller's
+own job, outside the shared helper. Behavior-preserving refactor only — same log strings, same
+`PrintLogHistory`/`PrintLogHistoryStore` selection, same `name=` threading.
+
+**Incidental fix — `base_classes.py::_error_check()`'s remaining German strings, closing Cluster 7's
+own flagged item**: Cluster 7 explicitly flagged this (`base_classes.py` wasn't in its own file
+scope) for "whichever future session/cluster next touches `base_classes.py`" — this cluster does,
+for the `make_logger()` extraction above, so the translation was done alongside it rather than
+deferred again: "Fehlerzähler erhöht auf" → "Error counter increased to", "Maximale Fehleranzahl
+erreicht!" → "Maximum error count reached!", "Fehlerzähler zurück auf" → "Error counter back to",
+plus the `# Abbruch der Schleife führt zu Task-Reset` comment → "breaking the loop triggers a task
+reset". A comment in `tests/test_ntp_wifi_dns_integration.py` referencing the old German string text
+was updated to match.
+
+**Quality measure verification**: `lint.sh` — 0 findings across all touched files (30 pre-existing
+findings, unchanged baseline, all in `improved-quality/sensortask-wozi.py`); `typecheck.sh` — 44
+pre-existing errors, unchanged baseline, all in `improved-quality/sensortask-wozi.py` (a transient
+46-error run surfaced mid-implementation from the `cfg_read_failed` narrowing regression above, fixed
+back to the 44 baseline before considering this cluster done); `test.sh` — 31/31 files, 0 FAIL;
+`test_asy_neopixel_driver.py` 35/35 (1 new test), `test_asy_notification_service.py` 51/51 (3 new
+tests: not-finalized guard sentinels, `monitor_loop()`'s `_error_check()` give-up past `max_i2c_err`,
+plus a reusable `_FastAsyncSleep` test helper), `test_base_classes.py` 106/106 (unaffected by the
+`make_logger()` refactor — behavior-preserving), `test_system_service.py` 58/58 (2 assertions added
+to existing init tests confirming `svc.pr.name == "SYSTEM"`, 1 comment fix); no test dropped.
+
+**External references**: none beyond what's already cited inside `asy_neopixel_driver.py` itself —
+re-checked, no separate hardware datasheet applies (the NeoPixel timing protocol itself was untouched,
+this cluster stayed logging/naming/guard-clause work only).
 
 **New findings (bidirectional Part C/D cross-check, 2026-08-07)** — distinct from the
 already-tracked "guard against calling before `finalize()`" gap above, which is about a different

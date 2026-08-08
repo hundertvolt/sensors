@@ -109,6 +109,23 @@ class FakeSignalCb:
         return True
 
 
+class _FastAsyncSleep:
+    # monitor_loop()'s own config-read-failure branch falls back to a fixed 600s interval - far too
+    # slow for a test that wants to drive several give-up-streak iterations. asyncio.sleep is a
+    # shared, process-wide function; restored on __exit__ regardless of how the `with` block exits.
+    def __enter__(self) -> "_FastAsyncSleep":
+        self._real_sleep = asyncio.sleep
+
+        async def _fast(_seconds: float) -> None:
+            await self._real_sleep(0)
+
+        asyncio.sleep = _fast  # type: ignore[assignment]  # deliberate monkeypatch, not a real caller mismatch
+        return self
+
+    def __exit__(self, *exc_info: "Any") -> None:
+        asyncio.sleep = self._real_sleep
+
+
 def make_coordinator(
     cfg_path: "str | None" = None,
     debug: "int | None" = None,
@@ -1189,6 +1206,45 @@ def test_request_signal_cb_raising_is_caught_and_the_loop_continues() -> None:
     # both signals were still reached despite the first flash's callback raising
     assert len(cb.calls) == 2
     assert coordinator.pr.err_count == 2
+
+
+def test_methods_called_before_finalize_degrade_gracefully_not_raise() -> None:
+    cb = FakeSignalCb()
+    clock = FakeClock()
+    coordinator = NotificationCoordinator(cb, clock.get, cfg_path=_tmp_cfg_dir())
+    # finalize() deliberately never called - every method below must degrade to its own documented
+    # sentinel/no-op instead of crashing on a missing self.pr/self.cfgmgr/self.cfg_schema/self._datastruct.
+
+    async def scenario() -> None:
+        assert await coordinator.get_data() == (False, None)
+        assert await coordinator.get_dict_data() == {"NOTIFY": {"Triggered": False, "TS": None}}
+        assert await coordinator.get_dict_cfg() == {"NOTIFY": {}}
+        assert await coordinator.get_error_counter() == {"NOTIFY": {"ErrCount": 0, "ErrNum": [], "ErrType": []}}
+        await coordinator.setup()
+        await coordinator.reset_error_counter()
+        await coordinator.monitor_loop()
+        await coordinator.auto_led_override()
+
+    run(scenario())  # would raise/hang if any guard above were missing
+
+
+def test_monitor_loop_gives_up_after_too_many_consecutive_config_read_failures() -> None:
+    cb = FakeSignalCb()
+    clock = FakeClock()
+    coordinator = NotificationCoordinator(cb, clock.get, max_i2c_err=2, cfg_path=_tmp_cfg_dir())
+    coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
+    coordinator.cfgmgr._cache.pop("FlashBri")  # every own-config read now fails (malformed cache)
+
+    async def scenario() -> bool:
+        task = coordinator.start_asy_notify_monitor()
+        await asyncio.wait_for(task, 5)
+        return task.done()
+
+    with _FastAsyncSleep():
+        # max_i2c_err=2 -> the 3rd consecutive failure crosses the threshold and monitor_loop()
+        # returns on its own, matching every other Reader's read_loop() give-up shape.
+        assert run(scenario()) is True
 
 
 def test_get_task_starters_and_get_timer_starters_shape() -> None:

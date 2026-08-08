@@ -266,3 +266,20 @@ class PrintLogHistoryStore(PrintLogHistory):
             self.initialized = True
         else:
             self._diag("PrintLog: FRAM setup failed!")
+
+
+def make_logger(
+    fram: "_FramManager | None",
+    history_length: int = 10,
+    debug: int | None = None,
+    name: str = "",
+) -> "PrintLogHistory":
+    # Shared fram-vs-memory PrintLogHistory(Store) selection - every direct constructor (as opposed
+    # to a logger= reach-through onto an already-built sibling instance) goes through this one place.
+    if fram is None:
+        pr = PrintLogHistory(history_length, debug, name=name)
+        pr.one("Init with memory logging.")
+    else:
+        pr = PrintLogHistoryStore(fram, history_length, debug, name=name)
+        pr.one("Init with FRAM logging.")
+    return pr

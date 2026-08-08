@@ -110,6 +110,7 @@ def test_init_uses_in_memory_logging_when_fram_is_none() -> None:
     svc = make_service()
     assert isinstance(svc.pr, PrintLogHistory)
     assert svc.storage_pause is None
+    assert svc.pr.name == "SYSTEM"  # baked in via make_logger(), not left empty
 
 
 def test_init_uses_fram_backed_logging_and_wires_storage_pause_when_fram_given() -> None:
@@ -117,6 +118,7 @@ def test_init_uses_fram_backed_logging_and_wires_storage_pause_when_fram_given()
     svc = make_service(fram=manager)
     assert isinstance(svc.pr, PrintLogHistoryStore)
     assert svc.storage_pause is not None
+    assert svc.pr.name == "SYSTEM"
     # Bound-method identity isn't guaranteed (each attribute access can mint a fresh bound-method
     # object) - confirm by behavior instead: calling svc.storage_pause must reach manager's own state.
     svc.storage_pause(True)
@@ -906,7 +908,7 @@ def test_start_and_check_tasks_restarts_a_dead_task_and_logs_a_warning() -> None
     with _FastAsyncSleep():
         run(scenario())
     assert call_count[0] >= 2  # started once at startup, restarted at least once after dying
-    assert svc.pr.err_count >= 1  # the "Task wurde beendet" warning persisted
+    assert svc.pr.err_count >= 1  # the "Task ended - attempting restart" warning persisted
 
 
 def test_start_and_check_tasks_gives_up_and_reboots_past_the_failure_budget() -> None:

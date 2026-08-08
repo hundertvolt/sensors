@@ -11,7 +11,7 @@ import neopixel
 from machine import Pin
 from micropython import const
 
-from print_log import PrintLogHistory, PrintLogHistoryStore
+from print_log import PrintLogHistory, make_logger
 
 try:
     from typing import TYPE_CHECKING
@@ -44,12 +44,7 @@ class NeopixelDriver:
         history_length: int = 10,
         debug: int | None = None,
     ) -> None:
-        if fram is None:
-            self.pr: PrintLogHistory = PrintLogHistory(history_length, debug)
-            self.pr.one(_NAME, "Init with memory logging.")
-        else:
-            self.pr = PrintLogHistoryStore(fram, history_length, debug)
-            self.pr.one(_NAME, "Init with FRAM logging.")
+        self.pr: PrintLogHistory = make_logger(fram, history_length, debug, _NAME)
         self.pixel = neopixel.NeoPixel(Pin(neopixel_pin, Pin.OUT), 1, bpp=3)
         self.rgbt: list[int | float] = [0, 0, 0, 0.1]
         self.ext_rgbt: list[int | float] = [0, 0, 0, 0.1]
@@ -76,13 +71,13 @@ class NeopixelDriver:
     async def _led_ext_signal_starter(self) -> None:
         while True:
             await self.ext_start_signal.wait()
-            self.pr.evt(_NAME, "External LED flag set.")
+            self.pr.evt("External LED flag set.")
             async with self.start_signal_lock:
                 while self.start_signal_event.is_set():
                     await asyncio.sleep(0)
                 self.rgbt = self.ext_rgbt
                 self.start_signal_event.set()
-                self.pr.evt(_NAME, "External LED command started.")
+                self.pr.evt("External LED command started.")
             self.ext_start_signal.clear()
 
     def start_asy_neopixel_led_overl(self) -> "asyncio.Task[None]":
@@ -117,7 +112,7 @@ class NeopixelDriver:
         self.led_overl_start.set()
 
     def led_signal(self, r: int, g: int, b: int, t: float) -> bool:
-        self.pr.evt(_NAME, "External LED command received.")
+        self.pr.evt("External LED command received.")
         if self.ext_start_signal.is_set():
             return False
         self.ext_rgbt = [r, g, b, t]
@@ -125,13 +120,13 @@ class NeopixelDriver:
         return True
 
     async def request_signal(self, r: int, g: int, b: int, t: float) -> bool:
-        self.pr.evt(_NAME, "Internal LED command received.")
+        self.pr.evt("Internal LED command received.")
         async with self.start_signal_lock:
             while self.start_signal_event.is_set():
                 await asyncio.sleep(0)
             self.rgbt = [r, g, b, t]
             self.start_signal_event.set()
-            self.pr.evt(_NAME, "Internal LED command started.")
+            self.pr.evt("Internal LED command started.")
         return True
 
     async def neopixel_signal(self) -> None:
@@ -140,7 +135,7 @@ class NeopixelDriver:
         self.pixel.write()
         while True:
             await self.start_signal_event.wait()
-            self.pr.evt(_NAME, "Signal started.")
+            self.pr.evt("Signal started.")
             t = self.rgbt[3] if self.rgbt[3] >= 0.1 else 0.1  # time; a NaN comparison is always False, floor kicks in
             try:
                 steps = int(t * 0.5 * self.neopixel_freq)  # num steps for one dim half
