@@ -2025,6 +2025,88 @@ that mypy correctly flagged as unused once the return type was annotated `tuple[
 this session; both new/modified files individually confirmed passing (3/3, 4/4) before the full-suite
 run.
 
+## Global test-suite bug sweep (planned, owner-requested 2026-08-08 — not yet started)
+
+**Goal**: a dedicated pass through every `tests/test_*.py` file (not `src/` itself — this is
+specifically about bugs *in the test scripts*, distinct from `src/` bugs the test suite happens to
+catch) hunting for the same *class* of mistake the running list below already shows recurring across
+this audit: nested `asyncio.run()` calls, wrong expected values from not accounting for a stateful
+mechanism (a pre-filled history deque, a stateful algorithm's warm-up), copy-pasted boilerplate that
+doesn't actually fit its new context (a stale `# type: ignore`, a helper built for one file's shape
+reused verbatim in another's), and anything else in the same spirit. **Owner-requested, not yet
+scheduled to a specific point in this session** — run it "at some appropriate time," per the
+instruction that created this section; until then, this section is where every new finding gets
+added, so nothing found in the meantime is lost before the dedicated sweep happens.
+
+**Not yet started** — no file has been swept end-to-end looking specifically for this bug class yet;
+every entry below was found incidentally, as a side effect of other work, not through a dedicated
+search.
+
+### Running list of test-script bugs found so far
+
+Bugs **in the test files themselves** (wrong test code), as opposed to `src/` bugs the tests happened
+to catch (those are tracked in each cluster's own "Real bug found" narrative above, not here — e.g.
+Cluster 5's `captive_dns.py::run()` non-`str` `addr[0]` gap, Cluster 7's `SCD30_Reader` missing
+`name=_NAME`). Newest first is not the ordering — kept in the order found, oldest first, matching how
+a future sweep would likely re-encounter them file by file:
+
+1. **Nested `asyncio.run()` segfault, `tests/test_asy_sgp40_driver.py` (Cluster 2, 2026-08-07,
+   caught and fixed before landing)**: the mechanical pass adding a `cfgmgr.setup()` call after every
+   `SensorReaderConfig`-family construction (needed once `ConfigManager`'s real load moved into an
+   async `setup()`) blanket-inserted `run(x.cfgmgr.setup())` — including at 17 sites already inside a
+   nested `async def scenario():` helper itself running under this file's own top-level
+   `run(scenario())`. MicroPython's `asyncio` doesn't reject a nested `asyncio.run()` call with a
+   catchable `RuntimeError` the way CPython does — it corrupts the scheduler badly enough to segfault
+   the whole interpreter. Caught by the segfault itself (17/98 tests printed `PASS`, then the process
+   died with no `FAIL` line and no traceback) — not by any tooling. Fixed by identifying every
+   insertion's enclosing function (sync vs. `async def`) and switching the 17 async-context ones to
+   `await x.cfgmgr.setup()` instead of `run(x.cfgmgr.setup())`.
+2. **Wrong expected `get_log()` shape, a trial test for `print_log.py` (Cluster 1, 2026-08-07, caught
+   during design trial — never actually landed in committed code, but the same mistake could recur
+   anywhere else `get_log()`/history-deque shapes are asserted against)**: a trial test constructed
+   `PrintLogHistory(history_length=2, name="SGP40")`, called `err_s("e", errno=1)` once, then asserted
+   `get_log()` returns exactly `{"SGP40": {"ErrCount": 1, "ErrNum": [1], "ErrType": ["E"]}}`. Wrong —
+   the history deque starts pre-filled with `_NO_ERR` entries (`[0, 0]` for `history_length=2`), and
+   one `err_s()` call only overwrites the oldest slot, leaving `[0, 1]`/`["N", "E"]`. Root cause: not
+   accounting for the deque's pre-filled initial state, the same class of mistake as bug 4 below (not
+   accounting for a stateful mechanism's own warm-up/initial-state behavior before asserting an exact
+   value against it).
+3. **Nested `asyncio.run()` segfault, new `tests/test_notification_sgp40_integration.py` (this
+   session, 2026-08-08, caught and fixed before landing)**: the same class of mistake as bug 1, found
+   independently while writing this file rather than copied defensively from that earlier incident.
+   `test_i2c_bus_fault_degrades_to_not_triggered_and_stays_isolated_to_sgp40s_own_log`'s `scenario()`
+   called this file's own `_drive_one_cycle()` helper (which wraps each step in a sync
+   `run()`/`asyncio.run()`, correct for use *outside* an async context) from inside the
+   already-running `scenario()` coroutine. Caught by actually running the file
+   (`PASS`/`PASS`, then a bare "Segmentation fault" with no third `PASS` line), not assumed correct
+   because the pattern looked structurally similar to the working tests around it. Fixed by awaiting
+   the three underlying calls (`_read_sgp()`/`_error_check()`/`_store_sgp()`) directly inside
+   `scenario()` instead of going through the sync wrapper.
+4. **Calibration-blind test design risk, avoided rather than committed (this session, 2026-08-08,
+   worth recording as a near-miss even though no wrong test was ever written)**: an early plan for
+   `tests/test_notification_sgp40_integration.py`'s real-threshold-crossing test assumed a single
+   elevated raw I2C reading would push `voc_algorithm.py`'s real VOC index above the default 350
+   threshold. Checked directly against the real algorithm before writing the assertion (via the
+   MicroPython Unix-port interpreter, not assumed): a single reading always produces `VOC=0`
+   regardless of raw value (`_VOCALGORITHM_INITIAL_BLACKOUT=45` sampling intervals must elapse
+   first), and even after warm-up the index converges toward a "clean air" baseline of 100 under any
+   *constant* raw signal — a real spike needs a calibrated two-phase settle-then-step-change recipe
+   (documented in the test file's own docstring and `SPECIFICATION.md`'s new bullet next to the
+   `AmbPres` note). Recorded here as the general risk this class of bug represents: a test whose
+   expected value is *plausible* but was never actually verified against the real stateful mechanism
+   it's exercising.
+
+**When the dedicated sweep eventually runs**: check every `tests/test_*.py` file for (a) any `run()`/
+`asyncio.run()` call reachable from inside another coroutine already running under this file's own
+top-level `run()` (grep for `run(` inside every `async def scenario()`/`async def` helper, not just
+visual inspection — bug 1's own 17 instances weren't all in one obvious place); (b) any assertion
+against an exact value produced by a stateful mechanism (a history deque, an algorithm with internal
+warm-up/convergence state, a counter) that wasn't verified against the real mechanism's actual
+behavior, only assumed; (c) copy-pasted helpers/annotations (`# type: ignore` comments especially —
+see Cluster 10's own `unused-ignore` finding above) carried over from one file into another without
+re-checking they still apply. Update this list with anything new the sweep finds, in the same format
+as the four entries above, before treating the sweep as done.
+
 ---
 
 ## Validation pipeline logs
