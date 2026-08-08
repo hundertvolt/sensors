@@ -293,7 +293,7 @@ class SCD30_Reader(SensorReader):
             self.pr.evt(_NAME, "sensor trigger")
             self.scd_timer_triggers = 0
             results = await self._read_scd()
-            if not await self._error_check(results, _NAME):
+            if not await self._error_check(results):
                 return False
             await self._store_scd(results)
 

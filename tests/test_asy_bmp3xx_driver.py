@@ -1224,10 +1224,10 @@ def test_reader_read_error_check_threshold_and_self_heal() -> None:
         outcomes = []
         for _ in range(3):  # max_i2c_err=2 -> the 3rd consecutive failure crosses the threshold
             results = await reader._read_bmp()
-            outcomes.append(await reader._error_check(results, "BMP3XX"))
+            outcomes.append(await reader._error_check(results))
         fake(i2c).nak_addresses.discard(_ADDR)
         recovered = await reader._read_bmp()
-        outcomes.append(await reader._error_check(recovered, "BMP3XX"))
+        outcomes.append(await reader._error_check(recovered))
         return outcomes
 
     assert run(scenario()) == [True, True, False, True]

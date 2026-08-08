@@ -419,9 +419,37 @@ def test_sensorreader_debug_none_leaves_logger_at_off() -> None:
     assert reader.pr.get_level() == PrintLog.level_off()
 
 
+def test_sensorreader_name_is_baked_into_a_freshly_constructed_logger() -> None:
+    reader = SensorReader(Meas(20.0, 50), max_i2c_err=3, name="TESTNAME")
+    assert reader.pr.name == "TESTNAME"
+
+
+def test_sensorreader_name_defaults_to_empty_string() -> None:
+    reader = SensorReader(Meas(20.0, 50), max_i2c_err=3)
+    assert reader.pr.name == ""
+
+
+def test_sensorreader_reuses_a_given_logger_instead_of_constructing_a_fresh_one() -> None:
+    # Reach-through mechanism for a directly-bound sibling object that should share one
+    # identity/history instead of each getting its own separate PrintLogHistory.
+    shared = PrintLogHistory(name="SHARED")
+    reader = SensorReader(Meas(20.0, 50), max_i2c_err=3, logger=shared)
+    assert reader.pr is shared
+
+
+def test_sensorreader_logger_reuse_takes_priority_over_fram_backed_construction() -> None:
+    # A given logger short-circuits the fram/no-fram branch entirely - even with fram given, the
+    # reused logger wins over freshly constructing a PrintLogHistoryStore.
+    manager, _chip = make_fram_manager()
+    shared = PrintLogHistory(name="SHARED2")
+    reader = SensorReader(Meas(20.0, 50), max_i2c_err=3, fram=manager, logger=shared)
+    assert reader.pr is shared
+    assert not isinstance(reader.pr, PrintLogHistoryStore)
+
+
 def test_sensorreader_history_length_zero_is_forwarded_and_never_raises() -> None:
     reader = SensorReader(Meas(None, 50), max_i2c_err=3, history_length=0)
-    assert run(reader._error_check(Meas(None, 50), "temp")) is True
+    assert run(reader._error_check(Meas(None, 50))) is True
     assert reader.pr.err_count == 1
     assert list(reader.pr.history) == []  # nothing to hold, but the count still tracked
 
@@ -430,7 +458,7 @@ def test_error_check_max_i2c_err_zero_gives_up_on_first_failure() -> None:
     # Zero tolerance is a legitimate, if unusual, config value - not a caller mistake to guard
     # against like a negative max_i2c_err would be (see BACKLOG.md's structural-pass note).
     reader = SensorReader(Meas(None, 50), max_i2c_err=0)
-    assert run(reader._error_check(Meas(None, 50), "temp")) is False
+    assert run(reader._error_check(Meas(None, 50))) is False
 
 
 def test_get_dict_cfg_duplicate_schema_names_collapse_to_one_key() -> None:
@@ -466,8 +494,8 @@ def test_sensorreader_reset_error_counter_also_clears_the_consecutive_failure_st
     # history/err_count: a caller resetting "the" error counter after a task reset shouldn't have
     # the next run start partway toward giving up again via the untouched internal streak.
     reader = SensorReader(Meas(None, 50), max_i2c_err=5)
-    run(reader._error_check(Meas(None, 50), "temp"))
-    run(reader._error_check(Meas(None, 50), "temp"))
+    run(reader._error_check(Meas(None, 50)))
+    run(reader._error_check(Meas(None, 50)))
     assert reader._err_cnt_internal == 2
     run(reader.reset_error_counter())
     assert reader._err_cnt_internal == 0
@@ -476,20 +504,20 @@ def test_sensorreader_reset_error_counter_also_clears_the_consecutive_failure_st
 def test_error_check_no_failure_keeps_going_and_decays_counter() -> None:
     reader = SensorReader(Meas(20.0, 50), max_i2c_err=2)
     reader._err_cnt_internal = 1
-    assert run(reader._error_check(Meas(20.0, 50), "temp")) is True
+    assert run(reader._error_check(Meas(20.0, 50))) is True
     assert reader._err_cnt_internal == 0  # decayed back down since this call had no failure
 
 
 def test_error_check_failure_increments_until_giving_up() -> None:
     reader = SensorReader(Meas(None, 50), max_i2c_err=2)
-    assert run(reader._error_check(Meas(None, 50), "temp")) is True  # 1 <= max
-    assert run(reader._error_check(Meas(None, 50), "temp")) is True  # 2 <= max
-    assert run(reader._error_check(Meas(None, 50), "temp")) is False  # 3 > max - give up
+    assert run(reader._error_check(Meas(None, 50))) is True  # 1 <= max
+    assert run(reader._error_check(Meas(None, 50))) is True  # 2 <= max
+    assert run(reader._error_check(Meas(None, 50))) is False  # 3 > max - give up
 
 
 def test_error_check_condition_false_ignores_none_results() -> None:
     reader = SensorReader(Meas(None, 50), max_i2c_err=0)
-    assert run(reader._error_check(Meas(None, 50), "temp", condition=False)) is True
+    assert run(reader._error_check(Meas(None, 50), condition=False)) is True
     assert reader._err_cnt_internal == 0
 
 
@@ -584,8 +612,8 @@ def test_sensorreader_fram_backed_error_check_persists_and_survives_reboot() -> 
     run(manager.setup())
     reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=manager)
     run(reader.pr.setup())
-    assert run(reader._error_check(Meas(None, 50), "temp")) is True
-    assert run(reader._error_check(Meas(None, 50), "temp")) is True
+    assert run(reader._error_check(Meas(None, 50))) is True
+    assert run(reader._error_check(Meas(None, 50))) is True
     assert reader.pr.err_count == 2
 
     # Simulate a reboot: a fresh SensorReader/manager pair attached to the same underlying chip,
@@ -606,7 +634,7 @@ def test_sensorreader_fram_backed_error_check_without_setup_never_raises() -> No
     manager, _chip = make_fram_manager()
     reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=manager)
     assert reader.pr.initialized is False
-    assert run(reader._error_check(Meas(None, 50), "temp")) is True
+    assert run(reader._error_check(Meas(None, 50))) is True
     assert reader.pr.err_count == 1
 
 
@@ -616,7 +644,7 @@ def test_sensorreader_fram_allocation_failure_still_logs_in_memory_without_raisi
     assert isinstance(reader.pr, PrintLogHistoryStore)
     assert reader.pr.fram is None
     run(reader.pr.setup())  # no-op: nothing allocated, must not raise
-    assert run(reader._error_check(Meas(None, 50), "temp")) is True
+    assert run(reader._error_check(Meas(None, 50))) is True
     assert reader.pr.err_count == 1  # in-memory count still tracked despite FRAM being unavailable
 
 
@@ -638,7 +666,7 @@ def test_sensorreader_fram_raise_on_get_chunk_never_raises_at_construction() -> 
     reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=fake_manager)  # type: ignore[arg-type]
     assert isinstance(reader.pr, PrintLogHistoryStore)
     assert reader.pr.fram is None
-    assert run(reader._error_check(Meas(None, 50), "temp")) is True
+    assert run(reader._error_check(Meas(None, 50))) is True
     assert reader.pr.err_count == 1
 
 
@@ -654,7 +682,7 @@ def test_sensorreader_fram_write_into_raising_is_caught_during_error_check() -> 
     reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=fake_manager, history_length=4)  # type: ignore[arg-type]
     assert isinstance(reader.pr, PrintLogHistoryStore)
     run(reader.pr.setup())
-    assert run(reader._error_check(Meas(None, 50), "temp")) is True
+    assert run(reader._error_check(Meas(None, 50))) is True
     assert reader.pr.err_count == 1  # FRAM write failed silently; in-memory count still tracked
 
 
@@ -666,7 +694,7 @@ def test_sensorreader_fram_write_returns_false_is_surfaced_during_error_check() 
     reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=manager)
     run(reader.pr.setup())
     chip.drop_wren = True
-    assert run(reader._error_check(Meas(None, 50), "temp")) is True
+    assert run(reader._error_check(Meas(None, 50))) is True
     assert reader.pr.err_count == 1
 
 
@@ -687,7 +715,7 @@ def test_sensorreader_fram_setup_fails_cleanly_when_both_read_and_write_fail() -
     chip.drop_wren = True
     run(reader.pr.setup())
     assert reader.pr.initialized is False
-    assert run(reader._error_check(Meas(None, 50), "temp")) is True  # still tracks in-memory
+    assert run(reader._error_check(Meas(None, 50))) is True  # still tracks in-memory
     assert reader.pr.err_count == 1
 
 
@@ -706,6 +734,38 @@ def test_sensorreaderconfig_wires_a_real_configmanager() -> None:
         assert reader.cfgmgr.valid is True
     finally:
         _remove(path_prefix + "config_temp.cfg")
+
+
+def test_sensorreaderconfig_forwards_its_name_to_the_base_class_logger() -> None:
+    # SensorReaderConfig.__init__ already took name to build the config filename - it must also
+    # forward it to super().__init__() so reader.pr's own identity matches, not just cfgmgr's.
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_namefwd.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "namefwd", _VAL_SI, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
+        assert reader.pr.name == "namefwd"
+    finally:
+        _remove(path_prefix + "config_namefwd.cfg")
+
+
+def test_sensorreaderconfig_setup_awaits_cfgmgr_setup() -> None:
+    # SensorReaderConfig's own async def setup() extends ConfigManager's sync-__init__/
+    # async-setup() readiness-gate pattern one level up (see CLAUDE.md's Cluster 3 note) - awaiting
+    # it must leave cfgmgr exactly as ready as calling cfgmgr.setup() directly would.
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_ownsetup.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "ownsetup", _VAL_SI, cfg_path=path_prefix)
+        valid_before = reader.cfgmgr.valid
+        assert valid_before is False  # not set up yet - __init__ is stash-only
+        run(reader.setup())
+        valid_after = reader.cfgmgr.valid
+        assert valid_after is True
+        result = run(reader._get_dict_cfg("Sensor", _VAL_SI))
+        assert result == {"Sensor": {"SampleInterv": 2}}
+    finally:
+        _remove(path_prefix + "config_ownsetup.cfg")
 
 
 def test_sensorreaderconfig_get_cfg_schema_returns_the_schema_it_was_built_with() -> None:
@@ -766,6 +826,23 @@ def test_sensorreaderconfig_is_a_sensorreader_with_a_real_mgr_cfg_override() -> 
         assert run(reader._get_mgr_cfg(["SampleInterv"])) == {"SampleInterv": 2}
     finally:
         _remove(path_prefix + "config_isa.cfg")
+
+
+def test_get_mgr_cfg_logs_a_cross_reference_line_before_calling_into_cfgmgr() -> None:
+    # Cluster 3's own cross-reference logging: a line via the owner's self.pr whenever
+    # _get_mgr_cfg actually calls into self.cfgmgr, pairing with ConfigManager's own
+    # "CFGMGR_"-identified log line for a human/future-rsyslog reader (see CLAUDE.md).
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_crossrefget.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "crossrefget", _VAL_SI, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
+        evt_calls: list[tuple[Any, ...]] = []
+        reader.pr.evt = lambda *args, **kwargs: evt_calls.append(args)  # type: ignore[method-assign]
+        run(reader._get_mgr_cfg(["SampleInterv"]))
+        assert len(evt_calls) == 1
+    finally:
+        _remove(path_prefix + "config_crossrefget.cfg")
 
 
 def test_sensorreaderconfig_get_dict_cfg_round_trips_a_real_bool_field() -> None:
@@ -943,6 +1020,21 @@ def test_set_mgr_cfg_delegates_to_the_real_configmanager() -> None:
         assert run(reader._get_dict_cfg("Sensor", _VAL_SI)) == {"Sensor": {"SampleInterv": 42}}
     finally:
         _remove(path_prefix + "config_setmgr.cfg")
+
+
+def test_set_mgr_cfg_logs_a_cross_reference_line_before_calling_into_cfgmgr() -> None:
+    # Setter mirror of test_get_mgr_cfg_logs_a_cross_reference_line_before_calling_into_cfgmgr.
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_crossrefset.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "crossrefset", _VAL_SI, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
+        evt_calls: list[tuple[Any, ...]] = []
+        reader.pr.evt = lambda *args, **kwargs: evt_calls.append(args)  # type: ignore[method-assign]
+        run(reader._set_mgr_cfg({"SampleInterv": 42}, _VAL_SI))
+        assert len(evt_calls) == 1
+    finally:
+        _remove(path_prefix + "config_crossrefset.cfg")
 
 
 def test_set_dict_cfg_persist_only_field_with_no_push_callback_registered() -> None:

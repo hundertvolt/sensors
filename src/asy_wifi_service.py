@@ -689,7 +689,7 @@ class asy_conn_time(SensorReaderConfig):
                 # Consecutive-failure streak over real WLAN-hardware exceptions (separate from
                 # connection_failures' AP-reachability fallback): gives up on the whole task,
                 # matching a Reader's read_loop() returning False.
-                if not await self._error_check((None,) if self.hw_op_failed else (1,), _NAME):
+                if not await self._error_check((None,) if self.hw_op_failed else (1,)):
                     await self.pr.err_s(
                         _NAME, "Giving up after repeated WLAN hardware failures, restarting task.", errno=17
                     )

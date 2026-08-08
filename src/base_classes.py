@@ -3,6 +3,8 @@ protected scalars (LockedCounter, LockedFlag, LockedValue), and the sensor-drive
 (SensorReader, SensorReaderConfig) with error bookkeeping and optional JSON config storage. Every
 method returns a well-defined value, never raises. `__init__` never calls `self.pr.setup()` (sync
 vs. async) - the caller's own async setup must, or FRAM persistence stays inert.
+`SensorReaderConfig` mirrors that split one level up: `__init__` only constructs `self.cfgmgr`
+(cheap, synchronous), and its own `async def setup()` awaits `self.cfgmgr.setup()`.
 """
 
 import asyncio
@@ -156,12 +158,16 @@ class SensorReader:
         fram: "AsyFramManager | None" = None,
         history_length: int = 10,
         debug: int | None = None,
+        name: str = "",
+        logger: PrintLogHistory | None = None,
     ) -> None:
-        if fram is None:
-            self.pr = PrintLogHistory(history_length, debug)
+        if logger is not None:  # reach-through: reuse a directly-bound sibling object's own logger
+            self.pr = logger
+        elif fram is None:
+            self.pr = PrintLogHistory(history_length, debug, name=name)
             self.pr.one("Init with memory logging.")
         else:
-            self.pr = PrintLogHistoryStore(fram, history_length, debug)
+            self.pr = PrintLogHistoryStore(fram, history_length, debug, name=name)
             self.pr.one("Init with FRAM logging.")
         self._datastruct = init_data
         self._datalock = asyncio.Lock()
@@ -208,20 +214,21 @@ class SensorReader:
         async with self._datalock:
             self._datastruct = data
 
-    async def _error_check(self, results: "MeasDataType", name: str, condition: bool = True) -> bool:
+    async def _error_check(self, results: "MeasDataType", condition: bool = True) -> bool:
         # centralizes the increment/decrement-error-counter-and-decide-to-give-up logic every
         # sensortask-*.py driver used to hand-roll separately; False tells the caller to give up
-        # (triggers the task supervisor's own reset), True to keep going.
+        # (triggers the task supervisor's own reset), True to keep going. name is no longer a
+        # parameter here - self.pr already carries it (see print_log.py's name-baking change).
         if any(res is None for res in results) and condition:
             self._err_cnt_internal += 1
-            await self.pr.err_s(name + " Fehlerzähler erhöht auf", self._err_cnt_internal, errno=1)
+            await self.pr.err_s("Fehlerzähler erhöht auf", self._err_cnt_internal, errno=1)
             if self._err_cnt_internal > self.max_i2c_err:
-                await self.pr.err_s(name + " Maximale Fehleranzahl erreicht!", errno=2)
+                await self.pr.err_s("Maximale Fehleranzahl erreicht!", errno=2)
                 return False  # Abbruch der Schleife führt zu Task-Reset
         else:
             if self._err_cnt_internal > 0:
                 self._err_cnt_internal -= 1
-                self.pr.err(name + " Fehlerzähler zurück auf", self._err_cnt_internal)
+                self.pr.err("Fehlerzähler zurück auf", self._err_cnt_internal)
         return True
 
     async def reset_error_counter(self) -> None:
@@ -244,7 +251,7 @@ class SensorReaderConfig(SensorReader):
         history_length: int = 10,
         debug: int | None = None,
     ) -> None:
-        super().__init__(init_data, max_i2c_err, fram, history_length, debug)
+        super().__init__(init_data, max_i2c_err, fram, history_length, debug, name=name)
         self.cfg_schema = default_vals
         self.cfgmgr = ConfigManager(
             cfg_path + "config_" + name + ".cfg",
@@ -258,7 +265,11 @@ class SensorReaderConfig(SensorReader):
         # _push_callbacks); a field with no entry skips to the next rung (see DRIVER_SPEC.md §5.2.2).
         self._get_callbacks: dict[str, Callable[[], Coroutine[Any, Any, int | float | str | bool | None]]] = {}
 
+    async def setup(self) -> None:
+        await self.cfgmgr.setup()
+
     async def _get_mgr_cfg(self, cfg: list[str]) -> dict[str, int | float | str | bool | None] | None:
+        self.pr.evt("Reading config via cfgmgr.")
         return await self.cfgmgr.get_dict(cfg)
 
     async def _set_mgr_cfg(
@@ -266,6 +277,7 @@ class SensorReaderConfig(SensorReader):
     ) -> "tuple[bool, WriteValidity]":
         # Overridable extension point mirroring _get_mgr_cfg - a subclass with a different
         # persistence backend can override just this and still reuse _set_dict_cfg's orchestration.
+        self.pr.evt("Writing config via cfgmgr.")
         return await self.cfgmgr.write_config(data, cfg_vals)
 
     async def _set_dict_cfg(

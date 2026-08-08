@@ -423,7 +423,7 @@ class SGP40_Reader(SensorReaderConfig):
             buf, serialize, deserialize, cfg_values = await self._check_storage()
             deserialize = await self._run_restore(buf, deserialize, cfg_values)  # check for available backup data
             data, compensated, serialize = await self._read_sgp(buf, serialize, deserialize)  # read data
-            if not await self._error_check(data, _NAME, condition=compensated):  # check and count errors
+            if not await self._error_check(data, condition=compensated):  # check and count errors
                 return False  # break and restart if too many errors
             await self._store_sgp(data)  # store data in result buffer
             await self._run_backup(buf, serialize, cfg_values)  # store backup if data was issued

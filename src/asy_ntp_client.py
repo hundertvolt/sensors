@@ -391,7 +391,7 @@ class asy_ntp_client(SensorReaderConfig):
             # Consecutive-failure streak over real sync attempts, independent from and coarser than
             # _handle_ntp_sync_failure()'s own short-term retry loop. condition=network_ok excludes
             # "network wasn't up yet" from counting; narrows tm to just its presence/absence.
-            if not await self._error_check((None if tm is None else tm[0],), _NAME, condition=network_ok):
+            if not await self._error_check((None if tm is None else tm[0],), condition=network_ok):
                 await self.pr.err_s(_NAME, "Giving up after repeated sync failures, restarting task.", errno=20)
                 return
 

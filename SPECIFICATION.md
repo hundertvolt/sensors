@@ -933,7 +933,7 @@ async def read_loop(self) -> bool:
         await self.trigger_event.wait()
         self.pr.evt(_NAME, "sensor trigger")
         results = await self._read_<sensor>()
-        if not await self._error_check(results, _NAME):
+        if not await self._error_check(results):
             return False
         await self._store_<sensor>(results)
 ```
@@ -1066,11 +1066,15 @@ tuple/list of values), both bypassing the min/max range check via `type_or_range
   names, not plain module-level variables (confirmed directly against the pinned interpreter: a
   plain-tuple reference inside a `const()` expression raises `SyntaxError: not a constant`).
 
-One JSON file per sensor: `config_<name>.cfg` (written by `SensorReaderConfig.__init__` via
-`ConfigManager(cfg_path + "config_" + name + ".cfg", default_vals, name)` — `ConfigManager`
-builds its own `"CFGMGR_" + name`-identified `PrintLogHistory` internally rather than reusing its
-owner's, see CLAUDE.md's Cluster 2 note). `__init__` only stashes constructor args (synchronous,
-cheap); the real load happens once in `async def setup()`, cached in `self._cache`, and only
+One JSON file per sensor: `config_<name>.cfg` (`SensorReaderConfig.__init__` constructs
+`self.cfgmgr = ConfigManager(cfg_path + "config_" + name + ".cfg", default_vals, name)` —
+`ConfigManager` builds its own `"CFGMGR_" + name`-identified `PrintLogHistory` internally rather
+than reusing its owner's, see CLAUDE.md's Cluster 2 note). Both `__init__`s only stash constructor
+args (synchronous, cheap) — `SensorReaderConfig.__init__` doesn't call `self.cfgmgr.setup()`
+itself, mirroring `ConfigManager.__init__`'s own stash-only shape one level down. The actual file
+load/write happens once `SensorReaderConfig`'s own `async def setup()` is awaited (which just
+awaits `self.cfgmgr.setup()`, extending the sync-`__init__`/async-`setup()` readiness-gate pattern
+up from `ConfigManager` — see CLAUDE.md's Cluster 3 note), cached in `self._cache`, and only
 re-synced to disk by `write_config()` — every `get_*` call reads the cache directly, no per-call
 file I/O.
 
@@ -1316,7 +1320,11 @@ and its config read-back comes back silently wrong/empty.
 - `self.pr` is a `PrintLogHistory` (in-memory, bounded `deque`) or `PrintLogHistoryStore`
   (FRAM-backed, survives reboot) depending on whether the `Reader`'s `fram` constructor argument
   was given — chosen automatically inside `SensorReader.__init__`, transparent to everything
-  above it. A new driver never picks between the two itself.
+  above it. A new driver never picks between the two itself. `SensorReader.__init__` also takes
+  `name: str = ""` (baked into the constructed logger's own identity, per print_log.py's
+  name-baking change) and `logger: PrintLogHistory | None = None` — passing an existing logger
+  reuses it instead of constructing a fresh one, the reach-through mechanism for a directly-bound
+  sibling object that should share one identity/history instead of getting its own.
 - Log-level methods, two tiers: `pr.one`/`pr.evt`/`pr.all` (sync, unconditional print gated on
   level, no history entry) for informational/trace messages; `pr.err_s`/`pr.wrn_s` (async, `await`
   required — they persist to `self.history`/FRAM) for anything that should count against
@@ -1362,9 +1370,12 @@ and its config read-back comes back silently wrong/empty.
   dynamic/enumerable error source, not a departure from it — the numbers still mean something
   stable *within one run*, just not a fixed number-to-meaning mapping across runs the way a static
   per-driver catalog gives you.
-- `_error_check(results, name, condition=True) -> bool` (`base_classes.py`) is the shared
+- `_error_check(results, condition=True) -> bool` (`base_classes.py`) is the shared
   consecutive-failure-streak counter every `read_loop()` calls once per cycle with that cycle's
-  results tuple — returns `False` (give up, triggers task-supervisor restart) once
+  results tuple — `name` is no longer a parameter (`self.pr` already carries it, per print_log.py's
+  name-baking change); every current call site was confirmed to always pass exactly its own
+  `_NAME` before the parameter was dropped. Returns `False` (give up, triggers task-supervisor
+  restart) once
   `self._err_cnt_internal` exceeds `max_i2c_err`; decrements the streak back down on a good read.
   `condition` lets a driver suppress counting a "failure" that isn't really the sensor's fault
   (SGP40 passes `condition=compensated` — a `None` result from a missing compensation callback

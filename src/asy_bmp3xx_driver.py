@@ -337,7 +337,7 @@ class BMP3xx_Reader(SensorReaderConfig):
             await self.trigger_event.wait()  # wait for read trigger event
             self.pr.evt(_NAME, "sensor trigger")
             results = await self._read_bmp()  # read data
-            if not await self._error_check(results, _NAME):  # check and count errors
+            if not await self._error_check(results):  # check and count errors
                 return False  # break and restart if too many errors
             await self._store_bmp(results)  # store data in result buffer
 

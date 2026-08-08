@@ -697,8 +697,66 @@ every `SensorReaderConfig` subclass specifically (`BMP3xx_Reader`/`SGP40_Reader`
 CLAUDE.md's "Platform target" section (`asyncio.Lock`/`Event` usage in this file, already current
 as of the last check — re-confirm only if `toolchain/versions.toml`'s pin has moved since).
 
-**Status**: `[ ]` not started. Depends on Clusters 1-2. Scope grew (owner-approved) to include
-`SensorReaderConfig.setup()` — see above.
+**Status**: `[x]` done.
+
+**Executed 2026-08-08**: `SensorReader.__init__` gained `name: str = ""` and
+`logger: PrintLogHistory | None = None` (typed as `PrintLogHistory`, not the bare `PrintLog` this
+section originally specified — see below); when `logger` is given it's reused as-is (`self.pr =
+logger`, short-circuiting the `fram`/no-`fram` branch entirely, including when `fram` is also
+given), otherwise a fresh `PrintLogHistory`/`PrintLogHistoryStore` is constructed with `name`
+threaded through, exactly as before. `SensorReaderConfig.__init__` now forwards its own `name` to
+`super().__init__(..., name=name)`. `SensorReaderConfig` gained the planned `async def setup(self)
+-> None: await self.cfgmgr.setup()`. `_error_check()` dropped its redundant `name` parameter — every
+current call site (`asy_wifi_service.py`, `asy_scd30_driver.py`, `asy_ntp_client.py`,
+`asy_bmp3xx_driver.py`, `asy_sgp40_driver.py`) was individually confirmed to always pass exactly its
+own `_NAME` before the parameter was removed, then each of those 5 call sites was updated to drop
+the now-gone argument. Its two `err_s()` calls (`errno=1`/`2`) now read `self.pr.err_s("Fehlerzähler
+erhöht auf", ...)`/`self.pr.err_s("Maximale Fehleranzahl erreicht!", ...)` — name automatic, matching
+this section's own example. The nine `_get_dict_cfg`/`_set_dict_cfg`/`_recover_failed_push`
+`err_s`/`wrn_s` calls were reconfirmed to already carry the right name for free via `self.pr`, no
+code change needed. Cross-reference logging was added exactly where this section specified: a
+`self.pr.evt(...)` line in both `SensorReaderConfig._get_mgr_cfg` (before `self.cfgmgr.get_dict(...)`)
+and `_set_mgr_cfg` (before `self.cfgmgr.write_config(...)`), pairing with `ConfigManager`'s own
+`pr.all`/`pr.evt` lines for a human/future-rsyslog reader.
+
+**One real correction to this section's own plan, caught during implementation**: `logger` is typed
+`PrintLogHistory | None`, not the `PrintLog | None` this section specified. `SensorReader`/
+`SensorReaderConfig` call `self.pr.err_s()`/`wrn_s()`/`get_log()` throughout the file — methods that
+exist only on `PrintLogHistory` (and its `PrintLogHistoryStore` subclass), not on the looser base
+`PrintLog`. Typing `logger` as bare `PrintLog` would have made every one of those calls a real mypy
+error the moment a caller ever passed a plain `PrintLog` (which no real caller does — every actual
+reach-through use passes a `PrintLogHistory`/`PrintLogHistoryStore` instance) — `FRAM_SPI`'s own
+`logger: PrintLog` parameter is safe with the looser type only because that class never calls the
+history-only API (confirmed directly: `asy_fram_driver.py` calls only `pr.wrn()`, never
+`err_s()`/`wrn_s()`/`get_log()`). Fixed by typing `logger: PrintLogHistory | None` here instead,
+matching this file's own actual usage rather than copying FRAM_SPI's annotation verbatim.
+
+**SPECIFICATION.md updated to match**: Part C.4.1's `read_loop()` skeleton and Part C.7's
+`_error_check()` signature description both dropped the `name`/`_NAME` argument; Part C.7 also
+gained a note on the new `name`/`logger` constructor parameters; Part C.5's "One JSON file per
+sensor" paragraph now describes `SensorReaderConfig.setup()` explicitly instead of only describing
+`ConfigManager`'s own split.
+
+**Verification**: `scripts/lint.sh` (30 errors, unchanged baseline, all in `improved-quality/`),
+`scripts/typecheck.sh` (44 errors, unchanged baseline, all in `improved-quality/sensortask-wozi.py`
+— one transient 45th error surfaced mid-implementation from a mypy narrowing quirk on a new test's
+`reader.cfgmgr.valid is False` → `run(reader.setup())` → `reader.cfgmgr.valid is True` sequence on
+the same chained attribute expression, `tests/test_base_classes.py:763` "Statement is unreachable" —
+fixed by reading each side into its own local variable instead of re-checking the same `reader.cfgmgr
+.valid` expression twice across the intervening call, which resolved it back to the 44-error
+baseline), `scripts/test.sh` (31/31 files, 0 FAIL; `test_base_classes.py` itself 106/106 passing, up
+from its pre-Cluster-3 count via 8 new tests: logger/name reach-through (4), `SensorReaderConfig
+.setup()` (1), `name` forwarding (1), and the two cross-reference-logging tests for `_get_mgr_cfg`/
+`_set_mgr_cfg`, each verified via a recording `PrintLogHistory` subclass override rather than
+capturing real stdout). No other test file needed changes — no other file called `_error_check()`
+with a now-invalid signature beyond the 4 already listed (`test_asy_sgp40_driver.py`,
+`test_notification_scd30_integration.py`, `test_asy_bmp3xx_driver.py`) plus `test_base_classes.py`
+itself, and no `SensorReaderConfig`-subclass construction site in any test file needed a `name=`/
+`logger=` addition since `SensorReader`/`SensorReaderConfig`'s existing callers all already used
+keyword arguments for the parameters after which `name`/`logger` were appended — confirmed directly
+against every `super().__init__()` call site in `src/` (`asy_bmp3xx_driver.py`, `asy_sgp40_driver.py`,
+`asy_ntp_client.py`, `asy_wifi_service.py`, `asy_notification_service.py`, `asy_scd30_driver.py`)
+before considering this cluster's ripple closed.
 
 ## Cluster 4 — `asy_i2c_driver.py`, `asy_spi_driver.py`
 

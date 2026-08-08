@@ -400,9 +400,9 @@ def test_get_error_counter_reflects_logged_errors() -> None:
     reader = make_reader()
     run(reader.pr.setup())
     empty = SGP40(None, None, None)
-    run(reader._error_check(empty, "SGP40"))
-    run(reader._error_check(empty, "SGP40"))
-    run(reader._error_check(empty, "SGP40"))  # exceeds max_i2c_err=2 -> logged as a real error
+    run(reader._error_check(empty))
+    run(reader._error_check(empty))
+    run(reader._error_check(empty))  # exceeds max_i2c_err=2 -> logged as a real error
     log = run(reader.get_error_counter())
     err_count = log["SGP40"]["ErrCount"]
     assert isinstance(err_count, int)
@@ -441,18 +441,18 @@ def test_start_timer_and_stop_timer_wire_the_trigger_event() -> None:
 def test_error_check_gives_up_after_max_i2c_err_consecutive_failures() -> None:
     reader = make_reader()  # max_i2c_err=2
     empty = SGP40(None, None, None)
-    assert run(reader._error_check(empty, "SGP40")) is True  # 1st failure
-    assert run(reader._error_check(empty, "SGP40")) is True  # 2nd failure
-    assert run(reader._error_check(empty, "SGP40")) is False  # 3rd failure exceeds max_i2c_err=2
+    assert run(reader._error_check(empty)) is True  # 1st failure
+    assert run(reader._error_check(empty)) is True  # 2nd failure
+    assert run(reader._error_check(empty)) is False  # 3rd failure exceeds max_i2c_err=2
 
 
 def test_error_check_recovers_after_a_success() -> None:
     reader = make_reader()
     empty = SGP40(None, None, None)
     good = SGP40(1, 30000, 12345)
-    run(reader._error_check(empty, "SGP40"))
-    run(reader._error_check(empty, "SGP40"))
-    assert run(reader._error_check(good, "SGP40")) is True
+    run(reader._error_check(empty))
+    run(reader._error_check(empty))
+    assert run(reader._error_check(good)) is True
     assert reader._err_cnt_internal == 1  # decremented by the success, not reset to 0
 
 

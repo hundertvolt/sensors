@@ -159,7 +159,7 @@ def test_real_sensor_reading_above_threshold_flows_through_to_a_real_ramp() -> N
         # instead of through the full irq/timer machinery, which is already exhaustively covered by
         # test_asy_scd30_driver.py's own tests and isn't what this file is exercising.
         results = await scd_reader._read_scd()
-        assert await scd_reader._error_check(results, "SCD30")
+        assert await scd_reader._error_check(results)
         await scd_reader._store_scd(results)
 
         await notify._set_dict_cfg({"Interv": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
@@ -184,7 +184,7 @@ def test_i2c_bus_fault_degrades_to_not_triggered_and_stays_isolated_to_scd30s_ow
 
     async def scenario() -> "tuple[dict[str, Any], dict[str, Any], bool]":
         results = await scd_reader._read_scd()  # the bus fault happens inside here
-        still_running = await scd_reader._error_check(results, "SCD30")
+        still_running = await scd_reader._error_check(results)
         await scd_reader._store_scd(results)  # a no-op: results has None fields, nothing committed
 
         await notify._set_dict_cfg({"Interv": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
@@ -229,13 +229,13 @@ def test_recovers_and_triggers_normally_after_a_prior_fault() -> None:
 
     async def scenario() -> None:
         faulted = await scd_reader._read_scd()
-        await scd_reader._error_check(faulted, "SCD30")
+        await scd_reader._error_check(faulted)
         await scd_reader._store_scd(faulted)
 
         i2c.read_queue.append(frame1)
         i2c.read_queue.append(frame2)
         recovered = await scd_reader._read_scd()
-        assert await scd_reader._error_check(recovered, "SCD30")
+        assert await scd_reader._error_check(recovered)
         await scd_reader._store_scd(recovered)
 
         await notify._set_dict_cfg({"Interv": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
