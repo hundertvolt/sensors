@@ -2025,7 +2025,7 @@ that mypy correctly flagged as unused once the return type was annotated `tuple[
 this session; both new/modified files individually confirmed passing (3/3, 4/4) before the full-suite
 run.
 
-## Global test-suite bug sweep (planned, owner-requested 2026-08-08 — not yet started)
+## Global test-suite bug sweep (owner-requested 2026-08-08 — executed same day)
 
 **Goal**: a dedicated pass through every `tests/test_*.py` file (not `src/` itself — this is
 specifically about bugs *in the test scripts*, distinct from `src/` bugs the test suite happens to
@@ -2033,14 +2033,13 @@ catch) hunting for the same *class* of mistake the running list below already sh
 this audit: nested `asyncio.run()` calls, wrong expected values from not accounting for a stateful
 mechanism (a pre-filled history deque, a stateful algorithm's warm-up), copy-pasted boilerplate that
 doesn't actually fit its new context (a stale `# type: ignore`, a helper built for one file's shape
-reused verbatim in another's), and anything else in the same spirit. **Owner-requested, not yet
-scheduled to a specific point in this session** — run it "at some appropriate time," per the
-instruction that created this section; until then, this section is where every new finding gets
-added, so nothing found in the meantime is lost before the dedicated sweep happens.
+reused verbatim in another's), and anything else in the same spirit. **Owner-requested 2026-08-08;
+run the same day** ("at some appropriate time" — the owner confirmed this was that time once asked).
 
-**Not yet started** — no file has been swept end-to-end looking specifically for this bug class yet;
-every entry below was found incidentally, as a side effect of other work, not through a dedicated
-search.
+**Executed 2026-08-08 — see "Sweep execution log" below for the concrete checks run and their
+results.** Every entry in the running list below was originally found incidentally, as a side effect
+of other work; the sweep itself was a dedicated, mechanical, whole-suite pass, not more incidental
+discovery.
 
 ### Running list of test-script bugs found so far
 
@@ -2106,6 +2105,65 @@ behavior, only assumed; (c) copy-pasted helpers/annotations (`# type: ignore` co
 see Cluster 10's own `unused-ignore` finding above) carried over from one file into another without
 re-checking they still apply. Update this list with anything new the sweep finds, in the same format
 as the four entries above, before treating the sweep as done.
+
+### Sweep execution log (2026-08-08)
+
+Four mechanical checks, each run against the **whole** `tests/` directory (all 31 `test_*.py` files),
+not a sample — every one produced **zero new findings**; every previously-known instance (the running
+list above) was independently re-confirmed already fixed as part of running these checks:
+
+1. **Nested `asyncio.run()`, direct and transitive.** A CPython `ast`-based scanner parsed every test
+   file, recorded every top-level `def`/`async def`, and flagged any `async def` whose body contains a
+   `Call` node to a function literally named `run` — that alone is conclusive here, since every file's
+   own `run(coro)` helper is a thin `asyncio.run(coro)` wrapper (verified directly) and there is no way
+   to execute the body of an `async def` without an event loop already running underneath it, so any
+   `run(...)` call reachable from inside one is unconditionally a nested-`asyncio.run()` bug regardless
+   of whether the enclosing function is ever itself awaited or top-level-`run()`-driven. A second pass
+   extended this to the *transitive* case (an `async def` calling a **sync** helper that itself calls
+   `run(...)`, directly or through another sync helper) via fixed-point closure over each file's own
+   call graph. Both passes: zero hits, project-wide. (`test_asy_scd30_driver.py`'s own
+   `test_reader_set_then_get_altitude_round_trips_through_real_i2c_frames` has an in-file comment
+   flagging the identical risk for `register_frame()`'s internal `crc8_byte()`-via-`run()` call and
+   already avoids it by queuing the frame *before* entering `scenario()` — spot-checked directly, this
+   is a documented instance of the pattern being correctly avoided, not a new finding.)
+2. **`get_log()`/`get_error_counter()` exact-value assertions vs. deque pre-fill.** Every
+   `get_log()==`/`get_error_counter()==` exact-dict-equality assertion project-wide was enumerated by
+   grep and individually inspected. Only two exist *in total*, both in `test_print_log.py`
+   (`test_get_log_classifies_error_warning_and_clear_entries`,
+   `test_get_log_with_no_argument_uses_self_name`), and both already correctly account for the
+   pre-filled `_NO_ERR`/`_NO_WRN` deque slots (the second even carries an explicit comment recording
+   the earlier design-trial mistake being deliberately avoided — see running-list bug 2). Every other
+   `ErrCount`/`ErrNum`/`ErrType`/`.history` assertion anywhere in `tests/` (grepped separately,
+   ~45 sites across `test_asy_bmp3xx_driver.py`, `test_asy_fram_driver.py`,
+   `test_asy_notification_service.py`, `test_asy_ntp_client.py`, `test_asy_scd30_driver.py`,
+   `test_asy_wifi_service.py`, `test_base_classes.py`, `test_config_manager.py`,
+   `test_fram_integration.py`, `test_notification_fram_integration.py`,
+   `test_notification_scd30_integration.py`, `test_notification_sgp40_integration.py`,
+   `test_ntp_fram_system_integration.py`, `test_system_service.py`) checks a count, a membership
+   (`in fram.pr.history`), a last-element, or a length — all naturally immune to pre-fill-position
+   mistakes, so none carry this specific risk.
+3. **Stale `# type: ignore` comments in `tests/`.** `scripts/typecheck.sh` run fresh: 44 errors, all in
+   `improved-quality/sensortask-wozi.py` (the established, unchanged baseline) — zero
+   `unused-ignore` findings anywhere in `tests/`, which is what mypy would raise for any `# type:
+   ignore` comment that no longer suppresses a real error. Confirms no copy-pasted, now-stale ignore
+   comment survives anywhere in the suite (the one real instance of this class of mistake,
+   `test_notification_sgp40_integration.py`'s copy-pasted `[return-value]` ignore, was already caught
+   and fixed while writing that file — see the Post-Cluster-10 continuation section above, not
+   re-listed as a running-list entry since it was never actually landed uncaught).
+4. **Copy-pasted per-sensor constants and monkeypatch helpers.** Every hardcoded I2C address literal in
+   `tests/test_asy_sgp40_driver.py`/`test_asy_bmp3xx_driver.py`/`test_asy_scd30_driver.py`/
+   `test_notification_sgp40_integration.py`/`test_notification_scd30_integration.py` cross-checked
+   against each real driver's own default address (`0x59`/`0x77`/`0x61` respectively) — all consistent,
+   no cross-sensor copy-paste mismatch. All six `class _FastAsyncSleep` copies (`test_asy_bmp3xx_
+   driver.py`, `test_asy_notification_service.py`, `test_asy_sgp40_driver.py`,
+   `test_asy_wifi_service.py`, `test_notification_sgp40_integration.py`, `test_system_service.py`)
+   individually read in full: structurally identical, each correctly restores the real
+   `asyncio.sleep` in `__exit__` unconditionally (not just on the happy path), no drift between
+   copies.
+
+**No code change resulted from this sweep** — it was a pure analysis pass; nothing it checked needed
+fixing. The full suite's last known state (1755/1755 passed, 0 `FAIL`, from the mock-scan work
+immediately prior) still applies unchanged, since no `tests/`/`src/` file was touched.
 
 ---
 
