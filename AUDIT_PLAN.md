@@ -792,8 +792,48 @@ I2C raises real `OSError` on a hardware NAK/timeout, SPI transfers cannot on rp2
 `ValueError`). No chip-specific datasheet applies to these two files themselves (they're
 bus-generic, not device-specific).
 
-**Status**: `[ ]` not started. Depends on Cluster 3. Can't fully close until Cluster 7 (the real
-callers) is also in view.
+**Status**: `[x]` done (verification pass; final re-confirmation still happens when Cluster 7 touches
+the same 3 caller files, per the dependency note below — not expected to change this conclusion).
+
+**Executed 2026-08-08**: Re-read `asy_i2c_driver.py`/`asy_spi_driver.py` in full (no drift from the
+prior session's read) and traced, method by method, every real call site of `I2CDevice`'s 8 public
+methods across all three sensor drivers:
+
+- **`asy_bmp3xx_driver.py`**: every `I2CDevice` touch inside `BMP3XX_I2C` (`_get_osr_setting`,
+  `_read`, `_read_register`, `_set_osr_setting`, `get_filter_coefficient`/`set_filter_coefficient`,
+  `setup`, `reset`, `_wait_status_bits`) is only reachable through a `BMP3xx_Reader` method that
+  wraps the call in `try/except Exception` with a logged `err_s(...)` path (`_read_bmp`, `_init_bmp`,
+  `get_pressure_oversampling`/`set_pressure_oversampling`, `get_temperature_oversampling`/
+  `set_temperature_oversampling`, `get_filter_coefficient`/`set_filter_coefficient`). No gap found.
+- **`asy_scd30_driver.py`**: every `I2CDevice` touch inside `SCD30_I2C` (`_send_command`/
+  `_send_dev_command`, `_read_register`/`_read_dev_register`, `setup`, `reset`,
+  `stop_continuous_measurement`, `read_measurement`) is only reachable through an `SCD30_Reader`
+  method wrapped the same way (`_read_scd`, `_init_scd`, the six config getters, the seven config
+  setters, `stop_continuous_measurement`). No gap found.
+- **`asy_sgp40_driver.py`**: every `I2CDevice` touch inside `SGP40_I2C` (`_read_word_from_command`,
+  `get_raw`, `measure_raw`, `measure_index_and_raw`, `setup`, `initialize`) is only reachable through
+  `SGP40_Reader._read_sgp`/`_init_sgp`, both wrapped in `try/except Exception` with a logged
+  `err_s(...)` path. `_reset()`'s own general-call `writeto(0x00, b"\x06")` already has its own local
+  `try/except OSError: pass` (a NAK there is an expected, not a failure, per the datasheet's general-
+  call semantics) — correctly scoped narrower than the outer wrap, not a gap. No gap found.
+- **SPI reconfirmed**: `FRAM_SPI`'s three `SPIDevice` call sites in `asy_fram_driver.py` need no
+  wrapping — reconfirmed `SPI.write()`/`readinto()` return `None` unconditionally on rp2 and
+  `write_readinto()` already catches its own `ValueError` internally, matching this cluster's
+  original finding exactly. No new work.
+
+**Result**: zero gaps found across all three I2C sensor drivers — every one of `I2CDevice`'s 8 public
+methods is reachable only via a Reader-layer call already wrapped in `try/except` with a real, logged
+failure path. **No diff to any file this cluster** (`asy_i2c_driver.py`, `asy_spi_driver.py`, or any
+of the three caller files) — matches this section's own "a clean pass here means zero diff" quality
+measure exactly.
+
+**Incidental finding, not a gap, not fixed here**: `BMP3XX_I2C.get_altitude()` (asy_bmp3xx_driver.py,
+computes altitude from `sea_level_pressure` — an Adafruit-reference-driver carryover) has zero callers
+anywhere in `src/`; `BMP3xx_Reader`'s actual "SLPres" field is computed separately via
+`math_helpers.altitude_baro()` in `_store_bmp()`, never through this method. Dead code, not an
+error-handling gap, so out of this cluster's own scope — flagged here rather than silently deleted,
+per the project's "flag, don't guess" agreement; worth a decision (delete vs. wire up) whenever
+`asy_bmp3xx_driver.py` is next touched (Cluster 7).
 
 ## Cluster 5 — `asy_dns_client.py`, `captive_dns.py`
 
