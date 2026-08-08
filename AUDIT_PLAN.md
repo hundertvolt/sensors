@@ -876,11 +876,77 @@ correctly cited in `captive_dns.py`'s own comments; re-verify the citation is st
 part of this cluster's work, not a fresh lookup (no reason to expect drift — RFC 1035 is a fixed
 standard). RFC 791 section 3.2 (dotted-quad parsing) — same, already cited, re-verify only.
 
-**Status**: `[ ]` not started. Depends on Cluster 0 (asy_udp_socket) and Cluster 1 (print_log, for
-`PrintLogHistory` — a real new import this cluster introduces, previously missing from the roadmap
-table, now added). **Correction from an earlier draft**: this section previously also listed
-Cluster 3 as a dependency; neither `DNSServer` nor `DNSQuery` is a `SensorReader` subclass or
-touches `base_classes.py` at all, so that was a copy-paste error, not a real dependency — removed.
+**Status**: `[x]` done.
+
+**Executed 2026-08-08**:
+
+- **`captive_dns.py`**: `DNSServer` now constructs its own independent `PrintLogHistory`/
+  `PrintLogHistoryStore` (named `"DNSSRV"` via a new `_NAME` const), taking `fram`/`history_length`/
+  `debug: int | None` constructor parameters — same shape as `NeopixelDriver`/`SensorReader`.
+  `debug: bool = False` and every raw `print(...)`/`if self.debug:` call site are gone; every
+  message is now a real `self.pr.evt(...)` (routine/informational — waiting/incoming/replying/
+  ignoring/empty-query/shutdown/disconnected) or a persisted `await self.pr.err_s(...)`/
+  `await self.pr.wrn_s(...)` with a real errno/wrnno (invalid server_ip/netmask at startup =
+  errno 1, an unexpected loop exception = errno 2, a disconnect-cleanup exception = errno 3;
+  `sendto()` reporting a dropped reply = wrnno 1, invalid recvfrom data/address = wrnno 2).
+  `DNSQuery` drops its own `debug: bool` entirely and now takes a required `pr: PrintLogHistory`
+  constructor parameter, reusing `DNSServer`'s own `self.pr` reference passed in from `run()`
+  (`DNSQuery(data, self.pr)`) rather than constructing an independent instance — matches
+  `AsyUDPSocket`'s established "ephemeral object reuses its owner's logger" precedent.
+- **`_ipv4_to_int()` rewritten to the `isdigit()`-check, never-raises style**, matching
+  `asy_dns_client.py::_is_ipv4_literal()` exactly: returns `int | None` instead of raising
+  `ValueError`. All three real call sites updated to `is None` checks instead of `try`/`except`:
+  `run()`'s startup netmask/server_ip validation (now a single `if ... is None: err_s(...); return`
+  instead of a wrapping `try`/`except`), `run()`'s on-subnet check for `addr[0]`, and
+  `DNSQuery.response()`'s `ip` validation before building the reply packet. Closes the D.10
+  cross-file inconsistency per the owner's resolved decision above.
+- **Real regression caught and fixed during this cluster's own test run**: `run()`'s on-subnet
+  check first dropped the old local `try`/`except Exception: on_subnet = False` around
+  `_ipv4_to_int(addr[0])` entirely, relying only on the new `is None` check — correct for a
+  malformed-but-`str` `addr[0]`, but `_ipv4_to_int()` still raises for a **non-`str`** value (it
+  calls `ip.split(".")` directly, matching `_is_ipv4_literal()`'s own no-non-str-guard stance).
+  A real MicroPython Unix-port test run proved this isn't hypothetical: a server-mode socket bound
+  via a pre-resolved sockaddr (this test build's own documented quirk, not real rp2 hardware) hands
+  `recvfrom()` back an opaque raw sockaddr whose `addr[0]` is a plain `int`, not a host string —
+  confirmed directly (`'int' object has no attribute 'split'`). Without a local guard, that
+  exception fell through to `run()`'s outer `except Exception` (the "genuinely unexpected failure"
+  path), triggering its 3-second backoff; if cancellation landed during that
+  `await asyncio.sleep(3)`, the `CancelledError` raised *inside* the `except Exception:` block's own
+  body propagated straight out of `run()`, skipping the `disconnect()` cleanup entirely and leaking
+  the bound socket — caught by `test_run_reuses_same_dns_server_instance_across_multiple_hotspot_cycles`
+  failing (`server.udps.sock` stayed non-`None` after cancellation). Fixed by restoring a narrow,
+  local `try/except Exception: addr_int = None` around just the `_ipv4_to_int(addr[0])` call —
+  routine untrusted-network-input handling (same bucket as off-subnet), not something that should
+  ever reach the 3s backoff. `_ipv4_to_int(netmask)`/`_ipv4_to_int(server_ip)` at the top of `run()`
+  keep no such guard — those come from `wlan.ifconfig()`, a real framework guarantee to return
+  `str`, unlike `addr[0]`'s empirically-proven-inconsistent shape.
+- **`asy_dns_client.py`**: `resolve_ipv4()`'s `AsyUDPSocket((server, port), mode="client")`
+  construction now wrapped in `try/except (ValueError, TypeError): continue` — the same guard
+  `asy_ntp_client.py::_fetch_ntp_reply()` already uses — closing the gap the New findings above
+  identified. No logger added to this file (reconfirmed "no logging needed", jointly with Cluster 8
+  as planned — this file still has no `self.pr` of its own).
+- **`asy_wifi_service.py`**: `asy_conn_time.__init__`'s `self.dns_server = DNSServer(debug=bool(debug))`
+  changed to `DNSServer(fram=fram, history_length=history_length, debug=debug)`, threading its own
+  already-available constructor parameters through to give `DNSServer` its independent identity
+  instead of a shared, coerced-to-bool value.
+- **RFC citations re-verified, unchanged**: RFC 1035 §§4.1.1/4.1.2/4.1.4 and RFC 791 §3.2 — both
+  still accurately cited in `captive_dns.py`'s own comments, no drift.
+- **Tests**: `tests/test_captive_dns.py` rewritten throughout for the new `DNSServer`/`DNSQuery`
+  constructor shapes (a shared `make_pr()` test helper replaces every `debug=True/False` call site;
+  logging behavior is asserted via `server.pr.err_count`/`.get_level()`/`.name`, matching
+  `test_base_classes.py`'s own established convention — no stdout-capture-based assertions);
+  `_ipv4_to_int`'s malformed-string tests now assert `is None` instead of catching `ValueError`; new
+  tests added for `_ipv4_to_int`'s remaining non-`str` raise behavior, the `DNSQuery` logger-reuse
+  contract, the new persisted err_s/wrn_s paths (invalid startup config, dropped `sendto()`, invalid
+  recvfrom data, the unexpected-exception backoff path, disconnect-failure logging), and
+  `resolve_ipv4()`'s new construction guard (`tests/test_asy_dns_client.py`, via a raising
+  `AsyUDPSocket` substitute — the file's own `_ResolvingAsyUDPSocket` wrapper resolves addresses
+  through `socket.getaddrinfo()` before ever reaching `AsyUDPSocket`'s real type check, so a
+  real malformed port raises `OSError` at the wrong layer to exercise this specific guard). No test
+  dropped. `lint.sh`/`typecheck.sh`/`test.sh` all green (`test_asy_dns_client.py` 31/31,
+  `test_captive_dns.py` 50/50, `test_asy_wifi_service.py` 168/168,
+  `test_ntp_wifi_dns_integration.py` 8/8 — the latter two unaffected by this cluster's changes,
+  reconfirmed clean).
 
 **New findings (bidirectional Part C/D cross-check, 2026-08-07)**:
 

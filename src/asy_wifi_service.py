@@ -103,7 +103,9 @@ class asy_conn_time(SensorReaderConfig):
         self.hotspot_time = 60000 * hotspot_time_min  # convert to ms
         self.conn_fail_to_hotspot = conn_fail_to_hotspot
         self.wifi_uptime = LockedCounter(max_val=0xFFFFFFFF)
-        self.dns_server = DNSServer(debug=bool(debug))
+        # DNSServer gets its own independent "DNSSRV"-named logger, not this class's own self.pr -
+        # its history is expected to fold into a separate combined "Networking" REST endpoint later.
+        self.dns_server = DNSServer(fram=fram, history_length=history_length, debug=debug)
         self.dns_server_task: asyncio.Task[None] | None = None
         self.reconn_wifi = False
         self.time_counter_trigger_event = asyncio.ThreadSafeFlag()

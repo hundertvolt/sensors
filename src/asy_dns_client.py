@@ -100,7 +100,10 @@ async def resolve_ipv4(
     for server in dns_servers + _FALLBACK_DNS_SERVERS:
         if server == "0.0.0.0" or not _is_ipv4_literal(server):
             continue  # an unset/placeholder or malformed DNS server value - not worth a network attempt
-        cli = AsyUDPSocket((server, port), mode="client")
+        try:
+            cli = AsyUDPSocket((server, port), mode="client")
+        except (ValueError, TypeError):  # malformed port - server is already validated above
+            continue
         try:
             rsp, _addr = await cli.write_and_recvfrom(query, _DNS_RECV_BUF, timeout_ms=timeout_ms, tries=tries)
         finally:
