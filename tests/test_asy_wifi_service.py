@@ -238,10 +238,10 @@ def test_init_creates_its_own_config_file_with_schema_defaults() -> None:
     assert values == {"SSID": "", "PW": "", "Country": "DE", "Hostname": "SensorNode", "LedWifiOn": True}
 
 
-def test_get_task_starters_returns_wlan_connect_and_uptime_counter() -> None:
+def test_get_task_starters_returns_wlan_connect_uptime_counter_and_hotspot_watcher() -> None:
     client = make_client()
     starters = client.get_task_starters()
-    assert starters == [client.start_asy_wlan_connect, client.start_asy_uptime_counter]
+    assert starters == [client.start_asy_wlan_connect, client.start_asy_uptime_counter, client.start_hotspot_timeout_watcher]
 
 
 def test_get_timer_starters_returns_the_counter_timer() -> None:
@@ -1047,13 +1047,59 @@ def test_hotspot_client_absent_arms_the_shutoff_timer_once() -> None:
 
 
 def test_hotspot_client_absent_shutoff_timer_fires_reconnect() -> None:
+    # The Timer callback itself only sets hotspot_timeout_trigger_event (no business logic inside
+    # the IRQ callback, see C.9) - _watch_hotspot_timeout() is the coroutine that actually calls
+    # reconnect_wifi() once woken by that flag.
     client = make_client(hotspot_time_min=1)
     client._hotspot_client_absent()
 
     async def scenario() -> bool:
+        watcher = client.start_hotspot_timeout_watcher()
         client.hotspot_timer.trigger()
         await asyncio.sleep(0)
-        return client.reconn_wifi
+        result = client.reconn_wifi
+        await _cancel(watcher)
+        return result
+
+    assert run(scenario()) is True
+
+
+def test_hotspot_timeout_watcher_calls_reconnect_wifi_directly_when_woken() -> None:
+    client = make_client(hotspot_time_min=1)
+    client._hotspot_client_absent()  # arms hotspot_timer + starts a real ledflash task
+    ledflash_before = client.ledflash
+
+    async def scenario() -> bool:
+        watcher = client.start_hotspot_timeout_watcher()
+        client.hotspot_timeout_trigger_event.set()
+        await asyncio.sleep(0)
+        result = client.reconn_wifi
+        await _cancel(watcher)
+        assert ledflash_before is not None
+        await _cancel(ledflash_before)  # reconnect_wifi() already cancelled it - let it settle
+        return result
+
+    assert run(scenario()) is True
+
+
+def test_hotspot_client_absent_self_heals_a_dropped_timer_callback() -> None:
+    # Simulates the documented soft-callback-drop risk (SPECIFICATION.md Part F): the Timer never
+    # fires, but this method's own periodic re-invocation (every wifi_refresh_sec, matching the
+    # main loop's real cadence) must still eventually notice and force the reconnect itself.
+    client = make_client(hotspot_time_min=1, wifi_refresh_sec=5)
+    client._hotspot_client_absent()  # arms the timer (never triggered)
+    assert client.hotspot_timer_running is True
+    # hotspot_time = 60000ms; wifi_refresh_sec=5 -> the 2x-hotspot_time threshold is 24 ticks.
+    # One tick short - the next call below is the one that must cross it.
+    client.hotspot_timer_ticks_since_armed = 23
+
+    async def scenario() -> bool:
+        watcher = client.start_hotspot_timeout_watcher()
+        client._hotspot_client_absent()  # crosses the threshold this tick
+        await asyncio.sleep(0)
+        result = client.reconn_wifi
+        await _cancel(watcher)
+        return result
 
     assert run(scenario()) is True
 

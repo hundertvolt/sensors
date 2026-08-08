@@ -364,7 +364,7 @@ before starting this cluster).
 | `crc_checks.py` | `[x]` | All three CRC definitions re-verified against real sources, not just re-asserted: Sensirion CRC-8 (poly `0x31`, init `0xFF`, no reflection, final XOR `0x00`) confirmed directly against `datasheets/scd30/Sensirion_CO2_Sensors_SCD30_Interface_Description.pdf`'s own checksum section, and the file's exact bit-banged algorithm reproduces the datasheet's own worked example (`CRC(0xBEEF) = 0x92`) exactly. CRC-16/CCITT-FALSE and CRC-32/MPEG-2 parameter sets (poly/init/refin/refout/xorout) confirmed against the standard CRC catalogue. No code changes needed. No MicroPython-currency drift (D.9) — already uses `asyncio`/`struct` (not `u`-prefixed), already benefits from 1.26's bytearray/memoryview slicing optimization per its own docstring. |
 | `voc_algorithm.py` | `[x]` | **`_fix16_exp()`'s filed D.4 finding fixed**: the two 4-element constant lists (`exp_pos_values`/`exp_neg_values`) are now precomputed once in `__init__` as instance tuples (`self._exp_pos_values`/`self._exp_neg_values`), reusing the exact same `self._f16(...)` calls rather than duplicating that rounding logic at module level — avoids the previous per-call allocation with zero behavior change, confirmed by the full existing test suite (including the boundary-saturation test) passing unchanged. Still a direct, faithful port of Sensirion's fixed-point reference otherwise; no other findings. |
 | `api_response.py` | `[~]` | Re-verified against Part D — clean, function-based, already the project's own exemplar for the `TYPE_CHECKING`-guard pattern (D.6) and envelope-shape consistency (D.10). No changes needed. One `err_s` call (line 102) still has no name — **still can't be marked fully done until Cluster 1 lands** (unchanged from before this pass; not force-closed). |
-| `asy_udp_socket.py` | `[~]` | Re-verified against Part D — every I/O method still returns its documented sentinel, never raises (`__init__` excepted, by design); no MicroPython-currency drift (`select.poll`/`ipoll` usage, `micropython.const`, no `u`-prefixed imports). No changes needed. **Still can't be marked fully done until Cluster 5 and Cluster 8 both close** (unchanged from before this pass) — needs `asy_dns_client.py`/`captive_dns.py`/`asy_ntp_client.py` in view to verify the upstream-coverage claim. |
+| `asy_udp_socket.py` | `[x]` | Re-verified against Part D — every I/O method still returns its documented sentinel, never raises (`__init__` excepted, by design); no MicroPython-currency drift (`select.poll`/`ipoll` usage, `micropython.const`, no `u`-prefixed imports). No changes needed. **Now fully closed** — Cluster 5 and Cluster 8 (2026-08-08) have both re-confirmed the upstream-coverage claim from every caller (`asy_dns_client.py`/`captive_dns.py`/`asy_ntp_client.py`), the last of the two dependencies this row was waiting on. |
 
 **Open decisions for this cluster**: none — both partial-closure dependencies above are sequencing
 facts, not decisions needing input.
@@ -1424,7 +1424,103 @@ already covered by CLAUDE.md's "wedged I2C bus"/`socket.getaddrinfo()` findings 
 avoid the documented can't-be-timeout-wrapped traps) — re-verify no new relevant MicroPython
 issue-tracker finding has landed since the last check, not a fresh investigation from scratch.
 
-**Status**: `[ ]` not started. Depends on Clusters 0, 2-3, 5. Full reads done — ready to execute.
+**Status**: [x] done.
+
+**Executed 2026-08-08**: Both files' manual `_NAME` arguments stripped from every `self.pr.*` call
+site (52 in `asy_wifi_service.py`, 23 in `asy_ntp_client.py`), leaving only the `_NAME` constant
+itself, the one positional `super().__init__()` name argument, and each file's one
+`_get_dict_cfg(_NAME, ...)` call. `asy_wifi_service.py`'s roughly two dozen distinct German
+phrases/comments (not the originally-estimated ~30+ — a full re-sweep after stripping `_NAME` found
+several were one-line status/event strings that share the same literal across multiple call sites,
+e.g. `"Missing WLAN configuration!"` covers three separate `wrn_s()` sites, so the earlier grep-only
+per-occurrence count ran higher than the real distinct-phrase count) translated to English, covering
+every remaining `self.pr.*` call and log-adjacent comment in the file: `wlan.status("stations")`'s
+failure message, `_configure_hotspot_ap()`'s power-save-mode comment and hotspot-started/-stopped
+logs, `_hotspot_client_connected()`/`_hotspot_client_absent()`'s client-connected/-absent event
+strings (part of the hotspot-timer fix below), `_attempt_sta_connect()`'s connecting/missing-config
+strings, `_on_sta_connected()`/`_on_sta_disconnected()`'s established/disconnected/retry event
+strings, `_register_sta_connection_failure()`'s counter and hotspot-activation logs,
+`_deactivate_wlan_permanently()`'s log, `_handle_reconnect_trigger()`/`_wait_for_sta_disconnect()`'s
+reconnect logs, `_manage_hotspot_stations()`'s "hotspot active" log, `_print_wlan_diagnostics()`'s/
+`_on_sta_disconnected()`'s status-field labels (WLAN status/IPv4 address/default gateway/DNS server),
+`wlan_connect()`'s deactivated-state log and its own `# Funktion: WLAN-Verbindung` comment (removed,
+redundant with the method name). `asy_ntp_client.py` re-confirmed at zero German
+strings (the two remaining German comments found on the full read — `cettime()`'s "Umrechnung
+Lokalzeit" and `ntp_time_hours_counter()`'s "Timer für NTP Refresh" — were comments, not log strings,
+translated too for completeness). All applicable `Timer.init()` `except OSError` sites widened to
+`except (OSError, MemoryError) as e:`: **`asy_wifi_service.py` had two, not three** — the Goal
+text's original "×3" estimate over-counted; the full read confirms only `_hotspot_client_absent()`'s
+`hotspot_timer` and `start_counter_timer()`'s `counter_timer` construct via `Timer.init()` inside a
+try/except in this file, both now widened. `asy_ntp_client.py`'s three (`_handle_ntp_sync_failure()`'s
+`ntp_retry_timer`, `start_ntp_timer()`'s `ntp_timer`, `start_counter_timer()`'s `counter_timer`) were
+correctly counted and are all widened. Cluster 5's `asy_udp_socket.py`/`asy_dns_client.py`
+upstream-coverage check re-confirmed closed from this file's calling side (`_fetch_ntp_reply()`'s
+`AsyUDPSocket` usage and `_resolve_ntp_server()`'s `resolve_ipv4()` call both already match their
+documented never-raises contracts, nothing new needed here). FRAM determinism re-confirmed: `DNSServer`
+still constructed exactly once inside `asy_conn_time.__init__`. Existing errno/wrnno ranges
+unchanged (no new errno/wrnno introduced — logging/naming/language-only cluster, matching Cluster 7's
+own precedent).
+
+**New findings, closed**:
+
+- **High-priority Timer business-logic finding, fixed.** `_hotspot_client_absent()`'s
+  `hotspot_timer` callback no longer calls `reconnect_wifi()` directly — it now only sets a new
+  `self.hotspot_timeout_trigger_event` (`asyncio.ThreadSafeFlag`), satisfying C.9's "never business
+  logic inside a Timer callback" rule with a trivial, atomic callback body. A new coroutine,
+  `_watch_hotspot_timeout()` (registered via a new `start_hotspot_timeout_watcher()` task starter,
+  now the third entry in `get_task_starters()`), awaits that flag and calls `reconnect_wifi()` from
+  normal async task context instead. Kept `ONE_SHOT` rather than switching to `PERIODIC` (the
+  recommendation's first alternative) — the timer's existing arm/deinit/`hotspot_timer_running`
+  bookkeeping, and the tests exercising it, stay intact; only the callback body's business logic
+  moved out. Added the recommendation's other half too: a periodic self-heal backstop for the
+  documented soft-callback-drop risk (`SPECIFICATION.md` Part F) — `_hotspot_client_absent()` is
+  already re-invoked every `wifi_refresh_sec` tick by the main loop while hotspot mode has no
+  client, so a new `hotspot_timer_ticks_since_armed` counter (reset whenever the timer is armed or
+  torn down, alongside every existing `hotspot_timer_running` reset site) tracks ticks since arming
+  and forces `hotspot_timeout_trigger_event.set()` once `2 * hotspot_time` worth of ticks have
+  passed without the real callback ever firing — mirroring `asy_scd30_driver.py`'s own IRQ self-heal
+  task shape (a periodic mechanism that doesn't trust a single edge-triggered signal in isolation),
+  per the finding's own suggested precedent. Three new tests cover this:
+  `test_hotspot_client_absent_shutoff_timer_fires_reconnect` (updated for the new flag/coroutine
+  indirection), `test_hotspot_timeout_watcher_calls_reconnect_wifi_directly_when_woken` (the
+  coroutine's own direct-flag-set path), and `test_hotspot_client_absent_self_heals_a_dropped_timer_callback`
+  (the backstop, verified by seeding `hotspot_timer_ticks_since_armed` one tick short of the
+  threshold and confirming the next call crosses it). `test_get_task_starters_returns_...` updated
+  for the third starter.
+- `asy_ntp_client.py`'s constructor knobs reordered: `dns_timeout_ms`/`dns_tries`/
+  `ntp_fetch_timeout_ms` now precede `max_i2c_err`, matching C.2 and `asy_wifi_service.py`'s own
+  constructor. Confirmed safe — every real call site (`improved-quality/sensortask-wozi.py`,
+  `tests/test_asy_ntp_client.py`, `tests/test_ntp_wifi_dns_integration.py`,
+  `tests/test_ntp_fram_system_integration.py`, `tests/test_setter_microdot_integration.py`) already
+  passes every argument past the first three positionally-required ones (`wifi_mode_lock`,
+  `network_available`, `get_dns_server`) as a keyword, so no call site needed updating.
+- `asy_wifi_service.py`'s `LEDControl(Protocol)` moved fully inside `if TYPE_CHECKING:`, matching
+  `print_log.py`'s `_FramChunk`/`_FramManager` and `api_response.py`'s `_RequestLike` — the old
+  module-level `try: from typing import Protocol / except Exception: class Protocol: pass` fallback
+  removed. The four annotation sites referencing `LEDControl` (two constructor/method parameters,
+  one instance attribute) were checked individually rather than assumed: the two parameter
+  annotations (`ext_led` in `__init__`, `ext_led` in `set_ext_led()`) needed
+  quoting (`"LEDControl | None"`) since function-parameter annotations are genuinely evaluated at
+  def-time under real Python semantics, matching the file's own existing `"AsyFramManager | None"`
+  convention; the one instance-attribute annotation (`self.led: LEDControl | None = None`) does
+  *not* need quoting and `ruff`'s `UP037` correctly flagged an initial quoted attempt — attribute
+  (non-simple-name) annotation targets are never evaluated by Python at all, quoted or not, so this
+  is the one case in the file safe to leave bare.
+- `asy_wifi_service.py:523`'s `elif status == 2:  #  not defined by constant in class yet!` magic
+  number replaced with a proper named constant, `_STAT_OBTAINING_IP = const(2)`, matching every
+  other `network.STAT_*` branch around it.
+
+**Quality measure verification**: `lint.sh`/`typecheck.sh` show 0 findings in both files (30
+pre-existing lint findings and 44 pre-existing typecheck findings remain, all confined to
+`improved-quality/`, unchanged by this cluster). `scripts/test.sh` full suite: 31/31 files, 0 FAIL —
+`test_asy_wifi_service.py` 170/170 (up from its prior baseline, the three new hotspot-timeout tests
+above plus the `get_task_starters()` update accounting for the difference), `test_asy_ntp_client.py`
+129/129, every other file's count unchanged from Cluster 7's last full run. No test dropped.
+
+**External references**: none beyond the standing MicroPython network/socket/DNS-currency check
+already covered by CLAUDE.md's "wedged I2C bus"/`socket.getaddrinfo()` findings (both files already
+avoid the documented can't-be-timeout-wrapped traps) — re-checked, no new relevant MicroPython
+issue-tracker finding has landed since the last check.
 
 **New findings (bidirectional Part C/D cross-check, 2026-08-07)**:
 
