@@ -827,7 +827,7 @@ def test_write_fails_cleanly_when_fram_is_write_protected() -> None:
 
 def test_operations_fail_cleanly_once_fram_chip_goes_uninitialized_mid_run() -> None:
     # Models a chip that stopped responding after a successful setup() - every FRAM_SPI call
-    # short-circuits on its own `uninitialized` guard before ever touching the bus. Distinct from
+    # short-circuits on its own `initialized` guard before ever touching the bus. Distinct from
     # the WREN-drop case: reads fail at the *read* step (errno 30) here since get_values() itself
     # refuses immediately, not just the subsequent status write (errno 32 for WREN-drop).
     manager, _chip = make_manager()
@@ -835,7 +835,7 @@ def test_operations_fail_cleanly_once_fram_chip_goes_uninitialized_mid_run() -> 
     chunk = manager.get_chunk(4, crc=CRC_Pass())
     assert chunk is not None
     run(chunk.write(b"good"))
-    manager.fram.uninitialized = True
+    manager.fram.initialized = False
 
     async def scenario() -> tuple[bool, bytearray | None, bool, dict]:
         write_ok = await chunk.write(b"data")

@@ -33,6 +33,7 @@ _ADDR_STATUS_2 = const(1)
 _NUM_STATUS_BYTES = const(2)
 _TS_FMT = const("<Q")  # explicit little-endian, no padding - matches print_log.py's own convention
 _TS_UNINIT = const(b"\x00")
+_NAME = const("FRAM")
 
 
 class _AsyBaseFramChunk:
@@ -572,14 +573,14 @@ class AsyFramManager:
     def __init__(
         self, spi_bus: SPI, spi_cs: int, max_size: int = 0x2000, history_length: int = 10, debug: int | None = None
     ) -> None:
-        self.pr = PrintLogHistory(history_length, debug)
+        self.pr = PrintLogHistory(history_length, debug, name=_NAME)
         self.size = max_size
         self.allocated_size = 0
         self._pause = False
         self.fram = FRAM_SPI(spi_bus, spi_cs, max_size=self.size, logger=self.pr)
 
     async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
-        return await self.pr.get_log("FRAM")
+        return await self.pr.get_log()
 
     def get_pause(self) -> bool:
         return self._pause

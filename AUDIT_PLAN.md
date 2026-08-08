@@ -1043,18 +1043,94 @@ already read and cross-checked against Adafruit's `Adafruit_FRAM_SPI` reference 
 file's own docstring; re-read only if this cluster's edits touch any register/timing-dependent
 behavior, which isn't expected (logging/naming only, no protocol change).
 
-**Status**: `[ ]` not started. Depends on Clusters 0 (crc_checks — omitted from an earlier draft of
-this line, added per the roadmap table), 1, 3-4.
+**Status**: `[x]` done.
+
+**Executed 2026-08-08**: Implemented exactly the plan above, plus this cluster's own New findings
+item below:
+
+- **`asy_fram_manager.py`**: added `_NAME = const("FRAM")` and threaded it through
+  `AsyFramManager.__init__`'s `self.pr = PrintLogHistory(history_length, debug, name=_NAME)`
+  (previously constructed with no `name=` at all). `get_error_counter()`'s
+  `self.pr.get_log("FRAM")` simplified to `self.pr.get_log()` (name-baking convention, matching
+  Cluster 1) — `get_log()`'s own `name=None` default already falls back to `self.name`, now
+  `"FRAM"`, so the returned dict's key is unchanged (`"FRAM"`), confirmed via the existing
+  `errs["FRAM"][...]` test assertions all staying green with no edits needed. `FRAM_SPI` needed no
+  constructor change for the name itself — it already receives `AsyFramManager`'s shared `self.pr`
+  via its existing `logger=` parameter, so every chunk class (`_AsyBaseFramChunk` and its two
+  subclasses) and `FRAM_SPI` itself now share one `"FRAM"`-named logger automatically.
+- **`asy_fram_driver.py`'s readiness-gate rename**: `FRAM_SPI.uninitialized` → `initialized`,
+  polarity flipped (`True`→not-ready becomes `False`→not-ready), at all 4 write sites (`__init__`,
+  `setup()`, `verify_present()`'s failure path) and 5 read sites (`get_write_protected()`,
+  `get_values()`, `set_values()`, `set_write_protected()`, `verify_present()`) — naming/polarity
+  only, the sentinel-returning behavior at every guard is unchanged, matching the readiness-gate
+  table's own "no behavior change" note.
+- **Scratch-buffer pre-allocation** (this cluster's own New findings item, below): `_check_device_id()`/
+  `_read_status()`/`_setup_addr_buffer()` now use `self._id_buf`/`self._status_buf`/`self._addr_buf`,
+  allocated once in `__init__` (the last one sized 3 vs 4 bytes from `max_size`, exactly as the old
+  per-call logic did) instead of a fresh `bytearray` on every call — matching `SCD30_I2C`'s
+  buffer-reuse pattern. Safe because every real call path reaches these three methods only while
+  holding `FRAM_SPI`'s own `asy_lock` (via the caller's `async with fram:`, or `verify_present()`'s
+  own explicit acquire) — confirmed by tracing every call site, not assumed.
+- **Persisted logging upgrade**: of `FRAM_SPI`'s 15 total `err()`/`wrn()` call sites (8 distinct
+  message categories, some repeated verbatim across methods — corrected count from this session's
+  full read, the plan's own "8 calls" phrasing meant distinct categories, not call sites), the 12
+  call sites forming those 8 categories that are genuinely actionable hardware-fault signals (WEL
+  didn't set ×2/didn't clear ×1, write-protect readback mismatch, device-not-initialized ×5,
+  invalid-address-range ×2, verify_present() lock-timeout) were upgraded to `err_s()`/`wrn_s()`,
+  sharing `AsyFramManager`'s errno space and continuing sequentially from where its own range ends:
+  `errno=89-97` (not-initialized ×5 across the 5 guarding methods, invalid-range ×2, readback
+  mismatch, lock-timeout), `wrnno=81-83` (WRDI-stuck-after-retry, WEL-didn't-set-in-`_write()`,
+  WEL-didn't-set-in-`set_write_protected()`). The remaining 3 call sites ("FRAM currently write
+  protected" and "FRAM access not locked!" ×2) were deliberately left on plain, non-persisted
+  `err()`/`wrn()` — routine/expected outcomes and a caller-contract violation respectively, not
+  hardware faults, matching the plan's own "genuinely actionable" framing. `FRAM_SPI.__init__`'s
+  `logger` parameter is now typed `PrintLogHistory` (was the narrower `PrintLog`), a real, required
+  change since `err_s()`/`wrn_s()` only exist on that subclass — every real production caller
+  (`AsyFramManager`) already passes a `PrintLogHistory` instance, so this is a type-hint correction
+  matching existing behavior, not a functional change.
+- **FRAM determinism re-confirmed**: re-checked `fram`/`sgp_reader`/`pixel`/`notify_service`
+  construction order in `improved-quality/sensortask-wozi.py` after landing the above — all four
+  remain unconditional, once-only, module-level constructions; the naming/logging changes here
+  touch no construction-order-relevant code path.
+- **Test suite**: `tests/test_asy_fram_driver.py` rewritten section-by-section — every
+  `fram.uninitialized` assertion flipped to `fram.initialized` (with polarity inverted to match),
+  `logger=PrintLog()` call sites switched to `logger=PrintLogHistory()` (required by the new type
+  hint), and a stale comment claiming "`FRAM_SPI` never calls the subclass-only `err_s()`/`wrn_s()`
+  methods" corrected (it now does). 13 new tests added, dedicated to the persisted-logging paths:
+  one per new `errno`/`wrnno` (before-setup ×5 combined via the 5 guarding methods' shared message,
+  invalid-range ×2, readback mismatch, WEL-related ×3, lock-timeout folded into the existing bounded-
+  wait test instead of a new ~1s-duplicate test) plus one confirming the two deliberately-excluded
+  message categories still produce zero persisted history. Final: 59/59 passing (up from 46).
+  `tests/test_asy_fram_manager.py` needed one call-site fix (`manager.fram.uninitialized = True` →
+  `manager.fram.initialized = False`, at the one place a test reaches into `FRAM_SPI` internals to
+  simulate the chip going away mid-run) — traced the resulting errno sequence by hand to confirm the
+  new `FRAM_SPI`-level errnos (89-97) interleaved into the same bounded 10-entry history don't evict
+  the chunk-level errno the test asserts on; confirmed with a real run, not just the trace: 96/96
+  passing, no assertion needed changing. `lint.sh`/`typecheck.sh`/`test.sh` all green across the
+  whole suite (0 new findings; two `mypy` "Missing return statement" false positives on two new
+  tests' `async with fram: return await ...` pattern fixed by matching the file's own established
+  `ok = await ...; return ok` shape used everywhere else in this file); no test dropped.
+
+**Incidental finding, not fixed here**: the "Standing conventions" readiness-gate table (above)
+lists `SPIDevice` (`asy_spi_driver.py`)'s own `uninitialized`→`initialized` rename under Cluster 4,
+alongside `FRAM_SPI`'s (assigned to this cluster). Cluster 4's own executed section, however,
+redefined its goal as a narrower verification-only pass ("no logging added (reverted)") and does not
+mention the `SPIDevice` rename at all — it was never actually done, and Cluster 4 is already marked
+`[x]` done with no note deferring it. This is exactly the kind of cross-section discrepancy the
+project's "flag, don't guess" agreement calls for surfacing rather than silently fixing — out of
+this cluster's own scope (`asy_spi_driver.py` isn't one of Cluster 6's files), so left for the
+project owner to decide: fold into Cluster 10's harmonization pass, or treat as a small standalone
+fix whenever `asy_spi_driver.py` is next touched.
 
 **New findings (bidirectional Part C/D cross-check, 2026-08-07)**:
 
-- `FRAM_SPI._check_device_id()`/`_read_status()`/`_setup_addr_buffer()` each allocate a fresh
-  `bytearray` on every call instead of a buffer sized once in `__init__` and reused — a real,
-  checkable divergence from C.3's scratch-buffer rule, notable because C.3.1 cites this exact file
-  as its only real SPI-driver example of that rule. Buffers are small (1-4 bytes), so impact is
-  low-medium, but `_setup_addr_buffer()` runs on every chunk read/write via `asy_fram_manager.py`,
-  so it's not a rare path. Pre-allocate once, matching `SCD30_I2C`'s buffer-reuse pattern, as part
-  of this cluster's own pass over the file.
+- **Closed, Cluster 6**: `FRAM_SPI._check_device_id()`/`_read_status()`/`_setup_addr_buffer()` each
+  allocate a fresh `bytearray` on every call instead of a buffer sized once in `__init__` and
+  reused — a real, checkable divergence from C.3's scratch-buffer rule, notable because C.3.1 cites
+  this exact file as its only real SPI-driver example of that rule. Buffers are small (1-4 bytes),
+  so impact is low-medium, but `_setup_addr_buffer()` runs on every chunk read/write via
+  `asy_fram_manager.py`, so it's not a rare path. Pre-allocated once now, matching `SCD30_I2C`'s
+  buffer-reuse pattern — see Cluster 6's own executed section above.
 - `asy_uart_driver.py` (tracked separately, harmonize-late — the two findings below are logged now
   so they aren't lost, but stay deferred to this file's actual Cluster-10 harmonization pass):
   1. **Undocumented/unverified bus fault surface.** `asy_i2c_driver.py`'s and `asy_spi_driver.py`'s
