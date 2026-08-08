@@ -97,7 +97,7 @@ class SGP40_Reader(SensorReaderConfig):
             except Exception:
                 self.ts_storage = None
             if self.ts_storage is None:
-                self.pr.err(_NAME, "FRAM backup storage allocation failed!")
+                self.pr.err("FRAM backup storage allocation failed!")
         self.last_backup: int | None = None
         self.restored_from: int | None = None
         self.reset = False
@@ -116,7 +116,7 @@ class SGP40_Reader(SensorReaderConfig):
 
         cfg_values = await self.cfgmgr.get_int_values(_VAL_BP + _VAL_BMAX + _VAL_WT)
         if cfg_values is None or len(cfg_values) != 3:
-            await self.pr.err_s(_NAME, "Error reading config data!", errno=12)
+            await self.pr.err_s("Error reading config data!", errno=12)
             return None, False, False, None
 
         serialize = False
@@ -124,7 +124,7 @@ class SGP40_Reader(SensorReaderConfig):
 
         # restore part
         if self.voc_init > 0:  # not yet initialized
-            self.pr.evt(_NAME, "VOC Backup laden Trigger")
+            self.pr.evt("VOC backup load trigger")
             self.voc_init -= 1  # countdown init timer
             deserialize = True
 
@@ -133,7 +133,7 @@ class SGP40_Reader(SensorReaderConfig):
         if cfg_values[0] > 0 and self.backup_counter >= (60 * cfg_values[0]):
             self.backup_counter = 0
             serialize = True
-        self.pr.all(_NAME, "Backup counter:", self.backup_counter, "Trigger:", 60 * cfg_values[0])
+        self.pr.all("Backup counter:", self.backup_counter, "Trigger:", 60 * cfg_values[0])
 
         if self.backup_counter >= 100000:
             self.backup_counter = 0
@@ -153,7 +153,7 @@ class SGP40_Reader(SensorReaderConfig):
         # ever affects the *next* cycle, never this one.
         reset_now = self.reset
         if reset_now:
-            self.pr.evt(_NAME, "Reset Trigger")
+            self.pr.evt("Reset trigger")
             self.backup_counter = 0
             serialize = False
             deserialize = False
@@ -164,17 +164,17 @@ class SGP40_Reader(SensorReaderConfig):
             elif not self._reset_fram_cleared:
                 self._reset_fram_cleared = await self.ts_storage.clear()
                 if not self._reset_fram_cleared:
-                    await self.pr.err_s(_NAME, "Fehler beim FRAM löschen!", errno=14)
+                    await self.pr.err_s("Error clearing FRAM!", errno=14)
 
         try:  # caller-supplied callback, could legitimately misbehave
             comp_data = await self.comp_callback()  # [Temperature, Humidity]
         except Exception as e:
-            await self.pr.err_s(_NAME, "Kompensationsdaten-Callback fehlgeschlagen:", e, errno=18)
+            await self.pr.err_s("Compensation data callback failed:", e, errno=18)
             comp_data = [None, None]
         if len(comp_data) != 2 or comp_data[0] is None or comp_data[1] is None:
-            await self.pr.wrn_s(_NAME, "hat keine Kompensationsdaten!", wrnno=14)
+            await self.pr.wrn_s("No compensation data available!", wrnno=14)
             if deserialize:
-                self.pr.evt(_NAME, "Initialisierung wird wiederholt...")
+                self.pr.evt("Retrying initialization...")
                 self.voc_init = 1  # retry init if triggered and no compensation data is available
                 self.backup_counter = 0  # no backup if restore is pending
             return SGP40(None, None, None), False, False
@@ -201,19 +201,19 @@ class SGP40_Reader(SensorReaderConfig):
             )
             if reset_now and self._reset_algo_applied and self._reset_fram_cleared:
                 self.reset = False
-            self.pr.all(_NAME, "gelesen")
+            self.pr.all("read")
 
             if deserialize:
                 if deserialized:
-                    self.pr.one(_NAME, "Restore erfolgreich angewandt")
+                    self.pr.one("Restore applied successfully")
                 else:
-                    await self.pr.err_s(_NAME, "Fehler beim Deserialisieren!", errno=15)
+                    await self.pr.err_s("Error deserializing!", errno=15)
 
             if serialize:
                 if serialized:
-                    self.pr.evt(_NAME, "Backupdaten erfolgreich erstellt")
+                    self.pr.evt("Backup data created successfully")
                 else:
-                    await self.pr.err_s(_NAME, "Fehler beim Serialisieren!", errno=16)
+                    await self.pr.err_s("Error serializing!", errno=16)
 
         except Exception as e:
             # I2C failed, but a pending reset_for_measure already completed above regardless.
@@ -221,7 +221,7 @@ class SGP40_Reader(SensorReaderConfig):
                 self.reset = False
             voc_index = raw = timestamp = None
             serialized = False
-            await self.pr.err_s(_NAME, "Lesefehler:", e, errno=17)
+            await self.pr.err_s("Read failed:", e, errno=17)
         return SGP40(voc_index, raw, timestamp), True, serialized
 
     async def _init_sgp(self) -> bool:
@@ -233,16 +233,16 @@ class SGP40_Reader(SensorReaderConfig):
         try:
             await self.sgp.setup()
         except Exception as e:
-            await self.pr.err_s(_NAME, "Error in initial setup:", e, errno=10)
+            await self.pr.err_s("Error in initial setup:", e, errno=10)
             return False  # error
 
         if self.ts_storage is None:
-            self.pr.one(_NAME, "initialized without storage")
+            self.pr.one("initialized without storage")
             return True  # no storage configured
 
         cfg_values = await self.cfgmgr.get_int_values(_VAL_BP + _VAL_WT)
         if cfg_values is None or len(cfg_values) != 2:
-            await self.pr.err_s(_NAME, "Error reading config data!", errno=11)
+            await self.pr.err_s("Error reading config data!", errno=11)
             return False  # error
 
         if cfg_values[0] > 0:  # backup verification period setting
@@ -255,7 +255,7 @@ class SGP40_Reader(SensorReaderConfig):
                 cfg_values[1] = _MAX_NTP_WAITTIME
             self.voc_init = cfg_values[1]  # SGPWaitTimeNTP
             self.voc_write = cfg_values[1]  # SGPWaitTimeNTP
-        self.pr.one(_NAME, "initialized with storage")
+        self.pr.one("initialized with storage")
         return True
 
     async def _run_restore(
@@ -269,24 +269,24 @@ class SGP40_Reader(SensorReaderConfig):
 
         res, ts, age = await self.ts_storage.read_into(buf)
         if not res:  # not valid / no backup
-            await self.pr.wrn_s(_NAME, "Kein Backup gefunden!", wrnno=10)
+            await self.pr.wrn_s("No backup found!", wrnno=10)
             self.voc_init = 0
             return False
 
         if ts is None:
-            await self.pr.wrn_s(_NAME, "Backup ohne Zeitstempel geladen", wrnno=11)
+            await self.pr.wrn_s("Backup loaded without timestamp", wrnno=11)
             self.voc_init = 0
             ts = -1  # means valid data, no timestamp
         else:  # backup has valid timestamp
             if age is None:
                 if self.voc_init > 0:
-                    self.pr.evt(_NAME, "Backup mit Zeitstempel gefunden, NTP Wartezeit:", self.voc_init)
+                    self.pr.evt("Backup with timestamp found, NTP wait time:", self.voc_init)
                     return False
             else:
-                self.pr.one(_NAME, "Backup mit Zeitstempel geladen")
+                self.pr.one("Backup with timestamp loaded")
                 self.voc_init = 0
                 if cfg_values[1] > 0 and age > (60 * cfg_values[1]):  # SGPBackupMaxAge
-                    await self.pr.wrn_s(_NAME, "Backup ist zu alt", wrnno=12)
+                    await self.pr.wrn_s("Backup is too old", wrnno=12)
                     return False
 
         self.restored_from = ts
@@ -301,7 +301,7 @@ class SGP40_Reader(SensorReaderConfig):
         if not serialize or self.ts_storage is None or buf is None or cfg_values is None:
             return  # no buffer / no trigger
 
-        self.pr.evt(_NAME, "Backup Trigger.")
+        self.pr.evt("Backup trigger.")
         if cfg_values[0] > 0:  # SGPBackupPeriod -  backup verification period setting
             current_verify = await self.ts_storage.get_verify()
             desired_verify = int(math.ceil((10 * _FRAM_VERIFY_MINS) / cfg_values[0]) * 0.1)  # SGPBackupPeriod
@@ -312,30 +312,30 @@ class SGP40_Reader(SensorReaderConfig):
             self.voc_write -= 1
         require_ntp = self.voc_write > 0
 
-        self.pr.evt(_NAME, "Schreibe Backup.")
+        self.pr.evt("Writing backup.")
         ntp_synced, ts, res = await self.ts_storage.write_into(buf, require_ntp=require_ntp)
 
         if require_ntp and not ntp_synced:  # no write due to no timesync yet
             # set backup counter to retry serialization in self._read_sgp()
             self.backup_counter = 60 * cfg_values[0]  # SGPBackupPeriod
-            self.pr.all(_NAME, "Backup NTP Wartezeit:", self.voc_write)
+            self.pr.all("Backup NTP wait time:", self.voc_write)
             return  # no write error
 
         if not res:  # no data was written for other reason
-            await self.pr.err_s(_NAME, "Schreibfehler beim Backup!", errno=13)
+            await self.pr.err_s("Write error during backup!", errno=13)
             return  # don't continue due to error
 
         if require_ntp:  # (ntp_synced and require_ntp) and res must have been True here
             self.voc_write = cfg_values[2]  # SGPWaitTimeNTP
             self.last_backup = ts
-            self.pr.evt(_NAME, "Backup mit Zeitstempel geschrieben.")
+            self.pr.evt("Backup written with timestamp.")
             return
 
         if ntp_synced:  # require_ntp was false from here on, but res was True
             self.voc_write = cfg_values[2]  # SGPWaitTimeNTP
-            self.pr.evt(_NAME, "Backup wieder mit Zeitstempel geschrieben.")
+            self.pr.evt("Backup written with timestamp again.")
         else:
-            await self.pr.wrn_s(_NAME, "Backup ohne Zeitstempel geschrieben.", wrnno=13)
+            await self.pr.wrn_s("Backup written without timestamp.", wrnno=13)
         self.last_backup = ts
         return
 
@@ -343,7 +343,7 @@ class SGP40_Reader(SensorReaderConfig):
         if data.VOC is None or data.Raw is None or data.TS is None:
             return  # don't run on invalid data
         await self._set_meas_data(data)
-        self.pr.all(_NAME, "Daten gespeichert")
+        self.pr.all("data stored")
 
     async def _push_reset_voc(self, value: int | float | str | bool | None) -> bool:
         # Narrows _push_callbacks' wide value type to reset_voc's real bool parameter. Deliberately
@@ -365,9 +365,9 @@ class SGP40_Reader(SensorReaderConfig):
                 mode=Timer.PERIODIC,
                 callback=lambda b: self.trigger_event.set(),
             )
-        except OSError as e:  # alarm-pool exhaustion (ENOMEM) - degrades gracefully instead of
-            # crashing the caller (this sensor just never gets triggered this cycle).
-            self.pr.err(_NAME, "Could not start timer:", e)
+        except (OSError, MemoryError) as e:  # alarm-pool exhaustion (ENOMEM) - degrades gracefully
+            # instead of crashing the caller (this sensor just never gets triggered this cycle).
+            self.pr.err("Could not start timer:", e)
 
     def get_task_starters(self) -> "list[Callable[[], asyncio.Task[Any]]]":
         return [self.start_asy_read]
@@ -398,7 +398,7 @@ class SGP40_Reader(SensorReaderConfig):
         return await self._get_dict_cfg(_NAME, _VAL_BP + _VAL_BMAX + _VAL_WT)
 
     async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
-        return await self.pr.get_log(_NAME)
+        return await self.pr.get_log()
 
     async def reset_voc(self, flag: bool) -> bool:
         # Uniform setter return contract (project-wide decision): True = applied, False = no-op.
@@ -419,7 +419,7 @@ class SGP40_Reader(SensorReaderConfig):
             return False  # break and restart if init fails
         while True:
             await self.trigger_event.wait()  # wait for read trigger event
-            self.pr.evt(_NAME, "sensor trigger")
+            self.pr.evt("sensor trigger")
             buf, serialize, deserialize, cfg_values = await self._check_storage()
             deserialize = await self._run_restore(buf, deserialize, cfg_values)  # check for available backup data
             data, compensated, serialize = await self._read_sgp(buf, serialize, deserialize)  # read data
@@ -438,7 +438,12 @@ class SGP40_DeviceSession(Lockable):  # lock for consecutive i2c communication a
 class SGP40_I2C:
     def __init__(self, i2c: "I2C", address: int = 0x59) -> None:
         self.i2c_sgp40 = SGP40_DeviceSession(I2CDevice(i2c, address))
-        self._command_buffer = bytearray(2)
+        self._default_command_buffer = bytearray(2)
+        self._command_buffer = self._default_command_buffer
+        # Sized for the only readlen actually used anywhere in this file (readlen=1, 3 bytes/word);
+        # _read_word_from_command() falls back to a fresh allocation if a future caller ever asks
+        # for more words than this holds.
+        self._reply_buffer = bytearray(3)
         self.crc = CRC8()
         self._measure_command = bytearray(b"\x26\x0f\x80\x00\xa2\x66\x66\x93")
         self._voc_algorithm: VOCAlgorithm | None = None
@@ -456,8 +461,9 @@ class SGP40_I2C:
 
         # The number of bytes to read back, based on the number of words to read
         replylen = readlen * 3
-        # recycle buffer for read/write w/length
-        replybuffer = bytearray(replylen)
+        # recycle self._reply_buffer for read/write w/length; fall back to a fresh allocation only
+        # if replylen doesn't match its pre-sized length (never happens today - see __init__).
+        replybuffer = self._reply_buffer if replylen == len(self._reply_buffer) else bytearray(replylen)
 
         async with sgp40.i2c_device as i2c:  # bus session
             await i2c.write(self._command_buffer)
@@ -475,11 +481,12 @@ class SGP40_I2C:
     async def _reset(self) -> None:
         # True I2C general-call reset (datasheet Table 17): 0x06 to the reserved address 0x00,
         # broadcast to every device on the bus. A NAK (OSError) is expected, not a failure.
-        async with self.i2c_sgp40 as sgp40:  # shared-bus lock: a general call affects every device
-            try:
-                sgp40.i2c_device.i2c.writeto(0x00, b"\x06")
-            except OSError:
-                pass
+        async with self.i2c_sgp40 as sgp40:  # device session
+            async with sgp40.i2c_device as i2c:  # bus session - a general call affects every device
+                try:
+                    i2c.i2c.writeto(0x00, b"\x06")
+                except OSError:
+                    pass
         await asyncio.sleep(1)
 
     @staticmethod
@@ -503,7 +510,7 @@ class SGP40_I2C:
             self._command_buffer = self._measure_command
             # 100ms: >3x margin over the datasheet's 30ms typ/max measurement duration (Table 8)
             read_value = await self._read_word_from_command(sgp40, delay_ms=100)
-            self._command_buffer = bytearray(2)
+            self._command_buffer = self._default_command_buffer
         if read_value is None:
             return None
         return read_value[0]

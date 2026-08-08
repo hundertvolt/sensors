@@ -135,10 +135,10 @@ class BMP3xx_Reader(SensorReaderConfig):
         try:
             timestamp = time.mktime(time.gmtime())
             pressure, temperature = await self.bmp.get_pressure_and_temperature()
-            self.pr.all(_NAME, "gelesen")
+            self.pr.all("read")
         except Exception as e:
             timestamp = pressure = temperature = None
-            await self.pr.err_s(_NAME, "Lesefehler:", e, errno=13)
+            await self.pr.err_s("Read failed:", e, errno=13)
         return pressure, temperature, timestamp
 
     async def _init_bmp(self) -> bool:
@@ -147,14 +147,14 @@ class BMP3xx_Reader(SensorReaderConfig):
         try:
             await self.bmp.setup()
         except Exception as e:
-            await self.pr.err_s(_NAME, "Error in initial setup:", e, errno=10)
+            await self.pr.err_s("Error in initial setup:", e, errno=10)
             return False  # error
 
-        self.pr.one(_NAME, "Setting sensor config at startup.")
+        self.pr.one("Setting sensor config at startup.")
 
         cfg_values = await self.cfgmgr.get_int_values(_VAL_SI + _VAL_POV + _VAL_TOV + _VAL_FC)
         if cfg_values is None or len(cfg_values) != 4:
-            await self.pr.err_s(_NAME, "Error reading config data!", errno=11)
+            await self.pr.err_s("Error reading config data!", errno=11)
             return False  # error
 
         # set_trigger_secs() never raises (logs errno=21, keeps the previous value) - a bad stored
@@ -165,9 +165,9 @@ class BMP3xx_Reader(SensorReaderConfig):
             await self.bmp.set_temperature_oversampling(cfg_values[2])  # BMPTempOvers
             await self.bmp.set_filter_coefficient(cfg_values[3])  # BMPFiltCoeff
         except Exception as e:
-            await self.pr.err_s(_NAME, "Error setting config data:", e, errno=12)
+            await self.pr.err_s("Error setting config data:", e, errno=12)
             return False  # error
-        self.pr.one(_NAME, "initialized")
+        self.pr.one("initialized")
         return True
 
     async def _store_bmp(self, results: "BMPResults") -> None:
@@ -177,7 +177,7 @@ class BMP3xx_Reader(SensorReaderConfig):
         comp_values = await self.cfgmgr.get_float_values(_VAL_PO + _VAL_TO + _VAL_SLO + _VAL_ATM)
         if comp_values is None or len(comp_values) != 4:
             comp_values = [0.0, 0.0, 0.0, 15.0]
-            await self.pr.err_s(_NAME, "Error reading config data!", errno=14)
+            await self.pr.err_s("Error reading config data!", errno=14)
 
         # results: (pressure, temperature, timestamp)
         p_comp = results[0] - comp_values[0]  # pressure - BMPPressOffset
@@ -191,7 +191,7 @@ class BMP3xx_Reader(SensorReaderConfig):
                 results[2],  # timestamp
             )
         )
-        self.pr.all(_NAME, "Daten gespeichert")
+        self.pr.all("data stored")
         return
 
     async def _push_trigger_secs(self, value: int | float | str | bool | None) -> bool:
@@ -238,9 +238,9 @@ class BMP3xx_Reader(SensorReaderConfig):
                 mode=Timer.PERIODIC,
                 callback=lambda b: self.base_trigger_event.set(),
             )
-        except OSError as e:  # alarm-pool exhaustion (ENOMEM) - degrades gracefully instead of
-            # crashing the caller (this sensor just never gets triggered this cycle).
-            self.pr.err(_NAME, "Could not start timer:", e)
+        except (OSError, MemoryError) as e:  # alarm-pool exhaustion (ENOMEM) - degrades gracefully
+            # instead of crashing the caller (this sensor just never gets triggered this cycle).
+            self.pr.err("Could not start timer:", e)
 
     def get_task_starters(self) -> "list[Callable[[], asyncio.Task[Any]]]":
         return [self.start_asy_read, self.start_asy_trigger]
@@ -262,7 +262,7 @@ class BMP3xx_Reader(SensorReaderConfig):
         return make_dict(data)
 
     async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
-        return await self.pr.get_log(_NAME)
+        return await self.pr.get_log()
 
     async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         return await self._get_dict_cfg(
@@ -275,21 +275,21 @@ class BMP3xx_Reader(SensorReaderConfig):
         try:
             return await self.bmp.get_pressure_oversampling()
         except Exception as e:
-            await self.pr.err_s(_NAME, "Error reading pressure oversampling:", e, errno=15)
+            await self.pr.err_s("Error reading pressure oversampling:", e, errno=15)
             return None
 
     async def get_temperature_oversampling(self) -> int | None:
         try:
             return await self.bmp.get_temperature_oversampling()
         except Exception as e:
-            await self.pr.err_s(_NAME, "Error reading temperature oversampling:", e, errno=17)
+            await self.pr.err_s("Error reading temperature oversampling:", e, errno=17)
             return None
 
     async def get_filter_coefficient(self) -> int | None:
         try:
             return await self.bmp.get_filter_coefficient()
         except Exception as e:
-            await self.pr.err_s(_NAME, "Error reading filter coefficient:", e, errno=19)
+            await self.pr.err_s("Error reading filter coefficient:", e, errno=19)
             return None
 
     async def set_trigger_secs(self, value: int | float) -> bool:
@@ -301,7 +301,7 @@ class BMP3xx_Reader(SensorReaderConfig):
             if not (_MIN_TRIGGER_SECS <= trigger_secs <= _MAX_TRIGGER_SECS):
                 raise ValueError(f"trigger interval must be between {_MIN_TRIGGER_SECS} and {_MAX_TRIGGER_SECS} seconds")
         except (TypeError, ValueError, OverflowError) as e:
-            await self.pr.err_s(_NAME, "Error setting trigger interval:", e, errno=21)
+            await self.pr.err_s("Error setting trigger interval:", e, errno=21)
             return False
         await self.trigger_period.set_value(trigger_secs)
         return True
@@ -311,7 +311,7 @@ class BMP3xx_Reader(SensorReaderConfig):
             await self.bmp.set_pressure_oversampling(oversample)
             return True
         except Exception as e:
-            await self.pr.err_s(_NAME, "Error setting pressure oversampling:", e, errno=16)
+            await self.pr.err_s("Error setting pressure oversampling:", e, errno=16)
             return False
 
     async def set_temperature_oversampling(self, oversample: int) -> bool:
@@ -319,7 +319,7 @@ class BMP3xx_Reader(SensorReaderConfig):
             await self.bmp.set_temperature_oversampling(oversample)
             return True
         except Exception as e:
-            await self.pr.err_s(_NAME, "Error setting temperature oversampling:", e, errno=18)
+            await self.pr.err_s("Error setting temperature oversampling:", e, errno=18)
             return False
 
     async def set_filter_coefficient(self, coef: int) -> bool:
@@ -327,7 +327,7 @@ class BMP3xx_Reader(SensorReaderConfig):
             await self.bmp.set_filter_coefficient(coef)
             return True
         except Exception as e:
-            await self.pr.err_s(_NAME, "Error setting filter coefficient:", e, errno=20)
+            await self.pr.err_s("Error setting filter coefficient:", e, errno=20)
             return False
 
     async def read_loop(self) -> bool:
@@ -335,7 +335,7 @@ class BMP3xx_Reader(SensorReaderConfig):
             return False  # break and restart if init fails
         while True:
             await self.trigger_event.wait()  # wait for read trigger event
-            self.pr.evt(_NAME, "sensor trigger")
+            self.pr.evt("sensor trigger")
             results = await self._read_bmp()  # read data
             if not await self._error_check(results):  # check and count errors
                 return False  # break and restart if too many errors

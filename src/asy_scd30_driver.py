@@ -80,6 +80,7 @@ class SCD30_Reader(SensorReader):
             fram=fram,
             history_length=history_length,
             debug=debug,
+            name=_NAME,
         )
         self.scd = SCD30_I2C(i2c)
         self.irq_pin = Pin(irq_pin, mode=Pin.IN)
@@ -108,9 +109,9 @@ class SCD30_Reader(SensorReader):
         try:
             await self.scd.setup()
         except Exception as e:
-            await self.pr.err_s(_NAME, "Error in initial setup:", e, errno=10)
+            await self.pr.err_s("Error in initial setup:", e, errno=10)
             return False
-        self.pr.one(_NAME, "initialized")
+        self.pr.one("initialized")
         return True
 
     async def _read_scd(self) -> "SCDResults":
@@ -122,10 +123,10 @@ class SCD30_Reader(SensorReader):
             co2 = await self.scd.get_CO2()
             temperature = await self.scd.get_temperature()
             humidity = await self.scd.get_relative_humidity()
-            self.pr.all(_NAME, "gelesen")
+            self.pr.all("read")
         except Exception as e:
             timestamp = co2 = temperature = humidity = None
-            await self.pr.err_s(_NAME, "Lesefehler:", e, errno=11)
+            await self.pr.err_s("Read failed:", e, errno=11)
         return co2, temperature, humidity, timestamp
 
     async def _store_scd(self, results: "SCDResults") -> None:
@@ -141,7 +142,7 @@ class SCD30_Reader(SensorReader):
                 TS=results[3],
             )
         )
-        self.pr.all(_NAME, "Daten gespeichert")
+        self.pr.all("data stored")
 
     def start_asy_read(self) -> asyncio.Task[bool]:
         evtloop = asyncio.get_event_loop()
@@ -158,9 +159,9 @@ class SCD30_Reader(SensorReader):
                 mode=Timer.PERIODIC,
                 callback=lambda b: self.start_trigger_event.set(),
             )
-        except OSError as e:  # alarm-pool exhaustion (ENOMEM) - degrades gracefully instead of
-            # crashing the caller (this sensor just never gets triggered this cycle).
-            self.pr.err(_NAME, "Could not start timer:", e)
+        except (OSError, MemoryError) as e:  # alarm-pool exhaustion (ENOMEM) - degrades gracefully
+            # instead of crashing the caller (this sensor just never gets triggered this cycle).
+            self.pr.err("Could not start timer:", e)
         self.irq_pin.irq(
             trigger=self.irq_pin.IRQ_RISING,
             handler=lambda b: self.irq_trigger_event.set(),
@@ -171,6 +172,9 @@ class SCD30_Reader(SensorReader):
 
     def get_timer_starters(self) -> "list[Callable[[], None]]":
         return [self.start_timer]
+
+    def stop_timer(self) -> None:
+        self.start_trigger_timer.deinit()
 
     async def get_data(self) -> SCD30:
         # Narrows _get_meas_data()'s generic "NamedTuple" to this Reader's concrete SCD30;
@@ -190,48 +194,48 @@ class SCD30_Reader(SensorReader):
         )
 
     async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
-        return await self.pr.get_log(_NAME)
+        return await self.pr.get_log()
 
     async def get_measurement_interval(self) -> int | None:
         try:
             return await self.scd.get_measurement_interval()
         except Exception as e:
-            await self.pr.err_s(_NAME, "Error reading measurement interval:", e, errno=13)
+            await self.pr.err_s("Error reading measurement interval:", e, errno=13)
             return None
 
     async def get_self_calibration_enabled(self) -> bool | None:
         try:
             return await self.scd.get_self_calibration_enabled()
         except Exception as e:
-            await self.pr.err_s(_NAME, "Error reading self calibration enabled:", e, errno=15)
+            await self.pr.err_s("Error reading self calibration enabled:", e, errno=15)
             return None
 
     async def get_ambient_pressure(self) -> int | None:
         try:
             return await self.scd.get_ambient_pressure()
         except Exception as e:
-            await self.pr.err_s(_NAME, "Error reading ambient pressure:", e, errno=17)
+            await self.pr.err_s("Error reading ambient pressure:", e, errno=17)
             return None
 
     async def get_altitude(self) -> int | None:
         try:
             return await self.scd.get_altitude()
         except Exception as e:
-            await self.pr.err_s(_NAME, "Error reading altitude:", e, errno=19)
+            await self.pr.err_s("Error reading altitude:", e, errno=19)
             return None
 
     async def get_temperature_offset(self) -> float | None:
         try:
             return await self.scd.get_temperature_offset()
         except Exception as e:
-            await self.pr.err_s(_NAME, "Error reading temperature offset:", e, errno=21)
+            await self.pr.err_s("Error reading temperature offset:", e, errno=21)
             return None
 
     async def get_forced_recalibration_reference(self) -> int | None:
         try:
             return await self.scd.get_forced_recalibration_reference()
         except Exception as e:
-            await self.pr.err_s(_NAME, "Error reading forced recalibration reference:", e, errno=23)
+            await self.pr.err_s("Error reading forced recalibration reference:", e, errno=23)
             return None
 
     async def set_measurement_interval(self, value: int) -> bool:
@@ -239,7 +243,7 @@ class SCD30_Reader(SensorReader):
             await self.scd.set_measurement_interval(value)
             return True
         except Exception as e:
-            await self.pr.err_s(_NAME, "Error setting measurement interval:", e, errno=14)
+            await self.pr.err_s("Error setting measurement interval:", e, errno=14)
             return False
 
     async def set_self_calibration_enabled(self, enabled: bool) -> bool:
@@ -247,7 +251,7 @@ class SCD30_Reader(SensorReader):
             await self.scd.set_self_calibration_enabled(enabled)
             return True
         except Exception as e:
-            await self.pr.err_s(_NAME, "Error setting self calibration enabled:", e, errno=16)
+            await self.pr.err_s("Error setting self calibration enabled:", e, errno=16)
             return False
 
     async def set_ambient_pressure(self, pressure_mbar: int | float) -> bool:
@@ -255,7 +259,7 @@ class SCD30_Reader(SensorReader):
             await self.scd.set_ambient_pressure(pressure_mbar)
             return True
         except Exception as e:
-            await self.pr.err_s(_NAME, "Error setting ambient pressure:", e, errno=18)
+            await self.pr.err_s("Error setting ambient pressure:", e, errno=18)
             return False
 
     async def set_altitude(self, altitude: int) -> bool:
@@ -263,7 +267,7 @@ class SCD30_Reader(SensorReader):
             await self.scd.set_altitude(altitude)
             return True
         except Exception as e:
-            await self.pr.err_s(_NAME, "Error setting altitude:", e, errno=20)
+            await self.pr.err_s("Error setting altitude:", e, errno=20)
             return False
 
     async def set_temperature_offset(self, offset: int | float) -> bool:
@@ -271,7 +275,7 @@ class SCD30_Reader(SensorReader):
             await self.scd.set_temperature_offset(offset)
             return True
         except Exception as e:
-            await self.pr.err_s(_NAME, "Error setting temperature offset:", e, errno=22)
+            await self.pr.err_s("Error setting temperature offset:", e, errno=22)
             return False
 
     async def set_forced_recalibration_reference(self, reference_value: int) -> bool:
@@ -279,25 +283,22 @@ class SCD30_Reader(SensorReader):
             await self.scd.set_forced_recalibration_reference(reference_value)
             return True
         except Exception as e:
-            await self.pr.err_s(_NAME, "Error setting forced recalibration reference:", e, errno=24)
+            await self.pr.err_s("Error setting forced recalibration reference:", e, errno=24)
             return False
-
-    def stop_timer(self) -> None:
-        self.start_trigger_timer.deinit()
 
     async def read_loop(self) -> bool:
         if not await self._init_scd():
             return False
         while True:
             await self.irq_trigger_event.wait()
-            self.pr.evt(_NAME, "sensor trigger")
+            self.pr.evt("sensor trigger")
             self.scd_timer_triggers = 0
             results = await self._read_scd()
             if not await self._error_check(results):
                 return False
             await self._store_scd(results)
 
-    # CO2 Sensor IRQ triggern falls es nicht läuft (Pin bleibt HIGH wenn nicht gelesen!)
+    # Trigger the CO2 sensor IRQ if it isn't running (pin stays HIGH if not read!)
     async def scd_init_irq(self) -> None:
         while True:
             await self.start_trigger_event.wait()
@@ -305,7 +306,7 @@ class SCD30_Reader(SensorReader):
                 self.scd_timer_triggers += 1
 
             if self.scd_timer_triggers >= self.trigger_half_sec:  # consecutive intervals seen (500ms rate)
-                self.pr.evt(_NAME, "Interrupt Start Trigger")
+                self.pr.evt("Interrupt Start Trigger")
                 self.irq_trigger_event.set()
 
     # Selected low-level driver forwards below: each failure is logged via self.pr (not swallowed
@@ -319,7 +320,7 @@ class SCD30_Reader(SensorReader):
             await self.scd.stop_continuous_measurement()
             return True
         except Exception as e:
-            await self.pr.err_s(_NAME, "Error stopping continuous measurement:", e, errno=12)
+            await self.pr.err_s("Error stopping continuous measurement:", e, errno=12)
             return False
 
 

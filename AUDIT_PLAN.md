@@ -1230,7 +1230,102 @@ datasheet (all in `datasheets/`, per CLAUDE.md) — already the basis for these 
 if any oversampling/filter/compensation/backup-timing formula is touched, which this cluster's
 scope (logging/naming/language only) doesn't call for.
 
-**Status**: `[ ]` not started. Depends on Clusters 0-4, 6. Full reads done — ready to execute.
+**Status**: `[x]` done.
+
+**Executed 2026-08-08**: All three files' `err_s`/`wrn_s`/`evt`/`one`/`all`/`get_log()` call sites
+had their manual `_NAME` first argument stripped (name is now automatic via `self.pr`'s
+name-baking — the `_NAME`/`name` arguments passed to `super().__init__()`/`_get_dict_cfg()` at
+construction/schema-key sites are unaffected, since those aren't logging calls). German strings
+translated to English: BMP3xx's/SCD30's "gelesen"→"read" and "Daten gespeichert"→"data stored"
+(identical phrasing across both files, kept identical in translation too); SGP40's real count
+(confirmed by the full read, not the plan's earlier ~26 estimate) was 24 phrases across
+`_check_storage`/`_read_sgp`/`_run_restore`/`_run_backup`/`_store_sgp`, all translated (e.g. "Kein
+Backup gefunden!"→"No backup found!", "Backup mit Zeitstempel geschrieben."→"Backup written with
+timestamp.") — a handful of `_NAME`-prefixed calls in that file (`"FRAM backup storage allocation
+failed!"`, `"Reset Trigger"`→kept as "Reset trigger" since "Trigger" reads as English either way,
+etc.) were already English and only needed the `_NAME` strip. SCD30's line-300 German code comment
+translated to "Trigger the CO2 sensor IRQ if it isn't running (pin stays HIGH if not read!)". Each
+driver's one `start_timer()` `except OSError` widened to `except (OSError, MemoryError) as e:`
+(resolved defensive-catch decision). Cluster 4's bus-layer upstream-coverage check re-confirmed by
+direct read: every `I2CDevice`/`SPIDevice` (n/a here) call in all three protocol classes
+(`BMP3XX_I2C`, `SCD30_I2C`, `SGP40_I2C`) happens inside a `try`-wrapped Reader-layer method, no bare
+call site found. FRAM determinism re-confirmed for `SGP40_Reader`'s VOC-backup chunk:
+`self.ts_storage = fram_storage.get_timestamped_chunk(...)` is still the single call site, inside
+`__init__`, guarded by its own `try/except` — unchanged, still holds.
+
+**New findings, closed**: `SCD30_Reader.stop_timer()` moved to sit immediately after
+`get_timer_starters()`, matching `BMP3xx_Reader`/`SGP40_Reader`'s D.15 placement — pure reorder, no
+body/decorator/comment changes; `stop_continuous_measurement()` itself was deliberately left where
+it already was (last method in the class), since D.15's own clarified `stop_*` wording puts it in
+Setters/Others, not Starters, and no sibling file gave a concrete precedent for exactly where a
+lone Setters-role `stop_*` business-logic method belongs relative to `read_loop()`/`scd_init_irq()`
+("Others"), so the minimal, targeted fix (only what the finding actually flagged) was applied
+rather than a speculative full re-sort. `asy_sgp40_driver.py::SGP40_I2C.__init__` gained two
+pre-allocated buffers — `self._default_command_buffer` (swapped back into `self._command_buffer` by
+`get_raw()` instead of `bytearray(2)`-reallocating every call) and `self._reply_buffer` (a 3-byte
+buffer sized for the only `readlen` value any call site in this file ever uses; reused by reference
+in `_read_word_from_command()` when the requested `replylen` matches, with a fresh-allocation
+fallback preserved for a hypothetical future `readlen != 1` caller — never hit today, confirmed by
+reading every call site). `asy_sgp40_driver.py::SGP40_I2C._reset()` now nests
+`async with sgp40.i2c_device as i2c:` around the general-call `i2c.i2c.writeto(0x00, b"\x06")`,
+matching every other SGP40 transaction's double-nested device-session/bus-session lock shape and
+closing the C.8 gap (the general call now genuinely holds the shared bus lock, not just the
+device-session lock).
+
+**Real bug found and fixed while re-running the test suite**: stripping `get_log(_NAME)` down to
+`get_log()` in `asy_scd30_driver.py` surfaced that `SCD30_Reader.__init__`'s `super().__init__()`
+call never passed `name=_NAME` at all — unlike `BMP3xx_Reader`/`SGP40_Reader`, where `name` is a
+*required* positional parameter on `SensorReaderConfig.__init__` and so was forced through at
+Cluster 3 time, `SensorReader.__init__`'s `name: str = ""` has a default, so `SCD30_Reader` (a
+plain `SensorReader` subclass) could silently omit it and still run. `self.pr.name` had therefore
+been `""` since Cluster 3 landed — masked until now because every direct `self.pr.*` call site
+passed `_NAME` as an explicit message argument (so the console line still showed "SCD30" as the
+first *argument* after the empty baked name), and `get_log(_NAME)`'s explicit override argument
+bypassed the empty `self.pr.name` entirely. Stripping that override exposed it: `get_log()` fell
+back to `self.pr.name` (`""`), so every caller expecting `counter["SCD30"]` got `KeyError: SCD30` —
+8 test failures across `test_asy_scd30_driver.py` and `test_notification_scd30_integration.py`.
+Fixed by adding `name=_NAME` to `SCD30_Reader.__init__`'s `super().__init__()` call, matching every
+other `*_Reader`'s own constructor. Full `scripts/test.sh` re-run clean afterward (31/31 files,
+0 FAIL) — first run (before the fix) was 23/31 files clean with these 8 failures, confirming the
+fix was both necessary and sufficient.
+
+**Owner-approved `sensortask-wozi.py` await-`setup()` scope item — already resolved, no new edit
+needed**: Cluster 7's own Goal text (above) asked for `BMP3xx_Reader`/`SGP40_Reader`'s
+`sensortask-wozi.py` construction sites to be updated to `await` the new `SensorReaderConfig.setup()`.
+Checked first (per that text's own instruction) whether either driver defines its own async
+setup/init method that this should unify with: `BMP3XX_I2C.setup()`/`SGP40_I2C.setup()` are the
+*protocol-layer* sensors' own hardware setup (called from `_init_bmp()`/`_init_sgp()` inside
+`read_loop()`, not from `__init__`/any `setup()`) — a different, non-conflicting concern from the
+inherited `SensorReaderConfig.setup()` (which only awaits `self.cfgmgr.setup()`); neither
+`BMP3xx_Reader` nor `SGP40_Reader` overrides `setup()` itself, so no unification is needed. The
+actual construction-site edit, however, lands in `improved-quality/sensortask-wozi.py`, which is
+out of routine-editing scope per CLAUDE.md's hard rules — and the global "Resolved" decision log
+entry for this exact ripple (`AUDIT_PLAN.md`'s own text, cross-referenced above) already states
+"this doesn't need resolving now — Stage 1's actual rewrite is out of this audit's scope."
+`WIRING_CONTRACT.md`'s "New structural fallout from AUDIT_PLAN.md's resolved `ConfigManager`
+setup()-ripple decision" section already records this exact fallout (from a prior session) in
+enough detail for Stage 1 not to be blindsided — re-checked this session and still accurate, no
+update needed. No `improved-quality/sensortask-wozi.py` edit was made.
+
+**Incidental finding, not fixed here (flagged only, out of this cluster's file scope)**:
+`base_classes.py`'s `_error_check()` (`await self.pr.err_s("Fehlerzähler erhöht auf", ...)`/
+`await self.pr.err_s("Maximale Fehleranzahl erreicht!", ...)`) and its own `else` branch's
+`self.pr.err("Fehlerzähler zurück auf", ...)` are still German — Cluster 3's own execution restructured
+these calls (dropped the redundant `name` parameter, switched from string concatenation to positional
+args) but didn't translate the message text itself, and this cluster's own scope is the three driver
+files only, not `base_classes.py`. Since CLAUDE.md's owner decision extends English-standardization
+to comments as well as strings project-wide, this is presumably still open — flagged for whichever
+future session/cluster next touches `base_classes.py`, not fixed here (out of Cluster 7's own file
+scope, and `base_classes.py` isn't otherwise touched by anything in this cluster's work).
+
+**Quality measure verification**: `lint.sh` — 0 findings in any of the three files (30 pre-existing
+findings elsewhere, all in `improved-quality/sensortask-wozi.py`, unchanged baseline); `typecheck.sh`
+— 44 pre-existing errors, all in `improved-quality/sensortask-wozi.py`, unchanged baseline, 0 in the
+three Cluster 7 files; `test.sh` — 31/31 files, 0 FAIL (after the SCD30 name-bug fix above); no test
+dropped, no test file needed new tests (this cluster's changes are pure logging/naming/reorder/
+buffer-reuse/lock-nesting, not new observable behavior beyond what the existing suite already
+covers — the SCD30 name-bug counts as a regression caught by the *existing* suite, not evidence a
+new test was needed).
 
 **New findings (bidirectional Part C/D cross-check, 2026-08-07)**:
 
