@@ -50,7 +50,7 @@ _VAL_BOOL_FIELDS = _VAL_AUTO_ON
 # assembles at runtime from however many signals registered.
 _VAL_OWN_SCHEMA = _VAL_INT_FIELDS + _VAL_FLOAT_FIELDS + _VAL_BOOL_FIELDS
 
-# Minimal but real measurement snapshot (DRIVER_SPEC.md's get_data()/get_dict_data() shape, same as
+# Minimal but real measurement snapshot (SPECIFICATION.md C.4.2's get_data()/get_dict_data() shape, same as
 # every other Reader) - whether anything was triggered as of the most recently completed poll cycle.
 NOTIFY = namedtuple("NOTIFY", ("Triggered", "TS"))
 
@@ -69,8 +69,7 @@ class NotificationSignal:
         self.field_schema = field_schema
         self.color = color  # per-channel weight (0/1), scaled by FlashBri at trigger time
         self.above = above
-        # Only ever touched by the coordinator's single poll-loop task - no lock needed (see
-        # src/README.md section 4's "don't add locking just in case").
+        # Only ever touched by the coordinator's single poll-loop task - no lock needed.
         self.last_value: int | float | None = None
         self.triggered = False
 
@@ -178,7 +177,7 @@ class NotificationCoordinator(SensorReaderConfig):
         return [self.start_asy_notify_monitor, self.start_asy_auto_override]
 
     def get_timer_starters(self) -> "list[Callable[[], None]]":
-        return []  # no machine.Timer anywhere in this file (DRIVER_SPEC.md section 9 shape)
+        return []  # no machine.Timer anywhere in this file (SPECIFICATION.md C.9 shape)
 
     async def get_data(self) -> NOTIFY:
         if not self._finalized:  # finalize() hasn't run yet - self._datastruct doesn't exist; caller-ordering

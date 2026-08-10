@@ -1,6 +1,6 @@
 """Sensirion SGP40 VOC sensor driver: SGP40_I2C (chip protocol) and SGP40_Reader (async wrapper -
 trigger timer, read loop, error counting, config schema, FRAM backup/restore of voc_algorithm.py's
-VOCAlgorithm state), same shape as asy_scd30_driver.py/asy_bmp3xx_driver.py (see DRIVER_SPEC.md).
+VOCAlgorithm state), same shape as asy_scd30_driver.py/asy_bmp3xx_driver.py (see SPECIFICATION.md Part C).
 Verified against Sensirion's SGP40 datasheet (datasheets/sgp40/, v1.2 - Feb 2022).
 """
 
@@ -40,7 +40,7 @@ _VAL_BP = const((("BackupPeriod", "int", 1, 0, 1440, None),))
 _VAL_BMAX = const((("BackupMaxAge", "int", 7200, 0, 10080, None),))
 _VAL_WT = const((("WaitTimeNTP", "int", 30, 0, 600, None),))
 # Command-only trigger, not a persisted config value - reuses the schema's "special-alone" field
-# convention (def=None + a non-tuple special, see DRIVER_SPEC.md §5.2.1). Deliberately excluded
+# convention (def=None + a non-tuple special, see SPECIFICATION.md C.5). Deliberately excluded
 # from get_dict_cfg()'s own schema argument below - this key is never in ConfigManager's _cache.
 _VAL_RESET = const((("SGPResetVOC", "bool", None, None, None, True),))
 
@@ -348,7 +348,7 @@ class SGP40_Reader(SensorReaderConfig):
     async def _push_reset_voc(self, value: int | float | str | bool | None) -> bool:
         # Narrows _push_callbacks' wide value type to reset_voc's real bool parameter. Deliberately
         # does NOT forward reset_voc()'s own return value: it uses False for "no-op" (see its own
-        # docstring), not "push failed" (DRIVER_SPEC.md §5.2.1) - always reports success once typed.
+        # docstring), not "push failed" (SPECIFICATION.md C.5.2) - always reports success once typed.
         if not isinstance(value, bool):
             return False
         await self.reset_voc(value)
@@ -384,7 +384,7 @@ class SGP40_Reader(SensorReaderConfig):
     async def get_data(self) -> SGP40:
         # Narrows _get_meas_data()'s generic "NamedTuple" to this Reader's concrete SGP40;
         # typing.cast() isn't usable (no runtime presence on MicroPython) so this identity return
-        # does the same job - see DRIVER_SPEC.md's get_data() narrowing convention.
+        # does the same job - see SPECIFICATION.md C.4.2's get_data() narrowing convention.
         return await self._get_meas_data()  # type: ignore[return-value]
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:

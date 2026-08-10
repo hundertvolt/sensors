@@ -255,10 +255,10 @@ class SensorReaderConfig(SensorReader):
             name,
         )
         # Per-field live-push callbacks: a subclass registers {field_name: async_push_fn} entries
-        # after super().__init__(); a field with no entry is persist-only (see DRIVER_SPEC.md §5.2).
+        # after super().__init__(); a field with no entry is persist-only (see SPECIFICATION.md C.5.2).
         self._push_callbacks: dict[str, Callable[[int | float | str | bool | None], Coroutine[Any, Any, bool]]] = {}
         # Per-field live read-back for _recover_failed_push's fallback chain below (optional, unlike
-        # _push_callbacks); a field with no entry skips to the next rung (see DRIVER_SPEC.md §5.2.2).
+        # _push_callbacks); a field with no entry skips to the next rung (see SPECIFICATION.md C.5.2).
         self._get_callbacks: dict[str, Callable[[], Coroutine[Any, Any, int | float | str | bool | None]]] = {}
 
     async def setup(self) -> None:
@@ -279,7 +279,7 @@ class SensorReaderConfig(SensorReader):
     async def _set_dict_cfg(
         self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "ConfigSchema"
     ) -> "WriteValidity":
-        # Setter mirror of _get_dict_cfg (see DRIVER_SPEC.md §5.2): persist first, then push live only
+        # Setter mirror of _get_dict_cfg (see SPECIFICATION.md C.5.2): persist first, then push live only
         # changed fields with a callback. Snapshot each field's pre-write value first - the one
         # _recover_failed_push rung that only exists here, before the write below overwrites it.
         try:  # _get_mgr_cfg is an overridable extension point, same defense as _get_dict_cfg's own use of it
@@ -335,7 +335,7 @@ class SensorReaderConfig(SensorReader):
         old_values: "dict[str, int | float | str | bool | None]",
         cfg_vals: "ConfigSchema",
     ) -> None:
-        # Recovery chain for a failed live push (see DRIVER_SPEC.md §5.2.2): live read-back via
+        # Recovery chain for a failed live push (see SPECIFICATION.md C.5.2): live read-back via
         # _get_callbacks, else old_values' pre-write snapshot, else the schema default - written
         # back through _set_mgr_cfg only, bypassing _push_callbacks so a failing push can't loop.
         field = schema_dict(cfg_vals).get(key)
@@ -369,5 +369,5 @@ class SensorReaderConfig(SensorReader):
 
     def get_cfg_schema(self) -> "ConfigSchema":
         # Captured once from super().__init__()'s default_vals; sync (no I/O/locking involved).
-        # self.cfg_schema stays a public attribute too - see DRIVER_SPEC.md §5.1.
+        # self.cfg_schema stays a public attribute too - see SPECIFICATION.md C.5.1.
         return self.cfg_schema

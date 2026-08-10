@@ -62,10 +62,10 @@ def altitude_baro(p0: float | None, dh: float | None, tmean: float | None) -> fl
     if not (300.0 <= p0 <= 1250.0 and -9000.0 <= dh <= 9000.0 and -40.0 <= tmean <= 85.0):
         return None
     try:
+        # g = 9.80665; M = 0.0289644; T0 = 273.15; R = 8.31446261815324
         return p0 * math.exp(-dh * ((0.0289644 * 9.80665) / (8.31446261815324 * (tmean + 273.15))))
     except (ValueError, ArithmeticError):
         return None
-    # g = 9.80665; M = 0.0289644; T0 = 273.15; R = 8.31446261815324
 
 
 def abs_humidity(temperature: float | None, humidity: float | None) -> float | None:

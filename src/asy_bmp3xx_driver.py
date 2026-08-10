@@ -1,6 +1,6 @@
 """Async I2C driver for the Bosch BMP384/BMP388/BMP390 (Sparkfun breakout, forced-mode reads only).
 BMP3XX_I2C is the protocol layer; BMP3xx_Reader is the asyncio task/config layer (see
-DRIVER_SPEC.md). Verified against BST-BMP388-DS001/BST-BMP384-DS003 (datasheets/bmp3xx/) and the
+SPECIFICATION.md Part C). Verified against BST-BMP388-DS001/BST-BMP384-DS003 (datasheets/bmp3xx/) and the
 official BMP3_SensorAPI reference driver.
 """
 
@@ -113,8 +113,8 @@ class BMP3xx_Reader(SensorReaderConfig):
         self._push_callbacks[name_cfg(_VAL_POV)] = self._push_pressure_oversampling
         self._push_callbacks[name_cfg(_VAL_TOV)] = self._push_temperature_oversampling
         self._push_callbacks[name_cfg(_VAL_FC)] = self._push_filter_coefficient
-        # Live sensor read-back for _set_dict_cfg's failed-push recovery chain (DRIVER_SPEC.md
-        # §5.2.2); SampleInterv is a pure software timing knob with no hardware read-back, so it
+        # Live sensor read-back for _set_dict_cfg's failed-push recovery chain (SPECIFICATION.md
+        # C.5.2); SampleInterv is a pure software timing knob with no hardware read-back, so it
         # intentionally has no entry here.
         self._get_callbacks[name_cfg(_VAL_POV)] = self.get_pressure_oversampling
         self._get_callbacks[name_cfg(_VAL_TOV)] = self.get_temperature_oversampling
@@ -126,7 +126,7 @@ class BMP3xx_Reader(SensorReaderConfig):
             name_cfg(_VAL_TOV): await self.get_temperature_oversampling(),
             name_cfg(_VAL_FC): await self.get_filter_coefficient(),
         }
-        return ret  # only for callback in _get_dict_cfg, is automatically inside try-except!
+        return ret  # only ever invoked as get_dict_cfg()'s callback, which already wraps this call in its own try/except
 
     async def _read_bmp(self) -> "BMPResults":
         timestamp: int | None = None
@@ -254,7 +254,7 @@ class BMP3xx_Reader(SensorReaderConfig):
     async def get_data(self) -> BMP3XX:
         # Narrows _get_meas_data()'s generic "NamedTuple" to this Reader's concrete BMP3XX;
         # typing.cast() isn't usable (no runtime presence on MicroPython) so this identity return
-        # does the same job - see DRIVER_SPEC.md's get_data() narrowing convention.
+        # does the same job - see SPECIFICATION.md C.4.2's get_data() narrowing convention.
         return await self._get_meas_data()  # type: ignore[return-value]
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:

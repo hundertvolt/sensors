@@ -1,5 +1,5 @@
 """Async NTP client + CET/CEST local-time helper. Not a sensor, but config-managed the same way:
-extends base_classes.py's SensorReaderConfig, owns its own config_NTP.cfg (see DRIVER_SPEC.md).
+extends base_classes.py's SensorReaderConfig, owns its own config_NTP.cfg (see SPECIFICATION.md Part C).
 Every field is persist-only - nothing here needs a live push, so base_classes.py's generic
 _set_dict_cfg() already provides full setter support with zero changes to this file (no
 self._push_callbacks entries registered). errno/wrnno numbering starts at 11 here (1-4/10 are
@@ -370,7 +370,7 @@ class asy_ntp_client(SensorReaderConfig):
         self.ntp_sync_trigger_event.set()
         self.pr.evt("Force resync triggered.")
 
-    async def asy_ntp_time(self) -> None:  # Funktion: Zeit per NTP holen
+    async def asy_ntp_time(self) -> None:
         await self.pr.setup()  # required for all logged warnings and errors (base_classes.py's own
         # __init__ never calls this - matches every _init_<sensor>() in the three promoted drivers)
         self._err_cnt_internal = 0  # fresh failure streak each task (re)start, same as _init_<sensor>()

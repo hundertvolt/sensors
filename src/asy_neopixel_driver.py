@@ -96,7 +96,7 @@ class NeopixelDriver:
         return [self.start_asy_neopixel_led_overl, self.start_asy_neopixel_signal, self.start_asy_ext_cmd_watcher]
 
     def get_timer_starters(self) -> "list[Callable[[], None]]":
-        return []  # no machine.Timer anywhere in this file (DRIVER_SPEC.md section 9 shape, kept
+        return []  # no machine.Timer anywhere in this file (SPECIFICATION.md C.9 shape, kept
         # empty rather than omitted so callers can treat every driver uniformly)
 
     def on(self) -> None:

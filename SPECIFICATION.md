@@ -173,8 +173,7 @@ scripts/                 lint.sh / typecheck.sh / test.sh - manual code-quality 
   pixel; no config schema) and `asy_notification_service.py` (`NotificationCoordinator`: generic
   threshold-triggered signalling replacing the legacy file's hardcoded CO2/VOC/Humidity checks,
   driving the LED through the former's `request_signal()`). Promoted from
-  `improved-quality/neopixel_signal.py` — see CLAUDE.md's architecture reference for the full
-  split rationale.
+  `improved-quality/neopixel_signal.py`.
 - **Networking** — split into three peers, wired together by each `sensortask-*.py`, not one
   owning the others: `asy_wifi_service.py` (STA-mode WiFi with captive-portal AP+hotspot fallback),
   `asy_ntp_client.py` (NTP client with CET/CEST DST math), and `asy_dns_client.py` (a non-blocking
@@ -256,7 +255,7 @@ The condensed version is A.2 above. Key modules if you need to go deeper (folded
   Verified true today: task-level restarts (`system_service.py`'s `start_and_check_tasks()`) only
   re-invoke an already-captured `task_starters[n]` callable on the *existing* object, never re-run
   `__init__`; a full reboot replays `improved-quality/sensortask-wozi.py`'s entire module-level
-  construction sequence from scratch, and every current FRAM-chunk-owning construction (`fram`,
+  construction sequence from scratch, and every current FRAM-chunk-owning construction (`sysfunct`,
   `sgp_reader`'s VOC-backup chunk, `pixel`, `notify_service`) is an unconditional top-level
   statement, confirmed by direct reading, not assumption. Before adding any *new* FRAM-backed class
   (a new driver, or a currently-in-memory-only logger — e.g. a `CFGMGR_*` or `"DNSSRV"` logger ever
@@ -1076,7 +1075,7 @@ values actually live:
 - **Plain `SensorReader`** (SCD30): every "config-like" value the sensor exposes is stored in the
   sensor's own NVM and durable across power cycles — nothing to cache locally, so
   `get_dict_cfg()`'s `callback` does all the work (every field is a live I2C readback) and no
-  `ConfigManager`/`config_<name>.cfg` exists at all for this sensor. See CLAUDE.md's SCD30
+  `ConfigManager`/`config_<name>.cfg` exists at all for this sensor. See A.4's SCD30
   `AmbPres` note for why this is deliberate, not a gap.
 
 These two aren't mutually exclusive within one sensor, and mixing them needs no new mechanism:
@@ -1140,7 +1139,7 @@ tuple/list of values), both bypassing the min/max range check via `type_or_range
 
 - **Single-value special** — an "unset"/"disabled" value that's outside the field's normal
   operating range (e.g. SCD30's `AmbPres` field uses `special=0` for "ambient pressure
-  compensation not yet set" — see CLAUDE.md). A field with `default=None` and a non-`None`
+  compensation not yet set" — see A.4 above). A field with `default=None` and a non-`None`
   single-value `special` is a "special-alone" field: valid but never written to the JSON file —
   used for a field that's entirely sensor-managed with no meaningful local default at all.
 - **Discrete allowed-value set** (`special` is a tuple/list) — for a field whose legal values
@@ -1158,12 +1157,12 @@ tuple/list of values), both bypassing the min/max range check via `type_or_range
 One JSON file per sensor: `config_<name>.cfg` (`SensorReaderConfig.__init__` constructs
 `self.cfgmgr = ConfigManager(cfg_path + "config_" + name + ".cfg", default_vals, name)` —
 `ConfigManager` builds its own `"CFGMGR_" + name`-identified `PrintLogHistory` internally rather
-than reusing its owner's, see CLAUDE.md's Cluster 2 note). Both `__init__`s only stash constructor
+than reusing its owner's). Both `__init__`s only stash constructor
 args (synchronous, cheap) — `SensorReaderConfig.__init__` doesn't call `self.cfgmgr.setup()`
 itself, mirroring `ConfigManager.__init__`'s own stash-only shape one level down. The actual file
 load/write happens once `SensorReaderConfig`'s own `async def setup()` is awaited (which just
 awaits `self.cfgmgr.setup()`, extending the sync-`__init__`/async-`setup()` readiness-gate pattern
-up from `ConfigManager` — see CLAUDE.md's Cluster 3 note), cached in `self._cache`, and only
+up from `ConfigManager` — see C.13 above), cached in `self._cache`, and only
 re-synced to disk by `write_config()` — every `get_*` call reads the cache directly, no per-call
 file I/O.
 
@@ -1211,7 +1210,7 @@ Config setters are implemented, mirroring the getter pair (C.4.4) one level down
   (only defined on `SensorReaderConfig`, not the plain `SensorReader` base — unlike reads, a
   generic write is fundamentally schema-validation-driven and needs a real `ConfigManager` to
   validate against, so there's no meaningful stub for a class with no schema at all; SCD30 keeps
-  its own hand-rolled setters instead of using this path, see CLAUDE.md). The concrete
+  its own hand-rolled setters instead of using this path, see A.4 above). The concrete
   implementation delegates to `self.cfgmgr.write_config(data, cfg_vals)`; a subclass with a
   fundamentally different persistence backend (the "hypothetical sensor with onboard nonvolatile
   storage" case) could override this alone and still reuse `_set_dict_cfg`'s orchestration —
@@ -1585,7 +1584,7 @@ minute during active WLAN instability), not a correctness bug.
   flag. This is the only safe way to wake a waiting coroutine from a callback context that isn't
   itself running inside the event loop.
 - **Use `Timer.PERIODIC`, not `Timer.ONE_SHOT`, for anything that must keep firing** — see
-  CLAUDE.md's soft-Timer-callback-drop gotcha: a soft callback can be silently dropped if
+  F.1's soft-Timer-callback-drop gotcha: a soft callback can be silently dropped if
   MicroPython's fixed-depth scheduler queue is full, with no exception anywhere in that chain. A
   periodic timer self-heals on its next tick; a one-shot timer that gets dropped never fires
   again. SCD30's IRQ self-heal task (`scd_init_irq`) exists specifically to work around its data-
@@ -1600,7 +1599,7 @@ minute during active WLAN instability), not a correctness bug.
 - **Every `Timer.init()` call site's failure handler catches `except (OSError, MemoryError) as e:`,
   not a bare `except OSError:`** — a project-wide defensive widening (`asy_bmp3xx_driver.py`,
   `asy_scd30_driver.py`, `asy_sgp40_driver.py`, `asy_wifi_service.py`, `asy_ntp_client.py`,
-  `system_service.py`), matching CLAUDE.md's general "an `OSError` catch around a call that could
+  `system_service.py`), matching F.1's general "an `OSError` catch around a call that could
   plausibly exhaust memory should also catch `MemoryError`" rule. **Verified against
   `ports/rp2/machine_timer.c` at the pinned MicroPython v1.28.0 tag (Cluster 10's one-time,
   informational check)**: `Timer.init()`'s own documented failure mode is exactly
@@ -1860,7 +1859,7 @@ These units run for years without a reboot. For any file moving to `src/`:
 
 ## D.4 Resource discipline for the RP2040 target
 
-Dual-core Cortex-M0+ @ up to 133MHz, 264KB SRAM total (see CLAUDE.md's "Platform target") — this
+Dual-core Cortex-M0+ @ up to 133MHz, 264KB SRAM total (see F.1 above) — this
 is not a machine with memory or cycles to spare:
 
 - [ ] Avoid unnecessary allocations in anything called frequently (new lists/dicts/strings per
@@ -1882,7 +1881,7 @@ is not a machine with memory or cycles to spare:
       explicitly for anything that isn't.
 - [ ] If a function genuinely must do I/O or another long-running operation, it must be `async`
       and yield control appropriately, and must not stall timing-sensitive work like the Neopixel
-      animation (see CLAUDE.md's "Hard rules" — this is a standing design principle, not tied to
+      animation (see F.3 below — this is a standing design principle, not tied to
       any specific mechanism; the `get_long_block_lock()` shared lock that once coordinated this
       has since been retired along with its only real user, `socket.getaddrinfo()`). Never assume
       a one-off "it's probably fast enough."
@@ -1950,8 +1949,8 @@ is not a machine with memory or cycles to spare:
 ## D.9 Check against current MicroPython, not the version this code predates
 
 - [ ] Much of this codebase's history predates MicroPython 1.20; the project's own build target
-      has since moved forward to whatever's the latest *stable* release (see CLAUDE.md's "Platform
-      target" and `toolchain/versions.toml`'s `[micropython] ref`, currently v1.28.0). Don't assume
+      has since moved forward to whatever's the latest *stable* release (see F.1 above and
+      `toolchain/versions.toml`'s `[micropython] ref`, currently v1.28.0). Don't assume
       code written years ago still reflects the best way to do something on the current target —
       check, every time a file goes through this review, not just once.
 - [ ] Check the MicroPython changelog/release notes
@@ -1967,10 +1966,11 @@ is not a machine with memory or cycles to spare:
 - [ ] Look specifically for the old `u`-prefixed module names (`uasyncio`, `ustruct`, `ujson`,
       `ucollections`, ...) — MicroPython consolidated these to their plain names years ago; the
       `u`-prefixed forms still work as aliases today but are the clearest tell that a file predates
-      that consolidation. (`crc_checks.py` already uses the modern `asyncio`/`struct` names; other
-      `improved-quality/` files — e.g. `sensortask-wozi.py`'s `from uasyncio import ...` — still use
-      the old prefixed form, a real, present instance of this in the codebase today, not a
-      hypothetical concern.)
+      that consolidation. (`crc_checks.py` already uses the modern `asyncio`/`struct` names;
+      `improved-quality/sensortask-wozi.py`'s own `from uasyncio import ...` was found and fixed to
+      `from asyncio import ThreadSafeFlag` during the `src/` audit's Cluster 10 pass — check any
+      other `improved-quality/`/legacy file going through this review for the same pattern, don't
+      assume it's already been swept everywhere.)
 - [ ] Same "without changing functionality" hard constraint as D.8 applies when a
       modernization is purely a rewrite for currentness — the existing test suite must still pass
       unchanged. If a newer API's *semantics* genuinely differ from what the old pattern did (not
@@ -2115,7 +2115,7 @@ planned, not "should be fine."
 # Part E — Testing & Coverage
 
 Unit tests for `src/` (fully-reviewed code moved out of `improved-quality/` — see CLAUDE.md).
-Current total: 1708 tests across 31 `tests/test_*.py` files (verify via
+Current total: 1755 tests across 32 `tests/test_*.py` files (verify via
 `grep -c '^def test_' tests/test_*.py` if this looks stale).
 
 ## E.1 Why not pytest

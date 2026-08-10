@@ -400,7 +400,7 @@ def test_config_hostname_too_long_falls_back_to_default() -> None:
 def test_config_hostname_one_over_the_real_max_falls_back_to_default() -> None:
     # 33 chars - just past network.hostname()'s real, documented 32-character hard cap
     # (MICROPY_PY_NETWORK_HOSTNAME_MAX_LEN, confirmed against extmod/modnetwork.c on both the
-    # deployed v1.26.0 pin and the v1.28.0 refactor target). _VAL_HOST's schema max was narrowed to
+    # deployed v1.26.1 pin and the v1.28.0 refactor target). _VAL_HOST's schema max was narrowed to
     # match this real constraint - see BACKLOG.md - so this must now be rejected at config-validation
     # time instead of reaching network.hostname() and raising there.
     json_text = (

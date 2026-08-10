@@ -51,15 +51,20 @@ bug sweep. Where each of the owner's original goals/lenses ended up:
   land before/alongside this.
 - **Mypy shall be configured to disallow `Any` types** (owner-specified, not yet implemented). The
   closest existing option is `disallow_any_explicit`; `pyproject.toml` deliberately stops short of
-  it and the other `--strict`-only checks today. Blast-radius check done: `Any` appears ~29 times
-  across `src/`/`tests/`, almost entirely in test-file monkeypatch/wrapper classes duck-typing a
-  real MicroPython object rather than reimplementing its interface — turning this on will need a
-  real typing strategy for those wrappers (e.g. `Protocol` classes matching just the overridden
-  methods, plus `__getattr__` delegation) worked out first, not just a flag flip.
+  it and the other `--strict`-only checks today. Blast-radius check (re-run, not stale): `Any`
+  appears ~190 times across 47 files in `src/`/`tests/` today. A large share is still test-file
+  monkeypatch/wrapper classes duck-typing a real MicroPython object rather than reimplementing its
+  interface, but a real, growing share is now legitimate `src/`-side usage too (`print_log.py`'s
+  variadic logging methods, `config_manager.py`'s generic value-checking helpers, opaque
+  `ticks_ms()`-typed values) — turning this on will need both a typing strategy for the test
+  wrappers (e.g. `Protocol` classes matching just the overridden methods, plus `__getattr__`
+  delegation) and a decision on how to type the genuinely-variadic/opaque `src/` cases, not just a
+  flag flip.
 - **FRAM bus-recovery is only partially wired up.** `asy_fram_driver.py`'s own `src/` promotion
   added device-identification/write-protect verification, but there's still no periodic/triggered
-  re-probe policy (`verify_present()`/`get_write_protected()`/`set_write_protected()` have zero
-  callers anywhere) and no task supervisor for FRAM specifically. Whoever wires this up must wrap
+  re-probe policy — `verify_present()` and `set_write_protected()` have zero callers anywhere;
+  `get_write_protected()` has exactly one, `_write()`'s own write-protection gate, which isn't a
+  re-probe of anything — and no task supervisor for FRAM specifically. Whoever wires this up must wrap
   the calls in the same `try/except Exception` discipline this file's other methods already use —
   `asy_fram_driver.py` doesn't catch its own inherited `RuntimeError` path on these three itself.
 - **Every deliberate system reset (reboot, bootloader entry, or a deliberate watchdog-starve

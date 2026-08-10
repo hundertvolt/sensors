@@ -260,11 +260,12 @@ information):
   uses it and would raise `ImportError` on-device if actually reached at runtime — one more reason
   `|` is strictly better here, not just newer. This is already machine-enforced: ruff's `UP007` rule
   (part of the enabled `UP` selection) flags every `Union[...]` as a finding. `src/` and `tests/`
-  are already 100% `|`-style with zero `Union[...]` occurrences. The `Union[...]` usages that do
-  exist today are confined to `python/` (deployed, frozen, no lint config at all) and pre-existing
-  `improved-quality/` WIP files (in ruff's checked scope, already showing up as tracked `UP007`
-  findings in the lint baseline) — leave those alone under the usual out-of-scope-editing hard rule;
-  don't drive-by "fix" `Union` → `|` in a file you're not otherwise promoting/refactoring.
+  are already 100% `|`-style with zero `Union[...]` occurrences. `improved-quality/`'s one WIP file
+  (`sensortask-wozi.py`, in ruff's checked scope) is likewise already 100% `|`-style today — its
+  remaining tracked lint findings are elsewhere (`UP006`/`UP035`/`UP037`/`I001`/`F401`/`E722`). The
+  `Union[...]` usages that do exist today are confined to `python/` (deployed, frozen, no lint
+  config at all) — leave those alone under the usual out-of-scope-editing hard rule; don't drive-by
+  "fix" `Union` → `|` in a file you're not otherwise promoting/refactoring.
 - **mypy is stricter than default, short of `--strict`** (`disallow_untyped_defs`,
   `check_untyped_defs`, `warn_return_any`, `warn_unreachable`, `strict_equality`, etc., but not
   `disallow_any_generics`/`disallow_untyped_calls`/`disallow_subclassing_any`). Does **not** disable

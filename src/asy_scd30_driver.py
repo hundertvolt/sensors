@@ -1,6 +1,6 @@
 """Async I2C driver for the Sensirion SCD30 CO2/temperature/relative-humidity sensor. SCD30_I2C
 wraps the raw command set (16-bit commands, CRC-8 protected); SCD30_Reader runs the read loop plus
-an IRQ-pin self-healing trigger, feeding CO2/Temp/Hum/WetBulb/DewPoint (see DRIVER_SPEC.md). Source:
+an IRQ-pin self-healing trigger, feeding CO2/Temp/Hum/WetBulb/DewPoint (see SPECIFICATION.md Part C). Source:
 Sensirion CO2 Sensors SCD30 Interface Description & Datasheet (datasheets/scd30/).
 """
 
@@ -99,7 +99,7 @@ class SCD30_Reader(SensorReader):
             name_cfg(_VAL_CAL): await self.get_forced_recalibration_reference(),
             name_cfg(_VAL_SC): await self.get_self_calibration_enabled(),
         }
-        return ret  # only for callback in _get_dict_cfg, is automatically inside try-except!
+        return ret  # only ever invoked as get_dict_cfg()'s callback, which already wraps this call in its own try/except
 
     async def _init_scd(self) -> bool:
         # Continuous measurement isn't (re)started here - it's NVM-persisted and provisioned
@@ -179,7 +179,7 @@ class SCD30_Reader(SensorReader):
     async def get_data(self) -> SCD30:
         # Narrows _get_meas_data()'s generic "NamedTuple" to this Reader's concrete SCD30;
         # typing.cast() isn't usable (no runtime presence on MicroPython) so this identity return
-        # does the same job - see DRIVER_SPEC.md's get_data() narrowing convention.
+        # does the same job - see SPECIFICATION.md C.4.2's get_data() narrowing convention.
         return await self._get_meas_data()  # type: ignore[return-value]
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
