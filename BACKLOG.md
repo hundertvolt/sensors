@@ -35,8 +35,8 @@ bug sweep. Where each of the owner's original goals/lenses ended up:
 - The `improved-quality/sensortask-wozi.py` wiring study — construction order, dependency graph,
   task-supervisor interaction, the shared measurement-data/REST-read pattern — lives in
   **`WIRING_CONTRACT.md`**, which stays (unlike `AUDIT_PLAN.md`) since its job isn't done: it's the
-  reference the eventual Stage-1 rewrite (see "Wiring, two-stage" in `SPECIFICATION.md` Part A) needs
-  in hand, not just a planning artifact. Keep it current as `src/` changes, not just at audit close.
+  reference the eventual Stage-1 rewrite needs in hand, not just a planning artifact. Keep it
+  current as `src/` changes, not just at audit close.
 - FRAM-backed error/trace history now has a consistent shape across every module —
   `ConfigManager.get_error_counter()` was added to match `get_log()`'s existing dict contract
   (`SPECIFICATION.md` Part C.4.2), closing the one module that didn't yet have it.
@@ -70,7 +70,7 @@ bug sweep. Where each of the owner's original goals/lenses ended up:
 - **Every deliberate system reset (reboot, bootloader entry, or a deliberate watchdog-starve
   give-up) must pause FRAM operations first and give it a brief wait before the reset actually
   happens** — a real risk (mid-write/mid-read power loss, MB85RS64V reads are destructively
-  read-then-rewritten internally per CLAUDE.md) that a reset triggered while a FRAM transaction is
+  read internally per `SPECIFICATION.md` Part A.4) that a reset triggered while a FRAM transaction is
   in flight could corrupt data, same class of concern as the dual-copy/status-byte design
   `asy_fram_manager.py` already guards against for power loss but not specifically for a
   self-triggered reset racing an in-progress transaction. Owner-flagged as important for the final
@@ -117,10 +117,10 @@ bug sweep. Where each of the owner's original goals/lenses ended up:
   but flagged by the owner as implementable more efficiently — worth a cleaner implementation in
   the refactor without changing observed behavior. (Neopixel warning-flash sequencing was the other
   half of this item - resolved by the `src/asy_neopixel_driver.py`/`src/asy_notification_service.py`
-  promotion, see CLAUDE.md.)
+  promotion, see `SPECIFICATION.md` Part A.4.)
 - **No `@app.errorhandler` registrations exist anywhere yet** (confirmed: neither
   `improved-quality/sensortask-wozi.py` nor the deployed `python/CommonDrivers/`-based app
-  registers any). See CLAUDE.md's "Microdot / REST layer" section for what Microdot itself already
+  registers any). See `SPECIFICATION.md` Part A.5 for what Microdot itself already
   guarantees (every route-handler exception, including `MemoryError`, is already caught per-request
   and can't crash the server) versus what's still missing at our own layer. The base-class/
   `api_response.py` setter+response-envelope consolidation this depended on is now done (see
@@ -290,8 +290,8 @@ bug sweep. Where each of the owner's original goals/lenses ended up:
    log-and-sleep branch, which no realistic MicroPython call there would raise. *If* that ever
    happened, though, `_reset_wlan_connect_state()` (called at the top of every fresh `wlan_connect()`
    invocation) only special-cases `_PHASE_HOTSPOT` staying as-is — any other phase, including
-   `_PHASE_DEACTIVATED`, gets reset to `_PHASE_STA_SEEKING`, silently re-enabling WLAN. CLAUDE.md
-   documents "a physical power-cycle is the accepted recovery path" for this deliberate safety
+   `_PHASE_DEACTIVATED`, gets reset to `_PHASE_STA_SEEKING`, silently re-enabling WLAN.
+   `SPECIFICATION.md` Part A.4 documents "a physical power-cycle is the accepted recovery path" for this deliberate safety
    feature, which a task-level supervisor restart (distinct from a full device reboot) would
    contradict if it were ever reachable. **Confirmed not a promotion regression**: the legacy
    `python/CommonDrivers/async_connect.py`'s `wlanConnect()` has the identical shape —
@@ -359,7 +359,7 @@ bug sweep. Where each of the owner's original goals/lenses ended up:
 ## Deferred / explicitly out-of-scope work
 
 - **`pyproject.toml`'s mypy `exclude` list still has a dead regex entry for
-  `improved-quality/microdot.py`** (removed — see CLAUDE.md's "Microdot / REST layer"), matching
+  `improved-quality/microdot.py`** (removed — see `SPECIFICATION.md` Part A.5), matching
   nothing today, harmless but worth deleting (along with its now-dangling "see its own module
   docstring" comment) next time `pyproject.toml` is touched for another reason — not urgent enough
   to be the sole reason to trigger CLAUDE.md's "Pre-push verification" chroot recipe on its own.
@@ -408,7 +408,7 @@ bug sweep. Where each of the owner's original goals/lenses ended up:
 - **No end-user reference for Neopixel LED colors/patterns exists** — confirmed intentional
   single-LED dual-duty design, but no legend anywhere. Worth adding, low priority.
 - **FRAM SGP40 "0 = disabled" backup/staleness semantics need user-facing documentation** — the
-  behavior itself is intentional (see CLAUDE.md), just undocumented for whoever configures a unit.
+  behavior itself is intentional (see `SPECIFICATION.md` Part A.4), just undocumented for whoever configures a unit.
 - **`asy_wifi_service.py`'s getters hide two opposite locking contracts under one shape**:
   `network_available()` requires the caller to already hold `wifi_mode_lock` (documented in-line),
   while `get_wlan_ifconfig()`/`get_dns_server_ip()`/`get_wlan_rssi()`/`wlan_isconnected()` assume the
@@ -487,8 +487,8 @@ bug sweep. Where each of the owner's original goals/lenses ended up:
   no `get_type_hints()` on-device) — the guarded names are only ever reached via string-literal
   forward-ref annotations that MicroPython never evaluates anyway, so deleting the block changes
   nothing observable. Directly grows the Pico W littlefs partition, which is whatever flash remains
-  after the firmware image (see CLAUDE.md's "Platform target"). Prototype lives in this session's
-  scratch, not the repo — reimplement as a proper `scripts/`-housed step when the build script itself
+  after the firmware image (see `SPECIFICATION.md` Part F.1). This prototype has not been committed
+  to the repo — reimplement as a proper `scripts/`-housed step when the build script itself
   gets built, matching only a bare `TYPE_CHECKING`/`mod.TYPE_CHECKING` test (leave any compound
   condition untouched rather than guess) and sanity-`ast.parse()`-checking its own output before
   compiling.
