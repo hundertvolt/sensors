@@ -7,150 +7,48 @@ operating constraints/architecture reference) or README.md (human-facing orienta
 migrated there rather than duplicated here. See README.md for orientation, CLAUDE.md for operating
 constraints.
 
-## Planned: full `src/` audit (under way — see AUDIT_PLAN.md)
+## Full `src/` audit — completed 2026-08-08
 
-Owner intent, captured 2026-08-06 for a future session — a deep pass over the *entire* current
-`src/` contents (not just whatever file was most recently promoted), aimed at getting the codebase
-ready to be wired up together in `sensortask-*.py`.
+Owner intent, captured 2026-08-06: a deep pass over the entire `src/` contents, aimed at getting the
+codebase ready to be wired up together in `sensortask-*.py`. Ran as its own tracked effort in
+`AUDIT_PLAN.md` (deleted now that it's closed — every permanent fact it produced is migrated below or
+already lives in `SPECIFICATION.md`, per this file's own "resolved items get pruned, not left to rot"
+rule) across 11 clusters covering every `src/` file, plus a follow-up pass and a dedicated test-suite
+bug sweep. Where each of the owner's original goals/lenses ended up:
 
-### Required kickoff procedure (owner-specified, 2026-08-06) — do not start coding first
+- Lean error handling, trusting type contracts, simplification, cross-file style consistency,
+  boilerplate hunting, and the wiring-readiness fixes those turned up: all applied per-file and
+  harmonized into a single guideline, **`SPECIFICATION.md` Parts C (driver architecture spec) and D
+  (the `src/` quality checklist)** — the "single, comprehensive project code-style guideline" the
+  original goal asked for. `DRIVER_SPEC.md` and `src/README.md` are now stub files pointing there,
+  their content folded in rather than left duplicated.
+- The MicroPython-currency check is a standing practice, not a one-off — see CLAUDE.md's "Platform
+  target" section.
+- The stale-mock scan (every test file checked for mocks of a since-promoted `src/` module) found no
+  gaps; applying the same lens surfaced and closed a real coverage gap instead (`WarnVOC`/`WarnHum`
+  notification-signal integration tests, previously missing).
+- The documentation sweep is done — `SPECIFICATION.md` now consolidates what used to be scattered
+  across `DRIVER_SPEC.md`/`src/README.md`/`tests/README.md`/`toolchain/README.md`, and every
+  deferred/unknown-scope item flagged during promotion was revisited (resolved, or, where it
+  genuinely depends on the not-yet-written `sensortask-*.py` wiring, left here — see below and
+  "Deferred / explicitly out-of-scope work").
+- The `improved-quality/sensortask-wozi.py` wiring study — construction order, dependency graph,
+  task-supervisor interaction, the shared measurement-data/REST-read pattern — lives in
+  **`WIRING_CONTRACT.md`**, which stays (unlike `AUDIT_PLAN.md`) since its job isn't done: it's the
+  reference the eventual Stage-1 rewrite (see "Wiring, two-stage" in `SPECIFICATION.md` Part A) needs
+  in hand, not just a planning artifact. Keep it current as `src/` changes, not just at audit close.
+- FRAM-backed error/trace history now has a consistent shape across every module —
+  `ConfigManager.get_error_counter()` was added to match `get_log()`'s existing dict contract
+  (`SPECIFICATION.md` Part C.4.2), closing the one module that didn't yet have it.
 
-The audit itself must open with a planning sequence, not with picking a file and starting in:
-
-1. Read the goals/lenses list below in full, and this file's other still-open items relevant to
-   `src/`.
-2. Read the full project documentation (all markdown per the "Documentation sweep" item below,
-   plus every module's own docstring/comments) before touching any code.
-3. Read the actual project files — every current `src/` file plus `improved-quality/sensortask-
-   wozi.py` (per the "sensortask-wozi wiring study" item below) — not just the docs describing
-   them.
-4. From steps 1-3, produce a **detailed, fine-grained action list** of the concrete steps the audit
-   actually consists of (not the high-level goals/lenses below restated — the real, file-by-file/
-   check-by-check breakdown those goals expand into).
-5. **Second pass over that list**: validate it's complete and detailed enough to actually execute
-   against — not a first draft treated as final.
-6. **For each step in the list, identify the appropriate external reference material** (datasheet,
-   upstream repo, MicroPython dev-forum/issue-tracker discussion, official docs, ...) and actually
-   read it *before* doing that step — matching this project's own standing rule (see
-   `src/README.md` section 1) of verifying against current authoritative sources rather than
-   training memory.
-7. **Add an explicit goal definition to each step** — what "done" concretely means for that step,
-   not just what to look at.
-8. **Add quality measures to each step and its goal(s)** — the specific, checkable bar that step
-   must clear before it counts as complete (mirroring `src/README.md`'s promotion checklist's own
-   shape: concrete, verifiable criteria, not "looks fine").
-9. **Reality-check the resulting goals against the actual code** — for each step, confirm its goal
-   and quality measures are sufficient and correct against what the real files actually contain,
-   before treating the plan as final (a goal written before actually reading the relevant code can
-   be wrong or incomplete in ways only visible once you look).
-10. **Stop and hold one feedback/discussion round with the project owner once the list reaches this
-    point** — do not proceed into actually making changes on the strength of a self-validated plan
-    alone. This is a deliberate, required checkpoint, not an optional courtesy.
-
-Only after that discussion round concludes does the audit itself (the goals/lenses below) actually
-start.
-
-Goals/lenses for that pass, in the owner's own framing:
-
-- **Lean, catch-all error handling over defensive pre-checks, everywhere** — the same correction
-  already applied to `asy_neopixel_driver.py`/`asy_notification_service.py` this session (prefer a
-  try/except wrapping the actual computation over explicit isinstance/NaN/length pre-checks; this
-  is a small, resource-limited device, not a context that benefits from exhaustively enumerating
-  every possible bad input up front). Check every file for the same over-guarding pattern, not just
-  the two already fixed.
-- **Trust the type contracts** — no runtime checking for type violations our own code can't
-  actually produce; we own every caller.
-- **Simplify without changing behavior** — actively look for code that's more complex than it needs
-  to be and flatten/simplify it, preserving observed behavior.
-- **Global style/handling consistency** — the same coding style and the same handling of equivalent
-  situations everywhere. Concrete example already found and missed once: `cettime()`/`_now()`
-  already had an established simple try/except pattern for NaN/inf/overflow that a newer file
-  didn't follow at first — the audit should actively hunt for other files that reinvent a handling
-  scheme something else in `src/` already settled, not just check each file in isolation.
-- **Hunt for repeated/boilerplate/schematic code across files** that would be better shared —
-  candidate for a helper function or pushed down into `base_classes.py` instead of being
-  copy-pasted per module.
-- **The audit's purpose is wiring-readiness** — anything found that would cause a problem once
-  `src/` modules are actually wired together (not just a style nit) should be fixed as part of the
-  audit itself, not just noted.
-- **Thorough currency check against the pinned MicroPython version's own source, current rp2 port
-  docs, and MicroPython dev-forum/issue-tracker findings** — for every MicroPython-facing
-  construct/function in `src/`, check not just "is this correct" but "is there now a newer/better
-  way MicroPython added to do this," and that error handling around it is clean/complete. Examples:
-  newly widened type support for `micropython.const()`, or real `asyncio` timeout/cancellation
-  support having been added to something that previously lacked it (e.g. `socket.getaddrinfo()`).
-  This check is also a standing practice going forward independent of this one-off audit — see
-  CLAUDE.md's "Platform target" section (duplicated there deliberately, since this audit-list entry
-  itself goes away once the audit is done).
-- **Scan every test file exercising `src/` (and `ext/microdot.py`) for mocks of a module that has
-  since been promoted into `src/` itself** — a test written while some dependency was still
-  unpromoted may still be patching/faking that dependency instead of exercising the real, now-
-  existing promoted module. Each occurrence found is also a chance to strengthen coverage, not just
-  swap the mock out: once the real module is wired in, add or enrich tests to actually exercise the
-  integration, not just restore a pass. **Never drop a test as part of this** — every existing test
-  gets updated, improved, or extended, never deleted outright.
-- **Documentation sweep as part of the same pass**: all markdown (README.md, CLAUDE.md,
-  BACKLOG.md, DRIVER_SPEC.md, `src/README.md`, `tests/README.md`, `toolchain/README.md`) and all
-  in-code comments,
-  including comments already present in the not-yet-promoted `sensortask-*.py` files. Many open
-  items (in this file and inline) were flagged early in the promotion process as deferred/
-  unknown-scope/needs-discussion — revisit every one of them with the fuller picture the codebase
-  has now instead of leaving the old flag standing by default; most should now be answerable,
-  fixable, or resolvable outright, some will need a real discussion (do those step by step, not
-  silently), and by the end the only open items left should be ones that are genuinely still open
-  because they depend on the not-yet-written `sensortask-*.py` wiring itself.
-- **Consolidate a single, comprehensive project code-style guideline, then re-apply it to
-  harmonize every file.** At an appropriate point within the audit (after the style-consistency/
-  boilerplate/currency findings above have actually been gathered across every `src/` file, not
-  before): extract the coding/error-handling/calling/writing style actually used across all of
-  `src/`, pick the best and most appropriate pattern wherever files disagree, and consolidate that
-  into one detailed guideline document with no stylistic noise/ambiguity left between files. Blend
-  in the existing style-bearing docs rather than leaving them freestanding — pull in the "Recipe
-  list" and `DRIVER_SPEC.md` (already confirmed broader than just drivers) as source material, not
-  as documents to keep separately. **"Recipe list" is currently a dead reference** — checked the
-  full repo history (`git log --all -S "Recipe list"`), no file by that name or anything close to
-  it exists or ever existed. Flagged during the doc-scatter cleanup pass rather than silently
-  dropped or guessed at; needs the project owner to say what it's meant to point to before this
-  item can actually pull it in. The result is a single guideline with multiple sections (driver
-  creation as one of them, but several more — general module structure, error handling, config
-  schema conventions, comment/docstring length, etc.), detailed enough to make all project code
-  harmonic and optimal, and **replaces** both the recipe list and `DRIVER_SPEC.md` (their content
-  folded in, not left as duplicates) as the one basis any new file added to the project going
-  forward is written against. Once drafted, apply the guideline against every file already in the
-  audit's scope as a real pass, not just a review — this both tests the guideline's own
-  effectiveness (a guideline that can't actually resolve a real file's style is incomplete) and
-  finally harmonizes the code itself.
-- **Study `improved-quality/sensortask-wozi.py` itself, in depth, before consolidating anything** —
-  the actual integration target the whole audit is preparing `src/` to fit, not just another file
-  to read alongside it. Specifically trace: import structure and instantiation order (bump-allocator-
-  style modules like `AsyFramManager` depend on call order for on-chip layout — see CLAUDE.md — so
-  this file's construction sequence is itself load-bearing, not incidental); the dependency graph
-  between modules as wired here (who holds a reference to whom, e.g. `NotificationCoordinator`'s
-  `request_signal_cb` into `NeopixelDriver`); how `get_task_starters()`/`get_timer_starters()` are
-  actually collected and handed to `system_service.py`'s task/timer supervisor; how task death,
-  restart, and the decaying error-score/watchdog escalation actually observe and react to each
-  registered task; and any shared/common structures spanning modules — in particular the locked
-  measurement-data array/pattern each `*_Reader` exposes and how a REST handler actually reads
-  through it today. For each already-promoted `src/` module, confirm it actually fits this real
-  wiring shape (not just its own isolated review) — an adaptation surfacing now, before final wiring,
-  is cheap; the same gap surfacing only when `sensortask-*.py` itself is rewritten against the
-  refactor would not be. Treat mismatches found here as real audit findings across the whole `src/`
-  scope, not just notes on `sensortask-wozi.py` itself.
-- **Prepare a common, module-side story for exposing FRAM-backed error/trace history over the API,
-  before the API layer itself needs it.** The legacy codebase only ever tracked a last-error value
-  plus a counter; every promoted module now has `PrintLogHistory`/`PrintLogHistoryStore`'s much
-  richer in-memory-or-FRAM trace history behind it (see CLAUDE.md/`tests/README.md`), and more
-  modules keep gaining one as they're promoted. Audit whether every module's own history is already
-  exposed through a consistent shape (`get_error_counter()`'s existing dict contract per
-  `SPECIFICATION.md` Part C.4.2 is the closest existing precedent — confirm it actually generalizes to
-  every current and upcoming module, not just the three original sensor drivers) so that when the
-  REST layer is actually wired to surface this, it can do so the same way for every module instead of
-  improvising a one-off shape per endpoint. This is preparation, not new REST wiring itself — the
-  goal is that nothing about a module's own error-history shape needs to change once that wiring
-  starts.
-
-Not started yet — this is a placeholder for a dedicated future session/pass, not a task to pick up
-opportunistically mid-promotion.
+**One item from the original goals never got resolved and is still genuinely open** (not process
+narrative — a real unanswered question, so it stays here rather than getting pruned with the rest):
+the planned style guideline was supposed to fold in a "Recipe list" as source material, but no file or
+document by that name (or anything close to it) exists anywhere in the repo's history
+(`git log --all -S "Recipe list"` finds nothing) — a dead reference, flagged during the doc-scatter
+cleanup rather than silently dropped or guessed at. **Needs the project owner to say what it was
+meant to point to** (or confirm it can just be dropped) before `SPECIFICATION.md` Parts C/D can be
+considered to have pulled in every intended source.
 
 ## Refactor targets not yet done
 
@@ -536,7 +434,7 @@ opportunistically mid-promotion.
   stated rationale for keeping them anyway: once the Microdot REST layer feeds real (untrusted)
   request data into these paths, they stop being defensive-only and become load-bearing. Revisit
   once that wiring exists, not before.
-- **Whole-system integration test scope** (`AUDIT_PLAN.md` Cluster 10's own scoping item — recorded
+- **Whole-system integration test scope** (a scoping item from the now-closed `src/` audit — recorded
   here since it's future test-writing work, not a current-state fact `SPECIFICATION.md` documents).
   Today's integration tests are all pairwise-or-triple chains (FRAM+notification,
   notification+neopixel, notification+SCD30 (both its WarnCO2 and WarnHum signals),
@@ -545,7 +443,7 @@ opportunistically mid-promotion.
   documents. Chains genuinely missing coverage, to write once Stage 1's real `sensortask-wozi.py`
   successor exists to exercise them against (most can't be meaningfully tested *before* that, since
   today's `improved-quality/sensortask-wozi.py` construction sequence is still fully synchronous —
-  see the `ConfigManager` setup()-ripple open decision):
+  see `WIRING_CONTRACT.md`'s "New structural fallout" section for why):
   - **Full boot-sequence chain**: `conn` → `ntp` → `sysfunct` → every reader → `pixel` →
     `notify_service`, constructed in the real order, verifying FRAM chunk determinism holds
     end-to-end (not just per-component) and that every `SensorReaderConfig` subclass's new

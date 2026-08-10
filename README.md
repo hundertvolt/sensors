@@ -104,23 +104,22 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   existing links/references throughout the repo still resolve to a real file. Read
   `SPECIFICATION.md` directly rather than these.
 
-**Temporary planning docs** (deleted once their purpose is served — not meant to accumulate):
+**Temporary planning doc** (kept live — not a periodic-cleanup artifact):
 
-- **AUDIT_PLAN.md** — the master action list for the planned full `src/` audit (see BACKLOG.md's
-  "Planned: full `src/` audit"): Definition of Done, per-cluster goals/quality measures, and the
-  standing conventions settled during pre-audit planning. Deleted once the audit is agreed done;
-  anything permanent it settles migrates into CLAUDE.md/README.md/`SPECIFICATION.md` first.
-  **Its own Cluster 10 goal is a style-guideline *harmonization* pass — applying the audit's real
-  per-file findings to actually resolve cross-file inconsistencies — not creating a new merged
-  file.** `SPECIFICATION.md` (above) already did the *location* consolidation (moving scattered
-  content into one place, unaudited); Cluster 10's job once it runs is to edit `SPECIFICATION.md`'s
-  Parts C/D in place against real audit findings, not to produce a second, separate document.
-- **WIRING_CONTRACT.md** — seed document for the eventual real rewrite of
-  `improved-quality/sensortask-wozi.py`'s construction sequence (the audit's "Stage 1," out of the
-  audit's own scope): real FRAM-chunk construction order, the constructor-injection dependency
-  graph between modules, and mechanical gaps already found. Deleted once that rewrite lands.
+- **WIRING_CONTRACT.md** — the standing reference for the eventual real rewrite of
+  `improved-quality/sensortask-wozi.py`'s construction sequence ("Stage 1" of the two-stage wiring
+  plan, `SPECIFICATION.md` Part A): real FRAM-chunk construction order, the constructor-injection
+  dependency graph between modules, already-found mechanical gaps, and forward REST-API notes. Its
+  own facts have no other permanent home, so it stays up to date as `src/`/`sensortask-wozi.py`
+  change, not just at some periodic pass's own close — deleted only once Stage 1's real rewrite
+  actually lands and supersedes it.
 
-**Known gap**: BACKLOG.md's "Refactor targets not yet done" section references a "Recipe list" as
-existing style-bearing source material to fold into the eventual consolidated guideline alongside
+`AUDIT_PLAN.md`, the master action list for the now-completed full `src/` audit (see BACKLOG.md's
+"Full `src/` audit"), was deleted once the audit closed — everything permanent it settled was
+migrated into `SPECIFICATION.md` (the style-guideline harmonization it drove lives in Parts C/D)
+first.
+
+**Known gap**: BACKLOG.md's "Full `src/` audit" section references a "Recipe list" as existing
+style-bearing source material that was meant to fold into `SPECIFICATION.md`'s Parts C/D alongside
 `DRIVER_SPEC.md` — no file by that name (or close to it) exists anywhere in the repo's history.
 Flagged, not resolved; needs the project owner to say what it's meant to point to.

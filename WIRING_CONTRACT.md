@@ -1,18 +1,22 @@
 # Wiring Contract — `improved-quality/sensortask-wozi.py` study
 
-Companion to `AUDIT_PLAN.md` (also temporary — deleted once the real Stage-1 standalone
-`sensortask-wozi.py` successor lands in a future session and this document's job is done). Captures
-the instantiation-order/dependency-graph facts a future wiring rewrite must preserve, plus forward
-notes for that future REST API design. The full study happens at Cluster 10; seeded now with what
-reading the file in full this session already turned up.
+Temporary, but on a different clock than `BACKLOG.md`'s usual "resolved items get pruned" rule:
+deleted once the real Stage-1 standalone `sensortask-wozi.py` successor actually lands in a future
+session and this document's job is done — not before, and not just because some other piece of work
+(like the full `src/` audit that originally seeded this document, see `BACKLOG.md`'s "Full `src/`
+audit" section) closes. Until Stage 1 happens, this file is the single, permanent home for the
+instantiation-order/dependency-graph facts a future wiring rewrite must preserve, plus forward notes
+for that future REST API design — **keep it up to date** whenever a change to `src/` or
+`improved-quality/sensortask-wozi.py` touches anything documented below, the same way any other
+permanent doc gets updated, not just at a periodic audit's own close.
 
 ## Why instantiation order matters
 
 `AsyFramManager` is a bump-pointer allocator (see CLAUDE.md) — `get_chunk()`/
 `get_timestamped_chunk()` carve out fixed offsets in call order, so a device's *instantiation
 order* of these calls is its on-chip layout and must stay identical across firmware versions for
-existing stored data to keep decoding correctly. See `AUDIT_PLAN.md`'s "FRAM chunk determinism
-rule" for the full standing check.
+existing stored data to keep decoding correctly. See `SPECIFICATION.md` Part A.4's "FRAM chunk
+determinism rule" for the full standing check.
 
 ## Current construction order (`sensortask-wozi.py`, module level, top to bottom)
 
@@ -59,28 +63,29 @@ reference), confirmed by reading every `import`/`from` statement in `src/` this 
 good news for the eventual rewrite: the dependency graph is already a clean DAG at the Python-import
 level, and the *runtime* object graph above is the only thing a rewrite needs to reproduce.
 
-## New structural fallout from AUDIT_PLAN.md's resolved `ConfigManager` setup()-ripple decision
+## New structural fallout from the `ConfigManager` setup()-ripple decision
 
-The owner resolved (see `AUDIT_PLAN.md`'s Open Decisions Log, Clusters 2/3/7/9) to extend the
-sync-`__init__`/async-`setup()` readiness-gate scheme up through `ConfigManager` →
-`SensorReaderConfig` → every concrete `SensorReaderConfig` subclass. Concretely, this means
-`sensortask-wozi.py`'s construction sites for `bmp_reader` (`BMP3xx_Reader`), `sgp_reader`
-(`SGP40_Reader`), and `notify_service` (`NotificationCoordinator`) each need an added
-`await x.setup()` call after construction — `scd_reader` (`SCD30_Reader`) and `pixel`
-(`NeopixelDriver`) are exempt (plain `SensorReader` subclasses, no `ConfigManager`).
+The owner resolved, during the `src/` audit (`SPECIFICATION.md` Part C.13's readiness-gate scheme is
+the permanent record of the pattern itself), to extend the sync-`__init__`/async-`setup()`
+readiness-gate scheme up through `ConfigManager` → `SensorReaderConfig` → every concrete
+`SensorReaderConfig` subclass. Concretely, this means `sensortask-wozi.py`'s construction sites for
+`bmp_reader` (`BMP3xx_Reader`), `sgp_reader` (`SGP40_Reader`), and `notify_service`
+(`NotificationCoordinator`) each need an added `await x.setup()` call after construction —
+`scd_reader` (`SCD30_Reader`) and `pixel` (`NeopixelDriver`) are exempt (plain `SensorReader`
+subclasses, no `ConfigManager`).
 
 **This breaks a load-bearing assumption of the current construction order**: every step in "Current
 construction order" below is a plain, synchronous, module-level statement today. The moment any one
 of them needs `await`, the whole sequence (or at least everything from the first `await`ed step
 onward) has to run inside an async context — `sensortask-wozi.py` can no longer be a flat sequence of
-top-level statements the way it is now. This audit doesn't need to resolve *how* Stage 1's rewrite
-handles that (out of scope — Stage 1 itself is a later session's job), but Stage 1 must not be
-blindsided by it: whatever shape the rewrite takes (an `async def main()` wrapping construction, a
-staged boot sequence, etc.), it needs to preserve the FRAM chunk-order determinism rule
-(`AUDIT_PLAN.md`'s "FRAM chunk determinism rule") across that change — an `await`-ed setup step is
-still a single, unconditional, deterministic point in the sequence, so the rule itself doesn't break,
-but it's worth being explicit that "deterministic" now has to be verified across an async sequence,
-not just a synchronous one.
+top-level statements the way it is now. Resolving *how* Stage 1's rewrite handles that is out of
+scope here too — Stage 1 itself is a later session's job — but Stage 1 must not be blindsided by it:
+whatever shape the rewrite takes (an `async def main()` wrapping construction, a staged boot
+sequence, etc.), it needs to preserve the FRAM chunk-order determinism rule
+(`SPECIFICATION.md` Part A.4's "FRAM chunk determinism rule") across that change — an `await`-ed
+setup step is still a single, unconditional, deterministic point in the sequence, so the rule itself
+doesn't break, but it's worth being explicit that "deterministic" now has to be verified across an
+async sequence, not just a synchronous one.
 
 ## Already-found gaps in the current file (mechanical fixes, allowed now per owner authorization — no full promotion)
 
@@ -118,5 +123,10 @@ gaps" section above is updated to reflect the two mechanical fixes closed this c
 "New structural fallout" section's analysis (every `SensorReaderConfig` subclass's construction site
 needing an added `await x.setup()`, and the resulting break of the current flat synchronous
 construction sequence) is reconfirmed still accurate and still unresolved — genuinely Stage 1's job,
-not this audit's, per the Open Decisions Log's own framing. No new dependency-graph or
-construction-order finding surfaced from this full re-read beyond what was already seeded.
+not the audit's. No new dependency-graph or construction-order finding surfaced from this full
+re-read beyond what was already seeded.
+
+This document itself stays open past the audit's own close (2026-08-08) — its job is Stage 1's
+wiring rewrite, not the audit. Re-verify the sections above whenever a future change to `src/` or
+`improved-quality/sensortask-wozi.py` could plausibly affect construction order, the dependency
+graph, or the fallout item above, not just when a new formal "cluster" of work happens to run.

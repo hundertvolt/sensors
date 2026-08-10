@@ -8,7 +8,7 @@ installer works, why it isn't just `apt install`, environment isolation, and ver
 root `README.md` into one central document.
 
 This stub stays in place so existing links/references to `toolchain/README.md` (throughout
-`CLAUDE.md`, `BACKLOG.md`, `AUDIT_PLAN.md`, `WIRING_CONTRACT.md`, and elsewhere) still resolve to
+`CLAUDE.md`, `BACKLOG.md`, `WIRING_CONTRACT.md`, and elsewhere) still resolve to
 a real file.
 
 See `../SPECIFICATION.md`'s own front matter for the full rationale, and its "Further reading"

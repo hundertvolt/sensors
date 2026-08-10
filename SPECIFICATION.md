@@ -19,12 +19,15 @@ represents a substantive change to any rule, only to where it's written down.
   workflow. That's a different kind of content (session operating constraints) from what was
   actually scattered and hard to find (code/architecture specifications). Cross-references from
   this document to CLAUDE.md point at the real file.
-- **`BACKLOG.md`, `AUDIT_PLAN.md`, `WIRING_CONTRACT.md` stay separate.** By their own stated
-  nature they are not specifications: `BACKLOG.md` is active working memory (open questions,
-  deferred work) that churns as items resolve; `AUDIT_PLAN.md`/`WIRING_CONTRACT.md` are explicitly
-  temporary, deleted once their one-time purpose (the planned `src/` audit, the eventual wiring
-  rewrite) is served. Folding live churn or provisional planning content into a stable spec would
-  immediately start recreating the scattering problem this document exists to fix.
+- **`BACKLOG.md`, `WIRING_CONTRACT.md` stay separate.** By their own stated nature they are not
+  specifications: `BACKLOG.md` is active working memory (open questions, deferred work) that churns
+  as items resolve; `WIRING_CONTRACT.md` is explicitly temporary, deleted once its one-time purpose
+  (the eventual Stage-1 wiring rewrite) is served — until then it stays live and current, not
+  frozen planning content. (`AUDIT_PLAN.md`, the master action list for the full `src/` audit this
+  document's own Parts C/D harmonization came out of, followed the same temporary policy and was
+  deleted once that audit closed — everything permanent it settled is migrated here.) Folding live
+  churn or provisional planning content into a stable spec would immediately start recreating the
+  scattering problem this document exists to fix.
 
 **Where the source files went**: `DRIVER_SPEC.md`, `src/README.md`, `tests/README.md`, and
 `toolchain/README.md` are now short stub files pointing here, kept so existing links/references
@@ -70,10 +73,10 @@ labels) or content that was already fully present via a fuller sibling source (R
 cheat-sheet restated facts `toolchain/README.md`/Part B already carried in full) — never a
 genuine loss.
 
-**Not every cross-reference throughout the repo's other docs (`BACKLOG.md`, `AUDIT_PLAN.md`,
-`WIRING_CONTRACT.md`) was rewritten to point directly here** — there are dozens, and the stub
-files above mean they still resolve correctly via one extra hop. Worth doing as a follow-up pass
-if the stub-file indirection itself becomes annoying, not done as part of this cleanup.
+**Not every cross-reference throughout the repo's other docs (`BACKLOG.md`, `WIRING_CONTRACT.md`)
+was rewritten to point directly here** — there are dozens, and the stub files above mean they still
+resolve correctly via one extra hop. Worth doing as a follow-up pass if the stub-file indirection
+itself becomes annoying, not done as part of this cleanup.
 
 ## Table of contents
 
@@ -1499,8 +1502,8 @@ and its config read-back comes back silently wrong/empty.
 Real numbers, per module, as actually assigned in the promoted code — not a global registry (each
 module's own `self.pr`/history stream is independent, so numeric overlap *between* rows is expected
 and harmless; only overlap *within* one row's own range would be a real bug). Kept here permanently
-(unlike `AUDIT_PLAN.md`, which is temporary) so a new module's numbering has a real precedent list to
-extend, per the "Error-code convention" pass-1/pass-2 process this table is pass 2's own output.
+so a new module's numbering has a real precedent list to extend, per the "Error-code convention"
+pass-1/pass-2 process this table is pass 2's own output.
 
 | Module (`self.pr`'s name) | `errno` range | `wrnno` range | Notes |
 |---|---|---|---|

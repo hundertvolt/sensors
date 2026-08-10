@@ -8,7 +8,7 @@ as part of a first-pass doc-scatter cleanup that consolidated `DRIVER_SPEC.md`, 
 document.
 
 This stub stays in place so existing links/references to `tests/README.md` (throughout
-`CLAUDE.md`, `BACKLOG.md`, `AUDIT_PLAN.md`, `WIRING_CONTRACT.md`, and elsewhere) still resolve to
+`CLAUDE.md`, `BACKLOG.md`, `WIRING_CONTRACT.md`, and elsewhere) still resolve to
 a real file.
 
 See `../SPECIFICATION.md`'s own front matter for the full rationale, and its "Further reading"
