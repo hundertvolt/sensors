@@ -5,78 +5,42 @@ mechanics, the sensor-driver architecture spec, the `src/` production-quality ch
 testing/coverage, all in one place instead of scattered across `DRIVER_SPEC.md`, `src/README.md`,
 `tests/README.md`, `toolchain/README.md`, and parts of the root `README.md`.
 
-**Produced by a first-pass doc-scatter cleanup**: those five source locations previously held this
-content independently, cross-referencing each other by file/section name. This document merges
-them faithfully (no content dropped, only reorganized/renumbered) and resolves the small number of
-places where the same fact was stated in more than one file. No actual contradictions were found
-between the source docs during the merge — they were already mutually consistent — so nothing here
-represents a substantive change to any rule, only to where it's written down.
-
 **What's deliberately *not* in this document, and why:**
 
 - **`CLAUDE.md` stays separate.** It's the file auto-loaded into every AI session's context as
   operating instructions — hard rules, working agreements, the pre-push verification recipe, PR
-  workflow. That's a different kind of content (session operating constraints) from what was
-  actually scattered and hard to find (code/architecture specifications). Cross-references from
-  this document to CLAUDE.md point at the real file.
+  workflow. That's a different kind of content (session operating constraints) from what's
+  actually specification (code/architecture facts). Cross-references from this document to
+  CLAUDE.md point at the real file. What stays in `CLAUDE.md` outright, never duplicated here: its
+  Hard rules/Working agreements/PR workflow/Pre-push verification recipe/Code quality tooling
+  sections — session-operating-procedure and dev-tooling-narrative content, not
+  architecture/interface specification. Its former "Platform target" facts (Part F below),
+  "Architecture reference" deep-dive (A.4), and "Microdot / REST layer" contract (A.5) live here as
+  the single copy instead — a deliberate tradeoff, since `CLAUDE.md` is auto-loaded into every AI
+  session's context and this document is not, so a session that never opens `SPECIFICATION.md` no
+  longer gets those facts for free. If that ever bites in practice, the fix is re-duplicating the
+  highest-value load-bearing facts back into `CLAUDE.md`, not reverting the consolidation.
 - **`BACKLOG.md`, `WIRING_CONTRACT.md` stay separate.** By their own stated nature they are not
   specifications: `BACKLOG.md` is active working memory (open questions, deferred work) that churns
   as items resolve; `WIRING_CONTRACT.md` is explicitly temporary, deleted once its one-time purpose
   (the eventual Stage-1 wiring rewrite) is served — until then it stays live and current, not
-  frozen planning content. (`AUDIT_PLAN.md`, the master action list for the full `src/` audit this
-  document's own Parts C/D harmonization came out of, followed the same temporary policy and was
-  deleted once that audit closed — everything permanent it settled is migrated here.) Folding live
-  churn or provisional planning content into a stable spec would immediately start recreating the
-  scattering problem this document exists to fix.
+  frozen planning content. Folding live churn or provisional planning content into a stable spec
+  would immediately start recreating the scattering problem this document exists to fix.
 
 **Where the source files went**: `DRIVER_SPEC.md`, `src/README.md`, `tests/README.md`, and
 `toolchain/README.md` are now short stub files pointing here, kept so existing links/references
-elsewhere in the repo still resolve to a real file. Their full content lives in Parts B-E below.
+elsewhere in the repo still resolve to a real file; their full content lives in Parts B-E below.
 `README.md` keeps its human-facing project description and the units-deployed table; its former
 "Repository layout"/"Architecture at a glance"/"Refactor in progress"/"Building this project's
-firmware" sections moved into Part A/B below, replaced there with a pointer.
-
-**A second pass folded in the genuinely specification-shaped material from `CLAUDE.md` too, then
-removed it from `CLAUDE.md` once the merge was verified complete** — its former "Platform target"
-facts (now Part F below), "Architecture reference" deep-dive (now A.4), and "Microdot / REST
-layer" contract (now A.5) live here as the single copy; `CLAUDE.md` now carries only short
-pointers to this document at each of those spots. This *is* a real tradeoff, worth stating
-plainly: `CLAUDE.md` is auto-loaded into every AI session's context automatically, this document
-is not, so a session that never opens `SPECIFICATION.md` no longer gets these facts for free the
-way it used to. Accepted deliberately in favor of true single-sourcing — if this tradeoff turns
-out to bite in practice, the fix is re-duplicating the highest-value load-bearing facts back into
-CLAUDE.md, not reverting the whole consolidation. What stayed in `CLAUDE.md` outright (never
-duplicated here): its Hard rules/Working agreements/PR workflow/Pre-push verification recipe/Code
-quality tooling sections, which are session-operating-procedure and dev-tooling-narrative content,
-not architecture/interface specification.
-
-**A third pass scanned `BACKLOG.md` for settled facts that had landed there instead of a proper
-spec doc** — working memory accumulates this easily, since a still-open action item often
-confirms a permanent fact along the way. Six found and folded in here, each marked at its landing
-spot below: `_reboot()`'s existing FRAM-pause-before-reset behavior (A.4), `max_i2c_err`'s real
-generic (non-I2C-specific) meaning (C.2), `asy_wifi_service.py`'s two conflicting getter-locking
-contracts (C.8), `make_dict()`'s `repr()`-parsing landmine on non-scalar fields (C.6),
-`config_manager.py`'s intentionally-dead-for-now defensive catches (C.5), and `mpy-cross` not
-dead-code-eliminating `TYPE_CHECKING` blocks (D.6). In every case the surrounding *action item*
-(harden the reset margin, rename the parameter, fix the lock-contract mismatch, strip
-`TYPE_CHECKING` blocks from the build, ...) is genuinely still open work and stays in
-`BACKLOG.md`, in full — only the already-settled fact was extracted here; `BACKLOG.md` was not
-trimmed, since the fact was only ever a fragment of a still-open item there, not a full duplicate
-of it.
-
-**Verified nothing was lost in this consolidation**: every original source file's content
-(`DRIVER_SPEC.md`, `src/README.md`, `tests/README.md`, `toolchain/README.md`, README.md's moved
-sections, CLAUDE.md's three folded sections) was diffed line-by-line against this document before
-the sources were trimmed. Every apparent gap traced to either an intentional cross-reference
-rename (a `"section 4"`/`"see X below"` pointer rewritten to this document's own Part/section
-labels) or content that was already fully present via a fuller sibling source (README's toolchain
-cheat-sheet restated facts `toolchain/README.md`/Part B already carried in full) — never a
-genuine loss.
+firmware" sections moved into Part A/B below, replaced there with a pointer. `AUDIT_PLAN.md`, the
+master action list for the full `src/` audit this document's Parts C/D harmonization came out of,
+followed the same temporary policy as `WIRING_CONTRACT.md` and was deleted once that audit closed
+— everything permanent it settled is migrated here.
 
 **Not every cross-reference throughout the repo's other docs (`BACKLOG.md`, `WIRING_CONTRACT.md`)
-was rewritten to point directly here** — there are dozens, and the stub files above mean they still
-resolve correctly via one extra hop. Worth doing as a follow-up pass if the stub-file indirection
-itself becomes annoying, not done as part of this cleanup.
+points directly here** — some still go through one of the stub files above, which resolve correctly
+via that one extra hop. Worth rewriting to point here directly if the indirection itself becomes
+annoying; not something this document tracks on its own.
 
 ## Table of contents
 
@@ -948,11 +912,9 @@ C.1-C.2 phrase the I2C convention that way. What genuinely differs from the I2C 
 ### C.3.2 UART variant — orphan module, harmonized late, precedent now settled
 
 **`asy_uart_driver.py`'s `UART(Lockable)` is a real, promoted, tested module with zero live callers
-anywhere in `src/`/`improved-quality/` today** (see BACKLOG.md) — it was read early for style ideas
-per the "pick up the spirit early, harmonize late" decision, then formally reconciled against this
-Part at Cluster 10, once the rest of the style guideline had converged. Three real architectural
-choices, flagged during Cluster 6's cross-check, are resolved here as accepted, documented
-precedent — none were bugs, and none needed a code change:
+anywhere in `src/`/`improved-quality/` today** (see BACKLOG.md). Three real architectural choices
+are resolved here as accepted, documented precedent — none were bugs, and none needed a code
+change:
 
 - **One merged `UART(Lockable)` class, not a `*_DeviceSession(Lockable)` + `*_I2C`/`*_SPI` pair.**
   C.1/C.2's two-layer split exists to separate "one physical bus, possibly shared by several
@@ -1108,7 +1070,7 @@ declared never-raises contract — C.4 above), not just the two staging methods.
 is the current example: `get_data()`, `get_dict_cfg()`, `get_error_counter()`, `reset_error_counter()`,
 `monitor_loop()`, `auto_led_override()`, and its own `setup()` override all gained this guard —
 found as a real gap (only `register()`/`finalize()` were guarded, every other method would raise a
-bare `AttributeError` if called first) and closed during this project's audit, not a hypothetical.
+bare `AttributeError` if called first), not a hypothetical.
 
 ### C.4.4 `get_dict_cfg()`'s `callback` parameter
 
@@ -1245,9 +1207,9 @@ Config setters are implemented, mirroring the getter pair (C.4.4) one level down
   whichever of the two a field's own type actually calls for, not `type(value) is not <T>`
   unconditionally.
 
-**Every setter method's return contract is now uniformly `bool`** (`True` = applied,
-`False` = rejected/failed) — a project-wide fix applied while wiring this pass; a driver adding a
-new setter should follow this from the start rather than returning `None`.
+**Every setter method's return contract is uniformly `bool`** (`True` = applied,
+`False` = rejected/failed) — a driver adding a new setter should follow this from the start rather
+than returning `None`.
 
 #### C.5.2.1 Command-only trigger fields (replaces legacy's `cmd_keys`)
 
@@ -1601,8 +1563,8 @@ minute during active WLAN instability), not a correctness bug.
   `asy_scd30_driver.py`, `asy_sgp40_driver.py`, `asy_wifi_service.py`, `asy_ntp_client.py`,
   `system_service.py`), matching F.1's general "an `OSError` catch around a call that could
   plausibly exhaust memory should also catch `MemoryError`" rule. **Verified against
-  `ports/rp2/machine_timer.c` at the pinned MicroPython v1.28.0 tag (Cluster 10's one-time,
-  informational check)**: `Timer.init()`'s own documented failure mode is exactly
+  `ports/rp2/machine_timer.c` at the pinned MicroPython v1.28.0 tag**: `Timer.init()`'s own
+  documented failure mode is exactly
   `OSError(MP_ENOMEM)`, raised when `alarm_pool_add_alarm_in_us()` reports the RP2040's small,
   fixed hardware alarm pool is exhausted — there is no separate, `Timer.init()`-specific
   `MemoryError` path distinct from that `OSError`. The one real allocation in a `Timer`'s lifecycle
@@ -1967,10 +1929,10 @@ is not a machine with memory or cycles to spare:
       `ucollections`, ...) — MicroPython consolidated these to their plain names years ago; the
       `u`-prefixed forms still work as aliases today but are the clearest tell that a file predates
       that consolidation. (`crc_checks.py` already uses the modern `asyncio`/`struct` names;
-      `improved-quality/sensortask-wozi.py`'s own `from uasyncio import ...` was found and fixed to
-      `from asyncio import ThreadSafeFlag` during the `src/` audit's Cluster 10 pass — check any
-      other `improved-quality/`/legacy file going through this review for the same pattern, don't
-      assume it's already been swept everywhere.)
+      `improved-quality/sensortask-wozi.py`'s own `from uasyncio import ...` was already found and
+      fixed to `from asyncio import ThreadSafeFlag` — check any other `improved-quality/`/legacy
+      file going through this review for the same pattern, don't assume it's already been swept
+      everywhere.)
 - [ ] Same "without changing functionality" hard constraint as D.8 applies when a
       modernization is purely a rewrite for currentness — the existing test suite must still pass
       unchanged. If a newer API's *semantics* genuinely differ from what the old pattern did (not

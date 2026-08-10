@@ -33,7 +33,7 @@ _NAME = const("NOTIFY")
 
 # Own schema, "Led" prefix dropped (matches asy_wifi_service.py/asy_sgp40_driver.py's own field
 # naming convention - see CLAUDE.md's "Current architecture" note on this deliberate wire-format
-# change). Ranges/defaults mirror sensortask-wozi.py's own legacy update_valid_json() calls.
+# change). Ranges/defaults mirror the legacy REST handler's own already-validated bounds.
 _VAL_ON_H = const((("OnH", "int", 10, 0, 23, None),))
 _VAL_ON_M = const((("OnM", "int", 0, 0, 59, None),))
 _VAL_OFF_H = const((("OffH", "int", 18, 0, 23, None),))

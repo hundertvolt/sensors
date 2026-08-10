@@ -489,8 +489,8 @@ class AsyFramTimestampedChunk(_AsyBaseFramChunk):
         require_ntp: bool = False,
         override_pause: bool = False,
     ) -> tuple[bool, int | None, bool]:
-        try:  # caller-supplied callback - currently wired to asy_ntp_client.py's ntp_issynced (promoted/audited)
-            # in sensortask-wozi.py, but this parameter accepts any Callable, so the guard stays broad
+        try:  # caller-supplied callback, typed as any Callable - guarded broadly since it isn't
+            # guaranteed to be a specific, known-safe implementation
             ntp_synced = await self.ntp_sync_callback()
         except Exception as e:
             await self.pr.err_s("NTP sync callback failed:", e, errno=85)
@@ -554,8 +554,8 @@ class AsyFramTimestampedChunk(_AsyBaseFramChunk):
             ts = None
         else:
             self.pr.evt("FRAM read data timestamp is valid")
-            try:  # caller-supplied callback - currently wired to asy_ntp_client.py's ntp_issynced (promoted/audited)
-                # in sensortask-wozi.py, but this parameter accepts any Callable, so the guard stays broad
+            try:  # caller-supplied callback, typed as any Callable - guarded broadly since it isn't
+                # guaranteed to be a specific, known-safe implementation
                 ntp_synced = await self.ntp_sync_callback()
             except Exception as e:
                 await self.pr.err_s("NTP sync callback failed:", e, errno=87)

@@ -52,8 +52,8 @@ _NTP_LI_UNSYNCHRONIZED = const(3)  # RFC 5905 Leap Indicator top-2-bits: 3 = ser
 _NTP_STRATUM_INVALID = const(0)  # RFC 5905/4330 stratum 0 = Kiss-o'-Death packet. Its Transmit
 # Timestamp is typically all-zero, which lands inside the plausibility window above.
 
-# Schema tuples for ConfigManager.get_*_values() - min/max mirror sensortask-wozi.py's own
-# update_valid_json() REST bounds; defaults are the only source of truth for a fresh config_NTP.cfg.
+# Schema tuples for ConfigManager.get_*_values() - min/max mirror the already-validated bounds the
+# deployed, pre-refactor REST handler uses; defaults are the only source of truth for a fresh config_NTP.cfg.
 _VAL_NH = const((("NTP_Host", "str", "pool.ntp.org", 3, 1024, None),))
 _VAL_NOS = const((("NTP_Offset_S", "int", 0, -43200, 43200, None),))
 _VAL_NIH = const((("NTP_Interv_H", "int", 12, 1, 24, None),))
@@ -71,8 +71,8 @@ class asy_ntp_client(SensorReaderConfig):
         wifi_mode_lock: asyncio.Lock,
         network_available: "Callable[[], bool]",
         get_dns_server: "Callable[[], str | None]",
-        dns_timeout_ms: int = 500,  # forwarded to resolve_ipv4() - sensortask-wozi.py decides the
-        # real value.
+        dns_timeout_ms: int = 500,  # forwarded to resolve_ipv4() - whichever module wires this up
+        # decides the real deployment value at construction time.
         dns_tries: int = 1,  # forwarded to resolve_ipv4() - see dns_timeout_ms's own comment.
         ntp_fetch_timeout_ms: int = _NTP_CONN_TIMEOUT,  # forwarded to _fetch_ntp_reply()'s socket
         # call - same reasoning as dns_timeout_ms.

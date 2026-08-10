@@ -132,9 +132,9 @@ class asy_conn_time(SensorReaderConfig):
             return None
 
     async def _mask_pw(self) -> dict[str, int | float | str | bool | None]:
-        # PW is a real credential. sensortask-wozi.py's /net/config route already masks it before
-        # returning it ("********") - reusing _get_dict_cfg()'s callback overlay keeps that masking
-        # in the generic getter-quartet path too, so it can't leak the plaintext value elsewhere.
+        # PW is a real credential, masked here ("********") via _get_dict_cfg()'s callback overlay
+        # so it can't leak the plaintext value through any REST route built on the generic
+        # getter-quartet path.
         return {"PW": "********"}
 
     def _wlan_status_or_none(self) -> int | None:
@@ -641,8 +641,8 @@ class asy_conn_time(SensorReaderConfig):
         return None  # type: ignore[unreachable]  # defensive: real WLAN.ifconfig() is a fixed 4-tuple per the stub
 
     def get_dns_server_ip(self) -> str | None:
-        # asy_ntp_client.py's get_dns_server callback - the DHCP-assigned DNS server for
-        # resolve_ipv4() to try first. Reuses get_wlan_ifconfig()'s own None-on-failure convention.
+        # The DHCP-assigned DNS server to try first, before any fallback list. Reuses
+        # get_wlan_ifconfig()'s own None-on-failure convention.
         ifcfg = self.get_wlan_ifconfig()
         return None if ifcfg is None else ifcfg[3]
 
