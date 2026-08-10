@@ -41,15 +41,6 @@ bug sweep. Where each of the owner's original goals/lenses ended up:
   `ConfigManager.get_error_counter()` was added to match `get_log()`'s existing dict contract
   (`SPECIFICATION.md` Part C.4.2), closing the one module that didn't yet have it.
 
-**One item from the original goals never got resolved and is still genuinely open** (not process
-narrative — a real unanswered question, so it stays here rather than getting pruned with the rest):
-the planned style guideline was supposed to fold in a "Recipe list" as source material, but no file or
-document by that name (or anything close to it) exists anywhere in the repo's history
-(`git log --all -S "Recipe list"` finds nothing) — a dead reference, flagged during the doc-scatter
-cleanup rather than silently dropped or guessed at. **Needs the project owner to say what it was
-meant to point to** (or confirm it can just be dropped) before `SPECIFICATION.md` Parts C/D can be
-considered to have pulled in every intended source.
-
 ## Refactor targets not yet done
 
 - **Bare `except:` is forbidden in refactored code** (`except Exception:` or narrower required).

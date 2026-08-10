@@ -118,8 +118,3 @@ When a new doc is added, add it here too instead of letting the map go stale aga
 "Full `src/` audit"), was deleted once the audit closed — everything permanent it settled was
 migrated into `SPECIFICATION.md` (the style-guideline harmonization it drove lives in Parts C/D)
 first.
-
-**Known gap**: BACKLOG.md's "Full `src/` audit" section references a "Recipe list" as existing
-style-bearing source material that was meant to fold into `SPECIFICATION.md`'s Parts C/D alongside
-`DRIVER_SPEC.md` — no file by that name (or close to it) exists anywhere in the repo's history.
-Flagged, not resolved; needs the project owner to say what it's meant to point to.
