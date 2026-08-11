@@ -112,6 +112,12 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   own facts have no other permanent home, so it stays up to date as `src/`/`sensortask-wozi.py`
   change, not just at some periodic pass's own close — deleted only once Stage 1's real rewrite
   actually lands and supersedes it.
+- **FINAL_WIRING_PLAN.md** — the global list for Stage 1's actual rewrite: the five-branch/session
+  plan that builds `src/sensortask_wozi.py` (construction restructure, generic webserver/API
+  service, digital-twin simulator, website placeholder scaffold, full Unix-port integration), each
+  step's goals/doc-links/criteria, and the cross-step interface contracts that make them combine
+  into one working prototype. Deleted once all five steps merge back and the closing audit lands —
+  same lifecycle as `AUDIT_PLAN.md`'s below.
 
 `AUDIT_PLAN.md`, the master action list for the now-completed full `src/` audit, was deleted once
 the audit closed — everything permanent it settled was migrated into `SPECIFICATION.md` (the

@@ -228,11 +228,13 @@ constraints.
     fake stream belongs exclusively to this future module's own step 5 soak test above, never to
     that integration test file.
 
-  **Companion open question this design surfaces (not previously tracked)**: the actual concurrent-
-  socket/TCP-PCB ceiling for MicroPython's rp2 port (lwIP-backed) isn't verified anywhere in this
-  repo — needed to set a real-margin threshold for step 4 above. Check the port's own `lwipopts.h`/
-  current MicroPython rp2-port docs directly rather than assuming a number from general lwIP
-  knowledge.
+  **Companion open question this design surfaces — resolved**: the concurrent-socket/TCP-PCB ceiling
+  for MicroPython's rp2 port (lwIP-backed) is **5**, from `MEMP_NUM_TCP_PCB`'s default (rp2's own
+  `lwipopts_common.h` defines no override for it at the pinned v1.28.0 tag — confirmed by fetching the
+  file directly and grepping for the macro, not assumed from general lwIP knowledge; only
+  `MEMP_NUM_UDP_PCB` is overridden there). This is the real-margin ceiling the whole-server-restart
+  threshold in step 4 above must sit comfortably below — see `FINAL_WIRING_PLAN.md`'s Step 2 for where
+  this number is actually consumed.
 
   Suggested module name/location once implementation starts: `asy_webserver_service.py` in `src/`,
   matching `asy_wifi_service.py`/`asy_ntp_client.py`'s naming and the "every module owns its own
