@@ -213,11 +213,18 @@ tests using `tests/machine.py`, not the digital twin — Step 1 has no dependenc
 
 **Done** (this session): all of the above landed — `src/sensortask_wozi.py`'s `build_system()`,
 `boot_entry/wozi_boot.py`, `get_error_counter()` on `DNSServer`/`NeopixelDriver`,
-`tests/test_sensortask_wozi.py` (10 tests), `WIRING_CONTRACT.md` rewritten in place, the
+`tests/test_sensortask_wozi.py` (16 tests), `WIRING_CONTRACT.md` rewritten in place, the
 `max_i2c_err` → `max_module_error` rename, and the full existing test suite re-verified green.
 See the "Refined plan" subsection below for the design decisions this took, and its own trailing
 note on the one real behavior finding (`AsyConnTime`'s `start_hotspot_timeout_watcher`) surfaced
-along the way.
+along the way. **Also done, added later in the same session per explicit owner follow-up
+direction** (not part of the original Step 1 scope above, but landed inside this step's session
+rather than deferred): the "never insist on FRAM" audit (every FRAM-backed error log/persistence
+path already degraded gracefully to plain RAM when `fram=None`; added one regression test
+constructing the whole object graph against a simulated dead FRAM chip) and live, persisted,
+range-checked debug-level setting via a boot-time-collected registry of each module's own
+`set_level()` — see the `watchdog`/`debug` split bullet below and `WIRING_CONTRACT.md`'s "Debug
+level" section for the full design and the rejected `SharedLevel` alternative.
 
 **What Step 2 needs from this step**: every long-lived module Step 1 constructs must be reachable
 (directly or via a bound method) from wherever `src/sensortask_wozi.py` ends up handing things to
@@ -293,12 +300,15 @@ findings above stay legible as the starting point):
   verbatim from the reference file, no re-tuning.
 - **`watchdog`/`debug` split**: `watchdog = WDT(timeout=8000)` constructed directly in
   `build_system()`, hardcoded, no injection point (owner: "must be hardcoded so no error ever can
-  circumvent it"). `debug` stays construction-time-only for Step 1 (single named constant, same
-  shape as today) — the owner wants it to eventually become persisted and API-settable, but that
-  needs every module's `PrintLog.level` to become live-re-readable instead of a one-time
-  constructor snapshot, which is a cross-cutting change belonging with Step 2's config/REST layer
-  (or a dedicated follow-up), not Step 1's construction/wiring scope. Noted as a forward item in
-  `WIRING_CONTRACT.md`, not built here.
+  circumvent it"). `debug` seeds each module's constructor as before, but — per explicit owner
+  follow-up direction later in this same session — it's no longer construction-time-only: it's now
+  live-settable and persisted via `SystemService.set_debug_level()`/`config_SYSTEM.cfg`, broadcast
+  to every module's logger through a boot-time-collected registry of `set_level()` bound methods
+  (`SystemService.set_level_setters()`, populated by `sensortask_wozi.py`'s
+  `_collect_level_setters()`), not a shared/live-read value on `PrintLog` itself — see
+  `WIRING_CONTRACT.md`'s "Debug level" section for the full design, the concurrency-safety
+  verification, and the rejected `SharedLevel` alternative. Landed inside Step 1's own scope rather
+  than deferred to Step 2, since the owner asked for it directly in-session.
 - **`WIRING_CONTRACT.md` maintenance**: rewritten in place once the new construction order lands
   (owner-confirmed), not kept alongside the old flat description.
 - **Task/timer starter collection uses each module's own `get_task_starters()`/`get_timer_starters()`
