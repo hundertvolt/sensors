@@ -595,7 +595,7 @@ def test_system_service_restarts_a_real_sensor_reader_task_that_genuinely_gives_
     async def scenario() -> int:
         svc_task = asyncio.create_task(svc.start_and_check_tasks([spy_starter]))
         for _ in range(200):  # bounded wait for the real read_loop()'s own init failure -> return False -
-            # a real sleep, not sleep(0): asy_i2c_driver.py's __probe_for_device() awaits two real
+            # a real sleep, not sleep(0): asy_i2c_driver.py's _probe_for_device() awaits two real
             # 0.1s sleeps regardless of outcome, and sleep(0) never advances wall-clock time on this
             # Unix-port event loop, so it can never observe those real sleeps completing.
             if starts and starts[0].done():

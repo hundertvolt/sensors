@@ -752,6 +752,28 @@ already-promoted infrastructure — don't reimplement bus handling.
 
 ## C.2 File & naming conventions
 
+**Identifier casing, project-wide**: `ClassNamingStyle` (CapWords) for classes, `public_function_style`
+(`lower_snake_case`) for public functions/methods, `_private_function_style` (a single leading
+underscore + `lower_snake_case`) for private/internal functions/methods. A compound class name that
+pairs a sensor/device name with a role suffix keeps each half in CapWords, joined by an underscore
+rather than run together (`BMP3xx_Reader`, `SCD30_I2C`, `FRAM_SPI`) — still CapWords, just composed
+differently from a single-word class like `ConfigManager`. A private class follows the same
+underscore-prefix rule as a private function (`_AsyBaseFramChunk`). Double-leading-underscore
+(name-mangled) methods are reserved for the rare case where mangling itself is load-bearing
+(protecting a name from an actual subclass override) — not an alternate "more private" spelling of
+the ordinary single-underscore convention; verified project-wide as of this pass, `src/` has none
+(see D.15-adjacent finding below). **Two known, deliberately-not-yet-fixed exceptions**: `asy_ntp_client`/
+`asy_conn_time` (`asy_ntp_client.py`/`asy_wifi_service.py`) are `lower_snake_case` classes, carried
+forward from the legacy codebase's own one-off naming — every other class, in both `src/` and the
+legacy `python/` tree, already follows CapWords, so this was never a project-wide alternate style.
+Renaming them is blocked by `improved-quality/sensortask-wozi.py` (out of scope without a scoped
+owner exception — see CLAUDE.md's hard rules) importing and instantiating both by their current
+exact names; fixing it is deferred to that file's own wiring session, the same way `max_i2c_err`'s
+misleading name is deferred below. `voc_algorithm.py`'s internals (`DFRobot_vocalgorithmParams`,
+the `_vocalgorithm__*` method names) are a separate, permanent exception: F.4 requires this file's
+naming to trace its DFRobot/Sensirion source 1:1, so its casing is intentionally not
+project-style-compliant and never will be.
+
 One file per sensor: `asy_<sensor>_driver.py`. Within it:
 
 - `_NAME = const("<SENSOR>")` — the dict key used everywhere this driver identifies itself:

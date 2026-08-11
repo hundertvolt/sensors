@@ -60,7 +60,7 @@ async def _settle(n: int = 5) -> None:
 
 
 class _FastAsyncSleep:
-    # I2CDevice.setup()'s __probe_for_device() makes two real 0.1s asyncio.sleep() calls (settle
+    # I2CDevice.setup()'s _probe_for_device() makes two real 0.1s asyncio.sleep() calls (settle
     # time around the probe write) - fine for a directly-`run()`-awaited coroutine, but far too
     # slow for a test driving read_loop() as a background task through a bounded sleep(0) pump
     # loop (same technique as test_asy_sgp40_driver.py's own _FastAsyncSleep). asyncio.sleep is a
