@@ -179,6 +179,58 @@ def test_fram_chunks_are_all_successfully_allocated_not_out_of_memory() -> None:
     assert sensortask_wozi.notify_service.pr.fram is not None
 
 
+class _DeadFramChip(FakeMB85RS64V):
+    # Same technique as test_fram_integration.py's own
+    # test_sensorreader_runs_in_degraded_mode_when_fram_setup_never_succeeded: a real device-ID
+    # mismatch (not just fram=None) - the chip responds, just never comes up as an MB85RS64V.
+    def __init__(self, *args: "Any", **kwargs: "Any") -> None:
+        super().__init__(*args, **kwargs)
+        self.rdid_response = bytes([0xFF, 0xFF, 0xFF, 0xFF])
+
+
+def test_build_system_never_insists_on_fram_hardware_being_available() -> None:
+    # Owner requirement: no module may insist on FRAM availability - every currently FRAM-backed
+    # error log must keep working in plain RAM, and SGP40 specifically must keep running (skipping
+    # backup/restore entirely) without FRAM. Exercises the *whole* construction chain with a dead
+    # chip, not just one driver in isolation (asy_sgp40_driver.py's/print_log.py's own test suites
+    # already cover each class's own degraded-mode contract at the unit level in more depth).
+    real_spi_class = asy_spi_driver._SPI
+    asy_spi_driver._SPI = _DeadFramChip  # type: ignore[misc]
+    try:
+        run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    finally:
+        asy_spi_driver._SPI = real_spi_class  # type: ignore[misc]
+
+    # build_system() completed fully - didn't raise, didn't skip constructing anything - despite
+    # the underlying FRAM chip never coming up.
+    assert sensortask_wozi.fram is not None
+    assert sensortask_wozi.fram.fram is not None
+    assert sensortask_wozi.fram.fram.initialized is False  # the dead chip, confirmed never ready
+    assert sensortask_wozi.sysfunct is not None
+    assert sensortask_wozi.sgp_reader is not None
+    assert sensortask_wozi.pixel is not None
+    assert sensortask_wozi.notify_service is not None
+
+    # Every FRAM-chunk-owning module's own logger still allocated a chunk (pure bookkeeping,
+    # SPECIFICATION.md C.13 - doesn't require setup() to have succeeded) but stays functional in
+    # degraded mode rather than raising - matches test_fram_integration.py's own established
+    # "reader.pr.fram is not None, just permanently hardware-unusable" pattern.
+    assert isinstance(sensortask_wozi.sysfunct.pr, PrintLogHistoryStore)
+    run(sensortask_wozi.sysfunct.pr.err_s("boom", errno=1))  # never raises despite the dead chip
+    assert run(sensortask_wozi.sysfunct.get_error_counter())["SYSTEM"]["ErrCount"] == 1  # still counted in memory
+
+    # SGP40 specifically: VOC backup/restore chunk allocated but unusable - skips backups, starts
+    # from scratch every time, but the reader itself keeps running (asy_sgp40_driver.py's own
+    # _check_storage() contract, not re-tested here at that depth).
+    assert isinstance(sensortask_wozi.sgp_reader.pr, PrintLogHistoryStore)
+    assert sensortask_wozi.sgp_reader.ts_storage is not None
+    assert run(sensortask_wozi.sgp_reader.get_error_counter())["SGP40"]["ErrCount"] == 0
+
+    # The rest of the system is unaffected - task/timer starter collection still works end to end.
+    starters = sensortask_wozi._collect_task_starters()
+    assert len(starters) > 0
+
+
 # ---------------------------------------------------------------------------
 # setup() batch: grouped, fixed order, notify_service.setup() only after finalize().
 # ---------------------------------------------------------------------------
