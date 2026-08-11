@@ -60,18 +60,23 @@ excluded from Step 1 (Step 2/Step 4's job respectively, owner-confirmed).
     exactly once — the single point `notify_service.pr`/`notify_service.cfgmgr` actually come into
     existence) — **FRAM chunk 5**
 13. `conn.set_ext_led(pixel)` — wires the WiFi-status LED callback after both exist
-14. **Grouped `await x.setup()` batch** (new in Step 1, resolved by dependency-domain analysis, not
-    interleaved with construction above): `await fram.setup()` → `await sgp_reader.setup()` →
-    `await bmp_reader.setup()` → `await notify_service.setup()`. These are two independent
-    readiness domains (`fram.setup()` is FRAM-hardware/SPI readiness; the other three are each
-    module's own local-JSON-config `ConfigManager.setup()`, unrelated to FRAM or each other), so
-    there's no ordering requirement *between* them — grouping is correct rather than merely tidy
-    because of one real constraint: `notify_service.setup()` is only valid to call after
-    `finalize()` (step 12) has run (`asy_notification_service.py`'s own documented contract,
+14. `sysfunct.set_level_setters(_collect_level_setters())` — collects every logger's own
+    `set_level()` bound method (see "Debug level" below) into `sysfunct`'s registry, sync, after
+    every module (including `notify_service.finalize()`) has fully constructed.
+15. **Grouped `await x.setup()` batch** (new in Step 1, resolved by dependency-domain analysis, not
+    interleaved with construction above): `await sysfunct.setup()` → `await fram.setup()` →
+    `await sgp_reader.setup()` → `await bmp_reader.setup()` → `await notify_service.setup()`.
+    These are independent readiness domains (`sysfunct.setup()` is its own local `config_SYSTEM.cfg`;
+    `fram.setup()` is FRAM-hardware/SPI readiness; the other three are each module's own
+    local-JSON-config `ConfigManager.setup()`, unrelated to FRAM or each other), so there's no
+    ordering requirement *between* them except one: `notify_service.setup()` is only valid to call
+    after `finalize()` (step 12) has run (`asy_notification_service.py`'s own documented contract,
     `self.cfgmgr` doesn't exist before then), and batching at the end automatically satisfies that
-    for every module, not just `notify_service`. `fram` keeps its first position, matching the
-    reference file's own existing `async_onetime` list; the three new calls are appended in their
-    own construction order.
+    for every module, not just `notify_service`. `sysfunct` goes first — its `setup()` is what
+    resolves the real persisted debug level and pushes it through the registry from step 14, so
+    every subsequent `setup()` call's own diagnostic logging already reflects it. `fram` keeps its
+    next position, matching the reference file's own existing `async_onetime` list; the three
+    remaining calls are appended in their own construction order.
 
 **Real FRAM chunk order**: `SystemService` → `SGP40_Reader` (its own error log, chunk 2) →
 `SGP40_Reader` (VOC backup, chunk 3) → `NeopixelDriver` → `NotificationCoordinator`. Five chunks
@@ -90,6 +95,46 @@ reference file's own hand-written `task_starters` list in `main()` never actuall
 of that method existing. Flagged to the project owner as a believed-correct fix, not silently
 carried forward or silently dropped — worth a second look if hotspot-timeout behavior on a real
 deployed unit ever seems to disagree with `hotspot_time_min`'s documented meaning.
+
+**Debug level** (`src/sensortask_wozi.py`'s `_collect_level_setters()`, `system_service.py`'s
+`SystemService.set_level_setters()`/`_apply_level()`/`get_debug_level()`/`set_debug_level()`) —
+**a registry of function references, not a shared mutable value.** An earlier version of this
+mechanism during the same session used a shared object every logger's `level` read from live
+(`base_classes.py`'s `SharedLevel`, `print_log.py`'s `PrintLog.level` as a `@property`) — reverted
+per explicit owner feedback: it made `PrintLog` harder to read/understand, broke separation between
+classes, and made manual debugging harder (inspecting `logger.level` no longer showed a plain
+value). The registry design keeps every `PrintLog` instance a plain, independent object with its
+own already-existing `set_level()` method (no changes to `print_log.py` at all) and no coupling to
+any cross-module concept.
+
+- `_collect_level_setters()` collects every logger's own `set_level` **bound method** (not the
+  logger object itself) into a flat list — the exact same 16-logger list the reverted
+  `_attach_debug_level()` used to iterate (every module's own top-level `self.pr`, every nested
+  `cfgmgr.pr`, and `AsyConnTime`'s own separately-named `dns_server.pr`) — mirroring
+  `_collect_task_starters()`/`_collect_timer_starters()`'s own shape exactly, per owner direction
+  ("in the same style as the task or timer starters — so we stay coherent in style as well").
+- `sysfunct.set_level_setters(...)` receives that list once, at boot (see "Current construction
+  order" step 14 above) — stored, not consumed immediately, since it needs calling again on every
+  future level change, unlike `start_timers()`/`start_and_check_tasks()`'s own one-shot lists.
+- `SystemService._apply_level(value)` iterates the registry calling each entry with the new value,
+  wrapped individually in `try`/`except Exception` (matches this codebase's established
+  "driver/caller-supplied callback could misbehave" defense, e.g. `_timer_sequencer()`'s own
+  per-starter guard) — one bad entry can't stop the rest of the registry from updating.
+  `setup()`/`set_debug_level()` both call it; `set_debug_level()` still validates via
+  `ConfigManager.write_config()`'s own `type_or_range_error` range check before ever touching the
+  registry, exactly as before.
+- **Concurrency safety, checked directly rather than assumed** (owner asked): calling `set_level()`
+  on any `PrintLog` instance at any time is safe on this codebase's real execution model. The only
+  interrupt handler in the whole of `src/` (`asy_scd30_driver.py`'s pin IRQ) only sets a
+  `ThreadSafeFlag`, never touches logging — confirmed by grep, not assumed. Every real
+  `PrintLog` call site is either plain synchronous code or a `machine.Timer` callback, and rp2
+  MicroPython's `Timer` callbacks run via `micropython.schedule()` (soft-scheduled, deferred into
+  the main loop between bytecode instructions — never true hardware preemption; see CLAUDE.md's own
+  "soft-Timer-callback-drop" platform fact for the same underlying mechanism). `self.level` is a
+  single plain `int` attribute; a MicroPython attribute assignment is a single atomic pointer/
+  immediate-value store with no torn-write case. Worst case from a level change racing a log call:
+  one line uses the old-vs-new threshold — a transient start/stop right at the boundary, explicitly
+  accepted by the owner as fine, never corruption or a crash.
 
 ## Reference: the pre-Step-1 flat construction order (`improved-quality/sensortask-wozi.py`, unedited)
 
@@ -169,31 +214,10 @@ plain name).
 - Networking status: `captive_dns.py`'s own logger plus, once built, the future Microdot
   connection-timeout wrapper (`asy_webserver_service.py`, BACKLOG's "Microdot hardening design")
   both belong under one future "Networking" endpoint, one JSON field per component.
-- **`debug` is now a persisted, live config value — resolved during Step 1, not deferred.**
-  `base_classes.py`'s `SharedLevel` (a plain, deliberately unlocked mutable int holder — `PrintLog`'s
-  log methods are synchronous hot-path calls with no `await` between checking the level and using
-  it, so a lock would cost real overhead for no safety benefit under MicroPython's single-threaded
-  cooperative scheduler) is the live-broadcast mechanism: `print_log.py`'s `PrintLog.level` is now a
-  `@property`, preferring an attached `SharedLevel` (`attach_level_source()`) over its old private
-  per-instance int — fully backward compatible, zero signature changes to any other driver file.
-  `system_service.py`'s `SystemService` owns the actual persistence: a small, directly-embedded
-  `ConfigManager` (not via `SensorReaderConfig` inheritance — that would drag in unused
-  sensor-measurement machinery), `config_SYSTEM.cfg`, one field so far (`DebugLevel`, int 0-5).
-  This is deliberately the real, connected successor to the old
-  `improved-quality/sensortask-wozi.py` `config_SYSTEM.cfg` schema the api_helpers.py migration
-  removed as a disconnected, never-read duplicate — not a coincidence in naming.
-  **Owner-stated intent: this is meant to grow into a general, module-independent system-settings
-  store** (timing/timezone info currently on `AsyNtpClient`, future rsyslog settings, ...) — adding
-  a field is the same `_VAL_*`-tuple-concatenation pattern every other `ConfigManager`-backed module
-  already uses, not a mechanism that needs revisiting per new field.
-  `src/sensortask_wozi.py`'s `build_system()` creates one `SharedLevel` first, passes it to
-  `SystemService` for persistence, and attaches **every** logger in the whole constructed object
-  graph to it — not just each module's own top-level `self.pr`, but every nested `cfgmgr.pr` and
-  `AsyConnTime`'s own separately-named `dns_server.pr` too (see `_attach_debug_level()`) — a
-  real, deliberate scope decision: a "general, system-wide" debug level should actually be
-  system-wide. `sysfunct.setup()` runs first in the grouped setup() batch so every other module's
-  own setup()-time diagnostic logging already reflects the real persisted level, not the
-  temporary seed. The one piece still missing is the REST route itself
+- **`debug` is now a persisted, live config value — resolved during Step 1, not deferred.** Full
+  mechanism (the level-setter registry, `system_service.py`'s `config_SYSTEM.cfg`, and the
+  reverted shared-value alternative) is documented under "Debug level" in "Current construction
+  order" above, not duplicated here. The one piece still missing is the REST route itself
   (`sysfunct.set_debug_level()`/`get_debug_level()` already exist and are fully tested) — that's
   Step 2's job, once the webserver/API layer exists to call it from.
 - `watchdog = WDT(timeout=8000)` stays hardcoded at construction time in `build_system()`, no
@@ -209,15 +233,16 @@ now describes `src/sensortask_wozi.py` as it actually is, not a plan for a futur
 "Reference" section right after it keeps the pre-Step-1 flat order for comparison. Full unit-test
 coverage lives in `tests/test_sensortask_wozi.py` (construction order, FRAM chunk order, the
 setup()-batch order and its `notify_service`/`finalize()` constraint, task/timer starter
-collection, the system-wide debug-level wiring) plus `tests/test_base_classes.py` (`SharedLevel`),
-`tests/test_print_log.py` (`attach_level_source()`), and `tests/test_system_service.py`
-(`config_SYSTEM.cfg`/`get_debug_level()`/`set_debug_level()`) — all passing under the real
-MicroPython Unix-port interpreter as of this session, alongside the full existing suite
-(`scripts/lint.sh`/`scripts/typecheck.sh`/`scripts/test.sh` all clean). The `get_error_counter()`
-gap on `DNSServer`/`NeopixelDriver` is closed, the `max_i2c_err` → `max_module_error` rename is
-done project-wide, and the general, persisted, live debug-level mechanism (owner-directed
-follow-up mid-Step-1, see "Forward API-design notes" above) is fully wired end to end except for
-the REST route itself, which is Step 2's job.
+collection, the system-wide debug-level registry) plus `tests/test_base_classes.py`,
+`tests/test_print_log.py` (both back to their pre-debug-level-work baseline), and
+`tests/test_system_service.py` (`config_SYSTEM.cfg`/`set_level_setters()`/`get_debug_level()`/
+`set_debug_level()`) — all passing under the real MicroPython Unix-port interpreter as of this
+session, alongside the full existing suite (`scripts/lint.sh`/`scripts/typecheck.sh`/
+`scripts/test.sh` all clean). The `get_error_counter()` gap on `DNSServer`/`NeopixelDriver` is
+closed, the `max_i2c_err` → `max_module_error` rename is done project-wide, and the general,
+persisted, live debug-level mechanism (owner-directed follow-up mid-Step-1, went through one real
+design iteration — see "Debug level" above — before landing on the registry shape) is fully wired
+end to end except for the REST route itself, which is Step 2's job.
 
 Kept alive per the "Status update" note at the top of this document, not deleted — Steps 2-5 still
 need this exact construction order/dependency graph preserved as they build on top of it. Re-verify

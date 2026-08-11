@@ -16,7 +16,6 @@ from base_classes import (
     LockedValue,
     SensorReader,
     SensorReaderConfig,
-    SharedLevel,
 )
 from print_log import PrintLog, PrintLogHistory, PrintLogHistoryStore
 
@@ -398,34 +397,6 @@ def test_lockedvalue_roundtrip_inf_and_nan() -> None:
     assert run(value.get_value()) == float("inf")
     run(value.set_value(float("nan")))
     assert run(value.get_value()) != run(value.get_value())  # nan != nan is the only valid check
-
-
-# ---------------------------------------------------------------------------
-# SharedLevel - deliberately unlocked (see its own class docstring): PrintLog's hot-path log
-# methods are synchronous with no await between checking the level and using it, so plain
-# attribute reads/writes are already atomic under MicroPython's single-threaded cooperative
-# scheduler - unlike LockedValue/LockedCounter/LockedFlag above, no asyncio.Lock is warranted here.
-# ---------------------------------------------------------------------------
-
-
-def test_sharedlevel_default_init_value_is_zero() -> None:
-    level = SharedLevel()
-    assert level.value == 0
-
-
-def test_sharedlevel_explicit_init_value() -> None:
-    level = SharedLevel(3)
-    assert level.value == 3
-
-
-def test_sharedlevel_value_is_plain_mutable_no_lock_no_coroutine() -> None:
-    # Deliberately synchronous get/set - a live source read from PrintLog's sync log methods
-    # cannot itself be async.
-    level = SharedLevel(0)
-    level.value = 5
-    assert level.value == 5
-    level.value = 1
-    assert level.value == 1
 
 
 # ---------------------------------------------------------------------------

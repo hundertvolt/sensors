@@ -7,7 +7,6 @@ import asy_spi_driver
 import print_log as print_log_module
 from asy_fram_manager import AsyFramChunk, AsyFramManager
 from asy_spi_driver import SPI
-from base_classes import SharedLevel
 from print_log import PrintLog, PrintLogHistory, PrintLogHistoryStore
 
 # Same one-process-per-test-file swap as test_asy_fram_driver.py/test_asy_fram_manager.py.
@@ -130,64 +129,6 @@ def test_set_level_exact_boundary_values_pass_through_unclamped() -> None:
     assert pr.get_level() == PrintLog.level_off()
     pr.set_level(PrintLog.level_info())
     assert pr.get_level() == PrintLog.level_info()
-
-
-# ---------------------------------------------------------------------------
-# PrintLog - attach_level_source(): a live, shared debug level overriding the private one.
-# Backward compatibility (no source attached) is exactly the tests above, unchanged.
-# ---------------------------------------------------------------------------
-
-
-def test_no_source_attached_behaves_exactly_like_the_private_level() -> None:
-    pr = PrintLog(PrintLog.level_warn())
-    assert pr.get_level() == PrintLog.level_warn()
-    assert pr.level == PrintLog.level_warn()
-
-
-def test_attach_level_source_overrides_the_constructor_level_immediately() -> None:
-    source = SharedLevel(PrintLog.level_off())
-    pr = PrintLog(PrintLog.level_info())  # constructed at a different level than the source
-    pr.attach_level_source(source)
-    assert pr.get_level() == PrintLog.level_off()  # the attached source wins, not the constructor value
-
-
-def test_attached_source_value_changes_are_observed_live_with_no_reattach() -> None:
-    source = SharedLevel(PrintLog.level_off())
-    pr = PrintLog()
-    pr.attach_level_source(source)
-    assert pr.get_level() == PrintLog.level_off()
-    source.value = PrintLog.level_info()
-    assert pr.get_level() == PrintLog.level_info()  # observed without calling attach_level_source() again
-
-
-def test_one_shared_source_drives_every_attached_logger_at_once() -> None:
-    source = SharedLevel(PrintLog.level_off())
-    loggers = [PrintLog(name=f"L{n}") for n in range(3)]
-    for pr in loggers:
-        pr.attach_level_source(source)
-    source.value = PrintLog.level_err()
-    assert all(pr.get_level() == PrintLog.level_err() for pr in loggers)
-
-
-def test_set_level_after_attach_updates_the_private_fallback_not_the_live_value() -> None:
-    # set_level() always writes the private, per-instance level - while a source is attached, the
-    # live get_level()/level reads still prefer the source, matching attach's own "the source wins"
-    # contract; the private write isn't lost, just not observed until the source is detached.
-    source = SharedLevel(PrintLog.level_off())
-    pr = PrintLog(PrintLog.level_off())
-    pr.attach_level_source(source)
-    pr.set_level(PrintLog.level_info())
-    assert pr.get_level() == PrintLog.level_off()  # still the source's value, not set_level()'s
-
-
-def test_logging_methods_respect_the_attached_live_source() -> None:
-    print("(expected) the single-letter lines below are real log output from an attached-source logger")
-    source = SharedLevel(PrintLog.level_off())
-    pr = PrintLog(PrintLog.level_info())  # would print everything if the source weren't honored
-    pr.attach_level_source(source)
-    pr.err("should not print - source is off")
-    source.value = PrintLog.level_err()
-    pr.err("e")  # now prints, per the live source
 
 
 def test_name_defaults_to_empty_string() -> None:

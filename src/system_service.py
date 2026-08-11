@@ -3,9 +3,12 @@ boot boot signature, reboot/reboot-to-bootloader with FRAM storage-pause coordin
 staggered driver-startup sequence, the task supervisor loop (restart dead tasks, decay a failure
 counter, feed the watchdog), and a general, module-independent persisted system-settings store
 (config_SYSTEM.cfg - DebugLevel today, expected to grow further; see get_debug_level()/
-set_debug_level() and this module's own get_cfg_schema()). Every method returns a well-defined
-value, never raises - reboot_system()/reboot_bootloader()'s real reset after _RESET_DELAY is the
-intent, not a failure.
+set_debug_level() and this module's own get_cfg_schema()). A live debug-level change is pushed out
+through a registry of other loggers' own set_level() methods (set_level_setters(), set up once at
+boot - see sensortask_wozi.py's _collect_level_setters()), not a shared mutable value - each
+PrintLog instance stays a plain, independent object with no cross-module coupling. Every method
+returns a well-defined value, never raises - reboot_system()/reboot_bootloader()'s real reset
+after _RESET_DELAY is the intent, not a failure.
 """
 
 import asyncio
@@ -17,7 +20,7 @@ from machine import bootloader as system_bootloader
 from machine import reset as system_reset
 from micropython import const
 
-from base_classes import LockedCounter, SharedLevel
+from base_classes import LockedCounter
 from config_manager import ConfigManager
 from print_log import make_logger
 
@@ -63,7 +66,6 @@ class SystemService:
         history_length: int = 10,
         debug: int | None = None,
         cfg_path: str = "",
-        debug_level: "SharedLevel | None" = None,
     ) -> None:
         # callback for starting and stopping permanent storage communication
         self.storage_pause: Callable[[bool], None] | None = None
@@ -91,16 +93,18 @@ class SystemService:
         # SPECIFICATION.md's convention for a module whose caller writes to cfgmgr directly.
         self.cfg_schema: ConfigSchema = _VAL_DEBUG_LEVEL
         self.cfgmgr = ConfigManager(cfg_path + "config_" + _NAME + ".cfg", self.cfg_schema, _NAME)
-        # get_debug_level()'s own source of truth, tracked unconditionally - independent of whether
-        # a live-broadcast target (below) exists, so get_debug_level() is always correct even with
-        # no SharedLevel wired up at all. Starts at the schema default; setup()/set_debug_level()
-        # keep it current from there.
+        # get_debug_level()'s own source of truth - starts at the schema default; setup()/
+        # set_debug_level() keep it current from there.
         self._current_debug_level = 0
-        # Optional live-broadcast target (base_classes.py's SharedLevel) - None degrades gracefully
-        # (persistence and get_debug_level() still work via cfgmgr/_current_debug_level above, just
-        # no other logger observes a change live), matching every other optional constructor
-        # dependency on this class (watchdog, fram).
-        self._debug_level = debug_level
+        # Registry of every other logger's own set_level() bound method (print_log.py's
+        # PrintLog.set_level - already exists, nothing new added there), set up once at boot via
+        # set_level_setters() below, the same style as get_task_starters()/get_timer_starters():
+        # a caller (sensortask_wozi.py's build_system()) collects the list, hands it in once, and
+        # this class calls every entry whenever the level changes (setup(), set_debug_level()).
+        # Empty until set - degrades gracefully (persistence/get_debug_level() still work, just no
+        # other logger is pushed a live update), matching every other optional dependency on this
+        # class (watchdog, fram).
+        self._level_setters: list[Callable[[int], None]] = []
 
     def _reboot(self, message: str, action: "Callable[[], None]") -> None:
         self.reset_timer.deinit()
@@ -242,19 +246,39 @@ class SystemService:
     async def setup(self) -> None:
         # Resolves the persisted system-settings store (SPECIFICATION.md C.13's sync-__init__/
         # async-setup() pattern). Always updates _current_debug_level (get_debug_level()'s own
-        # source of truth); additionally pushes the same value into the live-broadcast target if
-        # one was given, so every logger already attached to that same SharedLevel observes the
-        # real, persisted level from here on, not the temporary default it started at.
+        # source of truth); additionally pushes the same value out through every registered level
+        # setter, so every other logger reflects the real, persisted level from here on, not
+        # whatever it started at.
         await self.cfgmgr.setup()
         level = await self.cfgmgr.get_int_values(self.cfg_schema)
         if level is None:
             return
         self._current_debug_level = level[0]
-        if self._debug_level is not None:
-            self._debug_level.value = level[0]
+        self._apply_level(level[0])
 
     def get_cfg_schema(self) -> "ConfigSchema":
         return self.cfg_schema
+
+    def set_level_setters(self, setters: "list[Callable[[int], None]]") -> None:
+        # Called once at boot (sensortask_wozi.py's build_system(), the same style as
+        # start_timers(timer_starters)/start_and_check_tasks(task_starters) receiving their own
+        # collected lists) - stored rather than consumed immediately, since a setter needs calling
+        # again on every future level change, not just once.
+        self._level_setters = list(setters)
+
+    def _apply_level(self, value: int) -> None:
+        # Iterates the registry, pushing value to every other logger's own set_level() (already
+        # existing on every PrintLog - see print_log.py). Each call is individually guarded:
+        # set_level() itself is documented to never raise, but a registry entry is a plain
+        # Callable[[int], None] from this class's own point of view, not guaranteed to be exactly
+        # that implementation - matching this codebase's established "driver/caller-supplied
+        # callback could misbehave" defense (e.g. _timer_sequencer()'s own per-starter try/except),
+        # so one bad entry can't stop the rest of the registry from being updated.
+        for setter in self._level_setters:
+            try:
+                setter(value)
+            except Exception as e:
+                self.pr.err("Level setter failed:", e)
 
     def get_debug_level(self) -> int:
         return self._current_debug_level
@@ -264,8 +288,7 @@ class SystemService:
         if not persisted or results.get("DebugLevel") not in ("Valid", "Unchanged"):
             return False
         self._current_debug_level = value
-        if self._debug_level is not None:
-            self._debug_level.value = value
+        self._apply_level(value)
         return True
 
     def reboot_system(self) -> None:

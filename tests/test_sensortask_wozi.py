@@ -307,9 +307,10 @@ def test_notify_service_cfgmgr_exists_once_build_system_completes() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Debug level - one shared, persisted, live value observed by every logger in the whole
-# constructed object graph (owner requirement: general, system-wide, not per-module). See
-# sensortask_wozi.py's own module docstring and _attach_debug_level() for the full list.
+# Debug level - persisted on sysfunct, pushed live to every logger's own set_level() through a
+# registry collected once at boot (owner requirement: general, system-wide, not per-module - but
+# no shared mutable value anywhere; see sensortask_wozi.py's own module docstring and
+# _collect_level_setters() for the full logger list).
 # ---------------------------------------------------------------------------
 
 
@@ -338,27 +339,38 @@ def _all_loggers() -> "list[Any]":
     ]
 
 
-def test_every_logger_in_the_object_graph_is_attached_to_the_same_shared_debug_level() -> None:
+def test_collect_level_setters_returns_one_entry_per_logger_in_the_object_graph() -> None:
     run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
-    assert sensortask_wozi.debug_level is not None
-    sensortask_wozi.debug_level.value = PrintLog.level_info()
-    for pr in _all_loggers():
-        assert pr.get_level() == PrintLog.level_info(), f"{pr.name!r} did not observe the shared debug level"
+    setters = sensortask_wozi._collect_level_setters()
+    loggers = _all_loggers()
+    assert len(setters) == len(loggers)
+    # Each collected setter really is that logger's own bound set_level - confirmed by behavior
+    # (bound-method identity isn't guaranteed, matching this file's own established convention for
+    # checking bound methods elsewhere): calling it must change that exact logger's own level.
+    # Index-based, not zip() - avoids a silent length-mismatch footgun on top of the explicit
+    # length assert above.
+    for i in range(len(loggers)):
+        loggers[i].set_level(PrintLog.level_off())
+        setters[i](PrintLog.level_info())
+        assert loggers[i].get_level() == PrintLog.level_info()
 
 
 def test_debug_seed_value_is_the_starting_level_before_setup_resolves_the_persisted_one() -> None:
     run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir(), debug=PrintLog.level_warn()))
-    assert sensortask_wozi.debug_level is not None
+    assert sensortask_wozi.sysfunct is not None
     # First boot - no persisted value yet, so sysfunct.setup() writes and resolves the schema
-    # default (0), overriding the seed. Matches test_system_service.py's own
+    # default (0), then pushes it out through the registry - overriding the debug= seed every
+    # individual module's own logger was constructed with. Matches test_system_service.py's own
     # test_setup_resolves_cfgmgr_and_leaves_debug_level_at_the_default_on_first_boot.
-    assert sensortask_wozi.debug_level.value == 0
+    assert sensortask_wozi.sysfunct.get_debug_level() == 0
+    for pr in _all_loggers():
+        assert pr.get_level() == 0, f"{pr.name!r} still shows the debug= seed, not the resolved default"
 
 
 def test_sysfunct_set_debug_level_updates_every_logger_in_the_object_graph() -> None:
     # End-to-end: once Step 2 wires a REST route to sysfunct.set_debug_level(), this is the whole
-    # observable effect a real request would have - every logger in the system, immediately, no
-    # reattachment.
+    # observable effect a real request would have - every logger's own set_level() called directly,
+    # no shared mutable value anywhere.
     run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
     assert sensortask_wozi.sysfunct is not None
     ok = run(sensortask_wozi.sysfunct.set_debug_level(PrintLog.level_err()))
@@ -376,8 +388,8 @@ def test_debug_level_survives_a_simulated_reboot_through_build_system() -> None:
     run(sensortask_wozi.build_system(cfg_path=cfg_path))  # simulated reboot - same cfg_path, fresh objects
     assert sensortask_wozi.sysfunct is not None
     assert sensortask_wozi.sysfunct.get_debug_level() == PrintLog.level_once()
-    assert sensortask_wozi.debug_level is not None
-    assert sensortask_wozi.debug_level.value == PrintLog.level_once()
+    for pr in _all_loggers():
+        assert pr.get_level() == PrintLog.level_once(), f"{pr.name!r} did not get the persisted level on reboot"
 
 
 # ---------------------------------------------------------------------------

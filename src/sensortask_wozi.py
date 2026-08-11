@@ -15,11 +15,11 @@ own documented contract), so batching at the end is the one ordering that's corr
 module, not just tidy for the rest.
 
 Every logger in the whole constructed object graph - not just each module's own top-level self.pr,
-but every nested cfgmgr.pr and AsyConnTime's own dns_server.pr too - is attached to one shared,
-live debug level (base_classes.py's SharedLevel, persisted by sysfunct via
-system_service.py's config_SYSTEM.cfg). See _attach_debug_level() below for the full list; a
-change via sysfunct.set_debug_level() (once Step 2 wires a REST route to it) is observed by every
-one of these loggers immediately, with no reattachment needed.
+but every nested cfgmgr.pr and AsyConnTime's own dns_server.pr too - has its own set_level() bound
+method collected into sysfunct's level-setter registry (see _collect_level_setters() below and
+system_service.py's set_level_setters()/_apply_level()). A change via sysfunct.set_debug_level()
+(once Step 2 wires a REST route to it) calls every one of these set_level() methods directly - no
+shared mutable value anywhere, each PrintLog instance stays a plain, independent object.
 
 Deliberately excluded from this file (owner-confirmed, see FINAL_WIRING_PLAN.md's refined plan):
 Microdot/routes (Step 2's job entirely, as a registration-based service, not a copy of the
@@ -47,7 +47,6 @@ from asy_ntp_client import AsyNtpClient
 from asy_scd30_driver import SCD30_Reader
 from asy_sgp40_driver import SGP40_Reader
 from asy_wifi_service import AsyConnTime
-from base_classes import SharedLevel
 from system_service import SystemService
 
 try:
@@ -91,7 +90,6 @@ scd_reader: "SCD30_Reader | None" = None
 pixel: "NeopixelDriver | None" = None
 notify_service: "NotificationCoordinator | None" = None
 timers_running: "ThreadSafeFlag | None" = None
-debug_level: "SharedLevel | None" = None
 
 
 async def sgp_comp_callback() -> "list[float | None]":
@@ -129,60 +127,61 @@ async def hum_value_callback() -> "int | float | None":
     return float(scd_data.Hum)
 
 
-def _attach_debug_level(source: "SharedLevel") -> None:
+def _collect_level_setters() -> "list[Callable[[int], None]]":
     # Every logger in the whole constructed object graph, not just each module's own top-level
     # self.pr - the nested ConfigManager.pr each ConfigManager-backed module owns internally
     # ("CFGMGR_<NAME>"), and AsyConnTime's own separately-named dns_server.pr ("DNSSRV", not
     # covered by conn.pr - see WIRING_CONTRACT.md). Owner requirement: a general, system-wide debug
-    # level should actually be system-wide, not miss half the loggers in the system. Called once,
-    # after every module (including notify_service.finalize()) has fully constructed.
+    # level should actually be system-wide, not miss half the loggers in the system - but each
+    # logger's own set_level() (already existing on every PrintLog) is what gets called, not a
+    # shared mutable value. Mirrors _collect_task_starters()/_collect_timer_starters()'s own shape:
+    # collected once, after every module (including notify_service.finalize()) has fully
+    # constructed, then handed to sysfunct.set_level_setters() as a plain list of bound methods.
     assert conn is not None and ntp is not None and fram is not None and sysfunct is not None
     assert sgp_reader is not None and bmp_reader is not None and scd_reader is not None
     assert pixel is not None and notify_service is not None
-    loggers = (
-        conn.pr,
-        conn.cfgmgr.pr,
-        conn.dns_server.pr,
-        ntp.pr,
-        ntp.cfgmgr.pr,
-        fram.pr,
-        sysfunct.pr,
-        sysfunct.cfgmgr.pr,
-        sgp_reader.pr,
-        sgp_reader.cfgmgr.pr,
-        bmp_reader.pr,
-        bmp_reader.cfgmgr.pr,
-        scd_reader.pr,  # no cfgmgr - SCD30 has no config schema (params live on-sensor, see CLAUDE.md)
-        pixel.pr,  # no cfgmgr - no config schema (owner-confirmed, see SPECIFICATION.md A.4)
-        notify_service.pr,
-        notify_service.cfgmgr.pr,
-    )
-    for pr in loggers:
-        pr.attach_level_source(source)
+    return [
+        conn.pr.set_level,
+        conn.cfgmgr.pr.set_level,
+        conn.dns_server.pr.set_level,
+        ntp.pr.set_level,
+        ntp.cfgmgr.pr.set_level,
+        fram.pr.set_level,
+        sysfunct.pr.set_level,
+        sysfunct.cfgmgr.pr.set_level,
+        sgp_reader.pr.set_level,
+        sgp_reader.cfgmgr.pr.set_level,
+        bmp_reader.pr.set_level,
+        bmp_reader.cfgmgr.pr.set_level,
+        scd_reader.pr.set_level,  # no cfgmgr - SCD30 has no config schema (params live on-sensor, see CLAUDE.md)
+        pixel.pr.set_level,  # no cfgmgr - no config schema (owner-confirmed, see SPECIFICATION.md A.4)
+        notify_service.pr.set_level,
+        notify_service.cfgmgr.pr.set_level,
+    ]
 
 
-async def build_system(*, cfg_path: str = "", debug: int = 0) -> None:
+async def build_system(*, cfg_path: str = "", debug: int | None = None) -> None:
     """Construct every module + run the grouped setup() batch. Independently callable/testable -
     no task starting, no infinite loop, always returns. cfg_path lets a caller (a test, or a future
     per-variant build) isolate every ConfigManager-backed module's on-disk config file; defaults to
-    "" (the real device filesystem root), matching the reference file's own behavior. debug seeds
-    the live debug level's starting value before sysfunct.setup() resolves the real persisted one
-    (see _attach_debug_level() below) - individual modules no longer take a fixed debug= literal,
-    since every logger ends up attached to the same live source regardless.
+    "" (the real device filesystem root), matching the reference file's own behavior. debug is each
+    module's own construction-time logger level, exactly as before - sysfunct.setup() (in the
+    grouped batch below) then pushes the real persisted level out to every logger's own set_level()
+    via the registry _collect_level_setters() builds, overriding this initial value.
     """
     global watchdog, conn, ntp, i2c0, i2c1, spi0, fram, sysfunct
-    global sgp_reader, bmp_reader, scd_reader, pixel, notify_service, timers_running, debug_level
+    global sgp_reader, bmp_reader, scd_reader, pixel, notify_service, timers_running
 
     # watchdog: hardcoded at construction time, no injection point - "must be hardcoded so no
     # error ever can circumvent it when it is set active" (owner, FINAL_WIRING_PLAN.md's refined
     # plan).
     watchdog = WDT(timeout=8000)
-    debug_level = SharedLevel(debug)
     conn = AsyConnTime(
         conn_fail_to_hotspot=5,
         hotspot_time_min=8,
         max_module_error=_MAX_MODULE_ERROR,
         cfg_path=cfg_path,
+        debug=debug,
     )
     ntp = AsyNtpClient(
         conn.get_wifi_mode_lock(),
@@ -193,15 +192,14 @@ async def build_system(*, cfg_path: str = "", debug: int = 0) -> None:
         dns_tries=_DNS_TRIES,
         ntp_fetch_timeout_ms=_NTP_FETCH_TIMEOUT_MS,
         cfg_path=cfg_path,
+        debug=debug,
     )
     i2c0 = asy_i2c_driver.I2C(0, 13, 12, frequency=50000)
     i2c1 = asy_i2c_driver.I2C(1, 19, 18, frequency=50000)
     spi0 = asy_spi_driver.SPI(0, 2, 3, 4)
-    fram = AsyFramManager(spi0, 1, max_size=0x2000)
+    fram = AsyFramManager(spi0, 1, max_size=0x2000, debug=debug)
     # FRAM chunk 1.
-    sysfunct = SystemService(
-        ntp.ntp_issynced, watchdog=watchdog, fram=fram, cfg_path=cfg_path, debug_level=debug_level
-    )
+    sysfunct = SystemService(ntp.ntp_issynced, watchdog=watchdog, fram=fram, cfg_path=cfg_path, debug=debug)
     # FRAM chunks 2 (own error log) and 3 (VOC backup) - both allocated inside SGP40_Reader.__init__
     # itself, in that sub-order (WIRING_CONTRACT.md item 8).
     sgp_reader = SGP40_Reader(
@@ -211,11 +209,12 @@ async def build_system(*, cfg_path: str = "", debug: int = 0) -> None:
         fram_ntp_callback=ntp.ntp_issynced,
         max_module_error=_MAX_MODULE_ERROR,
         cfg_path=cfg_path,
+        debug=debug,
     )
-    bmp_reader = BMP3xx_Reader(i2c1, max_module_error=_MAX_MODULE_ERROR, cfg_path=cfg_path)
-    scd_reader = SCD30_Reader(i2c0, 8, trigger_sec=3, max_module_error=_MAX_MODULE_ERROR)
+    bmp_reader = BMP3xx_Reader(i2c1, max_module_error=_MAX_MODULE_ERROR, cfg_path=cfg_path, debug=debug)
+    scd_reader = SCD30_Reader(i2c0, 8, trigger_sec=3, max_module_error=_MAX_MODULE_ERROR, debug=debug)
     # FRAM chunk 4.
-    pixel = NeopixelDriver(15, fram=fram)
+    pixel = NeopixelDriver(15, fram=fram, debug=debug)
     # Staged registration (asy_notification_service.py's own module docstring): construct every
     # NotificationSignal, register() each in the same order the reference file's hardcoded
     # CO2/VOC/Humidity checks ran in (this becomes the poll loop's own deterministic check order),
@@ -227,6 +226,7 @@ async def build_system(*, cfg_path: str = "", debug: int = 0) -> None:
         max_module_error=_MAX_MODULE_ERROR,
         cfg_path=cfg_path,
         fram=fram,
+        debug=debug,
     )
     notify_service.register(NotificationSignal("WarnCO2", co2_value_callback, _FIELD_WARN_CO2, (1, 0, 0)))
     notify_service.register(NotificationSignal("WarnVOC", voc_value_callback, _FIELD_WARN_VOC, (0, 1, 0)))
@@ -235,7 +235,7 @@ async def build_system(*, cfg_path: str = "", debug: int = 0) -> None:
     conn.set_ext_led(pixel)  # callback for wifi led - after both conn and pixel exist
     timers_running = ThreadSafeFlag()
 
-    _attach_debug_level(debug_level)
+    sysfunct.set_level_setters(_collect_level_setters())
 
     # Grouped await x.setup() phase - see this module's own docstring for why batching here
     # (rather than interleaved with construction above) is the one correct ordering, not just a
@@ -290,7 +290,7 @@ def _collect_timer_starters() -> "list[Callable[[], None]]":
     )
 
 
-async def main(*, cfg_path: str = "", debug: int = 0) -> None:
+async def main(*, cfg_path: str = "", debug: int | None = None) -> None:
     await build_system(cfg_path=cfg_path, debug=debug)
     assert sysfunct is not None and ntp is not None
 

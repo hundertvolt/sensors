@@ -150,20 +150,6 @@ class LockedValue:
             self.value = value
 
 
-class SharedLevel:
-    """Plain mutable int holder, deliberately unlocked - unlike LockedValue above. print_log.py's
-    PrintLog attaches one of these (attach_level_source()) so every logger sharing it observes the
-    same live debug level. Every read/write site is synchronous with no await in between (PrintLog's
-    err()/wrn()/one()/evt()/all() are sync hot-path calls, and a future REST setter would just
-    assign .value directly) - a single attribute access is already atomic under MicroPython's
-    single-threaded cooperative scheduler, so an asyncio.Lock would add real overhead to a call
-    site exercised on every log line for no actual safety benefit.
-    """
-
-    def __init__(self, init_value: int = 0) -> None:
-        self.value = init_value
-
-
 class SensorReader:
     def __init__(
         self,

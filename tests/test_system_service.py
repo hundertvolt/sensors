@@ -10,7 +10,6 @@ import asy_spi_driver
 import system_service
 from asy_fram_manager import AsyFramManager
 from asy_spi_driver import SPI
-from base_classes import SharedLevel
 from print_log import PrintLog, PrintLogHistory, PrintLogHistoryStore
 from system_service import SystemService
 
@@ -1048,36 +1047,44 @@ def test_setup_resolves_cfgmgr_and_leaves_debug_level_at_the_default_on_first_bo
     svc = make_service(cfg_path=_tmp_cfg_dir())
     run(svc.setup())
     assert svc.cfgmgr.valid is True
-    assert svc.get_debug_level() == 0  # default, no debug_level source attached either
+    assert svc.get_debug_level() == 0  # default, no level setters registered either
 
 
-def test_setup_pushes_the_persisted_value_into_an_attached_debug_level_source() -> None:
-    source = SharedLevel(PrintLog.level_off())
+def test_setup_pushes_the_persisted_value_out_through_every_registered_setter() -> None:
+    calls: list[int] = []
     cfg_path = _tmp_cfg_dir()
-    svc = make_service(cfg_path=cfg_path, debug_level=source)
+    svc = make_service(cfg_path=cfg_path)
+    svc.set_level_setters([calls.append])
     run(svc.setup())
-    # Nothing persisted yet - first boot writes and uses the schema default (0).
-    assert source.value == 0
+    # Nothing persisted yet - first boot writes and uses the schema default (0) - but the registry
+    # still gets called once, even for the unchanged default.
+    assert calls == [0]
     assert svc.get_debug_level() == 0
 
 
-def test_set_debug_level_persists_and_updates_the_live_source_together() -> None:
-    source = SharedLevel(PrintLog.level_off())
-    svc = make_service(cfg_path=_tmp_cfg_dir(), debug_level=source)
+def test_set_debug_level_persists_and_calls_every_registered_setter() -> None:
+    calls_a: list[int] = []
+    calls_b: list[int] = []
+    svc = make_service(cfg_path=_tmp_cfg_dir())
+    svc.set_level_setters([calls_a.append, calls_b.append])
     run(svc.setup())
     ok = run(svc.set_debug_level(PrintLog.level_info()))
     assert ok is True
-    assert source.value == PrintLog.level_info()
+    assert calls_a == [0, PrintLog.level_info()]  # once from setup()'s own push, once from this call
+    assert calls_b == [0, PrintLog.level_info()]
     assert svc.get_debug_level() == PrintLog.level_info()
 
 
-def test_set_debug_level_out_of_range_is_rejected_and_leaves_the_live_source_unchanged() -> None:
-    source = SharedLevel(PrintLog.level_off())
-    svc = make_service(cfg_path=_tmp_cfg_dir(), debug_level=source)
+def test_set_debug_level_out_of_range_is_rejected_and_never_reaches_the_registry() -> None:
+    calls: list[int] = []
+    svc = make_service(cfg_path=_tmp_cfg_dir())
+    svc.set_level_setters([calls.append])
     run(svc.setup())
+    calls.clear()  # drop setup()'s own push of the default, isolate this call's own effect
     ok = run(svc.set_debug_level(99))  # outside the schema's 0-5 range
     assert ok is False
-    assert source.value == PrintLog.level_off()  # unchanged - a rejected write never reaches the live source
+    assert calls == []  # a rejected write never reaches the registry
+    assert svc.get_debug_level() == 0  # unchanged
 
 
 def test_set_debug_level_before_setup_fails_cleanly_not_raise() -> None:
@@ -1086,15 +1093,32 @@ def test_set_debug_level_before_setup_fails_cleanly_not_raise() -> None:
     assert ok is False  # cfgmgr.valid is False before setup() - matches ConfigManager's own contract
 
 
-def test_set_debug_level_without_a_debug_level_source_still_persists() -> None:
-    # debug_level=None (the default) degrades gracefully - persistence-only, no live broadcast -
-    # matching every other optional constructor dependency on this class (watchdog, fram).
+def test_set_debug_level_without_any_registered_setters_still_persists() -> None:
+    # No set_level_setters() call at all (the default, empty registry) degrades gracefully -
+    # persistence and get_debug_level() still work, matching every other optional dependency on
+    # this class (watchdog, fram) - _apply_level() on an empty list is simply a no-op loop.
     cfg_path = _tmp_cfg_dir()
     svc = make_service(cfg_path=cfg_path)
     run(svc.setup())
     ok = run(svc.set_debug_level(PrintLog.level_warn()))
     assert ok is True
-    assert svc.get_debug_level() == PrintLog.level_warn()  # self.pr's own private level, no source attached
+    assert svc.get_debug_level() == PrintLog.level_warn()
+
+
+def test_one_bad_setter_does_not_stop_the_rest_of_the_registry() -> None:
+    # Matches _timer_sequencer()'s/_start_task()'s own established defense: a driver/caller-supplied
+    # callback could misbehave, and one failure must not take down the others.
+    calls: list[int] = []
+
+    def _raising_setter(value: int) -> None:
+        raise RuntimeError("simulated bad setter")
+
+    svc = make_service(cfg_path=_tmp_cfg_dir())
+    svc.set_level_setters([calls.append, _raising_setter, calls.append])
+    run(svc.setup())
+    ok = run(svc.set_debug_level(PrintLog.level_warn()))
+    assert ok is True  # persistence itself is unaffected by a registry-side failure
+    assert calls == [0, 0, PrintLog.level_warn(), PrintLog.level_warn()]  # both good setters still ran, both times
 
 
 def test_debug_level_survives_a_simulated_reboot() -> None:
@@ -1114,13 +1138,24 @@ def test_get_cfg_schema_returns_the_debug_level_field() -> None:
     assert schema[0][0] == "DebugLevel"
 
 
-def test_pr_logger_reflects_the_live_debug_level_after_setup() -> None:
-    # End-to-end: an attached source, once setup() resolves the persisted value, actually changes
-    # what self.pr's own log methods would print - not just an internal bookkeeping value.
-    source = SharedLevel(PrintLog.level_off())
+def test_set_level_setters_replaces_any_previously_registered_list() -> None:
+    first: list[int] = []
+    second: list[int] = []
+    svc = make_service(cfg_path=_tmp_cfg_dir())
+    svc.set_level_setters([first.append])
+    svc.set_level_setters([second.append])  # replaces, does not accumulate
+    run(svc.setup())
+    assert first == []
+    assert second == [0]
+
+
+def test_pr_logger_reflects_the_live_debug_level_via_the_registry() -> None:
+    # End-to-end: registering self.pr.set_level itself (exactly what sensortask_wozi.py's
+    # _collect_level_setters() does for every module, including sysfunct's own) - a real logger's
+    # own log methods actually change behavior, not just an internal bookkeeping value.
     cfg_path = _tmp_cfg_dir()
-    svc = make_service(cfg_path=cfg_path, debug_level=source)
-    svc.pr.attach_level_source(source)
+    svc = make_service(cfg_path=cfg_path)
+    svc.set_level_setters([svc.pr.set_level])
     run(svc.setup())
     run(svc.set_debug_level(PrintLog.level_err()))
     assert svc.pr.get_level() == PrintLog.level_err()

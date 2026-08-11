@@ -20,7 +20,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 if TYPE_CHECKING:
     from typing import Any, Protocol
 
-    from base_classes import LockableBuffer, SharedLevel
+    from base_classes import LockableBuffer
     from crc_checks import CRC_Base
 
     # Narrow structural Protocols for the FRAM slice this file calls - kept even now that
@@ -57,43 +57,22 @@ _MAX_CNT = const(0xFFFF)
 
 class PrintLog:
     def __init__(self, level: int | None = None, name: str = "") -> None:
-        self._level = _LOG_OFF
-        # Optional live source (base_classes.py's SharedLevel) attached via attach_level_source() -
-        # None until then, so every existing caller's own per-instance level keeps working exactly
-        # as before (full backward compatibility, see the `level` property below).
-        self._level_source: SharedLevel | None = None
+        self.level = _LOG_OFF
         self.set_level(level)
         self.name = name
-
-    @property
-    def level(self) -> int:
-        # Deliberately synchronous, no lock - see SharedLevel's own docstring for why a plain
-        # attribute read is already safe here. This is the one property access on the hot path
-        # (every err()/wrn()/one()/evt()/all() call reads it), so it stays a single attribute
-        # lookup either way, not a function call chain.
-        if self._level_source is not None:
-            return self._level_source.value
-        return self._level
-
-    def attach_level_source(self, source: "SharedLevel") -> None:
-        # Once attached, get_level()/level always reflect source.value live - no need to call this
-        # again after the source's own value changes. set_level() below still writes the private
-        # fallback (so detaching, if ever needed, doesn't leave a stale level), just not observed
-        # while a source is attached.
-        self._level_source = source
 
     def get_level(self) -> int:
         return self.level
 
     def set_level(self, level: int | None) -> None:  # clamps to the valid [off, all] range instead of rejecting
         if level is None:
-            self._level = _LOG_OFF
+            self.level = _LOG_OFF
         elif level < _LOG_OFF:
-            self._level = _LOG_OFF
+            self.level = _LOG_OFF
         elif level > _LOG_ALL:
-            self._level = _LOG_ALL
+            self.level = _LOG_ALL
         else:
-            self._level = level
+            self.level = level
 
     @staticmethod
     def level_off() -> int:
