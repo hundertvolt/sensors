@@ -103,6 +103,70 @@ A step session can come back to the owner with a blocking question at any point 
 not only at the end — but the expectation is to have tried project context, docs, and legacy code
 as a reference first.
 
+## Original scoping discussion (verbatim record)
+
+The five steps above are a restructured, resolved-conclusions rewrite of the ten clarifying
+questions asked at the very start of this effort and the owner's answers to them. Kept here
+verbatim, not re-summarized again, because summarizing already lost one fact once: an earlier
+first-draft task list (session-local, never committed) said the construction/wiring restructure
+would be "implemented in `improved-quality/sensortask-wozi.py`" — wrong per "Where the new code
+actually lives" above, and a symptom of exactly the kind of drift that happens when only a
+compressed conclusion survives. If anything below and the step sections above ever disagree, the
+step sections above win — they're the reconciled version — but this record is the fallback for
+recovering *why*, and for anything a later compression pass might have dropped without anyone
+noticing.
+
+1. **Scope of "API setup" moving out of `sensortask.py`.** *Answer*: "The scope matters with regard
+   to the future plan of creating the sensortask* files automatically. I could imagine a setup like
+   giving the webserver wrapper a bunch of sensor data callbacks, a bunch of system state callbacks
+   etc... maybe with some names, so it can automatically construct a canonical JSON for the API —
+   would be a good scope. Still to be decided which values to wrap in a single endpoint with a
+   structured JSON and which ones to get their own endpoint." — the registration-API shape in Step 2
+   is settled; **which values land in the single structured status endpoint vs. get their own route
+   is not** — still a real open sub-decision for Step 2's own session to make (fair game for one of
+   its own 10 questions).
+2. **Website placeholder strategy.** *Answer*: "Just stubs for whatever website endpoints will be
+   created in (1). The API will significantly change compared to the legacy state." — matches Step
+   4's "stub only" framing; the real `html_raw/wozi/` content stays untouched, referenced only.
+3. **Unix-port hardware-simulation fidelity.** *Answer*: "let's take a) the digital twin. Some
+   sensible in-range arbitrary or random values, and keep it separated from the unit tests for not
+   breaking anything there accidentally." — settled, this is Step 3.
+4. **System-status endpoint shape/scope, including bus-layer participation.** *Answer*: "Keep the
+   buses as they are. DNSServer may be extended by an error counter - it makes sense that every
+   module which uses persisted (RAM or FRAM) logging also gets an error counter." — the general rule
+   behind Step 1's `get_error_counter()` gap-closing (not just `DNSServer` — the same audit also
+   found `NeopixelDriver` missing it).
+5. **Real RP2040 firmware build — in scope?** *Answer*: "Real RP2040 build also in this scope.
+   Unix-build verification is first, but once that runs, we will try on the real target (manually)."
+   — still true of the *overall* effort; predates the five-branch restructuring, so "in scope" here
+   means "part of this whole effort," not "one of the five branches" — it's sequenced after all five
+   merge, per "Out of scope for all five steps" below. Not a contradiction, just a later finish line.
+6. **How far to take "generator-friendly" now vs. later.** *Answer*: "The automated generator shall
+   not result in any additional quasi-constant variables which are once set at boot time and from
+   then on are constant but consuming memory. So setting it up in the sense of having a template
+   with empty constructor calls and the generator filling these calls with lists of callbacks (or
+   whatever is appropriate) should do." — the "generator-readiness constraint" in Step 2, worded
+   precisely: the objection is specifically to *memory-consuming* quasi-constant globals on a
+   memory-constrained target, not to named globals in general.
+7. **`@app.errorhandler` registration — bundle in or defer?** *Answer*: "this is fully in scope of
+   the Microdot wrapper writing, therefore yes, we will do in this scope." — settled, in Step 2.
+8. **Priority order / how to detect the best point to split into a new session.** *Answer*: "Your
+   steps are already ordered in good priority. How will we be able to detect the best point to start
+   a new session in case it grows too much?" — never answered in words at the time; **now resolved
+   structurally, not verbally**, by the five-branch-per-step scheme itself: each step *is* its own
+   session by construction, so there's no separate "when to split" judgment call left to make.
+9. **Is `improved-quality/sensortask-wozi.py`'s current construction order authoritative, or does it
+   need active fixing?** *Answer*: "Confirmed. All content of improved_quality/sensortask_wozi.py can
+   be regarded as a declaration of intention, not necessarily complete, and a collection of comments
+   and adaptations in the course of prior refactoring. So no need to work around it, structure it in
+   the most efficient way for a constrained system like the RP2040." — the basis for "Where the new
+   code actually lives" above: the reference file is intent, not a constraint to preserve mechanically.
+10. **Verification bar / TDD sequencing.** *Answer*: "We will do the unit tests here as well. With
+    'come later' I meant that we will first create an extensive ordered action list. Once that list,
+    not actual code work, is complete and additional information was fetched / gathered, we will
+    create a whole bunch of unit tests in the sense of test driven development and do some discussion
+    and decision rounds before." — the origin of the "per-step-session workflow" above.
+
 ## The five steps
 
 ### Step 1 — Construction/wiring restructure
