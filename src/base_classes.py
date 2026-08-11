@@ -285,10 +285,9 @@ class SensorReaderConfig(SensorReader):
         if old_values is None:
             old_values = {}
 
-        try:  # _set_mgr_cfg is an overridable extension point - the call itself, not just its
-            # result, could misbehave on a misbehaving subclass override (mirrors _get_dict_cfg's
-            # own _get_mgr_cfg handling) - the isinstance check below extends that same defense to
-            # a malformed *shape* of an otherwise-successful return, not just a raised exception.
+        try:  # _set_mgr_cfg is an overridable extension point - the call itself could misbehave on a
+            # subclass override (mirrors _get_dict_cfg's own _get_mgr_cfg handling); the isinstance
+            # check below extends that defense to a malformed return shape, not just a raise.
             persisted, results = await self._set_mgr_cfg(data, cfg_vals)
             if not isinstance(results, dict):
                 raise TypeError("_set_mgr_cfg returned a non-dict result")

@@ -5,11 +5,8 @@ readinto_until_complete/write/writefrom. Not wired into any live caller yet (see
 Whoever wires it in: GPIO24/25 and GPIO28/29 fall inside a UART pin-mux group and are
 wireless-reserved on Pico W - picking either pair for tx_pin/rx_pin silently collides with WiFi.
 
-A hardware-level framing/parity/overrun fault on rp2 never raises (see SPECIFICATION.md C.3.2 for
-the full verified raise contract) - every method here already returns a plain None/False sentinel
-accordingly, never raises. ready()'s own `except (OSError, MemoryError, TypeError):` around
-poll().ipoll() guards poll()/ipoll() itself, not a UART hardware fault, which has no exception path
-to catch in the first place.
+A hardware-level framing/parity/overrun fault on rp2 never raises (see SPECIFICATION.md C.3.2) -
+every method here returns a plain None/False sentinel instead, never raises.
 """
 
 import asyncio

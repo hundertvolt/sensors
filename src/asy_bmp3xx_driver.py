@@ -252,9 +252,7 @@ class BMP3xx_Reader(SensorReaderConfig):
         self.trigger_timer.deinit()
 
     async def get_data(self) -> BMP3XX:
-        # Narrows _get_meas_data()'s generic "NamedTuple" to this Reader's concrete BMP3XX;
-        # typing.cast() isn't usable (no runtime presence on MicroPython) so this identity return
-        # does the same job - see SPECIFICATION.md C.4.2's get_data() narrowing convention.
+        # Narrows to this Reader's concrete BMP3XX - see SPECIFICATION.md C.4.2's get_data() convention.
         return await self._get_meas_data()  # type: ignore[return-value]
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
@@ -437,11 +435,9 @@ class BMP3XX_I2C:
         return pressure, temperature
 
     async def _read_byte(self, register: int) -> int:
-        # Read a byte register value and return it.
         return (await self._read_register(register, 1))[0]
 
     async def _read_register(self, register: int, length: int) -> bytes:
-        # Low level register reading over I2C, returns the raw bytes read.
         async with self.i2c_bmp3xx as bmp3xx:  # device session
             async with bmp3xx.i2c_device as i2c:  # bus session
                 value = await i2c.get_register_struct(register, f"{length}s")
@@ -506,12 +502,10 @@ class BMP3XX_I2C:
             await asyncio.sleep(self._wait_time)
 
     async def get_pressure(self) -> float:
-        # The pressure in hPa.
         res = await self._read()
         return res[0] / 100
 
     async def get_temperature(self) -> float:
-        # The temperature in degrees Celsius.
         res = await self._read()
         return res[1]
 
@@ -523,7 +517,6 @@ class BMP3XX_I2C:
         return pressure / 100, temperature
 
     async def get_altitude(self) -> float:
-        # The altitude in meters based on the currently set sea level pressure.
         # see https://www.weather.gov/media/epz/wxcalc/pressureAltitude.pdf
         if self.sea_level_pressure <= 0:
             # A non-positive base here otherwise raises a confusing TypeError/ZeroDivisionError
@@ -533,15 +526,12 @@ class BMP3XX_I2C:
         return float(44307.7 * (1.0 - (await self.get_pressure() / self.sea_level_pressure) ** 0.190284))
 
     async def get_pressure_oversampling(self) -> int:
-        # The pressure oversampling setting.
         return await self._get_osr_setting(0)
 
     async def get_temperature_oversampling(self) -> int:
-        # The temperature oversampling setting.
         return await self._get_osr_setting(3)
 
     async def get_filter_coefficient(self) -> int:
-        # The IIR filter coefficient.
         async with self.i2c_bmp3xx as bmp3xx:  # device session
             async with bmp3xx.i2c_device as i2c:  # bus session
                 iir = await i2c.get_bits(3, _REGISTER_CONFIG, 1)

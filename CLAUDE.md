@@ -303,13 +303,8 @@ information):
   type-check run is ever added.
 - **`improved-quality/microdot.py` no longer exists** — it was a confirmed *unintentional* fork of
   vendored Microdot, removed and replaced with a fresh, unmodified sync at `ext/microdot.py`
-  (pinned to tag `v2.6.2`; see "Hard rules" above and "Microdot / REST layer" below).
-  `pyproject.toml`'s `extend-exclude`/`exclude` entries still reference the old
-  `improved-quality/microdot.py` path — now dead/inert (matches nothing), not a functional problem
-  since ruff/mypy were never pointed at `ext/` in the first place (`scripts/lint.sh` passes explicit
-  `improved-quality src tests` paths, and mypy's `files` list is exactly those three directories —
-  `ext/` was never in scope and needs no exclude entry of its own), but worth tidying up as cheap
-  doc/config hygiene next time `pyproject.toml` is touched (see BACKLOG.md).
+  (pinned to tag `v2.6.2`; see "Hard rules" above and "Microdot / REST layer" below). See
+  BACKLOG.md's "Deferred" list for the resulting dead `pyproject.toml` exclude entry.
 
 ## Pre-push verification (clean Ubuntu 24.04)
 

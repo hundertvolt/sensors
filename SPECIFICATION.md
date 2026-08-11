@@ -784,19 +784,10 @@ differently from a single-word class like `ConfigManager`. A private class follo
 underscore-prefix rule as a private function (`_AsyBaseFramChunk`). Double-leading-underscore
 (name-mangled) methods are reserved for the rare case where mangling itself is load-bearing
 (protecting a name from an actual subclass override) — not an alternate "more private" spelling of
-the ordinary single-underscore convention; verified project-wide as of this pass, `src/` has none
-(see D.15-adjacent finding below). **`AsyNtpClient`/`AsyConnTime`** (`asy_ntp_client.py`/
-`asy_wifi_service.py`) used to be `lower_snake_case` classes (`asy_ntp_client`/`asy_conn_time`),
-carried forward from the legacy codebase's own one-off naming — every other class, in both `src/`
-and the legacy `python/` tree, already followed CapWords, so this was never a project-wide
-alternate style. Renamed to CapWords with the project owner's explicit go-ahead, including the
-caller-site updates in `improved-quality/sensortask-wozi.py` that renaming required (a scoped
-exception to CLAUDE.md's usual out-of-scope-editing hard rule for that file, the same kind of
-narrowly-authorized exception the `ConfigManager`/`LockedValue` fix used). `voc_algorithm.py`'s
-internals (`DFRobot_vocalgorithmParams`,
-the `_vocalgorithm__*` method names) are a separate, permanent exception: F.4 requires this file's
-naming to trace its DFRobot/Sensirion source 1:1, so its casing is intentionally not
-project-style-compliant and never will be.
+the ordinary single-underscore convention; `src/` has none. Every class project-wide is CapWords,
+with one permanent exception: `voc_algorithm.py`'s internals (`DFRobot_vocalgorithmParams`, the
+`_vocalgorithm__*` method names) trace their DFRobot/Sensirion source 1:1 per F.4, so its casing is
+intentionally not project-style-compliant and never will be.
 
 One file per sensor: `asy_<sensor>_driver.py`. Within it:
 
@@ -1178,7 +1169,7 @@ args (synchronous, cheap) — `SensorReaderConfig.__init__` doesn't call `self.c
 itself, mirroring `ConfigManager.__init__`'s own stash-only shape one level down. The actual file
 load/write happens once `SensorReaderConfig`'s own `async def setup()` is awaited (which just
 awaits `self.cfgmgr.setup()`, extending the sync-`__init__`/async-`setup()` readiness-gate pattern
-up from `ConfigManager` — see C.13 above), cached in `self._cache`, and only
+up from `ConfigManager` — see C.13 below), cached in `self._cache`, and only
 re-synced to disk by `write_config()` — every `get_*` call reads the cache directly, no per-call
 file I/O.
 
@@ -1297,19 +1288,16 @@ one field (see `config_manager.py`'s own `test_configmanager_special_only_field_
 `get_cfg_schema()` (used for the *setter* side, `_set_dict_cfg(data, reader.get_cfg_schema())`)
 includes it.
 
-**A second, real consequence found and fixed in this same pass**: a push callback's return value
-means "push succeeded/failed" to `_set_dict_cfg` (`False` → `"Failed"` status plus a
-`_recover_failed_push()` attempt — C.5.2.2), but `reset_voc(flag)`'s own contract uses
-`False` to mean "no-op, `flag` was `False`" (see its docstring/tests), not "failed". The naive
-`_push_reset_voc` originally forwarded `reset_voc()`'s return value directly, so a client sending
-the entirely valid `{"SGPResetVOC": false}` was misreported as `"Failed"`. Fixed by having
-`_push_reset_voc` report success unconditionally once the type check passes — it always reports
-success unless the field type is wrong. **Any command-only/repeatable-trigger field whose real
-setter has its own "no-op vs. applied" return contract distinct from "push succeeded/failed" needs
-the same normalization in its own push-callback wrapper** — don't forward a setter's own return
-value as the push-callback's success signal unless the two contracts actually mean the same thing.
-`improved-quality/sensortask-wozi.py`'s `_scd_apply_field`/SCD30's `stop_continuous_measurement()`
-hit the identical shape (inverted: `True` input is the no-op there) and needed the same fix.
+**A push callback's return value means "push succeeded/failed" to `_set_dict_cfg`** (`False` →
+`"Failed"` status plus a `_recover_failed_push()` attempt — C.5.2.2). A setter like
+`reset_voc(flag)`, whose own return contract means something else (`False` = "no-op, `flag` was
+`False`", not "failed" — see its docstring/tests), must not have its return value forwarded
+directly as the push callback's success signal: `_push_reset_voc` reports success unconditionally
+once the type check passes. **Any command-only/repeatable-trigger field whose setter has its own
+"no-op vs. applied" contract, distinct from "push succeeded/failed", needs the same normalization**
+in its push-callback wrapper — `improved-quality/sensortask-wozi.py`'s `_scd_apply_field`/SCD30's
+`stop_continuous_measurement()` is the other live instance (inverted: `True` input is the no-op
+there).
 
 #### C.5.2.2 Failed-push recovery chain (replaces legacy's `set_sensor_value` fallback)
 
@@ -1390,17 +1378,16 @@ the field set), and every bool-typed field is native JSON `true`/`false`, replac
 `"switch"` `"On"`/`"Off"` string dtype everywhere it had a live route. The HTML/JS frontend has not
 been updated to match either change yet (see BACKLOG.md).
 
-**One real bug this migration surfaced, worth knowing for any future module in the same shape**:
-`AsyConnTime` owns exactly one schema/`cfgmgr` for all of `SSID`/`PW`/`Country`/`Hostname`/
-`LedWifiOn`, but two separate routes (`/net/cmd`'s `setNetwork`, `/led/cmd`'s `setWiFiLED`) each
-only own their own subset of those fields (matching the legacy handler's own per-route scoping).
-Passing `reader.get_cfg_schema()` (the *whole* schema) to `handle_set_cmd()` from both routes would
-let `setNetwork` accept/persist `LedWifiOn` (and spuriously fire `reconnect_wifi()` for an LED-only
-change) and let `setWiFiLED` silently accept/persist `SSID`/`PW`/`Country`/`Hostname` with no
-reconnect at all. `sensortask-wozi.py`'s `_cfg_subset(schema, keys)` narrows `get_cfg_schema()`'s
-tuple down to a named subset before passing it to `handle_set_cmd()` — any future module whose
-single schema is split across more than one REST route needs the same per-route narrowing, not
-`get_cfg_schema()`'s full return value handed to each route unchanged.
+**A module whose single schema is split across more than one REST route must narrow
+`get_cfg_schema()`'s tuple per route, not hand each route the whole schema**: `AsyConnTime` owns
+one schema/`cfgmgr` for all of `SSID`/`PW`/`Country`/`Hostname`/`LedWifiOn`, but `/net/cmd`'s
+`setNetwork` and `/led/cmd`'s `setWiFiLED` each only own their own subset (matching the legacy
+handler's own per-route scoping) — passing the full schema to `handle_set_cmd()` from both routes
+would let `setNetwork` accept/persist `LedWifiOn` (spuriously firing `reconnect_wifi()` for an
+LED-only change) and let `setWiFiLED` silently accept/persist `SSID`/`PW`/`Country`/`Hostname` with
+no reconnect at all. `sensortask-wozi.py`'s `_cfg_subset(schema, keys)` narrows the tuple to a
+named subset before passing it to `handle_set_cmd()`; any future module in this shape needs the
+same per-route narrowing.
 
 ## C.6 Data model (`config_manager.py`'s `make_dict()`)
 
@@ -1510,8 +1497,8 @@ and its config read-back comes back silently wrong/empty.
   the now-shared shape.)
 - **An owned helper with no registered `get_task_starters()`/`get_timer_starters()` entry of its
   own may still own an independent, uniquely-named `PrintLogHistory` instead of sharing its
-  owner's `self.pr`** — settled via project-owner decision (2026-08-07) for `captive_dns.py`'s
-  `DNSServer` (owned/lifecycle-managed by `AsyConnTime`, not itself a registered `Reader`):
+  owner's `self.pr`** — the rule for `captive_dns.py`'s `DNSServer` (owned/lifecycle-managed by
+  `AsyConnTime`, not itself a registered `Reader`):
   it gets its own `"DNSSRV"`-named `PrintLogHistory` rather than reusing `AsyConnTime`'s. The
   rationale is one level up from C.7 itself — at the `sensortask`/wiring level, multiple owned
   helpers' independent histories are expected to be folded into one combined REST-facing endpoint
@@ -1533,7 +1520,7 @@ pass-1/pass-2 process this table is pass 2's own output.
 |---|---|---|---|
 | `base_classes.py` (inherited by every `SensorReader`/`SensorReaderConfig` subclass) | 1-9 | 1-2 | Reserved base range — see the bullet above; every driver's own numbering starts at 10+ to avoid colliding with this. |
 | `config_manager.py` (`"CFGMGR_" + name`, per instance) | 1-14 | 1-6 | Sequential in source order (`setup()`'s load/validate/first-write paths, then the three already-async accessor methods). |
-| `asy_fram_manager.py`/`asy_fram_driver.py` (shared `"FRAM"` logger — `AsyFramManager`, its chunk classes, and `FRAM_SPI` all share one stream) | 10-97 | 81-83 | `AsyFramManager`/chunks: ~10-88 (dynamic bases 10/`_write_chunk`, 30/`_read_chunk`, 50/`_clear_chunk`, each +0-6, plus fixed values through the chunk classes and `setup()`). `FRAM_SPI`: 89-97, continuing sequentially from where the manager's range ends (not-initialized ×5, invalid-range ×2, readback mismatch, lock-timeout) + `wrnno=81-83` (WRDI-stuck, WEL-didn't-set ×2). |
+| `asy_fram_manager.py`/`asy_fram_driver.py` (shared `"FRAM"` logger — `AsyFramManager`, its chunk classes, and `FRAM_SPI` all share one stream) | 17-97 | 60-83 | `AsyFramManager`: 17-88, non-sequential — `_write_chunk()`=17/18/26, `_read_chunk()`=37/38/46-48, `_clear_chunk()`=57/58, the block-pair `_write()`/`_read()`/`clear()` helpers reuse 60-64/70-73/80 for both their own `errno` and matching `wrnno` (pause/invalid-block-data warnings), the remaining higher-level methods (`write()`, timestamp write/sync/`setup()`)=81-88. `FRAM_SPI`: 89-97, continuing sequentially (not-initialized ×5, invalid-range ×2, readback mismatch, lock-timeout) + `wrnno`=81-83 (WRDI-stuck, WEL-didn't-set ×2). |
 | `asy_bmp3xx_driver.py` (`"BMP3XX"`) | 10-21 | — | 10=init, 11-14=config read/write, 15-20=oversampling/filter forwards, 21=trigger-interval. |
 | `asy_scd30_driver.py` (`"SCD30"`) | 10-24 | — | 10=init, 11=read, 12=stop-continuous-measurement, 13-24=per-field get/set forwards in pairs. |
 | `asy_sgp40_driver.py` (`"SGP40"`) | 10-18 | 10-14 | 10=init, 11-12=config, 13-18=VOC-backup read/write/serialize; `wrnno`=backup-missing/stale conditions. |
@@ -1546,11 +1533,9 @@ pass-1/pass-2 process this table is pass 2's own output.
 | `asy_i2c_driver.py`/`asy_spi_driver.py`, `asy_udp_socket.py`, `asy_dns_client.py` (client side) | — | — | Deliberately no logging (reverted) — every real failure already surfaces to and gets logged by exactly one upstream owner; see the standing "Bus layer"/"`asy_udp_socket.py`/`asy_dns_client.py`" conventions above. |
 | `asy_uart_driver.py` | — | — | Orphan module, zero live callers — no `self.pr` at all (C.3.2); would follow this same table's shape once wired in and given an owner. |
 
-Cross-module precedent worth repeating from the bullet above: `errno=10` means "init failed"
-almost everywhere a driver reaches that number, purely because it's the first number free after
-`base_classes.py`'s own reserved 1-9 — not independent convergence. A new module should follow the
-same reasoning (start its own numbering at 10+, use 10 for init failure if it has one), not treat
-this table as a lookup requiring a specific unused global number.
+See the "reserved base range" bullet above for why `errno=10` means "init failed" almost everywhere
+a driver reaches that number — a new module should follow the same reasoning, not treat this table
+as a lookup requiring a specific unused global number.
 
 ## C.8 Concurrency & locking model
 
@@ -1996,10 +1981,9 @@ is not a machine with memory or cycles to spare:
 - [ ] Look specifically for the old `u`-prefixed module names (`uasyncio`, `ustruct`, `ujson`,
       `ucollections`, ...) — MicroPython consolidated these to their plain names years ago; the
       `u`-prefixed forms still work as aliases today but are the clearest tell that a file predates
-      that consolidation. (`crc_checks.py` already uses the modern `asyncio`/`struct` names;
-      `improved-quality/sensortask-wozi.py`'s own `from uasyncio import ...` was already found and
-      fixed to `from asyncio import ThreadSafeFlag` — check any other `improved-quality/`/legacy
-      file going through this review for the same pattern, don't assume it's already been swept
+      that consolidation. (`crc_checks.py` and `improved-quality/sensortask-wozi.py` already use
+      the modern `asyncio`/`struct` names — check any other `improved-quality/`/legacy file going
+      through this review for the old `u`-prefixed pattern, don't assume it's already been swept
       everywhere.)
 - [ ] Same "without changing functionality" hard constraint as D.8 applies when a
       modernization is purely a rewrite for currentness — the existing test suite must still pass
@@ -2041,9 +2025,7 @@ is not a machine with memory or cycles to spare:
       level. Don't restate what the code already says.
 - [ ] Per-function/per-method explanations are always `#` comments, never docstrings — a
       module-level docstring for the file's own shared contract is expected (see below), but don't
-      mix a docstring into an individual function within the same file. (Found and fixed a real
-      instance of this: `crc_checks.py`'s `run_inc` had both a comment above the `def` and a
-      docstring inside it saying much the same thing — keep to one, and make it a comment.)
+      mix a docstring into an individual function within the same file.
 - [ ] State a shared contract once, at module level (e.g. "returns `None`, never raises, if ...")
       instead of repeating it in every function's docstring/comment — and this applies across
       files too, not just within one: a principle already established once as a project-wide rule
@@ -2059,11 +2041,10 @@ is not a machine with memory or cycles to spare:
       in BACKLOG.md instead — BACKLOG.md is active working memory, not a place to archive design
       history once it's settled. Per-function/inline comments stay within **3 lines, prefer
       fewer** — a block running longer than that is a sign the detail belongs in one of those
-      other docs, not in the file itself. (`config_manager.py`'s module docstring was cut from 34
-      lines to a 9-line header this way, and four inline comment blocks from 4-7 lines down to 2,
-      with zero behavior change — its cache-based design's one real consequence, that a corrupted
-      on-disk file is silently repaired from cache rather than detected, is now a permanent fact in
-      CLAUDE.md's architecture reference instead of an essay in the file.)
+      other docs, not in the file itself. (`config_manager.py`'s cache-based design has one real
+      consequence — a corrupted on-disk file is silently repaired from cache rather than detected —
+      that lives as a permanent fact in CLAUDE.md's architecture reference instead of an essay in
+      the file.)
 
 ## D.12 Unit tests
 
@@ -2144,9 +2125,10 @@ planned, not "should be fine."
 
 # Part E — Testing & Coverage
 
-Unit tests for `src/` (fully-reviewed code moved out of `improved-quality/` — see CLAUDE.md).
-Current total: 1755 tests across 32 `tests/test_*.py` files (verify via
-`grep -c '^def test_' tests/test_*.py` if this looks stale).
+Unit tests for `src/` (fully-reviewed code moved out of `improved-quality/` — see CLAUDE.md). Total
+test/file count drifts every time a test is added, so it isn't tracked as a fixed number here — get
+the current count with `ls tests/test_*.py | wc -l` (files) and `grep -c '^def test_'
+tests/test_*.py` (tests).
 
 ## E.1 Why not pytest
 
@@ -2198,13 +2180,9 @@ transactions (`readfrom_mem`/`writeto_mem`/`readfrom_into`/`writeto`/`scan`/`dei
 dict-of-registers store, so the driver's own logic (bit-packing, byte order, locking, error paths)
 runs for real against it.
 
-`tests/base_classes.py` used to be a separate, narrower case: a minimal stand-in for `Lockable`,
-needed only because `base_classes.py` hadn't cleared its own `src/` promotion yet and
-`improved-quality/` wasn't on this test `MICROPYPATH`. Now that `base_classes.py` (along with its
-own dependencies, `config_manager.py` and `print_log.py`) is itself promoted to `src/`, that
-stand-in - and the narrow, self-resolving `scripts/typecheck.sh` (no arguments) collision it used
-to cause - is gone; `asy_i2c_driver.py`/`asy_spi_driver.py` resolve `Lockable` against the real
-`src/base_classes.py` like any other `src/` import.
+`asy_i2c_driver.py`/`asy_spi_driver.py` resolve `Lockable` against the real `src/base_classes.py`
+(along with its own dependencies, `config_manager.py` and `print_log.py`), like any other `src/`
+import.
 
 `tests/test_print_log.py`/`tests/test_base_classes.py` are a third instance of the same mocking
 boundary, for FRAM: they now drive `print_log.py`'s `PrintLogHistoryStore` (and, through it,

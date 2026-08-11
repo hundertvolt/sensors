@@ -7,40 +7,6 @@ operating constraints/architecture reference) or README.md (human-facing orienta
 migrated there rather than duplicated here. See README.md for orientation, CLAUDE.md for operating
 constraints.
 
-## Full `src/` audit — completed 2026-08-08
-
-Owner intent, captured 2026-08-06: a deep pass over the entire `src/` contents, aimed at getting the
-codebase ready to be wired up together in `sensortask-*.py`. Ran as its own tracked effort in
-`AUDIT_PLAN.md` (deleted now that it's closed — every permanent fact it produced is migrated below or
-already lives in `SPECIFICATION.md`, per this file's own "resolved items get pruned, not left to rot"
-rule) across 11 clusters covering every `src/` file, plus a follow-up pass and a dedicated test-suite
-bug sweep. Where each of the owner's original goals/lenses ended up:
-
-- Lean error handling, trusting type contracts, simplification, cross-file style consistency,
-  boilerplate hunting, and the wiring-readiness fixes those turned up: all applied per-file and
-  harmonized into a single guideline, **`SPECIFICATION.md` Parts C (driver architecture spec) and D
-  (the `src/` quality checklist)** — the "single, comprehensive project code-style guideline" the
-  original goal asked for. `DRIVER_SPEC.md` and `src/README.md` are now stub files pointing there,
-  their content folded in rather than left duplicated.
-- The MicroPython-currency check is a standing practice, not a one-off — see CLAUDE.md's "Platform
-  target" section.
-- The stale-mock scan (every test file checked for mocks of a since-promoted `src/` module) found no
-  gaps; applying the same lens surfaced and closed a real coverage gap instead (`WarnVOC`/`WarnHum`
-  notification-signal integration tests, previously missing).
-- The documentation sweep is done — `SPECIFICATION.md` now consolidates what used to be scattered
-  across `DRIVER_SPEC.md`/`src/README.md`/`tests/README.md`/`toolchain/README.md`, and every
-  deferred/unknown-scope item flagged during promotion was revisited (resolved, or, where it
-  genuinely depends on the not-yet-written `sensortask-*.py` wiring, left here — see below and
-  "Deferred / explicitly out-of-scope work").
-- The `improved-quality/sensortask-wozi.py` wiring study — construction order, dependency graph,
-  task-supervisor interaction, the shared measurement-data/REST-read pattern — lives in
-  **`WIRING_CONTRACT.md`**, which stays (unlike `AUDIT_PLAN.md`) since its job isn't done: it's the
-  reference the eventual Stage-1 rewrite needs in hand, not just a planning artifact. Keep it
-  current as `src/` changes, not just at audit close.
-- FRAM-backed error/trace history now has a consistent shape across every module —
-  `ConfigManager.get_error_counter()` was added to match `get_log()`'s existing dict contract
-  (`SPECIFICATION.md` Part C.4.2), closing the one module that didn't yet have it.
-
 ## Refactor targets not yet done
 
 - **Bare `except:` is forbidden in refactored code** (`except Exception:` or narrower required).
@@ -358,16 +324,14 @@ bug sweep. Where each of the owner's original goals/lenses ended up:
   Sensirion's C reference, but the retained class name `DFRobot_vocalgorithmParams`
   (byte-identical to the legacy file) shows the real intermediate is DFRobot's own MIT-licensed
   Python translation, whose attribution was never carried forward either — a provenance correction
-  is needed alongside the missing header, not just the header alone. Found during a documentation
-  audit (2026-08-10); owner explicitly deferred fixing this — no priority yet, kept here so it
-  isn't lost.
+  is needed alongside the missing header, not just the header alone. Owner explicitly deferred
+  fixing this — no priority yet, kept here so it isn't lost.
 - **`improved-quality/sensortask-wozi.py` has the same task/session-narrative-comment problem the
-  rest of `src/` was already swept for** (2026-08-10) — pervasive dated migration-narrative
-  comments, a TODO/stale-comment combo, one leftover `DRIVER_SPEC.md section 7` reference, and no
-  module-level docstring (every `src/` file has one). Left untouched deliberately: out of scope
-  under CLAUDE.md's hard rule on editing `improved-quality/` source without a scoped,
-  owner-authorized exception, and explicitly deferred by the owner to its own future session rather
-  than bundled into this one.
+  rest of `src/` was already swept for** — pervasive dated migration-narrative comments, a
+  TODO/stale-comment combo, one leftover `DRIVER_SPEC.md section 7` reference, and no module-level
+  docstring (every `src/` file has one). Left untouched deliberately: out of scope under CLAUDE.md's
+  hard rule on editing `improved-quality/` source without a scoped, owner-authorized exception, and
+  explicitly deferred by the owner to its own future session rather than bundled into this one.
 - **Dev/build environment setup**: toolchain installer is done (`toolchain/setup_toolchain.py`, see
   `toolchain/README.md`/README.md's "Toolchain setup"). **Still not done**: doesn't yet genericize
   `build-*.sh`'s hardcoded `/home/nico/rpi_pico/...` path or the `py-include` symlink — the next

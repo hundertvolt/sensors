@@ -2,13 +2,10 @@
 
 Temporary, but on a different clock than `BACKLOG.md`'s usual "resolved items get pruned" rule:
 deleted once the real Stage-1 standalone `sensortask-wozi.py` successor actually lands in a future
-session and this document's job is done — not before, and not just because some other piece of work
-(like the full `src/` audit that originally seeded this document, see `BACKLOG.md`'s "Full `src/`
-audit" section) closes. Until Stage 1 happens, this file is the single, permanent home for the
-instantiation-order/dependency-graph facts a future wiring rewrite must preserve, plus forward notes
-for that future REST API design — **keep it up to date** whenever a change to `src/` or
-`improved-quality/sensortask-wozi.py` touches anything documented below, the same way any other
-permanent doc gets updated, not just at a periodic audit's own close.
+session and this document's job is done — not before. Until Stage 1 happens, this file is the
+single, permanent home for the instantiation-order/dependency-graph facts a future wiring rewrite
+must preserve, plus forward notes for that future REST API design — **keep it up to date** whenever
+a change to `src/` or `improved-quality/sensortask-wozi.py` touches anything documented below.
 
 ## Why instantiation order matters
 
@@ -65,10 +62,9 @@ level, and the *runtime* object graph above is the only thing a rewrite needs to
 
 ## New structural fallout from the `ConfigManager` setup()-ripple decision
 
-The owner resolved, during the `src/` audit (`SPECIFICATION.md` Part C.13's readiness-gate scheme is
-the permanent record of the pattern itself), to extend the sync-`__init__`/async-`setup()`
-readiness-gate scheme up through `ConfigManager` → `SensorReaderConfig` → every concrete
-`SensorReaderConfig` subclass. Concretely, this means `sensortask-wozi.py`'s construction sites for
+The sync-`__init__`/async-`setup()` readiness-gate scheme (`SPECIFICATION.md` Part C.13 is the
+permanent record of the pattern itself) extends up through `ConfigManager` → `SensorReaderConfig` →
+every concrete `SensorReaderConfig` subclass. Concretely, this means `sensortask-wozi.py`'s construction sites for
 `bmp_reader` (`BMP3xx_Reader`), `sgp_reader` (`SGP40_Reader`), and `notify_service`
 (`NotificationCoordinator`) each need an added `await x.setup()` call after construction —
 `scd_reader` (`SCD30_Reader`) and `pixel` (`NeopixelDriver`) are exempt (plain `SensorReader`
@@ -87,17 +83,13 @@ setup step is still a single, unconditional, deterministic point in the sequence
 doesn't break, but it's worth being explicit that "deterministic" now has to be verified across an
 async sequence, not just a synchronous one.
 
-## Already-found gaps in the current file (mechanical fixes, allowed now per owner authorization — no full promotion)
+## Current state of the file (mechanical fixes, allowed now per owner authorization — no full promotion)
 
-**Closed, Cluster 10**: the two remaining `# TODO` None-handling comments (`/time/config`,
-`/led/config`) were stale, not real gaps — both routes already returned `None` safely (the one real
-crash, `/net/config`'s `PW` assignment into a `None` dict, was already fixed in an earlier session,
-per the file's own top-of-file migration comment). Reworded both comments to state the actual,
-already-correct behavior (matches `/net/config`'s own established "let it be `None`" convention)
-instead of reading like an open question. The old-style `from uasyncio import ThreadSafeFlag`
-import is fixed to `from asyncio import ThreadSafeFlag` (current MicroPython naming — `uasyncio`
-stays a compatibility alias, `asyncio` is the name every other import in this file and across
-`src/` already uses).
+`/time/config`'s and `/led/config`'s `None`-handling is intentional, not an open gap: both routes
+already return `None` safely, matching `/net/config`'s own established "let it be `None`"
+convention. The import is `from asyncio import ThreadSafeFlag` (current MicroPython naming —
+`uasyncio` stays a compatibility alias but every import in this file and across `src/` uses the
+plain name).
 
 **Still deliberately deferred**: `_MAX_I2C_ERR = const(5)` — the project-wide `max_i2c_err` rename
 (BACKLOG.md, deferred) hasn't reached this file, matching `SPECIFICATION.md` C.2's own explicit
@@ -113,20 +105,13 @@ stays a compatibility alias, `asyncio` is the name every other import in this fi
 
 ## Status
 
-`[x]` **Full Cluster 10 study done (2026-08-08)**. Re-read `improved-quality/sensortask-wozi.py`'s
-entire module-level construction sequence and every `import`/`from` statement in full, against the
-current post-Cluster-9 state of `src/` — the "Current construction order" and "Dependency graph"
-sections above are reconfirmed accurate, unchanged since they were first seeded (Cluster 9's own
-edits touched only `system_service.py`/`asy_notification_service.py`/`asy_neopixel_driver.py`
-internals, not this file's construction sequence or any cross-module reference). The "Already-found
-gaps" section above is updated to reflect the two mechanical fixes closed this cluster. The
-"New structural fallout" section's analysis (every `SensorReaderConfig` subclass's construction site
+Last verified accurate against `src/` and `improved-quality/sensortask-wozi.py` as of commit
+`acc4993`. The "Current construction order" and "Dependency graph" sections above hold. The "New
+structural fallout" section's analysis (every `SensorReaderConfig` subclass's construction site
 needing an added `await x.setup()`, and the resulting break of the current flat synchronous
-construction sequence) is reconfirmed still accurate and still unresolved — genuinely Stage 1's job,
-not the audit's. No new dependency-graph or construction-order finding surfaced from this full
-re-read beyond what was already seeded.
+construction sequence) is still accurate and still unresolved — genuinely Stage 1's job, not this
+document's.
 
-This document itself stays open past the audit's own close (2026-08-08) — its job is Stage 1's
-wiring rewrite, not the audit. Re-verify the sections above whenever a future change to `src/` or
-`improved-quality/sensortask-wozi.py` could plausibly affect construction order, the dependency
-graph, or the fallout item above, not just when a new formal "cluster" of work happens to run.
+This document's job is Stage 1's wiring rewrite, not a one-time audit — re-verify the sections above
+whenever a future change to `src/` or `improved-quality/sensortask-wozi.py` could plausibly affect
+construction order, the dependency graph, or the fallout item above.

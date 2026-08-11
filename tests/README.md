@@ -7,9 +7,8 @@ as part of a first-pass doc-scatter cleanup that consolidated `DRIVER_SPEC.md`, 
 `tests/README.md`, `toolchain/README.md`, and parts of the root `README.md` into one central
 document.
 
-This stub stays in place so existing links/references to `tests/README.md` (throughout
-`CLAUDE.md`, `BACKLOG.md`, `WIRING_CONTRACT.md`, and elsewhere) still resolve to
-a real file.
+This stub stays in place so existing links/references to `tests/README.md` elsewhere in the repo
+still resolve to a real file.
 
 See `../SPECIFICATION.md`'s own front matter for the full rationale, and its "Further reading"
 entry in the root `README.md` for the complete map of every project doc.

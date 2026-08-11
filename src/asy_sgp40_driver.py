@@ -382,9 +382,7 @@ class SGP40_Reader(SensorReaderConfig):
         return self.last_backup, self.restored_from
 
     async def get_data(self) -> SGP40:
-        # Narrows _get_meas_data()'s generic "NamedTuple" to this Reader's concrete SGP40;
-        # typing.cast() isn't usable (no runtime presence on MicroPython) so this identity return
-        # does the same job - see SPECIFICATION.md C.4.2's get_data() narrowing convention.
+        # Narrows to this Reader's concrete SGP40 - see SPECIFICATION.md C.4.2's get_data() convention.
         return await self._get_meas_data()  # type: ignore[return-value]
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:

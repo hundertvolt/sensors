@@ -751,7 +751,7 @@ def test_sensorreaderconfig_forwards_its_name_to_the_base_class_logger() -> None
 
 def test_sensorreaderconfig_setup_awaits_cfgmgr_setup() -> None:
     # SensorReaderConfig's own async def setup() extends ConfigManager's sync-__init__/
-    # async-setup() readiness-gate pattern one level up (see CLAUDE.md's Cluster 3 note) - awaiting
+    # async-setup() readiness-gate pattern one level up (SPECIFICATION.md C.13) - awaiting
     # it must leave cfgmgr exactly as ready as calling cfgmgr.setup() directly would.
     path_prefix = _tmp_path("") + "/"
     _remove(path_prefix + "config_ownsetup.cfg")
@@ -829,9 +829,8 @@ def test_sensorreaderconfig_is_a_sensorreader_with_a_real_mgr_cfg_override() -> 
 
 
 def test_get_mgr_cfg_logs_a_cross_reference_line_before_calling_into_cfgmgr() -> None:
-    # Cluster 3's own cross-reference logging: a line via the owner's self.pr whenever
-    # _get_mgr_cfg actually calls into self.cfgmgr, pairing with ConfigManager's own
-    # "CFGMGR_"-identified log line for a human/future-rsyslog reader (see CLAUDE.md).
+    # A line via the owner's self.pr whenever _get_mgr_cfg actually calls into self.cfgmgr, pairing
+    # with ConfigManager's own "CFGMGR_"-identified log line for a human/future-rsyslog reader.
     path_prefix = _tmp_path("") + "/"
     _remove(path_prefix + "config_crossrefget.cfg")
     try:
@@ -861,10 +860,9 @@ def test_sensorreaderconfig_get_dict_cfg_round_trips_a_real_bool_field() -> None
 
 
 def test_sensorreaderconfig_configmanager_has_its_own_separate_logger_instance() -> None:
-    # Cluster 2 (config_manager.py's name-baking change, see CLAUDE.md): ConfigManager now builds
-    # its own "CFGMGR_" + name-identified PrintLogHistory internally instead of reusing its
-    # owner's self.pr - reusing the owner's logger would mislabel every config-related log line as
-    # coming from the owner itself, not from config management. Deliberately the inverse of what
+    # ConfigManager builds its own "CFGMGR_" + name-identified PrintLogHistory internally instead
+    # of reusing its owner's self.pr - reusing the owner's logger would mislabel every
+    # config-related log line as coming from the owner itself, not from config management. Deliberately the inverse of what
     # this test used to assert (a pre-Cluster-2 shared-instance design).
     path_prefix = _tmp_path("") + "/"
     _remove(path_prefix + "config_shared.cfg")
@@ -927,10 +925,9 @@ def test_sensorreaderconfig_fram_backed_logging_with_real_config_file() -> None:
 
 
 def test_sensorreaderconfig_malformed_config_file_repairs_cleanly_with_fram_backed_logger() -> None:
-    # Since Cluster 2 (see CLAUDE.md), ConfigManager's repair warnings go through its own separate,
-    # in-memory-only "CFGMGR_" + name PrintLogHistory - not reader.pr, the FRAM-backed logger this
-    # test constructs - so reader.pr.err_count stays 0 regardless of the repair, and nothing is
-    # persisted to FRAM by it either way.
+    # ConfigManager's repair warnings go through its own separate, in-memory-only "CFGMGR_" + name
+    # PrintLogHistory - not reader.pr, the FRAM-backed logger this test constructs - so
+    # reader.pr.err_count stays 0 regardless of the repair, and nothing is persisted to FRAM either way.
     path_prefix = _tmp_path("") + "/"
     path = path_prefix + "config_fram2.cfg"
     _remove(path)

@@ -180,9 +180,7 @@ class NotificationCoordinator(SensorReaderConfig):
         return []  # no machine.Timer anywhere in this file (SPECIFICATION.md C.9 shape)
 
     async def get_data(self) -> NOTIFY:
-        # Narrows _get_meas_data()'s generic "NamedTuple" to this Reader's concrete NOTIFY;
-        # typing.cast() isn't usable (no runtime presence on MicroPython) so this identity return
-        # does the same job - see SPECIFICATION.md C.4.2's get_data() narrowing convention.
+        # Narrows to this Reader's concrete NOTIFY - see SPECIFICATION.md C.4.2's get_data() convention.
         if not self._finalized:  # finalize() hasn't run yet - self._datastruct doesn't exist; caller-ordering
             return NOTIFY(False, None)  # bug, defense-in-depth only
         return await self._get_meas_data()  # type: ignore[return-value]

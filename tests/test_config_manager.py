@@ -1682,7 +1682,7 @@ def test_concurrent_writes_are_serialized_not_lost() -> None:
 
 
 # ---------------------------------------------------------------------------
-# name identity / err_s/wrn_s error history / get_error_counter (Cluster 2's name-baking and real
+# name identity / err_s/wrn_s error history / get_error_counter (name-baking and real
 # error-history logging, applied to ConfigManager)
 # ---------------------------------------------------------------------------
 

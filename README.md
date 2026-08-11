@@ -106,15 +106,13 @@ When a new doc is added, add it here too instead of letting the map go stale aga
 
 **Temporary planning doc** (kept live — not a periodic-cleanup artifact):
 
-- **WIRING_CONTRACT.md** — the standing reference for the eventual real rewrite of
-  `improved-quality/sensortask-wozi.py`'s construction sequence ("Stage 1" of the two-stage wiring
-  plan, `SPECIFICATION.md` Part A): real FRAM-chunk construction order, the constructor-injection
+- **WIRING_CONTRACT.md** — the standing reference for the eventual real rewrite ("Stage 1") of
+  `improved-quality/sensortask-wozi.py`'s construction sequence: real FRAM-chunk construction order, the constructor-injection
   dependency graph between modules, already-found mechanical gaps, and forward REST-API notes. Its
   own facts have no other permanent home, so it stays up to date as `src/`/`sensortask-wozi.py`
   change, not just at some periodic pass's own close — deleted only once Stage 1's real rewrite
   actually lands and supersedes it.
 
-`AUDIT_PLAN.md`, the master action list for the now-completed full `src/` audit (see BACKLOG.md's
-"Full `src/` audit"), was deleted once the audit closed — everything permanent it settled was
-migrated into `SPECIFICATION.md` (the style-guideline harmonization it drove lives in Parts C/D)
-first.
+`AUDIT_PLAN.md`, the master action list for the now-completed full `src/` audit, was deleted once
+the audit closed — everything permanent it settled was migrated into `SPECIFICATION.md` (the
+style-guideline harmonization it drove lives in Parts C/D) first.

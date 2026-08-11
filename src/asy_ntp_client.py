@@ -310,8 +310,7 @@ class AsyNtpClient(SensorReaderConfig):
         self.counter_timer.deinit()
 
     async def get_data(self) -> NTP:
-        # Narrows _get_meas_data()'s generic NamedTuple to this Reader's concrete NTP - typing.cast()
-        # isn't usable on MicroPython, so this identity return does the same job.
+        # Narrows to this Reader's concrete NTP - see SPECIFICATION.md C.4.2's get_data() convention.
         return await self._get_meas_data()  # type: ignore[return-value]
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:

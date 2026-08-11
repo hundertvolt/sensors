@@ -180,10 +180,9 @@ class AsyConnTime(SensorReaderConfig):
 
     def _led_on(self) -> None:
         if self.led is not None:
-            try:  # self.led may be a caller-supplied ext_led (LEDControl Protocol, not necessarily
-                # a real Pin) - could legitimately misbehave. Purely decorative status, so degrades
-                # silently rather than feeding hw_op_failed/_error_check() (that's about the WLAN
-                # hardware, not the LED).
+            try:  # self.led may be a caller-supplied ext_led (LEDControl Protocol, not necessarily a
+                # real Pin) - could misbehave, so this degrades silently rather than feeding
+                # hw_op_failed/_error_check().
                 self.led.on()
             except Exception as e:
                 self.pr.err("LED on() failed:", e)
@@ -603,9 +602,9 @@ class AsyConnTime(SensorReaderConfig):
         self.counter_timer.deinit()
 
     async def get_data(self) -> WIFI:
-        # Narrows _get_meas_data()'s generic NamedTuple to this Reader's concrete WIFI, matching
-        # asy_ntp_client.py's own convention. Backed by time_counter()'s 1Hz cache push rather than
-        # a live lock-aware query - avoids a transient "unknown" reading mid-mode-switch.
+        # Narrows to this Reader's concrete WIFI - see SPECIFICATION.md C.4.2's get_data() convention.
+        # Backed by time_counter()'s 1Hz cache push rather than a live lock-aware query - avoids a
+        # transient "unknown" reading mid-mode-switch.
         return await self._get_meas_data()  # type: ignore[return-value]
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
@@ -643,10 +642,9 @@ class AsyConnTime(SensorReaderConfig):
             return None
         try:
             rssi = int(self.wlan.status("rssi"))  # not valid in AP mode!
-        except Exception as e:  # observation-tier - see _wlan_status_or_none()'s comment. Confirmed
-            # via extmod/network_cyw43.c: querying "rssi" outside STA mode raises
-            # ValueError("STA required"), a routine failure while hotspot_mode is active - still
-            # logs, unlike a silent swallow.
+        except Exception as e:  # observation-tier - see _wlan_status_or_none()'s comment. Per
+            # extmod/network_cyw43.c, querying "rssi" outside STA mode raises ValueError("STA
+            # required"), a routine failure while hotspot_mode is active - still logs.
             self.pr.err("wlan.status('rssi') failed:", e)
             rssi = None
         return rssi
