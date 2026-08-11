@@ -106,12 +106,14 @@ When a new doc is added, add it here too instead of letting the map go stale aga
 
 **Temporary planning doc** (kept live — not a periodic-cleanup artifact):
 
-- **WIRING_CONTRACT.md** — the standing reference for the eventual real rewrite ("Stage 1") of
-  `improved-quality/sensortask-wozi.py`'s construction sequence: real FRAM-chunk construction order, the constructor-injection
-  dependency graph between modules, already-found mechanical gaps, and forward REST-API notes. Its
-  own facts have no other permanent home, so it stays up to date as `src/`/`sensortask-wozi.py`
-  change, not just at some periodic pass's own close — deleted only once Stage 1's real rewrite
-  actually lands and supersedes it.
+- **WIRING_CONTRACT.md** — the standing reference for `src/sensortask_wozi.py`'s construction
+  sequence (Step 1 of `FINAL_WIRING_PLAN.md`'s five-step effort landed and merged): real FRAM-chunk
+  construction order, the constructor-injection dependency graph between modules, already-found
+  mechanical gaps, and forward REST-API notes. Its own facts have no other permanent home, so it
+  stays up to date as `src/sensortask_wozi.py` changes, not just at some periodic pass's own close —
+  deliberately kept alive past Step 1 landing (deviating from its own original "deleted once Stage 1
+  lands" framing) since Steps 2-5 still build on the exact construction order/dependency graph it
+  documents; deleted only once the whole five-step effort merges back and supersedes it.
 - **FINAL_WIRING_PLAN.md** — the global list for Stage 1's actual rewrite: the five-branch/session
   plan that builds `src/sensortask_wozi.py` (construction restructure, generic webserver/API
   service, digital-twin simulator, website placeholder scaffold, full Unix-port integration), each
