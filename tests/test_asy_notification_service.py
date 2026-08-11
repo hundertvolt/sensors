@@ -1,6 +1,7 @@
 import asyncio
 import os
 
+import asy_notification_service
 from asy_notification_service import NotificationCoordinator, NotificationSignal
 
 try:
@@ -1109,6 +1110,29 @@ def test_override_active_blocks_checks_and_resumes_after_countdown() -> None:
     assert after is True
 
 
+def test_set_override_led_above_the_max_clamps_and_reads_back_clamped() -> None:
+    # get_override_led()/set_override_led() are the coordinator's own public override API (the REST
+    # layer's only route to it) - this drives the clamp through both of them, rather than through the
+    # underlying LockedCounter, whose own [0, max_val] clamping is already covered in
+    # test_base_classes.py. _MAX_OVERRIDE_TIME is const()-folded and not importable (see
+    # tests/README.md), so 3600 is hardcoded here, matching this file's other const mirrors.
+    coordinator, _clock, _cb = make_coordinator()
+
+    async def scenario() -> "tuple[int, int, int]":
+        await coordinator.set_override_led(9999)  # well above _MAX_OVERRIDE_TIME
+        above = await coordinator.get_override_led()
+        await coordinator.set_override_led(3600)  # exactly _MAX_OVERRIDE_TIME - accepted, not clamped further
+        at_max = await coordinator.get_override_led()
+        await coordinator.set_override_led(-5)  # the other end of the same clamp
+        below = await coordinator.get_override_led()
+        return above, at_max, below
+
+    above, at_max, below = run(scenario())
+    assert above == 3600
+    assert at_max == 3600
+    assert below == 0
+
+
 def test_malformed_own_config_read_degrades_gracefully_and_keeps_retrying() -> None:
     coordinator, clock, cb = make_coordinator()
     clock.value = _FakeTime(12, 0)
@@ -1245,6 +1269,66 @@ def test_monitor_loop_gives_up_after_too_many_consecutive_config_read_failures()
         # max_i2c_err=2 -> the 3rd consecutive failure crosses the threshold and monitor_loop()
         # returns on its own, matching every other Reader's read_loop() give-up shape.
         assert run(scenario()) is True
+
+
+class _OverflowingTime:
+    # MicroPython's real `time` module is a read-only builtin (assigning time.mktime = ... raises
+    # AttributeError - confirmed directly, see test_system_service.py's own equivalent class), so
+    # this replaces asy_notification_service's own module-level `time` name instead: a plain,
+    # mutable module global, unlike the builtin module it points to. Only _now()'s own two calls run
+    # while it's installed, so monitor_loop()'s ticks_ms()/ticks_diff() never see it.
+    def gmtime(self) -> "Any":
+        import time as _real_time
+
+        return _real_time.gmtime()
+
+    def mktime(self, _t: "Any") -> int:
+        raise OverflowError("past rp2's ~2037 32-bit epoch range")
+
+
+class _RaisingGmtime:
+    # Same monkeypatch technique as _OverflowingTime above, but faulting the other call inside the
+    # same try block (time.gmtime() itself) instead of mktime() - both share one
+    # `except (OverflowError, OSError)`, so this proves the guard isn't only reachable from the
+    # mktime() half of that line.
+    def gmtime(self) -> "Any":
+        raise OSError("RTC read failed")
+
+    def mktime(self, _t: "Any") -> int:
+        raise AssertionError("must not be reached - gmtime() itself already raised")
+
+
+def test_now_mktime_overflow_returns_none_and_stores_a_none_timestamp() -> None:
+    # rp2's real mktime() raises OverflowError past its ~2037 32-bit epoch range. _store_notif_data()
+    # is _now()'s only caller, so the degrade must surface as a plain TS=None snapshot - the
+    # Triggered flag still recorded, nothing raised out of the poll loop.
+    coordinator, _clock, _cb = make_coordinator()
+    coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
+    original_time = asy_notification_service.time
+    asy_notification_service.time = _OverflowingTime()  # type: ignore[assignment]  # deliberate monkeypatch, not a real caller mismatch
+    try:
+        assert coordinator._now() is None
+        run(coordinator._store_notif_data(True))
+    finally:
+        asy_notification_service.time = original_time
+    assert run(coordinator.get_data()) == (True, None)
+    assert run(coordinator.get_dict_data()) == {"NOTIFY": {"Triggered": True, "TS": None}}
+
+
+def test_now_gmtime_raising_returns_none_and_stores_a_none_timestamp() -> None:
+    # The OSError arm of the same guard, from gmtime() rather than mktime() - see _RaisingGmtime.
+    coordinator, _clock, _cb = make_coordinator()
+    coordinator.finalize()
+    run(coordinator.cfgmgr.setup())
+    original_time = asy_notification_service.time
+    asy_notification_service.time = _RaisingGmtime()  # type: ignore[assignment]  # deliberate monkeypatch, not a real caller mismatch
+    try:
+        assert coordinator._now() is None
+        run(coordinator._store_notif_data(False))
+    finally:
+        asy_notification_service.time = original_time
+    assert run(coordinator.get_data()) == (False, None)
 
 
 def test_get_task_starters_and_get_timer_starters_shape() -> None:

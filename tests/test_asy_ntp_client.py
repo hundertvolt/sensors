@@ -142,12 +142,21 @@ class _RaiseOnArm:
     # Same technique as test_system_service.py's own _RaiseOnArm - toggles tests/machine.py's
     # Timer.raise_on_arm (a shared class attribute, not per-instance) for the duration of the
     # `with` block, simulating real rp2 alarm-pool exhaustion (OSError(ENOMEM) from Timer.init()).
+    # `exc` picks which arm of every call site's own `except (OSError, MemoryError)` is exercised -
+    # MemoryError is not an OSError subclass (see CLAUDE.md/SPECIFICATION.md Part F), so neither arm
+    # covers the other. Timer.raise_on_arm_exc is a shared class attribute too, reset back to its
+    # OSError default on exit alongside raise_on_arm.
+    def __init__(self, exc: "type[BaseException]" = OSError) -> None:
+        self._exc = exc
+
     def __enter__(self) -> "_RaiseOnArm":
+        Timer.raise_on_arm_exc = self._exc
         Timer.raise_on_arm = True
         return self
 
     def __exit__(self, *exc_info: "Any") -> None:
         Timer.raise_on_arm = False
+        Timer.raise_on_arm_exc = OSError
 
 
 _next_port = 53000
@@ -554,6 +563,17 @@ def test_start_ntp_timer_degrades_gracefully_when_alarm_pool_exhausted() -> None
     assert client.ntp_timer.period == -1  # never actually armed
 
 
+def test_start_ntp_timer_degrades_gracefully_on_a_memory_error() -> None:
+    # Sibling of the OSError test above, for the other arm of start_ntp_timer()'s own
+    # `except (OSError, MemoryError)`: a real alarm allocation can fail with MemoryError instead,
+    # which is not an OSError subclass - same graceful degradation must hold either way.
+    client = make_client(debug=1)
+    print("(expected) simulating an allocation failure - the following 'Could not start NTP timer' is intentional")
+    with _RaiseOnArm(MemoryError):
+        client.start_ntp_timer()  # must not raise despite the timer failing to arm
+    assert client.ntp_timer.period == -1  # never actually armed
+
+
 def test_stop_ntp_timer_deinits() -> None:
     client = make_client()
     client.start_ntp_timer()
@@ -571,6 +591,15 @@ def test_start_counter_timer_arms_periodic_1s() -> None:
 def test_start_counter_timer_degrades_gracefully_when_alarm_pool_exhausted() -> None:
     client = make_client()
     with _RaiseOnArm():
+        client.start_counter_timer()
+    assert client.counter_timer.period == -1
+
+
+def test_start_counter_timer_degrades_gracefully_on_a_memory_error() -> None:
+    # Sibling of the OSError test above, for the other arm of start_counter_timer()'s own
+    # `except (OSError, MemoryError)`.
+    client = make_client()
+    with _RaiseOnArm(MemoryError):
         client.start_counter_timer()
     assert client.counter_timer.period == -1
 
@@ -1214,6 +1243,19 @@ def test_handle_sync_failure_degrades_gracefully_when_alarm_pool_exhausted() -> 
     with _RaiseOnArm():
         run(client._handle_ntp_sync_failure())  # must not raise despite the timer failing to arm
     assert client.ntp_retries == 0  # given up this cycle rather than left stuck
+
+
+def test_handle_sync_failure_degrades_gracefully_on_a_memory_error() -> None:
+    # Sibling of the OSError test above, for the other arm of _handle_ntp_sync_failure()'s own
+    # `except (OSError, MemoryError)` - the retry cycle is given up the same way either way, and the
+    # same errno=16 is persisted (this site logs via the async err_s(), unlike the two starters above).
+    client = make_client()
+    run(client.pr.setup())
+    run(client._set_synced(True))
+    with _RaiseOnArm(MemoryError):
+        run(client._handle_ntp_sync_failure())  # must not raise despite the timer failing to arm
+    assert client.ntp_retries == 0  # given up this cycle rather than left stuck
+    assert _last_err(run(client.get_error_counter()), "ErrNum") == 16
 
 
 def test_handle_sync_success_resets_retries_marks_synced_and_records_the_sync_time() -> None:

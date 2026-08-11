@@ -107,6 +107,10 @@ class FakeLED:
         self.on_calls = 0
         self.off_calls = 0
         self.toggle_calls = 0
+        # Latest lit/unlit state, on top of the call counters: _flash_led_off()'s cancel handler is
+        # about which state the LED is *left in*, which a pair of counters can only show indirectly.
+        # None until the first on()/off()/toggle() - a real LED's power-on state isn't ours to claim.
+        self.state: bool | None = None
         self.raise_on: dict[str, Exception] = {}
 
     def on(self) -> None:
@@ -114,30 +118,42 @@ class FakeLED:
         if exc is not None:
             raise exc
         self.on_calls += 1
+        self.state = True
 
     def off(self) -> None:
         exc = self.raise_on.get("off")
         if exc is not None:
             raise exc
         self.off_calls += 1
+        self.state = False
 
     def toggle(self) -> None:
         exc = self.raise_on.get("toggle")
         if exc is not None:
             raise exc
         self.toggle_calls += 1
+        self.state = not self.state
 
 
 class _RaiseOnArm:
     # Same technique as test_asy_ntp_client.py's own _RaiseOnArm - toggles tests/machine.py's
     # Timer.raise_on_arm (a shared class attribute) for the duration of the `with` block,
-    # simulating real rp2 alarm-pool exhaustion (OSError(ENOMEM) from Timer.init()).
+    # simulating real rp2 alarm-pool exhaustion (OSError(ENOMEM) from Timer.init()). `exc` picks
+    # which arm of every call site's own `except (OSError, MemoryError)` is exercised - MemoryError
+    # is not an OSError subclass (see CLAUDE.md/SPECIFICATION.md Part F), so neither arm covers the
+    # other. Timer.raise_on_arm_exc is a shared class attribute too, reset back to its OSError
+    # default on exit alongside raise_on_arm.
+    def __init__(self, exc: "type[BaseException]" = OSError) -> None:
+        self._exc = exc
+
     def __enter__(self) -> "_RaiseOnArm":
+        Timer.raise_on_arm_exc = self._exc
         Timer.raise_on_arm = True
         return self
 
     def __exit__(self, *exc_info: "Any") -> None:
         Timer.raise_on_arm = False
+        Timer.raise_on_arm_exc = OSError
 
 
 def make_client(
@@ -259,6 +275,16 @@ def test_start_counter_timer_arms_periodic_1s() -> None:
 def test_start_counter_timer_degrades_gracefully_when_alarm_pool_exhausted() -> None:
     client = make_client()
     with _RaiseOnArm():
+        client.start_counter_timer()  # must not raise despite the timer failing to arm
+    assert client.counter_timer.period == -1  # never actually armed
+
+
+def test_start_counter_timer_degrades_gracefully_on_a_memory_error() -> None:
+    # Sibling of the OSError test above, for the other arm of start_counter_timer()'s own
+    # `except (OSError, MemoryError)`: a real alarm allocation can fail with MemoryError instead,
+    # which is not an OSError subclass - same graceful degradation must hold either way.
+    client = make_client()
+    with _RaiseOnArm(MemoryError):
         client.start_counter_timer()  # must not raise despite the timer failing to arm
     assert client.counter_timer.period == -1  # never actually armed
 
@@ -615,6 +641,35 @@ def test_set_wifi_led_returns_true_uniform_setter_contract() -> None:
     client = make_client(ext_led=FakeLED())
     assert run(client.set_wifi_led(True)) is True
     assert run(client.set_wifi_led(False)) is True
+
+
+def test_flash_led_off_cancelled_mid_off_phase_still_leaves_the_led_on() -> None:
+    # _flash_led_off()'s real contract is its `except asyncio.CancelledError: self._led_on(); break`
+    # handler: whichever phase of the ~2.9s-on/0.1s-off cycle the task is interrupted in,
+    # cancellation must leave the LED lit - _hotspot_client_connected()/reconnect_wifi() cancel this
+    # task precisely to hand back a steadily-on LED. The other ledflash tests only prove the task is
+    # created and cancels cleanly, never driving an actual toggle; this one runs the cycle far enough
+    # to land in the off phase (the one phase where a missing handler would leave the LED dark) and
+    # then cancels there. _FastAsyncSleep collapses both real sleeps to a plain yield, so the cycle
+    # is driven by scheduling steps instead of ~3s of wall clock.
+    led = FakeLED()
+    client = make_client(ext_led=led)
+    run(client.set_wifi_led(True))
+
+    async def scenario() -> None:
+        task = asyncio.create_task(client._flash_led_off())
+        for _ in range(20):  # bounded: each yield lets the flash task advance one step of its cycle
+            await asyncio.sleep(0)
+            if led.state is False:
+                break
+        assert led.on_calls >= 1  # a real on-phase ran first - not cancelled before the loop started
+        assert led.state is False  # genuinely interrupted mid-cycle, not sitting in a trivially-on state
+        await _cancel(task)
+
+    with _FastAsyncSleep():
+        run(scenario())
+    assert led.state is True  # the cancel handler's own _led_on(), despite the off phase it interrupted
+    assert led.on_calls == led.off_calls + 1  # exactly one extra on(): the cancel handler's
 
 
 # ---------------------------------------------------------------------------
@@ -1107,6 +1162,16 @@ def test_hotspot_client_absent_self_heals_a_dropped_timer_callback() -> None:
 def test_hotspot_client_absent_degrades_gracefully_when_alarm_pool_exhausted() -> None:
     client = make_client(hotspot_time_min=1)
     with _RaiseOnArm():
+        client._hotspot_client_absent()  # must not raise despite the timer failing to arm
+    assert client.hotspot_timer_running is False  # left False so the next cycle retries arming it
+
+
+def test_hotspot_client_absent_degrades_gracefully_on_a_memory_error() -> None:
+    # Sibling of the OSError test above, for the other arm of _hotspot_client_absent()'s own
+    # `except (OSError, MemoryError)` - hotspot_timer_running stays False either way, so the next
+    # wifi_refresh_sec cycle retries arming it rather than getting stuck.
+    client = make_client(hotspot_time_min=1)
+    with _RaiseOnArm(MemoryError):
         client._hotspot_client_absent()  # must not raise despite the timer failing to arm
     assert client.hotspot_timer_running is False  # left False so the next cycle retries arming it
 

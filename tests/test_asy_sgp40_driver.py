@@ -12,6 +12,7 @@ import os
 
 from _fram_chip_fake import FakeMB85RS64V
 from machine import I2C as FakeI2C
+from machine import Timer
 
 import asy_fram_manager
 import asy_spi_driver
@@ -436,6 +437,50 @@ def test_start_timer_and_stop_timer_wire_the_trigger_event() -> None:
     assert run(asyncio.wait_for(reader.trigger_event.wait(), 1)) is None
     reader.stop_timer()
     assert reader.trigger_timer.deinit_called is True
+
+
+class _RaiseOnArm:
+    # Same technique as test_system_service.py's/test_asy_wifi_service.py's own _RaiseOnArm - toggles
+    # tests/machine.py's Timer.raise_on_arm (a shared class attribute, not per-instance) for the
+    # duration of the `with` block, simulating a real rp2 alarm allocation that fails. `exc` picks
+    # which arm of start_timer()'s own `except (OSError, MemoryError)` is exercised: the alarm-pool
+    # exhaustion OSError(ENOMEM), or the MemoryError a failed allocation raises instead - MemoryError
+    # is not an OSError subclass (see CLAUDE.md/SPECIFICATION.md Part F), so neither arm covers the
+    # other. Both shared class attributes are restored on exit regardless of how the block exits.
+    def __init__(self, exc: "type[BaseException]" = OSError) -> None:
+        self._exc = exc
+
+    def __enter__(self) -> "_RaiseOnArm":
+        Timer.raise_on_arm_exc = self._exc
+        Timer.raise_on_arm = True
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        Timer.raise_on_arm = False
+        Timer.raise_on_arm_exc = OSError
+
+
+def test_start_timer_degrades_gracefully_when_alarm_pool_exhausted() -> None:
+    # start_timer() is called from a Timer starter (get_timer_starters()), i.e. from
+    # system_service.py's own _timer_sequencer() - it must degrade instead of raising, since a raise
+    # there just gets logged as "Timer starter N failed" and this sensor never gets triggered again.
+    reader = make_reader()
+    with _RaiseOnArm():
+        reader.start_timer()  # must not raise despite the timer failing to arm
+    assert reader.trigger_timer.period == -1  # never actually armed
+    assert reader.trigger_timer.callback is None  # nor wired to the trigger event
+    assert reader.pr.err_count == 0  # start_timer() logs via the non-persisting pr.err(), not err_s()
+
+
+def test_start_timer_degrades_gracefully_on_a_memory_error() -> None:
+    # Sibling of the OSError test above, for the other arm of start_timer()'s own
+    # `except (OSError, MemoryError)` - same graceful degradation must hold either way.
+    reader = make_reader()
+    with _RaiseOnArm(MemoryError):
+        reader.start_timer()  # must not raise despite the timer failing to arm
+    assert reader.trigger_timer.period == -1  # never actually armed
+    assert reader.trigger_timer.callback is None  # nor wired to the trigger event
+    assert reader.pr.err_count == 0  # start_timer() logs via the non-persisting pr.err(), not err_s()
 
 
 def test_error_check_gives_up_after_max_i2c_err_consecutive_failures() -> None:

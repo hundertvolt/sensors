@@ -703,6 +703,131 @@ def test_add_on_empty_payload_produces_buffer_check_cannot_verify() -> None:
     assert run(crc8.check(added)) is None  # ...and check() can never validate it
 
 
+# ---------------------------------------------------------------------------
+# MemoryError propagation - add()/check() are the module docstring's one documented exception to
+# this file's "every public method returns None/False on invalid input, never raises" contract:
+# both allocate a new buffer, and a failed allocation is handed straight to the caller instead of
+# being swallowed (every caller must catch it - see asy_uart_driver.py's own guarded call sites,
+# fault-injected in tests/test_asy_uart_driver.py). Nothing pinned that contract down from this
+# side until now.
+# ---------------------------------------------------------------------------
+
+
+def test_add_lets_a_memoryerror_from_its_own_buffer_allocation_propagate() -> None:
+    # add()'s new buffer is bytearray(self.num_bytes), whitebox-widened here to a size confirmed
+    # directly against the real MicroPython interpreter to raise MemoryError - the same
+    # bytearray(2**62) allocation-exhaustion technique tests/test_base_classes.py's LockableBuffer
+    # tests already use. Everything _crc() itself needs (all_set/msb_set/crc_shift/poly) was
+    # computed in the constructor and stays CRC8's, so the CRC is still computed normally and only
+    # the allocation fails - exactly the shape a genuinely exhausted heap takes on-device.
+    crc8 = CRC8()
+    crc8.num_bytes = 2**62
+    try:
+        run(crc8.add(bytearray(b"hello world")))
+        raise AssertionError("expected MemoryError to propagate out of add()")
+    except MemoryError:
+        pass
+
+
+class _MemoryErrorOnCopyBuffer:
+    # check()'s own allocation is its `bytearr[0:len(bytearr) - num_bytes]` payload copy, and no
+    # real bytearray can force that one to fail: a buffer large enough for the copy to exhaust the
+    # heap can't itself be allocated in the first place (unlike add(), whose allocation size comes
+    # from num_bytes rather than from the input). Substituted instead by a minimal stand-in that
+    # behaves exactly like the real buffer for len()/iteration - so _crc() computes the true CRC
+    # and check() genuinely reaches the copy - and raises MemoryError from the copy itself. Same
+    # "substitute the otherwise-unreachable allocation" technique as tests/test_asy_uart_driver.py's
+    # _MemoryErrorCRC and tests/test_print_log.py's _RaisingDeque.
+    def __init__(self, real: bytearray) -> None:
+        self._real = real
+
+    def __len__(self) -> int:
+        return len(self._real)
+
+    def __iter__(self) -> "Any":
+        return iter(self._real)
+
+    def __getitem__(self, item: "Any") -> "Any":
+        raise MemoryError("simulated allocation failure")
+
+
+def test_check_lets_a_memoryerror_from_its_own_payload_copy_propagate() -> None:
+    crc8 = CRC8()
+    added = run(crc8.add(bytearray(b"hello world")))
+    assert added is not None
+    try:
+        run(crc8.check(_MemoryErrorOnCopyBuffer(added)))  # type: ignore[arg-type]
+        raise AssertionError("expected MemoryError to propagate out of check()")
+    except MemoryError:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Cooperative yielding - _crc()'s per-byte `await asyncio.sleep(0)` (see the module docstring: a
+# large buffer's CRC computation must not stall other tasks)
+# ---------------------------------------------------------------------------
+
+
+def test_crc_over_a_large_buffer_lets_another_task_run_while_it_computes() -> None:
+    # Deterministic, with no wall-clock timing involved: a second task counts how many times it
+    # gets scheduled *while* the CRC is still running, and since it only ever yields via
+    # asyncio.sleep(0) itself, it can be re-scheduled at all only if _crc() genuinely hands control
+    # back to the event loop between bytes. Observed under the real interpreter: exactly one tick
+    # per byte processed - asserted against half that, so this pins "the yield happens and isn't a
+    # no-op" without depending on the scheduler's exact fairness.
+    crc8 = CRC8()
+    payload = bytearray(range(200)) + bytearray(range(100))  # a few hundred bytes, one CRC yield each
+    framed = run(crc8.add(payload))
+    assert framed is not None
+
+    async def scenario() -> tuple[int | None, int]:
+        ticks = [0]
+        finished = [False]
+
+        async def counter() -> None:
+            while not finished[0]:
+                ticks[0] += 1
+                await asyncio.sleep(0)
+
+        task = asyncio.create_task(counter())
+        checked = await crc8.check(framed)
+        ticks_during_crc = ticks[0]  # sampled before the counter is stopped
+        finished[0] = True
+        await task  # let the counter observe the flag and exit, leaving nothing pending
+        return (None if checked is None else len(checked)), ticks_during_crc
+
+    payload_len, ticks_during_crc = run(scenario())
+    assert payload_len == len(payload)  # the CRC still verified correctly while interleaving
+    assert ticks_during_crc >= len(framed) // 2
+
+
+def test_crc_yielding_is_not_a_side_effect_of_check_returning_early() -> None:
+    # Control for the test above: a rejected init makes check() return before _crc() runs at all,
+    # so the same counter task never gets a single chance to be scheduled. Without this, "the
+    # counter ticked" could just as well have come from await points outside the CRC loop.
+    crc8 = CRC8()
+
+    async def scenario() -> tuple[bytearray | None, int]:
+        ticks = [0]
+        finished = [False]
+
+        async def counter() -> None:
+            while not finished[0]:
+                ticks[0] += 1
+                await asyncio.sleep(0)
+
+        task = asyncio.create_task(counter())
+        checked = await crc8.check(bytearray(b"hello world"), init=-1)  # rejected before any CRC work
+        ticks_during_call = ticks[0]
+        finished[0] = True
+        await task
+        return checked, ticks_during_call
+
+    checked, ticks_during_call = run(scenario())
+    assert checked is None
+    assert ticks_during_call == 0  # no await point reached at all - the counter never even started
+
+
 if __name__ == "__main__":
     import microtest
 

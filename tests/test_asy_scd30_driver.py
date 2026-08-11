@@ -89,6 +89,27 @@ async def _settle(n: int = 5) -> None:
         await asyncio.sleep(0)
 
 
+class _RaiseOnArm:
+    # Same technique as test_system_service.py's/test_asy_wifi_service.py's own _RaiseOnArm -
+    # toggles tests/machine.py's Timer.raise_on_arm (a shared class attribute, not per-instance)
+    # for the duration of the `with` block, simulating a real rp2 Timer.init() that can't arm.
+    # `exc` picks which of start_timer()'s two guarded arms gets exercised: the default
+    # OSError(ENOMEM) alarm-pool-exhaustion one, or the MemoryError one a failed allocation raises
+    # instead (see tests/machine.py's Timer.raise_on_arm_exc). Both class attributes are restored
+    # on exit regardless of how the block exits.
+    def __init__(self, exc: "type[BaseException]" = OSError) -> None:
+        self._exc = exc
+
+    def __enter__(self) -> "_RaiseOnArm":
+        FakeTimer.raise_on_arm_exc = self._exc
+        FakeTimer.raise_on_arm = True
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        FakeTimer.raise_on_arm = False
+        FakeTimer.raise_on_arm_exc = OSError
+
+
 # ---------------------------------------------------------------------------
 # Module level: wire format cross-checked against the Interface Description's own worked examples
 # (datasheets/scd30/Sensirion_CO2_Sensors_SCD30_Interface_Description.pdf) - hardcoded bytes from
@@ -592,6 +613,50 @@ def test_reader_start_timer_arms_periodic_timer_and_pin_irq() -> None:
         await asyncio.wait_for(reader.irq_trigger_event.wait(), 1)
 
     run(scenario())
+    FakeTimer.all_timers.clear()
+
+
+def test_reader_start_timer_degrades_gracefully_when_the_trigger_timer_cannot_be_armed() -> None:
+    # Real rp2 Timer.init() raises OSError(ENOMEM) when the alarm pool is exhausted (confirmed
+    # against ports/rp2/machine_timer.c) - start_timer() must log via self.pr.err() and return
+    # normally, since its caller is system_service.py's synchronous start_timers() sequencer:
+    # raising here would take down the whole timer-start chain over one sensor's 500ms tick.
+    FakeTimer.all_timers.clear()
+    reader = make_reader()
+    with _RaiseOnArm():
+        reader.start_timer()  # must not raise despite the timer failing to arm
+    assert reader.start_trigger_timer.period == -1  # never actually armed
+    assert reader.start_trigger_timer.callback is None  # nothing wired to start_trigger_event
+    # start_timer() is synchronous, so it logs via the plain, non-counting pr.err() rather than
+    # awaiting pr.err_s() - this failure prints but is deliberately never recorded as a numbered
+    # error in the counter, unlike every err_s() call site in this driver.
+    assert run(reader.get_error_counter())["SCD30"]["ErrCount"] == 0
+
+    # The pin IRQ is wired after the guarded try/except, so a timer that failed to arm must not
+    # cost the sensor its data-ready interrupt as well - that IRQ, not the timer, is what actually
+    # triggers a measurement read (the timer only drives scd_init_irq()'s stuck-pin watchdog).
+    assert reader.irq_pin._irq_trigger == FakePin.IRQ_RISING
+    reader.irq_pin.trigger_irq()
+
+    async def scenario() -> None:
+        await asyncio.wait_for(reader.irq_trigger_event.wait(), 1)
+
+    run(scenario())
+    FakeTimer.all_timers.clear()
+
+
+def test_reader_start_timer_degrades_gracefully_on_a_memory_error_while_arming() -> None:
+    # MemoryError is not an OSError subclass (see SPECIFICATION.md Part F), so start_timer()'s
+    # `except (OSError, MemoryError)` needs that second arm spelled out explicitly - without it, a
+    # heap-exhausted arming attempt would propagate straight out of this synchronous starter
+    # instead of degrading the same way the ENOMEM case above does (pin IRQ included).
+    FakeTimer.all_timers.clear()
+    reader = make_reader()
+    with _RaiseOnArm(MemoryError):
+        reader.start_timer()  # must not raise despite the timer failing to arm
+    assert reader.start_trigger_timer.period == -1  # never actually armed
+    assert reader.start_trigger_timer.callback is None
+    assert reader.irq_pin._irq_trigger == FakePin.IRQ_RISING
     FakeTimer.all_timers.clear()
 
 

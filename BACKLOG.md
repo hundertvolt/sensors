@@ -355,6 +355,22 @@ bug sweep. Where each of the owner's original goals/lenses ended up:
     `sensortask-wozi.py`, several test files), a real blast-radius decision
     similar in shape to the already-deferred `max_i2c_err` rename. Needs an owner call on whether to
     rename (and to what) or accept the mismatch permanently, not a unilateral fix.
+11. **`print_log.py`'s `get_log()` has an apparently-unreachable `errno == _NO_WRN` branch**,
+    found during a test-coverage gap audit and confirmed by tracing the encoding by hand (flagged
+    per this file's own policy, not silently fixed). `get_log()`'s per-entry loop
+    (`if errno == _NO_ERR or errno == _NO_WRN: ... "N" ...`) treats `_NO_ERR` (0x00) and `_NO_WRN`
+    (0x80) as equivalent "nothing recorded" sentinels, but only `_NO_ERR` can ever actually land in
+    `self.history`: `wrn_s()`'s own "nothing to record" default is `wrnno=_NO_ERR` (not
+    `_NO_WRN`), and `_store_err()`'s `if errno <= _NO_ERR: return` guard fires on that default
+    *before* `errno += min_e` ever adds the `_NO_WRN` offset in — so a real warning call always
+    stores `_NO_WRN + N` for some `N >= 1`, never bare `_NO_WRN` itself, and a "nothing to record"
+    call is skipped entirely rather than storing the sentinel. The `_NO_ERR` half of the same `if`
+    *is* reachable (`reset()`'s `self.history.extend([_NO_ERR] * len(self.history))` fills slots
+    with it). Same class of provably-dead code as `SPECIFICATION.md` Part E.5.1's already-documented
+    `crc_checks.py`/`math_helpers.py` cases, just not yet folded into that list. Needs an owner call
+    on whether to delete the dead `or errno == _NO_WRN` arm (and confirm no future caller was meant
+    to use a *bare* `_NO_WRN` sentinel some other way) or leave it as harmless defensive symmetry
+    with the `_NO_ERR` arm - not fixed unilaterally here.
 
 ## Deferred / explicitly out-of-scope work
 

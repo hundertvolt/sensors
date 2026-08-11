@@ -495,6 +495,13 @@ class Timer:
     # when args/kwargs are actually given), matching the `if kwargs` gate below. Tests must reset
     # this to False afterward - it's a shared class attribute, not per-instance.
     raise_on_arm = False
+    # Which exception class init() raises when raise_on_arm is True - defaults to the real
+    # alarm-pool-exhaustion OSError above. Every call site in src/ guards Timer.init() with
+    # `except (OSError, MemoryError)` (a real alarm allocation can fail either way on real
+    # hardware); override this to MemoryError before setting raise_on_arm = True to prove that
+    # sibling arm is handled too, then reset both back to their defaults afterward - shared class
+    # attribute, not per-instance, same as raise_on_arm itself.
+    raise_on_arm_exc: "type[BaseException]" = OSError
 
     def __init__(self, id: int = -1, **kwargs: "Any") -> None:
         self.id = id
@@ -508,7 +515,9 @@ class Timer:
 
     def init(self, *, period: int = -1, mode: int = PERIODIC, callback: "Callable[[Timer], None] | None" = None) -> None:
         if Timer.raise_on_arm:
-            raise OSError(errno.ENOMEM, "alarm pool exhausted")
+            if Timer.raise_on_arm_exc is OSError:
+                raise OSError(errno.ENOMEM, "alarm pool exhausted")
+            raise Timer.raise_on_arm_exc("simulated allocation failure")
         self.period = period
         self.mode = mode
         self.callback = callback

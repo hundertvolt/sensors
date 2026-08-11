@@ -1752,6 +1752,112 @@ def test_configmanager_corrupt_json_warning_recorded_via_wrn_s() -> None:
         _remove(path)
 
 
+# ---------------------------------------------------------------------------
+# MemoryError fault injection at json.dump()/json.load() - the heap-exhaustion arm of
+# write_config()'s and setup()'s own except clauses. RP2040's 264KB SRAM makes a failed
+# serialize/parse realistic, but it can't be provoked through any real config file small enough
+# to be safe/reliable in a test - so config_manager's own module-level `json` name is substituted
+# instead, the same technique tests/test_asy_udp_socket.py (_MemoryErrorOnceSocketModule) and
+# tests/test_asy_uart_driver.py (_MemoryErrorCRC) use for their own otherwise-unreachable guards.
+# ---------------------------------------------------------------------------
+
+
+class _MemoryErrorJson:
+    # Only the call actually under test raises - the other one falls through to the real json
+    # module, so each test exercises exactly one of the two guarded call sites rather than
+    # accidentally failing the whole setup()/write_config() chain twice over.
+    def __init__(self, raise_on_dump: bool = False, raise_on_load: bool = False) -> None:
+        self.raise_on_dump = raise_on_dump
+        self.raise_on_load = raise_on_load
+
+    def dump(self, obj: "Any", stream: "Any") -> None:
+        if self.raise_on_dump:
+            raise MemoryError("simulated allocation failure")
+        json.dump(obj, stream)
+
+    def load(self, stream: "Any") -> "Any":
+        if self.raise_on_load:
+            raise MemoryError("simulated allocation failure")
+        return json.load(stream)
+
+
+def test_write_config_memoryerror_from_json_dump_leaves_cache_unchanged() -> None:
+    # MemoryError is not an OSError subclass (see CLAUDE.md) - write_config's except clause lists
+    # it explicitly, and this is the only way that arm is ever reached. Same "commit _cache only
+    # after a successful write" contract as test_write_config_genuine_write_failure_leaves_cache_
+    # unchanged above, but with the heap-exhaustion cause instead of a real file error.
+    mgr, path = _make("memerrwrite.cfg", cfg_vals=_VAL_INT)
+    try:
+        assert mgr.valid is True
+        original_json = cm.json
+        cm.json = _MemoryErrorJson(raise_on_dump=True)  # type: ignore[assignment]
+        try:
+            ok, results = run(mgr.write_config({"Count": 8}, _VAL_INT))
+        finally:
+            cm.json = original_json
+        assert (ok, results) == (False, {})
+        assert mgr._cache == {"Count": 5}  # untouched - still the original default
+        assert run(mgr.get_dict(["Count"])) == {"Count": 5}
+        # The on-disk file is a different matter: open(..., "w") already truncated it before
+        # json.dump() ever ran, so a mid-dump failure leaves it unparseable. _cache stays
+        # authoritative regardless, and the next successful write repairs the file exactly like
+        # test_write_config_repairs_a_file_corrupted_after_valid_init shows for any other
+        # out-of-band corruption.
+        with open(path) as f:
+            assert f.read() == ""
+        ok, results = run(mgr.write_config({"Count": 8}, _VAL_INT))  # no fault injected this time
+        assert (ok, results) == (True, {"Count": "Valid"})
+        with open(path) as f:
+            assert json.load(f) == {"Count": 8}
+    finally:
+        _remove(path)
+
+
+def test_configmanager_setup_memoryerror_from_json_load_degrades_to_defaults() -> None:
+    # A perfectly valid, readable config file - only json.load() itself fails. setup() must treat
+    # that exactly like the "missing/unreadable file" and "bad filename type" causes it shares the
+    # except clause with: warn, fall back to defaults, and still end up valid.
+    path = _tmp_path("memerrload.cfg")
+    _remove(path)
+    with open(path, "w") as f:
+        json.dump({"Count": 7}, f)
+    try:
+        mgr = cm.ConfigManager(path, _VAL_INT, "TEST")
+        original_json = cm.json
+        cm.json = _MemoryErrorJson(raise_on_load=True)  # type: ignore[assignment]  # dump() still delegates to the real module
+        try:
+            run(mgr.setup())
+        finally:
+            cm.json = original_json
+        assert mgr.valid is True
+        assert run(mgr.get_dict(["Count"])) == {"Count": 5}  # the stored 7 was never actually read
+        with open(path) as f:
+            assert json.load(f) == {"Count": 5}  # rewritten from defaults
+        log = run(mgr.get_error_counter())
+        assert log["CFGMGR_TEST"]["ErrCount"] == 1  # recorded via wrn_s, not silently swallowed
+    finally:
+        _remove(path)
+
+
+def test_configmanager_setup_memoryerror_from_json_dump_leaves_config_invalid() -> None:
+    # setup()'s *other* MemoryError arm, around its own default-writing json.dump(): no file
+    # exists, so the defaults have to be written out, and that write is what exhausts the heap.
+    path = _tmp_path("memerrsetupdump.cfg")
+    _remove(path)
+    try:
+        mgr = cm.ConfigManager(path, _VAL_INT, "TEST")
+        original_json = cm.json
+        cm.json = _MemoryErrorJson(raise_on_dump=True)  # type: ignore[assignment]
+        try:
+            run(mgr.setup())
+        finally:
+            cm.json = original_json
+        assert mgr.valid is False  # degraded, not raised
+        assert run(mgr.get_dict(["Count"])) is None
+    finally:
+        _remove(path)
+
+
 if __name__ == "__main__":
     import microtest
 

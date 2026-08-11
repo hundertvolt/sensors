@@ -78,6 +78,27 @@ class _FastAsyncSleep:
         asyncio.sleep = self._real_sleep
 
 
+class _RaiseOnArm:
+    # Same technique as test_system_service.py's/test_asy_wifi_service.py's own _RaiseOnArm -
+    # toggles tests/machine.py's Timer.raise_on_arm (a shared class attribute, not per-instance)
+    # for the duration of the `with` block, simulating a real rp2 Timer.init() that can't arm.
+    # `exc` picks which of start_timer()'s two guarded arms gets exercised: the default
+    # OSError(ENOMEM) alarm-pool-exhaustion one, or the MemoryError one a failed allocation raises
+    # instead (see tests/machine.py's Timer.raise_on_arm_exc). Both class attributes are restored
+    # on exit regardless of how the block exits.
+    def __init__(self, exc: "type[BaseException]" = OSError) -> None:
+        self._exc = exc
+
+    def __enter__(self) -> "_RaiseOnArm":
+        FakeTimer.raise_on_arm_exc = self._exc
+        FakeTimer.raise_on_arm = True
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        FakeTimer.raise_on_arm = False
+        FakeTimer.raise_on_arm_exc = OSError
+
+
 _ADDR = 0x77
 
 # A fixed, reproducible calibration/ADC dataset used by the _read() correctness tests: raw NVM
@@ -169,6 +190,39 @@ def ready_bmp(address: int = _ADDR) -> "tuple[I2C, BMP3XX_I2C]":
     seed_status(i2c, 0x10 | 0x60, address)  # cmd_rdy | drdy_press | drdy_temp
     seed_err(i2c, 0x00, address)
     return i2c, bmp
+
+
+class _BadBurstRead:
+    # Replaces the device session's own get_register_struct() with a wrapper returning `value`
+    # instead of the real 6-byte blob, for the PRESSUREDATA burst only - every other register read
+    # (CONTROL/STATUS/CAL_DATA/OSR) still goes to the real fake-I2C bus, so _read() gets all the
+    # way past its forced-mode trigger and data-ready poll to the burst-length guard. Same
+    # deliberate-monkeypatch technique other test files use for a collaborator they don't own;
+    # restored on exit regardless of how the `with` block exits.
+    #
+    # tests/machine.py's fake I2C can't produce this shape on its own (readfrom_mem always returns
+    # exactly nbytes, zero-padded/truncated like real hardware), but asy_i2c_driver.py's own
+    # get_register_struct() genuinely can: it returns None on a deinitialized bus, on a malformed
+    # format string, and on a zero-field unpack - the exact "not bytes / not 6 bytes" contract
+    # violation _read()'s guard exists for, which every register read in this driver is otherwise
+    # only protected against at the _read_register()/_get_osr_setting() layer.
+    def __init__(self, bmp: BMP3XX_I2C, value: "bytes | None") -> None:
+        self._device = bmp.i2c_bmp3xx.i2c_device
+        self._value = value
+
+    def __enter__(self) -> "_BadBurstRead":
+        self._real = self._device.get_register_struct
+
+        async def _patched(reg_addr: int, reg_format: str, addrsize: "int | None" = None) -> "int | float | bytes | None":
+            if reg_addr == _REGISTER_PRESSUREDATA:
+                return self._value
+            return await self._real(reg_addr, reg_format, addrsize)
+
+        self._device.get_register_struct = _patched  # type: ignore[method-assign]  # deliberate monkeypatch, not a real caller mismatch
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        self._device.get_register_struct = self._real  # type: ignore[method-assign]
 
 
 # ---------------------------------------------------------------------------
@@ -474,6 +528,54 @@ def test_read_raises_oserror_when_bus_deinitialized_mid_poll() -> None:
     except OSError:
         raised = True
     assert raised
+
+
+def test_read_raises_oserror_when_the_data_burst_returns_an_unexpected_result() -> None:
+    # _read()'s defensive guard between the burst read and the compensation math: without it, a
+    # None (asy_i2c_driver.py's own "bus not initialized"/"unpack produced nothing" sentinel) would
+    # raise a cryptic TypeError from data[2] << 16, and a short/long blob would either raise
+    # IndexError or silently compute a pressure from whatever bytes happened to be there. Each
+    # flavor must instead surface as one clearly-messaged OSError, exactly like every other bus
+    # fault this layer raises.
+    for bad in (None, b"\x00\x00\x00", b"\x00" * 7):
+        i2c, bmp = ready_bmp()
+        seed_calibration(i2c)
+        seed_data(i2c, _adc_to_data6(_ADC_P, _ADC_T))
+        run(bmp._read_coefficients())
+        with _BadBurstRead(bmp, bad):
+            try:
+                run(bmp._read())
+                raised = False
+            except OSError as e:
+                raised = "unexpected data burst read result" in str(e)
+        assert raised
+
+
+def test_read_bmp_logs_and_degrades_when_the_data_burst_returns_an_unexpected_result() -> None:
+    # Caller side of the guard above: _read_bmp()'s blanket try/except turns that OSError into the
+    # same logged errno=13 as any other failed read, returns an all-None result, and _store_bmp()
+    # then discards it - the read cycle degrades exactly like a NAKed bus instead of crashing
+    # read_loop()'s task or storing a half-computed reading.
+    i2c, reader = make_clean_reader("bad_burst_reader")
+    seed_chip_id(i2c, _BMP388_CHIP_ID)
+    seed_calibration(i2c)
+    seed_status(i2c, 0x10 | 0x60)
+    seed_err(i2c, 0x00)
+    seed_data(i2c, _adc_to_data6(_ADC_P, _ADC_T))
+    assert run(reader._init_bmp())
+
+    async def scenario() -> "tuple[tuple, dict]":
+        results = await reader._read_bmp()
+        await reader._store_bmp(results)
+        return results, await reader.get_error_counter()
+
+    with _BadBurstRead(reader.bmp, None):
+        results, counters = run(scenario())
+
+    assert results == (None, None, None)
+    assert counters["BMP3XX"]["ErrNum"][-1] == 13  # errno=13, "Read failed:"
+    assert counters["BMP3XX"]["ErrType"][-1] == "E"
+    assert run(reader.get_data()) == BMP3XX(None, None, None, None)  # nothing corrupted got stored
 
 
 def test_read_rejects_pressure_above_datasheet_operating_range() -> None:
@@ -1206,6 +1308,59 @@ def test_init_bmp_fails_and_logs_when_config_data_unreadable() -> None:
     assert counters["BMP3XX"]["ErrNum"][-1] == 11  # errno=11, "Error reading config data!"
 
 
+def test_store_bmp_falls_back_to_default_compensation_values_when_config_unreadable() -> None:
+    # _store_bmp()'s own errno=14 counterpart to _init_bmp()'s errno=11 above - same message text,
+    # different call site and different consequence: the compensation values (PressOffset/
+    # TempOffset/SeaLevelOffs/MeanAtmTemp) are pure post-processing math inputs, so an unreadable
+    # config must not cost the whole reading. It logs, substitutes the documented
+    # [0.0, 0.0, 0.0, 15.0] fallback, and stores an uncompensated - but real and complete -
+    # measurement instead of raising or writing corrupted data.
+    i2c, reader = make_clean_reader("store_fallback_cfg")
+    seed_chip_id(i2c, _BMP388_CHIP_ID)
+    seed_calibration(i2c)
+    seed_status(i2c, 0x10 | 0x60)
+    seed_err(i2c, 0x00)
+    seed_data(i2c, _adc_to_data6(_ADC_P, _ADC_T))
+    ok, results_valid = run(
+        reader.cfgmgr.write_config(
+            {"PressOffset": 10.0, "TempOffset": 2.0, "SeaLevelOffs": 100.0, "MeanAtmTemp": 25.0}, _FULL_SCHEMA
+        )
+    )
+    assert ok is True
+    assert all(status == "Valid" for status in results_valid.values())
+    assert run(reader._init_bmp()) is True
+    results = run(reader._read_bmp())
+    assert results[0] is not None
+    assert results[1] is not None
+
+    # Baseline first, with the config readable: the stored offsets really are applied, so the
+    # fallback assertions below can't pass just because every offset happened to be 0.0 anyway.
+    run(reader._store_bmp(results))
+    compensated = run(reader.get_data())
+    assert abs(compensated.Pres - (results[0] - 10.0)) < 1e-9
+    assert abs(compensated.Temp - (results[1] - 2.0)) < 1e-9
+
+    reader.cfgmgr.valid = False  # simulate an unreadable/corrupted per-sensor config file
+
+    async def scenario() -> dict:
+        await reader._store_bmp(results)
+        return await reader.get_error_counter()
+
+    counters = run(scenario())["BMP3XX"]
+    assert counters["ErrNum"][-1] == 14  # errno=14, "Error reading config data!"
+    assert counters["ErrType"][-1] == "E"
+
+    fallback = run(reader.get_data())
+    assert fallback.Pres == results[0]  # PressOffset fell back to 0.0, not the stored 10.0
+    assert fallback.Temp == results[1]  # TempOffset fell back to 0.0, not the stored 2.0
+    # SeaLevelOffs fell back to 0.0 too, and altitude_baro()'s height offset is then exactly zero,
+    # so the sea-level-reduced pressure equals the local one (e^0 == 1) - which also means the
+    # MeanAtmTemp fallback (15.0) has no observable effect at this height offset, by construction.
+    assert fallback.SLPres == results[0]
+    assert fallback.SLPres != compensated.SLPres  # the stored 100.0 offset really did change it
+    assert fallback.TS == results[2]  # timestamp is passed through untouched either way
+
+
 def test_reader_read_error_check_threshold_and_self_heal() -> None:
     # base_classes.py's real _error_check(): a bus disturbance appearing mid-operation (after a
     # clean init) must accumulate consecutive failures past max_i2c_err before giving up, and a
@@ -1584,6 +1739,39 @@ def test_start_timer_arms_a_real_periodic_timer_that_drives_base_trigger_event()
         return fired
 
     assert run(scenario()) is True
+    FakeTimer.all_timers.clear()
+
+
+def test_start_timer_degrades_gracefully_when_the_trigger_timer_cannot_be_armed() -> None:
+    # Real rp2 Timer.init() raises OSError(ENOMEM) when the alarm pool is exhausted (confirmed
+    # against ports/rp2/machine_timer.c) - start_timer() must log via self.pr.err() and return
+    # normally, since its caller is system_service.py's synchronous start_timers() sequencer:
+    # raising here would take down the whole timer-start chain over one sensor that simply never
+    # gets triggered this cycle.
+    FakeTimer.all_timers.clear()
+    reader = make_reader("start_timer_oserror")
+    with _RaiseOnArm():
+        reader.start_timer()  # must not raise despite the timer failing to arm
+    assert reader.trigger_timer.period == -1  # never actually armed
+    assert reader.trigger_timer.callback is None  # nothing wired to base_trigger_event either
+    # start_timer() is synchronous, so it logs via the plain, non-counting pr.err() rather than
+    # awaiting pr.err_s() - this failure prints but is deliberately never recorded as a numbered
+    # error in the counter, unlike every err_s() call site in this driver.
+    assert run(reader.get_error_counter())["BMP3XX"]["ErrCount"] == 0
+    FakeTimer.all_timers.clear()
+
+
+def test_start_timer_degrades_gracefully_on_a_memory_error_while_arming() -> None:
+    # MemoryError is not an OSError subclass (see SPECIFICATION.md Part F), so start_timer()'s
+    # `except (OSError, MemoryError)` needs that second arm spelled out explicitly - without it, a
+    # heap-exhausted arming attempt would propagate straight out of this synchronous starter
+    # instead of degrading the same way the ENOMEM case above does.
+    FakeTimer.all_timers.clear()
+    reader = make_reader("start_timer_memoryerror")
+    with _RaiseOnArm(MemoryError):
+        reader.start_timer()  # must not raise despite the timer failing to arm
+    assert reader.trigger_timer.period == -1  # never actually armed
+    assert reader.trigger_timer.callback is None
     FakeTimer.all_timers.clear()
 
 
