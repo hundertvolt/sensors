@@ -99,6 +99,9 @@ class NeopixelDriver:
         return []  # no machine.Timer anywhere in this file (SPECIFICATION.md C.9 shape, kept
         # empty rather than omitted so callers can treat every driver uniformly)
 
+    async def get_error_counter(self) -> "dict[str, dict[str, int | list[int] | list[str]]]":
+        return await self.pr.get_log()
+
     def on(self) -> None:
         self.led_overl_on = True
         self.led_overl_start.set()

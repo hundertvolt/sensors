@@ -282,6 +282,19 @@ def test_dns_server_default_logger_is_off() -> None:
     assert DNSServer().pr.get_level() == PrintLog.level_off()
 
 
+def test_dns_server_get_error_counter_forwards_to_the_real_print_log() -> None:
+    server = DNSServer()
+    log = run(server.get_error_counter())
+    assert log["DNSSRV"]["ErrCount"] == 0
+
+
+def test_dns_server_get_error_counter_reflects_a_real_logged_error() -> None:
+    server = DNSServer()
+    run(server.pr.err_s("boom", errno=1))
+    log = run(server.get_error_counter())
+    assert log["DNSSRV"]["ErrCount"] == 1
+
+
 # ---------------------------------------------------------------------------
 # DNSServer.run(): driven through a controlled fake transport.
 #
