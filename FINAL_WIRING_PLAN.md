@@ -211,6 +211,14 @@ updated to describe the *new* construction order as current, not the old flat on
 coverage per the workflow above (construction-order tests, FRAM-chunk-order tests, boot-sequence
 tests using `tests/machine.py`, not the digital twin — Step 1 has no dependency on Step 3).
 
+**Done** (this session): all of the above landed — `src/sensortask_wozi.py`'s `build_system()`,
+`boot_entry/wozi_boot.py`, `get_error_counter()` on `DNSServer`/`NeopixelDriver`,
+`tests/test_sensortask_wozi.py` (10 tests), `WIRING_CONTRACT.md` rewritten in place, the
+`max_i2c_err` → `max_module_error` rename, and the full existing test suite re-verified green.
+See the "Refined plan" subsection below for the design decisions this took, and its own trailing
+note on the one real behavior finding (`AsyConnTime`'s `start_hotspot_timeout_watcher`) surfaced
+along the way.
+
 **What Step 2 needs from this step**: every long-lived module Step 1 constructs must be reachable
 (directly or via a bound method) from wherever `src/sensortask_wozi.py` ends up handing things to
 the webserver service — Step 1 does not need to invent the registration API shape itself (that's
@@ -293,6 +301,14 @@ findings above stay legible as the starting point):
   `WIRING_CONTRACT.md`, not built here.
 - **`WIRING_CONTRACT.md` maintenance**: rewritten in place once the new construction order lands
   (owner-confirmed), not kept alongside the old flat description.
+- **Task/timer starter collection uses each module's own `get_task_starters()`/`get_timer_starters()`
+  uniformly, not the reference file's hand-copied bound-method list — a real finding, not a style
+  choice.** Confirmed by direct comparison: `AsyConnTime.get_task_starters()` includes
+  `start_hotspot_timeout_watcher` (the task backing `hotspot_time_min`'s actual timeout behavior),
+  which the reference file's own hand-written `task_starters` list in `main()` never starts.
+  `src/sensortask_wozi.py` now starts it. Flagged here rather than silently carried forward or
+  silently dropped, per CLAUDE.md's discrepancy-flagging convention — worth a second look if a real
+  deployed unit's hotspot-timeout behavior is ever compared before/after this rewrite.
 
 ### Step 2 — Generic webserver/API service
 

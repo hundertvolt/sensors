@@ -9,6 +9,17 @@ constraints.
 
 ## Refactor targets not yet done
 
+- **`boot_entry/` isn't in `pyproject.toml`'s lint/typecheck `files` scope yet.** Step 1 added
+  `boot_entry/wozi_boot.py` (the real, deliberately-separate blocking-import firmware entry point
+  for `src/sensortask_wozi.py` - see that module's own docstring and `FINAL_WIRING_PLAN.md`'s Step
+  1 refined plan). Manually confirmed clean today (`ruff check boot_entry/wozi_boot.py` and
+  `mypy boot_entry/wozi_boot.py --config-file pyproject.toml` both pass under the existing config),
+  but it's not part of `scripts/lint.sh`/`scripts/typecheck.sh`/CI's default scan until
+  `pyproject.toml`'s `files`/scan scope is extended to include it - deliberately not done as part
+  of this same pass, since any `pyproject.toml` change needs CLAUDE.md's "Pre-push verification"
+  chroot recipe run first, and one three-line file didn't seem to warrant that on its own. Fold
+  this in next time `pyproject.toml` is touched for another reason anyway (same framing as the
+  already-tracked `improved-quality/microdot.py` exclude-entry cleanup below).
 - **Bare `except:` is forbidden in refactored code** (`except Exception:` or narrower required).
   Ruff's E722 is already enabled, so existing bare excepts in `improved-quality/` show as tracked
   findings rather than being silenced — eliminating them is still real refactor work.
