@@ -373,6 +373,57 @@ timeout-wrapped proxy + open-count tracking + threshold-based restart implemente
 sketch's own step 5; full unit-test coverage, test doubles for reader/writer are step-driven fakes
 only (never a real `select.poll()` — see CLAUDE.md's CI-hang-investigation note for exactly why).
 
+**Refined plan — this session's own research, before the owner Q&A round** (extends the above;
+kept as its own subsection per Step 1's precedent, so the original scoping stays legible as the
+starting point):
+
+- **Doc-currency check done this session (CLAUDE.md's standing instruction, not skipped)**:
+  upstream `miguelgrinberg/microdot`'s latest release is still `v2.6.1`/`v2.6.2` (May 2026) as of
+  this check — no newer tag, and no timeout-related feature has landed since BACKLOG.md's own
+  research confirmed "zero timeout occurrences anywhere in `microdot.py`." The vendored
+  `ext/microdot.py` pin is current; the hardening-design's premise (Microdot itself will never grow
+  this feature upstream in a way we could just adopt) still holds. MicroPython's own `asyncio` docs
+  (latest + v1.25.0, both checked) confirm `asyncio.wait_for()`/`wait_for_ms()` is the documented,
+  intended mechanism for bounding a stream read, raising `asyncio.TimeoutError` on expiry — matches
+  the design sketch's assumption, nothing to revise there.
+- **One concrete new finding from this check, worth folding into the design before implementation
+  starts**: `asyncio.TimeoutError` **is** an `OSError` subclass (`errno=110`, `ETIMEDOUT`) on
+  MicroPython, not a bare `Exception` — and `errno 110` is **not** in `ext/microdot.py`'s own
+  `MUTED_SOCKET_ERRORS` list (`[32, 54, 104, 128]`). Concretely: `handle_request()` wraps
+  `Request.create()` in `except OSError as exc: if exc.errno in MUTED_SOCKET_ERRORS: pass else:
+  raise` — a timeout raised by our proxy's wrapped `readline()`/`readexactly()` call (reached from
+  inside `Request.create()`) is an unmuted `OSError`, so Microdot's own catch **re-raises it out of
+  `handle_request()` entirely**, rather than quietly resolving to a 400 response the way a non-`OSError`
+  would. This means our own `serve()` wrapper (the one calling `await app.handle_request(...)`, per
+  the design sketch's step 1) **must** itself catch this — it is the expected, common-case outcome
+  for a wedged/slow-going-silent client, not a rare edge case — and treat it exactly like the design
+  sketch's step 6 already says any wrapper-level failure should be treated: log via `pr.wrn_s`/`err_s`
+  and let that one connection's task end, `finally`-decrementing the open-connection counter. Nothing
+  in the settled design actually assumed otherwise, but this is worth stating explicitly rather than
+  discovering it mid-implementation: **the timeout path does not flow through Microdot's own
+  error-response machinery at all** (no 5xx ever gets written back — the socket is simply abandoned
+  the way a genuinely dead TCP peer would be), which is the correct behavior for this failure mode
+  (matching a real client timeout), not a gap to fix.
+- **Resolved myself, not asked below** (context/legacy code already settles these):
+  - The webserver service's own diagnostics need a plain `PrintLog` (`self.pr`), not a full
+    `SensorReaderConfig`/`ConfigManager` — BACKLOG.md is explicit that "this module's own safety
+    constants deliberately have no config schema/REST surface," so it has no config file to load and
+    no `setup()`-gate need; it follows `NeopixelDriver`'s/`SCD30_Reader`'s shape (`self.pr` only, no
+    `cfgmgr`), not `SGP40_Reader`'s. It still needs a `get_error_counter()` (so it participates in the
+    aggregation it itself serves) and a `get_task_starters()` (the restart-capable server task) —
+    `sensortask_wozi.py`'s `_collect_level_setters()`/`_collect_task_starters()`/
+    `_collect_timer_starters()` all need one more entry each once this module is wired in; that edit
+    to the already-merged `src/sensortask_wozi.py` is in scope for this step (it's a freely-editable
+    `src/` file, not `improved-quality/`).
+  - Every registered callback is async — matches literally every existing `get_dict_data()`/
+    `get_dict_cfg()`/`get_error_counter()`/setter method in the whole codebase; no case for accepting
+    sync callables and building `invoke_handler`-style dual dispatch to support them.
+  - `abort()`/`HTTPException` is only ever needed for Microdot's own built-in triggers (413 from
+    `max_content_length`, plus whatever `@app.errorhandler(404)`/`(405)` we register to shape their
+    bodies) — no route handler in the reference file ever calls `abort()` today, they all return an
+    `ar.make_response()`-shaped dict directly, including for validation failures. The new registration
+    layer should keep that convention rather than introducing a second error-reporting path.
+
 **What Step 4 needs from this step**: a defined extension point for static/frozen content —
 whatever shape `register_static_routes()`-or-equivalent takes, Step 4 should only need to supply
 content plus a freezefs build step, not touch webserver internals.
