@@ -79,7 +79,7 @@ class NotificationCoordinator(SensorReaderConfig):
         self,
         request_signal_cb: "Callable[[int, int, int, float], Coroutine[Any, Any, bool]]",
         local_time_callback: "Callable[[], Coroutine[Any, Any, Any]]",
-        max_i2c_err: int = 5,
+        max_module_error: int = 5,
         cfg_path: str = "",
         fram: "AsyFramManager | None" = None,
         history_length: int = 10,
@@ -89,7 +89,7 @@ class NotificationCoordinator(SensorReaderConfig):
         # registered - self.pr/self.cfgmgr/self.cfg_schema don't exist until then.
         self._request_signal_cb = request_signal_cb
         self._local_time_callback = local_time_callback
-        self._max_i2c_err = max_i2c_err
+        self._max_module_error = max_module_error
         self._cfg_path = cfg_path
         self._fram = fram
         self._history_length = history_length
@@ -229,7 +229,7 @@ class NotificationCoordinator(SensorReaderConfig):
             return
         super().__init__(
             NOTIFY(False, None),
-            self._max_i2c_err,
+            self._max_module_error,
             _NAME,
             self._combined_schema(),
             cfg_path=self._cfg_path,
@@ -308,7 +308,7 @@ class NotificationCoordinator(SensorReaderConfig):
                                     await asyncio.sleep(2 * flash_dur)
                 await self._store_notif_data(any_triggered)
             # consecutive-failure-streak give-up, matching every other Reader's own read_loop() shape -
-            # max_i2c_err is otherwise accepted and stored but never actually enforced.
+            # max_module_error is otherwise accepted and stored but never actually enforced.
             if not await self._error_check((None,), condition=cfg_read_failed):
                 return  # too many consecutive own-config-read failures - let the task supervisor restart us
             await asyncio.sleep(self._next_sleep_secs(interv, t0))

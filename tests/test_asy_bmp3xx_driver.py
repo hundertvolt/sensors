@@ -899,11 +899,11 @@ def make_reader(name: str) -> BMP3xx_Reader:
     return reader
 
 
-def make_clean_reader(name: str, max_i2c_err: int = 5) -> "tuple[I2C, BMP3xx_Reader]":
+def make_clean_reader(name: str, max_module_error: int = 5) -> "tuple[I2C, BMP3xx_Reader]":
     # Unlike make_reader() above, the bus starts untouched (no nak_addresses/busy) - individual
     # tests seed exactly the registers they need for setup()/reads to succeed.
     i2c = make_i2c()
-    reader = BMP3xx_Reader(i2c, address=_ADDR, max_i2c_err=max_i2c_err, cfg_path=_tmp_cfg_path(name))
+    reader = BMP3xx_Reader(i2c, address=_ADDR, max_module_error=max_module_error, cfg_path=_tmp_cfg_path(name))
     run(reader.cfgmgr.setup())
     return i2c, reader
 
@@ -1363,10 +1363,10 @@ def test_store_bmp_falls_back_to_default_compensation_values_when_config_unreada
 
 def test_reader_read_error_check_threshold_and_self_heal() -> None:
     # base_classes.py's real _error_check(): a bus disturbance appearing mid-operation (after a
-    # clean init) must accumulate consecutive failures past max_i2c_err before giving up, and a
+    # clean init) must accumulate consecutive failures past max_module_error before giving up, and a
     # later successful read must start unwinding that streak again - the same self-healing
     # behavior read_loop() relies on to tolerate a transient disconnect without a full restart.
-    i2c, reader = make_clean_reader("threshold", max_i2c_err=2)
+    i2c, reader = make_clean_reader("threshold", max_module_error=2)
     seed_chip_id(i2c, _BMP388_CHIP_ID)
     seed_calibration(i2c)
     seed_status(i2c, 0x10 | 0x60)
@@ -1377,7 +1377,7 @@ def test_reader_read_error_check_threshold_and_self_heal() -> None:
         assert await reader._init_bmp()
         fake(i2c).nak_addresses.add(_ADDR)
         outcomes = []
-        for _ in range(3):  # max_i2c_err=2 -> the 3rd consecutive failure crosses the threshold
+        for _ in range(3):  # max_module_error=2 -> the 3rd consecutive failure crosses the threshold
             results = await reader._read_bmp()
             outcomes.append(await reader._error_check(results))
         fake(i2c).nak_addresses.discard(_ADDR)
@@ -1905,7 +1905,7 @@ def test_read_loop_stores_a_result_after_one_trigger() -> None:
 
 
 def test_read_loop_gives_up_and_returns_false_after_max_errors() -> None:
-    i2c, reader = make_clean_reader("read_loop_giveup", max_i2c_err=2)
+    i2c, reader = make_clean_reader("read_loop_giveup", max_module_error=2)
     seed_chip_id(i2c, _BMP388_CHIP_ID)
     seed_calibration(i2c)
     seed_status(i2c, 0x10 | 0x60)
@@ -1916,7 +1916,7 @@ def test_read_loop_gives_up_and_returns_false_after_max_errors() -> None:
         task = asyncio.create_task(reader.read_loop())
         await _settle(10)
         fake(i2c).nak_addresses.add(_ADDR)  # every read from here on fails
-        for _ in range(4):  # max_i2c_err=2 -> the 3rd consecutive failure crosses the threshold
+        for _ in range(4):  # max_module_error=2 -> the 3rd consecutive failure crosses the threshold
             reader.trigger_event.set()
             await _settle(10)
             if task.done():

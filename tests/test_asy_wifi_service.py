@@ -161,7 +161,7 @@ def make_client(
     ext_led: "FakeLED | None" = None,
     wifi_refresh_sec: int = 5,
     hotspot_time_min: int = 5,
-    max_i2c_err: int = 5,
+    max_module_error: int = 5,
     cfg_path: "str | None" = None,
     debug: "int | None" = None,
 ) -> AsyConnTime:
@@ -175,7 +175,7 @@ def make_client(
         ext_led=ext_led,
         wifi_refresh_sec=wifi_refresh_sec,
         hotspot_time_min=hotspot_time_min,
-        max_i2c_err=max_i2c_err,
+        max_module_error=max_module_error,
         cfg_path=cfg_path,
         debug=debug,
     )
@@ -1778,7 +1778,7 @@ def test_reset_wlan_connect_state_turns_the_led_off() -> None:
 
 # ---------------------------------------------------------------------------
 # wlan_connect() - the task-supervisor entry point: pr.setup(), the fresh _err_cnt_internal streak,
-# and max_i2c_err/_error_check() giving up after repeated WLAN-hardware-exception cycles
+# and max_module_error/_error_check() giving up after repeated WLAN-hardware-exception cycles
 # (independent from, and a coarser safety net than, connection_failures/conn_fail_to_hotspot's own
 # AP-reachability-driven hotspot fallback).
 # ---------------------------------------------------------------------------
@@ -1930,7 +1930,7 @@ def test_wlan_connect_calls_handle_reconnect_trigger_when_reconn_wifi_is_set() -
 
 
 def test_wlan_connect_gives_up_after_repeated_hardware_failures_and_persists_errno_17() -> None:
-    client = make_client(wifi_refresh_sec=0, max_i2c_err=2)
+    client = make_client(wifi_refresh_sec=0, max_module_error=2)
 
     async def failing_run_sta_mode() -> None:
         client.hw_op_failed = True  # simulates a real WLAN-hardware exception every cycle
@@ -1948,7 +1948,7 @@ def test_wlan_connect_gives_up_after_repeated_hardware_failures_and_persists_err
 
 
 def test_wlan_connect_never_gives_up_while_repeatedly_succeeding() -> None:
-    client = make_client(wifi_refresh_sec=0, max_i2c_err=2)
+    client = make_client(wifi_refresh_sec=0, max_module_error=2)
 
     async def succeeding_run_sta_mode() -> None:
         return None  # hw_op_failed stays False (reset every iteration by wlan_connect() itself)
@@ -1969,8 +1969,8 @@ def test_wlan_connect_never_gives_up_while_repeatedly_succeeding() -> None:
 def test_wlan_connect_recovers_the_streak_on_alternating_failure_and_success() -> None:
     # Proves the give-up decision is a genuine streak, not a monotonic lifetime counter: a success
     # decrements _err_cnt_internal (base_classes.py's own _error_check() contract), so failures that
-    # never land two-in-a-row must never trip max_i2c_err=2, however many cycles run in total.
-    client = make_client(wifi_refresh_sec=0, max_i2c_err=2)
+    # never land two-in-a-row must never trip max_module_error=2, however many cycles run in total.
+    client = make_client(wifi_refresh_sec=0, max_module_error=2)
     toggle = [True]
 
     async def alternating_run_sta_mode() -> None:

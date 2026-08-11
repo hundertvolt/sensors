@@ -154,7 +154,7 @@ class SensorReader:
     def __init__(
         self,
         init_data: "NamedTuple",
-        max_i2c_err: int,
+        max_module_error: int,
         fram: "AsyFramManager | None" = None,
         history_length: int = 10,
         debug: int | None = None,
@@ -167,7 +167,7 @@ class SensorReader:
             self.pr = make_logger(fram, history_length, debug, name)
         self._datastruct = init_data
         self._datalock = asyncio.Lock()
-        self.max_i2c_err = max_i2c_err
+        self.max_module_error = max_module_error
         self._err_cnt_internal = 0
 
     async def _get_meas_data(self) -> "NamedTuple":
@@ -216,7 +216,7 @@ class SensorReader:
         if any(res is None for res in results) and condition:
             self._err_cnt_internal += 1
             await self.pr.err_s("Error counter increased to", self._err_cnt_internal, errno=1)
-            if self._err_cnt_internal > self.max_i2c_err:
+            if self._err_cnt_internal > self.max_module_error:
                 await self.pr.err_s("Maximum error count reached!", errno=2)
                 return False  # breaking the loop triggers a task reset
         else:
@@ -237,7 +237,7 @@ class SensorReaderConfig(SensorReader):
     def __init__(
         self,
         init_data: "NamedTuple",
-        max_i2c_err: int,
+        max_module_error: int,
         name: str,
         default_vals: "ConfigSchema",
         cfg_path: str = "",
@@ -245,7 +245,7 @@ class SensorReaderConfig(SensorReader):
         history_length: int = 10,
         debug: int | None = None,
     ) -> None:
-        super().__init__(init_data, max_i2c_err, fram, history_length, debug, name=name)
+        super().__init__(init_data, max_module_error, fram, history_length, debug, name=name)
         self.cfg_schema = default_vals
         self.cfgmgr = ConfigManager(
             cfg_path + "config_" + name + ".cfg",

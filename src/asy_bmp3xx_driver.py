@@ -83,7 +83,7 @@ class BMP3xx_Reader(SensorReaderConfig):
         i2c: I2C,
         address: int = 0x77,
         trigger_sec: int = 1,
-        max_i2c_err: int = 5,
+        max_module_error: int = 5,
         cfg_path: str = "",
         fram: "AsyFramManager | None" = None,
         history_length: int = 10,
@@ -91,7 +91,7 @@ class BMP3xx_Reader(SensorReaderConfig):
     ) -> None:
         super().__init__(
             BMP3XX(None, None, None, None),
-            max_i2c_err,
+            max_module_error,
             _NAME,
             _VAL_SI + _VAL_POV + _VAL_TOV + _VAL_FC + _VAL_PO + _VAL_TO + _VAL_SLO + _VAL_ATM,
             cfg_path=cfg_path,

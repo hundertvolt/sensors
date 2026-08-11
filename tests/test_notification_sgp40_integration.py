@@ -120,7 +120,7 @@ async def _comp_data() -> "list[float | None]":
 
 def make_sgp_reader() -> "tuple[SGP40_Reader, Any]":
     i2c = I2C(1, scl_pin=19, sda_pin=18, frequency=50000)
-    reader = SGP40_Reader(i2c, _comp_data, max_i2c_err=2, cfg_path=_tmp_cfg_dir())
+    reader = SGP40_Reader(i2c, _comp_data, max_module_error=2, cfg_path=_tmp_cfg_dir())
     run(reader.pr.setup())
     return reader, reader.sgp.i2c_sgp40.i2c_device.i2c._i2c
 

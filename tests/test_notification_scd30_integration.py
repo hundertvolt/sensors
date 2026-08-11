@@ -84,7 +84,7 @@ async def _local_time() -> _FakeTime:
 
 def make_scd_reader() -> "tuple[SCD30_Reader, FakeI2C]":
     i2c = I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
-    reader = SCD30_Reader(i2c, irq_pin=5, trigger_sec=3, max_i2c_err=5)
+    reader = SCD30_Reader(i2c, irq_pin=5, trigger_sec=3, max_module_error=5)
     return reader, reader.scd.i2c_scd30.i2c_device.i2c._i2c  # type: ignore[return-value]
 
 
@@ -253,7 +253,7 @@ def test_i2c_bus_fault_degrades_to_not_triggered_and_stays_isolated_to_scd30s_ow
         return scd_log, notify_log, still_running
 
     scd_log, notify_log, still_running = run(scenario())
-    assert still_running is True  # one failure, well under max_i2c_err=5 - not a give-up condition
+    assert still_running is True  # one failure, well under max_module_error=5 - not a give-up condition
     # the fault is real and counted, but attributed to SCD30 alone - one faulted cycle logs twice
     # (asy_scd30_driver.py's own _read_scd() catch, errno=11, then base_classes.py's generic
     # _error_check() streak-counter increment, errno=1 - see read_loop()'s own two-call sequence).

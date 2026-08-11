@@ -98,9 +98,11 @@ convention. The import is `from asyncio import ThreadSafeFlag` (current MicroPyt
 `uasyncio` stays a compatibility alias but every import in this file and across `src/` uses the
 plain name).
 
-**Still deliberately deferred**: `_MAX_I2C_ERR = const(5)` — the project-wide `max_i2c_err` rename
-(BACKLOG.md, deferred) hasn't reached this file, matching `SPECIFICATION.md` C.2's own explicit
-"don't rename it unilaterally" instruction — not a gap to close here.
+`_MAX_I2C_ERR = const(5)` here still uses the pre-rename name — the project-wide `max_i2c_err` →
+`max_module_error` rename (`SPECIFICATION.md` C.2) landed in `src/` during Step 1, but this file is
+`improved-quality/sensortask-wozi.py`, which stays untouched per CLAUDE.md's hard rule regardless
+(not a "deferred rename" gap anymore, just out of scope like the rest of that file).
+`src/sensortask_wozi.py`, once it exists, uses the new name.
 
 ## Forward API-design notes (not this audit's scope — recorded for whenever the REST layer is next touched)
 

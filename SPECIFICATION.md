@@ -823,20 +823,18 @@ One file per sensor: `asy_<sensor>_driver.py`. Within it:
   need every parameter): bus handle first (`i2c: I2C`), then sensor-specific addressing/pins/
   mandatory callbacks (`address`, `irq_pin`, `asy_comp_callback`, ...), then `trigger_sec: int =
   <n>` (only if the sensor has a configurable trigger rate — SGP40 doesn't, see C.11 point
-  6), `max_i2c_err: int = 5`, then (only if `SensorReaderConfig`, see C.4.3) `cfg_path: str
+  6), `max_module_error: int = 5`, then (only if `SensorReaderConfig`, see C.4.3) `cfg_path: str
   = ""`, then the FRAM-related parameter(s) (`fram: AsyFramManager | None = None`, or — if a
   second, paired argument is needed alongside it, as SGP40's `fram_ntp_callback` is for its
   VOC-algorithm-state backup — `fram_storage`/`fram_ntp_callback` kept adjacent to each other in
   that same position), then `history_length: int = 10`, `debug: int | None = None`.
 
-  **`max_i2c_err`'s name is misleading — it's a generic consecutive-failure-streak threshold, not
-  I2C-specific**, confirmed by the project owner: `asy_wifi_service.py` and `asy_ntp_client.py`
-  (neither has an I2C bus) already rely on the same constructor parameter under this name via
-  `_error_check()` (C.7 below). A new non-I2C module should still use this parameter as-is (it's
-  the established mechanism); a rename to something bus-agnostic is a real, deliberately-deferred
-  future cleanup (see BACKLOG.md) — don't rename it unilaterally as part of an unrelated change,
-  it touches every promoted driver/service's constructor signature and every test file that
-  constructs one.
+  **`max_module_error` is a generic consecutive-failure-streak threshold, not I2C-specific** —
+  `asy_wifi_service.py` and `asy_ntp_client.py` (neither has an I2C bus) rely on the same
+  constructor parameter via `_error_check()` (C.7 below). Renamed project-wide from the old,
+  misleading `max_i2c_err` during Step 1 of the final-wiring effort (owner-authorized; see
+  `FINAL_WIRING_PLAN.md`) — every promoted driver/service's constructor and every test file that
+  constructs one was updated together in that one pass.
 
 ## C.3 Layer 2: `*_I2C`/`*_SPI` protocol class
 
@@ -1475,7 +1473,7 @@ and its config read-back comes back silently wrong/empty.
   name-baking change); every current call site was confirmed to always pass exactly its own
   `_NAME` before the parameter was dropped. Returns `False` (give up, triggers task-supervisor
   restart) once
-  `self._err_cnt_internal` exceeds `max_i2c_err`; decrements the streak back down on a good read.
+  `self._err_cnt_internal` exceeds `max_module_error`; decrements the streak back down on a good read.
   `condition` lets a driver suppress counting a "failure" that isn't really the sensor's fault
   (SGP40 passes `condition=compensated` — a `None` result from a missing compensation callback
   isn't a sensor failure).

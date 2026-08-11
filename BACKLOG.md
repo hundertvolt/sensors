@@ -286,15 +286,6 @@ constraints.
   nothing today, harmless but worth deleting (along with its now-dangling "see its own module
   docstring" comment) next time `pyproject.toml` is touched for another reason — not urgent enough
   to be the sole reason to trigger CLAUDE.md's "Pre-push verification" chroot recipe on its own.
-- **Rename `max_i2c_err`** (`base_classes.py`'s `SensorReaderConfig`/`SensorReader` constructor
-  parameter, and every promoted driver/service's own constructor that forwards it) to something
-  bus-agnostic — confirmed by the owner it's a generically-useful "consecutive-failure streak
-  before giving up and restarting the task" threshold via `_error_check()`, not literally about
-  I2C, and both `asy_wifi_service.py` and `asy_ntp_client.py` (neither has an I2C bus) already rely
-  on it under that misleading name. Deliberately not renamed yet (owner's own framing: "we will
-  rename it later in another context") — touches every promoted driver/service's constructor
-  signature and every test file that constructs one, a wider blast radius than any one promotion
-  pass.
 - **HTML/frontend automation & consistency** — known hand-written/brittle, not a priority; revisit
   after the Python-side refactor. Concretely stale now: the frontend still sends the pre-migration
   `setSGP`/`setBMP` field names/formats (see `SPECIFICATION.md` Part C.5.3's wire-format note) — not

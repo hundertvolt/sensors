@@ -52,8 +52,8 @@ def make_scd() -> "tuple[SCD30_I2C, FakeI2C]":
     return scd, fake(i2c)
 
 
-def make_reader(trigger_sec: int = 3, max_i2c_err: int = 5) -> SCD30_Reader:
-    return SCD30_Reader(make_i2c(), irq_pin=5, trigger_sec=trigger_sec, max_i2c_err=max_i2c_err)
+def make_reader(trigger_sec: int = 3, max_module_error: int = 5) -> SCD30_Reader:
+    return SCD30_Reader(make_i2c(), irq_pin=5, trigger_sec=trigger_sec, max_module_error=max_module_error)
 
 
 def reader_fake_i2c(reader: SCD30_Reader) -> FakeI2C:
@@ -978,7 +978,7 @@ def test_init_scd_returns_false_immediately_when_probe_fails_no_reset_reached() 
 
 
 def test_read_loop_full_iteration_stores_measured_data_and_derived_values() -> None:
-    reader = make_reader(max_i2c_err=1)
+    reader = make_reader(max_module_error=1)
     reader.scd.setup = _fake_setup  # type: ignore[method-assign]
     # read_measurement() is the one call that can raise post-fix; get_CO2()/get_temperature()/
     # get_relative_humidity() are pure cache reads (see src/asy_scd30_driver.py's own comment on
@@ -1021,8 +1021,8 @@ def test_read_loop_full_iteration_stores_measured_data_and_derived_values() -> N
     assert data.DewPoint is not None
 
 
-def test_read_loop_gives_up_after_max_i2c_err_consecutive_failures_and_logs_via_real_print_log() -> None:
-    reader = make_reader(max_i2c_err=1)
+def test_read_loop_gives_up_after_max_module_error_consecutive_failures_and_logs_via_real_print_log() -> None:
+    reader = make_reader(max_module_error=1)
     reader.scd.setup = _fake_setup  # type: ignore[method-assign]
 
     async def fake_fail() -> None:
@@ -1048,11 +1048,11 @@ def test_read_loop_gives_up_after_max_i2c_err_consecutive_failures_and_logs_via_
     log = run(reader.get_error_counter())
     err_count = log["SCD30"]["ErrCount"]
     assert isinstance(err_count, int)
-    assert err_count >= 2  # two consecutive failures exceed max_i2c_err=1
+    assert err_count >= 2  # two consecutive failures exceed max_module_error=1
 
 
 def test_read_loop_recovers_error_counter_after_a_good_read_following_failures() -> None:
-    reader = make_reader(max_i2c_err=5)
+    reader = make_reader(max_module_error=5)
     reader.scd.setup = _fake_setup  # type: ignore[method-assign]
     fail_next = [True, True, False]
 
