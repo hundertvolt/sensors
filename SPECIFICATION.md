@@ -304,7 +304,10 @@ The condensed version is A.2 above. Key modules if you need to go deeper (folded
     see BACKLOG.md).
   - Permanent WiFi deactivation after a second STA failure streak (post-hotspot) is a deliberate
     safety feature, preventing an unclaimed hotspot from staying open indefinitely — a physical
-    power-cycle is the accepted recovery path.
+    power-cycle is the accepted recovery path. `_reset_wlan_connect_state()` (run on every task
+    restart) special-cases `_PHASE_DEACTIVATED` the same way it already special-cased
+    `_PHASE_HOTSPOT`: left as-is rather than reset to `_PHASE_STA_SEEKING`, so a task-level restart
+    can't silently re-enable WLAN out from under this safety feature.
   - STA never automatically falls back to hotspot mode again once it has connected successfully
     even once in a task's lifetime — only a human resubmitting WiFi credentials over the REST API,
     or a full task restart, resets this. Confirmed deliberate for physically-accessible, easy-to-
@@ -318,6 +321,14 @@ The condensed version is A.2 above. Key modules if you need to go deeper (folded
     FRAM-backed features.
   - `asy_uart_driver.py` intentionally does not expose hardware flow control (`rts`/`cts`/`flow`) —
     confirmed directly, not planned for the future either. Not a gap to revisit unprompted.
+  - `asy_notification_service.py`'s `monitor_loop()` active-window check (`on_min_of_day <=
+    cur_min_of_day <= off_min_of_day`) doesn't handle a window that wraps past midnight (e.g.
+    `OnH=22`/`OffH=6`) — such a configuration silently never triggers, no error or warning either.
+    Confirmed byte-for-byte identical to `python/IndividualDrivers/neopixel_signal.py`'s
+    `airquality_auto_signal()` (`onMinOfDay <= curMinOfDay <= offMinOfDay`), a faithful port of
+    already-proven legacy field behavior, not a promotion regression — leave as-is per CLAUDE.md's
+    legacy-behavior-verification rule; a future session adding real overnight-window support should
+    treat it as a deliberate feature addition; needs `on_min_of_day > off_min_of_day` handling.
   - SCD30's `get_ambient_pressure()` read-back reuses the same command word used to *set* it —
     matches every sibling getter's pattern and the legacy driver's own proven field behavior, even
     though neither Sensirion's `embedded-scd` reference driver nor their `python-i2c-scd30` driver
@@ -943,6 +954,14 @@ C.1-C.2 phrase the I2C convention that way. What genuinely differs from the I2C 
   over from the I2C case unchanged; `SPIDevice`'s own CS-assert/deassert and settle-time handling
   (`asy_spi_driver.py`) is already transparent to the protocol layer, the same way `I2CDevice`'s
   bus session is.
+- **`FRAM_SPI._setup_addr_buffer()` trusts its caller-supplied `max_size` without re-deriving it
+  from `_check_device_id()`'s own chip-ID read.** `max_size` fixes the address-buffer width (3 vs.
+  4 bytes) once in `__init__`, and the class's RDID check is hardwired to one real 8KB chip
+  (0x0000-0x1FFF) — a caller passing a `max_size` larger than the chip actually has would let
+  addresses validate and silently alias on real hardware rather than being caught. Not a bug (the
+  one real construction site passes the correct, matching constant), but a real SPI sensor driver
+  reusing this pattern should decide deliberately whether its own address-buffer width should be
+  derived from the verified chip ID instead of trusted from the constructor argument.
 
 ### C.3.2 UART variant — orphan module, harmonized late, precedent now settled
 
@@ -1627,6 +1646,11 @@ Already stated generally in Part D.6 — the sensor-driver-specific instances:
 - `TYPE_CHECKING` guarded via `try/except ImportError: TYPE_CHECKING = False`, never an
   unconditional `from typing import ...`.
 - PEP 604 `X | None` everywhere; never `typing.Union`.
+- A caller-supplied object this file only touches structurally (a real `machine.Pin`, a
+  `microdot.Request`, an `AsyFramManager` chunk/manager) gets a `Protocol` class defined fully
+  inside `if TYPE_CHECKING:` describing just the methods/properties actually used — never
+  instantiated at runtime, purely a typing aid. See `print_log.py`'s `_FramChunk`/`_FramManager`,
+  `api_response.py`'s `_RequestLike`, `asy_wifi_service.py`'s `LEDControl`.
 - `typing.cast()` has no runtime presence on MicroPython — see C.4.2 for the settled
   `get_data()` narrowing convention and the one genuine remaining use of a local `cast()` shim.
 - A driver-local `*Results` tuple-of-optionals type alias (`SCDResults`, `BMPResults`) is
@@ -2382,7 +2406,10 @@ this Part — see this document's front matter for that tradeoff.
     `start_timers()`'s chained sequencer) and rejected: it would just be a second, uncoordinated
     clock racing the real hardware watchdog every real deployment already arms, and the scenario it
     defends against (no watchdog configured) is test-only. Don't re-propose a software-timeout
-    mitigation for this without a materially different justification.
+    mitigation for this without a materially different justification. `asy_wifi_service.py`'s
+    `_hotspot_client_absent()` handles its own `ONE_SHOT` hotspot-timeout timer differently — no new
+    clock, just counting the existing `wifi_refresh_sec` ticks it already gets while hotspot mode has
+    no client, and forcing the reconnect once that count implies the timer should have fired by now.
   - **`[x] * n` (list repeat) can segfault the whole interpreter process, not just raise, for n in
     roughly 2⁶¹–2⁶³** — confirmed by direct reproduction (`[0] * (2**62)` → SIGSEGV, no `try/except`
     catches it). Below ~2⁶¹ it raises `MemoryError` like `bytearray(n)`; at/above 2⁶³ it raises

@@ -126,10 +126,8 @@ class FRAM_SPI(Lockable):
         return True
 
     def _setup_addr_buffer(self, addr: int, opcode: int) -> bytearray:
-        # max_size is trusted as set up by the caller - this class's RDID check is hardwired to
-        # one real 8KB chip (0x0000-0x1FFF); a wrong, too-large max_size here would validate
-        # addresses beyond that and let them silently alias on real hardware. Buffer width (3 vs 4
-        # bytes) is fixed once in __init__ from that same max_size, so only its contents change here.
+        # Buffer width is fixed once in __init__ from max_size, which is trusted, not re-derived
+        # from _check_device_id() - see SPECIFICATION.md Part C.3.1's FRAM_SPI bullet.
         buffer = self._addr_buf
         if len(buffer) == 4:  # > 16bit address
             buffer[1] = (addr >> 16) & 0xFF

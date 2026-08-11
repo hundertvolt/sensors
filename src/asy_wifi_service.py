@@ -28,10 +28,7 @@ if TYPE_CHECKING:
 
     from asy_fram_manager import AsyFramManager
 
-    # Structural Protocol for a caller-supplied LED - never subclassed/instantiated at runtime
-    # (callers just pass a real machine.Pin or their own object), so it's purely a typing aid.
-    # Mirrors print_log.py's _FramChunk/_FramManager and api_response.py's _RequestLike: fully
-    # inside TYPE_CHECKING rather than a runtime try/except Protocol fallback.
+    # Structural Protocol for a caller-supplied LED (SPECIFICATION.md Part C.10's typing convention).
     class LEDControl(Protocol):
         def on(self) -> None: ...
         def off(self) -> None: ...
@@ -239,13 +236,8 @@ class AsyConnTime(SensorReaderConfig):
         self.connection_failures = 0
         self.hotspot_started_once = False
         if self._conn_phase not in (_PHASE_HOTSPOT, _PHASE_DEACTIVATED):
-            # Deliberately left at _PHASE_HOTSPOT on a task restart mid-hotspot (matches the old
-            # code's behavior) - reconn_wifi below and wlan_connect()'s first iteration both still
-            # see it and route through the same forced leave-hotspot-and-reconnect path.
-            # _PHASE_DEACTIVATED is also left as-is: it's a deliberate, permanent WLAN-off state
-            # (SPECIFICATION.md Part A.4 documents a physical power-cycle as the accepted recovery
-            # path) - a task-level restart must not silently re-enable WLAN by resetting it back to
-            # _PHASE_STA_SEEKING here.
+            # Both left as-is on a task restart, not reset to _PHASE_STA_SEEKING - see
+            # SPECIFICATION.md Part A.4's "Permanent WiFi deactivation" bullet.
             self._conn_phase = _PHASE_STA_SEEKING
         self.hotspot_timer.deinit()
         self.hotspot_timer_running = False
@@ -357,12 +349,8 @@ class AsyConnTime(SensorReaderConfig):
                 # the next wifi_refresh_sec cycle retries arming it instead of getting stuck unset.
                 self.pr.err("Could not start hotspot timer:", e)
         else:
-            # Self-heal backstop for a silently dropped soft Timer callback (a full scheduler queue
-            # can drop it with no exception anywhere in that chain, see SPECIFICATION.md Part F) -
-            # a dropped ONE_SHOT here would otherwise never fire again on its own. This method
-            # already gets a fresh tick every wifi_refresh_sec while hotspot mode has no client, so
-            # use that to notice the timer has run well past its own period without ever firing,
-            # and force the same reconnect the callback itself would have triggered.
+            # Self-heal backstop for a silently dropped soft Timer callback (SPECIFICATION.md
+            # Part F.1's soft-Timer-callback-drop gotcha).
             self.hotspot_timer_ticks_since_armed += 1
             if self.hotspot_timer_ticks_since_armed * self.wifi_refresh_sec * 1000 >= 2 * self.hotspot_time:
                 self.pr.err("Hotspot timer callback appears dropped, forcing reconnect")

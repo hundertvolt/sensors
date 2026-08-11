@@ -1,13 +1,10 @@
 """Generalized REST response envelope + setter-dispatch orchestration for the Microdot layer -
-the replacement for improved-quality/api_helpers.py's cmd_post_check()/special_err/
-generic_error_return() ad hoc per-endpoint pipeline. Every response keeps the same wire shape the
-legacy pipeline already used ({"res": "OK"/"ERR", "code": int, "descr": str, "result": ...}), so no
-endpoint's client-visible contract changes. Two independent pieces: make_response() is a pure
-envelope/catalog primitive (no I/O, can't raise); handle_set_cmd() orchestrates one
-SensorReaderConfig's base_classes.py-owned _set_dict_cfg() plus an optional post-write hook, with
-its own try/except as defense-in-depth on top of Microdot's blanket per-request catch (see
-CLAUDE.md's "Microdot / REST layer" section - that catch alone is safe, this is an extra layer of
-precision, not a gap it leaves open).
+the replacement for improved-quality/api_helpers.py's ad hoc per-endpoint pipeline. Every response
+keeps the legacy wire shape ({"res": "OK"/"ERR", "code": int, "descr": str, "result": ...}). Two
+independent pieces: make_response() is a pure envelope/catalog primitive (no I/O, can't raise);
+handle_set_cmd() orchestrates one SensorReaderConfig's _set_dict_cfg() plus an optional post-write
+hook, with its own try/except as defense-in-depth on top of Microdot's blanket per-request catch
+(see SPECIFICATION.md Part A.5).
 """
 
 try:
@@ -25,9 +22,8 @@ if TYPE_CHECKING:
     ResponseEnvelope = dict[str, "str | int | dict[str, Any]"]
 
     class _RequestLike(Protocol):
-        # Structural stand-in for microdot.Request (not on this project's mypy search path) -
-        # mirrors print_log.py's own _FramManager/_FramChunk Protocols: describes only the one
-        # property parse_cmd_request actually touches, no import of microdot needed at all.
+        # Structural stand-in for microdot.Request - not on this project's mypy search path
+        # (SPECIFICATION.md Part C.10's typing convention).
         @property
         def json(self) -> "Any": ...
 

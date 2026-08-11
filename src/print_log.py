@@ -167,10 +167,8 @@ class PrintLogHistory(PrintLog):
 
     async def get_log(self, name: str | None = None) -> dict[str, dict[str, int | list[int] | list[str]]]:
         # Reverses _store_err()'s encoding: 0x00/0x80 are "nothing recorded"; else shift back by
-        # _NO_ERR/_NO_WRN to recover the original error/warning code. name=None (the default for any
-        # caller not yet passing one - transitional, until each caller drops its own explicit
-        # argument) falls back to self.name; an explicit value still overrides it exactly as before
-        # this parameter had a default.
+        # _NO_ERR/_NO_WRN to recover the original error/warning code. name=None falls back to
+        # self.name (every real src/ call site relies on this); tests still pass an explicit override.
         if name is None:
             name = self.name
         err_num = []

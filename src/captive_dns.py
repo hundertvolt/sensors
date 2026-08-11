@@ -23,10 +23,8 @@ _NAME = const("DNSSRV")
 
 
 def _ipv4_to_int(ip: str) -> int | None:
-    # RFC 791 section 3.2 dotted-quad -> its 32-bit big-endian form, for subnet math below.
-    # isdigit()-check style, never raises for a malformed-but-str value - matches
-    # asy_dns_client.py's _is_ipv4_literal(). A wrong-typed ip (not a str) still raises, same as
-    # that function - both rely on ip.split() existing.
+    # RFC 791 section 3.2 dotted-quad -> 32-bit big-endian form, for subnet math below. Never
+    # raises for a malformed-but-str value; matches asy_dns_client.py's _is_ipv4_literal().
     parts = ip.split(".")
     if len(parts) != 4:
         return None
@@ -66,12 +64,8 @@ class DNSServer:
                 data, addr = await self.udps.recvfrom(4096)
                 if data is not None and addr is not None:
                     try:
-                        # addr[0] isn't guaranteed to be a str - a raw/unresolved server-mode
-                        # socket can hand back an opaque sockaddr instead of a (host, port) tuple
-                        # (confirmed directly: addr[0] can come back as a plain int here), which
-                        # _ipv4_to_int()'s own ip.split() doesn't tolerate. Treated like off-subnet,
-                        # not the outer except's 3s backoff below - this is routine untrusted
-                        # network input, not a genuinely unexpected failure.
+                        # addr[0] isn't guaranteed to be a str (confirmed: can come back as a
+                        # plain int) - treated like off-subnet, not the outer except's 3s backoff.
                         addr_int = _ipv4_to_int(addr[0])
                     except Exception:
                         addr_int = None

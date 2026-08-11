@@ -211,10 +211,8 @@ class SensorReader:
             self._datastruct = data
 
     async def _error_check(self, results: "MeasDataType", condition: bool = True) -> bool:
-        # centralizes the increment/decrement-error-counter-and-decide-to-give-up logic every
-        # sensortask-*.py driver used to hand-roll separately; False tells the caller to give up
-        # (triggers the task supervisor's own reset), True to keep going. name is no longer a
-        # parameter here - self.pr already carries it (see print_log.py's name-baking change).
+        # Shared consecutive-failure-streak counter - see SPECIFICATION.md Part C.7's
+        # _error_check() bullet for the full contract.
         if any(res is None for res in results) and condition:
             self._err_cnt_internal += 1
             await self.pr.err_s("Error counter increased to", self._err_cnt_internal, errno=1)
