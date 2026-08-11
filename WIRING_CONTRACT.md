@@ -25,7 +25,8 @@ determinism rule" for the full standing check.
 ## Current construction order (`src/sensortask_wozi.py`'s `build_system()`, top to bottom)
 
 Same relative construction order as the reference file (below), inside an `async def
-build_system(*, cfg_path="", debug=False)` instead of bare module-level statements — required for
+build_system(*, cfg_path: str = "", debug: int | None = None)` instead of bare module-level
+statements — required for
 testability (a bare top-level blocking call, matching the reference file's own bottom-of-file
 `asyncio.run(main())`, would hang on plain `import`; see `src/sensortask_wozi.py`'s own docstring
 and `FINAL_WIRING_PLAN.md`'s Step 1 refined plan for the full reasoning and the resulting two-file
