@@ -56,7 +56,7 @@ class SGP40_Reader(SensorReaderConfig):
         self,
         i2c: "I2C",
         asy_comp_callback: "Callable[[], Coroutine[Any, Any, list[int | float | None]]]",
-        max_i2c_err: int = 5,
+        max_module_error: int = 5,
         cfg_path: str = "",
         fram_storage: "AsyFramManager | None" = None,
         fram_ntp_callback: "Callable[[], Coroutine[Any, Any, bool]] | None" = None,
@@ -65,7 +65,7 @@ class SGP40_Reader(SensorReaderConfig):
     ) -> None:
         super().__init__(
             SGP40(None, None, None),
-            max_i2c_err,
+            max_module_error,
             _NAME,
             _VAL_BP + _VAL_BMAX + _VAL_WT + _VAL_RESET,
             cfg_path=cfg_path,

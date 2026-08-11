@@ -73,9 +73,9 @@ class AsyConnTime(SensorReaderConfig):
         ext_led: "LEDControl | None" = None,
         wifi_refresh_sec: int = 5,
         hotspot_time_min: int = 5,
-        max_i2c_err: int = 5,  # consecutive hw_op_failed cycles before giving up and letting the
+        max_module_error: int = 5,  # consecutive hw_op_failed cycles before giving up and letting the
         # task supervisor restart this task - same _error_check() contract every Reader uses,
-        # despite the misleading "i2c" name inherited from SensorReaderConfig (no I2C bus here).
+        # inherited from SensorReaderConfig (no I2C bus here, just the shared generic mechanism).
         cfg_path: str = "",
         fram: "AsyFramManager | None" = None,
         history_length: int = 10,
@@ -83,7 +83,7 @@ class AsyConnTime(SensorReaderConfig):
     ) -> None:
         super().__init__(
             WIFI(None, None, None, None),
-            max_i2c_err,
+            max_module_error,
             _NAME,
             _VAL_SSID + _VAL_PW + _VAL_CTRY + _VAL_HOST + _VAL_LED,
             cfg_path=cfg_path,

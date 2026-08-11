@@ -49,6 +49,9 @@ class DNSServer:
         # trust on the caller. run() filters to the AP's own subnet before ever replying.
         self.udps = AsyUDPSocket(("0.0.0.0", 53), mode="server")
 
+    async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
+        return await self.pr.get_log()
+
     async def run(self, server_ip: str, netmask: str) -> None:
         netmask_int = _ipv4_to_int(netmask)
         server_int = _ipv4_to_int(server_ip)

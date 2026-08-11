@@ -611,7 +611,7 @@ def make_sgp_reader() -> "tuple[SGP40_Reader, I2C]":
     # integration.py's make_sgp_reader(): a real SGP40_Reader over the real asy_i2c_driver.py I2C
     # wrapper, mocked only at tests/machine.py's raw-bus boundary.
     i2c = I2C(1, scl_pin=19, sda_pin=18, frequency=50000)
-    reader = SGP40_Reader(i2c, _sgp_comp_data, max_i2c_err=5, cfg_path=_tmp_cfg_dir())
+    reader = SGP40_Reader(i2c, _sgp_comp_data, max_module_error=5, cfg_path=_tmp_cfg_dir())
     run(reader.cfgmgr.setup())
     return reader, i2c
 
@@ -776,7 +776,7 @@ def make_scd_reader() -> SCD30_Reader:
     # Same construction as test_asy_scd30_driver.py's own make_reader(): a real SCD30_Reader over
     # the real asy_i2c_driver.py I2C wrapper and tests/machine.py's fake bus/Pin. No cfg_path -
     # SCD30_Reader has no ConfigManager of its own at all, which is the whole point of this section.
-    return SCD30_Reader(I2C(0, scl_pin=1, sda_pin=0, frequency=100000), irq_pin=5, trigger_sec=3, max_i2c_err=5)
+    return SCD30_Reader(I2C(0, scl_pin=1, sda_pin=0, frequency=100000), irq_pin=5, trigger_sec=3, max_module_error=5)
 
 
 def _scd_writes(reader: SCD30_Reader) -> "list[bytes]":

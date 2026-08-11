@@ -69,14 +69,14 @@ class SCD30_Reader(SensorReader):
         i2c: I2C,
         irq_pin: int,
         trigger_sec: int = 3,
-        max_i2c_err: int = 5,
+        max_module_error: int = 5,
         fram: AsyFramManager | None = None,
         history_length: int = 10,
         debug: int | None = None,
     ) -> None:
         super().__init__(
             SCD30(None, None, None, None, None, None),
-            max_i2c_err,
+            max_module_error,
             fram=fram,
             history_length=history_length,
             debug=debug,

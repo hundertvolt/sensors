@@ -114,7 +114,7 @@ async def _cancel_all(tasks: "list[asyncio.Task[None]]") -> None:
 
 def make_scd_reader() -> "tuple[SCD30_Reader, Any]":
     i2c = I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
-    reader = SCD30_Reader(i2c, irq_pin=5, trigger_sec=3, max_i2c_err=5)
+    reader = SCD30_Reader(i2c, irq_pin=5, trigger_sec=3, max_module_error=5)
     return reader, reader.scd.i2c_scd30.i2c_device.i2c._i2c
 
 
@@ -180,7 +180,7 @@ async def _comp_data() -> "list[float | None]":
 
 def make_sgp_reader() -> "tuple[SGP40_Reader, Any]":
     i2c = I2C(1, scl_pin=19, sda_pin=18, frequency=50000)
-    reader = SGP40_Reader(i2c, _comp_data, max_i2c_err=2, cfg_path=_tmp_cfg_dir("sgp"))
+    reader = SGP40_Reader(i2c, _comp_data, max_module_error=2, cfg_path=_tmp_cfg_dir("sgp"))
     run(reader.pr.setup())
     return reader, reader.sgp.i2c_sgp40.i2c_device.i2c._i2c
 

@@ -1255,7 +1255,7 @@ def test_methods_called_before_finalize_degrade_gracefully_not_raise() -> None:
 def test_monitor_loop_gives_up_after_too_many_consecutive_config_read_failures() -> None:
     cb = FakeSignalCb()
     clock = FakeClock()
-    coordinator = NotificationCoordinator(cb, clock.get, max_i2c_err=2, cfg_path=_tmp_cfg_dir())
+    coordinator = NotificationCoordinator(cb, clock.get, max_module_error=2, cfg_path=_tmp_cfg_dir())
     coordinator.finalize()
     run(coordinator.cfgmgr.setup())
     coordinator.cfgmgr._cache.pop("FlashBri")  # every own-config read now fails (malformed cache)
@@ -1266,7 +1266,7 @@ def test_monitor_loop_gives_up_after_too_many_consecutive_config_read_failures()
         return task.done()
 
     with _FastAsyncSleep():
-        # max_i2c_err=2 -> the 3rd consecutive failure crosses the threshold and monitor_loop()
+        # max_module_error=2 -> the 3rd consecutive failure crosses the threshold and monitor_loop()
         # returns on its own, matching every other Reader's read_loop() give-up shape.
         assert run(scenario()) is True
 

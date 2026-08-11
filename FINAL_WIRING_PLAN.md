@@ -184,10 +184,12 @@ questions for Step 1 to re-litigate):
   top-level-statement shape and forces some async wrapping (an `async def main()`-style boot
   sequence, most likely) for at least everything from the first `await`ed step onward.
 - The **FRAM chunk-order determinism rule** (`SPECIFICATION.md` Part A.4) must survive this
-  restructure exactly: `SystemService` → `SGP40_Reader` (VOC backup chunk) → `NeopixelDriver` →
-  `NotificationCoordinator`, in that relative order, regardless of `await`s introduced around them.
-  `WIRING_CONTRACT.md` is the living reference for this — **update it**, don't let it drift, once
-  Step 1's actual construction order is decided.
+  restructure exactly: `SystemService` → `SGP40_Reader` (its own error log) → `SGP40_Reader` (VOC
+  backup chunk) → `NeopixelDriver` → `NotificationCoordinator` — five chunks, not four; corrected
+  during Step 1's own session after confirming `SGP40_Reader`'s own logger is already FRAM-backed
+  (`WIRING_CONTRACT.md` item 8) — in that relative order, regardless of `await`s introduced around
+  them. `WIRING_CONTRACT.md` is the living reference for this — **update it**, don't let it drift,
+  once Step 1's actual construction order is decided.
 - Two modules are missing `get_error_counter()` despite persisting logs via `PrintLogHistory`:
   `captive_dns.py`'s `DNSServer` and `src/asy_neopixel_driver.py`'s `NeopixelDriver`. Every other
   promoted module already exposes it with the standard
@@ -209,11 +211,114 @@ updated to describe the *new* construction order as current, not the old flat on
 coverage per the workflow above (construction-order tests, FRAM-chunk-order tests, boot-sequence
 tests using `tests/machine.py`, not the digital twin — Step 1 has no dependency on Step 3).
 
+**Done** (this session): all of the above landed — `src/sensortask_wozi.py`'s `build_system()`,
+`boot_entry/wozi_boot.py`, `get_error_counter()` on `DNSServer`/`NeopixelDriver`,
+`tests/test_sensortask_wozi.py` (16 tests), `WIRING_CONTRACT.md` rewritten in place, the
+`max_i2c_err` → `max_module_error` rename, and the full existing test suite re-verified green.
+See the "Refined plan" subsection below for the design decisions this took, and its own trailing
+note on the one real behavior finding (`AsyConnTime`'s `start_hotspot_timeout_watcher`) surfaced
+along the way. **Also done, added later in the same session per explicit owner follow-up
+direction** (not part of the original Step 1 scope above, but landed inside this step's session
+rather than deferred): the "never insist on FRAM" audit (every FRAM-backed error log/persistence
+path already degraded gracefully to plain RAM when `fram=None`; added one regression test
+constructing the whole object graph against a simulated dead FRAM chip) and live, persisted,
+range-checked debug-level setting via a boot-time-collected registry of each module's own
+`set_level()` — see the `watchdog`/`debug` split bullet below and `WIRING_CONTRACT.md`'s "Debug
+level" section for the full design and the rejected `SharedLevel` alternative.
+
 **What Step 2 needs from this step**: every long-lived module Step 1 constructs must be reachable
 (directly or via a bound method) from wherever `src/sensortask_wozi.py` ends up handing things to
 the webserver service — Step 1 does not need to invent the registration API shape itself (that's
 Step 2's job), just make sure nothing it builds makes registration harder (e.g. no module that's
 only reachable through a closure Step 2 can't get a reference to).
+
+**Refined plan — resolved via project-owner Q&A this session** (supersedes/extends the above
+where the two differ; kept as its own subsection rather than rewritten in place so the original
+findings above stay legible as the starting point):
+
+- **File layout — two files, not one.** `src/sensortask_wozi.py` stays the single testable module
+  ("Where the new code actually lives" above), but it gets **no top-level blocking call** — no
+  bare `asyncio.run(main())` at module scope. Instead it exposes `async def build_system() ->
+  <components>` (pure construction + the setup()-batch below, no task loop) and `async def main()`
+  (calls `build_system()`, then `start_timers()`/`start_and_check_tasks()`, matching the reference
+  file's own `main()` shape). A test can `import sensortask_wozi` and call `build_system()`
+  directly without ever blocking. The actual "importing this triggers boot forever" behavior the
+  real firmware needs (matching what `modules/_boot.py`'s `import sensortask.py` expects today)
+  moves to a new, separate, minimal file — **`boot_entry/wozi_boot.py`** (new top-level folder,
+  self-explanatory name, not `src/` or `tests/`): `import asyncio; from sensortask_wozi import
+  main; asyncio.run(main())`, a handful of lines, nothing else. Owner-confirmed: this is new code
+  in a new location, not an edit to any legacy file, and `modules/_boot.py`'s own import mechanism
+  itself stays untouched (CLAUDE.md's hard rule) — how `boot_entry/wozi_boot.py` eventually gets
+  frozen/wired into a real build is Step 5's "full Unix-port integration"/assembly job, not Step
+  1's; Step 1 only needs the file to exist and be correct in isolation.
+- **No Microdot, no routes, no `frozen_html` import in Step 1.** Confirmed: `app = Microdot()` and
+  every `@app.get/put` handler stay reference-only in `improved-quality/sensortask-wozi.py` for
+  Step 2 to reimplement as the registration-based service — copying them into `src/sensortask_wozi.py`
+  now would be wasted work under a paradigm Step 2 replaces wholesale. Same for `import frozen_html`
+  (Step 4's job to give that import something real).
+- **Object graph stays bare module-level globals**, matching the legacy file's own shape — no
+  wrapper dataclass/NamedTuple container. Confirmed this isn't in tension with the
+  "generator-readiness" constraint (BACKLOG.md/Step 2's own concern): that constraint is about
+  Step 2's *callback-registration* API not emitting many quasi-constant globals per field: it
+  doesn't reach this dozen-or-so core singleton references, which have to live somewhere in memory
+  regardless of how they're named.
+- **`await x.setup()` batching, resolved by dependency analysis, not by default:** the four
+  `setup()` calls in play are actually **three independent domains**, not one: (1)
+  `AsyFramManager.setup()` — real FRAM-chip SPI readiness, gates any FRAM chunk read/write; (2)
+  each module's own `PrintLogHistoryStore.setup()` (`self.pr.setup()`) — FRAM-backed error-log
+  persistence, depends on (1) but already runs safely later, inside each module's own task, in the
+  existing reference file; not something Step 1 needs to add or reorder. (3) `ConfigManager.setup()`
+  (via `SensorReaderConfig.setup()`, called on `sgp_reader`/`bmp_reader`/`notify_service`) — reads
+  each module's own local JSON config file, **entirely independent of FRAM** and of each other; this
+  is what WIRING_CONTRACT.md's finding is actually about. Between the three new (3)-domain calls and
+  the one existing (1)-domain call (`fram.setup()`), there is no real cross-dependency requiring
+  interleaving. There **is** one hard, real ordering constraint, though, found by reading
+  `asy_notification_service.py` directly: `NotificationCoordinator.setup()`'s own docstring says
+  "call after `finalize()`, before any task starter runs" — its `self.cfgmgr` doesn't exist until
+  `finalize()`'s delayed `super().__init__()` runs, so `await notify_service.setup()` immediately
+  after `notify_service = NotificationCoordinator(...)` (before `register()`×3/`finalize()`) would be
+  an outright bug, not just a style choice. **Resolution: grouped/batched, not interleaved** — one
+  dedicated async phase, positioned exactly where the reference file's existing `async_onetime`
+  list already sits (after all synchronous construction, including `notify_service`'s
+  `register()`/`finalize()`, before `start_timers()`), in fixed order `fram.setup()` →
+  `sgp_reader.setup()` → `bmp_reader.setup()` → `notify_service.setup()` (fram first, matching its
+  existing position; the three new ones appended in their own construction order). This is the one
+  scheme applied consistently, per the "don't mix schemes" instruction — no setup() call happens
+  interleaved with construction anywhere in the file.
+- **`_MAX_I2C_ERR` → `_MAX_MODULE_ERROR` rename, now in scope and project-wide** (previously
+  deliberately deferred per `SPECIFICATION.md` C.2/BACKLOG.md — owner has now explicitly authorized
+  it). Touches: `base_classes.py` (`SensorReader.__init__`'s `max_i2c_err` param and
+  `self.max_i2c_err` attribute, plus every internal reference), every module that takes/forwards it
+  (`asy_wifi_service.py`, `asy_ntp_client.py`, `asy_sgp40_driver.py`, `asy_bmp3xx_driver.py`,
+  `asy_scd30_driver.py`, `asy_notification_service.py`), and every test file constructing these
+  objects with `max_i2c_err=`. Rename to `max_module_error`/`_MAX_MODULE_ERROR` (mirrors the
+  owner's own suggested name exactly). Mechanical but wide; done as part of Step 1's implementation
+  pass since `src/sensortask_wozi.py`'s own top-level constant is exactly where this originates.
+- **Constants organization**: every module-level constant in the new file (the renamed
+  `_MAX_MODULE_ERROR`, DNS/NTP timeouts, hotspot timing, etc.) grouped together in one clearly
+  readable block, since a future generator script is expected to fill/edit these — values copied
+  verbatim from the reference file, no re-tuning.
+- **`watchdog`/`debug` split**: `watchdog = WDT(timeout=8000)` constructed directly in
+  `build_system()`, hardcoded, no injection point (owner: "must be hardcoded so no error ever can
+  circumvent it"). `debug` seeds each module's constructor as before, but — per explicit owner
+  follow-up direction later in this same session — it's no longer construction-time-only: it's now
+  live-settable and persisted via `SystemService.set_debug_level()`/`config_SYSTEM.cfg`, broadcast
+  to every module's logger through a boot-time-collected registry of `set_level()` bound methods
+  (`SystemService.set_level_setters()`, populated by `sensortask_wozi.py`'s
+  `_collect_level_setters()`), not a shared/live-read value on `PrintLog` itself — see
+  `WIRING_CONTRACT.md`'s "Debug level" section for the full design, the concurrency-safety
+  verification, and the rejected `SharedLevel` alternative. Landed inside Step 1's own scope rather
+  than deferred to Step 2, since the owner asked for it directly in-session.
+- **`WIRING_CONTRACT.md` maintenance**: rewritten in place once the new construction order lands
+  (owner-confirmed), not kept alongside the old flat description.
+- **Task/timer starter collection uses each module's own `get_task_starters()`/`get_timer_starters()`
+  uniformly, not the reference file's hand-copied bound-method list — a real finding, not a style
+  choice.** Confirmed by direct comparison: `AsyConnTime.get_task_starters()` includes
+  `start_hotspot_timeout_watcher` (the task backing `hotspot_time_min`'s actual timeout behavior),
+  which the reference file's own hand-written `task_starters` list in `main()` never starts.
+  `src/sensortask_wozi.py` now starts it. Flagged here rather than silently carried forward or
+  silently dropped, per CLAUDE.md's discrepancy-flagging convention — worth a second look if a real
+  deployed unit's hotspot-timeout behavior is ever compared before/after this rewrite.
 
 ### Step 2 — Generic webserver/API service
 

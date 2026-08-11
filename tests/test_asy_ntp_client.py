@@ -89,7 +89,7 @@ def make_client(
     wifi_mode_lock: "asyncio.Lock | None" = None,
     network_available: "Callable[[], bool] | None" = None,
     get_dns_server: "Callable[[], str | None] | None" = None,
-    max_i2c_err: int = 5,
+    max_module_error: int = 5,
     dns_timeout_ms: int = 500,
     dns_tries: int = 1,
     ntp_fetch_timeout_ms: int = 5000,
@@ -109,7 +109,7 @@ def make_client(
         wifi_mode_lock,
         network_available,
         get_dns_server,
-        max_i2c_err=max_i2c_err,
+        max_module_error=max_module_error,
         dns_timeout_ms=dns_timeout_ms,
         dns_tries=dns_tries,
         ntp_fetch_timeout_ms=ntp_fetch_timeout_ms,
@@ -1942,7 +1942,7 @@ def test_asy_ntp_time_gives_up_after_repeated_sync_failures_and_persists_errno_2
     # Independent, coarser safety net on top of _handle_ntp_sync_failure()'s own short-term
     # ntp_retries/_NTP_SYNC_RETRIES retry loop - see asy_ntp_time()'s own comment. A real attempt
     # that completes (network was up) but never yields a parsed time counts toward this streak.
-    client = make_client(max_i2c_err=2)
+    client = make_client(max_module_error=2)
 
     async def failing_attempt(_dns_server: "Any") -> "Any":
         return None, True  # network was available, but the attempt itself still failed
@@ -1951,7 +1951,7 @@ def test_asy_ntp_time_gives_up_after_repeated_sync_failures_and_persists_errno_2
 
     async def scenario() -> "Any":
         task = asyncio.create_task(client.asy_ntp_time())
-        for _ in range(3):  # one trigger per would-be failure cycle - max_i2c_err=2 gives up on the 3rd
+        for _ in range(3):  # one trigger per would-be failure cycle - max_module_error=2 gives up on the 3rd
             client.ntp_sync_trigger_event.set()
             await asyncio.sleep(0)
             await asyncio.sleep(0)
@@ -1966,8 +1966,8 @@ def test_asy_ntp_time_gives_up_after_repeated_sync_failures_and_persists_errno_2
 def test_asy_ntp_time_network_unavailable_cycles_never_count_toward_giving_up() -> None:
     # condition=network_ok excludes "network wasn't up yet" from the give-up streak, the same way
     # SGP40 excludes a missing-compensation read via condition=compensated - proven here by running
-    # well past max_i2c_err trigger cycles, all reporting network unavailable, without giving up.
-    client = make_client(max_i2c_err=2)
+    # well past max_module_error trigger cycles, all reporting network unavailable, without giving up.
+    client = make_client(max_module_error=2)
 
     async def unavailable_attempt(_dns_server: "Any") -> "Any":
         return None, False  # network not available - condition=False, must not count as a real failure
@@ -1994,8 +1994,8 @@ def test_asy_ntp_time_network_unavailable_cycles_never_count_toward_giving_up() 
 def test_asy_ntp_time_recovers_the_streak_on_alternating_failure_and_success() -> None:
     # A success resets tm to non-None, decrementing _err_cnt_internal (base_classes.py's own
     # _error_check() contract) - failures that never land two-in-a-row must never trip
-    # max_i2c_err=2, however many trigger cycles run in total.
-    client = make_client(max_i2c_err=2)
+    # max_module_error=2, however many trigger cycles run in total.
+    client = make_client(max_module_error=2)
     toggle = [True]
 
     async def alternating_attempt(_dns_server: "Any") -> "Any":

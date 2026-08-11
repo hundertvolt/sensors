@@ -76,7 +76,7 @@ class AsyNtpClient(SensorReaderConfig):
         dns_tries: int = 1,  # forwarded to resolve_ipv4() - see dns_timeout_ms's own comment.
         ntp_fetch_timeout_ms: int = _NTP_CONN_TIMEOUT,  # forwarded to _fetch_ntp_reply()'s socket
         # call - same reasoning as dns_timeout_ms.
-        max_i2c_err: int = 5,
+        max_module_error: int = 5,
         cfg_path: str = "",
         fram: "AsyFramManager | None" = None,
         history_length: int = 10,
@@ -84,7 +84,7 @@ class AsyNtpClient(SensorReaderConfig):
     ) -> None:
         super().__init__(
             NTP(False, None, None),
-            max_i2c_err,  # consecutive failed-sync-attempt streak before asy_ntp_time() gives up and
+            max_module_error,  # consecutive failed-sync-attempt streak before asy_ntp_time() gives up and
             # lets the task supervisor restart this task - see that method's own _error_check() call.
             _NAME,
             _VAL_NH + _VAL_NOS + _VAL_NIH + _VAL_GMT + _VAL_DST,

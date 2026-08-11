@@ -9,6 +9,17 @@ constraints.
 
 ## Refactor targets not yet done
 
+- **`boot_entry/` isn't in `pyproject.toml`'s lint/typecheck `files` scope yet.** Step 1 added
+  `boot_entry/wozi_boot.py` (the real, deliberately-separate blocking-import firmware entry point
+  for `src/sensortask_wozi.py` - see that module's own docstring and `FINAL_WIRING_PLAN.md`'s Step
+  1 refined plan). Manually confirmed clean today (`ruff check boot_entry/wozi_boot.py` and
+  `mypy boot_entry/wozi_boot.py --config-file pyproject.toml` both pass under the existing config),
+  but it's not part of `scripts/lint.sh`/`scripts/typecheck.sh`/CI's default scan until
+  `pyproject.toml`'s `files`/scan scope is extended to include it - deliberately not done as part
+  of this same pass, since any `pyproject.toml` change needs CLAUDE.md's "Pre-push verification"
+  chroot recipe run first, and one three-line file didn't seem to warrant that on its own. Fold
+  this in next time `pyproject.toml` is touched for another reason anyway (same framing as the
+  already-tracked `improved-quality/microdot.py` exclude-entry cleanup below).
 - **Bare `except:` is forbidden in refactored code** (`except Exception:` or narrower required).
   Ruff's E722 is already enabled, so existing bare excepts in `improved-quality/` show as tracked
   findings rather than being silenced — eliminating them is still real refactor work.
@@ -286,15 +297,6 @@ constraints.
   nothing today, harmless but worth deleting (along with its now-dangling "see its own module
   docstring" comment) next time `pyproject.toml` is touched for another reason — not urgent enough
   to be the sole reason to trigger CLAUDE.md's "Pre-push verification" chroot recipe on its own.
-- **Rename `max_i2c_err`** (`base_classes.py`'s `SensorReaderConfig`/`SensorReader` constructor
-  parameter, and every promoted driver/service's own constructor that forwards it) to something
-  bus-agnostic — confirmed by the owner it's a generically-useful "consecutive-failure streak
-  before giving up and restarting the task" threshold via `_error_check()`, not literally about
-  I2C, and both `asy_wifi_service.py` and `asy_ntp_client.py` (neither has an I2C bus) already rely
-  on it under that misleading name. Deliberately not renamed yet (owner's own framing: "we will
-  rename it later in another context") — touches every promoted driver/service's constructor
-  signature and every test file that constructs one, a wider blast radius than any one promotion
-  pass.
 - **HTML/frontend automation & consistency** — known hand-written/brittle, not a priority; revisit
   after the Python-side refactor. Concretely stale now: the frontend still sends the pre-migration
   `setSGP`/`setBMP` field names/formats (see `SPECIFICATION.md` Part C.5.3's wire-format note) — not
