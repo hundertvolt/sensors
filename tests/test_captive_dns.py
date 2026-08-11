@@ -4,6 +4,7 @@ import time
 
 from asy_udp_socket import AsyUDPSocket
 from captive_dns import DNSQuery, DNSServer, _ipv4_to_int
+from print_log import PrintLog, PrintLogHistory
 
 try:
     from typing import TYPE_CHECKING
@@ -19,6 +20,10 @@ if TYPE_CHECKING:
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
     return asyncio.run(coro)
+
+
+def make_pr(level: int | None = None) -> PrintLogHistory:  # a fresh, independent logger per test/DNSQuery
+    return PrintLogHistory(level=level, name="TESTDNS")
 
 
 _next_port = 52000
@@ -70,7 +75,9 @@ def malformed_query_cases() -> list[bytes]:
 
 
 # ---------------------------------------------------------------------------
-# _ipv4_to_int: pure dotted-quad -> int conversion used for subnet-membership math.
+# _ipv4_to_int: pure dotted-quad -> int|None conversion used for subnet-membership math. Never
+# raises for a malformed-but-str value (isdigit()-check style, matching asy_dns_client.py's
+# _is_ipv4_literal()) - only a wrong-typed (non-str) value still raises, via ip.split().
 # ---------------------------------------------------------------------------
 
 
@@ -82,30 +89,37 @@ def test_ipv4_to_int_valid() -> None:
 
 def test_ipv4_to_int_rejects_wrong_octet_count() -> None:
     for bad in ("1.2.3", "1.2.3.4.5", "", "1.2.3.4."):
-        try:
-            _ipv4_to_int(bad)
-            raise AssertionError(f"expected ValueError for {bad!r}")
-        except ValueError:
-            pass
+        assert _ipv4_to_int(bad) is None
 
 
 def test_ipv4_to_int_rejects_out_of_range_octet() -> None:
     # A previously-silent gap: an out-of-range octet used to shift bits past its own byte position
     # instead of being rejected, risking a false subnet match rather than a clean "invalid" signal.
     for bad in ("256.0.0.0", "1.2.3.999", "-1.2.3.4"):
-        try:
-            _ipv4_to_int(bad)
-            raise AssertionError(f"expected ValueError for {bad!r}")
-        except ValueError:
-            pass
+        assert _ipv4_to_int(bad) is None
 
 
 def test_ipv4_to_int_rejects_non_numeric_octet() -> None:
-    try:
-        _ipv4_to_int("a.b.c.d")
-        raise AssertionError("expected ValueError")
-    except ValueError:
-        pass
+    assert _ipv4_to_int("a.b.c.d") is None
+
+
+def test_ipv4_to_int_rejects_single_invalid_parameter_type() -> None:
+    # Real callers only ever pass str (network.WLAN.ifconfig()'s own return type, or a raw
+    # sockaddr's addr[0]), but this is a module-level function - a wrongly-typed value must raise
+    # one of the exact types every caller in this file already guards against, not something else.
+    for bad in (None, 123, 1.5, [1, 2, 3, 4], b"1.2.3.4", ("1", "2", "3", "4")):
+        try:
+            _ipv4_to_int(bad)  # type: ignore[arg-type]
+            raise AssertionError(f"expected an exception for {bad!r}")
+        except (TypeError, AttributeError):
+            pass
+
+
+def test_ipv4_to_int_rejects_multiple_simultaneous_fault_recombinations() -> None:
+    # Combines more than one fault within the same value - wrong octet count, out-of-range, and
+    # non-numeric octets all at once - to prove the guard doesn't depend on faults appearing alone.
+    for bad in ("300.-5.abc.999.1", "abc.def", "999.999", "1.2.a.999.-1"):
+        assert _ipv4_to_int(bad) is None
 
 
 # ---------------------------------------------------------------------------
@@ -114,19 +128,27 @@ def test_ipv4_to_int_rejects_non_numeric_octet() -> None:
 
 
 def test_dns_query_parses_single_and_multi_label_domain() -> None:
-    assert DNSQuery(make_query(["example"])).domain == "example."
-    assert DNSQuery(make_query(["a", "io"])).domain == "a.io."
+    assert DNSQuery(make_query(["example"]), make_pr()).domain == "example."
+    assert DNSQuery(make_query(["a", "io"]), make_pr()).domain == "a.io."
 
 
 def test_dns_query_non_standard_opcode_yields_empty_domain() -> None:
     data = bytearray(make_query(["a", "io"]))
     data[2] = 0x09  # opcode bits = 1 (not a standard query)
-    assert DNSQuery(bytes(data)).domain == ""
+    assert DNSQuery(bytes(data), make_pr()).domain == ""
 
 
 def test_dns_query_malformed_or_truncated_data_yields_empty_domain() -> None:
     for data in malformed_query_cases():
-        assert DNSQuery(data).domain == ""  # never raises, degrades to the "don't respond" sentinel
+        assert DNSQuery(data, make_pr()).domain == ""  # never raises, degrades to the "don't respond" sentinel
+
+
+def test_dns_query_reuses_the_given_logger_instead_of_constructing_its_own() -> None:
+    # DNSQuery is constructed fresh per incoming request (see DNSServer.run()) - it must reuse the
+    # caller's own logger identity/history, not get an independent PrintLogHistory of its own.
+    pr = make_pr()
+    dns = DNSQuery(make_query(["a", "io"]), pr)
+    assert dns.pr is pr
 
 
 # ---------------------------------------------------------------------------
@@ -136,7 +158,7 @@ def test_dns_query_malformed_or_truncated_data_yields_empty_domain() -> None:
 
 def test_response_builds_expected_packet_for_valid_domain() -> None:
     query = make_query(["a", "io"])
-    packet = DNSQuery(query).response("192.168.4.1")
+    packet = DNSQuery(query, make_pr()).response("192.168.4.1")
     assert packet is not None
     assert packet[:2] == query[:2]  # echoed transaction ID
     assert packet[2:4] == b"\x81\x80"  # standard response, recursion available
@@ -167,7 +189,7 @@ def test_response_ignores_trailing_data_after_the_question_and_hardcodes_counts(
     opt_record = b"\x00\x00\x29\x10\x00\x00\x00\x00\x00\x00\x00"  # root name, TYPE=41 (OPT), RDLENGTH=0
     query = header + question + opt_record
 
-    dns = DNSQuery(query)
+    dns = DNSQuery(query, make_pr())
     assert dns.domain == "a.io."
     packet = dns.response("192.168.4.1")
     assert packet is not None
@@ -190,7 +212,7 @@ def test_response_hardcodes_qdcount_even_when_original_header_declares_more_ques
     second_question = b"\x01b\x00\x00\x01\x00\x01"
     query = header + question + second_question
 
-    dns = DNSQuery(query)
+    dns = DNSQuery(query, make_pr())
     assert dns.domain == "a.io."
     packet = dns.response("192.168.4.1")
     assert packet is not None
@@ -202,7 +224,7 @@ def test_response_hardcodes_qdcount_even_when_original_header_declares_more_ques
 def test_response_returns_none_for_empty_domain() -> None:
     data = bytearray(make_query(["a", "io"]))
     data[2] = 0x09  # non-standard query -> empty domain
-    assert DNSQuery(bytes(data)).response("192.168.4.1") is None
+    assert DNSQuery(bytes(data), make_pr()).response("192.168.4.1") is None
 
 
 def test_dns_query_rejects_question_truncated_right_before_qtype_qclass() -> None:
@@ -215,11 +237,11 @@ def test_dns_query_rejects_question_truncated_right_before_qtype_qclass() -> Non
     complete = header + b"\x01a\x00" + b"\x00\x01\x00\x01"  # QTYPE=A, QCLASS=IN present
     truncated = header + b"\x01a\x00"  # terminator present, QTYPE/QCLASS entirely missing
 
-    complete_query = DNSQuery(complete)
+    complete_query = DNSQuery(complete, make_pr())
     assert complete_query.domain == "a."
     assert complete_query.response("192.168.4.1") is not None
 
-    truncated_query = DNSQuery(truncated)
+    truncated_query = DNSQuery(truncated, make_pr())
     assert truncated_query.domain == ""
     assert truncated_query.response("192.168.4.1") is None
 
@@ -230,11 +252,34 @@ def test_dns_query_rejects_question_truncated_right_before_qtype_qclass() -> Non
 
 
 def test_dns_server_init_binds_the_standard_dns_port_in_server_mode() -> None:
-    server = DNSServer(debug=True)
+    server = DNSServer(debug=PrintLog.level_info())
     assert server.udps._addr == ("0.0.0.0", 53)
     assert server.udps._mode == "server"
     assert server.udps.sock is None  # lazy - no real bind attempted at construction
-    assert server.debug is True
+
+
+def test_dns_server_uses_in_memory_logging_when_fram_is_none() -> None:
+    server = DNSServer()
+    assert isinstance(server.pr, PrintLogHistory)
+
+
+def test_dns_server_logger_is_named_dnssrv() -> None:
+    server = DNSServer()
+    assert server.pr.name == "DNSSRV"
+
+
+def test_dns_server_debug_level_is_forwarded_to_the_logger() -> None:
+    server = DNSServer(debug=PrintLog.level_err())
+    assert server.pr.get_level() == PrintLog.level_err()
+
+
+def test_dns_server_debug_none_leaves_logger_at_off() -> None:
+    server = DNSServer(debug=None)
+    assert server.pr.get_level() == PrintLog.level_off()
+
+
+def test_dns_server_default_logger_is_off() -> None:
+    assert DNSServer().pr.get_level() == PrintLog.level_off()
 
 
 # ---------------------------------------------------------------------------
@@ -295,7 +340,7 @@ def test_run_answers_on_subnet_request() -> None:
     fake = _FakeUDPS([(make_query(["a", "io"]), ("127.0.0.5", 5000))])
 
     async def scenario() -> list[tuple[bytes, tuple[str, int]]]:
-        server = DNSServer(debug=False)
+        server = DNSServer()
         server.udps = fake  # type: ignore[assignment]
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         try:
@@ -322,7 +367,7 @@ def test_run_ignores_off_subnet_request_then_answers_next_on_subnet_request() ->
     )
 
     async def scenario() -> list[tuple[bytes, tuple[str, int]]]:
-        server = DNSServer(debug=False)
+        server = DNSServer()
         server.udps = fake  # type: ignore[assignment]
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         try:
@@ -347,7 +392,7 @@ def test_run_ignores_source_address_that_is_not_a_valid_ipv4_string() -> None:
     )
 
     async def scenario() -> list[tuple[bytes, tuple[str, int]]]:
-        server = DNSServer(debug=False)
+        server = DNSServer()
         server.udps = fake  # type: ignore[assignment]
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         try:
@@ -370,7 +415,7 @@ def test_run_ignores_malformed_query_without_stalling() -> None:
     )
 
     async def scenario() -> tuple[list[tuple[bytes, tuple[str, int]]], int]:
-        server = DNSServer(debug=False)
+        server = DNSServer()
         server.udps = fake  # type: ignore[assignment]
         t0 = time.ticks_ms()
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
@@ -390,7 +435,7 @@ def test_run_ignores_malformed_query_without_stalling() -> None:
 
 
 def test_run_rejects_invalid_server_ip_or_netmask_without_raising() -> None:
-    server = DNSServer(debug=False)
+    server = DNSServer()
 
     async def scenario() -> None:
         await server.run("not-an-ip", "255.255.255.0")
@@ -399,11 +444,21 @@ def test_run_rejects_invalid_server_ip_or_netmask_without_raising() -> None:
     assert server.udps.sock is None
 
 
+def test_run_rejects_invalid_server_ip_or_netmask_logs_a_persisted_error() -> None:
+    server = DNSServer(debug=PrintLog.level_err())
+
+    async def scenario() -> None:
+        await server.run("not-an-ip", "255.255.255.0")
+
+    run(scenario())
+    assert server.pr.err_count == 1
+
+
 def test_run_cancellation_disconnects_cleanly() -> None:
     fake = _FakeUDPS([])
 
     async def scenario() -> None:
-        server = DNSServer(debug=False)
+        server = DNSServer()
         server.udps = fake  # type: ignore[assignment]
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         await asyncio.sleep_ms(20)  # let it reach the pending recvfrom()
@@ -424,7 +479,7 @@ def test_run_continues_after_sendto_reports_failure() -> None:
     fake.sendto_results = [None]  # first reply "fails", matching sendto()'s documented None sentinel
 
     async def scenario() -> list[tuple[bytes, tuple[str, int]]]:
-        server = DNSServer(debug=False)
+        server = DNSServer()
         server.udps = fake  # type: ignore[assignment]
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         try:
@@ -438,6 +493,39 @@ def test_run_continues_after_sendto_reports_failure() -> None:
     assert sent[1][1] == ("127.0.0.5", 5001)
 
 
+def test_run_sendto_failure_logs_a_persisted_warning() -> None:
+    query = make_query(["a", "io"])
+    fake = _FakeUDPS([(query, ("127.0.0.5", 5000))])
+    fake.sendto_results = [None]
+
+    async def scenario() -> None:
+        server = DNSServer(debug=PrintLog.level_warn())
+        server.udps = fake  # type: ignore[assignment]
+        task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
+        try:
+            assert await _wait_until(lambda: len(fake.sent) >= 1)
+            assert server.pr.err_count == 1
+        finally:
+            await _cancel(task)
+
+    run(scenario())
+
+
+def test_run_invalid_recvfrom_data_logs_a_persisted_warning() -> None:
+    fake = _FakeUDPS([(None, None)])
+
+    async def scenario() -> None:
+        server = DNSServer(debug=PrintLog.level_warn())
+        server.udps = fake  # type: ignore[assignment]
+        task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
+        try:
+            assert await _wait_until(lambda: server.pr.err_count >= 1)
+        finally:
+            await _cancel(task)
+
+    run(scenario())
+
+
 # ---------------------------------------------------------------------------
 # One genuine end-to-end pass over a real loopback socket - proves DNSServer.run() actually binds,
 # receives, and replies without crashing through AsyUDPSocket for real, not just via _FakeUDPS.
@@ -449,7 +537,7 @@ def test_run_handles_real_loopback_traffic_without_crashing() -> None:
     peer_addr = resolve_addr("127.0.0.1", make_port())
 
     async def scenario() -> bool:
-        server = DNSServer(debug=False)
+        server = DNSServer()
         server.udps = AsyUDPSocket(server_addr, mode="server")
         peer = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         peer.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -472,29 +560,6 @@ def test_run_handles_real_loopback_traffic_without_crashing() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_ipv4_to_int_rejects_single_invalid_parameter_type() -> None:
-    # Real callers only ever pass str (network.WLAN.ifconfig()'s own return type, or a raw
-    # sockaddr's addr[0]), but this is a module-level function - a wrongly-typed value must raise
-    # one of the exact types every caller in this file already guards against, not something else.
-    for bad in (None, 123, 1.5, [1, 2, 3, 4], b"1.2.3.4", ("1", "2", "3", "4")):
-        try:
-            _ipv4_to_int(bad)  # type: ignore[arg-type]
-            raise AssertionError(f"expected an exception for {bad!r}")
-        except (TypeError, AttributeError):
-            pass
-
-
-def test_ipv4_to_int_rejects_multiple_simultaneous_fault_recombinations() -> None:
-    # Combines more than one fault within the same value - wrong octet count, out-of-range, and
-    # non-numeric octets all at once - to prove the guard doesn't depend on faults appearing alone.
-    for bad in ("300.-5.abc.999.1", "abc.def", "999.999", "1.2.a.999.-1"):
-        try:
-            _ipv4_to_int(bad)
-            raise AssertionError(f"expected ValueError for {bad!r}")
-        except ValueError:
-            pass
-
-
 def _bad_ipv4_values() -> "list[Any]":
     # Every distinct fault shape a caller could plausibly hand to something expecting a dotted-quad
     # string: wrong Python type, and every malformed-string shape _ipv4_to_int is known to reject.
@@ -515,38 +580,16 @@ def _bad_ipv4_values() -> "list[Any]":
 
 
 # ---------------------------------------------------------------------------
-# DNSServer.__init__: constructor parameter configurations.
-# ---------------------------------------------------------------------------
-
-
-def test_dns_server_init_accepts_all_valid_debug_configurations() -> None:
-    for debug in (True, False):
-        server = DNSServer(debug=debug)
-        assert server.debug is debug
-        assert server.udps._addr == ("0.0.0.0", 53)
-        assert server.udps._mode == "server"
-    assert DNSServer().debug is False  # the default, omitted entirely
-
-
-def test_dns_server_init_tolerates_non_bool_debug_values() -> None:
-    # debug is only ever used in `if self.debug:` guards, never type-checked - a non-bool value
-    # must not raise, and its truthiness must drive the same guard consistently. (__init__ takes
-    # only this one parameter, so there is no "multiple invalid parameter" recombination to add.)
-    for debug, expect_truthy in ((1, True), (0, False), ("x", True), ("", False), (None, False)):
-        server = DNSServer(debug=debug)  # type: ignore[arg-type]
-        assert bool(server.debug) is expect_truthy
-
-
-# ---------------------------------------------------------------------------
 # DNSServer.run(): server_ip/netmask startup-configuration matrix. Every invalid case asserts
 # run() returns without raising and never attempts to bind (sock stays None) - exercising
-# _ipv4_to_int's TypeError/ValueError/AttributeError guard at the top of run() without a live
-# socket. The valid-configuration case does need a live loop iteration, so it goes through the
-# fake transport and a real cancellable task, like the rest of this file's run() tests.
+# _ipv4_to_int's never-raises None-check at the top of run() without a live socket (a non-str
+# server_ip/netmask still raises via _ipv4_to_int's own ip.split(), same as before). The
+# valid-configuration case does need a live loop iteration, so it goes through the fake transport
+# and a real cancellable task, like the rest of this file's run() tests.
 # ---------------------------------------------------------------------------
 
 
-def _run_once_expect_clean_return(server: "DNSServer", server_ip: "Any", netmask: "Any") -> None:
+def _run_once_expect_clean_return(server: "DNSServer", server_ip: str, netmask: str) -> None:
     async def scenario() -> None:
         await server.run(server_ip, netmask)
 
@@ -570,7 +613,7 @@ def test_run_accepts_all_valid_server_ip_netmask_configurations() -> None:
         ("127.0.0.1", "255.0.0.0"),
     ):
         fake = _FakeUDPS([])
-        server = DNSServer(debug=False)
+        server = DNSServer()
         server.udps = fake  # type: ignore[assignment]
         _run_briefly_and_cancel(server, server_ip, netmask)
         assert fake.disconnect_called is True  # reached the main loop, not the early-return path
@@ -578,44 +621,61 @@ def test_run_accepts_all_valid_server_ip_netmask_configurations() -> None:
 
 def test_run_rejects_single_invalid_server_ip_parameter() -> None:
     for bad_ip in _bad_ipv4_values():
-        server = DNSServer(debug=False)
+        if not isinstance(bad_ip, str):
+            continue  # a non-str server_ip raises via _ipv4_to_int's own ip.split() - not this test's concern
+        server = DNSServer()
         _run_once_expect_clean_return(server, bad_ip, "255.255.255.0")
         assert server.udps.sock is None  # never attempted to bind
 
 
 def test_run_rejects_single_invalid_netmask_parameter() -> None:
     for bad_netmask in _bad_ipv4_values():
-        server = DNSServer(debug=False)
+        if not isinstance(bad_netmask, str):
+            continue
+        server = DNSServer()
         _run_once_expect_clean_return(server, "192.168.4.1", bad_netmask)
         assert server.udps.sock is None
 
 
 def test_run_rejects_multiple_simultaneous_invalid_server_ip_and_netmask_recombinations() -> None:
-    # Both parameters invalid at once, in several distinct fault-type combinations (not just the
-    # same fault shape mirrored on both sides) - proves the guard doesn't depend on only one
-    # parameter being bad at a time.
+    # Both parameters invalid at once (but still str-typed - see the two tests above for the
+    # non-str case), in several distinct malformed-string shapes - proves the guard doesn't depend
+    # on only one parameter being bad at a time.
     for bad_ip, bad_netmask in (
-        (None, "abc"),
-        ("300.1.1.1", 123),
-        ([1, 2, 3, 4], b"255.0.0.0"),
+        ("300.1.1.1", "abc"),
         ("1.2.3", "4.5.6.7.8"),
         ("", ""),
+        ("not-an-ip", "255.0.0.0"),
     ):
-        server = DNSServer(debug=False)
+        server = DNSServer()
         _run_once_expect_clean_return(server, bad_ip, bad_netmask)
         assert server.udps.sock is None
 
 
+def test_run_rejects_non_str_server_ip_or_netmask() -> None:
+    # A non-str value still raises (via _ipv4_to_int's own ip.split()) - this class's public
+    # `str`-typed signature relies on that, same as asy_dns_client.py's _is_ipv4_literal() callers.
+    for bad_ip, bad_netmask in ((None, "255.0.0.0"), ("192.168.4.1", 123), ([1, 2, 3, 4], b"255.0.0.0")):
+        server = DNSServer()
+
+        async def scenario(srv: "DNSServer" = server, ip: "Any" = bad_ip, netmask: "Any" = bad_netmask) -> None:
+            await srv.run(ip, netmask)
+
+        try:
+            run(scenario())
+            raise AssertionError(f"expected an exception for {bad_ip!r}, {bad_netmask!r}")
+        except (TypeError, AttributeError):
+            pass
+
+
 # ---------------------------------------------------------------------------
-# DNSQuery.__init__: data/debug parameter configurations.
+# DNSQuery.__init__: data parameter configurations.
 # ---------------------------------------------------------------------------
 
 
 def test_dns_query_init_accepts_all_valid_data_configurations() -> None:
-    assert DNSQuery(make_query(["single"])).domain == "single."
-    assert DNSQuery(make_query(["multi", "label", "example"])).domain == "multi.label.example."
-    assert DNSQuery(make_query(["a", "io"]), debug=True).domain == "a.io."
-    assert DNSQuery(make_query(["a", "io"]), debug=False).domain == "a.io."
+    assert DNSQuery(make_query(["single"]), make_pr()).domain == "single."
+    assert DNSQuery(make_query(["multi", "label", "example"]), make_pr()).domain == "multi.label.example."
 
 
 def _bad_dns_query_data_values() -> "list[Any]":
@@ -627,7 +687,7 @@ def _bad_dns_query_data_values() -> "list[Any]":
 
 def test_dns_query_init_rejects_single_invalid_data_parameter_without_raising() -> None:
     for bad_data in _bad_dns_query_data_values():
-        assert DNSQuery(bad_data).domain == ""
+        assert DNSQuery(bad_data, make_pr()).domain == ""
 
 
 def test_dns_query_init_rejects_list_shaped_data_that_reaches_decode() -> None:
@@ -637,15 +697,7 @@ def test_dns_query_init_rejects_list_shaped_data_that_reaches_decode() -> None:
     # shorter values above trigger.
     bad_data = [0] * 20
     bad_data[12] = 3  # claims a 3-byte label
-    assert DNSQuery(bad_data).domain == ""  # type: ignore[arg-type]
-
-
-def test_dns_query_init_rejects_multiple_invalid_parameter_recombinations() -> None:
-    # Wrong-type data crossed with a wrong-type debug at the same time - two simultaneously
-    # "invalid" (relative to their annotations) parameters, not just one at a time.
-    for bad_data in _bad_dns_query_data_values():
-        for bad_debug in (None, "yes", 1):
-            assert DNSQuery(bad_data, debug=bad_debug).domain == ""  # type: ignore[arg-type]
+    assert DNSQuery(bad_data, make_pr()).domain == ""  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
@@ -656,7 +708,7 @@ def test_dns_query_init_rejects_multiple_invalid_parameter_recombinations() -> N
 def test_response_accepts_edge_valid_ip_configurations() -> None:
     query = make_query(["a", "io"])
     for ip in ("0.0.0.0", "255.255.255.255", "10.0.0.1"):
-        packet = DNSQuery(query).response(ip)
+        packet = DNSQuery(query, make_pr()).response(ip)
         assert packet is not None
         assert packet[-4:] == bytes(int(o) for o in ip.split("."))
 
@@ -664,16 +716,29 @@ def test_response_accepts_edge_valid_ip_configurations() -> None:
 def test_response_rejects_single_invalid_ip_parameter_without_raising() -> None:
     query = make_query(["a", "io"])
     for bad_ip in _bad_ipv4_values():
-        assert DNSQuery(query).response(bad_ip) is None
+        if not isinstance(bad_ip, str):
+            continue  # a non-str ip raises via _ipv4_to_int's own ip.split() - see the dedicated test below
+        assert DNSQuery(query, make_pr()).response(bad_ip) is None
+
+
+def test_response_rejects_non_str_ip_parameter() -> None:
+    query = make_query(["a", "io"])
+    for bad_ip in (None, 123, [1, 2, 3, 4], b"127.0.0.1"):
+        try:
+            DNSQuery(query, make_pr()).response(bad_ip)  # type: ignore[arg-type]
+            raise AssertionError(f"expected an exception for {bad_ip!r}")
+        except (TypeError, AttributeError):
+            pass
 
 
 def test_response_rejects_invalid_ip_combined_with_empty_domain_state() -> None:
     # domain=="" already short-circuits to None before ip is ever inspected - an invalid ip
-    # combined with an already-invalid (empty-domain) object state must still just return None.
+    # combined with an already-invalid (empty-domain) object state must still just return None,
+    # even for a wrong-typed ip that would otherwise raise via _ipv4_to_int.
     data = bytearray(make_query(["a", "io"]))
     data[2] = 0x09  # non-standard opcode -> empty domain
     for bad_ip in _bad_ipv4_values():
-        assert DNSQuery(bytes(data)).response(bad_ip) is None
+        assert DNSQuery(bytes(data), make_pr()).response(bad_ip) is None
 
 
 # ---------------------------------------------------------------------------
@@ -700,7 +765,7 @@ def test_run_reuses_same_dns_server_instance_across_multiple_hotspot_cycles() ->
     # and started again across repeated hotspot activations - only safe because
     # AsyUDPSocket.disconnect() fully resets connected/sock state for _connect()'s next attempt.
     server_addr = resolve_addr("127.0.0.1", make_port())
-    server = DNSServer(debug=False)
+    server = DNSServer()
     server.udps = AsyUDPSocket(server_addr, mode="server")
 
     async def one_cycle() -> bool:
@@ -733,7 +798,7 @@ def test_run_real_socket_survives_a_burst_of_consecutive_malformed_datagrams() -
     peer_addr = resolve_addr("127.0.0.1", make_port())
 
     async def scenario() -> bool:
-        server = DNSServer(debug=False)
+        server = DNSServer()
         server.udps = AsyUDPSocket(server_addr, mode="server")
         peer = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         peer.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -767,7 +832,7 @@ def test_integration_survives_async_connects_fire_and_forget_cancel_pattern() ->
     server_addr = resolve_addr("127.0.0.1", make_port())
 
     async def scenario() -> "DNSServer":
-        server = DNSServer(debug=False)
+        server = DNSServer()
         server.udps = AsyUDPSocket(server_addr, mode="server")
         evtloop = asyncio.get_event_loop()
         task = evtloop.create_task(server.run("127.0.0.1", "255.0.0.0"))
@@ -786,10 +851,11 @@ def test_integration_survives_async_connects_fire_and_forget_cancel_pattern() ->
 
 # ---------------------------------------------------------------------------
 # run()'s catch-all backoff: an unexpected (not malformed-data, not off-subnet) exception from a
-# dependency must still degrade to the 3s backoff rather than crash or busy-loop. This is the one
-# fault category that genuinely cannot be produced for real - nothing in the legitimate processing
-# path throws mid-packet - so it's simulated with a monkeypatched DNSQuery, matching this project's
-# "mock only what's necessary" precedent (mocking a dependency, not the run() logic under test).
+# dependency must still degrade to the 3s backoff rather than crash or busy-loop, and must be
+# logged as a real, persisted error. This is the one fault category that genuinely cannot be
+# produced for real - nothing in the legitimate processing path throws mid-packet - so it's
+# simulated with a monkeypatched DNSQuery, matching this project's "mock only what's necessary"
+# precedent (mocking a dependency, not the run() logic under test).
 # ---------------------------------------------------------------------------
 
 
@@ -800,11 +866,11 @@ def test_run_backs_off_on_a_genuinely_unexpected_exception_then_recovers() -> No
     calls = {"n": 0}
 
     class _FlakyDNSQuery:
-        def __init__(self, data: bytes, debug: bool = False) -> None:
+        def __init__(self, data: bytes, pr: "Any") -> None:
             calls["n"] += 1
             if calls["n"] == 1:
                 raise RuntimeError("simulated unexpected failure")
-            self._real = real_dns_query(data, debug=debug)
+            self._real = real_dns_query(data, pr)
             self.domain = self._real.domain
 
         def response(self, ip: str) -> "bytes | None":
@@ -821,12 +887,13 @@ def test_run_backs_off_on_a_genuinely_unexpected_exception_then_recovers() -> No
     async def scenario() -> "tuple[list[tuple[bytes, tuple[str, int]]], int]":
         captive_dns_module.DNSQuery = _FlakyDNSQuery  # type: ignore[assignment,misc]
         try:
-            server = DNSServer(debug=False)
+            server = DNSServer(debug=PrintLog.level_err())
             server.udps = fake  # type: ignore[assignment]
             t0 = time.ticks_ms()
             task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
             try:
                 assert await _wait_until(lambda: len(fake.sent) >= 1, timeout_ms=5000)
+                assert server.pr.err_count == 1  # the flaky first attempt logged a real, persisted error
                 return fake.sent, time.ticks_diff(time.ticks_ms(), t0)
             finally:
                 await _cancel(task)
@@ -839,105 +906,6 @@ def test_run_backs_off_on_a_genuinely_unexpected_exception_then_recovers() -> No
     assert elapsed_ms >= 3000  # proves the 3s backoff genuinely ran, unlike the malformed-data path
 
 
-# ---------------------------------------------------------------------------
-# debug=True logging - purely cosmetic print() calls, but a typo in one of the f-strings would
-# raise at runtime; no test above ever constructs a DNSServer/DNSQuery with debug=True and drives
-# it through a real request, so none of these print() call sites were ever actually executed.
-# ---------------------------------------------------------------------------
-
-
-def test_run_rejects_invalid_server_ip_or_netmask_with_debug_logging() -> None:
-    server = DNSServer(debug=True)
-    print("(expected) passing a deliberately invalid server_ip - the following 'invalid server_ip/netmask' is intentional")
-
-    async def scenario() -> None:
-        await server.run("not-an-ip", "255.255.255.0")
-
-    run(scenario())  # must not raise despite the debug print along this early-return path
-    assert server.udps.sock is None
-
-
-def test_run_debug_logging_covers_the_full_request_reply_cycle() -> None:
-    # Drives, in one debug=True run: an off-subnet request (ignored), an on-subnet request (a
-    # normal reply), a reply sendto() reports as dropped, and invalid (None, None) recvfrom data -
-    # every print() call site inside the main loop except the two exception-handling ones (covered
-    # by the dedicated tests below).
-    query = make_query(["a", "io"])
-    fake = _FakeUDPS(
-        [
-            (query, ("10.0.0.9", 5000)),  # off-subnet - "Ignoring..." print
-            (None, None),  # invalid data/address - its own print
-            (query, ("127.0.0.5", 5001)),  # on-subnet - "Incoming..."/"Replying..." prints
-        ]
-    )
-    fake.sendto_results = [None]  # first real reply reports dropped - "dropped by sendto()" print
-
-    print(
-        "(expected) driving an off-subnet request, malformed data, and a simulated dropped reply - "
-        "the following 'Ignoring...'/'Invalid...'/'dropped by sendto()' lines are all intentional"
-    )
-
-    async def scenario() -> list[tuple[bytes, tuple[str, int]]]:
-        server = DNSServer(debug=True)
-        server.udps = fake  # type: ignore[assignment]
-        task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
-        try:
-            assert await _wait_until(lambda: len(fake.sent) >= 1)
-            return fake.sent
-        finally:
-            await _cancel(task)  # exercises the CancelledError/"DNS Server shutdown" print too
-
-    sent = run(scenario())
-    assert len(sent) == 1
-    assert sent[0][1] == ("127.0.0.5", 5001)
-
-
-def test_run_debug_logging_covers_the_backoff_and_recovery_path() -> None:
-    import captive_dns as captive_dns_module
-
-    real_dns_query = captive_dns_module.DNSQuery
-    calls = {"n": 0}
-
-    class _FlakyDNSQuery:
-        def __init__(self, data: bytes, debug: bool = False) -> None:
-            calls["n"] += 1
-            if calls["n"] == 1:
-                raise RuntimeError("simulated unexpected failure")
-            self._real = real_dns_query(data, debug=debug)
-            self.domain = self._real.domain
-
-        def response(self, ip: str) -> "bytes | None":
-            return self._real.response(ip)
-
-    query = make_query(["a", "io"])
-    fake = _FakeUDPS(
-        [
-            (query, ("127.0.0.5", 5000)),  # triggers the flaky first call - "DNS Server error:" print
-            (query, ("127.0.0.5", 5001)),  # recovers on the second, real attempt
-        ]
-    )
-
-    print("(expected) simulating one flaky DNSQuery parse - the following 'DNS Server error:' is intentional, recovery follows")
-
-    async def scenario() -> list[tuple[bytes, tuple[str, int]]]:
-        captive_dns_module.DNSQuery = _FlakyDNSQuery  # type: ignore[assignment,misc]
-        try:
-            server = DNSServer(debug=True)
-            server.udps = fake  # type: ignore[assignment]
-            task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
-            try:
-                assert await _wait_until(lambda: len(fake.sent) >= 1, timeout_ms=5000)
-                return fake.sent
-            finally:
-                await _cancel(task)
-        finally:
-            captive_dns_module.DNSQuery = real_dns_query  # type: ignore[misc]
-
-    sent = run(scenario())
-    assert len(sent) == 1  # the first (flaky) attempt logged its "DNS Server error:" print, then recovered
-    assert sent[0][1] == ("127.0.0.5", 5001)
-
-
 class _RaisingDisconnectUDPS(_FakeUDPS):
     def __init__(self, exc: BaseException) -> None:
         super().__init__([])
@@ -948,33 +916,34 @@ class _RaisingDisconnectUDPS(_FakeUDPS):
         raise self._exc
 
 
-def test_run_debug_logging_covers_disconnect_reporting_a_genuine_exception() -> None:
+def test_run_disconnect_reporting_a_genuine_exception_logs_a_persisted_error() -> None:
     fake = _RaisingDisconnectUDPS(RuntimeError("simulated disconnect failure"))
-    print("(expected) simulating disconnect() raising - the following 'error during disconnect' is intentional")
 
     async def scenario() -> None:
-        server = DNSServer(debug=True)
+        server = DNSServer(debug=PrintLog.level_err())
         server.udps = fake  # type: ignore[assignment]
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         await asyncio.sleep_ms(20)
         await _cancel(task)  # disconnect()'s own exception must not escape cancellation either
+        assert fake.disconnect_called is True
+        assert server.pr.err_count == 1
 
     run(scenario())  # must not raise despite disconnect() itself failing
-    assert fake.disconnect_called is True
 
 
-def test_run_debug_logging_covers_disconnect_reporting_a_second_cancellation() -> None:
+def test_run_disconnect_reporting_a_second_cancellation_does_not_raise_or_log() -> None:
     fake = _RaisingDisconnectUDPS(asyncio.CancelledError())
 
     async def scenario() -> None:
-        server = DNSServer(debug=True)
+        server = DNSServer(debug=PrintLog.level_err())
         server.udps = fake  # type: ignore[assignment]
         task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
         await asyncio.sleep_ms(20)
         await _cancel(task)
+        assert fake.disconnect_called is True
+        assert server.pr.err_count == 0  # a second CancelledError during cleanup isn't a real error
 
     run(scenario())  # a second CancelledError delivered during cleanup must not escape either
-    assert fake.disconnect_called is True
 
 
 if __name__ == "__main__":

@@ -311,6 +311,31 @@ def test_fix16_mul_and_div_are_approximate_inverses() -> None:
     assert algo._fix16_cast_to_int(quotient) == 10
 
 
+def test_fix16_mul_with_a_negative_operand_takes_the_masking_branches() -> None:
+    # _fix16_mul()'s two `if inarg0 < 0` / `if inarg1 < 0` low-word masking branches (the
+    # C reference's own unsigned-halves trick, reproduced here on MicroPython's arbitrary-precision
+    # ints) are only ever reached with a negative operand - every direct test above passes two
+    # positive ones, leaving these branches exercised solely as a side effect of
+    # vocalgorithm_process()'s thousands of internal calls. Pinned directly here instead, the same
+    # way test_fix16_div_dividing_the_minimum_value_takes_the_shifted_quotient_branch does for
+    # _fix16_div()'s own negative-input path. Expected values are computed exactly as
+    # test_fix16_mul_and_div_are_approximate_inverses does, just with a negative operand.
+    algo = VOCAlgorithm()
+    a = algo._fix16_from_int(10)
+    b = algo._fix16_from_int(4)
+    positive_product = algo._fix16_mul(a, b)
+    assert algo._fix16_cast_to_int(positive_product) == 40  # the all-positive reference case
+
+    assert algo._fix16_cast_to_int(algo._fix16_mul(-a, b)) == -40  # inarg0 < 0 branch
+    assert algo._fix16_cast_to_int(algo._fix16_mul(a, -b)) == -40  # inarg1 < 0 branch
+    assert algo._fix16_cast_to_int(algo._fix16_mul(-a, -b)) == 40  # both branches, sign cancels
+    # Exact fixed-point values, not just their truncated integer part: a single negated operand
+    # must produce the exact negation of the positive product, and negating both must return it.
+    assert algo._fix16_mul(-a, b) == -positive_product
+    assert algo._fix16_mul(a, -b) == -positive_product
+    assert algo._fix16_mul(-a, -b) == positive_product
+
+
 def test_fix16_div_by_zero_returns_minimum_sentinel() -> None:
     algo = VOCAlgorithm()
     assert algo._fix16_div(algo._fix16_from_int(5), 0) == 0x80000000  # _FIX16_MINIMUM

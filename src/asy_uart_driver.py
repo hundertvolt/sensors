@@ -4,6 +4,9 @@ per-instance CRC framing (crc_checks.py's CRC_Base family) on read_until_complet
 readinto_until_complete/write/writefrom. Not wired into any live caller yet (see BACKLOG.md).
 Whoever wires it in: GPIO24/25 and GPIO28/29 fall inside a UART pin-mux group and are
 wireless-reserved on Pico W - picking either pair for tx_pin/rx_pin silently collides with WiFi.
+
+A hardware-level framing/parity/overrun fault on rp2 never raises (see SPECIFICATION.md C.3.2) -
+every method here returns a plain None/False sentinel instead, never raises.
 """
 
 import asyncio
@@ -121,7 +124,7 @@ class UART(Lockable):
 
     async def cancel_read_timeout(self) -> bool:
         # Lets another task abort this instance's in-flight ready()/read wait from the outside -
-        # e.g. asy_uart_comm.py's clear() uses this to interrupt a stuck listen before resyncing.
+        # e.g. to interrupt a stuck listen before resyncing.
         if not self.asy_lock.locked():  # nothing to cancel if not in use
             return False
         self.cancel = True

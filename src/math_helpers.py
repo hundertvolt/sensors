@@ -28,9 +28,9 @@ def wet_bulb_temperature(temperature: float | None, humidity: float | None) -> f
 
 
 def dew_point(temperature: float | None, humidity: float | None) -> float | None:
-    # Magnus-Tetens dew-point approximation (Sonntag 1990); coeff1/toffs pick the ice- vs
-    # water-phase constants. The two branches are independently-fit curves, not one continuous
-    # formula - they disagree by ~1 degC right at the temperature==0 switch; not a bug.
+    # Magnus-Tetens approximation: water branch (temperature >= 0) uses Alduchov & Eskridge's
+    # (1996) refit (17.625/243.04), ice branch uses Sonntag (1990) (22.46/272.62) - independently
+    # fit curves, ~1 degC apart at the switch (see test_dew_point_branch_boundary_roughly_continuous).
     if temperature is None or humidity is None:
         return None
     if not (-40.0 <= temperature <= 50.0 and 0.1 <= humidity <= 100.0):
@@ -58,10 +58,10 @@ def altitude_baro(p0: float | None, dh: float | None, tmean: float | None) -> fl
     if not (300.0 <= p0 <= 1250.0 and -9000.0 <= dh <= 9000.0 and -40.0 <= tmean <= 85.0):
         return None
     try:
+        # g = 9.80665; M = 0.0289644; T0 = 273.15; R = 8.31446261815324
         return p0 * math.exp(-dh * ((0.0289644 * 9.80665) / (8.31446261815324 * (tmean + 273.15))))
     except (ValueError, ArithmeticError):
         return None
-    # g = 9.80665; M = 0.0289644; T0 = 273.15; R = 8.31446261815324
 
 
 def abs_humidity(temperature: float | None, humidity: float | None) -> float | None:

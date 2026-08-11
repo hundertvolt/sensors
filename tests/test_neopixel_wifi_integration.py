@@ -10,7 +10,7 @@ import asyncio
 import os
 
 from asy_neopixel_driver import NeopixelDriver
-from asy_wifi_service import asy_conn_time
+from asy_wifi_service import AsyConnTime
 
 try:
     from typing import TYPE_CHECKING
@@ -68,7 +68,7 @@ async def _cancel(task: "asyncio.Task[None]") -> None:
 
 def test_real_neopixel_driver_on_off_toggle_through_wifi_service_ext_led() -> None:
     pixel = NeopixelDriver(0, neopixel_freq=100)
-    conn = asy_conn_time(led_pin=None, ext_led=pixel, cfg_path=_tmp_cfg_dir())
+    conn = AsyConnTime(led_pin=None, ext_led=pixel, cfg_path=_tmp_cfg_dir())
 
     async def scenario() -> "tuple[tuple[int, ...], tuple[int, ...], tuple[int, ...]]":
         overlay_task = pixel.start_asy_neopixel_led_overl()
@@ -97,7 +97,7 @@ def test_set_ext_led_swaps_in_a_real_driver_after_construction() -> None:
     # wiring passes a driver in after both objects already exist) - proves the real class works
     # through that path too, not just the constructor kwarg.
     pixel = NeopixelDriver(0, neopixel_freq=100)
-    conn = asy_conn_time(led_pin=None, ext_led=None, cfg_path=_tmp_cfg_dir())
+    conn = AsyConnTime(led_pin=None, ext_led=None, cfg_path=_tmp_cfg_dir())
     conn.set_ext_led(pixel)
 
     async def scenario() -> "tuple[int, ...]":

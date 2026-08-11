@@ -93,12 +93,23 @@ class _RaiseOnArm:
     # the duration of the `with` block - simulates real rp2 alarm-pool exhaustion (OSError(ENOMEM)
     # from Timer.init()/a full Timer(period=..., ...) construction), restoring it on exit regardless
     # of how the block exits.
+    #
+    # `exc` picks which arm of every call site's own `except (OSError, MemoryError)` gets exercised:
+    # the default OSError(ENOMEM) alarm-pool exhaustion, or the MemoryError a failed allocation
+    # raises instead. MemoryError is not an OSError subclass (see CLAUDE.md/SPECIFICATION.md Part F),
+    # so neither arm covers the other - each guard is proven against both. Timer.raise_on_arm_exc is
+    # a shared class attribute too, reset back to its OSError default on exit alongside raise_on_arm.
+    def __init__(self, exc: "type[BaseException]" = OSError) -> None:
+        self._exc = exc
+
     def __enter__(self) -> "_RaiseOnArm":
+        Timer.raise_on_arm_exc = self._exc
         Timer.raise_on_arm = True
         return self
 
     def __exit__(self, *exc_info: "Any") -> None:
         Timer.raise_on_arm = False
+        Timer.raise_on_arm_exc = OSError
 
 
 # ---------------------------------------------------------------------------
@@ -110,6 +121,7 @@ def test_init_uses_in_memory_logging_when_fram_is_none() -> None:
     svc = make_service()
     assert isinstance(svc.pr, PrintLogHistory)
     assert svc.storage_pause is None
+    assert svc.pr.name == "SYSTEM"  # baked in via make_logger(), not left empty
 
 
 def test_init_uses_fram_backed_logging_and_wires_storage_pause_when_fram_given() -> None:
@@ -117,6 +129,7 @@ def test_init_uses_fram_backed_logging_and_wires_storage_pause_when_fram_given()
     svc = make_service(fram=manager)
     assert isinstance(svc.pr, PrintLogHistoryStore)
     assert svc.storage_pause is not None
+    assert svc.pr.name == "SYSTEM"
     # Bound-method identity isn't guaranteed (each attribute access can mint a fresh bound-method
     # object) - confirm by behavior instead: calling svc.storage_pause must reach manager's own state.
     svc.storage_pause(True)
@@ -509,6 +522,25 @@ def test_timer_sequencer_cannot_arm_next_step_still_unblocks_start_timers() -> N
     assert Timer.all_timers == []  # the chain timer never actually got constructed
 
 
+def test_timer_sequencer_cannot_arm_next_step_on_a_memory_error_still_unblocks_start_timers() -> None:
+    # Sibling of the OSError test above, for the other arm of _timer_sequencer()'s own
+    # `except (OSError, MemoryError)`: a real allocation failure inside Timer() raises MemoryError,
+    # which is not an OSError subclass - the fallback must behave identically either way.
+    svc = make_service()
+    Timer.all_timers.clear()
+    started: list[int] = []
+    starters = [lambda: started.append(1), lambda: started.append(2)]
+
+    async def scenario() -> bool:
+        with _RaiseOnArm(MemoryError):
+            await svc.start_timers(starters)  # must not hang despite the chain timer failing to arm
+        return True
+
+    assert run(scenario())
+    assert started == [1]  # only the first starter ever ran - sequencing stopped, not crashed
+    assert Timer.all_timers == []  # the chain timer never actually got constructed
+
+
 # ---------------------------------------------------------------------------
 # reboot_system / reboot_bootloader / pause_permanent_storage
 # ---------------------------------------------------------------------------
@@ -556,6 +588,17 @@ def test_reboot_system_with_fram_falls_back_to_watchdog_starve_when_reset_timer_
     assert svc._force_watchdog_starve is True
 
 
+def test_reboot_system_with_fram_falls_back_to_watchdog_starve_on_a_memory_error() -> None:
+    # Sibling of the OSError test above, for the other arm of _reboot()'s own
+    # `except (OSError, MemoryError)` - same fram + failed-arm cross-dependency, same outcome.
+    manager, _chip = make_fram_manager()
+    svc = make_service(fram=manager)
+    with _RaiseOnArm(MemoryError):
+        svc.reboot_system()  # must not raise despite the timer failing to arm
+    assert manager.get_pause() is True  # storage pause already happened before the failing init()
+    assert svc._force_watchdog_starve is True
+
+
 def test_reboot_system_falls_back_to_watchdog_starve_when_reset_timer_cannot_be_armed() -> None:
     # Real rp2 Timer.init() can raise OSError(ENOMEM) under alarm-pool exhaustion (confirmed
     # against ports/rp2/machine_timer.c) - reboot_system() must degrade instead of raising, since
@@ -568,9 +611,30 @@ def test_reboot_system_falls_back_to_watchdog_starve_when_reset_timer_cannot_be_
     assert machine.reset_count == 0  # never armed, so it can never fire on its own
 
 
+def test_reboot_system_falls_back_to_watchdog_starve_on_a_memory_error() -> None:
+    # Sibling of the OSError test above, for the other arm of _reboot()'s own
+    # `except (OSError, MemoryError)`: MemoryError is not an OSError subclass, so the OSError test
+    # alone wouldn't prove this last-resort failsafe degrades on a genuine allocation failure too.
+    svc = make_service()
+    machine.reset_count = 0
+    with _RaiseOnArm(MemoryError):
+        svc.reboot_system()  # must not raise despite the timer failing to arm
+    assert svc._force_watchdog_starve is True
+    assert machine.reset_count == 0  # never armed, so it can never fire on its own
+
+
 def test_reboot_bootloader_falls_back_to_watchdog_starve_when_reset_timer_cannot_be_armed() -> None:
     svc = make_service()
     with _RaiseOnArm():
+        svc.reboot_bootloader()  # must not raise despite the timer failing to arm
+    assert svc._force_watchdog_starve is True
+
+
+def test_reboot_bootloader_falls_back_to_watchdog_starve_on_a_memory_error() -> None:
+    # Sibling of the OSError test above - reboot_bootloader() shares _reboot() with reboot_system(),
+    # but goes through its own public entry point, so both arms are proven at both entry points.
+    svc = make_service()
+    with _RaiseOnArm(MemoryError):
         svc.reboot_bootloader()  # must not raise despite the timer failing to arm
     assert svc._force_watchdog_starve is True
 
@@ -664,6 +728,17 @@ def test_pause_permanent_storage_aborts_the_pause_when_the_unpause_timer_cannot_
     assert manager.get_pause() is False  # aborted, not left stuck paused
 
 
+def test_pause_permanent_storage_aborts_the_pause_on_a_memory_error() -> None:
+    # Sibling of the OSError test above, for the other arm of pause_permanent_storage()'s own
+    # `except (OSError, MemoryError)` - the abort-rather-than-stay-paused-forever fallback must not
+    # depend on which of the two an alarm allocation happens to fail with.
+    manager, _chip = make_fram_manager()
+    svc = make_service(fram=manager)
+    with _RaiseOnArm(MemoryError):
+        svc.pause_permanent_storage(60)  # must not raise despite the timer failing to arm
+    assert manager.get_pause() is False  # aborted, not left stuck paused
+
+
 # ---------------------------------------------------------------------------
 # get_task_starters / get_timer_starters
 # ---------------------------------------------------------------------------
@@ -715,6 +790,17 @@ def test_start_uptime_timer_logs_and_continues_when_it_cannot_be_armed() -> None
     assert svc.uptime_timer.period == -1  # never actually armed
 
 
+def test_start_uptime_timer_logs_and_continues_on_a_memory_error() -> None:
+    # Sibling of the OSError test above, for the other arm of start_uptime_timer()'s own
+    # `except (OSError, MemoryError)` - same graceful degradation, no forced reboot either way.
+    svc = make_service()
+    with _RaiseOnArm(MemoryError):
+        svc.start_uptime_timer()  # must not raise despite the timer failing to arm
+    assert svc.pr.err_count == 0  # start_uptime_timer() logs via the non-persisting pr.err(), not err_s()
+    assert svc._force_watchdog_starve is False  # graceful degradation, not a forced reboot
+    assert svc.uptime_timer.period == -1  # never actually armed
+
+
 # ---------------------------------------------------------------------------
 # get_error_counter / reset_error_counter
 # ---------------------------------------------------------------------------
@@ -728,7 +814,7 @@ def test_get_error_counter_reflects_logged_errors_and_reset_clears_them() -> Non
     run(svc.pr.setup())
     run(svc.pr.err_s("boom", errno=1))
     result = run(svc.get_error_counter())
-    assert result == {"Tasks": {"ErrCount": 1, "ErrNum": [1], "ErrType": ["E"]}}
+    assert result == {"SYSTEM": {"ErrCount": 1, "ErrNum": [1], "ErrType": ["E"]}}
     run(svc.reset_error_counter())
     assert svc.pr.err_count == 0
 
@@ -742,7 +828,7 @@ def test_get_error_counter_and_reset_work_when_fram_backed() -> None:
     run(svc.pr.setup())
     run(svc.pr.err_s("boom", errno=1))
     result = run(svc.get_error_counter())
-    assert result == {"Tasks": {"ErrCount": 1, "ErrNum": [1], "ErrType": ["E"]}}
+    assert result == {"SYSTEM": {"ErrCount": 1, "ErrNum": [1], "ErrType": ["E"]}}
     run(svc.reset_error_counter())
     assert svc.pr.err_count == 0
 
@@ -906,7 +992,7 @@ def test_start_and_check_tasks_restarts_a_dead_task_and_logs_a_warning() -> None
     with _FastAsyncSleep():
         run(scenario())
     assert call_count[0] >= 2  # started once at startup, restarted at least once after dying
-    assert svc.pr.err_count >= 1  # the "Task wurde beendet" warning persisted
+    assert svc.pr.err_count >= 1  # the "Task ended - attempting restart" warning persisted
 
 
 def test_start_and_check_tasks_gives_up_and_reboots_past_the_failure_budget() -> None:

@@ -3,12 +3,14 @@ protected scalars (LockedCounter, LockedFlag, LockedValue), and the sensor-drive
 (SensorReader, SensorReaderConfig) with error bookkeeping and optional JSON config storage. Every
 method returns a well-defined value, never raises. `__init__` never calls `self.pr.setup()` (sync
 vs. async) - the caller's own async setup must, or FRAM persistence stays inert.
+`SensorReaderConfig` mirrors that split one level up: `__init__` only constructs `self.cfgmgr`
+(cheap, synchronous), and its own `async def setup()` awaits `self.cfgmgr.setup()`.
 """
 
 import asyncio
 
 from config_manager import ConfigManager, check_cfg_get_default, schema_dict, schema_names, type_or_range_error
-from print_log import PrintLogHistory, PrintLogHistoryStore
+from print_log import PrintLogHistory, make_logger
 
 try:
     from typing import TYPE_CHECKING
@@ -156,13 +158,13 @@ class SensorReader:
         fram: "AsyFramManager | None" = None,
         history_length: int = 10,
         debug: int | None = None,
+        name: str = "",
+        logger: PrintLogHistory | None = None,
     ) -> None:
-        if fram is None:
-            self.pr = PrintLogHistory(history_length, debug)
-            self.pr.one("Init with memory logging.")
+        if logger is not None:  # reach-through: reuse a directly-bound sibling object's own logger
+            self.pr = logger
         else:
-            self.pr = PrintLogHistoryStore(fram, history_length, debug)
-            self.pr.one("Init with FRAM logging.")
+            self.pr = make_logger(fram, history_length, debug, name)
         self._datastruct = init_data
         self._datalock = asyncio.Lock()
         self.max_i2c_err = max_i2c_err
@@ -208,20 +210,19 @@ class SensorReader:
         async with self._datalock:
             self._datastruct = data
 
-    async def _error_check(self, results: "MeasDataType", name: str, condition: bool = True) -> bool:
-        # centralizes the increment/decrement-error-counter-and-decide-to-give-up logic every
-        # sensortask-*.py driver used to hand-roll separately; False tells the caller to give up
-        # (triggers the task supervisor's own reset), True to keep going.
+    async def _error_check(self, results: "MeasDataType", condition: bool = True) -> bool:
+        # Shared consecutive-failure-streak counter - see SPECIFICATION.md Part C.7's
+        # _error_check() bullet for the full contract.
         if any(res is None for res in results) and condition:
             self._err_cnt_internal += 1
-            await self.pr.err_s(name + " Fehlerzähler erhöht auf", self._err_cnt_internal, errno=1)
+            await self.pr.err_s("Error counter increased to", self._err_cnt_internal, errno=1)
             if self._err_cnt_internal > self.max_i2c_err:
-                await self.pr.err_s(name + " Maximale Fehleranzahl erreicht!", errno=2)
-                return False  # Abbruch der Schleife führt zu Task-Reset
+                await self.pr.err_s("Maximum error count reached!", errno=2)
+                return False  # breaking the loop triggers a task reset
         else:
             if self._err_cnt_internal > 0:
                 self._err_cnt_internal -= 1
-                self.pr.err(name + " Fehlerzähler zurück auf", self._err_cnt_internal)
+                self.pr.err("Error counter back to", self._err_cnt_internal)
         return True
 
     async def reset_error_counter(self) -> None:
@@ -244,21 +245,22 @@ class SensorReaderConfig(SensorReader):
         history_length: int = 10,
         debug: int | None = None,
     ) -> None:
-        super().__init__(init_data, max_i2c_err, fram, history_length, debug)
+        super().__init__(init_data, max_i2c_err, fram, history_length, debug, name=name)
         self.cfg_schema = default_vals
         self.cfgmgr = ConfigManager(
             cfg_path + "config_" + name + ".cfg",
             default_vals,
-            self.pr,
+            name,
         )
         # Per-field live-push callbacks: a subclass registers {field_name: async_push_fn} entries
-        # after super().__init__(); a field with no entry is persist-only (see DRIVER_SPEC.md §5.2).
+        # after super().__init__(); a field with no entry is persist-only (see SPECIFICATION.md C.5.2).
         self._push_callbacks: dict[str, Callable[[int | float | str | bool | None], Coroutine[Any, Any, bool]]] = {}
         # Per-field live read-back for _recover_failed_push's fallback chain below (optional, unlike
-        # _push_callbacks); a field with no entry skips to the next rung (see DRIVER_SPEC.md §5.2.2).
+        # _push_callbacks); a field with no entry skips to the next rung (see SPECIFICATION.md C.5.2).
         self._get_callbacks: dict[str, Callable[[], Coroutine[Any, Any, int | float | str | bool | None]]] = {}
 
     async def _get_mgr_cfg(self, cfg: list[str]) -> dict[str, int | float | str | bool | None] | None:
+        self.pr.evt("Reading config via cfgmgr.")
         return await self.cfgmgr.get_dict(cfg)
 
     async def _set_mgr_cfg(
@@ -266,12 +268,13 @@ class SensorReaderConfig(SensorReader):
     ) -> "tuple[bool, WriteValidity]":
         # Overridable extension point mirroring _get_mgr_cfg - a subclass with a different
         # persistence backend can override just this and still reuse _set_dict_cfg's orchestration.
+        self.pr.evt("Writing config via cfgmgr.")
         return await self.cfgmgr.write_config(data, cfg_vals)
 
     async def _set_dict_cfg(
         self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "ConfigSchema"
     ) -> "WriteValidity":
-        # Setter mirror of _get_dict_cfg (see DRIVER_SPEC.md §5.2): persist first, then push live only
+        # Setter mirror of _get_dict_cfg (see SPECIFICATION.md C.5.2): persist first, then push live only
         # changed fields with a callback. Snapshot each field's pre-write value first - the one
         # _recover_failed_push rung that only exists here, before the write below overwrites it.
         try:  # _get_mgr_cfg is an overridable extension point, same defense as _get_dict_cfg's own use of it
@@ -282,10 +285,9 @@ class SensorReaderConfig(SensorReader):
         if old_values is None:
             old_values = {}
 
-        try:  # _set_mgr_cfg is an overridable extension point - the call itself, not just its
-            # result, could misbehave on a misbehaving subclass override (mirrors _get_dict_cfg's
-            # own _get_mgr_cfg handling) - the isinstance check below extends that same defense to
-            # a malformed *shape* of an otherwise-successful return, not just a raised exception.
+        try:  # _set_mgr_cfg is an overridable extension point - the call itself could misbehave on a
+            # subclass override (mirrors _get_dict_cfg's own _get_mgr_cfg handling); the isinstance
+            # check below extends that defense to a malformed return shape, not just a raise.
             persisted, results = await self._set_mgr_cfg(data, cfg_vals)
             if not isinstance(results, dict):
                 raise TypeError("_set_mgr_cfg returned a non-dict result")
@@ -327,7 +329,7 @@ class SensorReaderConfig(SensorReader):
         old_values: "dict[str, int | float | str | bool | None]",
         cfg_vals: "ConfigSchema",
     ) -> None:
-        # Recovery chain for a failed live push (see DRIVER_SPEC.md §5.2.2): live read-back via
+        # Recovery chain for a failed live push (see SPECIFICATION.md C.5.2): live read-back via
         # _get_callbacks, else old_values' pre-write snapshot, else the schema default - written
         # back through _set_mgr_cfg only, bypassing _push_callbacks so a failing push can't loop.
         field = schema_dict(cfg_vals).get(key)
@@ -361,5 +363,8 @@ class SensorReaderConfig(SensorReader):
 
     def get_cfg_schema(self) -> "ConfigSchema":
         # Captured once from super().__init__()'s default_vals; sync (no I/O/locking involved).
-        # self.cfg_schema stays a public attribute too - see DRIVER_SPEC.md §5.1.
+        # self.cfg_schema stays a public attribute too - see SPECIFICATION.md C.5.1.
         return self.cfg_schema
+
+    async def setup(self) -> None:
+        await self.cfgmgr.setup()

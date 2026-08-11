@@ -238,7 +238,7 @@ class I2CDevice(Lockable):
         super().__init__(asy_lock=self.i2c.async_lock)
         self.device_address = device_address
 
-    async def __probe_for_device(self) -> None:
+    async def _probe_for_device(self) -> None:
         # Try to write zero bytes to the device address: an OSError means no device ACKed it.
         # writeto() returning None (bus not initialized, e.g. deinit() was called on the shared
         # I2C instance) is a distinct failure from "no device" and gets its own message.
@@ -302,7 +302,7 @@ class I2CDevice(Lockable):
 
     async def setup(self, probe: bool = True) -> None:
         if probe:
-            await self.__probe_for_device()
+            await self._probe_for_device()
 
     async def readinto(
         self,

@@ -15,7 +15,7 @@ from machine import reset as system_reset
 from micropython import const
 
 from base_classes import LockedCounter
-from print_log import PrintLogHistory, PrintLogHistoryStore
+from print_log import make_logger
 
 try:
     from typing import TYPE_CHECKING
@@ -35,6 +35,7 @@ _TIMER_BASE_PERIOD = const(1000)  # milliseconds for sensor triggers base period
 _TASK_CHECK_TIME = const(2)  # seconds period to check running tasks (keep << watchdog timeout!)
 _TASK_FAIL_INCREMENT = const(100)  # absolute value important for decrease time,...
 _TASK_FAIL_MAX = const(300)  # ...ratio important for triggering reset (multiple errors)
+_NAME = const("SYSTEM")
 
 
 class SystemService:
@@ -48,13 +49,9 @@ class SystemService:
     ) -> None:
         # callback for starting and stopping permanent storage communication
         self.storage_pause: Callable[[bool], None] | None = None
-        if fram is None:
-            self.pr = PrintLogHistory(history_length, debug)
-            self.pr.one("Init with memory logging.")
-        else:
-            self.pr = PrintLogHistoryStore(fram, history_length, debug)
+        self.pr = make_logger(fram, history_length, debug, _NAME)
+        if fram is not None:
             self.storage_pause = fram.set_pause
-            self.pr.one("Init with FRAM logging.")
         self.uptime = LockedCounter(max_val=0xFFFFFFFF)  # seconds of about 136 years(!!) perfectly fits into 32bit unsigned
         self.uptime_event = asyncio.ThreadSafeFlag()
         self.timers_running = asyncio.ThreadSafeFlag()
@@ -79,7 +76,7 @@ class SystemService:
             self.pr.evt("Storage paused")
         try:
             self.reset_timer.init(period=_RESET_DELAY * 1000, mode=Timer.ONE_SHOT, callback=lambda b: action())
-        except OSError as e:  # alarm-pool exhaustion (ENOMEM) - falls back to the same watchdog-starve
+        except (OSError, MemoryError) as e:  # alarm-pool exhaustion (ENOMEM) - falls back to the same watchdog-starve
             # backstop start_and_check_tasks() already uses past _TASK_FAIL_MAX.
             self.pr.err("Could not arm reset timer, stopping watchdog feed instead:", e)
             self._force_watchdog_starve = True
@@ -88,8 +85,8 @@ class SystemService:
         # None if not synced yet or the sync/mktime computation itself failed; caller falls back to random after _NTP_WAIT_TIME.
         try:
             synced = await self.ntp_is_synced()
-        except Exception as e:  # caller-supplied callback - currently wired to asy_ntp_client.py's ntp_issynced
-            # (promoted/audited) in sensortask-wozi.py, but this parameter accepts any Callable, so the guard stays broad
+        except Exception as e:  # caller-supplied callback, typed as any Callable - guarded broadly
+            # since it isn't guaranteed to be a specific, known-safe implementation
             await self.pr.err_s("NTP sync callback failed:", e, errno=1)
             return None
         if not synced:
@@ -120,7 +117,7 @@ class SystemService:
                     callback=lambda b: self._timer_sequencer(timers, counter=counter),
                 )
                 return
-            except OSError as e:  # alarm-pool exhaustion (ENOMEM) - stop sequencing rather than
+            except (OSError, MemoryError) as e:  # alarm-pool exhaustion (ENOMEM) - stop sequencing rather than
                 # leaving start_timers() waiting on timers_running forever.
                 self.pr.err("Could not schedule the next timer starter, stopping early:", e)
         self.pr.one("All timers running.")
@@ -140,7 +137,7 @@ class SystemService:
     def start_uptime_timer(self) -> None:
         try:
             self.uptime_timer.init(period=1000, mode=Timer.PERIODIC, callback=lambda b: self.uptime_event.set())
-        except OSError as e:  # alarm-pool exhaustion (ENOMEM) - degrades gracefully rather than rebooting;
+        except (OSError, MemoryError) as e:  # alarm-pool exhaustion (ENOMEM) - degrades gracefully rather than rebooting;
             # only uptime/boot-signature stay unresolved this boot.
             self.pr.err("Could not arm uptime timer:", e)
 
@@ -167,20 +164,20 @@ class SystemService:
                     tasks[n] = await self._start_task(task_starters[n], n)
                     no_fail = False
                     await self.pr.wrn_s(
-                        "Task wurde beendet - versuche Neustart, Fehlerzähler erhöht auf", task_errors, wrnno=n + 1
+                        "Task ended - attempting restart, error counter increased to", task_errors, wrnno=n + 1
                     )
 
             if no_fail:
-                self.pr.all("Alle Tasks laufen.")
+                self.pr.all("All tasks running.")
                 if task_errors > 0:
                     task_errors -= 1
-                    self.pr.evt("Task Fehlerzähler reduziert auf", task_errors)
+                    self.pr.evt("Task error counter reduced to", task_errors)
 
             if task_errors <= _TASK_FAIL_MAX:
                 if self.watchdog is not None and not self._force_watchdog_starve:
                     self.watchdog.feed()
             else:
-                await self.pr.err_s("Task Fehlerzähler über", _TASK_FAIL_MAX, "- Reboot ausgelöst!", errno=4)
+                await self.pr.err_s("Task error counter above", _TASK_FAIL_MAX, "- reboot triggered!", errno=4)
                 self.reboot_system()
                 return
 
@@ -192,6 +189,9 @@ class SystemService:
     def get_timer_starters(self) -> "list[Callable[[], None]]":
         return [self.start_uptime_timer]
 
+    def stop_uptime_timer(self) -> None:
+        self.uptime_timer.deinit()
+
     async def get_uptime(self) -> int:
         value = await self.uptime.get_value()  # never None: only ever set_value(0)/increment(), never a None sentinel
         return 0 if value is None else value
@@ -202,10 +202,7 @@ class SystemService:
         return await self.boot_signature.get_value()
 
     async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
-        return await self.pr.get_log("Tasks")
-
-    def stop_uptime_timer(self) -> None:
-        self.uptime_timer.deinit()
+        return await self.pr.get_log()
 
     def reboot_system(self) -> None:
         self._reboot("Reboot triggered", system_reset)
@@ -230,7 +227,7 @@ class SystemService:
                         mode=Timer.ONE_SHOT,
                         callback=lambda b: storage_pause(False),
                     )
-                except OSError as e:  # alarm-pool exhaustion (ENOMEM) - without the auto-unpause timer,
+                except (OSError, MemoryError) as e:  # alarm-pool exhaustion (ENOMEM) - without the auto-unpause timer,
                     # storage would stay paused forever; safer to abort the pause than risk that.
                     self.pr.err("Could not arm auto-unpause timer, aborting pause:", e)
                     storage_pause(False)

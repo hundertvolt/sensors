@@ -252,10 +252,10 @@ def test_device_shares_the_bus_lock() -> None:
 def test_setup_drives_cs_pin_to_inactive() -> None:
     spi = make_spi()
     device = make_device(spi, cs_active_value=False, call_setup=False)
-    assert device.uninitialized is True
+    assert device.initialized is False
     run(device.setup())
     assert device.cs_pin.value() == 1  # inactive = not cs_active_value = not False
-    assert device.uninitialized is False
+    assert device.initialized is True
 
 
 def test_setup_drives_cs_pin_to_inactive_active_high_variant() -> None:

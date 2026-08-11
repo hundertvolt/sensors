@@ -1,5 +1,5 @@
 """Async NTP client + CET/CEST local-time helper. Not a sensor, but config-managed the same way:
-extends base_classes.py's SensorReaderConfig, owns its own config_NTP.cfg (see DRIVER_SPEC.md).
+extends base_classes.py's SensorReaderConfig, owns its own config_NTP.cfg (see SPECIFICATION.md Part C).
 Every field is persist-only - nothing here needs a live push, so base_classes.py's generic
 _set_dict_cfg() already provides full setter support with zero changes to this file (no
 self._push_callbacks entries registered). errno/wrnno numbering starts at 11 here (1-4/10 are
@@ -52,8 +52,8 @@ _NTP_LI_UNSYNCHRONIZED = const(3)  # RFC 5905 Leap Indicator top-2-bits: 3 = ser
 _NTP_STRATUM_INVALID = const(0)  # RFC 5905/4330 stratum 0 = Kiss-o'-Death packet. Its Transmit
 # Timestamp is typically all-zero, which lands inside the plausibility window above.
 
-# Schema tuples for ConfigManager.get_*_values() - min/max mirror sensortask-wozi.py's own
-# update_valid_json() REST bounds; defaults are the only source of truth for a fresh config_NTP.cfg.
+# Schema tuples for ConfigManager.get_*_values() - min/max mirror the already-validated bounds the
+# deployed, pre-refactor REST handler uses; defaults are the only source of truth for a fresh config_NTP.cfg.
 _VAL_NH = const((("NTP_Host", "str", "pool.ntp.org", 3, 1024, None),))
 _VAL_NOS = const((("NTP_Offset_S", "int", 0, -43200, 43200, None),))
 _VAL_NIH = const((("NTP_Interv_H", "int", 12, 1, 24, None),))
@@ -65,18 +65,18 @@ NTP = namedtuple("NTP", ("Synced", "LastSyncAge", "TS"))
 GMTimeStruct = namedtuple("GMTimeStruct", ("year", "month", "mday", "hour", "minute", "second", "weekday", "yearday"))
 
 
-class asy_ntp_client(SensorReaderConfig):
+class AsyNtpClient(SensorReaderConfig):
     def __init__(
         self,
         wifi_mode_lock: asyncio.Lock,
         network_available: "Callable[[], bool]",
         get_dns_server: "Callable[[], str | None]",
-        max_i2c_err: int = 5,
-        dns_timeout_ms: int = 500,  # forwarded to resolve_ipv4() - sensortask-wozi.py decides the
-        # real value.
+        dns_timeout_ms: int = 500,  # forwarded to resolve_ipv4() - whichever module wires this up
+        # decides the real deployment value at construction time.
         dns_tries: int = 1,  # forwarded to resolve_ipv4() - see dns_timeout_ms's own comment.
         ntp_fetch_timeout_ms: int = _NTP_CONN_TIMEOUT,  # forwarded to _fetch_ntp_reply()'s socket
         # call - same reasoning as dns_timeout_ms.
+        max_i2c_err: int = 5,
         cfg_path: str = "",
         fram: "AsyFramManager | None" = None,
         history_length: int = 10,
@@ -93,9 +93,9 @@ class asy_ntp_client(SensorReaderConfig):
             history_length=history_length,
             debug=debug,
         )
-        self.wifi_mode_lock = wifi_mode_lock  # shared with asy_conn_time - protects the WLAN state this class only reads
-        self.network_available = network_available  # asy_conn_time.network_available - caller must hold wifi_mode_lock
-        self.get_dns_server = get_dns_server  # asy_conn_time.get_dns_server_ip - the network's own DHCP-assigned DNS server, or None
+        self.wifi_mode_lock = wifi_mode_lock  # shared with AsyConnTime - protects the WLAN state this class only reads
+        self.network_available = network_available  # AsyConnTime.network_available - caller must hold wifi_mode_lock
+        self.get_dns_server = get_dns_server  # AsyConnTime.get_dns_server_ip - the network's own DHCP-assigned DNS server, or None
         self.dns_timeout_ms = dns_timeout_ms
         self.dns_tries = dns_tries
         self.ntp_fetch_timeout_ms = ntp_fetch_timeout_ms
@@ -121,7 +121,7 @@ class asy_ntp_client(SensorReaderConfig):
         try:
             return self.get_dns_server()
         except Exception as e:  # caller-supplied callback - could legitimately misbehave
-            await self.pr.wrn_s(_NAME, "get_dns_server() callback failed:", e, wrnno=3)
+            await self.pr.wrn_s("get_dns_server() callback failed:", e, wrnno=3)
             return None
 
     async def _get_ntp_config(self) -> tuple[list[str], list[int]] | None:
@@ -135,7 +135,7 @@ class asy_ntp_client(SensorReaderConfig):
         servers = () if dns_server is None else (dns_server,)
         ip = await resolve_ipv4(ntp_host, servers, timeout_ms=self.dns_timeout_ms, tries=self.dns_tries)
         if ip is None:
-            await self.pr.err_s(_NAME, "No valid NTP server:", ntp_host, errno=12)
+            await self.pr.err_s("No valid NTP server:", ntp_host, errno=12)
             return None
         return ip, _NTP_UDP_PORT
 
@@ -143,7 +143,7 @@ class asy_ntp_client(SensorReaderConfig):
         try:
             cli = AsyUDPSocket(addr, mode="client")
         except (ValueError, TypeError) as e:  # malformed addr - see AsyUDPSocket's own contract
-            await self.pr.err_s(_NAME, "Invalid NTP server address:", e, errno=13)
+            await self.pr.err_s("Invalid NTP server address:", e, errno=13)
             return None
         # write_and_recvfrom()/disconnect() never raise - they return their None-shaped sentinel on
         # any failure instead (see asy_udp_socket.py's contract), so no try/except is needed here.
@@ -179,15 +179,15 @@ class asy_ntp_client(SensorReaderConfig):
         try:
             network_ok = self.network_available()
         except Exception as e:  # caller-supplied callback - could legitimately misbehave
-            await self.pr.wrn_s(_NAME, "network_available() callback failed:", e, wrnno=1)
+            await self.pr.wrn_s("network_available() callback failed:", e, wrnno=1)
             network_ok = False
         if not network_ok:
-            self.pr.all(_NAME, "Network not available, skipping sync attempt.")
+            self.pr.all("Network not available, skipping sync attempt.")
             return None, False
         ntp_config = await self._get_ntp_config()
         if ntp_config is None:
             await self._set_synced(False)
-            await self.pr.err_s(_NAME, "Missing NTP configuration!", errno=11)
+            await self.pr.err_s("Missing NTP configuration!", errno=11)
             return None, True
         ntp_host, ntp_offs = ntp_config
         addr = await self._resolve_ntp_server(ntp_host[0], dns_server)
@@ -213,7 +213,7 @@ class asy_ntp_client(SensorReaderConfig):
                 # Server says its own clock is unsynchronized, or this is a Kiss-o'-Death packet -
                 # never a genuine time source, regardless of its Transmit Timestamp.
                 await self.pr.wrn_s(
-                    _NAME, "NTP reply unsynchronized or Kiss-of-Death, rejecting:", leap_indicator, stratum, wrnno=2
+                    "NTP reply unsynchronized or Kiss-of-Death, rejecting:", leap_indicator, stratum, wrnno=2
                 )
                 return None
             raw_seconds = struct.unpack("!I", msg[40:44])[0]
@@ -223,26 +223,26 @@ class asy_ntp_client(SensorReaderConfig):
                 # and recheck - or implausible data, rejected below if still out of range.
                 ntp_time += _NTP_ERA_SECONDS
             if not (_NTP_MIN_PLAUSIBLE_UNIX_TIME <= ntp_time <= _NTP_MAX_PLAUSIBLE_UNIX_TIME):
-                await self.pr.err_s(_NAME, "Implausible NTP time, rejecting:", ntp_time, errno=14)
+                await self.pr.err_s("Implausible NTP time, rejecting:", ntp_time, errno=14)
                 return None
-            self.pr.all(_NAME, "Received NTP time:", ntp_time)
+            self.pr.all("Received NTP time:", ntp_time)
             tm = time.gmtime(ntp_time)
             RTC().datetime((tm[0], tm[1], tm[2], tm[6] + 1, tm[3], tm[4], tm[5], 0))
             return tm
         except (IndexError, OverflowError, ValueError, OSError) as e:
             # malformed/truncated reply (MicroPython's struct raises plain ValueError, not
             # struct.error) or an out-of-range timestamp - treat like no response.
-            await self.pr.err_s(_NAME, "Malformed NTP response, treating as no response:", e, errno=15)
+            await self.pr.err_s("Malformed NTP response, treating as no response:", e, errno=15)
             return None
 
     async def _handle_ntp_sync_failure(self) -> None:
-        self.pr.all(_NAME, "Invalid NTP time received!")
+        self.pr.all("Invalid NTP time received!")
         self.ntp_retry_timer.deinit()
         if await self.ntp_issynced():  # in case of already synced, retry if regular trigger fails
             if (
                 self.ntp_retries < _NTP_SYNC_RETRIES
             ):  # if not synced at all, self.ntp_time_hours_counter() will permanently try to sync
-                self.pr.evt(_NAME, "Waiting for NTP sync retry.")
+                self.pr.evt("Waiting for NTP sync retry.")
                 try:
                     self.ntp_retry_timer.init(
                         period=_NTP_RETRY_INTERV * 1000,
@@ -250,19 +250,19 @@ class asy_ntp_client(SensorReaderConfig):
                         callback=lambda b: self.ntp_sync_trigger_event.set(),
                     )
                     self.ntp_retries += 1
-                except OSError as e:  # alarm-pool exhaustion (ENOMEM) - give up this retry cycle rather
+                except (OSError, MemoryError) as e:  # alarm-pool exhaustion (ENOMEM) - give up this retry cycle rather
                     # than crashing the task; ntp_time_hours_counter()'s regular check still recovers it.
-                    await self.pr.err_s(_NAME, "Could not arm NTP retry timer:", e, errno=16)
+                    await self.pr.err_s("Could not arm NTP retry timer:", e, errno=16)
                     self.ntp_retries = 0
             else:
-                await self.pr.err_s(_NAME, "Maximum retries reached, cancelling sync!", errno=17)
+                await self.pr.err_s("Maximum retries reached, cancelling sync!", errno=17)
                 self.ntp_retries = 0
 
     async def _handle_ntp_sync_success(self, tm: tuple[int, ...]) -> None:
         self.ntp_retry_timer.deinit()
         self.ntp_retries = 0
         await self._set_meas_data(NTP(True, 0, self._now()))
-        self.pr.one(_NAME, "RTC set to:", tm)
+        self.pr.one("RTC set to:", tm)
 
     def start_asy_ntp_client(self) -> asyncio.Task[None]:
         evtloop = asyncio.get_event_loop()
@@ -283,9 +283,9 @@ class asy_ntp_client(SensorReaderConfig):
                 mode=Timer.PERIODIC,
                 callback=lambda b: self.ntp_timer_trigger_event.set(),
             )
-        except OSError as e:  # alarm-pool exhaustion (ENOMEM, see CLAUDE.md) - degrades gracefully;
+        except (OSError, MemoryError) as e:  # alarm-pool exhaustion (ENOMEM, see CLAUDE.md) - degrades gracefully;
             # NTP refresh scheduling just never starts rather than crashing the caller.
-            self.pr.err(_NAME, "Could not start NTP timer:", e)
+            self.pr.err("Could not start NTP timer:", e)
 
     def start_counter_timer(self) -> None:
         try:
@@ -294,8 +294,8 @@ class asy_ntp_client(SensorReaderConfig):
                 mode=Timer.PERIODIC,
                 callback=lambda b: self.time_counter_trigger_event.set(),
             )
-        except OSError as e:  # alarm-pool exhaustion (ENOMEM) - same graceful degradation as start_ntp_timer()
-            self.pr.err(_NAME, "Could not start counter timer:", e)
+        except (OSError, MemoryError) as e:  # alarm-pool exhaustion (ENOMEM) - same graceful degradation as start_ntp_timer()
+            self.pr.err("Could not start counter timer:", e)
 
     def get_task_starters(self) -> "list[Callable[[], asyncio.Task[Any]]]":
         return [self.start_asy_ntp_client, self.start_asy_ntp_refresh, self.start_asy_sync_age_counter]
@@ -310,8 +310,7 @@ class asy_ntp_client(SensorReaderConfig):
         self.counter_timer.deinit()
 
     async def get_data(self) -> NTP:
-        # Narrows _get_meas_data()'s generic NamedTuple to this Reader's concrete NTP - typing.cast()
-        # isn't usable on MicroPython, so this identity return does the same job.
+        # Narrows to this Reader's concrete NTP - see SPECIFICATION.md C.4.2's get_data() convention.
         return await self._get_meas_data()  # type: ignore[return-value]
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
@@ -322,7 +321,7 @@ class asy_ntp_client(SensorReaderConfig):
         return await self._get_dict_cfg(_NAME, _VAL_NH + _VAL_NOS + _VAL_NIH + _VAL_GMT + _VAL_DST)
 
     async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
-        return await self.pr.get_log(_NAME)
+        return await self.pr.get_log()
 
     async def get_last_ntp_sync(self) -> int | None:  # None = never synced yet
         age = (await self.get_data()).LastSyncAge
@@ -333,7 +332,7 @@ class asy_ntp_client(SensorReaderConfig):
 
     async def cettime(
         self,
-    ) -> GMTimeStruct | None:  # Umrechnung Lokalzeit
+    ) -> GMTimeStruct | None:  # local-time conversion
         if not (await self.ntp_issynced()):
             return None
         time_offs = await self.cfgmgr.get_int_values(_VAL_GMT + _VAL_DST)
@@ -357,7 +356,7 @@ class asy_ntp_client(SensorReaderConfig):
         except (OverflowError, ValueError, OSError) as e:
             # rp2's mktime()/gmtime() raise OverflowError past its ~2037 32-bit epoch range - treat
             # exactly like "not ready" instead of crashing the caller.
-            await self.pr.err_s(_NAME, "Time calculation failed:", e, errno=19)
+            await self.pr.err_s("Time calculation failed:", e, errno=19)
             return None
         if len(cet) == 8:
             return GMTimeStruct(*cet)
@@ -368,16 +367,16 @@ class asy_ntp_client(SensorReaderConfig):
         self.ntp_retry_timer.deinit()
         self.ntp_retries = 0
         self.ntp_sync_trigger_event.set()
-        self.pr.evt(_NAME, "Force resync triggered.")
+        self.pr.evt("Force resync triggered.")
 
-    async def asy_ntp_time(self) -> None:  # Funktion: Zeit per NTP holen
+    async def asy_ntp_time(self) -> None:
         await self.pr.setup()  # required for all logged warnings and errors (base_classes.py's own
         # __init__ never calls this - matches every _init_<sensor>() in the three promoted drivers)
         self._err_cnt_internal = 0  # fresh failure streak each task (re)start, same as _init_<sensor>()
         await self._set_meas_data(NTP(False, None, self._now()))
         while True:
             await self.ntp_sync_trigger_event.wait()
-            self.pr.evt(_NAME, "NTP sync starting.")
+            self.pr.evt("NTP sync starting.")
             dns_server = await self._safe_get_dns_server()  # must be read before acquiring
             # wifi_mode_lock below - see _safe_get_dns_server()'s own comment.
             await self.wifi_mode_lock.acquire()
@@ -391,18 +390,18 @@ class asy_ntp_client(SensorReaderConfig):
             # Consecutive-failure streak over real sync attempts, independent from and coarser than
             # _handle_ntp_sync_failure()'s own short-term retry loop. condition=network_ok excludes
             # "network wasn't up yet" from counting; narrows tm to just its presence/absence.
-            if not await self._error_check((None if tm is None else tm[0],), _NAME, condition=network_ok):
-                await self.pr.err_s(_NAME, "Giving up after repeated sync failures, restarting task.", errno=20)
+            if not await self._error_check((None if tm is None else tm[0],), condition=network_ok):
+                await self.pr.err_s("Giving up after repeated sync failures, restarting task.", errno=20)
                 return
 
-    async def ntp_time_hours_counter(self) -> None:  # Timer für NTP Refresh
+    async def ntp_time_hours_counter(self) -> None:  # NTP refresh timer
         self.ntp_sec_count = 0
         while True:
             await self.ntp_timer_trigger_event.wait()
             ntp_interv = await self.cfgmgr.get_int_values(_VAL_NIH)
             if ntp_interv is None or len(ntp_interv) != 1:
                 ntp_interv = [12]
-                await self.pr.err_s(_NAME, "Missing NTP configuration, defaulting interval to 12h!", errno=18)
+                await self.pr.err_s("Missing NTP configuration, defaulting interval to 12h!", errno=18)
 
             if await self.ntp_issynced():
                 if self.ntp_sec_count < (_NTP_ASYNC_INTERV * ntp_interv[0] * 60 * 60):
@@ -410,13 +409,13 @@ class asy_ntp_client(SensorReaderConfig):
                 else:
                     await self._set_synced(False)
 
-            self.pr.all(_NAME, "Sync-age tick counter at", self.ntp_sec_count)
+            self.pr.all("Sync-age tick counter at", self.ntp_sec_count)
             if (not (await self.ntp_issynced())) or (self.ntp_sec_count >= (ntp_interv[0] * 60 * 60)):
                 self.ntp_retry_timer.deinit()
                 self.ntp_retries = 0
                 self.ntp_sync_trigger_event.set()
                 self.ntp_sec_count = 0
-                self.pr.evt(_NAME, "NTP resync triggered.")
+                self.pr.evt("NTP resync triggered.")
             del ntp_interv
 
     async def time_counter(self) -> None:

@@ -33,6 +33,7 @@ _ADDR_STATUS_2 = const(1)
 _NUM_STATUS_BYTES = const(2)
 _TS_FMT = const("<Q")  # explicit little-endian, no padding - matches print_log.py's own convention
 _TS_UNINIT = const(b"\x00")
+_NAME = const("FRAM")
 
 
 class _AsyBaseFramChunk:
@@ -488,8 +489,8 @@ class AsyFramTimestampedChunk(_AsyBaseFramChunk):
         require_ntp: bool = False,
         override_pause: bool = False,
     ) -> tuple[bool, int | None, bool]:
-        try:  # caller-supplied callback - currently wired to asy_ntp_client.py's ntp_issynced (promoted/audited)
-            # in sensortask-wozi.py, but this parameter accepts any Callable, so the guard stays broad
+        try:  # caller-supplied callback, typed as any Callable - guarded broadly since it isn't
+            # guaranteed to be a specific, known-safe implementation
             ntp_synced = await self.ntp_sync_callback()
         except Exception as e:
             await self.pr.err_s("NTP sync callback failed:", e, errno=85)
@@ -553,8 +554,8 @@ class AsyFramTimestampedChunk(_AsyBaseFramChunk):
             ts = None
         else:
             self.pr.evt("FRAM read data timestamp is valid")
-            try:  # caller-supplied callback - currently wired to asy_ntp_client.py's ntp_issynced (promoted/audited)
-                # in sensortask-wozi.py, but this parameter accepts any Callable, so the guard stays broad
+            try:  # caller-supplied callback, typed as any Callable - guarded broadly since it isn't
+                # guaranteed to be a specific, known-safe implementation
                 ntp_synced = await self.ntp_sync_callback()
             except Exception as e:
                 await self.pr.err_s("NTP sync callback failed:", e, errno=87)
@@ -572,14 +573,14 @@ class AsyFramManager:
     def __init__(
         self, spi_bus: SPI, spi_cs: int, max_size: int = 0x2000, history_length: int = 10, debug: int | None = None
     ) -> None:
-        self.pr = PrintLogHistory(history_length, debug)
+        self.pr = PrintLogHistory(history_length, debug, name=_NAME)
         self.size = max_size
         self.allocated_size = 0
         self._pause = False
         self.fram = FRAM_SPI(spi_bus, spi_cs, max_size=self.size, logger=self.pr)
 
     async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
-        return await self.pr.get_log("FRAM")
+        return await self.pr.get_log()
 
     def get_pause(self) -> bool:
         return self._pause

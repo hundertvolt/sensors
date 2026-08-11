@@ -191,7 +191,9 @@ def _make_reader(name: str, cfg_vals: "cm.ConfigSchema" = _VAL_SI) -> "tuple[Sen
     path_prefix = _tmp_path("") + "/"
     path = path_prefix + "config_" + name + ".cfg"
     _remove(path)
-    return SensorReaderConfig(Meas(20.0, 50), 3, name, cfg_vals, cfg_path=path_prefix), path
+    reader = SensorReaderConfig(Meas(20.0, 50), 3, name, cfg_vals, cfg_path=path_prefix)
+    run(reader.cfgmgr.setup())
+    return reader, path
 
 
 def test_handle_set_cmd_valid_change_returns_ok_with_per_field_result() -> None:
@@ -307,6 +309,30 @@ def test_handle_set_cmd_async_post_fct_raising_is_caught_and_reports_generic_err
 
         resp = run(ar.handle_set_cmd(reader, {"SampleInterv": 42}, _VAL_SI, post_asy_fct=bad_post))
         assert resp == {"res": "ERR", "code": 100, "descr": "Generic command error", "result": {}}
+        assert reader.pr.err_count == 1
+    finally:
+        _remove(path)
+
+
+def test_handle_set_cmd_sync_post_fct_raising_never_schedules_the_async_hook() -> None:
+    # Both hooks supplied at once, with the synchronous one raising: post_fct() fires first and
+    # post_asy_fct() is only awaited afterwards (see handle_set_cmd's own ordering), so the async
+    # hook must never run at all - not even be scheduled. Pins that firing order down as real
+    # behaviour rather than an incidental statement order, and confirms the response still degrades
+    # into the same generic-error envelope the two single-hook-raises tests above expect.
+    reader, path = _make_reader("handlebothhooksraise")
+    try:
+        async_calls = []
+
+        def bad_post() -> None:
+            raise RuntimeError("reconnect failed")
+
+        async def post() -> None:
+            async_calls.append(1)
+
+        resp = run(ar.handle_set_cmd(reader, {"SampleInterv": 42}, _VAL_SI, post_fct=bad_post, post_asy_fct=post))
+        assert resp == {"res": "ERR", "code": 100, "descr": "Generic command error", "result": {}}
+        assert async_calls == []  # never invoked - post_fct raised before it could be awaited
         assert reader.pr.err_count == 1
     finally:
         _remove(path)

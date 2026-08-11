@@ -14,7 +14,7 @@ from micropython import const
 
 from asy_spi_driver import SPI, SPIDevice
 from base_classes import Lockable
-from print_log import PrintLog
+from print_log import PrintLogHistory
 
 # RDID response (32 clock cycles after the opcode): manufacturer ID, then the JEDEC continuation-
 # code byte, then the two Product ID bytes (1st byte is the more significant one) - all four are
@@ -49,7 +49,7 @@ class FRAM_SPI(Lockable):
         self,
         spi_bus: SPI,
         spi_cs: int,
-        logger: PrintLog,
+        logger: PrintLogHistory,
         wp: bool = False,
         wp_pin: int | None = None,
         max_size: int = 0x2000,
@@ -60,15 +60,20 @@ class FRAM_SPI(Lockable):
         self._max_size = max_size
         self._wp = wp  # write protect
         self._wp_pin = None if wp_pin is None else Pin(wp_pin)
-        self.uninitialized = True
+        self.initialized = False
+        # Pre-allocated scratch buffers, reused across calls instead of allocating fresh on every
+        # one (matches SCD30_I2C's buffer-reuse pattern) - safe since every real caller only ever
+        # reaches these through this object's own asy_lock (Lockable), serializing access.
+        self._id_buf = bytearray(4)
+        self._status_buf = bytearray(1)
+        self._addr_buf = bytearray(4) if self._max_size > 0xFFFF else bytearray(3)
 
     async def _check_device_id(self) -> bool:
-        read_buffer = bytearray(4)
         async with self._spidev as spidev:
             await spidev.write(bytearray([_SPI_OPCODE_RDID]))
-            await spidev.readinto(read_buffer)
-        prod_id = (read_buffer[2] << 8) + read_buffer[3]
-        return read_buffer[0] == _SPI_MANF_ID and read_buffer[1] == _SPI_CONT_CODE and prod_id == _SPI_PROD_ID
+            await spidev.readinto(self._id_buf)
+        prod_id = (self._id_buf[2] << 8) + self._id_buf[3]
+        return self._id_buf[0] == _SPI_MANF_ID and self._id_buf[1] == _SPI_CONT_CODE and prod_id == _SPI_PROD_ID
 
     async def _read_address(self, address: int, read_buffer: bytearray | memoryview) -> None:
         async with self._spidev as spidev:
@@ -76,11 +81,10 @@ class FRAM_SPI(Lockable):
             await spidev.readinto(read_buffer)
 
     async def _read_status(self) -> int:
-        read_buffer = bytearray(1)
         async with self._spidev as spidev:
             await spidev.write(bytearray([_SPI_OPCODE_RDSR]))
-            await spidev.readinto(read_buffer)
-        return read_buffer[0]
+            await spidev.readinto(self._status_buf)
+        return self._status_buf[0]
 
     async def _send_opcode(self, opcode: int) -> None:
         # WREN/WRDI are each a complete, standalone one-byte command (datasheet timing diagrams
@@ -106,14 +110,14 @@ class FRAM_SPI(Lockable):
         if await self._wel_is_set():
             await self._send_opcode(_SPI_OPCODE_WRDI)
             if await self._wel_is_set():
-                self.pr.wrn("FRAM write enable latch did not clear after WRDI retry.")
+                await self.pr.wrn_s("FRAM write enable latch did not clear after WRDI retry.", wrnno=81)
 
     async def _write(self, start_address: int, data: bytes | bytearray | memoryview) -> bool:
         if await self.get_write_protected():
             self.pr.wrn("FRAM currently write protected.")
             return False
         if not await self._enable_write():
-            self.pr.wrn("FRAM write enable latch did not set, aborting write.")
+            await self.pr.wrn_s("FRAM write enable latch did not set, aborting write.", wrnno=82)
             return False
         async with self._spidev as spidev:
             await spidev.write(self._setup_addr_buffer(start_address, _SPI_OPCODE_WRITE))
@@ -122,16 +126,14 @@ class FRAM_SPI(Lockable):
         return True
 
     def _setup_addr_buffer(self, addr: int, opcode: int) -> bytearray:
-        # max_size is trusted as set up by the caller - this class's RDID check is hardwired to
-        # one real 8KB chip (0x0000-0x1FFF); a wrong, too-large max_size here would validate
-        # addresses beyond that and let them silently alias on real hardware.
-        if self._max_size > 0xFFFF:  # > 16bit address
-            buffer = bytearray(4)
+        # Buffer width is fixed once in __init__ from max_size, which is trusted, not re-derived
+        # from _check_device_id() - see SPECIFICATION.md Part C.3.1's FRAM_SPI bullet.
+        buffer = self._addr_buf
+        if len(buffer) == 4:  # > 16bit address
             buffer[1] = (addr >> 16) & 0xFF
             buffer[2] = (addr >> 8) & 0xFF
             buffer[3] = addr & 0xFF
         else:  # <= 16bit address
-            buffer = bytearray(3)
             buffer[1] = (addr >> 8) & 0xFF
             buffer[2] = addr & 0xFF
         buffer[0] = opcode
@@ -141,8 +143,8 @@ class FRAM_SPI(Lockable):
         # With a wp_pin, protection is tied to that physical pin's own value; without one, this
         # is the cached value from the last verified set_write_protected() call (see there for
         # why re-reading the status register on every get isn't needed).
-        if self.uninitialized:
-            self.pr.err("FRAM not initialized, run setup first!")
+        if not self.initialized:
+            await self.pr.err_s("FRAM not initialized, run setup first!", errno=89)
             return False
         return self._wp if self._wp_pin is None else not bool(self._wp_pin.value())  # WP active-low
 
@@ -150,38 +152,38 @@ class FRAM_SPI(Lockable):
         return self._max_size
 
     async def get_values(self, buf: bytearray | memoryview, addr_start: int = 0) -> bool:
-        if self.uninitialized:
-            self.pr.err("FRAM not initialized, run setup first!")
+        if not self.initialized:
+            await self.pr.err_s("FRAM not initialized, run setup first!", errno=90)
             return False
         if not self.asy_lock.locked():  # from Lockable class
             self.pr.wrn("FRAM access not locked!")
             return False
         if (addr_start < 0) or (addr_start + len(buf) > self._max_size):
-            self.pr.err("get_values: Invalid FRAM address range!")
+            await self.pr.err_s("get_values: Invalid FRAM address range!", errno=91)
             return False
         await self._read_address(addr_start, buf)
         return True
 
     async def set_values(self, buf: bytes | bytearray | memoryview, addr_start: int) -> bool:
-        if self.uninitialized:
-            self.pr.err("FRAM not initialized, run setup first!")
+        if not self.initialized:
+            await self.pr.err_s("FRAM not initialized, run setup first!", errno=92)
             return False
         if not self.asy_lock.locked():  # from Lockable class
             self.pr.wrn("FRAM access not locked!")
             return False
         if (addr_start < 0) or (addr_start + len(buf) > self._max_size):
-            self.pr.err("set_values: Invalid FRAM address range!")
+            await self.pr.err_s("set_values: Invalid FRAM address range!", errno=93)
             return False
         return await self._write(addr_start, buf)
 
     async def set_write_protected(self, value: bool) -> bool:
         # Always protects the entire array (BP0+BP1) - per-block ranges are unused.
-        if self.uninitialized:
-            self.pr.err("FRAM not initialized, run setup first!")
+        if not self.initialized:
+            await self.pr.err_s("FRAM not initialized, run setup first!", errno=94)
             return False
         target = _SR_WP_SET if value else _SR_WP_CLEAR
         if not await self._enable_write():
-            self.pr.wrn("FRAM write enable latch did not set, write protection not changed.")
+            await self.pr.wrn_s("FRAM write enable latch did not set, write protection not changed.", wrnno=83)
             return False
         if self._wp_pin is not None:
             self._wp_pin.value(True)  # deassert WP first - WP=0 would else block this WRSR too
@@ -192,7 +194,7 @@ class FRAM_SPI(Lockable):
         if not ok:
             if self._wp_pin is not None:
                 self._wp_pin.value(not self._wp)  # unchanged - restore the pin to match reality
-            self.pr.err("FRAM write protection readback mismatch, not applied!")
+            await self.pr.err_s("FRAM write protection readback mismatch, not applied!", errno=95)
             return False
         self._wp = value
         if self._wp_pin is not None:
@@ -209,25 +211,25 @@ class FRAM_SPI(Lockable):
         if self._wp_pin is not None:
             self._wp_pin.init(self._wp_pin.OUT)
             self._wp_pin.value(not self._wp)  # WP is active-low (datasheet)
-        self.uninitialized = False
+        self.initialized = True
         self.pr.one("SPI FRAM Driver Setup complete")
 
     async def verify_present(self) -> bool:
-        # Re-probe entry point (cheaper than a full setup()); reverts to uninitialized=True on
+        # Re-probe entry point (cheaper than a full setup()); reverts to initialized=False on
         # failure. Wait is bounded, not a bare `async with self:`, since asyncio.Lock isn't
         # reentrant and a caller nesting this inside its own `async with fram:` would else hang.
-        if self.uninitialized:
-            self.pr.err("FRAM not initialized, run setup first!")
+        if not self.initialized:
+            await self.pr.err_s("FRAM not initialized, run setup first!", errno=96)
             return False
         try:
             await asyncio.wait_for(self.asy_lock.acquire(), _VERIFY_PRESENT_LOCK_TIMEOUT_S)
         except asyncio.TimeoutError:
-            self.pr.err("FRAM verify_present: lock busy, giving up.")
+            await self.pr.err_s("FRAM verify_present: lock busy, giving up.", errno=97)
             return False
         try:
             present = await self._check_device_id()
             if not present:
-                self.uninitialized = True
+                self.initialized = False
         finally:
             self.asy_lock.release()
         return present

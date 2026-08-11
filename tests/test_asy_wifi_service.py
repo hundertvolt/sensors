@@ -8,7 +8,7 @@ from machine import Timer
 
 import asy_wifi_service
 from asy_udp_socket import AsyUDPSocket
-from asy_wifi_service import WIFI, asy_conn_time
+from asy_wifi_service import WIFI, AsyConnTime
 
 # Mirrors asy_wifi_service.py's own _PHASE_STA_SEEKING/_PHASE_STA_ESTABLISHED/_PHASE_HOTSPOT/
 # _PHASE_DEACTIVATED values, duplicated here rather than imported: those are micropython.const()-
@@ -53,7 +53,7 @@ def _last_err(counter: "dict[str, dict[str, int | list[int] | list[str]]]", fiel
     return value[-1]
 
 
-def _wlan(client: asy_conn_time) -> "Any":
+def _wlan(client: AsyConnTime) -> "Any":
     # _wlan(client) is typed against the real network.WLAN stub (see pyproject.toml's own
     # tests/network.py exclude comment - that's deliberate, so asy_wifi_service.py's own real
     # `import network` call sites stay checked against the real API). At runtime, MICROPYPATH
@@ -107,6 +107,10 @@ class FakeLED:
         self.on_calls = 0
         self.off_calls = 0
         self.toggle_calls = 0
+        # Latest lit/unlit state, on top of the call counters: _flash_led_off()'s cancel handler is
+        # about which state the LED is *left in*, which a pair of counters can only show indirectly.
+        # None until the first on()/off()/toggle() - a real LED's power-on state isn't ours to claim.
+        self.state: bool | None = None
         self.raise_on: dict[str, Exception] = {}
 
     def on(self) -> None:
@@ -114,30 +118,42 @@ class FakeLED:
         if exc is not None:
             raise exc
         self.on_calls += 1
+        self.state = True
 
     def off(self) -> None:
         exc = self.raise_on.get("off")
         if exc is not None:
             raise exc
         self.off_calls += 1
+        self.state = False
 
     def toggle(self) -> None:
         exc = self.raise_on.get("toggle")
         if exc is not None:
             raise exc
         self.toggle_calls += 1
+        self.state = not self.state
 
 
 class _RaiseOnArm:
     # Same technique as test_asy_ntp_client.py's own _RaiseOnArm - toggles tests/machine.py's
     # Timer.raise_on_arm (a shared class attribute) for the duration of the `with` block,
-    # simulating real rp2 alarm-pool exhaustion (OSError(ENOMEM) from Timer.init()).
+    # simulating real rp2 alarm-pool exhaustion (OSError(ENOMEM) from Timer.init()). `exc` picks
+    # which arm of every call site's own `except (OSError, MemoryError)` is exercised - MemoryError
+    # is not an OSError subclass (see CLAUDE.md/SPECIFICATION.md Part F), so neither arm covers the
+    # other. Timer.raise_on_arm_exc is a shared class attribute too, reset back to its OSError
+    # default on exit alongside raise_on_arm.
+    def __init__(self, exc: "type[BaseException]" = OSError) -> None:
+        self._exc = exc
+
     def __enter__(self) -> "_RaiseOnArm":
+        Timer.raise_on_arm_exc = self._exc
         Timer.raise_on_arm = True
         return self
 
     def __exit__(self, *exc_info: "Any") -> None:
         Timer.raise_on_arm = False
+        Timer.raise_on_arm_exc = OSError
 
 
 def make_client(
@@ -148,10 +164,10 @@ def make_client(
     max_i2c_err: int = 5,
     cfg_path: "str | None" = None,
     debug: "int | None" = None,
-) -> asy_conn_time:
+) -> AsyConnTime:
     if cfg_path is None:
         cfg_path = _tmp_cfg_dir()
-    return asy_conn_time(
+    client = AsyConnTime(
         conn_fail_to_hotspot=conn_fail_to_hotspot,
         led_pin=None,  # tests/machine.py's fake Pin doesn't accept the real Pin(..., value=0) kwarg
         # asy_wifi_service.py passes - every LED test below goes through ext_led instead, which
@@ -163,16 +179,18 @@ def make_client(
         cfg_path=cfg_path,
         debug=debug,
     )
+    run(client.cfgmgr.setup())
+    return client
 
 
-def make_client_with_json(json_text: str, **kwargs: "Any") -> asy_conn_time:
+def make_client_with_json(json_text: str, **kwargs: "Any") -> AsyConnTime:
     cfg_path = _tmp_cfg_dir()
     with open(cfg_path + "config_WIFI.cfg", "w") as f:
         f.write(json_text)
     return make_client(cfg_path=cfg_path, **kwargs)
 
 
-def make_invalid_cfg_client() -> asy_conn_time:
+def make_invalid_cfg_client() -> AsyConnTime:
     # A directory where ConfigManager expects a plain file - same technique as
     # test_asy_ntp_client.py's own make_invalid_cfg_client().
     cfg_path = _tmp_cfg_dir()
@@ -236,10 +254,10 @@ def test_init_creates_its_own_config_file_with_schema_defaults() -> None:
     assert values == {"SSID": "", "PW": "", "Country": "DE", "Hostname": "SensorNode", "LedWifiOn": True}
 
 
-def test_get_task_starters_returns_wlan_connect_and_uptime_counter() -> None:
+def test_get_task_starters_returns_wlan_connect_uptime_counter_and_hotspot_watcher() -> None:
     client = make_client()
     starters = client.get_task_starters()
-    assert starters == [client.start_asy_wlan_connect, client.start_asy_uptime_counter]
+    assert starters == [client.start_asy_wlan_connect, client.start_asy_uptime_counter, client.start_hotspot_timeout_watcher]
 
 
 def test_get_timer_starters_returns_the_counter_timer() -> None:
@@ -257,6 +275,16 @@ def test_start_counter_timer_arms_periodic_1s() -> None:
 def test_start_counter_timer_degrades_gracefully_when_alarm_pool_exhausted() -> None:
     client = make_client()
     with _RaiseOnArm():
+        client.start_counter_timer()  # must not raise despite the timer failing to arm
+    assert client.counter_timer.period == -1  # never actually armed
+
+
+def test_start_counter_timer_degrades_gracefully_on_a_memory_error() -> None:
+    # Sibling of the OSError test above, for the other arm of start_counter_timer()'s own
+    # `except (OSError, MemoryError)`: a real alarm allocation can fail with MemoryError instead,
+    # which is not an OSError subclass - same graceful degradation must hold either way.
+    client = make_client()
+    with _RaiseOnArm(MemoryError):
         client.start_counter_timer()  # must not raise despite the timer failing to arm
     assert client.counter_timer.period == -1  # never actually armed
 
@@ -398,7 +426,7 @@ def test_config_hostname_too_long_falls_back_to_default() -> None:
 def test_config_hostname_one_over_the_real_max_falls_back_to_default() -> None:
     # 33 chars - just past network.hostname()'s real, documented 32-character hard cap
     # (MICROPY_PY_NETWORK_HOSTNAME_MAX_LEN, confirmed against extmod/modnetwork.c on both the
-    # deployed v1.26.0 pin and the v1.28.0 refactor target). _VAL_HOST's schema max was narrowed to
+    # deployed v1.26.1 pin and the v1.28.0 refactor target). _VAL_HOST's schema max was narrowed to
     # match this real constraint - see BACKLOG.md - so this must now be rejected at config-validation
     # time instead of reaching network.hostname() and raising there.
     json_text = (
@@ -613,6 +641,35 @@ def test_set_wifi_led_returns_true_uniform_setter_contract() -> None:
     client = make_client(ext_led=FakeLED())
     assert run(client.set_wifi_led(True)) is True
     assert run(client.set_wifi_led(False)) is True
+
+
+def test_flash_led_off_cancelled_mid_off_phase_still_leaves_the_led_on() -> None:
+    # _flash_led_off()'s real contract is its `except asyncio.CancelledError: self._led_on(); break`
+    # handler: whichever phase of the ~2.9s-on/0.1s-off cycle the task is interrupted in,
+    # cancellation must leave the LED lit - _hotspot_client_connected()/reconnect_wifi() cancel this
+    # task precisely to hand back a steadily-on LED. The other ledflash tests only prove the task is
+    # created and cancels cleanly, never driving an actual toggle; this one runs the cycle far enough
+    # to land in the off phase (the one phase where a missing handler would leave the LED dark) and
+    # then cancels there. _FastAsyncSleep collapses both real sleeps to a plain yield, so the cycle
+    # is driven by scheduling steps instead of ~3s of wall clock.
+    led = FakeLED()
+    client = make_client(ext_led=led)
+    run(client.set_wifi_led(True))
+
+    async def scenario() -> None:
+        task = asyncio.create_task(client._flash_led_off())
+        for _ in range(20):  # bounded: each yield lets the flash task advance one step of its cycle
+            await asyncio.sleep(0)
+            if led.state is False:
+                break
+        assert led.on_calls >= 1  # a real on-phase ran first - not cancelled before the loop started
+        assert led.state is False  # genuinely interrupted mid-cycle, not sitting in a trivially-on state
+        await _cancel(task)
+
+    with _FastAsyncSleep():
+        run(scenario())
+    assert led.state is True  # the cancel handler's own _led_on(), despite the off phase it interrupted
+    assert led.on_calls == led.off_calls + 1  # exactly one extra on(): the cancel handler's
 
 
 # ---------------------------------------------------------------------------
@@ -1045,13 +1102,59 @@ def test_hotspot_client_absent_arms_the_shutoff_timer_once() -> None:
 
 
 def test_hotspot_client_absent_shutoff_timer_fires_reconnect() -> None:
+    # The Timer callback itself only sets hotspot_timeout_trigger_event (no business logic inside
+    # the IRQ callback, see C.9) - _watch_hotspot_timeout() is the coroutine that actually calls
+    # reconnect_wifi() once woken by that flag.
     client = make_client(hotspot_time_min=1)
     client._hotspot_client_absent()
 
     async def scenario() -> bool:
+        watcher = client.start_hotspot_timeout_watcher()
         client.hotspot_timer.trigger()
         await asyncio.sleep(0)
-        return client.reconn_wifi
+        result = client.reconn_wifi
+        await _cancel(watcher)
+        return result
+
+    assert run(scenario()) is True
+
+
+def test_hotspot_timeout_watcher_calls_reconnect_wifi_directly_when_woken() -> None:
+    client = make_client(hotspot_time_min=1)
+    client._hotspot_client_absent()  # arms hotspot_timer + starts a real ledflash task
+    ledflash_before = client.ledflash
+
+    async def scenario() -> bool:
+        watcher = client.start_hotspot_timeout_watcher()
+        client.hotspot_timeout_trigger_event.set()
+        await asyncio.sleep(0)
+        result = client.reconn_wifi
+        await _cancel(watcher)
+        assert ledflash_before is not None
+        await _cancel(ledflash_before)  # reconnect_wifi() already cancelled it - let it settle
+        return result
+
+    assert run(scenario()) is True
+
+
+def test_hotspot_client_absent_self_heals_a_dropped_timer_callback() -> None:
+    # Simulates the documented soft-callback-drop risk (SPECIFICATION.md Part F): the Timer never
+    # fires, but this method's own periodic re-invocation (every wifi_refresh_sec, matching the
+    # main loop's real cadence) must still eventually notice and force the reconnect itself.
+    client = make_client(hotspot_time_min=1, wifi_refresh_sec=5)
+    client._hotspot_client_absent()  # arms the timer (never triggered)
+    assert client.hotspot_timer_running is True
+    # hotspot_time = 60000ms; wifi_refresh_sec=5 -> the 2x-hotspot_time threshold is 24 ticks.
+    # One tick short - the next call below is the one that must cross it.
+    client.hotspot_timer_ticks_since_armed = 23
+
+    async def scenario() -> bool:
+        watcher = client.start_hotspot_timeout_watcher()
+        client._hotspot_client_absent()  # crosses the threshold this tick
+        await asyncio.sleep(0)
+        result = client.reconn_wifi
+        await _cancel(watcher)
+        return result
 
     assert run(scenario()) is True
 
@@ -1059,6 +1162,16 @@ def test_hotspot_client_absent_shutoff_timer_fires_reconnect() -> None:
 def test_hotspot_client_absent_degrades_gracefully_when_alarm_pool_exhausted() -> None:
     client = make_client(hotspot_time_min=1)
     with _RaiseOnArm():
+        client._hotspot_client_absent()  # must not raise despite the timer failing to arm
+    assert client.hotspot_timer_running is False  # left False so the next cycle retries arming it
+
+
+def test_hotspot_client_absent_degrades_gracefully_on_a_memory_error() -> None:
+    # Sibling of the OSError test above, for the other arm of _hotspot_client_absent()'s own
+    # `except (OSError, MemoryError)` - hotspot_timer_running stays False either way, so the next
+    # wifi_refresh_sec cycle retries arming it rather than getting stuck.
+    client = make_client(hotspot_time_min=1)
+    with _RaiseOnArm(MemoryError):
         client._hotspot_client_absent()  # must not raise despite the timer failing to arm
     assert client.hotspot_timer_running is False  # left False so the next cycle retries arming it
 
@@ -1578,14 +1691,16 @@ def test_reset_wlan_connect_state_resets_sta_established_to_seeking() -> None:
     assert client._conn_phase == _PHASE_STA_SEEKING
 
 
-def test_reset_wlan_connect_state_resets_deactivated_to_seeking() -> None:
-    # A task restart (e.g. after the hw_op_failed streak gives up) pulls the state machine back out
-    # of the terminal deactivated phase - matches the old code's unconditional wlan_deactivated=False
-    # reset here.
+def test_reset_wlan_connect_state_preserves_deactivated_phase_across_a_restart() -> None:
+    # A task restart (e.g. after the hw_op_failed streak gives up) must NOT pull the state machine
+    # back out of the terminal deactivated phase - _PHASE_DEACTIVATED is a deliberate, permanent
+    # WLAN-off state (SPECIFICATION.md Part A.4: a physical power-cycle is the accepted recovery
+    # path), same special-casing as _PHASE_HOTSPOT just above. BACKLOG.md's open-question item 1,
+    # now decided/hardened.
     client = make_client()
     client._conn_phase = _PHASE_DEACTIVATED
     client._reset_wlan_connect_state()
-    assert client._conn_phase == _PHASE_STA_SEEKING
+    assert client._conn_phase == _PHASE_DEACTIVATED
 
 
 def test_reset_wlan_connect_state_clears_failure_counters_and_hotspot_started_once() -> None:
@@ -1906,7 +2021,7 @@ def _dns_query_packet(domain: str) -> bytes:
     return header + qname + b"\x00\x01\x00\x01"
 
 
-async def _start_real_hotspot(client: asy_conn_time, server_addr: "tuple[str, int]") -> None:
+async def _start_real_hotspot(client: AsyConnTime, server_addr: "tuple[str, int]") -> None:
     # Same-subnet own_ip/netmask as the test client's own loopback source address, so
     # DNSServer.run()'s subnet filter doesn't reject the test query as off-subnet.
     _wlan(client)._ifconfig = ("127.0.0.1", "255.255.255.0", "127.0.0.1", "127.0.0.1")

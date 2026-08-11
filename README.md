@@ -17,241 +17,22 @@ sharing the `neu` build (same sensors, different GPIO wiring). `dev` is a bench/
 | wozi | SCD30, SGP40, BMP388 (pressure/temp) | yes | active | `html_raw/wozi` |
 | dev | SCD30, SGP40, SHTC3, MPRLS, ISL29125 | no | disabled | `html_raw/dev` (bench rig) |
 
-## Repository layout
+## Repository layout, architecture, refactor status, and the build process
 
-```
-datasheets/              Real datasheet PDFs for the chips this codebase drives - see CLAUDE.md
-  bmp3xx/, fram/, pico w/, scd30/, sgp40/
-html_raw/               Hand-written HTML/CSS/JS for the web UI, per device config
-  arzi/, dev/, wozi/       device-specific pages
-  general/                 shared assets (style.css, functions.js, favicon.ico, nettimeconfig.html)
-modules/                Auto-started entry points, one set copied into the firmware build per device
-  _boot.py                 mounts the flash filesystem, then starts the sensor task
-  sensortask-{arzi,dev,neu,wozi}.py   per-device application (renamed to sensortask.py at build time)
-python/
-  CommonDrivers/          shared across all device configs, always copied into the build
-  IndividualDrivers/      only copied in if a given device config needs them
-  Manifest/manifest.py    MicroPython freeze manifest used by the build
-improved-quality/        WIP refactor target (out of scope for day-to-day work; see CLAUDE.md)
-src/                     Files moved out of improved-quality/ once fully reviewed/tested - see
-                          src/README.md for the promotion checklist
-DRIVER_SPEC.md           Shared sensor driver architecture/interface spec - what a new driver's
-                          code should look like; src/README.md's checklist is how you know it's
-                          good enough
-tests/                   Unit tests for src/, run under a real MicroPython interpreter - see
-                          tests/README.md
-toolchain/               MicroPython/pico-sdk/picotool build-environment installer
-  versions.toml             single source of truth for the target MicroPython version - see
-                            "Toolchain setup" below for how everything else derives from it
-  setup_toolchain.py        `setup`/`test` - builds RP2040 firmware and the MicroPython Unix port (for tests/)
-build-{arzi,dev,neu,wozi}.sh   per-device build scripts
-update_and_install.txt   handwritten toolchain setup notes (MicroPython/pico-sdk/picotool)
-pyproject.toml           dev-tooling config (ruff/mypy/pytest/uv) - see "Code quality tooling" below
-scripts/                 lint.sh / typecheck.sh / test.sh - manual code-quality check runners
-.github/workflows/       CI: runs lint.sh/typecheck.sh/test.sh on every push/PR
-```
+**Moved to [`SPECIFICATION.md`](SPECIFICATION.md)**, the project's central specification document
+— Part A (repository layout, architecture at a glance, refactor status) and Part B (toolchain
+internals + building this project's firmware). This section used to hold all of that content
+directly; it's now a pointer, as part of a first-pass doc-scatter cleanup that consolidated
+`DRIVER_SPEC.md`, `src/README.md`, `tests/README.md`, `toolchain/README.md`, and these sections
+into one place. See "Further reading" below for the complete doc map.
 
-## Architecture at a glance
-
-- **Sensor Reader/Driver split** — every `IndividualDrivers/asy_<chip>_driver.py` has a low-level
-  chip driver (register-level I2C/SPI calls, several adapted from Adafruit CircuitPython
-  libraries) plus a `*_Reader` wrapper providing the common async-task surface
-  (`start_asy_read()`/`start_asy_trigger()`/`start_timer()`, a lock-protected `DataManager`, an
-  error counter, and config callbacks). New sensors are expected to follow this shape.
-- **Bus layer** — `asy_i2c_driver.py`/`asy_spi_driver.py` wrap `machine.I2C`/`machine.SPI` with an
-  `asyncio.Lock` and a CircuitPython-style `async with device as dev:` pattern so multiple sensors
-  can share one physical bus.
-- **Config management** — the deployed, pre-refactor codebase (`python/`, `modules/`) uses
-  `async_manager.ConfigManager`: one ad hoc top-level instance per device, flat JSON file on the
-  flash filesystem, self-heals on corruption/missing keys by overwriting the *entire* file with
-  hardcoded defaults (a known data-loss risk on firmware upgrades that add config keys — see
-  BACKLOG.md). `src/config_manager.py`'s `ConfigManager` replaces this in the refactor: every
-  module with user-settable configuration (each sensor `*_Reader`, `asy_wifi_service.py`,
-  `asy_ntp_client.py`, `asy_notification_service.py`, ...) owns its own schema (a `ConfigSchema`
-  tuple) and its own config file/instance via a public `cfg_schema` attribute (also available
-  through the base-class-owned `get_cfg_schema()` getter), instead of one shared grab-bag — see
-  `DRIVER_SPEC.md` and CLAUDE.md's "Code quality tooling"/BACKLOG.md for the migration state.
-- **REST API pipeline** — the *deployed* pipeline (`python/CommonDrivers/api_helpers.py`, left
-  untouched/out of scope — see CLAUDE.md) has every `PUT` handler follow `cmd_pre_check` →
-  `init_json_from_cfg` → `update_valid_json` → `set_sensor_value` → `cmd_post_check` (validate →
-  load current → per-field validate → apply to sensor → persist + post-hooks).
-  `src/api_response.py` is its generalized replacement, and is now wired into every real REST
-  handler in `improved-quality/sensortask-wozi.py` (`improved-quality/api_helpers.py`'s own copy of
-  the old pipeline has been removed entirely, once that file was fully migrated off it — see
-  BACKLOG.md): `base_classes.py`'s `_set_dict_cfg()` gives every `SensorReaderConfig` a generic,
-  schema-driven setter mirroring `get_dict_cfg()`'s existing generic getter, and
-  `api_response.py`'s `make_response()`/`parse_cmd_request()`/`handle_set_cmd()` replace the old
-  per-endpoint validate→apply→persist glue with one small, open-catalog response envelope — see
-  `DRIVER_SPEC.md` section 5 for the full mechanism.
-- **FRAM storage** (`asy_fram_driver.py`/`asy_fram_manager.py`, arzi/neu/wozi only) — a bump
-  allocator handing out chunks stored as two redundant copies, so an abrupt power-loss or watchdog
-  reset mid-write still leaves one valid copy to recover. Currently used for SGP40's VOC
-  baseline/humidity-compensation backup.
-- **LED notification signalling** — split into `asy_neopixel_driver.py` (pure LED hardware:
-  overlay toggle, dimmed ramp-up/ramp-down, internal/external arbitration for the one shared
-  pixel; no config schema) and `asy_notification_service.py` (`NotificationCoordinator`: generic
-  threshold-triggered signalling replacing the legacy file's hardcoded CO2/VOC/Humidity checks,
-  driving the LED through the former's `request_signal()`). Promoted from
-  `improved-quality/neopixel_signal.py` — see CLAUDE.md's architecture reference for the full
-  split rationale.
-- **Networking** — split into three peers, wired together by each `sensortask-*.py`, not one
-  owning the others: `asy_wifi_service.py` (STA-mode WiFi with captive-portal AP+hotspot fallback),
-  `asy_ntp_client.py` (NTP client with CET/CEST DST math), and `asy_dns_client.py` (a non-blocking
-  DNS resolver replacing `socket.getaddrinfo()` — see BACKLOG.md). The deployed, pre-refactor
-  codebase (`python/`, `modules/`) still uses the older monolithic `async_connect.py`.
-- **Task supervisor** (`main()` in every `sensortask-*.py`) — two-tier self-healing: dead tasks are
-  silently restarted (decaying error score); if the error score exceeds a threshold, the loop stops
-  feeding the hardware watchdog and lets it force a hard reset. Units are meant to run for years
-  unattended.
-- **Frontend** — hand-written HTML/CSS/vanilla JS, no build tooling. At build time the per-device
-  folder + `general/` are gzipped and packed into a `frozen_html.py` module via `freezefs`, served
-  through Microdot's `send_file(..., compressed=True)`.
-
-## Build process
-
-### Toolchain setup (`toolchain/setup_toolchain.py`)
-
-Building firmware needs a matching set of MicroPython + `pico-sdk` + `picotool` + the ARM
-cross-compiler. Getting these four to actually agree with each other used to be a manual,
-error-prone recipe (`update_and_install.txt`); it's now one scripted, updatable command. Full
-design details live in `toolchain/README.md` — this section is the everyday-usage cheat sheet.
-
-**Bumping the MicroPython version**: change `toolchain/versions.toml`'s `[micropython] ref`
-(by hand, or via `setup_toolchain.py --latest` — see "Updating" below). That's the *only* place
-to change it — everything else derives from that one value automatically, with no second file to
-keep in sync:
-
-- The matching `pico-sdk`/`picotool` versions (see "How it works" in `toolchain/README.md`).
-- The MicroPython type stubs `scripts/typecheck.sh` uses for `mypy` (see "Code quality tooling"
-  below) — it reads this same `ref` and installs the matching stub release, failing with a clear
-  error instead of silently drifting if no matching stub release exists upstream yet.
-- The Unix port build (`ports/unix`, used for running tests under the real interpreter later) —
-  it's built from the same MicroPython clone `setup_toolchain.py` already checks out at this
-  `ref`, not a separately-versioned artifact.
-
-Every build step runs in an explicitly constructed environment (fixed `PATH`, a small
-variable allowlist), not whatever happens to be ambient in your shell — a stray `CC`/`CFLAGS`,
-a shadowing binary earlier in `PATH`, or a leftover `PICO_SDK_PATH` from an unrelated project
-can't silently change what gets built. Verified adversarially against a deliberately poisoned
-environment (fake compilers/tools placed ahead in `PATH`, garbage build-flag env vars) — see
-"Environment isolation" in `toolchain/README.md`.
-
-**Prerequisites** (a stock Ubuntu 24.04 install already satisfies all of these):
-
-- A Debian/Ubuntu system with the `universe` component enabled in apt sources (on by default for
-  every official Ubuntu image/ISO — only relevant if you're on a deliberately minimal base, e.g. a
-  `debootstrap`-built rootfs, which only enables `main` unless told otherwise). `gcc-arm-none-eabi`
-  and friends live in `universe`.
-- `sudo` access (the script uses it for `apt-get install` and `picotool`'s `make install`).
-- [`uv`](https://docs.astral.sh/uv/) itself installed — `pip install uv`, or the official installer
-  `curl -LsSf https://astral.sh/uv/install.sh | sh` (the script's own dependencies are then handled
-  automatically by `uv run`, no separate `pip install`/venv step needed for anything else).
-- Outbound network access to GitHub and your distro's package mirrors.
-
-**Verified from scratch on a genuinely clean Ubuntu 24.04 system** (a `debootstrap`-built `noble`
-chroot with nothing preinstalled beyond the minimal base — no apt cache, no build tools, no `uv`):
-installs every dependency itself and passes verification. (That specific clean-chroot run predates
-the 8-step chain below and covered the simpler design it replaced — see `toolchain/README.md`'s
-"Evidence this actually works" for exactly what's been re-verified since, and CLAUDE.md's "Pre-push
-verification" for when a fresh clean-chroot pass is required again.)
-
-**Everyday usage:**
+Everyday build commands, unchanged:
 
 ```sh
-# First-time setup (also the command you re-run for everyday use — see "Updating" below)
-uv run toolchain/setup_toolchain.py
-
-# Build a specific MicroPython version instead of the pinned default
-# (e.g. matching the version actually deployed on units today, see CLAUDE.md)
-uv run toolchain/setup_toolchain.py --micropython-ref v1.26.1
-
-# Install somewhere other than the default ~/pico-toolchain
-uv run toolchain/setup_toolchain.py --toolchain-dir /path/to/toolchain
+uv run toolchain/setup_toolchain.py              # first-time setup / everyday re-run (see SPECIFICATION.md Part B)
+uv run toolchain/setup_toolchain.py --latest      # detect + pin + install newest stable MicroPython
+uv run toolchain/setup_toolchain.py test          # offline re-verify an existing install (~30s)
 ```
-
-**Updating** an existing install is the same command, not a separate procedure:
-
-```sh
-# Detect + pin + install the newest stable MicroPython release
-uv run toolchain/setup_toolchain.py --latest
-
-# Or bump toolchain/versions.toml's [micropython] ref by hand, then:
-uv run toolchain/setup_toolchain.py
-```
-
-Either way, the matching `pico-sdk`/`picotool` versions are re-derived automatically and only
-what's actually changed gets rebuilt — including, deliberately, not rebuilding `mpy-cross` at
-all if its source hasn't changed since last time (see below for when you don't want that).
-
-**Forcing a truly from-scratch rebuild** without re-cloning the (multi-gigabyte) git sources:
-
-```sh
-uv run toolchain/setup_toolchain.py --clean
-```
-
-Normal `setup`/update runs are intentionally incremental where it's safe to be: the firmware and
-Unix-port builds always fully recompile (so "builds with zero errors/warnings" stays a genuine
-proof every run), but `mpy-cross`'s build directory is otherwise left alone and just rebuilds
-whatever actually changed. `--clean` wipes every build-artifact directory (`picotool/build`,
-`mpy-cross/build`, `ports/rp2/build-<board>`, `ports/unix/build-standard`) before building,
-bringing the toolchain back to a from-scratch build state on demand — useful if you suspect a
-stale build artifact, or just want to confirm a truly clean build still succeeds.
-
-**Testing** an already-installed toolchain (no `setup`/network/apt work, just a fast rebuild +
-re-check — ~30s vs. minutes for `setup`):
-
-```sh
-uv run toolchain/setup_toolchain.py test
-```
-
-`setup` provisions the toolchain once, `test` is the repeatable, offline gate that checks it
-still builds cleanly. `scripts/test.sh` (see "Code quality tooling" below) relies on this
-directly: it runs `setup` automatically the first time it needs the Unix-port interpreter, then
-reuses the cached build on later runs — including in CI, via `.github/workflows/ci.yml`.
-
-**What a successful `setup` or `test` run proves**, every time — an 8-step frozen-bytecode
-verification chain (`run_verification_sequence()`), each step gating the next:
-
-1. Write a small test module.
-2. Build `mpy-cross` (the cross-compiler).
-3. Cross-compile the test module with `mpy-cross` directly.
-4. Build the MicroPython Unix port with the test module frozen in — zero compiler errors/warnings.
-5. Import the frozen module *by name* inside that Unix port binary (no source `.py` file anywhere
-   on disk) and check its result — proves `mpy-cross` and the Unix port build both actually work.
-   This is the host-side interpreter used for running tests later, see "Code quality tooling"
-   below and `tests/README.md`'s "Why not pytest".
-6. Build the RP2 firmware for the target board with the same test module frozen in — zero
-   errors/warnings (build-only; there's no RP2 hardware here to run it on).
-7. Clean up the frozen-bytecode build artifacts from steps 4–6.
-8. Rebuild a vanilla (non-frozen) Unix port — the standing test rig `scripts/test.sh` runs tests
-   under.
-
-Full step-by-step rationale and verification evidence: `toolchain/README.md`'s "Verification" and
-"Evidence this actually works".
-
-### Building this project's firmware
-
-Each `build-<device>.sh`: assembles `python/build/` from `CommonDrivers` + the manifest + the
-device's needed `IndividualDrivers` + gzipped/frozen HTML → temporarily swaps `modules/_boot.py`
-and `modules/sensortask-<device>.py` (renamed to `sensortask.py`) into the upstream MicroPython
-`ports/rp2/modules/` directory → runs
-`make -C ports/rp2 BOARD=RPI_PICO_W FROZEN_MANIFEST=<path>` → copies out `firmware.uf2` → restores
-the original `_boot.py`.
-
-This still assumes the repo's `python/` directory is checked out as `py-include/python` alongside
-the `micropython` tree that `toolchain/setup_toolchain.py` sets up, with `FROZEN_MANIFEST`'s
-hardcoded `/home/nico/rpi_pico/...` path in each `build-<device>.sh` genericized to match — not yet
-done, see BACKLOG.md.
-
-## Refactor in progress
-
-The `improved-quality/` refactor (see "Repository layout" above) isn't just a cleanup — it targets
-the most recent *stable* MicroPython/pico-sdk/picotool/Microdot releases, expands error handling
-and bus/sensor fault recovery considerably beyond what's described above, and adds unit tests,
-mypy, ruff, and a CI pipeline (including a real firmware build, eventually — the current pipeline
-covers lint/type-check/unit-tests only) that don't exist for the current codebase at all. Files
-move to `src/` once fully reviewed and tested against that bar — see `src/` and `tests/` in
-"Repository layout" above. See BACKLOG.md's "Refactor targets not yet done" for what's still open.
 
 ## Code quality tooling
 
@@ -285,47 +66,53 @@ pytest/CPython, etc.).
 scripts/test.sh --coverage
 ```
 
-Reports line coverage of `src/` only, from the same `tests/test_*.py` suite `scripts/test.sh`
-already runs — no coverage threshold is enforced, this only reports numbers, it never fails the
-build over them. Since `coverage.py` itself only runs under CPython while `src/` only ever runs
-under the real MicroPython Unix-port interpreter, collection and reporting are two separate
-stages (`tests/_coverage_runner.py` inside MicroPython, `scripts/_render_coverage.py` under
-CPython via `uv run`) glued together through `coverage.py`'s own `CoverageData` API — see
-`tests/README.md`'s "Coverage" section for the full pipeline. Uses the same Unix port binary as
-plain `scripts/test.sh` (it's always built with `MICROPY_PY_SYS_SETTRACE=1`, a negligible,
-behavior-neutral cost when unused — see `build_unix_port()` — so there's no second interpreter to
-build or cache); the RP2040 firmware build never gets this flag.
-
-Produces, at the repo root (all gitignored, regenerated every run):
-
-- `htmlcov/index.html` — browsable line-by-line HTML report.
-- `coverage.xml` — Cobertura XML.
-- `coverage_summary.md` — a markdown table.
-
-**Locally, `scripts/test.sh --coverage` does not open anything automatically** — it only prints
-the three paths above; open `htmlcov/index.html` yourself (e.g. `xdg-open htmlcov/index.html` on
-Linux, `open htmlcov/index.html` on macOS) to browse the HTML report.
-
-**On GitHub, there is no visualization on the repo's main page** — no README badge, no GitHub
-Pages. What CI (`.github/workflows/ci.yml`) actually does with each of the three files, all as
-non-gating, `continue-on-error: true` steps:
-
-- `coverage_summary.md` is appended to that workflow run's **Job Summary** — click into the
-  specific run under the repo's Actions tab, the table is at the bottom of that run's page. This
-  needs no external service and always works.
-- `htmlcov/` is uploaded as a **downloadable build artifact** on that same run's page — GitHub
-  doesn't render it inline; download the zip and open `index.html` locally to browse it.
-- `coverage.xml` is uploaded to [Codecov](https://about.codecov.io/) (free for public repos), which
-  can add PR comments/checks and its own hosted dashboard — but only once this repo is registered
-  at [codecov.io](https://about.codecov.io/) and either a `CODECOV_TOKEN` repo secret or Codecov's
-  OIDC/tokenless support is set up; that account-linking step hasn't been done yet, so today this
-  step just runs and silently produces nothing visible.
+Reports `src/`-only line coverage; non-gating, never fails the build. Full pipeline, output paths,
+and CI behavior (Job Summary, build artifact, Codecov status): **moved to
+[`SPECIFICATION.md`](SPECIFICATION.md) Part E.5, "Coverage"**.
 
 ## Further reading
 
-- **CLAUDE.md** — AI-session operating constraints and architecture reference.
-- **BACKLOG.md** — active open questions and not-yet-done work; see its own opening paragraph for
-  the full scope. Resolved items move into this file or CLAUDE.md instead of staying there.
-- **DRIVER_SPEC.md** — the shared sensor driver architecture/interface spec extracted from the
-  three drivers already in `src/`; what a new driver's code should look like, given a datasheet
-  and the developer's own design decisions.
+Every supporting doc in the repo, in one place — added to as a first pass at pulling scattered
+specs/guidelines into a single map rather than leaving them locatable only by cross-reference.
+When a new doc is added, add it here too instead of letting the map go stale again.
+
+**Standing operating docs** (permanent, kept current):
+
+- **CLAUDE.md** — AI-session operating constraints: hard rules, working agreements, PR workflow,
+  pre-push verification. Start here for how AI sessions should operate in this repo. Its former
+  Platform-target/Architecture-reference/Microdot content now lives solely in `SPECIFICATION.md`
+  (Parts F/A.4/A.5) — CLAUDE.md carries short pointers to those spots instead of restating them,
+  so read `SPECIFICATION.md` directly for that material (see its front matter for the tradeoff
+  this creates: that content is no longer auto-loaded into every session for free).
+- **BACKLOG.md** — active open questions, not-yet-done refactor targets, and deferred/out-of-scope
+  work; see its own opening paragraph for the full scope. Resolved items move into this file or
+  CLAUDE.md instead of staying there — it's working memory, not a changelog.
+
+**The central specification** (permanent, code-facing):
+
+- **[`SPECIFICATION.md`](SPECIFICATION.md)** — the single central specification document:
+  repository/architecture overview, the toolchain/build-environment installer, the sensor driver
+  architecture spec, the `src/` production-quality checklist, testing & coverage, and
+  MicroPython/RP2040 platform-target facts — all in one place, organized into lettered Parts
+  (A-F) for different needs. Produced by a first-pass doc-scatter cleanup that merged
+  `DRIVER_SPEC.md`, `src/README.md`, `tests/README.md`, `toolchain/README.md`, most of this
+  file's former "Repository layout"/"Architecture at a glance"/"Refactor in progress"/"Build
+  process" content, and the spec-shaped parts of `CLAUDE.md`/`BACKLOG.md` into one document. Start
+  here for "how does this codebase actually work" or "what shape should a new driver's code take."
+- **DRIVER_SPEC.md**, **`src/README.md`**, **`tests/README.md`**, **`toolchain/README.md`** — now
+  short stub files pointing into `SPECIFICATION.md`'s Parts C, D, E, and B respectively, kept so
+  existing links/references throughout the repo still resolve to a real file. Read
+  `SPECIFICATION.md` directly rather than these.
+
+**Temporary planning doc** (kept live — not a periodic-cleanup artifact):
+
+- **WIRING_CONTRACT.md** — the standing reference for the eventual real rewrite ("Stage 1") of
+  `improved-quality/sensortask-wozi.py`'s construction sequence: real FRAM-chunk construction order, the constructor-injection
+  dependency graph between modules, already-found mechanical gaps, and forward REST-API notes. Its
+  own facts have no other permanent home, so it stays up to date as `src/`/`sensortask-wozi.py`
+  change, not just at some periodic pass's own close — deleted only once Stage 1's real rewrite
+  actually lands and supersedes it.
+
+`AUDIT_PLAN.md`, the master action list for the now-completed full `src/` audit, was deleted once
+the audit closed — everything permanent it settled was migrated into `SPECIFICATION.md` (the
+style-guideline harmonization it drove lives in Parts C/D) first.

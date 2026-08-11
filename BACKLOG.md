@@ -7,147 +7,6 @@ operating constraints/architecture reference) or README.md (human-facing orienta
 migrated there rather than duplicated here. See README.md for orientation, CLAUDE.md for operating
 constraints.
 
-## Planned: full `src/` audit (not started)
-
-Owner intent, captured 2026-08-06 for a future session — a deep pass over the *entire* current
-`src/` contents (not just whatever file was most recently promoted), aimed at getting the codebase
-ready to be wired up together in `sensortask-*.py`.
-
-### Required kickoff procedure (owner-specified, 2026-08-06) — do not start coding first
-
-The audit itself must open with a planning sequence, not with picking a file and starting in:
-
-1. Read the goals/lenses list below in full, and this file's other still-open items relevant to
-   `src/`.
-2. Read the full project documentation (all markdown per the "Documentation sweep" item below,
-   plus every module's own docstring/comments) before touching any code.
-3. Read the actual project files — every current `src/` file plus `improved-quality/sensortask-
-   wozi.py` (per the "sensortask-wozi wiring study" item below) — not just the docs describing
-   them.
-4. From steps 1-3, produce a **detailed, fine-grained action list** of the concrete steps the audit
-   actually consists of (not the high-level goals/lenses below restated — the real, file-by-file/
-   check-by-check breakdown those goals expand into).
-5. **Second pass over that list**: validate it's complete and detailed enough to actually execute
-   against — not a first draft treated as final.
-6. **For each step in the list, identify the appropriate external reference material** (datasheet,
-   upstream repo, MicroPython dev-forum/issue-tracker discussion, official docs, ...) and actually
-   read it *before* doing that step — matching this project's own standing rule (see
-   `src/README.md` section 1) of verifying against current authoritative sources rather than
-   training memory.
-7. **Add an explicit goal definition to each step** — what "done" concretely means for that step,
-   not just what to look at.
-8. **Add quality measures to each step and its goal(s)** — the specific, checkable bar that step
-   must clear before it counts as complete (mirroring `src/README.md`'s promotion checklist's own
-   shape: concrete, verifiable criteria, not "looks fine").
-9. **Reality-check the resulting goals against the actual code** — for each step, confirm its goal
-   and quality measures are sufficient and correct against what the real files actually contain,
-   before treating the plan as final (a goal written before actually reading the relevant code can
-   be wrong or incomplete in ways only visible once you look).
-10. **Stop and hold one feedback/discussion round with the project owner once the list reaches this
-    point** — do not proceed into actually making changes on the strength of a self-validated plan
-    alone. This is a deliberate, required checkpoint, not an optional courtesy.
-
-Only after that discussion round concludes does the audit itself (the goals/lenses below) actually
-start.
-
-Goals/lenses for that pass, in the owner's own framing:
-
-- **Lean, catch-all error handling over defensive pre-checks, everywhere** — the same correction
-  already applied to `asy_neopixel_driver.py`/`asy_notification_service.py` this session (prefer a
-  try/except wrapping the actual computation over explicit isinstance/NaN/length pre-checks; this
-  is a small, resource-limited device, not a context that benefits from exhaustively enumerating
-  every possible bad input up front). Check every file for the same over-guarding pattern, not just
-  the two already fixed.
-- **Trust the type contracts** — no runtime checking for type violations our own code can't
-  actually produce; we own every caller.
-- **Simplify without changing behavior** — actively look for code that's more complex than it needs
-  to be and flatten/simplify it, preserving observed behavior.
-- **Global style/handling consistency** — the same coding style and the same handling of equivalent
-  situations everywhere. Concrete example already found and missed once: `cettime()`/`_now()`
-  already had an established simple try/except pattern for NaN/inf/overflow that a newer file
-  didn't follow at first — the audit should actively hunt for other files that reinvent a handling
-  scheme something else in `src/` already settled, not just check each file in isolation.
-- **Hunt for repeated/boilerplate/schematic code across files** that would be better shared —
-  candidate for a helper function or pushed down into `base_classes.py` instead of being
-  copy-pasted per module.
-- **The audit's purpose is wiring-readiness** — anything found that would cause a problem once
-  `src/` modules are actually wired together (not just a style nit) should be fixed as part of the
-  audit itself, not just noted.
-- **Thorough currency check against the pinned MicroPython version's own source, current rp2 port
-  docs, and MicroPython dev-forum/issue-tracker findings** — for every MicroPython-facing
-  construct/function in `src/`, check not just "is this correct" but "is there now a newer/better
-  way MicroPython added to do this," and that error handling around it is clean/complete. Examples:
-  newly widened type support for `micropython.const()`, or real `asyncio` timeout/cancellation
-  support having been added to something that previously lacked it (e.g. `socket.getaddrinfo()`).
-  This check is also a standing practice going forward independent of this one-off audit — see
-  CLAUDE.md's "Platform target" section (duplicated there deliberately, since this audit-list entry
-  itself goes away once the audit is done).
-- **Scan every test file exercising `src/` (and `ext/microdot.py`) for mocks of a module that has
-  since been promoted into `src/` itself** — a test written while some dependency was still
-  unpromoted may still be patching/faking that dependency instead of exercising the real, now-
-  existing promoted module. Each occurrence found is also a chance to strengthen coverage, not just
-  swap the mock out: once the real module is wired in, add or enrich tests to actually exercise the
-  integration, not just restore a pass. **Never drop a test as part of this** — every existing test
-  gets updated, improved, or extended, never deleted outright.
-- **Documentation sweep as part of the same pass**: all markdown (README.md, CLAUDE.md,
-  BACKLOG.md, DRIVER_SPEC.md, `src/README.md`, `tests/README.md`, `toolchain/README.md`) and all
-  in-code comments,
-  including comments already present in the not-yet-promoted `sensortask-*.py` files. Many open
-  items (in this file and inline) were flagged early in the promotion process as deferred/
-  unknown-scope/needs-discussion — revisit every one of them with the fuller picture the codebase
-  has now instead of leaving the old flag standing by default; most should now be answerable,
-  fixable, or resolvable outright, some will need a real discussion (do those step by step, not
-  silently), and by the end the only open items left should be ones that are genuinely still open
-  because they depend on the not-yet-written `sensortask-*.py` wiring itself.
-- **Consolidate a single, comprehensive project code-style guideline, then re-apply it to
-  harmonize every file.** At an appropriate point within the audit (after the style-consistency/
-  boilerplate/currency findings above have actually been gathered across every `src/` file, not
-  before): extract the coding/error-handling/calling/writing style actually used across all of
-  `src/`, pick the best and most appropriate pattern wherever files disagree, and consolidate that
-  into one detailed guideline document with no stylistic noise/ambiguity left between files. Blend
-  in the existing style-bearing docs rather than leaving them freestanding — pull in the "Recipe
-  list" and `DRIVER_SPEC.md` (already confirmed broader than just drivers) as source material, not
-  as documents to keep separately. The result is a single guideline with multiple sections (driver
-  creation as one of them, but several more — general module structure, error handling, config
-  schema conventions, comment/docstring length, etc.), detailed enough to make all project code
-  harmonic and optimal, and **replaces** both the recipe list and `DRIVER_SPEC.md` (their content
-  folded in, not left as duplicates) as the one basis any new file added to the project going
-  forward is written against. Once drafted, apply the guideline against every file already in the
-  audit's scope as a real pass, not just a review — this both tests the guideline's own
-  effectiveness (a guideline that can't actually resolve a real file's style is incomplete) and
-  finally harmonizes the code itself.
-- **Study `improved-quality/sensortask-wozi.py` itself, in depth, before consolidating anything** —
-  the actual integration target the whole audit is preparing `src/` to fit, not just another file
-  to read alongside it. Specifically trace: import structure and instantiation order (bump-allocator-
-  style modules like `AsyFramManager` depend on call order for on-chip layout — see CLAUDE.md — so
-  this file's construction sequence is itself load-bearing, not incidental); the dependency graph
-  between modules as wired here (who holds a reference to whom, e.g. `NotificationCoordinator`'s
-  `request_signal_cb` into `NeopixelDriver`); how `get_task_starters()`/`get_timer_starters()` are
-  actually collected and handed to `system_service.py`'s task/timer supervisor; how task death,
-  restart, and the decaying error-score/watchdog escalation actually observe and react to each
-  registered task; and any shared/common structures spanning modules — in particular the locked
-  measurement-data array/pattern each `*_Reader` exposes and how a REST handler actually reads
-  through it today. For each already-promoted `src/` module, confirm it actually fits this real
-  wiring shape (not just its own isolated review) — an adaptation surfacing now, before final wiring,
-  is cheap; the same gap surfacing only when `sensortask-*.py` itself is rewritten against the
-  refactor would not be. Treat mismatches found here as real audit findings across the whole `src/`
-  scope, not just notes on `sensortask-wozi.py` itself.
-- **Prepare a common, module-side story for exposing FRAM-backed error/trace history over the API,
-  before the API layer itself needs it.** The legacy codebase only ever tracked a last-error value
-  plus a counter; every promoted module now has `PrintLogHistory`/`PrintLogHistoryStore`'s much
-  richer in-memory-or-FRAM trace history behind it (see CLAUDE.md/`tests/README.md`), and more
-  modules keep gaining one as they're promoted. Audit whether every module's own history is already
-  exposed through a consistent shape (`get_error_counter()`'s existing dict contract per
-  DRIVER_SPEC.md section 4.2 is the closest existing precedent — confirm it actually generalizes to
-  every current and upcoming module, not just the three original sensor drivers) so that when the
-  REST layer is actually wired to surface this, it can do so the same way for every module instead of
-  improvising a one-off shape per endpoint. This is preparation, not new REST wiring itself — the
-  goal is that nothing about a module's own error-history shape needs to change once that wiring
-  starts.
-
-Not started yet — this is a placeholder for a dedicated future session/pass, not a task to pick up
-opportunistically mid-promotion.
-
 ## Refactor targets not yet done
 
 - **Bare `except:` is forbidden in refactored code** (`except Exception:` or narrower required).
@@ -158,21 +17,26 @@ opportunistically mid-promotion.
   land before/alongside this.
 - **Mypy shall be configured to disallow `Any` types** (owner-specified, not yet implemented). The
   closest existing option is `disallow_any_explicit`; `pyproject.toml` deliberately stops short of
-  it and the other `--strict`-only checks today. Blast-radius check done: `Any` appears ~29 times
-  across `src/`/`tests/`, almost entirely in test-file monkeypatch/wrapper classes duck-typing a
-  real MicroPython object rather than reimplementing its interface — turning this on will need a
-  real typing strategy for those wrappers (e.g. `Protocol` classes matching just the overridden
-  methods, plus `__getattr__` delegation) worked out first, not just a flag flip.
+  it and the other `--strict`-only checks today. Blast-radius check (re-run, not stale): `Any`
+  appears ~190 times across 47 files in `src/`/`tests/` today. A large share is still test-file
+  monkeypatch/wrapper classes duck-typing a real MicroPython object rather than reimplementing its
+  interface, but a real, growing share is now legitimate `src/`-side usage too (`print_log.py`'s
+  variadic logging methods, `config_manager.py`'s generic value-checking helpers, opaque
+  `ticks_ms()`-typed values) — turning this on will need both a typing strategy for the test
+  wrappers (e.g. `Protocol` classes matching just the overridden methods, plus `__getattr__`
+  delegation) and a decision on how to type the genuinely-variadic/opaque `src/` cases, not just a
+  flag flip.
 - **FRAM bus-recovery is only partially wired up.** `asy_fram_driver.py`'s own `src/` promotion
   added device-identification/write-protect verification, but there's still no periodic/triggered
-  re-probe policy (`verify_present()`/`get_write_protected()`/`set_write_protected()` have zero
-  callers anywhere) and no task supervisor for FRAM specifically. Whoever wires this up must wrap
+  re-probe policy — `verify_present()` and `set_write_protected()` have zero callers anywhere;
+  `get_write_protected()` has exactly one, `_write()`'s own write-protection gate, which isn't a
+  re-probe of anything — and no task supervisor for FRAM specifically. Whoever wires this up must wrap
   the calls in the same `try/except Exception` discipline this file's other methods already use —
   `asy_fram_driver.py` doesn't catch its own inherited `RuntimeError` path on these three itself.
 - **Every deliberate system reset (reboot, bootloader entry, or a deliberate watchdog-starve
   give-up) must pause FRAM operations first and give it a brief wait before the reset actually
   happens** — a real risk (mid-write/mid-read power loss, MB85RS64V reads are destructively
-  read-then-rewritten internally per CLAUDE.md) that a reset triggered while a FRAM transaction is
+  read internally per `SPECIFICATION.md` Part A.4) that a reset triggered while a FRAM transaction is
   in flight could corrupt data, same class of concern as the dual-copy/status-byte design
   `asy_fram_manager.py` already guards against for power loss but not specifically for a
   self-triggered reset racing an in-progress transaction. Owner-flagged as important for the final
@@ -204,11 +68,11 @@ opportunistically mid-promotion.
   whole write-then-read transaction, `asyncio.sleep(0)` yield between phases) is the pattern to
   verify/extend, not start from scratch. (The one concrete gap this audit had already turned up —
   SCD30's low-level getter/setter forwards not logging via `self.pr.err_s()`, unlike BMP3xx's — is
-  now fixed; see DRIVER_SPEC.md section 7 for the settled forward-logging convention every driver
+  now fixed; see `SPECIFICATION.md` Part C.7 for the settled forward-logging convention every driver
   now follows. The broader "no gaps, no deadlock/starvation" audit itself is still open.)
 - **Common driver error classes across sensors — future direction, not designed or implemented
   yet.** Each driver currently defines and reports its own `errno`/`wrnno` values independently
-  (see DRIVER_SPEC.md section 7); the one exception is `errno=10` ("initial setup failed"), which
+  (see `SPECIFICATION.md` Part C.7); the one exception is `errno=10` ("initial setup failed"), which
   all three drivers already use for the same situation by independent convergence rather than by
   any enforced scheme. Project owner's stated direction: keep per-driver definition/reporting (not
   a single shared enum), but predefine a small set of common error *classes* so the same number
@@ -219,14 +83,14 @@ opportunistically mid-promotion.
   but flagged by the owner as implementable more efficiently — worth a cleaner implementation in
   the refactor without changing observed behavior. (Neopixel warning-flash sequencing was the other
   half of this item - resolved by the `src/asy_neopixel_driver.py`/`src/asy_notification_service.py`
-  promotion, see CLAUDE.md.)
+  promotion, see `SPECIFICATION.md` Part A.4.)
 - **No `@app.errorhandler` registrations exist anywhere yet** (confirmed: neither
   `improved-quality/sensortask-wozi.py` nor the deployed `python/CommonDrivers/`-based app
-  registers any). See CLAUDE.md's "Microdot / REST layer" section for what Microdot itself already
+  registers any). See `SPECIFICATION.md` Part A.5 for what Microdot itself already
   guarantees (every route-handler exception, including `MemoryError`, is already caught per-request
   and can't crash the server) versus what's still missing at our own layer. The base-class/
   `api_response.py` setter+response-envelope consolidation this depended on is now done (see
-  DRIVER_SPEC.md section 5) — `handle_set_cmd()` already provides its own defense-in-depth
+  `SPECIFICATION.md` Part C.5) — `handle_set_cmd()` already provides its own defense-in-depth
   try/except around one endpoint's dispatch, returning the consolidated `{"res": "ERR", ...}` shape
   via `make_response()`. What's still missing is wiring an actual `@app.errorhandler` registration
   into the real, live Microdot app in `improved-quality/sensortask-wozi.py` — out of scope for this
@@ -384,84 +248,39 @@ opportunistically mid-promotion.
 
 ## Open questions (need owner input or further investigation)
 
-1. **A task-level restart of `asy_wifi_service.py`'s `wlan_connect()` would silently undo permanent
-   WLAN deactivation**, though only through an essentially unreachable trigger path — flagged for
-   owner awareness, not fixed. `_conn_phase == _PHASE_DEACTIVATED`'s branch in `wlan_connect()`'s
-   main loop (`asy_wifi_service.py`, the `while True:` body) never returns — it just logs and
-   sleeps — so the task can only die while deactivated via an exception escaping that trivial
-   log-and-sleep branch, which no realistic MicroPython call there would raise. *If* that ever
-   happened, though, `_reset_wlan_connect_state()` (called at the top of every fresh `wlan_connect()`
-   invocation) only special-cases `_PHASE_HOTSPOT` staying as-is — any other phase, including
-   `_PHASE_DEACTIVATED`, gets reset to `_PHASE_STA_SEEKING`, silently re-enabling WLAN. CLAUDE.md
-   documents "a physical power-cycle is the accepted recovery path" for this deliberate safety
-   feature, which a task-level supervisor restart (distinct from a full device reboot) would
-   contradict if it were ever reachable. **Confirmed not a promotion regression**: the legacy
-   `python/CommonDrivers/async_connect.py`'s `wlanConnect()` has the identical shape —
-   `wlan_deactivated` is a local variable reset to `False` at the top of every fresh call, so a
-   restarted legacy task would behave the same way. Owner call needed on whether this
-   vanishingly-unlikely edge case is worth hardening (e.g. `_reset_wlan_connect_state()` also
-   special-casing `_PHASE_DEACTIVATED`) or left as-is, matching decades of uneventful legacy field
-   behavior.
-2. `modules/_boot.py`'s `import sensortask.py` (literal `.py`) — works reliably on real hardware,
+1. `modules/_boot.py`'s `import sensortask.py` (literal `.py`) — works reliably on real hardware,
    but MicroPython's documented freeze/import behavior says it should raise `ModuleNotFoundError`.
    Mechanism genuinely unresolved. **Do not "fix" without testing on real hardware first.**
-   Addressed during the refactor, not before.
-3. Config-schema migration is a real data-loss risk on the *current deployed* codebase —
+   Addressed during the refactor's final wire-up, not before.
+2. Config-schema migration is a real data-loss risk on the *current deployed* codebase —
    `ConfigManager` overwrites the entire config file with hardcoded defaults the moment one key is
    missing, so a firmware update adding a config key could silently wipe WiFi credentials/tuned
    values. **Decided: not patched on the current codebase** — accepted (reconfigure via web UI
    after a key-adding update). The refactor's per-sensor config model avoids this failure mode
    structurally, not by patching the current global-JSON codebase.
-4. MicroPython version target vs. upstream drift — deployed units run 1.26; upstream stable is
+3. MicroPython version target vs. upstream drift — deployed units run 1.26; upstream stable is
    1.28.0 as of the last check. **Decided**: deployed code stays pinned to 1.26 until a deliberate
    reflash campaign; the refactor is where the version target moves forward. 1.27→1.28 rp2-port
    changes checked so far look RP2350-specific, not RP2040-breaking, but not exhaustively checked
    against every module — re-check whenever the refactor picks a landing version.
-5. SCD30 `ForceCalRef` field procedure isn't written down anywhere — a real maintenance routine
-   exists (confirmed by owner) but the actual steps (reference concentration, exposure
-   conditions/timing, frequency) still need capturing from the owner.
-6. Does `config_manager.py`'s `write_config()` need long-block-lock-style coordination? Its
-   `open()`+`json.dump()` has no yield point, the same shape `__init__`'s read path had before the
-   cache-elimination redesign closed *that* concern. Whether a real RP2040 littlefs write of a
-   small config file is fast enough not to matter is a hardware-timing question this dev
-   environment can't verify — needs either a real-hardware measurement or an owner call on wiring
-   it in proactively. **Note**: `get_long_block_lock()` itself has since been removed entirely (see
-   CLAUDE.md's "Long-blocking operations" hard rule) — this question was never about that specific
-   lock instance, and removing it neither resolves nor forecloses this question. Answering "yes"
-   here would mean designing a fresh coordination mechanism at that time, not reusing or
-   resurrecting anything already removed.
-7. Real-hardware verification gap for `asy_udp_socket.py`/`captive_dns.py`: every UDP-layer claim
+4. Does `config_manager.py`'s `write_config()` need long-block-lock-style coordination? **Decided
+   by the project owner: no** — a write is fast enough not to matter, and it never happens on its
+   own/automatically anyway (only ever triggered by a real user interaction via the REST layer),
+   which also matters separately for not wearing out the flash with unnecessary writes. No
+   coordination mechanism needed. **Note**: `get_long_block_lock()` itself was already removed
+   entirely before this was decided (see CLAUDE.md's "Long-blocking operations" hard rule) — this
+   decision doesn't resurrect it.
+5. Real-hardware verification gap for `asy_udp_socket.py`/`captive_dns.py`: every UDP-layer claim
    (POLLERR/POLLHUP delivery, truncation, connected-socket source filtering) is verified against the
    MicroPython Unix port's socket implementation, not real rp2/lwIP — no rp2 hardware was available
    to test against. If a deployed unit ever shows UDP behavior diverging from what's
-   tested/documented in the driver, this is the first place to look. Considered closing via a
-   standalone on-device verification script — judged too hypothetical to chase for now.
-8. BMP390's own datasheet isn't in `datasheets/bmp3xx/` (only BMP384/BMP388 are) — its `0x60` chip
-   ID and assumed-identical register map/IIR table couldn't be verified against a real BMP390
-   datasheet. Needs the owner to add the datasheet to close this.
-9. Whether a hot-unplugged/replugged I2C or SPI sensor fully recovers is only field-tested at the
-    task-death-and-respawn level (the whole `*_Reader` task dies and gets restarted by the
-    supervisor) — never confirmed as *complete* recovery of the underlying bus/device state itself.
-    Owner-flagged as "may be incomplete," to revisit/harden during the refactor rather than assume
-    solved.
-10. **Cross-file naming discrepancy found during a fresh consistency scan of `src/`** (flagged per
-    this file's own "bird's-eye-view scan" policy, not silently fixed): `asy_wifi_service.py`'s
-    `class asy_conn_time(SensorReaderConfig):` and `asy_ntp_client.py`'s
-    `class asy_ntp_client(SensorReaderConfig):` are snake_case, matching their own module's
-    filename — every other class in `src/` (`BMP3xx_Reader`, `SCD30_Reader`, `SGP40_Reader`,
-    `ConfigManager`, `PrintLog`, `AsyFramManager`, `DNSServer`, `AsyUDPSocket`, `SystemService`,
-    `LockedValue`, ...) is PascalCase and deliberately doesn't share its module's exact name. Likely
-    inherited from the pre-refactor code's `asy_conn_time()` (a plain coroutine function, not a
-    class, in `python/CommonDrivers/async_connect.py`) for continuity during promotion, not an
-    oversight — but renaming now would touch every import/instantiation site (production
-    `sensortask-wozi.py`, several test files), a real blast-radius decision
-    similar in shape to the already-deferred `max_i2c_err` rename. Needs an owner call on whether to
-    rename (and to what) or accept the mismatch permanently, not a unilateral fix.
-
+   tested/documented in the driver, this is the first place to look. **Explicitly deferred by the
+   project owner**: on-device verification is real future work, not something to chase in the
+   current session.
 ## Deferred / explicitly out-of-scope work
 
 - **`pyproject.toml`'s mypy `exclude` list still has a dead regex entry for
-  `improved-quality/microdot.py`** (removed — see CLAUDE.md's "Microdot / REST layer"), matching
+  `improved-quality/microdot.py`** (removed — see `SPECIFICATION.md` Part A.5), matching
   nothing today, harmless but worth deleting (along with its now-dangling "see its own module
   docstring" comment) next time `pyproject.toml` is touched for another reason — not urgent enough
   to be the sole reason to trigger CLAUDE.md's "Pre-push verification" chroot recipe on its own.
@@ -476,12 +295,21 @@ opportunistically mid-promotion.
   pass.
 - **HTML/frontend automation & consistency** — known hand-written/brittle, not a priority; revisit
   after the Python-side refactor. Concretely stale now: the frontend still sends the pre-migration
-  `setSGP`/`setBMP` field names/formats (see DRIVER_SPEC.md section 5.3's wire-format note) — not
+  `setSGP`/`setBMP` field names/formats (see `SPECIFICATION.md` Part C.5.3's wire-format note) — not
   updated to match.
 - **UART sensor integration** — `asy_uart_driver.py` is promoted to `src/` but deliberately not
   wired into any `sensortask-*.py`; `asy_uart_comm.py` (its one real consumer) is its own separate,
   still out-of-scope promotion. Unused by any deployed config — wiring it in is after the refactor
   of already-deployed features, not before.
+- **Owner requirement for the final wiring stage (not in this audit's scope, recorded here for
+  when Stage 1 actually happens)**: every `sensortask-*.py` built as part of the real rewrite needs
+  a full Unix-port equivalent, runnable on a local computer, with whatever hardware is physically
+  unavailable there mocked at the lowest level of bus data exchange (i.e. the same mocking
+  boundary `tests/README.md`/`tests/machine.py` already establish for unit tests — fake
+  `machine.I2C`/`machine.SPI`/etc. byte-level transactions, not higher-level driver stand-ins) so
+  the whole wired-together sensortask can be exercised as close to the real target as possible
+  without physical hardware. `WIRING_CONTRACT.md`'s Stage-1 study is the natural place this lands
+  once that rewrite starts.
 - **Config-duplication centralization** — same keys hand-kept in sync across `_DEFAULT_CONFIG`, the
   REST handler, and the HTML form. Owned by the refactor: each promoted `*_Reader`'s own `_VAL_*`
   schema tuple + `get_dict_cfg()`/`get_dict_data()` is the intended single source, not fully wired
@@ -489,6 +317,21 @@ opportunistically mid-promotion.
   targets not yet done" above).
 - **`dev` config quirks** (e.g. LED/Neopixel REST routes referencing an uninstantiated object) —
   bench rig only, not bugs to fix.
+- **Adafruit/DFRobot vendor attribution was dropped during `src/` promotion.** `asy_bmp3xx_driver.py`/
+  `asy_scd30_driver.py`/`asy_sgp40_driver.py` no longer carry the Adafruit `SPDX-FileCopyrightText`/
+  MIT-license header their legacy `python/IndividualDrivers/` originals have. `voc_algorithm.py` is
+  subtler: its own docstring and `SPECIFICATION.md` F.4 both describe it as a direct port of
+  Sensirion's C reference, but the retained class name `DFRobot_vocalgorithmParams`
+  (byte-identical to the legacy file) shows the real intermediate is DFRobot's own MIT-licensed
+  Python translation, whose attribution was never carried forward either — a provenance correction
+  is needed alongside the missing header, not just the header alone. Owner explicitly deferred
+  fixing this — no priority yet, kept here so it isn't lost.
+- **`improved-quality/sensortask-wozi.py` has the same task/session-narrative-comment problem the
+  rest of `src/` was already swept for** — pervasive dated migration-narrative comments, a
+  TODO/stale-comment combo, one leftover `DRIVER_SPEC.md section 7` reference, and no module-level
+  docstring (every `src/` file has one). Left untouched deliberately: out of scope under CLAUDE.md's
+  hard rule on editing `improved-quality/` source without a scoped, owner-authorized exception, and
+  explicitly deferred by the owner to its own future session rather than bundled into this one.
 - **Dev/build environment setup**: toolchain installer is done (`toolchain/setup_toolchain.py`, see
   `toolchain/README.md`/README.md's "Toolchain setup"). **Still not done**: doesn't yet genericize
   `build-*.sh`'s hardcoded `/home/nico/rpi_pico/...` path or the `py-include` symlink — the next
@@ -501,7 +344,7 @@ opportunistically mid-promotion.
 - **No end-user reference for Neopixel LED colors/patterns exists** — confirmed intentional
   single-LED dual-duty design, but no legend anywhere. Worth adding, low priority.
 - **FRAM SGP40 "0 = disabled" backup/staleness semantics need user-facing documentation** — the
-  behavior itself is intentional (see CLAUDE.md), just undocumented for whoever configures a unit.
+  behavior itself is intentional (see `SPECIFICATION.md` Part A.4), just undocumented for whoever configures a unit.
 - **`asy_wifi_service.py`'s getters hide two opposite locking contracts under one shape**:
   `network_available()` requires the caller to already hold `wifi_mode_lock` (documented in-line),
   while `get_wlan_ifconfig()`/`get_dns_server_ip()`/`get_wlan_rssi()`/`wlan_isconnected()` assume the
@@ -523,6 +366,32 @@ opportunistically mid-promotion.
   stated rationale for keeping them anyway: once the Microdot REST layer feeds real (untrusted)
   request data into these paths, they stop being defensive-only and become load-bearing. Revisit
   once that wiring exists, not before.
+- **Whole-system integration test scope** (a scoping item from the now-closed `src/` audit — recorded
+  here since it's future test-writing work, not a current-state fact `SPECIFICATION.md` documents).
+  Today's integration tests are all pairwise-or-triple chains (FRAM+notification,
+  notification+neopixel, notification+SCD30 (both its WarnCO2 and WarnHum signals),
+  notification+SGP40 (WarnVOC), NTP+FRAM+system, NTP+WiFi+DNS, setter+Microdot) — real
+  and valuable, but none exercises the *actual* multi-module wiring shape `WIRING_CONTRACT.md`
+  documents. Chains genuinely missing coverage, to write once Stage 1's real `sensortask-wozi.py`
+  successor exists to exercise them against (most can't be meaningfully tested *before* that, since
+  today's `improved-quality/sensortask-wozi.py` construction sequence is still fully synchronous —
+  see `WIRING_CONTRACT.md`'s "New structural fallout" section for why):
+  - **Full boot-sequence chain**: `conn` → `ntp` → `sysfunct` → every reader → `pixel` →
+    `notify_service`, constructed in the real order, verifying FRAM chunk determinism holds
+    end-to-end (not just per-component) and that every `SensorReaderConfig` subclass's new
+    `await x.setup()` call actually lands before its first real config read.
+  - **Task-supervisor restart, end-to-end**: `system_service.py`'s `start_and_check_tasks()`
+    actually restarting a failed reader task drawn from the real, full registered task list (today's
+    coverage exercises individual readers' own give-up behavior, never the supervisor discovering
+    and restarting one through `get_task_starters()` against the real wiring).
+  - **WiFi hotspot/DNS/LED chain**: `conn`'s hotspot-mode `DNSServer` task lifecycle plus
+    `pixel`'s WiFi-status LED (`conn.set_ext_led(pixel)`) through a real mode transition, not just
+    `captive_dns.py`/`asy_wifi_service.py` pairwise.
+  - **SGP40 VOC-backup reboot-survival, full chain**: FRAM chunk 2 write → simulated reboot → real
+    restore, through the actual `sgp_reader`/`fram` construction order, not a synthetic chunk.
+  - **Multi-sensor REST read aggregation**: `/sensors/status`/`/sensors/config`'s real
+    `get_dict_data()`/`get_dict_cfg()` merge across all three readers through Microdot end-to-end —
+    today's `setter+Microdot` integration test only covers the write path for one driver at a time.
 - **`asy_i2c_driver.py`'s `get_bits`/`set_bits`/`get_register_struct` still call the allocating
   `readfrom_mem()` rather than zero-copy `readfrom_mem_into()`** — no real caller needs the
   zero-copy path yet, but worth doing before `asy_isl29125_driver.py` (its one plausible future
@@ -554,8 +423,8 @@ opportunistically mid-promotion.
   no `get_type_hints()` on-device) — the guarded names are only ever reached via string-literal
   forward-ref annotations that MicroPython never evaluates anyway, so deleting the block changes
   nothing observable. Directly grows the Pico W littlefs partition, which is whatever flash remains
-  after the firmware image (see CLAUDE.md's "Platform target"). Prototype lives in this session's
-  scratch, not the repo — reimplement as a proper `scripts/`-housed step when the build script itself
+  after the firmware image (see `SPECIFICATION.md` Part F.1). This prototype has not been committed
+  to the repo — reimplement as a proper `scripts/`-housed step when the build script itself
   gets built, matching only a bare `TYPE_CHECKING`/`mod.TYPE_CHECKING` test (leave any compound
   condition untouched rather than guess) and sanity-`ast.parse()`-checking its own output before
   compiling.

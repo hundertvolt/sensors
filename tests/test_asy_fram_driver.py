@@ -5,7 +5,7 @@ from _fram_chip_fake import FakeMB85RS64V
 import asy_spi_driver
 from asy_fram_driver import FRAM_SPI
 from asy_spi_driver import SPI
-from print_log import PrintLog, PrintLogHistory
+from print_log import PrintLogHistory
 
 # Swaps the stateful MB85RS64V chip fake in for the whole process (one test file per
 # scripts/test.sh invocation - see tests/README.md): asy_spi_driver.SPI.init() resolves `_SPI` as
@@ -37,7 +37,7 @@ def make_fram(
     max_size: int = 0x2000, wp: bool = False, wp_pin: int | None = None
 ) -> tuple[FRAM_SPI, FakeMB85RS64V]:
     bus = make_bus()
-    fram = FRAM_SPI(bus, 1, logger=PrintLog(), wp=wp, wp_pin=wp_pin, max_size=max_size)
+    fram = FRAM_SPI(bus, 1, logger=PrintLogHistory(name="TESTFRAM"), wp=wp, wp_pin=wp_pin, max_size=max_size)
     chip = fram._spidev.spi._spi
     assert isinstance(chip, FakeMB85RS64V)
     chip.wp_pin = fram._wp_pin  # lets the fake model the datasheet's WP-pin status-register lock
@@ -61,7 +61,7 @@ def test_get_size_returns_the_configured_max_size() -> None:
 def test_setup_succeeds_with_correct_device_id() -> None:
     fram, _chip = make_fram()
     run(setup_fram(fram))
-    assert fram.uninitialized is False
+    assert fram.initialized is True
 
 
 def test_setup_raises_on_wrong_manufacturer_id() -> None:
@@ -73,7 +73,7 @@ def test_setup_raises_on_wrong_manufacturer_id() -> None:
     except OSError:
         raised = True
     assert raised
-    assert fram.uninitialized is True
+    assert fram.initialized is False
 
 
 def test_setup_raises_on_wrong_continuation_code() -> None:
@@ -116,7 +116,7 @@ def test_setup_product_id_byte_order_is_1st_byte_high_2nd_byte_low() -> None:
 
 
 # ---------------------------------------------------------------------------
-# get_values / set_values - guards (uninitialized, lock, range) and real data
+# get_values / set_values - guards (initialized, lock, range) and real data
 # ---------------------------------------------------------------------------
 
 
@@ -480,7 +480,7 @@ def test_verify_present_true_when_device_still_correctly_identifies() -> None:
         return await fram.verify_present()
 
     assert run(scenario()) is True
-    assert fram.uninitialized is False
+    assert fram.initialized is True
 
 
 def test_verify_present_false_reverts_to_uninitialized_and_blocks_further_access() -> None:
@@ -496,7 +496,7 @@ def test_verify_present_false_reverts_to_uninitialized_and_blocks_further_access
 
     verified, still_readable = run(scenario())
     assert verified is False
-    assert fram.uninitialized is True
+    assert fram.initialized is False
     assert still_readable is False  # every other method now safely refuses, as if never set up
 
 
@@ -509,7 +509,7 @@ def test_setup_again_after_verify_present_failure_recovers() -> None:
     chip.rdid_response = bytes([0x04, 0x7F, 0x03, 0x02])  # disturbance cleared up
 
     run(setup_fram(fram))  # the same task-death-and-respawn "fresh setup()" pattern every driver uses
-    assert fram.uninitialized is False
+    assert fram.initialized is True
 
 
 def test_verify_present_bounded_wait_returns_false_instead_of_hanging_when_lock_already_held() -> None:
@@ -528,7 +528,8 @@ def test_verify_present_bounded_wait_returns_false_instead_of_hanging_when_lock_
 
     result = run(scenario())
     assert result is False
-    assert fram.uninitialized is False  # a lock-busy timeout isn't a device-identification failure
+    assert fram.initialized is True  # a lock-busy timeout isn't a device-identification failure
+    assert 97 in fram.pr.history
 
 
 # ---------------------------------------------------------------------------
@@ -588,7 +589,7 @@ def test_wp_and_wp_pin_combinations_all_construct_and_setup_cleanly() -> None:
             fram, chip = make_fram(wp=wp, wp_pin=wp_pin)
             chip.status = 0x8C if wp else 0x00
             run(setup_fram(fram))
-            assert fram.uninitialized is False
+            assert fram.initialized is True
             if wp_pin is None:
                 assert fram._wp_pin is None
             else:
@@ -633,7 +634,7 @@ def test_multiple_invalid_edge_values_combined_still_degrade_safely() -> None:
     fram, chip = make_fram(max_size=-1, wp=True, wp_pin=7)
     chip.status = 0x8C
     run(setup_fram(fram))
-    assert fram.uninitialized is False
+    assert fram.initialized is True
     assert fram._wp_pin is not None
     assert fram._wp_pin.value() == 0  # wp=True -> WP driven low, independent of max_size
     get_ok, set_ok = run(_get_and_set(fram, b"x", 0))
@@ -648,7 +649,7 @@ def test_multiple_invalid_edge_values_combined_still_degrade_safely() -> None:
 
 def test_verify_present_before_setup_returns_false_not_a_raised_runtimeerror() -> None:
     # Real gap found during an exception-safety review: every other public method here guards
-    # `uninitialized` first and returns a clean False - verify_present() was the one exception,
+    # `initialized` first and returns a clean False - verify_present() was the one exception,
     # letting SPIDevice's own "not set up" RuntimeError leak out uncaught if called before the
     # first setup() ever succeeded. Fixed to match every sibling method's contract.
     fram, _chip = make_fram()
@@ -657,7 +658,7 @@ def test_verify_present_before_setup_returns_false_not_a_raised_runtimeerror() -
         return await fram.verify_present()
 
     assert run(scenario()) is False
-    assert fram.uninitialized is True
+    assert fram.initialized is False
 
 
 # ---------------------------------------------------------------------------
@@ -672,7 +673,7 @@ def test_construction_with_an_out_of_range_wp_pin_raises_uncaught_at_boot() -> N
     # real RP2040's GPIO0-28 range (tests/machine.py's fake Pin validates this).
     bus = make_bus()
     try:
-        FRAM_SPI(bus, 1, logger=PrintLog(), wp_pin=99)
+        FRAM_SPI(bus, 1, logger=PrintLogHistory(), wp_pin=99)
         raised = False
     except ValueError:
         raised = True
@@ -683,7 +684,7 @@ def test_construction_with_an_out_of_range_spi_cs_raises_uncaught_at_boot() -> N
     # Same carve-out, for the required spi_cs parameter instead of the optional wp_pin.
     bus = make_bus()
     try:
-        FRAM_SPI(bus, 99, logger=PrintLog())
+        FRAM_SPI(bus, 99, logger=PrintLogHistory())
         raised = False
     except ValueError:
         raised = True
@@ -745,12 +746,11 @@ def test_corrupted_write_payload_bytes_are_undetectable_at_this_layer_by_design(
 
 
 def test_works_correctly_with_the_real_printloghistory_logger_used_in_production() -> None:
-    # AsyFramManager passes a real PrintLogHistory (not a bare PrintLog) as logger in production -
-    # this confirms FRAM_SPI's own narrower `PrintLog` type hint is genuinely satisfied by the
-    # subclass in practice, not just assumed from the type hint, and that using it doesn't
-    # interfere with FRAM_SPI's own behavior (FRAM_SPI never calls the subclass-only
-    # err_s()/wrn_s() methods - a deliberate, unchanged design boundary, not tested here since
-    # it isn't this file's contract to keep).
+    # AsyFramManager passes its own real PrintLogHistory instance as logger in production, shared
+    # with every chunk it owns - this confirms that using one doesn't interfere with FRAM_SPI's own
+    # behavior. FRAM_SPI's `logger` parameter is typed PrintLogHistory (not the narrower PrintLog)
+    # precisely because it does call the subclass-only err_s()/wrn_s() methods - see the dedicated
+    # persisted-logging tests below for that behavior itself.
     bus = make_bus()
     logger = PrintLogHistory(history_length=5)
     fram = FRAM_SPI(bus, 1, logger=logger, max_size=0x2000)
@@ -766,6 +766,169 @@ def test_works_correctly_with_the_real_printloghistory_logger_used_in_production
         return bytes(buf) == b"hi"
 
     assert run(scenario()) is True
+
+
+# ---------------------------------------------------------------------------
+# Persisted logging - err_s()/wrn_s() upgrade for the genuinely actionable hardware-fault paths
+# (device-not-initialized, invalid address range, WEL didn't set/clear, write-protect readback
+# mismatch, verify_present() lock-timeout); "currently write protected"/"access not locked" stay
+# on the plain, non-persisted err()/wrn() - routine/caller-contract signals, not hardware faults.
+# ---------------------------------------------------------------------------
+
+
+def test_get_write_protected_before_setup_logs_a_persisted_error() -> None:
+    fram, _chip = make_fram()
+
+    async def scenario() -> bool:
+        return await fram.get_write_protected()
+
+    assert run(scenario()) is False
+    assert fram.pr.err_count == 1
+    assert list(fram.pr.history)[-1] == 89
+
+
+def test_get_values_before_setup_logs_a_persisted_error() -> None:
+    fram, _chip = make_fram()
+
+    async def scenario() -> bool:
+        return await fram.get_values(bytearray(4), 0)
+
+    assert run(scenario()) is False
+    assert fram.pr.err_count == 1
+    assert 90 in fram.pr.history
+
+
+def test_get_values_out_of_range_logs_a_persisted_error() -> None:
+    fram, _chip = make_fram()
+    run(setup_fram(fram))
+
+    async def scenario() -> None:
+        async with fram:
+            await fram.get_values(bytearray(4), -1)
+
+    run(scenario())
+    assert fram.pr.err_count == 1
+    assert 91 in fram.pr.history
+
+
+def test_set_values_before_setup_logs_a_persisted_error() -> None:
+    fram, _chip = make_fram()
+
+    async def scenario() -> bool:
+        return await fram.set_values(b"x", 0)
+
+    assert run(scenario()) is False
+    assert fram.pr.err_count == 1
+    assert 92 in fram.pr.history
+
+
+def test_set_values_out_of_range_logs_a_persisted_error() -> None:
+    fram, _chip = make_fram()
+    run(setup_fram(fram))
+
+    async def scenario() -> None:
+        async with fram:
+            await fram.set_values(b"x", -1)
+
+    run(scenario())
+    assert fram.pr.err_count == 1
+    assert 93 in fram.pr.history
+
+
+def test_set_write_protected_before_setup_logs_a_persisted_error() -> None:
+    fram, _chip = make_fram()
+
+    async def scenario() -> bool:
+        return await fram.set_write_protected(True)
+
+    assert run(scenario()) is False
+    assert fram.pr.err_count == 1
+    assert 94 in fram.pr.history
+
+
+def test_write_protected_readback_mismatch_logs_a_persisted_error() -> None:
+    fram, chip = make_fram()
+    run(setup_fram(fram))
+    chip.drop_wrsr = True  # simulated bus disturbance: WRSR's status byte never actually lands
+
+    async def scenario() -> bool:
+        return await fram.set_write_protected(True)
+
+    assert run(scenario()) is False
+    assert 95 in fram.pr.history
+
+
+def test_verify_present_before_setup_logs_a_persisted_error() -> None:
+    fram, _chip = make_fram()
+
+    async def scenario() -> bool:
+        return await fram.verify_present()
+
+    assert run(scenario()) is False
+    assert 96 in fram.pr.history
+
+
+def test_write_wel_did_not_set_logs_a_persisted_warning() -> None:
+    fram, chip = make_fram()
+    run(setup_fram(fram))
+    chip.drop_wren = True  # simulated bus disturbance: WREN opcode never actually latches
+
+    async def scenario() -> bool:
+        async with fram:
+            ok = await fram.set_values(b"bad!", 0x00)
+        return ok
+
+    assert run(scenario()) is False
+    assert 0x80 + 82 in fram.pr.history  # wrn_s()'s history entries are offset by _NO_WRN (0x80)
+
+
+def test_set_write_protected_wel_did_not_set_logs_a_persisted_warning() -> None:
+    fram, chip = make_fram()
+    run(setup_fram(fram))
+    chip.drop_wren = True  # simulated bus disturbance: WREN opcode never actually latches
+
+    async def scenario() -> bool:
+        return await fram.set_write_protected(True)
+
+    assert run(scenario()) is False
+    assert 0x80 + 83 in fram.pr.history  # wrn_s()'s history entries are offset by _NO_WRN (0x80)
+
+
+def test_wrdi_stuck_after_retry_logs_a_persisted_warning() -> None:
+    fram, chip = make_fram()
+    run(setup_fram(fram))
+    chip.disturb_write_autoclear = True
+    chip.drop_next_wrdi = 2  # both the original WRDI and the one retry are disturbed
+
+    async def scenario() -> bool:
+        async with fram:
+            ok = await fram.set_values(b"ok!!", 0x00)
+        return ok
+
+    ok = run(scenario())
+    assert ok is True  # the payload write itself still succeeded, only WEL housekeeping is stuck
+    assert 0x80 + 81 in fram.pr.history  # wrn_s()'s history entries are offset by _NO_WRN (0x80)
+
+
+def test_write_protected_and_access_not_locked_stay_on_non_persisted_logging() -> None:
+    # The two message categories deliberately excluded from the err_s()/wrn_s() upgrade above:
+    # "currently write protected" (routine, expected outcome) and "access not locked" (a caller
+    # contract violation, not a hardware fault). Neither should touch the persisted history.
+    fram, _chip = make_fram()
+    run(setup_fram(fram))
+    assert run(fram.set_write_protected(True)) is True
+
+    async def scenario() -> tuple[bool, bool]:
+        no_lock = await fram.get_values(bytearray(1), 0)  # no `async with fram:` wrapper
+        async with fram:
+            still_protected = await fram.set_values(b"x", 0)
+        return no_lock, still_protected
+
+    no_lock, still_protected = run(scenario())
+    assert no_lock is False
+    assert still_protected is False
+    assert fram.pr.err_count == 0
+    assert list(fram.pr.history) == [0] * 10
 
 
 def test_two_operations_on_the_same_fram_never_run_concurrently() -> None:

@@ -492,6 +492,32 @@ def test_resolve_ipv4_memoryerror_building_the_query_returns_none() -> None:
     assert result is None
 
 
+class _RaisingAsyUDPSocket:
+    # Simulates AsyUDPSocket's own construction-time TypeError/ValueError (see asy_udp_socket.py's
+    # module docstring) directly, rather than via a real malformed port: this file's own
+    # _ResolvingAsyUDPSocket wrapper (installed module-wide above) resolves the address through
+    # socket.getaddrinfo() before ever reaching AsyUDPSocket's real type check, which would raise a
+    # different exception (OSError) at a different layer than the one this guard actually targets.
+    def __init__(self, addr: "tuple[str, int]", mode: str = "client", conn_tries: int = 1) -> None:
+        raise TypeError(f"simulated malformed addr: {addr!r}")
+
+
+def test_resolve_ipv4_malformed_port_construction_returns_none_not_an_exception() -> None:
+    # resolve_ipv4()'s own docstring promises "never raises" - previously only true because every
+    # real caller's port happened to be well-typed, since AsyUDPSocket((server, port), ...)'s
+    # construction wasn't guarded here (unlike the structurally identical construction in
+    # asy_ntp_client.py's _fetch_ntp_reply()). A malformed port now degrades cleanly to trying the
+    # next server/fallback, exactly like an unreachable one, instead of letting AsyUDPSocket's
+    # TypeError propagate.
+    current = asy_dns_client.AsyUDPSocket
+    asy_dns_client.AsyUDPSocket = _RaisingAsyUDPSocket  # type: ignore[assignment,misc]
+    try:
+        result = run(resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,), timeout_ms=100, tries=1))
+    finally:
+        asy_dns_client.AsyUDPSocket = current  # type: ignore[misc]
+    assert result is None
+
+
 def test_resolve_ipv4_parse_response_raising_bounds_error_returns_none() -> None:
     # _parse_response()'s own bounds checks are careful enough that no crafted malformed reply
     # (see test_resolve_ipv4_garbage_reply_returns_none_not_an_exception above) has ever been found

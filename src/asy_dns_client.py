@@ -12,8 +12,8 @@ from micropython import const
 from asy_udp_socket import AsyUDPSocket
 
 _DNS_PORT = const(53)
-_DNS_TIMEOUT_MS = const(500)  # per-server, per-attempt budget - standalone default only, the real
-# caller (asy_ntp_client.py) always overrides it explicitly.
+_DNS_TIMEOUT_MS = const(500)  # per-server, per-attempt budget - a standalone default only; real
+# callers are expected to override it explicitly with a value suited to their own timing budget.
 _DNS_TRIES = const(1)  # per-server retry budget - resolve_ipv4() already tries multiple servers.
 _DNS_RECV_BUF = const(512)  # RFC 1035 SS4.2.1's guaranteed-safe UDP message size.
 _FALLBACK_DNS_SERVERS: tuple[str, ...] = ("8.8.8.8", "1.1.1.1")  # tried after caller-supplied
@@ -100,7 +100,10 @@ async def resolve_ipv4(
     for server in dns_servers + _FALLBACK_DNS_SERVERS:
         if server == "0.0.0.0" or not _is_ipv4_literal(server):
             continue  # an unset/placeholder or malformed DNS server value - not worth a network attempt
-        cli = AsyUDPSocket((server, port), mode="client")
+        try:
+            cli = AsyUDPSocket((server, port), mode="client")
+        except (ValueError, TypeError):  # malformed port - server is already validated above
+            continue
         try:
             rsp, _addr = await cli.write_and_recvfrom(query, _DNS_RECV_BUF, timeout_ms=timeout_ms, tries=tries)
         finally:

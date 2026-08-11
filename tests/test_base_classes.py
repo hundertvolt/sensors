@@ -419,9 +419,37 @@ def test_sensorreader_debug_none_leaves_logger_at_off() -> None:
     assert reader.pr.get_level() == PrintLog.level_off()
 
 
+def test_sensorreader_name_is_baked_into_a_freshly_constructed_logger() -> None:
+    reader = SensorReader(Meas(20.0, 50), max_i2c_err=3, name="TESTNAME")
+    assert reader.pr.name == "TESTNAME"
+
+
+def test_sensorreader_name_defaults_to_empty_string() -> None:
+    reader = SensorReader(Meas(20.0, 50), max_i2c_err=3)
+    assert reader.pr.name == ""
+
+
+def test_sensorreader_reuses_a_given_logger_instead_of_constructing_a_fresh_one() -> None:
+    # Reach-through mechanism for a directly-bound sibling object that should share one
+    # identity/history instead of each getting its own separate PrintLogHistory.
+    shared = PrintLogHistory(name="SHARED")
+    reader = SensorReader(Meas(20.0, 50), max_i2c_err=3, logger=shared)
+    assert reader.pr is shared
+
+
+def test_sensorreader_logger_reuse_takes_priority_over_fram_backed_construction() -> None:
+    # A given logger short-circuits the fram/no-fram branch entirely - even with fram given, the
+    # reused logger wins over freshly constructing a PrintLogHistoryStore.
+    manager, _chip = make_fram_manager()
+    shared = PrintLogHistory(name="SHARED2")
+    reader = SensorReader(Meas(20.0, 50), max_i2c_err=3, fram=manager, logger=shared)
+    assert reader.pr is shared
+    assert not isinstance(reader.pr, PrintLogHistoryStore)
+
+
 def test_sensorreader_history_length_zero_is_forwarded_and_never_raises() -> None:
     reader = SensorReader(Meas(None, 50), max_i2c_err=3, history_length=0)
-    assert run(reader._error_check(Meas(None, 50), "temp")) is True
+    assert run(reader._error_check(Meas(None, 50))) is True
     assert reader.pr.err_count == 1
     assert list(reader.pr.history) == []  # nothing to hold, but the count still tracked
 
@@ -430,7 +458,7 @@ def test_error_check_max_i2c_err_zero_gives_up_on_first_failure() -> None:
     # Zero tolerance is a legitimate, if unusual, config value - not a caller mistake to guard
     # against like a negative max_i2c_err would be (see BACKLOG.md's structural-pass note).
     reader = SensorReader(Meas(None, 50), max_i2c_err=0)
-    assert run(reader._error_check(Meas(None, 50), "temp")) is False
+    assert run(reader._error_check(Meas(None, 50))) is False
 
 
 def test_get_dict_cfg_duplicate_schema_names_collapse_to_one_key() -> None:
@@ -466,8 +494,8 @@ def test_sensorreader_reset_error_counter_also_clears_the_consecutive_failure_st
     # history/err_count: a caller resetting "the" error counter after a task reset shouldn't have
     # the next run start partway toward giving up again via the untouched internal streak.
     reader = SensorReader(Meas(None, 50), max_i2c_err=5)
-    run(reader._error_check(Meas(None, 50), "temp"))
-    run(reader._error_check(Meas(None, 50), "temp"))
+    run(reader._error_check(Meas(None, 50)))
+    run(reader._error_check(Meas(None, 50)))
     assert reader._err_cnt_internal == 2
     run(reader.reset_error_counter())
     assert reader._err_cnt_internal == 0
@@ -476,20 +504,20 @@ def test_sensorreader_reset_error_counter_also_clears_the_consecutive_failure_st
 def test_error_check_no_failure_keeps_going_and_decays_counter() -> None:
     reader = SensorReader(Meas(20.0, 50), max_i2c_err=2)
     reader._err_cnt_internal = 1
-    assert run(reader._error_check(Meas(20.0, 50), "temp")) is True
+    assert run(reader._error_check(Meas(20.0, 50))) is True
     assert reader._err_cnt_internal == 0  # decayed back down since this call had no failure
 
 
 def test_error_check_failure_increments_until_giving_up() -> None:
     reader = SensorReader(Meas(None, 50), max_i2c_err=2)
-    assert run(reader._error_check(Meas(None, 50), "temp")) is True  # 1 <= max
-    assert run(reader._error_check(Meas(None, 50), "temp")) is True  # 2 <= max
-    assert run(reader._error_check(Meas(None, 50), "temp")) is False  # 3 > max - give up
+    assert run(reader._error_check(Meas(None, 50))) is True  # 1 <= max
+    assert run(reader._error_check(Meas(None, 50))) is True  # 2 <= max
+    assert run(reader._error_check(Meas(None, 50))) is False  # 3 > max - give up
 
 
 def test_error_check_condition_false_ignores_none_results() -> None:
     reader = SensorReader(Meas(None, 50), max_i2c_err=0)
-    assert run(reader._error_check(Meas(None, 50), "temp", condition=False)) is True
+    assert run(reader._error_check(Meas(None, 50), condition=False)) is True
     assert reader._err_cnt_internal == 0
 
 
@@ -584,8 +612,8 @@ def test_sensorreader_fram_backed_error_check_persists_and_survives_reboot() -> 
     run(manager.setup())
     reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=manager)
     run(reader.pr.setup())
-    assert run(reader._error_check(Meas(None, 50), "temp")) is True
-    assert run(reader._error_check(Meas(None, 50), "temp")) is True
+    assert run(reader._error_check(Meas(None, 50))) is True
+    assert run(reader._error_check(Meas(None, 50))) is True
     assert reader.pr.err_count == 2
 
     # Simulate a reboot: a fresh SensorReader/manager pair attached to the same underlying chip,
@@ -606,7 +634,7 @@ def test_sensorreader_fram_backed_error_check_without_setup_never_raises() -> No
     manager, _chip = make_fram_manager()
     reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=manager)
     assert reader.pr.initialized is False
-    assert run(reader._error_check(Meas(None, 50), "temp")) is True
+    assert run(reader._error_check(Meas(None, 50))) is True
     assert reader.pr.err_count == 1
 
 
@@ -616,7 +644,7 @@ def test_sensorreader_fram_allocation_failure_still_logs_in_memory_without_raisi
     assert isinstance(reader.pr, PrintLogHistoryStore)
     assert reader.pr.fram is None
     run(reader.pr.setup())  # no-op: nothing allocated, must not raise
-    assert run(reader._error_check(Meas(None, 50), "temp")) is True
+    assert run(reader._error_check(Meas(None, 50))) is True
     assert reader.pr.err_count == 1  # in-memory count still tracked despite FRAM being unavailable
 
 
@@ -638,7 +666,7 @@ def test_sensorreader_fram_raise_on_get_chunk_never_raises_at_construction() -> 
     reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=fake_manager)  # type: ignore[arg-type]
     assert isinstance(reader.pr, PrintLogHistoryStore)
     assert reader.pr.fram is None
-    assert run(reader._error_check(Meas(None, 50), "temp")) is True
+    assert run(reader._error_check(Meas(None, 50))) is True
     assert reader.pr.err_count == 1
 
 
@@ -654,7 +682,7 @@ def test_sensorreader_fram_write_into_raising_is_caught_during_error_check() -> 
     reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=fake_manager, history_length=4)  # type: ignore[arg-type]
     assert isinstance(reader.pr, PrintLogHistoryStore)
     run(reader.pr.setup())
-    assert run(reader._error_check(Meas(None, 50), "temp")) is True
+    assert run(reader._error_check(Meas(None, 50))) is True
     assert reader.pr.err_count == 1  # FRAM write failed silently; in-memory count still tracked
 
 
@@ -666,7 +694,7 @@ def test_sensorreader_fram_write_returns_false_is_surfaced_during_error_check() 
     reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=manager)
     run(reader.pr.setup())
     chip.drop_wren = True
-    assert run(reader._error_check(Meas(None, 50), "temp")) is True
+    assert run(reader._error_check(Meas(None, 50))) is True
     assert reader.pr.err_count == 1
 
 
@@ -687,7 +715,7 @@ def test_sensorreader_fram_setup_fails_cleanly_when_both_read_and_write_fail() -
     chip.drop_wren = True
     run(reader.pr.setup())
     assert reader.pr.initialized is False
-    assert run(reader._error_check(Meas(None, 50), "temp")) is True  # still tracks in-memory
+    assert run(reader._error_check(Meas(None, 50))) is True  # still tracks in-memory
     assert reader.pr.err_count == 1
 
 
@@ -701,10 +729,43 @@ def test_sensorreaderconfig_wires_a_real_configmanager() -> None:
     _remove(path_prefix + "config_temp.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "temp", _VAL_SI, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
         assert reader.cfgmgr.config_file == path_prefix + "config_temp.cfg"
         assert reader.cfgmgr.valid is True
     finally:
         _remove(path_prefix + "config_temp.cfg")
+
+
+def test_sensorreaderconfig_forwards_its_name_to_the_base_class_logger() -> None:
+    # SensorReaderConfig.__init__ already took name to build the config filename - it must also
+    # forward it to super().__init__() so reader.pr's own identity matches, not just cfgmgr's.
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_namefwd.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "namefwd", _VAL_SI, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
+        assert reader.pr.name == "namefwd"
+    finally:
+        _remove(path_prefix + "config_namefwd.cfg")
+
+
+def test_sensorreaderconfig_setup_awaits_cfgmgr_setup() -> None:
+    # SensorReaderConfig's own async def setup() extends ConfigManager's sync-__init__/
+    # async-setup() readiness-gate pattern one level up (SPECIFICATION.md C.13) - awaiting
+    # it must leave cfgmgr exactly as ready as calling cfgmgr.setup() directly would.
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_ownsetup.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "ownsetup", _VAL_SI, cfg_path=path_prefix)
+        valid_before = reader.cfgmgr.valid
+        assert valid_before is False  # not set up yet - __init__ is stash-only
+        run(reader.setup())
+        valid_after = reader.cfgmgr.valid
+        assert valid_after is True
+        result = run(reader._get_dict_cfg("Sensor", _VAL_SI))
+        assert result == {"Sensor": {"SampleInterv": 2}}
+    finally:
+        _remove(path_prefix + "config_ownsetup.cfg")
 
 
 def test_sensorreaderconfig_get_cfg_schema_returns_the_schema_it_was_built_with() -> None:
@@ -717,6 +778,7 @@ def test_sensorreaderconfig_get_cfg_schema_returns_the_schema_it_was_built_with(
     _remove(path_prefix + "config_getschema.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "getschema", _VAL_SI, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
         assert reader.get_cfg_schema() == _VAL_SI
         assert reader.cfg_schema == _VAL_SI
     finally:
@@ -730,6 +792,7 @@ def test_sensorreaderconfig_get_cfg_schema_is_a_plain_sync_call() -> None:
     _remove(path_prefix + "config_syncschema.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "syncschema", _VAL_SI, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
         result = reader.get_cfg_schema()
         assert result == _VAL_SI
     finally:
@@ -745,6 +808,7 @@ def test_sensorreaderconfig_get_cfg_schema_reflects_a_concatenated_multi_field_s
     _remove(path_prefix + "config_combinedschema.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "combinedschema", combined, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
         assert reader.get_cfg_schema() == combined
     finally:
         _remove(path_prefix + "config_combinedschema.cfg")
@@ -757,10 +821,27 @@ def test_sensorreaderconfig_is_a_sensorreader_with_a_real_mgr_cfg_override() -> 
     _remove(path_prefix + "config_isa.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "isa", _VAL_SI, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
         assert isinstance(reader, SensorReader)
         assert run(reader._get_mgr_cfg(["SampleInterv"])) == {"SampleInterv": 2}
     finally:
         _remove(path_prefix + "config_isa.cfg")
+
+
+def test_get_mgr_cfg_logs_a_cross_reference_line_before_calling_into_cfgmgr() -> None:
+    # A line via the owner's self.pr whenever _get_mgr_cfg actually calls into self.cfgmgr, pairing
+    # with ConfigManager's own "CFGMGR_"-identified log line for a human/future-rsyslog reader.
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_crossrefget.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "crossrefget", _VAL_SI, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
+        evt_calls: list[tuple[Any, ...]] = []
+        reader.pr.evt = lambda *args, **kwargs: evt_calls.append(args)  # type: ignore[method-assign]
+        run(reader._get_mgr_cfg(["SampleInterv"]))
+        assert len(evt_calls) == 1
+    finally:
+        _remove(path_prefix + "config_crossrefget.cfg")
 
 
 def test_sensorreaderconfig_get_dict_cfg_round_trips_a_real_bool_field() -> None:
@@ -770,6 +851,7 @@ def test_sensorreaderconfig_get_dict_cfg_round_trips_a_real_bool_field() -> None
     _remove(path_prefix + "config_boolfield.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "boolfield", _VAL_BOOL, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
         result = run(reader._get_dict_cfg("Sensor", _VAL_BOOL))
         assert result == {"Sensor": {"SelfCal": False}}
         assert type(result["Sensor"]["SelfCal"]) is bool
@@ -777,15 +859,17 @@ def test_sensorreaderconfig_get_dict_cfg_round_trips_a_real_bool_field() -> None
         _remove(path_prefix + "config_boolfield.cfg")
 
 
-def test_sensorreaderconfig_shares_the_same_logger_instance_with_its_configmanager() -> None:
-    # Cross-dependency check: SensorReaderConfig.__init__ passes self.pr into ConfigManager - it must
-    # be the exact same object, not an equal-but-separate one, or sensor errors and config
-    # errors/warnings would silently split across two independent histories.
+def test_sensorreaderconfig_configmanager_has_its_own_separate_logger_instance() -> None:
+    # ConfigManager builds its own "CFGMGR_" + name-identified PrintLogHistory internally instead
+    # of reusing its owner's self.pr - reusing the owner's logger would mislabel every
+    # config-related log line as coming from the owner itself, not from config management. Deliberately the inverse of what
+    # this test used to assert (a pre-Cluster-2 shared-instance design).
     path_prefix = _tmp_path("") + "/"
     _remove(path_prefix + "config_shared.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "shared", _VAL_SI, cfg_path=path_prefix)
-        assert reader.cfgmgr.pr is reader.pr
+        run(reader.cfgmgr.setup())
+        assert reader.cfgmgr.pr is not reader.pr
     finally:
         _remove(path_prefix + "config_shared.cfg")
 
@@ -795,6 +879,7 @@ def test_sensorreaderconfig_get_dict_cfg_reads_real_config_file() -> None:
     _remove(path_prefix + "config_temp2.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "temp2", _VAL_SI, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
         result = run(reader._get_dict_cfg("Sensor", _VAL_SI))
         assert result == {"Sensor": {"SampleInterv": 2}}  # the schema's own default
     finally:
@@ -809,6 +894,7 @@ def test_sensorreaderconfig_malformed_schema_propagates_none_through_get_dict_cf
     _remove(path_prefix + "config_badschema.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "badschema", (), cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
         assert reader.cfgmgr.valid is False
         result = run(reader._get_dict_cfg("Sensor", ()))
         assert result == {"Sensor": {}}
@@ -829,6 +915,7 @@ def test_sensorreaderconfig_fram_backed_logging_with_real_config_file() -> None:
     try:
         manager, _chip = make_fram_manager()
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "fram1", _VAL_SI, cfg_path=path_prefix, fram=manager)
+        run(reader.cfgmgr.setup())
         assert isinstance(reader.pr, PrintLogHistoryStore)
         assert reader.cfgmgr.valid is True
         result = run(reader._get_dict_cfg("Sensor", _VAL_SI))
@@ -838,9 +925,9 @@ def test_sensorreaderconfig_fram_backed_logging_with_real_config_file() -> None:
 
 
 def test_sensorreaderconfig_malformed_config_file_repairs_cleanly_with_fram_backed_logger() -> None:
-    # ConfigManager logs repair warnings via the plain (non-persisting) pr.wrn()/pr.err(), never
-    # wrn_s()/err_s() - confirms a FRAM-backed logger's transient methods work under a real repair
-    # path without raising, and that nothing is persisted to FRAM by this (err_count stays 0).
+    # ConfigManager's repair warnings go through its own separate, in-memory-only "CFGMGR_" + name
+    # PrintLogHistory - not reader.pr, the FRAM-backed logger this test constructs - so
+    # reader.pr.err_count stays 0 regardless of the repair, and nothing is persisted to FRAM either way.
     path_prefix = _tmp_path("") + "/"
     path = path_prefix + "config_fram2.cfg"
     _remove(path)
@@ -849,6 +936,7 @@ def test_sensorreaderconfig_malformed_config_file_repairs_cleanly_with_fram_back
     try:
         manager, _chip = make_fram_manager()
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "fram2", _VAL_SI, cfg_path=path_prefix, fram=manager)
+        run(reader.cfgmgr.setup())
         assert reader.cfgmgr.valid is True  # malformed file was repaired, not left invalid
         assert reader.pr.err_count == 0  # repair warnings use pr.wrn()/pr.err(), never the _s() persisting variants
         result = run(reader._get_dict_cfg("Sensor", _VAL_SI))
@@ -873,6 +961,7 @@ def test_sensorreaderconfig_fram_allocation_failure_and_missing_config_file_toge
             cfg_path=path_prefix,
             fram=manager,
         )
+        run(reader.cfgmgr.setup())
         assert isinstance(reader.pr, PrintLogHistoryStore)
         assert reader.pr.fram is None
         assert reader.cfgmgr.valid is True
@@ -890,6 +979,7 @@ def test_sensorreaderconfig_write_config_is_reflected_by_get_dict_cfg() -> None:
     _remove(path_prefix + "config_writeback.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "writeback", _VAL_SI, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
         ok, results = run(reader.cfgmgr.write_config({"SampleInterv": 42}, _VAL_SI))
         assert ok is True
         assert results == {"SampleInterv": "Valid"}
@@ -920,12 +1010,28 @@ def test_set_mgr_cfg_delegates_to_the_real_configmanager() -> None:
     _remove(path_prefix + "config_setmgr.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "setmgr", _VAL_SI, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
         ok, results = run(reader._set_mgr_cfg({"SampleInterv": 42}, _VAL_SI))
         assert ok is True
         assert results == {"SampleInterv": "Valid"}
         assert run(reader._get_dict_cfg("Sensor", _VAL_SI)) == {"Sensor": {"SampleInterv": 42}}
     finally:
         _remove(path_prefix + "config_setmgr.cfg")
+
+
+def test_set_mgr_cfg_logs_a_cross_reference_line_before_calling_into_cfgmgr() -> None:
+    # Setter mirror of test_get_mgr_cfg_logs_a_cross_reference_line_before_calling_into_cfgmgr.
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_crossrefset.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "crossrefset", _VAL_SI, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
+        evt_calls: list[tuple[Any, ...]] = []
+        reader.pr.evt = lambda *args, **kwargs: evt_calls.append(args)  # type: ignore[method-assign]
+        run(reader._set_mgr_cfg({"SampleInterv": 42}, _VAL_SI))
+        assert len(evt_calls) == 1
+    finally:
+        _remove(path_prefix + "config_crossrefset.cfg")
 
 
 def test_set_dict_cfg_persist_only_field_with_no_push_callback_registered() -> None:
@@ -935,6 +1041,7 @@ def test_set_dict_cfg_persist_only_field_with_no_push_callback_registered() -> N
     _remove(path_prefix + "config_persistonly.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "persistonly", _VAL_SI, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
         results = run(reader._set_dict_cfg({"SampleInterv": 42}, _VAL_SI))
         assert results == {"SampleInterv": "Valid"}
         assert run(reader._get_dict_cfg("Sensor", _VAL_SI)) == {"Sensor": {"SampleInterv": 42}}
@@ -947,6 +1054,7 @@ def test_set_dict_cfg_registered_push_callback_is_invoked_with_the_new_value() -
     _remove(path_prefix + "config_pushed.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushed", _VAL_SI, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
         seen: list[int | float | str | bool | None] = []
 
         async def push(value: "int | float | str | bool | None") -> bool:
@@ -972,6 +1080,7 @@ def test_set_dict_cfg_push_callback_returning_false_marks_the_field_failed() -> 
     _remove(path_prefix + "config_pushfail.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushfail", _VAL_SI, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
 
         async def push_ok(value: "int | float | str | bool | None") -> bool:
             return True
@@ -1000,6 +1109,7 @@ def test_set_dict_cfg_push_callback_raising_marks_the_field_failed_and_logs() ->
     _remove(path_prefix + "config_pushraise.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushraise", _VAL_SI, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
 
         async def push(value: "int | float | str | bool | None") -> bool:
             raise RuntimeError("sensor push failed")
@@ -1021,6 +1131,7 @@ def test_set_dict_cfg_failed_push_recovers_via_getter_when_registered() -> None:
     _remove(path_prefix + "config_pushfailgetter.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushfailgetter", _VAL_SI, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
 
         async def push_ok(value: "int | float | str | bool | None") -> bool:
             return True
@@ -1050,6 +1161,7 @@ def test_set_dict_cfg_failed_push_falls_back_to_old_value_when_getter_raises() -
     _remove(path_prefix + "config_pushfailgetterraise.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushfailgetterraise", _VAL_SI, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
 
         async def push_ok(value: "int | float | str | bool | None") -> bool:
             return True
@@ -1082,6 +1194,7 @@ def test_set_dict_cfg_failed_push_getter_returning_out_of_schema_value_falls_thr
     _remove(path_prefix + "config_pushfailgetteroor.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushfailgetteroor", _VAL_SI, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
 
         async def push_ok(value: "int | float | str | bool | None") -> bool:
             return True
@@ -1112,6 +1225,7 @@ def test_set_dict_cfg_failed_push_on_first_ever_request_recovers_to_schema_defau
     _remove(path_prefix + "config_pushfailfirst.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushfailfirst", _VAL_SI, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
 
         async def push_fail(value: "int | float | str | bool | None") -> bool:
             return False
@@ -1133,6 +1247,7 @@ def test_set_dict_cfg_failed_push_on_special_alone_field_skips_recovery_entirely
     _remove(path_prefix + "config_pushfailtrigger.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushfailtrigger", _VAL_SPECIAL, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
 
         async def push_fail(value: "int | float | str | bool | None") -> bool:
             return False
@@ -1160,6 +1275,7 @@ def test_set_dict_cfg_old_value_snapshot_read_exception_falls_back_to_default() 
     _remove(path_prefix + "config_pushfailsnapraise.cfg")
     try:
         reader = RaisingGetMgrCfgReader(Meas(20.0, 50), 3, "pushfailsnapraise", _VAL_SI, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
 
         async def push_fail(value: "int | float | str | bool | None") -> bool:
             return False
@@ -1184,6 +1300,7 @@ def test_recover_failed_push_unknown_key_is_a_defensive_noop() -> None:
     _remove(path_prefix + "config_recoverunknown.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "recoverunknown", _VAL_SI, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
         run(reader._recover_failed_push("NoSuchField", {}, _VAL_SI))  # must not raise
     finally:
         _remove(path_prefix + "config_recoverunknown.cfg")
@@ -1211,6 +1328,7 @@ def test_set_dict_cfg_recover_failed_push_correction_write_exception_is_caught()
     _remove(path_prefix + "config_pushfailcorrectionraise.cfg")
     try:
         reader = FlakyOnSecondWriteReader(Meas(20.0, 50), 3, "pushfailcorrectionraise", _VAL_SI, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
 
         async def push_fail(value: "int | float | str | bool | None") -> bool:
             return False
@@ -1233,6 +1351,7 @@ def test_set_dict_cfg_multiple_fields_recover_independently_via_different_rungs(
     _remove(path_prefix + "config_pushfailmulti.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushfailmulti", combined, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
 
         async def push_ok(value: "int | float | str | bool | None") -> bool:
             return True
@@ -1267,6 +1386,7 @@ def test_set_dict_cfg_invalid_value_is_reported_and_never_pushed() -> None:
     _remove(path_prefix + "config_invalidnopush.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "invalidnopush", _VAL_SI, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
         called = False
 
         async def push(value: "int | float | str | bool | None") -> bool:
@@ -1290,6 +1410,7 @@ def test_set_dict_cfg_unchanged_value_is_reported_and_never_pushed() -> None:
     _remove(path_prefix + "config_unchangednopush.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "unchangednopush", _VAL_SI, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
         called = False
 
         async def push(value: "int | float | str | bool | None") -> bool:
@@ -1313,6 +1434,7 @@ def test_set_dict_cfg_unknown_key_is_reported_invalid_individually_not_whole_req
     _remove(path_prefix + "config_unknownkey.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "unknownkey", _VAL_SI, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
         results = run(reader._set_dict_cfg({"SampleInterv": 42, "NoSuchField": 1}, _VAL_SI))
         assert results == {"SampleInterv": "Valid", "NoSuchField": "Invalid"}
         assert run(reader._get_dict_cfg("Sensor", _VAL_SI)) == {"Sensor": {"SampleInterv": 42}}
@@ -1326,6 +1448,7 @@ def test_set_dict_cfg_multi_field_request_reports_each_field_independently() -> 
     _remove(path_prefix + "config_multifield.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "multifield", combined, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
         pushed: list[str] = []
 
         async def push_bool(value: "int | float | str | bool | None") -> bool:
@@ -1350,6 +1473,7 @@ def test_set_dict_cfg_multiple_invalid_fields_neither_pushed() -> None:
     _remove(path_prefix + "config_multiinvalid.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "multiinvalid", combined, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
         pushed: list[str] = []
 
         async def push_int(value: "int | float | str | bool | None") -> bool:
@@ -1378,6 +1502,7 @@ def test_set_dict_cfg_whole_persist_failure_marks_every_field_failed() -> None:
     _remove(path_prefix + "config_wholefail.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "wholefail", (), cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
         assert reader.cfgmgr.valid is False
         results = run(reader._set_dict_cfg({"SampleInterv": 42, "Other": 1}, ()))
         assert results == {"SampleInterv": "Failed", "Other": "Failed"}
@@ -1398,6 +1523,7 @@ def test_set_dict_cfg_set_mgr_cfg_override_raising_marks_every_field_failed() ->
     _remove(path_prefix + "config_raisingmgr.cfg")
     try:
         reader = RaisingSetMgrCfgReader(Meas(20.0, 50), 3, "raisingmgr", _VAL_SI, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
         results = run(reader._set_dict_cfg({"SampleInterv": 42}, _VAL_SI))
         assert results == {"SampleInterv": "Failed"}
         assert reader.pr.err_count == 1
@@ -1420,6 +1546,7 @@ def test_set_dict_cfg_set_mgr_cfg_override_malformed_result_marks_every_field_fa
     _remove(path_prefix + "config_malformedmgr.cfg")
     try:
         reader = MalformedSetMgrCfgReader(Meas(20.0, 50), 3, "malformedmgr", _VAL_SI, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
         results = run(reader._set_dict_cfg({"SampleInterv": 42}, _VAL_SI))
         assert results == {"SampleInterv": "Failed"}
         assert reader.pr.err_count == 1
@@ -1444,6 +1571,7 @@ def test_set_dict_cfg_set_mgr_cfg_override_missing_key_marks_it_failed() -> None
     _remove(path_prefix + "config_missingkeymgr.cfg")
     try:
         reader = MissingKeySetMgrCfgReader(Meas(20.0, 50), 3, "missingkeymgr", _VAL_SI, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
         results = run(reader._set_dict_cfg({"SampleInterv": 42}, _VAL_SI))
         assert results == {"SampleInterv": "Failed"}
     finally:
@@ -1455,6 +1583,7 @@ def test_set_dict_cfg_empty_data_returns_empty_result() -> None:
     _remove(path_prefix + "config_emptyset.cfg")
     try:
         reader = SensorReaderConfig(Meas(20.0, 50), 3, "emptyset", _VAL_SI, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
         assert run(reader._set_dict_cfg({}, _VAL_SI)) == {}
     finally:
         _remove(path_prefix + "config_emptyset.cfg")
@@ -1468,7 +1597,9 @@ def test_set_dict_cfg_push_callbacks_default_to_empty_and_are_per_instance() -> 
     _remove(path_prefix + "config_percallback2.cfg")
     try:
         reader1 = SensorReaderConfig(Meas(20.0, 50), 3, "percallback1", _VAL_SI, cfg_path=path_prefix)
+        run(reader1.cfgmgr.setup())
         reader2 = SensorReaderConfig(Meas(20.0, 50), 3, "percallback2", _VAL_SI, cfg_path=path_prefix)
+        run(reader2.cfgmgr.setup())
         assert reader1._push_callbacks == {}
         assert reader1._push_callbacks is not reader2._push_callbacks
 

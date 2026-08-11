@@ -131,6 +131,16 @@ def test_set_level_exact_boundary_values_pass_through_unclamped() -> None:
     assert pr.get_level() == PrintLog.level_info()
 
 
+def test_name_defaults_to_empty_string() -> None:
+    pr = PrintLog()
+    assert pr.name == ""
+
+
+def test_name_is_stored_verbatim_when_given() -> None:
+    pr = PrintLog(name="SGP40")
+    assert pr.name == "SGP40"
+
+
 # ---------------------------------------------------------------------------
 # PrintLogHistory - bounded in-memory error/warning history
 # ---------------------------------------------------------------------------
@@ -216,6 +226,35 @@ def test_get_log_classifies_error_warning_and_clear_entries() -> None:
     # remaining oldest slot is still the initial _NO_ERR -> "N", 0
     log = run(hist.get_log("Sensor"))
     assert log == {"Sensor": {"ErrCount": 2, "ErrNum": [0, 5, 2], "ErrType": ["N", "E", "W"]}}
+
+
+def test_printloghistory_forwards_name_to_the_base_class() -> None:
+    hist = PrintLogHistory(history_length=2, name="SGP40")
+    assert hist.name == "SGP40"
+
+
+def test_get_log_with_no_argument_and_no_name_set_falls_back_to_empty_string() -> None:
+    hist = PrintLogHistory(history_length=1)
+    log = run(hist.get_log())
+    assert "" in log
+
+
+def test_get_log_with_no_argument_uses_self_name() -> None:
+    # Regression coverage for a real test-authoring mistake caught while trialing this design:
+    # history_length=1 leaves no initial _NO_ERR slot to survive a single err_s() call, so this
+    # assertion doesn't depend on the "leftover initial slot" shape
+    # test_get_log_classifies_error_warning_and_clear_entries above already covers.
+    hist = PrintLogHistory(history_length=1, name="SGP40")
+    run(hist.err_s("e", errno=1))
+    log = run(hist.get_log())
+    assert log == {"SGP40": {"ErrCount": 1, "ErrNum": [1], "ErrType": ["E"]}}
+
+
+def test_get_log_explicit_name_still_overrides_self_name() -> None:
+    hist = PrintLogHistory(history_length=1, name="SGP40")
+    log = run(hist.get_log("Override"))
+    assert "Override" in log
+    assert "SGP40" not in log
 
 
 def test_err_s_errno_at_exact_max_err_boundary_is_recorded() -> None:
@@ -342,6 +381,12 @@ def test_printloghistorystore_allocates_a_chunk_from_the_fram_manager() -> None:
     manager, _chip = make_fram_manager()
     store = PrintLogHistoryStore(manager, history_length=4)
     assert store.fram is not None
+
+
+def test_printloghistorystore_forwards_name_to_the_base_class() -> None:
+    manager, _chip = make_fram_manager()
+    store = PrintLogHistoryStore(manager, history_length=4, name="FRAM")
+    assert store.name == "FRAM"
 
 
 def test_printloghistorystore_out_of_memory_leaves_fram_none_and_never_raises() -> None:
@@ -540,6 +585,43 @@ def test_printloghistorystore_read_into_returns_false_is_surfaced() -> None:
         chip.memory[addr + status_offset] = 0x02  # _STATUS_BUSY, mirrors a torn write on both copies
         chip.memory[addr + status_offset + 1] = 0x02
     assert run(store._read()) is False
+
+
+def test_printloghistorystore_self_heals_from_a_single_corrupted_copy_across_a_reboot() -> None:
+    # The genuine-bit-flip counterpart to the two status-byte/torn-write tests above: here a real
+    # persisted *data* byte of copy 0 is flipped, so nothing about the block's status says anything
+    # is wrong - only CRC8 (the checksum PrintLogHistoryStore itself asks get_chunk() for) can
+    # notice. Mirrors tests/test_voc_algorithm.py's own
+    # test_voc_state_self_heals_from_a_single_corrupted_copy_through_real_fram, which does this for
+    # a CRC32-protected chunk, and additionally checks that the surviving copy is written back over
+    # the corrupted one rather than only being read around.
+    manager, chip = make_fram_manager()
+    run(manager.setup())
+    store = PrintLogHistoryStore(manager, history_length=4)
+    run(store.setup())
+    run(store.err_s("boom", errno=3))
+    run(store.err_s("bang", errno=7))
+    assert store.err_count == 2
+
+    assert isinstance(store.fram, AsyFramChunk)  # whitebox: narrows to the real chunk's own block layout
+    addr0, _addr1 = store.fram.block_addr
+    block_len = 2 + len(store.history) + 1  # _HDR_SIZE("<H") + history bytes + CRC8's 1 byte
+    original_block0 = bytes(chip.memory[addr0 : addr0 + block_len])
+    chip.memory[addr0 + 2] ^= 0xFF  # a single flipped history byte in copy 0 only - copy 1 is intact
+    assert bytes(chip.memory[addr0 : addr0 + block_len]) != original_block0
+
+    # Same simulated reboot as test_printloghistorystore_err_s_persists_and_survives_a_simulated_reboot:
+    # a fresh manager/store pair over the SAME chip memory, with the corruption still in place.
+    manager2, _chip2 = make_fram_manager()
+    manager2.fram._spidev.spi._spi = chip
+    run(manager2.setup())
+    rebooted_store = PrintLogHistoryStore(manager2, history_length=4)
+    run(rebooted_store.setup())
+    assert rebooted_store.initialized is True
+    assert rebooted_store.err_count == 2  # recovered from the surviving copy, not from the flipped one
+    assert list(rebooted_store.history) == list(store.history) == [0, 0, 3, 7]
+    # ...and the damaged copy was repaired on-chip in the process, not just read around.
+    assert bytes(chip.memory[addr0 : addr0 + block_len]) == original_block0
 
 
 def test_printloghistorystore_setup_fails_cleanly_when_both_read_and_write_fail() -> None:
