@@ -238,6 +238,12 @@ The condensed version is A.2 above. Key modules if you need to go deeper (folded
   `set_ambient_pressure` is called with `force=True` in the REST handler: resending the same value
   is also the SCD30's documented command to resume continuous measurement after it's been stopped.
   Don't "fix" this into a live BMP388→SCD30 feed; it's intentional, confirmed by the project owner.
+- **SCD30's `ForceCalRef` field-recalibration procedure, confirmed by the project owner**: done
+  manually today, not automated. The unit is exposed to air where the true CO2 concentration is
+  known to match outside/ambient air (i.e. the space is ventilated until indoor CO2 reads the same
+  as outdoor ambient), then `ForceCalRef` is set to that known reference concentration via the
+  REST setter. There is no separate exposure-timing/frequency schedule beyond "whenever a
+  recalibration is judged needed" — no automation of this procedure is planned.
 - **SGP40's VOC index is a deviation-from-learned-baseline number, not an absolute-concentration
   one — confirmed directly against `voc_algorithm.py`'s real Sensirion Gas Index Algorithm port
   while calibrating a real threshold-crossing integration test (see
@@ -412,6 +418,12 @@ download it yourself (blocked fetch, paywall, dead link, etc.), say so explicitl
 rather than silently falling back to web search summaries or training memory for a claim the real
 datasheet would settle — the project owner will add it to `datasheets/` if you tell them what's
 missing (exact part number / document number is enough, a specific URL isn't required).
+
+**BMP390 specifically**: `datasheets/bmp3xx/` holds BMP384/BMP388 but not BMP390 itself. The
+project owner has confirmed directly that the whole BMP3xx family (384/388/390) shares the same
+register map/protocol, so `asy_bmp3xx_driver.py` treating BMP390's `0x60` chip ID the same as the
+other two is correct, not just an unverified assumption — the PDF's absence from `datasheets/` is
+a documentation-completeness gap only, not an open technical question anymore.
 
 ---
 
@@ -762,14 +774,15 @@ underscore-prefix rule as a private function (`_AsyBaseFramChunk`). Double-leadi
 (name-mangled) methods are reserved for the rare case where mangling itself is load-bearing
 (protecting a name from an actual subclass override) — not an alternate "more private" spelling of
 the ordinary single-underscore convention; verified project-wide as of this pass, `src/` has none
-(see D.15-adjacent finding below). **Two known, deliberately-not-yet-fixed exceptions**: `asy_ntp_client`/
-`asy_conn_time` (`asy_ntp_client.py`/`asy_wifi_service.py`) are `lower_snake_case` classes, carried
-forward from the legacy codebase's own one-off naming — every other class, in both `src/` and the
-legacy `python/` tree, already follows CapWords, so this was never a project-wide alternate style.
-Renaming them is blocked by `improved-quality/sensortask-wozi.py` (out of scope without a scoped
-owner exception — see CLAUDE.md's hard rules) importing and instantiating both by their current
-exact names; fixing it is deferred to that file's own wiring session, the same way `max_i2c_err`'s
-misleading name is deferred below. `voc_algorithm.py`'s internals (`DFRobot_vocalgorithmParams`,
+(see D.15-adjacent finding below). **`AsyNtpClient`/`AsyConnTime`** (`asy_ntp_client.py`/
+`asy_wifi_service.py`) used to be `lower_snake_case` classes (`asy_ntp_client`/`asy_conn_time`),
+carried forward from the legacy codebase's own one-off naming — every other class, in both `src/`
+and the legacy `python/` tree, already followed CapWords, so this was never a project-wide
+alternate style. Renamed to CapWords with the project owner's explicit go-ahead, including the
+caller-site updates in `improved-quality/sensortask-wozi.py` that renaming required (a scoped
+exception to CLAUDE.md's usual out-of-scope-editing hard rule for that file, the same kind of
+narrowly-authorized exception the `ConfigManager`/`LockedValue` fix used). `voc_algorithm.py`'s
+internals (`DFRobot_vocalgorithmParams`,
 the `_vocalgorithm__*` method names) are a separate, permanent exception: F.4 requires this file's
 naming to trace its DFRobot/Sensirion source 1:1, so its casing is intentionally not
 project-style-compliant and never will be.
@@ -1359,7 +1372,7 @@ the field set), and every bool-typed field is native JSON `true`/`false`, replac
 been updated to match either change yet (see BACKLOG.md).
 
 **One real bug this migration surfaced, worth knowing for any future module in the same shape**:
-`asy_conn_time` owns exactly one schema/`cfgmgr` for all of `SSID`/`PW`/`Country`/`Hostname`/
+`AsyConnTime` owns exactly one schema/`cfgmgr` for all of `SSID`/`PW`/`Country`/`Hostname`/
 `LedWifiOn`, but two separate routes (`/net/cmd`'s `setNetwork`, `/led/cmd`'s `setWiFiLED`) each
 only own their own subset of those fields (matching the legacy handler's own per-route scoping).
 Passing `reader.get_cfg_schema()` (the *whole* schema) to `handle_set_cmd()` from both routes would
@@ -1479,11 +1492,11 @@ and its config read-back comes back silently wrong/empty.
 - **An owned helper with no registered `get_task_starters()`/`get_timer_starters()` entry of its
   own may still own an independent, uniquely-named `PrintLogHistory` instead of sharing its
   owner's `self.pr`** — settled via project-owner decision (2026-08-07) for `captive_dns.py`'s
-  `DNSServer` (owned/lifecycle-managed by `asy_conn_time`, not itself a registered `Reader`):
-  it gets its own `"DNSSRV"`-named `PrintLogHistory` rather than reusing `asy_conn_time`'s. The
+  `DNSServer` (owned/lifecycle-managed by `AsyConnTime`, not itself a registered `Reader`):
+  it gets its own `"DNSSRV"`-named `PrintLogHistory` rather than reusing `AsyConnTime`'s. The
   rationale is one level up from C.7 itself — at the `sensortask`/wiring level, multiple owned
   helpers' independent histories are expected to be folded into one combined REST-facing endpoint
-  (e.g. a "networking" endpoint aggregating `asy_conn_time`/`asy_dns_client`/`DNSServer`) rather
+  (e.g. a "networking" endpoint aggregating `AsyConnTime`/`asy_dns_client`/`DNSServer`) rather
   than merged at the `self.pr` level, so C.7 doesn't need to pick a single shared-vs-independent
   rule — both are valid, and which one a given owned helper uses is a wiring-layer decision, not a
   per-class one. See `WIRING_CONTRACT.md` for where that aggregation actually lands once it's
@@ -1505,7 +1518,7 @@ pass-1/pass-2 process this table is pass 2's own output.
 | `asy_bmp3xx_driver.py` (`"BMP3XX"`) | 10-21 | — | 10=init, 11-14=config read/write, 15-20=oversampling/filter forwards, 21=trigger-interval. |
 | `asy_scd30_driver.py` (`"SCD30"`) | 10-24 | — | 10=init, 11=read, 12=stop-continuous-measurement, 13-24=per-field get/set forwards in pairs. |
 | `asy_sgp40_driver.py` (`"SGP40"`) | 10-18 | 10-14 | 10=init, 11-12=config, 13-18=VOC-backup read/write/serialize; `wrnno`=backup-missing/stale conditions. |
-| `asy_wifi_service.py` (`"WIFI"`, `asy_conn_time`) | 11-18 | 1-7 | 11=mode-switch, 12=hotspot-activate, 13=STA-connect-attempt, 14=STA-poll, 15-16=STA-disconnect/deactivate, 18=disconnect-timeout; `wrnno` 1-3=missing-config per connection phase, 4-7=WLAN status conditions. |
+| `asy_wifi_service.py` (`"WIFI"`, `AsyConnTime`) | 11-18 | 1-7 | 11=mode-switch, 12=hotspot-activate, 13=STA-connect-attempt, 14=STA-poll, 15-16=STA-disconnect/deactivate, 18=disconnect-timeout; `wrnno` 1-3=missing-config per connection phase, 4-7=WLAN status conditions. |
 | `asy_ntp_client.py` (`"NTP"`) | 11-20 | 1-3 | 11=missing-config, ..., 19=time-calc, 18/20=missing-config-interval-fallback/give-up; `wrnno`=callback failures. |
 | `captive_dns.py` (`"DNSSRV"`, `DNSServer`) | 1-3 | 1-2 | 1=invalid server_ip/netmask at startup, 2=unexpected loop exception, 3=disconnect-cleanup exception; `wrnno` 1=dropped `sendto()` reply, 2=invalid recvfrom data/address. |
 | `system_service.py` (`"SYSTEM"`) | 1-4 | dynamic (`n + 1`) | 4=task-error-budget-exceeded-rebooting; `wrnno` assigned per task-supervisor index — see the "dynamic assignment" bullet above, not a fixed catalog. |
@@ -2307,6 +2320,16 @@ future caller violating today's invariants) rather than chased for a coverage nu
 function's own domain guard (checked *before* the `try`) already rejects every input - including
 NaN/Inf, per `tests/test_math_helpers.py`'s own `*_nan_and_inf_return_none` tests - that could
 otherwise reach a math-domain error inside it.
+`print_log.py`'s `get_log()` has the same shape from an `if` branch rather than an `except`:
+its per-entry loop's `if errno == _NO_ERR or errno == _NO_WRN:` treats both sentinels as
+equivalent "nothing recorded" markers, but only `_NO_ERR` can actually land in `self.history` -
+`wrn_s()`'s own "nothing to record" default is `wrnno=_NO_ERR` (not `_NO_WRN`), and
+`_store_err()`'s `if errno <= _NO_ERR: return` guard fires on that default before the `_NO_WRN`
+offset is ever added, so a real warning always stores `_NO_WRN + N` for some `N >= 1`, never bare
+`_NO_WRN`. **Confirmed intentional, not a bug, per the project owner**: kept for defensive
+symmetry with the `_NO_ERR` arm (which *is* reachable, via `reset()`'s history-refill), and
+because a fresh/reset history slot needs a well-defined "nothing recorded" value regardless of
+which sentinel a future caller might end up storing there.
 
 ---
 
@@ -2420,6 +2443,30 @@ timeout/cancellation mechanism; re-check any new blocking-call candidate against
 outside this project's own standard. Only worth closing when a concrete, non-hypothetical threat
 exists in a specific context (a real caller-supplied value reaching an unguarded
 comparison/construct), not just "any `await` could theoretically raise."
+
+**Hot-unplug/replug I2C recovery is two-tier by design, confirmed directly against the code (not
+assumed) — task-death-and-respawn is sufficient, but not by itself; it's one half of a mechanism
+whose other half is the watchdog backstop above.** Each `*_Reader`'s own `read_loop()` calls its
+`_init_<sensor>()` fresh on every task (re)start (both the first start and every supervisor
+respawn via `system_service.py`'s `start_and_check_tasks()`), which calls the low-level driver's
+own `setup()` - `BMP3xx_I2C.setup()`/`SCD30_I2C.setup()` both re-probe the bus and send a real
+device-level soft-reset command (datasheet-documented `CMD`/`D304` opcodes); `SGP40_I2C.setup()`
+re-probes and re-verifies via a serial-number read + self-test round-trip (no dedicated reset
+opcode exists for this chip). This **does** fully recover a clean unplug/replug (device
+power-cycles itself, comes back, responds to the next probe+reset) or a device stuck in a bad
+internal state - genuine device-level faults. What it does **not** do is reconstruct the
+underlying `machine.I2C` peripheral object itself (constructed once, at module level, in
+`improved-quality/sensortask-wozi.py`) - only a full reboot replays that construction (see A.4's
+"FRAM chunk determinism rule" for the same "full reboot replays module-level construction from
+scratch" fact used there). For a **bus-level** fault (SDA/SCL physically wedged mid-transaction,
+not just a device gone quiet) a respawn's own probe call can itself hang/repeatedly fail the same
+way any other wedged transaction does - but this is where the two tiers connect, not a gap:
+`start_and_check_tasks()` increments `task_errors` on every respawn and stops feeding the watchdog
+once `task_errors > _TASK_FAIL_MAX`, so repeated respawn failures already escalate to watchdog
+starvation on their own, without any dedicated bus-recovery code - the resulting hardware reset is
+what actually reconstructs `machine.I2C` from scratch. Task respawn therefore only ever needs to
+handle the device-level case; the bus-level case was never its job in the first place, consistent
+with the wedged-bus policy stated above.
 
 ## F.3 Long-blocking operations must not stall timing-sensitive work
 

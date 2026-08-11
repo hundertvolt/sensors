@@ -65,7 +65,7 @@ NTP = namedtuple("NTP", ("Synced", "LastSyncAge", "TS"))
 GMTimeStruct = namedtuple("GMTimeStruct", ("year", "month", "mday", "hour", "minute", "second", "weekday", "yearday"))
 
 
-class asy_ntp_client(SensorReaderConfig):
+class AsyNtpClient(SensorReaderConfig):
     def __init__(
         self,
         wifi_mode_lock: asyncio.Lock,
@@ -93,9 +93,9 @@ class asy_ntp_client(SensorReaderConfig):
             history_length=history_length,
             debug=debug,
         )
-        self.wifi_mode_lock = wifi_mode_lock  # shared with asy_conn_time - protects the WLAN state this class only reads
-        self.network_available = network_available  # asy_conn_time.network_available - caller must hold wifi_mode_lock
-        self.get_dns_server = get_dns_server  # asy_conn_time.get_dns_server_ip - the network's own DHCP-assigned DNS server, or None
+        self.wifi_mode_lock = wifi_mode_lock  # shared with AsyConnTime - protects the WLAN state this class only reads
+        self.network_available = network_available  # AsyConnTime.network_available - caller must hold wifi_mode_lock
+        self.get_dns_server = get_dns_server  # AsyConnTime.get_dns_server_ip - the network's own DHCP-assigned DNS server, or None
         self.dns_timeout_ms = dns_timeout_ms
         self.dns_tries = dns_tries
         self.ntp_fetch_timeout_ms = ntp_fetch_timeout_ms

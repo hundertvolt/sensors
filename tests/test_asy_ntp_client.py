@@ -11,7 +11,7 @@ from machine import RTC, Timer
 import asy_ntp_client as ntpmod
 import asy_spi_driver
 from asy_fram_manager import AsyFramManager
-from asy_ntp_client import asy_ntp_client
+from asy_ntp_client import AsyNtpClient
 from print_log import PrintLogHistoryStore
 
 # Same one-process-per-test-file swap as test_base_classes.py/test_asy_fram_driver.py/
@@ -66,7 +66,7 @@ def _remove_any(path: str) -> None:
 
 
 def _tmp_cfg_dir() -> str:
-    # A fresh, unique directory per call - asy_ntp_client now names its own config file
+    # A fresh, unique directory per call - AsyNtpClient now names its own config file
     # unconditionally ("config_NTP.cfg", from base_classes.py's SensorReaderConfig), so tests can
     # no longer isolate each other via distinct filenames the way the old externally-injected
     # ConfigManager tests did; a fresh directory does the same job.
@@ -96,7 +96,7 @@ def make_client(
     debug: "int | None" = None,
     cfg_path: "str | None" = None,
     fram: "AsyFramManager | None" = None,
-) -> asy_ntp_client:
+) -> AsyNtpClient:
     if wifi_mode_lock is None:
         wifi_mode_lock = asyncio.Lock()
     if network_available is None:
@@ -105,7 +105,7 @@ def make_client(
         get_dns_server = lambda: None  # noqa: E731
     if cfg_path is None:
         cfg_path = _tmp_cfg_dir()
-    client = asy_ntp_client(
+    client = AsyNtpClient(
         wifi_mode_lock,
         network_available,
         get_dns_server,
@@ -121,14 +121,14 @@ def make_client(
     return client
 
 
-def make_client_with_json(json_text: str) -> asy_ntp_client:
+def make_client_with_json(json_text: str) -> AsyNtpClient:
     cfg_path = _tmp_cfg_dir()
     with open(cfg_path + "config_NTP.cfg", "w") as f:
         f.write(json_text)
     return make_client(cfg_path=cfg_path)
 
 
-def make_invalid_cfg_client() -> asy_ntp_client:
+def make_invalid_cfg_client() -> AsyNtpClient:
     # A directory where ConfigManager expects a plain file - its own os.stat() 0x4000 (MP_S_IFDIR)
     # check rejects this and leaves self.valid False; the same "config manager itself is invalid"
     # state the old empty-schema make_broken_cfgmgr() reproduced a different way (this driver's own
@@ -180,7 +180,7 @@ def make_port() -> int:
 
 
 # ---------------------------------------------------------------------------
-# __init__ - asy_ntp_client now extends base_classes.py's SensorReaderConfig: it owns its own
+# __init__ - AsyNtpClient now extends base_classes.py's SensorReaderConfig: it owns its own
 # config_NTP.cfg file/schema internally (no externally-injected ConfigManager, no separate
 # get_default_cfg()/_DEFAULT_CONFIG merge step anymore - see DRIVER_SPEC.md/BACKLOG.md).
 # ---------------------------------------------------------------------------
@@ -293,7 +293,7 @@ def test_start_asy_sync_age_counter_returns_a_real_task() -> None:
 
 
 def test_fram_given_uses_fram_backed_logging() -> None:
-    # asy_ntp_client didn't accept a fram= parameter at all before this migration - proves the
+    # AsyNtpClient didn't accept a fram= parameter at all before this migration - proves the
     # constructor actually forwards it to SensorReaderConfig/SensorReader rather than silently
     # dropping it (the same real, promoted AsyFramManager + simulated chip test_base_classes.py
     # uses for the equivalent base-class-level check, exercised here as an integration check of
@@ -643,7 +643,7 @@ def test_ntp_force_sync_deinits_a_pending_retry_timer() -> None:
 
 # ---------------------------------------------------------------------------
 # Configuration: every valid field, and single/multiple invalid recombinations coming from a real
-# on-disk config_NTP.cfg file, exercised through the real ConfigManager asy_ntp_client now owns
+# on-disk config_NTP.cfg file, exercised through the real ConfigManager AsyNtpClient now owns
 # internally (not mocked) - proving asy_ntp_client.py's own handling of ConfigManager's per-field
 # defaulting, not re-testing ConfigManager's own contract (already covered by test_config_manager.py).
 # ---------------------------------------------------------------------------
@@ -729,7 +729,7 @@ def test_get_ntp_config_returns_none_when_config_manager_itself_is_invalid() -> 
 
 
 # ---------------------------------------------------------------------------
-# _safe_get_dns_server - reads the get_dns_server callback (asy_conn_time.get_dns_server_ip) and
+# _safe_get_dns_server - reads the get_dns_server callback (AsyConnTime.get_dns_server_ip) and
 # wraps its errors; called by asy_ntp_time() *before* acquiring wifi_mode_lock (see that method's
 # own comment and BACKLOG.md for the real bug this split fixes: calling the callback from inside the
 # locked section always saw the shared Lock as held and always got None back, regardless of the
@@ -1447,7 +1447,7 @@ def test_this_interpreters_gmtime_returns_nine_elements_not_eight() -> None:
 
 class _FixedNowTime:
     # Same monkeypatch technique as test_system_service.py's _OverflowingTime/_RaisingGmtime -
-    # replaces asy_ntp_client's own module-level `time` name (a plain, mutable module global),
+    # replaces AsyNtpClient's own module-level `time` name (a plain, mutable module global),
     # not the real (read-only builtin) module. gmtime()/mktime() delegate to the real module so
     # the DST-boundary formula is genuinely exercised; only time() is overridden (deterministic
     # branch selection instead of depending on the real calendar date) and gmtime()'s result is
@@ -1475,7 +1475,7 @@ def _mid_month_now(month: int) -> int:
     return time.mktime((year, month, 15, 12, 0, 0, 0, 0, 0))
 
 
-def _client_with_offsets(gmt_offset: int, dst_offset: int) -> asy_ntp_client:
+def _client_with_offsets(gmt_offset: int, dst_offset: int) -> AsyNtpClient:
     # Deliberately one single f-string, not a plain-string-literal-adjacent-to-an-f-string
     # concatenation: confirmed directly that MicroPython mishandles the latter when the plain
     # part contains a literal brace (this JSON's opening "{") - it raises a spurious
@@ -1498,7 +1498,7 @@ def test_cettime_returns_none_when_config_missing() -> None:
     assert run(client.cettime()) is None
 
 
-def _run_cettime_with_fixed_now(client: asy_ntp_client, fixed_now: int, raise_exc: "Exception | None" = None) -> "Any":
+def _run_cettime_with_fixed_now(client: AsyNtpClient, fixed_now: int, raise_exc: "Exception | None" = None) -> "Any":
     original_time = ntpmod.time
     ntpmod.time = _FixedNowTime(fixed_now, raise_exc)  # type: ignore[assignment]
     try:
@@ -2112,7 +2112,7 @@ class FakeNtpServer:
         self.sock.close()
 
 
-def make_integration_client() -> asy_ntp_client:
+def make_integration_client() -> AsyNtpClient:
     json_text = '{"NTP_Host": "127.0.0.1", "NTP_Offset_S": 0, "NTP_Interv_H": 12, "GMTOffset": 0, "DSTOffset": 0}'
     return make_client_with_json(json_text)
 

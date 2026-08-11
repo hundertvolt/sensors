@@ -11,8 +11,8 @@ from asy_sgp40_driver import SGP40_Reader
 from asy_bmp3xx_driver import BMP3xx_Reader
 from asy_neopixel_driver import NeopixelDriver
 from asy_notification_service import NotificationCoordinator, NotificationSignal
-from asy_wifi_service import asy_conn_time
-from asy_ntp_client import asy_ntp_client
+from asy_wifi_service import AsyConnTime
+from asy_ntp_client import AsyNtpClient
 from microdot import Microdot, send_file, Request, Response
 from machine import Timer, WDT
 from micropython import const
@@ -93,15 +93,15 @@ async def hum_value_callback() -> int | float | None:
 
 debug = False
 watchdog = WDT(timeout=8000)
-# None of the promoted sensor Readers or asy_conn_time contribute to a shared config.json anymore -
+# None of the promoted sensor Readers or AsyConnTime contribute to a shared config.json anymore -
 # see BACKLOG.md's sensortask-wozi.py integration notes:
 # - SGP40_Reader/BMP3xx_Reader (src/asy_sgp40_driver.py, src/asy_bmp3xx_driver.py) each own a
 #   private per-sensor config_<NAME>.cfg file via base_classes.py's SensorReaderConfig, and no
 #   longer expose a get_default_cfg() classmethod.
 # - SCD30_Reader (src/asy_scd30_driver.py) has no local config file at all - its params live
 #   on-sensor - so it never had a get_default_cfg() to call in the first place.
-# - asy_conn_time (asy_wifi_service.py, promoted) now owns its own config_WIFI.cfg internally
-#   (base_classes.py's SensorReaderConfig, same as asy_ntp_client below) - no more
+# - AsyConnTime (asy_wifi_service.py, promoted) now owns its own config_WIFI.cfg internally
+#   (base_classes.py's SensorReaderConfig, same as AsyNtpClient below) - no more
 #   externally-injected cfgmgr, no more get_default_cfg()/_DEFAULT_CONFIG merge step. Every REST
 #   route below that reads or writes a WIFI-schema field (Country/Hostname/SSID/PW/LedWifiOn) goes
 #   through conn.cfgmgr, not a shared cfgmgr - see BACKLOG.md for the full writeup.
@@ -116,18 +116,18 @@ watchdog = WDT(timeout=8000)
 #   wire-format change (WarnCO2 not LedWarnCO2; the frontend isn't updated to match yet, see
 #   BACKLOG.md). NTP_Host/NTP_Offset_S/NTP_Interv_H/GMTOffset/DSTOffset already live on ntp.cfgmgr
 #   (asy_ntp_client.py's own schema) - /time/* below goes through that, not a shared one.
-conn = asy_conn_time(conn_fail_to_hotspot=5, hotspot_time_min=8, max_i2c_err=_MAX_I2C_ERR, debug=debug)
+conn = AsyConnTime(conn_fail_to_hotspot=5, hotspot_time_min=8, max_i2c_err=_MAX_I2C_ERR, debug=debug)
 # max_i2c_err: consecutive-failure-streak threshold, not literally about I2C - conn/ntp neither have
 # an I2C bus, they just inherit this generically-named base_classes.py parameter (see BACKLOG.md).
 # TODO: rename it project-wide to something bus-agnostic in a later, separate pass.
-# The leaf timeouts asy_ntp_client forwards to its own async DNS lookup/NTP fetch are set here, the
+# The leaf timeouts AsyNtpClient forwards to its own async DNS lookup/NTP fetch are set here, the
 # one place this class is instantiated - see BACKLOG.md's timing-restructure writeup for why these
 # (and not a hidden module constant, and not any computation inside asy_ntp_client.py itself) are
 # the only place a real device's timing behavior actually gets decided.
 _DNS_TIMEOUT_MS = const(500)  # per-server, per-attempt DNS lookup budget
 _DNS_TRIES = const(1)  # retry budget per DNS server
 _NTP_FETCH_TIMEOUT_MS = const(5000)  # timeout for the actual NTP request/reply round trip
-ntp = asy_ntp_client(
+ntp = AsyNtpClient(
     conn.get_wifi_mode_lock(),
     conn.network_available,
     conn.get_dns_server_ip,
@@ -146,7 +146,7 @@ sysfunct = SystemService(ntp.ntp_issynced, watchdog=watchdog, fram=fram, debug=d
 # fram_storage/fram_ntp_callback replace the old ts_storage= kwarg - SGP40_Reader now carves its
 # own timestamped FRAM chunk internally (VOCAlgorithm.get_params_memsize(), not a class method on
 # SGP40_Reader itself anymore) instead of taking a pre-built chunk from the caller. ntp_issynced now
-# lives on the promoted asy_ntp_client (ntp), not asy_conn_time (conn) - see BACKLOG.md's
+# lives on the promoted AsyNtpClient (ntp), not AsyConnTime (conn) - see BACKLOG.md's
 # sensortask-wozi.py integration notes.
 sgp_reader = SGP40_Reader(
     i2c1,
@@ -252,7 +252,7 @@ async def _scd_apply_field(data: Dict[str, Any], key: str, field: "cm.FieldSchem
 
 
 def _cfg_subset(schema: "cm.ConfigSchema", keys: "Tuple[str, ...]") -> "cm.ConfigSchema":
-    # asy_conn_time (conn) owns exactly one schema/cfgmgr for all of SSID/PW/Country/Hostname/
+    # AsyConnTime (conn) owns exactly one schema/cfgmgr for all of SSID/PW/Country/Hostname/
     # LedWifiOn, but /net/cmd's setNetwork and /led/cmd's setWiFiLED are two separate routes that
     # each only own a subset of those fields (matches the legacy handler's own scoping - see
     # modules/sensortask-wozi.py's setNetwork/setWiFiLED, each of which only ever touched its own

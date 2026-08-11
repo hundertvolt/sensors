@@ -20,8 +20,8 @@ determinism rule" for the full standing check.
 
 ## Current construction order (`sensortask-wozi.py`, module level, top to bottom)
 
-1. `conn = asy_conn_time(...)` — owns `DNSServer` internally (`captive_dns.py`)
-2. `ntp = asy_ntp_client(conn.get_wifi_mode_lock(), conn.network_available, conn.get_dns_server_ip, ...)`
+1. `conn = AsyConnTime(...)` — owns `DNSServer` internally (`captive_dns.py`)
+2. `ntp = AsyNtpClient(conn.get_wifi_mode_lock(), conn.network_available, conn.get_dns_server_ip, ...)`
    — takes bound methods off `conn`, not a direct import-time reference
 3. `app = Microdot()`
 4. `i2c0`, `i2c1` = `asy_i2c_driver.I2C(...)` ×2

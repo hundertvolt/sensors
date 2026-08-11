@@ -1,5 +1,5 @@
-"""Integration tests across the real four-object chain: asy_wifi_service.py (asy_conn_time) ->
-asy_ntp_client.py (asy_ntp_client) -> {asy_fram_manager.py's timestamped FRAM chunk,
+"""Integration tests across the real four-object chain: asy_wifi_service.py (AsyConnTime) ->
+asy_ntp_client.py (AsyNtpClient) -> {asy_fram_manager.py's timestamped FRAM chunk,
 system_service.py's SystemService} - exactly matching improved-quality/sensortask-wozi.py's real
 wiring (`ntp.ntp_issynced` passed as both SGP40_Reader's own fram_ntp_callback and SystemService's
 asy_ntp_callback: `SystemService(ntp.ntp_issynced, watchdog=watchdog, fram=fram, debug=debug)`).
@@ -13,10 +13,10 @@ newly-promoted, audited asy_ntp_client.py instead (fixed in that same review pas
 Every individual module already has thorough lambda-based unit tests of its own (including the
 "callback raises" guard: tests/test_asy_fram_manager.py's test_ntp_callback_raising_degrades_..., and
 tests/test_system_service.py's test_ntp_boot_signature_callback_exception_returns_none_and_logs_once);
-what those can't observe is whether the *real*, currently-wired chain - a real asy_conn_time driving
-a real asy_ntp_client through an actual UDP NTP round trip - produces the value/timing behavior
+what those can't observe is whether the *real*, currently-wired chain - a real AsyConnTime driving
+a real AsyNtpClient through an actual UDP NTP round trip - produces the value/timing behavior
 asy_fram_manager.py's and system_service.py's own contracts assume, including the no-deadlock
-assumption that reading a shared asy_ntp_client's sync state from a concurrent FRAM/SystemService
+assumption that reading a shared AsyNtpClient's sync state from a concurrent FRAM/SystemService
 consumer never contends with the wifi_mode_lock a real sync attempt holds.
 """
 
@@ -36,11 +36,11 @@ import asy_spi_driver
 from asy_bmp3xx_driver import BMP3xx_Reader
 from asy_fram_manager import AsyFramManager
 from asy_i2c_driver import I2C
-from asy_ntp_client import asy_ntp_client
+from asy_ntp_client import AsyNtpClient
 from asy_scd30_driver import SCD30_Reader
 from asy_sgp40_driver import SGP40_Reader
 from asy_spi_driver import SPI
-from asy_wifi_service import asy_conn_time
+from asy_wifi_service import AsyConnTime
 from crc_checks import CRC32
 from system_service import SystemService
 
@@ -63,7 +63,7 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
     return asyncio.run(coro)
 
 
-def _wlan(conn: asy_conn_time) -> "Any":
+def _wlan(conn: AsyConnTime) -> "Any":
     # Narrows to Any once, here, matching test_asy_wifi_service.py's/test_ntp_wifi_dns_integration.py's
     # own identical helper - see their comments for why (tests/network.py's fake vs. the real stub).
     return conn.wlan
@@ -107,22 +107,22 @@ def _tmp_cfg_dir() -> str:
     return path + "/"
 
 
-def make_conn() -> asy_conn_time:
-    conn = asy_conn_time(led_pin=None, cfg_path=_tmp_cfg_dir())
+def make_conn() -> AsyConnTime:
+    conn = AsyConnTime(led_pin=None, cfg_path=_tmp_cfg_dir())
     run(conn.cfgmgr.setup())
     return conn
 
 
 def make_ntp(
-    conn: asy_conn_time, ntp_host: str, ntp_fetch_timeout_ms: int = 5000, max_i2c_err: int = 5
-) -> asy_ntp_client:
+    conn: AsyConnTime, ntp_host: str, ntp_fetch_timeout_ms: int = 5000, max_i2c_err: int = 5
+) -> AsyNtpClient:
     # Exactly sensortask-wozi.py's own wiring: conn.get_wifi_mode_lock()/network_available/
     # get_dns_server_ip passed straight through as ntp's own constructor arguments - the real bound
     # methods, not a lambda standing in for them.
     cfg_path = _tmp_cfg_dir()
     with open(cfg_path + "config_NTP.cfg", "w") as f:
         f.write(f'{{"NTP_Host": "{ntp_host}", "NTP_Offset_S": 0, "NTP_Interv_H": 12, "GMTOffset": 0, "DSTOffset": 0}}')
-    ntp = asy_ntp_client(
+    ntp = AsyNtpClient(
         conn.get_wifi_mode_lock(),
         conn.network_available,
         conn.get_dns_server_ip,
@@ -134,7 +134,7 @@ def make_ntp(
     return ntp
 
 
-def connect_wlan(conn: asy_conn_time, dns_server: str = "192.0.2.53") -> None:
+def connect_wlan(conn: AsyConnTime, dns_server: str = "192.0.2.53") -> None:
     _wlan(conn)._connected = True
     _wlan(conn)._status = network.STAT_GOT_IP
     _wlan(conn)._ifconfig = ("10.0.0.5", "255.255.255.0", "10.0.0.1", dns_server)
@@ -255,7 +255,7 @@ def make_ntp_reply(unix_seconds: int) -> bytes:
     return packet
 
 
-async def sync_real_ntp_chain(conn: asy_conn_time, ntp: asy_ntp_client) -> None:
+async def sync_real_ntp_chain(conn: AsyConnTime, ntp: AsyNtpClient) -> None:
     # Drives one full, real, successful sync attempt (real WLAN state -> real DNS-skip via literal
     # IP -> real UDP round trip against a fake server) so a test can then observe ntp.ntp_issynced()
     # genuinely returning True through downstream consumers, not a hand-set flag.
@@ -307,7 +307,7 @@ def test_fram_write_into_gets_a_real_valid_timestamp_once_the_real_ntp_chain_is_
 def test_fram_write_into_require_ntp_refuses_when_the_real_ntp_chain_has_never_synced() -> None:
     # Exactly asy_sgp40_driver.py's own _run_backup() "no write due to no timesync yet" real path
     # (require_ntp=True, ntp_synced=False -> no write, no error) - driven by a real never-connected
-    # asy_conn_time/asy_ntp_client pair instead of a lambda that always returns False.
+    # AsyConnTime/AsyNtpClient pair instead of a lambda that always returns False.
     conn = make_conn()  # never connected: network_available() genuinely returns False
     ntp = make_ntp(conn, "127.0.0.1")
     manager, _chip = make_fram_manager()
@@ -419,7 +419,7 @@ def test_system_service_boot_signature_falls_back_to_random_once_the_real_chain_
 
 
 def test_system_service_and_a_fram_backup_chunk_share_one_real_ntp_client_independently() -> None:
-    # Matches sensortask-wozi.py's real topology: one asy_ntp_client instance (ntp), one bound
+    # Matches sensortask-wozi.py's real topology: one AsyNtpClient instance (ntp), one bound
     # ntp.ntp_issynced method, handed to two independent real consumers at once (SystemService and a
     # FRAM timestamped chunk, standing in for SGP40_Reader's own ts_storage) - proves neither
     # consumer's own call to the shared callback corrupts or blocks the other's.
@@ -451,7 +451,7 @@ def test_system_service_and_a_fram_backup_chunk_share_one_real_ntp_client_indepe
 # task genuinely returning after exceeding max_i2c_err) together with test_system_service.py's own
 # test_start_and_check_tasks_restarts_a_dead_task_and_logs_a_warning (SystemService noticing and
 # restarting a dead task) - neither per-module test observes the other side of this seam: does a
-# real asy_ntp_client task that genuinely dies actually get detected and restarted by a real
+# real AsyNtpClient task that genuinely dies actually get detected and restarted by a real
 # SystemService.start_and_check_tasks(), the exact supervision loop sensortask-wozi.py's own
 # start_and_check_tasks(task_starters) call relies on for every promoted task?
 # ---------------------------------------------------------------------------
@@ -509,7 +509,7 @@ def test_system_service_restarts_a_real_ntp_task_that_genuinely_gives_up() -> No
 # Torn-write self-heal with a real, chain-derived timestamp: applying
 # tests/test_fram_integration.py's own test_torn_write_on_printloghistorystore_chunk_self_heals_...
 # fault-injection pattern (simulate power loss mid-write, then a fresh reboot) to a timestamped chunk
-# whose ntp_sync_callback is a real asy_ntp_client.ntp_issynced instead of the `_synced()`
+# whose ntp_sync_callback is a real AsyNtpClient.ntp_issynced instead of the `_synced()`
 # always-True stub every other FRAM test in this suite uses.
 # ---------------------------------------------------------------------------
 
@@ -539,7 +539,7 @@ def test_fram_timestamped_chunk_torn_write_self_heals_with_a_real_ntp_derived_ti
     chip.memory[status_addr + 1] = _STATUS_BUSY
 
     # Fresh reboot: new manager/chunk objects (same underlying chip), a fresh never-synced
-    # asy_ntp_client this time - proving the self-heal doesn't depend on NTP state at read time.
+    # AsyNtpClient this time - proving the self-heal doesn't depend on NTP state at read time.
     manager2, _chip2 = make_fram_manager()
     manager2.fram._spidev.spi._spi = chip
     run(manager2.setup())
@@ -561,7 +561,7 @@ def test_fram_timestamped_chunk_torn_write_self_heals_with_a_real_ntp_derived_ti
 # nothing proves the same starter still works once it's wired through the real, generic
 # start_and_check_tasks() every sensortask-*.py device actually uses - the exact seam
 # test_system_service_restarts_a_real_ntp_task_that_genuinely_gives_up above already proves for
-# asy_ntp_client's own task, generalized here to a sensor driver.
+# AsyNtpClient's own task, generalized here to a sensor driver.
 # ---------------------------------------------------------------------------
 
 _BMP_ADDR = 0x77

@@ -1,9 +1,9 @@
-"""Integration tests across the real three-file chain: asy_wifi_service.py (asy_conn_time) ->
-asy_ntp_client.py (asy_ntp_client) -> asy_dns_client.py (resolve_ipv4). Every other test file in
+"""Integration tests across the real three-file chain: asy_wifi_service.py (AsyConnTime) ->
+asy_ntp_client.py (AsyNtpClient) -> asy_dns_client.py (resolve_ipv4). Every other test file in
 this suite exercises one of these files in isolation, replacing its peers with a bare lambda
 (get_dns_server=lambda: None) or a synthetic recorder - deliberately, so each file's own contract is
-characterized independently. This file instead constructs real asy_conn_time/asy_ntp_client
-instances, wired exactly like sensortask-wozi.py does (`asy_ntp_client(conn.get_wifi_mode_lock(),
+characterized independently. This file instead constructs real AsyConnTime/AsyNtpClient
+instances, wired exactly like sensortask-wozi.py does (`AsyNtpClient(conn.get_wifi_mode_lock(),
 conn.network_available, conn.get_dns_server_ip, ...)`), to prove the *linked* behavior across the
 seam: calling order, error handling, and value propagation between the two real objects - things a
 lambda-based unit test cannot observe because it never shares real state (in particular, the shared
@@ -11,7 +11,7 @@ wifi_mode_lock instance) with a second real object the way production code does.
 
 Found and fixed one real bug this way (see BACKLOG.md and asy_ntp_client.py's own module
 docstring): get_dns_server_ip() gates on `wifi_mode_lock.locked()` as its own "WLAN mid-transition,
-ifconfig() unsafe to read" check, but asy_ntp_client used to call it *after* acquiring that same
+ifconfig() unsafe to read" check, but AsyNtpClient used to call it *after* acquiring that same
 shared Lock for its own sync attempt - so it always saw locked()==True and always got None back,
 regardless of the real WLAN state. asy_ntp_time() now reads it via the new _safe_get_dns_server()
 before acquiring the lock; several tests below exist specifically to prove this stays fixed.
@@ -37,8 +37,8 @@ import time
 import network
 
 import asy_ntp_client as ntpmod
-from asy_ntp_client import asy_ntp_client
-from asy_wifi_service import asy_conn_time
+from asy_ntp_client import AsyNtpClient
+from asy_wifi_service import AsyConnTime
 
 try:
     from typing import TYPE_CHECKING
@@ -56,7 +56,7 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
     return asyncio.run(coro)
 
 
-def _wlan(conn: asy_conn_time) -> "Any":
+def _wlan(conn: AsyConnTime) -> "Any":
     # _wlan(conn) is typed against the real network.WLAN stub (see pyproject.toml's own
     # tests/network.py exclude comment); at runtime MICROPYPATH ordering constructs
     # tests/network.py's fake instead, which exposes test-only attributes (raise_on, _status,
@@ -80,8 +80,8 @@ def _remove_any(path: str) -> None:
 
 
 def _tmp_cfg_dir() -> str:
-    # One fresh directory per call, shared by both services below - asy_conn_time names its own
-    # file "config_WIFI.cfg" and asy_ntp_client names its own "config_NTP.cfg" (both from
+    # One fresh directory per call, shared by both services below - AsyConnTime names its own
+    # file "config_WIFI.cfg" and AsyNtpClient names its own "config_NTP.cfg" (both from
     # base_classes.py's SensorReaderConfig), so the two never collide even sharing one directory.
     global _next_dir
     try:
@@ -99,15 +99,15 @@ def _tmp_cfg_dir() -> str:
     return path + "/"
 
 
-def make_conn(cfg_path: "str | None" = None) -> asy_conn_time:
+def make_conn(cfg_path: "str | None" = None) -> AsyConnTime:
     if cfg_path is None:
         cfg_path = _tmp_cfg_dir()
-    conn = asy_conn_time(led_pin=None, cfg_path=cfg_path)
+    conn = AsyConnTime(led_pin=None, cfg_path=cfg_path)
     run(conn.cfgmgr.setup())
     return conn
 
 
-def make_ntp(conn: asy_conn_time, ntp_host: str, cfg_path: "str | None" = None) -> asy_ntp_client:
+def make_ntp(conn: AsyConnTime, ntp_host: str, cfg_path: "str | None" = None) -> AsyNtpClient:
     # Exactly sensortask-wozi.py's own wiring: conn.get_wifi_mode_lock()/network_available/
     # get_dns_server_ip passed straight through as ntp's own constructor arguments - the real
     # bound methods, not a lambda standing in for them.
@@ -117,12 +117,12 @@ def make_ntp(conn: asy_conn_time, ntp_host: str, cfg_path: "str | None" = None) 
         # One single f-string, not a plain-string-literal-adjacent-to-an-f-string concatenation -
         # same MicroPython gotcha test_asy_ntp_client.py's own _client_with_offsets() documents.
         f.write(f'{{"NTP_Host": "{ntp_host}", "NTP_Offset_S": 0, "NTP_Interv_H": 12, "GMTOffset": 0, "DSTOffset": 0}}')
-    ntp = asy_ntp_client(conn.get_wifi_mode_lock(), conn.network_available, conn.get_dns_server_ip, cfg_path=cfg_path)
+    ntp = AsyNtpClient(conn.get_wifi_mode_lock(), conn.network_available, conn.get_dns_server_ip, cfg_path=cfg_path)
     run(ntp.cfgmgr.setup())
     return ntp
 
 
-def connect_wlan(conn: asy_conn_time, dns_server: str = "192.0.2.53") -> None:
+def connect_wlan(conn: AsyConnTime, dns_server: str = "192.0.2.53") -> None:
     # Puts the real fake network.WLAN into a normal, connected STA state - the same shape
     # network_available()/get_dns_server_ip() expect in production (see asy_wifi_service.py's own
     # _conn_phase/_wlan_status_or_none()). Bypasses the real wlan_connect() state machine (out of

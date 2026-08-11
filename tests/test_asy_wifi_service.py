@@ -8,7 +8,7 @@ from machine import Timer
 
 import asy_wifi_service
 from asy_udp_socket import AsyUDPSocket
-from asy_wifi_service import WIFI, asy_conn_time
+from asy_wifi_service import WIFI, AsyConnTime
 
 # Mirrors asy_wifi_service.py's own _PHASE_STA_SEEKING/_PHASE_STA_ESTABLISHED/_PHASE_HOTSPOT/
 # _PHASE_DEACTIVATED values, duplicated here rather than imported: those are micropython.const()-
@@ -53,7 +53,7 @@ def _last_err(counter: "dict[str, dict[str, int | list[int] | list[str]]]", fiel
     return value[-1]
 
 
-def _wlan(client: asy_conn_time) -> "Any":
+def _wlan(client: AsyConnTime) -> "Any":
     # _wlan(client) is typed against the real network.WLAN stub (see pyproject.toml's own
     # tests/network.py exclude comment - that's deliberate, so asy_wifi_service.py's own real
     # `import network` call sites stay checked against the real API). At runtime, MICROPYPATH
@@ -164,10 +164,10 @@ def make_client(
     max_i2c_err: int = 5,
     cfg_path: "str | None" = None,
     debug: "int | None" = None,
-) -> asy_conn_time:
+) -> AsyConnTime:
     if cfg_path is None:
         cfg_path = _tmp_cfg_dir()
-    client = asy_conn_time(
+    client = AsyConnTime(
         conn_fail_to_hotspot=conn_fail_to_hotspot,
         led_pin=None,  # tests/machine.py's fake Pin doesn't accept the real Pin(..., value=0) kwarg
         # asy_wifi_service.py passes - every LED test below goes through ext_led instead, which
@@ -183,14 +183,14 @@ def make_client(
     return client
 
 
-def make_client_with_json(json_text: str, **kwargs: "Any") -> asy_conn_time:
+def make_client_with_json(json_text: str, **kwargs: "Any") -> AsyConnTime:
     cfg_path = _tmp_cfg_dir()
     with open(cfg_path + "config_WIFI.cfg", "w") as f:
         f.write(json_text)
     return make_client(cfg_path=cfg_path, **kwargs)
 
 
-def make_invalid_cfg_client() -> asy_conn_time:
+def make_invalid_cfg_client() -> AsyConnTime:
     # A directory where ConfigManager expects a plain file - same technique as
     # test_asy_ntp_client.py's own make_invalid_cfg_client().
     cfg_path = _tmp_cfg_dir()
@@ -1691,14 +1691,16 @@ def test_reset_wlan_connect_state_resets_sta_established_to_seeking() -> None:
     assert client._conn_phase == _PHASE_STA_SEEKING
 
 
-def test_reset_wlan_connect_state_resets_deactivated_to_seeking() -> None:
-    # A task restart (e.g. after the hw_op_failed streak gives up) pulls the state machine back out
-    # of the terminal deactivated phase - matches the old code's unconditional wlan_deactivated=False
-    # reset here.
+def test_reset_wlan_connect_state_preserves_deactivated_phase_across_a_restart() -> None:
+    # A task restart (e.g. after the hw_op_failed streak gives up) must NOT pull the state machine
+    # back out of the terminal deactivated phase - _PHASE_DEACTIVATED is a deliberate, permanent
+    # WLAN-off state (SPECIFICATION.md Part A.4: a physical power-cycle is the accepted recovery
+    # path), same special-casing as _PHASE_HOTSPOT just above. BACKLOG.md's open-question item 1,
+    # now decided/hardened.
     client = make_client()
     client._conn_phase = _PHASE_DEACTIVATED
     client._reset_wlan_connect_state()
-    assert client._conn_phase == _PHASE_STA_SEEKING
+    assert client._conn_phase == _PHASE_DEACTIVATED
 
 
 def test_reset_wlan_connect_state_clears_failure_counters_and_hotspot_started_once() -> None:
@@ -2019,7 +2021,7 @@ def _dns_query_packet(domain: str) -> bytes:
     return header + qname + b"\x00\x01\x00\x01"
 
 
-async def _start_real_hotspot(client: asy_conn_time, server_addr: "tuple[str, int]") -> None:
+async def _start_real_hotspot(client: AsyConnTime, server_addr: "tuple[str, int]") -> None:
     # Same-subnet own_ip/netmask as the test client's own loopback source address, so
     # DNSServer.run()'s subnet filter doesn't reject the test query as off-subnet.
     _wlan(client)._ifconfig = ("127.0.0.1", "255.255.255.0", "127.0.0.1", "127.0.0.1")

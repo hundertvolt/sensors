@@ -1,8 +1,8 @@
 """End-to-end integration tests for the setter generalization work: api_response.py's
 parse_cmd_request()/handle_set_cmd() driven against mocked Microdot request data (fine/partial/
 garbage), then against a real ext/microdot.py (v2.6.2) Microdot app wired the way sensortask-*.py
-will eventually wire it - a real asy_conn_time (WiFi) reader for the setter path, a real
-asy_ntp_client reader for both the getter and the setter path, a real BMP3xx_Reader/SGP40_Reader for
+will eventually wire it - a real AsyConnTime (WiFi) reader for the setter path, a real
+AsyNtpClient reader for both the getter and the setter path, a real BMP3xx_Reader/SGP40_Reader for
 the schema-driven sensor setters, and a real SCD30_Reader for the one sensor whose REST surface is
 hand-rolled per field instead of schema-driven. Only test-local Microdot apps are constructed here;
 improved-quality/sensortask-wozi.py itself is never touched (see CLAUDE.md's hard rule on editing
@@ -33,10 +33,10 @@ import api_response as ar
 import config_manager as cm
 from asy_bmp3xx_driver import BMP3xx_Reader
 from asy_i2c_driver import I2C
-from asy_ntp_client import asy_ntp_client
+from asy_ntp_client import AsyNtpClient
 from asy_scd30_driver import SCD30_Reader
 from asy_sgp40_driver import SGP40_Reader
-from asy_wifi_service import asy_conn_time
+from asy_wifi_service import AsyConnTime
 
 try:
     from typing import TYPE_CHECKING
@@ -89,15 +89,15 @@ def _tmp_cfg_dir() -> str:
     return path + "/"
 
 
-def make_wifi_client() -> asy_conn_time:
-    client = asy_conn_time(led_pin=None, cfg_path=_tmp_cfg_dir())
+def make_wifi_client() -> AsyConnTime:
+    client = AsyConnTime(led_pin=None, cfg_path=_tmp_cfg_dir())
     run(client.cfgmgr.setup())
     return client
 
 
-def make_ntp_client() -> asy_ntp_client:
+def make_ntp_client() -> AsyNtpClient:
     wifi_mode_lock = asyncio.Lock()
-    client = asy_ntp_client(
+    client = AsyNtpClient(
         wifi_mode_lock,
         network_available=lambda: True,
         get_dns_server=lambda: None,
@@ -126,7 +126,7 @@ class _FakeRequest:
 # one cmd, a fixed field list, one post_fct hook) - driven against mocked request data of varying
 # quality (fine/partial/garbage), without a real Microdot app or real sockets.
 #
-# asy_conn_time owns one schema/cfgmgr for all of SSID/PW/Country/Hostname/LedWifiOn, but the real
+# AsyConnTime owns one schema/cfgmgr for all of SSID/PW/Country/Hostname/LedWifiOn, but the real
 # /net/cmd (setNetwork) and /led/cmd (setWiFiLED) routes each only own their own subset of those
 # fields (improved-quality/sensortask-wozi.py's own _cfg_subset()) - passing the *whole* schema to
 # both would let setNetwork accept/persist LedWifiOn (and spuriously fire reconnect_wifi() for an
@@ -136,12 +136,12 @@ class _FakeRequest:
 # ---------------------------------------------------------------------------
 
 
-def _wifi_field_schema(client: asy_conn_time, keys: "tuple[str, ...]") -> "cm.ConfigSchema":
+def _wifi_field_schema(client: AsyConnTime, keys: "tuple[str, ...]") -> "cm.ConfigSchema":
     fields = cm.schema_dict(client.get_cfg_schema())
     return tuple(fields[k] for k in keys if k in fields)
 
 
-async def _simulated_set_network_endpoint(client: asy_conn_time, request: "Any") -> "ar.ResponseEnvelope":
+async def _simulated_set_network_endpoint(client: AsyConnTime, request: "Any") -> "ar.ResponseEnvelope":
     data, err = ar.parse_cmd_request(request, ["setNetwork"])
     if err is not None:
         return err
@@ -153,7 +153,7 @@ async def _simulated_set_network_endpoint(client: asy_conn_time, request: "Any")
     )
 
 
-async def _simulated_set_wifi_led_endpoint(client: asy_conn_time, request: "Any") -> "ar.ResponseEnvelope":
+async def _simulated_set_wifi_led_endpoint(client: AsyConnTime, request: "Any") -> "ar.ResponseEnvelope":
     data, err = ar.parse_cmd_request(request, ["setWiFiLED"])
     if err is not None:
         return err
@@ -240,7 +240,7 @@ def test_mocked_request_empty_body_dict_is_valid_but_changes_nothing() -> None:
 
 # ---------------------------------------------------------------------------
 # setNetwork/setWiFiLED field scoping - regression coverage for the cross-route schema leakage bug
-# found in improved-quality/sensortask-wozi.py: asy_conn_time owns one schema for both routes'
+# found in improved-quality/sensortask-wozi.py: AsyConnTime owns one schema for both routes'
 # fields, so passing the *whole* schema to either route (instead of each route's own real subset)
 # would let setNetwork accept/persist LedWifiOn (and spuriously reconnect for an LED-only change)
 # and let setWiFiLED silently accept/persist SSID/PW/Country/Hostname with no reconnect at all.
@@ -313,7 +313,7 @@ def _make_request(app: Microdot, method: str, path: str, json_body: "dict[str, A
     return Request(app, ("127.0.0.1", 12345), method, path, "1.1", headers, body=body)
 
 
-def _wifi_app(client: asy_conn_time) -> Microdot:
+def _wifi_app(client: AsyConnTime) -> Microdot:
     app = Microdot()
 
     @app.put("/net/cmd")
@@ -495,7 +495,7 @@ def test_real_microdot_setter_end_to_end_write_only_fault_recovers_via_live_gett
 # ---------------------------------------------------------------------------
 
 
-def _ntp_getter_app(client: asy_ntp_client) -> Microdot:
+def _ntp_getter_app(client: AsyNtpClient) -> Microdot:
     app = Microdot()
 
     @app.get("/time/config")
@@ -534,7 +534,7 @@ def test_real_microdot_getter_end_to_end_reflects_a_prior_write() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Real Microdot end-to-end for asy_ntp_client's SETTER path. asy_ntp_client.py's own module
+# Real Microdot end-to-end for AsyNtpClient's SETTER path. asy_ntp_client.py's own module
 # docstring claims "base_classes.py's generic _set_dict_cfg() already provides full setter support
 # with zero changes to this file (no self._push_callbacks entries registered)" - every field is
 # persist-only. That claim was only ever exercised at the _set_dict_cfg() level (the getter section
@@ -543,7 +543,7 @@ def test_real_microdot_getter_end_to_end_reflects_a_prior_write() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _ntp_setter_app(client: asy_ntp_client) -> Microdot:
+def _ntp_setter_app(client: AsyNtpClient) -> Microdot:
     app = Microdot()
 
     @app.put("/time/cmd")

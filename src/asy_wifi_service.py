@@ -68,7 +68,7 @@ _STAT_OBTAINING_IP = const(2)  # network.STAT_* value seen mid-connect, between 
 # STAT_GOT_IP - not yet exposed as a named constant by MicroPython's network module itself.
 
 
-class asy_conn_time(SensorReaderConfig):
+class AsyConnTime(SensorReaderConfig):
     def __init__(
         self,
         conn_fail_to_hotspot: int = 5,
@@ -238,10 +238,14 @@ class asy_conn_time(SensorReaderConfig):
             self.dns_server_task = None
         self.connection_failures = 0
         self.hotspot_started_once = False
-        if self._conn_phase != _PHASE_HOTSPOT:
+        if self._conn_phase not in (_PHASE_HOTSPOT, _PHASE_DEACTIVATED):
             # Deliberately left at _PHASE_HOTSPOT on a task restart mid-hotspot (matches the old
             # code's behavior) - reconn_wifi below and wlan_connect()'s first iteration both still
             # see it and route through the same forced leave-hotspot-and-reconnect path.
+            # _PHASE_DEACTIVATED is also left as-is: it's a deliberate, permanent WLAN-off state
+            # (SPECIFICATION.md Part A.4 documents a physical power-cycle as the accepted recovery
+            # path) - a task-level restart must not silently re-enable WLAN by resetting it back to
+            # _PHASE_STA_SEEKING here.
             self._conn_phase = _PHASE_STA_SEEKING
         self.hotspot_timer.deinit()
         self.hotspot_timer_running = False
