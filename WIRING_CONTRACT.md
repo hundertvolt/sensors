@@ -27,21 +27,28 @@ determinism rule" for the full standing check.
    itself is none; it constructs `FRAM_SPI` internally with a shared `logger=`**
 7. `sysfunct = SystemService(ntp.ntp_issynced, watchdog=watchdog, fram=fram, ...)` — **FRAM chunk 1**
 8. `sgp_reader = SGP40_Reader(i2c1, sgp_comp_callback, fram_storage=fram, fram_ntp_callback=ntp.ntp_issynced, ...)`
-   — **FRAM chunk 2** (its own `PrintLogHistoryStore`, if `fram=` were forwarded — currently only
-   `fram_storage=` for the VOC backup chunk is passed, not `fram=` for its own error log; recheck
-   during Cluster 7 whether that's deliberate)
+   — **FRAM chunks 2 and 3**, allocated in this fixed sub-order within `SGP40_Reader.__init__`
+   itself, confirmed directly against `src/asy_sgp40_driver.py`: `fram_storage` is forwarded as
+   `fram=fram_storage` into `super().__init__()` (line 72), so `SGP40_Reader`'s own `self.pr` is
+   already FRAM-backed (chunk 2, via `make_logger()` → `PrintLogHistoryStore.__init__()`'s
+   `fram.get_chunk()`) — the same `fram_storage` argument does double duty. Chunk 3 is the VOC
+   backup itself (`self.ts_storage = fram_storage.get_timestamped_chunk(...)`, a few lines later
+   in `__init__`). Both are unconditional as long as `fram_storage`/`fram_ntp_callback` are non-
+   `None`, which they always are in the real wiring — deterministic, matches the rule.
 9. `bmp_reader = BMP3xx_Reader(i2c1, ...)` — no `fram=` passed, in-memory logging only
 10. `scd_reader = SCD30_Reader(i2c0, 8, trigger_sec=3, ...)` — no `fram=`, no config schema at all
     (params live on-sensor, see CLAUDE.md)
-11. `pixel = NeopixelDriver(15, fram=fram, ...)` — **FRAM chunk 3**
+11. `pixel = NeopixelDriver(15, fram=fram, ...)` — **FRAM chunk 4**
 12. `notify_service = NotificationCoordinator(pixel.request_signal, ntp.cettime, fram=fram, ...)` —
-    **FRAM chunk 4**, staged registration (`register()` ×3 for `WarnCO2`/`WarnVOC`/`WarnHum`, then
+    **FRAM chunk 5**, staged registration (`register()` ×3 for `WarnCO2`/`WarnVOC`/`WarnHum`, then
     `finalize()` exactly once)
 13. `conn.set_ext_led(pixel)` — wires the WiFi-status LED callback after both exist
 
-**Real FRAM chunk order today**: `SystemService` → `SGP40_Reader` (VOC backup only) →
-`NeopixelDriver` → `NotificationCoordinator`. Must stay in this relative order in any rewrite,
-regardless of byte offset (which doesn't matter per the determinism rule).
+**Real FRAM chunk order today**: `SystemService` → `SGP40_Reader` (its own error log, chunk 2) →
+`SGP40_Reader` (VOC backup, chunk 3) → `NeopixelDriver` → `NotificationCoordinator`. Five chunks
+total, not four — corrected from this doc's earlier count once `SGP40_Reader`'s own logger was
+confirmed to already be FRAM-backed (see item 8 above). Must stay in this relative order in any
+rewrite, regardless of byte offset (which doesn't matter per the determinism rule).
 
 ## Dependency graph (who holds a reference to whom)
 
@@ -106,7 +113,10 @@ plain name).
 ## Status
 
 Last verified accurate against `src/` and `improved-quality/sensortask-wozi.py` as of commit
-`acc4993`. The "Current construction order" and "Dependency graph" sections above hold. The "New
+`acc4993`, with one correction made during Step 1's own session: `SGP40_Reader`'s own error log was
+confirmed FRAM-backed (chunks 2+3, not chunk 2 alone — see item 8 above), fixing a stale "recheck
+whether that's deliberate" note. The "Current construction order" and "Dependency graph" sections
+above hold with that correction folded in. The "New
 structural fallout" section's analysis (every `SensorReaderConfig` subclass's construction site
 needing an added `await x.setup()`, and the resulting break of the current flat synchronous
 construction sequence) is still accurate and still unresolved — genuinely Stage 1's job, not this

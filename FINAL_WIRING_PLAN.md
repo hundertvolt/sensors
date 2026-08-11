@@ -184,10 +184,12 @@ questions for Step 1 to re-litigate):
   top-level-statement shape and forces some async wrapping (an `async def main()`-style boot
   sequence, most likely) for at least everything from the first `await`ed step onward.
 - The **FRAM chunk-order determinism rule** (`SPECIFICATION.md` Part A.4) must survive this
-  restructure exactly: `SystemService` → `SGP40_Reader` (VOC backup chunk) → `NeopixelDriver` →
-  `NotificationCoordinator`, in that relative order, regardless of `await`s introduced around them.
-  `WIRING_CONTRACT.md` is the living reference for this — **update it**, don't let it drift, once
-  Step 1's actual construction order is decided.
+  restructure exactly: `SystemService` → `SGP40_Reader` (its own error log) → `SGP40_Reader` (VOC
+  backup chunk) → `NeopixelDriver` → `NotificationCoordinator` — five chunks, not four; corrected
+  during Step 1's own session after confirming `SGP40_Reader`'s own logger is already FRAM-backed
+  (`WIRING_CONTRACT.md` item 8) — in that relative order, regardless of `await`s introduced around
+  them. `WIRING_CONTRACT.md` is the living reference for this — **update it**, don't let it drift,
+  once Step 1's actual construction order is decided.
 - Two modules are missing `get_error_counter()` despite persisting logs via `PrintLogHistory`:
   `captive_dns.py`'s `DNSServer` and `src/asy_neopixel_driver.py`'s `NeopixelDriver`. Every other
   promoted module already exposes it with the standard
