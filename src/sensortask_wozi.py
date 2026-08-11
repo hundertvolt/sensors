@@ -6,12 +6,20 @@ rationale, including the FRAM chunk-order determinism rule this file must preser
 build_system() constructs every module the reference file constructs, in the same FRAM-chunk-
 preserving relative order, as bare module-level globals (owner-confirmed - no wrapper container).
 It also runs the grouped await x.setup() batch every SensorReaderConfig-descended module now needs
-(SPECIFICATION.md Part C.13's sync-__init__/async-setup() pattern) - fram, then sgp_reader, then
-bmp_reader, then notify_service, deliberately batched together after all synchronous construction
-(including notify_service's own register()/finalize() staged construction) rather than interleaved:
+(SPECIFICATION.md Part C.13's sync-__init__/async-setup() pattern) - sysfunct first (resolves the
+persisted debug level as early as possible), then fram, then sgp_reader, then bmp_reader, then
+notify_service, deliberately batched together after all synchronous construction (including
+notify_service's own register()/finalize() staged construction) rather than interleaved:
 notify_service.setup() is only valid to call after finalize() has run (asy_notification_service.py's
 own documented contract), so batching at the end is the one ordering that's correct for every
 module, not just tidy for the rest.
+
+Every logger in the whole constructed object graph - not just each module's own top-level self.pr,
+but every nested cfgmgr.pr and AsyConnTime's own dns_server.pr too - is attached to one shared,
+live debug level (base_classes.py's SharedLevel, persisted by sysfunct via
+system_service.py's config_SYSTEM.cfg). See _attach_debug_level() below for the full list; a
+change via sysfunct.set_debug_level() (once Step 2 wires a REST route to it) is observed by every
+one of these loggers immediately, with no reattachment needed.
 
 Deliberately excluded from this file (owner-confirmed, see FINAL_WIRING_PLAN.md's refined plan):
 Microdot/routes (Step 2's job entirely, as a registration-based service, not a copy of the
@@ -39,6 +47,7 @@ from asy_ntp_client import AsyNtpClient
 from asy_scd30_driver import SCD30_Reader
 from asy_sgp40_driver import SGP40_Reader
 from asy_wifi_service import AsyConnTime
+from base_classes import SharedLevel
 from system_service import SystemService
 
 try:
@@ -82,6 +91,7 @@ scd_reader: "SCD30_Reader | None" = None
 pixel: "NeopixelDriver | None" = None
 notify_service: "NotificationCoordinator | None" = None
 timers_running: "ThreadSafeFlag | None" = None
+debug_level: "SharedLevel | None" = None
 
 
 async def sgp_comp_callback() -> "list[float | None]":
@@ -119,26 +129,60 @@ async def hum_value_callback() -> "int | float | None":
     return float(scd_data.Hum)
 
 
-async def build_system(*, cfg_path: str = "", debug: bool = False) -> None:
+def _attach_debug_level(source: "SharedLevel") -> None:
+    # Every logger in the whole constructed object graph, not just each module's own top-level
+    # self.pr - the nested ConfigManager.pr each ConfigManager-backed module owns internally
+    # ("CFGMGR_<NAME>"), and AsyConnTime's own separately-named dns_server.pr ("DNSSRV", not
+    # covered by conn.pr - see WIRING_CONTRACT.md). Owner requirement: a general, system-wide debug
+    # level should actually be system-wide, not miss half the loggers in the system. Called once,
+    # after every module (including notify_service.finalize()) has fully constructed.
+    assert conn is not None and ntp is not None and fram is not None and sysfunct is not None
+    assert sgp_reader is not None and bmp_reader is not None and scd_reader is not None
+    assert pixel is not None and notify_service is not None
+    loggers = (
+        conn.pr,
+        conn.cfgmgr.pr,
+        conn.dns_server.pr,
+        ntp.pr,
+        ntp.cfgmgr.pr,
+        fram.pr,
+        sysfunct.pr,
+        sysfunct.cfgmgr.pr,
+        sgp_reader.pr,
+        sgp_reader.cfgmgr.pr,
+        bmp_reader.pr,
+        bmp_reader.cfgmgr.pr,
+        scd_reader.pr,  # no cfgmgr - SCD30 has no config schema (params live on-sensor, see CLAUDE.md)
+        pixel.pr,  # no cfgmgr - no config schema (owner-confirmed, see SPECIFICATION.md A.4)
+        notify_service.pr,
+        notify_service.cfgmgr.pr,
+    )
+    for pr in loggers:
+        pr.attach_level_source(source)
+
+
+async def build_system(*, cfg_path: str = "", debug: int = 0) -> None:
     """Construct every module + run the grouped setup() batch. Independently callable/testable -
     no task starting, no infinite loop, always returns. cfg_path lets a caller (a test, or a future
     per-variant build) isolate every ConfigManager-backed module's on-disk config file; defaults to
-    "" (the real device filesystem root), matching the reference file's own behavior.
+    "" (the real device filesystem root), matching the reference file's own behavior. debug seeds
+    the live debug level's starting value before sysfunct.setup() resolves the real persisted one
+    (see _attach_debug_level() below) - individual modules no longer take a fixed debug= literal,
+    since every logger ends up attached to the same live source regardless.
     """
     global watchdog, conn, ntp, i2c0, i2c1, spi0, fram, sysfunct
-    global sgp_reader, bmp_reader, scd_reader, pixel, notify_service, timers_running
+    global sgp_reader, bmp_reader, scd_reader, pixel, notify_service, timers_running, debug_level
 
     # watchdog: hardcoded at construction time, no injection point - "must be hardcoded so no
     # error ever can circumvent it when it is set active" (owner, FINAL_WIRING_PLAN.md's refined
-    # plan). debug stays construction-time-only for Step 1 - see the same section's forward note
-    # on making it persisted/API-settable, which is Step 2's job, not this file's.
+    # plan).
     watchdog = WDT(timeout=8000)
+    debug_level = SharedLevel(debug)
     conn = AsyConnTime(
         conn_fail_to_hotspot=5,
         hotspot_time_min=8,
         max_module_error=_MAX_MODULE_ERROR,
         cfg_path=cfg_path,
-        debug=debug,
     )
     ntp = AsyNtpClient(
         conn.get_wifi_mode_lock(),
@@ -149,14 +193,15 @@ async def build_system(*, cfg_path: str = "", debug: bool = False) -> None:
         dns_tries=_DNS_TRIES,
         ntp_fetch_timeout_ms=_NTP_FETCH_TIMEOUT_MS,
         cfg_path=cfg_path,
-        debug=debug,
     )
     i2c0 = asy_i2c_driver.I2C(0, 13, 12, frequency=50000)
     i2c1 = asy_i2c_driver.I2C(1, 19, 18, frequency=50000)
     spi0 = asy_spi_driver.SPI(0, 2, 3, 4)
-    fram = AsyFramManager(spi0, 1, max_size=0x2000, debug=debug)
+    fram = AsyFramManager(spi0, 1, max_size=0x2000)
     # FRAM chunk 1.
-    sysfunct = SystemService(ntp.ntp_issynced, watchdog=watchdog, fram=fram, debug=debug)
+    sysfunct = SystemService(
+        ntp.ntp_issynced, watchdog=watchdog, fram=fram, cfg_path=cfg_path, debug_level=debug_level
+    )
     # FRAM chunks 2 (own error log) and 3 (VOC backup) - both allocated inside SGP40_Reader.__init__
     # itself, in that sub-order (WIRING_CONTRACT.md item 8).
     sgp_reader = SGP40_Reader(
@@ -166,12 +211,11 @@ async def build_system(*, cfg_path: str = "", debug: bool = False) -> None:
         fram_ntp_callback=ntp.ntp_issynced,
         max_module_error=_MAX_MODULE_ERROR,
         cfg_path=cfg_path,
-        debug=debug,
     )
-    bmp_reader = BMP3xx_Reader(i2c1, max_module_error=_MAX_MODULE_ERROR, cfg_path=cfg_path, debug=debug)
-    scd_reader = SCD30_Reader(i2c0, 8, trigger_sec=3, max_module_error=_MAX_MODULE_ERROR, debug=debug)
+    bmp_reader = BMP3xx_Reader(i2c1, max_module_error=_MAX_MODULE_ERROR, cfg_path=cfg_path)
+    scd_reader = SCD30_Reader(i2c0, 8, trigger_sec=3, max_module_error=_MAX_MODULE_ERROR)
     # FRAM chunk 4.
-    pixel = NeopixelDriver(15, fram=fram, debug=debug)
+    pixel = NeopixelDriver(15, fram=fram)
     # Staged registration (asy_notification_service.py's own module docstring): construct every
     # NotificationSignal, register() each in the same order the reference file's hardcoded
     # CO2/VOC/Humidity checks ran in (this becomes the poll loop's own deterministic check order),
@@ -183,7 +227,6 @@ async def build_system(*, cfg_path: str = "", debug: bool = False) -> None:
         max_module_error=_MAX_MODULE_ERROR,
         cfg_path=cfg_path,
         fram=fram,
-        debug=debug,
     )
     notify_service.register(NotificationSignal("WarnCO2", co2_value_callback, _FIELD_WARN_CO2, (1, 0, 0)))
     notify_service.register(NotificationSignal("WarnVOC", voc_value_callback, _FIELD_WARN_VOC, (0, 1, 0)))
@@ -192,11 +235,16 @@ async def build_system(*, cfg_path: str = "", debug: bool = False) -> None:
     conn.set_ext_led(pixel)  # callback for wifi led - after both conn and pixel exist
     timers_running = ThreadSafeFlag()
 
+    _attach_debug_level(debug_level)
+
     # Grouped await x.setup() phase - see this module's own docstring for why batching here
     # (rather than interleaved with construction above) is the one correct ordering, not just a
-    # style choice. Order among the three new ConfigManager-domain calls matches their own
-    # construction order; fram (a different, FRAM-hardware readiness domain entirely) keeps its
-    # existing first position from the reference file's own async_onetime list.
+    # style choice. sysfunct first - resolves the real persisted debug level as early as possible,
+    # so every subsequent setup() call's own diagnostic logging already reflects it. Order among
+    # the three ConfigManager-domain calls after it matches their own construction order; fram (a
+    # different, FRAM-hardware readiness domain entirely) keeps its existing position from the
+    # reference file's own async_onetime list.
+    await sysfunct.setup()
     await fram.setup()
     await sgp_reader.setup()
     await bmp_reader.setup()
@@ -242,7 +290,7 @@ def _collect_timer_starters() -> "list[Callable[[], None]]":
     )
 
 
-async def main(*, cfg_path: str = "", debug: bool = False) -> None:
+async def main(*, cfg_path: str = "", debug: int = 0) -> None:
     await build_system(cfg_path=cfg_path, debug=debug)
     assert sysfunct is not None and ntp is not None
 

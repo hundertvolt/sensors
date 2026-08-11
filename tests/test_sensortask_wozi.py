@@ -34,7 +34,7 @@ from _fram_chip_fake import FakeMB85RS64V
 
 import asy_spi_driver
 import sensortask_wozi
-from print_log import PrintLogHistoryStore
+from print_log import PrintLog, PrintLogHistoryStore
 
 # Same one-process-per-test-file swap as every other asy_fram_*-touching test file (see their own
 # comments) - sensortask_wozi.build_system() constructs a real SPI-backed AsyFramManager.
@@ -236,18 +236,24 @@ def test_build_system_never_insists_on_fram_hardware_being_available() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_setup_batch_runs_fram_then_sgp_then_bmp_then_notify_in_order() -> None:
+def test_setup_batch_runs_sysfunct_then_fram_then_sgp_then_bmp_then_notify_in_order() -> None:
     calls: list[str] = []
     from asy_bmp3xx_driver import BMP3xx_Reader
     from asy_fram_manager import AsyFramManager
     from asy_notification_service import NotificationCoordinator
     from asy_sgp40_driver import SGP40_Reader
+    from system_service import SystemService
 
+    real_sysfunct_setup = SystemService.setup
     real_fram_setup = AsyFramManager.setup
     real_sgp_setup = SGP40_Reader.setup
     real_bmp_setup = BMP3xx_Reader.setup
     real_notify_setup = NotificationCoordinator.setup
     real_notify_finalize = NotificationCoordinator.finalize
+
+    async def _tracking_sysfunct_setup(self: "Any") -> "Any":
+        calls.append("sysfunct")
+        return await real_sysfunct_setup(self)
 
     async def _tracking_fram_setup(self: "Any") -> "Any":
         calls.append("fram")
@@ -269,6 +275,7 @@ def test_setup_batch_runs_fram_then_sgp_then_bmp_then_notify_in_order() -> None:
         calls.append("notify_finalize")
         return real_notify_finalize(self)
 
+    SystemService.setup = _tracking_sysfunct_setup  # type: ignore[method-assign]
     AsyFramManager.setup = _tracking_fram_setup  # type: ignore[method-assign]
     SGP40_Reader.setup = _tracking_sgp_setup  # type: ignore[method-assign]
     BMP3xx_Reader.setup = _tracking_bmp_setup  # type: ignore[method-assign]
@@ -277,13 +284,17 @@ def test_setup_batch_runs_fram_then_sgp_then_bmp_then_notify_in_order() -> None:
     try:
         run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
     finally:
+        SystemService.setup = real_sysfunct_setup  # type: ignore[method-assign]
         AsyFramManager.setup = real_fram_setup  # type: ignore[method-assign]
         SGP40_Reader.setup = real_sgp_setup  # type: ignore[method-assign]
         BMP3xx_Reader.setup = real_bmp_setup  # type: ignore[method-assign]
         NotificationCoordinator.setup = real_notify_setup  # type: ignore[method-assign]
         NotificationCoordinator.finalize = real_notify_finalize  # type: ignore[method-assign]
 
-    assert calls == ["notify_finalize", "fram", "sgp", "bmp", "notify_setup"]
+    # notify_finalize runs during synchronous construction, before any setup() call; sysfunct is
+    # first *within* the async setup() batch - resolves the real persisted debug level as early as
+    # possible (this module's own docstring).
+    assert calls == ["notify_finalize", "sysfunct", "fram", "sgp", "bmp", "notify_setup"]
 
 
 def test_notify_service_cfgmgr_exists_once_build_system_completes() -> None:
@@ -293,6 +304,80 @@ def test_notify_service_cfgmgr_exists_once_build_system_completes() -> None:
     run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
     assert sensortask_wozi.notify_service is not None
     assert sensortask_wozi.notify_service.cfgmgr.valid is True
+
+
+# ---------------------------------------------------------------------------
+# Debug level - one shared, persisted, live value observed by every logger in the whole
+# constructed object graph (owner requirement: general, system-wide, not per-module). See
+# sensortask_wozi.py's own module docstring and _attach_debug_level() for the full list.
+# ---------------------------------------------------------------------------
+
+
+def _all_loggers() -> "list[Any]":
+    w = sensortask_wozi
+    assert w.conn is not None and w.ntp is not None and w.fram is not None and w.sysfunct is not None
+    assert w.sgp_reader is not None and w.bmp_reader is not None and w.scd_reader is not None
+    assert w.pixel is not None and w.notify_service is not None
+    return [
+        w.conn.pr,
+        w.conn.cfgmgr.pr,
+        w.conn.dns_server.pr,
+        w.ntp.pr,
+        w.ntp.cfgmgr.pr,
+        w.fram.pr,
+        w.sysfunct.pr,
+        w.sysfunct.cfgmgr.pr,
+        w.sgp_reader.pr,
+        w.sgp_reader.cfgmgr.pr,
+        w.bmp_reader.pr,
+        w.bmp_reader.cfgmgr.pr,
+        w.scd_reader.pr,
+        w.pixel.pr,
+        w.notify_service.pr,
+        w.notify_service.cfgmgr.pr,
+    ]
+
+
+def test_every_logger_in_the_object_graph_is_attached_to_the_same_shared_debug_level() -> None:
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    assert sensortask_wozi.debug_level is not None
+    sensortask_wozi.debug_level.value = PrintLog.level_info()
+    for pr in _all_loggers():
+        assert pr.get_level() == PrintLog.level_info(), f"{pr.name!r} did not observe the shared debug level"
+
+
+def test_debug_seed_value_is_the_starting_level_before_setup_resolves_the_persisted_one() -> None:
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir(), debug=PrintLog.level_warn()))
+    assert sensortask_wozi.debug_level is not None
+    # First boot - no persisted value yet, so sysfunct.setup() writes and resolves the schema
+    # default (0), overriding the seed. Matches test_system_service.py's own
+    # test_setup_resolves_cfgmgr_and_leaves_debug_level_at_the_default_on_first_boot.
+    assert sensortask_wozi.debug_level.value == 0
+
+
+def test_sysfunct_set_debug_level_updates_every_logger_in_the_object_graph() -> None:
+    # End-to-end: once Step 2 wires a REST route to sysfunct.set_debug_level(), this is the whole
+    # observable effect a real request would have - every logger in the system, immediately, no
+    # reattachment.
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    assert sensortask_wozi.sysfunct is not None
+    ok = run(sensortask_wozi.sysfunct.set_debug_level(PrintLog.level_err()))
+    assert ok is True
+    for pr in _all_loggers():
+        assert pr.get_level() == PrintLog.level_err(), f"{pr.name!r} did not observe set_debug_level()"
+
+
+def test_debug_level_survives_a_simulated_reboot_through_build_system() -> None:
+    cfg_path = _tmp_cfg_dir()
+    run(sensortask_wozi.build_system(cfg_path=cfg_path))
+    assert sensortask_wozi.sysfunct is not None
+    run(sensortask_wozi.sysfunct.set_debug_level(PrintLog.level_once()))
+
+    run(sensortask_wozi.build_system(cfg_path=cfg_path))  # simulated reboot - same cfg_path, fresh objects
+    assert sensortask_wozi.sysfunct is not None
+    assert sensortask_wozi.sysfunct.get_debug_level() == PrintLog.level_once()
+    assert sensortask_wozi.debug_level is not None
+    assert sensortask_wozi.debug_level.value == PrintLog.level_once()
 
 
 # ---------------------------------------------------------------------------

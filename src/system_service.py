@@ -1,8 +1,11 @@
 """Generic system-housekeeping service shared by every sensortask-*.py device: uptime, a one-per-
 boot boot signature, reboot/reboot-to-bootloader with FRAM storage-pause coordination, the
-staggered driver-startup sequence, and the task supervisor loop (restart dead tasks, decay a
-failure counter, feed the watchdog). Every method returns a well-defined value, never raises -
-reboot_system()/reboot_bootloader()'s real reset after _RESET_DELAY is the intent, not a failure.
+staggered driver-startup sequence, the task supervisor loop (restart dead tasks, decay a failure
+counter, feed the watchdog), and a general, module-independent persisted system-settings store
+(config_SYSTEM.cfg - DebugLevel today, expected to grow further; see get_debug_level()/
+set_debug_level() and this module's own get_cfg_schema()). Every method returns a well-defined
+value, never raises - reboot_system()/reboot_bootloader()'s real reset after _RESET_DELAY is the
+intent, not a failure.
 """
 
 import asyncio
@@ -14,7 +17,8 @@ from machine import bootloader as system_bootloader
 from machine import reset as system_reset
 from micropython import const
 
-from base_classes import LockedCounter
+from base_classes import LockedCounter, SharedLevel
+from config_manager import ConfigManager
 from print_log import make_logger
 
 try:
@@ -27,6 +31,7 @@ if TYPE_CHECKING:
     from typing import Any
 
     from asy_fram_manager import AsyFramManager
+    from config_manager import ConfigSchema
 
 _RESET_DELAY = const(4)  # seconds between reset command and execution (keep < watchdog timeout!)
 _MAX_STORAGE_PAUSE = const(3600)  # one hour max pause for FRAM
@@ -37,6 +42,17 @@ _TASK_FAIL_INCREMENT = const(100)  # absolute value important for decrease time,
 _TASK_FAIL_MAX = const(300)  # ...ratio important for triggering reset (multiple errors)
 _NAME = const("SYSTEM")
 
+# General, module-independent system-settings schema (config_SYSTEM.cfg, via _NAME above) - the
+# real, connected successor to the old improved-quality/sensortask-wozi.py "config_SYSTEM.cfg"
+# schema that migration removed as a disconnected, never-read duplicate (see that file's own
+# api_helpers.py-migration comment). DebugLevel is the first field; owner-confirmed intent is to
+# grow this with more device-wide settings over time (e.g. timing/timezone info currently on
+# AsyNtpClient, future rsyslog settings) - adding a field here is exactly the same one-line
+# _VAL_*-tuple-concatenation pattern every other ConfigManager-backed module already uses (see
+# SPECIFICATION.md Part C), not a mechanism that needs revisiting per new field.
+_VAL_DEBUG_LEVEL = const((("DebugLevel", "int", 0, 0, 5, None),))  # range matches print_log.py's
+# PrintLog.level_off()..level_info() (0-5); default 0 matches the reference file's own debug=False.
+
 
 class SystemService:
     def __init__(
@@ -46,6 +62,8 @@ class SystemService:
         fram: "AsyFramManager | None" = None,
         history_length: int = 10,
         debug: int | None = None,
+        cfg_path: str = "",
+        debug_level: "SharedLevel | None" = None,
     ) -> None:
         # callback for starting and stopping permanent storage communication
         self.storage_pause: Callable[[bool], None] | None = None
@@ -66,6 +84,23 @@ class SystemService:
         # Set when _reboot()'s reset_timer can't be armed, so the supervisor loop stops feeding the
         # watchdog and lets it reset us instead (one-way).
         self._force_watchdog_starve = False
+        # System-settings store - not a SensorReaderConfig subclass (no measurement data, no
+        # max_module_error error-streak concept, both of which SensorReaderConfig would drag in
+        # unused), just its own directly-embedded ConfigManager, same underlying class and file
+        # convention every other module already uses. self.cfg_schema stays public, matching
+        # SPECIFICATION.md's convention for a module whose caller writes to cfgmgr directly.
+        self.cfg_schema: ConfigSchema = _VAL_DEBUG_LEVEL
+        self.cfgmgr = ConfigManager(cfg_path + "config_" + _NAME + ".cfg", self.cfg_schema, _NAME)
+        # get_debug_level()'s own source of truth, tracked unconditionally - independent of whether
+        # a live-broadcast target (below) exists, so get_debug_level() is always correct even with
+        # no SharedLevel wired up at all. Starts at the schema default; setup()/set_debug_level()
+        # keep it current from there.
+        self._current_debug_level = 0
+        # Optional live-broadcast target (base_classes.py's SharedLevel) - None degrades gracefully
+        # (persistence and get_debug_level() still work via cfgmgr/_current_debug_level above, just
+        # no other logger observes a change live), matching every other optional constructor
+        # dependency on this class (watchdog, fram).
+        self._debug_level = debug_level
 
     def _reboot(self, message: str, action: "Callable[[], None]") -> None:
         self.reset_timer.deinit()
@@ -203,6 +238,35 @@ class SystemService:
 
     async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
         return await self.pr.get_log()
+
+    async def setup(self) -> None:
+        # Resolves the persisted system-settings store (SPECIFICATION.md C.13's sync-__init__/
+        # async-setup() pattern). Always updates _current_debug_level (get_debug_level()'s own
+        # source of truth); additionally pushes the same value into the live-broadcast target if
+        # one was given, so every logger already attached to that same SharedLevel observes the
+        # real, persisted level from here on, not the temporary default it started at.
+        await self.cfgmgr.setup()
+        level = await self.cfgmgr.get_int_values(self.cfg_schema)
+        if level is None:
+            return
+        self._current_debug_level = level[0]
+        if self._debug_level is not None:
+            self._debug_level.value = level[0]
+
+    def get_cfg_schema(self) -> "ConfigSchema":
+        return self.cfg_schema
+
+    def get_debug_level(self) -> int:
+        return self._current_debug_level
+
+    async def set_debug_level(self, value: int) -> bool:
+        persisted, results = await self.cfgmgr.write_config({"DebugLevel": value}, self.cfg_schema)
+        if not persisted or results.get("DebugLevel") not in ("Valid", "Unchanged"):
+            return False
+        self._current_debug_level = value
+        if self._debug_level is not None:
+            self._debug_level.value = value
+        return True
 
     def reboot_system(self) -> None:
         self._reboot("Reboot triggered", system_reset)

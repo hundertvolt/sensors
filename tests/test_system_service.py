@@ -1,4 +1,5 @@
 import asyncio
+import os
 
 import machine
 from _fram_chip_fake import FakeMB85RS64V
@@ -9,6 +10,7 @@ import asy_spi_driver
 import system_service
 from asy_fram_manager import AsyFramManager
 from asy_spi_driver import SPI
+from base_classes import SharedLevel
 from print_log import PrintLog, PrintLogHistory, PrintLogHistoryStore
 from system_service import SystemService
 
@@ -1013,6 +1015,115 @@ def test_start_and_check_tasks_gives_up_and_reboots_past_the_failure_budget() ->
     assert call_count[0] >= 4  # enough restart attempts to cross _TASK_FAIL_MAX (100 per attempt)
     svc.reset_timer.trigger()
     assert machine.reset_count == 1
+
+
+# ---------------------------------------------------------------------------
+# System-settings store (config_SYSTEM.cfg) - general, module-independent persisted settings,
+# DebugLevel first (see system_service.py's own module docstring for the intended future growth:
+# timing/timezone, rsyslog, ...). Own isolated cfg_path per test, same reasoning as
+# test_ntp_fram_system_integration.py's own _tmp_cfg_dir(): setup()/set_debug_level() are real
+# file I/O and must never touch the repo's own working directory.
+# ---------------------------------------------------------------------------
+
+_TMP_DIR = "tests/_tmp"
+_next_dir = 0
+
+
+def _tmp_cfg_dir() -> str:
+    global _next_dir
+    try:
+        os.mkdir(_TMP_DIR)
+    except OSError:
+        pass  # already exists
+    _next_dir += 1
+    path = _TMP_DIR + "/sysservice_" + str(_next_dir)
+    try:
+        os.mkdir(path)
+    except OSError:
+        pass  # already exists from a stale previous run
+    return path + "/"
+
+
+def test_setup_resolves_cfgmgr_and_leaves_debug_level_at_the_default_on_first_boot() -> None:
+    svc = make_service(cfg_path=_tmp_cfg_dir())
+    run(svc.setup())
+    assert svc.cfgmgr.valid is True
+    assert svc.get_debug_level() == 0  # default, no debug_level source attached either
+
+
+def test_setup_pushes_the_persisted_value_into_an_attached_debug_level_source() -> None:
+    source = SharedLevel(PrintLog.level_off())
+    cfg_path = _tmp_cfg_dir()
+    svc = make_service(cfg_path=cfg_path, debug_level=source)
+    run(svc.setup())
+    # Nothing persisted yet - first boot writes and uses the schema default (0).
+    assert source.value == 0
+    assert svc.get_debug_level() == 0
+
+
+def test_set_debug_level_persists_and_updates_the_live_source_together() -> None:
+    source = SharedLevel(PrintLog.level_off())
+    svc = make_service(cfg_path=_tmp_cfg_dir(), debug_level=source)
+    run(svc.setup())
+    ok = run(svc.set_debug_level(PrintLog.level_info()))
+    assert ok is True
+    assert source.value == PrintLog.level_info()
+    assert svc.get_debug_level() == PrintLog.level_info()
+
+
+def test_set_debug_level_out_of_range_is_rejected_and_leaves_the_live_source_unchanged() -> None:
+    source = SharedLevel(PrintLog.level_off())
+    svc = make_service(cfg_path=_tmp_cfg_dir(), debug_level=source)
+    run(svc.setup())
+    ok = run(svc.set_debug_level(99))  # outside the schema's 0-5 range
+    assert ok is False
+    assert source.value == PrintLog.level_off()  # unchanged - a rejected write never reaches the live source
+
+
+def test_set_debug_level_before_setup_fails_cleanly_not_raise() -> None:
+    svc = make_service(cfg_path=_tmp_cfg_dir())
+    ok = run(svc.set_debug_level(PrintLog.level_info()))
+    assert ok is False  # cfgmgr.valid is False before setup() - matches ConfigManager's own contract
+
+
+def test_set_debug_level_without_a_debug_level_source_still_persists() -> None:
+    # debug_level=None (the default) degrades gracefully - persistence-only, no live broadcast -
+    # matching every other optional constructor dependency on this class (watchdog, fram).
+    cfg_path = _tmp_cfg_dir()
+    svc = make_service(cfg_path=cfg_path)
+    run(svc.setup())
+    ok = run(svc.set_debug_level(PrintLog.level_warn()))
+    assert ok is True
+    assert svc.get_debug_level() == PrintLog.level_warn()  # self.pr's own private level, no source attached
+
+
+def test_debug_level_survives_a_simulated_reboot() -> None:
+    cfg_path = _tmp_cfg_dir()
+    svc = make_service(cfg_path=cfg_path)
+    run(svc.setup())
+    run(svc.set_debug_level(PrintLog.level_event()))
+
+    svc_after_reboot = make_service(cfg_path=cfg_path)
+    run(svc_after_reboot.setup())
+    assert svc_after_reboot.get_debug_level() == PrintLog.level_event()
+
+
+def test_get_cfg_schema_returns_the_debug_level_field() -> None:
+    svc = make_service()
+    schema = svc.get_cfg_schema()
+    assert schema[0][0] == "DebugLevel"
+
+
+def test_pr_logger_reflects_the_live_debug_level_after_setup() -> None:
+    # End-to-end: an attached source, once setup() resolves the persisted value, actually changes
+    # what self.pr's own log methods would print - not just an internal bookkeeping value.
+    source = SharedLevel(PrintLog.level_off())
+    cfg_path = _tmp_cfg_dir()
+    svc = make_service(cfg_path=cfg_path, debug_level=source)
+    svc.pr.attach_level_source(source)
+    run(svc.setup())
+    run(svc.set_debug_level(PrintLog.level_err()))
+    assert svc.pr.get_level() == PrintLog.level_err()
 
 
 if __name__ == "__main__":

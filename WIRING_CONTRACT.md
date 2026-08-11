@@ -169,16 +169,33 @@ plain name).
 - Networking status: `captive_dns.py`'s own logger plus, once built, the future Microdot
   connection-timeout wrapper (`asy_webserver_service.py`, BACKLOG's "Microdot hardening design")
   both belong under one future "Networking" endpoint, one JSON field per component.
-- **`debug` needs to become a persisted, API-settable config value** (owner requirement, Step 1
-  session) instead of `src/sensortask_wozi.py`'s current construction-time-only constant, forwarded
-  unchanged into every module's `debug=` constructor argument. Making it live would need every
-  module's `PrintLog.level` to become re-readable from a shared source instead of a one-time
-  constructor snapshot (`print_log.py`'s `PrintLog.__init__` just stores `self.level` once,
-  confirmed directly) — a cross-cutting change, not a one-file fix. Where this persisted value
-  should actually live (a new small `SystemService`-owned schema field is the leading candidate,
-  since it's a whole-device operational setting rather than any one driver's own config) is still
-  an open question for Step 2 (owns the config/REST layer) or a dedicated follow-up — not resolved
-  here, just recorded so it isn't rediscovered from scratch.
+- **`debug` is now a persisted, live config value — resolved during Step 1, not deferred.**
+  `base_classes.py`'s `SharedLevel` (a plain, deliberately unlocked mutable int holder — `PrintLog`'s
+  log methods are synchronous hot-path calls with no `await` between checking the level and using
+  it, so a lock would cost real overhead for no safety benefit under MicroPython's single-threaded
+  cooperative scheduler) is the live-broadcast mechanism: `print_log.py`'s `PrintLog.level` is now a
+  `@property`, preferring an attached `SharedLevel` (`attach_level_source()`) over its old private
+  per-instance int — fully backward compatible, zero signature changes to any other driver file.
+  `system_service.py`'s `SystemService` owns the actual persistence: a small, directly-embedded
+  `ConfigManager` (not via `SensorReaderConfig` inheritance — that would drag in unused
+  sensor-measurement machinery), `config_SYSTEM.cfg`, one field so far (`DebugLevel`, int 0-5).
+  This is deliberately the real, connected successor to the old
+  `improved-quality/sensortask-wozi.py` `config_SYSTEM.cfg` schema the api_helpers.py migration
+  removed as a disconnected, never-read duplicate — not a coincidence in naming.
+  **Owner-stated intent: this is meant to grow into a general, module-independent system-settings
+  store** (timing/timezone info currently on `AsyNtpClient`, future rsyslog settings, ...) — adding
+  a field is the same `_VAL_*`-tuple-concatenation pattern every other `ConfigManager`-backed module
+  already uses, not a mechanism that needs revisiting per new field.
+  `src/sensortask_wozi.py`'s `build_system()` creates one `SharedLevel` first, passes it to
+  `SystemService` for persistence, and attaches **every** logger in the whole constructed object
+  graph to it — not just each module's own top-level `self.pr`, but every nested `cfgmgr.pr` and
+  `AsyConnTime`'s own separately-named `dns_server.pr` too (see `_attach_debug_level()`) — a
+  real, deliberate scope decision: a "general, system-wide" debug level should actually be
+  system-wide. `sysfunct.setup()` runs first in the grouped setup() batch so every other module's
+  own setup()-time diagnostic logging already reflects the real persisted level, not the
+  temporary seed. The one piece still missing is the REST route itself
+  (`sysfunct.set_debug_level()`/`get_debug_level()` already exist and are fully tested) — that's
+  Step 2's job, once the webserver/API layer exists to call it from.
 - `watchdog = WDT(timeout=8000)` stays hardcoded at construction time in `build_system()`, no
   injection point — owner-confirmed, deliberately not part of the `debug`-style
   persisted-config direction above ("must be hardcoded so no error ever can circumvent it when it
@@ -192,11 +209,15 @@ now describes `src/sensortask_wozi.py` as it actually is, not a plan for a futur
 "Reference" section right after it keeps the pre-Step-1 flat order for comparison. Full unit-test
 coverage lives in `tests/test_sensortask_wozi.py` (construction order, FRAM chunk order, the
 setup()-batch order and its `notify_service`/`finalize()` constraint, task/timer starter
-collection) — all passing under the real MicroPython Unix-port interpreter as of this session,
-alongside the full existing suite (`scripts/lint.sh`/`scripts/typecheck.sh`/`scripts/test.sh` all
-clean). The `get_error_counter()` gap on `DNSServer`/`NeopixelDriver` is closed and the
-`max_i2c_err` → `max_module_error` rename is done project-wide (both `src/`-wide, not scoped to
-this one file).
+collection, the system-wide debug-level wiring) plus `tests/test_base_classes.py` (`SharedLevel`),
+`tests/test_print_log.py` (`attach_level_source()`), and `tests/test_system_service.py`
+(`config_SYSTEM.cfg`/`get_debug_level()`/`set_debug_level()`) — all passing under the real
+MicroPython Unix-port interpreter as of this session, alongside the full existing suite
+(`scripts/lint.sh`/`scripts/typecheck.sh`/`scripts/test.sh` all clean). The `get_error_counter()`
+gap on `DNSServer`/`NeopixelDriver` is closed, the `max_i2c_err` → `max_module_error` rename is
+done project-wide, and the general, persisted, live debug-level mechanism (owner-directed
+follow-up mid-Step-1, see "Forward API-design notes" above) is fully wired end to end except for
+the REST route itself, which is Step 2's job.
 
 Kept alive per the "Status update" note at the top of this document, not deleted — Steps 2-5 still
 need this exact construction order/dependency graph preserved as they build on top of it. Re-verify
