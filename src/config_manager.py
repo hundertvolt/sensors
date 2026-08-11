@@ -163,83 +163,6 @@ class ConfigManager:
         self.valid = False
         self._cache: dict[str, int | float | str | bool | None] = {}
 
-    async def setup(self) -> None:
-        data: dict[str, Any] | None = None
-        try:
-            if (os.stat(self.config_file)[0] & 0x4000) == 0:  # 0x4000 = MP_S_IFDIR, MicroPython's own
-                # stat-mode bit (extmod/vfs.h), uniform across VFS backends incl. littlefs.
-                with open(self.config_file) as f:
-                    try:
-                        data = json.load(f)  # parse to json
-                        if isinstance(data, dict):  # parsing resulted in a dict
-                            self.pr.one("JSON Data in config file", self.config_file, "found.")
-                        else:  # generally valid json but not a dict
-                            data = None
-                            await self.pr.wrn_s("Data in config file", self.config_file, "has wrong format.", wrnno=1)
-                    except ValueError as e:  # malformed json
-                        await self.pr.wrn_s("JSON Data in config file", self.config_file, "is invalid:", e, wrnno=2)
-            else:  # filename exists but is a directory and cannot be used
-                await self.pr.err_s(self.config_file, "exists but is not a file, cannot write!", errno=1)
-                return
-        except (MemoryError, OSError, TypeError) as e:  # missing/unreadable file, bad filename type,
-            # or json.load() exhausting the heap on a huge/corrupt file - same "degrade, don't
-            # propagate" treatment as the other two causes.
-            await self.pr.wrn_s("Config file", self.config_file, "not found:", e, wrnno=3)
-
-        defaults = schema_dict(self.cfg_vals)
-        if len(defaults) == 0:  # default config contains no values
-            await self.pr.err_s(self.config_file, "- Defaults are empty, config is not valid!", errno=2)
-            return
-
-        rewrite = False  # don't write file unless required
-        valid_cfg: dict[str, int | float | str | bool | None] = {}  # create surely valid config
-        for key, field in defaults.items():  # iterate through default config
-            use_value, default_val = check_cfg_get_default(field)  # read and selfcheck
-            if default_val is None:  # invalid config, no default or special-alone value
-                await self.pr.err_s(self.config_file, "- Default Key", key, "Error or None, config is not valid!", errno=3)
-                return
-            if not use_value:  # special-alone value
-                continue  # not used for storage, skip loop iteration
-            if data is None:  # no or invalid config file
-                new_cfg = default_val  # immediately take default value
-            else:  # file exists and is valid
-                new_cfg = data.pop(key, None)  # remove all used and known keys from config
-                if type_or_range_error(new_cfg, field):  # if new_cfg is None or any other error
-                    rewrite = True
-                    new_cfg = default_val
-                    await self.pr.wrn_s(self.config_file, "- Key", key, "has error or is missing, using default!", wrnno=4)
-            valid_cfg[key] = new_cfg
-        if data is None:  # no file -> always create
-            rewrite = True
-        elif len(data) != 0:  # unexpected keys remaining from existing file
-            rewrite = True
-            await self.pr.wrn_s(self.config_file, "- Removed invalid keys from config file!", wrnno=5)
-
-        if not rewrite:
-            self._cache = valid_cfg
-            self.valid = True
-            self.pr.one("Valid configuration data found in", self.config_file, "- config is ready.")
-            return
-
-        if len(valid_cfg) == 0:
-            await self.pr.wrn_s(self.config_file, "- Default config valid but no storage values!", wrnno=6)
-
-        self.pr.one(self.config_file, "- Writing configuration file!")
-        try:
-            with open(self.config_file, "w") as f:
-                json.dump(valid_cfg, f)
-            self._cache = valid_cfg
-            self.valid = True
-            self.pr.one("Default data was written in", self.config_file, "- config is ready.")
-            return
-        except (MemoryError, OSError, TypeError) as e:  # write failed, filename isn't a string, or
-            # json.dump() exhausts the heap serializing valid_cfg
-            await self.pr.err_s("Error writing config", self.config_file, "- config is not valid:", e, errno=4)
-            return
-
-    async def get_error_counter(self) -> "dict[str, dict[str, int | list[int] | list[str]]]":
-        return await self.pr.get_log()
-
     async def _get_values(self, keys: "ConfigSchema") -> "list[Any] | None":
         if not self.valid:
             await self.pr.err_s(self.config_file, "- Config is not valid, cannot read!", errno=5)
@@ -259,6 +182,9 @@ class ConfigManager:
             return [converter(v) for v in values]
         except (TypeError, ValueError):
             return None
+
+    async def get_error_counter(self) -> "dict[str, dict[str, int | list[int] | list[str]]]":
+        return await self.pr.get_log()
 
     async def get_dict(self, keys: "list[str]") -> "dict[str, int | float | str | bool | None] | None":
         # Reads _cache directly - no lock needed (write_config never awaits mid-mutation, so no
@@ -344,3 +270,77 @@ class ConfigManager:
                 # ValueError is defensive since dump() no longer reads/reparses json here.
                 await self.pr.err_s(self.config_file, "- Error writing config data:", e, errno=14)
                 return False, {}
+
+    async def setup(self) -> None:
+        data: dict[str, Any] | None = None
+        try:
+            if (os.stat(self.config_file)[0] & 0x4000) == 0:  # 0x4000 = MP_S_IFDIR, MicroPython's own
+                # stat-mode bit (extmod/vfs.h), uniform across VFS backends incl. littlefs.
+                with open(self.config_file) as f:
+                    try:
+                        data = json.load(f)  # parse to json
+                        if isinstance(data, dict):  # parsing resulted in a dict
+                            self.pr.one("JSON Data in config file", self.config_file, "found.")
+                        else:  # generally valid json but not a dict
+                            data = None
+                            await self.pr.wrn_s("Data in config file", self.config_file, "has wrong format.", wrnno=1)
+                    except ValueError as e:  # malformed json
+                        await self.pr.wrn_s("JSON Data in config file", self.config_file, "is invalid:", e, wrnno=2)
+            else:  # filename exists but is a directory and cannot be used
+                await self.pr.err_s(self.config_file, "exists but is not a file, cannot write!", errno=1)
+                return
+        except (MemoryError, OSError, TypeError) as e:  # missing/unreadable file, bad filename type,
+            # or json.load() exhausting the heap on a huge/corrupt file - same "degrade, don't
+            # propagate" treatment as the other two causes.
+            await self.pr.wrn_s("Config file", self.config_file, "not found:", e, wrnno=3)
+
+        defaults = schema_dict(self.cfg_vals)
+        if len(defaults) == 0:  # default config contains no values
+            await self.pr.err_s(self.config_file, "- Defaults are empty, config is not valid!", errno=2)
+            return
+
+        rewrite = False  # don't write file unless required
+        valid_cfg: dict[str, int | float | str | bool | None] = {}  # create surely valid config
+        for key, field in defaults.items():  # iterate through default config
+            use_value, default_val = check_cfg_get_default(field)  # read and selfcheck
+            if default_val is None:  # invalid config, no default or special-alone value
+                await self.pr.err_s(self.config_file, "- Default Key", key, "Error or None, config is not valid!", errno=3)
+                return
+            if not use_value:  # special-alone value
+                continue  # not used for storage, skip loop iteration
+            if data is None:  # no or invalid config file
+                new_cfg = default_val  # immediately take default value
+            else:  # file exists and is valid
+                new_cfg = data.pop(key, None)  # remove all used and known keys from config
+                if type_or_range_error(new_cfg, field):  # if new_cfg is None or any other error
+                    rewrite = True
+                    new_cfg = default_val
+                    await self.pr.wrn_s(self.config_file, "- Key", key, "has error or is missing, using default!", wrnno=4)
+            valid_cfg[key] = new_cfg
+        if data is None:  # no file -> always create
+            rewrite = True
+        elif len(data) != 0:  # unexpected keys remaining from existing file
+            rewrite = True
+            await self.pr.wrn_s(self.config_file, "- Removed invalid keys from config file!", wrnno=5)
+
+        if not rewrite:
+            self._cache = valid_cfg
+            self.valid = True
+            self.pr.one("Valid configuration data found in", self.config_file, "- config is ready.")
+            return
+
+        if len(valid_cfg) == 0:
+            await self.pr.wrn_s(self.config_file, "- Default config valid but no storage values!", wrnno=6)
+
+        self.pr.one(self.config_file, "- Writing configuration file!")
+        try:
+            with open(self.config_file, "w") as f:
+                json.dump(valid_cfg, f)
+            self._cache = valid_cfg
+            self.valid = True
+            self.pr.one("Default data was written in", self.config_file, "- config is ready.")
+            return
+        except (MemoryError, OSError, TypeError) as e:  # write failed, filename isn't a string, or
+            # json.dump() exhausts the heap serializing valid_cfg
+            await self.pr.err_s("Error writing config", self.config_file, "- config is not valid:", e, errno=4)
+            return

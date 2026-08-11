@@ -202,7 +202,7 @@ class SystemService:
         return await self.boot_signature.get_value()
 
     async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
-        return await self.pr.get_log("Tasks")
+        return await self.pr.get_log()
 
     def reboot_system(self) -> None:
         self._reboot("Reboot triggered", system_reset)

@@ -1438,6 +1438,15 @@ and its config read-back comes back silently wrong/empty.
   `condition` lets a driver suppress counting a "failure" that isn't really the sensor's fault
   (SGP40 passes `condition=compensated` — a `None` result from a missing compensation callback
   isn't a sensor failure).
+- **A call site with no real per-field measurement tuple — just one plain pass/fail flag (e.g.
+  `asy_wifi_service.py`'s `hw_op_failed`, `asy_notification_service.py`'s `cfg_read_failed`) —
+  passes a fixed one-element sentinel and drives the flag through `condition=`**:
+  `_error_check((None,), condition=<failed flag>)`, not a ternary that swaps the whole tuple
+  (`(None,) if flag else (1,)`). Both are behaviorally identical (`condition=` gates whether the
+  fixed `None` is allowed to count), but `condition=` reads directly as "check this failure under
+  this condition" instead of asking the reader to notice that `(1,)`'s `1` is an arbitrary
+  non-`None` placeholder with no meaning of its own — established as the house style during the
+  `src/` harmonization pass.
 - A per-field get/set forward (C.4.4-adjacent — `get_pressure_oversampling()`-style thin
   wrappers around the protocol layer) **always logs via `self.pr.err_s()`/`wrn_s()` on failure**,
   not just a bare `try/except Exception: return None`/`False` — a transient bus fault on a

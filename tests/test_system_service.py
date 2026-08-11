@@ -730,7 +730,7 @@ def test_get_error_counter_reflects_logged_errors_and_reset_clears_them() -> Non
     run(svc.pr.setup())
     run(svc.pr.err_s("boom", errno=1))
     result = run(svc.get_error_counter())
-    assert result == {"Tasks": {"ErrCount": 1, "ErrNum": [1], "ErrType": ["E"]}}
+    assert result == {"SYSTEM": {"ErrCount": 1, "ErrNum": [1], "ErrType": ["E"]}}
     run(svc.reset_error_counter())
     assert svc.pr.err_count == 0
 
@@ -744,7 +744,7 @@ def test_get_error_counter_and_reset_work_when_fram_backed() -> None:
     run(svc.pr.setup())
     run(svc.pr.err_s("boom", errno=1))
     result = run(svc.get_error_counter())
-    assert result == {"Tasks": {"ErrCount": 1, "ErrNum": [1], "ErrType": ["E"]}}
+    assert result == {"SYSTEM": {"ErrCount": 1, "ErrNum": [1], "ErrType": ["E"]}}
     run(svc.reset_error_counter())
     assert svc.pr.err_count == 0
 

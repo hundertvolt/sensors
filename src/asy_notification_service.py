@@ -180,8 +180,11 @@ class NotificationCoordinator(SensorReaderConfig):
         return []  # no machine.Timer anywhere in this file (SPECIFICATION.md C.9 shape)
 
     async def get_data(self) -> NOTIFY:
+        # Narrows _get_meas_data()'s generic "NamedTuple" to this Reader's concrete NOTIFY;
+        # typing.cast() isn't usable (no runtime presence on MicroPython) so this identity return
+        # does the same job - see SPECIFICATION.md C.4.2's get_data() narrowing convention.
         if not self._finalized:  # finalize() hasn't run yet - self._datastruct doesn't exist; caller-ordering
-            return NOTIFY(False, None)  # bug, defense-in-depth only (never raising - see the class docstring)
+            return NOTIFY(False, None)  # bug, defense-in-depth only
         return await self._get_meas_data()  # type: ignore[return-value]
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
@@ -308,6 +311,6 @@ class NotificationCoordinator(SensorReaderConfig):
                 await self._store_notif_data(any_triggered)
             # consecutive-failure-streak give-up, matching every other Reader's own read_loop() shape -
             # max_i2c_err is otherwise accepted and stored but never actually enforced.
-            if not await self._error_check((None,) if cfg_read_failed else (1,)):
+            if not await self._error_check((None,), condition=cfg_read_failed):
                 return  # too many consecutive own-config-read failures - let the task supervisor restart us
             await asyncio.sleep(self._next_sleep_secs(interv, t0))

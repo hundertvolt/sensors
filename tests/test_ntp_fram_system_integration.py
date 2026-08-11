@@ -502,7 +502,7 @@ def test_system_service_restarts_a_real_ntp_task_that_genuinely_gives_up() -> No
         ntpmod.resolve_ipv4 = original_resolver
     assert call_count == 2  # the initial real start, plus one genuine restart by the real supervisor
     counter = run(svc.get_error_counter())
-    assert counter["Tasks"]["ErrCount"] == 1  # the restart itself is persisted (wrnno=1), not silent
+    assert counter["SYSTEM"]["ErrCount"] == 1  # the restart itself is persisted (wrnno=1), not silent
 
 
 # ---------------------------------------------------------------------------
@@ -609,7 +609,7 @@ def test_system_service_restarts_a_real_sensor_reader_task_that_genuinely_gives_
     call_count = run(scenario())
     assert call_count == 2  # the initial real start, plus one genuine restart by the real supervisor
     counter = run(svc.get_error_counter())
-    assert counter["Tasks"]["ErrCount"] == 1  # the restart itself is persisted (wrnno=1), not silent
+    assert counter["SYSTEM"]["ErrCount"] == 1  # the restart itself is persisted (wrnno=1), not silent
 
 
 _SCD30_ADDR = 0x61
@@ -665,7 +665,7 @@ def test_system_service_restarts_a_real_scd30_reader_task_that_genuinely_gives_u
     call_count = run(scenario())
     assert call_count == 2  # the initial real start, plus one genuine restart by the real supervisor
     counter = run(svc.get_error_counter())
-    assert counter["Tasks"]["ErrCount"] == 1  # the restart itself is persisted (wrnno=1), not silent
+    assert counter["SYSTEM"]["ErrCount"] == 1  # the restart itself is persisted (wrnno=1), not silent
 
 
 def test_system_service_restarts_a_real_sgp40_reader_task_that_genuinely_gives_up() -> None:
@@ -695,7 +695,7 @@ def test_system_service_restarts_a_real_sgp40_reader_task_that_genuinely_gives_u
     call_count = run(scenario())
     assert call_count == 2  # the initial real start, plus one genuine restart by the real supervisor
     counter = run(svc.get_error_counter())
-    assert counter["Tasks"]["ErrCount"] == 1  # the restart itself is persisted (wrnno=1), not silent
+    assert counter["SYSTEM"]["ErrCount"] == 1  # the restart itself is persisted (wrnno=1), not silent
 
 
 if __name__ == "__main__":

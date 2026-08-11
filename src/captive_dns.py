@@ -9,7 +9,7 @@ import asyncio
 from micropython import const
 
 from asy_udp_socket import AsyUDPSocket
-from print_log import PrintLogHistory, PrintLogHistoryStore
+from print_log import PrintLogHistory, make_logger
 
 try:
     from typing import TYPE_CHECKING
@@ -46,12 +46,7 @@ class DNSServer:
         history_length: int = 10,
         debug: int | None = None,
     ) -> None:
-        if fram is None:
-            self.pr: PrintLogHistory = PrintLogHistory(history_length, debug, name=_NAME)
-            self.pr.one("Init with memory logging.")
-        else:
-            self.pr = PrintLogHistoryStore(fram, history_length, debug, name=_NAME)
-            self.pr.one("Init with FRAM logging.")
+        self.pr: PrintLogHistory = make_logger(fram, history_length, debug, _NAME)
         # mode="server" sockets receive from anyone - asy_udp_socket.py places source-address
         # trust on the caller. run() filters to the AP's own subnet before ever replying.
         self.udps = AsyUDPSocket(("0.0.0.0", 53), mode="server")

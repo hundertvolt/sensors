@@ -261,15 +261,15 @@ class BMP3xx_Reader(SensorReaderConfig):
         data = await self.get_data()
         return make_dict(data)
 
-    async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
-        return await self.pr.get_log()
-
     async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         return await self._get_dict_cfg(
             _NAME,
             _VAL_SI + _VAL_POV + _VAL_TOV + _VAL_FC + _VAL_PO + _VAL_TO + _VAL_SLO + _VAL_ATM,
             callback=self._read_sensor_dict,
         )
+
+    async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
+        return await self.pr.get_log()
 
     async def get_pressure_oversampling(self) -> int | None:
         try:

@@ -261,9 +261,6 @@ class SensorReaderConfig(SensorReader):
         # _push_callbacks); a field with no entry skips to the next rung (see SPECIFICATION.md C.5.2).
         self._get_callbacks: dict[str, Callable[[], Coroutine[Any, Any, int | float | str | bool | None]]] = {}
 
-    async def setup(self) -> None:
-        await self.cfgmgr.setup()
-
     async def _get_mgr_cfg(self, cfg: list[str]) -> dict[str, int | float | str | bool | None] | None:
         self.pr.evt("Reading config via cfgmgr.")
         return await self.cfgmgr.get_dict(cfg)
@@ -371,3 +368,6 @@ class SensorReaderConfig(SensorReader):
         # Captured once from super().__init__()'s default_vals; sync (no I/O/locking involved).
         # self.cfg_schema stays a public attribute too - see SPECIFICATION.md C.5.1.
         return self.cfg_schema
+
+    async def setup(self) -> None:
+        await self.cfgmgr.setup()
