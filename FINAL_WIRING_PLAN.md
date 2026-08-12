@@ -387,6 +387,23 @@ participates in the existing generic `start_and_check_tasks()` supervisor unchan
 every other module; full unit-test coverage, test doubles for reader/writer are step-driven fakes
 only (never a real `select.poll()` — see CLAUDE.md's CI-hang-investigation note for exactly why).
 
+**Done** (this session, across two passes — see "Status update (implementation session)" and
+"Status update (follow-up session)" below for the full detail): every criterion above is met.
+`src/asy_webserver_service.py` exists and is wired into `src/sensortask_wozi.py`'s `build_system()`
+against real driver objects (not test fakes); the 100+-cycle soak test passes with `gc.mem_free()`
+flat; `src/asy_webserver_service.py` is at 99% line coverage; the detailed TDD action list
+(sections A-G below) was the actual source list implemented against, not aspirational — its
+individual `[ ]` boxes are left unchecked as an as-authored planning artifact (this whole document
+is deleted post-merge per its own stated lifecycle at the top of the file, so nothing here is meant
+to be a permanent, retroactively-curated audit trail) rather than a sign the work is outstanding.
+PR #33 (`claude/step2-webserver-api-service` → `claude/framework-wiring-rest-api-hx99v7`, per this
+doc's own "Branch / session structure" section above) opened, CI-green (`lint-and-typecheck`/
+`unit-tests` both passing, after one real `ruff` finding — `UP037`, an unnecessary quoted local-
+variable annotation in `SCD30_Reader._set_dict_cfg()` introduced this session, since local
+annotations are never evaluated at runtime and don't need the quoting `TYPE_CHECKING`-only imports
+require on function signatures — caught by CI, fixed, verified clean locally, re-pushed), and merged
+back into `claude/framework-wiring-rest-api-hx99v7`.
+
 **Refined plan — this session's own research, before the owner Q&A round** (extends the above;
 kept as its own subsection per Step 1's precedent, so the original scoping stays legible as the
 starting point):

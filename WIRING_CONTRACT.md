@@ -1,13 +1,14 @@
 # Wiring Contract — `improved-quality/sensortask-wozi.py` study
 
-**Status update (Step 1 landed)**: this doc's own original header said it would be deleted once the
+**Status update (Steps 1-2 landed)**: this doc's own original header said it would be deleted once the
 real Stage-1 standalone `sensortask-wozi.py` successor landed — that's now true, `src/sensortask_wozi.py`
-exists (Step 1 of `FINAL_WIRING_PLAN.md`'s five-step effort). Kept alive anyway, deliberately
-deviating from that stated lifecycle: Steps 2-5 still need this exact construction order/dependency
-graph preserved as they build on top of it (Step 2's registration API, in particular, needs the
-construction order below to stay unchanged), so this remains the living reference until the whole
-five-step effort merges back, not just until Step 1 alone lands. Still **keep it up to date**
-whenever a change to `src/sensortask_wozi.py` touches anything documented below.
+exists (Step 1 of `FINAL_WIRING_PLAN.md`'s five-step effort), and Step 2 (the generic webserver/API
+service, `src/asy_webserver_service.py`, wired into `build_system()`) has landed on top of it too.
+Kept alive anyway, deliberately deviating from that stated lifecycle: Steps 3-5 still need this exact
+construction order/dependency graph preserved as they build on top of it, so this remains the living
+reference until the whole five-step effort merges back, not just until Step 1 alone lands. Still
+**keep it up to date** whenever a change to `src/sensortask_wozi.py` touches anything documented
+below.
 
 Historical note: this doc started as a pre-Step-1 study of `improved-quality/sensortask-wozi.py`'s
 own flat, synchronous construction sequence (kept below, still accurate as a description of that
@@ -230,15 +231,17 @@ plain name).
 
 - Bus-layer status: once each I2C/SPI bus instance has its own logger name (`"I2C0"`/`"I2C1"`/
   `"SPI0"`), the natural REST shape is one endpoint with one field per bus instance.
-- Networking status: `captive_dns.py`'s own logger plus, once built, the future Microdot
-  connection-timeout wrapper (`asy_webserver_service.py`, BACKLOG's "Microdot hardening design")
-  both belong under one future "Networking" endpoint, one JSON field per component.
+- Networking status: `captive_dns.py`'s own logger plus the Microdot connection-timeout wrapper
+  (`asy_webserver_service.py`, BACKLOG's "Microdot hardening design" — implemented, Step 2) both
+  landed under one `/networking`/`/status.networking` endpoint pair, one JSON field per component,
+  per FINAL_WIRING_PLAN.md's Step 2 endpoint design.
 - **`debug` is now a persisted, live config value — resolved during Step 1, not deferred.** Full
   mechanism (the level-setter registry, `system_service.py`'s `config_SYSTEM.cfg`, and the
   reverted shared-value alternative) is documented under "Debug level" in "Current construction
-  order" above, not duplicated here. The one piece still missing is the REST route itself
-  (`sysfunct.set_debug_level()`/`get_debug_level()` already exist and are fully tested) — that's
-  Step 2's job, once the webserver/API layer exists to call it from.
+  order" above, not duplicated here. The REST route itself now exists too, landed as Step 2:
+  `sysfunct.set_debug_level()`/`get_debug_level()` are wired into `/system`'s `SettingsGroup` via
+  `SystemService.get_dict_cfg()`/`_set_dict_cfg()` (a later, follow-up-session addition to Step 2 —
+  see FINAL_WIRING_PLAN.md's Step 2 status update).
 - `watchdog = WDT(timeout=8000)` stays hardcoded at construction time in `build_system()`, no
   injection point — owner-confirmed, deliberately not part of the `debug`-style
   persisted-config direction above ("must be hardcoded so no error ever can circumvent it when it
@@ -261,9 +264,16 @@ session, alongside the full existing suite (`scripts/lint.sh`/`scripts/typecheck
 closed, the `max_i2c_err` → `max_module_error` rename is done project-wide, and the general,
 persisted, live debug-level mechanism (owner-directed follow-up mid-Step-1, went through one real
 design iteration — see "Debug level" above — before landing on the registry shape) is fully wired
-end to end except for the REST route itself, which is Step 2's job.
+end to end, REST route included (landed as part of Step 2, see above).
 
-Kept alive per the "Status update" note at the top of this document, not deleted — Steps 2-5 still
+**Step 2 landed** (later session): `src/asy_webserver_service.py`/`WebserverService` exist and are
+wired into `build_system()` (construction-order item 14 above) against real driver objects, the
+100+-cycle soak test passes, and `src/asy_webserver_service.py` is at 99% line coverage — see
+FINAL_WIRING_PLAN.md's Step 2 status updates for the full detail, including the two real
+construction-order findings made while wiring it in (`conn.setup()`/`ntp.setup()`, item 16 above)
+and the "no `fram=`" decision preserving this document's five-chunk FRAM invariant.
+
+Kept alive per the "Status update" note at the top of this document, not deleted — Steps 3-5 still
 need this exact construction order/dependency graph preserved as they build on top of it. Re-verify
 the sections above whenever a future change to `src/sensortask_wozi.py` (or, still, a change to
 `improved-quality/sensortask-wozi.py`, unlikely as that is) could plausibly affect construction
