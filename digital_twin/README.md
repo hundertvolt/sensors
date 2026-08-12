@@ -93,6 +93,51 @@ All tests are deterministic — no wall-clock waiting, except one short-period/g
 test in `tests/test_digital_twin_machine.py` (`test_timer_fires_for_real_on_a_short_period`) that
 proves the real-time scheduling mechanism itself works at all, not a precise-cadence assertion.
 
+## Adding a new chip fake
+
+**Required whenever a new sensor driver lands in `src/`** (see `SPECIFICATION.md` C.11's own
+checklist item for this — do it the same session the driver is promoted, not deferred) — the
+digital twin exists to track the *whole* real driver portfolio, not just the three sensors it
+started with. For a new **I2C** sensor this is a small, mechanical addition:
+
+1. Read the sensor's own datasheet first (`CLAUDE.md`'s standing "read the PDF first" rule, `datasheets/`)
+   and add a new `_<name>_chip.py` alongside `_scd30_chip.py`/`_sgp40_chip.py`/`_bmp3xx_chip.py`,
+   matching their established shape:
+   - a `FaultInjector` (`self.fault`, see `_fault_injection.py`) for provoking a bus NAK/
+     CRC-corruption/timeout on demand;
+   - a `random_source` constructor seam (default `None` → falls back to the real `random` module)
+     so tests can script deterministic values, and `digital_twin/launch.py --seed` can reseed every
+     chip's walk from one shared source (via `machine.configure_random_source()` or the simpler
+     `random.seed()` `launch.py` itself actually uses — see that file's own comment for why);
+   - datasheet-sourced `min_*`/`max_*` range constructor arguments, plus the bounded-random-walk
+     `*_step` bound every existing chip fake now uses (draw the initial value at construction,
+     step-and-clamp on every later reading) — the step bound itself is a **not**-datasheet-derived
+     physical-plausibility judgment call, document it as such in the docstring, same as the three
+     existing chips do;
+   - `handle_writeto()`/`handle_readfrom_into()` (word/CRC-framed protocols like SCD30/SGP40) or
+     `handle_writeto_mem()`/`handle_readfrom_mem()` (register-addressed protocols like BMP3xx's)
+     answering the *exact* raw transaction shape the real `*_I2C` driver class sends — confirmed
+     directly against that file's own source, never assumed.
+2. Wire it into `machine.py`'s `_wire_i2c_devices()`: add the new chip to the `dict` for whichever
+   bus id (`0` or `1`) the real wiring puts it on (cross-check `src/sensortask_wozi.py`'s
+   `build_system()` for the real pin/address assignment), or add a new `if id == N:` branch if it
+   lands on a bus id neither SCD30 nor SGP40/BMP3xx already use.
+3. Add `tests/test_digital_twin_<name>.py` — deterministic unit tests of the chip fake in isolation
+   (no real `machine.I2C` involved, matching every existing `tests/test_digital_twin_{sgp40,scd30,
+   bmp3xx}.py`) — then extend `tests/test_digital_twin_machine.py`'s own dispatch tests if the new
+   chip shares a bus id those tests already probe.
+4. Update this file's "What's here" list and `machine.py`'s own module docstring (the "Bus wiring
+   mirrors..." paragraph) to mention the new chip, and consider whether `digital_twin/launch.py`'s
+   own `_sensor_loop()`/`_FAULT_DEVICE_OPS` should read from it too.
+
+**A new SPI sensor is not automatically supported yet if it would share an already-occupied SPI bus
+id with the FRAM chip.** `_wire_spi_device()`/`machine.SPI` currently wire **one fixed device per
+bus id** (matching the wozi prototype's own single-FRAM-on-`spi0` reality) — real multi-device SPI
+chip-select is bit-banged by the caller (`asy_spi_driver.py`'s `SPIDevice`, not `machine.SPI`
+itself), so a future twin `SPI.write()`/`readinto()` would need to start routing by which CS `Pin`
+is currently asserted low, the way `machine.I2C` already routes by address. Not built now because no
+such driver exists yet — flagged here rather than left to surprise whoever adds the first one.
+
 ## Known gaps / follow-ups for later sessions
 
 - **Not yet in `pyproject.toml`'s ruff/mypy scope.** `[tool.ruff]`/`[tool.mypy]` currently cover

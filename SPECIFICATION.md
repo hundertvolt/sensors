@@ -1673,6 +1673,18 @@ sensor:
    driver's own `_NAME` stream, reusing `errno=10` for "initial setup failed" to match the other
    three drivers (C.7) — no cross-driver registry to consult or update beyond that one
    precedent.
+9. **Digital-twin extension — required, not optional.** Every new sensor driver needs a matching
+   chip fake under `digital_twin/` (`_<name>_chip.py`, same `FaultInjector`/`random_source`/
+   datasheet-range/bounded-random-walk shape as `_scd30_chip.py`/`_sgp40_chip.py`/`_bmp3xx_chip.py`),
+   wired into `machine.py`'s `_wire_i2c_devices()`/`_wire_spi_device()` bus maps, plus its own
+   `tests/test_digital_twin_<name>.py` — see `digital_twin/README.md`'s "Adding a new chip fake"
+   section for the concrete steps. A new **I2C** sensor is a small, mechanical addition (one new
+   chip-fake file + one new dict entry); a new **SPI** sensor sharing an already-occupied SPI bus id
+   with the FRAM chip is **not** automatically supported by the twin's current single-device-per-
+   bus-id wiring — same README section explains what extending it would take. Do this as part of
+   finishing the driver, the same session it's promoted to `src/` (Part D's checklist), not deferred
+   — the digital twin exists to track the *whole* real driver portfolio, not just the sensors it
+   started with, and a driver with no twin counterpart silently regresses Step 5's own coverage.
 
 ## C.12 Testing
 
