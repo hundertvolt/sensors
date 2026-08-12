@@ -93,13 +93,17 @@ def test_data_ready_starts_false() -> None:
 
 
 def test_produce_new_reading_sets_data_ready_true() -> None:
-    chip = Scd30Chip(auto_refresh=False, random_source=_FixedRandom(uniform_values=[500.0, 22.0, 45.0]))
+    chip = Scd30Chip(auto_refresh=False, random_source=_FixedRandom(uniform_values=[500.0, 22.0, 45.0, 0.0, 0.0, 0.0]))
     chip._produce_new_reading()
     assert _get(chip, 0x02, 0x02) == word(1)
 
 
 def test_read_measurement_returns_crc_valid_buffer_decoding_to_the_produced_values() -> None:
-    chip = Scd30Chip(auto_refresh=False, random_source=_FixedRandom(uniform_values=[512.5, 21.5, 47.25]))
+    # First 3 values: the uniform draw at construction. Last 3: the step delta _produce_new_reading()
+    # below draws - zeroed here so the final value stays exactly at the constructed initial value,
+    # keeping this test's own assertions about the *values* independent of the walk mechanism
+    # (which gets its own dedicated tests further down).
+    chip = Scd30Chip(auto_refresh=False, random_source=_FixedRandom(uniform_values=[512.5, 21.5, 47.25, 0.0, 0.0, 0.0]))
     chip._produce_new_reading()
     chip.handle_writeto(b"\x03\x00")  # READ_MEASUREMENT - bare command, no args
     buf = chip.handle_readfrom_into(18)
@@ -115,11 +119,84 @@ def test_read_measurement_returns_crc_valid_buffer_decoding_to_the_produced_valu
 
 
 def test_read_measurement_clears_data_ready() -> None:
-    chip = Scd30Chip(auto_refresh=False, random_source=_FixedRandom(uniform_values=[500.0, 22.0, 45.0]))
+    chip = Scd30Chip(auto_refresh=False, random_source=_FixedRandom(uniform_values=[500.0, 22.0, 45.0, 0.0, 0.0, 0.0]))
     chip._produce_new_reading()
     chip.handle_writeto(b"\x03\x00")
     chip.handle_readfrom_into(18)
     assert _get(chip, 0x02, 0x02) == word(0)  # cleared the instant it was read (Interface Description 1.4.4)
+
+
+def test_construction_draws_an_initial_value_within_range_without_needing_a_reading_produced() -> None:
+    # Initial value: a uniform draw within [min,max] at construction, before _produce_new_reading()
+    # is ever called - not datasheet-derived (the step bound isn't), but the initial-value mechanism
+    # (a uniform draw) is unchanged from before this walk existed.
+    chip = Scd30Chip(auto_refresh=False, random_source=_FixedRandom(uniform_values=[1234.0, 25.5, 55.5]))
+    assert chip._co2 == 1234.0
+    assert chip._temp == 25.5
+    assert chip._hum == 55.5
+
+
+def test_produce_new_reading_steps_from_the_previous_value_rather_than_a_fresh_draw() -> None:
+    chip = Scd30Chip(auto_refresh=False, random_source=_FixedRandom(uniform_values=[1000.0, 20.0, 50.0, 25.0, -0.5, 2.0]))
+    assert chip._co2 == 1000.0 and chip._temp == 20.0 and chip._hum == 50.0  # construction draw
+    chip._produce_new_reading()
+    assert chip._co2 == 1025.0  # 1000.0 + 25.0
+    assert chip._temp == 19.5  # 20.0 + -0.5
+    assert chip._hum == 52.0  # 50.0 + 2.0
+
+
+def test_produce_new_reading_step_delta_is_clamped_to_the_default_step_bound() -> None:
+    # _FixedRandom itself asserts a <= value <= b for every uniform() call - if _produce_new_reading()
+    # ever passed the wrong (a, b) bound for a step draw (e.g. the full [min,max] range instead of
+    # [-step,step]), this test's deliberately-tight scripted delta would fail that assertion.
+    chip = Scd30Chip(auto_refresh=False, random_source=_FixedRandom(uniform_values=[1000.0, 20.0, 50.0, 50.0, 1.0, 3.0]))
+    chip._produce_new_reading()  # co2_step=50.0, temp_step=1.0, hum_step=3.0 (this chip's defaults)
+
+
+def test_produce_new_reading_step_is_clamped_to_the_configured_max() -> None:
+    chip = Scd30Chip(
+        auto_refresh=False,
+        max_co2=2000.0,
+        co2_step=50.0,
+        random_source=_FixedRandom(uniform_values=[1980.0, 20.0, 50.0, 50.0, 0.0, 0.0]),
+    )
+    chip._produce_new_reading()
+    assert chip._co2 == 2000.0  # 1980.0 + 50.0 would be 2030.0 - clamped back to max_co2
+
+
+def test_produce_new_reading_step_is_clamped_to_the_configured_min() -> None:
+    chip = Scd30Chip(
+        auto_refresh=False,
+        min_temp=15.0,
+        temp_step=1.0,
+        random_source=_FixedRandom(uniform_values=[1000.0, 15.5, 50.0, 0.0, -1.0, 0.0]),
+    )
+    chip._produce_new_reading()
+    assert chip._temp == 15.0  # 15.5 + -1.0 would be 14.5 - clamped back to min_temp
+
+
+def test_step_bounds_are_configurable_via_the_constructor() -> None:
+    chip = Scd30Chip(
+        auto_refresh=False,
+        co2_step=5.0,
+        temp_step=0.1,
+        hum_step=0.5,
+        random_source=_FixedRandom(uniform_values=[1000.0, 20.0, 50.0, 5.0, 0.1, 0.5]),
+    )
+    chip._produce_new_reading()  # would violate the default 50.0/1.0/3.0 bounds - proves the override took
+
+
+def test_corrupt_next_measurement_stays_orthogonal_to_the_walk() -> None:
+    # The fault-injection flag corrupts whatever the walk just produced - it doesn't interact with
+    # the walk mechanism itself.
+    chip = Scd30Chip(auto_refresh=False, random_source=_FixedRandom(uniform_values=[1000.0, 20.0, 50.0, 0.0, 0.0, 0.0]))
+    chip._produce_new_reading()
+    chip.corrupt_next_measurement = True
+    chip.handle_writeto(b"\x03\x00")
+    buf = chip.handle_readfrom_into(18)
+    assert buf[2] != crc8(buf[0:2])
+    co2 = struct.unpack(">f", buf[0:2] + buf[3:5])[0]
+    assert co2 == 1000.0  # the underlying walked value is unaffected by the corruption
 
 
 def test_default_ranges_stay_inside_the_datasheets_own_documented_ranges() -> None:
@@ -162,7 +239,7 @@ def test_rdy_pin_goes_high_on_new_reading_and_fires_a_registered_rising_edge_han
 
     pin = _FakePin()
     pin.irq(handler=lambda p: fired.append(p.value()), trigger=pin.IRQ_RISING)
-    chip = Scd30Chip(auto_refresh=False, rdy_pin=pin, random_source=_FixedRandom(uniform_values=[500.0, 22.0, 45.0]))
+    chip = Scd30Chip(auto_refresh=False, rdy_pin=pin, random_source=_FixedRandom(uniform_values=[500.0, 22.0, 45.0, 0.0, 0.0, 0.0]))
     chip._produce_new_reading()
     assert pin.value() == 1
     assert fired == [1]
@@ -206,7 +283,7 @@ def test_fault_injection_on_writeto_and_readfrom_into() -> None:
 
 
 def test_fault_injection_can_corrupt_the_next_measurement_crc() -> None:
-    chip = Scd30Chip(auto_refresh=False, random_source=_FixedRandom(uniform_values=[500.0, 22.0, 45.0]))
+    chip = Scd30Chip(auto_refresh=False, random_source=_FixedRandom(uniform_values=[500.0, 22.0, 45.0, 0.0, 0.0, 0.0]))
     chip._produce_new_reading()
     chip.corrupt_next_measurement = True
     chip.handle_writeto(b"\x03\x00")

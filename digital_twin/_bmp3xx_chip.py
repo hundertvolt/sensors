@@ -107,6 +107,8 @@ class Bmp3xxChip:
         max_temp_c: float = 30.0,
         min_pressure_hpa: float = 950.0,
         max_pressure_hpa: float = 1050.0,
+        temp_step_c: float = 1.0,
+        pressure_step_hpa: float = 5.0,
     ) -> None:
         if random_source is None:
             import random as _random_module
@@ -115,16 +117,33 @@ class Bmp3xxChip:
         self._random = random_source
         self._min_temp_c, self._max_temp_c = min_temp_c, max_temp_c
         self._min_pressure_hpa, self._max_pressure_hpa = min_pressure_hpa, max_pressure_hpa
+        # Not datasheet-derived (the min/max above are) - see _scd30_chip.py's own *_step comment
+        # for the same judgment-call framing, applied here to weather-scale pressure/temperature.
+        self._temp_step_c, self._pressure_step_hpa = temp_step_c, pressure_step_hpa
         self._status = _STATUS_CMD_RDY
         self._osr = 0
         self._config = 0
         self._burst = bytes(6)
         self.fault = FaultInjector()
         self._temp_calib, self._pressure_calib = _decode_calibration(_CAL_RAW)
+        # Initial value: one uniform draw within [min,max] at construction - every value after this
+        # one steps from the last instead (see _trigger_measurement() below). The ADC burst itself
+        # stays at its all-zero default until the first forced-mode trigger actually computes one -
+        # unchanged from before this walk existed (real hardware has nothing to report before its
+        # first conversion either).
+        self._temp_c = self._random.uniform(self._min_temp_c, self._max_temp_c)
+        self._pressure_hpa = self._random.uniform(self._min_pressure_hpa, self._max_pressure_hpa)
+
+    def _clamp(self, value: float, lo: float, hi: float) -> float:
+        return max(lo, min(hi, value))
 
     def _trigger_measurement(self) -> None:
-        target_temp = self._random.uniform(self._min_temp_c, self._max_temp_c)
-        target_pressure_pa = self._random.uniform(self._min_pressure_hpa, self._max_pressure_hpa) * 100.0
+        self._temp_c = self._clamp(self._temp_c + self._random.uniform(-self._temp_step_c, self._temp_step_c), self._min_temp_c, self._max_temp_c)
+        self._pressure_hpa = self._clamp(
+            self._pressure_hpa + self._random.uniform(-self._pressure_step_hpa, self._pressure_step_hpa), self._min_pressure_hpa, self._max_pressure_hpa
+        )
+        target_temp = self._temp_c
+        target_pressure_pa = self._pressure_hpa * 100.0
         t1, t2, t3 = self._temp_calib
         adc_t = _invert_temperature(t1, t2, t3, target_temp)
         adc_p = _invert_pressure(self._pressure_calib, target_temp, target_pressure_pa)

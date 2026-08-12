@@ -1710,10 +1710,84 @@ to operate?** Checked directly against `src/`'s real import surface rather than 
   one concrete new dependency above (catching `SimulatedReboot`) now on record for that future
   session to account for.
 
-**Next border**: TDD — write/extend tests for A–D, F, and G first (red), then implement against them
-(green), without touching E's verification recipe until the code changes are settled (E is a
-tooling/process step, not something tests exercise). Stopping here for the owner's go-ahead before
-writing any of that.
+**TDD step (A–D, F, G) — done.** Owner go-ahead received; tests written first (red) then implemented
+against (green) for every item below, each verified passing (repeatedly, to catch timing flakiness)
+before moving to the next. Item E (pyproject.toml/ruff/mypy scope + the chroot pre-push recipe) is
+still untouched, deliberately deferred per the border above.
+
+- **A — bounded random walk, implemented.** `_scd30_chip.py`/`_bmp3xx_chip.py`/`_sgp40_chip.py` each
+  gained a `*_step` constructor parameter (`co2_step=50.0`/`temp_step=1.0`/`hum_step=3.0` for SCD30;
+  `temp_step_c=1.0`/`pressure_step_hpa=5.0` for BMP3xx; `raw_step=1000` for SGP40 — all non-datasheet
+  judgment calls, documented as such in each file) and now draw the initial value at construction,
+  stepping-and-clamping on every subsequent reading instead of a fresh independent draw. Existing
+  `_FixedRandom`-based tests updated mechanically (construction's 3/2/1 initial values followed by
+  the step call's own delta draws — zeroed where a test's assertions are about the *value*, not the
+  walk); new dedicated tests added per chip for: initial draw without a reading produced, stepping
+  from the previous value, min/max clamping, and constructor-configurable step bounds. 23/17/17
+  tests passing (scd30/bmp3xx/sgp40 respectively).
+- **B — WDT, implemented, with a real-hardware finding.** Read `ports/rp2/machine_wdt.c` directly
+  from this session's own cached MicroPython v1.28.0 checkout (`$PICO_TOOLCHAIN_DIR/micropython`)
+  rather than assuming: real `WDT(timeout=N)` raises `ValueError("timeout exceeds 8388")` for N above
+  the cap (not a silent clamp), and — a bonus finding beyond what was asked — `WDT(id != 0)` raises
+  `ValueError("WDT(%d) doesn't exist")` too, since rp2 only ever implements id 0. Both now matched by
+  the twin. Added an internal `asyncio`-task countdown (`_arm()`/`_countdown()`, cancel-and-reschedule
+  on every `feed()`, mirroring `Timer`'s own established pattern) driving
+  `would_have_triggered_count`/`would_have_triggered_log`/an optional `on_would_trigger` callback, no
+  disable API. Timing tests poll at 5ms against a 150ms WDT period (a first attempt at 20ms/20ms
+  raced and was flaky under load — fixed by widening the poll-to-period ratio, not by loosening the
+  assertions). 29/29 `test_digital_twin_machine.py` tests passing.
+- **C — SimulatedReboot, implemented as designed.** `SimulatedReboot(Exception)` base,
+  `SimulatedReset`/`SimulatedBootloaderEntry` subclasses; `reset()`/`bootloader()` still increment
+  their module counters, then raise. Covered by dedicated tests (counter increments, correct
+  subclass, catchable via the base class).
+- **D — WLAN scripted outcomes, implemented as designed.** `WLAN.script_connect_outcomes()` FIFO,
+  consumed one per *completed* `_run_connect()`; a cancelled attempt (via `disconnect()` or a
+  superseding `connect()`) naturally never consumes an entry, since cancellation interrupts the
+  coroutine before the consuming line ever runs — no extra bookkeeping needed. Failure outcomes
+  revert `_ifconfig` to the unconfigured tuple, not just leave `_connected` false. 8 new tests added
+  (15/15 total in `test_digital_twin_network_neopixel.py`).
+- **F — root-caused and fixed, wider than originally scoped (per the owner's own choice mid-round —
+  see the "F fix scope" question above).** The real bug was never in `system_service.py`: every one
+  of 14 test files (not just the 2 originally flagged) carries its own copy-pasted `_tmp_cfg_dir()`
+  helper whose deterministic, never-cleaned-up directory numbering silently reuses an earlier
+  `scripts/test.sh` run's *already-persisted* config files, misreporting a genuine value-changing
+  write as `"Unchanged"` instead of `"Valid"`. Confirmed by direct reproduction (clean run: 29/29;
+  dirty rerun: 23/29, identical failures every time) before touching any code. Fix: each of the 14
+  files' own `_sweep_stale_tmp_dirs(prefix)`, called once at import time, removes any pre-existing
+  directories matching that file's own prefix before `_tmp_cfg_dir()` hands out new ones — no
+  `scripts/test.sh` change, so item E's chroot recipe isn't triggered by this. Regression tests added
+  directly against the sweep helper in `test_sensortask_wozi.py` (removes a matching stale dir and
+  its contents; leaves a non-matching entry alone; tolerates a missing `tests/_tmp` entirely).
+  Verified clean-then-dirty-rerun idempotence for all 14 files individually, plus the full suite.
+- **G — `digital_twin/launch.py`, implemented, with one design correction from the plan.** `argparse`
+  *is* importable on the pinned Unix-port build (confirmed directly), but reading the vendored
+  micropython-lib implementation showed it doesn't support `action="append"` (blocking the
+  plan's own repeatable `--fault`/`--wifi-outcome` flags), has no `choices=`, and surfaces parse
+  errors via `sys.exit(2)` rather than a catchable exception — so per the plan's own explicit
+  fallback clause, `parse_args()` is a small hand-rolled flag loop instead, not an argparse wrapper.
+  `--seed` also turned out simpler than planned: MicroPython's `random` module has no instantiable
+  `Random` class (confirmed directly — only CPython has one), but every chip fake's own
+  `random_source=None` default already falls back to the same shared module-level `random`, so
+  `main()` just calls `random.seed(config.seed)` once — no `random.Random(seed)` object needed.
+  (`machine.configure_random_source()` was still added, mirroring `configure_fram_state_path()`'s
+  own module-level-hook shape, as a real seam for a future caller that wants a distinct
+  random-source object — tested directly — just not exercised by `launch.py` itself.) One robustness
+  fix beyond the original design: `_sensor_loop()` wraps each of the three sensors' own read in its
+  own `try`/`except OSError` — an early version let one `--fault`-injected sensor's exception crash
+  the whole loop task silently, taking the other two sensors' readings down with it; now isolated,
+  matching `system_service.py`'s own per-setter try/except convention. Verified with both the unit
+  test suite (22/22, including 2 short-duration/fixed-seed `main()` smoke tests) and a real manual
+  CLI run (`micropython digital_twin/launch.py --seed 42 --duration 3 --no-wdt-feed --wifi-outcome
+  success --fault scd30:writeto:1`) showing the fault firing exactly once, WLAN transitioning
+  CONNECTING → GOT_IP, and all three sensors continuing to report afterward.
+
+Full-suite regression run (`scripts/test.sh`, no `--coverage`) after all of the above: [result to be
+filled in once the final run this session completes].
+
+**Next border**: maximize code coverage by tests (the original 4-part instruction's last step),
+still not started. Item E (pyproject.toml/ruff/mypy scope extension + the chroot pre-push
+verification recipe) remains separately deferred, to be picked up once the coverage pass is also
+settled.
 
 ### Step 4 — Website placeholder scaffold
 

@@ -63,6 +63,9 @@ class Scd30Chip:
         max_temp: float = 30.0,
         min_hum: float = 20.0,
         max_hum: float = 70.0,
+        co2_step: float = 50.0,
+        temp_step: float = 1.0,
+        hum_step: float = 3.0,
         measurement_interval_s: int = 2,
         rdy_pin: "Any | None" = None,
         auto_refresh: bool = True,
@@ -75,6 +78,10 @@ class Scd30Chip:
         self._min_co2, self._max_co2 = min_co2, max_co2
         self._min_temp, self._max_temp = min_temp, max_temp
         self._min_hum, self._max_hum = min_hum, max_hum
+        # *_step: NOT datasheet-derived (the min/max above are) - a physical-plausibility judgment
+        # call bounding how far one reading can move from the last, so successive measurements walk
+        # instead of jumping independently around the whole configured range every time.
+        self._co2_step, self._temp_step, self._hum_step = co2_step, temp_step, hum_step
         self._measurement_interval_s = measurement_interval_s
         self._ambient_pressure = 0
         self._altitude = 0
@@ -87,6 +94,11 @@ class Scd30Chip:
         self.fault = FaultInjector()
         self.corrupt_next_measurement = False
         self._timer = None
+        # Initial value: one uniform draw within [min,max] at construction - every value after this
+        # one steps from the last instead (see _produce_new_reading() below).
+        self._co2 = self._random.uniform(self._min_co2, self._max_co2)
+        self._temp = self._random.uniform(self._min_temp, self._max_temp)
+        self._hum = self._random.uniform(self._min_hum, self._max_hum)
         if auto_refresh:
             self._start_timer()
 
@@ -100,11 +112,14 @@ class Scd30Chip:
             callback=lambda t: self._produce_new_reading(),
         )
 
+    def _clamp(self, value: float, lo: float, hi: float) -> float:
+        return max(lo, min(hi, value))
+
     def _produce_new_reading(self) -> None:
-        co2 = self._random.uniform(self._min_co2, self._max_co2)
-        temp = self._random.uniform(self._min_temp, self._max_temp)
-        hum = self._random.uniform(self._min_hum, self._max_hum)
-        self._buffer = _pack_float(co2) + _pack_float(temp) + _pack_float(hum)
+        self._co2 = self._clamp(self._co2 + self._random.uniform(-self._co2_step, self._co2_step), self._min_co2, self._max_co2)
+        self._temp = self._clamp(self._temp + self._random.uniform(-self._temp_step, self._temp_step), self._min_temp, self._max_temp)
+        self._hum = self._clamp(self._hum + self._random.uniform(-self._hum_step, self._hum_step), self._min_hum, self._max_hum)
+        self._buffer = _pack_float(self._co2) + _pack_float(self._temp) + _pack_float(self._hum)
         self._data_ready = True
         if self._rdy_pin is not None:
             self._rdy_pin.simulate_edge(1)

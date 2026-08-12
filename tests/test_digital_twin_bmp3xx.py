@@ -95,7 +95,9 @@ def test_calibration_block_is_not_degenerate() -> None:
 
 
 def test_forced_mode_trigger_sets_data_ready_and_a_readable_burst() -> None:
-    chip = Bmp3xxChip(random_source=_FixedRandom(uniform_values=[22.0, 1000.0]))
+    # First 2 values: the uniform draw at construction. Last 2: the step delta the forced-mode
+    # trigger below draws - zeroed so the final decoded value stays exactly at the constructed one.
+    chip = Bmp3xxChip(random_source=_FixedRandom(uniform_values=[22.0, 1000.0, 0.0, 0.0]))
     _write(chip, 0x1B, [0x13])  # CONTROL = forced mode, press+temp enabled
     status = _read(chip, 0x03, 1)[0]
     assert status & 0x60 == 0x60  # STATUS_DATA_READY (both drdy_press|drdy_temp)
@@ -104,7 +106,7 @@ def test_forced_mode_trigger_sets_data_ready_and_a_readable_burst() -> None:
 
 
 def test_forced_mode_reading_decodes_to_the_requested_target_via_the_real_formula() -> None:
-    chip = Bmp3xxChip(random_source=_FixedRandom(uniform_values=[21.0, 987.0]))
+    chip = Bmp3xxChip(random_source=_FixedRandom(uniform_values=[21.0, 987.0, 0.0, 0.0]))
     _write(chip, 0x1B, [0x13])
     burst = _read(chip, 0x04, 6)
     cal_raw = _read(chip, 0x31, 21)
@@ -118,6 +120,49 @@ def test_forced_mode_reading_decodes_to_the_requested_target_via_the_real_formul
     assert abs(pressure_hpa - 987.0) < 1e-3
 
 
+def test_construction_draws_an_initial_value_within_range_without_a_forced_mode_trigger() -> None:
+    chip = Bmp3xxChip(random_source=_FixedRandom(uniform_values=[23.5, 1013.25]))
+    assert chip._temp_c == 23.5
+    assert chip._pressure_hpa == 1013.25
+
+
+def test_forced_mode_trigger_steps_from_the_previous_value_rather_than_a_fresh_draw() -> None:
+    chip = Bmp3xxChip(random_source=_FixedRandom(uniform_values=[20.0, 1000.0, 0.5, -2.0]))
+    assert chip._temp_c == 20.0 and chip._pressure_hpa == 1000.0  # construction draw
+    _write(chip, 0x1B, [0x13])
+    assert chip._temp_c == 20.5  # 20.0 + 0.5
+    assert chip._pressure_hpa == 998.0  # 1000.0 + -2.0
+
+
+def test_forced_mode_trigger_step_is_clamped_to_the_configured_max() -> None:
+    chip = Bmp3xxChip(
+        max_pressure_hpa=1050.0,
+        pressure_step_hpa=5.0,
+        random_source=_FixedRandom(uniform_values=[20.0, 1048.0, 0.0, 5.0]),
+    )
+    _write(chip, 0x1B, [0x13])
+    assert chip._pressure_hpa == 1050.0  # 1048.0 + 5.0 would be 1053.0 - clamped to max_pressure_hpa
+
+
+def test_forced_mode_trigger_step_is_clamped_to_the_configured_min() -> None:
+    chip = Bmp3xxChip(
+        min_temp_c=15.0,
+        temp_step_c=1.0,
+        random_source=_FixedRandom(uniform_values=[15.4, 1000.0, -1.0, 0.0]),
+    )
+    _write(chip, 0x1B, [0x13])
+    assert chip._temp_c == 15.0  # 15.4 + -1.0 would be 14.4 - clamped to min_temp_c
+
+
+def test_step_bounds_are_configurable_via_the_constructor() -> None:
+    chip = Bmp3xxChip(
+        temp_step_c=0.1,
+        pressure_step_hpa=0.5,
+        random_source=_FixedRandom(uniform_values=[20.0, 1000.0, 0.1, 0.5]),
+    )
+    _write(chip, 0x1B, [0x13])  # would violate the default 1.0/5.0 bounds - proves the override took
+
+
 def test_default_range_stays_inside_the_drivers_own_operating_range_check() -> None:
     # asy_bmp3xx_driver.py's own _read() rejects anything outside 300-1250 hPa / -40-85 degC
     # (datasheet sec 1, Table 2) - the twin's defaults must be a sensible sub-range of that.
@@ -127,7 +172,11 @@ def test_default_range_stays_inside_the_drivers_own_operating_range_check() -> N
 
 
 def test_a_fresh_reading_is_drawn_on_every_forced_mode_trigger() -> None:
-    chip = Bmp3xxChip(random_source=_FixedRandom(uniform_values=[20.0, 1000.0, 25.0, 1010.0]))
+    # Construction draw: 20.0/1000.0. First trigger's step delta is zeroed (stays at 20.0/1000.0);
+    # the second trigger's delta (1.0, 5.0) sits at this chip's default temp_step_c/
+    # pressure_step_hpa boundary - proving each trigger draws its own fresh step, not the same value
+    # twice, while staying within the walk's own bound.
+    chip = Bmp3xxChip(random_source=_FixedRandom(uniform_values=[20.0, 1000.0, 0.0, 0.0, 1.0, 5.0]))
     cal_raw = _read(chip, 0x31, 21)
     _write(chip, 0x1B, [0x13])
     burst1 = _read(chip, 0x04, 6)
@@ -138,6 +187,10 @@ def test_a_fresh_reading_is_drawn_on_every_forced_mode_trigger() -> None:
     adc_t1 = burst1[5] << 16 | burst1[4] << 8 | burst1[3]
     p1, t1 = _forward(cal_raw, adc_p1, adc_t1)
     assert abs(t1 - 20.0) < 1e-3 and abs(p1 - 1000.0) < 1e-3
+    adc_p2 = burst2[2] << 16 | burst2[1] << 8 | burst2[0]
+    adc_t2 = burst2[5] << 16 | burst2[4] << 8 | burst2[3]
+    p2, t2 = _forward(cal_raw, adc_p2, adc_t2)
+    assert abs(t2 - 21.0) < 1e-3 and abs(p2 - 1005.0) < 1e-3  # stepped by the (1.0, 5.0) delta
 
 
 def test_osr_and_config_registers_store_whatever_byte_they_are_given() -> None:
@@ -151,7 +204,7 @@ def test_osr_and_config_registers_store_whatever_byte_they_are_given() -> None:
 
 
 def test_soft_reset_command_restores_command_ready_status() -> None:
-    chip = Bmp3xxChip(random_source=_FixedRandom(uniform_values=[20.0, 1000.0]))
+    chip = Bmp3xxChip(random_source=_FixedRandom(uniform_values=[20.0, 1000.0, 0.0, 0.0]))
     _write(chip, 0x1B, [0x13])
     assert _read(chip, 0x03, 1)[0] & 0x60  # data ready, not command-ready-only
     _write(chip, 0x7E, [0xB6])  # CMD register, soft reset opcode

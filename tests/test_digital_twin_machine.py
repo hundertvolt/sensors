@@ -29,7 +29,20 @@ if TYPE_CHECKING:
 # rather than a scripts/test.sh/MICROPYPATH change.
 sys.path.insert(0, "digital_twin")
 
-from machine import I2C, RTC, SPI, WDT, Pin, Timer  # noqa: E402
+import machine  # noqa: E402 - whole-module import, needed for the live reset_count/bootloader_count globals below
+from machine import (  # noqa: E402
+    I2C,
+    RTC,
+    SPI,
+    WDT,
+    Pin,
+    SimulatedBootloaderEntry,
+    SimulatedReboot,
+    SimulatedReset,
+    Timer,
+    bootloader,
+    reset,
+)
 
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":
@@ -75,6 +88,30 @@ def test_i2c_id0_wires_scd30_at_0x61_and_naks_everything_else() -> None:
         raise AssertionError("expected OSError")
     except OSError:
         pass
+
+
+def test_configure_random_source_threads_through_to_newly_wired_chips() -> None:
+    # Mirrors configure_fram_state_path()'s own module-level-hook shape: must not affect a chip
+    # already wired before the call, only chips wired by a *later* I2C() construction.
+    Pin.reset_registry()
+    try:
+
+        class _FixedRandom:
+            def uniform(self, a: float, b: float) -> float:
+                return a
+
+            def randint(self, a: int, b: int) -> int:
+                return a
+
+            def getrandbits(self, k: int) -> int:
+                return 0
+
+        machine.configure_random_source(_FixedRandom())
+        i2c0 = I2C(0, scl=Pin(13), sda=Pin(12), freq=50000)
+        scd30 = i2c0.devices[0x61]
+        assert scd30._co2 == scd30._min_co2  # drawn via the fixed source's uniform(a, b) -> a
+    finally:
+        machine.configure_random_source(None)  # don't leak into later tests in this file
 
 
 def test_i2c_id1_wires_sgp40_and_bmp3xx() -> None:
@@ -148,6 +185,139 @@ def test_wdt_feed_increments_count() -> None:
     wdt.feed()
     wdt.feed()
     assert wdt.feed_count == 2
+
+
+def test_wdt_rejects_a_nonzero_id() -> None:
+    # Confirmed directly against the pinned v1.28.0 ports/rp2/machine_wdt.c source: rp2 only ever
+    # implements id 0 - WDT(id=1) raises ValueError("WDT(1) doesn't exist") on real hardware.
+    try:
+        WDT(id=1)
+        raise AssertionError("expected ValueError")
+    except ValueError:
+        pass
+
+
+def test_wdt_rejects_a_timeout_above_the_rp2040_hard_cap() -> None:
+    # Confirmed directly against the same source: WDT_TIMEOUT_MAX is 8388 (0xffffff / 2 / 1000);
+    # above it, watchdog_enable() is never even reached - construction itself raises ValueError.
+    try:
+        WDT(timeout=8389)
+        raise AssertionError("expected ValueError")
+    except ValueError:
+        pass
+
+
+def test_wdt_accepts_a_timeout_at_exactly_the_hard_cap() -> None:
+    wdt = WDT(timeout=8388)
+    assert wdt.timeout == 8388
+
+
+def test_wdt_would_have_triggered_count_and_log_start_at_zero() -> None:
+    wdt = WDT(timeout=8000)
+    assert wdt.would_have_triggered_count == 0
+    assert wdt.would_have_triggered_log == []
+
+
+def test_wdt_notifies_once_after_a_feed_free_window() -> None:
+    # Short timeout + a generous asyncio.wait_for bound - same "does the mechanism work at all"
+    # spirit as test_timer_fires_for_real_on_a_short_period below, not a precise-cadence assertion.
+    # Polling far finer than the WDT's own period (5ms vs. 150ms) matters here, not just style: the
+    # background monitor loops forever rather than stopping after one notification, so a poll
+    # granularity close to the WDT's own period races it - the exact count observed depends on how
+    # many of its own cycles complete before this loop's next wakeup gets scheduled.
+    async def scenario() -> None:
+        wdt = WDT(timeout=150)
+        for _ in range(200):
+            if wdt.would_have_triggered_count >= 1:
+                return
+            await asyncio.sleep_ms(5)
+        raise AssertionError("WDT never noticed a feed-free window")
+
+    run(asyncio.wait_for(scenario(), 5))
+
+
+def test_wdt_feed_resets_the_countdown_and_prevents_a_notification() -> None:
+    async def scenario() -> int:
+        wdt = WDT(timeout=100)
+        for _ in range(6):  # ~120ms of continuous feeding, comfortably past one 100ms window
+            await asyncio.sleep_ms(20)
+            wdt.feed()
+        return wdt.would_have_triggered_count
+
+    count = run(asyncio.wait_for(scenario(), 5))
+    assert count == 0  # kept fed the whole time - never should have noticed a gap
+
+
+def test_wdt_keeps_monitoring_after_a_would_have_triggered_notification() -> None:
+    # "keeps monitoring so a long-unfed stretch can notify more than once" - not a one-shot.
+    async def scenario() -> None:
+        wdt = WDT(timeout=150)
+        for _ in range(600):
+            if wdt.would_have_triggered_count >= 2:
+                return
+            await asyncio.sleep_ms(5)
+        raise AssertionError("WDT never reached a second would-have-triggered notification")
+
+    run(asyncio.wait_for(scenario(), 8))
+
+
+def test_wdt_would_have_triggered_log_records_the_feed_count_at_each_notification() -> None:
+    async def scenario() -> "list[int]":
+        wdt = WDT(timeout=150)
+        wdt.feed()
+        wdt.feed()  # feed_count is 2 going into the unfed stretch below
+        for _ in range(200):
+            if wdt.would_have_triggered_count >= 1:
+                return wdt.would_have_triggered_log
+            await asyncio.sleep_ms(5)
+        raise AssertionError("WDT never noticed a feed-free window")
+
+    log = run(asyncio.wait_for(scenario(), 5))
+    assert log[0] == 2  # the first notification must reflect feed_count as of the unfed stretch
+
+
+def test_wdt_on_would_trigger_callback_fires_with_the_wdt_instance() -> None:
+    async def scenario() -> "list[WDT]":
+        seen: "list[WDT]" = []
+        wdt = WDT(timeout=150, on_would_trigger=lambda w: seen.append(w))
+        for _ in range(200):
+            if seen:
+                return seen
+            await asyncio.sleep_ms(5)
+        raise AssertionError("on_would_trigger callback never fired")
+
+    seen = run(asyncio.wait_for(scenario(), 5))
+    assert seen[0].would_have_triggered_count >= 1
+
+
+def test_reset_increments_the_module_counter_then_raises_simulated_reset() -> None:
+    before = machine.reset_count
+    try:
+        reset()
+        raise AssertionError("expected SimulatedReset")
+    except SimulatedReset:
+        pass
+    assert machine.reset_count == before + 1
+
+
+def test_bootloader_increments_the_module_counter_then_raises_simulated_bootloader_entry() -> None:
+    before = machine.bootloader_count
+    try:
+        bootloader()
+        raise AssertionError("expected SimulatedBootloaderEntry")
+    except SimulatedBootloaderEntry:
+        pass
+    assert machine.bootloader_count == before + 1
+
+
+def test_simulated_reset_and_bootloader_entry_are_both_simulated_reboot() -> None:
+    assert issubclass(SimulatedReset, SimulatedReboot)
+    assert issubclass(SimulatedBootloaderEntry, SimulatedReboot)
+    try:
+        reset()
+        raise AssertionError("expected SimulatedReboot")
+    except SimulatedReboot:
+        pass  # caught via the base class, not the specific subclass
 
 
 def test_rtc_datetime_round_trips() -> None:

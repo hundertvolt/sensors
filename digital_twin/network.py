@@ -91,6 +91,7 @@ class WLAN:
         self.deinit_called = False
         self.disconnect_called = False
         self._connect_task: asyncio.Task | None = None
+        self._scripted_outcomes: "list[int]" = []
         # Test/Step-5-run fault injection - method name -> exception to raise once armed, same
         # shape as every chip fake's FaultInjector in this package.
         self.raise_on: dict[str, Exception] = {}
@@ -106,11 +107,30 @@ class WLAN:
             self._active = bool(value)
         return self._active
 
+    def script_connect_outcomes(self, outcomes: "list[int]") -> None:
+        # A FIFO consumed one entry per *completed* _run_connect() resolution below - a disconnect()
+        # that cancels a pending attempt never reaches the assignment past its own await, so a
+        # cancelled attempt never consumes a queued outcome (nothing about it "completed"). Empty/
+        # exhausted queue falls back to today's always-succeeds behavior, so every test written
+        # before this existed keeps passing unchanged.
+        self._scripted_outcomes = list(outcomes)
+
     async def _run_connect(self) -> None:
         await asyncio.sleep(_CONNECT_DELAY_S)
-        self._connected = True
-        self._status = STAT_GOT_IP
-        self._ifconfig = _CONNECTED_IFCONFIG
+        outcome = self._scripted_outcomes.pop(0) if self._scripted_outcomes else STAT_GOT_IP
+        if outcome == STAT_GOT_IP:
+            self._connected = True
+            self._status = STAT_GOT_IP
+            self._ifconfig = _CONNECTED_IFCONFIG
+        else:
+            # A failure status means no address was ever obtained - matches real driver
+            # expectations (src/asy_wifi_service.py's own _poll_sta_connect_status()): reverting to
+            # the unconfigured tuple, not just leaving _connected False, so a *second* connect()
+            # attempt that fails after an earlier successful one doesn't leave a stale, still-
+            # "connected-looking" address behind.
+            self._connected = False
+            self._status = outcome
+            self._ifconfig = ("0.0.0.0", "0.0.0.0", "0.0.0.0", "0.0.0.0")
 
     def connect(self, ssid: "Any" = None, password: "Any" = None) -> None:
         self._maybe_raise("connect")

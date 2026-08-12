@@ -128,16 +128,29 @@ class Pin:
             self._irq_handler(self)
 
 
+_random_source: "Any | None" = None
+
+
+def configure_random_source(source: "Any | None") -> None:
+    # Same module-level-hook pattern as configure_fram_state_path() below, applied to sensor value
+    # walks instead of FRAM persistence: called once, before build_system()-equivalent code
+    # constructs i2c0/i2c1, by whatever entry point wants every wired chip's value walk to share one
+    # seeded random.Random (digital_twin/launch.py's own --seed flag). None (the default) means
+    # every chip falls back to its own un-seeded `random` module, exactly as before this existed.
+    global _random_source
+    _random_source = source
+
+
 def _wire_i2c_devices(id: int) -> "dict[int, Any]":
     if id == 0:
         from _scd30_chip import Scd30Chip
 
-        return {0x61: Scd30Chip(rdy_pin=Pin(8, mode=Pin.IN))}
+        return {0x61: Scd30Chip(rdy_pin=Pin(8, mode=Pin.IN), random_source=_random_source)}
     if id == 1:
         from _bmp3xx_chip import Bmp3xxChip
         from _sgp40_chip import Sgp40Chip
 
-        return {0x59: Sgp40Chip(), 0x77: Bmp3xxChip()}
+        return {0x59: Sgp40Chip(random_source=_random_source), 0x77: Bmp3xxChip(random_source=_random_source)}
     return {}
 
 
@@ -340,14 +353,54 @@ class Timer:
         self.callback = None
 
 
+_WDT_TIMEOUT_MAX_MS = 8388  # RP2040 hard cap: 0xffffff / 2 / 1000 (ports/rp2/machine_wdt.c) - see
+# SPECIFICATION.md Part F.1. Confirmed directly against the pinned v1.28.0 source (not guessed):
+# WDT(timeout=N) for N above this raises ValueError("timeout exceeds 8388"); WDT(id != 0) raises
+# ValueError too ("WDT(%d) doesn't exist") - rp2 only ever implements id 0. Both matched here.
+
+
 class WDT:
-    def __init__(self, id: int = 0, timeout: int = 5000) -> None:
+    def __init__(
+        self, id: int = 0, timeout: int = 5000, *, on_would_trigger: "Callable[[WDT], None] | None" = None
+    ) -> None:
+        if id != 0:
+            raise ValueError(f"WDT({id}) doesn't exist")
+        if timeout > _WDT_TIMEOUT_MAX_MS:
+            raise ValueError(f"timeout exceeds {_WDT_TIMEOUT_MAX_MS}")
         self.id = id
         self.timeout = timeout
         self.feed_count = 0
+        # Twin-only: real hardware can never be asked "would you have reset by now" - an internal
+        # asyncio-task-scheduled countdown (mirrors Timer's own mechanism above) that tracks time
+        # since the last feed() and records, rather than acts on, a would-have-reset event. No
+        # public "disable" API - real hardware genuinely can't disable an armed WDT either, and this
+        # task dies naturally when its owning asyncio.run() event loop closes, matching Timer's own
+        # cleanup story (FINAL_WIRING_PLAN.md's Step 3 section has the full design writeup).
+        self.would_have_triggered_count = 0
+        self.would_have_triggered_log: "list[int]" = []  # feed_count observed at each notification
+        self._on_would_trigger = on_would_trigger
+        self._task: asyncio.Task | None = None
+        self._arm()
+
+    def _arm(self) -> None:
+        if self._task is not None:
+            self._task.cancel()
+        self._task = asyncio.get_event_loop().create_task(self._countdown())
+
+    async def _countdown(self) -> None:
+        try:
+            while True:
+                await asyncio.sleep_ms(self.timeout)
+                self.would_have_triggered_count += 1
+                self.would_have_triggered_log.append(self.feed_count)
+                if self._on_would_trigger is not None:
+                    self._on_would_trigger(self)
+        except asyncio.CancelledError:
+            pass
 
     def feed(self) -> None:
         self.feed_count += 1
+        self._arm()  # a real feed() resets the hardware countdown - restart ours the same way
 
 
 class RTC:
@@ -365,15 +418,36 @@ class RTC:
         return None
 
 
+class SimulatedReboot(Exception):
+    # Base class for both twin-only reboot exceptions below - lets a Step 5 harness catch either
+    # kind uniformly (`except SimulatedReboot:`) or distinguish them when it needs to.
+    pass
+
+
+class SimulatedReset(SimulatedReboot):
+    pass
+
+
+class SimulatedBootloaderEntry(SimulatedReboot):
+    pass
+
+
 reset_count = 0
 bootloader_count = 0
 
 
 def reset() -> None:
+    # Real machine.reset() never returns - it restarts the whole device. This twin can't do that
+    # (it would just kill the test/Step-5 process), so it raises instead: the counter below still
+    # increments first (useful even though the call "never returns" on real hardware either - a
+    # harness catching the exception can still inspect "how many times did this happen"), then
+    # SimulatedReset propagates to whatever caller is meant to observe "a reboot happened here".
     global reset_count
     reset_count += 1
+    raise SimulatedReset("machine.reset() called - the twin does not actually restart the process")
 
 
 def bootloader() -> None:
     global bootloader_count
     bootloader_count += 1
+    raise SimulatedBootloaderEntry("machine.bootloader() called - the twin does not actually restart the process")
