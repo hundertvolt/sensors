@@ -142,7 +142,15 @@ constraints.
     `Response.__init__`'s `json.dumps()`, which Microdot still contains (falls into the same
     generic-500 path) but silently masks the real cause as a generic error unless our own handler
     logs it.
-- **Microdot hardening design (webserver robustness) — plan settled, not yet implemented.** Triggered
+- **Microdot hardening design (webserver robustness) — implemented.** `src/asy_webserver_service.py`
+  (FINAL_WIRING_PLAN.md's Step 2) implements this design in full, including the 100+-cycle soak test
+  and the real wiring into `src/sensortask_wozi.py`'s `build_system()` — see that doc's own Step 2
+  status updates for what landed and the two real findings made along the way (the
+  `asyncio.TimeoutError`-isn't-an-`OSError` correction, and the `conn`/`ntp` `cfgmgr.setup()` gap).
+  The rest of this entry is kept as the original design record/incident writeup, not because any of
+  it is still open.
+
+  Triggered
   by a real incident: on 2026-08-03, `sensortask-arzi`/`sensortask-neu` (legacy, pre-refactor) both
   went permanently REST-API-unreachable for hours with the watchdog never firing, root-caused to
   vendored `python/CommonDrivers/microdot.py`'s `Request.create()`/`Response.write()` having zero
@@ -285,10 +293,10 @@ constraints.
   threshold in step 4 above must sit comfortably below — see `FINAL_WIRING_PLAN.md`'s Step 2 for where
   this number is actually consumed.
 
-  Suggested module name/location once implementation starts: `asy_webserver_service.py` in `src/`,
-  matching `asy_wifi_service.py`/`asy_ntp_client.py`'s naming and the "every module owns its own
-  schema" convention — though per the tunable-exposure decision above, this module's own safety
-  constants deliberately have no config schema/REST surface.
+  Module name/location: `src/asy_webserver_service.py`, matching `asy_wifi_service.py`/
+  `asy_ntp_client.py`'s naming and the "every module owns its own schema" convention — though per the
+  tunable-exposure decision above, this module's own safety constants deliberately have no config
+  schema/REST surface.
 - **Rough sequencing, not a committed plan**: (1) dev/build environment setup (genericized
   `build-*.sh`/toolchain paths) — everything else touching CI/firmware depends on this; (2) the
   structural patterns above (per-sensor config, generalized error-counter bookkeeping) are largely

@@ -30,8 +30,9 @@ statements — required for
 testability (a bare top-level blocking call, matching the reference file's own bottom-of-file
 `asyncio.run(main())`, would hang on plain `import`; see `src/sensortask_wozi.py`'s own docstring
 and `FINAL_WIRING_PLAN.md`'s Step 1 refined plan for the full reasoning and the resulting two-file
-split with `boot_entry/wozi_boot.py`). No `app = Microdot()`/routes/`import frozen_html` — deliberately
-excluded from Step 1 (Step 2/Step 4's job respectively, owner-confirmed).
+split with `boot_entry/wozi_boot.py`). `app = Microdot()`/routes are Step 2's own addition (item 14
+below, landed in a later session than Step 1's original construction sequence) — `import
+frozen_html` is still excluded, Step 4's job, owner-confirmed.
 
 1. `watchdog = WDT(timeout=8000)` — hardcoded at construction time, no injection point (owner:
    "must be hardcoded so no error ever can circumvent it")
@@ -61,23 +62,37 @@ excluded from Step 1 (Step 2/Step 4's job respectively, owner-confirmed).
     exactly once — the single point `notify_service.pr`/`notify_service.cfgmgr` actually come into
     existence) — **FRAM chunk 5**
 13. `conn.set_ext_led(pixel)` — wires the WiFi-status LED callback after both exist
-14. `sysfunct.set_level_setters(_collect_level_setters())` — collects every logger's own
+14. **`app = Microdot(); webserver = WebserverService(app, ...)`** (Step 2, landed in a later session
+    than the rest of this list) — registers every real driver's `SettingsGroup`/`status_source`/
+    `system_cmd`/`notification_led`/`maintenance_sensor`/`error_source`, built here because every
+    module it registers must already exist. **No `fram=`** — deliberately RAM-only (see
+    `FINAL_WIRING_PLAN.md`'s Step 2 status update for the full reasoning: a per-call/outer-cap
+    reclaim warning could churn far faster than any sensor's rare-hardware-fault log, and this keeps
+    the five-chunk FRAM order below unchanged — no sixth chunk).
+15. `sysfunct.set_level_setters(_collect_level_setters())` — collects every logger's own
     `set_level()` bound method (see "Debug level" below) into `sysfunct`'s registry, sync, after
-    every module (including `notify_service.finalize()`) has fully constructed.
-15. **Grouped `await x.setup()` batch** (new in Step 1, resolved by dependency-domain analysis, not
+    every module (including `notify_service.finalize()` and the webserver from step 14) has fully
+    constructed.
+16. **Grouped `await x.setup()` batch** (new in Step 1, resolved by dependency-domain analysis, not
     interleaved with construction above): `await sysfunct.setup()` → `await fram.setup()` →
-    `await sgp_reader.setup()` → `await bmp_reader.setup()` → `await notify_service.setup()`.
+    `await conn.setup()` → `await ntp.setup()` → `await sgp_reader.setup()` →
+    `await bmp_reader.setup()` → `await notify_service.setup()`.
     These are independent readiness domains (`sysfunct.setup()` is its own local `config_SYSTEM.cfg`;
-    `fram.setup()` is FRAM-hardware/SPI readiness; the other three are each module's own
-    local-JSON-config `ConfigManager.setup()`, unrelated to FRAM or each other), so there's no
-    ordering requirement *between* them except one: `notify_service.setup()` is only valid to call
-    after `finalize()` (step 12) has run (`asy_notification_service.py`'s own documented contract,
-    `self.cfgmgr` doesn't exist before then), and batching at the end automatically satisfies that
-    for every module, not just `notify_service`. `sysfunct` goes first — its `setup()` is what
-    resolves the real persisted debug level and pushes it through the registry from step 14, so
-    every subsequent `setup()` call's own diagnostic logging already reflects it. `fram` keeps its
-    next position, matching the reference file's own existing `async_onetime` list; the three
-    remaining calls are appended in their own construction order.
+    `fram.setup()` is FRAM-hardware/SPI readiness; the rest are each module's own local-JSON-config
+    `ConfigManager.setup()`, unrelated to FRAM or each other), so there's no ordering requirement
+    *between* them except one: `notify_service.setup()` is only valid to call after `finalize()`
+    (step 12) has run (`asy_notification_service.py`'s own documented contract, `self.cfgmgr` doesn't
+    exist before then), and batching at the end automatically satisfies that for every module, not
+    just `notify_service`. `sysfunct` goes first — its `setup()` is what resolves the real persisted
+    debug level and pushes it through the registry from step 15, so every subsequent `setup()` call's
+    own diagnostic logging already reflects it. `fram` keeps its next position, matching the reference
+    file's own existing `async_onetime` list. `conn.setup()`/`ntp.setup()` are a real gap fix found
+    while wiring Step 2 (not part of the original Step 1 finding) — `AsyConnTime`/`AsyNtpClient` are
+    `SensorReaderConfig` subclasses under the exact same pattern as `sgp_reader`/`bmp_reader`/
+    `notify_service`, but nothing anywhere in the system ever called their `cfgmgr.setup()` before
+    this fix, confirmed directly (a config write failed with `"Failed"` until fixed); placed right
+    after `fram`'s fixed slot, matching `conn`/`ntp`'s own real construction order (both built before
+    `fram`/`sysfunct`). The remaining three calls are appended in their own construction order.
 
 **Real FRAM chunk order**: `SystemService` → `SGP40_Reader` (its own error log, chunk 2) →
 `SGP40_Reader` (VOC backup, chunk 3) → `NeopixelDriver` → `NotificationCoordinator`. Five chunks
@@ -96,6 +111,9 @@ reference file's own hand-written `task_starters` list in `main()` never actuall
 of that method existing. Flagged to the project owner as a believed-correct fix, not silently
 carried forward or silently dropped — worth a second look if hotspot-timeout behavior on a real
 deployed unit ever seems to disagree with `hotspot_time_min`'s documented meaning.
+`webserver.get_task_starters()` (Step 2) is appended the same uniform way — its one task
+(`_start_serving`) participates in `start_and_check_tasks()`'s ordinary supervisor loop like every
+other module, no bespoke restart mechanism (`FINAL_WIRING_PLAN.md`'s Step 2 decision 1).
 
 **Debug level** (`src/sensortask_wozi.py`'s `_collect_level_setters()`, `system_service.py`'s
 `SystemService.set_level_setters()`/`_apply_level()`/`get_debug_level()`/`set_debug_level()`) —

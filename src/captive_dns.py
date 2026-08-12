@@ -45,12 +45,17 @@ class DNSServer:
         debug: int | None = None,
     ) -> None:
         self.pr: PrintLogHistory = make_logger(fram, history_length, debug, _NAME)
+        self.name = _NAME  # matches self.pr.name - the _ModuleLike registration shape
+        # asy_webserver_service.py's registration lists key on (error_sources=).
         # mode="server" sockets receive from anyone - asy_udp_socket.py places source-address
         # trust on the caller. run() filters to the AP's own subnet before ever replying.
         self.udps = AsyUDPSocket(("0.0.0.0", 53), mode="server")
 
     async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
         return await self.pr.get_log()
+
+    async def reset_error_counter(self) -> None:
+        await self.pr.reset()
 
     async def run(self, server_ip: str, netmask: str) -> None:
         netmask_int = _ipv4_to_int(netmask)

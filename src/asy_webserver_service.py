@@ -360,16 +360,13 @@ class WebserverService:
     async def _build_errcount(self) -> "dict[str, Any]":
         result: dict[str, Any] = {}
         for name, module in self._error_sources.items():
-            raw = await module.get_error_counter()
-            entry = raw.get(name, {})
-            err_num = entry.get("ErrNum", [])
-            err_type = entry.get("ErrType", [])
-            result[name] = {
-                "counter": entry.get("ErrCount", 0),
-                "history": [{"num": n, "type": t} for n, t in zip(err_num, err_type)],  # noqa: B905
-                # No strict= (ruff B905): MicroPython's zip() rejects it (CPython 3.10+-only) - see
-                # src/asy_fram_manager.py's identical precedent.
-            }
+            result[name] = _shape_errcount_entry(await module.get_error_counter(), name)
+        # "This service's own entry" (FINAL_WIRING_PLAN.md's Step 2 registration-API contract) -
+        # this module's own get_error_counter()/pr.get_log() aren't routed through
+        # self._error_sources (WebserverService itself doesn't structurally satisfy _ModuleLike's
+        # full sensor/settings surface, just the error-counter subset), so it's added directly here
+        # instead of trying to register self into that dict.
+        result[_NAME] = _shape_errcount_entry(await self.pr.get_log(), _NAME)
         return result
 
     async def _put_status(self, request: "Any") -> "ar.ResponseEnvelope":
@@ -379,6 +376,7 @@ class WebserverService:
         if body.get("ResetErrors") is True:
             for module in self._error_sources.values():
                 await module.reset_error_counter()
+            await self.reset_error_counter()  # this service's own entry, see _build_errcount()
         return ar.make_response(0)
 
     # -- connection lifecycle ---------------------------------------------------------------------
@@ -452,6 +450,18 @@ class WebserverService:
 
     async def reset_error_counter(self) -> None:
         await self.pr.reset()
+
+
+def _shape_errcount_entry(raw: "dict[str, dict[str, Any]]", name: str) -> "dict[str, Any]":
+    entry = raw.get(name, {})
+    err_num = entry.get("ErrNum", [])
+    err_type = entry.get("ErrType", [])
+    return {
+        "counter": entry.get("ErrCount", 0),
+        "history": [{"num": n, "type": t} for n, t in zip(err_num, err_type)],  # noqa: B905
+        # No strict= (ruff B905): MicroPython's zip() rejects it (CPython 3.10+-only) - see
+        # src/asy_fram_manager.py's identical precedent.
+    }
 
 
 def _body_as_dict(request: "Any") -> "dict[str, Any] | None":

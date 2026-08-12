@@ -21,7 +21,7 @@ from machine import reset as system_reset
 from micropython import const
 
 from base_classes import LockedCounter
-from config_manager import ConfigManager
+from config_manager import ConfigManager, schema_names
 from print_log import make_logger
 
 try:
@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     from typing import Any
 
     from asy_fram_manager import AsyFramManager
-    from config_manager import ConfigSchema
+    from config_manager import ConfigSchema, WriteValidity
 
 _RESET_DELAY = const(4)  # seconds between reset command and execution (keep < watchdog timeout!)
 _MAX_STORAGE_PAUSE = const(3600)  # one hour max pause for FRAM
@@ -70,6 +70,8 @@ class SystemService:
         # callback for starting and stopping permanent storage communication
         self.storage_pause: Callable[[bool], None] | None = None
         self.pr = make_logger(fram, history_length, debug, _NAME)
+        self.name = _NAME  # matches self.pr.name - the _ModuleLike registration shape
+        # asy_webserver_service.py's registration lists key on (error_sources=/settings=).
         if fram is not None:
             self.storage_pause = fram.set_pause
         self.uptime = LockedCounter(max_val=0xFFFFFFFF)  # seconds of about 136 years(!!) perfectly fits into 32bit unsigned
@@ -259,6 +261,32 @@ class SystemService:
     def get_cfg_schema(self) -> "ConfigSchema":
         return self.cfg_schema
 
+    async def get_dict_cfg(self) -> "dict[str, int | float | str | bool | None]":
+        # SettingsGroup-shaped counterpart to get_cfg_schema() (FINAL_WIRING_PLAN.md's Step 2) - lets
+        # asy_webserver_service.py's /system route treat this module uniformly with every other
+        # SettingsGroup-registered module, without special-casing DebugLevel in the webserver layer.
+        result = await self.cfgmgr.get_dict(schema_names(self.cfg_schema))
+        return {} if result is None else result
+
+    async def _set_dict_cfg(
+        self, data: "dict[str, int | float | str | bool | None]", cfg_vals: "ConfigSchema"
+    ) -> "WriteValidity":
+        # Persist via cfgmgr, then re-resolve/push DebugLevel out through the level-setter registry -
+        # set_debug_level() below is now just this call for its own one-field case, kept as a named,
+        # direct API for callers that don't want the generic dict-shaped one. Matches the original
+        # set_debug_level()'s own behavior exactly: pushes on "Unchanged" too (a request for the
+        # already-persisted value), not just on a real change, so every logger's live level stays
+        # provably in sync with cfgmgr's own persisted value after any accepted request.
+        persisted, results = await self.cfgmgr.write_config(data, cfg_vals)
+        if not persisted:
+            return {key: "Failed" for key in data}
+        if results.get("DebugLevel") in ("Valid", "Unchanged"):
+            level = await self.cfgmgr.get_int_values(_VAL_DEBUG_LEVEL)
+            if level is not None:
+                self._current_debug_level = level[0]
+                self._apply_level(level[0])
+        return results
+
     def set_level_setters(self, setters: "list[Callable[[int], None]]") -> None:
         # Called once at boot (sensortask_wozi.py's build_system(), the same style as
         # start_timers(timer_starters)/start_and_check_tasks(task_starters) receiving their own
@@ -284,12 +312,8 @@ class SystemService:
         return self._current_debug_level
 
     async def set_debug_level(self, value: int) -> bool:
-        persisted, results = await self.cfgmgr.write_config({"DebugLevel": value}, self.cfg_schema)
-        if not persisted or results.get("DebugLevel") not in ("Valid", "Unchanged"):
-            return False
-        self._current_debug_level = value
-        self._apply_level(value)
-        return True
+        results = await self._set_dict_cfg({"DebugLevel": value}, self.cfg_schema)
+        return results.get("DebugLevel") in ("Valid", "Unchanged")
 
     def reboot_system(self) -> None:
         self._reboot("Reboot triggered", system_reset)

@@ -635,12 +635,84 @@ rather than left as silent workarounds:
   setup code before ever reaching the code under test — fixed by building the raw JSON text directly
   via string repetition (`b"[" * depth + b"1" + b"]" * depth`) instead.
 
-Not yet done as part of this pass (unchanged from before): wiring `WebserverService` into
-`src/sensortask_wozi.py`'s `build_system()` with the real drivers (SCD30's own schema-driven setter,
-the `reset_error_counter()` gap-closing on `NeopixelDriver`/`DNSServer`/`ConfigManager`, and the
-real `SettingsGroup`/`status_sources`/`system_cmd`/`notification_led` registrations) — this module's
-own test suite deliberately stays independent of that wiring (uniform fakes throughout, per the
-endpoint-design decision that real per-module wiring is the caller's concern, not this module's).
+Not yet done as part of that pass (closed in a later session — see "Status update (follow-up
+session)" below): wiring `WebserverService` into `src/sensortask_wozi.py`'s `build_system()` with
+the real drivers, the soak test, and coverage-maximizing tests.
+
+**Status update (follow-up session): the three items above are done.**
+
+- **`reset_error_counter()` gap-closing** on `NeopixelDriver`/`DNSServer`/`ConfigManager` (each a
+  one-line `await self.pr.reset()`, mirroring the shape every other module already has), plus a
+  `.name` attribute added to every registrable module (`SensorReader.__init__` itself for the six
+  subclasses that already pass `name=`, and one line each on `NeopixelDriver`/`DNSServer`/
+  `ConfigManager`/`AsyFramManager`/`SystemService`) — needed because `asy_webserver_service.py`'s
+  `_index_by_name()` keys every registration list on `item.name`, and no real driver had a top-level
+  `.name` attribute before this (only `self.pr.name`), a gap that would have surfaced as an
+  `AttributeError` the moment any real module was registered.
+- **SCD30's schema-driven `_set_dict_cfg()`** landed in `asy_scd30_driver.py` per the plan's own
+  "known gaps" resolution above: no persistence, each validated field dispatches straight to its
+  existing individual setter, `ContMeas` handled directly inside this same method (not as a
+  webserver-layer special case) so `asy_webserver_service.py` stays fully sensor-agnostic.
+- **`SystemService` grew `get_dict_cfg()`/`_set_dict_cfg()`** (new, not in the original plan text) so
+  `/system`'s `DebugLevel` field fits the same `SettingsGroup` shape as every other settings
+  endpoint, without special-casing it in the webserver layer; `set_debug_level()` is now a thin
+  wrapper over the new `_set_dict_cfg()`, behavior-preserving (verified against the existing test
+  suite, including the "still pushes on `Unchanged`" case).
+- **Real wiring**: `src/sensortask_wozi.py`'s `build_system()` now constructs a real `Microdot()` app
+  and `WebserverService` once every module it registers exists (right after `conn.set_ext_led(pixel)`,
+  the same cross-wiring point Step 1 already used) — `sensors=` (SCD30/BMP3xx/SGP40), `settings=`
+  (mirroring the legacy setNetwork/setWiFiLED field-scoping split for `conn`, `ntp`'s NTP fields with
+  `post_asy_fct=ntp.ntp_force_sync`, `sysfunct`'s `DebugLevel`, `ntp`'s GMTOffset/DSTOffset, and
+  `notify_service`'s full combined schema read dynamically via `cm.schema_names()`), `system_cmd=`
+  (dispatches to `sysfunct.reboot_system()`/`reboot_bootloader()`/`pause_permanent_storage(300)`),
+  `notification_led=` (unpacks the `{r,g,b,t}` payload into `pixel.request_signal()`),
+  `status_sources=`/`maintenance_sensors=` (new small callback functions in `sensortask_wozi.py`
+  reading real live state off `conn`/`ntp`/`sysfunct`/`fram`/`notify_service`/`sgp_reader`), and
+  `error_sources=` (a new `_collect_error_sources()` helper, the same 16-owner enumeration
+  `_collect_level_setters()` already uses). The webserver's own task is appended to
+  `_collect_task_starters()`'s returned list and its logger to `_collect_level_setters()`'s registry,
+  same pattern as every other module.
+  - **Deliberately not FRAM-backed**: unlike every other FRAM-chunk-owning module, `WebserverService`
+    gets no `fram=` — it logs a warning on *every* per-call/outer-cap connection reclaim (decision 8),
+    a rate a flaky/hostile client could drive far higher than any sensor's rare-hardware-fault log
+    ever sees; persisting that to FRAM risked real wear-leveling pressure for no benefit this
+    module's own diagnostics need. This also keeps WIRING_CONTRACT.md's five-chunk FRAM allocation
+    order (Step 1) exactly as documented — no sixth chunk.
+  - **Real bug found and fixed while wiring**, not part of the original Step 1/2 scope: `conn`
+    (`AsyConnTime`) and `ntp` (`AsyNtpClient`) are `SensorReaderConfig` subclasses under the same
+    sync-`__init__`/async-`setup()` pattern as `sgp_reader`/`bmp_reader`/`notify_service`, but nothing
+    anywhere in the previously-constructed system ever called their own `cfgmgr.setup()` — confirmed
+    directly (a write to `conn`'s config failed with `"Failed"`, `ConfigManager.write_config()`'s own
+    `not self.valid` guard, until the fix). Neither `asy_wifi_service.py`'s `wlan_connect()` nor
+    `asy_ntp_client.py`'s own task methods call `cfgmgr.setup()` internally either, so this was a real
+    hole in Step 1's construction sequence, just never exercised by a real config-write path until
+    this session's webserver PUT-route tests. Fixed by adding `await conn.setup()`/`await ntp.setup()`
+    to the grouped setup() batch, positioned after `sysfunct`/`fram`'s already-fixed slots and before
+    `sgp_reader`/`bmp_reader`/`notify_service` (matching their own real construction order, which
+    precedes fram/sysfunct).
+  - **"This service's own entry"** (the registration-API docstring's own contract, never actually
+    implemented in the first implementation pass): `WebserverService` can't register itself into its
+    own not-yet-constructed `error_sources` list, so `_build_errcount()` now adds a `"WEBSERVER"` entry
+    directly from `self.pr.get_log()` instead, and `_put_status`'s `ResetErrors` handling calls
+    `self.reset_error_counter()` alongside every registered module's own.
+- **Soak test**: `tests/test_asy_webserver_service.py`'s F.9 test now runs the full 100+-cycle soak
+  the finish criteria called for (20 warm-up cycles, then 120 measured cycles mixing wedged and
+  well-formed connections at the `max_connections` ceiling), asserting `gc.mem_free()` stays flat
+  (within a fixed tolerance) in addition to the connection-counter invariant the earlier 40-cycle
+  stand-in already checked.
+- **Coverage**: `src/asy_webserver_service.py` went from 93% to 99% line coverage (the one remaining
+  miss, its module-level `_NAME = const("WEBSERVER")` line, is a `micropython.const()`
+  compile-time-folding artifact of `sys.settrace`-based coverage collection, not a real gap — several
+  other `_NAME = const(...)` lines project-wide show the same false-negative). New tests added:
+  `_TimeoutStreamProxy.close()`/`wait_closed()` direct coverage, `_serve()`'s `EOFError`/`OSError`/
+  generic-`Exception` branches (exercised by monkeypatching `app.handle_request()` directly, since
+  the real Microdot integration structurally can't reach them - see those branches' own comments),
+  `_close_writer()`'s exception-swallowing path, `_run()`/`_start_serving()` (a real
+  `asyncio.start_server()` bound to an ephemeral loopback port), and malformed-body rejections for
+  `/sensors` and `/status` PUT. `tests/test_sensortask_wozi.py` gained a new "Webserver wiring"
+  section (17 tests) exercising the real registrations end-to-end - every settings group's post-hook,
+  `SystemCmd` dispatch through the real (faked) `machine.reset()`/`machine.bootloader()`, the real
+  `/status` shape, and `ResetErrors` against a real module's history.
 
 **A. Endpoint contract tests** (per endpoint, against the settled GET/PUT shapes above):
 - [ ] `/measurements` GET returns the merged 3-sensor dict; empty sensor list registered → empty

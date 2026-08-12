@@ -45,6 +45,8 @@ class NeopixelDriver:
         debug: int | None = None,
     ) -> None:
         self.pr: PrintLogHistory = make_logger(fram, history_length, debug, _NAME)
+        self.name = _NAME  # matches self.pr.name - the _ModuleLike registration shape
+        # asy_webserver_service.py's registration lists key on (error_sources=).
         self.pixel = neopixel.NeoPixel(Pin(neopixel_pin, Pin.OUT), 1, bpp=3)
         self.rgbt: list[int | float] = [0, 0, 0, 0.1]
         self.ext_rgbt: list[int | float] = [0, 0, 0, 0.1]
@@ -101,6 +103,9 @@ class NeopixelDriver:
 
     async def get_error_counter(self) -> "dict[str, dict[str, int | list[int] | list[str]]]":
         return await self.pr.get_log()
+
+    async def reset_error_counter(self) -> None:
+        await self.pr.reset()
 
     def on(self) -> None:
         self.led_overl_on = True

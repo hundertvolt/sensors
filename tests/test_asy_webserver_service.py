@@ -96,7 +96,7 @@ sys.path.insert(0, "ext")
 from microdot import Microdot, Request  # type: ignore[import-not-found]  # noqa: E402
 
 import config_manager as cm
-from asy_webserver_service import SettingsGroup, WebserverService
+from asy_webserver_service import SettingsGroup, WebserverService, _TimeoutStreamProxy
 
 try:
     from typing import TYPE_CHECKING
@@ -421,6 +421,18 @@ def test_sensors_put_unknown_field_within_known_sensor_reported_invalid_not_whol
     assert body["result"] == {"SCD30": {"Interval": "Valid", "Bogus": "Invalid"}}
 
 
+def test_sensors_put_malformed_json_body_is_a_clean_rejection_not_a_crash() -> None:
+    scd = _FakeModule("SCD30")
+    service, app = _make_service(sensors=[scd])
+    req = _make_request(app, "PUT", "/sensors", {})
+    req._body = b"{not valid json"
+    req.content_length = len(req._body)
+    res = run(app.dispatch_request(req))
+    assert res.status_code == 200
+    assert json.loads(res.body) == {"res": "ERR", "code": 1, "descr": "Invalid JSON request", "result": {}}
+    assert scd.set_calls == []
+
+
 def test_networking_get_is_flat_settings_only_no_live_fields() -> None:
     wifi = _FakeModule("WIFI", schema=(("SSID", "str", "", 0, 32, None),), values={"SSID": "MyNet"})
     group = SettingsGroup(wifi, ("SSID",))
@@ -633,6 +645,31 @@ def test_notification_put_pause_time_only_leaves_schedule_fields_untouched() -> 
     assert notif.set_calls == []  # OnH group never received a body with no matching keys
 
 
+def test_notification_put_light_cmd_led_reported_invalid_when_no_handler_registered() -> None:
+    notif = _FakeModule("NOTIF", schema=(("OnH", "int", 8, 0, 23, None),), values={"OnH": 8})
+    service, app = _make_service(settings={"notification": [SettingsGroup(notif, ("OnH",))]})  # notification_led=None
+    res = run(
+        app.dispatch_request(
+            _make_request(app, "PUT", "/notification", {"lightCmdLED": {"r": 10, "g": 20, "b": 30, "t": 5}})
+        )
+    )
+    body = json.loads(res.body)
+    assert body["result"]["lightCmdLED"] == "Invalid"
+
+
+def test_notification_put_light_cmd_led_reported_invalid_when_payload_is_not_a_dict() -> None:
+    async def notification_led(payload: "dict[str, Any]") -> bool:
+        return True
+
+    notif = _FakeModule("NOTIF", schema=(("OnH", "int", 8, 0, 23, None),), values={"OnH": 8})
+    service, app = _make_service(
+        settings={"notification": [SettingsGroup(notif, ("OnH",))]}, notification_led=notification_led
+    )
+    res = run(app.dispatch_request(_make_request(app, "PUT", "/notification", {"lightCmdLED": "not-a-dict"})))
+    body = json.loads(res.body)
+    assert body["result"]["lightCmdLED"] == "Invalid"
+
+
 # ---------------------------------------------------------------------------
 # Section B - cross-endpoint sparse-JSON PUT semantics, run against every settings endpoint so the
 # convention is uniform by construction, not true by per-endpoint accident.
@@ -785,7 +822,10 @@ def test_d_status_errcount_includes_one_entry_per_module_and_per_configmanager()
     service, app = _make_service(error_sources=[module, cfgmgr])
     res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
     errcount = json.loads(res.body)["errcount"]
-    assert set(errcount.keys()) == {"SGP40", "CFGMGR_SGP40"}
+    # "WEBSERVER" is this service's own entry (FINAL_WIRING_PLAN.md's Step 2 registration-API
+    # contract) - added directly in _build_errcount(), not via the error_sources registry, since
+    # WebserverService can't register itself into its own not-yet-constructed error_sources list.
+    assert set(errcount.keys()) == {"SGP40", "CFGMGR_SGP40", "WEBSERVER"}
 
 
 def test_d_counter_always_present_history_present_for_both_populated_and_zero_cases() -> None:
@@ -809,6 +849,22 @@ def test_d_reset_errors_calls_reset_error_counter_on_every_registered_module() -
     run(app.dispatch_request(_make_request(app, "PUT", "/status", {"ResetErrors": True})))
     for m in mods:
         assert m.pr.reset_calls == 1, m.name
+
+
+def test_d_own_errcount_entry_reflects_real_logged_warnings_and_resets_with_the_rest() -> None:
+    # This service's own "WEBSERVER" entry uses the real PrintLogHistory (self.pr), not a
+    # _FakeModule - exercised directly via a real per-call timeout reclaim (F.2-style), then
+    # confirmed ResetErrors clears it same as every registered module.
+    service, app = _make_service(error_sources=[], per_call_timeout_s=0.01)
+    reader = _HangingReader()
+    writer = _ScriptedWriter()
+    run_timed(service._serve(reader, writer))
+    res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
+    errcount = json.loads(res.body)["errcount"]
+    assert errcount["WEBSERVER"]["counter"] >= 1
+    run(app.dispatch_request(_make_request(app, "PUT", "/status", {"ResetErrors": True})))
+    res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
+    assert json.loads(res.body)["errcount"]["WEBSERVER"]["counter"] == 0
 
 
 def test_d_reset_on_one_module_never_affects_another() -> None:
@@ -836,6 +892,18 @@ def test_d_webserver_own_errcount_entry_accumulates_a_warning_on_reclaim() -> No
     entry = next(iter(log.values()))
     assert entry["ErrCount"] >= 1
     assert "W" in entry["ErrType"]  # a warning, not an error - decision 8's explicit distinction
+
+
+def test_d_status_put_malformed_json_body_is_a_clean_rejection_not_a_crash() -> None:
+    module = _FakeModule("SGP40")
+    service, app = _make_service(error_sources=[module])
+    req = _make_request(app, "PUT", "/status", {})
+    req._body = b"{not valid json"
+    req.content_length = len(req._body)
+    res = run(app.dispatch_request(req))
+    assert res.status_code == 200
+    assert json.loads(res.body) == {"res": "ERR", "code": 1, "descr": "Invalid JSON request", "result": {}}
+    assert module.pr.reset_calls == 0  # never reached the ResetErrors dispatch at all
 
 
 # ---------------------------------------------------------------------------
@@ -1142,6 +1210,75 @@ def test_f6_a_hanging_cleanup_close_path_still_lets_the_connection_task_end() ->
     assert run(service._open_conns.get_value()) == 0  # the connection task still ended
 
 
+class _RaisingCloseWriter(_ScriptedWriter):
+    def close(self) -> None:
+        raise RuntimeError("simulated close() failure")
+
+
+def test_close_writer_swallows_a_raising_close_and_still_awaits_wait_closed() -> None:
+    # writer.close() raising is real Stream-caller-supplied behavior this module must never let
+    # escape (_close_writer()'s own try/except) - and the cleanup must still proceed to wait_closed()
+    # afterward, not abort early.
+    service, app = _make_service()
+    writer = _RaisingCloseWriter()
+    run_timed(service._close_writer(writer))
+    assert writer.wait_closed_called is True
+
+
+def test_timeout_stream_proxy_close_and_wait_closed_forward_to_the_wrapped_stream() -> None:
+    # Direct unit coverage of the two Stream-forwarding methods ext/microdot.py's own request/
+    # response handling never actually calls in any of Section F's protocol-level scenarios (close()
+    # is sync, wait_closed() is only ever invoked by WebserverService._close_writer() on the raw
+    # writer, not the proxy) - still real, real-Stream-matching forwards that must work correctly.
+    writer = _ScriptedWriter()
+    proxy = _TimeoutStreamProxy(writer, 1.0, _FakeLogger("X"))  # type: ignore[arg-type]
+    proxy.close()
+    assert writer.close_called is True
+    run_timed(proxy.wait_closed())
+    assert writer.wait_closed_called is True
+
+
+def test_serve_absorbs_an_eoferror_raised_directly_by_handle_request() -> None:
+    # Structurally unreachable through the real Microdot integration today (see _serve()'s own
+    # comment) - this is the defense-in-depth branch itself, exercised directly by monkeypatching
+    # app.handle_request() to prove _serve()'s except EOFError clause actually degrades cleanly.
+    service, app = _make_service()
+
+    async def _raise_eof(reader: "Any", writer: "Any") -> None:
+        raise EOFError
+
+    app.handle_request = _raise_eof
+    run_timed(service._serve(_ScriptedReader([]), _ScriptedWriter()))
+    assert run(service._open_conns.get_value()) == 0
+
+
+def test_serve_absorbs_an_oserror_raised_directly_by_handle_request() -> None:
+    # Never actually raised by any of this module's own fakes/proxy (see _serve()'s own comment) -
+    # a genuine real-hardware socket failure is the only real trigger, so exercised directly here.
+    service, app = _make_service()
+
+    async def _raise_os(reader: "Any", writer: "Any") -> None:
+        raise OSError("simulated socket failure")
+
+    app.handle_request = _raise_os
+    run_timed(service._serve(_ScriptedReader([]), _ScriptedWriter()))
+    assert run(service._open_conns.get_value()) == 0
+
+
+def test_serve_absorbs_an_unexpected_exception_raised_directly_by_handle_request() -> None:
+    service, app = _make_service()
+
+    async def _raise_boom(reader: "Any", writer: "Any") -> None:
+        raise RuntimeError("simulated unexpected bug")
+
+    app.handle_request = _raise_boom
+    run_timed(service._serve(_ScriptedReader([]), _ScriptedWriter()))
+    assert run(service._open_conns.get_value()) == 0
+    log = run(service.get_error_counter())
+    entry = next(iter(log.values()))
+    assert "E" in entry["ErrType"]  # errno=1 path (err_s, not wrn_s) - a genuinely unexpected bug
+
+
 # F.7 - adversarial/malformed-input shapes
 
 
@@ -1204,26 +1341,60 @@ def test_f8_task_starters_exposes_exactly_one_server_task_for_the_supervisor() -
     assert len(starters) == 1
 
 
+def test_f8_start_serving_runs_a_real_asyncio_start_server_backed_task() -> None:
+    # Section F elsewhere only ever calls service._serve() directly (its own reader/writer fakes) -
+    # this is the one test exercising _run()/_start_serving() themselves, the real
+    # asyncio.start_server() composition (never app.start_server()/app.shutdown() - decision 1).
+    # Bound to an ephemeral loopback port, never the real host/port=0.0.0.0:80 default.
+    service, app = _make_service(host="127.0.0.1", port=0)
+
+    async def scenario() -> None:
+        starters = service.get_task_starters()
+        task = starters[0]()
+        await asyncio.sleep(0.05)  # let _run() actually reach start_server()/wait_closed()
+        assert not task.done()  # server.wait_closed() blocks forever until explicitly closed/cancelled
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    run_timed(scenario(), timeout_s=3.0)
+
+
 # F.9 - supervisor integration / soak (capstone)
 
 
-def test_f9_soak_start_wedge_reclaim_cycles_hold_the_connection_counter_flat() -> None:
-    # A smaller-scale stand-in for the full 100+-cycle soak test (which belongs in a slower,
-    # separately-invoked pass, not this file's default fast run) - proves the same invariant
-    # (counter always returns to exactly zero, no restart step anywhere in the loop) holds over
-    # many repeated cycles under this interpreter, mixing wedged and well-formed connections.
+def test_f9_soak_100_plus_start_wedge_reclaim_cycles_hold_counter_and_memory_flat() -> None:
+    # The real 100+-cycle soak test FINAL_WIRING_PLAN.md's Step 2 finish criteria calls for
+    # ("gc.mem_free() flat") - not just the connection-counter invariant, mixing wedged and
+    # well-formed connections across max_connections' full ceiling, never a restart step anywhere.
+    import gc
+
     service, app = _make_service(max_connections=2, per_call_timeout_s=0.02, outer_cap_s=0.1)
 
-    async def scenario() -> None:
-        for i in range(40):
-            if i % 3 == 0:
-                await service._serve(_HangingReader(), _ScriptedWriter())
-            else:
-                reader = _ScriptedReader([(0, _request_bytes("GET", "/status"))])
-                await service._serve(reader, _ScriptedWriter())
-            assert await service._open_conns.get_value() == 0
+    async def one_cycle(i: int) -> None:
+        if i % 3 == 0:
+            await service._serve(_HangingReader(), _ScriptedWriter())
+        else:
+            reader = _ScriptedReader([(0, _request_bytes("GET", "/status"))])
+            await service._serve(reader, _ScriptedWriter())
+        assert await service._open_conns.get_value() == 0
 
-    run_timed(scenario(), timeout_s=30.0)
+    async def scenario() -> None:
+        for i in range(20):  # warm-up - let one-time allocations (first-use caches, etc.)
+            await one_cycle(i)  # stabilize before the real memory baseline below is taken.
+        gc.collect()
+        baseline = gc.mem_free()
+        for i in range(120):
+            await one_cycle(i)
+        gc.collect()
+        after = gc.mem_free()
+        # A real per-cycle leak grows roughly linearly with cycle count; a generous fixed tolerance
+        # (not scaled per-cycle) catches that while tolerating ordinary allocator fragmentation.
+        assert after >= baseline - 4096, f"gc.mem_free() dropped from {baseline} to {after} over 120 cycles"
+
+    run_timed(scenario(), timeout_s=60.0)
 
 
 if __name__ == "__main__":

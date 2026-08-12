@@ -157,6 +157,8 @@ if TYPE_CHECKING:
 class ConfigManager:
     def __init__(self, filename: str, cfg_vals: "ConfigSchema", name: str) -> None:
         self.pr = PrintLogHistory(name="CFGMGR_" + name)
+        self.name = "CFGMGR_" + name  # matches self.pr.name - the _ModuleLike registration shape
+        # asy_webserver_service.py's registration lists key on (error_sources=).
         self.config_lock = asyncio.Lock()
         self.config_file = filename
         self.cfg_vals = cfg_vals
@@ -185,6 +187,9 @@ class ConfigManager:
 
     async def get_error_counter(self) -> "dict[str, dict[str, int | list[int] | list[str]]]":
         return await self.pr.get_log()
+
+    async def reset_error_counter(self) -> None:
+        await self.pr.reset()
 
     async def get_dict(self, keys: "list[str]") -> "dict[str, int | float | str | bool | None] | None":
         # Reads _cache directly - no lock needed (write_config never awaits mid-mutation, so no
