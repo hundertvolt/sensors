@@ -564,6 +564,25 @@ the implementation session should write tests against this list before writing a
 `asy_webserver_service.py` code, per the per-step-session workflow's TDD ordering). Every line is a
 test to write, not yet a test that exists.
 
+**Status: `tests/test_asy_webserver_service.py` written (65 tests)** — the per-step-session
+workflow's step 3, done ahead of any `src/asy_webserver_service.py` code (none exists yet; every
+test here is expected to fail at import time until the implementation session creates that module —
+correct TDD "red" state, not a bug). Sections A-E are covered at full checklist depth. Section F is
+covered for F.1/F.2/F.5/F.6/F.7 at full depth and F.8/F.9 at a lighter, representative depth (F.9's
+full 100+-cycle soak belongs in a slower, separately-invoked pass, not this file's default fast
+run). All connection-lifecycle tests use hand-scripted fake reader/writer doubles (`_ScriptedReader`/
+`_HangingReader`/`_ClosedReader`/`_ScriptedWriter`), never a real `select.poll()`, per decision 10
+and the CI-hang-fix precedent. Because the endpoint-design decision above deliberately left the
+registration API's exact call signatures to the implementation session, this test file had to commit
+to one concrete shape in order to be written at all — documented in full in the test file's own
+module docstring: a `WebserverService(app, sensors=, settings=, system_cmd=, notification_led=,
+status_sources=, maintenance_sensors=, error_sources=, ...)` constructor plus a small
+`SettingsGroup(module, fields, post_fct=, post_asy_fct=)` registration record (generalizing the
+existing `_wifi_field_schema()` per-route field-scoping convention to every settings endpoint, since
+e.g. `/system` and `/networking` each combine field subsets from more than one underlying module).
+The implementation session should build to this shape, refining only where writing the real code
+reveals a genuine problem with it — not treat it as unreviewable.
+
 **A. Endpoint contract tests** (per endpoint, against the settled GET/PUT shapes above):
 - [ ] `/measurements` GET returns the merged 3-sensor dict; empty sensor list registered → empty
       dict, not a crash (registration-list edge case, see C below).
