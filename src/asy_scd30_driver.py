@@ -206,7 +206,7 @@ class SCD30_Reader(SensorReader):
         # own comment), so it's dispatched here directly rather than through the schema loop, keeping
         # asy_webserver_service.py itself fully sensor-agnostic - it always just calls
         # module._set_dict_cfg(fields, module.get_cfg_schema()) uniformly for every sensor.
-        dispatch: "dict[str, Callable[[Any], Coroutine[Any, Any, bool]]]" = {
+        dispatch: dict[str, Callable[[Any], Coroutine[Any, Any, bool]]] = {
             name_cfg(_VAL_TO): self.set_temperature_offset,
             name_cfg(_VAL_MI): self.set_measurement_interval,
             name_cfg(_VAL_AP): self.set_ambient_pressure,
