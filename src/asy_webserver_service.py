@@ -112,31 +112,53 @@ class _TimeoutStreamProxy:
     # Forwards every method ext/microdot.py's Request.create()/Response.write() actually call on a
     # reader/writer (readline, readexactly, awrite, aclose, close, wait_closed, get_extra_info) -
     # enumerated by grepping ext/microdot.py directly, not guessed - each async call individually
-    # bounded by timeout_s (BACKLOG.md's "Microdot hardening design" step 2). A timeout raises an
-    # ordinary asyncio.TimeoutError (an OSError subclass on MicroPython, confirmed against the pinned
-    # interpreter - see FINAL_WIRING_PLAN.md's Step 2), not a cancellation reaching into Microdot's
-    # own code.
-    def __init__(self, stream: "Any", timeout_s: float) -> None:
+    # bounded by timeout_s (BACKLOG.md's "Microdot hardening design" step 2). A timeout raises
+    # asyncio.TimeoutError - confirmed directly from the pinned v1.28.0 source
+    # (extmod/asyncio/core.py: `class TimeoutError(Exception)`) to be a PLAIN Exception, *not* an
+    # OSError subclass (correcting FINAL_WIRING_PLAN.md's Step 2, which had claimed otherwise). This
+    # matters a lot: ext/microdot.py's handle_request() wraps Request.create() in `except OSError ...
+    # else: raise` *then* `except Exception as exc: print_exception(exc)` - since a per-call read
+    # timeout isn't an OSError, it hits the second clause, which does NOT re-raise. A per-call
+    # *read*-phase timeout (request line/headers/body) is therefore silently absorbed by Microdot
+    # itself, which then writes its own ordinary (aborted-request) response and closes normally -
+    # never propagating to WebserverService._serve()'s own try/except at all. The one place that
+    # genuinely still reaches _serve() is the *write* phase (handle_request()'s second try/except,
+    # around res.write()+writer.aclose(), only catches OSError - a TimeoutError there propagates
+    # straight out) and the outer per-connection asyncio.wait_for() in _serve() itself, whose own
+    # cancellation-driven TimeoutError is unaffected by any of this (see _serve()'s own comment).
+    # Since Microdot's own swallow means this proxy is the *only* place a per-call read timeout is
+    # ever observable at all, it logs a warning here, at the point of the actual event, rather than
+    # relying on catching a propagated exception in _serve() - decision 8's "warn on every per-call
+    # or outer-cap reclaim" requirement would otherwise silently miss every read-phase reclaim.
+    def __init__(self, stream: "Any", timeout_s: float, pr: "PrintLogHistory") -> None:
         self._stream = stream
         self._timeout_s = timeout_s
+        self._pr = pr
+
+    async def _bounded(self, coro: "Any") -> "Any":
+        try:
+            return await asyncio.wait_for(coro, self._timeout_s)
+        except asyncio.TimeoutError as e:
+            await self._pr.wrn_s("Connection reclaimed (per-call timeout):", e, wrnno=2)
+            raise
 
     async def readline(self) -> bytes:
-        return await asyncio.wait_for(self._stream.readline(), self._timeout_s)
+        return await self._bounded(self._stream.readline())  # type: ignore[no-any-return]
 
     async def readexactly(self, n: int) -> bytes:
-        return await asyncio.wait_for(self._stream.readexactly(n), self._timeout_s)
+        return await self._bounded(self._stream.readexactly(n))  # type: ignore[no-any-return]
 
     async def awrite(self, data: bytes) -> None:
-        await asyncio.wait_for(self._stream.awrite(data), self._timeout_s)
+        await self._bounded(self._stream.awrite(data))
 
     async def aclose(self) -> None:
-        await asyncio.wait_for(self._stream.aclose(), self._timeout_s)
+        await self._bounded(self._stream.aclose())
 
     def close(self) -> None:
         self._stream.close()
 
     async def wait_closed(self) -> None:
-        await asyncio.wait_for(self._stream.wait_closed(), self._timeout_s)
+        await self._bounded(self._stream.wait_closed())
 
     def get_extra_info(self, name: str) -> "Any":
         return self._stream.get_extra_info(name)
@@ -207,10 +229,18 @@ class WebserverService:
     # -- /measurements, /sensors --------------------------------------------------------------
 
     async def _get_measurements(self, request: "Any") -> "dict[str, Any]":
-        return {name: await module.get_dict_data() for name, module in self._sensors.items()}
+        # A plain for-loop, not a dict comprehension - MicroPython doesn't support `await` inside a
+        # comprehension (confirmed directly: raises SyntaxError at import time), unlike CPython.
+        result: dict[str, Any] = {}
+        for name, module in self._sensors.items():
+            result[name] = await module.get_dict_data()
+        return result
 
     async def _get_sensors(self, request: "Any") -> "dict[str, Any]":
-        return {name: await module.get_dict_cfg() for name, module in self._sensors.items()}
+        result: dict[str, Any] = {}
+        for name, module in self._sensors.items():
+            result[name] = await module.get_dict_cfg()
+        return result
 
     async def _put_sensors(self, request: "Any") -> "ar.ResponseEnvelope":
         body = _body_as_dict(request)
@@ -310,7 +340,11 @@ class WebserverService:
     # -- /status ---------------------------------------------------------------------------------
 
     async def _get_status(self, request: "Any") -> "dict[str, Any]":
-        sensors = {name: await fct() for name, fct in self._maintenance_sensors.items()}
+        # Plain for-loop, not a dict comprehension - see _get_measurements()'s comment on
+        # MicroPython's lack of `await`-in-comprehension support.
+        sensors: dict[str, Any] = {}
+        for name, fct in self._maintenance_sensors.items():
+            sensors[name] = await fct()
         return {
             "networking": await self._call_status_source("networking"),
             "system": await self._call_status_source("system"),
@@ -369,19 +403,31 @@ class WebserverService:
             await self._close_writer(writer)
             return
         try:
-            proxy_reader = _TimeoutStreamProxy(reader, self._per_call_timeout_s)
-            proxy_writer = _TimeoutStreamProxy(writer, self._per_call_timeout_s)
+            proxy_reader = _TimeoutStreamProxy(reader, self._per_call_timeout_s, self.pr)
+            proxy_writer = _TimeoutStreamProxy(writer, self._per_call_timeout_s, self.pr)
             try:
                 await asyncio.wait_for(self._app.handle_request(proxy_reader, proxy_writer), self._outer_cap_s)
             except asyncio.CancelledError:
                 raise  # never swallow a genuine task cancellation
             except EOFError as e:
+                # Structurally unreachable today (Microdot's own blanket catch around
+                # Request.create() already absorbs any EOFError raised there - see
+                # _TimeoutStreamProxy's own module comment on the identical TimeoutError case) but
+                # kept as defense-in-depth per the module's own "never raise" convention.
                 await self.pr.wrn_s("Connection reclaimed (peer closed early):", e, wrnno=1)
-            except OSError as e:
-                # Covers both the outer wait_for()'s own TimeoutError and any per-call proxy
-                # TimeoutError propagated out of handle_request() (both are OSError subclasses on
-                # MicroPython, errno=110 - see FINAL_WIRING_PLAN.md's Step 2 for the confirmed fact).
+            except asyncio.TimeoutError as e:
+                # Reaches here from exactly two places: the outer wait_for() immediately above
+                # timing out itself (bounding a Slowloris-paced client no single per-call timeout
+                # alone would catch - decision 2), or a per-call proxy timeout during the *write*
+                # phase (handle_request()'s own except-OSError-only wrapping around res.write()/
+                # writer.aclose() doesn't absorb this the way it absorbs a read-phase one - see
+                # _TimeoutStreamProxy's own comment). A read-phase per-call timeout already logged
+                # its own warning inside the proxy itself and never reaches this far.
                 await self.pr.wrn_s("Connection reclaimed (timed out):", e, wrnno=2)
+            except OSError as e:  # a genuine, real socket-level failure (e.g. a broken pipe) -
+                # never actually raised by any of this module's own fakes/proxy, kept for real
+                # hardware defense-in-depth.
+                await self.pr.wrn_s("Connection reclaimed (socket error):", e, wrnno=3)
             except Exception as e:  # never raises out of this task - see module docstring
                 await self.pr.err_s("Unexpected error serving connection:", e, errno=1)
         finally:

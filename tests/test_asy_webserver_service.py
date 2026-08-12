@@ -709,14 +709,19 @@ def test_b_duplicate_keys_in_raw_json_text_last_wins() -> None:
 
 
 def test_b_deeply_nested_json_body_degrades_to_a_clean_rejection_not_a_hard_fault() -> None:
+    # Corrected during implementation: building the nested structure as a real Python object and
+    # then calling json.dumps() on it (the original approach) recurses exactly as deeply as the
+    # json.loads() this test means to exercise - it blew the interpreter's own recursion limit in
+    # this test's own setup code, before ever reaching request.json/_body_as_dict(). Building the
+    # raw JSON text directly via string repetition sidesteps that entirely: no recursive Python call
+    # is involved in constructing the bytes, only json.loads() (inside the code under test) ever
+    # walks this structure recursively.
     service, app, mod = _settings_service("system")
-    nested: Any = 1
-    for _ in range(2000):  # deep enough to matter on an embedded stack; MicroPython's json.loads
-        # recursion bound is confirmed well under this by direct testing against the pinned
-        # interpreter (raises RecursionError/ValueError, not a hard interpreter fault).
-        nested = [nested]
+    depth = 2000  # deep enough to matter on an embedded stack; MicroPython's json.loads recursion
+    # bound is confirmed well under this by direct testing against the pinned interpreter (raises
+    # RecursionError/ValueError, not a hard interpreter fault).
     req = _make_request(app, "PUT", "/system", {})
-    req._body = json.dumps(nested).encode()
+    req._body = b"[" * depth + b"1" + b"]" * depth
     req.content_length = len(req._body)
     res = run(app.dispatch_request(req))
     assert res.status_code == 200  # our own ERR envelope, never a raised exception escaping to Microdot's bare 500
@@ -978,17 +983,28 @@ def test_f1_a_slot_freed_by_reclaim_accepts_the_next_connection_immediately() ->
 
 
 def test_f2_trickled_request_line_is_reclaimed_by_the_outer_cap_not_a_single_per_call_timeout() -> None:
-    # Each byte arrives just under the per-call timeout - defeats the per-call timeout alone, but
-    # must still be bounded by the outer per-connection wall-clock cap (FINAL_WIRING_PLAN.md
-    # section G item 1 / decision 2).
-    per_call = 0.05
-    outer_cap = 0.2
+    # Corrected during implementation (see this file's own docstring: "refining only where writing
+    # the real code reveals a genuine problem"). Each header LINE (not byte) arrives as one atomic
+    # chunk, paced far enough apart that any single readline() call - the whole point of a *per-call*
+    # timeout wrapping one logical stream-method invocation, per BACKLOG.md's design sketch step 2 -
+    # finishes comfortably under the per-call timeout, defeating it; the outer per-connection
+    # wall-clock cap (wrapping the *whole* handle_request() call) is what actually bounds the
+    # connection regardless of how the client paces individual reads (FINAL_WIRING_PLAN.md section G
+    # item 1 / decision 2). A byte-by-byte trickle (this test's original shape) instead made a
+    # *single* readline() call itself take far longer than the per-call timeout to assemble one
+    # line - correctly reclaimed by the per-call timeout alone, never even reaching the outer cap,
+    # which wasn't what this test was meant to isolate.
+    line_delay = 0.02
+    per_call = 1.0  # generous - no single line's own readline() call should ever approach this
+    outer_cap = 0.05  # exceeded partway through line-by-line delivery (0.02s/line) regardless
     full_line = _request_bytes("GET", "/status")
-    chunks = [(per_call * 0.5, bytes([b])) for b in full_line]
+    physical_lines = [part + b"\r\n" for part in full_line.split(b"\r\n")[:-1]]  # drop the trailing
+    # split() artifact after the final \r\n - see full_line's own \r\n\r\n terminator
+    chunks = [(line_delay, line) for line in physical_lines]
     service, app = _make_service(per_call_timeout_s=per_call, outer_cap_s=outer_cap)
     reader = _ScriptedReader(chunks)
     writer = _ScriptedWriter()
-    run_timed(service._serve(reader, writer), timeout_s=outer_cap * 4)
+    run_timed(service._serve(reader, writer), timeout_s=outer_cap * 20)
     assert run(service._open_conns.get_value()) == 0
     assert writer.written == b""  # reclaimed before a response could ever be produced
 
@@ -1002,13 +1018,18 @@ def test_f2_malformed_request_line_degrades_safely_via_microdots_own_blanket_cat
 
 
 def test_f2_content_length_larger_than_body_sent_then_silence_times_out() -> None:
+    # Corrected during implementation, same root cause as the clean-EOF test above: the per-call
+    # readexactly() timeout is an asyncio.TimeoutError, confirmed a plain Exception (not an OSError)
+    # directly from the pinned interpreter's extmod/asyncio/core.py - so it's absorbed by
+    # handle_request()'s own blanket except-Exception around Request.create(), which then writes its
+    # own ordinary 400 and closes normally, rather than the connection being silently dropped.
     service, app = _make_service(per_call_timeout_s=0.05, outer_cap_s=1.0)
     headers = "PUT /networking HTTP/1.1\r\nContent-Length: 1000\r\nContent-Type: application/json\r\n\r\n"
     reader = _ScriptedReader([(0, headers.encode() + b'{"Interval":')])  # body truncated, then silence
     writer = _ScriptedWriter()
     run_timed(service._serve(reader, writer), timeout_s=3.0)
     assert run(service._open_conns.get_value()) == 0
-    assert writer.written == b""
+    assert b" 400 " in writer.written  # Microdot's own ordinary 400 response, not a silent drop
 
 
 def test_f2_content_length_exceeding_max_content_length_returns_413() -> None:

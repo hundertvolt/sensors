@@ -400,7 +400,35 @@ starting point):
   (latest + v1.25.0, both checked) confirm `asyncio.wait_for()`/`wait_for_ms()` is the documented,
   intended mechanism for bounding a stream read, raising `asyncio.TimeoutError` on expiry — matches
   the design sketch's assumption, nothing to revise there.
-- **One concrete new finding from this check, worth folding into the design before implementation
+- **Correction (implementation session, Step 2): the "`asyncio.TimeoutError` is an `OSError`
+  subclass" claim below was wrong — confirmed directly against the pinned `v1.28.0`
+  `extmod/asyncio/core.py` source (`class TimeoutError(Exception): pass`, immediately next to
+  `class CancelledError(BaseException): pass`), not just re-derived from documentation. `asyncio`'s
+  own `TimeoutError` is a **plain `Exception`**, unrelated to `OSError`/`errno`. Concretely, this
+  means `handle_request()` wraps `Request.create()` in `except OSError as exc: ... else: raise`
+  *then* `except Exception as exc: print_exception(exc)` (no re-raise) — a per-call proxy timeout
+  raised during the **read** phase (request line/headers/body, all inside `Request.create()`) hits
+  the *second* clause, not the first, and is therefore **silently absorbed by Microdot itself**,
+  which then writes its own ordinary (aborted-request, still-200/400-shaped) response and closes the
+  connection normally — the opposite of what the superseded paragraph below claimed. The **write**
+  phase is different: `handle_request()`'s second try/except (around `res.write()`/`writer.aclose()`)
+  only has an `except OSError` clause, no generic `except Exception` fallback, so a per-call proxy
+  timeout occurring there *does* propagate out to our own `serve()` wrapper unmuted, same for the
+  **outer** per-connection `asyncio.wait_for()` wrapping the whole `handle_request()` call (its own
+  cancellation-driven `TimeoutError` is unaffected by any of this — see
+  `src/asy_webserver_service.py`'s own `_serve()`/`_TimeoutStreamProxy` comments for the full,
+  current, implemented behavior). Net effect versus the superseded paragraph's assumption: a
+  read-phase per-call reclaim is **not** silently dropped — Microdot answers with an ordinary
+  response and closes cleanly, same treatment as the already-settled `EOFError` case just below in
+  section G item 2. Because Microdot itself never tells our wrapper this happened, the actual
+  decision-8 "warn on every per-call reclaim" telemetry has to be logged from *inside* the
+  reader/writer proxy itself, at the point of the timeout, not by catching a propagated exception in
+  `serve()` — implemented that way. The superseded paragraph is kept below, struck through in spirit
+  but left intact rather than deleted, since BACKLOG.md's own design-sketch text it was correcting
+  (step 2's "Microdot's existing `except Exception as exc: print_exception(exc)` ... already handles
+  this correctly") turns out to have been right all along; this correction restores that original
+  reading rather than introducing a new one.
+- ~~**One concrete new finding from this check, worth folding into the design before implementation
   starts**: `asyncio.TimeoutError` **is** an `OSError` subclass (`errno=110`, `ETIMEDOUT`) on
   MicroPython, not a bare `Exception` — and `errno 110` is **not** in `ext/microdot.py`'s own
   `MUTED_SOCKET_ERRORS` list (`[32, 54, 104, 128]`). Concretely: `handle_request()` wraps
@@ -417,7 +445,7 @@ starting point):
   discovering it mid-implementation: **the timeout path does not flow through Microdot's own
   error-response machinery at all** (no 5xx ever gets written back — the socket is simply abandoned
   the way a genuinely dead TCP peer would be), which is the correct behavior for this failure mode
-  (matching a real client timeout), not a gap to fix.
+  (matching a real client timeout), not a gap to fix.~~
 - **Resolved myself, not asked below** (context/legacy code already settles these):
   - The webserver service's own diagnostics need a plain `PrintLog` (`self.pr`), not a full
     `SensorReaderConfig`/`ConfigManager` — BACKLOG.md is explicit that "this module's own safety
@@ -582,6 +610,37 @@ existing `_wifi_field_schema()` per-route field-scoping convention to every sett
 e.g. `/system` and `/networking` each combine field subsets from more than one underlying module).
 The implementation session should build to this shape, refining only where writing the real code
 reveals a genuine problem with it — not treat it as unreviewable.
+
+**Status update (implementation session): `src/asy_webserver_service.py` written, all 65 tests
+green under the real MicroPython Unix-port interpreter** (`ruff`/`mypy` clean on both files too).
+Built to the invented API contract above essentially unchanged (`WebserverService`/`SettingsGroup`
+as documented). Two categories of genuine problem surfaced while implementing, both resolved per
+this section's own "refining only where writing the real code reveals a genuine problem" allowance
+rather than left as silent workarounds:
+- **MicroPython doesn't support `await` inside a comprehension** (confirmed directly: a bare dict-
+  comprehension containing `await module.get_dict_data() for ...` raises `SyntaxError: 'await'
+  outside function` at import time, unlike CPython) — every such comprehension in the implementation
+  is a plain `for` loop instead.
+- **The `asyncio.TimeoutError`-is-an-`OSError`-subclass claim above was wrong** — see the correction
+  inserted right after it (same session, same finding) for the full, source-confirmed explanation
+  and its consequences for `_serve()`'s exception handling and where decision 8's per-reclaim warning
+  actually has to be logged from. Three tests' own expectations were corrected in place to match the
+  now-confirmed real behavior (`test_f2_content_length_larger_than_body_sent_then_silence_times_out`,
+  `test_f2_trickled_request_line_is_reclaimed_by_the_outer_cap_not_a_single_per_call_timeout`, and
+  the already-noted EOF-mid-body test) — each carries its own comment explaining the correction.
+  Also fixed one test-only bug found in the same pass, unrelated to the TimeoutError finding:
+  `test_b_deeply_nested_json_body_degrades_to_a_clean_rejection_not_a_hard_fault` built its malformed
+  body via `json.dumps()` on a real 2000-deep nested Python object, which recurses exactly as deeply
+  as the `json.loads()` the test meant to exercise and blew the recursion limit in the test's own
+  setup code before ever reaching the code under test — fixed by building the raw JSON text directly
+  via string repetition (`b"[" * depth + b"1" + b"]" * depth`) instead.
+
+Not yet done as part of this pass (unchanged from before): wiring `WebserverService` into
+`src/sensortask_wozi.py`'s `build_system()` with the real drivers (SCD30's own schema-driven setter,
+the `reset_error_counter()` gap-closing on `NeopixelDriver`/`DNSServer`/`ConfigManager`, and the
+real `SettingsGroup`/`status_sources`/`system_cmd`/`notification_led` registrations) — this module's
+own test suite deliberately stays independent of that wiring (uniform fakes throughout, per the
+endpoint-design decision that real per-module wiring is the caller's concern, not this module's).
 
 **A. Endpoint contract tests** (per endpoint, against the settled GET/PUT shapes above):
 - [ ] `/measurements` GET returns the merged 3-sensor dict; empty sensor list registered → empty
