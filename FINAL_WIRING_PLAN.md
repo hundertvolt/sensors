@@ -428,6 +428,108 @@ starting point):
 whatever shape `register_static_routes()`-or-equivalent takes, Step 4 should only need to supply
 content plus a freezefs build step, not touch webserver internals.
 
+**Endpoint design — decided by the project owner ahead of the dedicated webserver-integration
+session** (this is a design decision, not yet an implementation — the actual `asy_webserver_service.py`
+build, including the registration API's exact call signatures, is explicitly deferred to that
+session; this subsection is the settled contract it starts from):
+
+- **Six external endpoints, replacing the legacy `/net/*`, `/time/*`, `/sensors/*`, `/led/*`,
+  `/system/*`**: `/measurements`, `/sensors`, `/networking`, `/system`, `/status`, `/notification`.
+  Legacy `/time/*` splits across `/system` (GMTOffset/DSTOffset — local-time *interpretation*) and
+  `/networking` (NTP_Host/NTP_Offset_S/NTP_Interv_H — sync *mechanics*).
+- **Clean live-vs-settings split, no endpoint mixes the two**: `/measurements` and `/status` are
+  the only two live-data endpoints (fully live, no persisted settings in either); `/sensors`,
+  `/networking`, `/system`, `/notification` are pure settings (fully persisted config, no live
+  telemetry in any of them). This moved `Connected`/`IP`/`Rssi`/`Wifi_Uptime`/NTP sync state out of
+  `/networking` and `NotificationCoordinator`'s `Triggered`/`TS`/`pauseTime` out of `/notification`
+  — both now live under `/status` instead.
+- **GET shapes**:
+  - `/measurements` → `{"SCD30": {...}, "SGP40": {...}, "BMP3XX": {...}}` — one entry per sensor
+    reader in a plain list at init (see "Registration style" below), `get_dict_data()` each.
+  - `/sensors` → same per-sensor sub-structure as `/measurements`, `get_dict_cfg()` each.
+  - `/networking` → flat settings only: `SSID, PW(masked), Country, Hostname, LedWifiOn, NTP_Host,
+    NTP_Offset_S, NTP_Interv_H`.
+  - `/system` → flat settings only: `DebugLevel, GMTOffset, DSTOffset`.
+  - `/notification` → flat settings only: `OnH, OnM, OffH, OffM, FlashBri, Interv, FlashDur,
+    AutoOn, WarnCO2, WarnVOC, WarnHum`.
+  - `/status` → live-only, sub-structured with top-level keys named after the settings endpoints
+    they mirror:
+    ```
+    {
+      "networking": {WifiUptime, Mode, Connected, IP, IPv4, Subnet, Gateway, DNS, Rssi,
+                     NtpSynced, NtpLastSyncAge, NtpLastSync},
+      "system":     {SysUptime, BootSignature, MemPaused, LocalTime: {...}, UtcTime: {...}},
+      "sensors":    {"SGP40": {BackupTS, RestoreTS}},   // only sensors with maintenance data
+      "notification": {Triggered, TS, PauseTime},
+      "errcount":   {"<Name>": {"counter": int, "history": [{"num": int, "type": "N"|"E"|"W"}, ...]}}
+                    // one entry per module + one per ConfigManager ("CFGMGR_<name>"); "history"
+                    // present wherever that module's logger actually persists ErrNum/ErrType entries
+    }
+    ```
+- **PUT shapes — one sparse JSON per endpoint, no `cmd` envelope** (replaces
+  `parse_cmd_request()`'s allowed-command-list pattern for these six routes): any field present is
+  applied, any field/sub-object omitted is left untouched, unknown fields are ignored — the same
+  permissive strategy `ConfigManager.write_config()`/`_set_dict_cfg()` already use internally, now
+  extended to be the *only* strategy at the HTTP layer too.
+  - `/measurements` — no PUT.
+  - `/sensors` — `{"SCD30": {<any subset of TempOffs,MeasInt,AmbPres,Altitude,ForceCalRef,SelfCal,
+    ContMeas>}, "SGP40": {<any subset of BackupPeriod,BackupMaxAge,WaitTimeNTP,SGPResetVOC>},
+    "BMP3XX": {<any subset of the 8 fields>}}` — any sensor key or field can be omitted; a single
+    field for a single sensor, all fields for one sensor, or all fields for all sensors are equally
+    valid in one call.
+  - `/networking` — `{<any subset of SSID,PW,Country,Hostname,LedWifiOn,NTP_Host,NTP_Offset_S,
+    NTP_Interv_H>}`.
+  - `/system` — `{<any subset of DebugLevel,GMTOffset,DSTOffset>, "SystemCmd":
+    "reboot"|"bootloader"|"mempause"}` — `SystemCmd` optional, still strictly enum-validated (the
+    "safe, non-accidental enum" property of the old `content` field is kept, just folded into the
+    same JSON body instead of a separate `cmd`-wrapper route). `mempause`'s duration stays the
+    legacy **fixed 300s**, not client-supplied — no companion duration field.
+  - `/status` — `{"ResetErrors": true}` only, for now (absent/false is a no-op) — resets every
+    module's error counter *and* history in one global action, not scoped per-module.
+  - `/notification` — `{"lightCmdLED": {"r":.., "g":.., "b":.., "t":..}, "PauseTime": int, <any
+    subset of OnH,OnM,OffH,OffM,FlashBri,Interv,FlashDur,AutoOn,WarnCO2,WarnVOC,WarnHum>}` —
+    `lightCmdLED` nested, everything else flat top-level, all optional.
+- **GET copy-safety, checked directly against `src/print_log.py`/`src/config_manager.py`, no new
+  locking needed**: `get_dict_data()` (via `config_manager.make_dict()`), `ConfigManager.get_dict()`,
+  and `PrintLogHistory.get_log()` already build a brand-new dict/list of copied scalar values on
+  every call, with no `await` in the middle of that construction — MicroPython's cooperative,
+  non-preemptive scheduling (CLAUDE.md Part F) means a synchronous stretch of code with no `await`
+  can't be interleaved by another coroutine, so these snapshots are already atomic and independent
+  of anything that happens afterward; no caller ever gets a live reference into `_cache`/`history`.
+  `ConfigManager.config_lock` (an `asyncio.Lock`) exists and is used, but only inside
+  `write_config()`, to serialize concurrent *writers* against each other (its own comment already
+  documents why readers don't need it: the commit step `self._cache = new_cache` is a single
+  reference swap with no `await` before it). **One known, pre-existing exception, not introduced by
+  this design and not fixed by it**: `SCD30_Reader.get_dict_cfg()` (entirely) and three of
+  `BMP3xx_Reader.get_dict_cfg()`'s fields (`PressOvers`/`TempOvers`/`FiltCoeff`) are live
+  hardware-readback fields — their callback does `await` a real I2C transaction mid-dict-construction,
+  so a concurrent config write interleaving between two such awaited reads could produce one response
+  with a mix of pre- and post-write values across fields. This is a torn-read-across-fields
+  characteristic already present in those two drivers today, unrelated to "a reference to mutable
+  state leaking out" (each individual field value is still a fresh read, never a stale reference) —
+  flagged for awareness, not treated as something this endpoint redesign needs to fix.
+- **Registration style — everything supplied as lists at init, generator-fillable**: the
+  constructor/registration surface `src/asy_webserver_service.py` exposes must, per module, be
+  "append this module (or its relevant bound methods) to the right list" — never a new named global
+  per field or per module. This mirrors `_collect_task_starters()`/`_collect_timer_starters()`/
+  `_collect_level_setters()`'s existing shape exactly (uniform lists, even where a given variant
+  only has one or two real entries), so a future per-variant generator only ever needs to know "does
+  this variant have module X" and append accordingly — it never needs to know anything about field
+  names or endpoint shapes.
+- **Known gaps for the implementation session to close, not resolved here**:
+  - `SCD30_Reader` has no generic `_set_dict_cfg`-style setter (individual named methods only,
+    `ContMeas` handled by a bespoke wrapper in the legacy webserver file) — the sparse-JSON `/sensors`
+    PUT contract above still has to apply to it, so either a schema-driven dispatch gets added to
+    `asy_scd30_driver.py` itself, or the webserver layer carries its own field-dispatch table for
+    this one sensor. Worth deciding early in that session since it affects the registration API's
+    generality.
+  - `reset_error_counter()` is confirmed present on `base_classes.py` (shared by every
+    `SensorReader`/`SensorReaderConfig`), `SystemService`, `AsyFramManager`, and
+    `NotificationCoordinator`, but not yet confirmed for `NeopixelDriver`, `DNSServer`, or
+    `ConfigManager` — `/status`'s `ResetErrors` needs it everywhere `get_error_counter()` exists, so
+    any gap needs adding (freely-editable `src/` files, same precedent as Step 1's
+    `get_error_counter()` gap-closing on these same two modules).
+
 ### Step 3 — Digital-twin hardware simulator
 
 **Goal**: a new module, sitting at the same `machine`-module raw-bus-transaction mocking boundary
