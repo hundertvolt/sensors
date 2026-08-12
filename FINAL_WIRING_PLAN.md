@@ -1781,8 +1781,9 @@ still untouched, deliberately deferred per the border above.
   success --fault scd30:writeto:1`) showing the fault firing exactly once, WLAN transitioning
   CONNECTING → GOT_IP, and all three sensors continuing to report afterward.
 
-Full-suite regression run (`scripts/test.sh`, no `--coverage`) after all of the above: [result to be
-filled in once the final run this session completes].
+Full-suite regression run (`scripts/test.sh`, no `--coverage`) after all of the above, from a fully
+clean `tests/_tmp/` (confirming F's fix holds, not just individually per-file but across the whole
+suite in one real run): **2,059/2,059 tests passing across all 42 files, zero failures.**
 
 **Next border**: maximize code coverage by tests (the original 4-part instruction's last step),
 still not started. Item E (pyproject.toml/ruff/mypy scope extension + the chroot pre-push
