@@ -81,6 +81,22 @@ constraints.
   SCD30's low-level getter/setter forwards not logging via `self.pr.err_s()`, unlike BMP3xx's — is
   now fixed; see `SPECIFICATION.md` Part C.7 for the settled forward-logging convention every driver
   now follows. The broader "no gaps, no deadlock/starvation" audit itself is still open.)
+- **`SCD30_Reader.get_dict_cfg()` (entirely) and three of `BMP3xx_Reader.get_dict_cfg()`'s fields
+  (`PressOvers`/`TempOvers`/`FiltCoeff`) can return a torn read across fields.** Both go through
+  `base_classes.py`'s `_get_dict_cfg(..., callback=...)` live-hardware-readback path, which `await`s
+  a real I2C transaction *between* reading individual fields rather than snapshotting all of them at
+  once — if a concurrent config write (`_set_dict_cfg`/`ConfigManager.write_config()`) lands in that
+  window, the one returned dict can mix pre-write and post-write values across fields. Every other
+  `get_dict_cfg()`/`get_dict_data()`/`get_error_counter()` call in the codebase is safe by
+  construction (no `await` in the middle of building the returned dict, so MicroPython's
+  cooperative/non-preemptive scheduling already makes the snapshot atomic) — this is the one place
+  that isn't. Found while checking GET-response copy-safety for the new REST endpoint design
+  (`FINAL_WIRING_PLAN.md`'s Step 2 "Endpoint design" subsection); not a reference/aliasing bug (each
+  individual field value is still a fresh read, never a stale pointer into mutable state), and not
+  introduced by that design — pre-existing in both drivers today. No fix designed yet (candidates:
+  hold each driver's own bus/device lock across the whole `get_dict_cfg()` call, or snapshot all
+  live fields with a single batched read before building the dict) — flagged for whoever picks this
+  up, not scheduled.
 - **Common driver error classes across sensors — future direction, not designed or implemented
   yet.** Each driver currently defines and reports its own `errno`/`wrnno` values independently
   (see `SPECIFICATION.md` Part C.7); the one exception is `errno=10` ("initial setup failed"), which
