@@ -530,6 +530,221 @@ session; this subsection is the settled contract it starts from):
     any gap needs adding (freely-editable `src/` files, same precedent as Step 1's
     `get_error_counter()` gap-closing on these same two modules).
 
+**Detailed TDD action list — collected from this session's endpoint-design discussion plus
+BACKLOG.md's "Microdot hardening design"/"REST/error-handling layer" entries and `SPECIFICATION.md`
+Part A.5** (this is the concrete, expanded version of "Criteria for this step to finish" above —
+the implementation session should write tests against this list before writing any
+`asy_webserver_service.py` code, per the per-step-session workflow's TDD ordering). Every line is a
+test to write, not yet a test that exists.
+
+**A. Endpoint contract tests** (per endpoint, against the settled GET/PUT shapes above):
+- [ ] `/measurements` GET returns the merged 3-sensor dict; empty sensor list registered → empty
+      dict, not a crash (registration-list edge case, see C below).
+- [ ] `/sensors` GET mirrors `/measurements`' per-sensor structure with config fields.
+- [ ] `/sensors` PUT: empty body `{}` → no-op, all fields unchanged; single field for one sensor;
+      all fields for one sensor; all fields for all sensors; unknown sensor key ignored; unknown
+      field within a known sensor ignored (matches `_set_dict_cfg`'s existing per-field
+      `"Invalid"`, not a whole-request failure); `SCD30`'s `ContMeas`/`SGP40`'s `SGPResetVOC`
+      round-trip as ordinary fields, no `cmd` wrapper.
+- [ ] `/networking` GET is flat settings only — no `Connected`/`IP`/`Rssi` present.
+- [ ] `/networking` PUT: partial-field update triggers only the relevant post-write hook
+      (`reconnect_wifi`/`ntp_force_sync`), not both, when only one module's fields are present.
+- [ ] `/system` GET is flat `{DebugLevel, GMTOffset, DSTOffset}` only.
+- [ ] `/system` PUT: settings-only body (no `SystemCmd`) applies settings and takes no lifecycle
+      action; `SystemCmd` present with an invalid/non-enum value is rejected without side effects;
+      each of `reboot`/`bootloader`/`mempause` fires the right `sysfunct` call; `mempause` always
+      uses the fixed 300s, never a client-supplied duration.
+- [ ] `/status` GET returns exactly the `networking`/`system`/`sensors`/`notification`/`errcount`
+      sub-structure, no settings fields anywhere in it; `sensors` sub-key omits any sensor with no
+      maintenance data (today: only `SGP40` present).
+- [ ] `/status` PUT: `{}` and `{"ResetErrors": false}` are both no-ops; `{"ResetErrors": true}`
+      resets every module's counter *and* history in one call.
+- [ ] `/notification` GET is flat settings only — no `Triggered`/`TS`/`PauseTime`.
+- [ ] `/notification` PUT: `lightCmdLED` nested sub-object round-trips independently of the flat
+      top-level fields in the same body; a body with only `PauseTime` doesn't touch the notify
+      schedule fields and vice versa.
+
+**B. Cross-endpoint sparse-JSON PUT semantics** (one shared test matrix, run against every settings
+endpoint so the convention is actually uniform, not just true by accident per-endpoint):
+- [ ] Missing field/sub-object at any level → left untouched (not reset to default).
+- [ ] Unknown top-level key, unknown nested key, unknown sensor name → silently ignored, no error
+      surfaced (matches `ConfigManager.write_config()`'s existing per-key `"Invalid"` handling).
+- [ ] Wrong top-level JSON type (array, string, number, `null` instead of an object) → clean
+      rejection, not a crash inside the dispatch layer.
+- [ ] Wrong type for a known field (string where int expected, etc.) → per-field rejection, doesn't
+      abort the rest of the request's other valid fields.
+- [ ] Malformed/undecodable JSON body entirely → same `request.json`-raises handling
+      `api_response.py`'s `parse_cmd_request()` already does today (still relevant even though the
+      `cmd` envelope itself is gone — `request.json`'s own failure mode doesn't change).
+- [ ] Duplicate keys in the raw JSON text (undefined-order behavior) — confirm what MicroPython's
+      `json` module actually does (last-wins is the CPython behavior; verify, don't assume) and
+      write the test against the confirmed behavior, not an assumption.
+- [ ] Deeply nested / recursive JSON body — confirm MicroPython's `json.loads()` has a sane
+      recursion bound on this platform (embedded stack is small; this is a real crash vector, not
+      theoretical) and that hitting it degrades to a clean rejection, not a hard fault.
+- [ ] Body at/near `max_content_length` — boundary-tested both just under and just over.
+
+**C. Registration API tests** (generator-readiness shape — lists at init):
+- [ ] A list with zero entries for any registration group (e.g. no sensors registered) produces a
+      well-formed empty response, not an exception.
+- [ ] A list with one entry behaves identically whether supplied via the list-based API or
+      hand-constructed — no special-casing "one module" vs "many."
+- [ ] Registering the same module twice (a generator bug, not an expected real case) has a defined,
+      tested behavior (last-wins, first-wins, or explicit rejection — pick one and test it, don't
+      leave it as accidental behavior).
+
+**D. Error aggregation / reset tests**:
+- [ ] `/status`'s `errcount` includes one entry per module *and* one per `ConfigManager` instance
+      (`CFGMGR_<name>`), built from the same registry list used elsewhere (mirrors
+      `_collect_level_setters()`'s "every logger, including nested `cfgmgr.pr`" shape).
+- [ ] `"counter"` is always present; `"history"` is present exactly when the underlying logger
+      actually persists `ErrNum`/`ErrType` entries — test both a populated and an all-zero history.
+- [ ] `ResetErrors` calls `reset_error_counter()` on every module in the same registry — including
+      confirming/adding it on `NeopixelDriver`/`DNSServer`/`ConfigManager` first (the coverage gap
+      already flagged above).
+- [ ] A `reset_error_counter()` call on one module never affects another module's counter/history.
+
+**E. GET snapshot/copy-safety tests** (regression coverage for the "full copy, no live references"
+finding above):
+- [ ] For at least one settings endpoint, interleave a concurrent PUT with a GET in the test event
+      loop and assert the GET response is never a mix of pre- and post-write field values (should
+      hold everywhere except the already-flagged `SCD30`/`BMP3xx` live-readback fields).
+- [ ] A dedicated **characterization test** (expected to demonstrate the known gap, not to pass
+      cleanly) for `SCD30_Reader`/`BMP3xx_Reader`'s torn-read behavior — documents the gap in a
+      runnable form so a future fix (see the new BACKLOG.md entry) has a red test to turn green,
+      instead of the gap being only prose.
+- [ ] Mutating a list/dict returned from any getter (`get_dict_data`/`get_dict_cfg`/
+      `get_error_counter`) never affects the module's own internal state on a subsequent call.
+
+**F. Connection-lifecycle robustness — "must all self-heal"** (this is the deep-networking testing
+the owner asked for; grouped by where in a connection's life each scenario happens, extending
+BACKLOG.md's already-settled hardening design rather than redeciding it):
+
+*F.1 — Before/at accept:*
+- [ ] Client opens a TCP connection and sends nothing, ever (the actual 2026-08-03 incident shape)
+      → reclaimed by the per-call timeout, open-count decremented, no leak.
+- [ ] Client opens then immediately closes (RST or FIN) before sending any bytes → clean
+      decrement, no exception escapes the connection task.
+- [ ] Rapid connect/disconnect churn (many short-lived connections in quick succession) → counter
+      stays accurate, no double-decrement, no drift.
+- [ ] Legitimate concurrent connections at/near the TCP-PCB ceiling (5) → threshold-restart logic
+      exercised by genuinely healthy-but-many clients, not just wedged ones — confirms the
+      threshold doesn't fire on legitimate load.
+
+*F.2 — Mid-request, headers/request-line:*
+- [ ] Slow client trickling the request line/headers one byte at a time, each byte arriving just
+      under the per-call timeout → **open design question, not yet answered**: does the per-call
+      `wait_for()` wrapping (BACKLOG's design) allow this to stay alive indefinitely (a Slowloris
+      shape)? If so, is the open-connection-count/threshold-restart backstop alone considered
+      sufficient, or does this step also need a per-request wall-clock cap? Flag for Step 2's own
+      Q&A round, don't silently decide either way here.
+- [ ] Malformed request line/headers (garbage bytes, bad HTTP version, oversized header) → Microdot's
+      own parsing failure path exercised, connection closed cleanly, no crash.
+- [ ] `Content-Length` larger than the body actually sent, then the client goes silent → the
+      `readexactly()` proxy call times out the same as any other wedge.
+- [ ] `Content-Length` exceeding `max_content_length` → confirmed `@app.errorhandler(413)` fires
+      with the project's shaped response, connection still closes/decrements cleanly.
+- [ ] Body genuinely truncated (client sends FIN mid-body, not just going silent) → **needs its own
+      research**: confirm what MicroPython's `asyncio.StreamReader.readexactly()` actually raises
+      on early peer close (likely `EOFError`, not `OSError`/`TimeoutError`) and that the `serve()`
+      wrapper's catch-and-log-and-end-connection handling (currently specified only for the
+      `TimeoutError`/`OSError` path) also covers this distinct failure mode.
+
+*F.3 — Mid-request, JSON body:* covered by section B above (sparse-JSON semantics under malformed/
+adversarial input), applied per-endpoint.
+
+*F.4 — Mid-response, write phase:*
+- [ ] Client disconnects while the server is mid-write of a large response body (e.g. `/status`
+      with a long error history) → `awrite()`/`drain()` hits the wrapped timeout or an immediate
+      `OSError` (broken pipe/`ECONNRESET`), handled the same defensive way as every other
+      wrapper-level failure — exercises `SPECIFICATION.md` A.5's flagged `Response.write()` gap
+      directly, not just noting it exists.
+- [ ] A route handler's return value fails JSON serialization (raw bytes, `NaN`/`Infinity` float,
+      an accidentally-circular structure) → caught, logged with enough detail to identify the
+      offending endpoint/module, answered with the consolidated error shape instead of a bare
+      crash.
+- [ ] Worst-case `/status` response size (longest configured error history across every module) →
+      measure `gc.mem_free()` before/after under the Unix port; confirm building the full response
+      dict before serialization doesn't spike memory unacceptably on a constrained device.
+
+*F.5 — After response / close:*
+- [ ] Normal close: counter decrements exactly once, connection task actually exits (never a
+      zombie task invisible to `start_and_check_tasks()`).
+- [ ] **Open design question**: does Microdot/our wrapper support HTTP keep-alive (multiple
+      requests over one TCP connection)? If yes, the per-call timeout needs to reset **per request**,
+      not just live for the connection's full lifetime — this changes the wrapper's shape and isn't
+      addressed by the current design sketch. Needs checking against current Microdot/MicroPython
+      `asyncio` docs (per CLAUDE.md's standing doc-currency instruction) before Step 2's
+      implementation starts, not assumed either way.
+- [ ] Double-close paths (our own `finally` plus any cleanup Microdot itself already does) don't
+      raise or double-decrement the open-connection counter.
+
+*F.6 — Concurrency / whole-server restart:*
+- [ ] N simultaneous wedged connections crossing the restart threshold → restart fires exactly
+      once, not repeatedly/thrashing.
+- [ ] **Open design question**: what happens to a legitimate, healthy, mid-flight request when a
+      restart is triggered by other wedged connections? BACKLOG's sketch only specifies
+      `server.close()` (stops new accepts) — whether in-flight connection tasks are left to finish
+      on their own or forcibly torn down needs verifying against real `asyncio.Server`/
+      `StreamWriter` semantics, not assumed; write the test once that's confirmed, don't guess the
+      expected behavior first.
+- [ ] Pathological repeated rewedging (a broken/hostile client immediately reconnecting and
+      rewedging right after each restart) doesn't thrash into a restart loop that starves the
+      watchdog or floods logs/FRAM — confirm this either self-limits via the existing
+      `_TASK_FAIL_MAX` escalation or needs its own secondary backoff (design decision, not just a
+      test — flag if the current sketch doesn't already cover it).
+- [ ] The secondary "harder timeout" (force-cancel the outer server task if `close()`/
+      `wait_closed()` itself doesn't return within a further grace period) — force this path
+      explicitly via a fake `wait_closed()` that hangs, don't rely on it happening to be exercised
+      by another test.
+
+*F.7 — Adversarial/malformed-input shapes* (LAN-only device, but cheap defensive discipline):
+- [ ] Extremely long URL path/query string.
+- [ ] Unknown path → confirmed `404` handler, shaped response, not a bare crash.
+- [ ] Wrong HTTP method on a known path → confirmed `405` handler.
+- [ ] Path-traversal-looking or trailing-garbage segments on a known route.
+- [ ] Dedicated Slowloris-shaped simulation (many connections each trickling single bytes) to
+      confirm the open-count/threshold-restart backstop actually engages within a bounded time —
+      the concrete test for the open question flagged in F.2.
+
+*F.8 — Server startup edge cases:*
+- [ ] `asyncio.start_server()` failing to bind (e.g. port already in use from an unclean previous
+      instance, `OSError(EADDRINUSE)`) — confirm whether `start_and_check_tasks()`'s existing
+      retry/escalation treats this the same as any other task failure, and whether that's actually
+      the right behavior for a bind failure specifically (a bind failure won't fix itself by
+      retrying immediately the way a transient wedge might).
+- [ ] Webserver task starting before the WiFi interface has actually associated — confirm whether
+      `bind()`/`start_server()` on rp2 succeeds regardless of link state (likely yes, socket layer
+      doesn't require an active association to bind) or needs to wait — verify against real
+      MicroPython socket behavior, don't assume.
+
+*F.9 — Supervisor integration / soak (capstone tests for this whole section):*
+- [ ] Webserver task actually dying (post-restart) is picked up and restarted by
+      `start_and_check_tasks()` through the real, unmocked supervisor path.
+- [ ] Repeated webserver-task failures reach `_TASK_FAIL_MAX` and escalate to the existing
+      watchdog-starve fallback exactly like any other supervised task — no special-casing.
+- [ ] The soak test already specified in BACKLOG.md's design sketch step 5: 100+ start/wedge/
+      reclaim/restart cycles under the Unix port, `gc.mem_free()` flat throughout — the pass/fail
+      bar this whole section builds toward.
+
+**G. Open design questions this action list surfaced** (genuinely new, not previously decided —
+listed together here for visibility, in addition to being inline above; these are fair game for
+Step 2's own 10-question round, not something to silently resolve while writing tests):
+1. Per-call timeout vs. per-request wall-clock cap — is the open-connection-count backstop alone
+   considered sufficient against a Slowloris-shaped slow-trickle client, or does the wrapper need
+   an additional overall-request timeout?
+2. What does MicroPython's `asyncio.StreamReader.readexactly()` actually raise on an early/clean
+   peer close mid-body (not a timeout) — same handling path as the already-specified
+   `TimeoutError`/`OSError` case, or a distinct one that needs its own catch?
+3. Does Microdot support HTTP keep-alive today? If so, per-connection vs. per-request timeout
+   scope needs revisiting before implementation, not after.
+4. What happens to legitimate in-flight connections when a whole-server restart is triggered by
+   other, unrelated wedged connections — finish naturally, or torn down?
+5. Does repeated rewedge-immediately-after-restart need its own backoff/escalation, or does the
+   existing `_TASK_FAIL_MAX` path already cover it structurally?
+6. Bind failure (`EADDRINUSE`) and pre-network-up startup — does the existing task-retry behavior
+   actually suit these two cases, or do they need distinct handling?
+
 ### Step 3 — Digital-twin hardware simulator
 
 **Goal**: a new module, sitting at the same `machine`-module raw-bus-transaction mocking boundary
