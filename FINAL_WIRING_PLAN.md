@@ -330,19 +330,31 @@ aggregating every module's `get_error_counter()` output.
 
 **Known findings to carry in**:
 
-- BACKLOG.md's "Microdot hardening design" is a fully-settled, not-yet-implemented plan: composition
-  around `asyncio.start_server()` (never call `app.start_server()`/`app.shutdown()` directly), a
-  reader/writer timeout-wrapping proxy, per-connection open-count tracking (`LockedCounter`-style,
-  decremented in a `finally`), whole-server restart when the open count sits at/above a threshold
-  for longer than a grace period, registered as an ordinary task in `start_and_check_tasks()` so the
-  existing task-supervisor/watchdog-escalation machinery handles restart-then-reboot for free. Read
-  the whole entry, including its "verify before implementing" `asyncio.wait_for()` note and its
+- BACKLOG.md's "Microdot hardening design" is settled, not-yet-implemented, **and simplified from
+  its original sketch by an owner decision this session** (see "Owner decisions on the 10 questions"
+  below for the full derivation — BACKLOG.md itself is updated to match): composition around
+  `asyncio.start_server()` (never call `app.start_server()`/`app.shutdown()` directly), a
+  reader/writer timeout-wrapping proxy for per-call reads/writes, **plus one outer
+  `asyncio.wait_for()` wrapping the entire per-connection `handle_request()` call** (new — this is
+  what actually bounds a paced/Slowloris-shaped client, which per-call timeouts alone cannot, and it
+  also covers a hang inside `dispatch_request()`/route-handler logic itself, which per-call stream
+  timeouts never touched), per-connection open-count tracking (`LockedCounter`-style, decremented in
+  a `finally`) driving a **reject-when-full** rule (silently close any new connection while at the
+  ceiling — no accept, no response written) instead of accepting-then-restarting. **No bespoke
+  whole-server-restart mechanism** — reject-when-full plus the outer cap already bound every
+  connection's resource usage and lifetime, so the webserver's own task just gets registered as an
+  ordinary task in `start_and_check_tasks()` like every other module (unchanged from the original
+  sketch); the existing generic supervisor/watchdog-escalation machinery is the only restart path,
+  same as everywhere else in the codebase — nothing bespoke to build on top of it. Read the whole
+  BACKLOG.md entry, including its "verify before implementing" `asyncio.wait_for()` note and its
   "confirmed boundary" analysis of `handle_request()`'s shape (nothing inside `dispatch_request()`
-  ever touches the transport, so the proxy alone is sufficient — no route-handler-level wrapping
-  needed).
-- The concurrent-socket/TCP-PCB ceiling this design's restart threshold must sit under is
-  **confirmed at 5** (`MEMP_NUM_TCP_PCB`'s rp2-port default, `lwipopts_common.h` — see BACKLOG.md's
-  now-resolved companion open question). Pick a real-margin threshold below that, not at it.
+  ever touches the transport, so the proxy alone is sufficient — no separate route-handler-level
+  wrapping needed; the new outer cap wraps `handle_request()` as a whole, so it already covers
+  `dispatch_request()` too).
+- The concurrent-socket/TCP-PCB ceiling the reject-when-full rule's connection-count threshold must
+  sit under is **confirmed at 5** (`MEMP_NUM_TCP_PCB`'s rp2-port default, `lwipopts_common.h` — see
+  BACKLOG.md's now-resolved companion open question). Pick a real-margin threshold below that, not
+  at it.
 - `ext/microdot.py` (vendored, unmodified, pinned to `v2.6.2`) is hands-off — any behavior change
   happens by wrapping/calling it from `asy_webserver_service.py`, never by editing the vendored file
   itself. See CLAUDE.md's hard rule and `SPECIFICATION.md` Part A.5 for exactly what Microdot
@@ -368,9 +380,11 @@ task plugs into unchanged).
 matches the generator-readiness shape above; every route the reference file has today
 (`/net/*`, `/time/*`, `/sensors/*`, `/led/*`, `/system/*`, plus static routes) is reachable through
 it with identical response shapes; `@app.errorhandler` wired for at least 400/404/405/413/500;
-timeout-wrapped proxy + open-count tracking + threshold-based restart implemented and soak-tested
-(100+ start/wedge/reclaim/restart cycles under the Unix port, `gc.mem_free()` flat) per the design
-sketch's own step 5; full unit-test coverage, test doubles for reader/writer are step-driven fakes
+per-call timeout-wrapped proxy + the outer per-connection wall-clock cap + open-count tracking +
+reject-when-full all implemented and soak-tested (100+ start/wedge/reclaim cycles under the Unix
+port, `gc.mem_free()` flat) — no bespoke restart mechanism to soak-test, since the webserver task
+participates in the existing generic `start_and_check_tasks()` supervisor unchanged, the same as
+every other module; full unit-test coverage, test doubles for reader/writer are step-driven fakes
 only (never a real `select.poll()` — see CLAUDE.md's CI-hang-investigation note for exactly why).
 
 **Refined plan — this session's own research, before the owner Q&A round** (extends the above;
@@ -516,19 +530,32 @@ session; this subsection is the settled contract it starts from):
   only has one or two real entries), so a future per-variant generator only ever needs to know "does
   this variant have module X" and append accordingly — it never needs to know anything about field
   names or endpoint shapes.
-- **Known gaps for the implementation session to close, not resolved here**:
-  - `SCD30_Reader` has no generic `_set_dict_cfg`-style setter (individual named methods only,
-    `ContMeas` handled by a bespoke wrapper in the legacy webserver file) — the sparse-JSON `/sensors`
-    PUT contract above still has to apply to it, so either a schema-driven dispatch gets added to
-    `asy_scd30_driver.py` itself, or the webserver layer carries its own field-dispatch table for
-    this one sensor. Worth deciding early in that session since it affects the registration API's
-    generality.
-  - `reset_error_counter()` is confirmed present on `base_classes.py` (shared by every
-    `SensorReader`/`SensorReaderConfig`), `SystemService`, `AsyFramManager`, and
-    `NotificationCoordinator`, but not yet confirmed for `NeopixelDriver`, `DNSServer`, or
-    `ConfigManager` — `/status`'s `ResetErrors` needs it everywhere `get_error_counter()` exists, so
-    any gap needs adding (freely-editable `src/` files, same precedent as Step 1's
-    `get_error_counter()` gap-closing on these same two modules).
+- **Known gaps — now resolved by owner decision, not just flagged**:
+  - `SCD30_Reader`'s setter shape (question 4): confirmed from `base_classes.py`/`asy_scd30_driver.py`
+    directly — `SensorReaderConfig._set_dict_cfg()` (the generic setter every other sensor reuses)
+    is fundamentally built around a `ConfigManager`-backed persist-then-push pattern, and
+    `SCD30_Reader` extends the bare `SensorReader` (no `cfgmgr`) by design: its own `_VAL_*` schema
+    tuples (`_VAL_TO`/`_VAL_MI`/`_VAL_AP`/`_VAL_ALT`/`_VAL_CAL`/`_VAL_SC`) already carry an explicit
+    comment — "these params are stored on the sensor itself, not cached locally" — and it already
+    has one individually-named async setter per field (`set_measurement_interval`,
+    `set_ambient_pressure`, etc.), just no schema-driven *dispatcher* over them. **Decided**: add a
+    new, SCD30-local generic setter to `asy_scd30_driver.py` itself, structurally mirroring
+    `_set_dict_cfg()`'s sparse-dict/per-field-validate-against-schema/dispatch-by-name shape, but
+    with no persistence step at all — no `cfgmgr`, no `_set_mgr_cfg()`, no local JSON file; each
+    validated field calls straight through to its already-existing individual setter method (a real
+    I2C write to the chip), matching "according to other sensors" (same schema-driven shape) while
+    respecting "don't add any persisted config" (nothing gets locally cached/written to a file).
+    `ContMeas` stays the one field this schema can't cover (no `_VAL_*` entry exists for it, same
+    reason as today: the SCD30 can't report whether continuous measurement is running) — keeps its
+    own bespoke handling in the webserver layer, not silently forced into the schema.
+  - `reset_error_counter()` gap on `NeopixelDriver`/`DNSServer`/`ConfigManager` (question 5):
+    confirmed present on `base_classes.py` (`SensorReader`/`SensorReaderConfig`), `SystemService`,
+    `AsyFramManager`, `NotificationCoordinator` already; missing on these three. **Decided**: close
+    it inline as part of Step 2's own implementation pass (not retroactively folded back into Step
+    1) — the owner's framing was explicitly "it does not matter how, as long as it is added lean and
+    consistently," so mirror each module's own existing `reset()`/counter-clearing shape (matching
+    how Step 1 added `get_error_counter()` to the same two of these three modules) rather than
+    inventing a new shared mixin/pattern for it.
 
 **Detailed TDD action list — collected from this session's endpoint-design discussion plus
 BACKLOG.md's "Microdot hardening design"/"REST/error-handling layer" entries and `SPECIFICATION.md`
@@ -589,9 +616,13 @@ endpoint so the convention is actually uniform, not just true by accident per-en
       well-formed empty response, not an exception.
 - [ ] A list with one entry behaves identically whether supplied via the list-based API or
       hand-constructed — no special-casing "one module" vs "many."
-- [ ] Registering the same module twice (a generator bug, not an expected real case) has a defined,
-      tested behavior (last-wins, first-wins, or explicit rejection — pick one and test it, don't
-      leave it as accidental behavior).
+- [ ] Registering the same module twice (a generator bug, not an expected real case) — **decided**:
+      last-registration-wins, not by adding any dedup/guard code but simply because the natural,
+      simplest implementation (loop over the registered list, write each entry's dict under its own
+      name key: `for item in items: result[item.name] = ...`) already behaves that way by
+      construction — chosen specifically because it's the option needing zero extra code, per the
+      owner's "whichever comes with least effort/complexity" framing. Test confirms this fall-out
+      behavior, it isn't a feature to implement separately.
 
 **D. Error aggregation / reset tests**:
 - [ ] `/status`'s `errcount` includes one entry per module *and* one per `ConfigManager` instance
@@ -600,9 +631,17 @@ endpoint so the convention is actually uniform, not just true by accident per-en
 - [ ] `"counter"` is always present; `"history"` is present exactly when the underlying logger
       actually persists `ErrNum`/`ErrType` entries — test both a populated and an all-zero history.
 - [ ] `ResetErrors` calls `reset_error_counter()` on every module in the same registry — including
-      confirming/adding it on `NeopixelDriver`/`DNSServer`/`ConfigManager` first (the coverage gap
-      already flagged above).
+      `NeopixelDriver`/`DNSServer`/`ConfigManager` now that the coverage gap above is resolved
+      (added inline this step, per the "known gaps" resolution above).
 - [ ] A `reset_error_counter()` call on one module never affects another module's counter/history.
+- [ ] The webserver service's own `errcount` entry accumulates a **warning** (`pr.wrn_s`, not
+      `pr.err_s`) every time a connection is reclaimed via the per-call timeout or the outer
+      per-connection cap — decided in response to "would be good to see when a connection ran into a
+      timeout even without a full restart, warning in that case, no error." This is real, useful
+      telemetry that survives dropping the whole-server-restart mechanism (question 1/8's
+      resolution below): a rising warning count in `/status.errcount.<WebserverModuleName>` is what
+      operational visibility into "clients are timing out" looks like now, in place of the
+      restart-count field a bespoke restart mechanism would otherwise have surfaced.
 
 **E. GET snapshot/copy-safety tests** (regression coverage for the "full copy, no live references"
 finding above):
@@ -617,8 +656,11 @@ finding above):
       `get_error_counter`) never affects the module's own internal state on a subsequent call.
 
 **F. Connection-lifecycle robustness — "must all self-heal"** (this is the deep-networking testing
-the owner asked for; grouped by where in a connection's life each scenario happens, extending
-BACKLOG.md's already-settled hardening design rather than redeciding it):
+the owner asked for; grouped by where in a connection's life each scenario happens. **Updated after
+section G's source research and the owner's decisions on the 10-question round** — every item below
+reflects the simplified reject-when-full + per-call-timeout + outer-cap scheme, not the original
+threshold-restart sketch; see "Owner decisions on the 10 questions" below for the full derivation
+of each change):
 
 *F.1 — Before/at accept:*
 - [ ] Client opens a TCP connection and sends nothing, ever (the actual 2026-08-03 incident shape)
@@ -627,105 +669,142 @@ BACKLOG.md's already-settled hardening design rather than redeciding it):
       decrement, no exception escapes the connection task.
 - [ ] Rapid connect/disconnect churn (many short-lived connections in quick succession) → counter
       stays accurate, no double-decrement, no drift.
-- [ ] Legitimate concurrent connections at/near the TCP-PCB ceiling (5) → threshold-restart logic
-      exercised by genuinely healthy-but-many clients, not just wedged ones — confirms the
-      threshold doesn't fire on legitimate load.
+- [ ] Legitimate concurrent connections at/near the TCP-PCB ceiling (5) → all accepted and served
+      normally up to the ceiling; the next one, while still at the ceiling, is silently closed
+      (decision 3 — reject-when-full, no response written) purely because of count, never because of
+      anything about that connection itself; confirms genuinely healthy load never gets torn down or
+      degraded, just briefly refused until a slot frees.
+- [ ] A connection refused only because the ceiling was momentarily full succeeds immediately on
+      retry once any other connection's slot frees (via normal completion or a timeout reclaim) —
+      confirms "reject when full" is a transient backpressure signal, not a standing failure.
 
 *F.2 — Mid-request, headers/request-line:*
-- [ ] Slow client trickling the request line/headers one byte at a time, each byte arriving just
-      under the per-call timeout → **open design question, not yet answered**: does the per-call
-      `wait_for()` wrapping (BACKLOG's design) allow this to stay alive indefinitely (a Slowloris
-      shape)? If so, is the open-connection-count/threshold-restart backstop alone considered
-      sufficient, or does this step also need a per-request wall-clock cap? Flag for Step 2's own
-      Q&A round, don't silently decide either way here.
+- [ ] **Resolved, now a concrete test**: a client trickling the request line/headers one byte at a
+      time, each byte arriving just under the per-call timeout, stays alive far longer than any
+      single per-call timeout would suggest — but is still reclaimed once the new **outer
+      per-connection wall-clock cap** (wrapping the whole `handle_request()` call, decision 2) is
+      exceeded, regardless of how the client paces its trickle. This is the concrete Slowloris test;
+      see F.7 for the dedicated multi-connection version.
 - [ ] Malformed request line/headers (garbage bytes, bad HTTP version, oversized header) → Microdot's
-      own parsing failure path exercised, connection closed cleanly, no crash.
+      own parsing failure path exercised, connection closed cleanly, no crash. Confirmed from source
+      (`ext/microdot.py`'s `Request.create()`/`handle_request()`): a truncated/malformed request line
+      already degrades safely via `handle_request()`'s own blanket `except Exception` catch — no
+      extra handling needed on our side for this specific shape, only test coverage confirming it.
 - [ ] `Content-Length` larger than the body actually sent, then the client goes silent → the
-      `readexactly()` proxy call times out the same as any other wedge.
+      `readexactly()` proxy call times out the same as any other wedge (or is caught by the outer
+      cap if it's paced rather than fully silent).
 - [ ] `Content-Length` exceeding `max_content_length` → confirmed `@app.errorhandler(413)` fires
       with the project's shaped response, connection still closes/decrements cleanly.
-- [ ] Body genuinely truncated (client sends FIN mid-body, not just going silent) → **needs its own
-      research**: confirm what MicroPython's `asyncio.StreamReader.readexactly()` actually raises
-      on early peer close (likely `EOFError`, not `OSError`/`TimeoutError`) and that the `serve()`
-      wrapper's catch-and-log-and-end-connection handling (currently specified only for the
-      `TimeoutError`/`OSError` path) also covers this distinct failure mode.
+- [ ] Body genuinely truncated (client sends FIN mid-body, not just going silent) → **resolved,
+      source-confirmed**: MicroPython's `Stream.readexactly()` raises `EOFError` on an early clean
+      peer close (`extmod/asyncio/stream.py`, `v1.28.0`) — not an `OSError` subclass, so it needs its
+      own explicit `except EOFError` arm in the `serve()` wrapper, alongside the existing
+      `TimeoutError`/`OSError` handling, treated the same defensive way (log via `pr.wrn_s`, end this
+      one connection's task, `finally`-decrement the counter).
 
 *F.3 — Mid-request, JSON body:* covered by section B above (sparse-JSON semantics under malformed/
 adversarial input), applied per-endpoint.
 
 *F.4 — Mid-response, write phase:*
 - [ ] Client disconnects while the server is mid-write of a large response body (e.g. `/status`
-      with a long error history) → `awrite()`/`drain()` hits the wrapped timeout or an immediate
-      `OSError` (broken pipe/`ECONNRESET`), handled the same defensive way as every other
-      wrapper-level failure — exercises `SPECIFICATION.md` A.5's flagged `Response.write()` gap
-      directly, not just noting it exists.
+      with a long error history) → `awrite()`/`drain()` hits the wrapped timeout, the outer
+      per-connection cap (both now cover this phase too, since it wraps `handle_request()` as a
+      whole, not just the request-reading half), or an immediate `OSError` (broken pipe/
+      `ECONNRESET`) — handled the same defensive way as every other wrapper-level failure, exercises
+      `SPECIFICATION.md` A.5's flagged `Response.write()` gap directly, not just noting it exists.
 - [ ] A route handler's return value fails JSON serialization (raw bytes, `NaN`/`Infinity` float,
       an accidentally-circular structure) → caught, logged with enough detail to identify the
       offending endpoint/module, answered with the consolidated error shape instead of a bare
       crash.
 - [ ] Worst-case `/status` response size (longest configured error history across every module) →
       measure `gc.mem_free()` before/after under the Unix port; confirm building the full response
-      dict before serialization doesn't spike memory unacceptably on a constrained device.
+      dict before serialization doesn't spike memory unacceptably on a constrained device. Confirmed
+      unrelated to the outer-cap addition (question 9) — a capped connection still has to build and
+      hold the same full response dict either way, so this test's bar doesn't change.
 
 *F.5 — After response / close:*
 - [ ] Normal close: counter decrements exactly once, connection task actually exits (never a
       zombie task invisible to `start_and_check_tasks()`).
-- [ ] **Open design question**: does Microdot/our wrapper support HTTP keep-alive (multiple
-      requests over one TCP connection)? If yes, the per-call timeout needs to reset **per request**,
-      not just live for the connection's full lifetime — this changes the wrapper's shape and isn't
-      addressed by the current design sketch. Needs checking against current Microdot/MicroPython
-      `asyncio` docs (per CLAUDE.md's standing doc-currency instruction) before Step 2's
-      implementation starts, not assumed either way.
+- [ ] **Resolved, no longer an open question**: `ext/microdot.py`'s `handle_request()` calls
+      `Request.create()` → `dispatch_request()` → writes the response → unconditionally
+      `await writer.aclose()`s, exactly once per accepted connection — this vendored Microdot has
+      **no HTTP keep-alive support at all**. One connection is always exactly one request; the
+      per-call-vs-per-request timeout-scope question collapses (they're the same thing by
+      construction). Per decision 7 ("do whatever is in accordance with the official protocol
+      spec"): `ext/microdot.py`'s `Response.write()` sends a literal `HTTP/1.0` status line, and
+      HTTP/1.0's spec default is already non-persistent, so nothing is *required* here — but per
+      RFC 7230 §6.6's recommendation for a server that intends to close after responding (most
+      relevant if a client sent `Connection: keep-alive`, the legacy HTTP/1.0 extension), add an
+      explicit `Connection: close` response header via Microdot's own supported `after_request` hook
+      (no edit to the vendored file needed) so any keep-alive-aware client gets an unambiguous
+      signal instead of relying on it to notice the socket closing.
+- [ ] `Connection: close` is present on every response, including error responses (400/404/405/
+      413/500), not just the happy path.
 - [ ] Double-close paths (our own `finally` plus any cleanup Microdot itself already does) don't
       raise or double-decrement the open-connection counter.
 
-*F.6 — Concurrency / whole-server restart:*
-- [ ] N simultaneous wedged connections crossing the restart threshold → restart fires exactly
-      once, not repeatedly/thrashing.
-- [ ] **Open design question**: what happens to a legitimate, healthy, mid-flight request when a
-      restart is triggered by other wedged connections? BACKLOG's sketch only specifies
-      `server.close()` (stops new accepts) — whether in-flight connection tasks are left to finish
-      on their own or forcibly torn down needs verifying against real `asyncio.Server`/
-      `StreamWriter` semantics, not assumed; write the test once that's confirmed, don't guess the
-      expected behavior first.
+*F.6 — Concurrency / resource-ceiling behavior* (renamed from "whole-server restart" — **decision
+1**: that mechanism is dropped, see "Owner decisions" below for the full reasoning; this section now
+tests the reject-when-full + outer-cap scheme's concurrency behavior directly, with no restart step
+anywhere in it):
+- [ ] N simultaneous wedged/slow-trickle connections, up to the ceiling, are each independently
+      reclaimed by their own outer-cap timeout — no coordination between them, no shared state
+      beyond the open-connection counter, no whole-server action ever triggered by their number.
+- [ ] Immediately after each reclaim, the freed slot is available to a new connection right away —
+      confirms there's no artificial cooldown/grace-period gap between a reclaim and the next accept
+      (unlike the old design's restart grace period, which no longer exists).
 - [ ] Pathological repeated rewedging (a broken/hostile client immediately reconnecting and
-      rewedging right after each restart) doesn't thrash into a restart loop that starves the
-      watchdog or floods logs/FRAM — confirm this either self-limits via the existing
-      `_TASK_FAIL_MAX` escalation or needs its own secondary backoff (design decision, not just a
-      test — flag if the current sketch doesn't already cover it).
-- [ ] The secondary "harder timeout" (force-cancel the outer server task if `close()`/
-      `wait_closed()` itself doesn't return within a further grace period) — force this path
-      explicitly via a fake `wait_closed()` that hangs, don't rely on it happening to be exercised
-      by another test.
+      rewedging right after each reclaim) — **resolved**: worst case is bounded to "ceiling slots
+      occupied for at most one outer-cap duration, repeatedly," which can never grow unbounded and
+      never needs `_TASK_FAIL_MAX` escalation, since no single mechanism (task, counter, or timer)
+      is shared across attempts the way a whole-server restart would have been. Test confirms this
+      bound holds under sustained rewedging, not just a single cycle.
+- [ ] A secondary hard bound on the per-connection cleanup path itself: force a fake `aclose()`/
+      `wait_closed()` call to hang past the outer cap and confirm the connection task still ends
+      (doesn't leak past a further grace bound) — the per-connection analogue of the old design's
+      "harder timeout" idea, now scoped to one connection instead of the whole server, since there's
+      no whole-server object left to force-close.
 
 *F.7 — Adversarial/malformed-input shapes* (LAN-only device, but cheap defensive discipline):
 - [ ] Extremely long URL path/query string.
 - [ ] Unknown path → confirmed `404` handler, shaped response, not a bare crash.
 - [ ] Wrong HTTP method on a known path → confirmed `405` handler.
 - [ ] Path-traversal-looking or trailing-garbage segments on a known route.
-- [ ] Dedicated Slowloris-shaped simulation (many connections each trickling single bytes) to
-      confirm the open-count/threshold-restart backstop actually engages within a bounded time —
-      the concrete test for the open question flagged in F.2.
+- [ ] Dedicated Slowloris-shaped simulation (many connections, up to the ceiling, each trickling
+      single bytes) → confirms every one of them is independently reclaimed by the outer cap within
+      a bounded time, and that new legitimate connections can be accepted again as each slot frees —
+      the concrete multi-connection version of F.2's single-connection Slowloris test.
 
 *F.8 — Server startup edge cases:*
 - [ ] `asyncio.start_server()` failing to bind (e.g. port already in use from an unclean previous
-      instance, `OSError(EADDRINUSE)`) — confirm whether `start_and_check_tasks()`'s existing
-      retry/escalation treats this the same as any other task failure, and whether that's actually
-      the right behavior for a bind failure specifically (a bind failure won't fix itself by
-      retrying immediately the way a transient wedge might).
-- [ ] Webserver task starting before the WiFi interface has actually associated — confirm whether
-      `bind()`/`start_server()` on rp2 succeeds regardless of link state (likely yes, socket layer
-      doesn't require an active association to bind) or needs to wait — verify against real
-      MicroPython socket behavior, don't assume.
+      instance, `OSError(EADDRINUSE)`) — **resolved, source-confirmed**: `start_server()`
+      (`extmod/asyncio/stream.py`) already sets `SO_REUSEADDR` before `bind()`, so a clean
+      close-then-rebind of our own listening socket won't hit `EADDRINUSE` against itself; a genuine
+      conflict would need a second, different process holding the port, unrealistic on this
+      single-application device. Ordinary task-retry (`start_and_check_tasks()`'s existing behavior)
+      is sufficient — test confirms the retry path is actually reached, not that anything special
+      needs building.
+- [ ] Webserver task starting before the WiFi interface has actually associated — **resolved,
+      source-confirmed**: `start_server()` calls `socket.getaddrinfo(host, port)` where
+      `host='0.0.0.0'` is an IP literal (no DNS resolution, no blocking on network-not-ready); the
+      lwIP/socket layer doesn't require an active WiFi association to bind/listen — the socket just
+      sits idle until routing/IP is actually up. No special-casing needed; test confirms the
+      webserver task starts and stays alive when launched before WiFi association completes.
 
 *F.9 — Supervisor integration / soak (capstone tests for this whole section):*
-- [ ] Webserver task actually dying (post-restart) is picked up and restarted by
-      `start_and_check_tasks()` through the real, unmocked supervisor path.
+- [ ] A webserver task that genuinely dies (e.g. an unhandled exception escaping the accept loop
+      itself, not an ordinary per-connection reclaim) is picked up and restarted by
+      `start_and_check_tasks()` through the real, unmocked supervisor path — the only restart path
+      that exists for this module now, same as every other.
 - [ ] Repeated webserver-task failures reach `_TASK_FAIL_MAX` and escalate to the existing
       watchdog-starve fallback exactly like any other supervised task — no special-casing.
-- [ ] The soak test already specified in BACKLOG.md's design sketch step 5: 100+ start/wedge/
-      reclaim/restart cycles under the Unix port, `gc.mem_free()` flat throughout — the pass/fail
-      bar this whole section builds toward.
+- [ ] The soak test already specified in BACKLOG.md's design sketch step 5, adapted to the
+      simplified scheme: 100+ start/wedge/reclaim cycles under the Unix port (no restart step in the
+      normal case), `gc.mem_free()` flat throughout, and the webserver task's own supervised-restart
+      count staying at zero across the whole run — confirming the task itself never actually needs
+      the generic supervisor's intervention under sustained wedge/reclaim load, only under a
+      genuinely forced failure (the two bullets above) — the pass/fail bar this whole section builds
+      toward.
 
 **G. Open design questions this action list surfaced — all six now resolved by direct source
 research** (owner direction: "most of them can be solved by documentation or code research by you,
@@ -889,6 +968,72 @@ padded back to ten with what's left genuinely undecided after all of the above):
     `_StepPoller`-style precedent from `test_asy_uart_driver.py`'s CI-hang fix) without needing
     Step 3 at all? Worth settling now since it affects whether any of Step 2's F-section tests have
     an undeclared dependency on Step 3 landing first.
+
+**Owner decisions on the 10 questions — resolved, with derived consequences** (answered in full;
+every design/test-list section above has already been updated to match — this subsection is the
+single place the *decision plus reasoning* lives, so it doesn't have to be reconstructed from the
+scattered inline edits):
+
+1. **Whole-server-restart backstop — dropped.** Owner's own framing: keep it only if some class of
+   error could escape the reject-when-full + outer-cap scheme; otherwise drop it, since the generic
+   "restart if stopped" supervisor (`start_and_check_tasks()`) already applies to this module like
+   every other. Traced through concretely, nothing escapes: (a) per-connection resource/timing
+   failures (silence, Slowloris trickle, a hang inside `dispatch_request()`/route-handler logic) are
+   now fully bounded by the outer per-connection cap, which covers the *entire* `handle_request()`
+   call, not just stream I/O — this is strictly more coverage than the old restart mechanism had,
+   since `dispatch_request()` was never in scope for per-call stream timeouts either way; (b) the one
+   failure mode neither the old restart *nor* the new outer cap can actually help with is a truly
+   synchronous, no-`await`, hardware-level stall (the same class CLAUDE.md's I2C-wedge policy already
+   settles as "the hardware watchdog is the accepted backstop, not a software fix to chase") — if
+   that ever happens, it stalls the *entire* event loop, including whatever task would have detected
+   the restart threshold and driven the restart itself, so the old mechanism was never actually a
+   working backstop for that specific case either. Net: dropping it loses no real coverage, and the
+   webserver's own task already gets the generic supervisor's restart-then-escalate treatment simply
+   by being registered in `start_and_check_tasks()`'s list, exactly like every other module — nothing
+   bespoke needed. **BACKLOG.md's "Microdot hardening design" entry updated to match** (see below).
+2. **Outer-cap/per-call timeout values — one global constant, hardcoded at init, reality-checked
+   later.** Both values become constructor parameters to the webserver service (not internal-only
+   constants), but per the owner's direction they still land as **fixed values supplied once at
+   construction time**, grouped with `src/sensortask_wozi.py`'s other hardware-related fixed
+   constants (mirrors `_MAX_MODULE_ERROR`/DNS/NTP timeout placement from Step 1's "Constants
+   organization" precedent, and the WDT/mempause "hardcoded, not REST-exposed" precedent) — never a
+   per-route or per-endpoint value. Start with sensible defaults sized around worst-case *legitimate*
+   conditions (weak WiFi, larger transfers), explicitly flagged as needing a real reality-check
+   against actual deployed-unit network behavior before being trusted (Step 5's soak/real-hardware
+   phase is the natural point to revisit them, not a number to get exactly right now).
+3. **Capacity-rejection — silent close, as originally sketched.** No 503 response; a new connection
+   arriving while at the ceiling is simply not accepted (or accepted-and-immediately-closed with zero
+   bytes exchanged) — cheapest, and doesn't risk the rejection path itself becoming a resource
+   consumer, matching "just don't accept new ones" literally.
+4. **SCD30 setter shape — schema-driven dispatch, no persistence layer.** See the "Known gaps"
+   resolution above for the full mechanism (a new SCD30-local generic setter mirroring
+   `_set_dict_cfg()`'s shape but calling straight through to the sensor's existing individual setter
+   methods, no `cfgmgr`/local file).
+5. **`reset_error_counter()` gap — closed inline during Step 2.** Not retroactively folded into Step
+   1; added lean and consistent with each module's own existing shape, per the owner's explicit "it
+   does not matter how" framing.
+6. **Duplicate registration — last-wins, by construction, zero extra code.** The simplest possible
+   per-item loop already behaves this way; deliberately not adding a dedup/guard check, since that
+   would cost more code for no benefit the owner asked for.
+7. **`Connection: close` header — added, per official protocol guidance.** `ext/microdot.py` speaks
+   HTTP/1.0 (confirmed from `Response.write()`'s literal status line), whose spec default is already
+   non-persistent — but RFC 7230 §6.6 recommends a server that intends to close after responding say
+   so explicitly, especially relevant to a client that requested the legacy HTTP/1.0
+   `Connection: keep-alive` extension (which Microdot ignores outright, closing regardless). Added via
+   an `after_request` hook, not by touching the vendored file.
+8. **Webserver restart-count visibility — becomes its own `errcount` entry, repurposed as a
+   timeout-warning counter.** With no bespoke restart mechanism left (decision 1), there's no
+   restart count to surface — but the owner's actual underlying want ("see when a connection ran
+   into a timeout even without a full restart, as a warning") is fully served by the webserver
+   module's own `get_error_counter()` entry accumulating a `pr.wrn_s()` warning on every per-call or
+   outer-cap reclaim. Arguably better observability than a restart counter would have given, since it
+   now fires on the first sign of trouble, not only once a whole-server threshold was crossed.
+9. **`/status` worst-case memory measurement — confirmed unrelated to the outer-cap addition**, no
+   change to that test's design.
+10. **Step 2's own tests stay independent of Step 3's digital twin.** Confirmed: the twin is for
+    manual/integration testing (Step 5), deliberately kept separate from the unit-test set; Step 2's
+    F-section connection-lifecycle tests use hand-scripted fake reader/writer doubles exclusively
+    (matching the `_StepPoller` precedent), with no dependency on Step 3 landing first.
 
 ### Step 3 — Digital-twin hardware simulator
 

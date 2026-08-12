@@ -166,18 +166,39 @@ constraints.
     `python/CommonDrivers/` stays untouched under the standing "don't edit without authorization"
     rule — accepted as residual risk until the refactor replaces it, *not* proposed for a scoped
     backport despite today's real outage.
-  - Defense shape: **layered** — per-connection timeout as the primary defense, plus whole-server
-    restart as a backstop for anything the per-connection layer misses (e.g. a hang inside Microdot's
-    own routing/dispatch logic, not just stream I/O).
   - Detection signal: **per-connection open-count leak tracking only** — no active self-test/loopback
     probe, no unconditional periodic restart. Both were offered and explicitly not chosen — don't
     re-add either as "obviously also worth having" without asking again.
   - Timeout sizing: **generous**, tuned around worst-case legitimate conditions (weak WiFi, larger
     page transfers) — a wedged connection may tie up its socket a while longer before reclaim, but a
     slow legitimate client is never the one getting cut off.
-  - Tunables (timeouts, concurrent-connection threshold, restart grace period): **hardcoded internal
-    constants, not REST/config-exposed** — same treatment as `WDT` timeout / `_TASK_FAIL_MAX` today,
-    so nothing (including a REST caller) can accidentally weaken the safety net.
+  - Tunables (per-call timeout, the outer per-connection wall-clock cap below, concurrent-connection
+    ceiling): **hardcoded internal constants, not REST/config-exposed** — same treatment as `WDT`
+    timeout / `_TASK_FAIL_MAX` today, so nothing (including a REST caller) can accidentally weaken
+    the safety net. Supplied at construction time, grouped with `src/sensortask_wozi.py`'s other
+    fixed hardware-related constants (see `FINAL_WIRING_PLAN.md`'s Step 2 for the exact placement).
+
+  **Defense shape — revised (owner, per-connection-only, supersedes the original "layered" plan
+  below): no whole-server-restart mechanism.** The original plan paired a per-connection timeout
+  (primary defense) with a whole-server restart as backstop for anything the per-connection layer
+  might miss — e.g. a hang inside Microdot's own routing/dispatch logic, not just stream I/O.
+  Resolved directly, not just asserted: adding one **outer** `asyncio.wait_for()` wrapping the
+  *entire* per-connection `handle_request()` call (not just the individual stream reads/writes)
+  already covers that exact gap — `dispatch_request()` sits inside `handle_request()`, so a hang
+  there is now caught the same way a silent/Slowloris-paced client is. The one failure class neither
+  the per-connection cap nor the old whole-server restart can actually help with is a truly
+  synchronous, no-`await` hardware-level stall — CLAUDE.md's already-settled I2C-wedge policy ("the
+  hardware watchdog is the accepted backstop, not a software fix to chase") applies here unchanged:
+  if the event loop itself stalls, whatever task would have driven a threshold-triggered restart
+  stalls with it, so the old mechanism was never really a working backstop for that case either.
+  Net: **reject-when-full** (silently refuse a new connection at the open-count ceiling, no accept)
+  plus **two layers of per-connection timeout** (per-call stream timeouts, and the new outer cap) is
+  the whole scheme — the webserver's own task is still registered as an ordinary task in
+  `start_and_check_tasks()` (step 4 below, unchanged), so it still gets the existing generic
+  supervisor's restart-then-escalate treatment for the one thing that actually can end it (its own
+  task genuinely dying), the same as every other module — nothing bespoke on top of that. Full
+  derivation and the connection-count ceiling's new role as the reject-when-full threshold (not a
+  restart threshold): `FINAL_WIRING_PLAN.md`'s Step 2, "Owner decisions on the 10 questions," #1.
 
   **Design sketch (composition, not subclassing or editing Microdot):**
   1. Don't call `app.start_server()`/`app.shutdown()` at all. Call `asyncio.start_server()` ourselves
@@ -206,20 +227,21 @@ constraints.
   3. Our `serve()` wrapper increments a `LockedCounter`-style open-connection count on accept,
      decrements it in a `finally` regardless of outcome (timeout, success, exception) — the count must
      never leak even if `handle_request` misbehaves in some new way not anticipated here.
-  4. Whole-server restart: when the open-count stays at/above a threshold (set with real margin below
-     RP2040/lwIP's actual concurrent-socket ceiling — **that ceiling itself isn't known/verified yet,
-     see companion open question below**) for longer than a grace period (avoid overreacting to a
-     brief legitimate burst), close our own `Server` object (`server.close()` + `await
-     server.wait_closed()`) so the outer task returns on its own — no forced `task.cancel()` needed in
-     the common case. Register this webserver-starter in the *existing* `start_and_check_tasks()` task
-     list like any other task; once it actually returns/dies, requirement "graceful restart" and
-     "last-resort watchdog escalation" (via `task_errors`/`_TASK_FAIL_MAX`/`_force_watchdog_starve`)
-     are already fully handled by `system_service.py`'s existing, tested supervisor — **no new restart
-     or watchdog-escalation machinery needs to be built**, only that the webserver task needs to
-     become capable of actually dying, which is exactly the gap steps 1-3 close. A secondary, harder
-     timeout that force-cancels the outer server task if `close()`/`wait_closed()` doesn't return
-     within a further grace period is the belt-and-suspenders fallback in case that assumption doesn't
-     hold on real hardware.
+  4. **Reject-when-full, not whole-server restart** (revised — see "Defense shape" above): once the
+     open-count sits at/above a ceiling set with real margin below RP2040/lwIP's actual
+     concurrent-socket ceiling (**confirmed at 5**, see companion open question below), silently
+     decline any further connection — no accept, no response written — until a slot frees. No grace
+     period, no threshold-crossing-for-a-duration logic, and no `Server.close()`/restart step at all:
+     each already-accepted connection is independently bounded by its own per-call timeouts plus the
+     new outer per-connection `wait_for()` (step 2 above, now wrapping the whole `handle_request()`
+     call, not just the stream reads/writes it wraps today), so nothing ever needs a whole-server
+     action to reclaim. Register this webserver-starter in the *existing* `start_and_check_tasks()`
+     task list like any other task regardless — if the task itself ever genuinely dies (not an
+     ordinary per-connection reclaim, but e.g. an unhandled exception escaping the accept loop),
+     "graceful restart" and "last-resort watchdog escalation" (via
+     `task_errors`/`_TASK_FAIL_MAX`/`_force_watchdog_starve`) are already fully handled by
+     `system_service.py`'s existing, tested supervisor — no new restart or watchdog-escalation
+     machinery needed for that case either.
   5. Soak-test before trusting this in the field: repeated (100s+) start/wedge/reclaim/restart cycles
      under the Unix-port interpreter checking `gc.mem_free()` stays flat, matching this project's
      existing "never trust a resource-lifecycle claim without directly testing it" standard (FRAM
@@ -259,7 +281,7 @@ constraints.
   for MicroPython's rp2 port (lwIP-backed) is **5**, from `MEMP_NUM_TCP_PCB`'s default (rp2's own
   `lwipopts_common.h` defines no override for it at the pinned v1.28.0 tag — confirmed by fetching the
   file directly and grepping for the macro, not assumed from general lwIP knowledge; only
-  `MEMP_NUM_UDP_PCB` is overridden there). This is the real-margin ceiling the whole-server-restart
+  `MEMP_NUM_UDP_PCB` is overridden there). This is the real-margin ceiling the reject-when-full
   threshold in step 4 above must sit comfortably below — see `FINAL_WIRING_PLAN.md`'s Step 2 for where
   this number is actually consumed.
 
