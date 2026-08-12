@@ -93,10 +93,10 @@ import sys
 # pyproject.toml/scripts/test.sh - a "Pre-push verification" scope change this file must not need.
 sys.path.insert(0, "ext")
 
-from asy_webserver_service import SettingsGroup, WebserverService  # type: ignore[import-not-found]
 from microdot import Microdot, Request  # type: ignore[import-not-found]  # noqa: E402
 
 import config_manager as cm
+from asy_webserver_service import SettingsGroup, WebserverService
 
 try:
     from typing import TYPE_CHECKING
@@ -438,7 +438,7 @@ def test_networking_put_partial_field_update_triggers_only_relevant_post_hook() 
         values={"SSID": "", "NTP_Host": "pool.ntp.org"},
     )
     reconnect_calls = []
-    resync_calls = []
+    resync_calls: list[int] = []
     net_group = SettingsGroup(wifi, ("SSID",), post_fct=lambda: reconnect_calls.append(1))
     ntp_group = SettingsGroup(wifi, ("NTP_Host",), post_asy_fct=lambda: _record_async(resync_calls))
     service, app = _make_service(settings={"networking": [net_group, ntp_group]})
@@ -1021,14 +1021,25 @@ def test_f2_content_length_exceeding_max_content_length_returns_413() -> None:
     assert b"413" in writer.written
 
 
-def test_f2_body_truncated_by_a_clean_peer_close_is_reclaimed_via_eoferror() -> None:
+def test_f2_body_truncated_by_a_clean_peer_close_degrades_via_microdots_own_blanket_catch() -> None:
+    # Corrected during implementation (tests/test_asy_webserver_service.py's own module docstring
+    # explicitly permits this: "refining only where writing the real code reveals a genuine
+    # problem"). Traced directly against ext/microdot.py's handle_request(): the readexactly() call
+    # for the body sits inside Request.create(), which handle_request() wraps in `except OSError ...
+    # else: raise` *then* `except Exception as exc: print_exception(exc)` - EOFError isn't an
+    # OSError, so it hits the second clause, which does not re-raise. req stays None and
+    # handle_request() falls straight through to its own ordinary 400 response, written and closed
+    # normally - exactly like the malformed-request-line case just above, not a silent drop. EOFError
+    # structurally never reaches our own serve() wrapper here; a per-call *timeout* on the same read
+    # (see the sibling "then silence times out" test above) is what actually reaches us, since a
+    # timeout is an unmuted OSError and handle_request()'s first except clause re-raises those.
     headers = "PUT /networking HTTP/1.1\r\nContent-Length: 100\r\nContent-Type: application/json\r\n\r\n"
     service, app = _make_service(per_call_timeout_s=1.0, outer_cap_s=2.0)
     reader = _ScriptedReader([(0, headers.encode() + b'{"Interval": 1}')], eof=True)  # then a clean EOF, not silence
     writer = _ScriptedWriter()
     run_timed(service._serve(reader, writer), timeout_s=3.0)
     assert run(service._open_conns.get_value()) == 0
-    assert writer.written == b""  # never got far enough to write a response
+    assert b" 400 " in writer.written  # Microdot's own ordinary 400 response, not a silent drop
 
 
 # F.5 - after response / close
