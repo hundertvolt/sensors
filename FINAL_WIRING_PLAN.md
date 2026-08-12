@@ -1243,6 +1243,226 @@ run (most likely `MICROPYPATH`/`sys.path` ordering, matching how `tests/machine.
 picked up transparently by existing tests) — `src/sensortask_wozi.py` itself should need zero
 twin-awareness, no `if` branch anywhere distinguishing real hardware from simulated.
 
+**Refined plan — this session's own research, before the owner Q&A round** (extends the above per
+Step 1/2's precedent; kept as its own subsection so the original scoping stays legible as the
+starting point):
+
+- **Protocol facts confirmed directly from `src/asy_sgp40_driver.py`/`asy_scd30_driver.py`/
+  `asy_bmp3xx_driver.py` and their existing test files (`tests/test_asy_sgp40_driver.py` et al.),
+  not assumed**:
+  - **SGP40** (address `0x59`): word-oriented, no register addressing — `writeto()` a 2-byte command
+    (optionally + compensation words), `readfrom_into()` a CRC-8-protected reply (`tests/machine.py`'s
+    `I2C.read_queue` FIFO models this shape already). `initialize()` reads serial number (word[0]
+    must be `0x0000`) then self-test (`0xD4xx` = pass, low byte ignored — a real driver bug the
+    existing tests already regression-guard). `measure_raw()`/`get_raw()` return a 16-bit
+    `SRAW_VOC` tick value. General-call reset is a single `0x06` byte to address `0x00`, not the
+    device's own address.
+  - **SCD30** (address `0x61`): word-oriented 16-bit commands, CRC-8-protected, via
+    `readfrom_mem`-style register access built on the same command/response shape. `read_measurement()`
+    polls `_CMD_GET_DATA_READY` then reads an 18-byte burst (`_CMD_READ_MEASUREMENT`): three
+    big-endian `float32`s (CO2/temperature/humidity), each split into two CRC-8-protected 16-bit
+    words. Also has an IRQ pin (`Pin.irq()`) the reader wires as a self-healing secondary trigger,
+    alongside its own 500ms-periodic polling `Timer` — the twin's fake `Pin` needs a working
+    `irq()`/edge-trigger path too, not just I2C.
+  - **BMP3xx** (address `0x77`): register-addressed (`readfrom_mem`/`writeto_mem`), no CRC framing
+    at all. `setup()` checks `CHIPID` register (`0x50`/`0x60`) then soft-resets. A read triggers
+    forced-mode conversion (write `0x13` to `CONTROL`), polls `STATUS` for the data-ready bits, then
+    burst-reads 6 raw ADC bytes (3 pressure + 3 temperature) from `0x04`. Compensation uses 11
+    pressure + 3 temperature calibration coefficients read once from a 21-byte block at `0x31`
+    (`asy_bmp3xx_driver.py`'s own `_read_coefficients()` has the exact unpack format and the
+    per-coefficient scaling divisors) via a **cubic** polynomial (`asy_bmp3xx_driver.py:398-434`) —
+    reproduced here since it's what makes this sensor's twin implementation meaningfully harder than
+    the other two: producing *raw ADC bytes* that decode to a chosen target pressure/temperature
+    means either inverting that cubic (solvable in closed form for a fixed calibration set, since
+    temperature only needs a quadratic inversion and pressure is then linear in `adc_p` once
+    temperature is known) or picking one fixed, plausible calibration-coefficient set once (e.g.
+    reads real coefficients off a real chip once, hardcodes them, treats them as constant across
+    a twin run) and doing the same closed-form inversion against target hPa/°C values, or simplest
+    of all: skip the raw-ADC round-trip entirely and special-case the fake `readfrom_mem`/
+    `writeto_mem` handlers for BMP3xx's exact register addresses so the *specific* driver-visible
+    outputs (pressure, temperature, calibration block) come out plausible without ever running the
+    inverse math for real — this only works because nothing else in the codebase reads BMP3xx's raw
+    register bytes directly, only through this one driver. Flagged as one of the 10 questions below
+    (value-generation strategy) since it changes how much of the driver's real math the twin actually
+    exercises.
+  - Every sensor's I2C `writeto(addr, b"")` zero-byte probe (`I2CDevice._probe_for_device()`,
+    `asy_i2c_driver.py:241-253`) must ACK for these three addresses specifically — the twin's fake
+    `I2C` should default to NAKing (`OSError(errno.EIO)`) any address it doesn't recognize, the
+    opposite default from `tests/machine.py`'s open-bus-unless-explicitly-NAKed model, since a twin
+    standing in for real hardware should behave like a real bus with only three real devices on it,
+    not an unbounded fixture a test primes per-call.
+- **Value ranges, read directly from the datasheet PDFs (CLAUDE.md's standing rule), not
+  training-data recall**:
+  - **SGP40** (`datasheets/sgp40/Sensirion_Gas_Sensors_Datasheet_SGP40.pdf`, v1.2 Feb 2022, Table 1):
+    `SRAW_VOC` 0–65'535 ticks (clean-air baseline in the existing test fixtures sits around
+    28'000–31'000, consistent with the datasheet's own sensitivity figures); VOC Index 1–500 (the
+    processed value `voc_algorithm.py` derives from raw — the twin only ever needs to supply raw
+    ticks, never a VOC Index directly, since the algorithm itself runs unmocked in the real driver).
+  - **SCD30** (`datasheets/scd30/Sensirion_CO2_Sensors_SCD30_Datasheet.pdf`, Tables 1–3): CO2
+    accuracy-guaranteed range 400–10'000 ppm (I2C measurement range extends to 40'000 but accuracy
+    is undocumented above 10'000 — sensible-indoor-plausible values should stay well inside
+    400–10'000, e.g. an 400–2000 ppm typical band with occasional excursions); humidity 0–100 %RH
+    (sensible indoor band roughly 20–70 %RH); temperature −40–70 °C (sensible indoor band roughly
+    15–30 °C).
+  - **BMP3xx**: already confirmed directly in `asy_bmp3xx_driver.py`'s own operating-range check
+    (`_read()`'s `300.0 <= pressure_hpa <= 1250.0 and -40.0 <= temperature <= 85.0`, itself sourced
+    from "datasheet sec 1, Table 2") — sensible values should stay well inside that, e.g.
+    950–1050 hPa / 15–30 °C for a plausible indoor/near-sea-level reading, since values outside the
+    driver's own range check would make the twin's own output get rejected by the very driver it's
+    supposed to be feeding.
+- **Timer backing mechanism — asyncio-task-scheduled, not `_thread`.** `tests/machine.py`'s own
+  docstring already confirms the Unix port's real `machine` module has no `Timer` at all
+  (`PinBase`/`Signal`/`mem8`/`mem16`/`mem32`/`idle`/`time_pulse_us` only), so the twin's fake
+  `Timer` is the only thing that can make `period=`/`callback=` fire on a real wall-clock schedule
+  under the Unix port. Checked current MicroPython docs per CLAUDE.md's standing instruction:
+  `docs.micropython.org` itself is blocked by this session's network egress policy, but the raw
+  doc source (`_thread.rst`, fetched directly from the upstream GitHub repo) states outright that
+  `_thread` "is highly experimental and its API is not yet fully settled" — not a page that's
+  merely light on Unix-port specifics, an explicit "don't build load-bearing behavior on this"
+  signal from upstream itself. Combined with this codebase's own standing single-threaded
+  asyncio-cooperative design principle (CLAUDE.md/SPECIFICATION.md Part F.3 — "long-blocking
+  operations must not stall timing-sensitive work", the retired `get_long_block_lock()` reasoning),
+  a real OS thread is the wrong tool here anyway: every real `Timer` callback in this codebase is
+  already trivial (`lambda b: event.set()`-shaped, setting a `ThreadSafeFlag` or incrementing a
+  counter), so nothing about the twin's fidelity goal actually needs true preemption. Proposed
+  mechanism: the twin's `Timer.init(period=, mode=, callback=)` spawns (`asyncio.get_event_loop().
+  create_task(...)`) a small internal coroutine that `asyncio.sleep_ms(period)`s (looping if
+  `PERIODIC`) then invokes `callback(self)` directly — same call signature real hardware uses,
+  just scheduled cooperatively instead of from a real IRQ. `deinit()` cancels that task. This keeps
+  the twin's entire implementation inside the same single-event-loop model the rest of the
+  assembled prototype already runs under for Step 5's integration run, with no new threading-safety
+  surface to reason about.
+- **Randomization/determinism split.** The step's own finish criteria require the twin's *unit
+  tests* to be deterministic (no flaky wall-clock assertions) while the twin's *live* behavior (the
+  whole point of Step 5's run) needs to look genuinely randomized. Resolution: each sensor-fake
+  object takes an injectable random source (a small callable/object defaulting to the real `random`
+  module's functions) — tests inject a fixed-sequence fake source to assert exact byte-level
+  protocol shaping (CRC bytes, byte order, register content) deterministically, while a live Step 5
+  run uses the real default. This mirrors this codebase's existing "inject the seam, don't special-
+  case test vs. prod" convention (e.g. `fram_ntp_callback`, `comp_callback`) rather than introducing
+  a new one.
+- **FRAM is a real open question, not obviously in scope.** `WIRING_CONTRACT.md`'s current
+  construction order unconditionally wires `fram = AsyFramManager(spi0, ...)` into `build_system()`,
+  and three modules (`sysfunct`, `sgp_reader`, `pixel`, `notify_service`) depend on FRAM chunks
+  existing and `fram.setup()` succeeding for a real boot-to-steady-state run (Step 5's criterion) to
+  complete without unhandled exceptions. But FINAL_WIRING_PLAN.md's own Step 3 scope, and
+  BACKLOG.md's origin entry, both name only the three *sensor* chips. `tests/_fram_chip_fake.py`
+  already plays this same "answer the real chip's own transaction shape" role for FRAM's SPI bus in
+  unit tests, sitting on top of `tests/machine.py`'s fake `SPI` the same way this twin's sensor
+  fakes sit on top of its own fake `I2C` — structurally the closest existing precedent for how a
+  twin-side FRAM fake could be built, but it isn't itself restricted the way `tests/machine.py` is,
+  so reusing it (or a twin-owned equivalent modeled on it) is a live option, not a hard blocker.
+  Raised as question 3 below rather than assumed either way.
+- **What the twin's `machine.py` needs to cover, beyond the three sensors.** Since `MICROPYPATH`
+  resolves whole modules, not per-symbol, a twin `machine.py` used for a real Step 5 run has to be a
+  complete stand-in for everything `src/`'s modules import from `machine` — not just `I2C`, but
+  `Pin` (SCD30's IRQ), `Timer` (all three sensors' trigger timers plus `system_service.py`'s own
+  timer sequencer), `WDT`, and `RTC` (`asy_ntp_client.py`). `UART`/`SPI` are only needed here if
+  FRAM is in scope (question 3) — no other `src/` module Step 1-3 constructs touches either.
+  `network`/`neopixel` (needed for `AsyConnTime`/`NeopixelDriver`) are separate, non-datasheet-backed
+  fakes with existing unrestricted precedents already in `tests/` (`tests/network.py`,
+  `tests/neopixel.py`) — reusing those directly for Step 5's run (rather than duplicating them into
+  `digital_twin/`) seems like the natural boundary, but confirming that split explicitly is question
+  4 below rather than assumed.
+- **No CI-integrated live smoke test.** The finish criteria's "not flaky wall-clock-timing
+  assertions" reads as a deliberate exclusion of any test that waits on real elapsed time inside the
+  normal `scripts/test.sh` run. A short-period/generous-timeout live test (e.g. a 20ms period with a
+  2s `asyncio.wait_for` bound, checking the callback fires *at least once*) is a different, much
+  lower-risk shape than a strict timing assertion and is proposed as the one exception — covering
+  "does the scheduling mechanism actually work at all," not "does it fire at a precise cadence" —
+  but whether even that belongs in the default `scripts/test.sh` run or a separate, explicitly
+  invoked check (mirroring Step 2's own soak test being separate from the fast default run) is
+  question 5 below.
+
+**Owner decisions on the clarifying-question round (11 questions asked, not 10 — the FRAM answer's
+own "read back what was written to it... along restarts" raised two more, folded in as follow-ups
+rather than deferred, per the workflow's "fair game at any point" allowance)**:
+
+1. **Module name/location: `digital_twin/`**, matching the plan's own suggested name.
+2. **Timer backing: asyncio-task-scheduled sleep loop**, not `_thread` — per the plan's own
+   research above (`_thread` is upstream-confirmed "highly experimental").
+3. **FRAM: in scope.** The twin answers FRAM's SPI transactions and must read back exactly what
+   was written, including across process restarts.
+4. **FRAM flush trigger: explicit `save_state()`/`flush()` call**, not a self-registered
+   signal/`atexit` handler — whatever entry point Step 5 writes wraps `asyncio.run(main())` in
+   `try/finally` and calls it on the way out. No reliance on MicroPython Unix-port signal-handling
+   behavior this project hasn't verified.
+5. **FRAM persisted-file format: JSON**, matching every other persisted-state file in this codebase
+   (`ConfigManager` et al.) — not the illustrative "pickle" wording from the original answer, which
+   isn't a reliably-available MicroPython module; raw bytes hex/base64-encoded into a JSON value.
+   Written only on an explicit flush, never per-write, per the owner's own "don't do unnecessary
+   write cycles" framing (SSD-hosted file).
+6. **BMP3xx values: invert the real cubic compensation formula against one fixed, hardcoded,
+   real-shaped calibration-coefficient block** — solves backward (temperature inversion is
+   quadratic, pressure then linear in raw ADC) to produce raw ADC bytes that decode to a chosen
+   target pressure/temperature. Exercises the real driver's own compensation math end-to-end.
+7. **Fault injection: built in now, configurable**, not deferred — each sensor twin (and the FRAM
+   twin) gets an injection surface (NAK/CRC-corruption/timeout-shaped, mirroring
+   `tests/machine.py`'s own `inject_fault()`/`nak_addresses`/`busy` conventions where it makes
+   sense) so a Step 5 run can also exercise the real drivers' error-handling/retry paths, not just
+   the clean-read path. Off/clean by default; a constructor-level toggle turns it on.
+8. **Twin's own unit tests: `tests/test_digital_twin_*.py`**, matching every other `src/` module's
+   test-file convention (`scripts/test.sh` already discovers `tests/test_*.py` uniformly — no new
+   test-running infrastructure). The module itself still lives in `digital_twin/`.
+9. **Value evolution: independent random-in-range per read**, not a smoothed random-walk/drift
+   model — matches the owner's own original framing literally, no extra state machine.
+10. **Live-run seeding: supported.** The injectable-random-source seam every sensor twin needs for
+    deterministic unit tests also accepts a real seeded `random.Random()` for a live Step 5 run, so
+    a specific interesting/failing run can be reproduced on demand.
+11. **`network`/`neopixel` fakes: duplicated into `digital_twin/`, not reused from `tests/`** — full
+    independence from `tests/` at Step 5 runtime, at the cost of two near-identical copies to keep
+    in sync going forward (accepted cost, owner's explicit choice over the reuse recommendation).
+
+**`network.py` refinement, after the initial implementation pass (owner follow-up, same session)**:
+the first cut made `WLAN.connect()` resolve to a connected state instantly - the owner's actual
+intent was broader: simulate a successful connection through every real phase with reasonable
+timing, and for actual data traffic, rely on the host computer's own real network. Investigated and
+resolved: `network.WLAN` only ever gates the connection *state* `asy_wifi_service.py` polls
+(`status()`/`isconnected()`) - real NTP/DNS/webserver traffic goes through the separate `socket`
+module, confirmed to be a genuine wrapper around the host's real BSD sockets on the Unix port
+(`src/asy_udp_socket.py`'s own `socket.socket(...)` call) - so once this twin reports "connected",
+real traffic already reaches the real internet with nothing further to build. Rebuilt
+`connect()` to transition `STAT_IDLE -> STAT_CONNECTING -> STAT_GOT_IP` over a real ~0.7s delay
+(asyncio-task-scheduled, comfortably inside `asy_wifi_service.py`'s own ~5s/10-poll budget) instead
+of resolving instantly. `ifconfig()` was meant to report the host's own real outbound address
+(discovered via the standard no-packets-sent UDP-connect-then-getsockname trick) but this
+MicroPython build's `socket.socket` has no `getsockname()` at all (confirmed directly against the
+built interpreter) - reverted to a plausible static address instead, since nothing in `src/` ever
+constructs a socket from its own `ifconfig()` result anyway (only logs/serves it for diagnostics).
+
+**Done (this session)**: all of Step 3's criteria met. `digital_twin/` (own top-level directory,
+per the owner's own naming choice) contains `machine.py` (`Pin`/`I2C`/`SPI`/`Timer`/`WDT`/`RTC`,
+`Timer` firing for real via an internal `asyncio` task rather than `_thread`), `_sgp40_chip.py`/
+`_scd30_chip.py`/`_bmp3xx_chip.py` (one datasheet-verified chip fake per sensor, wired onto the
+real wozi bus layout - `I2C(0,...)`→SCD30@0x61, `I2C(1,...)`→SGP40@0x59+BMP3xx@0x77), `_fram_chip.py`
+(MB85RS64V SPI protocol plus explicit `save_state()`/on-construction-load JSON persistence),
+`_crc8.py`/`_fault_injection.py` (small shared helpers), `network.py`/`neopixel.py` (independent
+duplicates of `tests/network.py`/`tests/neopixel.py`, per the owner's explicit choice), and its own
+`README.md` documenting the `MICROPYPATH="src:digital_twin:.frozen"` swap-in for Step 5. 77 unit
+tests across `tests/test_digital_twin_{machine,sgp40,scd30,bmp3xx,fram,network_neopixel}.py`, all
+green under the real MicroPython Unix-port interpreter (v1.28.0, built fresh this session), all
+deterministic except one short-period/generous-timeout smoke test proving the real-time Timer
+scheduling mechanism itself works. `ruff check digital_twin/ tests/test_digital_twin_*.py` clean;
+`mypy src tests` (the existing committed scope, which already sweeps up the new test files since
+they live in `tests/`) has zero findings beyond a known, documented gap - `digital_twin/` itself
+isn't yet on `mypy_path`, so imports from it can't resolve under the *existing* config (see
+`digital_twin/README.md`'s "Known gaps" section for the full explanation and what extending scope
+would need). Confirmed the full pre-existing test suite (every `tests/test_*.py` file this session
+didn't add) still passes/fails exactly as it did before this session started - `tests/machine.py`
+and every other pre-existing file untouched.
+
+**Pre-existing, unrelated failures found while re-running the full suite (not fixed - out of this
+step's scope, flagged per CLAUDE.md's discrepancy convention)**: `tests/test_sensortask_wozi.py`'s
+`test_webserver_system_put_debug_level_propagates_to_every_logger` and
+`tests/test_system_service.py`'s `test_set_debug_level_persists_and_calls_every_registered_setter`/
+`test_one_bad_setter_does_not_stop_the_rest_of_the_registry` fail consistently (reproduced 3x, not
+flaky) on a clean checkout of this branch, with no changes from this session touching either file
+or anything they import - confirmed via `git status`/`git diff --stat` showing only
+`FINAL_WIRING_PLAN.md` and new `digital_twin/`/`tests/test_digital_twin_*.py` files. All three
+failures cluster around debug-level/logger-registry propagation, suggesting one shared root cause
+rather than three independent bugs - worth a dedicated look in a future session, not diagnosed
+further here since it's unrelated to Step 3's own scope.
+
 ### Step 4 — Website placeholder scaffold
 
 **Goal**: the full mechanical structure for serving the config/status website — gzip → freezefs

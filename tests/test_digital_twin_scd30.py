@@ -1,0 +1,220 @@
+"""Deterministic unit tests for digital_twin/_scd30_chip.py's own transaction-response logic -
+matches the raw word-register command shapes src/asy_scd30_driver.py's SCD30_I2C sends (confirmed
+directly against that file, not tests/machine.py). Real-time RDY-pin/data-ready scheduling is
+exercised only via the explicit, synchronous _produce_new_reading() test hook here - the one
+"does real-time firing actually work at all" check lives in tests/test_digital_twin_machine.py
+against the shared Timer class itself, matching this step's own "not flaky wall-clock-timing
+assertions" criterion (FINAL_WIRING_PLAN.md's Step 3).
+"""
+
+import struct
+import sys
+
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
+
+from _crc8 import crc8, word  # noqa: E402
+from _scd30_chip import Scd30Chip  # noqa: E402
+
+
+class _FixedRandom:
+    def __init__(self, uniform_values: "list[float] | None" = None) -> None:
+        self._uniform_values = list(uniform_values or [])
+
+    def uniform(self, a: float, b: float) -> float:
+        assert self._uniform_values, "uniform() called more times than scripted"
+        value = self._uniform_values.pop(0)
+        assert a <= value <= b, f"scripted value {value} outside requested range [{a},{b}]"
+        return value
+
+
+def _get(chip: Scd30Chip, reg_hi: int, reg_lo: int, nbytes: int = 3) -> bytes:
+    chip.handle_writeto(bytes([reg_hi, reg_lo]))
+    return chip.handle_readfrom_into(nbytes)
+
+
+def _set(chip: Scd30Chip, reg_hi: int, reg_lo: int, arg: int) -> None:
+    payload = bytes([reg_hi, reg_lo, (arg >> 8) & 0xFF, arg & 0xFF])
+    chip.handle_writeto(payload + bytes([crc8(payload[2:4])]))
+
+
+def test_measurement_interval_set_then_get_round_trips() -> None:
+    chip = Scd30Chip(auto_refresh=False)
+    _set(chip, 0x46, 0x00, 5)
+    reply = _get(chip, 0x46, 0x00)
+    assert reply == word(5)
+
+
+def test_self_calibration_enabled_set_then_get_round_trips() -> None:
+    chip = Scd30Chip(auto_refresh=False)
+    _set(chip, 0x53, 0x06, 1)
+    assert _get(chip, 0x53, 0x06) == word(1)
+    _set(chip, 0x53, 0x06, 0)
+    assert _get(chip, 0x53, 0x06) == word(0)
+
+
+def test_ambient_pressure_set_then_get_round_trips() -> None:
+    chip = Scd30Chip(auto_refresh=False)
+    _set(chip, 0x00, 0x10, 1013)
+    assert _get(chip, 0x00, 0x10) == word(1013)
+
+
+def test_altitude_set_then_get_round_trips() -> None:
+    chip = Scd30Chip(auto_refresh=False)
+    _set(chip, 0x51, 0x02, 250)
+    assert _get(chip, 0x51, 0x02) == word(250)
+
+
+def test_temperature_offset_set_then_get_round_trips_as_raw_centidegrees() -> None:
+    chip = Scd30Chip(auto_refresh=False)
+    _set(chip, 0x54, 0x03, 150)  # driver sends offset*100
+    assert _get(chip, 0x54, 0x03) == word(150)
+
+
+def test_forced_recalibration_reference_always_reads_back_400() -> None:
+    # Real hardware quirk (asy_scd30_driver.py's own comment): volatile readback always 400
+    # regardless of the last value applied - the calibration curve update is permanent, the
+    # readback register just isn't.
+    chip = Scd30Chip(auto_refresh=False)
+    _set(chip, 0x52, 0x04, 900)
+    assert _get(chip, 0x52, 0x04) == word(400)
+
+
+def test_data_ready_starts_false() -> None:
+    chip = Scd30Chip(auto_refresh=False)
+    assert _get(chip, 0x02, 0x02) == word(0)
+
+
+def test_produce_new_reading_sets_data_ready_true() -> None:
+    chip = Scd30Chip(auto_refresh=False, random_source=_FixedRandom(uniform_values=[500.0, 22.0, 45.0]))
+    chip._produce_new_reading()
+    assert _get(chip, 0x02, 0x02) == word(1)
+
+
+def test_read_measurement_returns_crc_valid_buffer_decoding_to_the_produced_values() -> None:
+    chip = Scd30Chip(auto_refresh=False, random_source=_FixedRandom(uniform_values=[512.5, 21.5, 47.25]))
+    chip._produce_new_reading()
+    chip.handle_writeto(b"\x03\x00")  # READ_MEASUREMENT - bare command, no args
+    buf = chip.handle_readfrom_into(18)
+    assert len(buf) == 18
+    for i in range(0, 18, 3):
+        assert buf[i + 2] == crc8(buf[i : i + 2])
+    co2 = struct.unpack(">f", buf[0:2] + buf[3:5])[0]
+    temp = struct.unpack(">f", buf[6:8] + buf[9:11])[0]
+    hum = struct.unpack(">f", buf[12:14] + buf[15:17])[0]
+    assert co2 == 512.5
+    assert temp == 21.5
+    assert hum == 47.25
+
+
+def test_read_measurement_clears_data_ready() -> None:
+    chip = Scd30Chip(auto_refresh=False, random_source=_FixedRandom(uniform_values=[500.0, 22.0, 45.0]))
+    chip._produce_new_reading()
+    chip.handle_writeto(b"\x03\x00")
+    chip.handle_readfrom_into(18)
+    assert _get(chip, 0x02, 0x02) == word(0)  # cleared the instant it was read (Interface Description 1.4.4)
+
+
+def test_default_ranges_stay_inside_the_datasheets_own_documented_ranges() -> None:
+    # Sensirion_CO2_Sensors_SCD30_Datasheet.pdf: CO2 accuracy-guaranteed 400-10'000ppm, humidity
+    # 0-100%RH, temperature -40-70 degC. The twin's own defaults must be sensible sub-ranges.
+    chip = Scd30Chip(auto_refresh=False)
+    assert 400 <= chip._min_co2 and chip._max_co2 <= 10000
+    assert 0 <= chip._min_hum and chip._max_hum <= 100
+    assert -40 <= chip._min_temp and chip._max_temp <= 70
+
+
+def test_rdy_pin_goes_high_on_new_reading_and_fires_a_registered_rising_edge_handler() -> None:
+    fired: list[int | None] = []
+
+    class _FakePin:
+        IRQ_RISING = 0x08
+        IRQ_FALLING = 0x04
+
+        def __init__(self) -> None:
+            self._value = 0
+            self._handler: Callable[[_FakePin], None] | None = None
+            self._trigger = self.IRQ_RISING | self.IRQ_FALLING
+
+        def value(self, x: "int | None" = None) -> "int | None":
+            if x is None:
+                return self._value
+            self._value = 1 if x else 0
+            return None
+
+        def irq(self, handler: "Callable[[_FakePin], None] | None" = None, trigger: int = IRQ_RISING | IRQ_FALLING, hard: bool = False) -> None:
+            self._handler = handler
+            self._trigger = trigger
+
+        def simulate_edge(self, new_value: int) -> None:
+            old = self._value
+            self._value = 1 if new_value else 0
+            rising = old == 0 and self._value == 1
+            if rising and (self._trigger & self.IRQ_RISING) and self._handler is not None:
+                self._handler(self)
+
+    pin = _FakePin()
+    pin.irq(handler=lambda p: fired.append(p.value()), trigger=pin.IRQ_RISING)
+    chip = Scd30Chip(auto_refresh=False, rdy_pin=pin, random_source=_FixedRandom(uniform_values=[500.0, 22.0, 45.0]))
+    chip._produce_new_reading()
+    assert pin.value() == 1
+    assert fired == [1]
+
+    chip.handle_writeto(b"\x03\x00")
+    chip.handle_readfrom_into(18)
+    assert pin.value() == 0  # dropped low once the measurement was actually read out
+
+
+def test_auto_refresh_false_does_not_start_a_background_timer() -> None:
+    chip = Scd30Chip(auto_refresh=False)
+    assert chip._timer is None
+
+
+def test_auto_refresh_true_starts_a_real_timer_and_setting_interval_re_arms_it() -> None:
+    chip = Scd30Chip()  # auto_refresh defaults to True
+    assert chip._timer is not None
+    first_timer = chip._timer
+    _set(chip, 0x46, 0x00, 10)  # SET_MEASUREMENT_INTERVAL - must re-arm at the new cadence
+    assert chip._timer is not None
+    assert chip._timer.period == 10 * 1000
+    assert chip._timer is not first_timer  # re-armed, not just mutated in place
+    chip._timer.deinit()  # don't leave a live background task running past this test
+
+
+def test_fault_injection_on_writeto_and_readfrom_into() -> None:
+    chip = Scd30Chip(auto_refresh=False)
+    chip.fault.inject_fault("writeto", OSError(5, "no ACK"))
+    try:
+        chip.handle_writeto(b"\x02\x02")
+        raise AssertionError("expected OSError")
+    except OSError:
+        pass
+    chip.handle_writeto(b"\x02\x02")
+    chip.fault.inject_fault("readfrom_into", OSError(5, "timeout"))
+    try:
+        chip.handle_readfrom_into(3)
+        raise AssertionError("expected OSError")
+    except OSError:
+        pass
+
+
+def test_fault_injection_can_corrupt_the_next_measurement_crc() -> None:
+    chip = Scd30Chip(auto_refresh=False, random_source=_FixedRandom(uniform_values=[500.0, 22.0, 45.0]))
+    chip._produce_new_reading()
+    chip.corrupt_next_measurement = True
+    chip.handle_writeto(b"\x03\x00")
+    buf = chip.handle_readfrom_into(18)
+    assert buf[2] != crc8(buf[0:2])
+
+
+if __name__ == "__main__":
+    import microtest
+
+    microtest.run(globals())
