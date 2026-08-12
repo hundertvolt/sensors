@@ -727,23 +727,168 @@ adversarial input), applied per-endpoint.
       reclaim/restart cycles under the Unix port, `gc.mem_free()` flat throughout — the pass/fail
       bar this whole section builds toward.
 
-**G. Open design questions this action list surfaced** (genuinely new, not previously decided —
-listed together here for visibility, in addition to being inline above; these are fair game for
-Step 2's own 10-question round, not something to silently resolve while writing tests):
-1. Per-call timeout vs. per-request wall-clock cap — is the open-connection-count backstop alone
-   considered sufficient against a Slowloris-shaped slow-trickle client, or does the wrapper need
-   an additional overall-request timeout?
-2. What does MicroPython's `asyncio.StreamReader.readexactly()` actually raise on an early/clean
-   peer close mid-body (not a timeout) — same handling path as the already-specified
-   `TimeoutError`/`OSError` case, or a distinct one that needs its own catch?
-3. Does Microdot support HTTP keep-alive today? If so, per-connection vs. per-request timeout
-   scope needs revisiting before implementation, not after.
-4. What happens to legitimate in-flight connections when a whole-server restart is triggered by
-   other, unrelated wedged connections — finish naturally, or torn down?
-5. Does repeated rewedge-immediately-after-restart need its own backoff/escalation, or does the
-   existing `_TASK_FAIL_MAX` path already cover it structurally?
-6. Bind failure (`EADDRINUSE`) and pre-network-up startup — does the existing task-retry behavior
-   actually suit these two cases, or do they need distinct handling?
+**G. Open design questions this action list surfaced — all six now resolved by direct source
+research** (owner direction: "most of them can be solved by documentation or code research by you,
+so go ahead," plus a standing simplicity mandate for the whole connection-handling scheme — *"If
+all connections/sockets are in use, just don't accept new ones. If a connection is stale or
+inactive for a settable timeout, drop it and free resources. Never wedge indefinitely."* Every
+finding below is sourced directly from the pinned `v1.28.0` MicroPython tag's
+`extmod/asyncio/stream.py` (fetched verbatim, not recalled from training data — CLAUDE.md's
+doc-currency rule) and from `ext/microdot.py` itself, not inferred):
+
+1. **Per-call timeout vs. per-request wall-clock cap — resolved: need both, and the reason is now
+   concrete, not hypothetical.** Confirmed by reading `ext/microdot.py`'s `handle_request()`
+   directly (line ~1397-1419): it calls `Request.create()` once, dispatches once, writes the
+   response, then unconditionally `await writer.aclose()`s — **one request per accepted
+   connection, always**, no loop back to read a second request (see item 3 below — this also
+   settles keep-alive). Given that shape, a per-call inactivity timeout on `readline()`/
+   `readexactly()` (BACKLOG's original design) does **not** defeat a paced Slowloris client: each
+   trickled byte arriving just under the per-call timeout resets it indefinitely, and the
+   "reject when full" rule only bounds *how many* such clients can wedge at once (up to the
+   connection-count ceiling), not *how long* any one of them wedges. **Resolution**: add one more
+   mechanism, not a replacement — wrap the *entire* per-connection `handle_request()` call in a
+   single outer `asyncio.wait_for(..., OUTER_CAP)`, independent of and in addition to the existing
+   per-call wrapping. The outer cap is what actually satisfies "never wedge indefinitely"
+   regardless of activity pattern; the per-call timeouts remain useful for reclaiming a genuinely
+   silent connection well before the outer cap expires. (Exact `OUTER_CAP`/per-call values are a
+   real tuning decision — see the fresh question list below, this isn't picking numbers.)
+2. **`readexactly()`'s early-close behavior — resolved: raises `EOFError`, confirmed from source,
+   distinct from the `TimeoutError`/`OSError` path.** `extmod/asyncio/stream.py`'s `Stream.
+   readexactly()`:
+   ```python
+   async def readexactly(self, n):
+       r = b""
+       while n:
+           yield core._io_queue.queue_read(self.s)
+           r2 = self.s.read(n)
+           if r2 is not None:
+               if not len(r2):
+                   raise EOFError
+               r += r2
+               n -= len(r2)
+       return r
+   ```
+   A clean peer close mid-body (socket read returns `b""` with bytes still outstanding) raises
+   `EOFError` — not an `OSError` subclass, so it will **not** be caught by the already-specified
+   `except OSError` handling and must get its own explicit `except EOFError` arm in the `serve()`
+   wrapper, treated the same defensive way (log, end this one connection's task, `finally`-decrement
+   the counter). **One extra finding worth folding in**: `Stream.readline()` behaves differently on
+   early close — it does **not** raise anything; it just returns whatever partial bytes were
+   buffered (possibly with no trailing `\n`) the moment the underlying read returns empty. Checked
+   against `ext/microdot.py`'s own `Request._safe_readline()`/`Request.create()` (line ~387-421):
+   `Request.create()` already wraps its `readline()`-driven request-line/header parsing in a
+   blanket `except Exception` (via `handle_request()`'s own outer catch, per `SPECIFICATION.md`
+   A.5's already-documented guarantee), so a truncated request line unpacking into too-few values
+   (`method, url, http_version = line.split()` on a partial line) already degrades safely today
+   with no extra code needed on our side — good confirmation, not a new gap.
+3. **HTTP keep-alive — resolved: not supported by this vendored Microdot at all.** Same
+   `handle_request()` read as item 1: one connection is always exactly one request, then an
+   unconditional close. There is no per-connection request loop anywhere in `ext/microdot.py`.
+   This collapses the per-connection-vs-per-request timeout-scope question entirely — they're the
+   same thing by construction, nothing to revisit before implementation.
+4. **In-flight connections during a whole-server restart — resolved: completely unaffected,
+   confirmed from source.** `extmod/asyncio/stream.py`'s `Server.close()` only does `self.state =
+   True; self.task.cancel()` — `self.task` is the `_serve()` *accept loop* coroutine. Its
+   `except core.CancelledError` handler closes the *listening* socket and returns; nothing else
+   happens. Each accepted connection's handler, though, was spawned independently via `core.
+   create_task(cb(s2s, s2s))` inside that same accept loop — a **separate, unrelated task** with no
+   parent/child relationship to the server task. Cancelling or awaiting the server task neither
+   cancels nor waits on any already-running connection task. **Conclusion**: a restart (closing and
+   reopening the listening socket) never tears down a legitimate in-flight connection — it keeps
+   running on its own until it finishes normally or hits its own per-call/outer-cap timeout.
+5. **Repeat-rewedge-after-restart backoff — resolved: structurally unnecessary once items 1+4 are
+   both in place, though this reframes rather than just answers the original question.** With (a)
+   "reject when full" bounding concurrent wedged connections to the connection-count ceiling, and
+   (b) the new outer per-connection wall-clock cap from item 1 guaranteeing every connection —
+   wedged or not — is force-reclaimed within a bounded time regardless of how it's being kept
+   alive, the system can no longer accumulate an unbounded backlog no matter how fast a hostile
+   client reconnects and rewedges: worst case is the ceiling's worth of slots occupied for at most
+   one outer-cap duration, repeatedly. **This changes the shape of BACKLOG's "Microdot hardening
+   design" more than it was expected to** — see the fresh question list below (whether the
+   whole-server-restart mechanism is still worth keeping at all is now a live question, not
+   settled by this finding alone, so it's not silently rewritten in BACKLOG.md here).
+6. **Bind failure (`EADDRINUSE`) and pre-network-up startup — resolved: neither needs distinct
+   handling from the existing task-retry path.** `extmod/asyncio/stream.py`'s `start_server()`
+   already does `s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)` **before** `s.bind(...)`
+   — so our own clean restart-rebind (closing our own listening socket, then calling `asyncio.
+   start_server()` again) will not hit `EADDRINUSE` against our own just-closed socket; a genuine
+   conflict would require a second, different process holding the port, which isn't a realistic
+   shape on this single-application embedded device. Pre-network-up startup: `start_server()` calls
+   `socket.getaddrinfo(host, port)` where `host='0.0.0.0'` is an IP literal, not a hostname, so no
+   DNS resolution (and no blocking-on-network-not-ready) occurs; binding/listening at the lwIP/
+   socket layer doesn't require an active WiFi association — the listening socket simply sits idle
+   until routing/IP is actually up, at which point real clients can reach it with no restart
+   needed. Ordinary task-retry (already the existing behavior for any task failure) is sufficient
+   for both cases — no special-casing needed for either.
+
+**Step 2's 10 clarifying questions — revisited** (per the per-step-session workflow's step 2; the
+original "Original scoping discussion" 10-item Q&A above predates the five-branch restructuring and
+every item in it that touched Step 2 is now settled — item 1's residue ("which values land in the
+single structured status endpoint vs. get their own route") by the Endpoint Design subsection
+above, items 2/3/5 by not being Step 2's concern at all, items 4/6/7/9/10 by direct settlement
+already recorded inline, item 8 structurally by the branch-per-step scheme itself — so none of the
+original ten survive as open questions for this step specifically. Section G's six questions are
+also now resolved (immediately above). This is accordingly a fresh round, not a continuation,
+padded back to ten with what's left genuinely undecided after all of the above):
+
+1. **Keep or drop BACKLOG's whole-server-restart backstop?** Section G item 5's finding: with
+   "reject when full" plus the new outer per-connection wall-clock cap, every connection — wedged
+   or not — is force-reclaimed within bounded time and the connection count can never exceed the
+   ceiling. The original reason for a threshold-triggered whole-server restart (an accumulating
+   backlog the per-call timeouts alone couldn't reclaim) no longer applies once the outer cap
+   exists.
+   - *Option A — drop it.* Simpler, fewer moving parts (matches "the scheme shall be simple"),
+     removes an entire task-supervisor-integration surface (shrinks F.6/F.9 substantially).
+   - *Option B — keep it as pure defense-in-depth.* Guards against a class of bug the outer cap
+     itself can't self-heal (e.g. a leak in the connection-counter's own bookkeeping, or a future
+     bug in the outer-cap wrapper) — but means writing and soak-testing a mechanism expected to
+     never fire under normal operation.
+2. **Outer per-connection wall-clock cap and per-call timeout values.** Given item 1 above needs
+   both mechanisms regardless of the restart decision — what are sensible numbers for each, and
+   should the outer cap be one global constant for every endpoint, or does `/status`'s
+   worst-case response (longest configured error history across every module, per action-list item
+   F.4) need a longer allowance than a small settings PUT? Real deployed-unit WiFi conditions
+   should inform this, not a guess.
+3. **Capacity-rejection behavior when at the connection-count ceiling.** Silently close the new
+   connection immediately (cheapest, no risk of the rejection path itself becoming a new wedge
+   vector, matches "just don't accept new ones" literally), or accept briefly and write a real
+   `503`-shaped response first (more informative to a well-behaved client or monitoring tool, but
+   costs the exact accept-and-hold behavior the "don't accept" rule is meant to avoid)?
+4. **`SCD30_Reader`'s setter shape** (the first "known gap" already flagged above) — no generic
+   `_set_dict_cfg`-style method exists today, individual named methods only. Add a schema-driven
+   generic setter to `asy_scd30_driver.py` itself (consistent with every other sensor driver,
+   reusable outside the webserver too), or keep a bespoke per-field dispatch table local to the
+   webserver layer just for this one sensor?
+5. **`reset_error_counter()` gap on `NeopixelDriver`/`DNSServer`/`ConfigManager`** (the second
+   "known gap" already flagged above) — same category of completeness gap Step 1 closed for
+   `get_error_counter()` on the first two of these three. Does closing it belong retroactively in
+   Step 1 (construction-time module completeness, its own established precedent), or is it fine to
+   add inline during Step 2's own implementation pass, since Step 2 is the first real consumer of
+   `/status`'s `ResetErrors`?
+6. **Duplicate registration in the "lists at init" registration API.** A generator bug, not a real
+   runtime case, but the action list (section C) already requires a *defined, tested* behavior
+   rather than accidental behavior. Last-registration-wins, first-registration-wins, or hard
+   rejection (raise at registration time, catching a generator bug immediately instead of silently
+   misbehaving at runtime — arguably the most useful of the three for exactly this failure mode)?
+7. **`Connection: close` response header.** Every connection is unconditionally closed after its
+   one response regardless of what any header claims (section G item 3). Worth explicitly setting
+   this header anyway for protocol-correctness/clarity to a well-behaved client, or genuinely
+   unnecessary busywork given the actual socket behavior already enforces it?
+8. **Webserver restart-count visibility in `/status`** (only a live question if item 1 above keeps
+   the restart mechanism) — surfaced as its own `errcount`-style entry (the module already needs
+   `get_error_counter()`/`get_task_starters()` per the settled design, so the plumbing exists), or
+   kept purely internal/log-only with no REST-visible trace?
+9. **Does the outer-cap addition (item 1/2) change anything about `/status`'s worst-case-size
+   memory measurement** (action-list item F.4's `gc.mem_free()` check)? An outer-capped connection
+   still has to build and hold the full response dict in memory before writing it either way, so
+   this is likely a "no, unrelated" — but worth a deliberate one-line confirmation before
+   implementation rather than an assumed no.
+10. **Does the digital twin (Step 3) need to simulate degraded/slow network conditions at all** for
+    Step 2's own connection-lifecycle tests to be meaningful under the Unix port, or are those tests
+    entirely satisfiable with hand-scripted fake reader/writer doubles (per the existing
+    `_StepPoller`-style precedent from `test_asy_uart_driver.py`'s CI-hang fix) without needing
+    Step 3 at all? Worth settling now since it affects whether any of Step 2's F-section tests have
+    an undeclared dependency on Step 3 landing first.
 
 ### Step 3 — Digital-twin hardware simulator
 
