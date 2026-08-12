@@ -1602,7 +1602,115 @@ reported back on before starting the TDD step**:
   correlation, fault-injection granularity) — all confirmed to stay exactly as round 1 already built
   them.
 
-**Next border**: TDD — write/extend tests for A–D and F first (red), then implement against them
+**A gap the owner flagged directly (not from the 10-question round): there was no way to actually
+*start* the twin.** Everything built so far is importable Python modules — real value for Step 5's
+eventual integration, but nothing runnable on its own, and no way to pick simulation options (e.g.
+"with or without bus error simulation") without hand-editing a script. Two follow-up clarifying
+questions resolved the design (own decision/options/consequences round, not counted against the
+original 10 since it's a new topic the owner raised mid-session):
+
+1. **What a "bus error simulation" toggle should actually mean.** *Chosen: just expose the existing
+   scripted fault-injection API via the CLI* — not a new ambient/probabilistic "randomly flaky bus"
+   mode. No new twin-side mechanism; the CLI only arms the same `inject_fault()`/`raise_on` calls a
+   test already can, from the command line instead of from Python.
+2. **How much of the system the launcher should bring up.** *Chosen: twin-only standalone demo* —
+   confirms the launcher stays inside Step 3's own boundary (no `src/` import at all), matching
+   every other "whatever entry point Step 5 writes" deferral already in this plan; Step 5's own
+   entry point reuses the same configuration functions, it just also imports
+   `src/sensortask_wozi.py` afterward, which this launcher deliberately does not.
+
+- **G. `digital_twin/launch.py` — a standalone CLI launcher/demo for the twin itself.** Runnable
+  directly (`micropython digital_twin/launch.py [options]`); brings up the same bus/peripheral
+  wiring `src/sensortask_wozi.py`'s real `build_system()` uses (same pin numbers/frequencies, so the
+  demo is faithful to the real construction — confirmed directly against that file's own
+  `WDT(timeout=8000)`/`I2C(0, 13, 12, frequency=50000)`/`I2C(1, 19, 18, frequency=50000)`/
+  `SPI(0, 2, 3, 4)` lines), applies CLI-selected configuration, then runs a small built-in `asyncio`
+  loop that periodically performs one real bus-level read per sensor (going through actual
+  `readfrom_into`/`readfrom_mem`/`writeto_mem` calls shaped like the real drivers', not just
+  inspecting each chip fake's internal state — so the demo genuinely exercises the same path Step 5
+  will) and prints the decoded result, attempts one `WLAN.connect()` and prints its phase
+  transitions, and feeds the `WDT` on its own short timer (unless suppressed). Flags:
+  - `--seed INT` — seeds one shared `random.Random(seed)` used for every sensor value walk (omit for
+    real unseeded randomness); reuses the existing per-chip `random_source` injection seam unchanged.
+  - `--fram-state-path PATH` — wraps `machine.configure_fram_state_path()`; omitted means today's
+    default (in-memory only, no persistence).
+  - `--fault DEVICE:OP[:TIMES]` (repeatable) — arms one scripted fault via the target device's
+    existing `FaultInjector`/`raise_on`, e.g. `--fault scd30:readfrom_into:2`. `DEVICE` ∈
+    `{sgp40, scd30, bmp3xx, fram, wlan}`; `OP` must be one of that device's already-recognized
+    op-strings (documented in `--help` and cross-referenced against each `tests/test_digital_twin_*`
+    file's own usage); `TIMES` defaults to `1`. Always raises a plausible `OSError(errno.EIO, ...)`
+    for I2C/SPI devices, matching this codebase's own real-fault convention — no generic
+    exception-type mini-language, since bus faults are essentially always `OSError`-shaped here.
+  - `--wifi-outcome {success,no_ap,wrong_password,connect_fail}` (repeatable, in call order) —
+    pre-scripts `WLAN.script_connect_outcomes()` (item D above) before the demo's own `connect()`.
+  - `--no-wdt-feed` — deliberately never feeds the `WDT`, to manually exercise/observe item B's
+    would-have-triggered notification.
+  - `--duration SECONDS` — exit cleanly after this many seconds instead of running until
+    `Ctrl-C`/`KeyboardInterrupt`; needed for both scripted smoke-testing of the launcher itself and
+    convenient manual use.
+  - Startup banner prints the resolved configuration; a `try`/`finally` around the loop calls
+    `machine.flush_fram()` on the way out and prints a short summary (readings observed, WiFi
+    outcome reached, WDT-notification count) — mirrors the documented Step-5 entry-point pattern
+    from `digital_twin/README.md`, exercised directly here instead of only described.
+  - Argument parsing and fault-spec parsing are each factored into small, pure, directly-testable
+    functions (`parse_args(argv) -> LaunchConfig`, a fault-spec parser) with only a thin
+    `if __name__ == "__main__":` glue calling into them — the loop itself is driven by a `main()`
+    coroutine so tests can `asyncio.wait_for(main(config), timeout)` it directly, same shape as
+    `tests/test_digital_twin_machine.py`'s own Timer smoke test. Before committing to hand-rolling
+    the parser: check whether `argparse` is actually available/reliable on the pinned Unix-port
+    build; fall back to a small hand-rolled flag loop (consistent with this package's existing
+    preference for not depending on modules that may not be frozen into the test binary,
+    `tests/microtest.py`'s own hand-rolled runner being the precedent) if not.
+  - New test file: `tests/test_digital_twin_launch.py` — deterministic tests of `parse_args()`/the
+    fault-spec parser (valid flags, malformed `--fault`/`--wifi-outcome` values raise a clear error),
+    plus one short-`--duration`/fixed-`--seed` end-to-end smoke test of `main()` itself (generous
+    `asyncio.wait_for` bound, same "does the mechanism work at all" spirit as the existing Timer/WLAN
+    live-timing tests, not a precise-behavior assertion).
+
+**Sufficiency check — is this whole action list (round 1 + round 2 A–G) actually enough for the twin
+to operate?** Checked directly against `src/`'s real import surface rather than re-asserting round
+1's own claims:
+
+- **Confirmed complete `machine` coverage.** Grepped every `from machine import ...` across all of
+  `src/`: `Pin`, `Timer`, `SPI`, `I2C`, `WDT`, `RTC`, `bootloader`, `reset` — plus `UART`
+  (`asy_uart_driver.py`). Checked `sensortask_wozi.py`'s own `build_system()` construction lines
+  directly: it builds `WDT`, two `I2C`s, and one `SPI` — never a `UART`. So `UART` is confirmed, not
+  assumed, unneeded for this step/Step 5's stated wozi-variant scope; every symbol the wozi build
+  path actually touches is already in `digital_twin/machine.py`. No gap.
+- **Confirmed complete `network`/`neopixel` coverage.** Grepped for `import network`/`import
+  neopixel` project-wide in `src/` — only `asy_wifi_service.py` and `asy_neopixel_driver.py`
+  respectively, both already covered.
+- **Checked a real candidate gap and ruled it out: does anything construct `network.WLAN(if_id)`
+  more than once expecting the same object back**, the way `digital_twin/machine.py`'s `Pin` already
+  has to support for SCD30's shared IRQ pin (real hardware's `WLAN(if_id)` is a singleton per
+  interface, but `digital_twin/network.py`'s `WLAN.__init__` has no registry — a fresh instance every
+  call)? Grepped every `WLAN(`/`STA_IF`/`AP_IF` use in `src/`: exactly two construction sites, both
+  in `asy_wifi_service.py`'s `_select_wifi_mode()`, both immediately assigned to the same
+  `self.wlan` — used for switching between STA and AP (hotspot) mode, where getting a fresh handle
+  on a mode switch is the semantically correct behavior, not a bug the twin needs to reproduce.
+  Confirmed not a gap.
+- **New forward note for whoever builds Step 5 (not actionable now, flagged so it isn't a surprise
+  later)**: item C makes `machine.reset()`/`bootloader()` raise instead of staying inert.
+  `system_service.py` imports both (as `system_reset`/`system_bootloader`) from a real, reachable
+  code path (SPECIFICATION.md's own WDT/reboot-timer notes). Once Step 5 actually wires the twin
+  under the real prototype, that path's `SimulatedReboot` must be caught somewhere in Step 5's own
+  entry point/harness, or the first real "reboot" action (a REST route, the reboot-timer sequencer)
+  will crash the whole Step 5 process instead of just being observed — arguably the *correct*
+  behavior (loudly surfacing "a reboot happened" rather than silently no-opping), but it must be a
+  deliberate, documented expectation Step 5's session designs around, not an unpleasant surprise.
+- **The one real operational gap found — no runnable entry point at all — is exactly what item G
+  above now closes.** Everything else checked (FRAM chunk-allocation determinism, SPI chip-select
+  handling via `SPIDevice`'s own bit-banged `Pin`, `RTC`'s class-level singleton state, `Timer`'s
+  general-purpose sufficiency for `system_service.py`'s sequencer) traces back to already-built,
+  already-tested twin behavior — no further gaps found there.
+- **Verdict**: round 1 + round 2's A–G is sufficient for the twin *itself* to operate as a
+  standalone, configurable simulator — which is this step's actual, stated goal. It is deliberately
+  **not**, and was never meant to be, sufficient for a full end-to-end Step 5 run of the real
+  assembled prototype against the twin — that remains correctly out of this step's scope, with the
+  one concrete new dependency above (catching `SimulatedReboot`) now on record for that future
+  session to account for.
+
+**Next border**: TDD — write/extend tests for A–D, F, and G first (red), then implement against them
 (green), without touching E's verification recipe until the code changes are settled (E is a
 tooling/process step, not something tests exercise). Stopping here for the owner's go-ahead before
 writing any of that.
