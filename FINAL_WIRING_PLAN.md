@@ -1463,6 +1463,150 @@ failures cluster around debug-level/logger-registry propagation, suggesting one 
 rather than three independent bugs - worth a dedicated look in a future session, not diagnosed
 further here since it's unrelated to Step 3's own scope.
 
+**Round 2 — the owner flagged that this step skipped the mandatory per-step "come back between
+borders" workflow (questions → refresh the action list → TDD → maximize coverage, stopping to
+report after each), even though the work itself landed correctly. Resuming properly from the
+"questions" border, using everything already learned above.**
+
+**Additional clarifying questions asked (10, top-level decision/options/consequences style) and the
+owner's answers**:
+
+1. **Sensor value evolution: switch from independent per-read random draws (round 1's decision #9)
+   to a bounded random walk.** *Chosen.* Each new reading steps by a small bounded delta from the
+   previous one instead of redrawing uniformly across the whole configured range — supersedes round
+   1's decision #9 outright (the owner's original literal framing is overridden by this explicit
+   follow-up choice).
+2. **WDT: real crash-on-timeout enforcement vs. staying inert.** *Chosen: inert tracking, but with a
+   notification that a real watchdog would have fired.* Neither of the two offered options exactly —
+   own answer: keep feed()-only, non-terminating semantics (no process crash/exit), but add an
+   observable signal (event log / counter / optional callback) the instant an elapsed-without-feed
+   window would have tripped a real hardware reset, so a Step 5 run can detect and report "the
+   watchdog would have saved us here" without actually taking down the interpreter.
+3. **`machine.reset()`/`bootloader()` semantics.** *Chosen: raise a catchable, distinguishable
+   exception* rather than staying inert or actually terminating the process — leaves a future Step 5
+   harness free to catch it and simulate a soft reboot, without forcing that harness's design now.
+4. **WiFi connect-failure realism.** *Chosen: add scriptable failure phases* (`STAT_NO_AP_FOUND`/
+   `STAT_WRONG_PASSWORD`/`STAT_CONNECT_FAIL`) as a first-class, opt-in outcome `connect()` can
+   resolve to after the same phased delay used for success — not just raw exception injection.
+5. **I2C/SPI bus transaction timing.** *Chosen: keep instant* (current behavior) — no simulated
+   per-transaction latency added.
+6. **Time acceleration for long-duration runs.** *Chosen: wall-clock only* (current behavior) — no
+   configurable time-scale factor.
+7. **Cross-sensor (BMP3xx/SCD30 temperature) correlation.** *Chosen: keep independent per-chip*
+   randomization (current behavior) — no shared-environment coupling.
+8. **`pyproject.toml` ruff/mypy scope extension to cover `digital_twin/`.** *Chosen: extend scope
+   now* (overrides round 1's "defer" default) — accepting the full clean-Ubuntu-24.04-chroot
+   pre-push verification this requires per CLAUDE.md before anything gets pushed.
+9. **Fault-injection granularity** (Nth-call targeting / queued multi-exception sequences).
+   *Chosen: keep single-arm* (current `inject_fault(op, exc, times=1)` semantics) — no change.
+10. **The two pre-existing, unrelated test failures** found during round 1's full-suite re-run
+    (`test_sensortask_wozi.py`/`test_system_service.py`, debug-level/logger-registry propagation).
+    *Chosen: fix now, as an aside* — overrides round 1's "leave flagged" default.
+
+**Refreshed action list (post-Q&A, before any code/tests change) — this is the "border" being
+reported back on before starting the TDD step**:
+
+- **A. Sensor value evolution → bounded random walk** (`_sgp40_chip.py`/`_scd30_chip.py`/
+  `_bmp3xx_chip.py`). Each chip fake keeps its existing `min_*`/`max_*` datasheet-sourced range
+  arguments unchanged (those stay datasheet-backed), but adds a small **not** datasheet-derived
+  (physical-plausibility judgment call, called out as such in the docstring — datasheets bound
+  sensor capability, not real-world minute-to-minute environmental change rate) `*_step` bound per
+  tracked value: SCD30's CO2/temperature/humidity (three independently-walking values, one
+  `Scd30Chip._produce_new_reading()` call per step — its existing periodic-Timer/manual-test-hook
+  call site is unchanged, only what happens inside changes from "fresh draw" to "step from last"),
+  BMP3xx's temperature/pressure (walked once per forced-mode conversion trigger — i.e. inside
+  whatever handler currently reacts to the real `CONTROL`-register `0x13` forced-mode write, *not*
+  on a timer, since BMP3xx has none), SGP40's raw VOC ticks (walked once per `measure_raw`-shaped
+  command, matching its existing per-command read cycle). Initial value: a uniform draw within
+  `[min,max]` at construction (unchanged), only subsequent values switch to stepping. Clamp every
+  step to `[min,max]` (a walk must not escape the configured/datasheet-informed band). Existing
+  `corrupt_next_*` fault-injection flags stay orthogonal — they corrupt whatever the walk just
+  produced, not the walk mechanism itself. The existing `random_source`/seed injection seam is
+  reused unchanged for the walk's per-step delta draws (same reproducibility guarantee round 1
+  already built).
+- **B. WDT → inert tracking + "would have triggered" notification** (`machine.py`). Before
+  implementing: verify (against real `ports/rp2/machine_wdt.c` source or current upstream docs, not
+  assumption — CLAUDE.md's standing "check real MicroPython behavior" rule) exactly what real
+  `WDT(timeout=N)` does for `N` above the confirmed 8388ms RP2040 hard cap (SPECIFICATION.md
+  F.1) — raises, clamps, or silently accepts — and match that exact behavior in the twin rather than
+  guessing. Add an internal `asyncio`-task-scheduled monitor (mirroring `Timer`'s own established
+  mechanism in this same file) that tracks time since the last `feed()`; when a `feed()`-free window
+  would exceed `timeout`, record the event (`would_have_triggered_count` increments,
+  `would_have_triggered_log` gets an entry, an optional constructor-supplied `on_would_trigger(wdt)`
+  callback fires if provided) without terminating anything, then keeps monitoring so a long-unfed
+  stretch can notify more than once. No new public "disable" API — real hardware genuinely can't
+  disable an armed WDT, and each twin `WDT`'s background task dies naturally when its owning
+  `asyncio.run()` event loop closes at the end of a test, matching `Timer`'s existing cleanup story.
+- **C. `reset()`/`bootloader()` → catchable, distinguishable exceptions** (`machine.py`). Add a
+  `SimulatedReboot(Exception)` base with two subclasses, `SimulatedReset`/`SimulatedBootloaderEntry`,
+  exported from the module. `reset()`/`bootloader()` keep incrementing their existing module-level
+  counters (useful even though the call never returns — a future Step 5 harness catching the
+  exception can still inspect "how many times did this happen") and then raise the matching
+  exception. No other file in this session's scope calls either function today, so this is a
+  behavior-only change with nothing else to update.
+- **D. WiFi → scriptable connect-failure phases** (`network.py`). Add `WLAN.script_connect_outcomes(
+  outcomes: list[int])`, a FIFO consumed one entry per *completed* (not cancelled) `_run_connect()`
+  resolution; empty/exhausted queue defaults to today's always-succeeds behavior, preserving every
+  existing test unchanged. On a scripted failure outcome, `_status` is set to that value,
+  `_connected` stays `False`, and `_ifconfig` stays/reverts to the unconfigured
+  `("0.0.0.0", ...)` tuple (mirroring never-connected state) — matching real driver expectations that
+  a failure status means no address was ever obtained. A `disconnect()` that cancels a pending
+  `_run_connect()` task must **not** consume a queued outcome (the attempt never completed, so
+  nothing was "used"). Re-verify against `src/asy_wifi_service.py`'s own polling loop (already read
+  this session) that this status-persistence shape is actually what its retry/backoff logic expects,
+  since the entire point of this feature is exercising that logic realistically.
+- **E. Extend `pyproject.toml`'s ruff/mypy scope to `digital_twin/`** — the heaviest item this
+  round, several concrete sub-steps, all needed before anything gets pushed:
+  1. Add `digital_twin` to `[tool.mypy]`'s `files` list.
+  2. Determine (empirically, by actually running mypy, not by assuming symmetry with `tests/`)
+     whether `digital_twin/machine.py`/`network.py`/`neopixel.py` need the same
+     `tests/network\.py$`-style `exclude` treatment to stop them winning module resolution
+     project-wide over the real `typings/` stubs — note that `tests/machine.py` and
+     `tests/neopixel.py` are conspicuously *not* excluded today despite superficially the same
+     bare-top-level-module-name shape as the already-excluded `tests/network.py`, so this needs
+     actually checking, not copy-pasting the existing exclude list's shape onto three new paths.
+     Do **not** add `digital_twin` to `mypy_path` — doing so would risk reintroducing the exact
+     project-wide resolution hijack the existing `tests/network.py` exclude comment documents,
+     this time from `digital_twin/`'s own copies.
+  3. Add `digital_twin` to `scripts/lint.sh`'s hardcoded `ruff check improved-quality src tests`
+     line (it does not pick up new top-level directories automatically).
+  4. Decide, and if yes update, whether `.github/workflows/ci.yml`'s `lint-and-typecheck` job
+     (which explicitly gates on `ruff check src tests` / `scripts/typecheck.sh src tests`, bypassing
+     `pyproject.toml`'s own `files` default specifically to keep `improved-quality/`'s pre-existing
+     findings from failing CI) should add `digital_twin` to that same explicit gate now that it's a
+     real quality-checked scope — leaning yes, since the owner's choice was "extend scope now," but
+     flagging explicitly since `ci.yml` wasn't itself one of the files named in CLAUDE.md's
+     pre-push-verification trigger list, only implied by "anything else touching the
+     dev-tooling/build-environment setup."
+  5. Run `scripts/lint.sh`/`scripts/typecheck.sh` locally and reconcile against whatever
+     `digital_twin/`'s existing ad hoc `ruff check digital_twin/ ...`/manual `mypy` runs already
+     found this session (documented in the "Done" note above) — confirm no new config-crash errors,
+     document the finding count the same way round 1 did.
+  6. **Run the full clean-Ubuntu-24.04-chroot pre-push verification recipe from CLAUDE.md's
+     "Pre-push verification" section end-to-end** before pushing anything from this round — this
+     touches `pyproject.toml` (and likely `scripts/lint.sh`/`ci.yml`), which is exactly what that
+     recipe exists to gate.
+- **F. Fix the two pre-existing, unrelated test failures** (`tests/test_sensortask_wozi.py`'s
+  `test_webserver_system_put_debug_level_propagates_to_every_logger`,
+  `tests/test_system_service.py`'s `test_set_debug_level_persists_and_calls_every_registered_setter`/
+  `test_one_bad_setter_does_not_stop_the_rest_of_the_registry`) — not yet root-caused, only observed
+  failing. Concrete steps: reproduce each in isolation, read the failing assertions and trace the
+  actual propagation path through `src/system_service.py`'s debug-level/logger-registry code (all
+  three cluster around one area, plausibly one shared root cause per round 1's own note), apply the
+  minimal correct fix, add/adjust unit tests covering the actual bug (not just re-asserting the
+  existing expectation), then re-run the full suite to confirm both the fix and no new regressions.
+  This is real `src/` behavior work, permitted freely under CLAUDE.md's "`src/` is freely editable"
+  rule — the only reason it wasn't done in round 1 was scope discipline, now explicitly lifted by
+  the owner for this specific pair of failures.
+- **No further action needed** for items 5–7, 9 above (bus timing, time acceleration, cross-sensor
+  correlation, fault-injection granularity) — all confirmed to stay exactly as round 1 already built
+  them.
+
+**Next border**: TDD — write/extend tests for A–D and F first (red), then implement against them
+(green), without touching E's verification recipe until the code changes are settled (E is a
+tooling/process step, not something tests exercise). Stopping here for the owner's go-ahead before
+writing any of that.
+
 ### Step 4 — Website placeholder scaffold
 
 **Goal**: the full mechanical structure for serving the config/status website — gzip → freezefs
