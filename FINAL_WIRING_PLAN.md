@@ -1785,10 +1785,104 @@ Full-suite regression run (`scripts/test.sh`, no `--coverage`) after all of the 
 clean `tests/_tmp/` (confirming F's fix holds, not just individually per-file but across the whole
 suite in one real run): **2,059/2,059 tests passing across all 42 files, zero failures.**
 
-**Next border**: maximize code coverage by tests (the original 4-part instruction's last step),
-still not started. Item E (pyproject.toml/ruff/mypy scope extension + the chroot pre-push
-verification recipe) remains separately deferred, to be picked up once the coverage pass is also
-settled.
+**Item E and the coverage border — both done.**
+
+**Item E (pyproject.toml/ruff/mypy scope extension + chroot pre-push verification) — done, with a
+real design correction from the plan.** Adding `digital_twin` to `[tool.mypy]`'s `files` list alone
+(step 1) collided outright: `mypy` fails with `Duplicate module named "machine"` the instant
+`digital_twin/machine.py` is scanned alongside `tests/machine.py`'s own bare `machine` module -
+confirmed directly, a straight collision, not the softer resolution-priority hijack
+`tests/network.py`'s own exclude guards against. Step 2's empirical check found the real, deeper
+issue: mypy resolves each bare `machine`/`network`/`neopixel` module name to exactly one file per
+run, so `digital_twin/`'s own hardware fakes and the real `typings/` board stubs can never both be
+checked correctly in one invocation - `digital_twin/launch.py` and every
+`tests/test_digital_twin_*.py` exercise the twin's own richer API (`WDT.would_have_triggered_count`,
+`WLAN.script_connect_outcomes()`, `Pin.reset_registry()`, ...) that the real board stub has no
+reason to declare, so checking them under the main pass's `mypy_path` (unchanged: `typings` + `src`,
+no `digital_twin`) only ever produces attr-defined noise, never a real finding. Concretely
+confirmed, not assumed: `mypy src tests` - the exact command `.github/workflows/ci.yml`'s
+`lint-and-typecheck` job already ran - was silently broken (43 errors) *before this session's own
+fix*, never caught because no PR had been opened against this branch yet to actually trigger CI.
+**Fix**: `digital_twin/machine.py`/`network.py`/`neopixel.py`/`launch.py` and every
+`tests/test_digital_twin_*.py` are excluded from the main `[tool.mypy]` pass (see its own exclude
+comment for the full account); a new, separate `digital_twin/typecheck.ini` config
+(`mypy_path = digital_twin:typings`) gives the whole subsystem its own always-clean pass instead,
+run unconditionally by `scripts/typecheck.sh` regardless of its own args - so CI's existing
+`scripts/typecheck.sh src tests` step gates on `digital_twin/` too without `ci.yml` needing to name
+it explicitly. Fixing this surfaced real, small bugs in `digital_twin/machine.py` (`Pin._initialized`
+typing, `I2C.readfrom_mem`'s `no-any-return`, `RTC.datetime`'s Optional-vs-`Tuple` mismatch - the
+stub's own convention won, matching `typings/machine.pyi`) and `_scd30_chip.py` (`self._timer`'s
+type), all fixed directly since `digital_twin/` is freely-editable, fully-reviewed code, not WIP.
+`scripts/lint.sh` and `.github/workflows/ci.yml`'s `Ruff`/`Mypy` steps now cover `digital_twin/`
+explicitly (ruff has no equivalent per-run resolution conflict, so it's just named directly
+alongside `src`/`tests`). **Chroot verification**: ran the full clean-Ubuntu-24.04-debootstrap
+recipe from CLAUDE.md's "Pre-push verification" end to end (`uv sync` under bare Python 3.12,
+`scripts/lint.sh`, `scripts/typecheck.sh`, `scripts/test.sh`) - all three matched the ordinary
+session sandbox's own results exactly (30 known `improved-quality/` lint findings, 50 known mypy
+findings + a clean `digital_twin/` pass, **2,059/2,059 tests passing**), confirming nothing here
+depends on anything the sandbox happened to have pre-installed.
+
+**Coverage border - done.** `scripts/test.sh --coverage`'s tracer
+(`tests/_coverage_runner.py`) was hardcoded to a `src/`-only prefix, so `digital_twin/` was
+completely invisible to the existing coverage tooling even though it's now a real, gated,
+freely-editable scope. Generalized the tracer to `("src/", "digital_twin/")` (confirmed directly:
+MicroPython's `str.startswith()` accepts a tuple, same as CPython) and had `scripts/test.sh`
+render a second, separate report from the same shared trace run
+(`htmlcov_digital_twin/`/`coverage_digital_twin.xml`/`coverage_summary_digital_twin.md`, wired into
+`ci.yml` the same way as the existing `src/` report) rather than merging the two into one - the two
+scopes have different maturity/gating expectations (CLAUDE.md's "Code quality tooling"). First real
+`digital_twin/` coverage number: **94%** (992 statements, 63 missed). Used the per-line missing
+report (`coverage.Coverage.report(morfs=..., show_missing=True)`) to separate genuine gaps from
+tracer artifacts before writing anything: several `while True:` loop-header lines
+(`_wdt_feeder`/`_wifi_watcher`/`_sensor_loop` in `launch.py`, `Timer._run`/`WDT._countdown` in
+`machine.py`) consistently showed as "missed" even though their bodies were demonstrably exercised
+by already-passing tests - a MicroPython/coverage.py line-attribution quirk for a bare `while True:`
+immediately followed by another statement, not a real gap, left alone. Real gaps closed with new
+tests: `FaultInjector.clear()` (never called anywhere); `Pin.value()`'s setter form, `toggle()`, and
+a same-value `simulate_edge()` no-op; an unwired SPI bus id (`id != 0` - no device, zero-filled
+`readinto()`); FRAM `readinto()` with nothing recognized pending; SCD30's
+`STOP_CONTINUOUS_MEASUREMENT`/`SOFT_RESET`/`READ_FIRMWARE_VERSION` commands and its
+unrecognized-command readback fallback; `NeoPixel.__getitem__` readback; `WLAN.deinit()`/
+`status("rssi"|"stations")`/`config()`; and `network.country()`/`hostname()`'s setter form.
+**One real robustness bug found and fixed along the way, not just a coverage gap**: writing a
+`--fault wlan:...` coverage test for `launch.py`'s `main()` found that `WLAN.active()`/`connect()`
+at startup and `WLAN.status()` in cleanup and in `_wifi_watcher()`'s own loop were all unguarded -
+any WLAN fault crashed `main()` outright before it ever reached the WDT-feed/sensor-read loops,
+confirmed by direct reproduction against the interpreter before touching any code. Fixed by
+isolating each the same way `_sensor_loop()` already isolates each sensor's own read (per-call
+`try`/`except OSError`, print and continue) - re-verified directly afterward that the same fault no
+longer crashes `main()`. Added a longer-duration (4.5s) `main()` smoke test with
+`no_wdt_feed=False` to also reach a real `watchdog.feed()` call and SCD30's own 2-second
+timer-driven "ready" reading, neither reachable within the two existing shorter-duration tests -
+this also caught a real timing bug in the session's own edit to the combined sgp40+bmp3xx fault
+test (both one-shot faults fire on `_sensor_loop()`'s very first iteration, so a duration that
+never reached a second iteration left `summary["readings"]` at 0, failing the test - caught by a
+full `scripts/test.sh` run, fixed by extending the duration past `_sensor_loop()`'s own 2.0s poll
+interval). Deliberately left uncovered, not chased: `_bmp3xx_chip.py`'s two Newton-solver
+divide-by-zero guards (unreachable with the fixed, verified-round-tripping calibration set across
+the twin's whole configured range - manufacturing a pathological target value to hit them would
+test the guard, not the twin); `launch.py`'s run-forever branch (`--duration` omitted - genuinely
+would hang a test, matching every other real-Ctrl-C-only code path in this codebase) and its
+`if __name__ == "__main__":` glue (never reached under `import launch`, same as every
+`tests/test_*.py`'s own such block). **Final `digital_twin/` coverage after all of the above: 98%**
+(1,001 statements, 24 missed - the artifacts and deliberate gaps above account for essentially all
+of what remains). Full-suite regression, `scripts/test.sh --coverage`, from a fully clean
+`tests/_tmp/`: **2,075/2,075 tests passing across all 43 files** (`src/` coverage unchanged at 94%,
+confirming no regression there), **zero failures**.
+
+Both of the above were also confirmed clean through the full clean-Ubuntu-24.04-chroot recipe
+before either was pushed (see item E's own writeup above - the chroot run predates the coverage
+border's own commits, but both landed together and are covered by the same sandbox-vs-chroot
+lint/typecheck parity check; the coverage border's own test-suite correctness was verified directly
+in-session, twice, against the real interpreter rather than re-running the heavier chroot recipe a
+second time for changes that don't touch the dev-tooling/build-environment setup CLAUDE.md's
+pre-push gate is actually scoped to).
+
+**Step 3 is now complete against the full, resumed "questions → refresh action list → TDD → maximize
+coverage" workflow** - every item from round 1, round 2's A-G, and this round's E/coverage border is
+done, tested, and pushed (`claude/step3-digital-twin-simulator`, not yet merged - per this repo's
+own per-step workflow, stopping here to report rather than opening a PR unprompted). No further open
+items remain from this step's own scope.
 
 ### Step 4 — Website placeholder scaffold
 
