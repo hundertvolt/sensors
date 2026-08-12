@@ -68,6 +68,20 @@ def test_rdid_reports_the_real_mb85rs64v_id_by_default() -> None:
     assert _rdid(chip) == bytes([0x04, 0x7F, 0x03, 0x02])
 
 
+def test_readinto_with_no_recognized_pending_op_zero_fills_the_buffer() -> None:
+    # A readinto() with nothing recognized pending (never read/rdsr/rdid'd, or right after an
+    # opcode like WREN/WRDI/WRSR/WRITE that doesn't itself arm a subsequent readinto()) still
+    # behaves like a real bus transaction rather than raising - zero-filled, not garbage/untouched.
+    chip = FramChip(size=0x2000)
+    buf = bytearray([0xAA, 0xAA, 0xAA])
+    chip.readinto(buf)
+    assert bytes(buf) == bytes(3)
+    _wren(chip)
+    buf2 = bytearray([0xBB, 0xBB])
+    chip.readinto(buf2)
+    assert bytes(buf2) == bytes(2)
+
+
 def test_write_requires_wren_first() -> None:
     chip = FramChip(size=0x2000)
     _write_mem(chip, 0x0000, b"\x11\x22")

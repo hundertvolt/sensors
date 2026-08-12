@@ -72,6 +72,26 @@ def test_altitude_set_then_get_round_trips() -> None:
     assert _get(chip, 0x51, 0x02) == word(250)
 
 
+def test_stop_continuous_measurement_and_soft_reset_are_accepted_bare_commands() -> None:
+    # Neither command has any readback of its own (no persistent chip-side state a soft reset would
+    # need to clear) - this only proves handle_writeto() accepts the 2-byte command shape without
+    # raising, matching a real device silently accepting these.
+    chip = Scd30Chip(auto_refresh=False)
+    chip.handle_writeto(bytes([0x01, 0x04]))  # STOP_CONTINUOUS_MEASUREMENT
+    chip.handle_writeto(bytes([0xD3, 0x04]))  # SOFT_RESET
+
+
+def test_read_firmware_version_reports_the_fixed_plausible_value() -> None:
+    chip = Scd30Chip(auto_refresh=False)
+    assert _get(chip, 0xD1, 0x00) == word(0x0342)
+
+
+def test_readfrom_into_with_an_unrecognized_last_command_returns_zero_bytes() -> None:
+    chip = Scd30Chip(auto_refresh=False)
+    chip.handle_writeto(bytes([0xFF, 0xFF]))  # not a command this chip recognizes
+    assert chip.handle_readfrom_into(3) == bytes(3)
+
+
 def test_temperature_offset_set_then_get_round_trips_as_raw_centidegrees() -> None:
     chip = Scd30Chip(auto_refresh=False)
     _set(chip, 0x54, 0x03, 150)  # driver sends offset*100
@@ -280,6 +300,31 @@ def test_fault_injection_on_writeto_and_readfrom_into() -> None:
         raise AssertionError("expected OSError")
     except OSError:
         pass
+
+
+def test_fault_injector_clear_of_one_op_leaves_other_ops_armed() -> None:
+    # FaultInjector.clear() is shared, generic infrastructure (digital_twin/_fault_injection.py) -
+    # exercised here via a real chip's own .fault, matching this file's own established pattern for
+    # every other FaultInjector behavior, rather than a standalone test file for two small helpers.
+    chip = Scd30Chip(auto_refresh=False)
+    chip.fault.inject_fault("writeto", OSError(5, "no ACK"))
+    chip.fault.inject_fault("readfrom_into", OSError(5, "timeout"))
+    chip.fault.clear("writeto")
+    chip.handle_writeto(b"\x02\x02")  # writeto's queue was cleared - no raise
+    try:
+        chip.handle_readfrom_into(3)  # readfrom_into's own queue is untouched
+        raise AssertionError("expected OSError")
+    except OSError:
+        pass
+
+
+def test_fault_injector_clear_with_no_op_clears_every_queue() -> None:
+    chip = Scd30Chip(auto_refresh=False)
+    chip.fault.inject_fault("writeto", OSError(5, "no ACK"))
+    chip.fault.inject_fault("readfrom_into", OSError(5, "timeout"))
+    chip.fault.clear()
+    chip.handle_writeto(b"\x02\x02")
+    chip.handle_readfrom_into(3)  # neither queue raises - both were cleared
 
 
 def test_fault_injection_can_corrupt_the_next_measurement_crc() -> None:

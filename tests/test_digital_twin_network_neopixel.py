@@ -64,6 +64,34 @@ def test_wlan_starts_disconnected() -> None:
     assert wlan.status() == STAT_IDLE
 
 
+def test_wlan_deinit_sets_the_deinit_called_flag() -> None:
+    wlan = WLAN(STA_IF)
+    assert wlan.deinit_called is False
+    wlan.deinit()
+    assert wlan.deinit_called is True
+
+
+def test_wlan_status_rssi_and_stations_read_the_underlying_fields() -> None:
+    wlan = WLAN(STA_IF)
+    assert wlan.status("rssi") == wlan._rssi
+    assert wlan.status("stations") == wlan._stations == []
+
+
+def test_wlan_config_records_every_call() -> None:
+    wlan = WLAN(STA_IF)
+    wlan.config(essid="hotspot", password="secret")
+    assert wlan.config_calls == [{"essid": "hotspot", "password": "secret"}]
+
+
+def test_country_and_hostname_set_then_get_round_trip() -> None:
+    import network as network_module
+
+    assert network_module.country("US") == "US"
+    assert network_module.country() == "US"
+    assert network_module.hostname("MyDevice") == "MyDevice"
+    assert network_module.hostname() == "MyDevice"
+
+
 def test_wlan_connect_shows_a_real_connecting_phase_before_got_ip() -> None:
     async def scenario() -> None:
         wlan = WLAN(STA_IF)
@@ -242,6 +270,7 @@ def test_wlan_a_second_connect_that_cancels_the_first_pending_attempt_does_not_c
 def test_neopixel_records_committed_frames() -> None:
     pixel = NeoPixel(None, 1, bpp=3)
     pixel[0] = (10, 20, 30)
+    assert pixel[0] == (10, 20, 30)  # readback before the next write() commits it
     pixel.write()
     pixel[0] = (0, 0, 0)
     pixel.write()

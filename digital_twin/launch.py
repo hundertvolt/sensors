@@ -260,10 +260,14 @@ async def _wdt_feeder(watchdog: "WDT", no_wdt_feed: bool) -> None:
 async def _wifi_watcher(wlan: "network.WLAN") -> None:
     last_status = None
     while True:
-        status = wlan.status()
-        if status != last_status:
-            print("WLAN: status ->", status)
-            last_status = status
+        try:
+            status = wlan.status()
+        except OSError as e:
+            print("WLAN: status read failed:", e)
+        else:
+            if status != last_status:
+                print("WLAN: status ->", status)
+                last_status = status
         await asyncio.sleep(_WIFI_POLL_INTERVAL_S)
 
 
@@ -337,8 +341,15 @@ async def main(config: "LaunchConfig") -> "dict[str, Any]":
 
     summary: dict[str, Any] = {"readings": 0, "wifi_status": None, "would_have_triggered_count": 0}
 
-    wlan.active(True)
-    wlan.connect(_SSID, _PASSWORD)
+    try:
+        wlan.active(True)
+        wlan.connect(_SSID, _PASSWORD)
+    except OSError as e:
+        # A --fault wlan:... can target active()/connect() themselves - isolated the same way
+        # _sensor_loop() isolates each sensor's own read, so one faulted WLAN op still lets the
+        # WDT-feed/sensor-read loops run and the demo exit cleanly with a summary, instead of
+        # crashing main() before it ever gets there.
+        print("WLAN: startup failed:", e)
 
     tasks = [
         asyncio.get_event_loop().create_task(_wdt_feeder(watchdog, config.no_wdt_feed)),
@@ -354,7 +365,10 @@ async def main(config: "LaunchConfig") -> "dict[str, Any]":
     finally:
         for task in tasks:
             task.cancel()
-        summary["wifi_status"] = wlan.status()
+        try:
+            summary["wifi_status"] = wlan.status()
+        except OSError as e:
+            print("WLAN: status read failed:", e)
         summary["would_have_triggered_count"] = watchdog.would_have_triggered_count
         machine.flush_fram()
         print("digital_twin/launch.py summary:", summary)

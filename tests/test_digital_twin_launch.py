@@ -221,14 +221,38 @@ def test_main_with_scripted_faults_and_wifi_outcome_still_completes() -> None:
         seed=99,
         no_wdt_feed=True,
         duration=1.5,
-        faults=[("sgp40", "writeto", 1)],
+        faults=[("sgp40", "writeto", 1), ("bmp3xx", "readfrom_mem", 1)],
         wifi_outcomes=[network.STAT_NO_AP_FOUND],
     )
     summary = run(asyncio.wait_for(main(config), 10))
     assert summary["wifi_status"] == network.STAT_NO_AP_FOUND
-    # The sgp40 fault only fires once (times=1) and is isolated to its own read - SCD30/BMP3XX
-    # (and SGP40 itself, once the one-shot fault is spent) must still have produced readings.
+    # Both one-shot faults (sgp40/bmp3xx) are isolated to their own read - SCD30 (and both faulted
+    # sensors, once their one-shot fault is spent) must still have produced readings.
     assert summary["readings"] >= 1
+
+
+def test_main_a_wlan_fault_is_isolated_and_still_returns_a_summary() -> None:
+    # WLAN.active()/connect() at main()'s own startup, and WLAN.status() in its cleanup and in
+    # _wifi_watcher()'s own loop, all used to be unguarded - a --fault wlan:... crashed main()
+    # outright before it ever reached the WDT-feed/sensor-read loops. Now isolated the same way
+    # _sensor_loop() isolates each sensor's own read.
+    machine.Pin.reset_registry()
+    config = LaunchConfig(seed=7, no_wdt_feed=True, duration=0.5, faults=[("wlan", "connect", 1)])
+    summary = run(asyncio.wait_for(main(config), 10))
+    assert summary["readings"] >= 1  # sensor loop still ran despite the WLAN fault
+
+
+def test_main_long_enough_duration_reaches_a_real_wdt_feed_and_scd30s_timer_driven_reading() -> None:
+    # _SENSOR_POLL_INTERVAL_S/SCD30's own default measurement_interval_s are both 2.0s - a duration
+    # shorter than that (every other main() test here uses <=1.5s) never lets SCD30's internal Timer
+    # produce a ready reading at all, so _read_scd30()'s own "ready" branch (as opposed to its
+    # not-yet-ready None early-return) never actually runs. no_wdt_feed=False here also exercises a
+    # real watchdog.feed() call, unlike every other main() test's no_wdt_feed=True.
+    machine.Pin.reset_registry()
+    config = LaunchConfig(seed=55, no_wdt_feed=False, duration=4.5)
+    summary = run(asyncio.wait_for(main(config), 15))
+    assert summary["readings"] >= 5  # several rounds across 4.5s, well past SCD30's 2s cadence
+    assert summary["would_have_triggered_count"] == 0  # fed for real, well under the 8000ms timeout
 
 
 if __name__ == "__main__":

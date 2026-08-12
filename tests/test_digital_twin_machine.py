@@ -68,6 +68,32 @@ def test_pin_rejects_invalid_id() -> None:
         pass
 
 
+def test_pin_value_setter_form_sets_and_returns_none() -> None:
+    pin = Pin(21)
+    assert pin.value(1) is None
+    assert pin.value() == 1
+    assert pin.value(0) is None
+    assert pin.value() == 0
+
+
+def test_pin_toggle_flips_the_current_value() -> None:
+    pin = Pin(22)
+    pin.off()
+    pin.toggle()
+    assert pin.value() == 1
+    pin.toggle()
+    assert pin.value() == 0
+
+
+def test_pin_simulate_edge_to_the_same_value_does_not_fire_the_irq_handler() -> None:
+    fired: list[int] = []
+    pin = Pin(23)
+    pin.off()
+    pin.irq(handler=lambda p: fired.append(1), trigger=Pin.IRQ_RISING | Pin.IRQ_FALLING)
+    pin.simulate_edge(0)  # already 0 - not a real transition, must be a no-op
+    assert fired == []
+
+
 def test_pin_irq_fires_on_simulate_edge_rising() -> None:
     fired: list[int | None] = []
     pin = Pin(20)
@@ -169,6 +195,18 @@ def test_spi_write_readinto_dispatches_to_the_wired_device() -> None:
     buffer_in = bytearray(4)
     spi.write_readinto(buffer_out, buffer_in)
     assert bytes(buffer_in) == bytes([0x04, 0x7F, 0x03, 0x02])  # real MB85RS64V device ID
+
+
+def test_spi_id1_wires_no_device_and_reads_back_zeroed_bytes() -> None:
+    # Only spi0 carries the wozi wiring's own FRAM chip (machine.py's own docstring) - an id nothing
+    # wires (see _wire_spi_device()) still behaves like a real, present-but-unconnected bus rather
+    # than raising: write() is logged and silently dropped, readinto() zero-fills the buffer.
+    spi = SPI(1, sck=Pin(5), mosi=Pin(6), miso=Pin(7))
+    assert spi.device is None
+    spi.write(bytes([0x9F]))
+    buf = bytearray([0xFF, 0xFF, 0xFF])
+    spi.readinto(buf)
+    assert bytes(buf) == bytes(3)
 
 
 def test_i2c_and_spi_deinit_are_recorded() -> None:
