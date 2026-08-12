@@ -138,18 +138,23 @@ itself), so a future twin `SPI.write()`/`readinto()` would need to start routing
 is currently asserted low, the way `machine.I2C` already routes by address. Not built now because no
 such driver exists yet — flagged here rather than left to surprise whoever adds the first one.
 
+## Code quality tooling
+
+`digital_twin/` is in `pyproject.toml`'s ruff/mypy scope, same as `src/`/`tests/` (not
+`improved-quality/`'s tracked-debt exemption - this scope is expected to stay fully clean).
+`scripts/lint.sh` covers it directly (`ruff check improved-quality src tests digital_twin`).
+`scripts/typecheck.sh` runs it as a **second, separate** mypy invocation
+(`digital_twin/typecheck.ini`, always run regardless of `"$@"`) rather than folding it into the
+main `[tool.mypy]` pass - mypy resolves each bare `machine`/`network`/`neopixel` module name to
+exactly one file per run, so this package's own fakes and the real board stubs (`typings/`) can
+never both be checked correctly in one invocation. `digital_twin/machine.py`/`network.py`/
+`neopixel.py` and `digital_twin/launch.py`/every `tests/test_digital_twin_*.py` are excluded from
+the main pass for exactly this reason (see `pyproject.toml`'s own `[tool.mypy]` exclude comment for
+the full account, including a real `mypy src tests`-only finding this design caught) and checked
+correctly by the dedicated pass instead - see `digital_twin/typecheck.ini`'s own docstring.
+
 ## Known gaps / follow-ups for later sessions
 
-- **Not yet in `pyproject.toml`'s ruff/mypy scope.** `[tool.ruff]`/`[tool.mypy]` currently cover
-  `improved-quality/`, `src/`, `tests/` only (CLAUDE.md: "a separate future decision, not assumed
-  by this setup") — extending it to `digital_twin/` needs the same `tests/network.py`-style mypy
-  `exclude` treatment `network.py`/`machine.py` here would also need (a bare top-level module
-  reachable from a `files`-scanned root can start winning resolution over the real board stubs
-  project-wide), plus CLAUDE.md's full pre-push clean-chroot verification since it's a
-  `pyproject.toml` change. Manually verified clean in the meantime: `ruff check digital_twin/
-  tests/test_digital_twin_*.py` passes with zero findings; `mypy src tests` (the existing committed
-  scope, which already sweeps up `tests/test_digital_twin_*.py`) has zero findings beyond the
-  `digital_twin` import-resolution gap this same exclusion would fix.
 - **BMP3xx's fixed calibration block is not sourced from a real chip.** It's a real-shaped,
   hand-picked set of raw coefficient bytes, verified (`FINAL_WIRING_PLAN.md`'s Step 3 section) to
   round-trip cleanly through the real compensation formula across this twin's whole sensible range

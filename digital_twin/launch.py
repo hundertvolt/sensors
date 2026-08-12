@@ -46,7 +46,7 @@ if TYPE_CHECKING:
 
 import machine
 import network
-from machine import SPI, I2C, WDT, Pin
+from machine import I2C, SPI, WDT, Pin
 
 _FAULT_DEVICE_OPS = {
     "sgp40": ("writeto", "readfrom_into"),
@@ -88,8 +88,8 @@ def parse_fault_spec(spec: str) -> "tuple[str, str, int]":
         )
     try:
         times = int(parts[2])
-    except ValueError:
-        raise ValueError(f"--fault TIMES {parts[2]!r} is not an integer")
+    except ValueError as e:
+        raise ValueError(f"--fault TIMES {parts[2]!r} is not an integer") from e
     if times < 1:
         raise ValueError(f"--fault TIMES must be >= 1, got {times}")
     return device, op, times
@@ -127,12 +127,12 @@ def _pop_value(remaining: "list[str]", flag: str) -> str:
 
 def parse_args(argv: "list[str]") -> "LaunchConfig":
     remaining = list(argv)
-    seed: "int | None" = None
-    fram_state_path: "str | None" = None
-    faults: "list[tuple[str, str, int]]" = []
-    wifi_outcomes: "list[int]" = []
+    seed: int | None = None
+    fram_state_path: str | None = None
+    faults: list[tuple[str, str, int]] = []
+    wifi_outcomes: list[int] = []
     no_wdt_feed = False
-    duration: "float | None" = None
+    duration: float | None = None
 
     while remaining:
         arg = remaining.pop(0)
@@ -281,7 +281,7 @@ async def _sensor_loop(i2c0: "I2C", i2c1: "I2C", summary: "dict[str, Any]") -> N
             if scd30_reading is not None:
                 co2, temp, hum = scd30_reading
                 summary["readings"] += 1
-                print("SCD30: co2=%.1fppm temp=%.1fC hum=%.1f%%" % (co2, temp, hum))
+                print(f"SCD30: co2={co2:.1f}ppm temp={temp:.1f}C hum={hum:.1f}%")
 
         try:
             raw = _read_sgp40(i2c1)
@@ -289,7 +289,7 @@ async def _sensor_loop(i2c0: "I2C", i2c1: "I2C", summary: "dict[str, Any]") -> N
             print("SGP40: read failed:", e)
         else:
             summary["readings"] += 1
-            print("SGP40: raw=%d ticks" % raw)
+            print(f"SGP40: raw={raw} ticks")
 
         try:
             pressure_hpa, bmp_temp = _read_bmp3xx(i2c1)
@@ -297,7 +297,7 @@ async def _sensor_loop(i2c0: "I2C", i2c1: "I2C", summary: "dict[str, Any]") -> N
             print("BMP3XX: read failed:", e)
         else:
             summary["readings"] += 1
-            print("BMP3XX: pressure=%.1fhPa temp=%.1fC" % (pressure_hpa, bmp_temp))
+            print(f"BMP3XX: pressure={pressure_hpa:.1f}hPa temp={bmp_temp:.1f}C")
 
         await asyncio.sleep(_SENSOR_POLL_INTERVAL_S)
 
@@ -317,8 +317,9 @@ async def main(config: "LaunchConfig") -> "dict[str, Any]":
     machine.configure_fram_state_path(config.fram_state_path)
 
     print(
-        "digital_twin/launch.py starting - seed=%r fram_state_path=%r no_wdt_feed=%r duration=%r faults=%r wifi_outcomes=%r"
-        % (config.seed, config.fram_state_path, config.no_wdt_feed, config.duration, config.faults, config.wifi_outcomes)
+        f"digital_twin/launch.py starting - seed={config.seed!r} fram_state_path={config.fram_state_path!r} "
+        f"no_wdt_feed={config.no_wdt_feed!r} duration={config.duration!r} faults={config.faults!r} "
+        f"wifi_outcomes={config.wifi_outcomes!r}"
     )
 
     watchdog = WDT(timeout=8000)
@@ -334,7 +335,7 @@ async def main(config: "LaunchConfig") -> "dict[str, Any]":
     if config.wifi_outcomes:
         wlan.script_connect_outcomes(config.wifi_outcomes)
 
-    summary: "dict[str, Any]" = {"readings": 0, "wifi_status": None, "would_have_triggered_count": 0}
+    summary: dict[str, Any] = {"readings": 0, "wifi_status": None, "would_have_triggered_count": 0}
 
     wlan.active(True)
     wlan.connect(_SSID, _PASSWORD)

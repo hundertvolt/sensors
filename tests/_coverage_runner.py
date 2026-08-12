@@ -1,19 +1,20 @@
-# Runs one tests/test_*.py file under sys.settrace, recording every line executed in src/ (only
-# -- everything else, including this file itself and the test file's own body, is left untraced),
-# then dumps the recorded lines as JSON. Invoked by scripts/test.sh --coverage in place of running
-# a test file directly -- under the same MicroPython Unix port binary the non-coverage run uses,
-# since build_unix_port() (see toolchain/setup_toolchain.py) always compiles in
-# MICROPY_PY_SYS_SETTRACE=1 (an inert hook check when unused, not a behavior change). Not a
+# Runs one tests/test_*.py file under sys.settrace, recording every line executed in src/ or
+# digital_twin/ (only -- everything else, including this file itself and the test file's own body,
+# is left untraced), then dumps the recorded lines as JSON. Invoked by scripts/test.sh --coverage in
+# place of running a test file directly -- under the same MicroPython Unix port binary the
+# non-coverage run uses, since build_unix_port() (see toolchain/setup_toolchain.py) always compiles
+# in MICROPY_PY_SYS_SETTRACE=1 (an inert hook check when unused, not a behavior change). Not a
 # test_*.py file itself, so scripts/test.sh's glob never picks it up directly.
 #
 # coverage.py itself never runs here: it's a CPython tool and can't execute under MicroPython.
 # scripts/_render_coverage.py is the CPython-side counterpart that turns the raw JSON this file
 # writes into an actual coverage.py report -- see that file and tests/README.md for the full
-# pipeline.
+# pipeline. scripts/test.sh renders two separate reports from this same run's combined dump (one
+# scoped to src/, one to digital_twin/) by passing --src-dir twice.
 import json
 import sys
 
-_SRC_PREFIX = "src/"
+_TRACED_PREFIXES = ("src/", "digital_twin/")
 
 
 def _run() -> int:
@@ -24,7 +25,7 @@ def _run() -> int:
     def local_trace(frame, event, arg):  # type: ignore[no-untyped-def]
         if event == "line":
             filename = frame.f_code.co_filename
-            if filename.startswith(_SRC_PREFIX):
+            if filename.startswith(_TRACED_PREFIXES):
                 lines = hits.get(filename)
                 if lines is None:
                     lines = {}
@@ -33,7 +34,7 @@ def _run() -> int:
         return local_trace
 
     def global_trace(frame, event, arg):  # type: ignore[no-untyped-def]
-        if event == "call" and frame.f_code.co_filename.startswith(_SRC_PREFIX):
+        if event == "call" and frame.f_code.co_filename.startswith(_TRACED_PREFIXES):
             return local_trace
         return None
 

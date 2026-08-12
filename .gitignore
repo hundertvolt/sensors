@@ -22,6 +22,9 @@ typings/
 htmlcov/
 coverage.xml
 coverage_summary.md
+htmlcov_digital_twin/
+coverage_digital_twin.xml
+coverage_summary_digital_twin.md
 .coverage
 
 # Scratch config files written/removed by tests/test_config_manager.py's real file-I/O tests.

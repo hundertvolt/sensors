@@ -278,8 +278,8 @@ def test_wdt_would_have_triggered_log_records_the_feed_count_at_each_notificatio
 
 def test_wdt_on_would_trigger_callback_fires_with_the_wdt_instance() -> None:
     async def scenario() -> "list[WDT]":
-        seen: "list[WDT]" = []
-        wdt = WDT(timeout=150, on_would_trigger=lambda w: seen.append(w))
+        seen: list[WDT] = []
+        _wdt = WDT(timeout=150, on_would_trigger=lambda w: seen.append(w))
         for _ in range(200):
             if seen:
                 return seen

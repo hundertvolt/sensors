@@ -93,7 +93,7 @@ class Scd30Chip:
         self._rdy_pin = rdy_pin
         self.fault = FaultInjector()
         self.corrupt_next_measurement = False
-        self._timer = None
+        self._timer: Any | None = None
         # Initial value: one uniform draw within [min,max] at construction - every value after this
         # one steps from the last instead (see _produce_new_reading() below).
         self._co2 = self._random.uniform(self._min_co2, self._max_co2)

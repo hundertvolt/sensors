@@ -120,6 +120,13 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   step's goals/doc-links/criteria, and the cross-step interface contracts that make them combine
   into one working prototype. Deleted once all five steps merge back and the closing audit lands —
   same lifecycle as `AUDIT_PLAN.md`'s below.
+- **`digital_twin/README.md`** — the standing reference for Step 3's hardware simulator: what's
+  there, how to swap it in for a Unix-port run, FRAM persistence, running its own tests, and how to
+  add a new chip fake when a new sensor driver lands (required per `SPECIFICATION.md` C.11).
+  Its own lifecycle isn't yet settled the way `WIRING_CONTRACT.md`'s is above (still genuinely
+  useful to Step 5 and likely beyond, but a later session may decide to fold it into
+  `SPECIFICATION.md` the way `src/README.md`/`tests/README.md` were) — listed here for now so it
+  isn't only locatable by cross-reference in the meantime.
 
 `AUDIT_PLAN.md`, the master action list for the now-completed full `src/` audit, was deleted once
 the audit closed — everything permanent it settled was migrated into `SPECIFICATION.md` (the

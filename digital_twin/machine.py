@@ -43,6 +43,7 @@ class Pin:
     IRQ_RISING = 0x08
 
     _registry: "dict[int, Pin]" = {}
+    _initialized: bool
 
     @classmethod
     def reset_registry(cls) -> None:
@@ -59,12 +60,12 @@ class Pin:
         if existing is not None:
             return existing
         instance = super().__new__(cls)
-        instance._initialized = False  # type: ignore[attr-defined]
+        instance._initialized = False
         cls._registry[id] = instance
         return instance
 
     def __init__(self, id: int, mode: int = -1, pull: int = -1, *, value: "Any" = None) -> None:
-        if self._initialized:  # type: ignore[has-type]
+        if self._initialized:
             # Re-binding to an already-registered physical pin - apply init()-style settings
             # (leave-unchanged-if-omitted) without wiping the pin's current electrical state.
             self.init(mode, pull)
@@ -197,7 +198,7 @@ class I2C:
         device = self._device_or_nak(address)
         data = device.handle_readfrom_mem(memaddr, nbytes)
         self.log.append(("readfrom_mem", address, memaddr, nbytes, addrsize))
-        return data
+        return data  # type: ignore[no-any-return]  # device is duck-typed (Any), see _device_or_nak
 
     def writeto_mem(self, address: int, memaddr: int, buf: object, *, addrsize: int = 8) -> None:
         device = self._device_or_nak(address)
@@ -377,7 +378,7 @@ class WDT:
         # task dies naturally when its owning asyncio.run() event loop closes, matching Timer's own
         # cleanup story (FINAL_WIRING_PLAN.md's Step 3 section has the full design writeup).
         self.would_have_triggered_count = 0
-        self.would_have_triggered_log: "list[int]" = []  # feed_count observed at each notification
+        self.would_have_triggered_log: list[int] = []  # feed_count observed at each notification
         self._on_would_trigger = on_would_trigger
         self._task: asyncio.Task | None = None
         self._arm()
@@ -411,11 +412,14 @@ class RTC:
     def __init__(self, id: int = 0) -> None:
         self.id = id
 
-    def datetime(self, dt: "tuple | None" = None) -> "tuple | None":
+    def datetime(self, dt: "tuple | None" = None) -> "tuple":
+        # Return type matches typings/machine.pyi's own RTC.datetime signature (always `Tuple`,
+        # not Optional) even on the set path, where real hardware returns nothing meaningful -
+        # simplifies the common get-after-set call pattern without a getter/setter @overload split.
         if dt is None:
             return RTC._shared_datetime
         RTC._shared_datetime = tuple(dt)
-        return None
+        return RTC._shared_datetime
 
 
 class SimulatedReboot(Exception):

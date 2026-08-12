@@ -188,8 +188,7 @@ def test_sweep_stale_tmp_dirs_tolerates_a_missing_tmp_dir_entirely() -> None:
     # Nothing to assert beyond "doesn't raise" - the real-world case this guards is the very first
     # scripts/test.sh run ever, before tests/_tmp exists at all.
     try:
-        for entry in os.listdir(_TMP_DIR):
-            pass
+        os.listdir(_TMP_DIR)  # raises immediately (before any iteration) if _TMP_DIR is missing
     except OSError:
         pass  # confirms this environment's own tests/_tmp is absent for this particular check
     else:

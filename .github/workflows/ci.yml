@@ -11,13 +11,20 @@ concurrency:
 
 jobs:
   lint-and-typecheck:
-    # Gates on src/ and tests/ only, NOT improved-quality/ (the WIP refactor target, which has
-    # hundreds of pre-existing, tracked-but-not-yet-fixed findings - see BACKLOG.md; running
-    # scripts/lint.sh/typecheck.sh with no arguments here would make this job permanently red
-    # regardless of what a given PR actually touches). Passing explicit paths overrides
+    # Gates on src/, tests/, and digital_twin/ - NOT improved-quality/ (the WIP refactor target,
+    # which has hundreds of pre-existing, tracked-but-not-yet-fixed findings - see BACKLOG.md;
+    # running scripts/lint.sh/typecheck.sh with no arguments here would make this job permanently
+    # red regardless of what a given PR actually touches). Passing explicit paths overrides
     # pyproject.toml's `files`/default target for that one invocation without changing what a
     # plain `scripts/lint.sh`/`scripts/typecheck.sh` checks locally (still full-scope: see
     # scripts/typecheck.sh's `mypy "$@"` and ruff's own CLI-args-override-config behavior).
+    # digital_twin/ is NOT in the `ruff check`/`scripts/typecheck.sh` args below the way src/tests
+    # are - see pyproject.toml's [tool.mypy] exclude comment and digital_twin/typecheck.ini's own
+    # docstring for why mypy needs a wholly separate invocation for it (bare `machine`/`network`/
+    # `neopixel` module names can only resolve one way per mypy run); scripts/typecheck.sh already
+    # runs that second pass unconditionally, regardless of "$@", so the Mypy step below gates on
+    # digital_twin/ too without needing it named here explicitly. Ruff has no such per-run
+    # resolution conflict, so it's just named directly alongside src/tests.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -26,9 +33,9 @@ jobs:
         run: pip install uv
       - name: Sync dev dependencies
         run: uv sync
-      - name: Ruff (src/, tests/)
-        run: uv run ruff check src tests
-      - name: Mypy (src/, tests/)
+      - name: Ruff (src/, tests/, digital_twin/)
+        run: uv run ruff check src tests digital_twin
+      - name: Mypy (src/, tests/, digital_twin/)
         run: uv run scripts/typecheck.sh src tests
 
   unit-tests:
@@ -80,13 +87,18 @@ jobs:
       # it fail the job. The `Run unit tests` step above is the real pass/fail signal; this just
       # re-runs the same suite under the same Unix port binary (always built with
       # MICROPY_PY_SYS_SETTRACE=1 - see build_unix_port()), wrapped by tests/_coverage_runner.py
-      # this time, to measure src/ line coverage.
+      # this time, to measure src/ AND digital_twin/ line coverage (two separate reports from one
+      # shared run - see scripts/test.sh's own comment).
       - name: Run unit tests with coverage
         run: scripts/test.sh --coverage
         continue-on-error: true
       - name: Add coverage summary to job summary
         if: hashFiles('coverage_summary.md') != ''
         run: cat coverage_summary.md >> "$GITHUB_STEP_SUMMARY"
+        continue-on-error: true
+      - name: Add digital_twin/ coverage summary to job summary
+        if: hashFiles('coverage_summary_digital_twin.md') != ''
+        run: cat coverage_summary_digital_twin.md >> "$GITHUB_STEP_SUMMARY"
         continue-on-error: true
       # Free for public repos; needs a CODECOV_TOKEN repo secret (or Codecov's tokenless PR-from-
       # fork support) once this repo is registered at codecov.io - not something CI itself can set
@@ -98,10 +110,25 @@ jobs:
           files: coverage.xml
           fail_ci_if_error: false
         continue-on-error: true
+      - name: Upload digital_twin/ coverage to Codecov
+        if: hashFiles('coverage_digital_twin.xml') != ''
+        uses: codecov/codecov-action@v7
+        with:
+          files: coverage_digital_twin.xml
+          flags: digital_twin
+          fail_ci_if_error: false
+        continue-on-error: true
       - name: Upload HTML coverage report artifact
         if: hashFiles('htmlcov/index.html') != ''
         uses: actions/upload-artifact@v7
         with:
           name: coverage-html
           path: htmlcov/
+        continue-on-error: true
+      - name: Upload digital_twin/ HTML coverage report artifact
+        if: hashFiles('htmlcov_digital_twin/index.html') != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-html-digital-twin
+          path: htmlcov_digital_twin/
         continue-on-error: true

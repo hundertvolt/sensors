@@ -164,9 +164,25 @@ information):
   venv). **Wired into CI** via `.github/workflows/ci.yml` (GitHub Actions), running all three on
   every push/PR. The CI pipeline does not yet include a real firmware-build stage (see
   BACKLOG.md).
-- **Scope is `improved-quality/`, `src/`, and `tests/`, for now.** The pre-refactor deployed
+- **Scope is `improved-quality/`, `src/`, `tests/`, and `digital_twin/`.** The pre-refactor deployed
   codebase (`python/`, `modules/`) has no lint/type config yet; extending scope there is a separate
-  future decision, not assumed by this setup.
+  future decision, not assumed by this setup. Unlike `improved-quality/`'s tracked, allowed-to-be-
+  nonzero debt, `digital_twin/` is expected to stay fully clean, same as `src/`/`tests/` — it's a
+  fully-reviewed, freely-editable scope (see "Hard rules" above), not WIP. `digital_twin/`'s own
+  type-check is a **separate** mypy invocation (`digital_twin/typecheck.ini`, run unconditionally by
+  `scripts/typecheck.sh` regardless of its own args) rather than folded into the main
+  `[tool.mypy]` pass — mypy resolves each bare `machine`/`network`/`neopixel` module name to exactly
+  one file per run, so this package's own hardware fakes and the real `typings/` board stubs can
+  never both be checked correctly in one invocation. `digital_twin/machine.py`/`network.py`/
+  `neopixel.py` (a straight `Duplicate module named "machine"` collision with `tests/machine.py`
+  otherwise — confirmed directly, not the softer resolution-priority hijack `tests/network.py`'s own
+  exclude guards against) and `digital_twin/launch.py`/every `tests/test_digital_twin_*.py` (attr-
+  defined noise on every twin-only API the real board stub doesn't declare, e.g.
+  `WDT.would_have_triggered_count`, `WLAN.script_connect_outcomes()` — confirmed directly, including
+  one real `mypy src tests`-only finding this design caught that a from-scratch `mypy` run missed)
+  are therefore excluded from the main `[tool.mypy]` pass and checked correctly by the dedicated
+  pass instead — see `pyproject.toml`'s own `[tool.mypy]` exclude comment and
+  `digital_twin/typecheck.ini`'s own docstring for the full account.
 - **Unit tests run under a real MicroPython Unix-port interpreter, not pytest/CPython** — "as close
   to the real environment as possible" means the actual runtime, not CPython plus MicroPython-
   flavored stubs (see `tests/README.md`'s "Why not pytest"). `scripts/test.sh` builds that

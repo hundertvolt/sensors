@@ -91,7 +91,7 @@ class WLAN:
         self.deinit_called = False
         self.disconnect_called = False
         self._connect_task: asyncio.Task | None = None
-        self._scripted_outcomes: "list[int]" = []
+        self._scripted_outcomes: list[int] = []
         # Test/Step-5-run fault injection - method name -> exception to raise once armed, same
         # shape as every chip fake's FaultInjector in this package.
         self.raise_on: dict[str, Exception] = {}

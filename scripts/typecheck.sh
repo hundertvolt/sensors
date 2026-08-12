@@ -85,4 +85,23 @@ fi
 # Extra args (if any) override pyproject.toml's [tool.mypy] `files` for this invocation - e.g.
 # CI's lint-and-typecheck job passes `src tests` to gate on just that scope, without changing
 # what a plain `scripts/typecheck.sh` checks locally (see .github/workflows/ci.yml).
-mypy "$@"
+main_status=0
+mypy "$@" || main_status=$?
+
+# digital_twin/'s own type-check is a SEPARATE mypy invocation, always run regardless of "$@" -
+# see digital_twin/typecheck.ini's own docstring and pyproject.toml's [tool.mypy] exclude comment
+# for why: mypy resolves each bare `machine`/`network`/`neopixel` module name to exactly one file
+# per run, so digital_twin/'s own fakes and the real board stubs can never both be checked
+# correctly in the single main invocation above. Unlike improved-quality/'s tracked, expected
+# pre-existing debt (which is allowed to make main_status non-zero locally), this second pass has
+# no such allowance - digital_twin/ is a fully-reviewed, freely-editable scope (CLAUDE.md), so any
+# finding here is real and must fail the script, in CI exactly as much as locally.
+twin_status=0
+mypy --config-file digital_twin/typecheck.ini digital_twin tests/test_digital_twin_*.py || twin_status=$?
+if [ "$twin_status" -ne 0 ]; then
+    echo "error: digital_twin/typecheck.ini's dedicated pass found real findings - this scope is expected to stay fully clean, unlike improved-quality/'s tracked debt above." >&2
+fi
+
+if [ "$main_status" -ne 0 ] || [ "$twin_status" -ne 0 ]; then
+    exit 1
+fi

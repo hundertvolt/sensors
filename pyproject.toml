@@ -35,10 +35,12 @@ dev = [
 
 # Checks currently cover improved-quality/ (the WIP code-quality refactor target, where this
 # cleanup effort actually started - see CLAUDE.md), src/ (files moved out of improved-quality/
-# once fully reviewed/tested), and tests/ (their unit tests). The pre-refactor deployed codebase
-# (python/, modules/) isn't in scope yet and has no lint/type config of its own right now.
-# improved-quality/mypy.ini and improved-quality/pycheck.sh (ad hoc, trial-and-error configs)
-# have been retired in favor of this file.
+# once fully reviewed/tested), tests/ (their unit tests), and digital_twin/ (Step 3's hardware
+# simulator, FINAL_WIRING_PLAN.md - a fully-reviewed, freely-editable scope like src/, not WIP like
+# improved-quality/). The pre-refactor deployed codebase (python/, modules/) isn't in scope yet and
+# has no lint/type config of its own right now. improved-quality/mypy.ini and
+# improved-quality/pycheck.sh (ad hoc, trial-and-error configs) have been retired in favor of this
+# file.
 
 [tool.ruff]
 # Deliberately 3.10, not >=3.11 like [project]'s requires-python above: this is the syntax floor
@@ -100,7 +102,7 @@ no_site_packages = true
 # A bare glob in `files` (e.g. "improved-quality/*.py") gets pre-expanded to an explicit file
 # list, which `exclude` can't then prune - passing the directory itself is what makes `exclude`
 # actually take effect during mypy's own directory walk.
-files = ["improved-quality", "src", "tests"]
+files = ["improved-quality", "src", "tests", "digital_twin"]
 # improved-quality/microdot.py: see its own module docstring. tests/network.py: a bare top-level
 # `network.py` sitting inside a `files`-scanned root starts winning module resolution over
 # typings/'s real `network` stub *project-wide*, not just within tests/ - confirmed directly: with
@@ -115,7 +117,47 @@ files = ["improved-quality", "src", "tests"]
 # for its own checking, exactly like every other file. tests/network.py stays runtime-resolved via
 # MICROPYPATH's tests-before-.frozen ordering (see its own module docstring) - this exclude is
 # mypy-only, doesn't touch how the real MicroPython interpreter finds it.
-exclude = ["improved-quality/microdot\\.py$", "tests/network\\.py$"]
+#
+# digital_twin/machine.py, network.py, neopixel.py: same bare-top-level-module-name hijack as
+# tests/network.py above, confirmed directly - without this exclude, mypy fails outright with
+# "Duplicate module named 'machine' (also at tests/machine.py")" the instant digital_twin is added
+# to `files` at all (a straight collision, not just a silent resolution-priority hijack, since both
+# are bare top-level `machine.py` files scanned in the same run).
+#
+# digital_twin/launch.py, every tests/test_digital_twin_*.py: none of these import anything from
+# src/ (confirmed directly - grepped every top-level import in all 7 test_digital_twin_*.py files;
+# they reach digital_twin/ exclusively, via sys.path.insert(0, "digital_twin"), never src/), so this
+# whole subsystem's tests are a self-contained scope that belongs entirely to
+# digital_twin/typecheck.ini's own dedicated pass (below), not split across both. Concretely: several
+# of these files exercise the twin's own richer `machine`/`network` API surface
+# (`WDT.would_have_triggered_count`, `WLAN.script_connect_outcomes()`, `Pin.reset_registry()`,
+# `machine.configure_fram_state_path()`/`flush_fram()`, `SimulatedReboot`, `I2C.devices`/
+# `SPI.device`, ...) that intentionally doesn't exist on the real board stub - by design, since the
+# real stub describes real hardware, not this twin's test/debug-only extensions. Under this main
+# pass's mypy_path (typings + src, no digital_twin - kept that way deliberately, see above), their
+# own `import machine`/`import network` can only ever resolve to the real stub, so checking them
+# here would only ever produce attr-defined noise on every twin-only API, never a real finding.
+# Even the files that don't hit that specific mismatch today (scd30/sgp40/bmp3xx/fram, which reach
+# their chip fake directly via `from _scd30_chip import ...` etc.) still resolve their own import
+# only by accident of `follow_imports = silent` tolerating an unresolvable module path - confirmed
+# directly: `mypy src tests` alone (this exact CI gate command) surfaces a real, digital_twin-only
+# `no-any-return` finding in test_digital_twin_bmp3xx.py that the full `mypy` invocation (files
+# includes digital_twin, so `_bmp3xx_chip`'s own return type is fully known) does not - i.e. these
+# files' apparent cleanliness under `mypy src tests` was never reliable, just an accident of which
+# invocation happened to be run. digital_twin/typecheck.ini gives the whole subsystem one, single,
+# always-reliable, fully clean type-check pass instead (mypy_path pointed at digital_twin/ itself so
+# `machine`/`network`/`neopixel` resolve to the twin's own real API, and every chip fake's own return
+# types are fully known) - see that file's own docstring for the full rationale, and
+# scripts/typecheck.sh for how it's wired into both local and CI runs.
+exclude = [
+    "improved-quality/microdot\\.py$",
+    "tests/network\\.py$",
+    "digital_twin/machine\\.py$",
+    "digital_twin/network\\.py$",
+    "digital_twin/neopixel\\.py$",
+    "digital_twin/launch\\.py$",
+    "tests/test_digital_twin_.*\\.py$",
+]
 
 show_error_context = true
 show_column_numbers = true

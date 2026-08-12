@@ -14,12 +14,17 @@
 # --coverage: runs the same tests, under the same Unix port binary (it's always built with
 # MICROPY_PY_SYS_SETTRACE=1 - see build_unix_port() - so there's no separate coverage-only
 # interpreter to build), but with tests/_coverage_runner.py wrapping each test file to install a
-# sys.settrace line tracer scoped to src/ and record which lines actually executed. The merged
-# result is handed to scripts/_render_coverage.py (a separate, self-contained `uv run` script -
-# coverage.py itself only runs under CPython, never under MicroPython) to render an HTML report
+# sys.settrace line tracer scoped to src/ and digital_twin/ and record which lines actually
+# executed. The merged result is handed to scripts/_render_coverage.py (a separate, self-contained
+# `uv run` script - coverage.py itself only runs under CPython, never under MicroPython) TWICE -
+# once per --src-dir - to render two separate reports from the one shared raw dump: an HTML report
 # (htmlcov/), a Cobertura XML report (coverage.xml, for e.g. Codecov), and a markdown summary
-# (coverage_summary.md). See README.md's "Code quality tooling" for a usage example and
-# tests/README.md for the full pipeline this is one stage of.
+# (coverage_summary.md) for src/, plus the digital_twin/-suffixed equivalents
+# (htmlcov_digital_twin/, coverage_digital_twin.xml, coverage_summary_digital_twin.md) for
+# digital_twin/ - kept as two separate reports, not one combined one, since the two scopes have
+# different maturity/gating expectations (see CLAUDE.md's "Code quality tooling"). See README.md's
+# "Code quality tooling" for a usage example and tests/README.md for the full pipeline this is one
+# stage of.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
@@ -125,6 +130,8 @@ done
 if [ "$coverage" = "1" ]; then
     echo "== Rendering coverage report"
     uv run scripts/_render_coverage.py --raw-dir "$raw_dir" --src-dir src --html-dir htmlcov --xml-file coverage.xml --markdown-file coverage_summary.md
+    echo "== Rendering digital_twin/ coverage report"
+    uv run scripts/_render_coverage.py --raw-dir "$raw_dir" --src-dir digital_twin --html-dir htmlcov_digital_twin --xml-file coverage_digital_twin.xml --markdown-file coverage_summary_digital_twin.md
 fi
 
 exit "$failed"
