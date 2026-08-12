@@ -165,6 +165,8 @@ class SensorReader:
             self.pr = logger
         else:
             self.pr = make_logger(fram, history_length, debug, name)
+        self.name = name  # matches self.pr.name - the _ModuleLike registration shape
+        # asy_webserver_service.py's registration lists key on (sensors=/error_sources=/settings=).
         self._datastruct = init_data
         self._datalock = asyncio.Lock()
         self.max_module_error = max_module_error

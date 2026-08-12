@@ -15,15 +15,22 @@ own documented contract), so batching at the end is the one ordering that's corr
 module, not just tidy for the rest.
 
 Every logger in the whole constructed object graph - not just each module's own top-level self.pr,
-but every nested cfgmgr.pr and AsyConnTime's own dns_server.pr too - has its own set_level() bound
-method collected into sysfunct's level-setter registry (see _collect_level_setters() below and
-system_service.py's set_level_setters()/_apply_level()). A change via sysfunct.set_debug_level()
-(once Step 2 wires a REST route to it) calls every one of these set_level() methods directly - no
-shared mutable value anywhere, each PrintLog instance stays a plain, independent object.
+but every nested cfgmgr.pr and AsyConnTime's own dns_server.pr too, plus the webserver's own logger -
+has its own set_level() bound method collected into sysfunct's level-setter registry (see
+_collect_level_setters() below and system_service.py's set_level_setters()/_apply_level()). A change
+via sysfunct.set_debug_level() (reachable through /system's DebugLevel field, see below) calls every
+one of these set_level() methods directly - no shared mutable value anywhere, each PrintLog instance
+stays a plain, independent object.
+
+Also constructs FINAL_WIRING_PLAN.md's Step 2 registration-based webserver/API service
+(`asy_webserver_service.WebserverService`) once every module it registers exists - a real `Microdot()`
+app plus every SettingsGroup/status_source/system_cmd/notification_led/maintenance_sensor/
+error_source registration, not just the driver object graph Step 1 built. Its own task participates
+in the ordinary `start_and_check_tasks()` supervisor like every other module (no bespoke restart
+mechanism, per that step's decision 1).
 
 Deliberately excluded from this file (owner-confirmed, see FINAL_WIRING_PLAN.md's refined plan):
-Microdot/routes (Step 2's job entirely, as a registration-based service, not a copy of the
-reference file's route-decorator shape) and `import frozen_html` (Step 4's job). No top-level
+`import frozen_html` (Step 4's job - static/frozen content, not this file's concern). No top-level
 blocking call anywhere in this module either - importing it and calling build_system() must always
 return; the real "importing this triggers boot" firmware behavior lives in
 boot_entry/wozi_boot.py instead, kept deliberately separate so this module stays independently
@@ -31,9 +38,15 @@ testable the way every other src/ module already is.
 """
 
 import asyncio
+import time
 from asyncio import ThreadSafeFlag
 
 from machine import WDT
+
+# Vendored ext/microdot.py isn't on this project's mypy search path (mypy_path=["typings","src"]) -
+# real device firmware freezes ext/ and src/ flat together, so this resolves fine at runtime; see
+# CLAUDE.md's vendoring hard rule and asy_webserver_service.py's own identical import comment.
+from microdot import Microdot  # type: ignore[import-not-found]
 from micropython import const
 
 import asy_i2c_driver
@@ -46,6 +59,7 @@ from asy_notification_service import NotificationCoordinator, NotificationSignal
 from asy_ntp_client import AsyNtpClient
 from asy_scd30_driver import SCD30_Reader
 from asy_sgp40_driver import SGP40_Reader
+from asy_webserver_service import SettingsGroup, WebserverService
 from asy_wifi_service import AsyConnTime
 from system_service import SystemService
 
@@ -89,6 +103,7 @@ bmp_reader: "BMP3xx_Reader | None" = None
 scd_reader: "SCD30_Reader | None" = None
 pixel: "NeopixelDriver | None" = None
 notify_service: "NotificationCoordinator | None" = None
+webserver: "WebserverService | None" = None
 timers_running: "ThreadSafeFlag | None" = None
 
 
@@ -127,6 +142,124 @@ async def hum_value_callback() -> "int | float | None":
     return float(scd_data.Hum)
 
 
+def _gmtimestruct_to_dict(t: "Any") -> "dict[str, int] | None":  # t: a GMTimeStruct/8-tuple or None
+    if t is None:
+        return None
+    return {
+        "year": t[0],
+        "month": t[1],
+        "mday": t[2],
+        "hour": t[3],
+        "minute": t[4],
+        "second": t[5],
+        "weekday": t[6],
+        "yearday": t[7],
+    }
+
+
+async def _system_cmd_callback(cmd: str) -> bool:
+    # WebserverService's own _dispatch_system_cmd() already restricts cmd to _SYSTEM_CMDS
+    # ("reboot"/"bootloader"/"mempause") before ever calling this - the else branch below is
+    # defense-in-depth, not a real reachable case. mempause's duration is the legacy fixed 300s,
+    # never client-supplied (FINAL_WIRING_PLAN.md's Step 2 PUT-shape decision).
+    assert sysfunct is not None
+    if cmd == "reboot":
+        sysfunct.reboot_system()
+    elif cmd == "bootloader":
+        sysfunct.reboot_bootloader()
+    elif cmd == "mempause":
+        sysfunct.pause_permanent_storage(300)
+    else:
+        return False
+    return True
+
+
+async def _notification_led_callback(payload: "dict[str, Any]") -> bool:
+    assert pixel is not None
+    try:
+        r, g, b, t = int(payload["r"]), int(payload["g"]), int(payload["b"]), float(payload["t"])
+    except (KeyError, TypeError, ValueError):
+        return False
+    return await pixel.request_signal(r, g, b, t)
+
+
+async def _sgp_maintenance_status() -> "dict[str, Any]":
+    assert sgp_reader is not None
+    backup_ts, restore_ts = await sgp_reader.get_mem_status()
+    return {"BackupTS": backup_ts, "RestoreTS": restore_ts}
+
+
+async def _networking_status() -> "dict[str, Any]":
+    assert conn is not None and ntp is not None
+    wifi_data = await conn.get_data()
+    ifcfg = conn.get_wlan_ifconfig()  # (ip, netmask, gateway, dns) or None
+    ntp_data = await ntp.get_data()
+    return {
+        "WifiUptime": await conn.get_wifi_uptime(),
+        "Mode": wifi_data.Mode,
+        "Connected": wifi_data.Connected,
+        "IP": wifi_data.IP,
+        "IPv4": None if ifcfg is None else ifcfg[0],
+        "Subnet": None if ifcfg is None else ifcfg[1],
+        "Gateway": None if ifcfg is None else ifcfg[2],
+        "DNS": None if ifcfg is None else ifcfg[3],
+        "Rssi": conn.get_wlan_rssi(),
+        "NtpSynced": ntp_data.Synced,
+        "NtpLastSyncAge": ntp_data.LastSyncAge,
+        "NtpLastSync": ntp_data.TS,
+    }
+
+
+async def _system_status() -> "dict[str, Any]":
+    assert sysfunct is not None and ntp is not None and fram is not None
+    local_time = await ntp.cettime()
+    return {
+        "SysUptime": await sysfunct.get_uptime(),
+        "BootSignature": await sysfunct.get_boot_signature(),
+        "MemPaused": fram.get_pause(),
+        "LocalTime": _gmtimestruct_to_dict(local_time),
+        "UtcTime": _gmtimestruct_to_dict(time.gmtime()),
+    }
+
+
+async def _notification_status() -> "dict[str, Any]":
+    assert notify_service is not None
+    data = await notify_service.get_data()
+    return {
+        "Triggered": data.Triggered,
+        "TS": data.TS,
+        "PauseTime": await notify_service.get_override_led(),
+    }
+
+
+def _collect_error_sources() -> "list[Any]":
+    # Every module + every ConfigManager instance ("CFGMGR_<name>") - same 16-owner enumeration as
+    # _collect_level_setters() below (one entry per logger in the whole constructed object graph),
+    # just the owning objects themselves rather than their bound set_level() methods. Feeds
+    # WebserverService's error_sources= registration list (its /status "errcount" aggregation).
+    assert conn is not None and ntp is not None and fram is not None and sysfunct is not None
+    assert sgp_reader is not None and bmp_reader is not None and scd_reader is not None
+    assert pixel is not None and notify_service is not None
+    return [
+        conn,
+        conn.cfgmgr,
+        conn.dns_server,
+        ntp,
+        ntp.cfgmgr,
+        fram,
+        sysfunct,
+        sysfunct.cfgmgr,
+        sgp_reader,
+        sgp_reader.cfgmgr,
+        bmp_reader,
+        bmp_reader.cfgmgr,
+        scd_reader,
+        pixel,
+        notify_service,
+        notify_service.cfgmgr,
+    ]
+
+
 def _collect_level_setters() -> "list[Callable[[int], None]]":
     # Every logger in the whole constructed object graph, not just each module's own top-level
     # self.pr - the nested ConfigManager.pr each ConfigManager-backed module owns internally
@@ -139,7 +272,7 @@ def _collect_level_setters() -> "list[Callable[[int], None]]":
     # constructed, then handed to sysfunct.set_level_setters() as a plain list of bound methods.
     assert conn is not None and ntp is not None and fram is not None and sysfunct is not None
     assert sgp_reader is not None and bmp_reader is not None and scd_reader is not None
-    assert pixel is not None and notify_service is not None
+    assert pixel is not None and notify_service is not None and webserver is not None
     return [
         conn.pr.set_level,
         conn.cfgmgr.pr.set_level,
@@ -157,6 +290,7 @@ def _collect_level_setters() -> "list[Callable[[int], None]]":
         pixel.pr.set_level,  # no cfgmgr - no config schema (owner-confirmed, see SPECIFICATION.md A.4)
         notify_service.pr.set_level,
         notify_service.cfgmgr.pr.set_level,
+        webserver.pr.set_level,  # no cfgmgr - no config schema (own safety constants only, see BACKLOG.md)
     ]
 
 
@@ -170,7 +304,7 @@ async def build_system(*, cfg_path: str = "", debug: int | None = None) -> None:
     via the registry _collect_level_setters() builds, overriding this initial value.
     """
     global watchdog, conn, ntp, i2c0, i2c1, spi0, fram, sysfunct
-    global sgp_reader, bmp_reader, scd_reader, pixel, notify_service, timers_running
+    global sgp_reader, bmp_reader, scd_reader, pixel, notify_service, webserver, timers_running
 
     # watchdog: hardcoded at construction time, no injection point - "must be hardcoded so no
     # error ever can circumvent it when it is set active" (owner, FINAL_WIRING_PLAN.md's refined
@@ -233,6 +367,59 @@ async def build_system(*, cfg_path: str = "", debug: int | None = None) -> None:
     notify_service.register(NotificationSignal("WarnHum", hum_value_callback, _FIELD_WARN_HUM, (0, 0, 1)))
     notify_service.finalize()
     conn.set_ext_led(pixel)  # callback for wifi led - after both conn and pixel exist
+
+    # Registration-based Microdot REST/API service (FINAL_WIRING_PLAN.md's Step 2) - built here,
+    # after every module it registers exists, exactly like conn.set_ext_led()'s own cross-wiring
+    # just above. "No Microdot, no routes" was Step 1's own scoping (deliberately excluded then,
+    # reference-only in improved-quality/sensortask-wozi.py); this is Step 2's real replacement.
+    app = Microdot()
+    webserver = WebserverService(
+        app,
+        # Deliberately no fram= here (stays a plain in-RAM PrintLog, not FRAM-backed) - unlike every
+        # other FRAM-chunk-owning module above, this one logs a warning on *every* per-call/outer-cap
+        # connection reclaim (BACKLOG.md's decision 8), a rate a hostile or merely flaky client could
+        # drive far higher than any sensor's rare-hardware-fault error log ever does; persisting that
+        # to FRAM would risk real wear-leveling pressure this module's own diagnostics don't need to
+        # survive a reboot to be useful. Keeps WIRING_CONTRACT.md's five-chunk FRAM allocation order
+        # (Step 1) exactly as documented - this module allocates no FRAM chunk at all, not a sixth.
+        sensors=(scd_reader, bmp_reader, sgp_reader),  # type: ignore[arg-type]  # structurally
+        # _ModuleLike-shaped (SensorReader/SensorReaderConfig subclasses) - _ModuleLike is a
+        # narrower Protocol defined in asy_webserver_service.py, not importable here without a real
+        # coupling to that module's private type; same treatment as that module's own
+        # _apply_settings_groups() uses for group.module, applied at every call site below too.
+        settings={
+            "networking": [
+                # Mirrors the legacy setNetwork/setWiFiLED field-scoping split (tests/
+                # test_setter_microdot_integration.py's own _wifi_field_schema() precedent) - LedWifiOn
+                # gets its own group with no post_fct, so toggling it alone never reconnects WiFi.
+                SettingsGroup(conn, ("SSID", "PW", "Country", "Hostname"), post_fct=conn.reconnect_wifi),  # type: ignore[arg-type]
+                SettingsGroup(conn, ("LedWifiOn",)),  # type: ignore[arg-type]
+                SettingsGroup(ntp, ("NTP_Host", "NTP_Offset_S", "NTP_Interv_H"), post_asy_fct=ntp.ntp_force_sync),  # type: ignore[arg-type]
+            ],
+            "system": [
+                SettingsGroup(sysfunct, ("DebugLevel",)),  # type: ignore[arg-type]
+                SettingsGroup(ntp, ("GMTOffset", "DSTOffset")),  # type: ignore[arg-type]  # cettime() reads these live - no post hook needed
+            ],
+            "notification": [
+                # notify_service.get_cfg_schema() is the full combined schema (own fields + every
+                # registered NotificationSignal's field, e.g. WarnCO2/WarnVOC/WarnHum) - read
+                # dynamically rather than hardcoded, so a future registered signal's field is
+                # automatically PUT-able through /notification without an unrelated edit here.
+                SettingsGroup(notify_service, cm.schema_names(notify_service.get_cfg_schema())),  # type: ignore[arg-type]
+            ],
+        },
+        system_cmd=_system_cmd_callback,
+        notification_led=_notification_led_callback,
+        status_sources={
+            "networking": _networking_status,
+            "system": _system_status,
+            "notification": _notification_status,
+        },
+        maintenance_sensors=(("SGP40", _sgp_maintenance_status),),
+        error_sources=_collect_error_sources(),
+        debug=debug,
+    )
+
     timers_running = ThreadSafeFlag()
 
     sysfunct.set_level_setters(_collect_level_setters())
@@ -241,11 +428,27 @@ async def build_system(*, cfg_path: str = "", debug: int | None = None) -> None:
     # (rather than interleaved with construction above) is the one correct ordering, not just a
     # style choice. sysfunct first - resolves the real persisted debug level as early as possible,
     # so every subsequent setup() call's own diagnostic logging already reflects it. Order among
-    # the three ConfigManager-domain calls after it matches their own construction order; fram (a
-    # different, FRAM-hardware readiness domain entirely) keeps its existing position from the
-    # reference file's own async_onetime list.
+    # the ConfigManager-domain calls after it matches their own construction order (conn/ntp were
+    # both built before fram/sysfunct - WIRING_CONTRACT.md's five-chunk FRAM order is about FRAM
+    # *chunk allocation* order specifically, unrelated to this ConfigManager-only setup() ordering);
+    # fram (a different, FRAM-hardware readiness domain entirely) keeps its existing position from
+    # the reference file's own async_onetime list.
+    #
+    # conn.setup()/ntp.setup() are a real gap fix, not part of Step 1's original three (sgp/bmp/
+    # notify) - found directly while wiring Step 2's /networking and /system PUT routes to the real
+    # conn/ntp objects: AsyConnTime/AsyNtpClient are SensorReaderConfig subclasses under the exact
+    # same sync-__init__/async-setup() pattern (SPECIFICATION.md Part C.13) as sgp/bmp/notify, but
+    # nothing anywhere in the previously-constructed system ever called their own cfgmgr.setup() -
+    # confirmed directly: without it, conn.cfgmgr.valid stays False forever, so every write to
+    # conn's/ntp's config fails with "Failed" (ConfigManager.write_config()'s own "not self.valid"
+    # guard), and every read returns None. Neither asy_wifi_service.py's wlan_connect() nor
+    # asy_ntp_client.py's own task methods ever call cfgmgr.setup() internally either - this was
+    # already a real hole in Step 1's construction sequence, just never exercised by a real
+    # config-write path before this session's webserver wiring.
     await sysfunct.setup()
     await fram.setup()
+    await conn.setup()
+    await ntp.setup()
     await sgp_reader.setup()
     await bmp_reader.setup()
     await notify_service.setup()
@@ -264,7 +467,7 @@ def _collect_task_starters() -> "list[Callable[[], asyncio.Task[Any]]]":
     # change from today's deployed flow, not a mechanical rewrite artifact.
     assert scd_reader is not None and bmp_reader is not None and sgp_reader is not None
     assert pixel is not None and notify_service is not None and sysfunct is not None
-    assert conn is not None and ntp is not None
+    assert conn is not None and ntp is not None and webserver is not None
     return (
         scd_reader.get_task_starters()
         + bmp_reader.get_task_starters()
@@ -274,6 +477,9 @@ def _collect_task_starters() -> "list[Callable[[], asyncio.Task[Any]]]":
         + sysfunct.get_task_starters()
         + conn.get_task_starters()
         + ntp.get_task_starters()
+        + webserver.get_task_starters()  # the webserver's own task, registered as an ordinary task
+        # in start_and_check_tasks() like every other module (FINAL_WIRING_PLAN.md's Step 2 decision 1
+        # - no bespoke whole-server-restart mechanism).
     )
 
 

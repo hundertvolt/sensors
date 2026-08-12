@@ -17,7 +17,7 @@ import math_helpers
 from asy_fram_manager import AsyFramManager
 from asy_i2c_driver import I2C, I2CDevice
 from base_classes import Lockable, SensorReader
-from config_manager import make_dict, name_cfg
+from config_manager import make_dict, name_cfg, schema_dict, type_or_range_error
 from crc_checks import CRC8
 
 try:
@@ -29,8 +29,10 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
         return val
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Coroutine
     from typing import Any
+
+    from config_manager import ConfigSchema
 
 
 _SCD30_DEFAULT_ADDR = const(0x61)
@@ -190,6 +192,47 @@ class SCD30_Reader(SensorReader):
             _VAL_TO + _VAL_MI + _VAL_AP + _VAL_ALT + _VAL_CAL + _VAL_SC,
             callback=self._read_sensor_dict,
         )
+
+    async def _set_dict_cfg(
+        self, data: dict[str, int | float | str | bool | None], cfg_vals: "ConfigSchema"
+    ) -> dict[str, str]:
+        # Schema-driven generic setter, structurally mirroring base_classes.SensorReaderConfig's own
+        # _set_dict_cfg() validate-against-schema/dispatch-by-name shape (FINAL_WIRING_PLAN.md's
+        # Step 2, decided gap closure - SCD30 has no cfgmgr, "these params are stored on the sensor
+        # itself, not cached locally" per this file's own _VAL_* comment) - but with NO persistence
+        # step at all: each validated field calls straight through to its already-existing individual
+        # setter (a real I2C write), no local cache/file involved. ContMeas has no _VAL_* schema entry
+        # (the sensor can't report whether continuous measurement is running - see get_dict_cfg()'s
+        # own comment), so it's dispatched here directly rather than through the schema loop, keeping
+        # asy_webserver_service.py itself fully sensor-agnostic - it always just calls
+        # module._set_dict_cfg(fields, module.get_cfg_schema()) uniformly for every sensor.
+        dispatch: dict[str, Callable[[Any], Coroutine[Any, Any, bool]]] = {
+            name_cfg(_VAL_TO): self.set_temperature_offset,
+            name_cfg(_VAL_MI): self.set_measurement_interval,
+            name_cfg(_VAL_AP): self.set_ambient_pressure,
+            name_cfg(_VAL_ALT): self.set_altitude,
+            name_cfg(_VAL_CAL): self.set_forced_recalibration_reference,
+            name_cfg(_VAL_SC): self.set_self_calibration_enabled,
+        }
+        schema_by_name = schema_dict(cfg_vals)
+        results: dict[str, str] = {}
+        for key, value in data.items():
+            if key == "ContMeas":
+                if isinstance(value, bool):
+                    results[key] = "Valid" if await self.stop_continuous_measurement(value) else "Failed"
+                else:
+                    results[key] = "Invalid"
+                continue
+            field = schema_by_name.get(key)
+            setter = dispatch.get(key)
+            if field is None or setter is None:
+                results[key] = "Invalid"
+                continue
+            if type_or_range_error(value, field):
+                results[key] = "Invalid"
+                continue
+            results[key] = "Valid" if await setter(value) else "Failed"
+        return results
 
     async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
         return await self.pr.get_log()

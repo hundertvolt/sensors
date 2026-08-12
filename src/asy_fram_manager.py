@@ -574,6 +574,8 @@ class AsyFramManager:
         self, spi_bus: SPI, spi_cs: int, max_size: int = 0x2000, history_length: int = 10, debug: int | None = None
     ) -> None:
         self.pr = PrintLogHistory(history_length, debug, name=_NAME)
+        self.name = _NAME  # matches self.pr.name - the _ModuleLike registration shape
+        # asy_webserver_service.py's registration lists key on (error_sources=).
         self.size = max_size
         self.allocated_size = 0
         self._pause = False

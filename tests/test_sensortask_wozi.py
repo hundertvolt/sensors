@@ -22,19 +22,37 @@ one place, everything the "Criteria for this step to finish" checklist asks for:
   blocking-import production entry point lives in boot_entry/wozi_boot.py instead). If this file
   hangs the test process, that alone is a real Step 1 regression.
 
-Deliberately not covered here: Microdot/routes (excluded from Step 1 entirely, owner-confirmed -
-see FINAL_WIRING_PLAN.md's refined plan Q2), real sensor I2C/SPI transactions (tests/machine.py's
-raw bus fakes only - the digital twin is Step 3's job and Step 1 has no dependency on it).
+Also covers Step 2's own real wiring into this file (FINAL_WIRING_PLAN.md's Step 2 "Not yet done"
+follow-up, closed in a later session): build_system() now also constructs a real Microdot() app and
+WebserverService, registering every module's SettingsGroup/status_source/system_cmd/
+notification_led/maintenance_sensor/error_source - see the "Webserver wiring" section below. Deep
+per-route/per-endpoint behavior (exact GET/PUT shapes, error aggregation, connection hardening) stays
+tests/test_asy_webserver_service.py's own job (uniform fakes throughout, per that file's own
+endpoint-design decision) - this file only checks the *real* driver objects were actually registered
+correctly, not the generic dispatch logic those fakes already cover in depth.
+
+Deliberately not covered here: real sensor I2C/SPI transactions (tests/machine.py's raw bus fakes
+only - the digital twin is Step 3's job and Step 1 has no dependency on it).
 """
 
 import asyncio
+import json
 import os
+import sys
 
-from _fram_chip_fake import FakeMB85RS64V
+# Same convention as tests/test_asy_webserver_service.py's own module docstring: scripts/test.sh's
+# MICROPYPATH deliberately excludes ext/, and sensortask_wozi.py now transitively imports microdot
+# (via asy_webserver_service.py) - extending sys.path here reaches the real, vendored
+# ext/microdot.py without touching MICROPYPATH/pyproject.toml/scripts/test.sh.
+sys.path.insert(0, "ext")
 
-import asy_spi_driver
-import sensortask_wozi
-from print_log import PrintLog, PrintLogHistoryStore
+import machine  # noqa: E402
+from _fram_chip_fake import FakeMB85RS64V  # noqa: E402
+from microdot import Request  # type: ignore[import-not-found]  # noqa: E402
+
+import asy_spi_driver  # noqa: E402
+import sensortask_wozi  # noqa: E402
+from print_log import PrintLog, PrintLogHistory, PrintLogHistoryStore  # noqa: E402
 
 # Same one-process-per-test-file swap as every other asy_fram_*-touching test file (see their own
 # comments) - sensortask_wozi.build_system() constructs a real SPI-backed AsyFramManager.
@@ -236,16 +254,20 @@ def test_build_system_never_insists_on_fram_hardware_being_available() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_setup_batch_runs_sysfunct_then_fram_then_sgp_then_bmp_then_notify_in_order() -> None:
+def test_setup_batch_runs_sysfunct_then_fram_then_conn_then_ntp_then_sgp_then_bmp_then_notify_in_order() -> None:
     calls: list[str] = []
     from asy_bmp3xx_driver import BMP3xx_Reader
     from asy_fram_manager import AsyFramManager
     from asy_notification_service import NotificationCoordinator
+    from asy_ntp_client import AsyNtpClient
     from asy_sgp40_driver import SGP40_Reader
+    from asy_wifi_service import AsyConnTime
     from system_service import SystemService
 
     real_sysfunct_setup = SystemService.setup
     real_fram_setup = AsyFramManager.setup
+    real_conn_setup = AsyConnTime.setup
+    real_ntp_setup = AsyNtpClient.setup
     real_sgp_setup = SGP40_Reader.setup
     real_bmp_setup = BMP3xx_Reader.setup
     real_notify_setup = NotificationCoordinator.setup
@@ -258,6 +280,14 @@ def test_setup_batch_runs_sysfunct_then_fram_then_sgp_then_bmp_then_notify_in_or
     async def _tracking_fram_setup(self: "Any") -> "Any":
         calls.append("fram")
         return await real_fram_setup(self)
+
+    async def _tracking_conn_setup(self: "Any") -> "Any":
+        calls.append("conn")
+        return await real_conn_setup(self)
+
+    async def _tracking_ntp_setup(self: "Any") -> "Any":
+        calls.append("ntp")
+        return await real_ntp_setup(self)
 
     async def _tracking_sgp_setup(self: "Any") -> "Any":
         calls.append("sgp")
@@ -277,6 +307,8 @@ def test_setup_batch_runs_sysfunct_then_fram_then_sgp_then_bmp_then_notify_in_or
 
     SystemService.setup = _tracking_sysfunct_setup  # type: ignore[method-assign]
     AsyFramManager.setup = _tracking_fram_setup  # type: ignore[method-assign]
+    AsyConnTime.setup = _tracking_conn_setup  # type: ignore[method-assign]
+    AsyNtpClient.setup = _tracking_ntp_setup  # type: ignore[method-assign]
     SGP40_Reader.setup = _tracking_sgp_setup  # type: ignore[method-assign]
     BMP3xx_Reader.setup = _tracking_bmp_setup  # type: ignore[method-assign]
     NotificationCoordinator.setup = _tracking_notify_setup  # type: ignore[method-assign]
@@ -286,6 +318,8 @@ def test_setup_batch_runs_sysfunct_then_fram_then_sgp_then_bmp_then_notify_in_or
     finally:
         SystemService.setup = real_sysfunct_setup  # type: ignore[method-assign]
         AsyFramManager.setup = real_fram_setup  # type: ignore[method-assign]
+        AsyConnTime.setup = real_conn_setup  # type: ignore[method-assign]
+        AsyNtpClient.setup = real_ntp_setup  # type: ignore[method-assign]
         SGP40_Reader.setup = real_sgp_setup  # type: ignore[method-assign]
         BMP3xx_Reader.setup = real_bmp_setup  # type: ignore[method-assign]
         NotificationCoordinator.setup = real_notify_setup  # type: ignore[method-assign]
@@ -293,8 +327,10 @@ def test_setup_batch_runs_sysfunct_then_fram_then_sgp_then_bmp_then_notify_in_or
 
     # notify_finalize runs during synchronous construction, before any setup() call; sysfunct is
     # first *within* the async setup() batch - resolves the real persisted debug level as early as
-    # possible (this module's own docstring).
-    assert calls == ["notify_finalize", "sysfunct", "fram", "sgp", "bmp", "notify_setup"]
+    # possible (this module's own docstring). conn/ntp were both built before fram/sysfunct but are
+    # placed after them here too, matching sysfunct's/fram's own already-fixed positions; conn before
+    # ntp mirrors their own real construction order.
+    assert calls == ["notify_finalize", "sysfunct", "fram", "conn", "ntp", "sgp", "bmp", "notify_setup"]
 
 
 def test_notify_service_cfgmgr_exists_once_build_system_completes() -> None:
@@ -318,7 +354,7 @@ def _all_loggers() -> "list[Any]":
     w = sensortask_wozi
     assert w.conn is not None and w.ntp is not None and w.fram is not None and w.sysfunct is not None
     assert w.sgp_reader is not None and w.bmp_reader is not None and w.scd_reader is not None
-    assert w.pixel is not None and w.notify_service is not None
+    assert w.pixel is not None and w.notify_service is not None and w.webserver is not None
     return [
         w.conn.pr,
         w.conn.cfgmgr.pr,
@@ -336,6 +372,7 @@ def _all_loggers() -> "list[Any]":
         w.pixel.pr,
         w.notify_service.pr,
         w.notify_service.cfgmgr.pr,
+        w.webserver.pr,
     ]
 
 
@@ -498,6 +535,152 @@ def test_main_calls_start_timers_then_force_sync_then_start_and_check_tasks_in_o
     # build_system() itself already ran (construction succeeded) - main() reaches the task-starting
     # phase with every module in place, not just up to build_system().
     assert sensortask_wozi.sysfunct is not None
+
+
+# ---------------------------------------------------------------------------
+# Webserver wiring (FINAL_WIRING_PLAN.md's Step 2, closed in a later session) - build_system() now
+# also constructs a real Microdot() app + WebserverService, registering every real driver's
+# SettingsGroup/status_source/system_cmd/notification_led/maintenance_sensor/error_source. These
+# tests check the *real* registrations landed correctly (right module, right fields, right hooks) -
+# not the generic dispatch/aggregation logic itself, which tests/test_asy_webserver_service.py's own
+# uniform-fake suite already covers in full depth (its own endpoint-design decision).
+# ---------------------------------------------------------------------------
+
+
+def _dispatch(method: str, path: str, json_body: "dict[str, Any] | None" = None) -> "Any":
+    assert sensortask_wozi.webserver is not None
+    app = sensortask_wozi.webserver._app
+    body = b"" if json_body is None else json.dumps(json_body).encode()
+    headers = {"Content-Length": str(len(body)), "Content-Type": "application/json"}
+    req = Request(app, ("127.0.0.1", 12345), method, path, "1.1", headers, body=body)
+    return run(app.dispatch_request(req))
+
+
+def test_webserver_pr_is_ram_only_not_fram_backed() -> None:
+    # Deliberate decision (see build_system()'s own comment): a warning on every per-call/outer-cap
+    # reclaim could churn far faster than any sensor's rare-hardware-fault log - keeping it RAM-only
+    # also preserves WIRING_CONTRACT.md's five-chunk FRAM allocation order (Step 1) unchanged, not a
+    # sixth chunk.
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    assert sensortask_wozi.webserver is not None
+    assert isinstance(sensortask_wozi.webserver.pr, PrintLogHistory)
+    assert not isinstance(sensortask_wozi.webserver.pr, PrintLogHistoryStore)
+
+
+def test_webserver_measurements_and_sensors_get_include_every_real_sensor() -> None:
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    res = _dispatch("GET", "/measurements")
+    assert res.status_code == 200
+    assert set(json.loads(res.body).keys()) == {"SCD30", "BMP3XX", "SGP40"}
+    res = _dispatch("GET", "/sensors")
+    assert set(json.loads(res.body).keys()) == {"SCD30", "BMP3XX", "SGP40"}
+
+
+def test_webserver_sensors_put_round_trips_a_real_field_through_the_real_driver() -> None:
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    res = _dispatch("PUT", "/sensors", {"SGP40": {"BackupPeriod": 5}})
+    body = json.loads(res.body)
+    assert body["result"] == {"SGP40": {"BackupPeriod": "Valid"}}
+    assert sensortask_wozi.sgp_reader is not None
+    assert run(sensortask_wozi.sgp_reader.cfgmgr.get_dict(["BackupPeriod"])) == {"BackupPeriod": 5}
+
+
+def test_webserver_networking_put_ssid_group_reconnects_but_led_group_alone_does_not() -> None:
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    assert sensortask_wozi.conn is not None
+    res = _dispatch("PUT", "/networking", {"LedWifiOn": False})
+    assert json.loads(res.body)["result"] == {"LedWifiOn": "Valid"}
+    assert sensortask_wozi.conn.reconn_wifi is False  # LedWifiOn alone must never reconnect
+
+    res = _dispatch("PUT", "/networking", {"Hostname": "TestHost"})
+    assert json.loads(res.body)["result"] == {"Hostname": "Valid"}
+    assert sensortask_wozi.conn.reconn_wifi is True  # setNetwork's own field group did change
+
+
+def test_webserver_networking_put_ntp_fields_forces_a_resync() -> None:
+    # Same observable-effect precedent as tests/test_setter_microdot_integration.py's own
+    # ntp_force_sync() coverage: a failing-sync streak in progress, cleared to 0 by the post_asy_fct.
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    assert sensortask_wozi.ntp is not None
+    sensortask_wozi.ntp.ntp_retries = 3
+    res = _dispatch("PUT", "/networking", {"NTP_Host": "time.example.org"})
+    assert json.loads(res.body)["result"] == {"NTP_Host": "Valid"}
+    assert sensortask_wozi.ntp.ntp_retries == 0  # post_asy_fct fired
+
+
+def test_webserver_system_put_debug_level_propagates_to_every_logger() -> None:
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    assert sensortask_wozi.sysfunct is not None and sensortask_wozi.conn is not None
+    res = _dispatch("PUT", "/system", {"DebugLevel": PrintLog.level_err()})
+    assert json.loads(res.body)["result"]["DebugLevel"] == "Valid"
+    assert sensortask_wozi.sysfunct.get_debug_level() == PrintLog.level_err()
+    assert sensortask_wozi.conn.pr.get_level() == PrintLog.level_err()  # pushed via the registry
+
+
+def test_webserver_system_put_gmt_dst_offset_applies_without_a_reconnect() -> None:
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    assert sensortask_wozi.ntp is not None and sensortask_wozi.conn is not None
+    res = _dispatch("PUT", "/system", {"GMTOffset": 7200})
+    assert json.loads(res.body)["result"] == {"GMTOffset": "Valid"}
+    assert run(sensortask_wozi.ntp.cfgmgr.get_dict(["GMTOffset"])) == {"GMTOffset": 7200}
+    assert sensortask_wozi.conn.reconn_wifi is False  # unrelated to the networking settings groups
+
+
+def test_webserver_system_put_reboot_cmd_arms_the_real_reset_timer() -> None:
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    assert sensortask_wozi.sysfunct is not None
+    before = machine.reset_count
+    res = _dispatch("PUT", "/system", {"SystemCmd": "reboot"})
+    assert json.loads(res.body)["result"]["SystemCmd"] == "Valid"
+    sensortask_wozi.sysfunct.reset_timer.trigger()  # fake Timer - fires the armed callback synchronously
+    assert machine.reset_count == before + 1
+
+
+def test_webserver_system_put_invalid_cmd_is_rejected_without_side_effects() -> None:
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    before = machine.reset_count
+    res = _dispatch("PUT", "/system", {"SystemCmd": "bogus"})
+    assert json.loads(res.body)["result"]["SystemCmd"] == "Invalid"
+    assert machine.reset_count == before
+
+
+def test_webserver_notification_put_light_cmd_led_dispatches_to_the_real_pixel_driver() -> None:
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    res = _dispatch("PUT", "/notification", {"lightCmdLED": {"r": 10, "g": 20, "b": 30, "t": 1.0}})
+    assert json.loads(res.body)["result"]["lightCmdLED"] == "Valid"
+
+
+def test_webserver_notification_put_flat_field_round_trips_through_the_real_coordinator() -> None:
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    assert sensortask_wozi.notify_service is not None
+    res = _dispatch("PUT", "/notification", {"WarnCO2": 1800})
+    assert json.loads(res.body)["result"] == {"WarnCO2": "Valid"}
+    assert run(sensortask_wozi.notify_service.cfgmgr.get_dict(["WarnCO2"])) == {"WarnCO2": 1800}
+
+
+def test_webserver_status_get_reflects_the_real_object_graph() -> None:
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    res = _dispatch("GET", "/status")
+    body = json.loads(res.body)
+    assert set(body.keys()) == {"networking", "system", "notification", "sensors", "errcount"}
+    assert set(body["sensors"].keys()) == {"SGP40"}  # only sensor with real maintenance data
+    assert "BackupTS" in body["sensors"]["SGP40"] and "RestoreTS" in body["sensors"]["SGP40"]
+    assert "SysUptime" in body["system"] and "LocalTime" in body["system"] and "UtcTime" in body["system"]
+    assert "WifiUptime" in body["networking"] and "NtpSynced" in body["networking"]
+    assert "Triggered" in body["notification"] and "PauseTime" in body["notification"]
+    # One entry per real module + per real ConfigManager + this service's own "WEBSERVER" entry -
+    # same 16-owner enumeration _collect_level_setters()/_collect_error_sources() both share, plus one.
+    assert len(body["errcount"]) == 17
+
+
+def test_webserver_status_put_reset_errors_clears_a_real_modules_history() -> None:
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    assert sensortask_wozi.conn is not None
+    run(sensortask_wozi.conn.pr.err_s("simulated", errno=99))
+    assert (run(sensortask_wozi.conn.get_error_counter()))["WIFI"]["ErrCount"] == 1
+    res = _dispatch("PUT", "/status", {"ResetErrors": True})
+    assert json.loads(res.body)["res"] == "OK"
+    assert (run(sensortask_wozi.conn.get_error_counter()))["WIFI"]["ErrCount"] == 0
 
 
 if __name__ == "__main__":
