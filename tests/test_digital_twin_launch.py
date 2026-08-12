@@ -214,20 +214,24 @@ def test_main_runs_end_to_end_and_returns_a_summary() -> None:
 
 
 def test_main_with_scripted_faults_and_wifi_outcome_still_completes() -> None:
-    # duration must clear network.py's own _CONNECT_DELAY_S (0.7s) for the scripted outcome to
-    # actually settle before main() tears everything down.
+    # duration must clear both network.py's own _CONNECT_DELAY_S (0.7s), for the scripted outcome
+    # to actually settle, and _sensor_loop()'s own 2.0s poll interval at least once past the first
+    # iteration - both one-shot faults fire on that very first read (t=0), so a duration that only
+    # covers one iteration would leave every sensor faulted/not-yet-ready and no reading produced at
+    # all (SCD30 isn't ready that early either - see the dedicated longer-duration test below for
+    # its own timer-driven path).
     machine.Pin.reset_registry()
     config = LaunchConfig(
         seed=99,
         no_wdt_feed=True,
-        duration=1.5,
+        duration=2.5,
         faults=[("sgp40", "writeto", 1), ("bmp3xx", "readfrom_mem", 1)],
         wifi_outcomes=[network.STAT_NO_AP_FOUND],
     )
     summary = run(asyncio.wait_for(main(config), 10))
     assert summary["wifi_status"] == network.STAT_NO_AP_FOUND
-    # Both one-shot faults (sgp40/bmp3xx) are isolated to their own read - SCD30 (and both faulted
-    # sensors, once their one-shot fault is spent) must still have produced readings.
+    # Both one-shot faults (sgp40/bmp3xx) are isolated to their own read and spent after the first
+    # iteration - the second iteration's real readings must still have been produced.
     assert summary["readings"] >= 1
 
 
