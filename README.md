@@ -108,6 +108,107 @@ invocation, not this launcher.
 Full reference — what's simulated and how, FRAM persistence, running the twin's own unit tests, and
 adding a new chip fake when a new sensor driver lands: **`digital_twin/README.md`**.
 
+### Manual baseline verification walkthrough
+
+A copy-paste sequence for manually checking the real assembled system (`src/sensortask_wozi.py`,
+unchanged) against the digital twin, end to end, over real HTTP — the same walkthrough used to
+establish this project's own known-working baseline (build → boot → set log level → reboot with
+that level persisted → boot again with bus faults injected). Run each block from the repo root;
+`curl` and a browser both work against `http://127.0.0.1:8080` while a run is up.
+
+**1. Fresh build and boot** (also runs a built-in 20-cycle soak across every endpoint before it
+starts serving — watch for a `PASS` line):
+
+```sh
+rm -rf digital_twin/config digital_twin/fram_state.json   # start from a clean, unconfigured device
+scripts/run_unix_port_integration.sh --host 127.0.0.1 --port 8080
+```
+
+Leave this running in its own terminal. In a second terminal, walk every GET endpoint plus the
+stub website:
+
+```sh
+curl -s http://127.0.0.1:8080/measurements | python3 -m json.tool
+curl -s http://127.0.0.1:8080/sensors | python3 -m json.tool
+curl -s http://127.0.0.1:8080/networking | python3 -m json.tool
+curl -s http://127.0.0.1:8080/system | python3 -m json.tool
+curl -s http://127.0.0.1:8080/notification | python3 -m json.tool
+curl -s http://127.0.0.1:8080/status | python3 -m json.tool
+open http://127.0.0.1:8080/   # or just curl -s http://127.0.0.1:8080/ - the stub site's index
+```
+
+**2. Set the log level to `all` (5) via the real API, then reboot to see a full startup log.**
+`DebugLevel` is a persisted `/system` setting (0-5, see `print_log.py`'s `PrintLog.level_*()`
+methods) — like every config write, it's saved to disk immediately, but only takes effect for
+*future* logger construction, so its own verbose logging only shows up starting with the next
+boot:
+
+```sh
+curl -s -X PUT -H "Content-Type: application/json" -d '{"DebugLevel": 5}' http://127.0.0.1:8080/system
+curl -s http://127.0.0.1:8080/system   # confirm it reads back as 5
+```
+
+Now stop the running twin with **Ctrl-C in its own terminal** (a real `SIGINT` — this is what
+`run_wozi_integration.py`'s own `except KeyboardInterrupt:` catches, letting its `finally` block
+flush the FRAM twin's state to disk before exiting; a hard `kill`/`pkill` skips that cleanup, same
+as it would skip any unsaved state on real hardware). Then boot again the same way as step 1, but
+**without** wiping `digital_twin/config/` this time (that's the whole point — the persisted
+`DebugLevel` survives):
+
+```sh
+scripts/run_unix_port_integration.sh --host 127.0.0.1 --port 8080
+```
+
+This boot's own console output is now the full verbose trace — every `PrintLog.evt()`/`.one()`/
+`.all()` call, not just warnings/errors, across every module (FRAM chunk allocation, WiFi hotspot
+fallback, NTP sync attempts, task/timer startup sequencing, ...).
+
+**3. Exercise every PUT endpoint and check persistence.** Ctrl-C first if the level-5 instance from
+step 2 is still up (same log-verbosity note applies to whatever ships next), then repeat step 1's
+boot, and try:
+
+```sh
+curl -s -X PUT -H "Content-Type: application/json" \
+  -d '{"SSID": "MyNetwork", "PW": "hunter2", "Country": "DE", "Hostname": "wozi-test"}' \
+  http://127.0.0.1:8080/networking
+curl -s -X PUT -H "Content-Type: application/json" -d '{"GMTOffset": 3600, "DSTOffset": 3600}' \
+  http://127.0.0.1:8080/system
+curl -s -X PUT -H "Content-Type: application/json" \
+  -d '{"WarnCO2": 1500, "WarnVOC": 300, "WarnHum": 60.0}' http://127.0.0.1:8080/notification
+curl -s -X PUT -H "Content-Type: application/json" \
+  -d '{"SCD30": {"MeasInt": 4}, "SGP40": {"BackupPeriod": 2}, "BMP3XX": {"SampleInterv": 3}}' \
+  http://127.0.0.1:8080/sensors
+```
+
+Every field type is checked strictly against its schema — a JSON integer where a `"float"` field is
+declared (e.g. `60` instead of `60.0`) is correctly rejected as `"Invalid"`, not a bug; send a real
+decimal point for float-typed fields (`WarnHum`/`TempOffs`/`Interv`/`FlashDur`, ...). Read each
+endpoint back (`curl -s http://127.0.0.1:8080/<endpoint>`) to confirm the write took, then Ctrl-C
+and boot once more without wiping `digital_twin/config/` to confirm it survived the restart. One
+known, accepted exception: SCD30's own fields (`MeasInt`, `TempOffs`, ...) don't survive a twin
+restart — real hardware's SCD30 chip has its own onboard NVM that a real MCU-only reboot doesn't
+touch, but the twin doesn't currently model that (see `BACKLOG.md`).
+
+**4. Repeat with bus fault injection, and confirm recovery.** `--fault DEVICE:OP[:TIMES]` (see the
+"Digital twin" section above for the full flag reference) queues a bounded, self-clearing failure
+on a specific bus operation - the affected sensor's reader task should fail, log it, and recover on
+its own once the fault count is exhausted:
+
+```sh
+rm -rf digital_twin/config digital_twin/fram_state.json
+scripts/run_unix_port_integration.sh --host 127.0.0.1 --port 8080 \
+    --fault scd30:writeto:2 --fault sgp40:readfrom_into:2 --fault bmp3xx:readfrom_mem:2 --fault fram:write:2
+```
+
+Watch `/status`'s `errcount` section for each affected module's counter to tick up, then confirm
+`/measurements` still returns plausible readings from every sensor once the run has been up for a
+few seconds — that's the fault having fired, been logged, and recovered from. A device-wide
+task-failure streak beyond `system_service.py`'s own threshold triggers a real reboot request too
+(logged as `SYSTEM ... reboot triggered!` at `DebugLevel >= 4`) - on real hardware this actually
+restarts the unit; the twin can't do that (`machine.reset()` raises `SimulatedReset` instead, which
+is expected and harmless - see that exception's own docstring), so the same process keeps serving
+afterward instead of restarting, which is fine for continuing this walkthrough.
+
 ## Further reading
 
 Every supporting doc in the repo, in one place — added to as a first pass at pulling scattered

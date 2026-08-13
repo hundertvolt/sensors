@@ -218,6 +218,27 @@ def test_i2c_and_spi_deinit_are_recorded() -> None:
     assert spi.deinit_called is True
 
 
+def test_i2c_log_stays_bounded_across_many_transactions() -> None:
+    # Regression test for FINAL_WIRING_PLAN.md's Step 5 baseline-verification pass: I2C.log used to
+    # be a plain, unbounded list, growing for the life of the process - the dominant contributor to
+    # a real MemoryError reproduced by actually running the assembled system end-to-end (real
+    # asyncio/HTTP/bus-transaction churn eventually needed a large-enough contiguous reallocation to
+    # grow it, which failed once the heap fragmented). Now a deque(maxlen=_LOG_MAXLEN).
+    i2c = I2C(1, scl=Pin(19), sda=Pin(18), freq=50000)
+    for _ in range(machine._LOG_MAXLEN + 50):
+        i2c.writeto(0x00, b"")  # general-call address - always tolerated, logged every time
+    assert len(i2c.log) == machine._LOG_MAXLEN
+    assert i2c.log[-1] == ("writeto", 0x00, b"", True)  # most recent entry survives, not the oldest
+
+
+def test_spi_log_stays_bounded_across_many_transactions() -> None:
+    spi = SPI(1, sck=Pin(5), mosi=Pin(6), miso=Pin(7))  # id 1 wires no device - write() still logs
+    for _ in range(machine._LOG_MAXLEN + 50):
+        spi.write(bytes([0x00]))
+    assert len(spi.log) == machine._LOG_MAXLEN
+    assert spi.log[-1] == ("write", bytes([0x00]))
+
+
 def test_wdt_feed_increments_count() -> None:
     wdt = WDT(timeout=8000)
     wdt.feed()
