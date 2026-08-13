@@ -9,8 +9,9 @@ behave like it's attached to real hardware — not just satisfy a hand-driven te
 
 **Not `tests/machine.py`, does not import it, and is never imported by anything in `tests/`.**
 Kept completely separate so nothing here can accidentally affect the deterministic unit-test suite
-`scripts/test.sh` runs by default (`MICROPYPATH="src:tests:.frozen"`). See `FINAL_WIRING_PLAN.md`'s
-Step 3 section for the full design rationale and the owner Q&A round that settled it.
+`scripts/test.sh` runs by default (`MICROPYPATH="src:tests:frozen_modules:.frozen"` — the
+`frozen_modules` segment was added in Step 4, see below). See `FINAL_WIRING_PLAN.md`'s Step 3
+section for the full design rationale and the owner Q&A round that settled it.
 
 ## What's here
 
@@ -46,15 +47,21 @@ hardware from simulated. The swap is pure `MICROPYPATH` ordering, the same mecha
 `tests/machine.py` already uses transparently for the unit-test suite:
 
 ```bash
-MICROPYPATH="src:digital_twin:.frozen" <micropython-unix-port-binary> boot_entry/wozi_boot.py
+scripts/build_frozen_html.sh   # one-time (or whenever html_stub/ changes): builds frozen_modules/frozen_html.py
+MICROPYPATH="src:digital_twin:frozen_modules:.frozen" <micropython-unix-port-binary> boot_entry/wozi_boot.py
 ```
 
-`digital_twin` sits between `src` and `.frozen` — never together with plain `tests` on the same
-`MICROPYPATH` (that would let `tests/machine.py`/`tests/network.py`/`tests/neopixel.py` shadow this
-package's own same-named modules, or vice versa, depending on ordering — the two are meant to never
-be on the same path at once). This is a **separate** invocation from `scripts/test.sh`'s own
-`"src:tests:.frozen"` — Step 5's own session is expected to add a dedicated entry point (e.g.
-`scripts/run_digital_twin.sh`) for this, not extend `scripts/test.sh` itself.
+`frozen_modules` is required here too, added in Step 4 (landed after this doc's original Step 3
+text) — `src/sensortask_wozi.py` now does an unconditional module-level `import frozen_html`, which
+resolves from that segment (see `scripts/build_frozen_html.sh`'s own comment for why it can't be
+`.frozen` itself). Omitting it fails the run at import time with `ImportError: no module named
+'frozen_html'` before any twin code ever runs. `digital_twin` sits between `src` and
+`frozen_modules`/`.frozen` — never together with plain `tests` on the same `MICROPYPATH` (that would
+let `tests/machine.py`/`tests/network.py`/`tests/neopixel.py` shadow this package's own same-named
+modules, or vice versa, depending on ordering — the two are meant to never be on the same path at
+once). This is a **separate** invocation from `scripts/test.sh`'s own
+`"src:tests:frozen_modules:.frozen"` — Step 5's own session is expected to add a dedicated entry
+point (e.g. `scripts/run_digital_twin.sh`) for this, not extend `scripts/test.sh` itself.
 
 ### FRAM persistence
 
@@ -86,7 +93,9 @@ the same confirmed-safe pattern `tests/test_setter_microdot_integration.py` alre
 exact same default invocation as every other test file:
 
 ```bash
-MICROPYPATH="src:tests:.frozen" scripts/test.sh   # discovers and runs them like any other tests/test_*.py
+scripts/test.sh   # discovers and runs them like any other tests/test_*.py - MICROPYPATH is set
+                   # internally per test file (currently "src:tests:frozen_modules:.frozen"),
+                   # not read from the calling shell's environment
 ```
 
 All tests are deterministic — no wall-clock waiting, except one short-period/generous-timeout smoke
