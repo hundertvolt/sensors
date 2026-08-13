@@ -2267,6 +2267,24 @@ that this session's outbound network policy allows DNS (UDP/53) but blocks NTP (
 different public servers; the DNS-resolution and timeout/error-handling paths were still verified
 to degrade gracefully (`NtpSynced: false`, no exception) rather than crash.
 
+**Follow-up audit (same session, after pushing the six fixes above)**: rather than wait for the
+same bug *patterns* to reproduce as real failures again, a dedicated pass searched the codebase for
+other latent instances of each one before they cause a real failure. Found and fixed four more:
+`digital_twin/neopixel.py`'s `NeoPixel.writes` and `digital_twin/network.py`'s `WLAN`
+`connect_calls`/`config_calls` had the identical unbounded-accumulator shape as the already-fixed
+`I2C.log`/`SPI.log` (bounded to `deque(maxlen=...)` the same way); `digital_twin/machine.py`'s
+`WDT.would_have_triggered_log` too; `digital_twin/_fram_chip.py`'s `_load_state()` was the exact
+read-side mirror of the `save_state()` fragmentation bug (a single-shot `bytearray.fromhex()` over
+the whole FRAM image), rewritten to stream-decode in chunks the same way. Also closed the test gap
+that let the `SCD30_Reader.get_cfg_schema()` bug through in the first place: neither
+`tests/test_sensortask_wozi.py` nor `tests/test_digital_twin_sensortask_integration.py` had ever
+exercised the real `PUT /sensors` route against SCD30 (the former only ever `PUT` SGP40; the latter
+never `PUT /sensors` at all) — both now do. Full suite: 2138 passing (up from 2128 after the first
+six fixes), `src/` coverage 94% → 95%, `digital_twin/` steady at 96% with several files now at
+100%. The two open questions in `BACKLOG.md` (the soak's memory-flat tolerance, and whether SCD30
+needs twin-side chip-state persistence) remain genuinely unresolved — not chased further here,
+deliberately left for the project owner rather than guessed at.
+
 ## Out of scope for all five steps
 
 - Real website content (stub only, see Step 4).
