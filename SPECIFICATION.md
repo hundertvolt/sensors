@@ -2173,14 +2173,21 @@ required system packages (see `toolchain/versions.toml`) are already present. To
 test file directly once the interpreter is built:
 
 ```
-MICROPYPATH="src:tests:.frozen" ~/pico-toolchain/micropython/ports/unix/build-standard/micropython tests/test_math_helpers.py
+MICROPYPATH="src:tests:frozen_modules:.frozen" ~/pico-toolchain/micropython/ports/unix/build-standard/micropython tests/test_math_helpers.py
 ```
 
 `.frozen` is required in `MICROPYPATH` (not just `src:tests`) because MicroPython's `MICROPYPATH`
 env var replaces the interpreter's default `sys.path` rather than extending it, and the default
 path is what makes frozen-in modules (`asyncio` included) importable at all. `math_helpers.py`
 never surfaced this since it doesn't use `asyncio`; confirmed directly against the built
-interpreter for `crc_checks.py`, which does.
+interpreter for `crc_checks.py`, which does. **`.frozen` is a literal MicroPython sentinel, not an
+ordinary directory** — `py/builtinimport.c`'s `MP_FROZEN_PATH_PREFIX ".frozen/"` routes any path
+starting with that exact string straight to the compiled-in frozen-module table, never touching the
+real filesystem; a real file placed on disk under a directory actually named `.frozen/` is silently
+unimportable (confirmed directly against the pinned v1.28.0 source, after `frozen_modules/`'s own
+`FINAL_WIRING_PLAN.md`/Step 4 story hit exactly this). `frozen_modules` is a separate, ordinary,
+gitignored directory (`scripts/build_frozen_html.sh`'s own output) added alongside `.frozen` for
+this reason — `src/sensortask_wozi.py`'s `import frozen_html` needs it on `MICROPYPATH` too.
 
 ## E.4 Hardware-touching files: mock at the raw bus-transaction level only
 

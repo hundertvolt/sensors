@@ -1,14 +1,16 @@
 # Wiring Contract — `improved-quality/sensortask-wozi.py` study
 
-**Status update (Steps 1-3 landed)**: this doc's own original header said it would be deleted once the
+**Status update (Steps 1-4 landed)**: this doc's own original header said it would be deleted once the
 real Stage-1 standalone `sensortask-wozi.py` successor landed — that's now true, `src/sensortask_wozi.py`
 exists (Step 1 of `FINAL_WIRING_PLAN.md`'s five-step effort), Step 2 (the generic webserver/API
 service, `src/asy_webserver_service.py`, wired into `build_system()`) has landed on top of it too,
-and Step 3 (the `digital_twin/` hardware simulator, a separate module at the `machine`-mocking
+Step 3 (the `digital_twin/` hardware simulator, a separate module at the `machine`-mocking
 boundary with zero `src/sensortask_wozi.py` awareness by design) has landed alongside it without
-touching this construction order at all.
-Kept alive anyway, deliberately deviating from that stated lifecycle: Steps 4-5 still need this exact
-construction order/dependency graph preserved as they build on top of it, so this remains the living
+touching this construction order at all, and Step 4 (the website-placeholder scaffold - `import
+frozen_html` plus `WebserverService(..., static_mount="/html")`, see item 14 below) extends the same
+`WebserverService(...)` construction call item 14 already documents, without adding a new item.
+Kept alive anyway, deliberately deviating from that stated lifecycle: Step 5 still needs this exact
+construction order/dependency graph preserved as it builds on top of it, so this remains the living
 reference until the whole five-step effort merges back, not just until Step 1 alone lands. Still
 **keep it up to date** whenever a change to `src/sensortask_wozi.py` touches anything documented
 below.
@@ -35,8 +37,11 @@ testability (a bare top-level blocking call, matching the reference file's own b
 `asyncio.run(main())`, would hang on plain `import`; see `src/sensortask_wozi.py`'s own docstring
 and `FINAL_WIRING_PLAN.md`'s Step 1 refined plan for the full reasoning and the resulting two-file
 split with `boot_entry/wozi_boot.py`). `app = Microdot()`/routes are Step 2's own addition (item 14
-below, landed in a later session than Step 1's original construction sequence) — `import
-frozen_html` is still excluded, Step 4's job, owner-confirmed.
+below, landed in a later session than Step 1's original construction sequence). `import frozen_html`
+(Step 4, landed in a later session still) is a module-level import at the very top of the file, not
+part of this numbered sequence at all — it mounts `/html` as a side effect of the import itself,
+before `build_system()` ever runs; item 14's `static_mount="/html"` is what actually wires the
+already-mounted filesystem into `WebserverService`.
 
 1. `watchdog = WDT(timeout=8000)` — hardcoded at construction time, no injection point (owner:
    "must be hardcoded so no error ever can circumvent it")
@@ -72,7 +77,11 @@ frozen_html` is still excluded, Step 4's job, owner-confirmed.
     module it registers must already exist. **No `fram=`** — deliberately RAM-only (see
     `FINAL_WIRING_PLAN.md`'s Step 2 status update for the full reasoning: a per-call/outer-cap
     reclaim warning could churn far faster than any sensor's rare-hardware-fault log, and this keeps
-    the five-chunk FRAM order below unchanged — no sixth chunk).
+    the five-chunk FRAM order below unchanged — no sixth chunk). **`static_mount="/html"`** (Step 4)
+    is passed here too — `WebserverService` registers its generic `/`+`/<path:filename>` static
+    route pair last, after every API route above, so an exact-match API route always wins over the
+    wildcard (`ext/microdot.py`'s `find_route()` returns the first registered pattern that matches,
+    confirmed directly). No FRAM/chunk involvement either way.
 15. `sysfunct.set_level_setters(_collect_level_setters())` — collects every logger's own
     `set_level()` bound method (see "Debug level" below) into `sysfunct`'s registry, sync, after
     every module (including `notify_service.finalize()` and the webserver from step 14) has fully
@@ -275,6 +284,20 @@ wired into `build_system()` (construction-order item 14 above) against real driv
 FINAL_WIRING_PLAN.md's Step 2 status updates for the full detail, including the two real
 construction-order findings made while wiring it in (`conn.setup()`/`ntp.setup()`, item 16 above)
 and the "no `fram=`" decision preserving this document's five-chunk FRAM invariant.
+
+**Step 4 landed** (later session): `import frozen_html` (module-level, see item 14's note above) and
+`WebserverService(..., static_mount="/html")` give the reference file's `import frozen_html` gap
+something real to resolve to — `html_stub/` (placeholder content, not the real site) →
+`scripts/build_frozen_html.sh` (gzip → `ext/freezefs`'s `--on-import mount`) →
+`frozen_modules/frozen_html.py` (gitignored build artifact — deliberately not `.frozen/`, a
+hardcoded MicroPython import-machinery sentinel that a real generated file placed there would be
+silently invisible to; confirmed directly against the pinned v1.28.0 `py/builtinimport.c` source
+after hitting exactly that). `src/asy_webserver_service.py`'s own generic `/`+`/<path:filename>`
+route pair (registered last, after every API route) serves it via `send_file(compressed=True,
+file_extension=".gz")` — no `ext/microdot.py` edits. See FINAL_WIRING_PLAN.md's Step 4 section for
+the full design/decision record and `tests/test_frozen_html_integration.py` for the real-pipeline
+proof (as opposed to `tests/test_asy_webserver_service.py`'s Section G, which exercises the generic
+route-wiring mechanism against a synthetic fixture, independent of the real stub content).
 
 Kept alive per the "Status update" note at the top of this document, not deleted — Steps 4-5 still
 need this exact construction order/dependency graph preserved as they build on top of it. Re-verify

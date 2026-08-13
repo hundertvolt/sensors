@@ -1,7 +1,14 @@
 """Registration-based Microdot REST/API service (FINAL_WIRING_PLAN.md's Step 2) - modules hand this
 service named sensor-data/system-state callback groups (SettingsGroup below), and it auto-constructs
 the six external endpoints (/measurements, /sensors, /networking, /system, /status, /notification)
-plus the connection-hardening scheme BACKLOG.md's "Microdot hardening design" settled on:
+plus the connection-hardening scheme BACKLOG.md's "Microdot hardening design" settled on. Optionally
+(static_mount, FINAL_WIRING_PLAN.md's Step 4) also serves a mounted frozen static-content filesystem
+(freezefs's --on-import mount, see ext/freezefs/) via one generic `/` + `/<path:filename>` route pair,
+using Microdot's own send_file(compressed=True, file_extension=".gz") - matches this project's
+pre-gzip-by-hand convention (see scripts/build_frozen_html.sh), never freezefs's own --compress
+(on-device deflate decompression, a different and incompatible scheme). Registered last, after every
+API route above, so an exact-match API route always wins over the wildcard (Microdot's find_route()
+returns the first registered pattern that matches, confirmed directly against ext/microdot.py).
 composition around asyncio.start_server() (never app.start_server()/app.shutdown()), a per-call
 timeout-wrapping reader/writer proxy (_TimeoutStreamProxy), one outer asyncio.wait_for() bounding
 the whole per-connection handle_request() call, a LockedCounter-style open-connection count driving
@@ -22,7 +29,7 @@ import asyncio
 # Vendored ext/microdot.py isn't on this project's mypy search path (mypy_path=["typings","src"]) -
 # real device firmware freezes ext/ and src/ flat together, so this resolves fine at runtime; see
 # CLAUDE.md's vendoring hard rule.
-from microdot import Request  # type: ignore[import-not-found]
+from microdot import Request, abort, send_file  # type: ignore[import-not-found]
 from micropython import const
 
 import api_response as ar
@@ -186,6 +193,10 @@ class WebserverService:
         fram: "AsyFramManager | None" = None,
         history_length: int = 10,
         debug: int | None = None,
+        static_mount: str | None = None,  # e.g. "/html" (FINAL_WIRING_PLAN.md's Step 4) - the
+        # freezefs mount point of an already-`import`ed frozen static-content module. None (default)
+        # registers no static routes at all - every existing route/registration above is unaffected.
+        static_index: str = "index.html",  # served for both "/" and "/<static_index>" verbatim.
     ) -> None:
         self.pr: PrintLogHistory = make_logger(fram, history_length, debug, _NAME)
         self._app = app
@@ -202,6 +213,8 @@ class WebserverService:
         self._host = host
         self._port = port
         self._open_conns = LockedCounter(init_value=0, max_val=0xFFFFFFFF)
+        self._static_mount = static_mount
+        self._static_index = static_index
 
         Request.max_content_length = max_content_length  # a Request *class* attribute, not
         # per-app-instance (ext/microdot.py's own module docstring example) - see
@@ -225,6 +238,15 @@ class WebserverService:
         # handlers on its happy path (see FINAL_WIRING_PLAN.md's Step 2, decision 7).
         for status_code, descr in _ERROR_SHAPES:
             app.errorhandler(status_code)(_shaped_error_handler(status_code, descr))
+
+        if static_mount is not None:
+            # Registered last (see this module's own docstring): "/<path:filename>"'s own regex
+            # (`/(.+)`) also matches every fixed path above (e.g. "/measurements") - Microdot's
+            # find_route() returns the *first* registered pattern that matches, so every exact-match
+            # API route must already be in app.url_map before this one is added, or it would be
+            # silently shadowed.
+            app.get("/")(self._get_static_index)
+            app.get("/<path:filename>")(self._get_static)
 
     # -- /measurements, /sensors --------------------------------------------------------------
 
@@ -378,6 +400,28 @@ class WebserverService:
                 await module.reset_error_counter()
             await self.reset_error_counter()  # this service's own entry, see _build_errcount()
         return ar.make_response(0)
+
+    # -- static content (FINAL_WIRING_PLAN.md's Step 4) ----------------------------------------
+
+    async def _get_static_index(self, request: "Any") -> "Any":
+        return self._serve_static(self._static_index)
+
+    async def _get_static(self, request: "Any", filename: str) -> "Any":
+        return self._serve_static(filename)
+
+    def _serve_static(self, filename: str) -> "Any":
+        if ".." in filename:
+            abort(404)  # reject before ever touching the mounted filesystem - see D.2's
+            # guard-clause-before-any-computation convention. VfsFrozen's own path resolution
+            # (ext/freezefs/ffsmount.py) already refuses to escape its own mount root, but this
+            # guard is cheap, correct regardless of the underlying VFS, and gives a uniform 404
+            # instead of relying on that implementation detail.
+        assert self._static_mount is not None  # only ever registered as a route when it isn't
+        try:
+            return send_file(self._static_mount + "/" + filename, compressed=True, file_extension=".gz")
+        except OSError:  # no such file in the mounted filesystem (freezefs's VfsFrozen.open()
+            # raises OSError(ENOENT), matching a real missing-file open() everywhere else)
+            abort(404)
 
     # -- connection lifecycle ---------------------------------------------------------------------
 

@@ -25,6 +25,12 @@
 # different maturity/gating expectations (see CLAUDE.md's "Code quality tooling"). See README.md's
 # "Code quality tooling" for a usage example and tests/README.md for the full pipeline this is one
 # stage of.
+#
+# Also (re)builds frozen_modules/frozen_html.py via scripts/build_frozen_html.sh before every run -
+# FINAL_WIRING_PLAN.md's Step 4 website-placeholder module, which src/sensortask_wozi.py imports
+# unconditionally at module level. Lives in its own frozen_modules/ MICROPYPATH segment, not
+# ".frozen/" - see build_frozen_html.sh's own comment for why that exact name can't hold a real,
+# importable file (it's a hardcoded MicroPython sentinel, confirmed against py/builtinimport.c).
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
@@ -64,6 +70,14 @@ if [ ! -x "$micropython_bin" ]; then
     uv run toolchain/setup_toolchain.py setup --toolchain-dir "$toolchain_dir" "${skip_apt_flag[@]}"
 fi
 
+# frozen_modules/frozen_html.py (FINAL_WIRING_PLAN.md's Step 4) is a plain build artifact, never
+# committed (see .gitignore) - regenerated fresh on every run, cheap (sub-second, no toolchain
+# involved), unlike the Unix-port build above. src/sensortask_wozi.py does a module-level `import
+# frozen_html`, so every test file that imports it (not just the webserver-specific ones) needs
+# this to already exist on MICROPYPATH before the test loop below runs.
+echo "== Building frozen_modules/frozen_html.py"
+scripts/build_frozen_html.sh
+
 raw_dir=""
 if [ "$coverage" = "1" ]; then
     raw_dir="$(mktemp -d)"
@@ -100,6 +114,8 @@ for test_file in tests/test_*.py; do
     # rather than extending it, and the default path is what makes frozen-in modules (asyncio
     # included) resolvable at all. Confirmed directly against the built interpreter - dropping
     # this breaks `import asyncio` for any async src/ file with no import error pointing at why.
+    # frozen_modules must be included too - src/sensortask_wozi.py's `import frozen_html` resolves
+    # there (see build_frozen_html.sh's comment for why it can't be ".frozen" itself).
     if [ "$coverage" = "1" ]; then
         raw_out="$raw_dir/$(basename "$test_file" .py).json"
         cmd=(tests/_coverage_runner.py "$test_file" "$raw_out")
@@ -107,7 +123,7 @@ for test_file in tests/test_*.py; do
         cmd=("$test_file")
     fi
     for attempt in $(seq 1 "$max_attempts"); do
-        if MICROPYPATH="src:tests:.frozen" stdbuf -oL -eL timeout --kill-after=10 "$per_file_timeout_s" "$micropython_bin" "${cmd[@]}"; then
+        if MICROPYPATH="src:tests:frozen_modules:.frozen" stdbuf -oL -eL timeout --kill-after=10 "$per_file_timeout_s" "$micropython_bin" "${cmd[@]}"; then
             ec=0
         else
             ec=$?

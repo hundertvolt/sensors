@@ -85,6 +85,7 @@ envelope to strip (FINAL_WIRING_PLAN.md's PUT-shapes decision).
 
 import asyncio
 import json
+import os
 import sys
 
 # Same sys.path convention as tests/test_setter_microdot_integration.py (see its own module
@@ -93,6 +94,7 @@ import sys
 # pyproject.toml/scripts/test.sh - a "Pre-push verification" scope change this file must not need.
 sys.path.insert(0, "ext")
 
+from freezefs.ffsmount import VfsFrozen  # type: ignore[import-not-found]  # noqa: E402
 from microdot import Microdot, Request  # type: ignore[import-not-found]  # noqa: E402
 
 import config_manager as cm
@@ -1395,6 +1397,113 @@ def test_f9_soak_100_plus_start_wedge_reclaim_cycles_hold_counter_and_memory_fla
         assert after >= baseline - 4096, f"gc.mem_free() dropped from {baseline} to {after} over 120 cycles"
 
     run_timed(scenario(), timeout_s=60.0)
+
+
+# ---------------------------------------------------------------------------
+# Section G - static-route serving (FINAL_WIRING_PLAN.md's Step 4: gzip -> freezefs -> frozen
+# module -> Microdot send_file(compressed=True, file_extension=".gz")). Exercises the generic
+# route-wiring mechanism against a synthetic VfsFrozen fixture (see _mount_static_fixture below) -
+# the real, built frozen_html.py artifact (scripts/build_frozen_html.sh's output) gets its own,
+# separate real-pipeline integration test in tests/test_frozen_html_integration.py.
+# ---------------------------------------------------------------------------
+
+_next_static_mount = 0
+
+
+def _mount_static_fixture(files: "dict[str, bytes]") -> str:
+    # A hand-built VfsFrozen (freezefs 2.4's own runtime mount driver, ext/freezefs/ffsmount.py),
+    # bypassing freezefs's own archive-generation step entirely - exercises exactly the same runtime
+    # VFS a real `import frozen_html` produces, without depending on scripts/build_frozen_html.sh's
+    # actual stub content. Entries deliberately store plain (non-gzip) bytes under a ".gz"-suffixed
+    # name: VfsFrozen's own per-entry "compressed" flag (freezefs's own --compress, never used by
+    # this project - see CLAUDE.md) is independent of our own gzip/Content-Encoding convention, and
+    # send_file() never inspects file contents - a faithful stand-in for the route-wiring mechanism.
+    # A unique mount point per call (os.mount() raises EEXIST on a repeat target) since every test in
+    # this file runs in the same interpreter process.
+    global _next_static_mount
+    _next_static_mount += 1
+    mount_point = f"/test_static_{_next_static_mount}"
+    direntries = [("/" + name + ".gz", (data, False, len(data))) for name, data in files.items()]
+    fs = VfsFrozen(direntries, sum(len(d) for d in files.values()), len(files))
+    os.mount(fs, mount_point, readonly=True)
+    return mount_point
+
+
+def test_g_static_root_serves_the_configured_index_file() -> None:
+    mount = _mount_static_fixture({"index.html": b"<h1>hi</h1>"})
+    _, app = _make_service(static_mount=mount)
+    res = run(app.dispatch_request(_make_request(app, "GET", "/", None)))
+    assert res.status_code == 200
+    assert res.body.read() == b"<h1>hi</h1>"
+    assert res.headers["Content-Type"].startswith("text/html")
+    assert res.headers["Content-Encoding"] == "gzip"
+
+
+def test_g_static_wildcard_also_serves_the_index_file_by_its_own_name() -> None:
+    mount = _mount_static_fixture({"index.html": b"<h1>hi</h1>"})
+    _, app = _make_service(static_mount=mount)
+    res = run(app.dispatch_request(_make_request(app, "GET", "/index.html", None)))
+    assert res.status_code == 200
+    assert res.body.read() == b"<h1>hi</h1>"
+
+
+def test_g_static_wildcard_serves_a_named_file_with_the_right_content_type() -> None:
+    mount = _mount_static_fixture({"index.html": b"<h1>hi</h1>", "style.css": b"body{color:red}"})
+    _, app = _make_service(static_mount=mount)
+    res = run(app.dispatch_request(_make_request(app, "GET", "/style.css", None)))
+    assert res.status_code == 200
+    assert res.body.read() == b"body{color:red}"
+    assert res.headers["Content-Type"].startswith("text/css")
+    assert res.headers["Content-Encoding"] == "gzip"
+
+
+def test_g_static_missing_file_returns_404_via_the_shaped_error_handler() -> None:
+    mount = _mount_static_fixture({"index.html": b"<h1>hi</h1>"})
+    _, app = _make_service(static_mount=mount)
+    res = run(app.dispatch_request(_make_request(app, "GET", "/nope.txt", None)))
+    assert res.status_code == 404
+    assert json.loads(res.body) == {"res": "ERR", "code": 404, "descr": "Not found", "result": {}}
+
+
+def test_g_static_directory_traversal_attempt_is_rejected_not_resolved() -> None:
+    mount = _mount_static_fixture({"index.html": b"<h1>hi</h1>"})
+    _, app = _make_service(static_mount=mount)
+    res = run(app.dispatch_request(_make_request(app, "GET", "/foo/../../index.html", None)))
+    assert res.status_code == 404
+
+
+def test_g_static_nested_path_not_found_since_the_stub_mount_is_flat() -> None:
+    mount = _mount_static_fixture({"index.html": b"<h1>hi</h1>"})
+    _, app = _make_service(static_mount=mount)
+    res = run(app.dispatch_request(_make_request(app, "GET", "/sub/deep/file.txt", None)))
+    assert res.status_code == 404
+
+
+def test_g_static_routes_never_shadow_a_real_api_endpoint() -> None:
+    # Registration-order regression test: /<path:filename>'s own regex (`/(.+)`) also matches
+    # "/measurements" - Microdot's find_route() returns the *first* matching route in registration
+    # order (ext/microdot.py's find_route(), confirmed directly), so the static wildcard must be
+    # registered after every real API route or it would silently swallow them.
+    scd = _FakeModule("SCD30", data={"CO2": 800})
+    mount = _mount_static_fixture({"index.html": b"<h1>hi</h1>", "measurements": b"not the real one"})
+    service, app = _make_service(sensors=[scd], static_mount=mount)
+    res = run(app.dispatch_request(_make_request(app, "GET", "/measurements", None)))
+    assert res.status_code == 200
+    assert json.loads(res.body) == {"SCD30": {"CO2": 800}}  # the real endpoint, not the static file
+
+
+def test_g_static_routes_are_not_registered_at_all_when_static_mount_is_none() -> None:
+    _, app = _make_service()  # static_mount defaults to None
+    res = run(app.dispatch_request(_make_request(app, "GET", "/", None)))
+    assert res.status_code == 404  # no route matches "/" at all - not even attempted as a static file
+
+
+def test_g_static_index_filename_is_configurable() -> None:
+    mount = _mount_static_fixture({"home.html": b"custom index"})
+    _, app = _make_service(static_mount=mount, static_index="home.html")
+    res = run(app.dispatch_request(_make_request(app, "GET", "/", None)))
+    assert res.status_code == 200
+    assert res.body.read() == b"custom index"
 
 
 if __name__ == "__main__":

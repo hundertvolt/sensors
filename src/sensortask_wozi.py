@@ -29,11 +29,16 @@ error_source registration, not just the driver object graph Step 1 built. Its ow
 in the ordinary `start_and_check_tasks()` supervisor like every other module (no bespoke restart
 mechanism, per that step's decision 1).
 
-Deliberately excluded from this file (owner-confirmed, see FINAL_WIRING_PLAN.md's refined plan):
-`import frozen_html` (Step 4's job - static/frozen content, not this file's concern). No top-level
-blocking call anywhere in this module either - importing it and calling build_system() must always
-return; the real "importing this triggers boot" firmware behavior lives in
-boot_entry/wozi_boot.py instead, kept deliberately separate so this module stays independently
+`import frozen_html` (module level, unconditional - matches this project's "imports happen once, at
+module load" convention) gives Step 1's `import frozen_html`-shaped gap in the reference file
+something real to resolve to: FINAL_WIRING_PLAN.md's Step 4 website-placeholder module
+(scripts/build_frozen_html.sh's own gzip -> freezefs --on-import mount output, stub content only -
+see html_stub/, not the real site). Importing it mounts a read-only frozen filesystem at `/html` as
+a side effect, matching freezefs's own "on-import" design - build_system() passes
+`static_mount="/html"` into WebserverService so its generic `/`+`/<path:filename>` route pair serves
+it. No top-level blocking call anywhere in this module though; importing it and calling
+build_system() must always return - the real "importing this triggers boot" firmware behavior lives
+in boot_entry/wozi_boot.py instead, kept deliberately separate so this module stays independently
 testable the way every other src/ module already is.
 """
 
@@ -41,6 +46,10 @@ import asyncio
 import time
 from asyncio import ThreadSafeFlag
 
+# frozen_html: mounts /html on import - see this module's own docstring. frozen_modules/ (built by
+# scripts/build_frozen_html.sh, gitignored, never ".frozen" - see that script's own comment) is what
+# makes this resolve locally/under test.
+import frozen_html  # type: ignore[import-not-found]  # noqa: F401
 from machine import WDT
 
 # Vendored ext/microdot.py isn't on this project's mypy search path (mypy_path=["typings","src"]) -
@@ -418,6 +427,9 @@ async def build_system(*, cfg_path: str = "", debug: int | None = None) -> None:
         maintenance_sensors=(("SGP40", _sgp_maintenance_status),),
         error_sources=_collect_error_sources(),
         debug=debug,
+        static_mount="/html",  # FINAL_WIRING_PLAN.md's Step 4 - matches frozen_html's own
+        # freezefs `--target /html` (see scripts/build_frozen_html.sh), mounted as a side effect of
+        # this module's own top-level `import frozen_html` above.
     )
 
     timers_running = ThreadSafeFlag()
