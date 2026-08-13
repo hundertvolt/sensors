@@ -1947,6 +1947,70 @@ importable under both the real build and the Unix port, and Step 2's static-rout
 actually serving it (verify at least one stub route returns the right bytes with the right
 `Content-Encoding` header); unit/integration-tested under the Unix port.
 
+**Done** (this session): all of the above landed.
+
+- **`html_stub/`** (new top-level folder, 7 flat files mirroring `html_raw/{general,wozi}`'s
+  combined file set — `index.html`, `style.css`, `functions.js`, `favicon.ico`,
+  `nettimeconfig.html`, `sensorconfig.html`, `systemledconfig.html`) — every file "Hello world"-
+  shaped placeholder content, not the real site.
+- **`scripts/build_frozen_html.sh`** — gzips a temp copy of `html_stub/`'s files, then runs
+  `PYTHONPATH=ext python -m freezefs <tmp> <out> --on-import mount --target /html --overwrite
+  always` (no `--compress`, per the known finding above; `ext/freezefs` has no `__init__.py` — an
+  implicit namespace package, confirmed directly, so `PYTHONPATH=ext` is what makes `python -m
+  freezefs` resolve it). Output defaults to `frozen_modules/frozen_html.py`. Source directory(ies)
+  default to `html_stub` but are overridable via the `HTML_SRC_DIRS` env var (a space-separated
+  list merged into one flat build tree before gzipping, mirroring `build-wozi.sh`'s own
+  `general`+board-variant merge) — this is what lets the real website build reuse this script
+  unmodified once real content replaces the stub, rather than needing a hardcoded-path edit first.
+- **Real finding, not anticipated going in**: the output directory can *not* be `.frozen/` (the
+  name this doc originally assumed, matching `scripts/test.sh`'s existing `MICROPYPATH="src:tests:
+  .frozen"`). `.frozen/` is a hardcoded sentinel in MicroPython's own import machinery
+  (`py/builtinimport.c`'s `MP_FROZEN_PATH_PREFIX ".frozen/"`) — any sys.path entry combining to a
+  path starting with that literal string is routed straight to the compiled-in frozen-module table
+  and the real filesystem is never consulted at all. A real `frozen_html.py` placed on disk under
+  `.frozen/` is therefore silently unimportable (`ImportError: no module named 'frozen_html'` even
+  though the file genuinely exists) — confirmed both empirically (reproduced, then fixed) and
+  against the pinned v1.28.0 C source directly. Fixed by using a new, ordinary, non-reserved
+  directory instead — `frozen_modules/` (gitignored) — added as its own `MICROPYPATH` segment
+  alongside (not replacing) the real `.frozen` sentinel, which `scripts/test.sh` still needs
+  unchanged for `import asyncio` etc. Recorded here as the "known findings" a future session
+  touching this area should carry in, since this doc's own original text got it wrong.
+- **`src/asy_webserver_service.py`** (Step 2's own module, freely editable — extended, not
+  replaced): new `static_mount`/`static_index` constructor params. When `static_mount` is given,
+  registers one generic `@app.get("/")` + `@app.get("/<path:filename>")` pair (Microdot's `path`
+  URL segment type, confirmed to compile to `/(.+)`) — zero per-file routes, unlike the legacy
+  reference file's hand-written one-route-per-file list, and generator-friendly the same way the
+  registration-list API already is. **Registered last**, after every real API route — `find_route()`
+  returns the first registered pattern that matches (confirmed directly against `ext/microdot.py`),
+  and the wildcard's own regex also matches every fixed path (e.g. `/measurements`), so registration
+  order is what keeps an exact-match API route from being shadowed by the wildcard. Serves via
+  `send_file(mount + "/" + filename, compressed=True, file_extension=".gz")` (no `ext/microdot.py`
+  edits); a missing file or a `".."` in the requested path both degrade to a clean 404 through the
+  same shaped error handler Step 2 already registered.
+- **`src/sensortask_wozi.py`**: module-level `import frozen_html` (unconditional — the project's
+  standing "imports happen once, at module load, never inside a function" convention, confirmed via
+  owner direction this session), mounting `/html` as a side effect of the import itself, matching
+  freezefs's own on-import design and the legacy reference file's identical top-of-file shape.
+  `build_system()`'s existing `WebserverService(...)` call (`WIRING_CONTRACT.md`'s construction-order
+  item 14) gains `static_mount="/html"`.
+- **Tests**: `tests/test_asy_webserver_service.py`'s new Section G (9 tests) exercises the generic
+  route-wiring mechanism against a synthetic, hand-built `VfsFrozen` fixture
+  (`ext/freezefs/ffsmount.py`'s own runtime mount driver, constructed directly — bypassing
+  freezefs's archive-generation step entirely), independent of the real stub content: root/index
+  serving, content-type inference, missing-file 404, directory-traversal rejection, a flat-mount
+  nested-path miss, and the registration-order regression test (a real API route must never be
+  shadowed by the wildcard). `tests/test_frozen_html_integration.py` (new file, 7 tests) is the
+  separate real-pipeline proof this step's own criteria asked for: imports the *actual* built
+  `frozen_html` module and drives real requests through a real `WebserverService`, decompressing the
+  real gzip bytes (via `deflate.DeflateIO`) to confirm the placeholder content round-trips
+  correctly, including the binary `favicon.ico` case (falls back to `application/octet-stream`,
+  proving the pipeline isn't text-only). `ruff`/`mypy` both clean; full existing suite (`scripts/
+  test.sh`, plain and `--coverage`) re-verified green, `src/asy_webserver_service.py` still at 99%
+  line coverage.
+- **`WIRING_CONTRACT.md`** updated in place (construction-order item 14's own note, plus a new
+  "Step 4 landed" status bullet) — not left to drift, per that doc's own standing-maintenance
+  instruction.
+
 ### Step 5 — Full Unix-port integration
 
 **Goal**: assemble Steps 1-4's output into one working `src/sensortask_wozi.py` prototype, run it
