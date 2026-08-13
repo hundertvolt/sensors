@@ -1880,9 +1880,16 @@ pre-push gate is actually scoped to).
 
 **Step 3 is now complete against the full, resumed "questions → refresh action list → TDD → maximize
 coverage" workflow** - every item from round 1, round 2's A-G, and this round's E/coverage border is
-done, tested, and pushed (`claude/step3-digital-twin-simulator`, not yet merged - per this repo's
-own per-step workflow, stopping here to report rather than opening a PR unprompted). No further open
-items remain from this step's own scope.
+done and tested. One further documentation gap was found and closed in the same close-out pass: the
+main `README.md` linked to `digital_twin/README.md` but never showed how to actually start the twin
+itself - fixed with a new "Digital twin (hardware simulator)" section giving the exact, directly-
+verified `digital_twin/launch.py` standalone-CLI command (seed/duration/no-wdt-feed/fault/
+wifi-outcome/fram-state-path flags), plus a pointer to `digital_twin/README.md`'s separate
+`MICROPYPATH`-based "swap the twin into a real `src/sensortask_wozi.py` run" section so the two
+aren't conflated. No further open items remain from this step's own scope. Per the owner's explicit
+instruction, `claude/step3-digital-twin-simulator` has been merged back into
+`claude/step2-webserver-api-service` (the branch it branched from, per this doc's own "Branch /
+session structure" above) - a clean fast-forward, no divergent commits on the target side.
 
 ### Step 4 — Website placeholder scaffold
 
