@@ -70,6 +70,44 @@ Reports `src/`-only line coverage; non-gating, never fails the build. Full pipel
 and CI behavior (Job Summary, build artifact, Codecov status): **moved to
 [`SPECIFICATION.md`](SPECIFICATION.md) Part E.5, "Coverage"**.
 
+## Digital twin (hardware simulator)
+
+`digital_twin/` is a fake `machine`/`network`/`neopixel` implementation (Step 3 of
+`FINAL_WIRING_PLAN.md`'s five-step effort) that mirrors the real `wozi` bus wiring — real-time-firing
+`Timer`s, randomized-but-plausible sensor values, and a scripted `WLAN` connect sequence — so driver
+code can run under the real MicroPython Unix-port interpreter with no physical hardware attached.
+
+Start its standalone CLI demo directly with the same Unix-port binary `scripts/test.sh` builds:
+
+```sh
+$HOME/pico-toolchain/micropython/ports/unix/build-standard/micropython digital_twin/launch.py \
+    --seed 42 --duration 3 --no-wdt-feed --wifi-outcome success --fault scd30:writeto:1
+```
+
+(use `$PICO_TOOLCHAIN_DIR` instead of `$HOME/pico-toolchain` if you've overridden it — see
+`scripts/test.sh`'s own `toolchain_dir` resolution for the exact path; run
+`uv run toolchain/setup_toolchain.py` first if the binary doesn't exist yet). All flags are optional
+and repeatable where noted:
+
+- `--seed N` — seed every chip's random value walk for a reproducible run.
+- `--duration SECONDS` — exit after a fixed run instead of looping forever (Ctrl-C also works).
+- `--no-wdt-feed` — stop feeding the watchdog, to watch it actually trip.
+- `--fault DEVICE:OP[:TIMES]` (repeatable) — script a one-shot/N-shot bus fault, e.g.
+  `--fault scd30:writeto:2`. See `digital_twin/launch.py`'s own `_FAULT_DEVICE_OPS` for every valid
+  `DEVICE:OP` pair.
+- `--wifi-outcome OUTCOME` (repeatable) — queue a `WLAN.connect()` outcome:
+  `success`/`no_ap`/`wrong_password`/`connect_fail`.
+- `--fram-state-path PATH` — persist the FRAM twin's contents to a JSON file across runs, instead of
+  in-memory only.
+
+This standalone launcher is twin-only (no `src/` import). To instead run the real
+`src/sensortask_wozi.py` prototype against the twin, see `digital_twin/README.md`'s own
+"Swapping the twin in for a Unix-port run" section — that's a separate `MICROPYPATH`-based
+invocation, not this launcher.
+
+Full reference — what's simulated and how, FRAM persistence, running the twin's own unit tests, and
+adding a new chip fake when a new sensor driver lands: **`digital_twin/README.md`**.
+
 ## Further reading
 
 Every supporting doc in the repo, in one place — added to as a first pass at pulling scattered
