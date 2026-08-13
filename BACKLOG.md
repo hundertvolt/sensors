@@ -351,15 +351,6 @@ constraints.
   wired into any `sensortask-*.py`; `asy_uart_comm.py` (its one real consumer) is its own separate,
   still out-of-scope promotion. Unused by any deployed config — wiring it in is after the refactor
   of already-deployed features, not before.
-- **Owner requirement for the final wiring stage (not in this audit's scope, recorded here for
-  when Stage 1 actually happens)**: every `sensortask-*.py` built as part of the real rewrite needs
-  a full Unix-port equivalent, runnable on a local computer, with whatever hardware is physically
-  unavailable there mocked at the lowest level of bus data exchange (i.e. the same mocking
-  boundary `tests/README.md`/`tests/machine.py` already establish for unit tests — fake
-  `machine.I2C`/`machine.SPI`/etc. byte-level transactions, not higher-level driver stand-ins) so
-  the whole wired-together sensortask can be exercised as close to the real target as possible
-  without physical hardware. `WIRING_CONTRACT.md`'s Stage-1 study is the natural place this lands
-  once that rewrite starts.
 - **Config-duplication centralization** — same keys hand-kept in sync across `_DEFAULT_CONFIG`, the
   REST handler, and the HTML form. Owned by the refactor: each promoted `*_Reader`'s own `_VAL_*`
   schema tuple + `get_dict_cfg()`/`get_dict_data()` is the intended single source, not fully wired

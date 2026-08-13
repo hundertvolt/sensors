@@ -50,18 +50,20 @@ Two more locations are settled the same way, by direct precedent already in the 
 
 ## Branch / session structure
 
-One branch per step below, sequential, each merged back before the next starts, each branching
-off the previous step's merged tip:
+One branch per step below, sequential. Every step branches off `claude/framework-wiring-rest-api-hx99v7`
+(the trunk) at its then-current tip, and merges directly back into that same trunk branch before the
+next step starts — **not** into the previous step's own now-stale branch. `claude/framework-wiring-rest-api-hx99v7`
+is the one accumulating branch every step both forks from and lands on:
 
 ```
 main
- └─ claude/framework-wiring-rest-api-hx99v7   (this branch — global prep, PR #31)
-     └─ Step 1 branch  → merge back into claude/framework-wiring-rest-api-hx99v7
-         └─ Step 2 branch  → merge back
-             └─ Step 3 branch  → merge back
-                 └─ Step 4 branch  → merge back
-                     └─ Step 5 branch  → merge back
-                                          └─ large audit, then PR #31 → main
+ └─ claude/framework-wiring-rest-api-hx99v7   (the trunk — global prep, PR #31)
+     ├─ Step 1 branch  → merge back into claude/framework-wiring-rest-api-hx99v7
+     ├─ Step 2 branch  (forked from the post-Step-1 trunk tip) → merge back into the trunk
+     ├─ Step 3 branch  (forked from the post-Step-2 trunk tip) → merge back into the trunk
+     ├─ Step 4 branch  (forked from the post-Step-3 trunk tip) → merge back into the trunk
+     └─ Step 5 branch  (forked from the post-Step-4 trunk tip) → merge back into the trunk
+                                                                    └─ large audit, then PR #31 → main
 ```
 
 Suggested branch names (each step's session can rename if it finds a better one, but should stay
@@ -73,9 +75,16 @@ inside this scheme so the sequencing is legible from branch names alone):
 4. `claude/step4-website-placeholder`
 5. `claude/step5-unix-port-integration`
 
-Each step's PR targets the *previous* branch (not `main`) — only the final, already-open PR #31
+Each step's PR targets `claude/framework-wiring-rest-api-hx99v7` directly (not `main`, and not the
+previous step's own branch) — only the final, already-open PR #31
 (`claude/framework-wiring-rest-api-hx99v7` → `main`) ever targets `main`, once Step 5 merges and
-the large audit closes.
+the large audit closes. **This was ambiguous in an earlier revision of this diagram** — the
+indentation there read as a cascading chain (each step merging into the previous step's own
+branch), and Step 3's session followed that literal reading, fast-forwarding
+`claude/step2-webserver-api-service` instead of the trunk. The trunk was fast-forwarded to pick up
+Step 3's work after the fact (clean, since it was a strict ancestor — no conflicts). Steps 4 and 5:
+branch from and merge back into `claude/framework-wiring-rest-api-hx99v7` directly, per this
+corrected diagram, not per any previous step's own branch.
 
 ## Per-step-session workflow (owner-specified, mandatory for every step below)
 
@@ -1886,10 +1895,17 @@ itself - fixed with a new "Digital twin (hardware simulator)" section giving the
 verified `digital_twin/launch.py` standalone-CLI command (seed/duration/no-wdt-feed/fault/
 wifi-outcome/fram-state-path flags), plus a pointer to `digital_twin/README.md`'s separate
 `MICROPYPATH`-based "swap the twin into a real `src/sensortask_wozi.py` run" section so the two
-aren't conflated. No further open items remain from this step's own scope. Per the owner's explicit
-instruction, `claude/step3-digital-twin-simulator` has been merged back into
-`claude/step2-webserver-api-service` (the branch it branched from, per this doc's own "Branch /
-session structure" above) - a clean fast-forward, no divergent commits on the target side.
+aren't conflated. No further open items remain from this step's own scope.
+
+**Merge-back correction (post-session)**: this step's session originally fast-forwarded
+`claude/step2-webserver-api-service` rather than the trunk, following what turned out to be an
+ambiguous reading of this doc's own "Branch / session structure" diagram at the time (since fixed,
+see that section above). The Step 4 kickoff session caught this before branching Step 4 off the
+stale trunk, fast-forwarded `claude/framework-wiring-rest-api-hx99v7` to Step 3's tip (clean, no
+divergent commits — trunk was a strict ancestor), and confirmed CI green on the result. Step 3's
+work is now on the actual trunk; `claude/step2-webserver-api-service` and
+`claude/step3-digital-twin-simulator` are stale/superseded, left in place only as historical
+record.
 
 ### Step 4 — Website placeholder scaffold
 

@@ -1,10 +1,13 @@
 # Wiring Contract — `improved-quality/sensortask-wozi.py` study
 
-**Status update (Steps 1-2 landed)**: this doc's own original header said it would be deleted once the
+**Status update (Steps 1-3 landed)**: this doc's own original header said it would be deleted once the
 real Stage-1 standalone `sensortask-wozi.py` successor landed — that's now true, `src/sensortask_wozi.py`
-exists (Step 1 of `FINAL_WIRING_PLAN.md`'s five-step effort), and Step 2 (the generic webserver/API
-service, `src/asy_webserver_service.py`, wired into `build_system()`) has landed on top of it too.
-Kept alive anyway, deliberately deviating from that stated lifecycle: Steps 3-5 still need this exact
+exists (Step 1 of `FINAL_WIRING_PLAN.md`'s five-step effort), Step 2 (the generic webserver/API
+service, `src/asy_webserver_service.py`, wired into `build_system()`) has landed on top of it too,
+and Step 3 (the `digital_twin/` hardware simulator, a separate module at the `machine`-mocking
+boundary with zero `src/sensortask_wozi.py` awareness by design) has landed alongside it without
+touching this construction order at all.
+Kept alive anyway, deliberately deviating from that stated lifecycle: Steps 4-5 still need this exact
 construction order/dependency graph preserved as they build on top of it, so this remains the living
 reference until the whole five-step effort merges back, not just until Step 1 alone lands. Still
 **keep it up to date** whenever a change to `src/sensortask_wozi.py` touches anything documented
@@ -273,7 +276,7 @@ FINAL_WIRING_PLAN.md's Step 2 status updates for the full detail, including the 
 construction-order findings made while wiring it in (`conn.setup()`/`ntp.setup()`, item 16 above)
 and the "no `fram=`" decision preserving this document's five-chunk FRAM invariant.
 
-Kept alive per the "Status update" note at the top of this document, not deleted — Steps 3-5 still
+Kept alive per the "Status update" note at the top of this document, not deleted — Steps 4-5 still
 need this exact construction order/dependency graph preserved as they build on top of it. Re-verify
 the sections above whenever a future change to `src/sensortask_wozi.py` (or, still, a change to
 `improved-quality/sensortask-wozi.py`, unlikely as that is) could plausibly affect construction
