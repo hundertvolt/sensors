@@ -2029,6 +2029,155 @@ correctly, and a soak run (matching Step 2's own soak-test bar) showing stable m
 integration-level tests added following `tests/test_setter_microdot_integration.py`'s existing
 pattern of exercising real dispatch without a real socket.
 
+**Refined plan — resolved via project-owner Q&A this session** (supersedes/extends the above where
+the two differ; kept as its own subsection per Steps 1-2's own precedent, so the original scoping
+stays legible as the starting point). Own research done before the Q&A round: `tests/
+test_sensortask_wozi.py` (784 lines, already landed by Step 1/2's sessions) already exercises
+`build_system()`'s full real object graph through `app.dispatch_request()` for all six REST
+endpoints against `tests/machine.py` fakes — dispatch-level, no real socket, no digital twin; that
+coverage is not duplicated here. `tests/test_asy_webserver_service.py`'s Section F.8 already proves
+a real `asyncio.start_server()`-backed connection works cleanly under the Unix port (loopback,
+ephemeral port); its own F.9 is Step 2's actual soak methodology (`gc.collect()` → baseline → 120
+cycles → `gc.collect()` → `assert after >= baseline - 4096`, `run_timed(..., timeout_s=60.0)`) —
+reused here per decision 9 below. Confirmed by reading `src/asy_webserver_service.py` directly:
+`WebserverService.__init__`'s real default is `host="0.0.0.0", port=80`, and `build_system()`
+passes neither through — a non-root Unix-port run binding port 80 fails with `EACCES`, a genuine gap
+this step has to close, not a hypothetical. Confirmed by reading `src/system_service.py` directly:
+`start_and_check_tasks()`'s own loop already calls `self.watchdog.feed()` every iteration, so
+`WDT.would_have_triggered_count` staying `0` under normal conditions is a real, already-wired
+assertion, not something this step needs to build a feeder for. Confirmed by reading
+`tests/test_digital_twin_launch.py` directly: the per-file `sys.path.insert(0, "digital_twin")`
+trick (same one `tests/test_setter_microdot_integration.py` already uses for `ext/`) already runs
+*with* `machine`/`network` resolving to the twin's own fakes, inside a process where `tests/
+machine.py` is also nominally reachable via `scripts/test.sh`'s default `MICROPYPATH` — the
+insert-at-position-0 ordering is deterministic (not the fragile "depends on ordering" case
+`digital_twin/README.md`'s "never together" warning is actually about, which is specifically the
+*production/twin* `MICROPYPATH="src:digital_twin:frozen_modules:.frozen"` invocation never also
+carrying a `tests` segment). This means a middle integration tier can be an ordinary `tests/
+test_*.py` file, discovered and run by `scripts/test.sh`'s existing default loop, with zero new
+`MICROPYPATH`/entry-point plumbing — only the genuinely unbounded/interactive end-to-end tier needs
+a dedicated separate invocation.
+
+Owner decisions (this session's 10 clarifying questions, answered directly):
+
+1. Confirmed the proposed split: a dedicated `scripts/`-housed entry point for the twin-separated
+   `MICROPYPATH`, distinct from `scripts/test.sh` — the digital twin and `tests/` stay fully
+   separated/independent, even though some fakes are deliberately duplicated (not shared) between
+   them and must be watched to stay in sync (already `digital_twin/README.md`'s own stated policy
+   for `network.py`/`neopixel.py`).
+2. **Real HTTP, real sockets, real server** — every REST endpoint must be reachable over Microdot's
+   actual transport, the same as the real system, not `app.dispatch_request()` bypass (which
+   `tests/test_sensortask_wozi.py` already covers without a twin). No frozen HTTP client library
+   exists anywhere in this repo's dependency set (checked directly) — a minimal hand-rolled HTTP/1.1
+   client over `asyncio.open_connection()` is required, matching this project's established
+   hand-roll-when-a-library-isn't-reliably-available convention (`digital_twin/launch.py`'s own
+   `argparse` fallback is the precedent). Simplified by `_mark_connection_close()` already forcing
+   `Connection: close` on every response (confirmed directly, `asy_webserver_service.py`) — the
+   client never needs to support keep-alive.
+3. **Settable server address by CLI, default `localhost:8080`**, reachable by a real browser on the
+   Unix machine running the test — not the production `0.0.0.0:80` default. `build_system()` gains
+   optional `web_host`/`web_port` keywords (mirroring its existing `cfg_path`/`debug` override
+   pattern), defaulting to today's `0.0.0.0`/`80` for production parity, forwarded straight into
+   `WebserverService(host=, port=)`.
+4. Soak-cycle count can be shorter than Step 2's 120 — real sensor-poll cadence must **not** gate
+   how long the REST-facing soak takes: the system is async, so the HTTP-facing soak loop hammers
+   real request/response round trips back-to-back (bounded by real network/event-loop latency, not
+   by the twin's own real-time sensor `Timer` cadence, which keeps running concurrently and
+   unaffected in the background at real intervals). A rational, smaller cycle count than 120 is
+   fine given each cycle is a real TCP round trip, not a fake-reader/writer call.
+5. Three test tiers, explicitly: **unit** (existing `tests/test_digital_twin_*.py`, unchanged),
+   **integration** (new — see decision 10), **end-to-end** (the full soak/manual-run entry point).
+   Not a production system — no new CI job required for this step; keep the whole thing rational in
+   scope, matching `BACKLOG.md`'s existing "no CI firmware-build stage yet" being tracked
+   separately.
+6. FRAM persistence for the end-to-end/manual entry point defaults to a **persistent** file inside
+   `digital_twin/` (not an ephemeral per-run scratch path) — written only on explicit shutdown
+   (`machine.flush_fram()`, already the twin's own explicit-write-only design, confirmed directly
+   against `digital_twin/machine.py`/`_fram_chip.py`), in-memory only during the run itself. The new
+   *automated* middle-integration-tier tests still use an ephemeral per-test path (matching every
+   other test file's own `_tmp_cfg_dir()`-style isolation convention) — the persistent-by-default
+   behavior is specific to the manual/end-to-end entry point, not the automated test tiers.
+7. **Both**: an automated, unit-tested assertion (`watchdog.would_have_triggered_count == 0` after a
+   bounded, zero-fault run) *and* the ability to watch escalation actually happen on a manual run —
+   the end-to-end entry point keeps `--fault`/`--wifi-outcome` CLI passthrough (mirroring
+   `digital_twin/launch.py`'s own flags) for deliberate manual exploration, not gating the automated
+   pass/fail run.
+8. No further constraints — keep it simple and lean, whatever shape actually works.
+9. **Reuse Step 2's exact soak methodology** (`gc.collect()` → baseline → N cycles → `gc.collect()`
+   → `assert after >= baseline - 4096`) for the end-to-end tier's memory-flat check.
+10. **Build the middle integration tier too** (not just unit + end-to-end) — real gap-finding value
+    for the existing unit-test suite. Lands as `tests/test_digital_twin_sensortask_integration.py`,
+    using the precedented `sys.path.insert(0, "digital_twin")` trick, discovered by `scripts/
+    test.sh`'s ordinary default loop (see "own research" above for why this doesn't collide with
+    `tests/machine.py`) — builds `sensortask_wozi` for real against the twin's buses and drives real
+    HTTP round trips against a fixed, non-privileged test port, without needing the full end-to-end
+    entry point's own `MICROPYPATH`/CLI plumbing at all.
+
+**Resulting concrete file list**:
+- `src/sensortask_wozi.py` — `build_system()` gains `web_host`/`web_port` (decision 3).
+- `tests/test_sensortask_wozi.py` — a new unit test for the override (`tests/machine.py`-backed, no
+  twin involved).
+- `tests/test_digital_twin_sensortask_integration.py` — new, the integration tier (decision 10),
+  part of `scripts/test.sh`'s default run.
+- `digital_twin/run_wozi_integration.py` — new, the end-to-end CLI orchestrator (decisions 2/3/6/7):
+  hand-rolled arg parsing (`--host`, `--port`, `--fram-state-path`, `--fault`, `--wifi-outcome`,
+  `--seed`, `--duration`, `--soak-cycles`, mirroring `digital_twin/launch.py`'s own conventions),
+  a minimal hand-rolled HTTP/1.1 client, `--duration` omitted means run forever (manual/
+  browser-reachable mode), `--duration` given means a bounded automated soak ending in the
+  watchdog/memory assertions above.
+- `tests/test_digital_twin_run_wozi_integration.py` — new, pure-logic unit tests for the
+  orchestrator's own parsing/HTTP-client helpers, mirroring `tests/test_digital_twin_launch.py`'s
+  shape.
+- `scripts/run_unix_port_integration.sh` — new, the dedicated entry point (decision 1): builds the
+  toolchain + `frozen_modules/frozen_html.py` the same way `scripts/test.sh` does, sets
+  `MICROPYPATH="src:digital_twin:frozen_modules:.frozen"`, runs the orchestrator above, forwarding
+  any CLI args through (defaults to a bounded automated soak run when none are given). Not part of
+  `scripts/test.sh`'s own default loop.
+
+**Status update (this session): all of the above landed.** `scripts/lint.sh`/`scripts/typecheck.sh`
+both clean for every new/changed file (`src/sensortask_wozi.py`, `src/asy_webserver_service.py`,
+`digital_twin/_http_client.py`, `digital_twin/run_wozi_integration.py`,
+`tests/test_digital_twin_sensortask_integration.py`,
+`tests/test_digital_twin_run_wozi_integration.py`, plus the existing `tests/test_sensortask_wozi.py`/
+`tests/test_asy_webserver_service.py` extended with new regression coverage) — `improved-quality/`'s
+own pre-existing, tracked findings are the only remaining `scripts/typecheck.sh`/`scripts/lint.sh`
+non-zero exit, unchanged by this session. Full `scripts/test.sh` (plain and `--coverage`) re-verified
+green, including the two new test files. `digital_twin/typecheck.ini` gained `src` on its own
+`mypy_path` (alongside the matching `pyproject.toml` exclude-list addition for
+`digital_twin/run_wozi_integration.py`) — the one file needing both the twin's own `machine`/
+`network` API and a real `src/` import (`sensortask_wozi`) in the same module, a case neither
+existing mypy pass was built for; see `digital_twin/typecheck.ini`'s and `pyproject.toml`'s own
+updated comments for the full reasoning.
+
+**A real, previously-undetected production bug was found and fixed along the way**, exactly the
+kind of thing owner decision 10 anticipated: `src/asy_webserver_service.py`'s `_get_settings_flat()`
+(backing `/networking`/`/system`/`/notification`'s GET handlers) never flattened
+`config_manager.make_dict()`'s real `{type_name: {field: value}}` shape — the actual return shape
+of `AsyConnTime`/`AsyNtpClient`/`NotificationCoordinator`'s own `get_dict_cfg()` — so in production
+`/networking` and `/notification` always returned `{}` and `/system` silently dropped its
+`ntp`-sourced `GMTOffset`/`DSTOffset` fields, keeping only `DebugLevel` (sourced from `SystemService`'s
+own already-flat `get_dict_cfg()` override). `tests/test_asy_webserver_service.py`'s own uniform
+`_FakeModule` fake happened to return an already-flat shape for every module, masking this
+completely — only visible once `tests/test_digital_twin_sensortask_integration.py` drove a GET
+against the *real* driver objects. Fixed via a new `_flatten_cfg_values()` helper in
+`src/asy_webserver_service.py`; regression coverage added in both
+`tests/test_asy_webserver_service.py` (a `_NestedCfgModule` fake reproducing the real shape) and
+`tests/test_digital_twin_sensortask_integration.py` (asserting the real fields round-trip over real
+HTTP against the real drivers).
+
+**Two real MicroPython-Unix-port-specific findings, both now documented in the affected files' own
+comments, not just here:**
+- `globals()` does not preserve test-function definition order on this interpreter (confirmed
+  directly — a file's own `test_*` functions ran in a different order than written). Every test
+  file in this session's new work was written to never assume "the last test in the file" is "the
+  last test to run" — each test that starts a real background task keeps an explicit reference to
+  it and cancels it again in its own `finally`, never relying on file position for cleanup ordering.
+- Calling `asyncio.run()` from inside a coroutine that is already running inside another
+  `asyncio.run()` call segfaults the real interpreter outright, rather than raising a clean error
+  the way CPython's own reentrancy guard would — found the hard way (a real interpreter crash, not
+  a Python-level exception) while writing this session's own tests; fixed by `await`ing directly
+  instead once already inside an async context.
+
 ## Out of scope for all five steps
 
 - Real website content (stub only, see Step 4).

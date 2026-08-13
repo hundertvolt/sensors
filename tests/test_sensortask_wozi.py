@@ -239,6 +239,62 @@ def test_build_system_is_independently_callable_and_returns() -> None:
     run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
 
 
+def test_build_system_web_host_and_port_default_to_production_values() -> None:
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    assert sensortask_wozi.webserver is not None
+    assert sensortask_wozi.webserver._host == "0.0.0.0"
+    assert sensortask_wozi.webserver._port == 80
+
+
+def test_build_system_web_host_and_port_are_overridable() -> None:
+    # Step 5's own real need: a non-root Unix-port integration run can't bind the production
+    # 0.0.0.0:80 default (EACCES) - build_system() must let a caller override both, mirroring its
+    # existing cfg_path/debug override pattern (FINAL_WIRING_PLAN.md's Step 5 refined plan,
+    # decision 3).
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=8080))
+    assert sensortask_wozi.webserver is not None
+    assert sensortask_wozi.webserver._host == "127.0.0.1"
+    assert sensortask_wozi.webserver._port == 8080
+
+
+def test_main_forwards_web_host_and_port_to_build_system() -> None:
+    # main() itself (not just build_system()) must accept and forward the override - Step 5's own
+    # real entry point calls sensortask_wozi.main(), never build_system() directly. Fakes
+    # start_timers()/ntp_force_sync()/start_and_check_tasks() the same way
+    # test_main_calls_start_timers_then_force_sync_then_start_and_check_tasks_in_order() already
+    # does, and for the same reason (see that test's own comment): start_timers()'s real
+    # Timer-sequencing chain never completes under tests/machine.py's fake, which only fires
+    # Timer callbacks via manual .trigger() - awaiting it for real here would hang.
+    from asy_ntp_client import AsyNtpClient
+    from system_service import SystemService
+
+    real_start_timers = SystemService.start_timers
+    real_force_sync = AsyNtpClient.ntp_force_sync
+    real_start_and_check = SystemService.start_and_check_tasks
+
+    async def _fake_start_timers(self: "Any", timers: "Any") -> None:
+        pass
+
+    async def _fake_force_sync(self: "Any") -> None:
+        pass
+
+    async def _fake_start_and_check(self: "Any", task_starters: "Any") -> None:
+        pass  # never loops - this test only cares that build_system() received the override
+
+    SystemService.start_timers = _fake_start_timers  # type: ignore[method-assign]
+    AsyNtpClient.ntp_force_sync = _fake_force_sync  # type: ignore[method-assign]
+    SystemService.start_and_check_tasks = _fake_start_and_check  # type: ignore[method-assign]
+    try:
+        run(sensortask_wozi.main(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=8080))
+    finally:
+        SystemService.start_timers = real_start_timers  # type: ignore[method-assign]
+        AsyNtpClient.ntp_force_sync = real_force_sync  # type: ignore[method-assign]
+        SystemService.start_and_check_tasks = real_start_and_check  # type: ignore[method-assign]
+    assert sensortask_wozi.webserver is not None
+    assert sensortask_wozi.webserver._host == "127.0.0.1"
+    assert sensortask_wozi.webserver._port == 8080
+
+
 # ---------------------------------------------------------------------------
 # FRAM chunk order - five chunks, exact relative sequence (WIRING_CONTRACT.md item 8's correction).
 # ---------------------------------------------------------------------------

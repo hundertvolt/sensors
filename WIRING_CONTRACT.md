@@ -81,7 +81,12 @@ already-mounted filesystem into `WebserverService`.
     is passed here too — `WebserverService` registers its generic `/`+`/<path:filename>` static
     route pair last, after every API route above, so an exact-match API route always wins over the
     wildcard (`ext/microdot.py`'s `find_route()` returns the first registered pattern that matches,
-    confirmed directly). No FRAM/chunk involvement either way.
+    confirmed directly). No FRAM/chunk involvement either way. **`host=web_host, port=web_port`**
+    (Step 5) — `build_system()`/`main()` both gained optional `web_host`/`web_port` keywords
+    (default `"0.0.0.0"`/`80`, matching the production values this call already hardcoded before),
+    forwarded straight through here — added so a non-root Unix-port integration run can bind a
+    non-privileged port instead (`FINAL_WIRING_PLAN.md`'s Step 5 refined plan, decision 3); no
+    construction-order or dependency-graph change.
 15. `sysfunct.set_level_setters(_collect_level_setters())` — collects every logger's own
     `set_level()` bound method (see "Debug level" below) into `sysfunct`'s registry, sync, after
     every module (including `notify_service.finalize()` and the webserver from step 14) has fully
@@ -299,8 +304,15 @@ the full design/decision record and `tests/test_frozen_html_integration.py` for 
 proof (as opposed to `tests/test_asy_webserver_service.py`'s Section G, which exercises the generic
 route-wiring mechanism against a synthetic fixture, independent of the real stub content).
 
-Kept alive per the "Status update" note at the top of this document, not deleted — Steps 4-5 still
-need this exact construction order/dependency graph preserved as they build on top of it. Re-verify
-the sections above whenever a future change to `src/sensortask_wozi.py` (or, still, a change to
-`improved-quality/sensortask-wozi.py`, unlikely as that is) could plausibly affect construction
+**Step 5 landed** (later session): `build_system()`/`main()` gained the `web_host`/`web_port`
+override noted at item 14 above — the only construction-order-relevant change this step made.
+Everything else (the digital-twin-driven end-to-end orchestrator, the twin-backed integration test
+tier, the new dedicated entry point) is new code alongside this file's own construction sequence,
+not a change to it — see `FINAL_WIRING_PLAN.md`'s Step 5 section and `digital_twin/README.md`'s
+"Swapping the twin in for a Unix-port run" section for the full detail.
+
+Kept alive per the "Status update" note at the top of this document, not deleted — this exact
+construction order/dependency graph is still the living reference for any future change to
+`src/sensortask_wozi.py`. Re-verify the sections above whenever such a change (or, still, a change
+to `improved-quality/sensortask-wozi.py`, unlikely as that is) could plausibly affect construction
 order, the dependency graph, or the FRAM chunk sequence.

@@ -445,6 +445,38 @@ def test_networking_get_is_flat_settings_only_no_live_fields() -> None:
     assert "Connected" not in body and "IP" not in body and "Rssi" not in body
 
 
+class _NestedCfgModule:
+    # Reproduces config_manager.make_dict()'s real {type_name: {field: value}} shape - the actual
+    # shape AsyConnTime/AsyNtpClient/NotificationCoordinator's own get_dict_cfg() returns in
+    # production (base_classes.py's SensorReaderConfig default, via ConfigManager.make_dict()),
+    # unlike _FakeModule's own deliberately-flat get_dict_cfg() convention above (which matches
+    # SystemService's own get_dict_cfg() override instead - see system_service.py's
+    # self.cfgmgr.get_dict(...), a genuinely different, already-flat method). Found via
+    # FINAL_WIRING_PLAN.md's Step 5 twin-based integration testing
+    # (tests/test_digital_twin_sensortask_integration.py): _FakeModule's flat shape masked a real
+    # bug where _get_settings_flat() never unwrapped this real shape at all, so /networking and
+    # /notification always returned {} in production, and /system silently dropped every field not
+    # sourced from SystemService's own flat override (DebugLevel) - see the regression test right
+    # below.
+    def __init__(self, type_name: str, values: "dict[str, Any]") -> None:
+        self.name = type_name
+        self._type_name = type_name
+        self._values = values
+
+    async def get_dict_cfg(self) -> "dict[str, Any]":
+        return {self._type_name: dict(self._values)}
+
+
+def test_networking_get_flattens_a_real_type_name_nested_get_dict_cfg_shape() -> None:
+    # Regression test for the real, confirmed production bug described in _NestedCfgModule's own
+    # docstring above.
+    wifi = _NestedCfgModule("WIFI", {"SSID": "MyNet"})
+    group = SettingsGroup(wifi, ("SSID",))  # type: ignore[arg-type]  # structurally _ModuleLike-shaped
+    service, app = _make_service(settings={"networking": [group]})
+    res = run(app.dispatch_request(_make_request(app, "GET", "/networking", None)))
+    assert json.loads(res.body) == {"SSID": "MyNet"}
+
+
 def test_networking_put_partial_field_update_triggers_only_relevant_post_hook() -> None:
     wifi = _FakeModule(
         "WIFI",

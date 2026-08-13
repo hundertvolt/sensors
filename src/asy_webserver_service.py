@@ -101,6 +101,29 @@ def _index_pairs(items: "Iterable[tuple[str, MaintenanceFct]]") -> "dict[str, Ma
     return result
 
 
+def _flatten_cfg_values(values: "dict[str, Any]") -> "dict[str, Any]":
+    # get_dict_cfg() has two real shapes across this codebase's registrable modules: a genuinely
+    # flat dict (SystemService's own override, self.cfgmgr.get_dict(...)) or
+    # config_manager.make_dict()'s {type_name: {field: value}} nesting (base_classes.py's
+    # SensorReaderConfig default - AsyConnTime/AsyNtpClient/NotificationCoordinator among them).
+    # _get_settings_flat() needs every field to be a top-level key regardless of which shape its
+    # module returns - found and fixed via FINAL_WIRING_PLAN.md's Step 5 twin-based integration
+    # testing (tests/test_digital_twin_sensortask_integration.py): without this, /networking and
+    # /notification always returned {} in production (every field they source is nested-shaped),
+    # and /system silently dropped GMTOffset/DSTOffset (sourced from ntp, also nested-shaped) while
+    # DebugLevel (sourced from sysfunct, already flat) happened to work. Safe to merge any
+    # dict-valued top-level entry unconditionally: every config schema in this codebase today is
+    # flat scalar fields only (BACKLOG.md's own config_manager.py make_dict() note already tracks
+    # this as the one place a future dict/list-valued field would need re-checking).
+    flat: dict[str, Any] = {}
+    for key, value in values.items():
+        if isinstance(value, dict):
+            flat.update(value)
+        else:
+            flat[key] = value
+    return flat
+
+
 class SettingsGroup:
     def __init__(
         self,
@@ -283,7 +306,7 @@ class WebserverService:
     async def _get_settings_flat(self, endpoint: str) -> "dict[str, Any]":
         result: dict[str, Any] = {}
         for group in self._settings.get(endpoint, []):
-            values = await group.module.get_dict_cfg()
+            values = _flatten_cfg_values(await group.module.get_dict_cfg())
             for field in group.fields:
                 if field in values:
                     result[field] = values[field]

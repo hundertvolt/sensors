@@ -359,10 +359,13 @@ constraints.
   `machine.I2C`/`machine.SPI`/etc. byte-level transactions, not higher-level driver stand-ins) so
   the whole wired-together sensortask can be exercised as close to the real target as possible
   without physical hardware. `WIRING_CONTRACT.md`'s Stage-1 study is the natural place this lands
-  once that rewrite starts. **Partially fulfilled**: `digital_twin/` (Step 3 of
-  `FINAL_WIRING_PLAN.md`'s five-step effort) is the lowest-level-mocking module this requirement
-  calls for, and has landed. The concrete fulfillment — actually running the whole wired-together
-  `src/sensortask_wozi.py` against it end to end — is Step 5's own explicit goal, still pending.
+  once that rewrite starts. **Fulfilled**: `digital_twin/` (Step 3 of `FINAL_WIRING_PLAN.md`'s
+  five-step effort) is the lowest-level-mocking module this requirement calls for, and has landed.
+  The concrete fulfillment — actually running the whole wired-together `src/sensortask_wozi.py`
+  against it end to end — is Step 5's own explicit goal; done in this session (not yet merged — see
+  `FINAL_WIRING_PLAN.md`'s Step 5 section for the full detail). Once Step 5 merges and the whole
+  five-step effort's large post-merge audit closes, this entry should come out per this file's own
+  stated resolved-item policy.
 - **Config-duplication centralization** — same keys hand-kept in sync across `_DEFAULT_CONFIG`, the
   REST handler, and the HTML form. Owned by the refactor: each promoted `*_Reader`'s own `_VAL_*`
   schema tuple + `get_dict_cfg()`/`get_dict_data()` is the intended single source, not fully wired

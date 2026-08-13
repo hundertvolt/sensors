@@ -303,14 +303,19 @@ def _collect_level_setters() -> "list[Callable[[int], None]]":
     ]
 
 
-async def build_system(*, cfg_path: str = "", debug: int | None = None) -> None:
+async def build_system(
+    *, cfg_path: str = "", debug: int | None = None, web_host: str = "0.0.0.0", web_port: int = 80
+) -> None:
     """Construct every module + run the grouped setup() batch. Independently callable/testable -
     no task starting, no infinite loop, always returns. cfg_path lets a caller (a test, or a future
     per-variant build) isolate every ConfigManager-backed module's on-disk config file; defaults to
     "" (the real device filesystem root), matching the reference file's own behavior. debug is each
     module's own construction-time logger level, exactly as before - sysfunct.setup() (in the
     grouped batch below) then pushes the real persisted level out to every logger's own set_level()
-    via the registry _collect_level_setters() builds, overriding this initial value.
+    via the registry _collect_level_setters() builds, overriding this initial value. web_host/
+    web_port let a caller override WebserverService's own real production default
+    (host="0.0.0.0", port=80) - added for FINAL_WIRING_PLAN.md's Step 5, whose Unix-port
+    integration run can't bind the privileged production port as a non-root process.
     """
     global watchdog, conn, ntp, i2c0, i2c1, spi0, fram, sysfunct
     global sgp_reader, bmp_reader, scd_reader, pixel, notify_service, webserver, timers_running
@@ -430,6 +435,8 @@ async def build_system(*, cfg_path: str = "", debug: int | None = None) -> None:
         static_mount="/html",  # FINAL_WIRING_PLAN.md's Step 4 - matches frozen_html's own
         # freezefs `--target /html` (see scripts/build_frozen_html.sh), mounted as a side effect of
         # this module's own top-level `import frozen_html` above.
+        host=web_host,
+        port=web_port,
     )
 
     timers_running = ThreadSafeFlag()
@@ -508,8 +515,8 @@ def _collect_timer_starters() -> "list[Callable[[], None]]":
     )
 
 
-async def main(*, cfg_path: str = "", debug: int | None = None) -> None:
-    await build_system(cfg_path=cfg_path, debug=debug)
+async def main(*, cfg_path: str = "", debug: int | None = None, web_host: str = "0.0.0.0", web_port: int = 80) -> None:
+    await build_system(cfg_path=cfg_path, debug=debug, web_host=web_host, web_port=web_port)
     assert sysfunct is not None and ntp is not None
 
     task_starters = _collect_task_starters()

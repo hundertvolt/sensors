@@ -40,3 +40,10 @@ coverage_summary_digital_twin.md
 
 # Scratch config files written/removed by tests/test_config_manager.py's real file-I/O tests.
 tests/_tmp/
+
+# digital_twin/run_wozi_integration.py's own persistent run state (FINAL_WIRING_PLAN.md's Step 5) -
+# the twin's FRAM state (only written via machine.flush_fram() on shutdown, owner-specified default
+# per that step's own decision 6) and its ConfigManager-backed config_*.cfg files - both plain,
+# regenerable run artifacts, never committed.
+digital_twin/fram_state.json
+digital_twin/config/
