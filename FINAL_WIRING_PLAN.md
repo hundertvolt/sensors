@@ -1957,7 +1957,11 @@ actually serving it (verify at least one stub route returns the right bytes with
   `PYTHONPATH=ext python -m freezefs <tmp> <out> --on-import mount --target /html --overwrite
   always` (no `--compress`, per the known finding above; `ext/freezefs` has no `__init__.py` — an
   implicit namespace package, confirmed directly, so `PYTHONPATH=ext` is what makes `python -m
-  freezefs` resolve it). Output defaults to `frozen_modules/frozen_html.py`.
+  freezefs` resolve it). Output defaults to `frozen_modules/frozen_html.py`. Source directory(ies)
+  default to `html_stub` but are overridable via the `HTML_SRC_DIRS` env var (a space-separated
+  list merged into one flat build tree before gzipping, mirroring `build-wozi.sh`'s own
+  `general`+board-variant merge) — this is what lets the real website build reuse this script
+  unmodified once real content replaces the stub, rather than needing a hardcoded-path edit first.
 - **Real finding, not anticipated going in**: the output directory can *not* be `.frozen/` (the
   name this doc originally assumed, matching `scripts/test.sh`'s existing `MICROPYPATH="src:tests:
   .frozen"`). `.frozen/` is a hardcoded sentinel in MicroPython's own import machinery

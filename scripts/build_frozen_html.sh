@@ -23,17 +23,26 @@
 #   named 'frozen_html'` even though the file was really on disk). scripts/test.sh adds
 #   frozen_modules/ as its own MICROPYPATH segment, separate from (and alongside) the real ".frozen"
 #   sentinel it already needs for `import asyncio` etc.
+#
+# Source directory(ies) default to html_stub - override via the HTML_SRC_DIRS env var, a
+# space-separated list of directories whose contents are merged into one flat build tree before
+# gzipping. This is what lets this same script build the real website later without editing it:
+# build-wozi.sh's own legacy pipeline merged html_raw/general (shared) with a board-specific folder
+# (html_raw/wozi, /dev, /arzi) the same way - e.g. once the real content lands,
+# `HTML_SRC_DIRS="html/general html/wozi" scripts/build_frozen_html.sh` reuses this script as-is.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-src_dir="html_stub"
+src_dirs="${HTML_SRC_DIRS:-html_stub}"
 out_file="${1:-frozen_modules/frozen_html.py}"
 mount_target="/html"
 
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 
-cp "$src_dir"/* "$tmp_dir"/
+for src_dir in $src_dirs; do
+    cp "$src_dir"/* "$tmp_dir"/
+done
 gzip -9 "$tmp_dir"/*
 
 mkdir -p "$(dirname "$out_file")"
