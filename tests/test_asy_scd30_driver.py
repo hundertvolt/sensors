@@ -15,6 +15,7 @@ from machine import I2C as FakeI2C
 from machine import Pin as FakePin
 from machine import Timer as FakeTimer
 
+import config_manager as cm
 from asy_i2c_driver import I2C
 from asy_scd30_driver import SCD30, SCD30_I2C, SCD30_Reader
 from crc_checks import CRC8
@@ -925,6 +926,21 @@ def test_get_dict_cfg_reports_every_schema_field_by_name() -> None:
     assert fields["Altitude"] == 200
     assert fields["ForceCalRef"] == 400
     assert fields["SelfCal"] is True
+
+
+def test_get_cfg_schema_returns_every_settable_field_by_name() -> None:
+    # Regression test for FINAL_WIRING_PLAN.md's Step 5 baseline-verification pass:
+    # SCD30_Reader(SensorReader) - unlike every other reader in this codebase (SensorReaderConfig
+    # subclasses) - never inherited a get_cfg_schema() method, even though
+    # asy_webserver_service.py's _put_sensors() route calls module.get_cfg_schema() uniformly for
+    # every registered sensor (this file's own _set_dict_cfg() docstring already documented that
+    # exact expectation). Missing it meant a real PUT /sensors touching SCD30 crashed with a 500
+    # (AttributeError) - reproduced directly, never caught by any existing test since
+    # tests/test_asy_webserver_service.py's own _put_sensors tests use a fake module that already
+    # has get_cfg_schema() defined.
+    reader = make_reader()
+    names = cm.schema_names(reader.get_cfg_schema())
+    assert set(names) == {"TempOffs", "MeasInt", "AmbPres", "Altitude", "ForceCalRef", "SelfCal"}
 
 
 def test_get_dict_cfg_degrades_to_none_per_field_on_bus_fault_not_a_crash() -> None:

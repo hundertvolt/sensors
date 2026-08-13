@@ -41,6 +41,17 @@ _OPCODE_RDID = 0x9F
 _WEL_BIT = 0x02
 _DEFAULT_RDID = bytes([0x04, 0x7F, 0x03, 0x02])  # real MB85RS64V device ID (datasheets/fram/)
 
+_SAVE_CHUNK_SIZE = 512  # bytes per chunk when streaming the memory image out to disk in save_state()
+# below - avoids ever allocating one contiguous string for the whole buffer. Found by actually
+# running the real assembled system against this twin for the first time (FINAL_WIRING_PLAN.md's
+# Step 5 baseline-verification pass): json.dump({"memory_hex": bytes(self.memory).hex()}) needs one
+# contiguous ~2*size-byte allocation (16385 bytes for the real 0x2000-byte FRAM) - reproduced as a
+# deterministic MemoryError after a few seconds of the real task supervisor running (real asyncio
+# tasks/timers/HTTP handling churn the heap enough to fragment it) even with ~1.5MB of *total*
+# gc.mem_free() still available, and an extra gc.collect() right before the call doesn't help
+# (MicroPython's GC coalesces freed blocks but never relocates live ones, so this fragmentation
+# isn't reclaimable). Chunked writes only ever need one small chunk contiguous at a time.
+
 
 class FramChip:
     def __init__(self, size: int = 0x2000, state_path: "str | None" = None) -> None:
@@ -77,8 +88,14 @@ class FramChip:
     def save_state(self) -> None:
         if self.state_path is None:
             return
+        # Streamed by hand (not json.dump()) - see _SAVE_CHUNK_SIZE's own comment above for why a
+        # single-shot bytes(self.memory).hex() is a real fragmentation risk. The written file is
+        # still exactly the JSON object _load_state() expects (hex digits never need escaping).
         with open(self.state_path, "w") as f:
-            json.dump({"size": self.size, "memory_hex": bytes(self.memory).hex()}, f)
+            f.write(f'{{"size": {self.size}, "memory_hex": "')
+            for start in range(0, self.size, _SAVE_CHUNK_SIZE):
+                f.write(self.memory[start : start + _SAVE_CHUNK_SIZE].hex())
+            f.write('"}')
 
     def write(self, buf: bytes) -> None:
         self.fault.maybe_raise("write")

@@ -2178,6 +2178,95 @@ comments, not just here:**
   a Python-level exception) while writing this session's own tests; fixed by `await`ing directly
   instead once already inside an async context.
 
+### Baseline-verification session (post-Step-5, this session)
+
+Owner-directed follow-up: actually build and run the real assembled system against the digital
+twin end-to-end for the first time via `scripts/run_unix_port_integration.sh` itself (not just
+through the automated test tiers), walk every REST endpoint through a real browser, set/verify log
+level persistence across a real reboot, and repeat with bus fault injection — with an explicit
+owner constraint that `src/` must never be edited *only* to make the twin run, though genuinely
+general-scope bugs (real production bugs, not twin accommodations) are fair game. This actually
+running the full system for real (rather than the bounded, single-task-starter tests the automated
+tiers use) surfaced five more real, previously-undetected bugs:
+
+1. **`scripts/run_unix_port_integration.sh`'s own `MICROPYPATH` was missing `ext`** — the very
+   first real standalone run failed at `from microdot import Microdot` immediately.
+   `scripts/test.sh`'s own `MICROPYPATH` has the identical gap, invisible there only because every
+   `tests/test_*.py` file that needs `microdot` does its own `sys.path.insert(0, "ext")` — this
+   real entry point had no such per-file workaround. Fixed in the script itself (and
+   `digital_twin/README.md`'s matching documentation) — `"src:digital_twin:ext:frozen_modules:.frozen"`.
+2. **`digital_twin/_fram_chip.py`'s `save_state()` needed one large contiguous allocation** for the
+   whole FRAM image's hex string (16385 bytes for the real 0x2000-byte FRAM) - reproduced as a
+   deterministic `MemoryError` after a few seconds of the real task supervisor running (real
+   asyncio task/timer/HTTP churn fragments the heap enough), even with ~1.5MB of *total*
+   `gc.mem_free()` still free. Fixed by streaming the write in small chunks instead
+   (`_SAVE_CHUNK_SIZE`) — never needs more than one small chunk contiguous at a time.
+3. **`digital_twin/machine.py`'s `I2C.log`/`SPI.log` were unbounded lists** — an ad-hoc
+   introspection aid nothing actually reads, but a real, continuously-running system fires enough
+   bus transactions that the list's own internal growth eventually needed a large-enough
+   contiguous reallocation to fail with a real `MemoryError` too (this was the dominant contributor
+   to the observed heap fragmentation — fixing it alone took a 20-cycle soak's memory-flat failure
+   from a ~32KB drop down to single-digit KB). Bounded to a `deque(maxlen=200)` instead, same
+   convention `print_log.py`'s own `PrintLogHistory` already uses.
+4. **`digital_twin/_bmp3xx_chip.py` had no `handle_writeto()`** — `asy_i2c_driver.py`'s
+   `I2CDevice.setup()`/`_probe_for_device()` always writes zero bytes to every I2C device at
+   construction as a bus-presence probe, regardless of that device's real protocol family; this
+   chip fake only had `handle_writeto_mem()` (its real register-addressed protocol), so every real
+   boot's BMP3XX reader task hit `AttributeError`, repeatedly failed and restarted, and reliably
+   pushed the task-failure counter over `system_service.py`'s own auto-reboot threshold within
+   ~10-15 seconds of every real run. Fixed by adding a minimal `handle_writeto()` accepting the
+   empty-probe shape (nothing else in this codebase's own BMP3xx driver ever sends a plain,
+   non-mem `writeto()`).
+5. **`src/asy_scd30_driver.py`'s `SCD30_Reader` never had a `get_cfg_schema()` method** — unlike
+   every other reader (`SensorReaderConfig` subclasses inherit it), SCD30 is a plain `SensorReader`
+   (params live on the sensor itself, no local `cfgmgr`) and never defined one locally either, even
+   though `asy_webserver_service.py`'s `_put_sensors()` route calls `module.get_cfg_schema()`
+   uniformly for every registered sensor — a real production bug (crashes identically on real
+   hardware), not twin-specific: every real `PUT /sensors` touching SCD30 crashed with a 500.
+   Never caught before because `tests/test_asy_webserver_service.py`'s own `_put_sensors` tests use
+   a fake module that already has `get_cfg_schema()` defined - same "fake happens to paper over the
+   real shape" pattern as the `_flatten_cfg_values()` bug above. Fixed by adding the method,
+   returning the same schema `get_dict_cfg()` already uses.
+6. **`src/asy_wifi_service.py`'s `dns_server` (a separate `captive_dns.DNSServer` instance) never
+   had its own `pr.setup()` called** — every one of its `err_s()`/`wrn_s()` calls degraded forever
+   to "PrintLog: Uninitialized, call setup first!" instead of actually logging, real hardware
+   falling back to hotspot/AP mode has the identical gap. Fixed by calling
+   `await self.dns_server.pr.setup()` alongside `wlan_connect()`'s own existing `self.pr.setup()`.
+
+Also tuned (not a bug fix): `digital_twin/run_wozi_integration.py`'s `_soak()` warm-up was 2 cycles
+(Step 2's own F.9 convention, copied verbatim) — far too few for *this* soak, where every settings
+GET re-reads and re-parses its real config file from disk. A 100-cycle diagnostic showed
+`gc.mem_free()` drop ~52KB over the first 30 cycles then settle into a noisy ±15KB band — a real,
+bounded, converging warm-up transient, not a leak. Bumped to 40 cycles, which helps substantially
+(a real run's memory-flat failure margin went from ~32KB down to single-digit KB) but doesn't
+reliably clear `_MEM_FLAT_TOLERANCE_BYTES`'s tight 4096-byte budget every time — see `_soak()`'s own
+comment. **Open question for the project owner, deliberately not resolved unilaterally**: is 4096
+bytes tight enough for this *real* object graph's natural noise, given the value was copied
+verbatim from Step 2's synthetic fake-based test?
+
+**Also flagged, not fixed (a scope/fidelity decision, not an obvious bug)**: SCD30's own PUT
+settings (`MeasInt`, `TempOffs`, etc.) don't survive a twin process restart, unlike every other
+settings group. On real hardware this is fine — the physical SCD30 chip has its own onboard NVM
+that survives an MCU-only reboot — but the twin's `Scd30Chip` fake has no persistence mechanism the
+way `_fram_chip.py`'s `FramChip` does (its own `state_path`/`save_state()`). Building that would be
+a real feature addition (mirroring `FramChip`'s own pattern plus tests), not a bug fix — left for
+the project owner to decide whether twin fidelity needs to go that far.
+
+After every fix: full `scripts/lint.sh`/`scripts/typecheck.sh` clean (only `improved-quality/`'s
+pre-existing, tracked debt remains), full `scripts/test.sh` green (2128 tests), and a real, fresh
+end-to-end run — build via `scripts/run_unix_port_integration.sh`, walk every GET/PUT endpoint
+through a real browser (Playwright against the pre-installed Chromium), set `DebugLevel` to `all`
+via the real API, restart the process (the twin's own `machine.reset()` only raises
+`SimulatedReset` rather than actually restarting - config/FRAM persist to disk regardless, so a
+real Ctrl-C/SIGINT stop-and-relaunch is the correct way to exercise "reboot" against this twin) and
+confirm the persisted level produces a full verbose startup log, then repeat the whole walkthrough
+with `--fault` flags active on every bus (SCD30/SGP40/BMP3XX/FRAM) - confirmed proper recovery
+after each fault's bounded `times` count is exhausted. NTP sync against a real server
+(`pool.ntp.org`) could not be verified end-to-end in this sandbox specifically - confirmed directly
+that this session's outbound network policy allows DNS (UDP/53) but blocks NTP (UDP/123) to four
+different public servers; the DNS-resolution and timeout/error-handling paths were still verified
+to degrade gracefully (`NtpSynced: false`, no exception) rather than crash.
+
 ## Out of scope for all five steps
 
 - Real website content (stub only, see Step 4).

@@ -25,6 +25,18 @@ via Pin(irq_pin, mode=Pin.IN), regardless of construction order.
 
 import asyncio
 import errno
+from collections import deque
+
+_LOG_MAXLEN = 200  # I2C.log/SPI.log below are an ad-hoc introspection aid (nothing in tests/ or
+# digital_twin/ actually reads them today - a plain, unbounded list here was found to be a real
+# memory leak: FINAL_WIRING_PLAN.md's Step 5 baseline-verification pass ran the real assembled
+# system against this twin for the first time ever (every prior test only ever ran a handful of
+# bus transactions), and a real, continuously-running system fires a *lot* of I2C/SPI transactions -
+# enough that the list's own internal pointer-array growth eventually needed a large-enough
+# contiguous reallocation to fail with a real MemoryError once the heap got fragmented (confirmed
+# directly: the failing allocation's own traceback bottomed out at this file's own log.append()).
+# Bounded to the most recent _LOG_MAXLEN entries instead - same "keep last N" convention
+# print_log.py's own PrintLogHistory already uses for its own history buffer.
 
 try:
     from typing import TYPE_CHECKING
@@ -163,7 +175,7 @@ class I2C:
         self.freq = freq
         self.timeout = timeout
         self.deinit_called = False
-        self.log: list[tuple] = []
+        self.log: deque[tuple] = deque((), _LOG_MAXLEN)
         self.devices = _wire_i2c_devices(id)  # public: tests reach a wired chip via i2c.devices[addr]
 
     def deinit(self) -> None:
@@ -264,7 +276,7 @@ class SPI:
         self.bits = bits
         self.firstbit = firstbit
         self.deinit_called = False
-        self.log: list[tuple] = []
+        self.log: deque[tuple] = deque((), _LOG_MAXLEN)
         self.device = _wire_spi_device(id)  # public: tests reach the wired chip via spi.device
 
     def init(

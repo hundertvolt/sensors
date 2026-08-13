@@ -177,6 +177,37 @@ def test_persisted_file_is_json_with_hex_encoded_memory() -> None:
     assert bytes.fromhex(data["memory_hex"])[0] == 0x99
 
 
+def test_save_state_round_trips_correctly_across_chunk_boundaries() -> None:
+    # Regression test for FINAL_WIRING_PLAN.md's Step 5 baseline-verification pass: save_state()
+    # used to build the whole memory image as one giant bytes(self.memory).hex() string in a single
+    # allocation, which failed with a real MemoryError once the heap got fragmented by a live
+    # system's normal churn (reproduced deterministically running the real assembled system against
+    # this twin - see _fram_chip.py's own _SAVE_CHUNK_SIZE comment). The fix streams the write out in
+    # _SAVE_CHUNK_SIZE-byte pieces instead; this test isn't about fragmentation itself (not
+    # reproducible deterministically in a unit test), it's about chunk-boundary correctness - every
+    # byte around and across a chunk boundary must still round-trip exactly, not just the bulk data.
+    import _fram_chip
+
+    path = _tmp_path("fram_chunk_boundary.json")
+    size = _fram_chip._SAVE_CHUNK_SIZE * 3 + 7  # spans multiple chunks, last one partial
+    chip1 = FramChip(size=size, state_path=path)
+    _wren(chip1)
+    # Distinct data at every chunk boundary (start/end of each _SAVE_CHUNK_SIZE-sized chunk) plus the
+    # very first and very last byte of the whole buffer.
+    boundaries = [0, size - 1]
+    for n in range(1, 3):
+        boundaries += [_fram_chip._SAVE_CHUNK_SIZE * n - 1, _fram_chip._SAVE_CHUNK_SIZE * n]
+    for i, addr in enumerate(boundaries):
+        _wren(chip1)  # WEL auto-clears after every write's data phase - must re-arm before each one
+        _write_mem(chip1, addr, bytes([(i + 1) & 0xFF]))
+    chip1.save_state()
+
+    chip2 = FramChip(size=size, state_path=path)
+    for i, addr in enumerate(boundaries):
+        assert _read_mem(chip2, addr, 1) == bytes([(i + 1) & 0xFF])
+    assert chip2.memory == chip1.memory
+
+
 def test_missing_state_file_starts_from_a_blank_chip_without_raising() -> None:
     path = _tmp_path("fram_does_not_exist.json")
     try:

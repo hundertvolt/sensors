@@ -2,11 +2,21 @@
 # Dedicated entry point for FINAL_WIRING_PLAN.md's Step 5 ("full Unix-port integration") -
 # digital_twin/run_wozi_integration.py, run against the real digital_twin buses under the real
 # MicroPython Unix-port interpreter. Deliberately separate from scripts/test.sh: the twin needs its
-# own MICROPYPATH ("src:digital_twin:frozen_modules:.frozen") that never carries a "tests" segment
-# (digital_twin/README.md's own "never together" rule - see that doc's "Swapping the twin in for a
-# Unix-port run (Step 5)" section), and run_wozi_integration.py can run forever (no --duration -
-# owner decision 3, a real browser on this machine should be able to reach it), which would hang
-# scripts/test.sh's own default tests/test_*.py glob loop if it were discovered there instead.
+# own MICROPYPATH ("src:digital_twin:ext:frozen_modules:.frozen") that never carries a "tests"
+# segment (digital_twin/README.md's own "never together" rule - see that doc's "Swapping the twin
+# in for a Unix-port run (Step 5)" section), and run_wozi_integration.py can run forever (no
+# --duration - owner decision 3, a real browser on this machine should be able to reach it), which
+# would hang scripts/test.sh's own default tests/test_*.py glob loop if it were discovered there
+# instead.
+#
+# "ext" is required here (unlike scripts/test.sh's own MICROPYPATH) because src/sensortask_wozi.py
+# unconditionally imports vendored ext/microdot.py - every tests/test_*.py file that needs it works
+# around scripts/test.sh's own ext-less MICROPYPATH with its own per-file
+# sys.path.insert(0, "ext") (see e.g. tests/test_sensortask_wozi.py's own comment), but this is the
+# real standalone entry point, not a test file, so it needs the real fix here instead. Found by
+# actually running this script standalone for the first time (a manual baseline-verification pass) -
+# every prior verification of this file went through the test-harness sys.path.insert() workaround
+# instead, which silently masked the gap.
 #
 # Usage:
 #   scripts/run_unix_port_integration.sh                        # bounded automated soak run, default flags
@@ -41,4 +51,4 @@ echo "== Building frozen_modules/frozen_html.py"
 scripts/build_frozen_html.sh
 
 echo "== Running digital_twin/run_wozi_integration.py"
-MICROPYPATH="src:digital_twin:frozen_modules:.frozen" "$micropython_bin" digital_twin/run_wozi_integration.py "$@"
+MICROPYPATH="src:digital_twin:ext:frozen_modules:.frozen" "$micropython_bin" digital_twin/run_wozi_integration.py "$@"

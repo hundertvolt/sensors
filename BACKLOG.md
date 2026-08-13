@@ -336,6 +336,25 @@ constraints.
    tested/documented in the driver, this is the first place to look. **Explicitly deferred by the
    project owner**: on-device verification is real future work, not something to chase in the
    current session.
+6. `digital_twin/run_wozi_integration.py`'s `_soak()` memory-flat check
+   (`_MEM_FLAT_TOLERANCE_BYTES = 4096`, copied verbatim from Step 2's own F.9 tolerance) —
+   FINAL_WIRING_PLAN.md's baseline-verification session found a real ~40-cycle warm-up transient
+   in this soak's real object graph (every settings GET re-reads its config file from disk) that
+   Step 2's own synthetic fake-based test never had; bumping `_SOAK_WARMUP_CYCLES` from 2 to 40
+   cut a real run's failure margin from ~32KB down to single-digit KB, but doesn't reliably clear
+   the tight 4096-byte budget every time. Is 4096 bytes tight enough for this *real* system's
+   natural allocator noise, or does the tolerance itself need loosening for this soak
+   specifically? Deliberately left alone rather than guessed at, since the value was an explicit
+   owner decision ("reuse step 2").
+7. `digital_twin/_scd30_chip.py`'s `Scd30Chip` has no persistence mechanism the way
+   `digital_twin/_fram_chip.py`'s `FramChip` does (`state_path`/`save_state()`) — found via the
+   same baseline-verification session: SCD30's own PUT settings (`MeasInt`, `TempOffs`, etc.)
+   don't survive a twin process restart, while every other settings group does. On real hardware
+   this is a non-issue (the physical SCD30 chip has its own onboard NVM that survives an
+   MCU-only reboot), but the twin can't currently reproduce that fidelity. Building it would mean
+   mirroring `FramChip`'s own state-file pattern (plus tests) - a real feature addition, not
+   a bug fix. Does twin fidelity need to go this far, or is this an accepted gap?
+
 ## Deferred / explicitly out-of-scope work
 
 - **`pyproject.toml`'s mypy `exclude` list still has a dead regex entry for

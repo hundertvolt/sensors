@@ -64,6 +64,22 @@ _DEFAULT_FRAM_STATE_PATH = "digital_twin/fram_state.json"
 _CONFIG_DIR = "digital_twin/config/"
 _SOAK_ENDPOINTS = ("/measurements", "/sensors", "/networking", "/system", "/notification", "/status", "/")
 _MEM_FLAT_TOLERANCE_BYTES = 4096  # identical to tests/test_asy_webserver_service.py's own F.9 tolerance (owner decision 9)
+_SOAK_WARMUP_CYCLES = 40  # FINAL_WIRING_PLAN.md's Step 5 baseline-verification pass found the
+# original 2-cycle warm-up (Step 2's own F.9 convention, copied verbatim) isn't enough for *this*
+# soak: unlike F.9's fake reader/writer, this soak drives the real object graph, where every
+# settings GET re-reads and re-parses its config file from disk (ConfigManager's own per-call
+# design). A 100-cycle diagnostic run showed gc.mem_free() drop ~52KB over the first 30 cycles, then
+# settle into a noisy +-15KB band for the remaining 70 - a real, bounded, converging warm-up
+# transient, not an unbounded leak (confirmed: no crash/no would-have-triggered watchdog event
+# across the full 100 cycles either). 40 cycles clears the steepest part of it - real runs now fail
+# by ~7KB instead of the original ~32KB - but not all the way inside _MEM_FLAT_TOLERANCE_BYTES's
+# tight 4096-byte budget: doubling the warm-up from 20->40 barely moved the residual (6.7KB vs
+# 7.9KB), pointing at ordinary steady-state allocator noise rather than a residual transient more
+# warm-up would burn off. Whether 4096 bytes is tight enough for this real object graph's natural
+# noise (as opposed to Step 2's synthetic fake-based F.9 test that value was copied from) is a real,
+# open question flagged to the project owner rather than silently resolved by loosening it here -
+# the tolerance itself was an explicit owner decision ("reuse step 2") this fix deliberately leaves
+# alone.
 
 
 class RunConfig:
@@ -205,7 +221,7 @@ async def _wait_until_serving(host: str, port: int, timeout_s: float = 10.0) -> 
 
 async def _soak(host: str, port: int, cycles: int) -> "list[str]":
     failures: list[str] = []
-    for _ in range(2):  # a short warm-up, same spirit as test_asy_webserver_service.py's own F.9
+    for _ in range(_SOAK_WARMUP_CYCLES):
         for path in _SOAK_ENDPOINTS:
             await _http_client.fetch(host, port, "GET", path)
     gc.collect()

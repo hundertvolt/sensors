@@ -59,7 +59,7 @@ test.sh` does, then runs `digital_twin/run_wozi_integration.py` — the real orc
 `--duration`-forever logic around `sensortask_wozi.main()`, not just block on it):
 
 ```bash
-MICROPYPATH="src:digital_twin:frozen_modules:.frozen" <micropython-unix-port-binary> digital_twin/run_wozi_integration.py [flags]
+MICROPYPATH="src:digital_twin:ext:frozen_modules:.frozen" <micropython-unix-port-binary> digital_twin/run_wozi_integration.py [flags]
 ```
 
 `frozen_modules` is required here too, added in Step 4 (landed after this doc's original Step 3

@@ -222,6 +222,28 @@ def test_unknown_register_returns_zero_bytes_without_raising() -> None:
     _write(chip, 0x50, [0xFF])  # real hardware would just silently accept/ignore it too
 
 
+def test_handle_writeto_accepts_the_zero_byte_bus_probe_without_raising() -> None:
+    # Regression test for FINAL_WIRING_PLAN.md's Step 5 baseline-verification pass:
+    # asy_i2c_driver.py's I2CDevice.setup()/_probe_for_device() always does a plain, empty
+    # chip.writeto(address, b"") before any register access - this chip fake used to have no
+    # handle_writeto() at all (only handle_writeto_mem(), matching its real register-addressed
+    # protocol), so digital_twin/machine.py's I2C.writeto() dispatch raised AttributeError on every
+    # real boot, repeatedly failing the BMP3XX reader task.
+    chip = Bmp3xxChip()
+    chip.handle_writeto(b"")  # must not raise
+
+
+def test_fault_injection_on_writeto() -> None:
+    chip = Bmp3xxChip()
+    chip.fault.inject_fault("writeto", OSError(5, "no ACK"))
+    try:
+        chip.handle_writeto(b"")
+        raise AssertionError("expected OSError")
+    except OSError:
+        pass
+    chip.handle_writeto(b"")  # one-shot fault - back to normal
+
+
 def test_fault_injection_on_readfrom_mem_and_writeto_mem() -> None:
     chip = Bmp3xxChip()
     chip.fault.inject_fault("readfrom_mem", OSError(5, "no ACK"))

@@ -187,7 +187,9 @@ def test_main_runs_a_tiny_bounded_soak_with_an_injected_fault_and_returns_a_clea
     config = RunConfig(
         host="127.0.0.1", port=19097, fram_state_path=None, soak_cycles=2, duration=0.0, faults=[("sgp40", "writeto", 3)]
     )
-    summary = run_timed(main(config), timeout_s=30.0)
+    summary = run_timed(main(config), timeout_s=60.0)  # _SOAK_WARMUP_CYCLES (40, see that
+    # constant's own comment) adds real HTTP round trips ahead of this test's own tiny soak_cycles -
+    # 30s wasn't enough once that warm-up landed.
     non_memory_failures = [f for f in summary["failures"] if "gc.mem_free()" not in f]
     assert non_memory_failures == []
     assert summary["would_have_triggered_count"] == 0

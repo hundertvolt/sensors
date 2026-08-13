@@ -161,6 +161,18 @@ class Bmp3xxChip:
         )
         self._status = _STATUS_CMD_RDY | _STATUS_DATA_READY
 
+    def handle_writeto(self, data: bytes) -> None:
+        # asy_i2c_driver.py's I2CDevice.setup()/_probe_for_device() writes zero bytes to every I2C
+        # device at construction time to check for an ACK, before any register access - real
+        # hardware ACKs this fine regardless of protocol family. Found via FINAL_WIRING_PLAN.md's
+        # Step 5 baseline-verification pass: this chip fake only had handle_writeto_mem() (matching
+        # its real register-addressed protocol), so the twin's I2C dispatch (machine.py's own
+        # writeto() -> device.handle_writeto()) raised AttributeError on every real BMP3xx boot,
+        # repeatedly failing/restarting its whole reader task. Nothing else in this codebase's own
+        # BMP3xx driver ever calls plain writeto() (every real register access goes through
+        # writeto_mem()), so this only needs to answer the empty-probe shape.
+        self.fault.maybe_raise("writeto")
+
     def handle_writeto_mem(self, reg_addr: int, data: bytes) -> None:
         self.fault.maybe_raise("writeto_mem")
         if reg_addr == _REGISTER_CONTROL:
