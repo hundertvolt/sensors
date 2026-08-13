@@ -27,9 +27,10 @@ one: nothing here is a bug fix to that file, it's a rewrite that lands somewhere
 
 That "somewhere else" is settled by a concrete technical constraint, not a style preference:
 Step 5 requires running the finished prototype under the real MicroPython Unix-port interpreter
-(`scripts/test.sh`'s `MICROPYPATH="src:tests:.frozen"`) — `improved-quality/` is not on that path
-and never will be, so a file that stays there is structurally untestable under this project's own
-test infrastructure. The prototype therefore gets built fresh as **`src/sensortask_wozi.py`**
+(`scripts/test.sh`'s `MICROPYPATH="src:tests:frozen_modules:.frozen"` — the `frozen_modules`
+segment was added in Step 4) — `improved-quality/` is not on that path and never will be, so a file
+that stays there is structurally untestable under this project's own test infrastructure. The
+prototype therefore gets built fresh as **`src/sensortask_wozi.py`**
 (underscore, matching every other `src/` module's importable-identifier naming, vs. the legacy
 hyphenated filename that was itself always renamed to the generic `sensortask.py` at freeze time —
 see `build-wozi.sh`) — a new file, informed by the reference but not derived from it mechanically.
