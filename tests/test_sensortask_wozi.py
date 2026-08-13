@@ -736,6 +736,24 @@ def test_webserver_sensors_put_round_trips_a_real_field_through_the_real_driver(
     assert run(sensortask_wozi.sgp_reader.cfgmgr.get_dict(["BackupPeriod"])) == {"BackupPeriod": 5}
 
 
+def test_webserver_sensors_put_round_trips_a_real_scd30_field_through_the_real_driver() -> None:
+    # Regression test for FINAL_WIRING_PLAN.md's Step 5 baseline-verification pass: SCD30_Reader
+    # is the only sensors=-registered module that's a plain SensorReader rather than a
+    # SensorReaderConfig subclass (no local cfgmgr - these params live on the sensor itself, see
+    # asy_scd30_driver.py's own _VAL_* comment), so it never inherited get_cfg_schema() the way
+    # every other registered sensor does. _put_sensors() calls module.get_cfg_schema() uniformly
+    # for every sensor named in the PUT body - without SCD30_Reader's own now-added method, this
+    # crashed with a real 500 (AttributeError). The existing SGP40 round-trip test just above
+    # never exercised this because SGP40 is a SensorReaderConfig subclass; this is the SCD30
+    # counterpart, added because nothing in this file (or tests/test_setter_microdot_integration.py,
+    # which routes SCD30 through a separate hand-rolled endpoint instead of the real /sensors PUT
+    # route) ever put the real WebserverService._put_sensors() route and SCD30 together before.
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    res = _dispatch("PUT", "/sensors", {"SCD30": {"MeasInt": 4}})
+    body = json.loads(res.body)
+    assert body["result"] == {"SCD30": {"MeasInt": "Valid"}}
+
+
 def test_webserver_networking_put_ssid_group_reconnects_but_led_group_alone_does_not() -> None:
     run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
     assert sensortask_wozi.conn is not None

@@ -18,6 +18,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
+    from collections import deque
     from collections.abc import Coroutine
     from typing import Any, TypeVar
 
@@ -274,7 +275,7 @@ def test_wdt_accepts_a_timeout_at_exactly_the_hard_cap() -> None:
 def test_wdt_would_have_triggered_count_and_log_start_at_zero() -> None:
     wdt = WDT(timeout=8000)
     assert wdt.would_have_triggered_count == 0
-    assert wdt.would_have_triggered_log == []
+    assert len(wdt.would_have_triggered_log) == 0  # a deque, not a list - see machine.py's own comment
 
 
 def test_wdt_notifies_once_after_a_feed_free_window() -> None:
@@ -321,7 +322,7 @@ def test_wdt_keeps_monitoring_after_a_would_have_triggered_notification() -> Non
 
 
 def test_wdt_would_have_triggered_log_records_the_feed_count_at_each_notification() -> None:
-    async def scenario() -> "list[int]":
+    async def scenario() -> "deque[int]":
         wdt = WDT(timeout=150)
         wdt.feed()
         wdt.feed()  # feed_count is 2 going into the unfed stretch below

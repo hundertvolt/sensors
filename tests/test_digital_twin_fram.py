@@ -208,6 +208,52 @@ def test_save_state_round_trips_correctly_across_chunk_boundaries() -> None:
     assert chip2.memory == chip1.memory
 
 
+def test_load_state_with_no_memory_hex_marker_leaves_a_blank_chip_without_raising() -> None:
+    # _load_state() hand-parses this project's own fixed file shape rather than using json.load()
+    # (see save_state()'s own comment for why) - a malformed/unrecognized file (no "memory_hex": "
+    # marker at all) must degrade to a blank chip, not raise.
+    path = _tmp_path("fram_no_marker.json")
+    with open(path, "w") as f:
+        f.write('{"unexpected": "shape"}')
+    chip = FramChip(size=0x10, state_path=path)  # must not raise
+    assert _read_mem(chip, 0x0000, 4) == bytes(4)
+
+
+def test_load_state_handles_a_truncated_file_without_raising() -> None:
+    # Fewer hex digits than the chip's own size (a truncated/corrupted file) must leave the rest of
+    # memory at its blank default rather than raising or reading past the available data.
+    path = _tmp_path("fram_truncated.json")
+    with open(path, "w") as f:
+        f.write('{"size": 16, "memory_hex": "deadbeef"}')  # only 4 bytes' worth for a 16-byte chip
+    chip = FramChip(size=16, state_path=path)  # must not raise
+    assert _read_mem(chip, 0x0000, 4) == bytes.fromhex("deadbeef")
+    assert _read_mem(chip, 0x0004, 4) == bytes(4)  # never-written tail stays blank
+
+
+def test_load_state_handles_a_hex_byte_pair_straddling_a_chunk_boundary() -> None:
+    # Regression test for the read-side chunked parse itself (_load_state()'s own pending/piece
+    # stitching, mirroring save_state()'s _SAVE_CHUNK_SIZE fix on the read path) - a hex byte pair
+    # split across two f.read() calls must still decode to the right byte, not get silently
+    # dropped or misaligned. _LOAD_CHUNK_CHARS defaults to 1024, far larger than any size this
+    # test can afford to construct by hand - temporarily shrunk to 1 to force a straddle on
+    # (almost) every single byte, deterministically, without needing a huge fixture.
+    import _fram_chip
+
+    path = _tmp_path("fram_chunk_straddle.json")
+    data = bytes(range(32))  # 32 distinct, order-sensitive bytes - any dropped/misaligned nibble
+    # would show up as a mismatch somewhere in the full comparison below.
+    with open(path, "w") as f:
+        f.write('{"size": 32, "memory_hex": "' + data.hex() + '"}')
+
+    original = _fram_chip._LOAD_CHUNK_CHARS
+    _fram_chip._LOAD_CHUNK_CHARS = 1
+    try:
+        chip = FramChip(size=32, state_path=path)
+    finally:
+        _fram_chip._LOAD_CHUNK_CHARS = original
+    assert _read_mem(chip, 0x0000, 32) == data
+
+
 def test_missing_state_file_starts_from_a_blank_chip_without_raising() -> None:
     path = _tmp_path("fram_does_not_exist.json")
     try:

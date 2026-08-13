@@ -11,6 +11,8 @@ succeed" state machine to simulate the way WLAN's connect() needed - this fake j
 committed frame, identically to the unit-test fixture's own shape.
 """
 
+from collections import deque
+
 try:
     from typing import TYPE_CHECKING
 except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
@@ -19,6 +21,12 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 if TYPE_CHECKING:
     from typing import Any
 
+_WRITES_MAXLEN = 200  # ad-hoc introspection aid, same shape as digital_twin/machine.py's own
+# I2C.log/SPI.log (see that file's own _LOG_MAXLEN comment for the full reasoning) - write() runs
+# on every tick of src/asy_neopixel_driver.py's own signal loop for the life of the process, so an
+# unbounded list here is the identical latent risk, found by the same session's own audit rather
+# than by reproducing a real failure for this specific one.
+
 
 class NeoPixel:
     def __init__(self, pin: "Any", n: int, bpp: int = 3) -> None:
@@ -26,7 +34,7 @@ class NeoPixel:
         self.n = n
         self.bpp = bpp
         self._buf: list[tuple[int, ...]] = [(0,) * bpp for _ in range(n)]
-        self.writes: list[list[tuple[int, ...]]] = []
+        self.writes: deque[list[tuple[int, ...]]] = deque((), _WRITES_MAXLEN)
         self.raise_on_write: Exception | None = None
 
     def __setitem__(self, i: int, value: "tuple[int, ...]") -> None:

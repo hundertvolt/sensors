@@ -273,6 +273,29 @@ def test_put_round_trips_through_a_real_twin_backed_driver_over_real_http() -> N
     run_timed(scenario(), timeout_s=10.0)
 
 
+def test_sensors_put_round_trips_a_real_scd30_field_over_real_http() -> None:
+    # Regression test for FINAL_WIRING_PLAN.md's Step 5 baseline-verification pass: this whole file
+    # never exercised PUT /sensors at all before (only PUT /notification, above) - the exact real,
+    # real-HTTP path that first surfaced SCD30_Reader's missing get_cfg_schema() (a real 500) when
+    # this session ran the assembled system live against the twin. SCD30 specifically, since it's
+    # the one sensors=-registered module that's a plain SensorReader (no local cfgmgr - params live
+    # on the sensor itself), unlike SGP40/BMP3XX which are SensorReaderConfig subclasses and would
+    # never have caught this particular gap.
+    port = _next_test_port()
+
+    async def scenario() -> None:
+        await _boot(port)
+        task = await _start_webserver()
+        try:
+            res = await _http_client.fetch("127.0.0.1", port, "PUT", "/sensors", {"SCD30": {"MeasInt": 4}})
+            assert res.status_code == 200
+            assert res.json()["result"] == {"SCD30": {"MeasInt": "Valid"}}
+        finally:
+            await _cancel(task)
+
+    run_timed(scenario(), timeout_s=10.0)
+
+
 def test_a_real_bus_fault_degrades_to_a_clean_response_not_a_crash() -> None:
     # A concrete example of the "might point us to oversights" value owner decision 10 called out:
     # this exercises a real twin-injected I2C fault flowing all the way through the real driver ->

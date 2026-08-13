@@ -35,11 +35,19 @@ only logs/serves it for diagnostics - so a plausible-looking static value is suf
 """
 
 import asyncio
+from collections import deque
 
 try:
     from typing import TYPE_CHECKING
 except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
     TYPE_CHECKING = False
+
+_CALL_LOG_MAXLEN = 200  # ad-hoc introspection aid, same shape as digital_twin/machine.py's own
+# I2C.log/SPI.log (see that file's own _LOG_MAXLEN comment for the full reasoning) - connect()/
+# config() run on every (re)connect attempt for the life of the process (including every
+# fault-injection/hotspot-fallback retry loop), so an unbounded list here is the identical latent
+# risk, found by the same session's own audit rather than by reproducing a real failure for this
+# specific one.
 
 if TYPE_CHECKING:
     from typing import Any
@@ -86,8 +94,8 @@ class WLAN:
         self._ifconfig = ("0.0.0.0", "0.0.0.0", "0.0.0.0", "0.0.0.0")
         self._stations: list[Any] = []
         self._rssi = -50
-        self.config_calls: list[dict[str, Any]] = []
-        self.connect_calls: list[tuple[Any, Any]] = []
+        self.config_calls: deque[dict[str, Any]] = deque((), _CALL_LOG_MAXLEN)
+        self.connect_calls: deque[tuple[Any, Any]] = deque((), _CALL_LOG_MAXLEN)
         self.deinit_called = False
         self.disconnect_called = False
         self._connect_task: asyncio.Task | None = None

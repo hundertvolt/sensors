@@ -390,7 +390,10 @@ class WDT:
         # task dies naturally when its owning asyncio.run() event loop closes, matching Timer's own
         # cleanup story (FINAL_WIRING_PLAN.md's Step 3 section has the full design writeup).
         self.would_have_triggered_count = 0
-        self.would_have_triggered_log: list[int] = []  # feed_count observed at each notification
+        # feed_count observed at each notification - ad-hoc introspection aid, same shape as
+        # I2C.log/SPI.log above (see _LOG_MAXLEN's own comment): grows for the life of the process
+        # on every would-have-triggered notification, so bounded the same way.
+        self.would_have_triggered_log: deque[int] = deque((), _LOG_MAXLEN)
         self._on_would_trigger = on_would_trigger
         self._task: asyncio.Task | None = None
         self._arm()
