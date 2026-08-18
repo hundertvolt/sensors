@@ -1828,6 +1828,26 @@ def test_wlan_connect_calls_pr_setup_before_entering_its_loop() -> None:
     assert run(scenario()) is True
 
 
+def test_wlan_connect_also_calls_dns_server_pr_setup_before_entering_its_loop() -> None:
+    # Regression test for FINAL_WIRING_PLAN.md's Step 5 baseline-verification pass: dns_server is
+    # its own separate PrintLogHistory instance (captive_dns.py's DNSServer, own construction) -
+    # nothing called its own pr.setup() before this fix, so every dns_server.pr.err_s()/wrn_s() call
+    # degraded to "PrintLog: Uninitialized, call setup first!" forever, reproduced directly running
+    # the real assembled system against the digital twin in real hotspot/AP mode.
+    client = make_client(wifi_refresh_sec=0)
+    assert client.dns_server.pr.initialized is False
+
+    async def scenario() -> bool:
+        task = asyncio.create_task(client.wlan_connect())
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        initialized = client.dns_server.pr.initialized
+        await _cancel(task)
+        return initialized
+
+    assert run(scenario()) is True
+
+
 def test_wlan_connect_resets_err_cnt_internal_at_the_start_of_every_run() -> None:
     client = make_client(wifi_refresh_sec=0)
     client._err_cnt_internal = 99

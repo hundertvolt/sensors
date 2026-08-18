@@ -336,6 +336,185 @@ constraints.
    tested/documented in the driver, this is the first place to look. **Explicitly deferred by the
    project owner**: on-device verification is real future work, not something to chase in the
    current session.
+   **Sharper root cause confirmed (Step 5 re-audit session)**: this isn't just an abstract
+   "untested on real silicon" gap — it's now confirmed structural. A real, standalone reproduction
+   (a fresh `AsyUDPSocket("127.0.0.1", 123)` client against a real local UDP responder, and the raw
+   `socket.socket().connect()` call underneath it) showed the MicroPython Unix port's "standard"
+   build's `connect()`/`bind()`/`sendto()` reject a plain `(host: str, port: int)` tuple outright
+   with `TypeError: object with buffer protocol required` — a known, long-standing Unix-port-only
+   quirk (`micropython/micropython#6924`) that `tests/test_asy_udp_socket.py` already found and
+   works around in its own test helpers (`make_addr()`/`resolve_addr()`, which pre-resolve via
+   `socket.getaddrinfo()` before ever constructing an `AsyUDPSocket`). The real production call
+   sites — `asy_ntp_client.py`'s `_fetch_ntp_reply()`, `asy_dns_client.py`'s `resolve_ipv4()`,
+   `captive_dns.py`'s own `AsyUDPSocket(("0.0.0.0", 53), ...)` — never do this pre-resolution; they
+   pass a plain tuple straight through, exactly matching `typings/socket.pyi`'s real-rp2-hardware
+   `_Address` contract (`tuple[str, int] | ...`), which is correct and required for real hardware.
+   Net effect: `_connect()`'s own broad `except (OSError, MemoryError, TypeError)` silently swallows
+   this `TypeError` as an ordinary "peer unreachable" failure, so **under the Unix port specifically,
+   every real NTP sync and every real DNS resolution attempt fails 100% of the time, unconditionally,
+   regardless of network reachability** — confirmed directly by pointing a fully-connected,
+   correctly-configured digital-twin run's `NTP_Host` at a real, working local UDP NTP responder on
+   `127.0.0.1:123` (bypassing this sandbox's own separate outbound-network restriction entirely) and
+   observing the sync attempt still fail with `NTP Invalid NTP time received!` every cycle, with zero
+   packets ever reaching the responder. **Not a bug and not something to fix in `src/`**: this is
+   exactly the class of thing CLAUDE.md's own "don't edit `src/` only to make the twin run" owner
+   constraint rules out — the production code is already correct for the real target. It does mean
+   the earlier "NTP round-trip couldn't be verified end-to-end because this sandbox's network policy
+   blocks UDP/123" framing (`FINAL_WIRING_PLAN.md`'s Step 5 baseline-verification session) understated
+   the gap: even a sandbox with full, unrestricted internet access could not have verified this code
+   path under the Unix port either. Real rp2 hardware remains the only way to verify NTP/DNS's actual
+   UDP transport — same conclusion this entry already reached, now reached from a direct
+   reproduction instead of an absence of one.
+6. `digital_twin/run_wozi_integration.py`'s `_soak()` memory-flat check
+   (`_MEM_FLAT_TOLERANCE_BYTES = 4096`) — **re-investigated in a follow-up session, and the earlier
+   "just a slow warm-up transient, will stabilize" framing is wrong.** A fresh, much longer
+   diagnostic (400 cycles across every endpoint, then an isolated 300-cycle run hitting only the
+   static `/` page) showed a **real, continuous, never-plateauing decline** — not the bounded ±15KB
+   noise band the original 100-cycle read suggested. Root-cause investigation (full account below)
+   found this is genuinely HTTP-independent (a zero-HTTP idle run declines identically) and driven
+   by the real background task graph (SCD30/SGP40/BMP3xx measurement polling), not by anything in
+   the webserver/Microdot layer, which tested completely clean in isolation at every layer (routing,
+   sockets, `asyncio.wait_for()`, and every combination). **Confirmed, attributed contributors**:
+   SCD30's own real read-and-store cycle (~500 bytes/sec of a ~870 bytes/sec idle total) and
+   SGP40+BMP3xx's own read-and-store cycles (~130 bytes/sec combined) — real, reproducible, but not
+   yet pinpointed past "the shared I2C-read → `_set_meas_data()` → log-call cascade", since every
+   individual piece tested in isolation (`_produce_new_reading()` alone, `Pin.irq()`/`simulate_edge()`
+   dispatch alone, `PrintLogHistory`'s own bounded-deque append) came back clean. **A residual
+   ~245 bytes/sec floor persists even with every real `machine.Timer` starter in the whole system
+   disabled** (SCD30/SGP40/BMP3xx read-cycle timers, WiFi's counter timer, NTP's timer + counter
+   timer, `system_service.py`'s own uptime timer — the complete, grep-confirmed list of every
+   `Timer(...)`/`.init(period=...)` call site in `src/`). The leading hypothesis during that session
+   was `digital_twin/machine.py`'s own `WDT.feed()` → `_arm()`, which cancels and recreates its
+   countdown `asyncio.Task` on every single `feed()` call (twin-only code — real hardware's
+   `machine.WDT.feed()` is just a register write) — isolated alone it showed zero leak, but with
+   every other Timer starter disabled and only the real 2-second-interval `feed()` call left active,
+   it exactly reproduced the residual, which read as confirmation. **A rewrite avoiding the task
+   churn entirely (a single long-lived polling task instead of cancel-and-recreate) was implemented,
+   fully test-compatible (36/36 existing `test_digital_twin_machine.py` tests passed unmodified),
+   but a rigorous same-script A/B re-test (identical monkeypatches, only the WDT implementation
+   swapped) showed the exact same residual with the fix in place — the hypothesis was wrong, and a
+   further test proved the entire `start_and_check_tasks()` supervisor-loop body (feed calls *and*
+   task `.done()` checks) contributes nothing: replacing it with a bare `while True: await
+   asyncio.sleep(2)` reproduced the same numbers.** The WDT rewrite was reverted rather than kept as
+   a misleading "fix" for a cause it doesn't actually address. **The ~245 bytes/sec floor's real
+   source remains unidentified** — every named Timer-driven and task-`.done()`-driven candidate in
+   `src/` has been ruled out by direct isolation, which means continued `gc.mem_free()`-delta
+   bisection via monkeypatching individual starters has run out of remaining candidates to try; the
+   next step needs a different technique (e.g. the repo's own `sys.settrace`-based coverage
+   infrastructure adapted for allocation attribution, or a MicroPython-level heap/object census
+   rather than a before/after byte-count delta) to localize further. **Do not loosen
+   `_MEM_FLAT_TOLERANCE_BYTES` based on this investigation** — the decline is real, not noise, and
+   loosening the tolerance would just hide a genuine, still-open problem. Whether this is purely a
+   digital-twin artifact (plausible given the confirmed contributors trace to twin-only chip-fake/
+   `Pin` mechanics so far) or has any real-hardware-relevant component is itself unresolved and
+   should be established before deciding whether a `src/` fix is ever warranted.
+   **Owner decision: this becomes its own dedicated Step 6, run in a separate session immediately
+   after this branch merges into the wire-up branch.** That session's two required outcomes for
+   *this* memory-decline finding: (1) positively confirm this cannot happen on real RP2040 hardware
+   (not just "the confirmed contributors look twin-only" — actually establish it), and (2) find and
+   fix the digital-twin-side root cause regardless, including the still-unidentified ~245 bytes/sec
+   floor. Use whatever tooling and however many tests that takes — not scoped to `gc.mem_free()`-
+   delta bisection alone if that's run out of road, per this entry's own last paragraph.
+
+   **Step 6 scope was subsequently widened by the owner to a full self-healing-system audit, not
+   just this one memory-decline finding.** Now that the framework is fully wired up end-to-end, the
+   owner wants Step 6 to systematically go after the whole class of failure modes that matter most
+   in a long-running, self-healing embedded system — reasoned as: the *worst* failures in such a
+   system aren't the loud immediate ones, they're the ones that let it keep running while doing the
+   wrong thing, or that only show up after days/weeks of uptime. **Required categories** (owner-
+   specified, plus two flagged during the discussion and accepted into scope):
+     - Rare corner cases (owner-specified)
+     - Memory leaks (owner-specified) — this entry's own finding is the first concrete instance
+     - Race conditions on concurrent/repetitive calls, or on system startup (owner-specified)
+     - Silent failure masking — an overly broad `except` or a retry loop that swallows a real error
+       and keeps running while producing subtly wrong data or silently skipping work, with nothing
+       ever signaling it happened; worse than a crash, since a crash at least trips the watchdog and
+       gets noticed
+     - Cascading recovery storms — the self-healing/retry logic itself becoming the failure, e.g.
+       every unit hammering a simultaneous reconnect/resync after a shared outage (WiFi, NTP)
+       instead of backing off. **First concrete instance, found during the Step 5 re-audit
+       session's own official end-to-end run**: `captive_dns.py`'s `DNSServer.run()` loop calls
+       `self.udps.recvfrom(4096)` (default `timeout_ms=-1`, wait forever) and, on `(None, None)`,
+       just logs a warning and loops straight back to another `recvfrom()` call - no backoff, no
+       retry cap, no give-up condition of its own. Under a real assembled end-to-end run in AP/
+       hotspot-fallback mode (no SSID configured), the underlying `AsyUDPSocket`'s own `bind()`
+       never actually succeeded (see open question #5's own sharper NTP finding just above for
+       why, on the Unix port specifically), so `recvfrom()` returned `(None, None)` immediately on
+       every call - `_RETRY_BACKOFF_S=0.5s` throttles each individual failed `_connect()` attempt,
+       but nothing throttles the outer `run()` loop's own repeat rate on top of that, so real,
+       measured output was ~5 `wrn_s()` log lines/second, continuously, for the DNS server task's
+       entire lifetime (147 lines over one ~30s bounded run - confirmed directly, not estimated).
+       Contrast `asy_ntp_client.py`'s own sync-retry path, which is properly bounded
+       (`_NTP_SYNC_RETRIES=3`, `_NTP_RETRY_INTERV=15s` between attempts, then gives up and lets the
+       task supervisor restart the whole task) - `captive_dns.py`'s loop has no equivalent shape.
+       Whether this is reachable on real rp2 hardware too (a genuine, persistent `bind()` failure
+       there - e.g. resource exhaustion - isn't inherently impossible, just far rarer than the
+       Unix-port quirk that reliably triggers it here) is unresolved; either way the missing-backoff
+       *shape* is real and worth fixing regardless of what triggers it. Deliberately not
+       hand-patched in the re-audit session that found it - a real fix needs to decide bounded-retry
+       semantics (how many attempts, what backoff curve, does it ever retry again after giving up)
+       the same deliberate way `asy_ntp_client.py`'s own retry design already was, not a quick patch
+       mid-tangent - left for Step 6's own "fix" step to do properly, per its required methodology
+       below. Also worth noting: this spam was previously silent (invisible) before the
+       baseline-verification session's own fix to `asy_wifi_service.py`'s `wlan_connect()` (missing
+       `await self.dns_server.pr.setup()` - see `FINAL_WIRING_PLAN.md`'s Step 5 section) - that fix
+       was correct and necessary (real logging now works at all for this module) but had the side
+       effect of making this pre-existing retry-loop gap audible for the first time.
+     - `time.ticks_ms()`/`time.ticks_diff()` rollover (~12.4 days at the RP2040's ms resolution) —
+       a long-running-specific timing-correctness class distinct from the above, worth checking
+       explicitly across every use site rather than assuming `ticks_diff()` is used everywhere it
+       needs to be (a raw subtraction anywhere in the timing code would silently misbehave only
+       after many days of uptime, exactly the kind of bug this audit is meant to catch)
+     - Task/timer resource leaks as distinct from raw memory bytes — an `asyncio.Task` or
+       `machine.Timer` that isn't cancelled/deinitialized on a retry or reconnect path can leave a
+       duplicate background loop running (double reads, double log lines, doubled I2C traffic)
+       without necessarily showing up as a `gc.mem_free()` decline
+   **Required methodology per category** (owner-specified, four steps, all required — no category is
+   done after only the first or second):
+     1. **Look it through** — static analysis of the wired-up system for the mistakes/oversights/bad
+        patterns that lead to each category (e.g. every `except`/retry site, every task/timer
+        lifecycle, every concurrent-entry code path, every raw `ticks_ms()` subtraction).
+     2. **Check, don't just look** — directly exercise the actual code running on the MicroPython
+        Unix port against each category; static reading alone doesn't satisfy this step.
+     3. **Fix** — don't let a confirmed issue persist; this is a fix-it session, not a
+        catalog-and-defer session (this entry's own still-open ~245 bytes/sec floor is exactly the
+        kind of thing Step 6 exists to close out, not re-document again).
+     4. **Secure** — write extensive and/or soak tests specifically targeting each category, so a
+        regression in any of these classes gets caught automatically going forward, not just this
+        once.
+   Not yet scoped: which categories apply where across `src/`, `improved-quality/`, and
+   `digital_twin/` (the digital-twin-only vs. real-hardware-relevant distinction this entry's own
+   memory finding already had to make); Step 6's own session should establish that per category
+   rather than assume uniform scope.
+
+   **Step 6 is not the same thing as the whole five-step effort's "large post-merge audit"**
+   (confirmed directly by the project owner) — see `FINAL_WIRING_PLAN.md`'s "Branch / session
+   structure" section for the precise relationship: Step 6 is its own dedicated session/branch,
+   forked from and merged back into the trunk the same way every step above was; the large audit is
+   a separate, later pass conducted directly on the trunk itself, after Step 6 (and anything else
+   still open) has also landed there, gating `claude/framework-wiring-rest-api-hx99v7` → `main`
+   (PR #31).
+7. **The real MicroPython Unix-port interpreter itself segfaults under heavy concurrent connection
+   load against the real assembled system** — found while investigating a real user-reported
+   `OSError: [Errno 104] ECONNRESET` crash in `digital_twin/run_wozi_integration.py`'s own soak (that
+   specific crash is fixed — `_soak()` now records a connection failure instead of letting it
+   propagate and crash the whole diagnostic run, matching how the real server itself already
+   tolerates a rejected/reset connection gracefully; see `FINAL_WIRING_PLAN.md`'s own session note
+   for the fix and the closed test-coverage gap that let it through unnoticed). Firing 8 concurrent
+   clients × 15 requests each (well beyond `WebserverService`'s own `max_connections=3` ceiling, to
+   probe whether exceeding it explains the ECONNRESET) reproduced a real interpreter segfault twice
+   in a row (confirmed directly via `dmesg`: `micropython[PID]: segfault at ... in micropython[...]`),
+   not a catchable Python-level exception — no amount of `_soak()`/`_http_client.py` exception
+   handling can prevent this, since it crashes the whole process unconditionally. Not yet root-caused
+   at all (interpreter/C-level, not Python-level - out of this session's reach) and not confirmed to
+   be what the original ECONNRESET report actually hit (repeated plain sequential-soak runs in this
+   session's own sandbox never reproduced the user's report at all, despite several attempts - the
+   segfault needed deliberately aggressive, unrealistic concurrency the soak's own strictly-sequential
+   traffic pattern would never generate on its own). Real, reproducible, and serious enough to flag
+   prominently even though it's tangential to what was being chased - folding into the same dedicated
+   Step 6 session above (both are memory/robustness issues in the same digital-twin integration
+   surface) makes more sense than a third separate investigation.
+
 ## Deferred / explicitly out-of-scope work
 
 - **`pyproject.toml`'s mypy `exclude` list still has a dead regex entry for
@@ -359,10 +538,13 @@ constraints.
   `machine.I2C`/`machine.SPI`/etc. byte-level transactions, not higher-level driver stand-ins) so
   the whole wired-together sensortask can be exercised as close to the real target as possible
   without physical hardware. `WIRING_CONTRACT.md`'s Stage-1 study is the natural place this lands
-  once that rewrite starts. **Partially fulfilled**: `digital_twin/` (Step 3 of
-  `FINAL_WIRING_PLAN.md`'s five-step effort) is the lowest-level-mocking module this requirement
-  calls for, and has landed. The concrete fulfillment — actually running the whole wired-together
-  `src/sensortask_wozi.py` against it end to end — is Step 5's own explicit goal, still pending.
+  once that rewrite starts. **Fulfilled**: `digital_twin/` (Step 3 of `FINAL_WIRING_PLAN.md`'s
+  five-step effort) is the lowest-level-mocking module this requirement calls for, and has landed.
+  The concrete fulfillment — actually running the whole wired-together `src/sensortask_wozi.py`
+  against it end to end — is Step 5's own explicit goal; done in this session (not yet merged — see
+  `FINAL_WIRING_PLAN.md`'s Step 5 section for the full detail). Once Step 5 merges and the whole
+  five-step effort's large post-merge audit closes, this entry should come out per this file's own
+  stated resolved-item policy.
 - **Config-duplication centralization** — same keys hand-kept in sync across `_DEFAULT_CONFIG`, the
   REST handler, and the HTML form. Owned by the refactor: each promoted `*_Reader`'s own `_VAL_*`
   schema tuple + `get_dict_cfg()`/`get_dict_data()` is the intended single source, not fully wired

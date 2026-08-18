@@ -693,6 +693,14 @@ class AsyConnTime(SensorReaderConfig):
     async def wlan_connect(self) -> None:
         await self.pr.setup()  # required for all logged warnings and errors (base_classes.py's own
         # __init__ never calls this - matches every _init_<sensor>() in the three promoted drivers)
+        await self.dns_server.pr.setup()  # dns_server is its own separate PrintLogHistory instance
+        # (captive_dns.py's DNSServer, own construction, not covered by self.pr.setup() above) -
+        # self.dns_server.run() is only ever started later in this same function's own hotspot-
+        # activation path, so this is always called before it. Found via FINAL_WIRING_PLAN.md's
+        # Step 5 baseline-verification pass: every dns_server.pr.err_s()/wrn_s() call degraded to
+        # "PrintLog: Uninitialized, call setup first!" forever (never actually logging/persisting)
+        # since nothing ever called this - real hardware falling back to hotspot mode has the
+        # identical gap, not twin-specific.
         self._err_cnt_internal = 0  # fresh failure streak each task (re)start, same as _init_<sensor>()
         self._reset_wlan_connect_state()
         await self._apply_initial_led_config()

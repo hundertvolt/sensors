@@ -67,6 +67,20 @@ main
                                                                     └─ large audit, then PR #31 → main
 ```
 
+**The "large audit" in the diagram above is a separate, later effort from Step 6, not the same
+thing** (confirmed directly by the project owner, after an earlier session's own recap of Step 6
+left this genuinely ambiguous — both are described as happening "after Step 5 merges into the
+trunk," which reads as one step without this clarification). Step 6 (`BACKLOG.md`'s open question
+#6 — the full self-healing-system failure-mode audit: rare corner cases, memory leaks, race
+conditions, silent failure masking, cascading recovery storms, `ticks_ms()` rollover, task/timer
+resource leaks) is its own dedicated session, following the same branch-and-merge-back-into-trunk
+pattern every step above already uses — forked from the trunk once Step 5 has landed there, merged
+back into the trunk when done, the same way Steps 1-5 each were. The "large audit" is a distinct,
+later pass conducted directly on the trunk branch itself (not a forked step branch of its own)
+after Step 6 (and anything else still open) has *also* landed on the trunk — it is the final gate
+before `claude/framework-wiring-rest-api-hx99v7` → `main` (PR #31) opens, not a stand-in for Step 6
+and not satisfied by Step 6 alone.
+
 Suggested branch names (each step's session can rename if it finds a better one, but should stay
 inside this scheme so the sequencing is legible from branch names alone):
 
@@ -2029,6 +2043,369 @@ correctly-shaped data sourced from the twin's simulated readings, the Step 4 web
 correctly, and a soak run (matching Step 2's own soak-test bar) showing stable memory over time;
 integration-level tests added following `tests/test_setter_microdot_integration.py`'s existing
 pattern of exercising real dispatch without a real socket.
+
+**Refined plan — resolved via project-owner Q&A this session** (supersedes/extends the above where
+the two differ; kept as its own subsection per Steps 1-2's own precedent, so the original scoping
+stays legible as the starting point). Own research done before the Q&A round: `tests/
+test_sensortask_wozi.py` (784 lines, already landed by Step 1/2's sessions) already exercises
+`build_system()`'s full real object graph through `app.dispatch_request()` for all six REST
+endpoints against `tests/machine.py` fakes — dispatch-level, no real socket, no digital twin; that
+coverage is not duplicated here. `tests/test_asy_webserver_service.py`'s Section F.8 already proves
+a real `asyncio.start_server()`-backed connection works cleanly under the Unix port (loopback,
+ephemeral port); its own F.9 is Step 2's actual soak methodology (`gc.collect()` → baseline → 120
+cycles → `gc.collect()` → `assert after >= baseline - 4096`, `run_timed(..., timeout_s=60.0)`) —
+reused here per decision 9 below. Confirmed by reading `src/asy_webserver_service.py` directly:
+`WebserverService.__init__`'s real default is `host="0.0.0.0", port=80`, and `build_system()`
+passes neither through — a non-root Unix-port run binding port 80 fails with `EACCES`, a genuine gap
+this step has to close, not a hypothetical. Confirmed by reading `src/system_service.py` directly:
+`start_and_check_tasks()`'s own loop already calls `self.watchdog.feed()` every iteration, so
+`WDT.would_have_triggered_count` staying `0` under normal conditions is a real, already-wired
+assertion, not something this step needs to build a feeder for. Confirmed by reading
+`tests/test_digital_twin_launch.py` directly: the per-file `sys.path.insert(0, "digital_twin")`
+trick (same one `tests/test_setter_microdot_integration.py` already uses for `ext/`) already runs
+*with* `machine`/`network` resolving to the twin's own fakes, inside a process where `tests/
+machine.py` is also nominally reachable via `scripts/test.sh`'s default `MICROPYPATH` — the
+insert-at-position-0 ordering is deterministic (not the fragile "depends on ordering" case
+`digital_twin/README.md`'s "never together" warning is actually about, which is specifically the
+*production/twin* `MICROPYPATH="src:digital_twin:frozen_modules:.frozen"` invocation never also
+carrying a `tests` segment). This means a middle integration tier can be an ordinary `tests/
+test_*.py` file, discovered and run by `scripts/test.sh`'s existing default loop, with zero new
+`MICROPYPATH`/entry-point plumbing — only the genuinely unbounded/interactive end-to-end tier needs
+a dedicated separate invocation.
+
+Owner decisions (this session's 10 clarifying questions, answered directly):
+
+1. Confirmed the proposed split: a dedicated `scripts/`-housed entry point for the twin-separated
+   `MICROPYPATH`, distinct from `scripts/test.sh` — the digital twin and `tests/` stay fully
+   separated/independent, even though some fakes are deliberately duplicated (not shared) between
+   them and must be watched to stay in sync (already `digital_twin/README.md`'s own stated policy
+   for `network.py`/`neopixel.py`).
+2. **Real HTTP, real sockets, real server** — every REST endpoint must be reachable over Microdot's
+   actual transport, the same as the real system, not `app.dispatch_request()` bypass (which
+   `tests/test_sensortask_wozi.py` already covers without a twin). No frozen HTTP client library
+   exists anywhere in this repo's dependency set (checked directly) — a minimal hand-rolled HTTP/1.1
+   client over `asyncio.open_connection()` is required, matching this project's established
+   hand-roll-when-a-library-isn't-reliably-available convention (`digital_twin/launch.py`'s own
+   `argparse` fallback is the precedent). Simplified by `_mark_connection_close()` already forcing
+   `Connection: close` on every response (confirmed directly, `asy_webserver_service.py`) — the
+   client never needs to support keep-alive.
+3. **Settable server address by CLI, default `localhost:8080`**, reachable by a real browser on the
+   Unix machine running the test — not the production `0.0.0.0:80` default. `build_system()` gains
+   optional `web_host`/`web_port` keywords (mirroring its existing `cfg_path`/`debug` override
+   pattern), defaulting to today's `0.0.0.0`/`80` for production parity, forwarded straight into
+   `WebserverService(host=, port=)`.
+4. Soak-cycle count can be shorter than Step 2's 120 — real sensor-poll cadence must **not** gate
+   how long the REST-facing soak takes: the system is async, so the HTTP-facing soak loop hammers
+   real request/response round trips back-to-back (bounded by real network/event-loop latency, not
+   by the twin's own real-time sensor `Timer` cadence, which keeps running concurrently and
+   unaffected in the background at real intervals). A rational, smaller cycle count than 120 is
+   fine given each cycle is a real TCP round trip, not a fake-reader/writer call.
+5. Three test tiers, explicitly: **unit** (existing `tests/test_digital_twin_*.py`, unchanged),
+   **integration** (new — see decision 10), **end-to-end** (the full soak/manual-run entry point).
+   Not a production system — no new CI job required for this step; keep the whole thing rational in
+   scope, matching `BACKLOG.md`'s existing "no CI firmware-build stage yet" being tracked
+   separately.
+6. FRAM persistence for the end-to-end/manual entry point defaults to a **persistent** file inside
+   `digital_twin/` (not an ephemeral per-run scratch path) — written only on explicit shutdown
+   (`machine.flush_fram()`, already the twin's own explicit-write-only design, confirmed directly
+   against `digital_twin/machine.py`/`_fram_chip.py`), in-memory only during the run itself. The new
+   *automated* middle-integration-tier tests still use an ephemeral per-test path (matching every
+   other test file's own `_tmp_cfg_dir()`-style isolation convention) — the persistent-by-default
+   behavior is specific to the manual/end-to-end entry point, not the automated test tiers.
+7. **Both**: an automated, unit-tested assertion (`watchdog.would_have_triggered_count == 0` after a
+   bounded, zero-fault run) *and* the ability to watch escalation actually happen on a manual run —
+   the end-to-end entry point keeps `--fault`/`--wifi-outcome` CLI passthrough (mirroring
+   `digital_twin/launch.py`'s own flags) for deliberate manual exploration, not gating the automated
+   pass/fail run.
+8. No further constraints — keep it simple and lean, whatever shape actually works.
+9. **Reuse Step 2's exact soak methodology** (`gc.collect()` → baseline → N cycles → `gc.collect()`
+   → `assert after >= baseline - 4096`) for the end-to-end tier's memory-flat check.
+10. **Build the middle integration tier too** (not just unit + end-to-end) — real gap-finding value
+    for the existing unit-test suite. Lands as `tests/test_digital_twin_sensortask_integration.py`,
+    using the precedented `sys.path.insert(0, "digital_twin")` trick, discovered by `scripts/
+    test.sh`'s ordinary default loop (see "own research" above for why this doesn't collide with
+    `tests/machine.py`) — builds `sensortask_wozi` for real against the twin's buses and drives real
+    HTTP round trips against a fixed, non-privileged test port, without needing the full end-to-end
+    entry point's own `MICROPYPATH`/CLI plumbing at all.
+
+**Resulting concrete file list**:
+- `src/sensortask_wozi.py` — `build_system()` gains `web_host`/`web_port` (decision 3).
+- `tests/test_sensortask_wozi.py` — a new unit test for the override (`tests/machine.py`-backed, no
+  twin involved).
+- `tests/test_digital_twin_sensortask_integration.py` — new, the integration tier (decision 10),
+  part of `scripts/test.sh`'s default run.
+- `digital_twin/run_wozi_integration.py` — new, the end-to-end CLI orchestrator (decisions 2/3/6/7):
+  hand-rolled arg parsing (`--host`, `--port`, `--fram-state-path`, `--fault`, `--wifi-outcome`,
+  `--seed`, `--duration`, `--soak-cycles`, mirroring `digital_twin/launch.py`'s own conventions),
+  a minimal hand-rolled HTTP/1.1 client, `--duration` omitted means run forever (manual/
+  browser-reachable mode), `--duration` given means a bounded automated soak ending in the
+  watchdog/memory assertions above.
+- `tests/test_digital_twin_run_wozi_integration.py` — new, pure-logic unit tests for the
+  orchestrator's own parsing/HTTP-client helpers, mirroring `tests/test_digital_twin_launch.py`'s
+  shape.
+- `scripts/run_unix_port_integration.sh` — new, the dedicated entry point (decision 1): builds the
+  toolchain + `frozen_modules/frozen_html.py` the same way `scripts/test.sh` does, sets
+  `MICROPYPATH="src:digital_twin:frozen_modules:.frozen"`, runs the orchestrator above, forwarding
+  any CLI args through (defaults to a bounded automated soak run when none are given). Not part of
+  `scripts/test.sh`'s own default loop.
+
+**Status update (this session): all of the above landed.** `scripts/lint.sh`/`scripts/typecheck.sh`
+both clean for every new/changed file (`src/sensortask_wozi.py`, `src/asy_webserver_service.py`,
+`digital_twin/_http_client.py`, `digital_twin/run_wozi_integration.py`,
+`tests/test_digital_twin_sensortask_integration.py`,
+`tests/test_digital_twin_run_wozi_integration.py`, plus the existing `tests/test_sensortask_wozi.py`/
+`tests/test_asy_webserver_service.py` extended with new regression coverage) — `improved-quality/`'s
+own pre-existing, tracked findings are the only remaining `scripts/typecheck.sh`/`scripts/lint.sh`
+non-zero exit, unchanged by this session. Full `scripts/test.sh` (plain and `--coverage`) re-verified
+green, including the two new test files. `digital_twin/typecheck.ini` gained `src` on its own
+`mypy_path` (alongside the matching `pyproject.toml` exclude-list addition for
+`digital_twin/run_wozi_integration.py`) — the one file needing both the twin's own `machine`/
+`network` API and a real `src/` import (`sensortask_wozi`) in the same module, a case neither
+existing mypy pass was built for; see `digital_twin/typecheck.ini`'s and `pyproject.toml`'s own
+updated comments for the full reasoning.
+
+**A real, previously-undetected production bug was found and fixed along the way**, exactly the
+kind of thing owner decision 10 anticipated: `src/asy_webserver_service.py`'s `_get_settings_flat()`
+(backing `/networking`/`/system`/`/notification`'s GET handlers) never flattened
+`config_manager.make_dict()`'s real `{type_name: {field: value}}` shape — the actual return shape
+of `AsyConnTime`/`AsyNtpClient`/`NotificationCoordinator`'s own `get_dict_cfg()` — so in production
+`/networking` and `/notification` always returned `{}` and `/system` silently dropped its
+`ntp`-sourced `GMTOffset`/`DSTOffset` fields, keeping only `DebugLevel` (sourced from `SystemService`'s
+own already-flat `get_dict_cfg()` override). `tests/test_asy_webserver_service.py`'s own uniform
+`_FakeModule` fake happened to return an already-flat shape for every module, masking this
+completely — only visible once `tests/test_digital_twin_sensortask_integration.py` drove a GET
+against the *real* driver objects. Fixed via a new `_flatten_cfg_values()` helper in
+`src/asy_webserver_service.py`; regression coverage added in both
+`tests/test_asy_webserver_service.py` (a `_NestedCfgModule` fake reproducing the real shape) and
+`tests/test_digital_twin_sensortask_integration.py` (asserting the real fields round-trip over real
+HTTP against the real drivers).
+
+**Two real MicroPython-Unix-port-specific findings, both now documented in the affected files' own
+comments, not just here:**
+- `globals()` does not preserve test-function definition order on this interpreter (confirmed
+  directly — a file's own `test_*` functions ran in a different order than written). Every test
+  file in this session's new work was written to never assume "the last test in the file" is "the
+  last test to run" — each test that starts a real background task keeps an explicit reference to
+  it and cancels it again in its own `finally`, never relying on file position for cleanup ordering.
+- Calling `asyncio.run()` from inside a coroutine that is already running inside another
+  `asyncio.run()` call segfaults the real interpreter outright, rather than raising a clean error
+  the way CPython's own reentrancy guard would — found the hard way (a real interpreter crash, not
+  a Python-level exception) while writing this session's own tests; fixed by `await`ing directly
+  instead once already inside an async context.
+
+### Baseline-verification session (post-Step-5, this session)
+
+Owner-directed follow-up: actually build and run the real assembled system against the digital
+twin end-to-end for the first time via `scripts/run_unix_port_integration.sh` itself (not just
+through the automated test tiers), walk every REST endpoint through a real browser, set/verify log
+level persistence across a real reboot, and repeat with bus fault injection — with an explicit
+owner constraint that `src/` must never be edited *only* to make the twin run, though genuinely
+general-scope bugs (real production bugs, not twin accommodations) are fair game. This actually
+running the full system for real (rather than the bounded, single-task-starter tests the automated
+tiers use) surfaced five more real, previously-undetected bugs:
+
+1. **`scripts/run_unix_port_integration.sh`'s own `MICROPYPATH` was missing `ext`** — the very
+   first real standalone run failed at `from microdot import Microdot` immediately.
+   `scripts/test.sh`'s own `MICROPYPATH` has the identical gap, invisible there only because every
+   `tests/test_*.py` file that needs `microdot` does its own `sys.path.insert(0, "ext")` — this
+   real entry point had no such per-file workaround. Fixed in the script itself (and
+   `digital_twin/README.md`'s matching documentation) — `"src:digital_twin:ext:frozen_modules:.frozen"`.
+2. **`digital_twin/_fram_chip.py`'s `save_state()` needed one large contiguous allocation** for the
+   whole FRAM image's hex string (16385 bytes for the real 0x2000-byte FRAM) - reproduced as a
+   deterministic `MemoryError` after a few seconds of the real task supervisor running (real
+   asyncio task/timer/HTTP churn fragments the heap enough), even with ~1.5MB of *total*
+   `gc.mem_free()` still free. Fixed by streaming the write in small chunks instead
+   (`_SAVE_CHUNK_SIZE`) — never needs more than one small chunk contiguous at a time.
+3. **`digital_twin/machine.py`'s `I2C.log`/`SPI.log` were unbounded lists** — an ad-hoc
+   introspection aid nothing actually reads, but a real, continuously-running system fires enough
+   bus transactions that the list's own internal growth eventually needed a large-enough
+   contiguous reallocation to fail with a real `MemoryError` too (this was the dominant contributor
+   to the observed heap fragmentation — fixing it alone took a 20-cycle soak's memory-flat failure
+   from a ~32KB drop down to single-digit KB). Bounded to a `deque(maxlen=200)` instead, same
+   convention `print_log.py`'s own `PrintLogHistory` already uses.
+4. **`digital_twin/_bmp3xx_chip.py` had no `handle_writeto()`** — `asy_i2c_driver.py`'s
+   `I2CDevice.setup()`/`_probe_for_device()` always writes zero bytes to every I2C device at
+   construction as a bus-presence probe, regardless of that device's real protocol family; this
+   chip fake only had `handle_writeto_mem()` (its real register-addressed protocol), so every real
+   boot's BMP3XX reader task hit `AttributeError`, repeatedly failed and restarted, and reliably
+   pushed the task-failure counter over `system_service.py`'s own auto-reboot threshold within
+   ~10-15 seconds of every real run. Fixed by adding a minimal `handle_writeto()` accepting the
+   empty-probe shape (nothing else in this codebase's own BMP3xx driver ever sends a plain,
+   non-mem `writeto()`).
+5. **`src/asy_scd30_driver.py`'s `SCD30_Reader` never had a `get_cfg_schema()` method** — unlike
+   every other reader (`SensorReaderConfig` subclasses inherit it), SCD30 is a plain `SensorReader`
+   (params live on the sensor itself, no local `cfgmgr`) and never defined one locally either, even
+   though `asy_webserver_service.py`'s `_put_sensors()` route calls `module.get_cfg_schema()`
+   uniformly for every registered sensor — a real production bug (crashes identically on real
+   hardware), not twin-specific: every real `PUT /sensors` touching SCD30 crashed with a 500.
+   Never caught before because `tests/test_asy_webserver_service.py`'s own `_put_sensors` tests use
+   a fake module that already has `get_cfg_schema()` defined - same "fake happens to paper over the
+   real shape" pattern as the `_flatten_cfg_values()` bug above. Fixed by adding the method,
+   returning the same schema `get_dict_cfg()` already uses.
+6. **`src/asy_wifi_service.py`'s `dns_server` (a separate `captive_dns.DNSServer` instance) never
+   had its own `pr.setup()` called** — every one of its `err_s()`/`wrn_s()` calls degraded forever
+   to "PrintLog: Uninitialized, call setup first!" instead of actually logging, real hardware
+   falling back to hotspot/AP mode has the identical gap. Fixed by calling
+   `await self.dns_server.pr.setup()` alongside `wlan_connect()`'s own existing `self.pr.setup()`.
+
+Also tuned (not a bug fix): `digital_twin/run_wozi_integration.py`'s `_soak()` warm-up was 2 cycles
+(Step 2's own F.9 convention, copied verbatim) — far too few for *this* soak, where every settings
+GET re-reads and re-parses its real config file from disk. A 100-cycle diagnostic showed
+`gc.mem_free()` drop ~52KB over the first 30 cycles then settle into a noisy ±15KB band — a real,
+bounded, converging warm-up transient, not a leak. Bumped to 40 cycles, which helps substantially
+(a real run's memory-flat failure margin went from ~32KB down to single-digit KB) but doesn't
+reliably clear `_MEM_FLAT_TOLERANCE_BYTES`'s tight 4096-byte budget every time — see `_soak()`'s own
+comment. **Open question for the project owner, deliberately not resolved unilaterally**: is 4096
+bytes tight enough for this *real* object graph's natural noise, given the value was copied
+verbatim from Step 2's synthetic fake-based test?
+
+**Also flagged, not fixed (a scope/fidelity decision, not an obvious bug)**: SCD30's own PUT
+settings (`MeasInt`, `TempOffs`, etc.) don't survive a twin process restart, unlike every other
+settings group. On real hardware this is fine — the physical SCD30 chip has its own onboard NVM
+that survives an MCU-only reboot — but the twin's `Scd30Chip` fake has no persistence mechanism the
+way `_fram_chip.py`'s `FramChip` does (its own `state_path`/`save_state()`). Building that would be
+a real feature addition (mirroring `FramChip`'s own pattern plus tests), not a bug fix — left for
+the project owner to decide whether twin fidelity needs to go that far.
+
+After every fix: full `scripts/lint.sh`/`scripts/typecheck.sh` clean (only `improved-quality/`'s
+pre-existing, tracked debt remains), full `scripts/test.sh` green (2128 tests), and a real, fresh
+end-to-end run — build via `scripts/run_unix_port_integration.sh`, walk every GET/PUT endpoint
+through a real browser (Playwright against the pre-installed Chromium), set `DebugLevel` to `all`
+via the real API, restart the process (the twin's own `machine.reset()` only raises
+`SimulatedReset` rather than actually restarting - config/FRAM persist to disk regardless, so a
+real Ctrl-C/SIGINT stop-and-relaunch is the correct way to exercise "reboot" against this twin) and
+confirm the persisted level produces a full verbose startup log, then repeat the whole walkthrough
+with `--fault` flags active on every bus (SCD30/SGP40/BMP3XX/FRAM) - confirmed proper recovery
+after each fault's bounded `times` count is exhausted. NTP sync against a real server
+(`pool.ntp.org`) could not be verified end-to-end in this sandbox specifically - confirmed directly
+that this session's outbound network policy allows DNS (UDP/53) but blocks NTP (UDP/123) to four
+different public servers; the DNS-resolution and timeout/error-handling paths were still verified
+to degrade gracefully (`NtpSynced: false`, no exception) rather than crash.
+
+**Step 5 re-audit session (owner-directed follow-up, after Step 6 scope was separated out and the
+large final audit was confirmed to live on the trunk branch instead)**: re-walked this whole step
+for anything still open outside Step 6/the trunk-branch audit's scope. Found and fixed one real doc
+bug (`digital_twin/README.md`'s new SCD30-persistence section wrongly claimed
+`digital_twin/launch.py` defaults to a persistent state file the same way
+`run_wozi_integration.py` does - `LaunchConfig`'s own default is `None`/in-memory-only for both
+FRAM and SCD30, unchanged from before this step; only `run_wozi_integration.py` defaults to a
+persistent path, per decision 6's own scoping). Full `scripts/test.sh`, `scripts/lint.sh`,
+`scripts/typecheck.sh` re-verified clean (only `improved-quality/`'s pre-existing tracked debt).
+
+Also closed the remaining open item from the paragraph above: **the NTP gap is structurally deeper
+than "this sandbox's network policy blocks UDP/123."** A real, standalone reproduction - a real
+local UDP NTP responder on `127.0.0.1:123`, and a fully WiFi-connected, correctly-configured live
+digital-twin run with `NTP_Host` pointed at it (bypassing this sandbox's own network policy
+entirely by never leaving loopback) - still failed every sync attempt, zero packets ever reaching
+the responder. Root cause, isolated down to a bare `socket.socket().connect(("127.0.0.1", 123))`
+call: the MicroPython Unix port's "standard" build's `connect()`/`bind()`/`sendto()` reject a plain
+`(host, port)` tuple with `TypeError: object with buffer protocol required` - a known Unix-port-only
+quirk (`micropython/micropython#6924`) `tests/test_asy_udp_socket.py` already discovered and works
+around in its own test helpers, but the real production call sites
+(`asy_ntp_client.py`/`asy_dns_client.py`/`captive_dns.py`) never pre-resolve via
+`socket.getaddrinfo()` the way those test helpers do - correctly so, since a plain tuple is exactly
+what real rp2 hardware's socket implementation requires (`typings/socket.pyi`'s `_Address`
+contract). `AsyUDPSocket._connect()`'s own broad `except (OSError, MemoryError, TypeError)` swallows
+this as an ordinary "peer unreachable" failure, so **NTP sync and DNS resolution cannot succeed
+under the Unix port at all, unconditionally, regardless of network reachability** - not a `src/` bug
+(fixing it there would mean the twin dictating a production code shape that's wrong for real
+hardware, exactly what CLAUDE.md's "don't edit `src/` only to make the twin run" owner constraint
+rules out). Recorded in full in `BACKLOG.md`'s open question #5, which already tracked the general
+"UDP verified only against the Unix port, not real rp2/lwIP" gap - this session sharpens that from
+an untested-on-real-silicon caveat into a confirmed, structural, always-fails-here fact, and leaves
+its resolution exactly where BACKLOG.md's open question #5 already put it: real rp2 hardware.
+
+That same reproduction (a live, fully-booted, AP/hotspot-fallback-mode end-to-end run - no SSID
+configured, so `sensortask_wozi.main()`'s own real object graph never left hotspot mode) surfaced a
+second, independent, real finding: `captive_dns.py`'s `DNSServer.run()` loop has no backoff of its
+own on a persistently-failing `recvfrom()` - measured at ~5 warning-level log lines/second,
+continuously, for as long as the DNS server task runs. Recorded in full, including why this is
+exactly a first concrete instance of Step 6's own "cascading recovery storms" category rather than
+something to hand-patch mid-re-audit, in `BACKLOG.md`'s Step 6 scope entry (open question #6) right
+where that category is defined.
+
+**Follow-up audit (same session, after pushing the six fixes above)**: rather than wait for the
+same bug *patterns* to reproduce as real failures again, a dedicated pass searched the codebase for
+other latent instances of each one before they cause a real failure. Found and fixed four more:
+`digital_twin/neopixel.py`'s `NeoPixel.writes` and `digital_twin/network.py`'s `WLAN`
+`connect_calls`/`config_calls` had the identical unbounded-accumulator shape as the already-fixed
+`I2C.log`/`SPI.log` (bounded to `deque(maxlen=...)` the same way); `digital_twin/machine.py`'s
+`WDT.would_have_triggered_log` too; `digital_twin/_fram_chip.py`'s `_load_state()` was the exact
+read-side mirror of the `save_state()` fragmentation bug (a single-shot `bytearray.fromhex()` over
+the whole FRAM image), rewritten to stream-decode in chunks the same way. Also closed the test gap
+that let the `SCD30_Reader.get_cfg_schema()` bug through in the first place: neither
+`tests/test_sensortask_wozi.py` nor `tests/test_digital_twin_sensortask_integration.py` had ever
+exercised the real `PUT /sensors` route against SCD30 (the former only ever `PUT` SGP40; the latter
+never `PUT /sensors` at all) — both now do. Full suite: 2138 passing (up from 2128 after the first
+six fixes), `src/` coverage 94% → 95%, `digital_twin/` steady at 96% with several files now at
+100%. The two open questions in `BACKLOG.md` (the soak's memory-flat tolerance, and whether SCD30
+needs twin-side chip-state persistence) remain genuinely unresolved — not chased further here,
+deliberately left for the project owner rather than guessed at.
+
+**SCD30 twin persistence + memory-decline root-cause session (follow-up, owner-directed)**: the
+project owner directed two things — build the SCD30 twin-side persistence feature flagged above (if
+the twin's own decline could be shown to genuinely stabilize, plus noise, the soak's tolerance could
+be sized to it) and dig into the memory-decline question properly rather than leave it open.
+
+`digital_twin/_scd30_chip.py`'s `Scd30Chip` gained a `state_path`/`save_state()`/`_load_state()` set
+mirroring `FramChip`'s own pattern (plain `json.dump()`/`json.load()`, not chunked — five scalars,
+not an 8KB buffer, no realistic fragmentation risk), persisting exactly the five settings
+`src/asy_scd30_driver.py`'s own setters document as NVM-persisted on real hardware (measurement
+interval, ambient pressure, altitude, temperature offset, ASC enable) — never the live CO2/temp/
+humidity readings, matching what a real power cycle actually does to the sensor. Wired through
+`digital_twin/machine.py` (`configure_scd30_state_path()`/`flush_scd30()`/`_current_scd30_chip`,
+identical shape to the existing FRAM globals) and both entry points
+(`digital_twin/run_wozi_integration.py`'s `--scd30-state-path`, defaulting to
+`digital_twin/scd30_state.json` next to the FRAM state file; `digital_twin/launch.py`'s own flag,
+defaulting to `None`/in-memory like its own `--fram-state-path`). Full test coverage added
+(round-trip, no-autosave-before-explicit-save, persisted-file-shape, live-readings-never-persisted,
+missing-file, malformed-JSON, machine.py wiring, CLI parsing for both entry points).
+
+The memory-decline investigation itself is the long story now captured in `BACKLOG.md`'s open
+question #6 (not duplicated here) — the short version: the earlier "will stabilize, just a slow
+warm-up transient" read turned out to be wrong once measured over hundreds of cycles instead of 100;
+it's a real, continuous, HTTP-independent decline. Real, attributed contributors were found (SCD30's
+own read-and-store cycle, SGP40+BMP3xx's own read-and-store cycles), but a genuine ~245 bytes/sec
+residual survives disabling every real `machine.Timer` starter in the system — including a
+`digital_twin/machine.py` `WDT.feed()` rewrite that looked like a clean fix (avoiding its own
+cancel-and-recreate-task-per-call pattern) and passed every existing test, but was proven by a
+rigorous same-script A/B test to not actually be the cause, and was reverted rather than kept as a
+misleading fix. `_MEM_FLAT_TOLERANCE_BYTES` was deliberately left untouched — the project owner's
+own condition for loosening it ("no leak, will stabilize, not continuously drop") was directly
+contradicted by the fresh data, so tightening the net around a still-real, still-open problem instead
+of loosening the gate around it was the only defensible move here. The project owner decided this
+becomes its own dedicated Step 6, run in a separate session immediately after this branch merges —
+see `BACKLOG.md`'s open question #6 for the full carry-forward brief.
+
+**Two real bugs found via the project owner's own manual run on real hardware (a real Linux machine,
+not this session's own sandbox), same session**: (1) `src/asy_webserver_service.py`'s
+`_get_measurements()`/`_get_sensors()` both re-wrapped a result that the driver-level
+`get_dict_data()`/`get_dict_cfg()` had *already* self-wrapped with the sensor's own name
+(`config_manager.make_dict()`/`base_classes._get_dict_cfg()`'s own `{name: {...}}` shape), producing
+`{"SCD30": {"SCD30": {...}}}` for every real sensor on both `/measurements` and `/sensors` — a real,
+general-scope production bug, not twin-specific, present since before this session and never caught
+by any existing test because `tests/test_asy_webserver_service.py`'s own `_FakeModule` fixture
+happened to return an already-flat shape (the identical class of test-fixture-doesn't-match-reality
+gap `_flatten_cfg_values()`'s own fix already hit once before in this same file), and because both
+`tests/test_sensortask_wozi.py`'s and `tests/test_digital_twin_sensortask_integration.py`'s own
+real-driver/real-HTTP tests only ever checked top-level response keys, never the values. Fixed via
+`.update()` instead of indexed assignment in both methods; the fake fixture (`_NestedCfgModule`,
+already existing for the `_flatten_cfg_values()` precedent) extended to also cover
+`get_dict_data()`, every affected test updated to the correct nested shape, two new dedicated
+regression tests added, and both real-driver test files' own GET assertions strengthened to check
+the values (not just top-level keys) so this class of bug can't slip through unnoticed again. (2)
+`digital_twin/run_wozi_integration.py`'s `_soak()` let a single failed HTTP request (a real
+`OSError: [Errno 104] ECONNRESET`, hit directly running the real default 20-cycle soak against the
+real assembled system) crash the entire diagnostic run, instead of tolerating it the way the real
+server it's driving already tolerates a rejected/reset connection
+(`WebserverService._serve()`'s own `max_connections=3` reject-when-full path closes with zero
+response ever written, by design) — `_soak()` now catches `OSError` per-request in both its warmup
+and main cycle loops and records a failure instead of propagating, with a new regression test
+(`test_soak_records_a_connection_reset_as_a_failure_instead_of_crashing`) driving it against a real
+socket server that resets every connection immediately. Investigating this surfaced a third, more
+serious, still-unresolved finding (a real MicroPython Unix-port interpreter segfault under heavy
+concurrent connection load) — see `BACKLOG.md`'s open question #7, folded into the same dedicated
+Step 6 session as the memory-decline investigation above.
 
 ## Out of scope for all five steps
 

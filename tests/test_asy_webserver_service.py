@@ -350,12 +350,28 @@ def _make_request(app: "Microdot", method: str, path: str, json_body: "dict[str,
 
 
 def test_measurements_get_returns_merged_per_sensor_dict() -> None:
-    scd = _FakeModule("SCD30", data={"CO2": 800})
-    sgp = _FakeModule("SGP40", data={"VOC": 120})
+    # _NestedCfgModule, not _FakeModule - real SCD30/SGP40/BMP3xx drivers' own get_dict_data()
+    # always returns the self-wrapped {name: {...}} shape (config_manager.make_dict()), never
+    # _FakeModule's flat one. See _NestedCfgModule's own docstring for why this distinction is the
+    # whole point of this test, not incidental.
+    scd = _NestedCfgModule("SCD30", values={}, data={"CO2": 800})
+    sgp = _NestedCfgModule("SGP40", values={}, data={"VOC": 120})
     service, app = _make_service(sensors=[scd, sgp])
     res = run(app.dispatch_request(_make_request(app, "GET", "/measurements", None)))
     assert res.status_code == 200
     assert json.loads(res.body) == {"SCD30": {"CO2": 800}, "SGP40": {"VOC": 120}}
+
+
+def test_measurements_get_does_not_double_wrap_a_real_self_wrapped_sensor_shape() -> None:
+    # Regression test for the real, confirmed production bug _NestedCfgModule's own docstring
+    # describes: _get_measurements() used to index the already-self-wrapped get_dict_data() result
+    # by name again, producing {"SCD30": {"SCD30": {"CO2": 800}}} for every real sensor.
+    scd = _NestedCfgModule("SCD30", values={}, data={"CO2": 800})
+    service, app = _make_service(sensors=[scd])
+    res = run(app.dispatch_request(_make_request(app, "GET", "/measurements", None)))
+    body = json.loads(res.body)
+    assert "SCD30" not in body["SCD30"]
+    assert body == {"SCD30": {"CO2": 800}}
 
 
 def test_measurements_get_empty_sensor_list_returns_empty_dict_not_a_crash() -> None:
@@ -366,10 +382,21 @@ def test_measurements_get_empty_sensor_list_returns_empty_dict_not_a_crash() -> 
 
 
 def test_sensors_get_mirrors_measurements_structure_with_cfg_fields() -> None:
-    scd = _FakeModule("SCD30", values={"Interval": 10, "Offset": 2})
+    scd = _NestedCfgModule("SCD30", values={"Interval": 10, "Offset": 2})
     service, app = _make_service(sensors=[scd])
     res = run(app.dispatch_request(_make_request(app, "GET", "/sensors", None)))
     assert json.loads(res.body) == {"SCD30": {"Interval": 10, "Offset": 2}}
+
+
+def test_sensors_get_does_not_double_wrap_a_real_self_wrapped_sensor_shape() -> None:
+    # Same regression as test_measurements_get_does_not_double_wrap... above, via get_dict_cfg()/
+    # _get_sensors() instead of get_dict_data()/_get_measurements().
+    scd = _NestedCfgModule("SCD30", values={"Interval": 10, "Offset": 2})
+    service, app = _make_service(sensors=[scd])
+    res = run(app.dispatch_request(_make_request(app, "GET", "/sensors", None)))
+    body = json.loads(res.body)
+    assert "SCD30" not in body["SCD30"]
+    assert body == {"SCD30": {"Interval": 10, "Offset": 2}}
 
 
 def test_sensors_put_empty_body_is_noop() -> None:
@@ -443,6 +470,52 @@ def test_networking_get_is_flat_settings_only_no_live_fields() -> None:
     body = json.loads(res.body)
     assert body == {"SSID": "MyNet"}
     assert "Connected" not in body and "IP" not in body and "Rssi" not in body
+
+
+class _NestedCfgModule:
+    # Reproduces config_manager.make_dict()'s real {type_name: {field: value}} shape - the actual
+    # shape AsyConnTime/AsyNtpClient/NotificationCoordinator's own get_dict_cfg() returns in
+    # production (base_classes.py's SensorReaderConfig default, via ConfigManager.make_dict()),
+    # unlike _FakeModule's own deliberately-flat get_dict_cfg() convention above (which matches
+    # SystemService's own get_dict_cfg() override instead - see system_service.py's
+    # self.cfgmgr.get_dict(...), a genuinely different, already-flat method). Found via
+    # FINAL_WIRING_PLAN.md's Step 5 twin-based integration testing
+    # (tests/test_digital_twin_sensortask_integration.py): _FakeModule's flat shape masked a real
+    # bug where _get_settings_flat() never unwrapped this real shape at all, so /networking and
+    # /notification always returned {} in production, and /system silently dropped every field not
+    # sourced from SystemService's own flat override (DebugLevel) - see the regression test right
+    # below.
+    #
+    # Also doubles as a registered-sensor fake for _get_measurements()/_get_sensors() themselves
+    # (get_dict_data() added below, same nested convention) - real SCD30/SGP40/BMP3xx drivers
+    # always return this self-wrapped shape for both, never _FakeModule's flat one, and
+    # _get_measurements()/_get_sensors() had the identical class of bug _flatten_cfg_values() above
+    # was written to fix: indexing the already-self-wrapped result by name again doubled it into
+    # {"SCD30": {"SCD30": {...}}} for every real sensor - found via a real user report against the
+    # real assembled system, not caught here (this file's own sensor tests used _FakeModule's flat
+    # shape) or by tests/test_digital_twin_sensortask_integration.py's own real-HTTP GET test either
+    # (that test only checked top-level keys, never the values - both gaps closed alongside this).
+    def __init__(self, type_name: str, values: "dict[str, Any]", data: "dict[str, Any] | None" = None) -> None:
+        self.name = type_name
+        self._type_name = type_name
+        self._values = values
+        self._data = data if data is not None else {}
+
+    async def get_dict_cfg(self) -> "dict[str, Any]":
+        return {self._type_name: dict(self._values)}
+
+    async def get_dict_data(self) -> "dict[str, Any]":
+        return {self._type_name: dict(self._data)}
+
+
+def test_networking_get_flattens_a_real_type_name_nested_get_dict_cfg_shape() -> None:
+    # Regression test for the real, confirmed production bug described in _NestedCfgModule's own
+    # docstring above.
+    wifi = _NestedCfgModule("WIFI", {"SSID": "MyNet"})
+    group = SettingsGroup(wifi, ("SSID",))  # type: ignore[arg-type]  # structurally _ModuleLike-shaped
+    service, app = _make_service(settings={"networking": [group]})
+    res = run(app.dispatch_request(_make_request(app, "GET", "/networking", None)))
+    assert json.loads(res.body) == {"SSID": "MyNet"}
 
 
 def test_networking_put_partial_field_update_triggers_only_relevant_post_hook() -> None:
@@ -799,15 +872,15 @@ def test_c_zero_entries_in_any_registration_group_produces_well_formed_empty_res
 
 
 def test_c_one_entry_behaves_identically_to_a_hand_constructed_single_item_list() -> None:
-    single = _FakeModule("SCD30", data={"CO2": 900})
+    single = _NestedCfgModule("SCD30", values={}, data={"CO2": 900})
     service, app = _make_service(sensors=[single])
     res = run(app.dispatch_request(_make_request(app, "GET", "/measurements", None)))
     assert json.loads(res.body) == {"SCD30": {"CO2": 900}}
 
 
 def test_c_duplicate_registration_last_registration_wins() -> None:
-    first = _FakeModule("SCD30", data={"CO2": 111})
-    second = _FakeModule("SCD30", data={"CO2": 222})
+    first = _NestedCfgModule("SCD30", values={}, data={"CO2": 111})
+    second = _NestedCfgModule("SCD30", values={}, data={"CO2": 222})
     service, app = _make_service(sensors=[first, second])
     res = run(app.dispatch_request(_make_request(app, "GET", "/measurements", None)))
     assert json.loads(res.body) == {"SCD30": {"CO2": 222}}
@@ -1484,7 +1557,7 @@ def test_g_static_routes_never_shadow_a_real_api_endpoint() -> None:
     # "/measurements" - Microdot's find_route() returns the *first* matching route in registration
     # order (ext/microdot.py's find_route(), confirmed directly), so the static wildcard must be
     # registered after every real API route or it would silently swallow them.
-    scd = _FakeModule("SCD30", data={"CO2": 800})
+    scd = _NestedCfgModule("SCD30", values={}, data={"CO2": 800})
     mount = _mount_static_fixture({"index.html": b"<h1>hi</h1>", "measurements": b"not the real one"})
     service, app = _make_service(sensors=[scd], static_mount=mount)
     res = run(app.dispatch_request(_make_request(app, "GET", "/measurements", None)))

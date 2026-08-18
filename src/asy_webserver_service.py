@@ -101,6 +101,29 @@ def _index_pairs(items: "Iterable[tuple[str, MaintenanceFct]]") -> "dict[str, Ma
     return result
 
 
+def _flatten_cfg_values(values: "dict[str, Any]") -> "dict[str, Any]":
+    # get_dict_cfg() has two real shapes across this codebase's registrable modules: a genuinely
+    # flat dict (SystemService's own override, self.cfgmgr.get_dict(...)) or
+    # config_manager.make_dict()'s {type_name: {field: value}} nesting (base_classes.py's
+    # SensorReaderConfig default - AsyConnTime/AsyNtpClient/NotificationCoordinator among them).
+    # _get_settings_flat() needs every field to be a top-level key regardless of which shape its
+    # module returns - found and fixed via FINAL_WIRING_PLAN.md's Step 5 twin-based integration
+    # testing (tests/test_digital_twin_sensortask_integration.py): without this, /networking and
+    # /notification always returned {} in production (every field they source is nested-shaped),
+    # and /system silently dropped GMTOffset/DSTOffset (sourced from ntp, also nested-shaped) while
+    # DebugLevel (sourced from sysfunct, already flat) happened to work. Safe to merge any
+    # dict-valued top-level entry unconditionally: every config schema in this codebase today is
+    # flat scalar fields only (BACKLOG.md's own config_manager.py make_dict() note already tracks
+    # this as the one place a future dict/list-valued field would need re-checking).
+    flat: dict[str, Any] = {}
+    for key, value in values.items():
+        if isinstance(value, dict):
+            flat.update(value)
+        else:
+            flat[key] = value
+    return flat
+
+
 class SettingsGroup:
     def __init__(
         self,
@@ -253,15 +276,27 @@ class WebserverService:
     async def _get_measurements(self, request: "Any") -> "dict[str, Any]":
         # A plain for-loop, not a dict comprehension - MicroPython doesn't support `await` inside a
         # comprehension (confirmed directly: raises SyntaxError at import time), unlike CPython.
+        # .update(), not result[name] = ... : every real driver's own get_dict_data() (via
+        # config_manager.make_dict()) already returns a {name: {...}}-shaped dict keyed by its own
+        # name (the same name this loop's own `name` is bound to) - indexing by name here on top of
+        # that doubled it into {"SCD30": {"SCD30": {...}}} for every sensor, on every real driver,
+        # masked by tests/test_asy_webserver_service.py's own _FakeModule returning an already-flat
+        # dict (confirmed directly: found via a real user report against the real assembled system,
+        # not caught by tests/test_digital_twin_sensortask_integration.py's own real-HTTP GET test
+        # either - that test only checked top-level keys, never the values, now closed alongside
+        # this fix). Real hardware is affected too - this is not twin-specific.
         result: dict[str, Any] = {}
-        for name, module in self._sensors.items():
-            result[name] = await module.get_dict_data()
+        for module in self._sensors.values():
+            result.update(await module.get_dict_data())
         return result
 
     async def _get_sensors(self, request: "Any") -> "dict[str, Any]":
+        # .update(), not result[name] = ... - see _get_measurements()'s own comment above, the exact
+        # same double-wrap bug via get_dict_cfg()/base_classes._get_dict_cfg() instead of
+        # get_dict_data()/make_dict().
         result: dict[str, Any] = {}
-        for name, module in self._sensors.items():
-            result[name] = await module.get_dict_cfg()
+        for module in self._sensors.values():
+            result.update(await module.get_dict_cfg())
         return result
 
     async def _put_sensors(self, request: "Any") -> "ar.ResponseEnvelope":
@@ -283,7 +318,7 @@ class WebserverService:
     async def _get_settings_flat(self, endpoint: str) -> "dict[str, Any]":
         result: dict[str, Any] = {}
         for group in self._settings.get(endpoint, []):
-            values = await group.module.get_dict_cfg()
+            values = _flatten_cfg_values(await group.module.get_dict_cfg())
             for field in group.fields:
                 if field in values:
                     result[field] = values[field]

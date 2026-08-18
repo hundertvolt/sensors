@@ -14,8 +14,21 @@ normal (non-self-healing) trigger path rather than only its 3-second self-heal f
 are produced either by a real, live-firing internal machine.Timer (auto_refresh=True, the default -
 matches src/'s own measurement-interval-driven cadence) or, for deterministic unit tests, only ever
 via the explicit _produce_new_reading() hook (auto_refresh=False, no Timer/task created at all).
+
+Persistence: mirrors _fram_chip.py's own state_path/save_state() design (an explicit call, never
+automatic - see that file's module docstring for the SSD-write-cycle reasoning, which applies here
+too), but only for the five settings src/asy_scd30_driver.py's own setters document as "NVM-persisted
+- survives reset() and power cycles" (confirmed directly against that file's set_measurement_interval/
+set_self_calibration_enabled/set_ambient_pressure/set_altitude/set_temperature_offset comments):
+measurement interval, ASC enable, ambient-pressure compensation, altitude compensation, and
+temperature offset. The live CO2/temp/humidity readings and in-flight protocol state
+(_last_cmd/_data_ready/_buffer) are deliberately NOT persisted - on real hardware a power cycle
+always restarts continuous measurement from a fresh reading, only the *settings* survive. No chunking
+here unlike _fram_chip.py's save_state()/_load_state() - this is five scalars, not an 8KB buffer, so
+plain json.dump()/json.load() carries no realistic fragmentation risk.
 """
 
+import json
 import struct
 
 from _crc8 import crc8, word
@@ -69,6 +82,7 @@ class Scd30Chip:
         measurement_interval_s: int = 2,
         rdy_pin: "Any | None" = None,
         auto_refresh: bool = True,
+        state_path: "str | None" = None,
     ) -> None:
         if random_source is None:
             import random as _random_module
@@ -94,6 +108,10 @@ class Scd30Chip:
         self.fault = FaultInjector()
         self.corrupt_next_measurement = False
         self._timer: Any | None = None
+        self.state_path = state_path
+        self._load_state()  # may override the *_s/_ambient_pressure/_altitude/_temp_offset_raw/
+        # _asc_enabled defaults just set above - never the co2/temp/hum draws below, see class docstring
+        # for why those stay unpersisted.
         # Initial value: one uniform draw within [min,max] at construction - every value after this
         # one steps from the last instead (see _produce_new_reading() below).
         self._co2 = self._random.uniform(self._min_co2, self._max_co2)
@@ -101,6 +119,41 @@ class Scd30Chip:
         self._hum = self._random.uniform(self._min_hum, self._max_hum)
         if auto_refresh:
             self._start_timer()
+
+    def _load_state(self) -> None:
+        if self.state_path is None:
+            return
+        try:
+            f = open(self.state_path)
+        except OSError:
+            return  # no persisted state yet - start from factory-fresh settings
+        try:
+            try:
+                data = json.load(f)
+            except ValueError:
+                return  # malformed/truncated file - leave settings at their factory-fresh defaults
+        finally:
+            f.close()
+        self._measurement_interval_s = data.get("measurement_interval_s", self._measurement_interval_s)
+        self._ambient_pressure = data.get("ambient_pressure", self._ambient_pressure)
+        self._altitude = data.get("altitude", self._altitude)
+        self._temp_offset_raw = data.get("temp_offset_raw", self._temp_offset_raw)
+        self._asc_enabled = data.get("asc_enabled", self._asc_enabled)
+
+    def save_state(self) -> None:
+        if self.state_path is None:
+            return
+        with open(self.state_path, "w") as f:
+            json.dump(
+                {
+                    "measurement_interval_s": self._measurement_interval_s,
+                    "ambient_pressure": self._ambient_pressure,
+                    "altitude": self._altitude,
+                    "temp_offset_raw": self._temp_offset_raw,
+                    "asc_enabled": self._asc_enabled,
+                },
+                f,
+            )
 
     def _start_timer(self) -> None:
         from machine import Timer as _Timer

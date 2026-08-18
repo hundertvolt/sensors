@@ -7,6 +7,8 @@ against the shared Timer class itself, matching this step's own "not flaky wall-
 assertions" criterion (FINAL_WIRING_PLAN.md's Step 3).
 """
 
+import json
+import os
 import struct
 import sys
 
@@ -22,6 +24,17 @@ sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comme
 
 from _crc8 import crc8, word  # noqa: E402
 from _scd30_chip import Scd30Chip  # noqa: E402
+
+_TMP_DIR = "tests/_tmp"
+
+
+def _tmp_path(name: str) -> str:
+    # Same convention as test_digital_twin_fram.py's own _tmp_path() helper.
+    try:
+        os.mkdir(_TMP_DIR)
+    except OSError:
+        pass
+    return _TMP_DIR + "/" + name
 
 
 class _FixedRandom:
@@ -334,6 +347,97 @@ def test_fault_injection_can_corrupt_the_next_measurement_crc() -> None:
     chip.handle_writeto(b"\x03\x00")
     buf = chip.handle_readfrom_into(18)
     assert buf[2] != crc8(buf[0:2])
+
+
+def test_save_state_then_construct_a_fresh_chip_from_the_same_path_reads_back_identical_settings() -> None:
+    path = _tmp_path("scd30_state.json")
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+    chip1 = Scd30Chip(auto_refresh=False, state_path=path)
+    _set(chip1, 0x46, 0x00, 10)  # measurement interval
+    _set(chip1, 0x53, 0x06, 1)  # ASC enable
+    _set(chip1, 0x00, 0x10, 1013)  # ambient pressure
+    _set(chip1, 0x51, 0x02, 250)  # altitude
+    _set(chip1, 0x54, 0x03, 150)  # temperature offset
+    chip1.save_state()
+
+    chip2 = Scd30Chip(auto_refresh=False, state_path=path)
+    assert _get(chip2, 0x46, 0x00) == word(10)
+    assert _get(chip2, 0x53, 0x06) == word(1)
+    assert _get(chip2, 0x00, 0x10) == word(1013)
+    assert _get(chip2, 0x51, 0x02) == word(250)
+    assert _get(chip2, 0x54, 0x03) == word(150)
+
+
+def test_state_is_not_written_until_save_state_is_called() -> None:
+    path = _tmp_path("scd30_no_autosave.json")
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+    chip = Scd30Chip(auto_refresh=False, state_path=path)
+    _set(chip, 0x46, 0x00, 10)
+    try:
+        with open(path):
+            raise AssertionError("state file must not exist before an explicit save_state() call")
+    except OSError:
+        pass  # expected - nothing written yet
+
+
+def test_persisted_file_is_json_with_the_five_nvm_backed_settings() -> None:
+    path = _tmp_path("scd30_format.json")
+    chip = Scd30Chip(auto_refresh=False, state_path=path)
+    _set(chip, 0x46, 0x00, 7)
+    chip.save_state()
+    with open(path) as f:
+        data = json.load(f)
+    assert data == {
+        "measurement_interval_s": 7,
+        "ambient_pressure": 0,
+        "altitude": 0,
+        "temp_offset_raw": 0,
+        "asc_enabled": 0,
+    }
+
+
+def test_live_readings_and_in_flight_protocol_state_are_not_persisted() -> None:
+    # Only the five NVM-backed settings survive a "power cycle" on real hardware - CO2/temp/humidity
+    # always restart from a fresh reading. Confirmed by checking the persisted file itself never
+    # contains a co2/temp/hum key at all, not just that a fresh chip happens to draw a different value.
+    path = _tmp_path("scd30_no_readings_persisted.json")
+    chip = Scd30Chip(auto_refresh=False, state_path=path, random_source=_FixedRandom(uniform_values=[500.0, 22.0, 45.0]))
+    chip.save_state()
+    with open(path) as f:
+        data = json.load(f)
+    assert "co2" not in data and "temp" not in data and "hum" not in data
+
+
+def test_missing_state_file_starts_from_factory_fresh_settings_without_raising() -> None:
+    path = _tmp_path("scd30_does_not_exist.json")
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+    chip = Scd30Chip(auto_refresh=False, state_path=path)  # must not raise
+    assert _get(chip, 0x46, 0x00) == word(2)  # measurement_interval_s's own default
+
+
+def test_load_state_with_malformed_json_leaves_factory_fresh_settings_without_raising() -> None:
+    path = _tmp_path("scd30_malformed.json")
+    with open(path, "w") as f:
+        f.write("{not valid json")
+    chip = Scd30Chip(auto_refresh=False, state_path=path)  # must not raise
+    assert _get(chip, 0x46, 0x00) == word(2)
+
+
+def test_state_path_none_never_touches_disk() -> None:
+    # Default construction (state_path=None) is the same "in-memory only" convention FramChip uses -
+    # save_state() must be a silent no-op, not raise for lacking a path.
+    chip = Scd30Chip(auto_refresh=False)
+    _set(chip, 0x46, 0x00, 10)
+    chip.save_state()  # must not raise
 
 
 if __name__ == "__main__":

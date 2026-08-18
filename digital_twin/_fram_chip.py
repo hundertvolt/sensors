@@ -18,8 +18,6 @@ convention - see ConfigManager). Whatever entry point Step 5 writes to run the a
 is expected to call save_state() once, in a try/finally around asyncio.run(main()), on the way out.
 """
 
-import json
-
 from _fault_injection import FaultInjector
 
 try:
@@ -40,6 +38,20 @@ _OPCODE_RDID = 0x9F
 
 _WEL_BIT = 0x02
 _DEFAULT_RDID = bytes([0x04, 0x7F, 0x03, 0x02])  # real MB85RS64V device ID (datasheets/fram/)
+
+_SAVE_CHUNK_SIZE = 512  # bytes per chunk when streaming the memory image out to disk in save_state()
+# below - avoids ever allocating one contiguous string for the whole buffer. Found by actually
+# running the real assembled system against this twin for the first time (FINAL_WIRING_PLAN.md's
+# Step 5 baseline-verification pass): json.dump({"memory_hex": bytes(self.memory).hex()}) needs one
+# contiguous ~2*size-byte allocation (16385 bytes for the real 0x2000-byte FRAM) - reproduced as a
+# deterministic MemoryError after a few seconds of the real task supervisor running (real asyncio
+# tasks/timers/HTTP handling churn the heap enough to fragment it) even with ~1.5MB of *total*
+# gc.mem_free() still available, and an extra gc.collect() right before the call doesn't help
+# (MicroPython's GC coalesces freed blocks but never relocates live ones, so this fragmentation
+# isn't reclaimable). Chunked writes only ever need one small chunk contiguous at a time.
+
+_LOAD_CHUNK_CHARS = 1024  # hex characters per chunk when streaming the memory image back in from
+# disk in _load_state() below - the read-side mirror of _SAVE_CHUNK_SIZE above, same reasoning.
 
 
 class FramChip:
@@ -65,20 +77,57 @@ class FramChip:
         if self.state_path is None:
             return
         try:
-            with open(self.state_path) as f:
-                saved = json.load(f)
+            f = open(self.state_path)
         except OSError:
             return  # no persisted state yet - start from a blank chip, matches a factory-fresh part
-        memory_hex = saved.get("memory_hex", "")
-        loaded = bytearray.fromhex(memory_hex) if memory_hex else bytearray()
-        n = min(len(loaded), self.size)
-        self.memory[:n] = loaded[:n]
+        try:
+            # Hand-parsed, not json.load() - the read-side mirror of save_state()'s own fix
+            # (_SAVE_CHUNK_SIZE's comment): json.load() would materialize the whole memory_hex
+            # value as one contiguous string (16385 bytes for the real 0x2000-byte FRAM), the same
+            # fragmentation risk class as the fixed save_state() bug, just on the read path -
+            # lower-probability in practice (this only ever runs once, at construction, before any
+            # live churn has fragmented the heap) but the same latent shape, found by this session's
+            # own follow-up audit of the fixed bug's pattern rather than a reproduced failure.
+            header = f.read(128)  # the '{"size": N, "memory_hex": "' prefix is always well under this
+            marker = '"memory_hex": "'
+            idx = header.find(marker)
+            if idx == -1:
+                return  # malformed/unrecognized file - leave self.memory at its blank default
+            pending = header[idx + len(marker) :]
+            pos = 0
+            while pos < self.size:
+                chunk = f.read(_LOAD_CHUNK_CHARS)
+                piece = pending + chunk
+                pending = ""
+                if not piece:
+                    break
+                end = piece.find('"')
+                done = end != -1
+                if done:
+                    piece = piece[:end]
+                if len(piece) % 2:  # a hex byte pair straddled this chunk boundary - hold the
+                    pending = piece[-1:]  # trailing nibble for the next round instead of mis-pairing
+                    piece = piece[:-1]
+                if piece:
+                    n = min(len(piece) // 2, self.size - pos)
+                    self.memory[pos : pos + n] = bytearray.fromhex(piece[: n * 2])
+                    pos += n
+                if done or not chunk:
+                    break
+        finally:
+            f.close()
 
     def save_state(self) -> None:
         if self.state_path is None:
             return
+        # Streamed by hand (not json.dump()) - see _SAVE_CHUNK_SIZE's own comment above for why a
+        # single-shot bytes(self.memory).hex() is a real fragmentation risk. The written file is
+        # still exactly the JSON object _load_state() expects (hex digits never need escaping).
         with open(self.state_path, "w") as f:
-            json.dump({"size": self.size, "memory_hex": bytes(self.memory).hex()}, f)
+            f.write(f'{{"size": {self.size}, "memory_hex": "')
+            for start in range(0, self.size, _SAVE_CHUNK_SIZE):
+                f.write(self.memory[start : start + _SAVE_CHUNK_SIZE].hex())
+            f.write('"}')
 
     def write(self, buf: bytes) -> None:
         self.fault.maybe_raise("write")

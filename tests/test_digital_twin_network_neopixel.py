@@ -80,7 +80,23 @@ def test_wlan_status_rssi_and_stations_read_the_underlying_fields() -> None:
 def test_wlan_config_records_every_call() -> None:
     wlan = WLAN(STA_IF)
     wlan.config(essid="hotspot", password="secret")
-    assert wlan.config_calls == [{"essid": "hotspot", "password": "secret"}]
+    assert list(wlan.config_calls) == [{"essid": "hotspot", "password": "secret"}]  # a deque, not a
+    # list - see network.py's own _CALL_LOG_MAXLEN comment
+
+
+def test_wlan_config_calls_stays_bounded_across_many_calls() -> None:
+    # Regression test for FINAL_WIRING_PLAN.md's Step 5 baseline-verification pass's own follow-up
+    # audit: config_calls/connect_calls used to be plain, unbounded lists, the same latent-leak
+    # shape as the fixed I2C.log/SPI.log bug (see network.py's own _CALL_LOG_MAXLEN comment) - a
+    # long-running twin session's own reconnect/fault-injection retry loop calls config()/connect()
+    # repeatedly for the life of the process.
+    import network as network_module
+
+    wlan = WLAN(STA_IF)
+    for _ in range(network_module._CALL_LOG_MAXLEN + 50):
+        wlan.config(essid="hotspot")
+    assert len(wlan.config_calls) == network_module._CALL_LOG_MAXLEN
+    assert wlan.config_calls[-1] == {"essid": "hotspot"}
 
 
 def test_country_and_hostname_set_then_get_round_trip() -> None:
@@ -103,7 +119,7 @@ def test_wlan_connect_shows_a_real_connecting_phase_before_got_ip() -> None:
         assert wlan.isconnected() is False
         await _wait_until_connected(wlan)
         assert wlan.status() == STAT_GOT_IP
-        assert wlan.connect_calls == [("ssid", "password")]
+        assert list(wlan.connect_calls) == [("ssid", "password")]  # a deque, not a list
 
     run(scenario())
 
@@ -262,7 +278,22 @@ def test_wlan_a_second_connect_that_cancels_the_first_pending_attempt_does_not_c
         wlan.connect("ssid", "second")
         await _wait_until_settled(wlan)
         assert wlan.status() == STAT_GOT_IP
-        assert wlan.connect_calls == [("ssid", "first"), ("ssid", "second")]
+        assert list(wlan.connect_calls) == [("ssid", "first"), ("ssid", "second")]  # a deque, not a list
+
+    run(scenario())
+
+
+def test_wlan_connect_calls_stays_bounded_across_many_calls() -> None:
+    import network as network_module
+
+    async def scenario() -> None:
+        wlan = WLAN(STA_IF)
+        wlan.active(True)
+        for _ in range(network_module._CALL_LOG_MAXLEN + 50):
+            wlan.connect("ssid", "password")  # each call cancels/replaces the prior pending task -
+            # never accumulates asyncio tasks, only entries in connect_calls itself.
+        assert len(wlan.connect_calls) == network_module._CALL_LOG_MAXLEN
+        assert wlan.connect_calls[-1] == ("ssid", "password")
 
     run(scenario())
 
@@ -274,7 +305,20 @@ def test_neopixel_records_committed_frames() -> None:
     pixel.write()
     pixel[0] = (0, 0, 0)
     pixel.write()
-    assert pixel.writes == [[(10, 20, 30)], [(0, 0, 0)]]
+    assert list(pixel.writes) == [[(10, 20, 30)], [(0, 0, 0)]]  # a deque, not a list - see
+    # neopixel.py's own _WRITES_MAXLEN comment
+
+
+def test_neopixel_writes_stays_bounded_across_many_writes() -> None:
+    import neopixel as neopixel_module
+
+    pixel = NeoPixel(None, 1, bpp=3)
+    total_writes = neopixel_module._WRITES_MAXLEN + 50
+    for i in range(total_writes):
+        pixel[0] = (i, 0, 0)
+        pixel.write()
+    assert len(pixel.writes) == neopixel_module._WRITES_MAXLEN
+    assert pixel.writes[-1] == [(total_writes - 1, 0, 0)]  # most recent write survives
 
 
 def test_neopixel_fault_injection() -> None:

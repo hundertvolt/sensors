@@ -193,6 +193,18 @@ class SCD30_Reader(SensorReader):
             callback=self._read_sensor_dict,
         )
 
+    def get_cfg_schema(self) -> "ConfigSchema":
+        # SCD30_Reader is a plain SensorReader, not a SensorReaderConfig subclass (no local cfgmgr -
+        # these params live on the sensor itself, see this file's own _VAL_* comment above), so it
+        # doesn't inherit base_classes.SensorReaderConfig's own get_cfg_schema(). But
+        # asy_webserver_service.py's _put_sensors() route calls module.get_cfg_schema() uniformly for
+        # every registered sensor (this file's own _set_dict_cfg() docstring already documents that
+        # expectation) - without this method, every real PUT /sensors touching SCD30 crashed with a
+        # 500 (AttributeError), found via FINAL_WIRING_PLAN.md's Step 5 baseline-verification pass.
+        # Same schema _set_dict_cfg()'s own schema_dict(cfg_vals) call already expects, and identical
+        # to get_dict_cfg()'s own combined schema above.
+        return _VAL_TO + _VAL_MI + _VAL_AP + _VAL_ALT + _VAL_CAL + _VAL_SC
+
     async def _set_dict_cfg(
         self, data: dict[str, int | float | str | bool | None], cfg_vals: "ConfigSchema"
     ) -> dict[str, str]:

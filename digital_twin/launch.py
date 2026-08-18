@@ -106,6 +106,7 @@ class LaunchConfig:
         self,
         seed: "int | None" = None,
         fram_state_path: "str | None" = None,
+        scd30_state_path: "str | None" = None,
         faults: "list[tuple[str, str, int]] | None" = None,
         wifi_outcomes: "list[int] | None" = None,
         no_wdt_feed: bool = False,
@@ -113,6 +114,7 @@ class LaunchConfig:
     ) -> None:
         self.seed = seed
         self.fram_state_path = fram_state_path
+        self.scd30_state_path = scd30_state_path
         self.faults = faults if faults is not None else []
         self.wifi_outcomes = wifi_outcomes if wifi_outcomes is not None else []
         self.no_wdt_feed = no_wdt_feed
@@ -129,6 +131,7 @@ def parse_args(argv: "list[str]") -> "LaunchConfig":
     remaining = list(argv)
     seed: int | None = None
     fram_state_path: str | None = None
+    scd30_state_path: str | None = None
     faults: list[tuple[str, str, int]] = []
     wifi_outcomes: list[int] = []
     no_wdt_feed = False
@@ -140,6 +143,8 @@ def parse_args(argv: "list[str]") -> "LaunchConfig":
             seed = int(_pop_value(remaining, arg))
         elif arg == "--fram-state-path":
             fram_state_path = _pop_value(remaining, arg)
+        elif arg == "--scd30-state-path":
+            scd30_state_path = _pop_value(remaining, arg)
         elif arg == "--fault":
             faults.append(parse_fault_spec(_pop_value(remaining, arg)))
         elif arg == "--wifi-outcome":
@@ -154,6 +159,7 @@ def parse_args(argv: "list[str]") -> "LaunchConfig":
     return LaunchConfig(
         seed=seed,
         fram_state_path=fram_state_path,
+        scd30_state_path=scd30_state_path,
         faults=faults,
         wifi_outcomes=wifi_outcomes,
         no_wdt_feed=no_wdt_feed,
@@ -319,11 +325,12 @@ async def main(config: "LaunchConfig") -> "dict[str, Any]":
 
         _random_module.seed(config.seed)
     machine.configure_fram_state_path(config.fram_state_path)
+    machine.configure_scd30_state_path(config.scd30_state_path)
 
     print(
         f"digital_twin/launch.py starting - seed={config.seed!r} fram_state_path={config.fram_state_path!r} "
-        f"no_wdt_feed={config.no_wdt_feed!r} duration={config.duration!r} faults={config.faults!r} "
-        f"wifi_outcomes={config.wifi_outcomes!r}"
+        f"scd30_state_path={config.scd30_state_path!r} no_wdt_feed={config.no_wdt_feed!r} "
+        f"duration={config.duration!r} faults={config.faults!r} wifi_outcomes={config.wifi_outcomes!r}"
     )
 
     watchdog = WDT(timeout=8000)
@@ -371,6 +378,7 @@ async def main(config: "LaunchConfig") -> "dict[str, Any]":
             print("WLAN: status read failed:", e)
         summary["would_have_triggered_count"] = watchdog.would_have_triggered_count
         machine.flush_fram()
+        machine.flush_scd30()
         print("digital_twin/launch.py summary:", summary)
 
     return summary

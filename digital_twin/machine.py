@@ -25,6 +25,18 @@ via Pin(irq_pin, mode=Pin.IN), regardless of construction order.
 
 import asyncio
 import errno
+from collections import deque
+
+_LOG_MAXLEN = 200  # I2C.log/SPI.log below are an ad-hoc introspection aid (nothing in tests/ or
+# digital_twin/ actually reads them today - a plain, unbounded list here was found to be a real
+# memory leak: FINAL_WIRING_PLAN.md's Step 5 baseline-verification pass ran the real assembled
+# system against this twin for the first time ever (every prior test only ever ran a handful of
+# bus transactions), and a real, continuously-running system fires a *lot* of I2C/SPI transactions -
+# enough that the list's own internal pointer-array growth eventually needed a large-enough
+# contiguous reallocation to fail with a real MemoryError once the heap got fragmented (confirmed
+# directly: the failing allocation's own traceback bottomed out at this file's own log.append()).
+# Bounded to the most recent _LOG_MAXLEN entries instead - same "keep last N" convention
+# print_log.py's own PrintLogHistory already uses for its own history buffer.
 
 try:
     from typing import TYPE_CHECKING
@@ -142,11 +154,34 @@ def configure_random_source(source: "Any | None") -> None:
     _random_source = source
 
 
+_scd30_state_path: "str | None" = None
+_current_scd30_chip: "Any | None" = None
+
+
+def configure_scd30_state_path(path: "str | None") -> None:
+    # Same module-level-hook pattern as configure_fram_state_path() above, applied to the SCD30's
+    # own NVM-persisted settings instead of FRAM contents - called once, before build_system()-
+    # equivalent code constructs i2c0, by whatever entry point Step 5 writes. None (the default)
+    # means "in-memory only, no persistence".
+    global _scd30_state_path
+    _scd30_state_path = path
+
+
+def flush_scd30() -> None:
+    # Called once, in a try/finally around asyncio.run(main()), alongside flush_fram() - see
+    # _scd30_chip.py's own module docstring for what is/isn't persisted and why.
+    if _current_scd30_chip is not None:
+        _current_scd30_chip.save_state()
+
+
 def _wire_i2c_devices(id: int) -> "dict[int, Any]":
+    global _current_scd30_chip
     if id == 0:
         from _scd30_chip import Scd30Chip
 
-        return {0x61: Scd30Chip(rdy_pin=Pin(8, mode=Pin.IN), random_source=_random_source)}
+        chip = Scd30Chip(rdy_pin=Pin(8, mode=Pin.IN), random_source=_random_source, state_path=_scd30_state_path)
+        _current_scd30_chip = chip
+        return {0x61: chip}
     if id == 1:
         from _bmp3xx_chip import Bmp3xxChip
         from _sgp40_chip import Sgp40Chip
@@ -163,7 +198,7 @@ class I2C:
         self.freq = freq
         self.timeout = timeout
         self.deinit_called = False
-        self.log: list[tuple] = []
+        self.log: deque[tuple] = deque((), _LOG_MAXLEN)
         self.devices = _wire_i2c_devices(id)  # public: tests reach a wired chip via i2c.devices[addr]
 
     def deinit(self) -> None:
@@ -264,7 +299,7 @@ class SPI:
         self.bits = bits
         self.firstbit = firstbit
         self.deinit_called = False
-        self.log: list[tuple] = []
+        self.log: deque[tuple] = deque((), _LOG_MAXLEN)
         self.device = _wire_spi_device(id)  # public: tests reach the wired chip via spi.device
 
     def init(
@@ -378,7 +413,10 @@ class WDT:
         # task dies naturally when its owning asyncio.run() event loop closes, matching Timer's own
         # cleanup story (FINAL_WIRING_PLAN.md's Step 3 section has the full design writeup).
         self.would_have_triggered_count = 0
-        self.would_have_triggered_log: list[int] = []  # feed_count observed at each notification
+        # feed_count observed at each notification - ad-hoc introspection aid, same shape as
+        # I2C.log/SPI.log above (see _LOG_MAXLEN's own comment): grows for the life of the process
+        # on every would-have-triggered notification, so bounded the same way.
+        self.would_have_triggered_log: deque[int] = deque((), _LOG_MAXLEN)
         self._on_would_trigger = on_would_trigger
         self._task: asyncio.Task | None = None
         self._arm()

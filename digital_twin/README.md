@@ -24,7 +24,10 @@ section for the full design rationale and the owner Q&A round that settled it.
 - `_sgp40_chip.py` / `_scd30_chip.py` / `_bmp3xx_chip.py` — one chip fake per sensor, each verified
   against its own datasheet in `datasheets/` for the raw transaction shape and sensible value
   ranges. `_scd30_chip.py`'s RDY pin fires a real rising edge on its own internal measurement-
-  interval cadence, exercising the real driver's normal IRQ-driven path.
+  interval cadence, exercising the real driver's normal IRQ-driven path. `_scd30_chip.py` also has
+  explicit `save_state()`/on-construction load JSON persistence for its five NVM-backed settings
+  (see "SCD30 persistence" below) — the same `state_path` design `_fram_chip.py` uses, applied to a
+  handful of scalars instead of the whole memory image.
 - `_fram_chip.py` — the MB85RS64V FRAM chip's SPI opcode protocol (WREN/WRDI/RDSR/WRSR/READ/WRITE/
   RDID), plus explicit `save_state()`/on-construction load JSON persistence (see "FRAM persistence"
   below).
@@ -40,15 +43,26 @@ section for the full design rationale and the owner Q&A round that settled it.
 Every chip fake exposes a `.fault` (`FaultInjector`) surface for provoking a bus NAK/CRC-corruption/
 timeout on demand — off/clean by default.
 
-## Swapping the twin in for a Unix-port run (Step 5)
+## Swapping the twin in for a Unix-port run (Step 5) — landed
 
 `src/sensortask_wozi.py` needs **zero twin-awareness** — no `if` branch anywhere distinguishing real
 hardware from simulated. The swap is pure `MICROPYPATH` ordering, the same mechanism
-`tests/machine.py` already uses transparently for the unit-test suite:
+`tests/machine.py` already uses transparently for the unit-test suite. Step 5's own dedicated entry
+point, `scripts/run_unix_port_integration.sh`, does exactly this:
 
 ```bash
-scripts/build_frozen_html.sh   # one-time (or whenever html_stub/ changes): builds frozen_modules/frozen_html.py
-MICROPYPATH="src:digital_twin:frozen_modules:.frozen" <micropython-unix-port-binary> boot_entry/wozi_boot.py
+scripts/run_unix_port_integration.sh                      # bounded automated soak run, default flags
+scripts/run_unix_port_integration.sh --duration 0          # same, but exits right after the soak
+scripts/run_unix_port_integration.sh --fault sgp40:writeto # manual fault-injection exploration
+```
+
+Under the hood (builds the toolchain + `frozen_modules/frozen_html.py` the same way `scripts/
+test.sh` does, then runs `digital_twin/run_wozi_integration.py` — the real orchestrator, not
+`boot_entry/wozi_boot.py` directly, since it also needs to drive the soak/fault-injection/
+`--duration`-forever logic around `sensortask_wozi.main()`, not just block on it):
+
+```bash
+MICROPYPATH="src:digital_twin:ext:frozen_modules:.frozen" <micropython-unix-port-binary> digital_twin/run_wozi_integration.py [flags]
 ```
 
 `frozen_modules` is required here too, added in Step 4 (landed after this doc's original Step 3
@@ -60,8 +74,31 @@ resolves from that segment (see `scripts/build_frozen_html.sh`'s own comment for
 let `tests/machine.py`/`tests/network.py`/`tests/neopixel.py` shadow this package's own same-named
 modules, or vice versa, depending on ordering — the two are meant to never be on the same path at
 once). This is a **separate** invocation from `scripts/test.sh`'s own
-`"src:tests:frozen_modules:.frozen"` — Step 5's own session is expected to add a dedicated entry
-point (e.g. `scripts/run_digital_twin.sh`) for this, not extend `scripts/test.sh` itself.
+`"src:tests:frozen_modules:.frozen"` — `scripts/run_unix_port_integration.sh` is not part of
+`scripts/test.sh`'s own default `tests/test_*.py` glob loop (it can run forever in `--duration`-
+omitted/manual mode, which would hang that loop if it were discovered there instead).
+
+`digital_twin/run_wozi_integration.py` reuses this file's own `launch.py`'s `parse_fault_spec()`/
+`_parse_wifi_outcome()` directly (same device/op/wifi-outcome vocabulary), and defaults to
+`--host localhost --port 8080` (browser-reachable) with FRAM/config state persisted to a fixed
+location inside `digital_twin/` (`fram_state.json`/`config/`, both gitignored, written only on
+explicit shutdown — never an ephemeral per-run path, unlike the automated test tiers below). See
+that module's own docstring for the full flag list and design rationale.
+
+A second, lighter integration tier also landed alongside the full orchestrator:
+`tests/test_digital_twin_sensortask_integration.py` builds the real `sensortask_wozi` object graph
+against the real twin buses and drives real HTTP traffic against it (never `app.dispatch_request()`
+bypass), but only ever starts the specific tasks each test needs (never the full
+`start_and_check_tasks()` supervisor) — runs under `scripts/test.sh`'s own default loop like any
+other test file (via the same per-file `sys.path.insert(0, "digital_twin")` trick every other
+`tests/test_digital_twin_*.py` file already uses), giving fast, everyday regression coverage of the
+twin+webserver wiring without needing the separate `MICROPYPATH` invocation above. It already found
+and fixed one real, previously-undetected bug this way: `src/asy_webserver_service.py`'s
+`_get_settings_flat()` never flattened `config_manager.make_dict()`'s real `{type_name: {field:
+value}}` shape, so `/networking`/`/notification` always returned `{}` and `/system` silently
+dropped its `ntp`-sourced fields — masked by `tests/test_asy_webserver_service.py`'s own uniform
+fakes, which happened to return an already-flat shape. See `_flatten_cfg_values()` in
+`src/asy_webserver_service.py` for the fix.
 
 ### FRAM persistence
 
@@ -83,6 +120,32 @@ finally:
 Omitting `configure_fram_state_path()` (or passing `None`) runs the FRAM twin in-memory only, which
 is what every unit test in `tests/test_digital_twin_fram.py` does by constructing `FramChip`
 directly (that file never goes through `machine.SPI` at all).
+
+### SCD30 persistence
+
+Real SCD30 hardware persists five settings in its own onboard NVM across a power cycle:
+measurement interval, ambient-pressure compensation, altitude compensation, temperature offset, and
+automatic self-calibration enable (confirmed against `src/asy_scd30_driver.py`'s own setter
+docstrings, each marked "NVM-persisted — survives reset() and power cycles"). The twin mirrors this
+with the same explicit-flush design as FRAM persistence above — never automatic — but only for
+those five settings; the live CO2/temperature/humidity readings always restart fresh on a new
+process, matching what a real power cycle does to the sensor's in-flight measurement state:
+
+```python
+machine.configure_scd30_state_path("digital_twin_scd30_state.json")  # before constructing i2c0
+try:
+    asyncio.run(main())
+finally:
+    machine.flush_scd30()
+```
+
+Omitting `configure_scd30_state_path()` (or passing `None`) runs the SCD30 twin in-memory only,
+same convention as FRAM. `digital_twin/run_wozi_integration.py` is the only entry point that
+defaults to a persistent file (`digital_twin/scd30_state.json`, next to its own
+`digital_twin/fram_state.json` default, both gitignored) — `digital_twin/launch.py` keeps its own
+pre-existing in-memory-only default for both (`--fram-state-path`/`--scd30-state-path` opt in
+explicitly), matching decision 6's own "the persistent-by-default behavior is specific to the
+manual/end-to-end entry point" scoping (`FINAL_WIRING_PLAN.md`'s Step 5 section).
 
 ## Running the twin's own tests
 

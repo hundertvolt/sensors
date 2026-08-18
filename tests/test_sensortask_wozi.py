@@ -239,6 +239,62 @@ def test_build_system_is_independently_callable_and_returns() -> None:
     run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
 
 
+def test_build_system_web_host_and_port_default_to_production_values() -> None:
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    assert sensortask_wozi.webserver is not None
+    assert sensortask_wozi.webserver._host == "0.0.0.0"
+    assert sensortask_wozi.webserver._port == 80
+
+
+def test_build_system_web_host_and_port_are_overridable() -> None:
+    # Step 5's own real need: a non-root Unix-port integration run can't bind the production
+    # 0.0.0.0:80 default (EACCES) - build_system() must let a caller override both, mirroring its
+    # existing cfg_path/debug override pattern (FINAL_WIRING_PLAN.md's Step 5 refined plan,
+    # decision 3).
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=8080))
+    assert sensortask_wozi.webserver is not None
+    assert sensortask_wozi.webserver._host == "127.0.0.1"
+    assert sensortask_wozi.webserver._port == 8080
+
+
+def test_main_forwards_web_host_and_port_to_build_system() -> None:
+    # main() itself (not just build_system()) must accept and forward the override - Step 5's own
+    # real entry point calls sensortask_wozi.main(), never build_system() directly. Fakes
+    # start_timers()/ntp_force_sync()/start_and_check_tasks() the same way
+    # test_main_calls_start_timers_then_force_sync_then_start_and_check_tasks_in_order() already
+    # does, and for the same reason (see that test's own comment): start_timers()'s real
+    # Timer-sequencing chain never completes under tests/machine.py's fake, which only fires
+    # Timer callbacks via manual .trigger() - awaiting it for real here would hang.
+    from asy_ntp_client import AsyNtpClient
+    from system_service import SystemService
+
+    real_start_timers = SystemService.start_timers
+    real_force_sync = AsyNtpClient.ntp_force_sync
+    real_start_and_check = SystemService.start_and_check_tasks
+
+    async def _fake_start_timers(self: "Any", timers: "Any") -> None:
+        pass
+
+    async def _fake_force_sync(self: "Any") -> None:
+        pass
+
+    async def _fake_start_and_check(self: "Any", task_starters: "Any") -> None:
+        pass  # never loops - this test only cares that build_system() received the override
+
+    SystemService.start_timers = _fake_start_timers  # type: ignore[method-assign]
+    AsyNtpClient.ntp_force_sync = _fake_force_sync  # type: ignore[method-assign]
+    SystemService.start_and_check_tasks = _fake_start_and_check  # type: ignore[method-assign]
+    try:
+        run(sensortask_wozi.main(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=8080))
+    finally:
+        SystemService.start_timers = real_start_timers  # type: ignore[method-assign]
+        AsyNtpClient.ntp_force_sync = real_force_sync  # type: ignore[method-assign]
+        SystemService.start_and_check_tasks = real_start_and_check  # type: ignore[method-assign]
+    assert sensortask_wozi.webserver is not None
+    assert sensortask_wozi.webserver._host == "127.0.0.1"
+    assert sensortask_wozi.webserver._port == 8080
+
+
 # ---------------------------------------------------------------------------
 # FRAM chunk order - five chunks, exact relative sequence (WIRING_CONTRACT.md item 8's correction).
 # ---------------------------------------------------------------------------
@@ -666,9 +722,24 @@ def test_webserver_measurements_and_sensors_get_include_every_real_sensor() -> N
     run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
     res = _dispatch("GET", "/measurements")
     assert res.status_code == 200
-    assert set(json.loads(res.body).keys()) == {"SCD30", "BMP3XX", "SGP40"}
+    measurements = json.loads(res.body)
+    assert set(measurements.keys()) == {"SCD30", "BMP3XX", "SGP40"}
+    # Regression coverage for a real bug found via a real user report against the real assembled
+    # system: every real driver's own get_dict_data()/get_dict_cfg() already returns a
+    # {name: {...}} self-wrapped shape, and _get_measurements()/_get_sensors() used to index that
+    # by name again, producing {"SCD30": {"SCD30": {...}}} for every sensor - see
+    # src/asy_webserver_service.py's own comments there for the full account. Only checking
+    # top-level keys (as this test used to) doesn't catch that.
+    for name, fields in measurements.items():
+        assert name not in fields, f"{name}'s own value is still self-wrapped: {fields!r}"
+        assert fields, f"{name} returned no fields at all"
+
     res = _dispatch("GET", "/sensors")
-    assert set(json.loads(res.body).keys()) == {"SCD30", "BMP3XX", "SGP40"}
+    sensors = json.loads(res.body)
+    assert set(sensors.keys()) == {"SCD30", "BMP3XX", "SGP40"}
+    for name, fields in sensors.items():
+        assert name not in fields, f"{name}'s own value is still self-wrapped: {fields!r}"
+        assert fields, f"{name} returned no fields at all"
 
 
 def test_webserver_sensors_put_round_trips_a_real_field_through_the_real_driver() -> None:
@@ -678,6 +749,24 @@ def test_webserver_sensors_put_round_trips_a_real_field_through_the_real_driver(
     assert body["result"] == {"SGP40": {"BackupPeriod": "Valid"}}
     assert sensortask_wozi.sgp_reader is not None
     assert run(sensortask_wozi.sgp_reader.cfgmgr.get_dict(["BackupPeriod"])) == {"BackupPeriod": 5}
+
+
+def test_webserver_sensors_put_round_trips_a_real_scd30_field_through_the_real_driver() -> None:
+    # Regression test for FINAL_WIRING_PLAN.md's Step 5 baseline-verification pass: SCD30_Reader
+    # is the only sensors=-registered module that's a plain SensorReader rather than a
+    # SensorReaderConfig subclass (no local cfgmgr - these params live on the sensor itself, see
+    # asy_scd30_driver.py's own _VAL_* comment), so it never inherited get_cfg_schema() the way
+    # every other registered sensor does. _put_sensors() calls module.get_cfg_schema() uniformly
+    # for every sensor named in the PUT body - without SCD30_Reader's own now-added method, this
+    # crashed with a real 500 (AttributeError). The existing SGP40 round-trip test just above
+    # never exercised this because SGP40 is a SensorReaderConfig subclass; this is the SCD30
+    # counterpart, added because nothing in this file (or tests/test_setter_microdot_integration.py,
+    # which routes SCD30 through a separate hand-rolled endpoint instead of the real /sensors PUT
+    # route) ever put the real WebserverService._put_sensors() route and SCD30 together before.
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    res = _dispatch("PUT", "/sensors", {"SCD30": {"MeasInt": 4}})
+    body = json.loads(res.body)
+    assert body["result"] == {"SCD30": {"MeasInt": "Valid"}}
 
 
 def test_webserver_networking_put_ssid_group_reconnects_but_led_group_alone_does_not() -> None:
