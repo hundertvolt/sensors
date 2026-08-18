@@ -235,3 +235,10 @@ correctly by the dedicated pass instead - see `digital_twin/typecheck.ini`'s own
   `tests/_fram_chip_fake.py`'s own WEL-corruption-specific knobs (`drop_wren`,
   `disturb_write_autoclear`, ...) were purpose-built for `FRAM_SPI`'s own defense-in-depth unit
   tests (already covered by `tests/test_asy_fram_driver.py`) and weren't reproduced here.
+- **`segfault_stress_repro.py`** (Step 6, BACKLOG.md open question #7) is a manual, deliberately-
+  aggressive concurrency-stress CLI tool — fires many concurrent HTTP clients against the real
+  assembled system to hunt for a real, `dmesg`-confirmed MicroPython Unix-port interpreter segfault
+  under heavy concurrent load. Not part of any automated test tier (a genuine repro crashes the
+  whole interpreter process) — run manually, same `MICROPYPATH` as `run_wozi_integration.py`. See
+  its own module docstring for the full account, including this project's own repeated
+  non-reproduction attempts.

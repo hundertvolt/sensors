@@ -109,18 +109,27 @@ class UART(Lockable):
         self.poller = select.poll()
         self.poller.register(self._uart, select.POLLIN | select.POLLOUT)
 
-    def deinit(self) -> None:
+    def deinit(self) -> bool:
         # machine.UART.deinit() actually turns off the hardware bus, not just drops the Python
         # reference - confirmed never to raise itself, unlike poller.unregister() below.
-        if self._uart is not None:
-            if self.poller is not None:
-                try:
-                    self.poller.unregister(self._uart)
-                except (OSError, MemoryError):
-                    pass
-            self._uart.deinit()
-            self._uart = None
-            self.poller = None
+        # Returns True if the poller was cleanly unregistered (or there was nothing to unregister),
+        # False if unregister() itself raised - this class has no logger of its own (every method
+        # here is a plain sentinel-return, never-raises primitive per the module docstring), so a
+        # caller that wants to log a failed teardown reads this return value with its own logger
+        # once this driver is actually wired in (Step 6 silent-failure-masking finding - previously
+        # a bare `pass` with no signal at all, even once a real caller exists).
+        if self._uart is None:
+            return True
+        ok = True
+        if self.poller is not None:
+            try:
+                self.poller.unregister(self._uart)
+            except (OSError, MemoryError):
+                ok = False
+        self._uart.deinit()
+        self._uart = None
+        self.poller = None
+        return ok
 
     async def cancel_read_timeout(self) -> bool:
         # Lets another task abort this instance's in-flight ready()/read wait from the outside -

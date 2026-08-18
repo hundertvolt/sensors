@@ -277,10 +277,11 @@ def test_failed_reinit_leaves_the_bus_deinitialized_not_reverted() -> None:
 def test_deinit_calls_real_hardware_deinit_and_clears_poller() -> None:
     uart = make_uart()
     fk = fake(uart)
-    uart.deinit()
+    ok = uart.deinit()
     assert fk.deinit_called is True
     assert uart._uart is None
     assert uart.poller is None
+    assert ok is True
 
 
 class _RaisingUnregisterPoller:
@@ -291,9 +292,13 @@ class _RaisingUnregisterPoller:
 def test_deinit_swallows_poller_unregister_failure() -> None:
     uart = make_uart()
     uart.poller = _RaisingUnregisterPoller()  # type: ignore[assignment]
-    uart.deinit()  # must not raise despite the poller's own unregister() failing
+    ok = uart.deinit()  # must not raise despite the poller's own unregister() failing
     assert uart._uart is None
     assert uart.poller is None
+    # Step 6 (silent-failure-masking finding): a failed unregister() must be reported via the
+    # return value, not just silently swallowed - see asy_udp_socket.py's disconnect() for the
+    # identical pattern applied to its own logger-less class.
+    assert ok is False
 
 
 def test_double_deinit_is_idempotent() -> None:

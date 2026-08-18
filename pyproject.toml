@@ -124,17 +124,19 @@ files = ["improved-quality", "src", "tests", "digital_twin"]
 # to `files` at all (a straight collision, not just a silent resolution-priority hijack, since both
 # are bare top-level `machine.py` files scanned in the same run).
 #
-# digital_twin/launch.py, digital_twin/run_wozi_integration.py, every tests/test_digital_twin_*.py:
-# launch.py and every test_digital_twin_*.py file import nothing from src/ (confirmed directly -
-# grepped every top-level import in all 7 pre-Step-5 test_digital_twin_*.py files; they reach
-# digital_twin/ exclusively, via sys.path.insert(0, "digital_twin"), never src/), so this whole
-# subsystem's tests are a self-contained scope that belongs entirely to digital_twin/typecheck.ini's
-# own dedicated pass (below), not split across both. run_wozi_integration.py (FINAL_WIRING_PLAN.md's
-# Step 5) is the one file that genuinely needs both universes at once - it imports sensortask_wozi
-# (src/) and machine/network (digital_twin/'s own richer twin API, not the real board stub) in the
-# same file - excluded here for the same "machine/network must resolve to the twin, not the real
-# stub" reason as launch.py, and digital_twin/typecheck.ini's own mypy_path now includes src/ too so
-# its sensortask_wozi import still resolves correctly under that dedicated pass. Concretely: several
+# digital_twin/launch.py, digital_twin/run_wozi_integration.py, digital_twin/segfault_stress_repro.py,
+# every tests/test_digital_twin_*.py: launch.py and every test_digital_twin_*.py file import nothing
+# from src/ (confirmed directly - grepped every top-level import in all 7 pre-Step-5
+# test_digital_twin_*.py files; they reach digital_twin/ exclusively, via
+# sys.path.insert(0, "digital_twin"), never src/), so this whole subsystem's tests are a
+# self-contained scope that belongs entirely to digital_twin/typecheck.ini's own dedicated pass
+# (below), not split across both. run_wozi_integration.py (FINAL_WIRING_PLAN.md's Step 5) and
+# segfault_stress_repro.py (Step 6, BACKLOG.md open question #7's segfault-repro tool) are the two
+# files that genuinely need both universes at once - each imports sensortask_wozi (src/) and
+# machine/network (digital_twin/'s own richer twin API, not the real board stub) in the same file -
+# excluded here for the same "machine/network must resolve to the twin, not the real stub" reason
+# as launch.py, and digital_twin/typecheck.ini's own mypy_path now includes src/ too so their
+# sensortask_wozi import still resolves correctly under that dedicated pass. Concretely: several
 # of these files exercise the twin's own richer `machine`/`network` API surface
 # (`WDT.would_have_triggered_count`, `WLAN.script_connect_outcomes()`, `Pin.reset_registry()`,
 # `machine.configure_fram_state_path()`/`flush_fram()`, `SimulatedReboot`, `I2C.devices`/
@@ -163,6 +165,7 @@ exclude = [
     "digital_twin/neopixel\\.py$",
     "digital_twin/launch\\.py$",
     "digital_twin/run_wozi_integration\\.py$",
+    "digital_twin/segfault_stress_repro\\.py$",
     "tests/test_digital_twin_.*\\.py$",
 ]
 

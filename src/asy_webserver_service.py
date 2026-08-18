@@ -463,13 +463,16 @@ class WebserverService:
     async def _close_writer(self, writer: "Any") -> None:
         try:
             writer.close()
-        except Exception:  # writer is caller-supplied (real Stream or a test double) - could
-            # legitimately misbehave; this is best-effort cleanup, never load-bearing.
-            pass
+        except Exception as e:  # writer is caller-supplied (real Stream or a test double) - could
+            # legitimately misbehave; this is best-effort cleanup, never load-bearing, but still
+            # worth a persisted signal rather than a bare pass (Step 6 silent-failure-masking
+            # finding) - a repeatedly-failing close() could leak TCP PCBs under this platform's tiny
+            # connection ceiling with no log trail ever pointing back here.
+            await self.pr.wrn_s("Error closing connection writer:", e, wrnno=4)
         try:
             await asyncio.wait_for(writer.wait_closed(), self._per_call_timeout_s)
-        except Exception:  # bounds a hanging wait_closed() (F.6) as well as any raised error
-            pass
+        except Exception as e:  # bounds a hanging wait_closed() (F.6) as well as any raised error
+            await self.pr.wrn_s("Error waiting for writer to close:", e, wrnno=5)
 
     async def _serve(self, reader: "Any", writer: "Any") -> None:
         current = await self._open_conns.increment()

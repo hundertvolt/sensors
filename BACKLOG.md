@@ -416,6 +416,22 @@ constraints.
    floor. Use whatever tooling and however many tests that takes — not scoped to `gc.mem_free()`-
    delta bisection alone if that's run out of road, per this entry's own last paragraph.
 
+   **Step 6 session result (see `FINAL_WIRING_PLAN.md`'s own Step 6 section for the full account):
+   advanced, not closed — genuinely new evidence found, escalated back to the project owner rather
+   than force-resolved either direction.** A bare `asyncio.sleep()` loop (zero application code,
+   zero registered I/O, `gc.collect()` forced before every reading) was shown to have a real,
+   continuous, non-plateauing `gc.mem_free()` decline under this project's own pinned MicroPython
+   v1.28.0 Unix-port test rig — and `extmod/asyncio`/`extmod/modselect.c` are confirmed, by direct
+   source read, to be one shared, port-generic implementation, not proven Unix-port-only the way the
+   NTP/UDP quirk (open question #5) was. This **weakens** the earlier "confirmed contributors look
+   twin-only" read rather than confirming it — required outcome (1) is not achieved, and required
+   outcome (2) has no available `digital_twin/`-side fix for this specific newly-found contributor,
+   since it doesn't trace to this project's own code. Not chased further into `gdb`/`valgrind`
+   territory, matching the "repro + document, no deep C-level dig" posture the same session's owner
+   Q&A round set for the segfault below (the closest analogous judgment call). Still genuinely open;
+   raise with the project owner before any future session either resumes the C-level dig or accepts
+   this as an unfixable platform characteristic.
+
    **Step 6 scope was subsequently widened by the owner to a full self-healing-system audit, not
    just this one memory-decline finding.** Now that the framework is fully wired up end-to-end, the
    owner wants Step 6 to systematically go after the whole class of failure modes that matter most
@@ -487,6 +503,19 @@ constraints.
    memory finding already had to make); Step 6's own session should establish that per category
    rather than assume uniform scope.
 
+   **Step 6 session result for the other six categories (full account in
+   `FINAL_WIRING_PLAN.md`'s own Step 6 section): cascading recovery storms, task/timer resource
+   leaks, and silent failure masking each found and fixed real bugs** (the `captive_dns.py` missing-
+   backoff instance this entry already named; a genuine, continuously-reproducing `dns_server_task`
+   leak in `asy_wifi_service.py`'s hotspot-mode loop; and three logger-less/silent teardown-path
+   gaps across `asy_udp_socket.py`/`asy_webserver_service.py`/`asy_uart_driver.py`), each with new
+   regression tests. **Rare corner cases, `ticks_ms()` rollover, and race conditions were checked
+   against the real Unix-port interpreter and came back clean** — no bug found beyond the task-leak
+   above, with the `ticks_ms()` audit surfacing a real, separately-useful platform-testing-scope
+   fact (this project's own Unix-port test rig has a different, much larger ticks period than real
+   rp2 hardware — see SPECIFICATION.md Part F.1) rather than a bug. The memory-leak floor itself is
+   the one item still genuinely open — see this entry's own updated paragraph above.
+
    **Step 6 is not the same thing as the whole five-step effort's "large post-merge audit"**
    (confirmed directly by the project owner) — see `FINAL_WIRING_PLAN.md`'s "Branch / session
    structure" section for the precise relationship: Step 6 is its own dedicated session/branch,
@@ -514,6 +543,21 @@ constraints.
    prominently even though it's tangential to what was being chased - folding into the same dedicated
    Step 6 session above (both are memory/robustness issues in the same digital-twin integration
    surface) makes more sense than a third separate investigation.
+
+   **Step 6 session result: not reproduced this session, despite genuine repeated attempts — see
+   `FINAL_WIRING_PLAN.md`'s own Step 6 section for the full account.** Per the owner's chosen scope
+   for this category ("repro + document only, no gdb/backtrace work"), a new permanent tool
+   (`digital_twin/segfault_stress_repro.py`) was built mirroring the original 8-concurrent-clients-
+   ×-15-requests-each shape and run repeatedly (the original configuration, a mixed-real-endpoint
+   variant, a higher-concurrency variant, and a sustained 1200-request multi-round variant) — none
+   triggered the segfault in this session's own sandbox. This doesn't cast doubt on the original,
+   `dmesg`-confirmed finding (a different sandbox/build could plausibly have different sensitivity);
+   it's the same "could not reproduce here despite trying" outcome the Step 5 session already
+   recorded for the original `ECONNRESET` report itself. The tool is kept as a permanent artifact for
+   whoever picks this up next (real rp2 hardware access or a different sandbox might change the
+   odds) — not chased further at the C level this session. `run_wozi_integration.py`'s own `_soak()`
+   gained an explicit comment warning it must stay strictly sequential, so a future "optimization"
+   doesn't accidentally reintroduce the risk into the automated soak path.
 
 ## Deferred / explicitly out-of-scope work
 

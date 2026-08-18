@@ -1300,6 +1300,30 @@ def test_close_writer_swallows_a_raising_close_and_still_awaits_wait_closed() ->
     assert writer.wait_closed_called is True
 
 
+def test_close_writer_logs_a_persisted_warning_when_close_raises() -> None:
+    # Step 6 (silent-failure-masking finding): a raising close()/wait_closed() must not just be
+    # swallowed silently - it needs a persisted signal, the same as every other connection-lifecycle
+    # failure this file already logs (peer-closed-early, timed-out, socket-error).
+    service, app = _make_service()
+    writer = _RaisingCloseWriter()
+    run_timed(service._close_writer(writer))
+    assert service.pr.err_count == 1
+
+
+class _RaisingWaitClosedWriter(_ScriptedWriter):
+    async def wait_closed(self) -> None:
+        self.wait_closed_called = True
+        raise OSError("simulated wait_closed() failure")
+
+
+def test_close_writer_logs_a_persisted_warning_when_wait_closed_raises() -> None:
+    service, app = _make_service()
+    writer = _RaisingWaitClosedWriter()
+    run_timed(service._close_writer(writer))
+    assert writer.close_called is True
+    assert service.pr.err_count == 1
+
+
 def test_timeout_stream_proxy_close_and_wait_closed_forward_to_the_wrapped_stream() -> None:
     # Direct unit coverage of the two Stream-forwarding methods ext/microdot.py's own request/
     # response handling never actually calls in any of Section F's protocol-level scenarios (close()

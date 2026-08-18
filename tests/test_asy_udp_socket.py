@@ -671,17 +671,20 @@ def test_disconnect_clears_state_even_when_unregister_raises() -> None:
     # state forever, with no self-heal (unlike every other failure path in this file).
     addr = make_addr()
 
-    async def scenario() -> tuple[bool, bool, bool]:
+    async def scenario() -> tuple[bool, bool, bool, bool]:
         sock = AsyUDPSocket(addr, mode="server")
         await sock._connect()
         assert sock.connected
         real_poller = sock.poller
         sock.poller = _RaisingUnregisterPoller(real_poller)  # type: ignore[assignment]
-        await sock.disconnect()
-        return sock.sock is None, sock.poller is None, sock.connected is False
+        ok = await sock.disconnect()
+        return sock.sock is None, sock.poller is None, sock.connected is False, ok
 
-    sock_cleared, poller_cleared, not_connected = run(scenario())
+    sock_cleared, poller_cleared, not_connected, ok = run(scenario())
     assert sock_cleared and poller_cleared and not_connected
+    # Step 6 silent-failure-masking finding: disconnect() now reports a failed unregister() via its
+    # own return value, since this logger-less class has no other way to signal it to the caller.
+    assert ok is False
 
 
 class _RaisingCloseSocket:
@@ -698,17 +701,18 @@ class _RaisingCloseSocket:
 def test_disconnect_clears_state_even_when_sock_close_raises() -> None:
     addr = make_addr()
 
-    async def scenario() -> tuple[bool, bool, bool]:
+    async def scenario() -> tuple[bool, bool, bool, bool]:
         sock = AsyUDPSocket(addr, mode="server")
         await sock._connect()
         assert sock.connected
         real_sock = sock.sock
         sock.sock = _RaisingCloseSocket(real_sock)  # type: ignore[assignment]
-        await sock.disconnect()
-        return sock.sock is None, sock.poller is None, sock.connected is False
+        ok = await sock.disconnect()
+        return sock.sock is None, sock.poller is None, sock.connected is False, ok
 
-    sock_cleared, poller_cleared, not_connected = run(scenario())
+    sock_cleared, poller_cleared, not_connected, ok = run(scenario())
     assert sock_cleared and poller_cleared and not_connected
+    assert ok is False  # Step 6 finding - see the unregister-raises test above for the full note
 
 
 # ---------------------------------------------------------------------------
@@ -829,17 +833,21 @@ def test_connect_self_heals_after_conn_tries_exhausted() -> None:
 def test_disconnect_is_idempotent_and_resets_state() -> None:
     addr = make_addr()
 
-    async def scenario() -> tuple[bool, bool, bool]:
+    async def scenario() -> tuple[bool, bool, bool, bool, bool]:
         sock = AsyUDPSocket(addr, mode="server")
         await sock._connect()
         assert sock.connected
-        await sock.disconnect()
-        state = (sock.sock is None, sock.poller is None, sock.connected is False)
-        await sock.disconnect()  # must not raise when already disconnected
-        return state
+        first_ok = await sock.disconnect()
+        sock_cleared, poller_cleared, not_connected = sock.sock is None, sock.poller is None, sock.connected is False
+        second_ok = await sock.disconnect()  # must not raise when already disconnected
+        return sock_cleared, poller_cleared, not_connected, first_ok, second_ok
 
-    sock_cleared, poller_cleared, not_connected = run(scenario())
+    sock_cleared, poller_cleared, not_connected, first_ok, second_ok = run(scenario())
     assert sock_cleared and poller_cleared and not_connected
+    # A clean teardown (nothing raised) reports True; an already-disconnected no-op also reports
+    # True (there was nothing to fail at) - only a genuine unregister()/close() failure is False.
+    assert first_ok is True
+    assert second_ok is True
 
 
 def test_object_is_reusable_after_disconnect() -> None:

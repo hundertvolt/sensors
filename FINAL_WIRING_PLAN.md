@@ -2408,6 +2408,159 @@ serious, still-unresolved finding (a real MicroPython Unix-port interpreter segf
 concurrent connection load) — see `BACKLOG.md`'s open question #7, folded into the same dedicated
 Step 6 session as the memory-decline investigation above.
 
+### Step 6 — Self-healing-system failure-mode audit
+
+**Goal**: BACKLOG.md open question #6 (widened scope) and #7 — systematically go after the class of
+failure modes that matter most in a long-running, self-healing embedded system (rare corner cases,
+memory leaks, race conditions, silent failure masking, cascading recovery storms, `ticks_ms()`
+rollover, task/timer resource leaks) plus the real MicroPython Unix-port interpreter segfault under
+heavy concurrent load. Required methodology per category: look it through, check against the real
+Unix-port interpreter (not just read), fix confirmed issues, secure with regression tests.
+
+**Own research/scoping before implementation**: read CLAUDE.md, this doc's branch structure and
+Step 5 history in full, BACKLOG.md open questions #6/#7, WIRING_CONTRACT.md, digital_twin/README.md,
+and directly grepped/read every `ticks_ms`/`Timer(`/`create_task`/`except` site in `src/` before
+scoping per-category plans and asking clarifying questions (owner answers: segfault gets "repro +
+document only, no gdb/backtrace work"; the memory-decline finding's real-hardware-confirmation
+outcome accepts code-level allocation-attribution proof to twin-only constructs, no physical unit
+needed; no fixed soak-duration budget; a persisted `pr.err_s()`/`pr.wrn_s()` call counts as
+sufficient signal for the silent-failure-masking bar).
+
+**Findings and outcomes per category**:
+
+1. **Cascading recovery storms — fixed.** `captive_dns.py`'s `DNSServer.run()` looped on a
+   persistently-failing (`(None, None)`-returning, non-raising) `recvfrom()` with zero delay (the
+   ~5 lines/sec spam BACKLOG.md's own Step 5 re-audit session first measured). Fixed with a capped
+   exponential backoff (0.5s → 1s → 2s → 4s → capped at 5s, reset to the floor on any successful
+   `recvfrom()`) applied specifically to that path — distinct from the existing flat 3s backoff on
+   the outer `except Exception`. `tests/test_captive_dns.py` gained three new real-timing regression
+   tests (55/55 passing).
+
+2. **`ticks_ms()`/`ticks_diff()` rollover — checked, no bug found.** All 9 real use sites in `src/`
+   (`asy_bmp3xx_driver.py`, `asy_notification_service.py`, `asy_uart_driver.py`,
+   `asy_udp_socket.py`) already use `time.ticks_diff()` correctly in a bounded, short-timeout
+   pattern — no raw subtraction anywhere. `tests/test_ticks_rollover.py` (new) empirically proves
+   `ticks_diff()`/`ticks_add()`'s wraparound math is correct at this Unix-port test rig's own period
+   boundary. **A real, confirmed platform-testing-scope gap found while writing it**: the real
+   RP2040 target's `ticks_ms()` period is `2**30` (~12.4 days), but this project's own Unix-port
+   "standard" test rig's period is `2**62` (64-bit host word vs. rp2's 32-bit one, same shared
+   `MICROPY_OBJ_REPR_A` formula) — the literal RP2040-specific boundary cannot be empirically
+   exercised under this test rig at all, only inferred by code identity (one shared, period-
+   parametric C implementation). Also confirmed directly: `time.ticks_ms` cannot be monkeypatched
+   (`py/objmodule.c`'s fixed-map store-attribute rejection for every module except `builtins`) —
+   both facts now recorded in SPECIFICATION.md Part F.1.
+
+3. **Task/timer resource leaks — one real bug found and fixed.** `asy_wifi_service.py`'s
+   `_run_hotspot_mode()` calls `_start_hotspot()` (and so `_configure_hotspot_ap()`) on *every*
+   `wlan_connect()` loop iteration where `wlan.status() != network.STAT_GOT_IP` — true on every
+   iteration while purely in AP mode, since `STAT_GOT_IP` is a STA-only status an AP interface never
+   reports (confirmed against both `tests/network.py` and `digital_twin/network.py`'s own `WLAN`
+   fakes). `_configure_hotspot_ap()` unconditionally did
+   `self.dns_server_task = evtloop.create_task(...)` with no is-already-running guard — unlike every
+   other task-holding attribute in this file, leaking one new concurrent `DNSServer.run()` task per
+   `wifi_refresh_sec` for as long as a unit stayed in hotspot/AP-fallback mode (a real, long-running-
+   uptime scenario, not an edge case), all sharing the one `DNSServer` instance's single
+   `AsyUDPSocket`/`select.poll()`. Fixed with the same `is None or .done()` guard
+   `system_service.py`'s own task supervisor already uses. Every other `Timer()`/`create_task()`
+   site in `src/` was audited directly: every `Timer()` attribute is a single, stably-reused
+   instance armed via `.init()` (never leaks, since `.init()` on an existing `Timer` just reprograms
+   it), and every other ad-hoc (non-supervisor-managed) task attribute (`ledflash`) already
+   null-checks-then-cancels correctly at every reassignment site. Two new regression tests in
+   `tests/test_asy_wifi_service.py` (176/176 passing).
+
+4. **Race conditions — checked, no bug found beyond the task-leak above.** Concurrent
+   `ConfigManager.write_config()` calls are already serialized via `self.config_lock`
+   (`asyncio.Lock()`), with reads safe by construction (no `await` inside the read's own critical
+   section) — already covered by `tests/test_config_manager.py`'s own
+   `test_concurrent_writes_are_serialized_not_lost`. A REST request arriving before
+   `build_system()`'s setup batch completes is structurally impossible: `sensortask_wozi.main()`
+   only starts the webserver's own listening-socket task (via `start_and_check_tasks()`) *after*
+   `build_system()` (which includes the full setup batch) returns — confirmed by direct read, not
+   assumed. The task supervisor's own `.done()`-before-restart check can't race a task's own
+   in-flight cleanup either, by `asyncio.Task` semantics (`.done()` only becomes true after the
+   coroutine, including its own `finally` blocks, has fully returned).
+
+5. **Silent failure masking — three real gaps found and fixed** (triaged via a dedicated background
+   review of all ~110 `except`-clause sites in `src/*.py`, bar: a persisted `pr.err_s()`/`pr.wrn_s()`
+   call is sufficient signal; only a bare `pass` with zero signal, or a silently-plausible wrong
+   return value, counts). All three shared the same shape — a teardown/cleanup helper in an
+   otherwise well-logged file, returning `None` unconditionally with no sentinel available:
+   - `asy_udp_socket.py`'s `AsyUDPSocket._disconnect_locked()`/`disconnect()` — this class has no
+     logger of its own by design (every method is a plain sentinel-return, never-raises primitive).
+     `disconnect()` now returns `bool` (teardown succeeded cleanly or not) instead of `None`, so a
+     caller with its own logger can observe and log a failure; `captive_dns.py`'s `DNSServer.run()`
+     (the one real production caller) now does. A repeated, silent failure here across many
+     short-lived DNS/NTP UDP sockets over a long uptime could otherwise exhaust the platform's
+     genuinely finite socket/poll-slot budget with zero log trail pointing back to the cause.
+   - `asy_webserver_service.py`'s `WebserverService._close_writer()` — both `except Exception: pass`
+     branches (on every single HTTP connection's cleanup) now log via `self.pr.wrn_s()`, matching
+     this file's own established connection-lifecycle logging convention.
+   - `asy_uart_driver.py`'s `UART.deinit()` — same shape, fixed for consistency even though this
+     driver isn't wired into any live caller yet (per its own module docstring) — now returns `bool`
+     the same way `AsyUDPSocket.disconnect()` does, ready for whoever wires it in.
+
+   New/extended regression tests in `tests/test_asy_udp_socket.py`, `tests/test_captive_dns.py`,
+   `tests/test_asy_webserver_service.py`, and `tests/test_asy_uart_driver.py` (all passing). No
+   silent-fake-success retry loops were found anywhere in `src/`.
+
+6. **Memory leaks — `src/` sweep clean; the digital-twin `~245 bytes/sec` residual floor
+   (BACKLOG.md open question #6's own carried-forward finding) genuinely advanced, not fully
+   closed — escalated to the project owner rather than force-closed.** Static sweep of every
+   `.append()`/accumulator site in `src/*.py`: none are unboundedly-growing (all either already
+   deque-bounded via `print_log.py`'s established pattern, or naturally bounded by small,
+   fixed-size registration/protocol constraints) — this class of bug, already found and fixed four
+   times over in `digital_twin/`-only code across prior sessions, does not additionally exist in
+   `src/`. For the digital-twin floor itself: `digital_twin/machine.py`'s `Timer`/`WDT` background-
+   task mechanics (the only other twin-internal task sources besides `src/`'s own starters) were
+   directly re-examined and confirmed to add nothing new beyond what the prior session's own
+   WDT-rewrite A/B test already ruled out. **A genuinely new, real, empirically-verified finding**:
+   even a bare `asyncio.sleep()` loop — a single coroutine, zero application code, zero registered
+   I/O streams, `gc.collect()` forced before every measurement (ruling out the common
+   "transient-allocation-awaiting-GC" false read) — shows a real, continuous,
+   non-plateauing `gc.mem_free()` decline under this project's pinned MicroPython v1.28.0 Unix-port
+   "standard" build (~18-25 bytes/sec in isolation; reproduces identically with `gc.disable()` set,
+   ruling out an automatic-collection-timing artifact; a raw `select.poll().ipoll()` loop alone,
+   with nothing registered, shows a smaller but still non-zero decline too). This **weakens**, not
+   strengthens, the earlier working hypothesis that the confirmed contributors trace to twin-only
+   chip-fake/`Pin` mechanics: `extmod/asyncio/*.py` and `extmod/modselect.c` are one shared,
+   port-generic implementation (confirmed directly against the pinned source and both ports'
+   manifests) — not proven Unix-port-only the way the NTP/UDP quirk (BACKLOG open question #5) was.
+   A web search for prior reports of this exact symptom found only the common "apparent leak is
+   actually deferred GC" explanation, which this investigation had already ruled out by forcing
+   collection before every reading. **Required outcome (1)** (positively confirm the decline can't
+   happen on real hardware) is therefore **not achieved** for this newly-found contributor — the
+   opposite of the earlier plausible read. **Required outcome (2)** (fix the digital-twin-side root
+   cause) does not have a `digital_twin/`-side fix available for this specific contributor, since
+   it traces to shared MicroPython core runtime code, not this project's own Python. Consistent with
+   the owner's "repro + document, no deep C-level dig" posture already set for the segfault
+   category (the closest analogous judgment call), this was not chased further into `gdb`/`valgrind`
+   territory this session. **Flagged to the project owner as a genuinely still-open, architecturally
+   significant question** — not silently resolved either direction.
+
+7. **Segfault (BACKLOG.md open question #7) — repro attempted, not reproduced this session;
+   permanent tool committed.** Per the owner's chosen scope ("repro + document only, no gdb/
+   backtrace work"), built `digital_twin/segfault_stress_repro.py` (a new, permanent, manual
+   concurrency-stress CLI tool, mirroring the originally-reported 8-concurrent-clients-×-15-
+   requests-each shape) and ran it repeatedly against the real assembled system: the original
+   configuration (3 attempts), a mixed-real-endpoint variant matching `_soak()`'s own endpoint list
+   (3 attempts), a higher-concurrency variant (20×30, 2 attempts — one hit a real, catchable,
+   distinct `MemoryError`, an artifact of this diagnostic tool's client and server sharing one
+   process/heap, not a production risk), and a sustained multi-round variant (12×20 × 5 rounds =
+   1200 requests). **None reproduced the segfault in this session's own sandbox**, despite genuine,
+   repeated effort — the same "could not reproduce here despite trying" outcome the Step 5 session
+   already recorded for the original `ECONNRESET` report itself. This does not mean the segfault
+   isn't real: it was confirmed directly via `dmesg`, twice in a row, in that prior session, which
+   this session has no reason to doubt. The tool is kept as a permanent, reusable artifact (added to
+   `pyproject.toml`'s mypy exclude list alongside `run_wozi_integration.py`, same "needs both the
+   src/ and twin universes at once" reason) for whoever picks this up next — real rp2 hardware
+   access or a different sandbox/build might change the odds. `run_wozi_integration.py`'s own
+   `_soak()` gained an explicit comment warning it must stay strictly sequential and never be
+   "optimized" into concurrent requests, which would risk reintroducing this.
+
+**Full verification**: `scripts/lint.sh`/`scripts/typecheck.sh` clean (only `improved-quality/`'s
+pre-existing tracked debt remains), full `scripts/test.sh` green. See BACKLOG.md's open questions
+#6/#7 for the pointer back to this section.
+
 ## Out of scope for all five steps
 
 - Real website content (stub only, see Step 4).

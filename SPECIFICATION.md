@@ -2429,6 +2429,23 @@ this Part — see this document's front matter for that tradeoff.
   - **`struct.pack()`/`pack_into()` silently zero-pad or truncate on a value/argument-count
     mismatch instead of raising**, unlike CPython. Don't rely on a mismatch surfacing as an
     exception; validate shape before packing if it matters.
+  - **`time.ticks_ms()` wraps every `2**30` ms (~12.4 days)** — confirmed directly against the
+    pinned v1.28.0 source: `py/mpconfig.h`'s `MICROPY_PY_TIME_TICKS_PERIOD` is
+    `MP_SMALL_INT_POSITIVE_MASK + 1`, which resolves to `2**30` for `MICROPY_OBJ_REPR_A` (the rp2
+    port's representation) on a 32-bit target per `py/smallint.h`. `time.ticks_diff(a, b)` is
+    correct for any true elapsed time under `2**29` ms (~6.2 days) regardless of whether the raw
+    integers wrapped in between — every real `ticks_ms()`/`ticks_diff()` use site in `src/` (Step
+    6's own audit, `tests/test_ticks_rollover.py`) is a short, bounded timeout loop well inside
+    that window; a raw `now - t0` subtraction anywhere would not be. **`time.ticks_ms` (and every
+    other `time` module attribute) cannot be monkeypatched in a test** — confirmed directly against
+    `py/objmodule.c`: a builtin C module's globals dict is built via `MP_DEFINE_CONST_DICT`
+    (`map.is_fixed = 1`), and the store-attribute path explicitly rejects writing to a fixed map for
+    every module except `builtins` (which gets a dedicated override-dict special case via
+    `MICROPY_CAN_OVERRIDE_BUILTINS`) — unlike a plain `.py`-sourced module (e.g.
+    `tests/test_captive_dns.py`'s `captive_dns_module.DNSQuery = ...`), whose globals dict is an
+    ordinary, mutable dict. Test rollover-sensitive logic with synthetic ticks-space integers built
+    from `time.ticks_add()`/passed straight to `time.ticks_diff()`, not by trying to control what a
+    live `time.ticks_ms()` call returns.
 - **Always check current MicroPython and Microdot documentation before asserting how an API
   behaves** — do not rely on training-data memory for either. This has already caught real
   discrepancies once; treat it as a standing requirement for every session, not a one-time step.

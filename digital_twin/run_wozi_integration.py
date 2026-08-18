@@ -230,6 +230,15 @@ async def _wait_until_serving(host: str, port: int, timeout_s: float = 10.0) -> 
 
 
 async def _soak(host: str, port: int, cycles: int) -> "list[str]":
+    # Deliberately strictly-sequential (one fetch() awaited at a time, never asyncio.gather()'d) -
+    # do not "optimize" this into concurrent requests. BACKLOG.md open question #7: a real
+    # MicroPython Unix-port interpreter segfault (confirmed via dmesg, not a catchable Python-level
+    # exception) was found by firing 8+ concurrent clients against this same assembled system, well
+    # beyond WebserverService's own max_connections=3 ceiling - this soak's own sequential pattern
+    # never approaches that and must stay that way. digital_twin/segfault_stress_repro.py is the
+    # dedicated, separate, manual tool for deliberately exploring that concurrency - never fold its
+    # pattern into this automated soak.
+    #
     # Every fetch() below is wrapped, not left to propagate - the real server already tolerates an
     # individual connection failure gracefully (WebserverService._serve()'s own broad exception
     # handling, its max_connections=3 reject-when-full path among them: a rejected connection is

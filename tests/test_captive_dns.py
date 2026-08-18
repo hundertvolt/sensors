@@ -314,8 +314,15 @@ class _FakeUDPS:
         self.sent: list[tuple[bytes, tuple[str, int]]] = []
         self.sendto_results: list[int | None] = []
         self.disconnect_called = False
+        self.disconnect_ok = True  # real AsyUDPSocket.disconnect()'s success return, see Step 6 note
+        # One entry per recvfrom() call, for backoff-timing assertions. "Any", not "int": mypy's
+        # time.pyi types ticks_ms() as the opaque _TicksMs marker class (deliberately incompatible
+        # with plain int to catch raw-arithmetic misuse) - these values are only ever fed back into
+        # time.ticks_diff(), never used as plain ints.
+        self.recv_call_times_ms: list[Any] = []
 
     async def recvfrom(self, bufsize: int, timeout_ms: int = -1) -> tuple[bytes | None, tuple[str, int] | None]:
+        self.recv_call_times_ms.append(time.ticks_ms())
         if self._incoming:
             data, addr = self._incoming.pop(0)
             await asyncio.sleep(0)
@@ -328,8 +335,9 @@ class _FakeUDPS:
         self.sent.append((packet, addr))
         return result
 
-    async def disconnect(self) -> None:
+    async def disconnect(self) -> bool:
         self.disconnect_called = True
+        return self.disconnect_ok
 
 
 async def _wait_until(predicate: "Any", timeout_ms: int = 1000) -> bool:
@@ -924,7 +932,7 @@ class _RaisingDisconnectUDPS(_FakeUDPS):
         super().__init__([])
         self._exc = exc
 
-    async def disconnect(self) -> None:
+    async def disconnect(self) -> bool:
         self.disconnect_called = True
         raise self._exc
 
@@ -944,6 +952,96 @@ def test_run_disconnect_reporting_a_genuine_exception_logs_a_persisted_error() -
     run(scenario())  # must not raise despite disconnect() itself failing
 
 
+# ---------------------------------------------------------------------------
+# run()'s recvfrom() empty-result backoff (BACKLOG.md open question #6's "cascading recovery
+# storms" category, first concrete instance): a persistently-failing recvfrom() that returns
+# (None, None) without ever raising - e.g. a bind() that never actually succeeded - must not spin
+# the loop at zero delay (the real end-to-end run measured ~5 wrn_s() lines/second before this fix).
+# Distinct from the genuinely-unexpected-exception backoff tested above, which already had its own
+# flat 3s pause; this is the normal, no-exception "no data" path, which previously had none at all.
+# ---------------------------------------------------------------------------
+
+
+def test_run_backs_off_with_increasing_delay_on_repeated_empty_recvfrom() -> None:
+    query = make_query(["a", "io"])
+    fake = _FakeUDPS([(None, None), (None, None), (None, None), (query, ("127.0.0.5", 5000))])
+
+    async def scenario() -> list[int]:
+        server = DNSServer()
+        server.udps = fake  # type: ignore[assignment]
+        task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
+        try:
+            assert await _wait_until(lambda: len(fake.sent) >= 1, timeout_ms=15000)
+            return fake.recv_call_times_ms
+        finally:
+            await _cancel(task)
+
+    call_times = run(scenario())
+    # >= 4: 3 empty results + the one that finally returns real data - possibly a 5th call too
+    # (run() loops straight back into recvfrom() again after replying, racing this test's own
+    # _wait_until poll), which is fine - only the first 3 backoff gaps are this test's concern.
+    assert len(call_times) >= 4
+    gaps = [time.ticks_diff(call_times[i + 1], call_times[i]) for i in range(3)]
+    # gaps[i] is the pause *after* recvfrom() call i's (None, None) result, before call i+1 fires -
+    # must grow across consecutive failures, not stay at the previous zero-delay spin.
+    assert 400 <= gaps[0] < 800  # ~0.5s initial backoff
+    assert 900 <= gaps[1] < 1400  # ~1.0s (doubled)
+    assert 1900 <= gaps[2] < 2600  # ~2.0s (doubled again)
+
+
+def test_run_recv_backoff_resets_after_a_successful_receive() -> None:
+    query = make_query(["a", "io"])
+    fake = _FakeUDPS(
+        [
+            (None, None),
+            (None, None),  # ramps the backoff up
+            (query, ("127.0.0.5", 5000)),  # real data received - must reset the backoff
+            (None, None),
+            (None, None),
+        ]
+    )
+
+    async def scenario() -> list[int]:
+        server = DNSServer()
+        server.udps = fake  # type: ignore[assignment]
+        task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
+        try:
+            assert await _wait_until(lambda: len(fake.recv_call_times_ms) >= 5, timeout_ms=15000)
+            return fake.recv_call_times_ms
+        finally:
+            await _cancel(task)
+
+    call_times = run(scenario())
+    gaps = [time.ticks_diff(call_times[i + 1], call_times[i]) for i in range(4)]
+    assert 400 <= gaps[0] < 800  # first empty result -> ~0.5s
+    assert 900 <= gaps[1] < 1400  # second empty result -> ~1.0s (doubled)
+    assert gaps[2] < 300  # real data received - no backoff sleep before the next recvfrom()
+    assert 400 <= gaps[3] < 800  # backoff restarted from the initial value, not continuing from ~2.0s
+
+
+def test_run_recv_backoff_caps_at_the_ceiling() -> None:
+    # Many consecutive failures must never grow the pause past the configured ceiling - a real,
+    # bounded worst case, not just "slower than before." Uncapped doubling would reach 8.0s on the
+    # 5th failure; the fix's ceiling is 5.0s.
+    query = make_query(["a", "io"])
+    fake = _FakeUDPS([(None, None)] * 5 + [(query, ("127.0.0.5", 5000))])
+
+    async def scenario() -> list[int]:
+        server = DNSServer()
+        server.udps = fake  # type: ignore[assignment]
+        task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
+        try:
+            assert await _wait_until(lambda: len(fake.sent) >= 1, timeout_ms=20000)
+            return fake.recv_call_times_ms
+        finally:
+            await _cancel(task)
+
+    call_times = run(scenario())
+    assert len(call_times) >= 6  # 5 empty results + the one that finally returns real data
+    gaps = [time.ticks_diff(call_times[i + 1], call_times[i]) for i in range(5)]
+    assert 4700 <= gaps[4] < 5400  # 5th failure's pause is capped at ~5.0s, not the uncapped ~8.0s
+
+
 def test_run_disconnect_reporting_a_second_cancellation_does_not_raise_or_log() -> None:
     fake = _RaisingDisconnectUDPS(asyncio.CancelledError())
 
@@ -957,6 +1055,25 @@ def test_run_disconnect_reporting_a_second_cancellation_does_not_raise_or_log() 
         assert server.pr.err_count == 0  # a second CancelledError during cleanup isn't a real error
 
     run(scenario())  # a second CancelledError delivered during cleanup must not escape either
+
+
+def test_run_logs_a_persisted_warning_when_disconnect_reports_incomplete_teardown() -> None:
+    # Step 6 (silent-failure-masking finding): AsyUDPSocket.disconnect() never raises, but now
+    # reports a failed unregister()/close() via its bool return - run() must actually check it and
+    # log, not just call disconnect() and move on regardless of the result.
+    fake = _FakeUDPS([])
+    fake.disconnect_ok = False
+
+    async def scenario() -> None:
+        server = DNSServer(debug=PrintLog.level_warn())
+        server.udps = fake  # type: ignore[assignment]
+        task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
+        await asyncio.sleep_ms(20)
+        await _cancel(task)
+        assert fake.disconnect_called is True
+        assert server.pr.err_count == 1
+
+    run(scenario())
 
 
 if __name__ == "__main__":
