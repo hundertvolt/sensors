@@ -3,8 +3,9 @@
 Temporary planning doc, same lifecycle class as `WIRING_CONTRACT.md`/the retired `AUDIT_PLAN.md`:
 this is the **global list** for the whole "final wiring-up" effort — ideas, goals, documentation
 links, and the criteria that make the five steps' open ends meet when combined into one working
-prototype. Deleted once all five steps below have merged back and the large post-merge audit
-closes; whatever in here is still true and permanent at that point migrates into CLAUDE.md/
+prototype. Deleted once all five steps below, Step 6 (`BACKLOG.md`'s open question #6 — see
+"Branch / session structure" below), and the large post-merge audit have all merged back/closed;
+whatever in here is still true and permanent at that point migrates into CLAUDE.md/
 SPECIFICATION.md/`WIRING_CONTRACT.md` instead of staying here, exactly as `AUDIT_PLAN.md`'s own
 findings did.
 

@@ -1,19 +1,23 @@
 # Wiring Contract — `improved-quality/sensortask-wozi.py` study
 
-**Status update (Steps 1-4 landed)**: this doc's own original header said it would be deleted once the
+**Status update (Steps 1-5 landed)**: this doc's own original header said it would be deleted once the
 real Stage-1 standalone `sensortask-wozi.py` successor landed — that's now true, `src/sensortask_wozi.py`
 exists (Step 1 of `FINAL_WIRING_PLAN.md`'s five-step effort), Step 2 (the generic webserver/API
 service, `src/asy_webserver_service.py`, wired into `build_system()`) has landed on top of it too,
 Step 3 (the `digital_twin/` hardware simulator, a separate module at the `machine`-mocking
 boundary with zero `src/sensortask_wozi.py` awareness by design) has landed alongside it without
-touching this construction order at all, and Step 4 (the website-placeholder scaffold - `import
+touching this construction order at all, Step 4 (the website-placeholder scaffold - `import
 frozen_html` plus `WebserverService(..., static_mount="/html")`, see item 14 below) extends the same
-`WebserverService(...)` construction call item 14 already documents, without adding a new item.
-Kept alive anyway, deliberately deviating from that stated lifecycle: Step 5 still needs this exact
-construction order/dependency graph preserved as it builds on top of it, so this remains the living
-reference until the whole five-step effort merges back, not just until Step 1 alone lands. Still
-**keep it up to date** whenever a change to `src/sensortask_wozi.py` touches anything documented
-below.
+`WebserverService(...)` construction call item 14 already documents, without adding a new item, and
+Step 5 (full Unix-port integration) landed the `host=web_host, port=web_port` override noted at item
+14 too — also no construction-order or dependency-graph change, just an optional override on an
+already-documented call.
+Kept alive anyway, deliberately deviating from that stated lifecycle: Step 6 (`BACKLOG.md`'s open
+question #6, the self-healing-system failure-mode audit) is expected to run against this same
+construction order/dependency graph next, so this remains the living reference until the whole
+final-wiring effort (five steps + Step 6 + the large post-merge audit) merges back, not just until
+Step 1 alone lands. Still **keep it up to date** whenever a change to `src/sensortask_wozi.py`
+touches anything documented below.
 
 Historical note: this doc started as a pre-Step-1 study of `improved-quality/sensortask-wozi.py`'s
 own flat, synchronous construction sequence (kept below, still accurate as a description of that
