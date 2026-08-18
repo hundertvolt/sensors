@@ -380,12 +380,56 @@ constraints.
    `Pin` mechanics so far) or has any real-hardware-relevant component is itself unresolved and
    should be established before deciding whether a `src/` fix is ever warranted.
    **Owner decision: this becomes its own dedicated Step 6, run in a separate session immediately
-   after this branch merges into the wire-up branch.** That session's two required outcomes: (1)
-   positively confirm this cannot happen on real RP2040 hardware (not just "the confirmed
-   contributors look twin-only" — actually establish it), and (2) find and fix the digital-twin-side
-   root cause regardless, including the still-unidentified ~245 bytes/sec floor. Use whatever
-   tooling and however many tests that takes — not scoped to `gc.mem_free()`-delta bisection alone
-   if that's run out of road, per this entry's own last paragraph.
+   after this branch merges into the wire-up branch.** That session's two required outcomes for
+   *this* memory-decline finding: (1) positively confirm this cannot happen on real RP2040 hardware
+   (not just "the confirmed contributors look twin-only" — actually establish it), and (2) find and
+   fix the digital-twin-side root cause regardless, including the still-unidentified ~245 bytes/sec
+   floor. Use whatever tooling and however many tests that takes — not scoped to `gc.mem_free()`-
+   delta bisection alone if that's run out of road, per this entry's own last paragraph.
+
+   **Step 6 scope was subsequently widened by the owner to a full self-healing-system audit, not
+   just this one memory-decline finding.** Now that the framework is fully wired up end-to-end, the
+   owner wants Step 6 to systematically go after the whole class of failure modes that matter most
+   in a long-running, self-healing embedded system — reasoned as: the *worst* failures in such a
+   system aren't the loud immediate ones, they're the ones that let it keep running while doing the
+   wrong thing, or that only show up after days/weeks of uptime. **Required categories** (owner-
+   specified, plus two flagged during the discussion and accepted into scope):
+     - Rare corner cases (owner-specified)
+     - Memory leaks (owner-specified) — this entry's own finding is the first concrete instance
+     - Race conditions on concurrent/repetitive calls, or on system startup (owner-specified)
+     - Silent failure masking — an overly broad `except` or a retry loop that swallows a real error
+       and keeps running while producing subtly wrong data or silently skipping work, with nothing
+       ever signaling it happened; worse than a crash, since a crash at least trips the watchdog and
+       gets noticed
+     - Cascading recovery storms — the self-healing/retry logic itself becoming the failure, e.g.
+       every unit hammering a simultaneous reconnect/resync after a shared outage (WiFi, NTP)
+       instead of backing off
+     - `time.ticks_ms()`/`time.ticks_diff()` rollover (~12.4 days at the RP2040's ms resolution) —
+       a long-running-specific timing-correctness class distinct from the above, worth checking
+       explicitly across every use site rather than assuming `ticks_diff()` is used everywhere it
+       needs to be (a raw subtraction anywhere in the timing code would silently misbehave only
+       after many days of uptime, exactly the kind of bug this audit is meant to catch)
+     - Task/timer resource leaks as distinct from raw memory bytes — an `asyncio.Task` or
+       `machine.Timer` that isn't cancelled/deinitialized on a retry or reconnect path can leave a
+       duplicate background loop running (double reads, double log lines, doubled I2C traffic)
+       without necessarily showing up as a `gc.mem_free()` decline
+   **Required methodology per category** (owner-specified, four steps, all required — no category is
+   done after only the first or second):
+     1. **Look it through** — static analysis of the wired-up system for the mistakes/oversights/bad
+        patterns that lead to each category (e.g. every `except`/retry site, every task/timer
+        lifecycle, every concurrent-entry code path, every raw `ticks_ms()` subtraction).
+     2. **Check, don't just look** — directly exercise the actual code running on the MicroPython
+        Unix port against each category; static reading alone doesn't satisfy this step.
+     3. **Fix** — don't let a confirmed issue persist; this is a fix-it session, not a
+        catalog-and-defer session (this entry's own still-open ~245 bytes/sec floor is exactly the
+        kind of thing Step 6 exists to close out, not re-document again).
+     4. **Secure** — write extensive and/or soak tests specifically targeting each category, so a
+        regression in any of these classes gets caught automatically going forward, not just this
+        once.
+   Not yet scoped: which categories apply where across `src/`, `improved-quality/`, and
+   `digital_twin/` (the digital-twin-only vs. real-hardware-relevant distinction this entry's own
+   memory finding already had to make); Step 6's own session should establish that per category
+   rather than assume uniform scope.
 7. **The real MicroPython Unix-port interpreter itself segfaults under heavy concurrent connection
    load against the real assembled system** — found while investigating a real user-reported
    `OSError: [Errno 104] ECONNRESET` crash in `digital_twin/run_wozi_integration.py`'s own soak (that
