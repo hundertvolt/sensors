@@ -432,6 +432,53 @@ constraints.
    raise with the project owner before any future session either resumes the C-level dig or accepts
    this as an unfixable platform characteristic.
 
+   **Re-investigation session result (owner-directed skeptical re-audit, separate session): the
+   Step 6 session's bare-loop finding above does not survive re-testing — it was a measurement-
+   harness artifact, not a real core-runtime leak.** The owner pushed back hard on the Step 6
+   conclusion (own words: "are you sure you are tracing the correct effect and not hunting a
+   phantom... are you sure it is not the test itself which creates the leak") and this re-audit
+   found exactly that. Directly reproduced the mechanism: a `samples.append(gc.mem_free())`
+   accumulator (the natural way to write a "log every reading" investigation script) produces a
+   textbook capacity-doubling decline on its own — change points at list-append indices
+   5/9/17/33/65/129/257, byte-deltas 32/64/128/256/512/1024/2048, a growing-list-reallocation
+   signature, not a leak. With that accumulation removed, an otherwise-identical bare
+   `asyncio.sleep()` loop (tried at both 50ms and 2s intervals, `gc.collect()` forced before every
+   reading, run up to 150+ seconds) showed **zero decline, dead flat**, directly contradicting the
+   Step 6 session's "genuine, continuous, non-plateauing... even with gc.collect() forced" claim.
+   Separately confirmed MicroPython's automatic GC is allocate-triggered, not periodic: with
+   `gc.collect()` never forced, a bare loop shows a real sawtooth (fill toward zero, automatic
+   collection fires, recover) — 8 consecutive cycles observed, every recovery peak landing in the
+   same ~2,063,776–2,064,544-byte band with zero cycle-over-cycle erosion. **This overturns the Step
+   6 session's conclusion that the residual "traces to shared MicroPython core runtime code"** —
+   the core runtime (`extmod/asyncio`/`extmod/modselect.c`), tested properly in isolation, does not
+   leak.
+
+   **This does not mean the whole finding was a phantom, though — the full real system's residual
+   is real.** Driving the actual `sensortask_wozi` object graph under real HTTP soak traffic (not a
+   bare loop), with the heap artificially shrunk to force many real automatic-GC recovery cycles
+   within a practical test window, and measuring only the *recovered peak* after each confirmed
+   collection (245 such events across ~500 real soak cycles, ~8 minutes wall-clock): linear
+   regression gives slope ≈ −450 bytes/recovery-event, t ≈ −3.7 (statistically significant, not
+   noise from the wide per-cycle variance), and the trend **persists and gets slightly steeper**
+   after excluding the documented 40-cycle warm-up transient (`run_wozi_integration.py`'s own
+   `_SOAK_WARMUP_CYCLES`) — so it is not that transient re-appearing either. Net effect: the earlier
+   "traces to shared core runtime" explanation is wrong, but the underlying observation (the full
+   system's post-collection memory ceiling really does drift down slowly over time) survives a
+   proper adversarial re-test. **The digital-twin-only vs. real-hardware-relevant question is
+   therefore back open** — now with a corrected steer: since the core async/select runtime is
+   clean, the residual has to be sought in the real driver/webserver/business-logic code paths
+   (`src/` itself or its twin-fake interaction), not in "unfixable shared platform code" as the
+   Step 6 session's redirection concluded. Not chased to a specific line this session (time-boxed
+   re-audit, not a full re-run of Step 6's own bisection); left for whoever picks this up next with
+   this corrected starting point.
+
+   **Caveat on method**: the artificially-shrunk-heap measurement technique used here (needed to
+   observe multiple recovery cycles in a practical wall-clock budget) is itself a departure from
+   default/production heap sizing and was not cross-checked at the full default 2MB heap over an
+   equivalently long real-time window (that would take on the order of 30-40 minutes per handful of
+   cycles at the real idle decline rate) — flagged so a future session doesn't treat the exact slope
+   figure as final without also confirming it holds at the untouched default heap size.
+
    **Step 6 scope was subsequently widened by the owner to a full self-healing-system audit, not
    just this one memory-decline finding.** Now that the framework is fully wired up end-to-end, the
    owner wants Step 6 to systematically go after the whole class of failure modes that matter most
@@ -558,6 +605,36 @@ constraints.
    odds) — not chased further at the C level this session. `run_wozi_integration.py`'s own `_soak()`
    gained an explicit comment warning it must stay strictly sequential, so a future "optimization"
    doesn't accidentally reintroduce the risk into the automated soak path.
+
+   **Re-investigation session result (owner-directed skeptical re-audit, separate session):
+   reproduced reliably, both by recreating the original discovery conditions exactly and by an
+   easier, deterministic artificial variant — same `dmesg`-confirmed `SIGSEGV`, `digital_twin`-
+   scoped code path, not chased past that per the owner's already-set "repro + document only, no
+   gdb/backtrace work" scope.** The missing ingredient in the Step 6 session's repro attempts was
+   memory pressure: every attempt there started `digital_twin/segfault_stress_repro.py` as a fresh
+   process at the default ~2MB heap, but the original discovery fired the concurrent burst against a
+   process that had *already* run a real soak first (so its heap was already down from the ongoing
+   decline documented above by the time the burst hit) — the Step 6 session never combined the two.
+   Recreating that exact sequence — real `sensortask_wozi` object graph, stock default 2MB heap (no
+   `-X heapsize` override), a few real sequential soak requests first, then the same 8-concurrent-
+   clients-×-15-requests burst against that same already-running process once `gc.mem_free()` had
+   naturally dropped (one soak cycle was enough to reach ~260KB free) — reproduced the segfault on
+   the **first** attempt, confirmed via `dmesg`. Separately, found an easier, fully deterministic
+   trigger for future use: with `-X heapsize=` capped below a sharp threshold, the crash is 100%
+   reproducible (10/10, then a further 3/3 at a nearby size) at ≤800KB and 0/many at ≥850KB — no
+   concurrency-count tuning needed, just constrain the heap and run the tool's default config. All
+   crashes land at the same relative instruction-pointer offset across every run (`dmesg`-confirmed),
+   i.e. deterministic, not random heap-corruption-manifests-differently-each-time; a core dump
+   backtrace (binary is stripped, no symbols) shows a repeating small set of return addresses
+   consistent with deep/repeated recursion, plausibly in an out-of-memory unwind path — noted as a
+   lead, not root-caused, consistent with the owner's standing scope for this category. A segfault
+   under any heap size is unconditionally a genuine interpreter-level bug regardless of how small
+   the heap is (the correct behavior for insufficient memory is always a catchable `MemoryError`,
+   confirmed as the actual behavior at less-extreme heap sizes in this same re-audit) — this is not
+   a "ran with too little memory" user-error case. `digital_twin/segfault_stress_repro.py` itself
+   was not modified this session (docs-only re-investigation pass) — the `-X heapsize=<n>` flag
+   above is a real Unix-port Micropython interpreter option, usable today ahead of that tool's own
+   docstring being updated to mention it explicitly.
 
 ## Deferred / explicitly out-of-scope work
 

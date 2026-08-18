@@ -2561,6 +2561,90 @@ sufficient signal for the silent-failure-masking bar).
 pre-existing tracked debt remains), full `scripts/test.sh` green. See BACKLOG.md's open questions
 #6/#7 for the pointer back to this section.
 
+### Step 6 re-investigation — owner-directed skeptical re-audit
+
+**Separate session, docs-only** (no code/test changes, kept off PR #36 per owner instruction). The
+project owner pushed back hard on both open items above, asking pointed questions in their own
+words: for the memory finding, "are you sure you are tracing the correct effect and not hunting a
+phantom... are you sure it is not the test itself which creates the leak... are you sure it's not
+something the garbage collector would clean at some time... I never had memory running out on the
+legacy code"; for the segfault, "can you recreate it how it happened originally... can you
+reproduce similar situations"; for both, "did you really start the tests from a clean
+environment... question everything, don't give up easily." This section is the direct answer,
+category by category — full evidence trail lives in BACKLOG.md's open questions #6/#7, not
+duplicated here in full.
+
+**Memory leak — the Step 6 session's headline finding was wrong, but not in the direction that
+closes the question.** The claimed "genuine, continuous, non-plateauing `gc.mem_free()` decline"
+in an isolated bare `asyncio.sleep()` loop, "even with gc.collect() forced before every reading,"
+does not reproduce. Directly caught the mechanism: a `samples.append(gc.mem_free())` logging
+accumulator (the natural way to write exactly this kind of investigation script) produces a
+textbook list-capacity-doubling decline entirely on its own — verified change points at list
+lengths 5/9/17/33/65/129/257 with byte-deltas 32/64/128/256/512/1024/2048, a growing-list
+reallocation signature. Strip the accumulation out and an otherwise identical bare loop (both
+50ms and 2s sleep intervals, `gc.collect()` forced every reading, run 150+ seconds) is dead flat —
+zero decline, every time. Also directly confirmed MicroPython's automatic GC is allocate-triggered,
+not periodic, by letting a bare loop run uncollected: it fills toward exhaustion, an automatic
+collection fires, and it fully recovers — 8 consecutive cycles observed, recovery peaks all landing
+within a ~800-byte band, no erosion. **This means the Step 6 session's redirect — "traces to shared
+MicroPython core runtime code, not this project's own Python" — is incorrect.** The core async/
+select runtime, tested properly in isolation, does not leak.
+
+That does *not* mean the underlying concern was a phantom, though. Driving the real
+`sensortask_wozi` object graph under real HTTP soak traffic (heap artificially shrunk only to force
+enough automatic-GC recovery cycles inside a practical test window — see the caveat below),
+sampling strictly the *recovered peak* after each of 245 confirmed collection events across ~500
+real cycles: a real, statistically significant downward slope (≈ −450 bytes/event, t ≈ −3.7),
+which survives excluding the documented 40-cycle warm-up transient (gets slightly steeper, if
+anything). So the full real system's post-collection memory ceiling genuinely does drift down over
+time — the Step 6 session's instinct that something real was there stands — but the explanation it
+landed on (shared, unfixable platform code) is now known to be wrong, which reopens rather than
+closes the digital-twin-only-vs-real-hardware-relevant question, with a corrected starting point:
+look at the real driver/webserver/business-logic code paths, not the core runtime. Not chased to a
+specific line this pass (a time-boxed re-audit, not a full re-run of the Step 6 session's own
+bisection). **Caveat**: the small-heap technique used to observe multiple recovery cycles quickly
+was not cross-checked at the untouched default 2MB heap over an equivalently long real-time window
+(tens of minutes per handful of cycles at the real idle rate) — a future session should confirm the
+slope holds there too before treating the exact figure as final.
+
+**Segfault — reproduced reliably, two ways, including recreating the original discovery conditions
+exactly.** The Step 6 session's non-reproduction ran `digital_twin/segfault_stress_repro.py` as a
+fresh process every time, always starting from the default ~2MB heap — but the *original* discovery
+fired the concurrent burst against a process that had already run a real soak first, so its heap
+was already reduced by the ongoing decline documented above; the Step 6 session never combined
+"already-run-a-soak" with "then hit it with concurrency." Recreating that exact sequence — real
+object graph, stock default heap (no `-X heapsize` override), a few real sequential soak requests
+first, then the original 8-concurrent-clients-×-15-requests burst against that same already-running
+process once `gc.mem_free()` had naturally dropped (one soak cycle was enough, down to ~260KB
+free) — segfaulted on the first attempt, `dmesg`-confirmed. Separately found an easier, fully
+deterministic variant for future use: capping the heap via `-X heapsize=` gives 100% reproduction
+(10/10, then 3/3 more at a nearby size) at ≤800KB and 0/many at ≥850KB, a sharp threshold, no
+concurrency tuning needed. Every crash lands at the same relative instruction-pointer offset
+(`dmesg`-confirmed across all runs) — deterministic, not randomly-manifesting corruption. A core
+dump backtrace (binary stripped, no symbols available) shows a small repeating set of return
+addresses consistent with deep/repeated recursion, plausibly an out-of-memory unwind path — noted
+as a lead, not chased further at the C level, matching the owner's already-set scope for this
+category ("repro + document only, no gdb/backtrace work"). Also confirmed directly: a segfault
+happens at every heap size tested down to the crash threshold, never a clean `MemoryError` instead
+— ruling out "this is just what happens if you starve it of memory" as an explanation, since
+smaller-but-still-adequate heaps in the same re-audit correctly raised catchable `MemoryError`
+instead of crashing.
+
+**Both categories, methodology**: every run this pass used a fresh MicroPython process (no shared
+state carried between runs), the same pinned v1.28.0 Unix-port binary already built in this
+environment (confirmed via `sys.implementation`, matching `toolchain/versions.toml`'s `ref`), and
+test scripts written from scratch rather than reusing any prior session's uncommitted, unaudited
+scratch tooling — nothing from either investigation's original ad hoc scripts survived to be
+inherited uncritically. `digital_twin/segfault_stress_repro.py` itself (the one committed,
+reviewed tool used for the concurrency-shape reproduction) was reused as-is and not modified.
+
+**No code, test, or tooling changes made this pass** — docs-only, by design, kept off PR #36 (which
+already shipped the prior framing) at the project owner's explicit instruction. Whether/how to act
+on the corrected findings (updating `digital_twin/segfault_stress_repro.py`'s own docstring with
+the heap-threshold recipe, resuming the digital-twin-vs-real-hardware bisection with the corrected
+steer, deciding whether the small-heap measurement caveat above needs closing before trusting the
+slope figure) is left to the project owner's direction, not decided here.
+
 ## Out of scope for all five steps
 
 - Real website content (stub only, see Step 4).
