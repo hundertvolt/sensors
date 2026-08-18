@@ -165,6 +165,46 @@ def test_i2c_readfrom_mem_and_writeto_mem_dispatch_to_the_wired_bmp3xx_device() 
     assert reply[0] in (0x50, 0x60)
 
 
+def test_configure_scd30_state_path_and_flush_scd30_round_trip_settings() -> None:
+    # Same module-level-hook shape as configure_fram_state_path()/flush_fram() - no dedicated wiring
+    # test exists for that FRAM pair either (only covered indirectly via a real Step 5 run), so this
+    # closes the gap for the new SCD30 feature at least. Persistence content itself (which fields,
+    # malformed-file handling, ...) is tests/test_digital_twin_scd30.py's job; this only checks that
+    # machine.py's own module-level hooks actually reach the chip _wire_i2c_devices() constructs.
+    import os
+
+    sys.path.insert(0, "digital_twin")
+    from _crc8 import crc8, word  # noqa: E402
+
+    path = "tests/_tmp/scd30_machine_wiring.json"
+    try:
+        os.mkdir("tests/_tmp")
+    except OSError:
+        pass
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+    Pin.reset_registry()
+    try:
+        machine.configure_scd30_state_path(path)
+        i2c0a = I2C(0, scl=Pin(13), sda=Pin(12), freq=50000)
+        payload = bytes([0x46, 0x00, 0x00, 0x0A])  # SET_MEASUREMENT_INTERVAL, arg=10
+        i2c0a.devices[0x61].handle_writeto(payload + bytes([crc8(payload[2:4])]))
+        machine.flush_scd30()
+
+        Pin.reset_registry()
+        i2c0b = I2C(0, scl=Pin(13), sda=Pin(12), freq=50000)
+        i2c0b.devices[0x61].handle_writeto(bytes([0x46, 0x00]))
+        assert i2c0b.devices[0x61].handle_readfrom_into(3) == word(10)
+    finally:
+        machine.configure_scd30_state_path(None)  # don't leak into later tests in this file
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
 def test_spi_id0_wires_the_fram_chip() -> None:
     spi = SPI(0, sck=Pin(2), mosi=Pin(3), miso=Pin(4))
     spi.write(bytes([0x9F]))  # RDID

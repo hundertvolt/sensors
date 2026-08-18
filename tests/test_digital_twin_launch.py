@@ -115,6 +115,7 @@ def test_parse_args_with_no_flags_returns_all_defaults() -> None:
     config = parse_args([])
     assert config.seed is None
     assert config.fram_state_path is None
+    assert config.scd30_state_path is None
     assert config.faults == []
     assert config.wifi_outcomes == []
     assert config.no_wdt_feed is False
@@ -129,6 +130,11 @@ def test_parse_args_seed_is_parsed_as_int() -> None:
 def test_parse_args_fram_state_path_is_passed_through() -> None:
     config = parse_args(["--fram-state-path", "tests/_tmp/launch_fram.bin"])
     assert config.fram_state_path == "tests/_tmp/launch_fram.bin"
+
+
+def test_parse_args_scd30_state_path_is_passed_through() -> None:
+    config = parse_args(["--scd30-state-path", "tests/_tmp/launch_scd30.json"])
+    assert config.scd30_state_path == "tests/_tmp/launch_scd30.json"
 
 
 def test_parse_args_no_wdt_feed_is_a_bare_flag() -> None:
@@ -182,6 +188,8 @@ def test_parse_args_combines_every_flag_together() -> None:
             "7",
             "--fram-state-path",
             "tests/_tmp/launch_fram.bin",
+            "--scd30-state-path",
+            "tests/_tmp/launch_scd30.json",
             "--fault",
             "bmp3xx:readfrom_mem:3",
             "--wifi-outcome",
@@ -193,6 +201,7 @@ def test_parse_args_combines_every_flag_together() -> None:
     )
     assert config.seed == 7
     assert config.fram_state_path == "tests/_tmp/launch_fram.bin"
+    assert config.scd30_state_path == "tests/_tmp/launch_scd30.json"
     assert config.faults == [("bmp3xx", "readfrom_mem", 3)]
     assert config.wifi_outcomes == [network.STAT_CONNECT_FAIL]
     assert config.no_wdt_feed is True

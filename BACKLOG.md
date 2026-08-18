@@ -337,23 +337,75 @@ constraints.
    project owner**: on-device verification is real future work, not something to chase in the
    current session.
 6. `digital_twin/run_wozi_integration.py`'s `_soak()` memory-flat check
-   (`_MEM_FLAT_TOLERANCE_BYTES = 4096`, copied verbatim from Step 2's own F.9 tolerance) —
-   FINAL_WIRING_PLAN.md's baseline-verification session found a real ~40-cycle warm-up transient
-   in this soak's real object graph (every settings GET re-reads its config file from disk) that
-   Step 2's own synthetic fake-based test never had; bumping `_SOAK_WARMUP_CYCLES` from 2 to 40
-   cut a real run's failure margin from ~32KB down to single-digit KB, but doesn't reliably clear
-   the tight 4096-byte budget every time. Is 4096 bytes tight enough for this *real* system's
-   natural allocator noise, or does the tolerance itself need loosening for this soak
-   specifically? Deliberately left alone rather than guessed at, since the value was an explicit
-   owner decision ("reuse step 2").
-7. `digital_twin/_scd30_chip.py`'s `Scd30Chip` has no persistence mechanism the way
-   `digital_twin/_fram_chip.py`'s `FramChip` does (`state_path`/`save_state()`) — found via the
-   same baseline-verification session: SCD30's own PUT settings (`MeasInt`, `TempOffs`, etc.)
-   don't survive a twin process restart, while every other settings group does. On real hardware
-   this is a non-issue (the physical SCD30 chip has its own onboard NVM that survives an
-   MCU-only reboot), but the twin can't currently reproduce that fidelity. Building it would mean
-   mirroring `FramChip`'s own state-file pattern (plus tests) - a real feature addition, not
-   a bug fix. Does twin fidelity need to go this far, or is this an accepted gap?
+   (`_MEM_FLAT_TOLERANCE_BYTES = 4096`) — **re-investigated in a follow-up session, and the earlier
+   "just a slow warm-up transient, will stabilize" framing is wrong.** A fresh, much longer
+   diagnostic (400 cycles across every endpoint, then an isolated 300-cycle run hitting only the
+   static `/` page) showed a **real, continuous, never-plateauing decline** — not the bounded ±15KB
+   noise band the original 100-cycle read suggested. Root-cause investigation (full account below)
+   found this is genuinely HTTP-independent (a zero-HTTP idle run declines identically) and driven
+   by the real background task graph (SCD30/SGP40/BMP3xx measurement polling), not by anything in
+   the webserver/Microdot layer, which tested completely clean in isolation at every layer (routing,
+   sockets, `asyncio.wait_for()`, and every combination). **Confirmed, attributed contributors**:
+   SCD30's own real read-and-store cycle (~500 bytes/sec of a ~870 bytes/sec idle total) and
+   SGP40+BMP3xx's own read-and-store cycles (~130 bytes/sec combined) — real, reproducible, but not
+   yet pinpointed past "the shared I2C-read → `_set_meas_data()` → log-call cascade", since every
+   individual piece tested in isolation (`_produce_new_reading()` alone, `Pin.irq()`/`simulate_edge()`
+   dispatch alone, `PrintLogHistory`'s own bounded-deque append) came back clean. **A residual
+   ~245 bytes/sec floor persists even with every real `machine.Timer` starter in the whole system
+   disabled** (SCD30/SGP40/BMP3xx read-cycle timers, WiFi's counter timer, NTP's timer + counter
+   timer, `system_service.py`'s own uptime timer — the complete, grep-confirmed list of every
+   `Timer(...)`/`.init(period=...)` call site in `src/`). The leading hypothesis during that session
+   was `digital_twin/machine.py`'s own `WDT.feed()` → `_arm()`, which cancels and recreates its
+   countdown `asyncio.Task` on every single `feed()` call (twin-only code — real hardware's
+   `machine.WDT.feed()` is just a register write) — isolated alone it showed zero leak, but with
+   every other Timer starter disabled and only the real 2-second-interval `feed()` call left active,
+   it exactly reproduced the residual, which read as confirmation. **A rewrite avoiding the task
+   churn entirely (a single long-lived polling task instead of cancel-and-recreate) was implemented,
+   fully test-compatible (36/36 existing `test_digital_twin_machine.py` tests passed unmodified),
+   but a rigorous same-script A/B re-test (identical monkeypatches, only the WDT implementation
+   swapped) showed the exact same residual with the fix in place — the hypothesis was wrong, and a
+   further test proved the entire `start_and_check_tasks()` supervisor-loop body (feed calls *and*
+   task `.done()` checks) contributes nothing: replacing it with a bare `while True: await
+   asyncio.sleep(2)` reproduced the same numbers.** The WDT rewrite was reverted rather than kept as
+   a misleading "fix" for a cause it doesn't actually address. **The ~245 bytes/sec floor's real
+   source remains unidentified** — every named Timer-driven and task-`.done()`-driven candidate in
+   `src/` has been ruled out by direct isolation, which means continued `gc.mem_free()`-delta
+   bisection via monkeypatching individual starters has run out of remaining candidates to try; the
+   next step needs a different technique (e.g. the repo's own `sys.settrace`-based coverage
+   infrastructure adapted for allocation attribution, or a MicroPython-level heap/object census
+   rather than a before/after byte-count delta) to localize further. **Do not loosen
+   `_MEM_FLAT_TOLERANCE_BYTES` based on this investigation** — the decline is real, not noise, and
+   loosening the tolerance would just hide a genuine, still-open problem. Whether this is purely a
+   digital-twin artifact (plausible given the confirmed contributors trace to twin-only chip-fake/
+   `Pin` mechanics so far) or has any real-hardware-relevant component is itself unresolved and
+   should be established before deciding whether a `src/` fix is ever warranted.
+   **Owner decision: this becomes its own dedicated Step 6, run in a separate session immediately
+   after this branch merges into the wire-up branch.** That session's two required outcomes: (1)
+   positively confirm this cannot happen on real RP2040 hardware (not just "the confirmed
+   contributors look twin-only" — actually establish it), and (2) find and fix the digital-twin-side
+   root cause regardless, including the still-unidentified ~245 bytes/sec floor. Use whatever
+   tooling and however many tests that takes — not scoped to `gc.mem_free()`-delta bisection alone
+   if that's run out of road, per this entry's own last paragraph.
+7. **The real MicroPython Unix-port interpreter itself segfaults under heavy concurrent connection
+   load against the real assembled system** — found while investigating a real user-reported
+   `OSError: [Errno 104] ECONNRESET` crash in `digital_twin/run_wozi_integration.py`'s own soak (that
+   specific crash is fixed — `_soak()` now records a connection failure instead of letting it
+   propagate and crash the whole diagnostic run, matching how the real server itself already
+   tolerates a rejected/reset connection gracefully; see `FINAL_WIRING_PLAN.md`'s own session note
+   for the fix and the closed test-coverage gap that let it through unnoticed). Firing 8 concurrent
+   clients × 15 requests each (well beyond `WebserverService`'s own `max_connections=3` ceiling, to
+   probe whether exceeding it explains the ECONNRESET) reproduced a real interpreter segfault twice
+   in a row (confirmed directly via `dmesg`: `micropython[PID]: segfault at ... in micropython[...]`),
+   not a catchable Python-level exception — no amount of `_soak()`/`_http_client.py` exception
+   handling can prevent this, since it crashes the whole process unconditionally. Not yet root-caused
+   at all (interpreter/C-level, not Python-level - out of this session's reach) and not confirmed to
+   be what the original ECONNRESET report actually hit (repeated plain sequential-soak runs in this
+   session's own sandbox never reproduced the user's report at all, despite several attempts - the
+   segfault needed deliberately aggressive, unrealistic concurrency the soak's own strictly-sequential
+   traffic pattern would never generate on its own). Real, reproducible, and serious enough to flag
+   prominently even though it's tangential to what was being chased - folding into the same dedicated
+   Step 6 session above (both are memory/robustness issues in the same digital-twin integration
+   surface) makes more sense than a third separate investigation.
 
 ## Deferred / explicitly out-of-scope work
 

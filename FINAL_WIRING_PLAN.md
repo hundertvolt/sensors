@@ -2285,6 +2285,71 @@ six fixes), `src/` coverage 94% → 95%, `digital_twin/` steady at 96% with seve
 needs twin-side chip-state persistence) remain genuinely unresolved — not chased further here,
 deliberately left for the project owner rather than guessed at.
 
+**SCD30 twin persistence + memory-decline root-cause session (follow-up, owner-directed)**: the
+project owner directed two things — build the SCD30 twin-side persistence feature flagged above (if
+the twin's own decline could be shown to genuinely stabilize, plus noise, the soak's tolerance could
+be sized to it) and dig into the memory-decline question properly rather than leave it open.
+
+`digital_twin/_scd30_chip.py`'s `Scd30Chip` gained a `state_path`/`save_state()`/`_load_state()` set
+mirroring `FramChip`'s own pattern (plain `json.dump()`/`json.load()`, not chunked — five scalars,
+not an 8KB buffer, no realistic fragmentation risk), persisting exactly the five settings
+`src/asy_scd30_driver.py`'s own setters document as NVM-persisted on real hardware (measurement
+interval, ambient pressure, altitude, temperature offset, ASC enable) — never the live CO2/temp/
+humidity readings, matching what a real power cycle actually does to the sensor. Wired through
+`digital_twin/machine.py` (`configure_scd30_state_path()`/`flush_scd30()`/`_current_scd30_chip`,
+identical shape to the existing FRAM globals) and both entry points
+(`digital_twin/run_wozi_integration.py`'s `--scd30-state-path`, defaulting to
+`digital_twin/scd30_state.json` next to the FRAM state file; `digital_twin/launch.py`'s own flag,
+defaulting to `None`/in-memory like its own `--fram-state-path`). Full test coverage added
+(round-trip, no-autosave-before-explicit-save, persisted-file-shape, live-readings-never-persisted,
+missing-file, malformed-JSON, machine.py wiring, CLI parsing for both entry points).
+
+The memory-decline investigation itself is the long story now captured in `BACKLOG.md`'s open
+question #6 (not duplicated here) — the short version: the earlier "will stabilize, just a slow
+warm-up transient" read turned out to be wrong once measured over hundreds of cycles instead of 100;
+it's a real, continuous, HTTP-independent decline. Real, attributed contributors were found (SCD30's
+own read-and-store cycle, SGP40+BMP3xx's own read-and-store cycles), but a genuine ~245 bytes/sec
+residual survives disabling every real `machine.Timer` starter in the system — including a
+`digital_twin/machine.py` `WDT.feed()` rewrite that looked like a clean fix (avoiding its own
+cancel-and-recreate-task-per-call pattern) and passed every existing test, but was proven by a
+rigorous same-script A/B test to not actually be the cause, and was reverted rather than kept as a
+misleading fix. `_MEM_FLAT_TOLERANCE_BYTES` was deliberately left untouched — the project owner's
+own condition for loosening it ("no leak, will stabilize, not continuously drop") was directly
+contradicted by the fresh data, so tightening the net around a still-real, still-open problem instead
+of loosening the gate around it was the only defensible move here. The project owner decided this
+becomes its own dedicated Step 6, run in a separate session immediately after this branch merges —
+see `BACKLOG.md`'s open question #6 for the full carry-forward brief.
+
+**Two real bugs found via the project owner's own manual run on real hardware (a real Linux machine,
+not this session's own sandbox), same session**: (1) `src/asy_webserver_service.py`'s
+`_get_measurements()`/`_get_sensors()` both re-wrapped a result that the driver-level
+`get_dict_data()`/`get_dict_cfg()` had *already* self-wrapped with the sensor's own name
+(`config_manager.make_dict()`/`base_classes._get_dict_cfg()`'s own `{name: {...}}` shape), producing
+`{"SCD30": {"SCD30": {...}}}` for every real sensor on both `/measurements` and `/sensors` — a real,
+general-scope production bug, not twin-specific, present since before this session and never caught
+by any existing test because `tests/test_asy_webserver_service.py`'s own `_FakeModule` fixture
+happened to return an already-flat shape (the identical class of test-fixture-doesn't-match-reality
+gap `_flatten_cfg_values()`'s own fix already hit once before in this same file), and because both
+`tests/test_sensortask_wozi.py`'s and `tests/test_digital_twin_sensortask_integration.py`'s own
+real-driver/real-HTTP tests only ever checked top-level response keys, never the values. Fixed via
+`.update()` instead of indexed assignment in both methods; the fake fixture (`_NestedCfgModule`,
+already existing for the `_flatten_cfg_values()` precedent) extended to also cover
+`get_dict_data()`, every affected test updated to the correct nested shape, two new dedicated
+regression tests added, and both real-driver test files' own GET assertions strengthened to check
+the values (not just top-level keys) so this class of bug can't slip through unnoticed again. (2)
+`digital_twin/run_wozi_integration.py`'s `_soak()` let a single failed HTTP request (a real
+`OSError: [Errno 104] ECONNRESET`, hit directly running the real default 20-cycle soak against the
+real assembled system) crash the entire diagnostic run, instead of tolerating it the way the real
+server it's driving already tolerates a rejected/reset connection
+(`WebserverService._serve()`'s own `max_connections=3` reject-when-full path closes with zero
+response ever written, by design) — `_soak()` now catches `OSError` per-request in both its warmup
+and main cycle loops and records a failure instead of propagating, with a new regression test
+(`test_soak_records_a_connection_reset_as_a_failure_instead_of_crashing`) driving it against a real
+socket server that resets every connection immediately. Investigating this surfaced a third, more
+serious, still-unresolved finding (a real MicroPython Unix-port interpreter segfault under heavy
+concurrent connection load) — see `BACKLOG.md`'s open question #7, folded into the same dedicated
+Step 6 session as the memory-decline investigation above.
+
 ## Out of scope for all five steps
 
 - Real website content (stub only, see Step 4).

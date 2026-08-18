@@ -24,7 +24,10 @@ section for the full design rationale and the owner Q&A round that settled it.
 - `_sgp40_chip.py` / `_scd30_chip.py` / `_bmp3xx_chip.py` — one chip fake per sensor, each verified
   against its own datasheet in `datasheets/` for the raw transaction shape and sensible value
   ranges. `_scd30_chip.py`'s RDY pin fires a real rising edge on its own internal measurement-
-  interval cadence, exercising the real driver's normal IRQ-driven path.
+  interval cadence, exercising the real driver's normal IRQ-driven path. `_scd30_chip.py` also has
+  explicit `save_state()`/on-construction load JSON persistence for its five NVM-backed settings
+  (see "SCD30 persistence" below) — the same `state_path` design `_fram_chip.py` uses, applied to a
+  handful of scalars instead of the whole memory image.
 - `_fram_chip.py` — the MB85RS64V FRAM chip's SPI opcode protocol (WREN/WRDI/RDSR/WRSR/READ/WRITE/
   RDID), plus explicit `save_state()`/on-construction load JSON persistence (see "FRAM persistence"
   below).
@@ -117,6 +120,29 @@ finally:
 Omitting `configure_fram_state_path()` (or passing `None`) runs the FRAM twin in-memory only, which
 is what every unit test in `tests/test_digital_twin_fram.py` does by constructing `FramChip`
 directly (that file never goes through `machine.SPI` at all).
+
+### SCD30 persistence
+
+Real SCD30 hardware persists five settings in its own onboard NVM across a power cycle:
+measurement interval, ambient-pressure compensation, altitude compensation, temperature offset, and
+automatic self-calibration enable (confirmed against `src/asy_scd30_driver.py`'s own setter
+docstrings, each marked "NVM-persisted — survives reset() and power cycles"). The twin mirrors this
+with the same explicit-flush design as FRAM persistence above — never automatic — but only for
+those five settings; the live CO2/temperature/humidity readings always restart fresh on a new
+process, matching what a real power cycle does to the sensor's in-flight measurement state:
+
+```python
+machine.configure_scd30_state_path("digital_twin_scd30_state.json")  # before constructing i2c0
+try:
+    asyncio.run(main())
+finally:
+    machine.flush_scd30()
+```
+
+Omitting `configure_scd30_state_path()` (or passing `None`) runs the SCD30 twin in-memory only,
+same convention as FRAM. `digital_twin/run_wozi_integration.py` and `digital_twin/launch.py` both
+default to a persistent file next to the FRAM state file (`digital_twin/scd30_state.json` and
+`digital_twin/fram_state.json` respectively, both gitignored).
 
 ## Running the twin's own tests
 

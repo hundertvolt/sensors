@@ -722,9 +722,24 @@ def test_webserver_measurements_and_sensors_get_include_every_real_sensor() -> N
     run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
     res = _dispatch("GET", "/measurements")
     assert res.status_code == 200
-    assert set(json.loads(res.body).keys()) == {"SCD30", "BMP3XX", "SGP40"}
+    measurements = json.loads(res.body)
+    assert set(measurements.keys()) == {"SCD30", "BMP3XX", "SGP40"}
+    # Regression coverage for a real bug found via a real user report against the real assembled
+    # system: every real driver's own get_dict_data()/get_dict_cfg() already returns a
+    # {name: {...}} self-wrapped shape, and _get_measurements()/_get_sensors() used to index that
+    # by name again, producing {"SCD30": {"SCD30": {...}}} for every sensor - see
+    # src/asy_webserver_service.py's own comments there for the full account. Only checking
+    # top-level keys (as this test used to) doesn't catch that.
+    for name, fields in measurements.items():
+        assert name not in fields, f"{name}'s own value is still self-wrapped: {fields!r}"
+        assert fields, f"{name} returned no fields at all"
+
     res = _dispatch("GET", "/sensors")
-    assert set(json.loads(res.body).keys()) == {"SCD30", "BMP3XX", "SGP40"}
+    sensors = json.loads(res.body)
+    assert set(sensors.keys()) == {"SCD30", "BMP3XX", "SGP40"}
+    for name, fields in sensors.items():
+        assert name not in fields, f"{name}'s own value is still self-wrapped: {fields!r}"
+        assert fields, f"{name} returned no fields at all"
 
 
 def test_webserver_sensors_put_round_trips_a_real_field_through_the_real_driver() -> None:

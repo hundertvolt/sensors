@@ -24,7 +24,7 @@ sys.path.insert(0, "ext")  # run_wozi_integration.py transitively imports sensor
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
 
 import _http_client as http_client  # noqa: E402
-from run_wozi_integration import RunConfig, main, parse_args  # noqa: E402
+from run_wozi_integration import RunConfig, _soak, main, parse_args  # noqa: E402
 
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":
@@ -153,13 +153,51 @@ def test_fetch_round_trips_a_real_request_through_a_real_socket() -> None:
 
 
 # ---------------------------------------------------------------------------
+# _soak() resilience - regression coverage for a real crash found via a real user report running
+# this exact soak against the real assembled system: src/asy_webserver_service.py's own
+# max_connections=3 reject-when-full path (WebserverService._serve()) closes a rejected connection
+# immediately with zero response ever written, by design (BACKLOG.md's own "reject-when-full"
+# decision) - a real client hitting it sees an ECONNRESET (or an EOF-before-any-bytes, depending on
+# the OS/kernel's own close-with-unread-data semantics) with no HTTP-level response at all. The real
+# server already tolerates this kind of failure gracefully; _soak() previously did not - a single
+# reset request anywhere in the warmup or main cycle loop raised straight out of _soak() and crashed
+# the whole diagnostic run instead of being recorded as one soak failure among many.
+# ---------------------------------------------------------------------------
+
+
+async def _reset_immediately_server(reader: "Any", writer: "Any") -> None:
+    # Never reads the request, never writes a response, closes immediately - the same "closed with
+    # nothing written at all" shape WebserverService._serve()'s own reject-when-full path produces
+    # (its own _close_writer() helper: writer.close() then await writer.wait_closed()).
+    writer.close()
+    await writer.wait_closed()
+
+
+def test_soak_records_a_connection_reset_as_a_failure_instead_of_crashing() -> None:
+    async def scenario() -> None:
+        server = await asyncio.start_server(_reset_immediately_server, "127.0.0.1", 18098)
+        try:
+            failures = await _soak("127.0.0.1", 18098, cycles=1)  # must not raise
+        finally:
+            server.close()
+            await server.wait_closed()
+        assert failures  # every single request (warmup and main cycle alike) failed - some
+        # failure must have been recorded, not silently dropped
+        assert any("warmup" in f for f in failures)
+        assert any("cycle 0" in f for f in failures)
+
+    run_timed(scenario(), timeout_s=15.0)
+
+
+# ---------------------------------------------------------------------------
 # run_wozi_integration.main() - one real, short, bounded end-to-end smoke test (same "does the
 # mechanism work at all" spirit as test_digital_twin_launch.py's own main() smoke test): builds the
 # real sensortask_wozi object graph against the real twin, runs a tiny soak with a real injected
 # bus fault, and returns - not a claim about src/asy_webserver_service.py's own per-endpoint
 # behavior (that's tests/test_digital_twin_sensortask_integration.py's job) or about a real soak's
 # actual duration (digital_twin/run_wozi_integration.py's own docstring covers that). In-memory
-# FRAM (fram_state_path=None) keeps this deterministic and avoids ever touching a real file.
+# FRAM (fram_state_path=None) keeps this deterministic and avoids ever touching a real file - same
+# reasoning applies to scd30_state_path=None below.
 #
 # Deliberately exactly one such test, not two (a soak-only one plus a separate fault-injection
 # one): main()'s own real supervisor (sensortask_wozi.main()/start_and_check_tasks()) leaves
@@ -185,7 +223,13 @@ def test_main_runs_a_tiny_bounded_soak_with_an_injected_fault_and_returns_a_clea
     # gc.mem_free() dip). The endpoint-reachability and watchdog signals are meaningful even at this
     # tiny scale, so this only excludes that one specific, scale-sensitive failure message.
     config = RunConfig(
-        host="127.0.0.1", port=19097, fram_state_path=None, soak_cycles=2, duration=0.0, faults=[("sgp40", "writeto", 3)]
+        host="127.0.0.1",
+        port=19097,
+        fram_state_path=None,
+        scd30_state_path=None,
+        soak_cycles=2,
+        duration=0.0,
+        faults=[("sgp40", "writeto", 3)],
     )
     summary = run_timed(main(config), timeout_s=60.0)  # _SOAK_WARMUP_CYCLES (40, see that
     # constant's own comment) adds real HTTP round trips ahead of this test's own tiny soak_cycles -
@@ -206,6 +250,7 @@ def test_parse_args_defaults() -> None:
         host="localhost",
         port=8080,
         fram_state_path="digital_twin/fram_state.json",
+        scd30_state_path="digital_twin/scd30_state.json",
         seed=None,
         faults=[],
         wifi_outcomes=[],
@@ -228,6 +273,16 @@ def test_parse_args_empty_fram_state_path_means_in_memory_only() -> None:
 def test_parse_args_custom_fram_state_path() -> None:
     config = parse_args(["--fram-state-path", "scratch/fram.json"])
     assert config.fram_state_path == "scratch/fram.json"
+
+
+def test_parse_args_empty_scd30_state_path_means_in_memory_only() -> None:
+    config = parse_args(["--scd30-state-path", ""])
+    assert config.scd30_state_path is None
+
+
+def test_parse_args_custom_scd30_state_path() -> None:
+    config = parse_args(["--scd30-state-path", "scratch/scd30.json"])
+    assert config.scd30_state_path == "scratch/scd30.json"
 
 
 def test_parse_args_seed_and_soak_cycles_and_duration() -> None:

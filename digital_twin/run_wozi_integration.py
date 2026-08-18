@@ -61,6 +61,8 @@ from launch import (
 import sensortask_wozi
 
 _DEFAULT_FRAM_STATE_PATH = "digital_twin/fram_state.json"
+_DEFAULT_SCD30_STATE_PATH = "digital_twin/scd30_state.json"  # same folder as the FRAM state file
+# above, own individual file - see digital_twin/_scd30_chip.py's module docstring for what's persisted.
 _CONFIG_DIR = "digital_twin/config/"
 _SOAK_ENDPOINTS = ("/measurements", "/sensors", "/networking", "/system", "/notification", "/status", "/")
 _MEM_FLAT_TOLERANCE_BYTES = 4096  # identical to tests/test_asy_webserver_service.py's own F.9 tolerance (owner decision 9)
@@ -88,6 +90,7 @@ class RunConfig:
         host: str = "localhost",
         port: int = 8080,
         fram_state_path: "str | None" = _DEFAULT_FRAM_STATE_PATH,
+        scd30_state_path: "str | None" = _DEFAULT_SCD30_STATE_PATH,
         seed: "int | None" = None,
         faults: "list[tuple[str, str, int]] | None" = None,
         wifi_outcomes: "list[int] | None" = None,
@@ -97,6 +100,7 @@ class RunConfig:
         self.host = host
         self.port = port
         self.fram_state_path = fram_state_path
+        self.scd30_state_path = scd30_state_path
         self.seed = seed
         self.faults = faults if faults is not None else []
         self.wifi_outcomes = wifi_outcomes if wifi_outcomes is not None else []
@@ -110,6 +114,7 @@ class RunConfig:
             self.host == other.host
             and self.port == other.port
             and self.fram_state_path == other.fram_state_path
+            and self.scd30_state_path == other.scd30_state_path
             and self.seed == other.seed
             and self.faults == other.faults
             and self.wifi_outcomes == other.wifi_outcomes
@@ -120,8 +125,8 @@ class RunConfig:
     def __repr__(self) -> str:
         return (
             f"RunConfig(host={self.host!r}, port={self.port!r}, fram_state_path={self.fram_state_path!r}, "
-            f"seed={self.seed!r}, faults={self.faults!r}, wifi_outcomes={self.wifi_outcomes!r}, "
-            f"soak_cycles={self.soak_cycles!r}, duration={self.duration!r})"
+            f"scd30_state_path={self.scd30_state_path!r}, seed={self.seed!r}, faults={self.faults!r}, "
+            f"wifi_outcomes={self.wifi_outcomes!r}, soak_cycles={self.soak_cycles!r}, duration={self.duration!r})"
         )
 
 
@@ -136,6 +141,7 @@ def parse_args(argv: "list[str]") -> RunConfig:
     host = "localhost"
     port = 8080
     fram_state_path: str | None = _DEFAULT_FRAM_STATE_PATH
+    scd30_state_path: str | None = _DEFAULT_SCD30_STATE_PATH
     seed: int | None = None
     faults: list[tuple[str, str, int]] = []
     wifi_outcomes: list[int] = []
@@ -152,6 +158,9 @@ def parse_args(argv: "list[str]") -> RunConfig:
             value = _pop_value(remaining, arg)
             fram_state_path = value if value else None  # "" means in-memory only, matches
             # machine.configure_fram_state_path(None)'s own documented meaning.
+        elif arg == "--scd30-state-path":
+            value = _pop_value(remaining, arg)
+            scd30_state_path = value if value else None  # same "" convention as --fram-state-path above
         elif arg == "--seed":
             seed = int(_pop_value(remaining, arg))
         elif arg == "--fault":
@@ -169,6 +178,7 @@ def parse_args(argv: "list[str]") -> RunConfig:
         host=host,
         port=port,
         fram_state_path=fram_state_path,
+        scd30_state_path=scd30_state_path,
         seed=seed,
         faults=faults,
         wifi_outcomes=wifi_outcomes,
@@ -220,15 +230,31 @@ async def _wait_until_serving(host: str, port: int, timeout_s: float = 10.0) -> 
 
 
 async def _soak(host: str, port: int, cycles: int) -> "list[str]":
+    # Every fetch() below is wrapped, not left to propagate - the real server already tolerates an
+    # individual connection failure gracefully (WebserverService._serve()'s own broad exception
+    # handling, its max_connections=3 reject-when-full path among them: a rejected connection is
+    # closed with zero response ever written, by design - BACKLOG.md's own "reject-when-full"
+    # decision), but _http_client.fetch() itself has no such tolerance and previously let a single
+    # failed request (a real OSError - ECONNRESET was reported directly, running this exact soak
+    # against the real assembled system) crash this whole diagnostic run instead of recording it as
+    # one soak failure among many. This brings the *test harness* up to the same standard the real
+    # server it's driving already meets.
     failures: list[str] = []
     for _ in range(_SOAK_WARMUP_CYCLES):
         for path in _SOAK_ENDPOINTS:
-            await _http_client.fetch(host, port, "GET", path)
+            try:
+                await _http_client.fetch(host, port, "GET", path)
+            except OSError as e:
+                failures.append(f"warmup: GET {path} -> {e!r}")
     gc.collect()
     baseline = gc.mem_free()
     for cycle in range(cycles):
         for path in _SOAK_ENDPOINTS:
-            res = await _http_client.fetch(host, port, "GET", path)
+            try:
+                res = await _http_client.fetch(host, port, "GET", path)
+            except OSError as e:
+                failures.append(f"cycle {cycle}: GET {path} -> {e!r}")
+                continue
             if res.status_code != 200:
                 failures.append(f"cycle {cycle}: GET {path} -> {res.status_code}")
     gc.collect()
@@ -249,6 +275,7 @@ def _ensure_dir(path: str) -> None:
 
 async def main(config: RunConfig) -> "dict[str, Any]":
     machine.configure_fram_state_path(config.fram_state_path)
+    machine.configure_scd30_state_path(config.scd30_state_path)
     if config.seed is not None:
         import random
 
@@ -260,7 +287,8 @@ async def main(config: RunConfig) -> "dict[str, Any]":
 
     print(
         f"digital_twin/run_wozi_integration.py starting - host={config.host!r} port={config.port!r} "
-        f"fram_state_path={config.fram_state_path!r} seed={config.seed!r} soak_cycles={config.soak_cycles!r} "
+        f"fram_state_path={config.fram_state_path!r} scd30_state_path={config.scd30_state_path!r} "
+        f"seed={config.seed!r} soak_cycles={config.soak_cycles!r} "
         f"duration={config.duration!r} faults={config.faults!r} wifi_outcomes={config.wifi_outcomes!r}"
     )
 
@@ -324,6 +352,7 @@ async def main(config: RunConfig) -> "dict[str, Any]":
         except asyncio.CancelledError:
             pass
         machine.flush_fram()
+        machine.flush_scd30()
 
     return summary
 

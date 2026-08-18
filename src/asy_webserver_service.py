@@ -276,15 +276,27 @@ class WebserverService:
     async def _get_measurements(self, request: "Any") -> "dict[str, Any]":
         # A plain for-loop, not a dict comprehension - MicroPython doesn't support `await` inside a
         # comprehension (confirmed directly: raises SyntaxError at import time), unlike CPython.
+        # .update(), not result[name] = ... : every real driver's own get_dict_data() (via
+        # config_manager.make_dict()) already returns a {name: {...}}-shaped dict keyed by its own
+        # name (the same name this loop's own `name` is bound to) - indexing by name here on top of
+        # that doubled it into {"SCD30": {"SCD30": {...}}} for every sensor, on every real driver,
+        # masked by tests/test_asy_webserver_service.py's own _FakeModule returning an already-flat
+        # dict (confirmed directly: found via a real user report against the real assembled system,
+        # not caught by tests/test_digital_twin_sensortask_integration.py's own real-HTTP GET test
+        # either - that test only checked top-level keys, never the values, now closed alongside
+        # this fix). Real hardware is affected too - this is not twin-specific.
         result: dict[str, Any] = {}
-        for name, module in self._sensors.items():
-            result[name] = await module.get_dict_data()
+        for module in self._sensors.values():
+            result.update(await module.get_dict_data())
         return result
 
     async def _get_sensors(self, request: "Any") -> "dict[str, Any]":
+        # .update(), not result[name] = ... - see _get_measurements()'s own comment above, the exact
+        # same double-wrap bug via get_dict_cfg()/base_classes._get_dict_cfg() instead of
+        # get_dict_data()/make_dict().
         result: dict[str, Any] = {}
-        for name, module in self._sensors.items():
-            result[name] = await module.get_dict_cfg()
+        for module in self._sensors.values():
+            result.update(await module.get_dict_cfg())
         return result
 
     async def _put_sensors(self, request: "Any") -> "ar.ResponseEnvelope":

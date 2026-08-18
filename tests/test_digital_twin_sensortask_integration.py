@@ -188,11 +188,25 @@ def test_every_get_endpoint_is_reachable_over_real_http_and_shaped_correctly() -
         try:
             res = await _http_client.fetch("127.0.0.1", port, "GET", "/measurements")
             assert res.status_code == 200
-            assert set(res.json().keys()) == {"SCD30", "BMP3XX", "SGP40"}
+            measurements = res.json()
+            assert set(measurements.keys()) == {"SCD30", "BMP3XX", "SGP40"}
+            # Regression coverage for a real bug found via a real user report against the real
+            # assembled system (not caught here before, since this only ever checked top-level keys):
+            # every real driver's own get_dict_data() already returns a {name: {...}} self-wrapped
+            # shape, and _get_measurements() used to index that by name again, producing
+            # {"SCD30": {"SCD30": {...}}} for every sensor - see src/asy_webserver_service.py's own
+            # _get_measurements()/_get_sensors() comments for the full account.
+            for name, fields in measurements.items():
+                assert name not in fields, f"{name}'s own value is still self-wrapped: {fields!r}"
+                assert fields, f"{name} returned no fields at all"
 
             res = await _http_client.fetch("127.0.0.1", port, "GET", "/sensors")
             assert res.status_code == 200
-            assert set(res.json().keys()) == {"SCD30", "BMP3XX", "SGP40"}
+            sensors = res.json()
+            assert set(sensors.keys()) == {"SCD30", "BMP3XX", "SGP40"}
+            for name, fields in sensors.items():
+                assert name not in fields, f"{name}'s own value is still self-wrapped: {fields!r}"
+                assert fields, f"{name} returned no fields at all"
 
             res = await _http_client.fetch("127.0.0.1", port, "GET", "/networking")
             assert res.status_code == 200

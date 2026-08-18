@@ -154,11 +154,34 @@ def configure_random_source(source: "Any | None") -> None:
     _random_source = source
 
 
+_scd30_state_path: "str | None" = None
+_current_scd30_chip: "Any | None" = None
+
+
+def configure_scd30_state_path(path: "str | None") -> None:
+    # Same module-level-hook pattern as configure_fram_state_path() above, applied to the SCD30's
+    # own NVM-persisted settings instead of FRAM contents - called once, before build_system()-
+    # equivalent code constructs i2c0, by whatever entry point Step 5 writes. None (the default)
+    # means "in-memory only, no persistence".
+    global _scd30_state_path
+    _scd30_state_path = path
+
+
+def flush_scd30() -> None:
+    # Called once, in a try/finally around asyncio.run(main()), alongside flush_fram() - see
+    # _scd30_chip.py's own module docstring for what is/isn't persisted and why.
+    if _current_scd30_chip is not None:
+        _current_scd30_chip.save_state()
+
+
 def _wire_i2c_devices(id: int) -> "dict[int, Any]":
+    global _current_scd30_chip
     if id == 0:
         from _scd30_chip import Scd30Chip
 
-        return {0x61: Scd30Chip(rdy_pin=Pin(8, mode=Pin.IN), random_source=_random_source)}
+        chip = Scd30Chip(rdy_pin=Pin(8, mode=Pin.IN), random_source=_random_source, state_path=_scd30_state_path)
+        _current_scd30_chip = chip
+        return {0x61: chip}
     if id == 1:
         from _bmp3xx_chip import Bmp3xxChip
         from _sgp40_chip import Sgp40Chip
