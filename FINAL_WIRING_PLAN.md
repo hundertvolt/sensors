@@ -66,6 +66,20 @@ main
                                                                     └─ large audit, then PR #31 → main
 ```
 
+**The "large audit" in the diagram above is a separate, later effort from Step 6, not the same
+thing** (confirmed directly by the project owner, after an earlier session's own recap of Step 6
+left this genuinely ambiguous — both are described as happening "after Step 5 merges into the
+trunk," which reads as one step without this clarification). Step 6 (`BACKLOG.md`'s open question
+#6 — the full self-healing-system failure-mode audit: rare corner cases, memory leaks, race
+conditions, silent failure masking, cascading recovery storms, `ticks_ms()` rollover, task/timer
+resource leaks) is its own dedicated session, following the same branch-and-merge-back-into-trunk
+pattern every step above already uses — forked from the trunk once Step 5 has landed there, merged
+back into the trunk when done, the same way Steps 1-5 each were. The "large audit" is a distinct,
+later pass conducted directly on the trunk branch itself (not a forked step branch of its own)
+after Step 6 (and anything else still open) has *also* landed on the trunk — it is the final gate
+before `claude/framework-wiring-rest-api-hx99v7` → `main` (PR #31) opens, not a stand-in for Step 6
+and not satisfied by Step 6 alone.
+
 Suggested branch names (each step's session can rename if it finds a better one, but should stay
 inside this scheme so the sequencing is legible from branch names alone):
 

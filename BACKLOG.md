@@ -486,6 +486,14 @@ constraints.
    `digital_twin/` (the digital-twin-only vs. real-hardware-relevant distinction this entry's own
    memory finding already had to make); Step 6's own session should establish that per category
    rather than assume uniform scope.
+
+   **Step 6 is not the same thing as the whole five-step effort's "large post-merge audit"**
+   (confirmed directly by the project owner) — see `FINAL_WIRING_PLAN.md`'s "Branch / session
+   structure" section for the precise relationship: Step 6 is its own dedicated session/branch,
+   forked from and merged back into the trunk the same way every step above was; the large audit is
+   a separate, later pass conducted directly on the trunk itself, after Step 6 (and anything else
+   still open) has also landed there, gating `claude/framework-wiring-rest-api-hx99v7` → `main`
+   (PR #31).
 7. **The real MicroPython Unix-port interpreter itself segfaults under heavy concurrent connection
    load against the real assembled system** — found while investigating a real user-reported
    `OSError: [Errno 104] ECONNRESET` crash in `digital_twin/run_wozi_integration.py`'s own soak (that
