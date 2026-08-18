@@ -140,9 +140,12 @@ finally:
 ```
 
 Omitting `configure_scd30_state_path()` (or passing `None`) runs the SCD30 twin in-memory only,
-same convention as FRAM. `digital_twin/run_wozi_integration.py` and `digital_twin/launch.py` both
-default to a persistent file next to the FRAM state file (`digital_twin/scd30_state.json` and
-`digital_twin/fram_state.json` respectively, both gitignored).
+same convention as FRAM. `digital_twin/run_wozi_integration.py` is the only entry point that
+defaults to a persistent file (`digital_twin/scd30_state.json`, next to its own
+`digital_twin/fram_state.json` default, both gitignored) — `digital_twin/launch.py` keeps its own
+pre-existing in-memory-only default for both (`--fram-state-path`/`--scd30-state-path` opt in
+explicitly), matching decision 6's own "the persistent-by-default behavior is specific to the
+manual/end-to-end entry point" scoping (`FINAL_WIRING_PLAN.md`'s Step 5 section).
 
 ## Running the twin's own tests
 

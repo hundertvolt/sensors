@@ -2267,6 +2267,48 @@ that this session's outbound network policy allows DNS (UDP/53) but blocks NTP (
 different public servers; the DNS-resolution and timeout/error-handling paths were still verified
 to degrade gracefully (`NtpSynced: false`, no exception) rather than crash.
 
+**Step 5 re-audit session (owner-directed follow-up, after Step 6 scope was separated out and the
+large final audit was confirmed to live on the trunk branch instead)**: re-walked this whole step
+for anything still open outside Step 6/the trunk-branch audit's scope. Found and fixed one real doc
+bug (`digital_twin/README.md`'s new SCD30-persistence section wrongly claimed
+`digital_twin/launch.py` defaults to a persistent state file the same way
+`run_wozi_integration.py` does - `LaunchConfig`'s own default is `None`/in-memory-only for both
+FRAM and SCD30, unchanged from before this step; only `run_wozi_integration.py` defaults to a
+persistent path, per decision 6's own scoping). Full `scripts/test.sh`, `scripts/lint.sh`,
+`scripts/typecheck.sh` re-verified clean (only `improved-quality/`'s pre-existing tracked debt).
+
+Also closed the remaining open item from the paragraph above: **the NTP gap is structurally deeper
+than "this sandbox's network policy blocks UDP/123."** A real, standalone reproduction - a real
+local UDP NTP responder on `127.0.0.1:123`, and a fully WiFi-connected, correctly-configured live
+digital-twin run with `NTP_Host` pointed at it (bypassing this sandbox's own network policy
+entirely by never leaving loopback) - still failed every sync attempt, zero packets ever reaching
+the responder. Root cause, isolated down to a bare `socket.socket().connect(("127.0.0.1", 123))`
+call: the MicroPython Unix port's "standard" build's `connect()`/`bind()`/`sendto()` reject a plain
+`(host, port)` tuple with `TypeError: object with buffer protocol required` - a known Unix-port-only
+quirk (`micropython/micropython#6924`) `tests/test_asy_udp_socket.py` already discovered and works
+around in its own test helpers, but the real production call sites
+(`asy_ntp_client.py`/`asy_dns_client.py`/`captive_dns.py`) never pre-resolve via
+`socket.getaddrinfo()` the way those test helpers do - correctly so, since a plain tuple is exactly
+what real rp2 hardware's socket implementation requires (`typings/socket.pyi`'s `_Address`
+contract). `AsyUDPSocket._connect()`'s own broad `except (OSError, MemoryError, TypeError)` swallows
+this as an ordinary "peer unreachable" failure, so **NTP sync and DNS resolution cannot succeed
+under the Unix port at all, unconditionally, regardless of network reachability** - not a `src/` bug
+(fixing it there would mean the twin dictating a production code shape that's wrong for real
+hardware, exactly what CLAUDE.md's "don't edit `src/` only to make the twin run" owner constraint
+rules out). Recorded in full in `BACKLOG.md`'s open question #5, which already tracked the general
+"UDP verified only against the Unix port, not real rp2/lwIP" gap - this session sharpens that from
+an untested-on-real-silicon caveat into a confirmed, structural, always-fails-here fact, and leaves
+its resolution exactly where BACKLOG.md's open question #5 already put it: real rp2 hardware.
+
+That same reproduction (a live, fully-booted, AP/hotspot-fallback-mode end-to-end run - no SSID
+configured, so `sensortask_wozi.main()`'s own real object graph never left hotspot mode) surfaced a
+second, independent, real finding: `captive_dns.py`'s `DNSServer.run()` loop has no backoff of its
+own on a persistently-failing `recvfrom()` - measured at ~5 warning-level log lines/second,
+continuously, for as long as the DNS server task runs. Recorded in full, including why this is
+exactly a first concrete instance of Step 6's own "cascading recovery storms" category rather than
+something to hand-patch mid-re-audit, in `BACKLOG.md`'s Step 6 scope entry (open question #6) right
+where that category is defined.
+
 **Follow-up audit (same session, after pushing the six fixes above)**: rather than wait for the
 same bug *patterns* to reproduce as real failures again, a dedicated pass searched the codebase for
 other latent instances of each one before they cause a real failure. Found and fixed four more:

@@ -336,6 +336,35 @@ constraints.
    tested/documented in the driver, this is the first place to look. **Explicitly deferred by the
    project owner**: on-device verification is real future work, not something to chase in the
    current session.
+   **Sharper root cause confirmed (Step 5 re-audit session)**: this isn't just an abstract
+   "untested on real silicon" gap — it's now confirmed structural. A real, standalone reproduction
+   (a fresh `AsyUDPSocket("127.0.0.1", 123)` client against a real local UDP responder, and the raw
+   `socket.socket().connect()` call underneath it) showed the MicroPython Unix port's "standard"
+   build's `connect()`/`bind()`/`sendto()` reject a plain `(host: str, port: int)` tuple outright
+   with `TypeError: object with buffer protocol required` — a known, long-standing Unix-port-only
+   quirk (`micropython/micropython#6924`) that `tests/test_asy_udp_socket.py` already found and
+   works around in its own test helpers (`make_addr()`/`resolve_addr()`, which pre-resolve via
+   `socket.getaddrinfo()` before ever constructing an `AsyUDPSocket`). The real production call
+   sites — `asy_ntp_client.py`'s `_fetch_ntp_reply()`, `asy_dns_client.py`'s `resolve_ipv4()`,
+   `captive_dns.py`'s own `AsyUDPSocket(("0.0.0.0", 53), ...)` — never do this pre-resolution; they
+   pass a plain tuple straight through, exactly matching `typings/socket.pyi`'s real-rp2-hardware
+   `_Address` contract (`tuple[str, int] | ...`), which is correct and required for real hardware.
+   Net effect: `_connect()`'s own broad `except (OSError, MemoryError, TypeError)` silently swallows
+   this `TypeError` as an ordinary "peer unreachable" failure, so **under the Unix port specifically,
+   every real NTP sync and every real DNS resolution attempt fails 100% of the time, unconditionally,
+   regardless of network reachability** — confirmed directly by pointing a fully-connected,
+   correctly-configured digital-twin run's `NTP_Host` at a real, working local UDP NTP responder on
+   `127.0.0.1:123` (bypassing this sandbox's own separate outbound-network restriction entirely) and
+   observing the sync attempt still fail with `NTP Invalid NTP time received!` every cycle, with zero
+   packets ever reaching the responder. **Not a bug and not something to fix in `src/`**: this is
+   exactly the class of thing CLAUDE.md's own "don't edit `src/` only to make the twin run" owner
+   constraint rules out — the production code is already correct for the real target. It does mean
+   the earlier "NTP round-trip couldn't be verified end-to-end because this sandbox's network policy
+   blocks UDP/123" framing (`FINAL_WIRING_PLAN.md`'s Step 5 baseline-verification session) understated
+   the gap: even a sandbox with full, unrestricted internet access could not have verified this code
+   path under the Unix port either. Real rp2 hardware remains the only way to verify NTP/DNS's actual
+   UDP transport — same conclusion this entry already reached, now reached from a direct
+   reproduction instead of an absence of one.
 6. `digital_twin/run_wozi_integration.py`'s `_soak()` memory-flat check
    (`_MEM_FLAT_TOLERANCE_BYTES = 4096`) — **re-investigated in a follow-up session, and the earlier
    "just a slow warm-up transient, will stabilize" framing is wrong.** A fresh, much longer
@@ -403,7 +432,34 @@ constraints.
        gets noticed
      - Cascading recovery storms — the self-healing/retry logic itself becoming the failure, e.g.
        every unit hammering a simultaneous reconnect/resync after a shared outage (WiFi, NTP)
-       instead of backing off
+       instead of backing off. **First concrete instance, found during the Step 5 re-audit
+       session's own official end-to-end run**: `captive_dns.py`'s `DNSServer.run()` loop calls
+       `self.udps.recvfrom(4096)` (default `timeout_ms=-1`, wait forever) and, on `(None, None)`,
+       just logs a warning and loops straight back to another `recvfrom()` call - no backoff, no
+       retry cap, no give-up condition of its own. Under a real assembled end-to-end run in AP/
+       hotspot-fallback mode (no SSID configured), the underlying `AsyUDPSocket`'s own `bind()`
+       never actually succeeded (see open question #5's own sharper NTP finding just above for
+       why, on the Unix port specifically), so `recvfrom()` returned `(None, None)` immediately on
+       every call - `_RETRY_BACKOFF_S=0.5s` throttles each individual failed `_connect()` attempt,
+       but nothing throttles the outer `run()` loop's own repeat rate on top of that, so real,
+       measured output was ~5 `wrn_s()` log lines/second, continuously, for the DNS server task's
+       entire lifetime (147 lines over one ~30s bounded run - confirmed directly, not estimated).
+       Contrast `asy_ntp_client.py`'s own sync-retry path, which is properly bounded
+       (`_NTP_SYNC_RETRIES=3`, `_NTP_RETRY_INTERV=15s` between attempts, then gives up and lets the
+       task supervisor restart the whole task) - `captive_dns.py`'s loop has no equivalent shape.
+       Whether this is reachable on real rp2 hardware too (a genuine, persistent `bind()` failure
+       there - e.g. resource exhaustion - isn't inherently impossible, just far rarer than the
+       Unix-port quirk that reliably triggers it here) is unresolved; either way the missing-backoff
+       *shape* is real and worth fixing regardless of what triggers it. Deliberately not
+       hand-patched in the re-audit session that found it - a real fix needs to decide bounded-retry
+       semantics (how many attempts, what backoff curve, does it ever retry again after giving up)
+       the same deliberate way `asy_ntp_client.py`'s own retry design already was, not a quick patch
+       mid-tangent - left for Step 6's own "fix" step to do properly, per its required methodology
+       below. Also worth noting: this spam was previously silent (invisible) before the
+       baseline-verification session's own fix to `asy_wifi_service.py`'s `wlan_connect()` (missing
+       `await self.dns_server.pr.setup()` - see `FINAL_WIRING_PLAN.md`'s Step 5 section) - that fix
+       was correct and necessary (real logging now works at all for this module) but had the side
+       effect of making this pre-existing retry-loop gap audible for the first time.
      - `time.ticks_ms()`/`time.ticks_diff()` rollover (~12.4 days at the RP2040's ms resolution) —
        a long-running-specific timing-correctness class distinct from the above, worth checking
        explicitly across every use site rather than assuming `ticks_diff()` is used everywhere it
