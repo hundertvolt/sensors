@@ -1,6 +1,6 @@
 """Tests for digital_twin/network.py and digital_twin/neopixel.py. neopixel.py is a near-verbatim
-duplicate of tests/neopixel.py (owner's explicit "duplicate for independence" choice,
-FINAL_WIRING_PLAN.md's Step 3), already proven correct there by test_asy_neopixel_driver.py - this
+duplicate of tests/neopixel.py (owner's explicit "duplicate for independence" choice),
+already proven correct there by test_asy_neopixel_driver.py - this
 file only locks in its basic shape. network.py's WLAN has real behavioral differences from
 tests/network.py's own inert fixture (owner's own specified strategy, same session): connect()
 transitions through STAT_CONNECTING -> STAT_GOT_IP over a short, real delay instead of resolving
@@ -85,7 +85,7 @@ def test_wlan_config_records_every_call() -> None:
 
 
 def test_wlan_config_calls_stays_bounded_across_many_calls() -> None:
-    # Regression test for FINAL_WIRING_PLAN.md's Step 5 baseline-verification pass's own follow-up
+    # Regression test from baseline verification's own follow-up
     # audit: config_calls/connect_calls used to be plain, unbounded lists, the same latent-leak
     # shape as the fixed I2C.log/SPI.log bug (see network.py's own _CALL_LOG_MAXLEN comment) - a
     # long-running twin session's own reconnect/fault-injection retry loop calls config()/connect()

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Dedicated entry point for FINAL_WIRING_PLAN.md's Step 5 ("full Unix-port integration") -
+# Dedicated entry point for the digital twin's "full Unix-port integration" run -
 # digital_twin/run_wozi_integration.py, run against the real digital_twin buses under the real
 # MicroPython Unix-port interpreter. Deliberately separate from scripts/test.sh: the twin needs its
 # own MICROPYPATH ("src:digital_twin:ext:frozen_modules:.frozen") that never carries a "tests"
 # segment (digital_twin/README.md's own "never together" rule - see that doc's "Swapping the twin
-# in for a Unix-port run (Step 5)" section), and run_wozi_integration.py can run forever (no
-# --duration - owner decision 3, a real browser on this machine should be able to reach it), which
+# in for a Unix-port run" section), and run_wozi_integration.py can run forever (no
+# --duration - a real browser on this machine should be able to reach it), which
 # would hang scripts/test.sh's own default tests/test_*.py glob loop if it were discovered there
 # instead.
 #

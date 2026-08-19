@@ -3,13 +3,13 @@ answers the exact raw I2C command/reply shapes tests/test_asy_sgp40_driver.py's 
 lock in for the real driver (see that file's queue_successful_init()/measure_raw() assertions),
 but generated instead of hand-scripted. No real machine.I2C/asy_sgp40_driver involved here - this
 tests Sgp40Chip in isolation, matching this step's "deterministic tests of the twin's own
-transaction responses" criterion (FINAL_WIRING_PLAN.md's Step 3).
+transaction responses" criterion.
 """
 
 import sys
 
 # digital_twin/ isn't on scripts/test.sh's own MICROPYPATH ("src:tests:.frozen") - deliberately
-# kept separate from the unit-test set (FINAL_WIRING_PLAN.md's Step 3). Extending sys.path at
+# kept separate from the unit-test set. Extending sys.path at
 # runtime, scoped to this one file, reaches it without touching scripts/test.sh/MICROPYPATH at all
 # - same confirmed-safe pattern as test_setter_microdot_integration.py's own ext/ insertion.
 sys.path.insert(0, "digital_twin")

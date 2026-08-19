@@ -21,6 +21,16 @@ if TYPE_CHECKING:
 
 _NAME = const("DNSSRV")
 
+# Backoff for a persistently-failing recvfrom() that returns (None, None) without ever raising
+# (e.g. a bind() that never actually succeeded - see SPECIFICATION.md Part C.9's
+# cascading-recovery-storm convention: this path previously looped at zero delay, measured at ~5
+# wrn_s() lines/second continuously in a real end-to-end run). Distinct from the broad
+# except-Exception backoff below, which already had its own flat 3s pause for a genuinely
+# unexpected exception.
+_RECV_FAIL_BACKOFF_INITIAL_S = const(0.5)
+_RECV_FAIL_BACKOFF_MAX_S = const(5.0)
+_RECV_FAIL_BACKOFF_MULTIPLIER = const(2)
+
 
 def _ipv4_to_int(ip: str) -> int | None:
     # RFC 791 section 3.2 dotted-quad -> 32-bit big-endian form, for subnet math below. Never
@@ -66,11 +76,13 @@ class DNSServer:
             await self.pr.err_s("Invalid server_ip/netmask, not starting:", server_ip, netmask, errno=1)
             return
         network = server_int & netmask_int
+        recv_fail_backoff_s = _RECV_FAIL_BACKOFF_INITIAL_S
         while True:
             try:
                 self.pr.evt("Waiting for DNS request...")
                 data, addr = await self.udps.recvfrom(4096)
                 if data is not None and addr is not None:
+                    recv_fail_backoff_s = _RECV_FAIL_BACKOFF_INITIAL_S  # socket is receiving fine again
                     try:
                         # addr[0] isn't guaranteed to be a str (confirmed: can come back as a
                         # plain int) - treated like off-subnet, not the outer except's 3s backoff.
@@ -94,6 +106,10 @@ class DNSServer:
                             self.pr.evt(f"Replying to {addr[0]:s}:{addr[1]}: {dns.domain:s} -> {server_ip:s}")
                 else:  # data or address is None
                     await self.pr.wrn_s("Invalid DNS request data or address, not sending response.", wrnno=2)
+                    await asyncio.sleep(recv_fail_backoff_s)
+                    recv_fail_backoff_s = min(
+                        recv_fail_backoff_s * _RECV_FAIL_BACKOFF_MULTIPLIER, _RECV_FAIL_BACKOFF_MAX_S
+                    )
 
             except asyncio.CancelledError:
                 self.pr.evt("DNS Server shutdown")
@@ -105,15 +121,23 @@ class DNSServer:
                 await asyncio.sleep(3)
 
         try:
-            await self.udps.disconnect()
+            disconnect_ok = await self.udps.disconnect()
         except asyncio.CancelledError:
             # A second cancellation delivered while this cleanup await is in flight - already
             # shutting down, nothing more to do.
-            pass
+            disconnect_ok = True
         except Exception as e:
             # disconnect() is documented as never raising, but nothing supervises this task -
             # never let cleanup itself become the uncaught exception.
             await self.pr.err_s("DNS Server error during disconnect:", e, errno=3)
+            disconnect_ok = True  # already logged above via the except-Exception branch
+        if not disconnect_ok:
+            # SPECIFICATION.md Part C.7's silent-failure-masking convention: disconnect() itself
+            # never raises (AsyUDPSocket has no logger of its own by design), but its bool return now
+            # reports whether unregister()/close() actually succeeded - log it here so a real
+            # socket/poll-slot leak
+            # over a long uptime leaves a trail instead of silently disappearing.
+            await self.pr.wrn_s("DNS Server socket teardown did not complete cleanly.", wrnno=3)
         self.pr.evt("DNS Server disconnected.")
 
 

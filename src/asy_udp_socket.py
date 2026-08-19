@@ -96,24 +96,27 @@ class AsyUDPSocket:
                 if not self.connected:
                     await self._disconnect_locked()
 
-    async def _disconnect_locked(self) -> None:
+    async def _disconnect_locked(self) -> bool:
         # Actual teardown, assuming self._connect_lock is already held - split out so _connect()'s
         # self-heal path can call this directly without deadlocking on the same non-reentrant lock.
         # State is cleared eagerly so a failure partway through can't leave it half-connected.
-        if self.sock is not None:
-            sock, poller = self.sock, self.poller
-            self.sock = None
-            self.poller = None
-            self.connected = False
-            try:
-                if poller is not None:
-                    poller.unregister(sock)
-            except (OSError, MemoryError):
-                pass
-            try:
-                sock.close()
-            except (OSError, MemoryError):
-                pass
+        if self.sock is None:
+            return True
+        sock, poller = self.sock, self.poller
+        self.sock = None
+        self.poller = None
+        self.connected = False
+        ok = True
+        try:
+            if poller is not None:
+                poller.unregister(sock)
+        except (OSError, MemoryError):
+            ok = False
+        try:
+            sock.close()
+        except (OSError, MemoryError):
+            ok = False
+        return ok
 
     async def ready(self, mask: int, timeout_ms: int = -1, wait_time_ms: int = 20) -> bool:
         # Busy-polls ipoll(0), yielding via sleep_ms(wait_time_ms) each cycle, until mask (or a
@@ -189,8 +192,14 @@ class AsyUDPSocket:
                 return data, addr
         return None, None
 
-    async def disconnect(self) -> None:
+    async def disconnect(self) -> bool:
         # Serialized against _connect() via the same self._connect_lock - without this, a
         # disconnect() concurrent with an in-flight _connect() retry could crash it.
+        # Returns True if teardown completed cleanly, False if unregister()/close() raised (state
+        # is still always cleared either way - see _disconnect_locked()). This class deliberately
+        # has no logger of its own (every I/O method is a plain sentinel-return, never-raises
+        # primitive - see module docstring), so a caller that wants to log a failed teardown reads
+        # this return value with its own logger, the same way it already does for every other
+        # method here - never a silent bare `pass` with no signal at all (Step 6 finding).
         async with self._connect_lock:
-            await self._disconnect_locked()
+            return await self._disconnect_locked()

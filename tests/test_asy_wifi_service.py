@@ -1829,7 +1829,7 @@ def test_wlan_connect_calls_pr_setup_before_entering_its_loop() -> None:
 
 
 def test_wlan_connect_also_calls_dns_server_pr_setup_before_entering_its_loop() -> None:
-    # Regression test for FINAL_WIRING_PLAN.md's Step 5 baseline-verification pass: dns_server is
+    # Regression test from baseline verification: dns_server is
     # its own separate PrintLogHistory instance (captive_dns.py's DNSServer, own construction) -
     # nothing called its own pr.setup() before this fix, so every dns_server.pr.err_s()/wrn_s() call
     # degraded to "PrintLog: Uninitialized, call setup first!" forever, reproduced directly running
@@ -2455,6 +2455,72 @@ def test_start_hotspot_valid_config_activates_the_ap() -> None:
     assert client.hotspot_started_once is True
     assert client.hw_op_failed is False
     assert {"essid": "SensorNode", "password": "12345678"} in _wlan(client).config_calls
+
+
+# ---------------------------------------------------------------------------
+# Task/timer resource leak regression: _run_hotspot_mode() calls _start_hotspot() every loop iteration where
+# wlan.status() != network.STAT_GOT_IP - true on literally every iteration while purely in AP mode,
+# since STAT_GOT_IP is a STA-only status an AP interface never reports (confirmed directly against
+# both tests/network.py's and digital_twin/network.py's WLAN fakes: nothing ever sets _status to
+# STAT_GOT_IP except a STA connect() completing). _configure_hotspot_ap() (called from
+# _start_hotspot() via _activate_hotspot_ap()) unconditionally did
+# `self.dns_server_task = evtloop.create_task(...)` with no is-already-running guard - unlike every
+# other task-holding attribute in this file (ledflash, hotspot_timer), which all null-check before
+# reassigning. Net effect before the fix: one new concurrent DNSServer.run() task leaked per
+# wifi_refresh_sec while stuck in hotspot mode (a real, long-running-uptime scenario, not an edge
+# case), all sharing the one DNSServer instance's single AsyUDPSocket/poller.
+# ---------------------------------------------------------------------------
+
+
+def test_start_hotspot_does_not_leak_a_dns_server_task_when_called_again_while_already_running() -> None:
+    client = make_client()
+
+    async def fake_select(_mode: "Any") -> None:
+        return None
+
+    client._select_wifi_mode = fake_select  # type: ignore[method-assign, assignment]  # deliberate monkeypatch
+
+    async def scenario() -> "Any":
+        # Mirrors _run_hotspot_mode() calling _start_hotspot() again on a later loop iteration
+        # while wlan.status() still isn't STAT_GOT_IP - the real, reachable repeated-call shape.
+        await client._start_hotspot()
+        first_task = client.dns_server_task
+        assert first_task is not None
+        await client._start_hotspot()
+        second_task = client.dns_server_task
+        try:
+            assert second_task is first_task  # no new task created while the first is still running
+            assert not first_task.done()  # and the original task was never cancelled out from under it
+        finally:
+            await _cancel(first_task)
+
+    run(scenario())
+
+
+def test_start_hotspot_starts_a_fresh_dns_server_task_if_the_previous_one_already_finished() -> None:
+    # The other half of the guard: a *finished* task (real crash/cancellation) must not block a
+    # legitimate restart, matching system_service.py's own start_and_check_tasks() `is None or
+    # .done()` convention.
+    client = make_client()
+
+    async def fake_select(_mode: "Any") -> None:
+        return None
+
+    client._select_wifi_mode = fake_select  # type: ignore[method-assign, assignment]  # deliberate monkeypatch
+
+    async def scenario() -> None:
+        await client._start_hotspot()
+        first_task = client.dns_server_task
+        assert first_task is not None
+        await _cancel(first_task)
+        assert first_task.done()
+        await client._start_hotspot()
+        second_task = client.dns_server_task
+        assert second_task is not None
+        assert second_task is not first_task
+        await _cancel(second_task)
+
+    run(scenario())
 
 
 if __name__ == "__main__":

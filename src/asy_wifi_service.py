@@ -314,8 +314,15 @@ class AsyConnTime(SensorReaderConfig):
         self.wlan.active(True)
         self.wlan.config(pm=0xA11140)  # disable power-save mode
         own_ip, own_netmask = self.wlan.ifconfig()[:2]
-        evtloop = asyncio.get_event_loop()
-        self.dns_server_task = evtloop.create_task(self.dns_server.run(own_ip, own_netmask))
+        # _run_hotspot_mode() calls _start_hotspot() (and so this method) again every loop
+        # iteration for as long as wlan.status() != network.STAT_GOT_IP - true on every iteration
+        # while purely in AP mode (STAT_GOT_IP is a STA-only status an AP interface never reports).
+        # Guard against leaking a duplicate concurrent DNSServer.run() task on top of one already
+        # running - same "is None or .done()" convention system_service.py's own
+        # start_and_check_tasks() already uses for its supervised tasks.
+        if self.dns_server_task is None or self.dns_server_task.done():
+            evtloop = asyncio.get_event_loop()
+            self.dns_server_task = evtloop.create_task(self.dns_server.run(own_ip, own_netmask))
         self.pr.one("WLAN hotspot was started")
 
     def _hotspot_client_connected(self) -> None:
@@ -696,8 +703,8 @@ class AsyConnTime(SensorReaderConfig):
         await self.dns_server.pr.setup()  # dns_server is its own separate PrintLogHistory instance
         # (captive_dns.py's DNSServer, own construction, not covered by self.pr.setup() above) -
         # self.dns_server.run() is only ever started later in this same function's own hotspot-
-        # activation path, so this is always called before it. Found via FINAL_WIRING_PLAN.md's
-        # Step 5 baseline-verification pass: every dns_server.pr.err_s()/wrn_s() call degraded to
+        # activation path, so this is always called before it. Found during baseline
+        # verification: every dns_server.pr.err_s()/wrn_s() call degraded to
         # "PrintLog: Uninitialized, call setup first!" forever (never actually logging/persisting)
         # since nothing ever called this - real hardware falling back to hotspot mode has the
         # identical gap, not twin-specific.

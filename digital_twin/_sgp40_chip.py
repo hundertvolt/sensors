@@ -9,7 +9,7 @@ sub-range of that, matching the values tests/test_asy_sgp40_driver.py's own fixt
 (28'000-31'000).
 
 Sits at the same raw-transaction mocking boundary as tests/machine.py's fake I2C, but is a separate,
-independent implementation (FINAL_WIRING_PLAN.md's Step 3 - not imported from tests/machine.py).
+independent implementation (not imported from tests/machine.py).
 """
 
 import random as _random_module

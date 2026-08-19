@@ -1,4 +1,4 @@
-"""End-to-end entry point for FINAL_WIRING_PLAN.md's Step 5 - "full Unix-port integration": boots
+"""End-to-end entry point for the digital twin's "full Unix-port integration" run: boots
 the real src/sensortask_wozi.py object graph (build_system()/main(), unchanged - zero
 twin-awareness anywhere in src/) against the real digital_twin buses, then drives real HTTP traffic
 against the real, real-socket asyncio.start_server()-backed WebserverService (owner decision 2:
@@ -57,6 +57,7 @@ from launch import (
     _parse_wifi_outcome,  # deliberately reused, not reimplemented - see module docstring
     parse_fault_spec,  # noqa: F401 - re-exported for callers that only need the spec parser
 )
+from unix_port_poll_prewarm import prewarm_poll_set
 
 import sensortask_wozi
 
@@ -66,7 +67,7 @@ _DEFAULT_SCD30_STATE_PATH = "digital_twin/scd30_state.json"  # same folder as th
 _CONFIG_DIR = "digital_twin/config/"
 _SOAK_ENDPOINTS = ("/measurements", "/sensors", "/networking", "/system", "/notification", "/status", "/")
 _MEM_FLAT_TOLERANCE_BYTES = 4096  # identical to tests/test_asy_webserver_service.py's own F.9 tolerance (owner decision 9)
-_SOAK_WARMUP_CYCLES = 40  # FINAL_WIRING_PLAN.md's Step 5 baseline-verification pass found the
+_SOAK_WARMUP_CYCLES = 40  # baseline verification found the
 # original 2-cycle warm-up (Step 2's own F.9 convention, copied verbatim) isn't enough for *this*
 # soak: unlike F.9's fake reader/writer, this soak drives the real object graph, where every
 # settings GET re-reads and re-parses its config file from disk (ConfigManager's own per-call
@@ -230,6 +231,16 @@ async def _wait_until_serving(host: str, port: int, timeout_s: float = 10.0) -> 
 
 
 async def _soak(host: str, port: int, cycles: int) -> "list[str]":
+    # Deliberately strictly-sequential (one fetch() awaited at a time, never asyncio.gather()'d) -
+    # do not "optimize" this into concurrent requests. A real MicroPython Unix-port interpreter
+    # segfault (confirmed via dmesg, not a catchable Python-level exception; see
+    # unix_port_poll_prewarm.py's own module docstring for the root cause and fix) was found by
+    # firing 8+ concurrent clients against this same assembled system, well
+    # beyond WebserverService's own max_connections=3 ceiling - this soak's own sequential pattern
+    # never approaches that and must stay that way. digital_twin/segfault_stress_repro.py is the
+    # dedicated, separate, manual tool for deliberately exploring that concurrency - never fold its
+    # pattern into this automated soak.
+    #
     # Every fetch() below is wrapped, not left to propagate - the real server already tolerates an
     # individual connection failure gracefully (WebserverService._serve()'s own broad exception
     # handling, its max_connections=3 reject-when-full path among them: a rejected connection is
@@ -274,6 +285,10 @@ def _ensure_dir(path: str) -> None:
 
 
 async def main(config: RunConfig) -> "dict[str, Any]":
+    # Must run before anything else in the process registers a poll object - see
+    # unix_port_poll_prewarm.py's own module docstring (a confirmed Unix-port-only MicroPython bug
+    # this pre-warming avoids triggering).
+    prewarm_poll_set()
     machine.configure_fram_state_path(config.fram_state_path)
     machine.configure_scd30_state_path(config.scd30_state_path)
     if config.seed is not None:

@@ -1,13 +1,13 @@
-"""Construction/wiring tests for sensortask_wozi.py's build_system() - Step 1's async-safe rewrite
+"""Construction/wiring tests for sensortask_wozi.py's build_system() - the async-safe rewrite
 of improved-quality/sensortask-wozi.py's flat, module-level construction sequence (see
-FINAL_WIRING_PLAN.md's Step 1 section and WIRING_CONTRACT.md for the full rationale). Verifies, in
+SPECIFICATION.md Part A.7 for the full rationale). Verifies, in
 one place, everything the "Criteria for this step to finish" checklist asks for:
 
 - Every module the reference file constructs is reachable as a plain module-level attribute of
   sensortask_wozi (conn, ntp, i2c0, i2c1, spi0, fram, sysfunct, sgp_reader, bmp_reader, scd_reader,
-  pixel, notify_service) - bare globals, not a wrapper container (owner-confirmed, see
-  FINAL_WIRING_PLAN.md's refined-plan Q3).
-- The real FRAM chunk order (five chunks, not four - WIRING_CONTRACT.md item 8's correction):
+  pixel, notify_service) - bare globals, not a wrapper container (owner-confirmed,
+  refined-plan Q3).
+- The real FRAM chunk order (five chunks, not four):
   SystemService -> SGP40_Reader's own log -> SGP40_Reader's VOC backup -> NeopixelDriver ->
   NotificationCoordinator.
 - The grouped await x.setup() batch (fram -> sgp_reader -> bmp_reader -> notify_service), and the
@@ -16,13 +16,13 @@ one place, everything the "Criteria for this step to finish" checklist asks for:
   own documented contract).
 - get_task_starters()/get_timer_starters() collection reaching every constructed module, without
   ever driving start_and_check_tasks()'s intentionally-infinite supervisor loop - that boundary
-  (boot-to-steady-state) belongs to Step 5, not Step 1 (FINAL_WIRING_PLAN.md's own scoping).
+  (boot-to-steady-state) belongs to Step 5, not Step 1 (this project's own scoping).
 - build_system() is independently callable and returns - no top-level blocking call anywhere in
-  this module (the two-file split from FINAL_WIRING_PLAN.md's refined plan: the real
+  this module (the two-file split: the real
   blocking-import production entry point lives in boot_entry/wozi_boot.py instead). If this file
   hangs the test process, that alone is a real Step 1 regression.
 
-Also covers Step 2's own real wiring into this file (FINAL_WIRING_PLAN.md's Step 2 "Not yet done"
+Also covers the webserver's own real wiring into this file ("Not yet done"
 follow-up, closed in a later session): build_system() now also constructs a real Microdot() app and
 WebserverService, registering every module's SettingsGroup/status_source/system_cmd/
 notification_led/maintenance_sensor/error_source - see the "Webserver wiring" section below. Deep
@@ -96,8 +96,7 @@ def _sweep_stale_tmp_dirs(prefix: str) -> None:
     # direct reproduction - deleting tests/_tmp/wozi_* took this file from 23/29 to 29/29 passing;
     # re-running it again, now dirty from that clean run, reproduced the exact same 6 failures every
     # time). This exact _tmp_cfg_dir() shape is copy-pasted across every test_*.py file with its own
-    # _TMP_DIR/_next_dir pair - same fix applied uniformly to each (FINAL_WIRING_PLAN.md's Step 3
-    # section has the full investigation). Sweeping at import time, rather than only guarding
+    # _TMP_DIR/_next_dir pair - same fix applied uniformly to each. Sweeping at import time, rather than only guarding
     # against the empty-directory case os.mkdir()'s own try/except already handled, is what actually
     # restores the "must not collide"/fresh-directory guarantee this helper's own docstring promises.
     try:
@@ -225,15 +224,15 @@ def test_build_system_constructs_every_legacy_named_module() -> None:
 
 
 def test_build_system_wires_the_wifi_led_callback_after_both_exist() -> None:
-    # conn.set_ext_led(pixel) - the one cross-wiring step that must run after both objects exist
-    # (WIRING_CONTRACT.md item 13). Confirmed indirectly: AsyConnTime's own ext_led slot is set.
+    # conn.set_ext_led(pixel) - the one cross-wiring step that must run after both objects exist.
+    # Confirmed indirectly: AsyConnTime's own ext_led slot is set.
     run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
     assert sensortask_wozi.conn is not None
     assert sensortask_wozi.conn.ext_led is sensortask_wozi.pixel
 
 
 def test_build_system_is_independently_callable_and_returns() -> None:
-    # The whole point of the two-file split (FINAL_WIRING_PLAN.md's refined plan): importing this
+    # The whole point of the two-file split: importing this
     # test file and calling build_system() must never block. If this test hangs, that's the
     # regression to report - not something to work around here.
     run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
@@ -249,7 +248,7 @@ def test_build_system_web_host_and_port_default_to_production_values() -> None:
 def test_build_system_web_host_and_port_are_overridable() -> None:
     # Step 5's own real need: a non-root Unix-port integration run can't bind the production
     # 0.0.0.0:80 default (EACCES) - build_system() must let a caller override both, mirroring its
-    # existing cfg_path/debug override pattern (FINAL_WIRING_PLAN.md's Step 5 refined plan,
+    # existing cfg_path/debug override pattern (refined plan,
     # decision 3).
     run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=8080))
     assert sensortask_wozi.webserver is not None
@@ -296,7 +295,7 @@ def test_main_forwards_web_host_and_port_to_build_system() -> None:
 
 
 # ---------------------------------------------------------------------------
-# FRAM chunk order - five chunks, exact relative sequence (WIRING_CONTRACT.md item 8's correction).
+# FRAM chunk order - five chunks, exact relative sequence.
 # ---------------------------------------------------------------------------
 
 
@@ -591,7 +590,7 @@ def test_collect_task_starters_includes_every_constructed_module() -> None:
     starters = sensortask_wozi._collect_task_starters()
     assert len(starters) > 0
     assert all(callable(s) for s in starters)
-    # No Microdot/webserver task in Step 1 (owner-confirmed - FINAL_WIRING_PLAN.md's refined plan
+    # No Microdot/webserver task in Step 1 (owner-confirmed - refined plan
     # Q2, Step 2's job entirely).
     assert not any("webserver" in getattr(s, "__name__", "").lower() for s in starters)
     # Each real module's own get_task_starters() output is present. MicroPython bound methods
@@ -689,7 +688,7 @@ def test_main_calls_start_timers_then_force_sync_then_start_and_check_tasks_in_o
 
 
 # ---------------------------------------------------------------------------
-# Webserver wiring (FINAL_WIRING_PLAN.md's Step 2, closed in a later session) - build_system() now
+# Webserver wiring (closed in a later session) - build_system() now
 # also constructs a real Microdot() app + WebserverService, registering every real driver's
 # SettingsGroup/status_source/system_cmd/notification_led/maintenance_sensor/error_source. These
 # tests check the *real* registrations landed correctly (right module, right fields, right hooks) -
@@ -710,7 +709,7 @@ def _dispatch(method: str, path: str, json_body: "dict[str, Any] | None" = None)
 def test_webserver_pr_is_ram_only_not_fram_backed() -> None:
     # Deliberate decision (see build_system()'s own comment): a warning on every per-call/outer-cap
     # reclaim could churn far faster than any sensor's rare-hardware-fault log - keeping it RAM-only
-    # also preserves WIRING_CONTRACT.md's five-chunk FRAM allocation order (Step 1) unchanged, not a
+    # also preserves the five-chunk FRAM allocation order (see SPECIFICATION.md Part A.7) unchanged, not a
     # sixth chunk.
     run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
     assert sensortask_wozi.webserver is not None
@@ -752,7 +751,7 @@ def test_webserver_sensors_put_round_trips_a_real_field_through_the_real_driver(
 
 
 def test_webserver_sensors_put_round_trips_a_real_scd30_field_through_the_real_driver() -> None:
-    # Regression test for FINAL_WIRING_PLAN.md's Step 5 baseline-verification pass: SCD30_Reader
+    # Regression test from baseline verification: SCD30_Reader
     # is the only sensors=-registered module that's a plain SensorReader rather than a
     # SensorReaderConfig subclass (no local cfgmgr - these params live on the sensor itself, see
     # asy_scd30_driver.py's own _VAL_* comment), so it never inherited get_cfg_schema() the way

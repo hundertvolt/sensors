@@ -1,5 +1,5 @@
-"""Minimal hand-rolled HTTP/1.1 client over asyncio.open_connection() - FINAL_WIRING_PLAN.md's
-Step 5 needs to drive real HTTP requests against src/asy_webserver_service.py's real
+"""Minimal hand-rolled HTTP/1.1 client over asyncio.open_connection() - used by the digital twin's
+Unix-port integration run to drive real HTTP requests against src/asy_webserver_service.py's real
 asyncio.start_server()-backed WebserverService ("full HTTP, real sockets, real server" - owner
 decision 2), and no HTTP client library is frozen into (or otherwise reliably available on) the
 pinned MicroPython Unix-port build - confirmed directly, no urequests/requests import anywhere in

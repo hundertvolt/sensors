@@ -260,7 +260,7 @@ def test_i2c_and_spi_deinit_are_recorded() -> None:
 
 
 def test_i2c_log_stays_bounded_across_many_transactions() -> None:
-    # Regression test for FINAL_WIRING_PLAN.md's Step 5 baseline-verification pass: I2C.log used to
+    # Regression test from baseline verification: I2C.log used to
     # be a plain, unbounded list, growing for the life of the process - the dominant contributor to
     # a real MemoryError reproduced by actually running the assembled system end-to-end (real
     # asyncio/HTTP/bus-transaction churn eventually needed a large-enough contiguous reallocation to

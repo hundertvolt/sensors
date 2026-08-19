@@ -2,7 +2,7 @@
 persistence - independently reimplements the MB85RS64V opcode shapes tests/_fram_chip_fake.py
 already establishes for unit tests (WREN/WRDI/RDSR/WRSR/READ/WRITE/RDID - confirmed directly against
 src/asy_fram_driver.py's FRAM_SPI, the same source that fixture is built from), but as its own
-independent module (FINAL_WIRING_PLAN.md's Step 3 - digital_twin/ never imports tests/machine.py or
+independent module (digital_twin/ never imports tests/machine.py or
 tests/_fram_chip_fake.py), plus save_state()/load persistence the unit-test fixture doesn't need.
 """
 
@@ -178,7 +178,7 @@ def test_persisted_file_is_json_with_hex_encoded_memory() -> None:
 
 
 def test_save_state_round_trips_correctly_across_chunk_boundaries() -> None:
-    # Regression test for FINAL_WIRING_PLAN.md's Step 5 baseline-verification pass: save_state()
+    # Regression test from baseline verification: save_state()
     # used to build the whole memory image as one giant bytes(self.memory).hex() string in a single
     # allocation, which failed with a real MemoryError once the heap got fragmented by a live
     # system's normal churn (reproduced deterministically running the real assembled system against

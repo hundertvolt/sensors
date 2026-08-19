@@ -929,7 +929,7 @@ def test_get_dict_cfg_reports_every_schema_field_by_name() -> None:
 
 
 def test_get_cfg_schema_returns_every_settable_field_by_name() -> None:
-    # Regression test for FINAL_WIRING_PLAN.md's Step 5 baseline-verification pass:
+    # Regression test from baseline verification:
     # SCD30_Reader(SensorReader) - unlike every other reader in this codebase (SensorReaderConfig
     # subclasses) - never inherited a get_cfg_schema() method, even though
     # asy_webserver_service.py's _put_sensors() route calls module.get_cfg_schema() uniformly for

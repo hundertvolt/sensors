@@ -1,8 +1,8 @@
 """Deterministic unit tests for digital_twin/_bmp3xx_chip.py's own transaction-response logic -
 matches the register-addressed shape src/asy_bmp3xx_driver.py's BMP3XX_I2C sends via
 readfrom_mem()/writeto_mem() (confirmed directly against that file - unlike SGP40/SCD30, BMP3xx has
-no CRC framing at all). The fixed calibration block below is verified (in
-FINAL_WIRING_PLAN.md's Step 3 section) to round-trip exactly through the real driver's own
+no CRC framing at all). The fixed calibration block below is verified
+to round-trip exactly through the real driver's own
 compensation formula (asy_bmp3xx_driver.py:398-434, reproduced independently here) for every target
 in the twin's default sensible range.
 """
@@ -223,7 +223,7 @@ def test_unknown_register_returns_zero_bytes_without_raising() -> None:
 
 
 def test_handle_writeto_accepts_the_zero_byte_bus_probe_without_raising() -> None:
-    # Regression test for FINAL_WIRING_PLAN.md's Step 5 baseline-verification pass:
+    # Regression test from baseline verification:
     # asy_i2c_driver.py's I2CDevice.setup()/_probe_for_device() always does a plain, empty
     # chip.writeto(address, b"") before any register access - this chip fake used to have no
     # handle_writeto() at all (only handle_writeto_mem(), matching its real register-addressed
