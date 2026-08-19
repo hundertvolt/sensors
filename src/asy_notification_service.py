@@ -132,14 +132,14 @@ class NotificationCoordinator(SensorReaderConfig):
         try:  # caller-supplied callback, could legitimately misbehave
             return await self._local_time_callback()
         except Exception as e:
-            await self.pr.err_s("local_time_callback failed:", e, errno=3)
+            await self.pr.err_s("local_time_callback failed:", e, errno=12)
             return None
 
     async def _check_one(self, notif: NotificationSignal) -> bool:
         try:  # caller-supplied callback, could legitimately misbehave
             value = await notif.get_value()
         except Exception as e:
-            await self.pr.err_s(notif.name, "Value callback failed:", e, errno=1)
+            await self.pr.err_s(notif.name, "Value callback failed:", e, errno=10)
             value = None
         notif.last_value = value
         if value is None:
@@ -147,7 +147,7 @@ class NotificationCoordinator(SensorReaderConfig):
             return False
         thresholds = await self.cfgmgr.get_float_values(notif.field_schema)  # works for an "int" schema field too - float(cached_int) never raises
         if thresholds is None:
-            await self.pr.err_s(notif.name, "Threshold config read failed!", errno=2)
+            await self.pr.err_s(notif.name, "Threshold config read failed!", errno=11)
             notif.triggered = False
             return False
         threshold = thresholds[0]  # exactly one field - register() rejects any other shape
@@ -160,7 +160,7 @@ class NotificationCoordinator(SensorReaderConfig):
         try:  # caller-supplied callback, could legitimately misbehave
             await self._request_signal_cb(r * flash_bri, g * flash_bri, b * flash_bri, flash_dur)
         except Exception as e:
-            await self.pr.err_s(notif.name, "request_signal_cb failed:", e, errno=4)
+            await self.pr.err_s(notif.name, "request_signal_cb failed:", e, errno=13)
 
     async def _store_notif_data(self, any_triggered: bool) -> None:
         await self._set_meas_data(NOTIFY(any_triggered, self._now()))

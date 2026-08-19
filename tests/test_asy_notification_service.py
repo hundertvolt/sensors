@@ -685,7 +685,7 @@ def test_two_signals_failures_share_one_errno_but_distinct_names_in_message() ->
     log = run(read_log())
     assert log["NOTIFY"]["ErrCount"] == 2
     assert log["NOTIFY"]["ErrType"][-2:] == ["E", "E"]
-    assert log["NOTIFY"]["ErrNum"][-2:] == [1, 1]  # same errno for both - the name is in the message text, not the errno
+    assert log["NOTIFY"]["ErrNum"][-2:] == [10, 10]  # same errno for both - the name is in the message text, not the errno
 
 
 # ---------------------------------------------------------------------------
