@@ -2645,6 +2645,71 @@ the heap-threshold recipe, resuming the digital-twin-vs-real-hardware bisection 
 steer, deciding whether the small-heap measurement caveat above needs closing before trusting the
 slope figure) is left to the project owner's direction, not decided here.
 
+### Step 6 second re-investigation — full resolution, not just re-audit
+
+**Same overall effort, later session.** The project owner pushed back again, this time rejecting
+"document only" as an acceptable stopping point outright: "never rely on an untestable 'this would
+not happen in another case'... completely resolve the issues, completely for Unix, as far as
+possible for the rp2040... really resolve it, don't back off before." This section is that pass.
+
+**Segfault — root-caused and fixed, not just reproduced.** Built a `DEBUG=1`, unstripped Unix-port
+binary (kept alongside, not replacing, the pinned `build-standard` one) specifically to get a real
+symbolized backtrace, which immediately overturned the prior "consistent with deep recursion" lead:
+the crash is only ~14 shallow frames from the real asyncio loop, and the repeating-address pattern
+the stripped binary showed was `mp_execute_bytecode`'s own opcode-dispatch jump table, not a call
+stack. The actual crash — `extmod/modselect.c:132`, `return poll_obj->pollfd->revents;` — is a
+dangling-pointer dereference with a confirmed, specific mechanism: growing the shared poller's
+`pollfds` array (needed once concurrently-registered fds cross a multiple of 4) sometimes falls
+back to a fresh allocation instead of extending in place, and the loop that repoints every
+already-registered poll object's `pollfd` field at the new buffer does this unconditionally — even
+for non-fd poll objects, whose `pollfd` is legitimately `NULL`. That silently turns a valid `NULL`
+into a small garbage "pointer" (confirmed via two independent crashes and a live gdb trace of every
+register/unregister call leading up to one), which the next `poll()` call dereferences. Confirmed
+via a fresh `origin/master` fetch that this is still unfixed upstream past the pinned v1.28.0.
+**Confirmed Unix-port-only from source, not assumed**: the whole code path (including the buggy
+line) lives behind `MICROPY_PY_SELECT_POSIX_OPTIMISATIONS`, which defaults to 0 and is only turned
+on by the Unix port's own config — rp2 defines no such override, so this exact code is compiled out
+of real firmware entirely; rp2's non-optimized poll object has no `pollfd` field or array to grow.
+**Fix**: `digital_twin/unix_port_poll_prewarm.py` (new, small, self-documenting module) pre-grows
+the pollfds array to a generous ceiling using real dummy loopback connections, run as the literal
+first statement of `digital_twin/run_wozi_integration.py`'s and `segfault_stress_repro.py`'s own
+`main()` — before anything else in the process can register a poll object, which is exactly the
+moment growing the array is guaranteed safe (nothing non-fd exists yet to corrupt). Once grown,
+`alloc` never shrinks back down, so as long as real peak concurrent registrations stay under the
+ceiling, the buggy growth branch never runs again. Verified empirically rather than just argued:
+before the fix, both repro methods crashed 100% of attempts; after, 20/20 clean runs directly
+comparing identical timing with only the pre-warm's position moved (confirming the ordering is
+load-bearing — pre-warming placed *after* other services start still crashes), plus a further 13/13
+against the actual committed files post-fix. Because the bug is genuinely Unix-port-only, the fix
+lives entirely in `digital_twin/` (never imported from `src/`, which ships to real hardware too) —
+see BACKLOG.md open question #7's own account for the full mechanism and verification detail.
+`scripts/test.sh`'s full suite, `digital_twin/`'s dedicated mypy pass, and `ruff check` all stay
+clean with the fix in place.
+
+**Memory residual — does not replicate; not a real leak.** The prior pass's open item was whether
+the 245-event/500-cycle finding (slope ≈ −450 B/event, t ≈ −3.7) was a stable property of the
+system or noise from one trial, and whether it mattered for rp2040. Four follow-up experiments this
+pass, full detail in BACKLOG.md open question #6: isolating each endpoint individually (six of
+seven flat, one suggestive but not corrected for testing seven); interleaving the suggestive
+endpoint against a flat control on one shared timeline (both showed an overall decline, but neither
+showed *any* trend once split in half — a step, not a drain); an idle-only control with zero HTTP
+traffic exercising just the real 500ms/1000ms sensor timers (a short window looked dramatic, t =
+−31.57, but the *same continuous run* extended to 324 events and split in half went from t = −42 to
+t = −1.9 — a settling curve that plateaus, not an unbounded leak, and explains why the original
+40-cycle warm-up exclusion wasn't enough: the real settling time is closer to 150-200 events); and a
+direct replication of the original script and heap size, run long enough for 512 events instead of
+245 — the first 245 events of this fresh trial (the original claim's own window) came back flat
+(t = 0.31), and the second half of the full run *increased* (t = +2.79). The original result simply
+doesn't reproduce. **There is no confirmed leak, on the Unix port, idle or under HTTP soak** — this
+closes the digital-twin-vs-real-hardware question the prior pass reopened, since there's no residual
+left to be relevant to real hardware. No code changes were needed or made for this finding; the
+resolution is entirely evidentiary. rp2040 has no `gc.mem_free()`-recovery data of its own (no
+hardware access this pass), but since the Unix-port residual that motivated the concern turned out
+not to be real, there's nothing rp2040-specific left to extrapolate from — the existing, already-
+implemented `MemoryError` handling throughout `src/`'s drivers (catch, log, degrade gracefully) is
+the standing defense against genuine allocation pressure on that platform's much smaller heap,
+unrelated to this now-closed question.
+
 ## Out of scope for all five steps
 
 - Real website content (stub only, see Step 4).

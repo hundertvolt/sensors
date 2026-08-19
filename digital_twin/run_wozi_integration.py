@@ -57,6 +57,7 @@ from launch import (
     _parse_wifi_outcome,  # deliberately reused, not reimplemented - see module docstring
     parse_fault_spec,  # noqa: F401 - re-exported for callers that only need the spec parser
 )
+from unix_port_poll_prewarm import prewarm_poll_set
 
 import sensortask_wozi
 
@@ -283,6 +284,10 @@ def _ensure_dir(path: str) -> None:
 
 
 async def main(config: RunConfig) -> "dict[str, Any]":
+    # Must run before anything else in the process registers a poll object - see
+    # unix_port_poll_prewarm.py's own module docstring (BACKLOG.md open question #7's real root
+    # cause: a confirmed Unix-port-only MicroPython bug this pre-warming avoids triggering).
+    prewarm_poll_set()
     machine.configure_fram_state_path(config.fram_state_path)
     machine.configure_scd30_state_path(config.scd30_state_path)
     if config.seed is not None:

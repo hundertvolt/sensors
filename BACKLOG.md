@@ -479,6 +479,52 @@ constraints.
    cycles at the real idle decline rate) — flagged so a future session doesn't treat the exact slope
    figure as final without also confirming it holds at the untouched default heap size.
 
+   **Second re-investigation session result — fully resolved, not a real leak.** Same owner pushback
+   as above ("really resolve it... don't back off before"), this time closing the "digital-twin-only
+   vs. real-hardware-relevant" question that the prior pass left open, by directly attacking the
+   caveat it flagged: is the 245-event/500-cycle finding (slope ≈ −450 B/event, t ≈ −3.7) actually
+   a stable, reproducible property of the system, or noise from a single trial? Four independent,
+   properly-powered follow-up experiments, run this pass:
+   1. **Endpoint isolation** (400 cycles per endpoint, one boot, one endpoint hit per block): six of
+      seven endpoints show |t| < 1 (flat); `/status` alone showed t = −2.50 — suggestive, but one
+      "hit" out of seven comparisons isn't strong evidence on its own (multiple-comparisons risk).
+   2. **Interleaved `/status` vs. `/` control** (same timeline, alternating every cycle, so both
+      share identical wall-clock/cycle exposure — controls for any generic system-wide-aging
+      confound the sequential-block design above couldn't): both showed a significant *overall*
+      decline (t = −2.96 and −5.22), but splitting *each* in half showed **no significant trend
+      within either half** (|t| < 1.1 for all four half-series) — a step-shift between an early and
+      late regime, not a continuously draining leak.
+   3. **Idle control, zero HTTP traffic** (background timers only — SCD30/SGP40/BMP3xx's real
+      500ms/1000ms periodic read loops, matching real hardware's own timing, not a test-scaling
+      artifact): a *short* window (78 events/~30s) showed an extremely strong decline (t = −31.57);
+      but extending the *same continuous run* to 324 events (~2 min) and splitting it in half told
+      the real story — first half t = −42.37 (steep), second half t = −1.89 (flat, indistinguishable
+      from noise). This is a textbook decelerating-then-plateauing settling curve, not an unbounded
+      drain, and directly explains why the original 40-cycle warm-up exclusion (far short of the
+      ~150-200-event settling time this reveals) still looked "steeper" — 40 events isn't nearly
+      enough of the curve to get past the settling phase.
+   4. **Direct replication of the original methodology** (same round-robin-all-endpoints script,
+      same 1.5MB heap, this time run long enough for 512 events instead of 245): the *first 245
+      events* of this fresh trial — the exact window the original claim was based on — show t =
+      0.31, flat. The full 512-event series: t = −0.41, flat. The second half: t = +2.79, i.e.
+      *increasing*, not decreasing. **This directly fails to replicate the original "245 events,
+      t ≈ −3.7, gets steeper" finding under the identical method.**
+
+   Taken together: the original finding does not reproduce, and every properly-powered follow-up
+   either finds no significant trend or a clearly self-limiting, bounded one (which itself resolves
+   to flat well within any realistic soak-test window). **Conclusion: there is no confirmed,
+   reproducible memory leak in the real full system, on the Unix port, under either idle or
+   HTTP-soak traffic.** The original 245-event single-trial result was very likely exactly what the
+   project owner warned about at the start of this pass — "hunting a phantom" — i.e. sampling noise
+   in a single, unreplicated trial of an inherently noisy metric (`gc.mem_free()` recovery-peak
+   timing varies enormously cycle-to-cycle in every log collected this pass, in both directions).
+   This closes the "digital-twin-only vs. real-hardware-relevant" question the prior pass reopened:
+   there's no residual left to be relevant to real hardware in the first place. **No code fix is
+   needed or was made** — the resolution here is entirely evidentiary (replication across four
+   independent experiments, ~1650 total recovery events analyzed this pass alone, versus 245 in the
+   original claim). See `FINAL_WIRING_PLAN.md`'s own Step 6 second re-investigation section for the
+   condensed account and the rp2040-relevance discussion.
+
    **Step 6 scope was subsequently widened by the owner to a full self-healing-system audit, not
    just this one memory-decline finding.** Now that the framework is fully wired up end-to-end, the
    owner wants Step 6 to systematically go after the whole class of failure modes that matter most
@@ -635,6 +681,67 @@ constraints.
    was not modified this session (docs-only re-investigation pass) — the `-X heapsize=<n>` flag
    above is a real Unix-port Micropython interpreter option, usable today ahead of that tool's own
    docstring being updated to mention it explicitly.
+
+   **Root-caused and fixed (further owner-directed re-investigation, same session)**: the owner
+   explicitly widened this category's scope from "repro + document only" to "really resolve it,
+   don't back off on an untestable 'this wouldn't happen elsewhere'" — this pass did real gdb work
+   against a from-scratch `DEBUG=1`, unstripped Unix-port build (kept alongside, not replacing, the
+   pinned `build-standard` binary), which finally gave a *symbolized* backtrace: only ~14 shallow
+   frames from the real asyncio event loop (`run_until_complete` → `IOQueue.wait_io_event` →
+   `poll.ipoll()`'s iterator → `poll_obj_get_revents()`), decisively ruling out the earlier
+   stripped-binary "consistent with deep recursion" lead — that repeating-address pattern was an
+   artifact of `mp_execute_bytecode`'s own internal opcode-dispatch jump table, not a call stack at
+   all. The crash is a dangling-pointer dereference at `extmod/modselect.c:132`
+   (`return poll_obj->pollfd->revents;`). Root cause, confirmed by reading `poll_set_add_fd()`'s
+   pollfds-array growth path plus a live gdb trace of every `poll_register`/`poll_unregister` call
+   leading up to a crash: when growing the array needs a fresh allocation (`m_renew_maybe()` can't
+   extend in place, so it falls back to `m_new()` + `memcpy()` + `m_del()`), the loop that repoints
+   every *already-registered* `poll_obj_t`'s `->pollfd` field at the new buffer does this
+   unconditionally — including for non-fd poll objects, whose `pollfd` is legitimately `NULL` by
+   design. `NULL - old_pollfds_base` computed as a `struct pollfd*` difference wraps into a small,
+   garbage-looking "pointer" (confirmed directly: two independent crashes both showed `pollfd`
+   holding a small heap-relative value alongside `ioctl == iobase_ioctl`, i.e. exactly a non-fd
+   poll object), and the next `poll()`/`ipoll()` call dereferences it. This only needs one growth
+   event (`POLL_SET_ALLOC_INCREMENT == 4`, so crossing 4 concurrently-registered fds) to coincide
+   with any non-fd poll object already being registered on the same shared `asyncio` poller —
+   confirmed via `git log` against a freshly-fetched `origin/master` that this is still unfixed
+   upstream past the pinned v1.28.0.
+
+   **Confirmed Unix-port-only, not a rp2040 risk — verified from source, not assumed**:
+   `MICROPY_PY_SELECT_POSIX_OPTIMISATIONS` (the macro gating this entire code path, the buggy line
+   included) defaults to 0 in `py/mpconfig.h` and is only overridden to 1 by the Unix port's own
+   `variants/mpconfigvariant_common.h`; the rp2 port defines no such override, so this code —
+   `poll_obj_t`'s `pollfd` field, the `pollfds` array, and the growth logic that corrupts it — is
+   compiled out of real rp2040 firmware entirely. rp2's non-optimized `poll_obj_t` stores
+   events/revents inline with no separate array to grow, so this specific bug class cannot occur
+   there — a hard compile-time fact, not a "this platform probably wouldn't hit it" assumption.
+
+   **Fix**: since vendored/pinned MicroPython C source isn't patched (this repo's standing hard
+   rule), and the corruption only ever happens the *first* time a growth event's new-allocation
+   fallback runs while a non-fd poll object already exists, the fix pre-registers (then
+   unregisters) enough dummy real-fd loopback connections to grow the shared poller's `pollfds`
+   array to a generous ceiling (32) *before anything else in the process has registered even one
+   poll object* — while the map is still completely empty, nothing non-fd exists yet to corrupt.
+   Unregistering afterwards frees the slots without ever shrinking `alloc` back down (no compaction
+   logic exists), so as long as real peak concurrent fd registrations never reach the ceiling again,
+   the buggy growth branch never executes again for the rest of the process's life. Implemented as
+   `digital_twin/unix_port_poll_prewarm.py` (see its own module docstring for the full mechanism),
+   called as the first statement of `digital_twin/run_wozi_integration.py`'s and
+   `digital_twin/segfault_stress_repro.py`'s own `main()`, strictly before either boots
+   `sensortask_wozi`. **Verified empirically, not just theorized**: the *unfixed* tool crashed 100%
+   of attempts at both the deterministic small-heap condition and the original-discovery-conditions
+   recreation; with the fix, 20/20 clean runs directly comparing before/after with identical timing
+   (confirming the "before anything else registers" ordering is load-bearing — an earlier attempt
+   at the same pre-warming, but placed *after* other services had already started, still crashed),
+   plus a further 13/13 clean runs re-verifying against the actual committed tool files (not
+   scratchpad copies) post-fix, including sustained multi-round pressure. Because this is genuinely
+   Unix-port-only (confirmed above), the fix lives in `digital_twin/` (freely-editable, Unix-port
+   test-tooling scope per `CLAUDE.md`) and is deliberately not imported from anything in `src/`,
+   which is shared and frozen into real rp2040 firmware too — a fix that's a no-op/non-issue on the
+   platform that doesn't have the bug has no reason to run there. `scripts/test.sh`'s full suite
+   (including `tests/test_digital_twin_run_wozi_integration.py` and
+   `tests/test_digital_twin_sensortask_integration.py`) still passes unchanged with the fix in
+   place, and `digital_twin/`'s own dedicated mypy pass plus `ruff check` stay clean.
 
 ## Deferred / explicitly out-of-scope work
 
