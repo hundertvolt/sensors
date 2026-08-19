@@ -616,6 +616,22 @@ def test_system_put_mempause_never_accepts_a_client_supplied_duration() -> None:
     assert cmd_calls == ["mempause"]
 
 
+def test_system_put_systemcmd_raising_callback_returns_failed_not_an_exception() -> None:
+    # system_cmd is a caller-supplied callback (like every other such callback in this codebase -
+    # e.g. asy_notification_service.py's request_signal_cb) and could legitimately misbehave;
+    # previously unguarded here, so a raise would escape all the way out of the route handler
+    # instead of degrading to a clean "Failed" result with a persisted, diagnosable errno.
+    async def system_cmd(cmd: str) -> bool:
+        raise RuntimeError("simulated system_cmd failure")
+
+    service, app = _make_service(system_cmd=system_cmd)
+    res = run(app.dispatch_request(_make_request(app, "PUT", "/system", {"SystemCmd": "reboot"})))
+    assert res.status_code == 200  # the overall request still succeeds - failure detail is per-field
+    body = json.loads(res.body)
+    assert body["result"]["SystemCmd"] == "Failed"
+    assert service.pr.err_count == 1
+
+
 def test_status_get_returns_exact_substructure_no_settings_fields_anywhere() -> None:
     async def net_status() -> "dict[str, Any]":
         return {"Connected": True, "Rssi": -50}
@@ -744,6 +760,28 @@ def test_notification_put_light_cmd_led_reported_invalid_when_payload_is_not_a_d
     res = run(app.dispatch_request(_make_request(app, "PUT", "/notification", {"lightCmdLED": "not-a-dict"})))
     body = json.loads(res.body)
     assert body["result"]["lightCmdLED"] == "Invalid"
+
+
+def test_notification_put_light_cmd_led_raising_callback_returns_failed_not_an_exception() -> None:
+    # notification_led is a caller-supplied callback and could legitimately misbehave, the same as
+    # system_cmd (see test_system_put_systemcmd_raising_callback_returns_failed_not_an_exception's
+    # own comment) - previously unguarded here too.
+    async def notification_led(payload: "dict[str, Any]") -> bool:
+        raise RuntimeError("simulated notification_led failure")
+
+    notif = _FakeModule("NOTIF", schema=(("OnH", "int", 8, 0, 23, None),), values={"OnH": 8})
+    service, app = _make_service(
+        settings={"notification": [SettingsGroup(notif, ("OnH",))]}, notification_led=notification_led
+    )
+    res = run(
+        app.dispatch_request(
+            _make_request(app, "PUT", "/notification", {"lightCmdLED": {"r": 10, "g": 20, "b": 30, "t": 5}})
+        )
+    )
+    assert res.status_code == 200
+    body = json.loads(res.body)
+    assert body["result"]["lightCmdLED"] == "Failed"
+    assert service.pr.err_count == 1
 
 
 # ---------------------------------------------------------------------------

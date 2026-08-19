@@ -504,15 +504,30 @@ def _collect_task_starters() -> "list[Callable[[], asyncio.Task[Any]]]":
 
 
 def _collect_timer_starters() -> "list[Callable[[], None]]":
+    # Every constructed module's own get_timer_starters() is called uniformly, matching
+    # _collect_task_starters()'s own already-uniform pattern above (SPECIFICATION.md Part C.9:
+    # "system_service.py's start_and_check_tasks()/start_timers() discover and supervise every
+    # driver generically through these, never by name"). pixel/notify_service/webserver all
+    # currently return [] here (no machine.Timer in any of the three - each file's own
+    # get_timer_starters() docstring says so explicitly, "kept empty rather than omitted so
+    # callers can treat every driver uniformly"), so previously omitting them was a
+    # behavior-invisible gap today - but a silent one: a future Timer added to any of those three
+    # would never actually get started, since this collector picked modules by name instead of
+    # calling every constructed module the same way get_task_starters() already does (Step 7
+    # second-pass audit finding).
     assert scd_reader is not None and bmp_reader is not None and sgp_reader is not None
-    assert sysfunct is not None and conn is not None and ntp is not None
+    assert pixel is not None and notify_service is not None and sysfunct is not None
+    assert conn is not None and ntp is not None and webserver is not None
     return (
         scd_reader.get_timer_starters()
         + bmp_reader.get_timer_starters()
         + sgp_reader.get_timer_starters()
+        + pixel.get_timer_starters()
+        + notify_service.get_timer_starters()
         + sysfunct.get_timer_starters()
         + conn.get_timer_starters()
         + ntp.get_timer_starters()
+        + webserver.get_timer_starters()
     )
 
 
