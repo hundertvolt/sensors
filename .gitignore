@@ -23,6 +23,10 @@ frozen_modules/
 __pycache__/
 *.pyc
 
+# Agent-tool-managed isolated git worktrees (each is its own nested checkout with its own .git) -
+# local session scratch space, never repo content.
+.claude/worktrees/
+
 # Dev-tooling venv (uv sync) and MicroPython stubs (scripts/typecheck.sh) - both reinstallable,
 # neither meant to be committed.
 .venv/
