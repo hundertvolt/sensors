@@ -1,6 +1,6 @@
-"""Step 6 (BACKLOG.md open question #6, "ticks_ms()/ticks_diff() rollover" category): direct,
-real-interpreter verification of MicroPython's time.ticks_ms()/time.ticks_diff()/time.ticks_add()
-wraparound arithmetic.
+"""Direct, real-interpreter verification of MicroPython's
+time.ticks_ms()/time.ticks_diff()/time.ticks_add() wraparound arithmetic (SPECIFICATION.md Part
+F.1's ticks_ms()/ticks_diff() rollover facts).
 
 Every real src/ ticks_ms()/ticks_diff() use site (asy_bmp3xx_driver.py's _wait_status_bits(),
 asy_notification_service.py's _next_sleep_secs(), asy_uart_driver.py's ready(),

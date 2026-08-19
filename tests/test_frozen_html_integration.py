@@ -1,5 +1,5 @@
-"""Real-pipeline integration test for FINAL_WIRING_PLAN.md's Step 4 (website placeholder scaffold):
-proves the actual built artifact - scripts/build_frozen_html.sh's gzip -> freezefs --on-import mount
+"""Real-pipeline integration test for the website placeholder scaffold (see SPECIFICATION.md Part
+A.9): proves the actual built artifact - scripts/build_frozen_html.sh's gzip -> freezefs --on-import mount
 output, `frozen_modules/frozen_html.py` - imports cleanly, mounts for real, and is served correctly
 end to end through a real WebserverService + real ext/microdot.py Microdot() app. This is deliberately
 separate from tests/test_asy_webserver_service.py's own Section G, which exercises the generic

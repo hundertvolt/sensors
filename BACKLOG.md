@@ -9,10 +9,10 @@ constraints.
 
 ## Refactor targets not yet done
 
-- **`boot_entry/` isn't in `pyproject.toml`'s lint/typecheck `files` scope yet.** Step 1 added
-  `boot_entry/wozi_boot.py` (the real, deliberately-separate blocking-import firmware entry point
-  for `src/sensortask_wozi.py` - see that module's own docstring and `FINAL_WIRING_PLAN.md`'s Step
-  1 refined plan). Manually confirmed clean today (`ruff check boot_entry/wozi_boot.py` and
+- **`boot_entry/` isn't in `pyproject.toml`'s lint/typecheck `files` scope yet.**
+  `boot_entry/wozi_boot.py` is the real, deliberately-separate blocking-import firmware entry point
+  for `src/sensortask_wozi.py` (see that module's own docstring and `SPECIFICATION.md` Part A.7).
+  Manually confirmed clean today (`ruff check boot_entry/wozi_boot.py` and
   `mypy boot_entry/wozi_boot.py --config-file pyproject.toml` both pass under the existing config),
   but it's not part of `scripts/lint.sh`/`scripts/typecheck.sh`/CI's default scan until
   `pyproject.toml`'s `files`/scan scope is extended to include it - deliberately not done as part
@@ -90,8 +90,8 @@ constraints.
   `get_dict_cfg()`/`get_dict_data()`/`get_error_counter()` call in the codebase is safe by
   construction (no `await` in the middle of building the returned dict, so MicroPython's
   cooperative/non-preemptive scheduling already makes the snapshot atomic) — this is the one place
-  that isn't. Found while checking GET-response copy-safety for the new REST endpoint design
-  (`FINAL_WIRING_PLAN.md`'s Step 2 "Endpoint design" subsection); not a reference/aliasing bug (each
+  that isn't. Found while checking GET-response copy-safety for the REST endpoint design
+  (`SPECIFICATION.md` Part A.8); not a reference/aliasing bug (each
   individual field value is still a fresh read, never a stale pointer into mutable state), and not
   introduced by that design — pre-existing in both drivers today. No fix designed yet (candidates:
   hold each driver's own bus/device lock across the whole `get_dict_cfg()` call, or snapshot all
@@ -142,13 +142,20 @@ constraints.
     `Response.__init__`'s `json.dumps()`, which Microdot still contains (falls into the same
     generic-500 path) but silently masks the real cause as a generic error unless our own handler
     logs it.
+- **Bus-layer status has no dedicated REST endpoint or field yet.** `asy_i2c_driver.py`/
+  `asy_spi_driver.py` deliberately have no logger of their own today (see `SPECIFICATION.md` Part
+  C.7.1's table) — the natural REST shape once each bus instance gets its own logger name
+  (`"I2C0"`/`"I2C1"`/`"SPI0"`) would be one endpoint with one field per bus instance, mirroring
+  `/status`'s existing `errcount` aggregation (`SPECIFICATION.md` Part A.8). Not designed or
+  implemented yet.
 - **Microdot hardening design (webserver robustness) — implemented.** `src/asy_webserver_service.py`
-  (FINAL_WIRING_PLAN.md's Step 2) implements this design in full, including the 100+-cycle soak test
-  and the real wiring into `src/sensortask_wozi.py`'s `build_system()` — see that doc's own Step 2
-  status updates for what landed and the two real findings made along the way (the
-  `asyncio.TimeoutError`-isn't-an-`OSError` correction, and the `conn`/`ntp` `cfgmgr.setup()` gap).
-  The rest of this entry is kept as the original design record/incident writeup, not because any of
-  it is still open.
+  implements this design in full, including the 100+-cycle soak test and the real wiring into
+  `src/sensortask_wozi.py`'s `build_system()` (see `SPECIFICATION.md` Part A.8 for the current REST
+  API/connection-hardening reference). Two real findings made along the way, both fixed and now
+  reflected directly in the current code: the `asyncio.TimeoutError`-isn't-an-`OSError` correction
+  (`SPECIFICATION.md` Part F.1), and the `conn`/`ntp` `cfgmgr.setup()` gap (both are now part of the
+  grouped `setup()` batch documented in `SPECIFICATION.md` Part A.7). The rest of this entry is kept
+  as the original design record/incident writeup, not because any of it is still open.
 
   Triggered
   by a real incident: on 2026-08-03, `sensortask-arzi`/`sensortask-neu` (legacy, pre-refactor) both
@@ -184,7 +191,8 @@ constraints.
     ceiling): **hardcoded internal constants, not REST/config-exposed** — same treatment as `WDT`
     timeout / `_TASK_FAIL_MAX` today, so nothing (including a REST caller) can accidentally weaken
     the safety net. Supplied at construction time, grouped with `src/sensortask_wozi.py`'s other
-    fixed hardware-related constants (see `FINAL_WIRING_PLAN.md`'s Step 2 for the exact placement).
+    fixed hardware-related constants (see `src/asy_webserver_service.py`'s own constants for the
+    current values).
 
   **Defense shape — revised (owner, per-connection-only, supersedes the original "layered" plan
   below): no whole-server-restart mechanism.** The original plan paired a per-connection timeout
@@ -204,9 +212,9 @@ constraints.
   the whole scheme — the webserver's own task is still registered as an ordinary task in
   `start_and_check_tasks()` (step 4 below, unchanged), so it still gets the existing generic
   supervisor's restart-then-escalate treatment for the one thing that actually can end it (its own
-  task genuinely dying), the same as every other module — nothing bespoke on top of that. Full
-  derivation and the connection-count ceiling's new role as the reject-when-full threshold (not a
-  restart threshold): `FINAL_WIRING_PLAN.md`'s Step 2, "Owner decisions on the 10 questions," #1.
+  task genuinely dying), the same as every other module — nothing bespoke on top of that. This
+  reject-when-full scheme is implemented as designed — see `src/asy_webserver_service.py` and
+  `SPECIFICATION.md` Part A.8's "Connection hardening" pointer.
 
   **Design sketch (composition, not subclassing or editing Microdot):**
   1. Don't call `app.start_server()`/`app.shutdown()` at all. Call `asyncio.start_server()` ourselves
@@ -290,8 +298,8 @@ constraints.
   `lwipopts_common.h` defines no override for it at the pinned v1.28.0 tag — confirmed by fetching the
   file directly and grepping for the macro, not assumed from general lwIP knowledge; only
   `MEMP_NUM_UDP_PCB` is overridden there). This is the real-margin ceiling the reject-when-full
-  threshold in step 4 above must sit comfortably below — see `FINAL_WIRING_PLAN.md`'s Step 2 for where
-  this number is actually consumed.
+  threshold in step 4 above must sit comfortably below — see `src/asy_webserver_service.py`'s own
+  `max_connections` for where this number is actually consumed.
 
   Module name/location: `src/asy_webserver_service.py`, matching `asy_wifi_service.py`/
   `asy_ntp_client.py`'s naming and the "every module owns its own schema" convention — though per the
@@ -360,432 +368,34 @@ constraints.
    exactly the class of thing CLAUDE.md's own "don't edit `src/` only to make the twin run" owner
    constraint rules out — the production code is already correct for the real target. It does mean
    the earlier "NTP round-trip couldn't be verified end-to-end because this sandbox's network policy
-   blocks UDP/123" framing (`FINAL_WIRING_PLAN.md`'s Step 5 baseline-verification session) understated
-   the gap: even a sandbox with full, unrestricted internet access could not have verified this code
+   blocks UDP/123" framing understated the gap: even a sandbox with full, unrestricted internet
+   access could not have verified this code
    path under the Unix port either. Real rp2 hardware remains the only way to verify NTP/DNS's actual
    UDP transport — same conclusion this entry already reached, now reached from a direct
    reproduction instead of an absence of one.
-6. `digital_twin/run_wozi_integration.py`'s `_soak()` memory-flat check
-   (`_MEM_FLAT_TOLERANCE_BYTES = 4096`) — **re-investigated in a follow-up session, and the earlier
-   "just a slow warm-up transient, will stabilize" framing is wrong.** A fresh, much longer
-   diagnostic (400 cycles across every endpoint, then an isolated 300-cycle run hitting only the
-   static `/` page) showed a **real, continuous, never-plateauing decline** — not the bounded ±15KB
-   noise band the original 100-cycle read suggested. Root-cause investigation (full account below)
-   found this is genuinely HTTP-independent (a zero-HTTP idle run declines identically) and driven
-   by the real background task graph (SCD30/SGP40/BMP3xx measurement polling), not by anything in
-   the webserver/Microdot layer, which tested completely clean in isolation at every layer (routing,
-   sockets, `asyncio.wait_for()`, and every combination). **Confirmed, attributed contributors**:
-   SCD30's own real read-and-store cycle (~500 bytes/sec of a ~870 bytes/sec idle total) and
-   SGP40+BMP3xx's own read-and-store cycles (~130 bytes/sec combined) — real, reproducible, but not
-   yet pinpointed past "the shared I2C-read → `_set_meas_data()` → log-call cascade", since every
-   individual piece tested in isolation (`_produce_new_reading()` alone, `Pin.irq()`/`simulate_edge()`
-   dispatch alone, `PrintLogHistory`'s own bounded-deque append) came back clean. **A residual
-   ~245 bytes/sec floor persists even with every real `machine.Timer` starter in the whole system
-   disabled** (SCD30/SGP40/BMP3xx read-cycle timers, WiFi's counter timer, NTP's timer + counter
-   timer, `system_service.py`'s own uptime timer — the complete, grep-confirmed list of every
-   `Timer(...)`/`.init(period=...)` call site in `src/`). The leading hypothesis during that session
-   was `digital_twin/machine.py`'s own `WDT.feed()` → `_arm()`, which cancels and recreates its
-   countdown `asyncio.Task` on every single `feed()` call (twin-only code — real hardware's
-   `machine.WDT.feed()` is just a register write) — isolated alone it showed zero leak, but with
-   every other Timer starter disabled and only the real 2-second-interval `feed()` call left active,
-   it exactly reproduced the residual, which read as confirmation. **A rewrite avoiding the task
-   churn entirely (a single long-lived polling task instead of cancel-and-recreate) was implemented,
-   fully test-compatible (36/36 existing `test_digital_twin_machine.py` tests passed unmodified),
-   but a rigorous same-script A/B re-test (identical monkeypatches, only the WDT implementation
-   swapped) showed the exact same residual with the fix in place — the hypothesis was wrong, and a
-   further test proved the entire `start_and_check_tasks()` supervisor-loop body (feed calls *and*
-   task `.done()` checks) contributes nothing: replacing it with a bare `while True: await
-   asyncio.sleep(2)` reproduced the same numbers.** The WDT rewrite was reverted rather than kept as
-   a misleading "fix" for a cause it doesn't actually address. **The ~245 bytes/sec floor's real
-   source remains unidentified** — every named Timer-driven and task-`.done()`-driven candidate in
-   `src/` has been ruled out by direct isolation, which means continued `gc.mem_free()`-delta
-   bisection via monkeypatching individual starters has run out of remaining candidates to try; the
-   next step needs a different technique (e.g. the repo's own `sys.settrace`-based coverage
-   infrastructure adapted for allocation attribution, or a MicroPython-level heap/object census
-   rather than a before/after byte-count delta) to localize further. **Do not loosen
-   `_MEM_FLAT_TOLERANCE_BYTES` based on this investigation** — the decline is real, not noise, and
-   loosening the tolerance would just hide a genuine, still-open problem. Whether this is purely a
-   digital-twin artifact (plausible given the confirmed contributors trace to twin-only chip-fake/
-   `Pin` mechanics so far) or has any real-hardware-relevant component is itself unresolved and
-   should be established before deciding whether a `src/` fix is ever warranted.
-   **Owner decision: this becomes its own dedicated Step 6, run in a separate session immediately
-   after this branch merges into the wire-up branch.** That session's two required outcomes for
-   *this* memory-decline finding: (1) positively confirm this cannot happen on real RP2040 hardware
-   (not just "the confirmed contributors look twin-only" — actually establish it), and (2) find and
-   fix the digital-twin-side root cause regardless, including the still-unidentified ~245 bytes/sec
-   floor. Use whatever tooling and however many tests that takes — not scoped to `gc.mem_free()`-
-   delta bisection alone if that's run out of road, per this entry's own last paragraph.
-
-   **Step 6 session result (see `FINAL_WIRING_PLAN.md`'s own Step 6 section for the full account):
-   advanced, not closed — genuinely new evidence found, escalated back to the project owner rather
-   than force-resolved either direction.** A bare `asyncio.sleep()` loop (zero application code,
-   zero registered I/O, `gc.collect()` forced before every reading) was shown to have a real,
-   continuous, non-plateauing `gc.mem_free()` decline under this project's own pinned MicroPython
-   v1.28.0 Unix-port test rig — and `extmod/asyncio`/`extmod/modselect.c` are confirmed, by direct
-   source read, to be one shared, port-generic implementation, not proven Unix-port-only the way the
-   NTP/UDP quirk (open question #5) was. This **weakens** the earlier "confirmed contributors look
-   twin-only" read rather than confirming it — required outcome (1) is not achieved, and required
-   outcome (2) has no available `digital_twin/`-side fix for this specific newly-found contributor,
-   since it doesn't trace to this project's own code. Not chased further into `gdb`/`valgrind`
-   territory, matching the "repro + document, no deep C-level dig" posture the same session's owner
-   Q&A round set for the segfault below (the closest analogous judgment call). Still genuinely open;
-   raise with the project owner before any future session either resumes the C-level dig or accepts
-   this as an unfixable platform characteristic.
-
-   **Re-investigation session result (owner-directed skeptical re-audit, separate session): the
-   Step 6 session's bare-loop finding above does not survive re-testing — it was a measurement-
-   harness artifact, not a real core-runtime leak.** The owner pushed back hard on the Step 6
-   conclusion (own words: "are you sure you are tracing the correct effect and not hunting a
-   phantom... are you sure it is not the test itself which creates the leak") and this re-audit
-   found exactly that. Directly reproduced the mechanism: a `samples.append(gc.mem_free())`
-   accumulator (the natural way to write a "log every reading" investigation script) produces a
-   textbook capacity-doubling decline on its own — change points at list-append indices
-   5/9/17/33/65/129/257, byte-deltas 32/64/128/256/512/1024/2048, a growing-list-reallocation
-   signature, not a leak. With that accumulation removed, an otherwise-identical bare
-   `asyncio.sleep()` loop (tried at both 50ms and 2s intervals, `gc.collect()` forced before every
-   reading, run up to 150+ seconds) showed **zero decline, dead flat**, directly contradicting the
-   Step 6 session's "genuine, continuous, non-plateauing... even with gc.collect() forced" claim.
-   Separately confirmed MicroPython's automatic GC is allocate-triggered, not periodic: with
-   `gc.collect()` never forced, a bare loop shows a real sawtooth (fill toward zero, automatic
-   collection fires, recover) — 8 consecutive cycles observed, every recovery peak landing in the
-   same ~2,063,776–2,064,544-byte band with zero cycle-over-cycle erosion. **This overturns the Step
-   6 session's conclusion that the residual "traces to shared MicroPython core runtime code"** —
-   the core runtime (`extmod/asyncio`/`extmod/modselect.c`), tested properly in isolation, does not
-   leak.
-
-   **This does not mean the whole finding was a phantom, though — the full real system's residual
-   is real.** Driving the actual `sensortask_wozi` object graph under real HTTP soak traffic (not a
-   bare loop), with the heap artificially shrunk to force many real automatic-GC recovery cycles
-   within a practical test window, and measuring only the *recovered peak* after each confirmed
-   collection (245 such events across ~500 real soak cycles, ~8 minutes wall-clock): linear
-   regression gives slope ≈ −450 bytes/recovery-event, t ≈ −3.7 (statistically significant, not
-   noise from the wide per-cycle variance), and the trend **persists and gets slightly steeper**
-   after excluding the documented 40-cycle warm-up transient (`run_wozi_integration.py`'s own
-   `_SOAK_WARMUP_CYCLES`) — so it is not that transient re-appearing either. Net effect: the earlier
-   "traces to shared core runtime" explanation is wrong, but the underlying observation (the full
-   system's post-collection memory ceiling really does drift down slowly over time) survives a
-   proper adversarial re-test. **The digital-twin-only vs. real-hardware-relevant question is
-   therefore back open** — now with a corrected steer: since the core async/select runtime is
-   clean, the residual has to be sought in the real driver/webserver/business-logic code paths
-   (`src/` itself or its twin-fake interaction), not in "unfixable shared platform code" as the
-   Step 6 session's redirection concluded. Not chased to a specific line this session (time-boxed
-   re-audit, not a full re-run of Step 6's own bisection); left for whoever picks this up next with
-   this corrected starting point.
-
-   **Caveat on method**: the artificially-shrunk-heap measurement technique used here (needed to
-   observe multiple recovery cycles in a practical wall-clock budget) is itself a departure from
-   default/production heap sizing and was not cross-checked at the full default 2MB heap over an
-   equivalently long real-time window (that would take on the order of 30-40 minutes per handful of
-   cycles at the real idle decline rate) — flagged so a future session doesn't treat the exact slope
-   figure as final without also confirming it holds at the untouched default heap size.
-
-   **Second re-investigation session result — fully resolved, not a real leak.** Same owner pushback
-   as above ("really resolve it... don't back off before"), this time closing the "digital-twin-only
-   vs. real-hardware-relevant" question that the prior pass left open, by directly attacking the
-   caveat it flagged: is the 245-event/500-cycle finding (slope ≈ −450 B/event, t ≈ −3.7) actually
-   a stable, reproducible property of the system, or noise from a single trial? Four independent,
-   properly-powered follow-up experiments, run this pass:
-   1. **Endpoint isolation** (400 cycles per endpoint, one boot, one endpoint hit per block): six of
-      seven endpoints show |t| < 1 (flat); `/status` alone showed t = −2.50 — suggestive, but one
-      "hit" out of seven comparisons isn't strong evidence on its own (multiple-comparisons risk).
-   2. **Interleaved `/status` vs. `/` control** (same timeline, alternating every cycle, so both
-      share identical wall-clock/cycle exposure — controls for any generic system-wide-aging
-      confound the sequential-block design above couldn't): both showed a significant *overall*
-      decline (t = −2.96 and −5.22), but splitting *each* in half showed **no significant trend
-      within either half** (|t| < 1.1 for all four half-series) — a step-shift between an early and
-      late regime, not a continuously draining leak.
-   3. **Idle control, zero HTTP traffic** (background timers only — SCD30/SGP40/BMP3xx's real
-      500ms/1000ms periodic read loops, matching real hardware's own timing, not a test-scaling
-      artifact): a *short* window (78 events/~30s) showed an extremely strong decline (t = −31.57);
-      but extending the *same continuous run* to 324 events (~2 min) and splitting it in half told
-      the real story — first half t = −42.37 (steep), second half t = −1.89 (flat, indistinguishable
-      from noise). This is a textbook decelerating-then-plateauing settling curve, not an unbounded
-      drain, and directly explains why the original 40-cycle warm-up exclusion (far short of the
-      ~150-200-event settling time this reveals) still looked "steeper" — 40 events isn't nearly
-      enough of the curve to get past the settling phase.
-   4. **Direct replication of the original methodology** (same round-robin-all-endpoints script,
-      same 1.5MB heap, this time run long enough for 512 events instead of 245): the *first 245
-      events* of this fresh trial — the exact window the original claim was based on — show t =
-      0.31, flat. The full 512-event series: t = −0.41, flat. The second half: t = +2.79, i.e.
-      *increasing*, not decreasing. **This directly fails to replicate the original "245 events,
-      t ≈ −3.7, gets steeper" finding under the identical method.**
-
-   Taken together: the original finding does not reproduce, and every properly-powered follow-up
-   either finds no significant trend or a clearly self-limiting, bounded one (which itself resolves
-   to flat well within any realistic soak-test window). **Conclusion: there is no confirmed,
-   reproducible memory leak in the real full system, on the Unix port, under either idle or
-   HTTP-soak traffic.** The original 245-event single-trial result was very likely exactly what the
-   project owner warned about at the start of this pass — "hunting a phantom" — i.e. sampling noise
-   in a single, unreplicated trial of an inherently noisy metric (`gc.mem_free()` recovery-peak
-   timing varies enormously cycle-to-cycle in every log collected this pass, in both directions).
-   This closes the "digital-twin-only vs. real-hardware-relevant" question the prior pass reopened:
-   there's no residual left to be relevant to real hardware in the first place. **No code fix is
-   needed or was made** — the resolution here is entirely evidentiary (replication across four
-   independent experiments, ~1650 total recovery events analyzed this pass alone, versus 245 in the
-   original claim). See `FINAL_WIRING_PLAN.md`'s own Step 6 second re-investigation section for the
-   condensed account and the rp2040-relevance discussion.
-
-   **Standing owner plan, not yet actioned — real-hardware re-test**: the project owner has real
-   future plans to run tests directly on the actual rp2040 target hardware, and wants this specific
-   memory-leak soak test repeated there once that's possible, even though the Unix-port finding above
-   is "no confirmed leak," not "inconclusive." Reasoning: the Unix port and rp2040's real allocator/
-   heap behavior aren't guaranteed identical, so an independent on-target confirmation is worthwhile
-   validation practice, not a sign this conclusion is in doubt. See the "Deferred / explicitly
-   out-of-scope work" section below for the consolidated real-hardware-retest entry covering both
-   this and the segfault fix (open question #7).
-
-   **Step 6 scope was subsequently widened by the owner to a full self-healing-system audit, not
-   just this one memory-decline finding.** Now that the framework is fully wired up end-to-end, the
-   owner wants Step 6 to systematically go after the whole class of failure modes that matter most
-   in a long-running, self-healing embedded system — reasoned as: the *worst* failures in such a
-   system aren't the loud immediate ones, they're the ones that let it keep running while doing the
-   wrong thing, or that only show up after days/weeks of uptime. **Required categories** (owner-
-   specified, plus two flagged during the discussion and accepted into scope):
-     - Rare corner cases (owner-specified)
-     - Memory leaks (owner-specified) — this entry's own finding is the first concrete instance
-     - Race conditions on concurrent/repetitive calls, or on system startup (owner-specified)
-     - Silent failure masking — an overly broad `except` or a retry loop that swallows a real error
-       and keeps running while producing subtly wrong data or silently skipping work, with nothing
-       ever signaling it happened; worse than a crash, since a crash at least trips the watchdog and
-       gets noticed
-     - Cascading recovery storms — the self-healing/retry logic itself becoming the failure, e.g.
-       every unit hammering a simultaneous reconnect/resync after a shared outage (WiFi, NTP)
-       instead of backing off. **First concrete instance, found during the Step 5 re-audit
-       session's own official end-to-end run**: `captive_dns.py`'s `DNSServer.run()` loop calls
-       `self.udps.recvfrom(4096)` (default `timeout_ms=-1`, wait forever) and, on `(None, None)`,
-       just logs a warning and loops straight back to another `recvfrom()` call - no backoff, no
-       retry cap, no give-up condition of its own. Under a real assembled end-to-end run in AP/
-       hotspot-fallback mode (no SSID configured), the underlying `AsyUDPSocket`'s own `bind()`
-       never actually succeeded (see open question #5's own sharper NTP finding just above for
-       why, on the Unix port specifically), so `recvfrom()` returned `(None, None)` immediately on
-       every call - `_RETRY_BACKOFF_S=0.5s` throttles each individual failed `_connect()` attempt,
-       but nothing throttles the outer `run()` loop's own repeat rate on top of that, so real,
-       measured output was ~5 `wrn_s()` log lines/second, continuously, for the DNS server task's
-       entire lifetime (147 lines over one ~30s bounded run - confirmed directly, not estimated).
-       Contrast `asy_ntp_client.py`'s own sync-retry path, which is properly bounded
-       (`_NTP_SYNC_RETRIES=3`, `_NTP_RETRY_INTERV=15s` between attempts, then gives up and lets the
-       task supervisor restart the whole task) - `captive_dns.py`'s loop has no equivalent shape.
-       Whether this is reachable on real rp2 hardware too (a genuine, persistent `bind()` failure
-       there - e.g. resource exhaustion - isn't inherently impossible, just far rarer than the
-       Unix-port quirk that reliably triggers it here) is unresolved; either way the missing-backoff
-       *shape* is real and worth fixing regardless of what triggers it. Deliberately not
-       hand-patched in the re-audit session that found it - a real fix needs to decide bounded-retry
-       semantics (how many attempts, what backoff curve, does it ever retry again after giving up)
-       the same deliberate way `asy_ntp_client.py`'s own retry design already was, not a quick patch
-       mid-tangent - left for Step 6's own "fix" step to do properly, per its required methodology
-       below. Also worth noting: this spam was previously silent (invisible) before the
-       baseline-verification session's own fix to `asy_wifi_service.py`'s `wlan_connect()` (missing
-       `await self.dns_server.pr.setup()` - see `FINAL_WIRING_PLAN.md`'s Step 5 section) - that fix
-       was correct and necessary (real logging now works at all for this module) but had the side
-       effect of making this pre-existing retry-loop gap audible for the first time.
-     - `time.ticks_ms()`/`time.ticks_diff()` rollover (~12.4 days at the RP2040's ms resolution) —
-       a long-running-specific timing-correctness class distinct from the above, worth checking
-       explicitly across every use site rather than assuming `ticks_diff()` is used everywhere it
-       needs to be (a raw subtraction anywhere in the timing code would silently misbehave only
-       after many days of uptime, exactly the kind of bug this audit is meant to catch)
-     - Task/timer resource leaks as distinct from raw memory bytes — an `asyncio.Task` or
-       `machine.Timer` that isn't cancelled/deinitialized on a retry or reconnect path can leave a
-       duplicate background loop running (double reads, double log lines, doubled I2C traffic)
-       without necessarily showing up as a `gc.mem_free()` decline
-   **Required methodology per category** (owner-specified, four steps, all required — no category is
-   done after only the first or second):
-     1. **Look it through** — static analysis of the wired-up system for the mistakes/oversights/bad
-        patterns that lead to each category (e.g. every `except`/retry site, every task/timer
-        lifecycle, every concurrent-entry code path, every raw `ticks_ms()` subtraction).
-     2. **Check, don't just look** — directly exercise the actual code running on the MicroPython
-        Unix port against each category; static reading alone doesn't satisfy this step.
-     3. **Fix** — don't let a confirmed issue persist; this is a fix-it session, not a
-        catalog-and-defer session (this entry's own still-open ~245 bytes/sec floor is exactly the
-        kind of thing Step 6 exists to close out, not re-document again).
-     4. **Secure** — write extensive and/or soak tests specifically targeting each category, so a
-        regression in any of these classes gets caught automatically going forward, not just this
-        once.
-   Not yet scoped: which categories apply where across `src/`, `improved-quality/`, and
-   `digital_twin/` (the digital-twin-only vs. real-hardware-relevant distinction this entry's own
-   memory finding already had to make); Step 6's own session should establish that per category
-   rather than assume uniform scope.
-
-   **Step 6 session result for the other six categories (full account in
-   `FINAL_WIRING_PLAN.md`'s own Step 6 section): cascading recovery storms, task/timer resource
-   leaks, and silent failure masking each found and fixed real bugs** (the `captive_dns.py` missing-
-   backoff instance this entry already named; a genuine, continuously-reproducing `dns_server_task`
-   leak in `asy_wifi_service.py`'s hotspot-mode loop; and three logger-less/silent teardown-path
-   gaps across `asy_udp_socket.py`/`asy_webserver_service.py`/`asy_uart_driver.py`), each with new
-   regression tests. **Rare corner cases, `ticks_ms()` rollover, and race conditions were checked
-   against the real Unix-port interpreter and came back clean** — no bug found beyond the task-leak
-   above, with the `ticks_ms()` audit surfacing a real, separately-useful platform-testing-scope
-   fact (this project's own Unix-port test rig has a different, much larger ticks period than real
-   rp2 hardware — see SPECIFICATION.md Part F.1) rather than a bug. The memory-leak floor itself is
-   the one item still genuinely open — see this entry's own updated paragraph above.
-
-   **Step 6 is not the same thing as the whole five-step effort's "large post-merge audit"**
-   (confirmed directly by the project owner) — see `FINAL_WIRING_PLAN.md`'s "Branch / session
-   structure" section for the precise relationship: Step 6 is its own dedicated session/branch,
-   forked from and merged back into the trunk the same way every step above was; the large audit is
-   a separate, later pass conducted directly on the trunk itself, after Step 6 (and anything else
-   still open) has also landed there, gating `claude/framework-wiring-rest-api-hx99v7` → `main`
-   (PR #31).
-7. **The real MicroPython Unix-port interpreter itself segfaults under heavy concurrent connection
-   load against the real assembled system** — found while investigating a real user-reported
-   `OSError: [Errno 104] ECONNRESET` crash in `digital_twin/run_wozi_integration.py`'s own soak (that
-   specific crash is fixed — `_soak()` now records a connection failure instead of letting it
-   propagate and crash the whole diagnostic run, matching how the real server itself already
-   tolerates a rejected/reset connection gracefully; see `FINAL_WIRING_PLAN.md`'s own session note
-   for the fix and the closed test-coverage gap that let it through unnoticed). Firing 8 concurrent
-   clients × 15 requests each (well beyond `WebserverService`'s own `max_connections=3` ceiling, to
-   probe whether exceeding it explains the ECONNRESET) reproduced a real interpreter segfault twice
-   in a row (confirmed directly via `dmesg`: `micropython[PID]: segfault at ... in micropython[...]`),
-   not a catchable Python-level exception — no amount of `_soak()`/`_http_client.py` exception
-   handling can prevent this, since it crashes the whole process unconditionally. Not yet root-caused
-   at all (interpreter/C-level, not Python-level - out of this session's reach) and not confirmed to
-   be what the original ECONNRESET report actually hit (repeated plain sequential-soak runs in this
-   session's own sandbox never reproduced the user's report at all, despite several attempts - the
-   segfault needed deliberately aggressive, unrealistic concurrency the soak's own strictly-sequential
-   traffic pattern would never generate on its own). Real, reproducible, and serious enough to flag
-   prominently even though it's tangential to what was being chased - folding into the same dedicated
-   Step 6 session above (both are memory/robustness issues in the same digital-twin integration
-   surface) makes more sense than a third separate investigation.
-
-   **Step 6 session result: not reproduced this session, despite genuine repeated attempts — see
-   `FINAL_WIRING_PLAN.md`'s own Step 6 section for the full account.** Per the owner's chosen scope
-   for this category ("repro + document only, no gdb/backtrace work"), a new permanent tool
-   (`digital_twin/segfault_stress_repro.py`) was built mirroring the original 8-concurrent-clients-
-   ×-15-requests-each shape and run repeatedly (the original configuration, a mixed-real-endpoint
-   variant, a higher-concurrency variant, and a sustained 1200-request multi-round variant) — none
-   triggered the segfault in this session's own sandbox. This doesn't cast doubt on the original,
-   `dmesg`-confirmed finding (a different sandbox/build could plausibly have different sensitivity);
-   it's the same "could not reproduce here despite trying" outcome the Step 5 session already
-   recorded for the original `ECONNRESET` report itself. The tool is kept as a permanent artifact for
-   whoever picks this up next (real rp2 hardware access or a different sandbox might change the
-   odds) — not chased further at the C level this session. `run_wozi_integration.py`'s own `_soak()`
-   gained an explicit comment warning it must stay strictly sequential, so a future "optimization"
-   doesn't accidentally reintroduce the risk into the automated soak path.
-
-   **Re-investigation session result (owner-directed skeptical re-audit, separate session):
-   reproduced reliably, both by recreating the original discovery conditions exactly and by an
-   easier, deterministic artificial variant — same `dmesg`-confirmed `SIGSEGV`, `digital_twin`-
-   scoped code path, not chased past that per the owner's already-set "repro + document only, no
-   gdb/backtrace work" scope.** The missing ingredient in the Step 6 session's repro attempts was
-   memory pressure: every attempt there started `digital_twin/segfault_stress_repro.py` as a fresh
-   process at the default ~2MB heap, but the original discovery fired the concurrent burst against a
-   process that had *already* run a real soak first (so its heap was already down from the ongoing
-   decline documented above by the time the burst hit) — the Step 6 session never combined the two.
-   Recreating that exact sequence — real `sensortask_wozi` object graph, stock default 2MB heap (no
-   `-X heapsize` override), a few real sequential soak requests first, then the same 8-concurrent-
-   clients-×-15-requests burst against that same already-running process once `gc.mem_free()` had
-   naturally dropped (one soak cycle was enough to reach ~260KB free) — reproduced the segfault on
-   the **first** attempt, confirmed via `dmesg`. Separately, found an easier, fully deterministic
-   trigger for future use: with `-X heapsize=` capped below a sharp threshold, the crash is 100%
-   reproducible (10/10, then a further 3/3 at a nearby size) at ≤800KB and 0/many at ≥850KB — no
-   concurrency-count tuning needed, just constrain the heap and run the tool's default config. All
-   crashes land at the same relative instruction-pointer offset across every run (`dmesg`-confirmed),
-   i.e. deterministic, not random heap-corruption-manifests-differently-each-time; a core dump
-   backtrace (binary is stripped, no symbols) shows a repeating small set of return addresses
-   consistent with deep/repeated recursion, plausibly in an out-of-memory unwind path — noted as a
-   lead, not root-caused, consistent with the owner's standing scope for this category. A segfault
-   under any heap size is unconditionally a genuine interpreter-level bug regardless of how small
-   the heap is (the correct behavior for insufficient memory is always a catchable `MemoryError`,
-   confirmed as the actual behavior at less-extreme heap sizes in this same re-audit) — this is not
-   a "ran with too little memory" user-error case. `digital_twin/segfault_stress_repro.py` itself
-   was not modified this session (docs-only re-investigation pass) — the `-X heapsize=<n>` flag
-   above is a real Unix-port Micropython interpreter option, usable today ahead of that tool's own
-   docstring being updated to mention it explicitly.
-
-   **Root-caused and fixed (further owner-directed re-investigation, same session)**: the owner
-   explicitly widened this category's scope from "repro + document only" to "really resolve it,
-   don't back off on an untestable 'this wouldn't happen elsewhere'" — this pass did real gdb work
-   against a from-scratch `DEBUG=1`, unstripped Unix-port build (kept alongside, not replacing, the
-   pinned `build-standard` binary), which finally gave a *symbolized* backtrace: only ~14 shallow
-   frames from the real asyncio event loop (`run_until_complete` → `IOQueue.wait_io_event` →
-   `poll.ipoll()`'s iterator → `poll_obj_get_revents()`), decisively ruling out the earlier
-   stripped-binary "consistent with deep recursion" lead — that repeating-address pattern was an
-   artifact of `mp_execute_bytecode`'s own internal opcode-dispatch jump table, not a call stack at
-   all. The crash is a dangling-pointer dereference at `extmod/modselect.c:132`
-   (`return poll_obj->pollfd->revents;`). Root cause, confirmed by reading `poll_set_add_fd()`'s
-   pollfds-array growth path plus a live gdb trace of every `poll_register`/`poll_unregister` call
-   leading up to a crash: when growing the array needs a fresh allocation (`m_renew_maybe()` can't
-   extend in place, so it falls back to `m_new()` + `memcpy()` + `m_del()`), the loop that repoints
-   every *already-registered* `poll_obj_t`'s `->pollfd` field at the new buffer does this
-   unconditionally — including for non-fd poll objects, whose `pollfd` is legitimately `NULL` by
-   design. `NULL - old_pollfds_base` computed as a `struct pollfd*` difference wraps into a small,
-   garbage-looking "pointer" (confirmed directly: two independent crashes both showed `pollfd`
-   holding a small heap-relative value alongside `ioctl == iobase_ioctl`, i.e. exactly a non-fd
-   poll object), and the next `poll()`/`ipoll()` call dereferences it. This only needs one growth
-   event (`POLL_SET_ALLOC_INCREMENT == 4`, so crossing 4 concurrently-registered fds) to coincide
-   with any non-fd poll object already being registered on the same shared `asyncio` poller —
-   confirmed via `git log` against a freshly-fetched `origin/master` that this is still unfixed
-   upstream past the pinned v1.28.0.
-
-   **Confirmed Unix-port-only, not a rp2040 risk — verified from source, not assumed**:
-   `MICROPY_PY_SELECT_POSIX_OPTIMISATIONS` (the macro gating this entire code path, the buggy line
-   included) defaults to 0 in `py/mpconfig.h` and is only overridden to 1 by the Unix port's own
-   `variants/mpconfigvariant_common.h`; the rp2 port defines no such override, so this code —
-   `poll_obj_t`'s `pollfd` field, the `pollfds` array, and the growth logic that corrupts it — is
-   compiled out of real rp2040 firmware entirely. rp2's non-optimized `poll_obj_t` stores
-   events/revents inline with no separate array to grow, so this specific bug class cannot occur
-   there — a hard compile-time fact, not a "this platform probably wouldn't hit it" assumption.
-
-   **Fix**: since vendored/pinned MicroPython C source isn't patched (this repo's standing hard
-   rule), and the corruption only ever happens the *first* time a growth event's new-allocation
-   fallback runs while a non-fd poll object already exists, the fix pre-registers (then
-   unregisters) enough dummy real-fd loopback connections to grow the shared poller's `pollfds`
-   array to a generous ceiling (512, ~28x the highest concurrent-registration count this codebase's
-   own test suite has ever produced — peak observed: 18) *before anything else in the process has
-   registered even one poll object* — while the map is still completely empty, nothing non-fd exists
-   yet to corrupt. Unregistering afterwards frees the slots without ever shrinking `alloc` back down
-   (no compaction logic exists), so as long as real peak concurrent fd registrations never reach the
-   ceiling again, the buggy growth branch never executes again for the rest of the process's life.
-   **This is honestly a raised threshold, not an unconditional elimination of the bug** — if some
-   future test ever legitimately needs more than 512 concurrent poll registrations, the corruption
-   could recur; the ceiling was set with a deliberately large margin (measured at ~45ms one-time
-   startup cost, negligible) specifically so this residual risk rests on a hard numeric ceiling far
-   above any observed usage, not on an assumption about "normal" traffic shape. Implemented as
-   `digital_twin/unix_port_poll_prewarm.py` (see its own module docstring for the full mechanism),
-   called as the first statement of `digital_twin/run_wozi_integration.py`'s and
-   `digital_twin/segfault_stress_repro.py`'s own `main()`, strictly before either boots
-   `sensortask_wozi`. **Verified empirically, not just theorized**: the *unfixed* tool crashed 100%
-   of attempts at both the deterministic small-heap condition and the original-discovery-conditions
-   recreation; with the fix, 20/20 clean runs directly comparing before/after with identical timing
-   (confirming the "before anything else registers" ordering is load-bearing — an earlier attempt
-   at the same pre-warming, but placed *after* other services had already started, still crashed),
-   plus a further 13/13 clean runs re-verifying against the actual committed tool files (not
-   scratchpad copies) post-fix, including sustained multi-round pressure. Because this is genuinely
-   Unix-port-only (confirmed above), the fix lives in `digital_twin/` (freely-editable, Unix-port
-   test-tooling scope per `CLAUDE.md`) and is deliberately not imported from anything in `src/`,
-   which is shared and frozen into real rp2040 firmware too — a fix that's a no-op/non-issue on the
-   platform that doesn't have the bug has no reason to run there. `scripts/test.sh`'s full suite
-   (including `tests/test_digital_twin_run_wozi_integration.py` and
-   `tests/test_digital_twin_sensortask_integration.py`) still passes unchanged with the fix in
-   place, and `digital_twin/`'s own dedicated mypy pass plus `ruff check` stay clean.
-
-   **Standing owner plan, not yet actioned — real-hardware re-test**: even though this bug's root
-   cause is confirmed compiled out of real rp2040 firmware (see above — this isn't in doubt), the
-   project owner has real future plans to run tests directly on the actual target hardware and wants
-   the segfault-stress soak test repeated there anyway, as standing validation practice for the wider
-   `digital_twin`/`sensortask_wozi` stress-test suite once on-target testing is possible — not because
-   the compile-time exclusion is questioned. See the "Deferred / explicitly out-of-scope work" section
-   below for the consolidated real-hardware-retest entry covering both this and the memory-leak
-   finding (open question #6).
 
 ## Deferred / explicitly out-of-scope work
 
-- **Real-hardware re-test of Step 6's segfault fix and memory-leak soak test (owner's standing
+- **Real-hardware re-test of the segfault fix and the memory-leak soak test (owner's standing
   future plan, not yet actionable)** — the project owner has real future plans to run tests directly
-  on the actual rp2040 target hardware. Once that's possible, repeat both of Step 6's Unix-port soak
-  tests there:
+  on the actual rp2040 target hardware. Once that's possible, repeat both Unix-port soak tests
+  there:
   - The **segfault stress test** (`digital_twin/segfault_stress_repro.py`'s repeated-concurrent-
-    client-burst scenario) — not because the root cause is in doubt (it's confirmed compiled out of
-    rp2 firmware via `MICROPY_PY_SELECT_POSIX_OPTIMISATIONS`, a hard source fact, not an assumption
-    — see open question #7 above), but as standing on-target validation practice for the wider stress
-    scenario itself.
-  - The **memory-leak soak test** (the `real_system_sawtooth.py`-style long-running
-    `gc.mem_free()` recovery-peak trend measurement) — not because the "no confirmed leak on the
-    Unix port" conclusion is in doubt, but because the Unix port's allocator/heap behavior isn't
-    guaranteed identical to rp2040's real one, so an independent on-target confirmation is worthwhile.
+    client-burst scenario) — not because the root cause is in doubt (a dangling-pointer bug in
+    `extmod/modselect.c`, confirmed compiled out of real rp2 firmware via
+    `MICROPY_PY_SELECT_POSIX_OPTIMISATIONS` and fixed on the Unix port by
+    `digital_twin/unix_port_poll_prewarm.py` — see `digital_twin/README.md`'s "What's here" for the
+    fix and BACKLOG.md's own git history for the investigation), but as standing on-target
+    validation practice for the wider stress scenario itself.
+  - The **memory-leak soak test** (a long-running `gc.mem_free()` recovery-peak trend measurement
+    against the real assembled system under HTTP soak traffic) — not because the "no confirmed leak
+    on the Unix port" conclusion is in doubt (four independent, properly-powered replication
+    experiments found no reproducible decline, on either idle or HTTP-soak traffic), but because the
+    Unix port's allocator/heap behavior isn't guaranteed identical to rp2040's real one, so an
+    independent on-target confirmation is worthwhile.
   Neither soak-test script currently has a real-hardware-runnable form (both assume the Unix-port
   `digital_twin` harness); porting/adapting them for actual on-device execution is part of this
-  future work, not already done. See open questions #6 and #7 above for the full Unix-port findings
-  these on-target runs would be re-validating.
+  future work, not already done.
 - **`pyproject.toml`'s mypy `exclude` list still has a dead regex entry for
   `improved-quality/microdot.py`** (removed — see `SPECIFICATION.md` Part A.5), matching
   nothing today, harmless but worth deleting (along with its now-dangling "see its own module
@@ -799,21 +409,19 @@ constraints.
   wired into any `sensortask-*.py`; `asy_uart_comm.py` (its one real consumer) is its own separate,
   still out-of-scope promotion. Unused by any deployed config — wiring it in is after the refactor
   of already-deployed features, not before.
-- **Owner requirement for the final wiring stage (not in this audit's scope, recorded here for
-  when Stage 1 actually happens)**: every `sensortask-*.py` built as part of the real rewrite needs
-  a full Unix-port equivalent, runnable on a local computer, with whatever hardware is physically
-  unavailable there mocked at the lowest level of bus data exchange (i.e. the same mocking
-  boundary `tests/README.md`/`tests/machine.py` already establish for unit tests — fake
-  `machine.I2C`/`machine.SPI`/etc. byte-level transactions, not higher-level driver stand-ins) so
-  the whole wired-together sensortask can be exercised as close to the real target as possible
-  without physical hardware. `WIRING_CONTRACT.md`'s Stage-1 study is the natural place this lands
-  once that rewrite starts. **Fulfilled**: `digital_twin/` (Step 3 of `FINAL_WIRING_PLAN.md`'s
-  five-step effort) is the lowest-level-mocking module this requirement calls for, and has landed.
-  The concrete fulfillment — actually running the whole wired-together `src/sensortask_wozi.py`
-  against it end to end — is Step 5's own explicit goal; done in this session (not yet merged — see
-  `FINAL_WIRING_PLAN.md`'s Step 5 section for the full detail). Once Step 5 merges and the whole
-  five-step effort's large post-merge audit closes, this entry should come out per this file's own
-  stated resolved-item policy.
+- **Owner requirement for the final wiring stage — fulfilled, entry kept only until the large
+  post-merge audit closes.** Every `sensortask-*.py` built as part of the real rewrite needs a full
+  Unix-port equivalent, runnable on a local computer, with whatever hardware is physically
+  unavailable there mocked at the lowest level of bus data exchange (i.e. the same mocking boundary
+  `tests/README.md`/`tests/machine.py` already establish for unit tests — fake
+  `machine.I2C`/`machine.SPI`/etc. byte-level transactions, not higher-level driver stand-ins) so the
+  whole wired-together sensortask can be exercised as close to the real target as possible without
+  physical hardware. **Fulfilled**: `digital_twin/` is the lowest-level-mocking module this
+  requirement calls for (see `SPECIFICATION.md` Part A.10), and `scripts/run_unix_port_integration.sh`
+  runs the whole wired-together `src/sensortask_wozi.py` against it end to end (see
+  `digital_twin/README.md`'s "Swapping the twin in for a Unix-port run" section). This entry should
+  come out once the whole effort's large post-merge audit closes, per this file's own stated
+  resolved-item policy — not yet removed on its own, since that audit hasn't closed yet.
 - **Config-duplication centralization** — same keys hand-kept in sync across `_DEFAULT_CONFIG`, the
   REST handler, and the HTML form. Owned by the refactor: each promoted `*_Reader`'s own `_VAL_*`
   schema tuple + `get_dict_cfg()`/`get_dict_data()` is the intended single source, not fully wired
@@ -870,20 +478,12 @@ constraints.
   stated rationale for keeping them anyway: once the Microdot REST layer feeds real (untrusted)
   request data into these paths, they stop being defensive-only and become load-bearing. Revisit
   once that wiring exists, not before.
-- **Whole-system integration test scope** (a scoping item from the now-closed `src/` audit — recorded
-  here since it's future test-writing work, not a current-state fact `SPECIFICATION.md` documents).
-  Today's integration tests are all pairwise-or-triple chains (FRAM+notification,
-  notification+neopixel, notification+SCD30 (both its WarnCO2 and WarnHum signals),
-  notification+SGP40 (WarnVOC), NTP+FRAM+system, NTP+WiFi+DNS, setter+Microdot) — real
-  and valuable, but none exercises the *actual* multi-module wiring shape `WIRING_CONTRACT.md`
-  documents. Chains genuinely missing coverage, to write once Stage 1's real `sensortask-wozi.py`
-  successor exists to exercise them against (most can't be meaningfully tested *before* that, since
-  today's `improved-quality/sensortask-wozi.py` construction sequence is still fully synchronous —
-  see `WIRING_CONTRACT.md`'s "New structural fallout" section for why):
-  - **Full boot-sequence chain**: `conn` → `ntp` → `sysfunct` → every reader → `pixel` →
-    `notify_service`, constructed in the real order, verifying FRAM chunk determinism holds
-    end-to-end (not just per-component) and that every `SensorReaderConfig` subclass's new
-    `await x.setup()` call actually lands before its first real config read.
+- **Whole-system integration test scope — partially closed.** `tests/test_sensortask_wozi.py` and
+  `tests/test_digital_twin_sensortask_integration.py` now exercise the real `build_system()` object
+  graph end-to-end (construction order, FRAM chunk order, the `setup()`-batch order, and every REST
+  endpoint reachable over real HTTP against real twin-backed drivers — see `SPECIFICATION.md` Parts
+  A.7/A.8), closing the "full boot-sequence chain" and "multi-sensor REST read aggregation" gaps this
+  entry originally named. Two chains are still genuinely missing coverage:
   - **Task-supervisor restart, end-to-end**: `system_service.py`'s `start_and_check_tasks()`
     actually restarting a failed reader task drawn from the real, full registered task list (today's
     coverage exercises individual readers' own give-up behavior, never the supervisor discovering
@@ -893,9 +493,6 @@ constraints.
     `captive_dns.py`/`asy_wifi_service.py` pairwise.
   - **SGP40 VOC-backup reboot-survival, full chain**: FRAM chunk 2 write → simulated reboot → real
     restore, through the actual `sgp_reader`/`fram` construction order, not a synthetic chunk.
-  - **Multi-sensor REST read aggregation**: `/sensors/status`/`/sensors/config`'s real
-    `get_dict_data()`/`get_dict_cfg()` merge across all three readers through Microdot end-to-end —
-    today's `setter+Microdot` integration test only covers the write path for one driver at a time.
 - **`asy_i2c_driver.py`'s `get_bits`/`set_bits`/`get_register_struct` still call the allocating
   `readfrom_mem()` rather than zero-copy `readfrom_mem_into()`** — no real caller needs the
   zero-copy path yet, but worth doing before `asy_isl29125_driver.py` (its one plausible future

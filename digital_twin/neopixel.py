@@ -1,8 +1,7 @@
 """Digital-twin fake `neopixel` module - the MicroPython Unix port build has no real `neopixel`
 module (confirmed directly: `import neopixel` raises ImportError, same finding tests/neopixel.py's
 own module docstring already recorded). Deliberately a separate, independent copy from
-tests/neopixel.py (owner's explicit choice, FINAL_WIRING_PLAN.md's Step 3 clarifying-question
-round: full independence from tests/ at Step 5 runtime, over reuse).
+tests/neopixel.py (owner's explicit choice: full independence from tests/ at twin runtime, over reuse).
 
 Unlike WLAN (see digital_twin/network.py), no behavioral change from the tests/ shape was needed:
 a real rp2 NeoPixel.write() is a single busy-wait bit-bang call with no return value and no error

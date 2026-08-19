@@ -22,10 +22,11 @@ if TYPE_CHECKING:
 _NAME = const("DNSSRV")
 
 # Backoff for a persistently-failing recvfrom() that returns (None, None) without ever raising
-# (e.g. a bind() that never actually succeeded - see BACKLOG.md's "cascading recovery storms"
-# finding: this path previously looped at zero delay, measured at ~5 wrn_s() lines/second
-# continuously in a real end-to-end run). Distinct from the broad except-Exception backoff below,
-# which already had its own flat 3s pause for a genuinely unexpected exception.
+# (e.g. a bind() that never actually succeeded - see SPECIFICATION.md Part C.9's
+# cascading-recovery-storm convention: this path previously looped at zero delay, measured at ~5
+# wrn_s() lines/second continuously in a real end-to-end run). Distinct from the broad
+# except-Exception backoff below, which already had its own flat 3s pause for a genuinely
+# unexpected exception.
 _RECV_FAIL_BACKOFF_INITIAL_S = const(0.5)
 _RECV_FAIL_BACKOFF_MAX_S = const(5.0)
 _RECV_FAIL_BACKOFF_MULTIPLIER = const(2)
@@ -131,9 +132,10 @@ class DNSServer:
             await self.pr.err_s("DNS Server error during disconnect:", e, errno=3)
             disconnect_ok = True  # already logged above via the except-Exception branch
         if not disconnect_ok:
-            # Step 6 (silent-failure-masking finding): disconnect() itself never raises (AsyUDPSocket
-            # has no logger of its own by design), but its bool return now reports whether
-            # unregister()/close() actually succeeded - log it here so a real socket/poll-slot leak
+            # SPECIFICATION.md Part C.7's silent-failure-masking convention: disconnect() itself
+            # never raises (AsyUDPSocket has no logger of its own by design), but its bool return now
+            # reports whether unregister()/close() actually succeeded - log it here so a real
+            # socket/poll-slot leak
             # over a long uptime leaves a trail instead of silently disappearing.
             await self.pr.wrn_s("DNS Server socket teardown did not complete cleanly.", wrnno=3)
         self.pr.evt("DNS Server disconnected.")

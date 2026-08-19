@@ -116,8 +116,8 @@ class UART(Lockable):
         # False if unregister() itself raised - this class has no logger of its own (every method
         # here is a plain sentinel-return, never-raises primitive per the module docstring), so a
         # caller that wants to log a failed teardown reads this return value with its own logger
-        # once this driver is actually wired in (Step 6 silent-failure-masking finding - previously
-        # a bare `pass` with no signal at all, even once a real caller exists).
+        # once this driver is actually wired in (SPECIFICATION.md Part C.7's silent-failure-masking
+        # convention - previously a bare `pass` with no signal at all, even once a real caller exists).
         if self._uart is None:
             return True
         ok = True

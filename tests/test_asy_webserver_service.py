@@ -1,13 +1,14 @@
-"""TDD test suite for src/asy_webserver_service.py (FINAL_WIRING_PLAN.md's Step 2), written before
+"""TDD test suite for src/asy_webserver_service.py (see SPECIFICATION.md Part A.8 for the full
+endpoint design), written before
 the implementation exists - per the per-step-session workflow's step 3 ("write the full set of unit
-tests first"). Every test below is expected to fail at import time until Step 2's own implementation
+tests first"). Every test below is expected to fail at import time until the implementation
 session creates src/asy_webserver_service.py to the contract documented here - that is the correct
-TDD "red" state, not a bug in this file. Covers FINAL_WIRING_PLAN.md's Step 2 "Detailed TDD action
+TDD "red" state, not a bug in this file. Covers the "Detailed TDD action
 list" sections A-F (section G was resolved by source research, not a test list).
 
 Concrete API contract this file assumes (the implementation session should build to this shape,
 refining only where it reveals a genuine problem - the exact call signatures were explicitly left
-open by the owner's endpoint-design decision, see FINAL_WIRING_PLAN.md's Step 2):
+open by the owner's endpoint-design decision, see SPECIFICATION.md Part A.8):
 
     class WebserverService:
         def __init__(
@@ -80,7 +81,7 @@ GET routes return the bare shaped dict as the JSON body (no {"res"/"code"/...} e
 tests/test_setter_microdot_integration.py's own _ntp_getter_app() precedent). PUT routes return the
 existing api_response.py envelope ({"res", "code", "descr", "result"}), reusing
 ar.make_response()/ar.handle_set_cmd() directly - the sparse body *is* the fields dict, no "cmd"
-envelope to strip (FINAL_WIRING_PLAN.md's PUT-shapes decision).
+envelope to strip (see SPECIFICATION.md Part A.8 for the PUT-shapes decision).
 """
 
 import asyncio
@@ -479,7 +480,7 @@ class _NestedCfgModule:
     # unlike _FakeModule's own deliberately-flat get_dict_cfg() convention above (which matches
     # SystemService's own get_dict_cfg() override instead - see system_service.py's
     # self.cfgmgr.get_dict(...), a genuinely different, already-flat method). Found via
-    # FINAL_WIRING_PLAN.md's Step 5 twin-based integration testing
+    # twin-based integration testing
     # (tests/test_digital_twin_sensortask_integration.py): _FakeModule's flat shape masked a real
     # bug where _get_settings_flat() never unwrapped this real shape at all, so /networking and
     # /notification always returned {} in production, and /system silently dropped every field not
@@ -897,8 +898,8 @@ def test_d_status_errcount_includes_one_entry_per_module_and_per_configmanager()
     service, app = _make_service(error_sources=[module, cfgmgr])
     res = run(app.dispatch_request(_make_request(app, "GET", "/status", None)))
     errcount = json.loads(res.body)["errcount"]
-    # "WEBSERVER" is this service's own entry (FINAL_WIRING_PLAN.md's Step 2 registration-API
-    # contract) - added directly in _build_errcount(), not via the error_sources registry, since
+    # "WEBSERVER" is this service's own entry (see SPECIFICATION.md Part A.8 for the
+    # registration-API contract) - added directly in _build_errcount(), not via the error_sources registry, since
     # WebserverService can't register itself into its own not-yet-constructed error_sources list.
     assert set(errcount.keys()) == {"SGP40", "CFGMGR_SGP40", "WEBSERVER"}
 
@@ -1006,8 +1007,8 @@ def test_e_concurrent_put_during_get_never_produces_a_torn_response() -> None:
 
 
 def test_e_scd30_bmp3xx_live_readback_torn_read_is_a_known_characterization_not_a_regression() -> None:
-    # Deliberately demonstrates the known, already-flagged gap (FINAL_WIRING_PLAN.md's GET-shapes
-    # note) rather than asserting it's fixed - a runnable characterization so a future fix has a red
+    # Deliberately demonstrates the known, already-flagged gap (see SPECIFICATION.md Part A.8 for
+    # the GET-shapes note) rather than asserting it's fixed - a runnable characterization so a future fix has a red
     # test to turn green, instead of the gap only living in prose. Modeled here with a fake whose
     # get_dict_cfg() awaits mid-construction (the real SCD30_Reader/BMP3xx_Reader shape), unlike
     # every other fake in this file which builds its dict synchronously.
@@ -1132,8 +1133,8 @@ def test_f2_trickled_request_line_is_reclaimed_by_the_outer_cap_not_a_single_per
     # timeout wrapping one logical stream-method invocation, per BACKLOG.md's design sketch step 2 -
     # finishes comfortably under the per-call timeout, defeating it; the outer per-connection
     # wall-clock cap (wrapping the *whole* handle_request() call) is what actually bounds the
-    # connection regardless of how the client paces individual reads (FINAL_WIRING_PLAN.md section G
-    # item 1 / decision 2). A byte-by-byte trickle (this test's original shape) instead made a
+    # connection regardless of how the client paces individual reads (see SPECIFICATION.md Part A.8,
+    # connection-hardening item 1 / decision 2). A byte-by-byte trickle (this test's original shape) instead made a
     # *single* readline() call itself take far longer than the per-call timeout to assemble one
     # line - correctly reclaimed by the per-call timeout alone, never even reaching the outer cap,
     # which wasn't what this test was meant to isolate.
@@ -1465,7 +1466,7 @@ def test_f8_start_serving_runs_a_real_asyncio_start_server_backed_task() -> None
 
 
 def test_f9_soak_100_plus_start_wedge_reclaim_cycles_hold_counter_and_memory_flat() -> None:
-    # The real 100+-cycle soak test FINAL_WIRING_PLAN.md's Step 2 finish criteria calls for
+    # The real 100+-cycle soak test this service's finish criteria calls for
     # ("gc.mem_free() flat") - not just the connection-counter invariant, mixing wedged and
     # well-formed connections across max_connections' full ceiling, never a restart step anywhere.
     import gc
@@ -1497,7 +1498,7 @@ def test_f9_soak_100_plus_start_wedge_reclaim_cycles_hold_counter_and_memory_fla
 
 
 # ---------------------------------------------------------------------------
-# Section G - static-route serving (FINAL_WIRING_PLAN.md's Step 4: gzip -> freezefs -> frozen
+# Section G - static-route serving (see SPECIFICATION.md Part A.9: gzip -> freezefs -> frozen
 # module -> Microdot send_file(compressed=True, file_extension=".gz")). Exercises the generic
 # route-wiring mechanism against a synthetic VfsFrozen fixture (see _mount_static_fixture below) -
 # the real, built frozen_html.py artifact (scripts/build_frozen_html.sh's output) gets its own,

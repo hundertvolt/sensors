@@ -1,4 +1,4 @@
-"""Digital-twin fake `machine` module (FINAL_WIRING_PLAN.md's Step 3): the same raw I2C/SPI
+"""Digital-twin fake `machine` module: the same raw I2C/SPI
 bus-transaction mocking boundary tests/machine.py establishes for unit tests, but built for a
 different purpose - a Step 5 Unix-port integration run that should behave like it's attached to
 real hardware. Deliberately NOT tests/machine.py and does not import it (owner instruction) - a
@@ -7,7 +7,7 @@ separate module with a separate goal: real-time-firing Timer (asyncio-task-sched
 _bmp3xx_chip.py/_fram_chip.py) that answer with randomized-but-plausible, datasheet-range values.
 
 Bus wiring mirrors src/sensortask_wozi.py's real build_system() construction exactly (the "wozi"
-variant only, per FINAL_WIRING_PLAN.md's prototype scope - confirmed directly against that file's
+variant only, per this twin's prototype scope - confirmed directly against that file's
 own i2c0/i2c1/spi0 construction lines): i2c0 (id=0) carries the SCD30 at 0x61 with its RDY pin on
 GPIO 8; i2c1 (id=1) carries the SGP40 at 0x59 and BMP3xx at 0x77; spi0 (id=0) carries the FRAM chip.
 Any other bus id/address combination NAKs, matching a real bus with only these devices on it - the
@@ -29,7 +29,7 @@ from collections import deque
 
 _LOG_MAXLEN = 200  # I2C.log/SPI.log below are an ad-hoc introspection aid (nothing in tests/ or
 # digital_twin/ actually reads them today - a plain, unbounded list here was found to be a real
-# memory leak: FINAL_WIRING_PLAN.md's Step 5 baseline-verification pass ran the real assembled
+# memory leak: baseline verification ran the real assembled
 # system against this twin for the first time ever (every prior test only ever ran a handful of
 # bus transactions), and a real, continuously-running system fires a *lot* of I2C/SPI transactions -
 # enough that the list's own internal pointer-array growth eventually needed a large-enough
@@ -411,7 +411,7 @@ class WDT:
         # since the last feed() and records, rather than acts on, a would-have-reset event. No
         # public "disable" API - real hardware genuinely can't disable an armed WDT either, and this
         # task dies naturally when its owning asyncio.run() event loop closes, matching Timer's own
-        # cleanup story (FINAL_WIRING_PLAN.md's Step 3 section has the full design writeup).
+        # cleanup story (see digital_twin/README.md for the full design writeup).
         self.would_have_triggered_count = 0
         # feed_count observed at each notification - ad-hoc introspection aid, same shape as
         # I2C.log/SPI.log above (see _LOG_MAXLEN's own comment): grows for the life of the process

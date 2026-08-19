@@ -35,8 +35,8 @@ dev = [
 
 # Checks currently cover improved-quality/ (the WIP code-quality refactor target, where this
 # cleanup effort actually started - see CLAUDE.md), src/ (files moved out of improved-quality/
-# once fully reviewed/tested), tests/ (their unit tests), and digital_twin/ (Step 3's hardware
-# simulator, FINAL_WIRING_PLAN.md - a fully-reviewed, freely-editable scope like src/, not WIP like
+# once fully reviewed/tested), tests/ (their unit tests), and digital_twin/ (the hardware
+# simulator, SPECIFICATION.md Part A.10 - a fully-reviewed, freely-editable scope like src/, not WIP like
 # improved-quality/). The pre-refactor deployed codebase (python/, modules/) isn't in scope yet and
 # has no lint/type config of its own right now. improved-quality/mypy.ini and
 # improved-quality/pycheck.sh (ad hoc, trial-and-error configs) have been retired in favor of this
@@ -130,8 +130,8 @@ files = ["improved-quality", "src", "tests", "digital_twin"]
 # test_digital_twin_*.py files; they reach digital_twin/ exclusively, via
 # sys.path.insert(0, "digital_twin"), never src/), so this whole subsystem's tests are a
 # self-contained scope that belongs entirely to digital_twin/typecheck.ini's own dedicated pass
-# (below), not split across both. run_wozi_integration.py (FINAL_WIRING_PLAN.md's Step 5) and
-# segfault_stress_repro.py (Step 6, BACKLOG.md open question #7's segfault-repro tool) are the two
+# (below), not split across both. run_wozi_integration.py and
+# segfault_stress_repro.py (the segfault-repro tool, see digital_twin/README.md) are the two
 # files that genuinely need both universes at once - each imports sensortask_wozi (src/) and
 # machine/network (digital_twin/'s own richer twin API, not the real board stub) in the same file -
 # excluded here for the same "machine/network must resolve to the twin, not the real stub" reason

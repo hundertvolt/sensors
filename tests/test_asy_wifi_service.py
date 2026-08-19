@@ -1829,7 +1829,7 @@ def test_wlan_connect_calls_pr_setup_before_entering_its_loop() -> None:
 
 
 def test_wlan_connect_also_calls_dns_server_pr_setup_before_entering_its_loop() -> None:
-    # Regression test for FINAL_WIRING_PLAN.md's Step 5 baseline-verification pass: dns_server is
+    # Regression test from baseline verification: dns_server is
     # its own separate PrintLogHistory instance (captive_dns.py's DNSServer, own construction) -
     # nothing called its own pr.setup() before this fix, so every dns_server.pr.err_s()/wrn_s() call
     # degraded to "PrintLog: Uninitialized, call setup first!" forever, reproduced directly running
@@ -2458,8 +2458,7 @@ def test_start_hotspot_valid_config_activates_the_ap() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Step 6 (BACKLOG.md open question #6, "task/timer resource leaks" category):
-# _run_hotspot_mode() calls _start_hotspot() every loop iteration where
+# Task/timer resource leak regression: _run_hotspot_mode() calls _start_hotspot() every loop iteration where
 # wlan.status() != network.STAT_GOT_IP - true on literally every iteration while purely in AP mode,
 # since STAT_GOT_IP is a STA-only status an AP interface never reports (confirmed directly against
 # both tests/network.py's and digital_twin/network.py's WLAN fakes: nothing ever sets _status to

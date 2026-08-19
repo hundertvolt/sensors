@@ -1,6 +1,6 @@
 """Workaround for a confirmed real bug in the pinned MicroPython v1.28.0 Unix port's
-`extmod/modselect.c` (BACKLOG.md open question #7's real root cause, found via a direct DEBUG=1
-gdb/core-dump investigation - not previously root-caused): `poll_set_add_fd()`'s "grow the pollfds
+`extmod/modselect.c` (found via a direct DEBUG=1 gdb/core-dump investigation):
+`poll_set_add_fd()`'s "grow the pollfds
 array" fallback path (taken whenever `m_renew_maybe()` can't extend the array in place, so a fresh
 `m_new()` + `memcpy()` + `m_del()` is used instead) updates *every* currently-registered poll_obj_t's
 `->pollfd` pointer unconditionally:
@@ -68,9 +68,8 @@ import socket
 
 _DEFAULT_CEILING = 512  # ~28x every concurrent-registration count observed in this codebase's own
 # soak/stress testing (webserver max_connections=3, plus the fixed small set of background service
-# sockets - DNS/NTP/wifi - peaking around 18 in a deliberately adversarial 8-concurrent-client burst;
-# see BACKLOG.md open question #7's re-investigation note for the exact trace this number is based
-# on). This workaround is still fundamentally a raised threshold, not an unconditional fix - see the
+# sockets - DNS/NTP/wifi - peaking around 18 in a deliberately adversarial 8-concurrent-client burst).
+# This workaround is still fundamentally a raised threshold, not an unconditional fix - see the
 # module docstring's "as long as real peak concurrent fd registrations never reach the ceiling again"
 # caveat - so the margin is deliberately generous rather than just-above-observed: measured at ~45ms
 # of one-time startup cost (well under a second, loopback-only, no realistic risk of exhausting the

@@ -1,23 +1,24 @@
 # `digital_twin/` — hardware simulator for the wozi prototype
 
-Step 3 of `FINAL_WIRING_PLAN.md`'s five-step final-wiring effort. A set of fake `machine`/`network`/
-`neopixel` modules, sitting at the same raw I2C/SPI bus-transaction mocking boundary
-`tests/machine.py` establishes for unit tests, but built for a different purpose: real-time-firing
-`Timer`s and randomized-but-plausible sensor values, so Step 5 can run the full assembled
-`src/sensortask_wozi.py` prototype under the real MicroPython Unix-port interpreter and have it
-behave like it's attached to real hardware — not just satisfy a hand-driven test double.
+A set of fake `machine`/`network`/`neopixel` modules, sitting at the same raw I2C/SPI
+bus-transaction mocking boundary `tests/machine.py` establishes for unit tests, but built for a
+different purpose: real-time-firing `Timer`s and randomized-but-plausible sensor values, so the full
+assembled `src/sensortask_wozi.py` prototype can run under the real MicroPython Unix-port
+interpreter and behave like it's attached to real hardware — not just satisfy a hand-driven test
+double. See SPECIFICATION.md Part A.10 for how this fits into the rest of the architecture, and
+Part C.11 point 9 for the per-driver "add a matching chip fake" requirement.
 
 **Not `tests/machine.py`, does not import it, and is never imported by anything in `tests/`.**
 Kept completely separate so nothing here can accidentally affect the deterministic unit-test suite
-`scripts/test.sh` runs by default (`MICROPYPATH="src:tests:frozen_modules:.frozen"` — the
-`frozen_modules` segment was added in Step 4, see below). See `FINAL_WIRING_PLAN.md`'s Step 3
-section for the full design rationale and the owner Q&A round that settled it.
+`scripts/test.sh` runs by default (`MICROPYPATH="src:tests:frozen_modules:.frozen"`).
 
 ## What's here
 
 - `machine.py` — `Pin`/`I2C`/`SPI`/`Timer`/`WDT`/`RTC`. `Timer` fires for real on a wall-clock
-  schedule via an internal `asyncio` task (not `_thread` — see the module's own docstring and
-  `FINAL_WIRING_PLAN.md` for why). `I2C`/`SPI` wire the real "wozi" variant's bus layout exactly
+  schedule via an internal `asyncio` task, not `_thread` (upstream's own `_thread.rst` docs state
+  outright that it "is highly experimental and its API is not yet fully settled" — not a fit for
+  load-bearing behavior here, and every real `Timer` callback in this codebase is already trivial
+  enough that true preemption buys nothing). `I2C`/`SPI` wire the real "wozi" variant's bus layout exactly
   (see `machine.py`'s own docstring): `I2C(0, ...)` carries the SCD30 at `0x61`, `I2C(1, ...)`
   carries the SGP40 at `0x59` and BMP3xx at `0x77`, `SPI(0, ...)` carries the FRAM chip. Any other
   address NAKs — a real bus with a fixed, known set of devices on it, not an unbounded fixture.
@@ -31,6 +32,11 @@ section for the full design rationale and the owner Q&A round that settled it.
 - `_fram_chip.py` — the MB85RS64V FRAM chip's SPI opcode protocol (WREN/WRDI/RDSR/WRSR/READ/WRITE/
   RDID), plus explicit `save_state()`/on-construction load JSON persistence (see "FRAM persistence"
   below).
+- `unix_port_poll_prewarm.py` — a workaround for a confirmed, real dangling-pointer bug in the
+  pinned MicroPython v1.28.0 Unix port's `extmod/modselect.c` (see "Known gaps / follow-ups" below
+  for the full account). Called as the first statement of `run_wozi_integration.py`'s and
+  `segfault_stress_repro.py`'s own `main()`, before anything else in the process registers a poll
+  object.
 - `_crc8.py` / `_fault_injection.py` — small shared helpers (CRC-8 for SGP40/SCD30's word protocol;
   a generic op-keyed fault-injection queue, mirroring `tests/machine.py`'s own
   `inject_fault()`/`_maybe_raise()` convention) used by more than one chip fake.
@@ -43,11 +49,11 @@ section for the full design rationale and the owner Q&A round that settled it.
 Every chip fake exposes a `.fault` (`FaultInjector`) surface for provoking a bus NAK/CRC-corruption/
 timeout on demand — off/clean by default.
 
-## Swapping the twin in for a Unix-port run (Step 5) — landed
+## Swapping the twin in for a Unix-port run
 
 `src/sensortask_wozi.py` needs **zero twin-awareness** — no `if` branch anywhere distinguishing real
 hardware from simulated. The swap is pure `MICROPYPATH` ordering, the same mechanism
-`tests/machine.py` already uses transparently for the unit-test suite. Step 5's own dedicated entry
+`tests/machine.py` already uses transparently for the unit-test suite. The dedicated entry
 point, `scripts/run_unix_port_integration.sh`, does exactly this:
 
 ```bash
@@ -65,8 +71,8 @@ test.sh` does, then runs `digital_twin/run_wozi_integration.py` — the real orc
 MICROPYPATH="src:digital_twin:ext:frozen_modules:.frozen" <micropython-unix-port-binary> digital_twin/run_wozi_integration.py [flags]
 ```
 
-`frozen_modules` is required here too, added in Step 4 (landed after this doc's original Step 3
-text) — `src/sensortask_wozi.py` now does an unconditional module-level `import frozen_html`, which
+`frozen_modules` is required here too (see `SPECIFICATION.md` Part A.9 for the full pipeline) —
+`src/sensortask_wozi.py` does an unconditional module-level `import frozen_html`, which
 resolves from that segment (see `scripts/build_frozen_html.sh`'s own comment for why it can't be
 `.frozen` itself). Omitting it fails the run at import time with `ImportError: no module named
 'frozen_html'` before any twin code ever runs. `digital_twin` sits between `src` and
@@ -104,7 +110,8 @@ fakes, which happened to return an already-flat shape. See `_flatten_cfg_values(
 
 The FRAM twin reads back exactly what was written, including across process restarts, but only
 ever writes to disk on an **explicit** call — never automatically, to avoid unnecessary write
-cycles on an SSD-hosted state file. Whatever entry point Step 5 writes should:
+cycles on an SSD-hosted state file. Any entry point that boots the real `sensortask_wozi` object
+graph against the twin (`digital_twin/run_wozi_integration.py` is the real example) should:
 
 ```python
 import asyncio
@@ -144,8 +151,8 @@ same convention as FRAM. `digital_twin/run_wozi_integration.py` is the only entr
 defaults to a persistent file (`digital_twin/scd30_state.json`, next to its own
 `digital_twin/fram_state.json` default, both gitignored) — `digital_twin/launch.py` keeps its own
 pre-existing in-memory-only default for both (`--fram-state-path`/`--scd30-state-path` opt in
-explicitly), matching decision 6's own "the persistent-by-default behavior is specific to the
-manual/end-to-end entry point" scoping (`FINAL_WIRING_PLAN.md`'s Step 5 section).
+explicitly): the persistent-by-default behavior is deliberately specific to the manual/end-to-end
+entry point, not the twin's own standalone demo launcher.
 
 ## Running the twin's own tests
 
@@ -228,17 +235,32 @@ correctly by the dedicated pass instead - see `digital_twin/typecheck.ini`'s own
 ## Known gaps / follow-ups for later sessions
 
 - **BMP3xx's fixed calibration block is not sourced from a real chip.** It's a real-shaped,
-  hand-picked set of raw coefficient bytes, verified (`FINAL_WIRING_PLAN.md`'s Step 3 section) to
-  round-trip cleanly through the real compensation formula across this twin's whole sensible range
-  — not literal factory-trim data off actual silicon, which this project doesn't have access to.
+  hand-picked set of raw coefficient bytes, verified directly (by inverting the real cubic
+  compensation formula — temperature inversion is quadratic, pressure then linear in raw ADC once
+  temperature is known) to round-trip cleanly through the real compensation formula across this
+  twin's whole sensible range — not literal factory-trim data off actual silicon, which this
+  project doesn't have access to.
 - **Fault injection is a bus/chip-level generic queue, not a fine-grained per-condition simulator.**
   `tests/_fram_chip_fake.py`'s own WEL-corruption-specific knobs (`drop_wren`,
   `disturb_write_autoclear`, ...) were purpose-built for `FRAM_SPI`'s own defense-in-depth unit
   tests (already covered by `tests/test_asy_fram_driver.py`) and weren't reproduced here.
-- **`segfault_stress_repro.py`** (Step 6, BACKLOG.md open question #7) is a manual, deliberately-
-  aggressive concurrency-stress CLI tool — fires many concurrent HTTP clients against the real
-  assembled system to hunt for a real, `dmesg`-confirmed MicroPython Unix-port interpreter segfault
-  under heavy concurrent load. Not part of any automated test tier (a genuine repro crashes the
-  whole interpreter process) — run manually, same `MICROPYPATH` as `run_wozi_integration.py`. See
-  its own module docstring for the full account, including this project's own repeated
-  non-reproduction attempts.
+- **`segfault_stress_repro.py`** is a manual, deliberately-aggressive concurrency-stress CLI tool —
+  fires many concurrent HTTP clients against the real assembled system. Not part of any automated
+  test tier (a genuine repro crashes the whole interpreter process) — run manually, same
+  `MICROPYPATH` as `run_wozi_integration.py`. It exists because firing 8 concurrent clients x 15
+  requests each against a real, already-running (heap-reduced) `sensortask_wozi` instance once
+  reproduced a real, `dmesg`-confirmed MicroPython Unix-port interpreter segfault. **This is now
+  root-caused and fixed, not an open mystery**: the crash was a dangling-pointer dereference at
+  `extmod/modselect.c:132` in the pinned MicroPython v1.28.0 Unix port — growing the shared asyncio
+  poller's `pollfds` array (needed once concurrently-registered fds cross a multiple of 4)
+  unconditionally repoints every already-registered poll object's `pollfd` field at the new buffer,
+  including non-fd poll objects whose `pollfd` is legitimately `NULL`, corrupting it into a small
+  garbage pointer the next `poll()` call dereferences. Confirmed compiled out of real rp2 firmware
+  entirely (`MICROPY_PY_SELECT_POSIX_OPTIMISATIONS`, the macro gating this code path, defaults to 0
+  and is only turned on by the Unix port's own config — rp2 defines no override, and its non-optimized
+  poll object has no `pollfd` field or array to grow at all). Fixed by `unix_port_poll_prewarm.py`
+  (see "What's here" above) — verified empirically: the unfixed tool crashed 100% of attempts at
+  both a deterministic small-heap trigger (`-X heapsize=` at or below ~800KB) and a recreation of
+  the original discovery conditions; with the fix, repeated clean runs across both conditions
+  (including against the actual committed files, not scratch copies) produced zero crashes. See
+  `unix_port_poll_prewarm.py`'s own module docstring for the full mechanism.

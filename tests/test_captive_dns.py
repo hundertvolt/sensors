@@ -953,8 +953,8 @@ def test_run_disconnect_reporting_a_genuine_exception_logs_a_persisted_error() -
 
 
 # ---------------------------------------------------------------------------
-# run()'s recvfrom() empty-result backoff (BACKLOG.md open question #6's "cascading recovery
-# storms" category, first concrete instance): a persistently-failing recvfrom() that returns
+# run()'s recvfrom() empty-result backoff (SPECIFICATION.md Part C.9's cascading-recovery-storm
+# convention): a persistently-failing recvfrom() that returns
 # (None, None) without ever raising - e.g. a bind() that never actually succeeded - must not spin
 # the loop at zero delay (the real end-to-end run measured ~5 wrn_s() lines/second before this fix).
 # Distinct from the genuinely-unexpected-exception backoff tested above, which already had its own

@@ -153,6 +153,22 @@ information):
   intent wasn't obvious from reading it alone.
 - When changing a sensor driver's behavior, verify against the legacy driver's own actually-proven
   field behavior, not just judged correct against internal code-review logic in isolation.
+- **Step-session workflow, standing practice for any substantial unit of refactor/audit work**
+  (originated during the `improved-quality/` → `src/` wiring effort's five-plus-one step sessions,
+  still the expected shape for a comparable future unit of work — a new driver promotion, a new
+  audit pass, etc.): (1) refine the task's own scope into a detailed list — goals, doc links, and
+  the criteria that make the branch/session done — doing real research first (datasheets, current
+  MicroPython/Microdot docs, legacy driver code) rather than restating a one-line ask; (2) ask up to
+  10 top-level clarifying questions (what needs deciding, the realistic options, the consequences of
+  each), resolving as much as possible from project context/internal docs/legacy code first, but
+  raising a genuinely blocking or architecturally significant decision at any point, not only in
+  this round; (3) write the full set of unit tests first (TDD) against the criteria the refined
+  scope settled on; (4) write the implementation against those tests, refining until every test
+  passes and the result is lean, not just "technically satisfies the tests"; (5) add unit tests for
+  the resulting functional code, maximizing coverage; (6) stop and report back to the project owner
+  before doing anything more — merging, starting the next unit of work, or any scope beyond what was
+  just built is not the session's own call. A session can come back with a blocking question at any
+  point in this sequence, not only at the end.
 
 ## Code quality tooling
 

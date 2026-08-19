@@ -703,8 +703,8 @@ class AsyConnTime(SensorReaderConfig):
         await self.dns_server.pr.setup()  # dns_server is its own separate PrintLogHistory instance
         # (captive_dns.py's DNSServer, own construction, not covered by self.pr.setup() above) -
         # self.dns_server.run() is only ever started later in this same function's own hotspot-
-        # activation path, so this is always called before it. Found via FINAL_WIRING_PLAN.md's
-        # Step 5 baseline-verification pass: every dns_server.pr.err_s()/wrn_s() call degraded to
+        # activation path, so this is always called before it. Found during baseline
+        # verification: every dns_server.pr.err_s()/wrn_s() call degraded to
         # "PrintLog: Uninitialized, call setup first!" forever (never actually logging/persisting)
         # since nothing ever called this - real hardware falling back to hotspot mode has the
         # identical gap, not twin-specific.

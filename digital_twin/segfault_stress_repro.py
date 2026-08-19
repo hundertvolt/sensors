@@ -1,15 +1,13 @@
-"""Manual, deliberately-aggressive concurrency stress tool for BACKLOG.md open question #7: a real
-MicroPython Unix-port interpreter segfault under heavy concurrent connection load, first found
-while investigating a real ECONNRESET report (see FINAL_WIRING_PLAN.md's Step 5 session notes).
-8 concurrent clients x 15 requests each (well beyond WebserverService's own max_connections=3
-ceiling) reproduced a real interpreter segfault twice in a row in that session, confirmed via
+"""Manual, deliberately-aggressive concurrency stress tool for a real MicroPython Unix-port
+interpreter segfault under heavy concurrent connection load, first found while investigating a real
+ECONNRESET report. 8 concurrent clients x 15 requests each (well beyond WebserverService's own
+max_connections=3 ceiling) reproduced a real interpreter segfault twice in a row, confirmed via
 `dmesg` - not a catchable Python-level exception, since it crashes the whole process
 unconditionally. `digital_twin/run_wozi_integration.py`'s own `_soak()` is deliberately
 strictly-sequential (see its own comment) and can never generate this on its own; this is a
 separate, manual tool for deliberately trying to.
 
-**Root-caused and fixed** (owner-directed re-investigation session, see BACKLOG.md open question
-#7's own note for the full account): a confirmed real bug in the pinned MicroPython v1.28.0 Unix
+**Root-caused and fixed**: a confirmed real bug in the pinned MicroPython v1.28.0 Unix
 port's `extmod/modselect.c` - `unix_port_poll_prewarm.py`'s own module docstring has the exact
 mechanism (found via a DEBUG=1 gdb/core-dump investigation), why it's Unix-port-only (confirmed via
 `MICROPY_PY_SELECT_POSIX_OPTIMISATIONS` being compiled out of rp2 entirely, not assumed), and why
