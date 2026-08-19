@@ -528,6 +528,12 @@ class WebserverService:
     def get_task_starters(self) -> "list[Callable[[], asyncio.Task[Any]]]":
         return [self._start_serving]
 
+    def get_timer_starters(self) -> "list[Callable[[], None]]":
+        return []  # no machine.Timer anywhere in this file (SPECIFICATION.md C.9 shape, kept
+        # empty rather than omitted so callers can treat every driver/service uniformly - matches
+        # asy_neopixel_driver.py's/asy_notification_service.py's own identical precedent; found
+        # missing entirely during the Step 7 audit, unlike those two).
+
     async def get_error_counter(self) -> "dict[str, dict[str, Any]]":
         return await self.pr.get_log()
 
