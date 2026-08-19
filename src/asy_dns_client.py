@@ -37,13 +37,24 @@ def _is_ipv4_literal(host: str) -> bool:
 def _build_query(host: bytes, txn_id: bytes) -> bytearray:
     # RFC 1035 SS4.1.1/4.1.2 message: 12-byte header + QNAME + QTYPE + QCLASS. QNAME is exactly
     # len(host) + 2 bytes on the wire regardless of label count.
+    labels = host.split(b".")
+    # RFC 1035 SS3.1/4.1.2: each label is wire-encoded as a single length-prefix byte followed by
+    # its content, so a label over 63 octets can't be a real DNS label - and one over 255 can't
+    # even be encoded at all (query[pos] = n below would raise ValueError: byte must be in
+    # range(0, 256), uncaught). host is caller-supplied (this project's only caller sources it
+    # from a REST-settable config field with no per-label length check - see asy_ntp_client.py's
+    # NTP_Host schema), so an overlong label is a real, reachable input, not just a defensive-only
+    # case - raised deliberately (matching add()/check()'s own let-it-propagate MemoryError
+    # contract in crc_checks.py) so resolve_ipv4() can catch it alongside that same MemoryError.
+    if any(len(label) > 63 for label in labels):
+        raise ValueError(f"DNS label too long ({max(len(label) for label in labels)} > 63 octets)")
     qname_len = len(host) + 2
     query = bytearray(12 + qname_len + 4)  # header + QNAME + QTYPE(2) + QCLASS(2)
     query[0:2] = txn_id
     query[2:4] = b"\x01\x00"  # QR=0 (query), Opcode=0 (standard), RD=1 (recursion desired)
     query[4:6] = b"\x00\x01"  # QDCOUNT=1 (ANCOUNT/NSCOUNT/ARCOUNT stay 0 - already zero-initialized)
     pos = 12
-    for label in host.split(b"."):
+    for label in labels:
         n = len(label)
         query[pos] = n
         pos += 1
@@ -95,7 +106,7 @@ async def resolve_ipv4(
         return host
     try:
         query = _build_query(host.lower().encode(), os.urandom(2))  # DNS names are case-insensitive (RFC 1035 SS2.3.3)
-    except MemoryError:
+    except (MemoryError, ValueError):  # ValueError: a label over 63 octets - not a real DNS name, nothing to resolve
         return None
     for server in dns_servers + _FALLBACK_DNS_SERVERS:
         if server == "0.0.0.0" or not _is_ipv4_literal(server):

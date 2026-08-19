@@ -1132,8 +1132,16 @@ all, by design — those helpers already allocate internally on every call via `
 buffer requirement scopes to whichever concrete I/O style a protocol class actually uses, not
 every protocol class unconditionally. **This carve-out doesn't extend to a class that *does* build
 its own raw scratch buffers but still allocates a fresh one on every call anyway** (`FRAM_SPI`'s
-`_check_device_id()`/`_read_status()`/`_setup_addr_buffer()` are a real, current instance of this —
-see C.3.1) — that's a genuine D.4 violation, not an example of this exemption.
+`_check_device_id()`/`_read_status()`/`_send_opcode()` each build a fresh one-byte command
+bytearray on every call — a real, current instance of this; corrected from an earlier draft of
+this bullet that named `_setup_addr_buffer()` as the third offender instead of `_send_opcode()` —
+`_setup_addr_buffer()` itself already reuses the pre-allocated `self._addr_buf`, confirmed by
+reading `asy_fram_driver.py` directly, not one of the three) — that's a genuine D.4 violation, not
+an example of this exemption. Low-severity and deliberately left as-is for now: every real call
+site already holds `self._spidev`'s underlying lock (directly, or via the caller-enforced
+`self.asy_lock` contract on `get_values()`/`set_values()`), so a future fix reusing one shared
+one-byte scratch buffer across these three methods would be safe under today's call pattern, but
+isn't itself a correctness/exception-safety issue worth the churn in this pass.
 
 **Contract: raises on any real failure — this is the layer that does *not* return sentinels.**
 
@@ -1724,7 +1732,7 @@ and its config read-back comes back silently wrong/empty.
   pattern worth following, not a fixed convention to match number-for-number.
 - **`base_classes.py` itself already reserves `errno=1`-`9`/`wrnno=1`-`2`, inherited unmodified by
   every `SensorReader`/`SensorReaderConfig` subclass** — `_error_check()` (`errno=1`/`2`),
-  `_get_dict_cfg()` (`wrnno=1`, `errno=3`/`4`), and `_set_dict_cfg()`/`_recover_failed_push()`
+  `_get_dict_cfg()` (`wrnno=1`/`2`, `errno=3`/`4`), and `_set_dict_cfg()`/`_recover_failed_push()`
   (`errno=5`-`9`). Every driver-owned `errno`/`wrnno` list therefore isn't independent of the
   others the way "per driver, no project-wide numbering" alone would suggest — it's scoped
   starting from whatever the shared base class has already claimed, since a driver's own numbers
@@ -1827,6 +1835,7 @@ pass-1/pass-2 process this table is pass 2's own output.
 | `system_service.py` (`"SYSTEM"`) | 1-4 | dynamic (`n + 1`) | 4=task-error-budget-exceeded-rebooting; `wrnno` assigned per task-supervisor index — see the "dynamic assignment" bullet above, not a fixed catalog. |
 | `asy_notification_service.py` (`"NOTIFY"`) | 10-13 | 1-5 | 10=value-callback failure, 11=threshold-config-read failure, 12=`local_time_callback` failure, 13=`request_signal_cb` callback failure. Renumbered off an original 1-4 (Step 7 audit finding): `_error_check()` is actively called from `monitor_loop()`, so a 1-4 errno range genuinely collided with base_classes.py's own reserved, actively-used errno=1/2 in this module's history stream - unlike wrnno (still 1-5), whose collision with base's wrnno=1-2 stays dormant here the same way it already does for `asy_wifi_service.py`/`asy_ntp_client.py` (see the bullet above). |
 | `api_response.py`'s `handle_set_cmd()` (logs onto whichever caller-supplied `SensorReaderConfig`'s own `self.pr` it's given, not a logger of its own) | 99 | — | One defense-in-depth catch (a caller-supplied `post_fct`/`post_asy_fct` raising - see Part C.5.3), fixed at 99 specifically because this can run against *any* registered module's own `.pr` (`AsyConnTime`, `AsyNtpClient`, `NotificationCoordinator`, ...) - a small number picked for one of them would still collide with another's own range or with base's reserved 1-9. |
+| `asy_webserver_service.py` (`"WEBSERVER"`) | 1-3 | 1-5 | Not a `SensorReader`/`SensorReaderConfig` subclass (own bare `PrintLogHistory` via `make_logger()`, like `captive_dns.py`/`system_service.py`), so it starts at 1 like those, not 10+. 1=unexpected exception escaping `_serve()`'s per-connection dispatch, 2=`system_cmd` callback failure, 3=`notification_led` callback failure (found missing entirely - Step 7 second-pass audit finding: both callback dispatches were unguarded, letting a raising caller-supplied `system_cmd`/`notification_led` escape the route handler instead of degrading to a `"Failed"` result with a persisted errno like every comparable callback call site elsewhere in this codebase); `wrnno` 1=peer closed early, 2=per-call or outer-cap timeout reclaim, 3=socket error reclaim, 4=writer close failed, 5=`wait_closed()` failed. Previously missing from this table entirely despite live usage - added alongside the errno=2/3 fix above. |
 | `asy_neopixel_driver.py` (`"NEOPIXEL"`) | — | — | No persisted logging today — only informational `evt()` calls, nothing that fails in a way worth counting against `get_error_counter()`. |
 | `asy_i2c_driver.py`/`asy_spi_driver.py`, `asy_udp_socket.py`, `asy_dns_client.py` (client side) | — | — | Deliberately no logging (reverted) — every real failure already surfaces to and gets logged by exactly one upstream owner; see the standing "Bus layer"/"`asy_udp_socket.py`/`asy_dns_client.py`" conventions above. |
 | `asy_uart_driver.py` | — | — | Orphan module, zero live callers — no `self.pr` at all (C.3.2); would follow this same table's shape once wired in and given an owner. |

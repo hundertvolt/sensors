@@ -374,7 +374,15 @@ class WebserverService:
     async def _dispatch_system_cmd(self, cmd: "Any") -> str:
         if self._system_cmd is None or cmd not in _SYSTEM_CMDS:
             return "Invalid"
-        ok = await self._system_cmd(cmd)
+        try:  # caller-supplied callback, could legitimately misbehave - same defensive shape every
+            # other caller-supplied-callback call site in this codebase already uses (e.g.
+            # asy_notification_service.py's _trigger_signal()); previously unguarded here, so a
+            # raise escaped straight through the route handler instead of degrading to "Failed"
+            # with a persisted, diagnosable errno like every comparable callback failure elsewhere.
+            ok = await self._system_cmd(cmd)
+        except Exception as e:
+            await self.pr.err_s("system_cmd callback failed:", e, errno=2)
+            return "Failed"
         return "Valid" if ok else "Failed"
 
     async def _get_notification(self, request: "Any") -> "dict[str, Any]":
@@ -392,7 +400,13 @@ class WebserverService:
     async def _dispatch_notification_led(self, payload: "Any") -> str:
         if self._notification_led is None or not isinstance(payload, dict):
             return "Invalid"
-        ok = await self._notification_led(payload)
+        try:  # caller-supplied callback, could legitimately misbehave - see _dispatch_system_cmd()'s
+            # own comment on why this needs the same guard every comparable callback elsewhere in
+            # this codebase already has.
+            ok = await self._notification_led(payload)
+        except Exception as e:
+            await self.pr.err_s("notification_led callback failed:", e, errno=3)
+            return "Failed"
         return "Valid" if ok else "Failed"
 
     # -- /status ---------------------------------------------------------------------------------

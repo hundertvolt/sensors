@@ -614,6 +614,12 @@ def test_collect_task_starters_includes_every_constructed_module() -> None:
 
 
 def test_collect_timer_starters_includes_every_constructed_module() -> None:
+    # Every constructed module is checked here, not just the ones that currently contribute a real
+    # timer (matches test_collect_task_starters_includes_every_constructed_module's own uniform
+    # ownership check) - pixel/notify_service/webserver all currently return [] from their own
+    # get_timer_starters(), but this test still proves _collect_timer_starters() actually calls
+    # each of them (rather than picking modules by name), since a future Timer added to any of the
+    # three would otherwise silently never run. Found missing entirely - Step 7 second-pass audit.
     run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
     starters = sensortask_wozi._collect_timer_starters()
     assert len(starters) > 0
@@ -622,9 +628,12 @@ def test_collect_timer_starters_includes_every_constructed_module() -> None:
         sensortask_wozi.scd_reader,
         sensortask_wozi.bmp_reader,
         sensortask_wozi.sgp_reader,
+        sensortask_wozi.pixel,
+        sensortask_wozi.notify_service,
         sensortask_wozi.sysfunct,
         sensortask_wozi.conn,
         sensortask_wozi.ntp,
+        sensortask_wozi.webserver,
     ):
         assert owner is not None
         for expected in owner.get_timer_starters():
