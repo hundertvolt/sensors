@@ -26,8 +26,10 @@ testing/coverage, all in one place instead of scattered across `DRIVER_SPEC.md`,
   served — until then it stays live and current, not frozen planning content. Its purpose outlived
   its original one-time framing: `src/sensortask_wozi.py` (Step 1 of `FINAL_WIRING_PLAN.md`'s
   five-step wiring effort) has already landed, but the document deliberately stays alive past that
-  point since Steps 2-5 still build on the exact construction order/dependency graph it documents —
-  see its own "Status update" section. Folding live churn or provisional planning content into a
+  point since Steps 2-5 and Step 6 (added after the original five-step plan was scoped, its own
+  dedicated session/branch alongside them) all build on the exact construction order/dependency
+  graph it documents — see its own "Status update" section. Folding live churn or provisional
+  planning content into a
   stable spec would immediately start recreating the scattering problem this document exists to fix.
 
 **Where the source files went**: `DRIVER_SPEC.md`, `src/README.md`, `tests/README.md`, and

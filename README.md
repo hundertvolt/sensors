@@ -251,14 +251,17 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   mechanical gaps, and forward REST-API notes. Its own facts have no other permanent home, so it
   stays up to date as `src/sensortask_wozi.py` changes, not just at some periodic pass's own close —
   deliberately kept alive past Step 1 landing (deviating from its own original "deleted once Stage 1
-  lands" framing) since Steps 2-5 still build on the exact construction order/dependency graph it
-  documents; deleted only once the whole five-step effort merges back and supersedes it.
+  lands" framing) since Steps 2-5 and Step 6 (`BACKLOG.md`'s open question #6, its own
+  dedicated session/branch alongside the original five) all build on the exact construction
+  order/dependency graph it documents; deleted only once the whole effort — five steps, Step 6, and
+  the large post-merge audit — merges back and supersedes it.
 - **FINAL_WIRING_PLAN.md** — the global list for Stage 1's actual rewrite: the five-branch/session
   plan that builds `src/sensortask_wozi.py` (construction restructure, generic webserver/API
-  service, digital-twin simulator, website placeholder scaffold, full Unix-port integration), each
-  step's goals/doc-links/criteria, and the cross-step interface contracts that make them combine
-  into one working prototype. Deleted once all five steps merge back and the closing audit lands —
-  same lifecycle as `AUDIT_PLAN.md`'s below.
+  service, digital-twin simulator, website placeholder scaffold, full Unix-port integration), plus
+  Step 6 (the self-healing-system failure-mode audit, added after the original five-step plan was
+  scoped), each step's goals/doc-links/criteria, and the cross-step interface contracts that make
+  them combine into one working prototype. Deleted once all five steps, Step 6, and the closing
+  large post-merge audit have merged back — same lifecycle as `AUDIT_PLAN.md`'s below.
 - **`digital_twin/README.md`** — the standing reference for Step 3's hardware simulator: what's
   there, how to swap it in for a Unix-port run, FRAM persistence, running its own tests, and how to
   add a new chip fake when a new sensor driver lands (required per `SPECIFICATION.md` C.11).
