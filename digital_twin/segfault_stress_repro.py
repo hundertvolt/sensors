@@ -8,21 +8,23 @@ unconditionally. `digital_twin/run_wozi_integration.py`'s own `_soak()` is delib
 strictly-sequential (see its own comment) and can never generate this on its own; this is a
 separate, manual tool for deliberately trying to.
 
-**Step 6 session note**: repeated attempts against this exact configuration (and several escalated
-variants - mixed real endpoints instead of just `/`, up to 20 clients x 30 requests, 5 sustained
-rounds of 12 clients x 20 requests = 1200 requests total) did not reproduce the segfault in this
-session's own sandbox, despite genuine, repeated effort - the same "could not reproduce here despite
-trying" outcome FINAL_WIRING_PLAN.md's Step 5 session already recorded for the original ECONNRESET
-report itself. This does not mean the segfault isn't real: it was confirmed directly via `dmesg` in
-a prior session, twice in a row, which this session has no reason to doubt. Plausible explanations
-for the non-reproduction, none confirmed: sandbox/build environment differences (a different glibc
-malloc implementation could have different sensitivity to whatever heap-corruption pattern is
-actually happening), process/thread scheduling timing differences, or the trigger condition being
-narrower than "N clients x M requests" alone captures. Owner-directed scope for this category was
-"repro + document only, no gdb/backtrace work" - consistent with that, this tool is kept as a
-permanent, reusable artifact for whoever picks this up next (real rp2 hardware access, a different
-sandbox, or deeper C-level tooling might all change the odds), not chased further at the C level
-here.
+**Root-caused and fixed** (owner-directed re-investigation session, see BACKLOG.md open question
+#7's own note for the full account): a confirmed real bug in the pinned MicroPython v1.28.0 Unix
+port's `extmod/modselect.c` - `unix_port_poll_prewarm.py`'s own module docstring has the exact
+mechanism (found via a DEBUG=1 gdb/core-dump investigation), why it's Unix-port-only (confirmed via
+`MICROPY_PY_SELECT_POSIX_OPTIMISATIONS` being compiled out of rp2 entirely, not assumed), and why
+pre-warming the shared poller's pollfds array before anything else registers a poll object avoids
+triggering it. `main()` below now calls that pre-warm before booting `sensortask_wozi` - verified
+this stops the crash: 20/20 clean runs across both the deterministic small-heap repro and the
+original-discovery-conditions repro, versus 100% reliable crash beforehand.
+
+**Prior (Step 6) session note, kept for the record**: repeated attempts against this exact
+configuration (and several escalated variants - mixed real endpoints instead of just `/`, up to 20
+clients x 30 requests, 5 sustained rounds of 12 clients x 20 requests = 1200 requests total) did not
+reproduce the segfault in that session's own sandbox, despite genuine, repeated effort. That
+session's owner-directed scope was "repro + document only, no gdb/backtrace work"; this session's
+owner-directed scope was the opposite ("really resolve it, don't back off"), which is what actually
+found the mechanism above.
 
 Usage:
     MICROPYPATH="src:digital_twin:ext:frozen_modules:.frozen" <micropython-unix-port-binary> \\
@@ -42,6 +44,7 @@ import sys
 
 import _http_client
 import machine
+from unix_port_poll_prewarm import prewarm_poll_set
 
 import sensortask_wozi
 
@@ -103,6 +106,9 @@ def _parse_args(argv: "list[str]") -> "dict[str, object]":
 
 
 async def main(n_clients: int, n_requests: int, n_rounds: int, host: str, port: int) -> None:
+    # Must run before anything else in the process registers a poll object - see
+    # unix_port_poll_prewarm.py's own module docstring.
+    prewarm_poll_set(port=port + 1000)
     machine.configure_fram_state_path(None)
     machine.configure_scd30_state_path(None)
     main_task = asyncio.get_event_loop().create_task(
