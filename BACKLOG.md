@@ -111,37 +111,6 @@ constraints.
   the refactor without changing observed behavior. (Neopixel warning-flash sequencing was the other
   half of this item - resolved by the `src/asy_neopixel_driver.py`/`src/asy_notification_service.py`
   promotion, see `SPECIFICATION.md` Part A.4.)
-- **No `@app.errorhandler` registrations exist anywhere yet** (confirmed: neither
-  `improved-quality/sensortask-wozi.py` nor the deployed `python/CommonDrivers/`-based app
-  registers any). See `SPECIFICATION.md` Part A.5 for what Microdot itself already
-  guarantees (every route-handler exception, including `MemoryError`, is already caught per-request
-  and can't crash the server) versus what's still missing at our own layer. The base-class/
-  `api_response.py` setter+response-envelope consolidation this depended on is now done (see
-  `SPECIFICATION.md` Part C.5) — `handle_set_cmd()` already provides its own defense-in-depth
-  try/except around one endpoint's dispatch, returning the consolidated `{"res": "ERR", ...}` shape
-  via `make_response()`. What's still missing is wiring an actual `@app.errorhandler` registration
-  into the real, live Microdot app in `improved-quality/sensortask-wozi.py` — out of scope for this
-  pass under CLAUDE.md's hard rule on editing `improved-quality/` source without a scoped,
-  project-owner-authorized exception. Concrete work once that wiring pass happens:
-  - A catch-all `@app.errorhandler(Exception)` that logs via our own `pr.err_s(...)` (Microdot's own
-    default `print_exception()` never reaches `PrintLog`/FRAM) and returns the consolidated
-    `{"res": "ERR", ...}` reply shape — the single seam where "any internal or external error must
-    be answered with an appropriate REST reply" actually gets satisfied for the whole app, not
-    per-handler.
-  - Explicit handlers for at least 400/404/405/413/500 so Microdot's bare default text bodies
-    (`'Not found', 404` etc.) never reach a client unshaped.
-  - A decision on whether route handlers use `abort()`/`HTTPException` (resolved via the
-    status-code error-handler path) or always return our own error dict directly — mixing both
-    without care means two different reply shapes for the same kind of error.
-  - Any registered handler must itself be defensive: a second exception raised inside an error
-    handler is swallowed silently by Microdot (falls back to a bare generic 500) rather than
-    crashing, but that also means a bug in the handler silently loses whatever it was trying to do
-    (e.g. the logging call itself).
-  - Whatever a route handler returns must stay JSON-serializable end to end (ties to the
-    native-JSON-types rework already in progress) — a non-serializable value fails inside
-    `Response.__init__`'s `json.dumps()`, which Microdot still contains (falls into the same
-    generic-500 path) but silently masks the real cause as a generic error unless our own handler
-    logs it.
 - **Bus-layer status has no dedicated REST endpoint or field yet.** `asy_i2c_driver.py`/
   `asy_spi_driver.py` deliberately have no logger of their own today (see `SPECIFICATION.md` Part
   C.7.1's table) — the natural REST shape once each bus instance gets its own logger name

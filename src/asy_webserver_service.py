@@ -19,7 +19,9 @@ system_service.py's start_and_check_tasks() like every other module, per the own
 
 ext/microdot.py (vendored, unmodified) is never edited - every behavior change here happens by
 wrapping/calling it (an after_request/after_error_request hook for "Connection: close", errorhandler
-registrations for 400/404/405/413/500, the reader/writer proxy) per CLAUDE.md's hard rule. GET routes
+registrations for 400/404/405/413/500 plus a catch-all Exception handler that persists an otherwise-
+unlogged route-handler bug into pr.err_s()/FRAM history, the reader/writer proxy) per CLAUDE.md's
+hard rule. GET routes
 return the bare shaped dict; PUT routes return api_response.py's {"res","code","descr","result"}
 envelope, reusing make_response()/handle_set_cmd() directly - see tests/test_asy_webserver_service.py's
 own module docstring for the full endpoint/registration-API contract this file builds to.
@@ -262,6 +264,19 @@ class WebserverService:
         # handlers on its happy path (see SPECIFICATION.md Part A.8, decision 7).
         for status_code, descr in _ERROR_SHAPES:
             app.errorhandler(status_code)(_shaped_error_handler(status_code, descr))
+        # Catch-all for an exception ext/microdot.py's dispatch_request() catches but finds no
+        # exception-class handler for (BACKLOG.md's "No @app.errorhandler registrations exist
+        # anywhere yet" item, part 1) - Microdot's own except-Exception branch already falls
+        # through to error_response(req, 500, ...), which already resolves through the 500
+        # status-code handler just registered above (ext/microdot.py's error_response() checks
+        # self.error_handlers[500] directly - confirmed by reading it), so the *response shape*
+        # for an unhandled exception was already correct without this. What was still missing:
+        # Microdot's own print_exception(exc) (dispatch_request()'s except-Exception branch) is a
+        # bare stdout print that never reaches this module's own pr.err_s()/FRAM history - an
+        # exception-class handler is the only registration shape that receives the actual
+        # exception object (invoke_handler(handler, req, exc), confirmed directly against
+        # ext/microdot.py), so this is purely for the logging/history side, not the reply shape.
+        app.errorhandler(Exception)(self._handle_unhandled_exception)
 
         if static_mount is not None:
             # Registered last (see this module's own docstring): "/<path:filename>"'s own regex
@@ -472,6 +487,17 @@ class WebserverService:
         except OSError:  # no such file in the mounted filesystem (freezefs's VfsFrozen.open()
             # raises OSError(ENOENT), matching a real missing-file open() everywhere else)
             abort(404)
+
+    # -- error handling ----------------------------------------------------------------------------
+
+    async def _handle_unhandled_exception(self, request: "Any", exc: Exception) -> "tuple[dict[str, Any], int]":
+        # Registered via app.errorhandler(Exception) in __init__ - see that call site's own comment
+        # for why this exists purely to persist the exception into pr.err_s()/FRAM history, not to
+        # shape the reply (the 500 status-code handler already does that on its own, since
+        # ext/microdot.py's error_response() falls through to it regardless of whether this handler
+        # is registered at all).
+        await self.pr.err_s("Unhandled exception in route handler:", exc, errno=4)
+        return ar.make_response(500, descr="Internal server error"), 500
 
     # -- connection lifecycle ---------------------------------------------------------------------
 

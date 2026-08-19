@@ -1642,6 +1642,66 @@ def test_g_static_index_filename_is_configurable() -> None:
     assert res.body.read() == b"custom index"
 
 
+# H.1 - app.errorhandler(Exception) catch-all (Step 8 audit finding: closes BACKLOG.md's former
+# "No @app.errorhandler registrations exist anywhere yet" item - the 400/404/405/413/500 status-code
+# handlers section G already exercises were the reply-shape half; this is the still-missing logging
+# half, since Microdot's own print_exception(exc) never reaches pr.err_s()/FRAM history on its own).
+
+
+class _RaisingSensorModule(_FakeModule):
+    async def get_dict_data(self) -> "dict[str, Any]":
+        raise RuntimeError("simulated route-handler bug")
+
+
+def test_h1_unhandled_exception_in_a_route_handler_gets_the_shaped_500_response() -> None:
+    sensor = _RaisingSensorModule("SCD30")
+    _, app = _make_service(sensors=[sensor])
+    res = run(app.dispatch_request(_make_request(app, "GET", "/measurements", None)))
+    assert res.status_code == 500
+    assert json.loads(res.body) == {"res": "ERR", "code": 500, "descr": "Internal server error", "result": {}}
+
+
+def test_h1_unhandled_exception_is_logged_via_pr_err_s_not_just_swallowed() -> None:
+    # ErrNum/ErrType include print_log.py's own pre-filled "N" (no-error) deque padding ahead of
+    # the one real entry (see print_log.py's PrintLogHistory.__init__) - matching every other
+    # get_error_counter()-reading test in this file (e.g. test_d_webserver_own_errcount_entry_...),
+    # not a list-equality check against the raw history.
+    sensor = _RaisingSensorModule("SCD30")
+    service, app = _make_service(sensors=[sensor])
+    run(app.dispatch_request(_make_request(app, "GET", "/measurements", None)))
+    log = run(service.get_error_counter())
+    entry = log["WEBSERVER"]
+    assert entry["ErrCount"] == 1
+    assert entry["ErrNum"].count(4) == 1
+    assert entry["ErrType"].count("E") == 1
+
+
+def test_h1_a_second_unhandled_exception_from_a_different_route_is_logged_independently() -> None:
+    # Confirms the registration is a real per-request catch-all, not a one-shot/latched handler.
+    sensor = _RaisingSensorModule("SCD30")
+    service, app = _make_service(sensors=[sensor])
+    run(app.dispatch_request(_make_request(app, "GET", "/measurements", None)))
+    run(app.dispatch_request(_make_request(app, "GET", "/measurements", None)))
+    log = run(service.get_error_counter())
+    entry = log["WEBSERVER"]
+    assert entry["ErrCount"] == 2
+    assert entry["ErrNum"].count(4) == 2
+    assert entry["ErrType"].count("E") == 2
+
+
+def test_h1_abort_driven_404_is_unaffected_by_the_catch_all() -> None:
+    # HTTPException (abort()) is caught separately by ext/microdot.py's dispatch_request() before
+    # its except-Exception branch ever runs - the catch-all above must never fire for it, and the
+    # existing shaped 404 (via the status-code handler, section G) must stay exactly as before.
+    sensor = _RaisingSensorModule("SCD30")
+    service, app = _make_service(sensors=[sensor])
+    res = run(app.dispatch_request(_make_request(app, "GET", "/nope-not-a-route", None)))
+    assert res.status_code == 404
+    assert json.loads(res.body) == {"res": "ERR", "code": 404, "descr": "Not found", "result": {}}
+    log = run(service.get_error_counter())
+    assert log["WEBSERVER"]["ErrCount"] == 0  # the catch-all above never fired
+
+
 if __name__ == "__main__":
     import microtest
 
