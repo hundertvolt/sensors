@@ -1,5 +1,5 @@
-"""Standalone CLI launcher/demo for the digital twin itself (FINAL_WIRING_PLAN.md's Step 3, item
-G) - runnable directly (`micropython digital_twin/launch.py [options]`). Deliberately twin-only: no
+"""Standalone CLI launcher/demo for the digital twin itself - runnable directly
+(`micropython digital_twin/launch.py [options]`). Deliberately twin-only: no
 `src/` import anywhere in this file (owner's explicit choice, same session) - Step 5's own entry
 point is expected to reuse parse_args()/main() the same way, it just also imports
 src/sensortask_wozi.py afterward, which this file does not.
@@ -24,7 +24,7 @@ succeeds against the actual built interpreter), but the vendored micropython-lib
 turned out not to support what this launcher actually needs - confirmed directly by reading
 lib/micropython-lib/python-stdlib/argparse/argparse.py: no `action="append"` (so a *repeatable*
 --fault/--wifi-outcome flag can't accumulate), no `choices=`, and a parse failure calls
-sys.exit(2) directly rather than raising a catchable exception. Per FINAL_WIRING_PLAN.md's own
+sys.exit(2) directly rather than raising a catchable exception. Per this project's own
 fallback instruction ("hand-roll if not [reliably available]"), parse_args() below is a small
 hand-rolled flag loop instead - consistent with this package's existing preference for not
 depending on modules that may not be frozen into the test binary (tests/microtest.py's own

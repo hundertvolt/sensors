@@ -27,7 +27,7 @@
 # stage of.
 #
 # Also (re)builds frozen_modules/frozen_html.py via scripts/build_frozen_html.sh before every run -
-# FINAL_WIRING_PLAN.md's Step 4 website-placeholder module, which src/sensortask_wozi.py imports
+# the website-placeholder module (SPECIFICATION.md Part A.9), which src/sensortask_wozi.py imports
 # unconditionally at module level. Lives in its own frozen_modules/ MICROPYPATH segment, not
 # ".frozen/" - see build_frozen_html.sh's own comment for why that exact name can't hold a real,
 # importable file (it's a hardcoded MicroPython sentinel, confirmed against py/builtinimport.c).
@@ -70,7 +70,7 @@ if [ ! -x "$micropython_bin" ]; then
     uv run toolchain/setup_toolchain.py setup --toolchain-dir "$toolchain_dir" "${skip_apt_flag[@]}"
 fi
 
-# frozen_modules/frozen_html.py (FINAL_WIRING_PLAN.md's Step 4) is a plain build artifact, never
+# frozen_modules/frozen_html.py (SPECIFICATION.md Part A.9) is a plain build artifact, never
 # committed (see .gitignore) - regenerated fresh on every run, cheap (sub-second, no toolchain
 # involved), unlike the Unix-port build above. src/sensortask_wozi.py does a module-level `import
 # frozen_html`, so every test file that imports it (not just the webserver-specific ones) needs

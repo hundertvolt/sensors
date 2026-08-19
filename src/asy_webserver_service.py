@@ -1,8 +1,9 @@
-"""Registration-based Microdot REST/API service (FINAL_WIRING_PLAN.md's Step 2) - modules hand this
+"""Registration-based Microdot REST/API service (see SPECIFICATION.md Part A.8 for the full
+endpoint design) - modules hand this
 service named sensor-data/system-state callback groups (SettingsGroup below), and it auto-constructs
 the six external endpoints (/measurements, /sensors, /networking, /system, /status, /notification)
 plus the connection-hardening scheme BACKLOG.md's "Microdot hardening design" settled on. Optionally
-(static_mount, FINAL_WIRING_PLAN.md's Step 4) also serves a mounted frozen static-content filesystem
+(static_mount, see SPECIFICATION.md Part A.9) also serves a mounted frozen static-content filesystem
 (freezefs's --on-import mount, see ext/freezefs/) via one generic `/` + `/<path:filename>` route pair,
 using Microdot's own send_file(compressed=True, file_extension=".gz") - matches this project's
 pre-gzip-by-hand convention (see scripts/build_frozen_html.sh), never freezefs's own --compress
@@ -73,7 +74,7 @@ if TYPE_CHECKING:
 _NAME = const("WEBSERVER")
 _SYSTEM_CMDS = ("reboot", "bootloader", "mempause")  # the only enum values ever forwarded to
 # system_cmd() - never a client-supplied duration (mempause's fixed 300s lives in system_cmd()'s own
-# implementation, e.g. SystemService.pause_permanent_storage() - see FINAL_WIRING_PLAN.md's Step 2).
+# implementation, e.g. SystemService.pause_permanent_storage() - see SPECIFICATION.md Part A.8).
 
 _ERROR_SHAPES = (  # (status_code, descr) - registered via @app.errorhandler for shaped JSON bodies,
     # per "Criteria for this step to finish": at least 400/404/405/413/500 wired.
@@ -86,7 +87,7 @@ _ERROR_SHAPES = (  # (status_code, descr) - registered via @app.errorhandler for
 
 
 def _index_by_name(items: "Iterable[_ModuleLike]") -> "dict[str, _ModuleLike]":
-    # Last-registration-wins, by construction - decision 6 (FINAL_WIRING_PLAN.md's Step 2): the
+    # Last-registration-wins, by construction - decision 6 (see SPECIFICATION.md Part A.8): the
     # simplest per-item loop already behaves this way, deliberately no dedup/guard code on top.
     result: dict[str, _ModuleLike] = {}
     for item in items:
@@ -107,7 +108,7 @@ def _flatten_cfg_values(values: "dict[str, Any]") -> "dict[str, Any]":
     # config_manager.make_dict()'s {type_name: {field: value}} nesting (base_classes.py's
     # SensorReaderConfig default - AsyConnTime/AsyNtpClient/NotificationCoordinator among them).
     # _get_settings_flat() needs every field to be a top-level key regardless of which shape its
-    # module returns - found and fixed via FINAL_WIRING_PLAN.md's Step 5 twin-based integration
+    # module returns - found and fixed via twin-based integration
     # testing (tests/test_digital_twin_sensortask_integration.py): without this, /networking and
     # /notification always returned {} in production (every field they source is nested-shaped),
     # and /system silently dropped GMTOffset/DSTOffset (sourced from ntp, also nested-shaped) while
@@ -145,7 +146,7 @@ class _TimeoutStreamProxy:
     # bounded by timeout_s (BACKLOG.md's "Microdot hardening design" step 2). A timeout raises
     # asyncio.TimeoutError - confirmed directly from the pinned v1.28.0 source
     # (extmod/asyncio/core.py: `class TimeoutError(Exception)`) to be a PLAIN Exception, *not* an
-    # OSError subclass (correcting FINAL_WIRING_PLAN.md's Step 2, which had claimed otherwise). This
+    # OSError subclass (see SPECIFICATION.md Part F.1). This
     # matters a lot: ext/microdot.py's handle_request() wraps Request.create() in `except OSError ...
     # else: raise` *then* `except Exception as exc: print_exception(exc)` - since a per-call read
     # timeout isn't an OSError, it hits the second clause, which does NOT re-raise. A per-call
@@ -216,7 +217,7 @@ class WebserverService:
         fram: "AsyFramManager | None" = None,
         history_length: int = 10,
         debug: int | None = None,
-        static_mount: str | None = None,  # e.g. "/html" (FINAL_WIRING_PLAN.md's Step 4) - the
+        static_mount: str | None = None,  # e.g. "/html" (see SPECIFICATION.md Part A.9) - the
         # freezefs mount point of an already-`import`ed frozen static-content module. None (default)
         # registers no static routes at all - every existing route/registration above is unaffected.
         static_index: str = "index.html",  # served for both "/" and "/<static_index>" verbatim.
@@ -258,7 +259,7 @@ class WebserverService:
         app.after_request(_mark_connection_close)
         app.after_error_request(_mark_connection_close)  # after_request alone misses every
         # error-response path (400/404/405/413/500) - dispatch_request() only runs after_request
-        # handlers on its happy path (see FINAL_WIRING_PLAN.md's Step 2, decision 7).
+        # handlers on its happy path (see SPECIFICATION.md Part A.8, decision 7).
         for status_code, descr in _ERROR_SHAPES:
             app.errorhandler(status_code)(_shaped_error_handler(status_code, descr))
 
@@ -309,7 +310,7 @@ class WebserverService:
             if module is None or not isinstance(fields, dict):
                 continue  # unknown sensor key, or a malformed per-sensor sub-object - silently
                 # ignored, matches ConfigManager.write_config()'s own per-key "Invalid" convention
-                # extended to the HTTP layer (FINAL_WIRING_PLAN.md's Step 2, section B).
+                # extended to the HTTP layer (see SPECIFICATION.md Part A.8, section B).
             results[name] = await module._set_dict_cfg(fields, module.get_cfg_schema())
         return ar.make_response(0, result=results)
 
@@ -327,8 +328,8 @@ class WebserverService:
     async def _apply_settings_groups(self, endpoint: str, body: "dict[str, Any]") -> "dict[str, str]":
         # Only a group whose own field subset actually intersects the request body is dispatched at
         # all - a group with no matching keys must never fire its post_fct/post_asy_fct (matches
-        # FINAL_WIRING_PLAN.md's Step 2 "/networking PUT: partial-field update triggers only the
-        # relevant post-write hook" requirement).
+        # the "/networking PUT: partial-field update triggers only the
+        # relevant post-write hook" requirement (see SPECIFICATION.md Part A.8).
         results: dict[str, str] = {}
         for group in self._settings.get(endpoint, []):
             subset = {k: v for k, v in body.items() if k in group.fields}
@@ -418,7 +419,7 @@ class WebserverService:
         result: dict[str, Any] = {}
         for name, module in self._error_sources.items():
             result[name] = _shape_errcount_entry(await module.get_error_counter(), name)
-        # "This service's own entry" (FINAL_WIRING_PLAN.md's Step 2 registration-API contract) -
+        # "This service's own entry" (see SPECIFICATION.md Part A.8 for the registration-API contract) -
         # this module's own get_error_counter()/pr.get_log() aren't routed through
         # self._error_sources (WebserverService itself doesn't structurally satisfy _ModuleLike's
         # full sensor/settings surface, just the error-counter subset), so it's added directly here
@@ -436,7 +437,7 @@ class WebserverService:
             await self.reset_error_counter()  # this service's own entry, see _build_errcount()
         return ar.make_response(0)
 
-    # -- static content (FINAL_WIRING_PLAN.md's Step 4) ----------------------------------------
+    # -- static content (see SPECIFICATION.md Part A.9) ----------------------------------------
 
     async def _get_static_index(self, request: "Any") -> "Any":
         return self._serve_static(self._static_index)
@@ -465,9 +466,9 @@ class WebserverService:
             writer.close()
         except Exception as e:  # writer is caller-supplied (real Stream or a test double) - could
             # legitimately misbehave; this is best-effort cleanup, never load-bearing, but still
-            # worth a persisted signal rather than a bare pass (Step 6 silent-failure-masking
-            # finding) - a repeatedly-failing close() could leak TCP PCBs under this platform's tiny
-            # connection ceiling with no log trail ever pointing back here.
+            # worth a persisted signal rather than a bare pass (SPECIFICATION.md Part C.7's
+            # silent-failure-masking convention) - a repeatedly-failing close() could leak TCP PCBs
+            # under this platform's tiny connection ceiling with no log trail ever pointing back here.
             await self.pr.wrn_s("Error closing connection writer:", e, wrnno=4)
         try:
             await asyncio.wait_for(writer.wait_closed(), self._per_call_timeout_s)

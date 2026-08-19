@@ -1,7 +1,7 @@
 """Stage 1 standalone prototype - async-safe rewrite of
-improved-quality/sensortask-wozi.py's flat, module-level construction sequence (Step 1 of the
-final-wiring effort; see FINAL_WIRING_PLAN.md's Step 1 section and WIRING_CONTRACT.md for the full
-rationale, including the FRAM chunk-order determinism rule this file must preserve exactly).
+improved-quality/sensortask-wozi.py's flat, module-level construction sequence (see
+SPECIFICATION.md Part A.7 for the full rationale, including the FRAM chunk-order determinism rule
+this file must preserve exactly).
 
 build_system() constructs every module the reference file constructs, in the same FRAM-chunk-
 preserving relative order, as bare module-level globals (owner-confirmed - no wrapper container).
@@ -22,18 +22,19 @@ via sysfunct.set_debug_level() (reachable through /system's DebugLevel field, se
 one of these set_level() methods directly - no shared mutable value anywhere, each PrintLog instance
 stays a plain, independent object.
 
-Also constructs FINAL_WIRING_PLAN.md's Step 2 registration-based webserver/API service
+Also constructs the registration-based webserver/API service
 (`asy_webserver_service.WebserverService`) once every module it registers exists - a real `Microdot()`
 app plus every SettingsGroup/status_source/system_cmd/notification_led/maintenance_sensor/
-error_source registration, not just the driver object graph Step 1 built. Its own task participates
-in the ordinary `start_and_check_tasks()` supervisor like every other module (no bespoke restart
-mechanism, per that step's decision 1).
+error_source registration, not just the driver object graph. Its own task participates
+in the ordinary `start_and_check_tasks()` supervisor like every other module - no bespoke restart
+mechanism, since reject-when-full plus the per-connection timeouts already bound every connection's
+resource usage (see SPECIFICATION.md Part A.8).
 
 `import frozen_html` (module level, unconditional - matches this project's "imports happen once, at
-module load" convention) gives Step 1's `import frozen_html`-shaped gap in the reference file
-something real to resolve to: FINAL_WIRING_PLAN.md's Step 4 website-placeholder module
+module load" convention) gives the reference file's own `import frozen_html`-shaped gap
+something real to resolve to: the website-placeholder module
 (scripts/build_frozen_html.sh's own gzip -> freezefs --on-import mount output, stub content only -
-see html_stub/, not the real site). Importing it mounts a read-only frozen filesystem at `/html` as
+see html_stub/, not the real site; see SPECIFICATION.md Part A.9 for the full pipeline). Importing it mounts a read-only frozen filesystem at `/html` as
 a side effect, matching freezefs's own "on-import" design - build_system() passes
 `static_mount="/html"` into WebserverService so its generic `/`+`/<path:filename>` route pair serves
 it. No top-level blocking call anywhere in this module though; importing it and calling
@@ -81,7 +82,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import Any
 
-# Grouped, generator-fillable constants (FINAL_WIRING_PLAN.md's refined plan: "keep these variables
+# Grouped, generator-fillable constants (owner-confirmed: "keep these variables
 # in a well readable place, we will fill them in via the generator script once this will be set
 # up"). Values copied verbatim from improved-quality/sensortask-wozi.py - no re-tuning.
 _MAX_MODULE_ERROR = const(5)  # consecutive-failure-streak threshold shared by every module's own
@@ -95,9 +96,9 @@ _FIELD_WARN_CO2: "cm.ConfigSchema" = (("WarnCO2", "int", 1600, 0, 3000, None),)
 _FIELD_WARN_VOC: "cm.ConfigSchema" = (("WarnVOC", "int", 350, 0, 500, None),)
 _FIELD_WARN_HUM: "cm.ConfigSchema" = (("WarnHum", "float", 65.0, 0.0, 100.0, None),)
 
-# Bare module-level globals (owner-confirmed - FINAL_WIRING_PLAN.md's refined plan Q3): every
+# Bare module-level globals (owner-confirmed): every
 # long-lived object build_system() constructs is reachable the same way the reference file's own
-# module-level names would be reached, e.g. by Step 2's future registration calls. None until
+# module-level names would be reached, e.g. by WebserverService's own registration calls. None until
 # build_system() runs - unlike the reference file, importing this module alone constructs nothing.
 watchdog: "WDT | None" = None
 conn: "AsyConnTime | None" = None
@@ -170,7 +171,7 @@ async def _system_cmd_callback(cmd: str) -> bool:
     # WebserverService's own _dispatch_system_cmd() already restricts cmd to _SYSTEM_CMDS
     # ("reboot"/"bootloader"/"mempause") before ever calling this - the else branch below is
     # defense-in-depth, not a real reachable case. mempause's duration is the legacy fixed 300s,
-    # never client-supplied (FINAL_WIRING_PLAN.md's Step 2 PUT-shape decision).
+    # never client-supplied (see SPECIFICATION.md Part A.8 for the PUT-shape decision).
     assert sysfunct is not None
     if cmd == "reboot":
         sysfunct.reboot_system()
@@ -273,7 +274,7 @@ def _collect_level_setters() -> "list[Callable[[int], None]]":
     # Every logger in the whole constructed object graph, not just each module's own top-level
     # self.pr - the nested ConfigManager.pr each ConfigManager-backed module owns internally
     # ("CFGMGR_<NAME>"), and AsyConnTime's own separately-named dns_server.pr ("DNSSRV", not
-    # covered by conn.pr - see WIRING_CONTRACT.md). Owner requirement: a general, system-wide debug
+    # covered by conn.pr - see SPECIFICATION.md Part A.7). Owner requirement: a general, system-wide debug
     # level should actually be system-wide, not miss half the loggers in the system - but each
     # logger's own set_level() (already existing on every PrintLog) is what gets called, not a
     # shared mutable value. Mirrors _collect_task_starters()/_collect_timer_starters()'s own shape:
@@ -314,14 +315,14 @@ async def build_system(
     grouped batch below) then pushes the real persisted level out to every logger's own set_level()
     via the registry _collect_level_setters() builds, overriding this initial value. web_host/
     web_port let a caller override WebserverService's own real production default
-    (host="0.0.0.0", port=80) - added for FINAL_WIRING_PLAN.md's Step 5, whose Unix-port
-    integration run can't bind the privileged production port as a non-root process.
+    (host="0.0.0.0", port=80) - added so the digital twin's Unix-port
+    integration run can bind a non-privileged port as a non-root process.
     """
     global watchdog, conn, ntp, i2c0, i2c1, spi0, fram, sysfunct
     global sgp_reader, bmp_reader, scd_reader, pixel, notify_service, webserver, timers_running
 
     # watchdog: hardcoded at construction time, no injection point - "must be hardcoded so no
-    # error ever can circumvent it when it is set active" (owner, FINAL_WIRING_PLAN.md's refined
+    # error ever can circumvent it when it is set active" (owner, refined
     # plan).
     watchdog = WDT(timeout=8000)
     conn = AsyConnTime(
@@ -349,7 +350,7 @@ async def build_system(
     # FRAM chunk 1.
     sysfunct = SystemService(ntp.ntp_issynced, watchdog=watchdog, fram=fram, cfg_path=cfg_path, debug=debug)
     # FRAM chunks 2 (own error log) and 3 (VOC backup) - both allocated inside SGP40_Reader.__init__
-    # itself, in that sub-order (WIRING_CONTRACT.md item 8).
+    # itself, in that sub-order (see SPECIFICATION.md Part A.7 for the full FRAM chunk order).
     sgp_reader = SGP40_Reader(
         i2c1,
         sgp_comp_callback,
@@ -382,7 +383,7 @@ async def build_system(
     notify_service.finalize()
     conn.set_ext_led(pixel)  # callback for wifi led - after both conn and pixel exist
 
-    # Registration-based Microdot REST/API service (FINAL_WIRING_PLAN.md's Step 2) - built here,
+    # Registration-based Microdot REST/API service - built here,
     # after every module it registers exists, exactly like conn.set_ext_led()'s own cross-wiring
     # just above. "No Microdot, no routes" was Step 1's own scoping (deliberately excluded then,
     # reference-only in improved-quality/sensortask-wozi.py); this is Step 2's real replacement.
@@ -394,8 +395,8 @@ async def build_system(
         # connection reclaim (BACKLOG.md's decision 8), a rate a hostile or merely flaky client could
         # drive far higher than any sensor's rare-hardware-fault error log ever does; persisting that
         # to FRAM would risk real wear-leveling pressure this module's own diagnostics don't need to
-        # survive a reboot to be useful. Keeps WIRING_CONTRACT.md's five-chunk FRAM allocation order
-        # (Step 1) exactly as documented - this module allocates no FRAM chunk at all, not a sixth.
+        # survive a reboot to be useful. Keeps the five-chunk FRAM allocation order (see
+        # SPECIFICATION.md Part A.7) exactly as documented - this module allocates no FRAM chunk at all, not a sixth.
         sensors=(scd_reader, bmp_reader, sgp_reader),  # type: ignore[arg-type]  # structurally
         # _ModuleLike-shaped (SensorReader/SensorReaderConfig subclasses) - _ModuleLike is a
         # narrower Protocol defined in asy_webserver_service.py, not importable here without a real
@@ -432,7 +433,7 @@ async def build_system(
         maintenance_sensors=(("SGP40", _sgp_maintenance_status),),
         error_sources=_collect_error_sources(),
         debug=debug,
-        static_mount="/html",  # FINAL_WIRING_PLAN.md's Step 4 - matches frozen_html's own
+        static_mount="/html",  # see SPECIFICATION.md Part A.9 - matches frozen_html's own
         # freezefs `--target /html` (see scripts/build_frozen_html.sh), mounted as a side effect of
         # this module's own top-level `import frozen_html` above.
         host=web_host,
@@ -448,7 +449,7 @@ async def build_system(
     # style choice. sysfunct first - resolves the real persisted debug level as early as possible,
     # so every subsequent setup() call's own diagnostic logging already reflects it. Order among
     # the ConfigManager-domain calls after it matches their own construction order (conn/ntp were
-    # both built before fram/sysfunct - WIRING_CONTRACT.md's five-chunk FRAM order is about FRAM
+    # both built before fram/sysfunct - the five-chunk FRAM order (SPECIFICATION.md Part A.7) is about FRAM
     # *chunk allocation* order specifically, unrelated to this ConfigManager-only setup() ordering);
     # fram (a different, FRAM-hardware readiness domain entirely) keeps its existing position from
     # the reference file's own async_onetime list.
@@ -497,7 +498,7 @@ def _collect_task_starters() -> "list[Callable[[], asyncio.Task[Any]]]":
         + conn.get_task_starters()
         + ntp.get_task_starters()
         + webserver.get_task_starters()  # the webserver's own task, registered as an ordinary task
-        # in start_and_check_tasks() like every other module (FINAL_WIRING_PLAN.md's Step 2 decision 1
+        # in start_and_check_tasks() like every other module (see SPECIFICATION.md Part A.7
         # - no bespoke whole-server-restart mechanism).
     )
 

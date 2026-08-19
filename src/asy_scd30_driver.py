@@ -200,7 +200,7 @@ class SCD30_Reader(SensorReader):
         # asy_webserver_service.py's _put_sensors() route calls module.get_cfg_schema() uniformly for
         # every registered sensor (this file's own _set_dict_cfg() docstring already documents that
         # expectation) - without this method, every real PUT /sensors touching SCD30 crashed with a
-        # 500 (AttributeError), found via FINAL_WIRING_PLAN.md's Step 5 baseline-verification pass.
+        # 500 (AttributeError), found during baseline verification.
         # Same schema _set_dict_cfg()'s own schema_dict(cfg_vals) call already expects, and identical
         # to get_dict_cfg()'s own combined schema above.
         return _VAL_TO + _VAL_MI + _VAL_AP + _VAL_ALT + _VAL_CAL + _VAL_SC
@@ -209,8 +209,8 @@ class SCD30_Reader(SensorReader):
         self, data: dict[str, int | float | str | bool | None], cfg_vals: "ConfigSchema"
     ) -> dict[str, str]:
         # Schema-driven generic setter, structurally mirroring base_classes.SensorReaderConfig's own
-        # _set_dict_cfg() validate-against-schema/dispatch-by-name shape (FINAL_WIRING_PLAN.md's
-        # Step 2, decided gap closure - SCD30 has no cfgmgr, "these params are stored on the sensor
+        # _set_dict_cfg() validate-against-schema/dispatch-by-name shape (decided gap closure -
+        # SCD30 has no cfgmgr, "these params are stored on the sensor
         # itself, not cached locally" per this file's own _VAL_* comment) - but with NO persistence
         # step at all: each validated field calls straight through to its already-existing individual
         # setter (a real I2C write), no local cache/file involved. ContMeas has no _VAL_* schema entry

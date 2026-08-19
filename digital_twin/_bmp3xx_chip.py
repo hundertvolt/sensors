@@ -8,7 +8,7 @@ plausible-looking bytes directly.
 
 Calibration data: one fixed, real-shaped 21-byte calibration block (`_CAL_RAW`, format
 "<HHbhhbbHHbbhbb", matching asy_bmp3xx_driver.py's own `_read_coefficients()` exactly), picked and
-verified (FINAL_WIRING_PLAN.md's Step 3 section) to round-trip cleanly across this twin's whole
+verified to round-trip cleanly across this twin's whole
 default sensible range (950-1050 hPa / 15-30 degC) with plenty of margin from both the 24-bit raw
 ADC range (0-16'777'215) and the real driver's own -40..85 degC / 300..1250 hPa operating-range
 rejection check (asy_bmp3xx_driver.py:433). `_invert_temperature()`/`_invert_pressure()` solve the
@@ -16,7 +16,7 @@ real forward formula backward via Newton's method (both are smooth, low-order po
 single unknown once temperature is fixed for the pressure solve - converges in a handful of
 iterations for any target inside the operating range), rather than special-casing the register
 responses directly - this exercises the real driver's own compensation math end-to-end, per the
-project owner's explicit choice (FINAL_WIRING_PLAN.md's Step 3 clarifying-question round).
+project owner's explicit choice.
 """
 
 import struct
@@ -164,8 +164,8 @@ class Bmp3xxChip:
     def handle_writeto(self, data: bytes) -> None:
         # asy_i2c_driver.py's I2CDevice.setup()/_probe_for_device() writes zero bytes to every I2C
         # device at construction time to check for an ACK, before any register access - real
-        # hardware ACKs this fine regardless of protocol family. Found via FINAL_WIRING_PLAN.md's
-        # Step 5 baseline-verification pass: this chip fake only had handle_writeto_mem() (matching
+        # hardware ACKs this fine regardless of protocol family. Found during baseline
+        # verification: this chip fake only had handle_writeto_mem() (matching
         # its real register-addressed protocol), so the twin's I2C dispatch (machine.py's own
         # writeto() -> device.handle_writeto()) raised AttributeError on every real BMP3xx boot,
         # repeatedly failing/restarting its whole reader task. Nothing else in this codebase's own

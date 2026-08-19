@@ -4,7 +4,7 @@ directly against that file, not tests/machine.py). Real-time RDY-pin/data-ready 
 exercised only via the explicit, synchronous _produce_new_reading() test hook here - the one
 "does real-time firing actually work at all" check lives in tests/test_digital_twin_machine.py
 against the shared Timer class itself, matching this step's own "not flaky wall-clock-timing
-assertions" criterion (FINAL_WIRING_PLAN.md's Step 3).
+assertions" criterion.
 """
 
 import json

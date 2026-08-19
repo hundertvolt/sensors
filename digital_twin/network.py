@@ -1,12 +1,10 @@
 """Digital-twin fake `network` module - the MicroPython Unix port build has no real network module
 (confirmed directly: `import network` raises ImportError, same finding tests/network.py's own
 module docstring already recorded). Deliberately a separate, independent copy from tests/network.py
-rather than a reuse of it (owner's explicit choice, FINAL_WIRING_PLAN.md's Step 3
-clarifying-question round: full independence from tests/ at Step 5 runtime, over reuse).
+rather than a reuse of it (owner's explicit choice: full independence from tests/ at twin runtime, over reuse).
 
 Not datasheet-backed the way the three sensor twins are - the real rp2040/CYW43 WiFi driver this
-fakes obviously can't run on the Unix port at all. Owner-specified strategy (FINAL_WIRING_PLAN.md's
-Step 3): simulate a successful connection through all the real phases, with reasonable timing, so
+fakes obviously can't run on the Unix port at all. Owner-specified strategy: simulate a successful connection through all the real phases, with reasonable timing, so
 asy_wifi_service.py's own state machine sees the same shape of transitions real hardware would -
 but for actual data traffic (NTP/DNS/the webserver), just use the host computer's real network.
 That second half needs nothing built here: `network.WLAN` only ever gates the *connection state*

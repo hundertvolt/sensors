@@ -262,7 +262,7 @@ class SystemService:
         return self.cfg_schema
 
     async def get_dict_cfg(self) -> "dict[str, int | float | str | bool | None]":
-        # SettingsGroup-shaped counterpart to get_cfg_schema() (FINAL_WIRING_PLAN.md's Step 2) - lets
+        # SettingsGroup-shaped counterpart to get_cfg_schema() - lets
         # asy_webserver_service.py's /system route treat this module uniformly with every other
         # SettingsGroup-registered module, without special-casing DebugLevel in the webserver layer.
         result = await self.cfgmgr.get_dict(schema_names(self.cfg_schema))

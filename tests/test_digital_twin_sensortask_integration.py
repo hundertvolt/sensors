@@ -1,4 +1,4 @@
-"""Integration tier (FINAL_WIRING_PLAN.md's Step 5 refined plan, owner decision 10, "middle
+"""Integration tier (owner decision 10, "middle
 integration tests... might point us to oversights in the regular unit tests"): builds the real
 src/sensortask_wozi.py object graph against the real digital_twin buses (not tests/machine.py's
 fakes - Step 3's own simulator, real-time Timers/randomized-but-plausible sensor values) and drives
@@ -26,10 +26,10 @@ with scripts/test.sh's own default "src:tests:frozen_modules:.frozen" MICROPYPAT
 position-0 ordering deterministically wins over the later "tests" segment within this one process;
 digital_twin/README.md's own "never together" warning is about the separate *production*
 MICROPYPATH invocation never carrying a "tests" segment at all, not about this per-file pattern -
-see FINAL_WIRING_PLAN.md's Step 5 refined plan for the full reasoning). No fram_storage fake swap
+see digital_twin/README.md for the full reasoning). No fram_storage fake swap
 (unlike tests/test_sensortask_wozi.py's own asy_spi_driver._SPI = FakeMB85RS64V) - the twin's own
 machine.SPI already wires a real FramChip automatically (asy_spi_driver.py wraps machine.SPI
-unchanged, per WIRING_CONTRACT.md's own "bus construction stays as-is" note), and every test here
+unchanged, per this twin's own "bus construction stays as-is" convention), and every test here
 runs FRAM in-memory-only (machine.configure_fram_state_path() is never called - its own module-level
 default is already None), matching every other automated test file's own ephemeral-state convention
 rather than digital_twin/run_wozi_integration.py's deliberately persistent default.
@@ -150,7 +150,7 @@ async def _cancel(task: "asyncio.Task[Any]") -> None:
 
 
 def test_build_system_boots_against_the_real_twin_buses_without_exception() -> None:
-    # Confirms every FRAM chunk (WIRING_CONTRACT.md's five-chunk order) still allocates cleanly
+    # Confirms every FRAM chunk (see SPECIFICATION.md Part A.7 for the five-chunk order) still allocates cleanly
     # against the twin's own real FramChip, not just tests/machine.py's fake - a real gap nothing
     # before this file ever exercised (Step 1/2's own tests/test_sensortask_wozi.py never touches
     # digital_twin at all).
@@ -248,7 +248,7 @@ def test_every_get_endpoint_is_reachable_over_real_http_and_shaped_correctly() -
 
 
 def test_static_site_stub_is_served_over_real_http() -> None:
-    # FINAL_WIRING_PLAN.md's Step 4 - the frozen_html website stub, served by WebserverService's own
+    # See SPECIFICATION.md Part A.9 - the frozen_html website stub, served by WebserverService's own
     # generic "/" route (registered last, after every API route above - a real API route must never
     # be shadowed by the wildcard, per tests/test_asy_webserver_service.py's own Section G).
     port = _next_test_port()
@@ -288,7 +288,7 @@ def test_put_round_trips_through_a_real_twin_backed_driver_over_real_http() -> N
 
 
 def test_sensors_put_round_trips_a_real_scd30_field_over_real_http() -> None:
-    # Regression test for FINAL_WIRING_PLAN.md's Step 5 baseline-verification pass: this whole file
+    # Regression test from baseline verification: this whole file
     # never exercised PUT /sensors at all before (only PUT /notification, above) - the exact real,
     # real-HTTP path that first surfaced SCD30_Reader's missing get_cfg_schema() (a real 500) when
     # this session ran the assembled system live against the twin. SCD30 specifically, since it's

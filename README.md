@@ -36,9 +36,9 @@ uv run toolchain/setup_toolchain.py test          # offline re-verify an existin
 
 ## Code quality tooling
 
-Ruff and mypy checks, scoped to `improved-quality/`, `src/`, and `tests/` (the pre-refactor
-codebase — `python/`, `modules/` — isn't covered yet), plus unit tests for `src/`, can be run
-manually. Needs Python 3.11+ (`tomllib`, stdlib only since 3.11 — `uv sync` enforces this
+Ruff and mypy checks, scoped to `improved-quality/`, `src/`, `tests/`, and `digital_twin/` (the
+pre-refactor codebase — `python/`, `modules/` — isn't covered yet), plus unit tests for `src/`, can
+be run manually. Needs Python 3.11+ (`tomllib`, stdlib only since 3.11 — `uv sync` enforces this
 automatically via `pyproject.toml`'s `requires-python`, so this only matters if `uv` has to fall
 back to whatever `python3` it finds):
 
@@ -72,8 +72,7 @@ and CI behavior (Job Summary, build artifact, Codecov status): **moved to
 
 ## Digital twin (hardware simulator)
 
-`digital_twin/` is a fake `machine`/`network`/`neopixel` implementation (Step 3 of
-`FINAL_WIRING_PLAN.md`'s five-step effort) that mirrors the real `wozi` bus wiring — real-time-firing
+`digital_twin/` is a fake `machine`/`network`/`neopixel` implementation that mirrors the real `wozi` bus wiring — real-time-firing
 `Timer`s, randomized-but-plausible sensor values, and a scripted `WLAN` connect sequence — so driver
 code can run under the real MicroPython Unix-port interpreter with no physical hardware attached.
 
@@ -184,10 +183,11 @@ Every field type is checked strictly against its schema — a JSON integer where
 declared (e.g. `60` instead of `60.0`) is correctly rejected as `"Invalid"`, not a bug; send a real
 decimal point for float-typed fields (`WarnHum`/`TempOffs`/`Interv`/`FlashDur`, ...). Read each
 endpoint back (`curl -s http://127.0.0.1:8080/<endpoint>`) to confirm the write took, then Ctrl-C
-and boot once more without wiping `digital_twin/config/` to confirm it survived the restart. One
-known, accepted exception: SCD30's own fields (`MeasInt`, `TempOffs`, ...) don't survive a twin
-restart — real hardware's SCD30 chip has its own onboard NVM that a real MCU-only reboot doesn't
-touch, but the twin doesn't currently model that (see `BACKLOG.md`).
+and boot once more without wiping `digital_twin/config/` (nor `digital_twin/scd30_state.json`, this
+entry point's own default persisted path) to confirm it survived the restart — including SCD30's
+own NVM-backed fields (`MeasInt`, `TempOffs`, ...), which `digital_twin/_scd30_chip.py` persists the
+same explicit-flush way `_fram_chip.py` does (see `digital_twin/README.md`'s "SCD30 persistence"
+section).
 
 **4. Repeat with bus fault injection, and confirm recovery.** `--fault DEVICE:OP[:TIMES]` (see the
 "Digital twin" section above for the full flag reference) queues a bounded, self-clearing failure
@@ -243,33 +243,26 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   existing links/references throughout the repo still resolve to a real file. Read
   `SPECIFICATION.md` directly rather than these.
 
-**Temporary planning doc** (kept live — not a periodic-cleanup artifact):
+**`digital_twin/README.md`** (permanent, not yet folded into `SPECIFICATION.md`):
 
-- **WIRING_CONTRACT.md** — the standing reference for `src/sensortask_wozi.py`'s construction
-  sequence (Step 1 of `FINAL_WIRING_PLAN.md`'s five-step effort landed and merged): real FRAM-chunk
-  construction order, the constructor-injection dependency graph between modules, already-found
-  mechanical gaps, and forward REST-API notes. Its own facts have no other permanent home, so it
-  stays up to date as `src/sensortask_wozi.py` changes, not just at some periodic pass's own close —
-  deliberately kept alive past Step 1 landing (deviating from its own original "deleted once Stage 1
-  lands" framing) since Steps 2-5 and Step 6 (`BACKLOG.md`'s open question #6, its own
-  dedicated session/branch alongside the original five) all build on the exact construction
-  order/dependency graph it documents; deleted only once the whole effort — five steps, Step 6, and
-  the large post-merge audit — merges back and supersedes it.
-- **FINAL_WIRING_PLAN.md** — the global list for Stage 1's actual rewrite: the five-branch/session
-  plan that builds `src/sensortask_wozi.py` (construction restructure, generic webserver/API
-  service, digital-twin simulator, website placeholder scaffold, full Unix-port integration), plus
-  Step 6 (the self-healing-system failure-mode audit, added after the original five-step plan was
-  scoped), each step's goals/doc-links/criteria, and the cross-step interface contracts that make
-  them combine into one working prototype. Deleted once all five steps, Step 6, and the closing
-  large post-merge audit have merged back — same lifecycle as `AUDIT_PLAN.md`'s below.
-- **`digital_twin/README.md`** — the standing reference for Step 3's hardware simulator: what's
-  there, how to swap it in for a Unix-port run, FRAM persistence, running its own tests, and how to
-  add a new chip fake when a new sensor driver lands (required per `SPECIFICATION.md` C.11).
-  Its own lifecycle isn't yet settled the way `WIRING_CONTRACT.md`'s is above (still genuinely
-  useful to Step 5 and likely beyond, but a later session may decide to fold it into
-  `SPECIFICATION.md` the way `src/README.md`/`tests/README.md` were) — listed here for now so it
-  isn't only locatable by cross-reference in the meantime.
+- **`digital_twin/README.md`** — the standing reference for the hardware simulator: what's there,
+  how to swap it in for a Unix-port run, FRAM/SCD30 persistence, running its own tests, and how to
+  add a new chip fake when a new sensor driver lands (required per `SPECIFICATION.md` Part C.11
+  point 9). Its own lifecycle isn't yet settled (still genuinely useful, but a later session may
+  decide to fold it into `SPECIFICATION.md` the way `src/README.md`/`tests/README.md` were) —
+  listed here for now so it isn't only locatable by cross-reference in the meantime. See
+  `SPECIFICATION.md` Part A.10 for how it fits into the rest of the architecture.
 
-`AUDIT_PLAN.md`, the master action list for the now-completed full `src/` audit, was deleted once
-the audit closed — everything permanent it settled was migrated into `SPECIFICATION.md` (the
-style-guideline harmonization it drove lives in Parts C/D) first.
+`WIRING_CONTRACT.md` and `FINAL_WIRING_PLAN.md` — the temporary planning docs for the
+`improved-quality/` → `src/` wiring effort (`src/sensortask_wozi.py`'s construction restructure,
+generic webserver/API service, digital-twin simulator, website placeholder scaffold, full Unix-port
+integration, and the self-healing-system failure-mode audit) — were deleted once that whole effort
+merged back. Everything permanent they settled was migrated into `SPECIFICATION.md` first: the
+construction order/FRAM-chunk order/dependency graph/debug-level registry (Part A.7), the REST API
+endpoint reference (Part A.8), the website-stub/frozen-HTML pipeline (Part A.9), the digital-twin
+pointer (Part A.10), and two new checkable conventions found during the audit (the
+silent-failure-masking and cascading-recovery-storm rules, Parts C.7/C.9) — plus a handful of
+still-open items folded into `BACKLOG.md`. `AUDIT_PLAN.md`, the master action list for the earlier
+full `src/` audit, was deleted the same way once that audit closed — everything permanent it
+settled was migrated into `SPECIFICATION.md` (the style-guideline harmonization it drove lives in
+Parts C/D) first.

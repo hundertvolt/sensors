@@ -2,14 +2,14 @@
 real wozi wiring) - answers the exact opcode/CS-session shape src/asy_fram_driver.py's FRAM_SPI
 sends (RDID/RDSR/WRSR/WREN/WRDI/READ/WRITE), independently reimplementing the same protocol
 tests/_fram_chip_fake.py already establishes for unit tests against tests/machine.py (confirmed
-directly against src/asy_fram_driver.py, not copied from that file - FINAL_WIRING_PLAN.md's Step 3
+directly against src/asy_fram_driver.py, not copied from that file - this twin package
 never imports tests/machine.py or its fixtures). Deliberately a smaller fault-injection surface than
 that fixture's own fine-grained WEL-corruption knobs (drop_wren, disturb_write_autoclear, ...) -
 those exist there to defense-in-depth-test FRAM_SPI's own retry logic, already covered by
 tests/test_asy_fram_driver.py; this twin only needs the same generic op-keyed FaultInjector every
 other chip fake in this package uses.
 
-Persistence (owner decision, FINAL_WIRING_PLAN.md's Step 3 clarifying-question round): the twin
+Persistence (owner decision): the twin
 must read back exactly what was written, including across process restarts, but must not write to
 disk on every single WRITE opcode (SSD-hosted, avoid unnecessary write cycles). Resolution: an
 explicit save_state() call (never automatic) serializes the full memory image to `state_path` as
@@ -41,8 +41,8 @@ _DEFAULT_RDID = bytes([0x04, 0x7F, 0x03, 0x02])  # real MB85RS64V device ID (dat
 
 _SAVE_CHUNK_SIZE = 512  # bytes per chunk when streaming the memory image out to disk in save_state()
 # below - avoids ever allocating one contiguous string for the whole buffer. Found by actually
-# running the real assembled system against this twin for the first time (FINAL_WIRING_PLAN.md's
-# Step 5 baseline-verification pass): json.dump({"memory_hex": bytes(self.memory).hex()}) needs one
+# running the real assembled system against this twin for the first time during baseline
+# verification: json.dump({"memory_hex": bytes(self.memory).hex()}) needs one
 # contiguous ~2*size-byte allocation (16385 bytes for the real 0x2000-byte FRAM) - reproduced as a
 # deterministic MemoryError after a few seconds of the real task supervisor running (real asyncio
 # tasks/timers/HTTP handling churn the heap enough to fragment it) even with ~1.5MB of *total*
