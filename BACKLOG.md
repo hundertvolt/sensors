@@ -720,11 +720,17 @@ constraints.
    rule), and the corruption only ever happens the *first* time a growth event's new-allocation
    fallback runs while a non-fd poll object already exists, the fix pre-registers (then
    unregisters) enough dummy real-fd loopback connections to grow the shared poller's `pollfds`
-   array to a generous ceiling (32) *before anything else in the process has registered even one
-   poll object* — while the map is still completely empty, nothing non-fd exists yet to corrupt.
-   Unregistering afterwards frees the slots without ever shrinking `alloc` back down (no compaction
-   logic exists), so as long as real peak concurrent fd registrations never reach the ceiling again,
-   the buggy growth branch never executes again for the rest of the process's life. Implemented as
+   array to a generous ceiling (512, ~28x the highest concurrent-registration count this codebase's
+   own test suite has ever produced — peak observed: 18) *before anything else in the process has
+   registered even one poll object* — while the map is still completely empty, nothing non-fd exists
+   yet to corrupt. Unregistering afterwards frees the slots without ever shrinking `alloc` back down
+   (no compaction logic exists), so as long as real peak concurrent fd registrations never reach the
+   ceiling again, the buggy growth branch never executes again for the rest of the process's life.
+   **This is honestly a raised threshold, not an unconditional elimination of the bug** — if some
+   future test ever legitimately needs more than 512 concurrent poll registrations, the corruption
+   could recur; the ceiling was set with a deliberately large margin (measured at ~45ms one-time
+   startup cost, negligible) specifically so this residual risk rests on a hard numeric ceiling far
+   above any observed usage, not on an assumption about "normal" traffic shape. Implemented as
    `digital_twin/unix_port_poll_prewarm.py` (see its own module docstring for the full mechanism),
    called as the first statement of `digital_twin/run_wozi_integration.py`'s and
    `digital_twin/segfault_stress_repro.py`'s own `main()`, strictly before either boots

@@ -46,6 +46,15 @@ original-discovery-conditions repro, versus 100% reliable crash without this pre
 identical timing but *after* other services had already started (confirming the "before anything
 else registers" ordering is load-bearing, not incidental).
 
+**Honest limit of this fix**: this is a raised threshold, not an unconditional elimination of the
+underlying bug - if some future test/usage pattern ever legitimately needs more than `ceiling`
+concurrent poll registrations at once, the array grows past the pre-warmed size and the original
+corruption can occur again. The default ceiling (512) is set with a large, deliberately generous
+margin over every concurrent-registration count this codebase's own test suite has ever produced
+(peak observed: 18) specifically so that this residual risk is not resting on an untested
+assumption about "normal" traffic shape, only on a hard numeric ceiling that is cheap to raise
+further if a future stress test ever needs to.
+
 Call `prewarm_poll_set()` as the very first statement of any Unix-port test/stress entry point that
 boots the real `sensortask_wozi` system, strictly before creating its task.
 """
@@ -57,11 +66,15 @@ import asyncio.core as _core  # type: ignore[import-not-found]
 import select
 import socket
 
-_DEFAULT_CEILING = 32  # comfortably above every concurrent-registration count observed in this
-# codebase's own soak/stress testing (webserver max_connections=3, plus the fixed small set of
-# background service sockets - DNS/NTP/wifi - peaking around 18 in a deliberately adversarial
-# 8-concurrent-client burst; see BACKLOG.md open question #7's re-investigation note for the exact
-# trace this number is based on).
+_DEFAULT_CEILING = 512  # ~28x every concurrent-registration count observed in this codebase's own
+# soak/stress testing (webserver max_connections=3, plus the fixed small set of background service
+# sockets - DNS/NTP/wifi - peaking around 18 in a deliberately adversarial 8-concurrent-client burst;
+# see BACKLOG.md open question #7's re-investigation note for the exact trace this number is based
+# on). This workaround is still fundamentally a raised threshold, not an unconditional fix - see the
+# module docstring's "as long as real peak concurrent fd registrations never reach the ceiling again"
+# caveat - so the margin is deliberately generous rather than just-above-observed: measured at ~45ms
+# of one-time startup cost (well under a second, loopback-only, no realistic risk of exhausting the
+# host's fd limit), which is cheap enough that there is no real reason to cut it closer.
 
 
 def prewarm_poll_set(ceiling: int = _DEFAULT_CEILING, port: int = 18099) -> None:
