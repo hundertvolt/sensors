@@ -1732,7 +1732,7 @@ and its config read-back comes back silently wrong/empty.
   pattern worth following, not a fixed convention to match number-for-number.
 - **`base_classes.py` itself already reserves `errno=1`-`9`/`wrnno=1`-`2`, inherited unmodified by
   every `SensorReader`/`SensorReaderConfig` subclass** — `_error_check()` (`errno=1`/`2`),
-  `_get_dict_cfg()` (`wrnno=1`, `errno=3`/`4`), and `_set_dict_cfg()`/`_recover_failed_push()`
+  `_get_dict_cfg()` (`wrnno=1`/`2`, `errno=3`/`4`), and `_set_dict_cfg()`/`_recover_failed_push()`
   (`errno=5`-`9`). Every driver-owned `errno`/`wrnno` list therefore isn't independent of the
   others the way "per driver, no project-wide numbering" alone would suggest — it's scoped
   starting from whatever the shared base class has already claimed, since a driver's own numbers
