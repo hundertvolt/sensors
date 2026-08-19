@@ -2710,6 +2710,14 @@ implemented `MemoryError` handling throughout `src/`'s drivers (catch, log, degr
 the standing defense against genuine allocation pressure on that platform's much smaller heap,
 unrelated to this now-closed question.
 
+**Standing owner plan, not yet actioned**: both soak tests above are Unix-port-only findings. The
+project owner has real future plans to test directly on the actual rp2040 target hardware, and wants
+both the segfault-stress and memory-leak soak tests repeated there once that's possible — as
+independent on-target confirmation, not because either Unix-port conclusion above is in doubt. Full
+detail (including the "neither soak-test script is currently hardware-runnable yet" note) is
+BACKLOG.md's "Deferred / explicitly out-of-scope work" section — that's the single source of truth
+for this item, not duplicated further here.
+
 ## Out of scope for all five steps
 
 - Real website content (stub only, see Step 4).

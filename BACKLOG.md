@@ -525,6 +525,15 @@ constraints.
    original claim). See `FINAL_WIRING_PLAN.md`'s own Step 6 second re-investigation section for the
    condensed account and the rp2040-relevance discussion.
 
+   **Standing owner plan, not yet actioned — real-hardware re-test**: the project owner has real
+   future plans to run tests directly on the actual rp2040 target hardware, and wants this specific
+   memory-leak soak test repeated there once that's possible, even though the Unix-port finding above
+   is "no confirmed leak," not "inconclusive." Reasoning: the Unix port and rp2040's real allocator/
+   heap behavior aren't guaranteed identical, so an independent on-target confirmation is worthwhile
+   validation practice, not a sign this conclusion is in doubt. See the "Deferred / explicitly
+   out-of-scope work" section below for the consolidated real-hardware-retest entry covering both
+   this and the segfault fix (open question #7).
+
    **Step 6 scope was subsequently widened by the owner to a full self-healing-system audit, not
    just this one memory-decline finding.** Now that the framework is fully wired up end-to-end, the
    owner wants Step 6 to systematically go after the whole class of failure modes that matter most
@@ -749,8 +758,34 @@ constraints.
    `tests/test_digital_twin_sensortask_integration.py`) still passes unchanged with the fix in
    place, and `digital_twin/`'s own dedicated mypy pass plus `ruff check` stay clean.
 
+   **Standing owner plan, not yet actioned — real-hardware re-test**: even though this bug's root
+   cause is confirmed compiled out of real rp2040 firmware (see above — this isn't in doubt), the
+   project owner has real future plans to run tests directly on the actual target hardware and wants
+   the segfault-stress soak test repeated there anyway, as standing validation practice for the wider
+   `digital_twin`/`sensortask_wozi` stress-test suite once on-target testing is possible — not because
+   the compile-time exclusion is questioned. See the "Deferred / explicitly out-of-scope work" section
+   below for the consolidated real-hardware-retest entry covering both this and the memory-leak
+   finding (open question #6).
+
 ## Deferred / explicitly out-of-scope work
 
+- **Real-hardware re-test of Step 6's segfault fix and memory-leak soak test (owner's standing
+  future plan, not yet actionable)** — the project owner has real future plans to run tests directly
+  on the actual rp2040 target hardware. Once that's possible, repeat both of Step 6's Unix-port soak
+  tests there:
+  - The **segfault stress test** (`digital_twin/segfault_stress_repro.py`'s repeated-concurrent-
+    client-burst scenario) — not because the root cause is in doubt (it's confirmed compiled out of
+    rp2 firmware via `MICROPY_PY_SELECT_POSIX_OPTIMISATIONS`, a hard source fact, not an assumption
+    — see open question #7 above), but as standing on-target validation practice for the wider stress
+    scenario itself.
+  - The **memory-leak soak test** (the `real_system_sawtooth.py`-style long-running
+    `gc.mem_free()` recovery-peak trend measurement) — not because the "no confirmed leak on the
+    Unix port" conclusion is in doubt, but because the Unix port's allocator/heap behavior isn't
+    guaranteed identical to rp2040's real one, so an independent on-target confirmation is worthwhile.
+  Neither soak-test script currently has a real-hardware-runnable form (both assume the Unix-port
+  `digital_twin` harness); porting/adapting them for actual on-device execution is part of this
+  future work, not already done. See open questions #6 and #7 above for the full Unix-port findings
+  these on-target runs would be re-validating.
 - **`pyproject.toml`'s mypy `exclude` list still has a dead regex entry for
   `improved-quality/microdot.py`** (removed — see `SPECIFICATION.md` Part A.5), matching
   nothing today, harmless but worth deleting (along with its now-dangling "see its own module
