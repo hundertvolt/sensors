@@ -17,7 +17,8 @@ overall with that one documented exception, not purely MIT top to bottom.
 ## Restructured/rewritten, attribution retained (SPDX headers in the files themselves)
 
 Per `SPECIFICATION.md` Part F.4, Adafruit-derived driver code is fair game to restructure for
-asyncio/MicroPython while keeping attribution. The following `src/` files are derived this way:
+asyncio/MicroPython while keeping attribution; the same restructure-with-attribution treatment
+applies to the one non-Adafruit file below. The following `src/` files are derived this way:
 
 - `src/asy_bmp3xx_driver.py` — from Adafruit's `adafruit_bmp3xx` (CircuitPython), © 2018 Carter
   Nelson for Adafruit Industries, MIT.
@@ -25,6 +26,20 @@ asyncio/MicroPython while keeping attribution. The following `src/` files are de
   Siepert for Adafruit Industries, MIT.
 - `src/asy_sgp40_driver.py` — from Adafruit's `adafruit_sgp40` (CircuitPython), © 2020 Bryan
   Siepert for Adafruit Industries, MIT.
+- `src/asy_ntp_client.py` — the core NTP protocol handling (the `0x1B`-first-byte 48-byte query,
+  `struct.unpack("!I", msg[40:44])` timestamp read, NTP/Unix epoch-delta subtraction, and
+  critically the `RTC().datetime((tm[0], tm[1], tm[2], tm[6] + 1, tm[3], tm[4], tm[5], 0))` idiom
+  in `_parse_ntp_reply()`) matches
+  [`micropython-lib`](https://github.com/micropython/micropython-lib)'s own
+  `micropython/net/ntptime/ntptime.py` module byte-for-byte in the parts that overlap - ©
+  2013, 2014 micropython-lib contributors, MIT (that repo's default license for files without
+  their own `metadata.txt`-declared license, which `ntptime.py` doesn't have). The leap-indicator/
+  stratum rejection, the min/max plausibility window (this file's own answer to the Y2036 wraparound,
+  differently shaped from `ntptime.py`'s own newer `MIN_NTP_TIMESTAMP` fix), and all of the
+  async/`AsyUDPSocket`/config/retry/timer machinery are this file's own additions, not present
+  upstream. See "Investigated, not confirmed as the source" below for
+  `karfas/upy-simple-app`'s `asy_ntp_time.py`, which the project owner separately flagged as a
+  possible origin.
 
 ## Ported, kept literal (SPDX header in the file itself)
 
@@ -87,11 +102,39 @@ attached to code derived from an Apache-2.0 project - the derived portion stays 
   built-in WiFi stack in `asy_wifi_service.py`/`asy_ntp_client.py`), so there is nothing in this
   repo to compare it against.
 
+## Investigated, not yet resolved - project owner decision pending
+
+- [`karfas/upy-simple-app`](https://github.com/karfas/upy-simple-app) (`lib/asy_udp_client.py`,
+  `lib/asy_ntp_time.py`) — the project owner flagged this repo from memory as a possible origin
+  for `src/asy_udp_socket.py`/`src/asy_ntp_client.py`. Checked directly:
+  - `asy_ntp_time.py`'s NTP-parsing logic is itself already a fairly direct copy of
+    micropython-lib's own `ntptime.py` (see the MIT entry above), wrapped in an async task around
+    karfas's own `AsyUDPClient`. That part's real origin is micropython-lib, independent of
+    whether this project's code passed through karfas's file along the way - already resolved
+    above, no further action needed for that portion.
+  - `asy_udp_client.py`'s `AsyUDPClient` class — a `select.poll()`-based async UDP wrapper with a
+    lazy `_connect()`, a `ready(mask, timeout_ms)` poll-and-wait helper, and a combined
+    send-then-receive-with-retries method — is structurally close to this project's own
+    `AsyUDPSocket` (`src/asy_udp_socket.py`, `python/CommonDrivers/asy_udp_socket.py`): the same
+    overall shape (lazy connect, a `ready()`/poll gate, a paired write+read convenience method,
+    explicit `disconnect()` teardown), though method names differ (`send`/`receive` vs.
+    `write`/`recvfrom`, `send_and_receive` vs. `write_and_recvfrom`) and this project's version is
+    materially more built out (locking, retries, context-manager support, input validation,
+    `mode="server"` support karfas's client-only class doesn't have).
+  - **`karfas/upy-simple-app` carries no `LICENSE` file anywhere in the repository, no license
+    badge, no `README.md`, and no header comment in either `lib/asy_udp_client.py` or
+    `lib/asy_ntp_time.py` itself** — confirmed by checking the repo root, both files' own opening
+    lines, and the (missing) README. Under default copyright law this means no permission has been
+    granted to copy, modify, or redistribute this code at all - a materially different, more
+    serious situation than the Apache-2.0 `captive_dns.py` case above, which is permissively
+    licensed and only needed attribution. **Flagged here for the project owner's decision, not
+    resolved unilaterally.**
+
 ## Provenance not established
 
-- `src/asy_ntp_client.py`, `src/asy_udp_socket.py` (and their pre-refactor
-  `python/CommonDrivers/` ancestors) carry no header, source comment, or other fingerprint in
-  either version, and no specific origin could be identified. Treated as original/adapted code;
-  flagged here as a known, accepted residual risk rather than a certified clean-room origin.
+- `src/asy_dns_client.py` (and its pre-refactor `python/CommonDrivers/` ancestor) carries no
+  header, source comment, or other fingerprint, and no specific origin could be identified.
+  Treated as original/adapted code; flagged here as a known, accepted residual risk rather than a
+  certified clean-room origin.
 - Parts of this codebase were written with AI assistance (Claude). No specific reuse of another
   project's code is known, but this is disclosed rather than assumed away.

@@ -1,3 +1,13 @@
+# SPDX-FileCopyrightText: Copyright (c) 2013, 2014 micropython-lib contributors - the NTP query
+# byte (0x1B in a 48-byte packet), the struct.unpack("!I", msg[40:44]) transmit-timestamp read, the
+# NTP/Unix epoch-delta subtraction, and _parse_ntp_reply()'s RTC().datetime((tm[0], tm[1], tm[2],
+# tm[6] + 1, tm[3], tm[4], tm[5], 0)) call all match micropython-lib's own ntptime.py module
+# byte-for-byte in the parts that overlap; see THIRD_PARTY_LICENSES.md. Leap-indicator/stratum
+# rejection, the min/max plausibility window (replacing ntptime.py's newer, differently-shaped
+# Y2036 fix), async/AsyUDPSocket integration, and the config/retry/timer machinery below are this
+# file's own additions, not present in ntptime.py.
+# SPDX-License-Identifier: MIT
+
 """Async NTP client + CET/CEST local-time helper. Not a sensor, but config-managed the same way:
 extends base_classes.py's SensorReaderConfig, owns its own config_NTP.cfg (see SPECIFICATION.md Part C).
 """
