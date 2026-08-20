@@ -255,6 +255,15 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   unit (Neopixel LED signal legend, SGP40 FRAM backup config semantics), not architecture/AI-session
   material — kept separate from README.md/CLAUDE.md/SPECIFICATION.md for that reason.
 
+**`LICENSE` / `THIRD_PARTY_LICENSES.md`** (permanent, legal):
+
+- **[`LICENSE`](LICENSE)** — this project's own license (MIT).
+- **[`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md)** — every piece of vendored or
+  attribution-derived third-party code in one place (Microdot, freezefs, the Adafruit-derived
+  sensor drivers, the DFRobot-derived VOC algorithm port), plus the one area where a specific
+  source couldn't be established (`captive_dns.py`/`asy_ntp_client.py`/`asy_udp_socket.py`) and a
+  disclosure that parts of this codebase were written with AI assistance.
+
 **`digital_twin/README.md`** (permanent, not yet folded into `SPECIFICATION.md`):
 
 - **`digital_twin/README.md`** — the standing reference for the hardware simulator: what's there,

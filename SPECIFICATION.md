@@ -372,7 +372,10 @@ The condensed version is A.2 above. Key modules if you need to go deeper (folded
 
 `ext/microdot.py` is vendored, unmodified upstream Microdot (currently pinned to tag `v2.6.2` —
 treated as a plain external resource, no edits, no "cleanup" of its style; CLAUDE.md's Hard rules
-section is the authoritative vendoring policy). The facts below were confirmed by reading its
+section is the authoritative vendoring policy; its MIT license text lives alongside it as
+`ext/LICENSE-microdot` rather than inside the file itself, the same sibling-file pattern
+`ext/freezefs/LICENSE` already uses — see `THIRD_PARTY_LICENSES.md` for the full third-party
+attribution list). The facts below were confirmed by reading its
 actual source directly (`Microdot.dispatch_request()`/`handle_request()`/`Response.write()`/
 `Request.json` in `ext/microdot.py`), not assumed from Microdot's docs or training memory — treat
 this section as the standing reference for how much stability Microdot already gives us for free
@@ -2882,7 +2885,9 @@ designed fresh — don't assume the old lock still exists or try to resurrect/re
 ## F.4 Vendor-derived code: two opposite policies by vendor, not one blanket rule
 
 Two vendors' code is currently vendored into this project, under **opposite** editing policies —
-"vendor-derived" alone doesn't imply either one, so check which vendor before assuming:
+"vendor-derived" alone doesn't imply either one, so check which vendor before assuming. Each
+file's own SPDX header carries its specific attribution; `THIRD_PARTY_LICENSES.md` at the repo
+root is the single place all of it is also listed together.
 
 - **Adafruit-derived driver code is fair game to restructure/rewrite (keeping attribution)** —
   unlike `python/CommonDrivers/microdot.py`/`ext/microdot.py`, which stay hands-off/vendored (see

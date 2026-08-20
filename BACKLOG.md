@@ -248,15 +248,6 @@ constraints.
   targets not yet done" above).
 - **`dev` config quirks** (e.g. LED/Neopixel REST routes referencing an uninstantiated object) —
   bench rig only, not bugs to fix.
-- **Adafruit/DFRobot vendor attribution was dropped during `src/` promotion.** `asy_bmp3xx_driver.py`/
-  `asy_scd30_driver.py`/`asy_sgp40_driver.py` no longer carry the Adafruit `SPDX-FileCopyrightText`/
-  MIT-license header their legacy `python/IndividualDrivers/` originals have. `voc_algorithm.py` is
-  subtler: its own docstring and `SPECIFICATION.md` F.4 both describe it as a direct port of
-  Sensirion's C reference, but the retained class name `DFRobot_vocalgorithmParams`
-  (byte-identical to the legacy file) shows the real intermediate is DFRobot's own MIT-licensed
-  Python translation, whose attribution was never carried forward either — a provenance correction
-  is needed alongside the missing header, not just the header alone. Owner explicitly deferred
-  fixing this — no priority yet, kept here so it isn't lost.
 - **`improved-quality/sensortask-wozi.py` has the same task/session-narrative-comment problem the
   rest of `src/` was already swept for** — pervasive dated migration-narrative comments, a
   TODO/stale-comment combo, one leftover `DRIVER_SPEC.md section 7` reference, and no module-level
