@@ -436,13 +436,14 @@ def run_suite(micropython_bin: str, logs_dir: Path) -> int:
     )
     try:
         _wait_until_serving(proc)
-        entry = _wait_for_errcount_above("WIFI", 0, timeout_s=40.0)
-        _check(entry.get("counter", 0) > 0, f"Run 7: repeated WiFi connect failures drove real hotspot fallback and were recorded in WIFI's error counter ({entry!r})")
-        # Generous: _wait_for_errcount_above() above returns as soon as WIFI's counter is > 0 - the
-        # very FIRST scripted failure, not all 5 - so hotspot activation (conn_fail_to_hotspot=5,
-        # wifi_refresh_sec=5 between attempts) hasn't necessarily even started by the time this
-        # wait begins. Observed ~30-34s from cold boot to a real answered query in manual testing.
-        answered = _wait_for_dns_answer(HOST, timeout_s=50.0)
+        # Waits for the FULL scripted failure count (conn_fail_to_hotspot=5), not just > 0 (the
+        # very first failure) - hotspot activation, and therefore the DNSServer, doesn't start
+        # until the 5th one. Waiting for all 5 here first, then giving the DNS check its own
+        # separate budget, is more robust than one long guessed timeout covering both phases -
+        # a real CI runner observed needing well over the first attempt's combined budget.
+        entry = _wait_for_errcount_above("WIFI", 4, timeout_s=60.0)
+        _check(entry.get("counter", 0) >= 5, f"Run 7: all 5 repeated WiFi connect failures drove real hotspot fallback and were recorded in WIFI's error counter ({entry!r})")
+        answered = _wait_for_dns_answer(HOST, timeout_s=30.0)
         _check(answered, "Run 7: the real captive DNSServer answered a real UDP DNS query after WiFi hotspot fallback")
         status, _ = _http("GET", "/status")
         _check(status == 200, "Run 7: webserver stayed reachable throughout the WiFi hotspot-fallback transition")
