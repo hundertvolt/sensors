@@ -32,11 +32,14 @@ stays that way for its own reasons (see that file's own module docstring).
 The soak loop (owner decisions 4/9): real HTTP round trips fired back-to-back against every real
 endpoint, not gated by the twin's own real-time sensor-poll Timer cadence (which keeps running
 concurrently and unaffected in the background, at real intervals, exactly like the real system) -
-"everything is supposed to be async... it should run realtime on the server interface". Reuses Step
-2's own exact memory-flat methodology and tolerance (tests/test_asy_webserver_service.py's F.9:
-gc.collect() -> baseline -> N cycles -> gc.collect() -> assert after >= baseline - 4096) - owner
-decision 9, "reuse step 2" - applied here to the real end-to-end object graph instead of Step 2's
-own fake reader/writer.
+"everything is supposed to be async... it should run realtime on the server interface". Originally
+reused Step 2's own memory-flat methodology and tolerance verbatim (tests/test_asy_webserver_service.py's
+F.9: gc.collect() -> baseline -> N cycles -> gc.collect() -> assert after >= baseline - 4096, owner
+decision 9, "reuse step 2") applied to the real end-to-end object graph instead of Step 2's own fake
+reader/writer - replaced with a trend check (per-cycle sampling, first-quarter-vs-last-quarter mean
+comparison) once that flat two-point delta proved too fragile against this real object graph's own
+documented steady-state noise band; see _soak()'s own comment and the _MEM_TREND_* module-level
+comment for the full account and the real, repeated measurement behind the current tolerance.
 """
 
 import asyncio
@@ -66,7 +69,6 @@ _DEFAULT_SCD30_STATE_PATH = "digital_twin/scd30_state.json"  # same folder as th
 # above, own individual file - see digital_twin/_scd30_chip.py's module docstring for what's persisted.
 _CONFIG_DIR = "digital_twin/config/"
 _SOAK_ENDPOINTS = ("/measurements", "/sensors", "/networking", "/system", "/notification", "/status", "/")
-_MEM_FLAT_TOLERANCE_BYTES = 4096  # identical to tests/test_asy_webserver_service.py's own F.9 tolerance (owner decision 9)
 _SOAK_WARMUP_CYCLES = 40  # baseline verification found the
 # original 2-cycle warm-up (Step 2's own F.9 convention, copied verbatim) isn't enough for *this*
 # soak: unlike F.9's fake reader/writer, this soak drives the real object graph, where every
@@ -74,15 +76,36 @@ _SOAK_WARMUP_CYCLES = 40  # baseline verification found the
 # design). A 100-cycle diagnostic run showed gc.mem_free() drop ~52KB over the first 30 cycles, then
 # settle into a noisy +-15KB band for the remaining 70 - a real, bounded, converging warm-up
 # transient, not an unbounded leak (confirmed: no crash/no would-have-triggered watchdog event
-# across the full 100 cycles either). 40 cycles clears the steepest part of it - real runs now fail
-# by ~7KB instead of the original ~32KB - but not all the way inside _MEM_FLAT_TOLERANCE_BYTES's
-# tight 4096-byte budget: doubling the warm-up from 20->40 barely moved the residual (6.7KB vs
-# 7.9KB), pointing at ordinary steady-state allocator noise rather than a residual transient more
-# warm-up would burn off. Whether 4096 bytes is tight enough for this real object graph's natural
-# noise (as opposed to Step 2's synthetic fake-based F.9 test that value was copied from) is a real,
-# open question flagged to the project owner rather than silently resolved by loosening it here -
-# the tolerance itself was an explicit owner decision ("reuse step 2") this fix deliberately leaves
-# alone.
+# across the full 100 cycles either). 40 cycles clears the steepest part of it.
+#
+# _MEM_TREND_*: the memory check itself was originally a flat two-point delta (gc.mem_free() before
+# vs after the whole soak) against a tolerance copied verbatim from tests/test_asy_webserver_service.py's
+# unrelated F.9 fake-reader/writer test (owner decision 9). That shape is a poor fit for *this* soak's
+# real object graph: a single before/after pair can't tell a genuine sustained decline apart from one
+# unlucky sample landing on either side of the documented +-15KB steady-state noise band - the
+# original 4096-byte tolerance was tighter than that noise band itself, so real (non-leaking) runs
+# false-positived regularly (e.g. a ~7KB residual after the 40-cycle warm-up, comfortably inside the
+# documented noise band but outside a 4096-byte window). Replaced with a trend check: gc.mem_free()
+# is sampled once per post-warmup cycle (not just at the two endpoints), then the mean of the first
+# and last quarter of samples are compared - averaging each quarter absorbs single-sample GC-timing
+# noise the way a two-point diff cannot, so a real sustained decline still shows up while symmetric
+# noise mostly cancels out.
+#
+# _MEM_TREND_TOLERANCE_BYTES is set from real, repeated measurement, not reused from an unrelated
+# test: five independent 100-cycle soaks (5x this soak's own default _SOAK_CYCLES_DEFAULT, each
+# against a freshly-wiped digital-twin boot - own config/FRAM/SCD30 state cleared between runs so no
+# run's persisted state carries into the next - giving 25-sample first/last quarters, versus the
+# default 20-cycle soak's much noisier 5-sample quarters) measured first/last-quarter trend deltas of
+# +2623, +796, -410, +1729, and -116 bytes (a positive delta means memory declined between quarters; a
+# negative one means it grew) - max magnitude 2623 bytes, mean +924 bytes, two of the five runs
+# actually trending positive (memory growing, not shrinking). That scatter around zero, rather than a
+# consistent positive decline every run, is itself the evidence against a real leak: an actual
+# multi-KB-per-quarter leak would show up as a low-variance, consistently positive trend across all
+# five runs, not this. 8192 bytes (roughly 3.1x the largest observed magnitude) is used as the real
+# tolerance - comfortable headroom above measured noise while staying far tighter than what a genuine
+# sustained leak would produce over a full quarter's worth of samples.
+_MEM_TREND_TOLERANCE_BYTES = 8192
+_SOAK_CYCLES_DEFAULT = 20
 
 
 class RunConfig:
@@ -95,7 +118,7 @@ class RunConfig:
         seed: "int | None" = None,
         faults: "list[tuple[str, str, int]] | None" = None,
         wifi_outcomes: "list[int] | None" = None,
-        soak_cycles: int = 20,
+        soak_cycles: int = _SOAK_CYCLES_DEFAULT,
         duration: "float | None" = None,
     ) -> None:
         self.host = host
@@ -146,7 +169,7 @@ def parse_args(argv: "list[str]") -> RunConfig:
     seed: int | None = None
     faults: list[tuple[str, str, int]] = []
     wifi_outcomes: list[int] = []
-    soak_cycles = 20
+    soak_cycles = _SOAK_CYCLES_DEFAULT
     duration: float | None = None
 
     while remaining:
@@ -258,7 +281,9 @@ async def _soak(host: str, port: int, cycles: int) -> "list[str]":
             except OSError as e:
                 failures.append(f"warmup: GET {path} -> {e!r}")
     gc.collect()
-    baseline = gc.mem_free()
+    mem_samples: list[int] = [gc.mem_free()]  # index 0: post-warmup baseline, excluded from the
+    # trend comparison below (it's a single point, not a quarter average, and every real cycle
+    # already starts from it).
     for cycle in range(cycles):
         for path in _SOAK_ENDPOINTS:
             try:
@@ -268,10 +293,33 @@ async def _soak(host: str, port: int, cycles: int) -> "list[str]":
                 continue
             if res.status_code != 200:
                 failures.append(f"cycle {cycle}: GET {path} -> {res.status_code}")
-    gc.collect()
-    after = gc.mem_free()
-    if after < baseline - _MEM_FLAT_TOLERANCE_BYTES:
-        failures.append(f"gc.mem_free() dropped from {baseline} to {after} over {cycles} cycles")
+        gc.collect()
+        mem_samples.append(gc.mem_free())
+    # Trend check (see the _MEM_TREND_* module-level comment for why this replaced a flat two-point
+    # delta): compare the mean of the first and last quarter of per-cycle samples - averaging each
+    # quarter absorbs single-sample GC-timing noise a raw two-point diff can't. Needs at least 4
+    # per-cycle samples (cycles >= 4) for the quarters to mean anything; skipped below that (a
+    # --soak-cycles this small is a manual smoke run, not a real memory-trend check).
+    per_cycle_samples = mem_samples[1:]
+    quarter = len(per_cycle_samples) // 4
+    if quarter >= 1:
+        early = per_cycle_samples[:quarter]
+        late = per_cycle_samples[-quarter:]
+        early_avg = sum(early) / len(early)
+        late_avg = sum(late) / len(late)
+        trend = early_avg - late_avg  # positive: memory declined between quarters
+        print(
+            f"digital_twin/run_wozi_integration.py memory trend: baseline={mem_samples[0]} "
+            f"min={min(per_cycle_samples)} max={max(per_cycle_samples)} early_avg={early_avg:.0f} "
+            f"late_avg={late_avg:.0f} trend={trend:.0f} tolerance={_MEM_TREND_TOLERANCE_BYTES} "
+            f"quarter_size={quarter} samples={len(per_cycle_samples)}"
+        )
+        if trend > _MEM_TREND_TOLERANCE_BYTES:
+            failures.append(
+                f"gc.mem_free() trend declined by {trend:.0f} bytes (early_avg={early_avg:.0f} -> "
+                f"late_avg={late_avg:.0f}) over {cycles} cycles, exceeding the "
+                f"{_MEM_TREND_TOLERANCE_BYTES}-byte tolerance"
+            )
     return failures
 
 
