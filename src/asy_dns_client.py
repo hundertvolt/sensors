@@ -1,5 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024 Volodymyr Shymanskyy - inspired by
+# github.com/vshymanskyy/aiodns, not a port (see THIRD_PARTY_LICENSES.md for the detailed
+# comparison). Deliberately narrower: no cache, no IPv6/mDNS, single-server-at-a-time, for this
+# project's one low-frequency caller (asy_ntp_client.py's NTP-host resolution).
+# SPDX-License-Identifier: MIT
+
 """Async, non-blocking IPv4 DNS resolver (A-records only) built on asy_udp_socket.py's AsyUDPSocket.
-Inspired by github.com/vshymanskyy/aiodns (MIT), not a port - deliberately narrower (no cache, no mDNS) for this project's single low-frequency caller.
 """
 # resolve_ipv4() never raises, returns the dotted-quad str or None; only bare compression-pointer
 # names (RFC 1035 SS4.1.4) are followed, matching captive_dns.py's precedent.

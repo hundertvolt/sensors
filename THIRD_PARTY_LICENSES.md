@@ -8,11 +8,13 @@ overall with that one documented exception, not purely MIT top to bottom.
 
 ## Vendored, unmodified
 
-- **Microdot** (`ext/microdot.py`, pinned `v2.6.2`; a legacy, unmodified copy of the same version
-  also ships as `python/CommonDrivers/microdot.py`) — © 2019 Miguel Grinberg, MIT. License text:
+- **Microdot** ([`miguelgrinberg/microdot`](https://github.com/miguelgrinberg/microdot),
+  `ext/microdot.py`, pinned `v2.6.2`; a legacy, unmodified copy of the same version also ships as
+  `python/CommonDrivers/microdot.py`) — © 2019 Miguel Grinberg, MIT. License text:
   `ext/LICENSE-microdot`. See `CLAUDE.md`/`SPECIFICATION.md` Part A.5 for this project's
   hands-off vendoring policy for this file.
-- **freezefs** (`ext/freezefs/`) — © 2022 bixb922, MIT. License text: `ext/freezefs/LICENSE`.
+- **freezefs** ([`bixb922/freezefs`](https://github.com/bixb922/freezefs), `ext/freezefs/`) — ©
+  2022 bixb922, MIT. License text: `ext/freezefs/LICENSE`.
 
 ## Restructured/rewritten, attribution retained (SPDX headers in the files themselves)
 
@@ -20,26 +22,40 @@ Per `SPECIFICATION.md` Part F.4, Adafruit-derived driver code is fair game to re
 asyncio/MicroPython while keeping attribution; the same restructure-with-attribution treatment
 applies to the one non-Adafruit file below. The following `src/` files are derived this way:
 
-- `src/asy_bmp3xx_driver.py` — from Adafruit's `adafruit_bmp3xx` (CircuitPython), © 2018 Carter
-  Nelson for Adafruit Industries, MIT.
-- `src/asy_scd30_driver.py` — from Adafruit's `adafruit_scd30` (CircuitPython), © 2020 Bryan
-  Siepert for Adafruit Industries, MIT.
-- `src/asy_sgp40_driver.py` — from Adafruit's `adafruit_sgp40` (CircuitPython), © 2020 Bryan
-  Siepert for Adafruit Industries, MIT.
+- `src/asy_bmp3xx_driver.py` — from Adafruit's
+  [`Adafruit_CircuitPython_BMP3XX`](https://github.com/adafruit/Adafruit_CircuitPython_BMP3XX),
+  © 2018 Carter Nelson for Adafruit Industries, MIT.
+- `src/asy_scd30_driver.py` — from Adafruit's
+  [`Adafruit_CircuitPython_SCD30`](https://github.com/adafruit/Adafruit_CircuitPython_SCD30),
+  © 2020 Bryan Siepert for Adafruit Industries, MIT.
+- `src/asy_sgp40_driver.py` — from Adafruit's
+  [`Adafruit_CircuitPython_SGP40`](https://github.com/adafruit/Adafruit_CircuitPython_SGP40),
+  © 2020 Bryan Siepert for Adafruit Industries, MIT.
 - `src/asy_ntp_client.py` — the core NTP protocol handling (the `0x1B`-first-byte 48-byte query,
   `struct.unpack("!I", msg[40:44])` timestamp read, NTP/Unix epoch-delta subtraction, and
   critically the `RTC().datetime((tm[0], tm[1], tm[2], tm[6] + 1, tm[3], tm[4], tm[5], 0))` idiom
   in `_parse_ntp_reply()`) matches
-  [`micropython-lib`](https://github.com/micropython/micropython-lib)'s own
+  [`micropython/micropython-lib`](https://github.com/micropython/micropython-lib)'s own
   `micropython/net/ntptime/ntptime.py` module byte-for-byte in the parts that overlap - ©
   2013, 2014 micropython-lib contributors, MIT (that repo's default license for files without
   their own `metadata.txt`-declared license, which `ntptime.py` doesn't have). The leap-indicator/
   stratum rejection, the min/max plausibility window (this file's own answer to the Y2036 wraparound,
   differently shaped from `ntptime.py`'s own newer `MIN_NTP_TIMESTAMP` fix), and all of the
   async/`AsyUDPSocket`/config/retry/timer machinery are this file's own additions, not present
-  upstream. See "Investigated, not confirmed as the source" below for
-  `karfas/upy-simple-app`'s `asy_ntp_time.py`, which the project owner separately flagged as a
-  possible origin.
+  upstream. See "Author-permitted, no formal license" below for `karfas/upy-simple-app`'s
+  `asy_ntp_time.py`, which the project owner separately flagged as a possible origin and which
+  turned out to itself be a further wrapper around this same `micropython-lib` source.
+- `src/asy_dns_client.py` — its own module docstring already states "Inspired by
+  [`vshymanskyy/aiodns`](https://github.com/vshymanskyy/aiodns) (MIT), not a port" (© 2024
+  Volodymyr Shymanskyy) - this attribution predates this licensing review and was found already in
+  place, not added by it. Verified directly against `aiodns.py`'s real source: the docstring's
+  characterization holds up - both build a raw DNS query bytearray and walk the answer section by
+  hand, but function names differ (`_build_query`/`_parse_response` vs. `_build_dns_query`/
+  `_parse_dns_rsp`), the compression-pointer handling differs (this file assumes the answer
+  section starts exactly after the echoed question and requires a bare `0xC0`-masked pointer;
+  `aiodns.py` scans for `\xc0` anywhere), and this file has none of `aiodns.py`'s caching, IPv6,
+  mDNS/`.local`, or parallel-multi-server-send support - "inspired by, not a port" is an accurate
+  description, not an understatement.
 
 ## Ported, kept literal (SPDX header in the file itself)
 
@@ -47,18 +63,32 @@ Per `SPECIFICATION.md` Part F.4, `voc_algorithm.py` stays a literal, structurall
 rather than a restructure, so that it stays diffable against its reference:
 
 - `src/voc_algorithm.py` — Sensirion's Gas Index Algorithm (VOC-only variant) originates with
-  Sensirion (`embedded-sgp`'s `sgp40_voc_index/sensirion_voc_algorithm.c/.h`, no separate license
-  file located for that repository). This file is a direct port of the intermediate Python
-  translation of that C reference, © 2010 DFRobot Co.Ltd (http://www.dfrobot.com), author
-  yangfeng, MIT.
+  Sensirion's [`embedded-sgp`](https://github.com/Sensirion/embedded-sgp) (`sgp40_voc_index/
+  sensirion_voc_algorithm.c/.h`; archived April 2024, BSD-3-Clause). This file is a direct port of
+  the intermediate Python translation of that C reference, found in
+  [`DFRobot/DFRobot_SGP40`](https://github.com/DFRobot/DFRobot_SGP40)'s `Python/raspberrypi/
+  DFRobot_SGP40_VOCAlgorithm.py` (a different filename than this project's `voc_algorithm.py`, but
+  matching copyright/class-name fingerprints - see below), © 2010 DFRobot Co.Ltd
+  (http://www.dfrobot.com), author yangfeng, MIT (confirmed directly against that repo's own
+  `LICENCE` file: "Copyright 2010 DFRobot Co.Ltd", matching this project's own header exactly).
+  Since this file ports DFRobot's Python translation rather than Sensirion's C source directly,
+  DFRobot's MIT terms are the operative ones for what this project actually copied; Sensirion's
+  BSD-3-Clause is noted here for completeness of the full provenance chain, not because this
+  project owes it a separate notice.
 
 ## Shipped but not promoted (`python/IndividualDrivers/`, pre-refactor, dev-rig-only sensors)
 
 These still carry their own correct SPDX/MIT headers in place and need no change:
 
-- `asy_mprls_driver.py` — © 2018 ladyada for Adafruit Industries, MIT.
-- `asy_shtc3_driver.py` — © 2017 Scott Shawcroft / © 2020 Bryan Siepert for Adafruit Industries, MIT.
-- `asy_isl29125_driver.py` — © 2023 Jose D. Montoya, MIT.
+- `asy_mprls_driver.py` — from Adafruit's
+  [`Adafruit_CircuitPython_MPRLS`](https://github.com/adafruit/Adafruit_CircuitPython_MPRLS),
+  © 2018 ladyada for Adafruit Industries, MIT.
+- `asy_shtc3_driver.py` — from Adafruit's
+  [`Adafruit_CircuitPython_SHTC3`](https://github.com/adafruit/Adafruit_CircuitPython_SHTC3),
+  © 2017 Scott Shawcroft / © 2020 Bryan Siepert for Adafruit Industries, MIT.
+- `asy_isl29125_driver.py` — from
+  [`jposada202020/MicroPython_ISL29125`](https://github.com/jposada202020/MicroPython_ISL29125)
+  (archived/deprecated December 2024), © 2023 Jose D. Montoya, MIT.
 
 ## Apache License 2.0 (derived, kept as a separate license within this MIT repo)
 
@@ -100,7 +130,13 @@ attached to code derived from an Apache-2.0 project - the derived portion stays 
   (MIT, also on PyPI as `micropython-captive-dhcp-server`) - a DHCP *server* implementation. This
   project has no DHCP server of its own (only client-side `network.dhcp` usage of MicroPython's
   built-in WiFi stack in `asy_wifi_service.py`/`asy_ntp_client.py`), so there is nothing in this
-  repo to compare it against.
+  repo to compare it against. Checked a second time on a more specific description (a minimal
+  responder handing out one fixed IP to a single AP client) - same result: no DHCP protocol bytes,
+  ports, opcodes, or a server class of any kind anywhere in `src/`, `python/`, `improved-quality/`,
+  `modules/`, or `digital_twin/`. The fallback-hotspot AP's DHCP behavior (assigning an IP to a
+  client that joins it) is handled entirely by the underlying MicroPython/cyw43/lwIP network
+  stack's own built-in AP-mode DHCP server, not by any code in this repository - there is nothing
+  here that could carry a third-party license in the first place.
 
 ## Author-permitted, no formal license (public forum offer)
 
@@ -136,9 +172,9 @@ attached to code derived from an Apache-2.0 project - the derived portion stays 
 
 ## Provenance not established
 
-- `src/asy_dns_client.py` (and its pre-refactor `python/CommonDrivers/` ancestor) carries no
-  header, source comment, or other fingerprint, and no specific origin could be identified.
-  Treated as original/adapted code; flagged here as a known, accepted residual risk rather than a
-  certified clean-room origin.
+- As of this review, every file the project owner asked to check has a resolved or documented
+  status above. Nothing currently remains in this section pending a specific candidate source -
+  if a new one comes up, it gets checked and moved into the appropriate section above rather than
+  left listed here indefinitely.
 - Parts of this codebase were written with AI assistance (Claude). No specific reuse of another
   project's code is known, but this is disclosed rather than assumed away.
