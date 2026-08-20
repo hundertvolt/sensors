@@ -742,25 +742,40 @@ not silently deferred with no record.
 
 **Automated CI suite (`scripts/run_digital_twin_ci.sh`).** The manual on-demand walkthrough this
 project's own baseline verification passes used (fresh clean boot, every GET/PUT endpoint,
-`DebugLevel=5` verbose logging from boot, bus fault injection with logging still on, settings and
-error-history persistence across a real process restart, the automated soak check) is also wired
-into CI as its own job (`digital-twin-e2e` in `.github/workflows/ci.yml`), `needs: unit-tests`.
-**Clean**: wipes any leftover `digital_twin/*.json`/`digital_twin/config/` state before starting, so
-every run — CI or local — begins from a genuinely blank twin. **Build**: builds the MicroPython
-Unix port (cached, same convention as `scripts/test.sh`) and `frozen_modules/frozen_html.py`; a
-build failure fails the job before any test phase runs. **Test**:
-`scripts/_digital_twin_ci_suite.py` (a self-contained `uv run` CPython script — it only
-orchestrates the MicroPython subprocess and speaks plain HTTP to it, the code under test still only
-ever runs under the real Unix-port interpreter) drives `digital_twin/run_wozi_integration.py`
-through five real subprocess runs: (1) fresh boot, walk every endpoint, PUT settings across
-`/system`/`/notification`/`/sensors`/`/networking`/`/status`; (2) a real process restart from the
-same persisted state, proving `DebugLevel`/`WarnCO2`/`SCD30.MeasInt`/`Hostname` all survived reboot
-and that the now-persisted `DebugLevel=5` produces genuine multi-module verbose log output from
-boot; (3) another restart with `--fault sgp40:writeto:8` injected, proving the system degrades
-gracefully (`/measurements` still 200) and the fault gets logged and counted; (4) a fault-free
-restart proving the error count from run 3 itself persisted (not just logged once, forgotten on the
-next reboot); (5) a dedicated clean boot for the `--soak` check. See `digital_twin/README.md`'s
-"Automated CI suite" section for the full per-run breakdown.
+`DebugLevel=5` verbose logging from boot, bus/WiFi/network fault injection with logging still on,
+settings and error-history persistence across a real process restart, recovery after a fault
+clears, the automated soak check) is also wired into CI as its own job (`digital-twin-e2e` in
+`.github/workflows/ci.yml`), `needs: unit-tests`. **Clean**: wipes any leftover
+`digital_twin/*.json`/`digital_twin/config/` state before starting, so every run — CI or local —
+begins from a genuinely blank twin. **Build**: builds the MicroPython Unix port (cached, same
+convention as `scripts/test.sh`) and `frozen_modules/frozen_html.py`; a build failure fails the job
+before any test phase runs. **Test**: `scripts/_digital_twin_ci_suite.py` (a self-contained
+`uv run` CPython script — it only orchestrates the MicroPython subprocess and speaks plain
+HTTP/UDP to it, the code under test still only ever runs under the real Unix-port interpreter)
+drives `digital_twin/run_wozi_integration.py` through eleven real subprocess runs covering: fresh
+boot + every GET/PUT endpoint; settings persistence + verbose logging across a real reboot; a
+sustained/high-repeat-count ("permanent") fault matrix across every bus-level error-counted module
+at once, proving both graceful degradation *and* that the (simulated) watchdog never starves under
+bounded-but-sustained failure; a persistence-correctness sweep checking both directions (FRAM-backed
+modules should survive a reboot, in-memory-only modules should not); recovery after a small bounded
+fault clears; WiFi hotspot fallback proving a real answered UDP DNS query, not just an internal
+state flip; NTP permanently unreachable; the one dedicated case that genuinely can starve the
+watchdog — a real blocking hang inside a chip fake's handler (`--hang`,
+`digital_twin/_fault_injection.py`'s `inject_hang()`/`maybe_hang()`) that freezes the whole
+interpreter past the WDT window, proving the backstop itself actually engages; and a dedicated
+clean soak run. Building this suite surfaced three confirmed Unix-port-only `socket` quirks
+(`BACKLOG.md`'s "Real-hardware verification gap for `asy_udp_socket.py`/`captive_dns.py`" has the
+full source-level account) that made a real UDP round trip (DNS, NTP) genuinely impossible under
+this harness — `bind()`/`connect()`/`sendto()` rejecting `AsyUDPSocket`'s own plain
+`(host, port)` tuple, and `recvfrom()` returning a raw C struct instead of the `(str, int)` shape
+production code expects — all three correct, required behavior for real rp2 hardware (confirmed by
+reading both the Unix port's and rp2's actual socket module C sources side by side, not just a type
+stub), so not something to fix in `src/`. Worked around entirely from twin-side code instead:
+`digital_twin/_unix_port_udp_addr_shim.py`, applied by `run_wozi_integration.py`'s own `main()`
+before anything constructs a socket — see that module's own docstring and
+`digital_twin/README.md`'s own section on it for the full mechanism. This closes the gap for good:
+run 7 now asserts a real DNS reply, not just that the hotspot state flipped. See
+`digital_twin/README.md`'s "Automated CI suite" section for the full per-run breakdown.
 
 ---
 

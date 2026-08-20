@@ -65,6 +65,49 @@ def parse_fault_spec(spec: str) -> "tuple[str, str, int]":
     return device, op, times
 
 
+_HANG_DEVICE_OPS = {
+    # Bus devices only - "wlan" has no real blocking call for time.sleep() to stand in for (its
+    # faults are a synchronous raise_on[] check, not a bus transaction with a real HAL call
+    # underneath), so it's deliberately not part of this vocabulary the way it is for --fault.
+    "sgp40": ("writeto", "readfrom_into"),
+    "scd30": ("writeto", "readfrom_into"),
+    "bmp3xx": ("readfrom_mem", "writeto_mem"),
+    "fram": ("write", "readinto"),
+}
+
+
+def parse_hang_spec(spec: str) -> "tuple[str, str, float, int]":
+    # --hang DEVICE:OP:SECONDS[:TIMES] - a real, blocking time.sleep(SECONDS) (see
+    # _fault_injection.py's own module docstring for why this - not an exception - is the only way
+    # to faithfully simulate a genuinely wedged bus threatening the (simulated) watchdog. TIMES
+    # defaults to 1: a single multi-second hang is already the interesting case: real hardware in
+    # this state gets one 8388ms-capped window before the real WDT resets it, not an indefinite
+    # string of them.
+    parts = spec.split(":")
+    if len(parts) not in (3, 4):
+        raise ValueError(f"malformed --hang {spec!r} - expected DEVICE:OP:SECONDS[:TIMES]")
+    device, op = parts[0], parts[1]
+    if device not in _HANG_DEVICE_OPS:
+        raise ValueError(f"--hang device {device!r} not recognized - expected one of {sorted(_HANG_DEVICE_OPS)}")
+    if op not in _HANG_DEVICE_OPS[device]:
+        raise ValueError(f"--hang op {op!r} not recognized for device {device!r} - expected one of {_HANG_DEVICE_OPS[device]}")
+    try:
+        seconds = float(parts[2])
+    except ValueError as e:
+        raise ValueError(f"--hang SECONDS {parts[2]!r} is not a number") from e
+    if seconds <= 0:
+        raise ValueError(f"--hang SECONDS must be > 0, got {seconds}")
+    times = 1
+    if len(parts) == 4:
+        try:
+            times = int(parts[3])
+        except ValueError as e:
+            raise ValueError(f"--hang TIMES {parts[3]!r} is not an integer") from e
+        if times < 1:
+            raise ValueError(f"--hang TIMES must be >= 1, got {times}")
+    return device, op, seconds, times
+
+
 def _parse_wifi_outcome(value: str) -> int:
     if value not in _WIFI_OUTCOME_MAP:
         raise ValueError(f"--wifi-outcome {value!r} not recognized - expected one of {sorted(_WIFI_OUTCOME_MAP)}")
@@ -78,6 +121,7 @@ class LaunchConfig:
         fram_state_path: "str | None" = None,
         scd30_state_path: "str | None" = None,
         faults: "list[tuple[str, str, int]] | None" = None,
+        hangs: "list[tuple[str, str, float, int]] | None" = None,
         wifi_outcomes: "list[int] | None" = None,
         no_wdt_feed: bool = False,
         duration: "float | None" = None,
@@ -86,6 +130,7 @@ class LaunchConfig:
         self.fram_state_path = fram_state_path
         self.scd30_state_path = scd30_state_path
         self.faults = faults if faults is not None else []
+        self.hangs = hangs if hangs is not None else []
         self.wifi_outcomes = wifi_outcomes if wifi_outcomes is not None else []
         self.no_wdt_feed = no_wdt_feed
         self.duration = duration
@@ -103,6 +148,7 @@ def parse_args(argv: "list[str]") -> "LaunchConfig":
     fram_state_path: str | None = None
     scd30_state_path: str | None = None
     faults: list[tuple[str, str, int]] = []
+    hangs: list[tuple[str, str, float, int]] = []
     wifi_outcomes: list[int] = []
     no_wdt_feed = False
     duration: float | None = None
@@ -117,6 +163,8 @@ def parse_args(argv: "list[str]") -> "LaunchConfig":
             scd30_state_path = _pop_value(remaining, arg)
         elif arg == "--fault":
             faults.append(parse_fault_spec(_pop_value(remaining, arg)))
+        elif arg == "--hang":
+            hangs.append(parse_hang_spec(_pop_value(remaining, arg)))
         elif arg == "--wifi-outcome":
             wifi_outcomes.append(_parse_wifi_outcome(_pop_value(remaining, arg)))
         elif arg == "--no-wdt-feed":
@@ -131,6 +179,7 @@ def parse_args(argv: "list[str]") -> "LaunchConfig":
         fram_state_path=fram_state_path,
         scd30_state_path=scd30_state_path,
         faults=faults,
+        hangs=hangs,
         wifi_outcomes=wifi_outcomes,
         no_wdt_feed=no_wdt_feed,
         duration=duration,
@@ -146,6 +195,10 @@ def _apply_fault(device: str, op: str, times: int, chips: "dict[str, Any]", wlan
         wlan.raise_on[op] = OSError(errno.EIO, message)
         return
     chips[device].fault.inject_fault(op, OSError(errno.EIO, message), times=times)
+
+
+def _apply_hang(device: str, op: str, seconds: float, times: int, chips: "dict[str, Any]") -> None:
+    chips[device].fault.inject_hang(op, seconds, times=times)
 
 
 def _decode_bmp3xx_calibration(raw: bytes) -> "tuple[tuple[float, float, float], tuple[float, ...]]":
@@ -300,7 +353,7 @@ async def main(config: "LaunchConfig") -> "dict[str, Any]":
     print(
         f"digital_twin/launch.py starting - seed={config.seed!r} fram_state_path={config.fram_state_path!r} "
         f"scd30_state_path={config.scd30_state_path!r} no_wdt_feed={config.no_wdt_feed!r} "
-        f"duration={config.duration!r} faults={config.faults!r} wifi_outcomes={config.wifi_outcomes!r}"
+        f"duration={config.duration!r} faults={config.faults!r} hangs={config.hangs!r} wifi_outcomes={config.wifi_outcomes!r}"
     )
 
     watchdog = WDT(timeout=8000)
@@ -312,6 +365,8 @@ async def main(config: "LaunchConfig") -> "dict[str, Any]":
     chips = {"scd30": i2c0.devices[0x61], "sgp40": i2c1.devices[0x59], "bmp3xx": i2c1.devices[0x77], "fram": spi0.device}
     for device, op, times in config.faults:
         _apply_fault(device, op, times, chips, wlan)
+    for device, op, seconds, times in config.hangs:
+        _apply_hang(device, op, seconds, times, chips)
 
     if config.wifi_outcomes:
         wlan.script_connect_outcomes(config.wifi_outcomes)

@@ -64,7 +64,9 @@ Kept completely separate so nothing here can accidentally affect the determinist
   narrower in scope than `run_wozi_integration.py` below, which boots the real object graph instead.
 
 Every chip fake exposes a `.fault` (`FaultInjector`) surface for provoking a bus NAK/CRC-corruption/
-timeout on demand — off/clean by default.
+timeout on demand — off/clean by default. Same surface also carries `inject_hang()`/`maybe_hang()`,
+a real blocking `time.sleep()` for simulating a genuinely wedged bus (see "Automated CI suite"
+below's `--hang` section) — distinct from a bounded, immediately-raised fault.
 
 ## Swapping the twin in for a Unix-port run
 
@@ -217,10 +219,10 @@ convention as `scripts/test.sh`/`scripts/run_unix_port_integration.sh`) and
 
 **Test**: hands off to `scripts/_digital_twin_ci_suite.py`, a self-contained `uv run` CPython
 script (stdlib-only — no `uv sync` needed) that drives `digital_twin/run_wozi_integration.py` as a
-real subprocess, over real HTTP (`http.client`, not `_http_client.py` — this script runs under
-CPython, not the twin's own MicroPython process), through five real, sequential subprocess runs on
-a fixed port (`18080`, distinct from the manual entry point's `8080` default, so both can run
-side by side without colliding):
+real subprocess, over real HTTP/UDP (`http.client`/`socket`, not `_http_client.py` — this script
+runs under CPython, not the twin's own MicroPython process), through eleven real, sequential
+subprocess runs on a fixed port (`18080`, distinct from the manual entry point's `8080` default, so
+both can run side by side without colliding):
 
 1. **Baseline boot** — walk every `GET` endpoint (`/measurements`, `/sensors`, `/networking`,
    `/system`, `/notification`, `/status`, `/`), then `PUT` a setting on each of
@@ -235,21 +237,100 @@ side by side without colliding):
    `DebugLevel=5` produces real, multi-module verbose log output (`print_log.py`'s
    `print(name, *args)` convention — checked for known `_NAME` prefixes like `SYSTEM`/`SGP40`/
    `SCD30`/`WEBSERVER`) from the very start of boot, not just after a later `PUT`.
-3. **Reboot with fault injection, logging still on** — another restart, this time with
-   `--fault sgp40:writeto:8`. Confirms `/measurements` still returns `200` (graceful degradation,
-   never a crash or a `500`) and that the fault gets both logged (an `SGP40`-prefixed line actually
-   printed) and counted (`/status`'s `errcount.SGP40.counter` increments).
-4. **Reboot again, fault-free — error persistence** — proves run 3's error count itself survived
-   the reboot (SGP40's FRAM-backed error log, `PrintLogHistoryStore` — see
-   `src/print_log.py`), not just that it was logged once and forgotten.
-5. **Dedicated clean soak run** — a fresh `--soak --soak-cycles 20 --duration 0` run against a
-   freshly-wiped twin, checked for a clean exit and a printed `PASS` summary (see
-   `run_wozi_integration.py`'s own `_soak()` for the memory-trend methodology).
+3. **Reboot with a sustained/high-repeat-count ("permanent") bus-fault matrix** — `--fault` on
+   every bus-level error-counted module at once (`scd30:writeto:500`, `sgp40:writeto:500`,
+   `bmp3xx:readfrom_mem:500`, `fram:write:500`). Confirms every endpoint stays at `200` (graceful
+   degradation under sustained failure, not just a single blip), every module's error counter
+   climbs, and — via `run_wozi_integration.py`'s own unconditional shutdown line — that the
+   (simulated) watchdog **never** starves despite the sustained failures. This is the expected,
+   correct outcome under the current architecture: `--fault` only ever produces bounded,
+   immediately-raised `OSError`s, never an indefinite hang, so nothing here can actually block the
+   event loop long enough to matter — see run 10 below for the one scenario that can.
+4. **Reboot fault-free — bus-fault persistence-correctness sweep** — checks *both* directions for
+   every module run 3 faulted: SGP40's count should have persisted (FRAM-backed,
+   `PrintLogHistoryStore` — see `src/print_log.py`); SCD30/BMP3XX/FRAM's counts should have reset to
+   `0` (in-memory-only by design — SPECIFICATION.md Part A.7). A bug in either direction is real and
+   would be caught here.
+5. **Clean boot, a small *bounded* fault** (`sgp40:writeto:3`, not sustained) — the other half of
+   the self-healing story run 3 alone can't show: not just "doesn't crash while still broken," but
+   "comes back once the fault clears." Confirms the real error count stops climbing once the 3
+   queued failures are exhausted (a driver's own "recovered" notice is itself logged as a warning,
+   not an error — this suite counts `"E"`-typed history entries specifically, not the raw combined
+   counter, to avoid mistaking a recovery notice for a new failure) and that measurements resume.
+6. **Clean boot, configure a real SSID** (persisted) — needed for run 7's genuine STA-connect-
+   failure cycle, not the `SSID==""` unconfigured shortcut.
+7. **Reboot with 5 scripted `"no access point found"` WiFi outcomes** — drives the real STA →
+   hotspot-fallback state machine (`conn_fail_to_hotspot=5`), starts the real `DNSServer`, and
+   confirms it actually answers a real UDP DNS query sent from outside the process — not just that
+   the internal state flipped. Only possible because of
+   `digital_twin/_unix_port_udp_addr_shim.py` — see its own module docstring and the "`_unix_port_udp_addr_shim.py`"
+   section below for the three Unix-port-only `socket` quirks it works around, entirely from
+   twin-side code, with `src/` left untouched and correct for real hardware.
+8. **Reboot fault-free** — WIFI's own persistence-correctness check (in-memory-only, should reset
+   to `0`), plus configures an unreachable NTP host (`192.0.2.1`, RFC 5737 TEST-NET-1) for run 9.
+9. **Reboot with NTP permanently unreachable** — the other "network connections" real-world case.
+   Confirms the webserver stays fully healthy past NTP's own 5s fetch timeout, not just eventually.
+10. **The dedicated watchdog-backstop case** — a real, *blocking* (`time.sleep()`, not
+    `asyncio.sleep()`) hang inside a chip fake's handler (`--hang sgp40:writeto:12`), genuinely
+    freezing the whole interpreter past the 8000ms WDT window. `digital_twin/_fault_injection.py`'s
+    `FaultInjector.inject_hang()`/`maybe_hang()` is what makes this possible — real rp2040
+    `machine.I2C` calls have no `await` point (SPECIFICATION.md Part F.2), so a genuinely wedged
+    real peripheral blocks the whole single-threaded interpreter, not just one asyncio task; a real
+    blocking sleep is the only way this twin can reproduce that specific failure mode faithfully.
+    Confirms the process survives and exits cleanly, and — the one thing sustained-but-bounded
+    errors (run 3) cannot demonstrate — that the watchdog backstop itself actually engages
+    (`would_have_triggered_count >= 1`), matching CLAUDE.md's own settled "hardware watchdog is the
+    accepted backstop" rule for a genuinely wedged bus.
+11. **Dedicated clean soak run** — a fresh `--soak --soak-cycles 20 --duration 0` run against a
+    freshly-wiped twin, checked for a clean exit and a printed `PASS` summary (see
+    `run_wozi_integration.py`'s own `_soak()` for the memory-trend methodology).
 
 Each run's subprocess stdout/stderr is captured to `digital_twin_ci_logs/run<N>_*.log` (gitignored;
 uploaded as a CI build artifact via the `digital-twin-e2e` job's own `if: always()` upload step, so
 a failure's full boot log is inspectable from the Actions run itself, not just the pass/fail
 summary). The suite exits non-zero if any check fails, failing the CI job.
+
+### `--hang` (real bus hangs, distinct from `--fault`)
+
+`digital_twin/launch.py --hang DEVICE:OP:SECONDS[:TIMES]` (also accepted by
+`digital_twin/run_wozi_integration.py`) queues a real, blocking `time.sleep(SECONDS)` before the
+next `TIMES` (default 1) calls to that op proceed — `sgp40`/`scd30` (`writeto`/`readfrom_into`),
+`bmp3xx` (`readfrom_mem`/`writeto_mem`), `fram` (`write`/`readinto`). Unlike `--fault` (a bounded,
+immediately-raised `OSError` — the driver's own normal error path), this genuinely freezes the
+whole interpreter for real wall-clock seconds, the only way to simulate a truly wedged bus rather
+than a bus that merely errors. `wlan` has no `--hang` vocabulary — its faults are a synchronous
+`raise_on[]` check, not a bus transaction with a real HAL call underneath.
+
+### `_unix_port_udp_addr_shim.py` (real UDP round trips under the Unix port)
+
+`patch_asy_udp_socket_for_unix_port()` — called once, early, as `run_wozi_integration.py`'s own
+`main()` does (right after `prewarm_poll_set()`, before anything constructs a socket) — works
+around three confirmed MicroPython-Unix-port-only `socket` quirks that otherwise make a real UDP
+round trip (DNS, NTP) impossible under this harness, entirely from twin-side code:
+
+1. `bind()`/`connect()` reject `AsyUDPSocket`'s own plain `(host: str, port: int)` tuple with
+   `TypeError: object with buffer protocol required` — the Unix port's `socket` module
+   (`ports/unix/modsocket.c`) requires a pre-resolved buffer-protocol sockaddr instead. The real
+   rp2/lwIP module (`extmod/modlwip.c`) accepts the plain tuple directly (confirmed by reading both
+   C sources side by side, not just the type stub — see `BACKLOG.md`'s "Real-hardware verification
+   gap" entry for the full account), so this is genuinely two different implementations, not one
+   port being stricter about the same contract - the plain-tuple form `AsyUDPSocket` (correctly)
+   always passes is required for real hardware, not a bug to fix in `src/`.
+2. `sendto()` has this exact same requirement (`micropython/micropython#6924` is specifically about
+   this method) — but its destination address is a per-call argument (a DNS/NTP client's ephemeral
+   reply address, learned dynamically), not the constructor-time address point 1 already covers.
+3. `recvfrom()` hands back the raw 16-byte packed C `struct sockaddr_in` as a plain `bytes` object,
+   not the `(ip: str, port: int)` tuple `lwip_socket_recvfrom()` returns on real hardware and
+   `captive_dns.py`'s own subnet check expects — confirmed directly against a real captured reply,
+   not just the C source (this build's actual behavior differs from what a first look at
+   `modsocket.c`'s own separate `socket.sockaddr()` utility function would suggest).
+
+The patch pre-resolves via `socket.getaddrinfo()` before `bind()`/`connect()`/`sendto()` (same
+pattern `unix_port_poll_prewarm.py`'s `prewarm_poll_set()` already uses for a different call site)
+and unpacks `recvfrom()`'s raw struct into the shape production code expects. Every real call site
+this project has (`captive_dns.py`'s `"0.0.0.0"`, `asy_ntp_client.py`'s already-DNS-resolved NTP
+server IP via `asy_dns_client.py`) already hands over an already-numeric address, so the
+`getaddrinfo()` calls here are always fast and local, never a real DNS lookup.
 
 ## Adding a new chip fake
 

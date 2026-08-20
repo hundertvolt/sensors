@@ -50,6 +50,7 @@ class Sgp40Chip:
         return reply[:-1] + bytes([reply[-1] ^ 0xFF])
 
     def handle_writeto(self, data: bytes) -> None:
+        self.fault.maybe_hang("writeto")
         self.fault.maybe_raise("writeto")
         if data == _CMD_SERIAL_NUMBER:
             word1 = self._random.getrandbits(16)
@@ -68,5 +69,6 @@ class Sgp40Chip:
         self._pending_reply = self._maybe_corrupt(reply)
 
     def handle_readfrom_into(self, nbytes: int) -> bytes:
+        self.fault.maybe_hang("readfrom_into")
         self.fault.maybe_raise("readfrom_into")
         return (self._pending_reply + bytes(nbytes))[:nbytes]

@@ -156,6 +156,7 @@ class Bmp3xxChip:
         self.fault.maybe_raise("writeto")
 
     def handle_writeto_mem(self, reg_addr: int, data: bytes) -> None:
+        self.fault.maybe_hang("writeto_mem")
         self.fault.maybe_raise("writeto_mem")
         if reg_addr == _REGISTER_CONTROL:
             if data and data[0] == _CONTROL_FORCED_MODE:
@@ -170,6 +171,7 @@ class Bmp3xxChip:
         # any other register: real hardware would just silently accept/ignore it too.
 
     def handle_readfrom_mem(self, reg_addr: int, nbytes: int) -> bytes:
+        self.fault.maybe_hang("readfrom_mem")
         self.fault.maybe_raise("readfrom_mem")
         if reg_addr == _REGISTER_CHIPID:
             reply = bytes([_BMP390_CHIP_ID])

@@ -175,8 +175,20 @@ constraints.
    `socket.getaddrinfo()` before ever constructing an `AsyUDPSocket`). The real production call
    sites — `asy_ntp_client.py`'s `_fetch_ntp_reply()`, `asy_dns_client.py`'s `resolve_ipv4()`,
    `captive_dns.py`'s own `AsyUDPSocket(("0.0.0.0", 53), ...)` — never do this pre-resolution; they
-   pass a plain tuple straight through, exactly matching `typings/socket.pyi`'s real-rp2-hardware
-   `_Address` contract (`tuple[str, int] | ...`), which is correct and required for real hardware.
+   pass a plain tuple straight through. That's correct and required for real hardware — confirmed
+   directly against the real firmware source this time (digital-twin CI suite session), not just
+   `typings/socket.pyi`'s declared contract: `ports/rp2/mpconfigport.h` sets `MICROPY_PY_LWIP`, so
+   rp2's actual `socket` module is `extmod/modlwip.c`, a completely different C file from
+   `ports/unix/modsocket.c`. The Unix port's `socket_bind()`/`socket_connect()` call
+   `mp_get_buffer_raise(addr_in, ...)` — `addr_in` must already implement the buffer protocol (a
+   pre-resolved `getaddrinfo()` sockaddr), which a plain tuple doesn't, hence the `TypeError`.
+   `extmod/modlwip.c`'s `lwip_socket_bind()`/`lwip_socket_connect()` instead call
+   `lwip_parse_inet_addr()`, which does `mp_obj_get_array_fixed_n(addr_in, 2, &addr_items)` — unpacks
+   a plain 2-element tuple directly, no buffer protocol needed at all. Two genuinely different
+   implementations, not one port being stricter about the same contract. (`micropython/micropython
+   #6924`, also re-checked this session, turns out to be about the Unix port's `sendto()` hitting
+   this same buffer-protocol requirement specifically — it doesn't itself compare ports, so citing it
+   alone wasn't sufficient evidence; the direct source comparison above is.)
    Net effect: `_connect()`'s own broad `except (OSError, MemoryError, TypeError)` silently swallows
    this `TypeError` as an ordinary "peer unreachable" failure, so **under the Unix port specifically,
    every real NTP sync and every real DNS resolution attempt fails 100% of the time, unconditionally,
@@ -193,6 +205,23 @@ constraints.
    path under the Unix port either. Real rp2 hardware remains the only way to verify NTP/DNS's actual
    UDP transport — same conclusion this entry already reached, now reached from a direct
    reproduction instead of an absence of one.
+   **Twin-side workaround landed (digital-twin CI suite session, follow-up)**: the "can't even
+   exercise this code path under the Unix port at all" half of the gap is now closed —
+   `digital_twin/_unix_port_udp_addr_shim.py` patches `AsyUDPSocket._connect()`/`sendto()`/
+   `recvfrom()` (plain Python methods, always reassignable, no C-type subclassing risk) to work
+   around all three Unix-port-only quirks confirmed above, entirely from twin-side code, `src/`
+   untouched. A third quirk was found and fixed in the process: `recvfrom()` doesn't return the
+   `(family_int, raw_bytes, port_int)` 3-tuple the C source alone suggested — it hands back the raw
+   16-byte packed `struct sockaddr_in` as a plain `bytes` object (confirmed by inspecting a real
+   captured reply directly, not just reading the source), which `captive_dns.py`'s own subnet check
+   was silently misreading `addr[0]` from (the struct's first byte, `0x02` == `AF_INET`, logged as
+   "malformed address 2"). With all three patched, `scripts/_digital_twin_ci_suite.py`'s run 7 now
+   gets a real, complete DNS reply end to end under the Unix port. **What this does and doesn't
+   change**: the twin can now genuinely exercise the real request/reply UDP code path in CI, closing
+   that half of the gap for good; it does *not* replace real-hardware verification of the actual
+   rp2/lwIP transport itself (POLLERR/POLLHUP delivery, truncation, connected-socket source
+   filtering) — that half of this entry, and the "Explicitly deferred by the project owner" note
+   above, still stands.
 
 ## Deferred / explicitly out-of-scope work
 

@@ -113,6 +113,7 @@ class FramChip:
             f.write('"}')
 
     def write(self, buf: bytes) -> None:
+        self.fault.maybe_hang("write")
         self.fault.maybe_raise("write")
         data = bytes(buf)
         if self._pending_op == _OPCODE_WRITE and self._pending_addr is not None:
@@ -145,6 +146,7 @@ class FramChip:
             self._pending_op = _OPCODE_RDID
 
     def readinto(self, buf: bytearray, write_value: int = 0x00) -> None:
+        self.fault.maybe_hang("readinto")
         self.fault.maybe_raise("readinto")
         if self._pending_op == _OPCODE_READ and self._pending_addr is not None:
             n = len(buf)

@@ -15,9 +15,11 @@ if TYPE_CHECKING:
 
 import _http_client
 import machine
+from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
 from launch import (
     _parse_wifi_outcome,  # deliberately reused, not reimplemented - see digital_twin/README.md
     parse_fault_spec,  # noqa: F401 - re-exported for callers that only need the spec parser
+    parse_hang_spec,  # noqa: F401 - re-exported for callers that only need the spec parser
 )
 from unix_port_poll_prewarm import prewarm_poll_set
 
@@ -76,6 +78,7 @@ class RunConfig:
         scd30_state_path: "str | None" = _DEFAULT_SCD30_STATE_PATH,
         seed: "int | None" = None,
         faults: "list[tuple[str, str, int]] | None" = None,
+        hangs: "list[tuple[str, str, float, int]] | None" = None,
         wifi_outcomes: "list[int] | None" = None,
         soak: bool = False,
         soak_cycles: int = _SOAK_CYCLES_DEFAULT,
@@ -87,6 +90,7 @@ class RunConfig:
         self.scd30_state_path = scd30_state_path
         self.seed = seed
         self.faults = faults if faults is not None else []
+        self.hangs = hangs if hangs is not None else []
         self.wifi_outcomes = wifi_outcomes if wifi_outcomes is not None else []
         self.soak = soak
         self.soak_cycles = soak_cycles
@@ -102,6 +106,7 @@ class RunConfig:
             and self.scd30_state_path == other.scd30_state_path
             and self.seed == other.seed
             and self.faults == other.faults
+            and self.hangs == other.hangs
             and self.wifi_outcomes == other.wifi_outcomes
             and self.soak == other.soak
             and self.soak_cycles == other.soak_cycles
@@ -112,7 +117,7 @@ class RunConfig:
         return (
             f"RunConfig(host={self.host!r}, port={self.port!r}, fram_state_path={self.fram_state_path!r}, "
             f"scd30_state_path={self.scd30_state_path!r}, seed={self.seed!r}, faults={self.faults!r}, "
-            f"wifi_outcomes={self.wifi_outcomes!r}, soak={self.soak!r}, soak_cycles={self.soak_cycles!r}, "
+            f"hangs={self.hangs!r}, wifi_outcomes={self.wifi_outcomes!r}, soak={self.soak!r}, soak_cycles={self.soak_cycles!r}, "
             f"duration={self.duration!r})"
         )
 
@@ -131,6 +136,7 @@ def parse_args(argv: "list[str]") -> RunConfig:
     scd30_state_path: str | None = _DEFAULT_SCD30_STATE_PATH
     seed: int | None = None
     faults: list[tuple[str, str, int]] = []
+    hangs: list[tuple[str, str, float, int]] = []
     wifi_outcomes: list[int] = []
     soak = False
     soak_cycles = _SOAK_CYCLES_DEFAULT
@@ -153,6 +159,8 @@ def parse_args(argv: "list[str]") -> RunConfig:
             seed = int(_pop_value(remaining, arg))
         elif arg == "--fault":
             faults.append(parse_fault_spec(_pop_value(remaining, arg)))
+        elif arg == "--hang":
+            hangs.append(parse_hang_spec(_pop_value(remaining, arg)))
         elif arg == "--wifi-outcome":
             wifi_outcomes.append(_parse_wifi_outcome(_pop_value(remaining, arg)))
         elif arg == "--soak":
@@ -172,6 +180,7 @@ def parse_args(argv: "list[str]") -> RunConfig:
         scd30_state_path=scd30_state_path,
         seed=seed,
         faults=faults,
+        hangs=hangs,
         wifi_outcomes=wifi_outcomes,
         soak=soak,
         soak_cycles=soak_cycles,
@@ -189,6 +198,12 @@ def _apply_fault(device: str, op: str, times: int, chips: "dict[str, Any]", wlan
         wlan.raise_on[op] = OSError(errno.EIO, message)
         return
     chips[device].fault.inject_fault(op, OSError(errno.EIO, message), times=times)
+
+
+def _apply_hang(device: str, op: str, seconds: float, times: int, chips: "dict[str, Any]") -> None:
+    # Same shape as _apply_fault() above - see digital_twin/_fault_injection.py's own module
+    # docstring for why a real blocking time.sleep() (not an exception) is what this expresses.
+    chips[device].fault.inject_hang(op, seconds, times=times)
 
 
 async def _wait_until_built(timeout_s: float = 10.0) -> None:
@@ -291,6 +306,12 @@ async def _soak(host: str, port: int, cycles: int) -> "list[str]":
     return failures
 
 
+def _print_wdt_status() -> None:
+    # See both call sites' own comments for why this needs to run from two different places.
+    if sensortask_wozi.watchdog is not None:
+        print(f"digital_twin/run_wozi_integration.py shutdown: would_have_triggered_count={sensortask_wozi.watchdog.would_have_triggered_count}")
+
+
 def _ensure_dir(path: str) -> None:
     import os
 
@@ -305,6 +326,11 @@ async def main(config: RunConfig) -> "dict[str, Any]":
     # unix_port_poll_prewarm.py's own module docstring and digital_twin/README.md's "Known gaps"
     # section (a confirmed Unix-port-only MicroPython bug this pre-warming avoids triggering).
     prewarm_poll_set()
+    # Must also run before anything constructs a real AsyUDPSocket (captive_dns.py's DNSServer,
+    # asy_ntp_client.py's NTP fetch, asy_dns_client.py's own resolver) - see
+    # _unix_port_udp_addr_shim.py's own module docstring for the confirmed Unix-port-only
+    # socket.bind()/connect() quirk this works around, entirely from twin-side code.
+    patch_asy_udp_socket_for_unix_port()
     machine.configure_fram_state_path(config.fram_state_path)
     machine.configure_scd30_state_path(config.scd30_state_path)
     if config.seed is not None:
@@ -320,7 +346,7 @@ async def main(config: RunConfig) -> "dict[str, Any]":
         f"digital_twin/run_wozi_integration.py starting - host={config.host!r} port={config.port!r} "
         f"fram_state_path={config.fram_state_path!r} scd30_state_path={config.scd30_state_path!r} "
         f"seed={config.seed!r} soak_cycles={config.soak_cycles!r} "
-        f"duration={config.duration!r} faults={config.faults!r} wifi_outcomes={config.wifi_outcomes!r}"
+        f"duration={config.duration!r} faults={config.faults!r} hangs={config.hangs!r} wifi_outcomes={config.wifi_outcomes!r}"
     )
 
     main_task = asyncio.get_event_loop().create_task(
@@ -349,10 +375,17 @@ async def main(config: RunConfig) -> "dict[str, Any]":
         }
         for device, op, times in config.faults:
             _apply_fault(device, op, times, chips, sensortask_wozi.conn.wlan)
+        for device, op, seconds, times in config.hangs:
+            _apply_hang(device, op, seconds, times, chips)
         if config.wifi_outcomes:
             sensortask_wozi.conn.wlan.script_connect_outcomes(config.wifi_outcomes)
 
-        await _wait_until_serving(config.host, config.port)
+        # A queued --hang can fire during setup() (before this point) via a real, blocking
+        # time.sleep() that freezes the whole interpreter, including this very poll loop - the
+        # default 10s bound isn't enough to survive that, so it's widened by the total configured
+        # hang time (plus its own normal margin) whenever any are armed.
+        total_hang_s = sum(seconds * times for _device, _op, seconds, times in config.hangs)
+        await _wait_until_serving(config.host, config.port, timeout_s=10.0 + total_hang_s)
 
         if config.soak:
             failures = await _soak(config.host, config.port, config.soak_cycles)
@@ -378,6 +411,19 @@ async def main(config: RunConfig) -> "dict[str, Any]":
         elif config.duration > 0:
             await asyncio.sleep(config.duration)
     finally:
+        # Unconditional (not just under --soak, unlike the summary print above) - an external
+        # observer (e.g. scripts/_digital_twin_ci_suite.py) driving this as a subprocess has no
+        # in-process access to sensortask_wozi.watchdog itself, so this printed line is the only way
+        # to confirm the watchdog never (or did) starve on any run, soak or not. Called here, before
+        # main_task.cancel()/await below rather than after: confirmed by direct reproduction that a
+        # real SIGINT shutdown reliably never reaches any statement placed after that cancel/await
+        # pair - the watchdog's own counter value is unaffected by cancellation timing either way, so
+        # reading it this early costs nothing. This still isn't the only call site needed: it covers
+        # every path THIS finally block actually runs for, but not the "parked in the scheduler's own
+        # poll wait" SIGINT case the __main__ block below's own comment documents, where this whole
+        # finally block never runs at all - _print_wdt_status() is called from both places for that
+        # reason, the same duplication flush_fram()/flush_scd30() already need and already have below.
+        _print_wdt_status()
         main_task.cancel()
         try:
             await main_task
@@ -414,6 +460,8 @@ if __name__ == "__main__":
         # interrupt landing while a task was genuinely mid-bytecode-execution, not parked).
         machine.flush_fram()
         machine.flush_scd30()
+        _print_wdt_status()  # same "parked in scheduler poll" gap as flush_fram()/flush_scd30()
+        # above - see main()'s own finally block for the primary call site and why both are needed.
         print("digital_twin/run_wozi_integration.py: interrupted")
     if _summary is not None and _summary["failures"]:
         sys.exit(1)

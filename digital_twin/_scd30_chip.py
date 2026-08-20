@@ -151,6 +151,7 @@ class Scd30Chip:
             self._rdy_pin.simulate_edge(1)
 
     def handle_writeto(self, data: bytes) -> None:
+        self.fault.maybe_hang("writeto")
         self.fault.maybe_raise("writeto")
         if len(data) == 2:
             self._last_cmd = (data[0] << 8) | data[1]
@@ -181,6 +182,7 @@ class Scd30Chip:
         # Unrecognized shape - real hardware would just not respond usefully.
 
     def handle_readfrom_into(self, nbytes: int) -> bytes:
+        self.fault.maybe_hang("readfrom_into")
         self.fault.maybe_raise("readfrom_into")
         cmd = self._last_cmd
         if cmd == _CMD_GET_DATA_READY:
