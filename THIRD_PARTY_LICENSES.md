@@ -102,7 +102,7 @@ attached to code derived from an Apache-2.0 project - the derived portion stays 
   built-in WiFi stack in `asy_wifi_service.py`/`asy_ntp_client.py`), so there is nothing in this
   repo to compare it against.
 
-## Investigated, not yet resolved - project owner decision pending
+## Author-permitted, no formal license (public forum offer)
 
 - [`karfas/upy-simple-app`](https://github.com/karfas/upy-simple-app) (`lib/asy_udp_client.py`,
   `lib/asy_ntp_time.py`) — the project owner flagged this repo from memory as a possible origin
@@ -110,8 +110,8 @@ attached to code derived from an Apache-2.0 project - the derived portion stays 
   - `asy_ntp_time.py`'s NTP-parsing logic is itself already a fairly direct copy of
     micropython-lib's own `ntptime.py` (see the MIT entry above), wrapped in an async task around
     karfas's own `AsyUDPClient`. That part's real origin is micropython-lib, independent of
-    whether this project's code passed through karfas's file along the way - already resolved
-    above, no further action needed for that portion.
+    whether this project's code passed through karfas's file along the way - already covered
+    above.
   - `asy_udp_client.py`'s `AsyUDPClient` class — a `select.poll()`-based async UDP wrapper with a
     lazy `_connect()`, a `ready(mask, timeout_ms)` poll-and-wait helper, and a combined
     send-then-receive-with-retries method — is structurally close to this project's own
@@ -121,14 +121,18 @@ attached to code derived from an Apache-2.0 project - the derived portion stays 
     `write`/`recvfrom`, `send_and_receive` vs. `write_and_recvfrom`) and this project's version is
     materially more built out (locking, retries, context-manager support, input validation,
     `mode="server"` support karfas's client-only class doesn't have).
-  - **`karfas/upy-simple-app` carries no `LICENSE` file anywhere in the repository, no license
-    badge, no `README.md`, and no header comment in either `lib/asy_udp_client.py` or
-    `lib/asy_ntp_time.py` itself** — confirmed by checking the repo root, both files' own opening
-    lines, and the (missing) README. Under default copyright law this means no permission has been
-    granted to copy, modify, or redistribute this code at all - a materially different, more
-    serious situation than the Apache-2.0 `captive_dns.py` case above, which is permissively
-    licensed and only needed attribution. **Flagged here for the project owner's decision, not
-    resolved unilaterally.**
+  - `karfas/upy-simple-app` carries no `LICENSE` file, license badge, `README.md`, or header
+    comment in either file - confirmed directly. On its own, that would mean no permission granted
+    under default copyright law (unlike the permissively-licensed Apache-2.0 `captive_dns.py` case
+    above). However, the project owner located and provided the actual context:
+    [`micropython/discussions#12967`](https://github.com/orgs/micropython/discussions/12967) (Nov
+    2023) shows karfas posting links to exactly these two files, in direct response to a public
+    request for async NTP/UDP code, saying "it could be a starting point" - and a third party
+    (`bulletmark`) replying that they'd use the files in their own app, with no objection from
+    karfas. Treated as the author's own public offer of the code for this kind of reuse - a real,
+    checkable basis for permission even without a formal license file. Attribution notes were
+    added to both files (no formal SPDX identifier is used, since this isn't a named license) with
+    a link to the discussion thread and a list of what changed from karfas's originals.
 
 ## Provenance not established
 

@@ -1,3 +1,9 @@
+# Attribution note (no formal SPDX identifier - see THIRD_PARTY_LICENSES.md): this class's shape
+# is close to karfas's AsyUDPClient (github.com/karfas/upy-simple-app, lib/asy_udp_client.py),
+# which that repo's author posted publicly in github.com/orgs/micropython/discussions/12967 as "a
+# starting point" for this exact use case - no formal LICENSE in that repo, but treated as the
+# author's own public offer of the code for this kind of reuse.
+
 import time
 import asyncio
 import select
