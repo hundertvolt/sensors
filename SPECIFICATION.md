@@ -717,6 +717,51 @@ how to swap it in, FRAM/SCD30 persistence, running its own tests, and the requir
 a new chip fake — also covered from the driver side in Part C.11 point 9 above) and README.md's
 "Digital twin (hardware simulator)" section for the user-facing quick-start commands.
 
+**Chain-completeness requirement, generalized beyond sensor drivers (owner decision).** Part C.11
+point 9 above already mandates a matching chip fake for every new *sensor* driver. That's the
+specific instance of a broader standing rule: **any new module added to this project shall be
+added to the digital twin, provided all requirements are met for it to form a complete chain
+inside the twin** — the twin's whole point is exercising the real, assembled system end to end, not
+just the three sensors it started with. Two concrete shapes this takes:
+
+- A new **sensor driver**: the existing per-driver checklist (Part C.11 point 9) — bus-level chip
+  fake, wired into `machine.py`, exercised all the way up through its REST endpoint.
+- A new **common/base module** (e.g. a shared mixin `base_classes.py` gains, or a new cross-cutting
+  service alongside `system_service.py`/`asy_webserver_service.py`): if it's wired into
+  `sensortask_wozi.build_system()`'s own real object graph, it is automatically exercised by every
+  twin-backed run and test tier already listed here — no separate "does it need a twin fake"
+  question exists for a module that has no hardware surface of its own to fake in the first place.
+
+"As long as all requirements are met for it to form a complete chain" is the actual gate, not an
+automatic yes: a module only joins the twin once it can be driven through a real, observable path —
+bus/hardware surface (if any) through to construction, to `setup()`, to whatever REST-visible
+behavior it produces. A module that can't yet complete that chain (e.g. it depends on hardware this
+project has no chip fake for yet) stays out until the missing piece exists, flagged the same way
+any other genuinely-blocking gap is (CLAUDE.md's "flag, don't silently change" working agreement) —
+not silently deferred with no record.
+
+**Automated CI suite (`scripts/run_digital_twin_ci.sh`).** The manual on-demand walkthrough this
+project's own baseline verification passes used (fresh clean boot, every GET/PUT endpoint,
+`DebugLevel=5` verbose logging from boot, bus fault injection with logging still on, settings and
+error-history persistence across a real process restart, the automated soak check) is also wired
+into CI as its own job (`digital-twin-e2e` in `.github/workflows/ci.yml`), `needs: unit-tests`.
+**Clean**: wipes any leftover `digital_twin/*.json`/`digital_twin/config/` state before starting, so
+every run — CI or local — begins from a genuinely blank twin. **Build**: builds the MicroPython
+Unix port (cached, same convention as `scripts/test.sh`) and `frozen_modules/frozen_html.py`; a
+build failure fails the job before any test phase runs. **Test**:
+`scripts/_digital_twin_ci_suite.py` (a self-contained `uv run` CPython script — it only
+orchestrates the MicroPython subprocess and speaks plain HTTP to it, the code under test still only
+ever runs under the real Unix-port interpreter) drives `digital_twin/run_wozi_integration.py`
+through five real subprocess runs: (1) fresh boot, walk every endpoint, PUT settings across
+`/system`/`/notification`/`/sensors`/`/networking`/`/status`; (2) a real process restart from the
+same persisted state, proving `DebugLevel`/`WarnCO2`/`SCD30.MeasInt`/`Hostname` all survived reboot
+and that the now-persisted `DebugLevel=5` produces genuine multi-module verbose log output from
+boot; (3) another restart with `--fault sgp40:writeto:8` injected, proving the system degrades
+gracefully (`/measurements` still 200) and the fault gets logged and counted; (4) a fault-free
+restart proving the error count from run 3 itself persisted (not just logged once, forgotten on the
+next reboot); (5) a dedicated clean boot for the `--soak` check. See `digital_twin/README.md`'s
+"Automated CI suite" section for the full per-run breakdown.
+
 ---
 
 # Part B — Toolchain & Build

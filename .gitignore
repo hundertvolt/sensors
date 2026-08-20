@@ -53,3 +53,7 @@ tests/_tmp/
 digital_twin/fram_state.json
 digital_twin/scd30_state.json
 digital_twin/config/
+
+# scripts/run_digital_twin_ci.sh's own per-run subprocess log files (scripts/_digital_twin_ci_suite.py's
+# --logs-dir default) - plain, regenerable CI-run artifacts, never committed.
+digital_twin_ci_logs/

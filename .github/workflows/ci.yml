@@ -132,3 +132,45 @@ jobs:
           name: coverage-html-digital-twin
           path: htmlcov_digital_twin/
         continue-on-error: true
+
+  digital-twin-e2e:
+    # Automated version of the digital twin's on-demand manual walkthrough (fresh boot, every GET/
+    # PUT endpoint, DebugLevel=5 verbose logging, bus fault injection, settings/error persistence
+    # across a real process reboot, soak) - see digital_twin/README.md's "Automated CI suite"
+    # section and scripts/run_digital_twin_ci.sh's own header comment for the full reference.
+    # Deliberately a separate job from unit-tests above: this drives digital_twin/
+    # run_wozi_integration.py as a real subprocess over real HTTP through several genuine process
+    # restarts (to prove persistence survives an actual reboot, not just an in-process rebuild of
+    # the object graph the way tests/test_digital_twin_sensortask_integration.py already does) -
+    # a fundamentally different, heavier kind of check than the fast unit-test tier, not a
+    # duplicate of it.
+    #
+    # needs: unit-tests - runs after the unit-test tier both for fail-fast ordering (no reason to
+    # spend several more minutes on a full boot/reboot/soak cycle if the fast unit tests already
+    # caught a regression) and so this job's own toolchain-cache restore, below, can hit the same
+    # cache unit-tests' own unix-port-build step just populated.
+    needs: unit-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install uv
+        run: pip install uv
+      - name: Cache MicroPython Unix port build
+        uses: actions/cache@v6
+        with:
+          path: ~/pico-toolchain
+          # Same cache key as the unit-tests job's own identical step above - see that step's
+          # comment for why both toolchain/setup_toolchain.py and toolchain/versions.toml must be
+          # hashed together.
+          key: unix-port-${{ runner.os }}-${{ hashFiles('toolchain/versions.toml', 'toolchain/setup_toolchain.py') }}
+      - name: Run digital-twin clean/build/test cycle
+        run: scripts/run_digital_twin_ci.sh
+      - name: Upload digital-twin subprocess logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: digital-twin-ci-logs
+          path: digital_twin_ci_logs/
+          if-no-files-found: ignore
+        continue-on-error: true

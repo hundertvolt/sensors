@@ -195,6 +195,62 @@ All tests are deterministic — no wall-clock waiting, except one short-period/g
 test in `tests/test_digital_twin_machine.py` (`test_timer_fires_for_real_on_a_short_period`) that
 proves the real-time scheduling mechanism itself works at all, not a precise-cadence assertion.
 
+## Automated CI suite
+
+`scripts/run_digital_twin_ci.sh` turns the manual on-demand walkthrough above (fresh boot, every
+GET/PUT endpoint, `DebugLevel=5` verbose logging, bus fault injection, settings/error persistence
+across a real reboot, soak) into an automated, CI-gating check — wired in as the `digital-twin-e2e`
+job in `.github/workflows/ci.yml`. See `SPECIFICATION.md`'s "Digital twin" section (Part A.10) for
+the full architectural account of what it checks and why; this section is the practical how-to.
+
+```bash
+scripts/run_digital_twin_ci.sh   # clean -> build -> test, same as CI runs it
+```
+
+**Clean**: removes any leftover `digital_twin/fram_state.json`/`digital_twin/scd30_state.json`/
+`digital_twin/config/` before starting — every run begins from a genuinely blank twin, not
+whatever a previous local run or CI job happened to leave behind.
+
+**Build**: builds the MicroPython Unix port (if not already cached at `$PICO_TOOLCHAIN_DIR`, same
+convention as `scripts/test.sh`/`scripts/run_unix_port_integration.sh`) and
+`frozen_modules/frozen_html.py`. Must succeed before any test phase runs.
+
+**Test**: hands off to `scripts/_digital_twin_ci_suite.py`, a self-contained `uv run` CPython
+script (stdlib-only — no `uv sync` needed) that drives `digital_twin/run_wozi_integration.py` as a
+real subprocess, over real HTTP (`http.client`, not `_http_client.py` — this script runs under
+CPython, not the twin's own MicroPython process), through five real, sequential subprocess runs on
+a fixed port (`18080`, distinct from the manual entry point's `8080` default, so both can run
+side by side without colliding):
+
+1. **Baseline boot** — walk every `GET` endpoint (`/measurements`, `/sensors`, `/networking`,
+   `/system`, `/notification`, `/status`, `/`), then `PUT` a setting on each of
+   `/system` (`DebugLevel=5`), `/notification` (`WarnCO2=1800`), `/sensors`
+   (`SCD30.MeasInt=4`), `/networking` (`Hostname`), and `/status` (`ResetErrors`) — every route
+   that accepts `PUT`. Shut down cleanly (`SIGINT`, matching the documented Ctrl-C path — a plain
+   `SIGTERM`/`terminate()` would skip `run_wozi_integration.py`'s own FRAM/SCD30 flush) and confirm
+   the state files actually landed on disk.
+2. **Real reboot, settings persistence** — a fresh subprocess against the *same* persisted state
+   (no clean step in between — the whole point is testing what survives). Confirms every setting
+   from run 1 is still there after a genuine process restart, and that the now-persisted
+   `DebugLevel=5` produces real, multi-module verbose log output (`print_log.py`'s
+   `print(name, *args)` convention — checked for known `_NAME` prefixes like `SYSTEM`/`SGP40`/
+   `SCD30`/`WEBSERVER`) from the very start of boot, not just after a later `PUT`.
+3. **Reboot with fault injection, logging still on** — another restart, this time with
+   `--fault sgp40:writeto:8`. Confirms `/measurements` still returns `200` (graceful degradation,
+   never a crash or a `500`) and that the fault gets both logged (an `SGP40`-prefixed line actually
+   printed) and counted (`/status`'s `errcount.SGP40.counter` increments).
+4. **Reboot again, fault-free — error persistence** — proves run 3's error count itself survived
+   the reboot (SGP40's FRAM-backed error log, `PrintLogHistoryStore` — see
+   `src/print_log.py`), not just that it was logged once and forgotten.
+5. **Dedicated clean soak run** — a fresh `--soak --soak-cycles 20 --duration 0` run against a
+   freshly-wiped twin, checked for a clean exit and a printed `PASS` summary (see
+   `run_wozi_integration.py`'s own `_soak()` for the memory-trend methodology).
+
+Each run's subprocess stdout/stderr is captured to `digital_twin_ci_logs/run<N>_*.log` (gitignored;
+uploaded as a CI build artifact via the `digital-twin-e2e` job's own `if: always()` upload step, so
+a failure's full boot log is inspectable from the Actions run itself, not just the pass/fail
+summary). The suite exits non-zero if any check fails, failing the CI job.
+
 ## Adding a new chip fake
 
 **Required whenever a new sensor driver lands in `src/`** (see `SPECIFICATION.md` C.11's own
