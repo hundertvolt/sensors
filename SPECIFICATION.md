@@ -424,9 +424,9 @@ versus what our own REST layer still has to add.
   the same decaying failure counter and eventual full-reboot fallback as any other task.
   **"Restart Microdot if it crashes" is therefore already implemented generically — it does not need
   Microdot-specific supervisor code —** provided the failure actually terminates that task rather
-  than being silently contained at a level the supervisor never observes (see BACKLOG.md for the
-  still-open question of exactly what "crashes" means at the per-connection level on MicroPython's
-  `asyncio`).
+  than being silently contained at a level the supervisor never observes (answered by the next
+  bullet: each connection is its own Task, so a per-connection failure never reaches this level at
+  all — only a fully-dead server task does).
 - **Each accepted connection runs in its own independent `asyncio.Task`** (confirmed against
   `extmod/asyncio/stream.py`'s `Server._serve()`, which calls `core.create_task(cb(s2s, s2s))` per
   accepted connection — the same isolation CPython's `asyncio.start_server()` gives). Combined with

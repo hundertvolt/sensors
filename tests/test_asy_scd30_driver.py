@@ -87,6 +87,25 @@ async def _settle(n: int = 5) -> None:
         await asyncio.sleep(0)
 
 
+class _FastAsyncSleep:
+    # _read_dev_register()/_send_dev_command() each make real 0.05s asyncio.sleep() calls - fine for
+    # a directly-`run()`-awaited coroutine, but far too slow for a test driving get_config_snapshot()
+    # as a background task through a bounded sleep(0) pump loop (same technique as
+    # test_asy_bmp3xx_driver.py's own _FastAsyncSleep). asyncio.sleep is a shared, process-wide
+    # function, restored on exit regardless of how the `with` block exits.
+    def __enter__(self) -> "_FastAsyncSleep":
+        self._real_sleep = asyncio.sleep
+
+        async def _fast(_seconds: float) -> None:
+            await self._real_sleep(0)
+
+        asyncio.sleep = _fast  # type: ignore[assignment]  # deliberate monkeypatch, not a real caller mismatch
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        asyncio.sleep = self._real_sleep
+
+
 class _RaiseOnArm:
     # Same technique as test_system_service.py's/test_asy_wifi_service.py's own _RaiseOnArm -
     # toggles tests/machine.py's Timer.raise_on_arm (a shared class attribute, not per-instance)
@@ -953,6 +972,48 @@ def test_get_dict_cfg_degrades_to_none_per_field_on_bus_fault_not_a_crash() -> N
         "ForceCalRef": None,
         "SelfCal": None,
     }
+
+
+def test_get_dict_cfg_snapshot_is_atomic_against_a_concurrent_config_write() -> None:
+    # Regression test for BACKLOG.md's torn-read entry: get_dict_cfg()'s six config fields used to
+    # be six independently-locked register reads, so a concurrent write (also i2c_scd30-locked)
+    # could land between any two of them and produce a dict mixing pre-/post-write values.
+    # get_config_snapshot() now holds the device-session lock for the whole batch, so a concurrent
+    # write can't even start its own I2C traffic until the whole read has finished - proven here by
+    # checking the concurrent write's own writeto() log entry only appears after all 6 of the read's
+    # own log entries (2 ops/register: one writeto for the register address, one readfrom_into for
+    # the reply).
+    reader = make_reader()
+    i2c = reader_fake_i2c(reader)
+    for value in (450, 10, 1000, 200, 400, 1):  # TempOffs, MeasInt, AmbPres, Altitude, ForceCalRef, SelfCal
+        i2c.read_queue.append(register_frame(value))
+
+    async def scenario() -> "tuple[dict, list]":
+        with _FastAsyncSleep():
+            read_task = asyncio.create_task(reader.get_dict_cfg())
+            await _settle(3)  # let the read task acquire the lock and begin its first register read
+            assert not read_task.done()
+
+            write_task = asyncio.create_task(reader.scd.set_temperature_offset(9.99))
+            await _settle(3)  # give the write every chance to run if it weren't blocked by the lock
+            assert not write_task.done()  # still blocked - proves the lock is held for the whole batch
+
+            result = await read_task
+            await write_task
+        return result, list(i2c.log)
+
+    result, log = run(scenario())
+    fields = result["SCD30"]
+    assert fields["TempOffs"] == 4.5  # the pre-write value, not the concurrent write's 9.99
+    read_ops = 12  # 6 registers x (writeto register address, readfrom_into reply)
+    # The write's own command frame is 5 bytes (2-byte command + 2-byte data + 1-byte CRC) -
+    # distinct from the read's 2-byte register-address probe for the same command code (TempOffs
+    # happens to be read first in the batch, so a length-agnostic match would find that probe
+    # instead at index 0).
+    write_index = next(
+        i for i, entry in enumerate(log) if entry[0] == "writeto" and entry[2][:2] == bytes([0x54, 0x03]) and len(entry[2]) == 5
+    )
+    assert write_index >= read_ops  # the write's own bus traffic never interleaved with the read's
 
 
 def test_get_dict_data_reports_measured_values_by_name() -> None:

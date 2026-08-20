@@ -249,6 +249,12 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   directly at `SPECIFICATION.md`'s Parts C, D, E, and B respectively — they held no content of
   their own by then, just a "moved here" pointer.
 
+**`DEVICE_REFERENCE.md`** (permanent, end-user-facing):
+
+- **[`DEVICE_REFERENCE.md`](DEVICE_REFERENCE.md)** — notes for configuring/operating a deployed
+  unit (Neopixel LED signal legend, SGP40 FRAM backup config semantics), not architecture/AI-session
+  material — kept separate from README.md/CLAUDE.md/SPECIFICATION.md for that reason.
+
 **`digital_twin/README.md`** (permanent, not yet folded into `SPECIFICATION.md`):
 
 - **`digital_twin/README.md`** — the standing reference for the hardware simulator: what's there,

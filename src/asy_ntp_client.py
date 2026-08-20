@@ -61,7 +61,10 @@ _VAL_GMT = const((("GMTOffset", "int", 3600, -43200, 43200, None),))
 _VAL_DST = const((("DSTOffset", "int", 3600, -43200, 43200, None),))
 
 _NAME = const("NTP")
+# Kept as a literal tuple inline (not `_FIELDS` below) because mypy's namedtuple plugin can only
+# infer field names from a literal at the call site, not through a variable indirection.
 NTP = namedtuple("NTP", ("Synced", "LastSyncAge", "TS"))
+_FIELDS = const(("Synced", "LastSyncAge", "TS"))  # kept in sync with NTP's own fields above
 GMTimeStruct = namedtuple("GMTimeStruct", ("year", "month", "mday", "hour", "minute", "second", "weekday", "yearday"))
 
 
@@ -315,7 +318,7 @@ class AsyNtpClient(SensorReaderConfig):
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         data = await self.get_data()
-        return make_dict(data)
+        return make_dict(data, _FIELDS)
 
     async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         return await self._get_dict_cfg(_NAME, _VAL_NH + _VAL_NOS + _VAL_NIH + _VAL_GMT + _VAL_DST)

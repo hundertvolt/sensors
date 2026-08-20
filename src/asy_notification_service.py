@@ -49,7 +49,10 @@ _VAL_OWN_SCHEMA = _VAL_INT_FIELDS + _VAL_FLOAT_FIELDS + _VAL_BOOL_FIELDS
 
 # Minimal but real measurement snapshot (SPECIFICATION.md C.4.2's get_data()/get_dict_data() shape, same as
 # every other Reader) - whether anything was triggered as of the most recently completed poll cycle.
+# Kept as a literal tuple inline (not `_FIELDS` below) because mypy's namedtuple plugin can only
+# infer field names from a literal at the call site, not through a variable indirection.
 NOTIFY = namedtuple("NOTIFY", ("Triggered", "TS"))
+_FIELDS = const(("Triggered", "TS"))  # kept in sync with NOTIFY's own fields above
 
 
 class NotificationSignal:
@@ -184,7 +187,7 @@ class NotificationCoordinator(SensorReaderConfig):
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         data = await self.get_data()
-        return make_dict(data)
+        return make_dict(data, _FIELDS)
 
     async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         if not self._finalized:  # self.cfg_schema doesn't exist yet - same caller-ordering guard as get_data()

@@ -90,8 +90,7 @@ def _flatten_cfg_values(values: "dict[str, Any]") -> "dict[str, Any]":
     # and /system silently dropped GMTOffset/DSTOffset (sourced from ntp, also nested-shaped) while
     # DebugLevel (sourced from sysfunct, already flat) happened to work. Safe to merge any
     # dict-valued top-level entry unconditionally: every config schema in this codebase today is
-    # flat scalar fields only (BACKLOG.md's own config_manager.py make_dict() note already tracks
-    # this as the one place a future dict/list-valued field would need re-checking).
+    # flat scalar fields only.
     flat: dict[str, Any] = {}
     for key, value in values.items():
         if isinstance(value, dict):

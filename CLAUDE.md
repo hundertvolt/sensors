@@ -245,6 +245,14 @@ information):
   elsewhere in that file. **Rule: any test double for `uart.poller` (or an equivalent fake-stream
   object) must be a bounded fake like `_StepPoller`, never backed by a real `select.poll()`.** Don't
   re-diagnose this specific symptom as a new code bug if it recurs elsewhere.
+- **Known intermittent-`MemoryError` cause, fixed**: `scripts/test.sh` runs every `tests/test_*.py`
+  file as one Unix-port process for all its test functions, sharing one heap — a file whose several
+  heaviest tests each build the whole real `sensortask_wozi.build_system()` object graph (one test
+  builds it twice) could exhaust the interpreter's 2MB default heap roughly 1 run in 3, depending on
+  MicroPython's own non-deterministic test-function run order. Fixed with `-X heapsize=8M` (verified
+  10/10 clean runs) — a Unix-port-only test-harness setting, unrelated to the real rp2040's own RAM
+  budget. Don't re-diagnose a flaky `MemoryError` in a heavy test file as a new code bug before
+  checking this flag is still in place.
 - **Local test runs pin `$TZ=UTC` (Unix port only).** The Unix port's `time.mktime()`
   (`ports/unix/modtime.c`) calls the host's real libc `mktime()`, which interprets its input as
   **local time** per the process's `$TZ` — unlike the deployed rp2 firmware, whose

@@ -106,6 +106,16 @@ failed=0
 # (4096 bytes) whenever stdout isn't a tty - true for any GH Actions step. Harmless and cheap to
 # keep even though it turned out not to be what was causing the hang (see above); small,
 # immediate, line-buffered writes are still a reasonable default for CI log output.
+#
+# -X heapsize=8M (default 2097152 = 2MB) - tests/test_digital_twin_sensortask_integration.py's own
+# heaviest tests each build the whole real object graph (a fresh 8KB FramChip, ConfigManagers, ...)
+# one or more times per test, sharing one process/heap across every test function in the file (this
+# binary is invoked once per file, not once per test). Confirmed directly: with the 2MB default,
+# that file failed with a real MemoryError roughly 1 run in 3 depending on MicroPython's own
+# non-deterministic test-function run order (this file's own docstring already notes run order
+# differs from definition order); 8M cleared 5/5 consecutive runs. This is a Unix-port-only test-
+# harness setting - unrelated to the real rp2040's own RAM budget (SPECIFICATION.md Part F.1), and
+# every test file still runs under the same GC the real target uses either way.
 per_file_timeout_s="${PER_FILE_TIMEOUT_S:-180}"
 max_attempts=3
 for test_file in tests/test_*.py; do
@@ -123,7 +133,7 @@ for test_file in tests/test_*.py; do
         cmd=("$test_file")
     fi
     for attempt in $(seq 1 "$max_attempts"); do
-        if MICROPYPATH="src:tests:frozen_modules:.frozen" stdbuf -oL -eL timeout --kill-after=10 "$per_file_timeout_s" "$micropython_bin" "${cmd[@]}"; then
+        if MICROPYPATH="src:tests:frozen_modules:.frozen" stdbuf -oL -eL timeout --kill-after=10 "$per_file_timeout_s" "$micropython_bin" -X heapsize=8M "${cmd[@]}"; then
             ec=0
         else
             ec=$?

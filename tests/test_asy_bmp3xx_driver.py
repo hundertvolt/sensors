@@ -1252,6 +1252,35 @@ def test_get_dict_cfg_keeps_none_for_oversampling_when_sensor_unreachable() -> N
     assert cfg["SampleInterv"] == 2  # config-only field, unaffected by the sensor bus failure
 
 
+def test_get_config_snapshot_holds_the_device_lock_once_for_the_whole_batch_not_per_field() -> None:
+    # Regression test for BACKLOG.md's torn-read entry: get_dict_cfg()'s 3 config fields used to be
+    # 3 independently-locked reads, so a concurrent set_*_oversampling()/set_filter_coefficient()
+    # call (also i2c_bmp3xx-locked) could land between any two of them and produce a dict mixing
+    # pre-/post-write values. get_bits()/set_bits() never actually suspend in this fake (no real I2C
+    # bus timing to await), so the interleaving itself can't be reproduced directly here the way
+    # test_asy_scd30_driver.py's own version of this test can - this instead proves the actual fix
+    # mechanism directly: get_config_snapshot() acquires the device-session lock exactly once for
+    # the whole batch, not once per field.
+    i2c, reader = make_clean_reader("config_snapshot_lock")
+    seed_status(i2c, 0x10 | 0x60)
+    seed_err(i2c, 0x00)
+
+    lock = reader.bmp.i2c_bmp3xx.asy_lock
+    acquire_calls = 0
+    real_acquire = lock.acquire
+
+    async def counting_acquire() -> None:
+        nonlocal acquire_calls
+        acquire_calls += 1
+        await real_acquire()
+
+    lock.acquire = counting_acquire  # type: ignore[assignment]
+
+    snapshot = run(reader.bmp.get_config_snapshot())
+    assert acquire_calls == 1
+    assert snapshot == (1, 1, 0)  # schema defaults (PressOvers, TempOvers, FiltCoeff), untouched here
+
+
 # ---------------------------------------------------------------------------
 # Integration: BMP3xx_Reader driven together with real print_log.py/base_classes.py/
 # asy_i2c_driver.py collaborators (only the raw I2C bus transaction layer is faked) - successful

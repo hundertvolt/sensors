@@ -1,6 +1,7 @@
-"""Middle integration tier: builds the real sensortask_wozi object graph against the real digital_twin buses and drives real REST traffic over a real socket, but only ever starts the specific tasks each test needs - never the full start_and_check_tasks() supervisor. See digital_twin/README.md's "Swapping the twin in" section for the full account, including the sys.path.insert(0, "digital_twin") mechanism and a real bug this tier already found."""
+"""Middle integration tier: builds the real sensortask_wozi object graph against the real digital_twin buses and drives real REST traffic over a real socket, but only ever starts the specific tasks each test needs - never the full start_and_check_tasks() supervisor, with one deliberate exception (the task-supervisor-restart section below, whose whole point is that real supervisor loop). See digital_twin/README.md's "Swapping the twin in" section for the full account, including the sys.path.insert(0, "digital_twin") mechanism and a real bug this tier already found."""
 
 import asyncio
+import gc
 import os
 import sys
 
@@ -10,7 +11,12 @@ sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comme
 
 import _http_client  # noqa: E402
 
+# digital_twin's own fake machine module - configure_fram_state_path()/flush_fram(), used only by
+# this file's own reboot-survival section below.
+import machine  # noqa: E402
+
 import sensortask_wozi  # noqa: E402
+from asy_scd30_driver import SCD30  # noqa: E402  # used only by this file's own reboot-survival section below
 
 try:
     from typing import TYPE_CHECKING
@@ -18,7 +24,7 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
+    from collections.abc import Callable, Coroutine
     from typing import Any, TypeVar
 
     T = TypeVar("T")
@@ -107,6 +113,19 @@ async def _cancel(task: "asyncio.Task[Any]") -> None:
         await task
     except asyncio.CancelledError:
         pass
+
+
+async def _wait_until(predicate: "Callable[[], bool]", timeout_s: float, interval_s: float = 0.25) -> bool:
+    # Bounded polling helper for the sections below that drive a real background task through a
+    # real multi-second state transition (mode switches, supervisor check cycles) rather than
+    # guessing a single fixed sleep duration.
+    elapsed = 0.0
+    while elapsed < timeout_s:
+        if predicate():
+            return True
+        await asyncio.sleep(interval_s)
+        elapsed += interval_s
+    return predicate()
 
 
 # ---------------------------------------------------------------------------
@@ -366,6 +385,240 @@ def test_watchdog_is_never_starved_while_every_real_task_runs_concurrently() -> 
                 await _cancel(task)
 
     run_timed(scenario(), timeout_s=15.0)
+
+
+# ---------------------------------------------------------------------------
+# Task-supervisor restart, end-to-end (BACKLOG.md "Whole-system integration test scope") - a real
+# task drawn from the REAL, full _collect_task_starters() list (build_system()'s own real object
+# graph, not a hand-built/synthetic task list) actually dying and being rediscovered/restarted by
+# SystemService.start_and_check_tasks()'s own real supervisor loop, via the real get_task_starters()
+# indirection - not a fake of the supervisor itself. The one test in this file that starts the real
+# full task list through the real supervisor rather than a hand-picked subset (see this file's own
+# module docstring).
+# ---------------------------------------------------------------------------
+
+
+def test_start_and_check_tasks_restarts_a_real_dead_task_from_the_real_full_task_list() -> None:
+    port = _next_test_port()
+
+    async def scenario() -> None:
+        await _boot(port)
+        assert sensortask_wozi.sysfunct is not None and sensortask_wozi.bmp_reader is not None
+        sysfunct = sensortask_wozi.sysfunct
+        task_starters = sensortask_wozi._collect_task_starters()  # the REAL, full list - every
+        # constructed module's own get_task_starters(), exactly what main() itself would use.
+
+        started: dict[int, list[Any]] = {}  # values are asyncio.Task[Any] | None - real _start_task()'s own return type
+        from system_service import SystemService
+
+        real_start_task = SystemService._start_task
+
+        async def _tracking_start_task(self: "Any", starter: "Any", n: "int") -> "Any":
+            # Observes the real supervisor's own real task-(re)start calls without changing its
+            # behavior at all - the same non-invasive class-method-wrap convention
+            # test_sensortask_wozi.py's own FRAM-chunk-order test already uses.
+            task = await real_start_task(self, starter, n)
+            started.setdefault(n, []).append(task)
+            return task
+
+        SystemService._start_task = _tracking_start_task  # type: ignore[method-assign]
+        supervisor_task = asyncio.get_event_loop().create_task(sysfunct.start_and_check_tasks(task_starters))
+        try:
+            # bmp_reader.start_asy_trigger's own task (_base_trigger()) is just a real event-wait
+            # loop with no I/O and no Timer armed in this test (start_timers() was never called) -
+            # a real, side-effect-free task to kill and watch get restarted. The real restart logic
+            # itself (start_and_check_tasks()) never inspects which task died or why, only
+            # task.done(), so this pick is representative of any real task in the list.
+            target_idx = task_starters.index(sensortask_wozi.bmp_reader.start_asy_trigger)
+            assert await _wait_until(lambda: target_idx in started, timeout_s=5.0), (
+                "the real task was never started by the real supervisor at all"
+            )
+            assert len(started[target_idx]) == 1
+            first_task = started[target_idx][0]
+            assert first_task is not None and not first_task.done()
+
+            first_task.cancel()  # a real task genuinely ending - the same observable state
+            # (task.done() == True) a real crash would leave behind; start_and_check_tasks() only
+            # ever inspects .done(), never *why* a task ended.
+            assert await _wait_until(lambda: len(started[target_idx]) == 2, timeout_s=6.0), (
+                "start_and_check_tasks() never rediscovered and restarted the real dead task"
+            )
+            second_task = started[target_idx][1]
+            assert second_task is not None
+            assert second_task is not first_task
+            assert not second_task.done()
+        finally:
+            SystemService._start_task = real_start_task  # type: ignore[method-assign]
+            await _cancel(supervisor_task)  # only cancels the outer wrapper (see this file's own
+            # watchdog-section comment above) - every real started task is cancelled individually
+            # below too.
+            for tasks in started.values():
+                for task in tasks:
+                    if task is not None:
+                        await _cancel(task)
+            # Defensive: the real, unmodified wlan_connect task (started as part of the real full
+            # list above) can independently reach real hotspot activation and start its own real
+            # DNSServer task within this test's own window - not cancelled by the loop above since
+            # it's spawned internally by AsyConnTime, not through _start_task(). Left running, it
+            # would hold real UDP port 53 into the next section's own test.
+            if sensortask_wozi.conn is not None and sensortask_wozi.conn.dns_server_task is not None:
+                await _cancel(sensortask_wozi.conn.dns_server_task)
+            # This test starts the REAL full task list (every registered task, twice for the one
+            # that gets restarted) - a known real failure mode on this file's own shared per-process
+            # heap otherwise (see the watchdog section's own comment above: orphaned task references
+            # from one test starved a later test's build_system() with a real MemoryError before an
+            # explicit collect() here was added).
+            gc.collect()
+
+    run_timed(scenario(), timeout_s=20.0)
+
+
+# ---------------------------------------------------------------------------
+# WiFi hotspot/DNS/LED chain, end-to-end (BACKLOG.md "Whole-system integration test scope") - a real
+# STA connect failure driving AsyConnTime through a real STA -> hotspot mode transition, starting a
+# real DNSServer task, with the real WiFi-status LED (conn.set_ext_led(pixel), build_system()'s own
+# construction step 13) actually driven by the real state machine along the way.
+# ---------------------------------------------------------------------------
+
+
+def test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_and_status_led() -> None:
+    port = _next_test_port()
+
+    async def scenario() -> None:
+        await _boot(port)
+        assert sensortask_wozi.conn is not None and sensortask_wozi.pixel is not None
+        conn = sensortask_wozi.conn
+        pixel = sensortask_wozi.pixel
+
+        # A real configured SSID (not the "SSID==''" unconfigured shortcut) so this exercises a
+        # genuine scripted STA connect failure through the real state machine, not just "never
+        # configured".
+        persisted, _results = await conn.cfgmgr.write_config({"SSID": "TestNet"}, conn.get_cfg_schema())
+        assert persisted
+
+        import network  # digital_twin's own fake - see this file's own sys.path setup above
+
+        conn.wlan.script_connect_outcomes([network.STAT_NO_AP_FOUND])
+
+        pixel_task = pixel.start_asy_neopixel_led_overl()  # the one real pixel task that turns
+        # conn's own on()/off()/toggle() LED calls into real committed NeoPixel frames.
+        wifi_task = conn.start_asy_wlan_connect()
+        try:
+            await asyncio.sleep(0.2)  # let wlan_connect()'s own synchronous prefix
+            # (_reset_wlan_connect_state(), which unconditionally zeroes connection_failures) run
+            # first - setting the field before the task got a chance to start would just be
+            # immediately overwritten once it did.
+            # Fast-forwards the real conn_fail_to_hotspot=5 streak (sensortask_wozi.py's own real
+            # construction call) to "one real scripted failure away from hotspot fallback" - the
+            # same direct-attribute test-seam convention test_sensortask_wozi.py's own
+            # test_webserver_networking_put_ntp_fields_forces_a_resync() already uses
+            # (`sensortask_wozi.ntp.ntp_retries = 3`), not a fake of
+            # _register_sta_connection_failure() itself. Waiting out 5 real scripted-failure cycles
+            # (each with its own real wifi_refresh_sec sleep) would exercise the identical real
+            # transition, just far slower.
+            conn.connection_failures = 4
+            started = await _wait_until(lambda: conn.dns_server_task is not None, timeout_s=25.0)
+            assert started, "real hotspot activation never started the real DNSServer task"
+            assert not conn.dns_server_task.done()  # type: ignore[union-attr]  # started == True above
+            # The real WiFi-status LED wiring didn't just exist - it actually drove real
+            # hardware-facing calls during the transition (poll-time toggles, the on-failure
+            # _led_off()), landing as real committed frames on the real (twin) NeoPixel.
+            assert conn.led is pixel
+            assert len(pixel.pixel.writes) > 0, "the real status LED never actually wrote a frame"
+        finally:
+            await _cancel(wifi_task)
+            await _cancel(pixel_task)
+            if conn.dns_server_task is not None:
+                await _cancel(conn.dns_server_task)
+            gc.collect()  # see the task-supervisor-restart section's own comment above - this test
+            # starts several real background tasks (wifi, pixel, hotspot DNS) too.
+
+    run_timed(scenario(), timeout_s=35.0)
+
+
+# ---------------------------------------------------------------------------
+# SGP40 VOC-backup reboot survival, end-to-end (BACKLOG.md "Whole-system integration test scope") -
+# a real FRAM write through the real sgp_reader/fram construction order from build_system(), a
+# simulated reboot via digital_twin's own FramChip state-file persistence (digital_twin/machine.py's
+# configure_fram_state_path()/flush_fram() - the twin's real reboot-survival mechanism, not a
+# hand-rolled substitute), then a real restore against a brand-new build_system() object graph.
+# ---------------------------------------------------------------------------
+
+
+def test_sgp40_voc_backup_survives_a_simulated_reboot_through_the_real_fram_chunk() -> None:
+    async def scenario() -> None:
+        cfg_path = _tmp_cfg_dir()
+        state_path = cfg_path + "fram_state.json"
+        machine.configure_fram_state_path(state_path)
+        try:
+            # --- Boot 1: real construction, real FRAM chunk 3 (SPECIFICATION.md Part A.7) write
+            # through the real chain. ---
+            await sensortask_wozi.build_system(cfg_path=cfg_path, web_host="127.0.0.1", web_port=_next_test_port())
+            assert sensortask_wozi.sgp_reader is not None and sensortask_wozi.scd_reader is not None
+            sgp1 = sensortask_wozi.sgp_reader
+            # sgp_comp_callback (sensortask_wozi.py's own real construction wiring) reads
+            # scd_reader.get_data() for humidity compensation - real _read_sgp() bails out (no
+            # measurement, no backup) without it. scd_reader's own read chain is orthogonal to what
+            # this chain tests, so this seeds its real cached reading directly via the same
+            # _set_meas_data() a real read cycle itself calls (test_asy_scd30_driver.py's own
+            # established precedent for reaching this exact seam), rather than also driving a real
+            # SCD30 IRQ-triggered read cycle just to satisfy an unrelated dependency.
+            await sensortask_wozi.scd_reader._set_meas_data(SCD30(800, 22.0, 45.0, None, None, None))
+            # WaitTimeNTP's schema default (30) would need 30 real backup-triggering cycles before
+            # _run_backup()'s own require_ntp gate ever clears without a real NTP sync (asy_sgp40_driver.py's
+            # own voc_write countdown) - set to its minimum positive value so the very first real
+            # backup below can complete without depending on real NTP reachability in this sandbox.
+            persisted, _results = await sgp1.cfgmgr.write_config({"WaitTimeNTP": 1}, sgp1.get_cfg_schema())
+            assert persisted
+            task = sgp1.start_asy_read()
+            try:
+                # Real init: sgp.setup()'s own real I2C handshake against the twin's fake SGP40 chip
+                # (serial number + self-test + general-call reset, asy_sgp40_driver.py's own
+                # SGP40_I2C.initialize()/_reset()) - the reset alone sleeps a real 1s; no public
+                # "init done" flag exists to poll, so this is a plain, generously-bounded sleep.
+                await asyncio.sleep(2.5)
+                sgp1.backup_counter = 59  # BackupPeriod defaults to 1 (minute) -> a real 60-cycle
+                # threshold (asy_sgp40_driver.py's own _check_storage()) - forces the very next real
+                # trigger cycle to reach it, exercising the same real _run_backup() 60 real cycles
+                # would, just without waiting through 59 of them for the same real code path.
+                sgp1.trigger_event.set()
+                assert await _wait_until(lambda: sgp1.last_backup is not None, timeout_s=5.0), (
+                    "the real VOC backup write never completed"
+                )
+            finally:
+                await _cancel(task)
+
+            # --- Simulated reboot: persist the twin's FRAM image to disk, then rebuild the whole
+            # real object graph fresh from the SAME cfg_path/FRAM state - the digital-twin analogue
+            # of a real device losing power and cold-booting with the same physical FRAM chip still
+            # attached (digital_twin/README.md's "FRAM persistence" section). ---
+            machine.flush_fram()
+            await sensortask_wozi.build_system(cfg_path=cfg_path, web_host="127.0.0.1", web_port=_next_test_port())
+            assert sensortask_wozi.sgp_reader is not None and sensortask_wozi.scd_reader is not None
+            assert sensortask_wozi.sgp_reader is not sgp1  # a genuinely fresh object, not the same
+            # instance surviving in memory - the whole point is that the persisted FRAM bytes, not
+            # Python state, are what carries the backup across the "reboot".
+            sgp2 = sensortask_wozi.sgp_reader
+            await sensortask_wozi.scd_reader._set_meas_data(SCD30(800, 22.0, 45.0, None, None, None))  # see boot 1's own comment above
+
+            # --- Restore, through the real chain again. ---
+            task2 = sgp2.start_asy_read()
+            try:
+                await asyncio.sleep(2.5)  # same real init delay as boot 1 above
+                sgp2.trigger_event.set()
+                assert await _wait_until(lambda: sgp2.restored_from is not None, timeout_s=5.0), (
+                    "the real VOC backup restore never completed after the simulated reboot"
+                )
+            finally:
+                await _cancel(task2)
+        finally:
+            machine.configure_fram_state_path(None)  # module-level, process-wide - must not leak
+            # into any other test in this file regardless of run order (MicroPython's globals()
+            # doesn't preserve definition order - see this file's own watchdog-section comment).
+            gc.collect()  # see the task-supervisor-restart section's own comment above - this test
+            # builds the whole real object graph twice in one run.
+
+    run_timed(scenario(), timeout_s=30.0)
 
 
 if __name__ == "__main__":

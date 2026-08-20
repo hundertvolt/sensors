@@ -47,7 +47,10 @@ _VAL_HOST = const((("Hostname", "str", "SensorNode", 1, 32, None),))  # 32 = net
 _VAL_LED = const((("LedWifiOn", "bool", True, None, None, None),))
 
 _NAME = const("WIFI")
+# Kept as a literal tuple inline (not `_FIELDS` below) because mypy's namedtuple plugin can only
+# infer field names from a literal at the call site, not through a variable indirection.
 WIFI = namedtuple("WIFI", ("Mode", "Connected", "IP", "TS"))
+_FIELDS = const(("Mode", "Connected", "IP", "TS"))  # kept in sync with WIFI's own fields above
 
 _STA_DISCONNECT_WAIT_ITERS = const(20)  # 20 * 0.5s = 10s max wait for isconnected() to clear -
 # bounds _disconnect_sta_and_wait()'s loop; a real disconnect() completes far faster than this.
@@ -616,7 +619,7 @@ class AsyConnTime(SensorReaderConfig):
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         data = await self.get_data()
-        return make_dict(data)
+        return make_dict(data, _FIELDS)
 
     async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         return await self._get_dict_cfg(
@@ -626,6 +629,16 @@ class AsyConnTime(SensorReaderConfig):
     async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
         return await self.pr.get_log()
 
+    # Locking convention for this class's WLAN-observing getters (BACKLOG.md's own flagged
+    # inconsistency - documented, not redesigned, since both shapes are genuinely needed): a method
+    # whose own docstring/comment says "caller must already hold wifi_mode_lock" (network_available()
+    # below) is meant to be called from INSIDE a caller's own already-locked critical section - it
+    # never checks .locked() itself, since the caller holding it is the whole point. Every method
+    # below this comment instead checks self.wifi_mode_lock.locked() itself and degrades to a "don't
+    # know yet" sentinel (None/False) - these are the public, callable-from-anywhere getters, never
+    # meant to be wrapped in the caller's own lock. A new getter must pick one shape deliberately, not
+    # copy whichever neighbor happens to be closest - get_dns_server_ip() once returned an
+    # unconditional None because it didn't.
     def get_wlan_ifconfig(self) -> tuple[str, str, str, str] | None:
         if self.wifi_mode_lock.locked():
             return None

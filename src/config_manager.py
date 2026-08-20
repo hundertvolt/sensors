@@ -76,18 +76,21 @@ def schema_dict(schema: "ConfigSchema") -> "dict[str, FieldSchema]":  # {field_n
         return {}
 
 
-def make_dict(nt: "NamedTuple") -> "dict[str, dict[str, int | float | str | None]]":  # {type_name: {field: value}} via repr() - MicroPython namedtuples have no _fields/_asdict()
+def make_dict(
+    nt: "NamedTuple", fields: "tuple[str, ...]"
+) -> "dict[str, dict[str, int | float | str | None]]":  # {type_name: {field: value}} - fields is the same
+    # literal tuple the caller's own namedtuple(name, fields) was built from (rp2's build ROM level
+    # is MICROPY_CONFIG_ROM_LEVEL_EXTRA_FEATURES, one level below the MICROPY_CONFIG_ROM_LEVEL_
+    # EVERYTHING that _asdict()/_fields require - confirmed against ports/rp2/mpconfigport.h - so
+    # neither is safe to rely on here).
     try:
-        [name, kvpairs] = repr(nt).split("(")[0:2]
-        keys = [c.split("=")[0].strip() for c in kvpairs.replace(")", "").split(",")]
+        name = type(nt).__name__
     except Exception:
         return {}
-    if keys == [""]:
-        return {name: {}}
     try:
-        return {name: {key: getattr(nt, key) for key in keys}}
+        return {name: {field: getattr(nt, field) for field in fields}}
     except Exception:
-        return {name: {key: None for key in keys}}
+        return {name: {field: None for field in fields}}
 
 
 def type_or_range_error(

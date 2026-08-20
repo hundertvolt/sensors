@@ -47,7 +47,10 @@ _NAME = const("SGP40")
 # VOC/Raw/TS also doubles as the full result of a read (see _read_sgp/_store_sgp) - no separate
 # results type needed, unlike asy_scd30_driver.py's SCDResults, which carries derived fields SGP40
 # doesn't have.
+# Kept as a literal tuple inline (not `_FIELDS` below) because mypy's namedtuple plugin can only
+# infer field names from a literal at the call site, not through a variable indirection.
 SGP40 = namedtuple("SGP40", ("VOC", "Raw", "TS"))
+_FIELDS = const(("VOC", "Raw", "TS"))  # kept in sync with SGP40's own fields above
 
 
 class SGP40_Reader(SensorReaderConfig):
@@ -386,7 +389,7 @@ class SGP40_Reader(SensorReaderConfig):
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         data = await self.get_data()
-        return make_dict(data)
+        return make_dict(data, _FIELDS)
 
     async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         # Deliberately excludes _VAL_RESET (SGPResetVOC) - see that const's own comment: it's never

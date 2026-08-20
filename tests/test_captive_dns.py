@@ -227,6 +227,24 @@ def test_response_returns_none_for_empty_domain() -> None:
     assert DNSQuery(bytes(data), make_pr()).response("192.168.4.1") is None
 
 
+def test_response_answers_the_root_domain_query_not_indistinguishable_from_a_parse_failure() -> None:
+    # Regression test for BACKLOG.md's "root-domain query can't be told apart from a failed parse"
+    # entry: a root query (a single zero-length label, ".") parses to the same empty self.domain a
+    # malformed/truncated datagram falls back to. Before this fix, response() used `if self.domain:`
+    # to decide whether to answer, so both cases returned None - contradicting this module's own
+    # docstring claim that every on-subnet query gets an answer. response() now tracks parse success
+    # separately, so a genuine root query is answered like any other.
+    query = make_query([])  # zero labels -> immediate zero-length terminator, i.e. the root domain
+    dns = DNSQuery(query, make_pr())
+    assert dns.domain == ""  # still the same empty representation as a parse failure...
+    packet = dns.response("192.168.4.1")
+    assert packet is not None  # ...but this is a successfully-parsed query, so it gets answered
+    assert packet[:2] == query[:2]  # echoed transaction ID
+    assert packet[4:6] == b"\x00\x01"  # QDCOUNT=1
+    question_len = len(query) - 12
+    assert packet[12 : 12 + question_len] == query[12:]  # the root question, echoed verbatim
+
+
 def test_dns_query_rejects_question_truncated_right_before_qtype_qclass() -> None:
     # Boundary check either side of the QTYPE/QCLASS cutoff: a label + terminator with the full 4
     # trailing bytes present must still parse and answer normally (exact boundary accepted); the

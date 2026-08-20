@@ -58,7 +58,10 @@ _VAL_SC = const((("SelfCal", "bool", None, None, None, None),))
 # No local default either: these params are stored on the sensor itself, not cached locally.
 
 _NAME = const("SCD30")
+# Kept as a literal tuple inline (not `_FIELDS` below) because mypy's namedtuple plugin can only
+# infer field names from a literal at the call site, not through a variable indirection.
 SCD30 = namedtuple("SCD30", ("CO2", "Temp", "Hum", "WetBulb", "DewPoint", "TS"))
+_FIELDS = const(("CO2", "Temp", "Hum", "WetBulb", "DewPoint", "TS"))  # kept in sync with SCD30's own fields above
 
 if TYPE_CHECKING:
     SCDResults = tuple[float | None, float | None, float | None, int | None]  # CO2, temperature, humidity, timestamp
@@ -92,15 +95,18 @@ class SCD30_Reader(SensorReader):
         self.scd_timer_triggers = 0
 
     async def _read_sensor_dict(self) -> dict[str, int | float | str | bool | None]:
-        ret: dict[str, int | float | str | bool | None] = {
-            name_cfg(_VAL_TO): await self.get_temperature_offset(),
-            name_cfg(_VAL_MI): await self.get_measurement_interval(),
-            name_cfg(_VAL_AP): await self.get_ambient_pressure(),
-            name_cfg(_VAL_ALT): await self.get_altitude(),
-            name_cfg(_VAL_CAL): await self.get_forced_recalibration_reference(),
-            name_cfg(_VAL_SC): await self.get_self_calibration_enabled(),
-        }
-        return ret  # only ever invoked as get_dict_cfg()'s callback, which already wraps this call in its own try/except
+        # Single batched read (get_config_snapshot()), not six independent get_*() calls - closes
+        # the torn-read window BACKLOG.md flagged (a concurrent config write landing between two of
+        # the six separately-locked reads used to be able to mix pre-/post-write values).
+        temp_offset, measurement_interval, ambient_pressure, altitude, frc, self_cal = await self.scd.get_config_snapshot()
+        return {
+            name_cfg(_VAL_TO): temp_offset,
+            name_cfg(_VAL_MI): measurement_interval,
+            name_cfg(_VAL_AP): ambient_pressure,
+            name_cfg(_VAL_ALT): altitude,
+            name_cfg(_VAL_CAL): frc,
+            name_cfg(_VAL_SC): self_cal,
+        }  # only ever invoked as get_dict_cfg()'s callback, which already wraps this call in its own try/except
 
     async def _init_scd(self) -> bool:
         # Continuous measurement isn't (re)started here - it's NVM-persisted and provisioned
@@ -183,7 +189,7 @@ class SCD30_Reader(SensorReader):
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         data = await self.get_data()
-        return make_dict(data)
+        return make_dict(data, _FIELDS)
 
     async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         return await self._get_dict_cfg(
@@ -450,6 +456,23 @@ class SCD30_I2C:
         # Volatile readback: always returns 400 after a power cycle regardless of the last FRC
         # value applied - the calibration curve update itself is permanent, just not this readback.
         return await self._read_register(_CMD_SET_FORCED_RECALIBRATION_FACTOR)
+
+    async def get_config_snapshot(self) -> "tuple[float, int, int, int, int, bool]":
+        # (TempOffs, MeasInt, AmbPres, Altitude, ForceCalRef, SelfCal) - one device-session lock hold
+        # across all 6 config registers, closing the torn-read window a concurrent set_*() call (also
+        # i2c_scd30-locked) could otherwise land inside mid-batch, producing a dict that mixes pre-
+        # and post-write values (BACKLOG.md's SCD30_Reader.get_dict_cfg() torn-read entry). Same
+        # "allowed to raise" layer as every other SCD30_I2C method - a mid-batch fault fails the whole
+        # snapshot rather than a mix of fresh and stale fields.
+        async with self.i2c_scd30 as scd30:
+            async with scd30.i2c_device as i2c:
+                temp_offset = await self._read_dev_register(i2c, _CMD_SET_TEMPERATURE_OFFSET) / 100.0
+                measurement_interval = await self._read_dev_register(i2c, _CMD_SET_MEASUREMENT_INTERVAL)
+                ambient_pressure = await self._read_dev_register(i2c, _CMD_CONTINUOUS_MEASUREMENT)
+                altitude = await self._read_dev_register(i2c, _CMD_SET_ALTITUDE_COMPENSATION)
+                frc = await self._read_dev_register(i2c, _CMD_SET_FORCED_RECALIBRATION_FACTOR)
+                self_cal = await self._read_dev_register(i2c, _CMD_AUTOMATIC_SELF_CALIBRATION) == 1
+        return temp_offset, measurement_interval, ambient_pressure, altitude, frc, self_cal
 
     async def get_CO2(self) -> float | None:
         # Pure cache read from the last read_measurement() call, no I2C of its own - see

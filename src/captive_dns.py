@@ -145,6 +145,11 @@ class DNSQuery:
         self.data = data
         self.domain = ""
         self._question_end = 0  # set below once a full question is actually parsed
+        # A root-domain query (a single zero-length label, ".") parses to the same empty
+        # self.domain a truncated/malformed datagram falls back to - this flag is the only thing
+        # that tells them apart, so response() can still answer a genuine root query (BACKLOG.md's
+        # "can't be told apart from a failed parse" entry).
+        self._parsed_ok = False
         self.pr = pr
         # RFC 1035 section 4.1.1/4.1.2: opcode is bits 3-6 of header byte 2; the question section
         # (a length-prefixed label sequence) starts at byte 12, right after the 12-byte header.
@@ -165,17 +170,19 @@ class DNSQuery:
                     # ends before QTYPE/QCLASS - raise explicitly into the "malformed" except below.
                     raise ValueError("truncated question: missing QTYPE/QCLASS")
                 self._question_end = question_end
+                self._parsed_ok = True
         except Exception:
             # Truncated/malformed data (or non-bytes data, since this class is public) - not a
             # usable standard query. Reuses the empty-domain sentinel, no raise into run().
             self.domain = ""
+            self._parsed_ok = False
         self.pr.evt("DNSQuery domain:", self.domain)
 
     def response(self, ip: str) -> bytes | None:
         # RFC 1035 section 4.1.1/4.1.4: a synthesized "success, recursion available" header,
         # echoing the original question back with one compressed-pointer A-record answer.
         self.pr.evt("DNSQuery response:", self.domain, "==>", ip)
-        if self.domain:
+        if self._parsed_ok:
             # This method is public and shouldn't rely on run() only passing a validated
             # server_ip - a bad ip would otherwise build a corrupt packet (wrong RDATA length).
             if _ipv4_to_int(ip) is None:
