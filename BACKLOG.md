@@ -214,10 +214,15 @@ constraints.
   nothing today, harmless but worth deleting (along with its now-dangling "see its own module
   docstring" comment) next time `pyproject.toml` is touched for another reason — not urgent enough
   to be the sole reason to trigger CLAUDE.md's "Pre-push verification" chroot recipe on its own.
-- **HTML/frontend automation & consistency** — known hand-written/brittle, not a priority; revisit
-  after the Python-side refactor. Concretely stale now: the frontend still sends the pre-migration
-  `setSGP`/`setBMP` field names/formats (see `SPECIFICATION.md` Part C.5.3's wire-format note) — not
-  updated to match.
+- **HTML/frontend redesign — confirmed genuine near-future target, not this pass.** Owner-confirmed
+  out of scope here: the frontend work involves changes far larger than a field-name fix (a real
+  redesign, not a patch), and the refactored side's own website is still deliberately just a
+  placeholder stub (`SPECIFICATION.md` Part A.9) with no real content to wire up yet anyway. The
+  concretely-stale symptom that prompted this entry — the legacy frontend still sending the
+  pre-migration `setSGP`/`setBMP` field names/formats (see Part C.5.3's wire-format note) — is real
+  but is pre-refactor debt on the currently-deployed frontend, not something the redesign needs to
+  inherit; it'll be superseded outright once the real frontend for the refactored REST API is built,
+  not fixed in place first.
 - **UART sensor integration — confirmed staying unwired, not just deferred.** `asy_uart_driver.py`
   is promoted to `src/` but deliberately not wired into any `sensortask-*.py`; `asy_uart_comm.py`
   (its one real consumer) is its own separate, still out-of-scope promotion. Not a legacy deployed
