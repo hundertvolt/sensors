@@ -57,8 +57,9 @@ hardware from simulated. The swap is pure `MICROPYPATH` ordering, the same mecha
 point, `scripts/run_unix_port_integration.sh`, does exactly this:
 
 ```bash
-scripts/run_unix_port_integration.sh                      # bounded automated soak run, default flags
-scripts/run_unix_port_integration.sh --duration 0          # same, but exits right after the soak
+scripts/run_unix_port_integration.sh                      # just launch + serve forever, no flags
+scripts/run_unix_port_integration.sh --soak                # bounded automated soak run, then serves forever
+scripts/run_unix_port_integration.sh --soak --duration 0   # same, but exits right after the soak
 scripts/run_unix_port_integration.sh --fault sgp40:writeto # manual fault-injection exploration
 ```
 
@@ -88,8 +89,11 @@ omitted/manual mode, which would hang that loop if it were discovered there inst
 `_parse_wifi_outcome()` directly (same device/op/wifi-outcome vocabulary), and defaults to
 `--host localhost --port 8080` (browser-reachable) with FRAM/config state persisted to a fixed
 location inside `digital_twin/` (`fram_state.json`/`config/`, both gitignored, written only on
-explicit shutdown — never an ephemeral per-run path, unlike the automated test tiers below). See
-that module's own docstring for the full flag list and design rationale.
+explicit shutdown — never an ephemeral per-run path, unlike the automated test tiers below). A bare,
+no-flags run just launches the real object graph and serves forever, the same as a real rp2040 boot
+would — the automated soak check (`--soak`, or `--soak-cycles N` which implies it) is a specialty,
+opted into explicitly rather than run by default. See that module's own docstring for the full flag
+list and design rationale.
 
 A second, lighter integration tier also landed alongside the full orchestrator:
 `tests/test_digital_twin_sensortask_integration.py` builds the real `sensortask_wozi` object graph

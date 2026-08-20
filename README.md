@@ -115,12 +115,13 @@ establish this project's own known-working baseline (build → boot → set log 
 that level persisted → boot again with bus faults injected). Run each block from the repo root;
 `curl` and a browser both work against `http://127.0.0.1:8080` while a run is up.
 
-**1. Fresh build and boot** (also runs a built-in 20-cycle soak across every endpoint before it
-starts serving — watch for a `PASS` line):
+**1. Fresh build and boot** (`--soak` runs a built-in 20-cycle soak across every endpoint before it
+starts serving — watch for a `PASS` line; omit it for a plain launch straight into serving, the same
+as a real rp2040 boot):
 
 ```sh
 rm -rf digital_twin/config digital_twin/fram_state.json   # start from a clean, unconfigured device
-scripts/run_unix_port_integration.sh --host 127.0.0.1 --port 8080
+scripts/run_unix_port_integration.sh --host 127.0.0.1 --port 8080 --soak
 ```
 
 Leave this running in its own terminal. In a second terminal, walk every GET endpoint plus the
@@ -160,7 +161,7 @@ as it would skip any unsaved state on real hardware). Then boot again the same w
 `DebugLevel` survives):
 
 ```sh
-scripts/run_unix_port_integration.sh --host 127.0.0.1 --port 8080
+scripts/run_unix_port_integration.sh --host 127.0.0.1 --port 8080 --soak
 ```
 
 This boot's own console output is now the full verbose trace — every `PrintLog.evt()`/`.one()`/

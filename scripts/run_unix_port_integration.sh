@@ -19,16 +19,18 @@
 # instead, which silently masked the gap.
 #
 # Usage:
-#   scripts/run_unix_port_integration.sh                        # bounded automated soak run, default flags
-#   scripts/run_unix_port_integration.sh --duration 0            # same, but exits immediately after the soak
-#   scripts/run_unix_port_integration.sh --fault sgp40:writeto   # manual fault-injection exploration
+#   scripts/run_unix_port_integration.sh                        # just launch + serve forever, no flags
+#   scripts/run_unix_port_integration.sh --soak                 # bounded automated soak run, then serves forever
+#   scripts/run_unix_port_integration.sh --soak --duration 0    # same, but exits immediately after the soak
+#   scripts/run_unix_port_integration.sh --fault sgp40:writeto  # manual fault-injection exploration
 #   scripts/run_unix_port_integration.sh --host 0.0.0.0 --port 8080   # reachable from outside this machine
 #
 # Every flag forwards straight through to run_wozi_integration.py's own parse_args() - see that
 # module's own docstring for the full list (--host/--port/--fram-state-path/--seed/--fault/
-# --wifi-outcome/--soak-cycles/--duration). No flags given still runs the automated soak check
-# (RunConfig's own defaults - localhost:8080, 20 soak cycles) and then serves forever, matching
-# "both" halves of owner decision 7 (automated assertion now, still reachable/observable after).
+# --wifi-outcome/--soak/--soak-cycles/--duration). No flags given just launches the twin and serves
+# forever (RunConfig's own defaults - localhost:8080), the same "reachable/observable" half of owner
+# decision 7 a real rp2040 boot would give you - the automated soak assertion is a specialty, opted
+# into via --soak (or --soak-cycles, which implies it), not part of the plain launch path.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 

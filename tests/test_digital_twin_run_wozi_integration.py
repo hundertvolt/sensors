@@ -226,6 +226,9 @@ def test_main_runs_a_tiny_bounded_soak_with_an_injected_fault_and_returns_a_clea
         port=19097,
         fram_state_path=None,
         scd30_state_path=None,
+        soak=True,  # this test's own point is to exercise the soak + fault-injection combo, so
+        # it must opt in explicitly now that a bare RunConfig() defaults to soak=False (see
+        # test_parse_args_defaults below).
         soak_cycles=2,
         duration=0.0,
         faults=[("sgp40", "writeto", 3)],
@@ -244,6 +247,8 @@ def test_main_runs_a_tiny_bounded_soak_with_an_injected_fault_and_returns_a_clea
 
 
 def test_parse_args_defaults() -> None:
+    # A bare, no-flags run is the plain "launch the twin and serve forever, like the real rp2040
+    # would" path - soak defaults to disabled, only opted into via --soak/--soak-cycles below.
     config = parse_args([])
     assert config == RunConfig(
         host="localhost",
@@ -253,6 +258,7 @@ def test_parse_args_defaults() -> None:
         seed=None,
         faults=[],
         wifi_outcomes=[],
+        soak=False,
         soak_cycles=20,
         duration=None,
     )
@@ -293,6 +299,19 @@ def test_parse_args_seed_and_soak_cycles_and_duration() -> None:
 
 def test_parse_args_duration_omitted_stays_none() -> None:
     assert parse_args([]).duration is None
+
+
+def test_parse_args_soak_flag_enables_soak_with_the_default_cycle_count() -> None:
+    config = parse_args(["--soak"])
+    assert config.soak is True
+    assert config.soak_cycles == 20
+
+
+def test_parse_args_soak_cycles_implies_soak() -> None:
+    # Passing a cycle count is itself opting into running the soak - no need to also pass --soak.
+    config = parse_args(["--soak-cycles", "5"])
+    assert config.soak is True
+    assert config.soak_cycles == 5
 
 
 def test_parse_args_accumulates_repeated_fault_flags() -> None:

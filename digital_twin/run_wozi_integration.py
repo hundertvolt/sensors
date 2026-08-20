@@ -29,8 +29,10 @@ both gitignored build/run artifacts, never committed. This is deliberately diffe
 tests/test_digital_twin_sensortask_integration.py's own per-test ephemeral-state convention, which
 stays that way for its own reasons (see that file's own module docstring).
 
-The soak loop (owner decisions 4/9): real HTTP round trips fired back-to-back against every real
-endpoint, not gated by the twin's own real-time sensor-poll Timer cadence (which keeps running
+The soak loop (owner decisions 4/9) is opt-in via --soak/--soak-cycles - a bare, no-flags run skips
+it entirely and goes straight to serving forever, matching owner decision 3's own plain-launch
+default (see the top of this docstring). When enabled: real HTTP round trips fired back-to-back
+against every real endpoint, not gated by the twin's own real-time sensor-poll Timer cadence (which keeps running
 concurrently and unaffected in the background, at real intervals, exactly like the real system) -
 "everything is supposed to be async... it should run realtime on the server interface". Originally
 reused Step 2's own memory-flat methodology and tolerance verbatim (tests/test_asy_webserver_service.py's
@@ -118,6 +120,7 @@ class RunConfig:
         seed: "int | None" = None,
         faults: "list[tuple[str, str, int]] | None" = None,
         wifi_outcomes: "list[int] | None" = None,
+        soak: bool = False,
         soak_cycles: int = _SOAK_CYCLES_DEFAULT,
         duration: "float | None" = None,
     ) -> None:
@@ -128,6 +131,7 @@ class RunConfig:
         self.seed = seed
         self.faults = faults if faults is not None else []
         self.wifi_outcomes = wifi_outcomes if wifi_outcomes is not None else []
+        self.soak = soak
         self.soak_cycles = soak_cycles
         self.duration = duration
 
@@ -142,6 +146,7 @@ class RunConfig:
             and self.seed == other.seed
             and self.faults == other.faults
             and self.wifi_outcomes == other.wifi_outcomes
+            and self.soak == other.soak
             and self.soak_cycles == other.soak_cycles
             and self.duration == other.duration
         )
@@ -150,7 +155,8 @@ class RunConfig:
         return (
             f"RunConfig(host={self.host!r}, port={self.port!r}, fram_state_path={self.fram_state_path!r}, "
             f"scd30_state_path={self.scd30_state_path!r}, seed={self.seed!r}, faults={self.faults!r}, "
-            f"wifi_outcomes={self.wifi_outcomes!r}, soak_cycles={self.soak_cycles!r}, duration={self.duration!r})"
+            f"wifi_outcomes={self.wifi_outcomes!r}, soak={self.soak!r}, soak_cycles={self.soak_cycles!r}, "
+            f"duration={self.duration!r})"
         )
 
 
@@ -169,6 +175,7 @@ def parse_args(argv: "list[str]") -> RunConfig:
     seed: int | None = None
     faults: list[tuple[str, str, int]] = []
     wifi_outcomes: list[int] = []
+    soak = False
     soak_cycles = _SOAK_CYCLES_DEFAULT
     duration: float | None = None
 
@@ -191,8 +198,11 @@ def parse_args(argv: "list[str]") -> RunConfig:
             faults.append(parse_fault_spec(_pop_value(remaining, arg)))
         elif arg == "--wifi-outcome":
             wifi_outcomes.append(_parse_wifi_outcome(_pop_value(remaining, arg)))
+        elif arg == "--soak":
+            soak = True
         elif arg == "--soak-cycles":
             soak_cycles = int(_pop_value(remaining, arg))
+            soak = True  # passing a cycle count is itself opting into running the soak
         elif arg == "--duration":
             duration = float(_pop_value(remaining, arg))
         else:
@@ -206,6 +216,7 @@ def parse_args(argv: "list[str]") -> RunConfig:
         seed=seed,
         faults=faults,
         wifi_outcomes=wifi_outcomes,
+        soak=soak,
         soak_cycles=soak_cycles,
         duration=duration,
     )
@@ -386,21 +397,22 @@ async def main(config: RunConfig) -> "dict[str, Any]":
 
         await _wait_until_serving(config.host, config.port)
 
-        failures = await _soak(config.host, config.port, config.soak_cycles)
-        if sensortask_wozi.watchdog.would_have_triggered_count != 0:
-            failures.append(f"watchdog would have triggered {sensortask_wozi.watchdog.would_have_triggered_count} time(s)")
+        if config.soak:
+            failures = await _soak(config.host, config.port, config.soak_cycles)
+            if sensortask_wozi.watchdog.would_have_triggered_count != 0:
+                failures.append(f"watchdog would have triggered {sensortask_wozi.watchdog.would_have_triggered_count} time(s)")
 
-        summary = {
-            "soak_cycles": config.soak_cycles,
-            "failures": failures,
-            "would_have_triggered_count": sensortask_wozi.watchdog.would_have_triggered_count,
-        }
-        print("digital_twin/run_wozi_integration.py soak summary:", summary)
-        if failures:
-            for failure in failures:
-                print("FAIL:", failure)
-        else:
-            print(f"PASS - {config.soak_cycles} soak cycles across every endpoint, watchdog never starved")
+            summary = {
+                "soak_cycles": config.soak_cycles,
+                "failures": failures,
+                "would_have_triggered_count": sensortask_wozi.watchdog.would_have_triggered_count,
+            }
+            print("digital_twin/run_wozi_integration.py soak summary:", summary)
+            if failures:
+                for failure in failures:
+                    print("FAIL:", failure)
+            else:
+                print(f"PASS - {config.soak_cycles} soak cycles across every endpoint, watchdog never starved")
 
         if config.duration is None:
             print(f"Serving forever at http://{config.host}:{config.port}/ - Ctrl+C to stop")
