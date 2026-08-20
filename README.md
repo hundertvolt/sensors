@@ -138,9 +138,14 @@ open http://127.0.0.1:8080/   # or just curl -s http://127.0.0.1:8080/ - the stu
 
 **2. Set the log level to `all` (5) via the real API, then reboot to see a full startup log.**
 `DebugLevel` is a persisted `/system` setting (0-5, see `print_log.py`'s `PrintLog.level_*()`
-methods) — like every config write, it's saved to disk immediately, but only takes effect for
-*future* logger construction, so its own verbose logging only shows up starting with the next
-boot:
+methods) — like every config write, it's saved to disk immediately, and takes effect immediately
+too: `system_service.py`'s `set_level_setters()`/`_apply_level()` registry pushes any accepted
+`DebugLevel` write straight out to every other already-constructed module's own
+`PrintLog.set_level()`, live, no reboot required (confirmed directly — a running twin's console
+starts emitting full per-cycle event traces the instant the PUT below lands). The reboot that
+follows is only to *see the early boot sequence itself* at full verbosity — construction/wiring
+order, FRAM chunk allocation, task/timer startup — since those specific events already happened,
+at the old level, before this PUT ever landed:
 
 ```sh
 curl -s -X PUT -H "Content-Type: application/json" -d '{"DebugLevel": 5}' http://127.0.0.1:8080/system
@@ -168,7 +173,7 @@ boot, and try:
 
 ```sh
 curl -s -X PUT -H "Content-Type: application/json" \
-  -d '{"SSID": "MyNetwork", "PW": "hunter2", "Country": "DE", "Hostname": "wozi-test"}' \
+  -d '{"SSID": "MyNetwork", "PW": "hunter2pw", "Country": "DE", "Hostname": "wozi-test"}' \
   http://127.0.0.1:8080/networking
 curl -s -X PUT -H "Content-Type: application/json" -d '{"GMTOffset": 3600, "DSTOffset": 3600}' \
   http://127.0.0.1:8080/system

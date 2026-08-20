@@ -364,7 +364,12 @@ async def main(config: RunConfig) -> "dict[str, Any]":
         main_task.cancel()
         try:
             await main_task
-        except asyncio.CancelledError:
+        except (asyncio.CancelledError, KeyboardInterrupt):
+            # A real SIGINT (this script's own documented Ctrl-C shutdown path) can be re-delivered
+            # while this cleanup await is still in flight - confirmed by direct reproduction: without
+            # catching KeyboardInterrupt here too, the second interrupt propagated straight out of
+            # this finally block, skipping flush_fram()/flush_scd30() below entirely and losing the
+            # whole run's FRAM/SCD30 state. Already shutting down either way, nothing more to do.
             pass
         machine.flush_fram()
         machine.flush_scd30()
@@ -378,6 +383,20 @@ if __name__ == "__main__":
     try:
         _summary = asyncio.run(main(_config))
     except KeyboardInterrupt:
+        # Confirmed by direct reproduction against the pinned MicroPython v1.28.0 Unix port:
+        # extmod/asyncio/core.py's run_until_complete() only catches (CancelledError, Exception) in
+        # its scheduler loop - KeyboardInterrupt is a BaseException, not an Exception subclass, so a
+        # real SIGINT delivered while every task is parked in the scheduler's own
+        # _io_queue.wait_io_event() poll call (the common case this script's own "Serving forever -
+        # Ctrl+C to stop" state deliberately sits in) propagates straight out of asyncio.run() without
+        # ever resuming/unwinding main()'s suspended coroutine frame - its own try/finally around
+        # machine.flush_fram()/flush_scd30() never runs. Calling them again here, from plain
+        # synchronous code that's guaranteed to run on every real interrupt, is the actual fix - the
+        # module-level chip singletons these read (_current_fram_chip/_current_scd30_chip) don't need
+        # the event loop at all. A harmless no-op if main()'s own finally already ran (e.g. an
+        # interrupt landing while a task was genuinely mid-bytecode-execution, not parked).
+        machine.flush_fram()
+        machine.flush_scd30()
         print("digital_twin/run_wozi_integration.py: interrupted")
     if _summary is not None and _summary["failures"]:
         sys.exit(1)
