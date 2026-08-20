@@ -243,7 +243,7 @@ def _build_dns_query(query_id: int = 0x1234, qname: str = "example.com") -> byte
     return header + question
 
 
-def _try_dns_query(host: str, timeout: float = 2.0) -> bool:
+def _try_dns_query(host: str, timeout: float = 1.0) -> bool:
     query = _build_dns_query()
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.settimeout(timeout)
@@ -265,7 +265,7 @@ def _wait_for_dns_answer(host: str, timeout_s: float) -> bool:
     while time.monotonic() < deadline:
         if _try_dns_query(host):
             return True
-        time.sleep(1.0)
+        time.sleep(0.5)
     return False
 
 
@@ -441,9 +441,16 @@ def run_suite(micropython_bin: str, logs_dir: Path) -> int:
         # until the 5th one. Waiting for all 5 here first, then giving the DNS check its own
         # separate budget, is more robust than one long guessed timeout covering both phases -
         # a real CI runner observed needing well over the first attempt's combined budget.
-        entry = _wait_for_errcount_above("WIFI", 4, timeout_s=60.0)
+        entry = _wait_for_errcount_above("WIFI", 4, timeout_s=90.0)
         _check(entry.get("counter", 0) >= 5, f"Run 7: all 5 repeated WiFi connect failures drove real hotspot fallback and were recorded in WIFI's error counter ({entry!r})")
-        answered = _wait_for_dns_answer(HOST, timeout_s=30.0)
+        # 30s was enough locally but timed out twice in a row on real GitHub Actions runners even
+        # after the errcount-wait fix above landed and was confirmed working (the runner's own log
+        # showed the full 5-failure count recorded, so the DNSServer really had started) - real
+        # CI-runner wall-clock slack for this specific real-socket round trip is smaller than the
+        # local sandbox's. Widened to 90s with a faster 0.5s retry cadence (see _wait_for_dns_answer)
+        # rather than guessing a second time; this is a hotspot-fallback path, not a hot one, so a
+        # generous budget here costs nothing when the answer arrives early.
+        answered = _wait_for_dns_answer(HOST, timeout_s=90.0)
         _check(answered, "Run 7: the real captive DNSServer answered a real UDP DNS query after WiFi hotspot fallback")
         status, _ = _http("GET", "/status")
         _check(status == 200, "Run 7: webserver stayed reachable throughout the WiFi hotspot-fallback transition")
