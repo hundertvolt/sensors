@@ -748,7 +748,7 @@ def test_run_backup_genuine_fram_write_failure_is_logged_as_an_error() -> None:
     # is already satisfied (voc_write forced to 0), but the underlying FRAM write itself genuinely
     # fails - manager.set_pause(True) makes _mempause() return True, so _write() bails out with a
     # clean False without ever touching the real chip, the same shape a genuine hardware fault
-    # takes. Previously untested branch: "Schreibfehler beim Backup!" (errno=13).
+    # takes. Previously untested branch: "Schreibfehler beim Backup!" (errno=14).
     manager, _chip, _spi_bus = make_fram_manager()
     run(manager.setup())
     reader = SGP40_Reader(
@@ -1688,7 +1688,7 @@ def test_sgp40_error_log_survives_a_simulated_reboot_via_fram() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _init_sgp() - the initial-setup failure (errno=10) and config-read failure (errno=11) paths, plus
+# _init_sgp() - the initial-setup failure (errno=10) and config-read failure (errno=12) paths, plus
 # the stale-out-of-schema WaitTimeNTP cap, were never exercised by any test above.
 # ---------------------------------------------------------------------------
 
@@ -1723,7 +1723,7 @@ def test_init_sgp_fails_and_logs_when_config_data_unreadable() -> None:
     ok = run(reader._init_sgp())
     assert ok is False
     log = run(reader.get_error_counter())
-    assert _last_err(log, "ErrNum") == 11
+    assert _last_err(log, "ErrNum") == 12
     assert _last_err(log, "ErrType") == "E"
 
 
@@ -1769,7 +1769,7 @@ def test_check_storage_fails_and_logs_when_config_data_unreadable() -> None:
     buf, serialize, deserialize, cfg_values = run(reader._check_storage())
     assert (buf, serialize, deserialize, cfg_values) == (None, False, False, None)
     log = run(reader.get_error_counter())
-    assert _last_err(log, "ErrNum") == 12
+    assert _last_err(log, "ErrNum") == 13
     assert _last_err(log, "ErrType") == "E"
 
 
@@ -1929,7 +1929,7 @@ def test_run_backup_resyncs_with_timestamp_once_ntp_available_again() -> None:
 
 # ---------------------------------------------------------------------------
 # _read_sgp() - the reset-with-no-storage vacuous-satisfaction branch, the deserialize-retry-on-
-# missing-compensation-data branch, the errno=15 deserialize-failure branch, and completing a
+# missing-compensation-data branch, the errno=16 deserialize-failure branch, and completing a
 # pending reset despite an I2C fault were never exercised.
 # ---------------------------------------------------------------------------
 
@@ -1961,14 +1961,14 @@ class _TooSmallBuf:
         return bytearray(8)  # far short of the 256 bytes "32q" needs
 
 
-def test_read_sgp_logs_errno_15_when_deserialize_fails() -> None:
+def test_read_sgp_logs_errno_16_when_deserialize_fails() -> None:
     reader = make_reader()
     fake_bus = bus(reader.sgp.i2c_sgp40.i2c_device.i2c)
     fake_bus.read_queue.append(_word(30000))
     run(reader.pr.setup())
     run(reader._read_sgp(_TooSmallBuf(), False, True))  # type: ignore[arg-type]
     log = run(reader.get_error_counter())
-    assert _last_err(log, "ErrNum") == 15
+    assert _last_err(log, "ErrNum") == 16
     assert _last_err(log, "ErrType") == "E"
 
 

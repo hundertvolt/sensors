@@ -263,42 +263,42 @@ class SCD30_Reader(SensorReader):
         try:
             return await self.scd.get_measurement_interval()
         except Exception as e:
-            await self.pr.err_s("Error reading measurement interval:", e, errno=13)
+            await self.pr.err_s("Error reading measurement interval:", e, errno=14)
             return None
 
     async def get_self_calibration_enabled(self) -> bool | None:
         try:
             return await self.scd.get_self_calibration_enabled()
         except Exception as e:
-            await self.pr.err_s("Error reading self calibration enabled:", e, errno=15)
+            await self.pr.err_s("Error reading self calibration enabled:", e, errno=16)
             return None
 
     async def get_ambient_pressure(self) -> int | None:
         try:
             return await self.scd.get_ambient_pressure()
         except Exception as e:
-            await self.pr.err_s("Error reading ambient pressure:", e, errno=17)
+            await self.pr.err_s("Error reading ambient pressure:", e, errno=18)
             return None
 
     async def get_altitude(self) -> int | None:
         try:
             return await self.scd.get_altitude()
         except Exception as e:
-            await self.pr.err_s("Error reading altitude:", e, errno=19)
+            await self.pr.err_s("Error reading altitude:", e, errno=20)
             return None
 
     async def get_temperature_offset(self) -> float | None:
         try:
             return await self.scd.get_temperature_offset()
         except Exception as e:
-            await self.pr.err_s("Error reading temperature offset:", e, errno=21)
+            await self.pr.err_s("Error reading temperature offset:", e, errno=22)
             return None
 
     async def get_forced_recalibration_reference(self) -> int | None:
         try:
             return await self.scd.get_forced_recalibration_reference()
         except Exception as e:
-            await self.pr.err_s("Error reading forced recalibration reference:", e, errno=23)
+            await self.pr.err_s("Error reading forced recalibration reference:", e, errno=24)
             return None
 
     async def set_measurement_interval(self, value: int) -> bool:
@@ -306,7 +306,7 @@ class SCD30_Reader(SensorReader):
             await self.scd.set_measurement_interval(value)
             return True
         except Exception as e:
-            await self.pr.err_s("Error setting measurement interval:", e, errno=14)
+            await self.pr.err_s("Error setting measurement interval:", e, errno=15)
             return False
 
     async def set_self_calibration_enabled(self, enabled: bool) -> bool:
@@ -314,7 +314,7 @@ class SCD30_Reader(SensorReader):
             await self.scd.set_self_calibration_enabled(enabled)
             return True
         except Exception as e:
-            await self.pr.err_s("Error setting self calibration enabled:", e, errno=16)
+            await self.pr.err_s("Error setting self calibration enabled:", e, errno=17)
             return False
 
     async def set_ambient_pressure(self, pressure_mbar: int | float) -> bool:
@@ -322,7 +322,7 @@ class SCD30_Reader(SensorReader):
             await self.scd.set_ambient_pressure(pressure_mbar)
             return True
         except Exception as e:
-            await self.pr.err_s("Error setting ambient pressure:", e, errno=18)
+            await self.pr.err_s("Error setting ambient pressure:", e, errno=19)
             return False
 
     async def set_altitude(self, altitude: int) -> bool:
@@ -330,7 +330,7 @@ class SCD30_Reader(SensorReader):
             await self.scd.set_altitude(altitude)
             return True
         except Exception as e:
-            await self.pr.err_s("Error setting altitude:", e, errno=20)
+            await self.pr.err_s("Error setting altitude:", e, errno=21)
             return False
 
     async def set_temperature_offset(self, offset: int | float) -> bool:
@@ -338,7 +338,7 @@ class SCD30_Reader(SensorReader):
             await self.scd.set_temperature_offset(offset)
             return True
         except Exception as e:
-            await self.pr.err_s("Error setting temperature offset:", e, errno=22)
+            await self.pr.err_s("Error setting temperature offset:", e, errno=23)
             return False
 
     async def set_forced_recalibration_reference(self, reference_value: int) -> bool:
@@ -346,7 +346,7 @@ class SCD30_Reader(SensorReader):
             await self.scd.set_forced_recalibration_reference(reference_value)
             return True
         except Exception as e:
-            await self.pr.err_s("Error setting forced recalibration reference:", e, errno=24)
+            await self.pr.err_s("Error setting forced recalibration reference:", e, errno=25)
             return False
 
     async def read_loop(self) -> bool:
@@ -383,7 +383,7 @@ class SCD30_Reader(SensorReader):
             await self.scd.stop_continuous_measurement()
             return True
         except Exception as e:
-            await self.pr.err_s("Error stopping continuous measurement:", e, errno=12)
+            await self.pr.err_s("Error stopping continuous measurement:", e, errno=13)
             return False
 
 

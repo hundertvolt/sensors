@@ -553,7 +553,7 @@ def test_read_raises_oserror_when_the_data_burst_returns_an_unexpected_result() 
 
 def test_read_bmp_logs_and_degrades_when_the_data_burst_returns_an_unexpected_result() -> None:
     # Caller side of the guard above: _read_bmp()'s blanket try/except turns that OSError into the
-    # same logged errno=13 as any other failed read, returns an all-None result, and _store_bmp()
+    # same logged errno=11 as any other failed read, returns an all-None result, and _store_bmp()
     # then discards it - the read cycle degrades exactly like a NAKed bus instead of crashing
     # read_loop()'s task or storing a half-computed reading.
     i2c, reader = make_clean_reader("bad_burst_reader")
@@ -573,7 +573,7 @@ def test_read_bmp_logs_and_degrades_when_the_data_burst_returns_an_unexpected_re
         results, counters = run(scenario())
 
     assert results == (None, None, None)
-    assert counters["BMP3XX"]["ErrNum"][-1] == 13  # errno=13, "Read failed:"
+    assert counters["BMP3XX"]["ErrNum"][-1] == 11  # errno=11, "Read failed:"
     assert counters["BMP3XX"]["ErrType"][-1] == "E"
     assert run(reader.get_data()) == BMP3XX(None, None, None, None)  # nothing corrupted got stored
 
@@ -1334,11 +1334,11 @@ def test_init_bmp_fails_and_logs_when_config_data_unreadable() -> None:
 
     ok, counters = run(scenario())
     assert ok is False
-    assert counters["BMP3XX"]["ErrNum"][-1] == 11  # errno=11, "Error reading config data!"
+    assert counters["BMP3XX"]["ErrNum"][-1] == 12  # errno=12, "Error reading config data!"
 
 
 def test_store_bmp_falls_back_to_default_compensation_values_when_config_unreadable() -> None:
-    # _store_bmp()'s own errno=14 counterpart to _init_bmp()'s errno=11 above - same message text,
+    # _store_bmp()'s own errno=14 counterpart to _init_bmp()'s errno=12 above - same message text,
     # different call site and different consequence: the compensation values (PressOffset/
     # TempOffset/SeaLevelOffs/MeanAtmTemp) are pure post-processing math inputs, so an unreadable
     # config must not cost the whole reading. It logs, substitutes the documented
@@ -1427,12 +1427,12 @@ def test_reader_error_counter_reflects_read_failures_via_print_log() -> None:
     async def scenario() -> dict:
         assert await reader._init_bmp()
         fake(i2c).nak_addresses.add(_ADDR)
-        await reader._read_bmp()  # errno=13, "Lesefehler:"
+        await reader._read_bmp()  # errno=11, "Lesefehler:"
         return await reader.get_error_counter()
 
     counters = run(scenario())["BMP3XX"]
     assert counters["ErrCount"] == 1
-    assert counters["ErrNum"][-1] == 13
+    assert counters["ErrNum"][-1] == 11
     assert counters["ErrType"][-1] == "E"
 
 

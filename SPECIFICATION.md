@@ -1742,10 +1742,32 @@ and its config read-back comes back silently wrong/empty.
   driver's own numbering should start at 10 (or higher) for exactly this reason — starting lower
   would collide with a base-class entry already using that number for something unrelated
   (e.g. a driver-chosen `errno=3` would be indistinguishable in `get_error_counter()`'s history
-  from a `_get_dict_cfg()` internal failure). A broader, deliberate scheme of shared common-error
-  *classes* (not just this base-range reservation) across drivers is a real future direction — see
-  BACKLOG.md's "common driver error classes" entry — not implemented yet and out of scope for a
-  driver's initial promotion.
+  from a `_get_dict_cfg()` internal failure).
+- **Common error classes (decided scheme, closing BACKLOG.md's former "common driver error
+  classes" entry)**: `base_classes.py`'s 1-9 reservation above already means the same condition
+  across every driver *by construction* (shared code, inherited unmodified) — the owner's
+  direction was to extend that same "same number, same meaning" property one step further into
+  the driver-owned 10+ range, without collapsing per-driver numbering into one shared enum. Three
+  fixed common slots, immediately after the base range, each driver uses if and only if it
+  actually has that failure mode:
+  - **`errno=10` = initial setup/init failed.** Already universal (see above) - formalized, not
+    changed.
+  - **`errno=11` = the driver's own primary/periodic read (measurement) failed** - what
+    `read_loop()` reports each cycle. Found genuinely inconsistent before this scheme (SCD30 was
+    already at 11 by chance; BMP3XX was at 13, SGP40 at 17) - all three now use 11.
+  - **`errno=12` = a persisted-config read at init failed** (reading stored config values needed
+    to push into the sensor during `_init_*()`, distinct from a *later*, per-cycle config read like
+    SGP40's own backup-schedule lookup, which stays driver-specific). BMP3XX and SGP40 both have
+    this failure mode (moved from their old 11); SCD30 doesn't (`SCD30_Reader` has no local
+    `cfgmgr` at all - its params live purely on-sensor NVM, see its own module docstring) - `12` is
+    simply unused by SCD30, not repurposed.
+  Each driver's own remaining, driver-specific errors are renumbered to start immediately after
+  the highest common slot it actually uses (13+ for BMP3XX/SGP40, 13+ for SCD30 since it skips
+  unused `12`), preserving each driver's own original relative ordering among its own conditions -
+  see the per-driver table rows below for the resulting exact numbers. Room to extend to a fourth+
+  common slot (up to the existing 1-20ish range before needing to renumber everything again) is
+  open if another genuinely-shared category turns up later; none was added beyond these three in
+  this pass.
 - **A driver/service whose error sources aren't a fixed, enumerable-ahead-of-time list can assign
   `wrnno`/`errno` dynamically instead of from a fixed per-number catalog** — `system_service.py`
   assigns a task-supervisor warning's `wrnno` from that task's own position in a dynamically
@@ -1826,9 +1848,9 @@ pass-1/pass-2 process this table is pass 2's own output.
 | `base_classes.py` (inherited by every `SensorReader`/`SensorReaderConfig` subclass) | 1-9 | 1-2 | Reserved base range — see the bullet above; every driver's own numbering starts at 10+ to avoid colliding with this. |
 | `config_manager.py` (`"CFGMGR_" + name`, per instance) | 1-14 | 1-6 | Sequential in source order (`setup()`'s load/validate/first-write paths, then the three already-async accessor methods). |
 | `asy_fram_manager.py`/`asy_fram_driver.py` (shared `"FRAM"` logger — `AsyFramManager`, its chunk classes, and `FRAM_SPI` all share one stream) | 10-97 | 60-83 | `AsyFramManager`: 10-88, non-sequential — the shared `_handle_status_bytes()`/`_set_check_sb()` busy/idle-status-byte helper spreads its caller-supplied base `err` across 2 values when `check_idle=False` (`err`/`err+1`, one per status byte) or up to 7 when `check_idle=True` (`err` through `err+6`, covering both bytes' read-fail/mismatch/write-fail outcomes plus the two-bytes-disagree case) - confirmed directly from `_set_check_sb()`'s own branches, not just the inline comments at each call site. `_write_chunk()`=10-11 (busy-check, `check_idle=False`)/17 (CRC)/18 (write failed)/19-20 (idle-check, `check_idle=False`)/26 (exception), `_read_chunk()`=30-36 (busy-check, `check_idle=True`)/37 (read error)/38 (incremental CRC)/39-40 (idle-check, `check_idle=False`)/46 (final CRC)/47 (exception)/48 (zero-length buffer), `_clear_chunk()`=50-51 (busy-check, `check_idle=False`)/57 (write failed)/58 (exception), the block-pair `_write()`/`_read()`/`clear()` helpers reuse 60-64/70-73/80 for both their own `errno` and matching `wrnno` (pause/invalid-block-data warnings), the remaining higher-level methods (`write()`, timestamp write/sync/`setup()`)=81-88. `FRAM_SPI`: 89-97, continuing sequentially (not-initialized ×5, invalid-range ×2, readback mismatch, lock-timeout) + `wrnno`=81-83 (WRDI-stuck, WEL-didn't-set ×2). |
-| `asy_bmp3xx_driver.py` (`"BMP3XX"`) | 10-21 | — | 10=init, 11-14=config read/write, 15-20=oversampling/filter forwards, 21=trigger-interval. |
-| `asy_scd30_driver.py` (`"SCD30"`) | 10-24 | — | 10=init, 11=read, 12=stop-continuous-measurement, 13-24=per-field get/set forwards in pairs. |
-| `asy_sgp40_driver.py` (`"SGP40"`) | 10-18 | 10-14 | 10=init, 11-12=config, 13-18=VOC-backup read/write/serialize; `wrnno`=backup-missing/stale conditions. |
+| `asy_bmp3xx_driver.py` (`"BMP3XX"`) | 10-22 | — | 10=init (common slot), 11=periodic read failed (common slot), 12=config data read failed at init (common slot), 13=config data write failed at init, 14=config data read failed at store-time (`_store_bmp()`), 15-20=oversampling/filter forwards, 21=trigger-interval, 22=batched oversampling/filter-coefficient snapshot read (`_read_sensor_dict()`). See the common-error-class bullet above the table. |
+| `asy_scd30_driver.py` (`"SCD30"`) | 10-25 | — | 10=init (common slot), 11=periodic read failed (common slot; already matched the common slot before it existed), 12=reserved/unused (SCD30 has no init-time persisted-config-read step - see the common-error-class bullet above), 13=stop-continuous-measurement, 14-25=per-field get/set forwards in pairs. |
+| `asy_sgp40_driver.py` (`"SGP40"`) | 10-18 | 10-14 | 10=init (common slot), 11=periodic read failed (common slot), 12=config data read failed at init (common slot), 13-18=per-cycle backup-config-read/write/clear-FRAM/deserialize/serialize/compensation-callback. `wrnno`=backup-missing/stale conditions. |
 | `asy_wifi_service.py` (`"WIFI"`, `AsyConnTime`) | 11-18 | 1-7 | 11=mode-switch, 12=hotspot-activate, 13=STA-connect-attempt, 14=STA-poll, 15-16=STA-disconnect/deactivate, 17=hardware-failure-streak give-up (mirrors NTP's own give-up errno below), 18=disconnect-timeout; `wrnno` 1-3=missing-config per connection phase, 4-7=WLAN status conditions. |
 | `asy_ntp_client.py` (`"NTP"`) | 11-20 | 1-3 | 11=missing-config, ..., 19=time-calc, 18/20=missing-config-interval-fallback/give-up; `wrnno`=callback failures. |
 | `captive_dns.py` (`"DNSSRV"`, `DNSServer`) | 1-3 | 1-3 | 1=invalid server_ip/netmask at startup, 2=unexpected loop exception, 3=disconnect-cleanup exception; `wrnno` 1=dropped `sendto()` reply, 2=invalid recvfrom data/address, 3=socket teardown (`disconnect()`) didn't complete cleanly (added alongside Part C.7's silent-failure-masking convention fix - previously missing from this table). |
@@ -1837,7 +1859,7 @@ pass-1/pass-2 process this table is pass 2's own output.
 | `api_response.py`'s `handle_set_cmd()` (logs onto whichever caller-supplied `SensorReaderConfig`'s own `self.pr` it's given, not a logger of its own) | 99 | — | One defense-in-depth catch (a caller-supplied `post_fct`/`post_asy_fct` raising - see Part C.5.3), fixed at 99 specifically because this can run against *any* registered module's own `.pr` (`AsyConnTime`, `AsyNtpClient`, `NotificationCoordinator`, ...) - a small number picked for one of them would still collide with another's own range or with base's reserved 1-9. |
 | `asy_webserver_service.py` (`"WEBSERVER"`) | 1-4 | 1-5 | Not a `SensorReader`/`SensorReaderConfig` subclass (own bare `PrintLogHistory` via `make_logger()`, like `captive_dns.py`/`system_service.py`), so it starts at 1 like those, not 10+. 1=unexpected exception escaping `_serve()`'s per-connection dispatch, 2=`system_cmd` callback failure, 3=`notification_led` callback failure (found missing entirely - Step 7 second-pass audit finding: both callback dispatches were unguarded, letting a raising caller-supplied `system_cmd`/`notification_led` escape the route handler instead of degrading to a `"Failed"` result with a persisted errno like every comparable callback call site elsewhere in this codebase), 4=an otherwise-unlogged exception caught by the `app.errorhandler(Exception)` catch-all (Step 8 audit finding - see BACKLOG.md's former "No `@app.errorhandler` registrations exist anywhere yet" item, now closed); `wrnno` 1=peer closed early, 2=per-call or outer-cap timeout reclaim, 3=socket error reclaim, 4=writer close failed, 5=`wait_closed()` failed. Previously missing from this table entirely despite live usage - added alongside the errno=2/3 fix above. |
 | `asy_neopixel_driver.py` (`"NEOPIXEL"`) | — | — | No persisted logging today — only informational `evt()` calls, nothing that fails in a way worth counting against `get_error_counter()`. |
-| `asy_i2c_driver.py`/`asy_spi_driver.py`, `asy_udp_socket.py`, `asy_dns_client.py` (client side) | — | — | Deliberately no logging (reverted) — every real failure already surfaces to and gets logged by exactly one upstream owner; see the standing "Bus layer"/"`asy_udp_socket.py`/`asy_dns_client.py`" conventions above. |
+| `asy_i2c_driver.py`/`asy_spi_driver.py`, `asy_udp_socket.py`, `asy_dns_client.py` (client side) | — | — | Deliberately no logging (reverted) — every real failure already surfaces to and gets logged by exactly one upstream owner; see the standing "Bus layer"/"`asy_udp_socket.py`/`asy_dns_client.py`" conventions above. **Coverage audit (closed, no gaps found)**: every I2C-bus-touching call site in `asy_scd30_driver.py`/`asy_sgp40_driver.py`/`asy_bmp3xx_driver.py` is reachable only from a higher-level method wrapped in `try`/`except Exception` that logs via `self.pr.err_s()` with its own `errno` (confirmed by matching every driver's actual `errno`/`wrnno` call sites 1:1 against this table's own per-driver row - the BMP3XX `errno=22` fix above is what that cross-check found). SGP40's one bare `except OSError: pass` (the general-call reset broadcast) is a documented, deliberately-suppressed *expected* NAK, not a swallowed real error. FRAM's SPI path has no exception-based bus errors to catch in the first place - real RP2040 SPI transfers can't NAK, so `FRAM_SPI` already detects failures via its own status-byte checks (rows above), a different and already-complete mechanism. No dedicated bus-layer REST endpoint/logger is needed on top of this - see BACKLOG.md's former "Bus-layer status has no dedicated REST endpoint" entry, closed by this audit. |
 | `asy_uart_driver.py` | — | — | Orphan module, zero live callers — no `self.pr` at all (C.3.2); would follow this same table's shape once wired in and given an owner. |
 
 See the "reserved base range" bullet above for why `errno=10` means "init failed" almost everywhere

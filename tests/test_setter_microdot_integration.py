@@ -893,12 +893,12 @@ def test_real_microdot_scd30_per_field_setter_end_to_end_bus_fault_surfaces_as_f
     writes = _scd_writes(reader)
     assert len(writes) == 1  # the faulted write never made it into the bus log at all
     assert writes[0][:4] == b"\x00\x10\x03\xf5"
-    # The fault is real and counted, on SCD30's own error log (errno=14, its set_measurement_interval
+    # The fault is real and counted, on SCD30's own error log (errno=15, its set_measurement_interval
     # wrapper's own number) - not swallowed silently just because the response says 200.
     log = run(reader.get_error_counter())
     err_nums = log["SCD30"]["ErrNum"]
     assert isinstance(err_nums, list)
-    assert err_nums[-1] == 14
+    assert err_nums[-1] == 15
 
 
 if __name__ == "__main__":

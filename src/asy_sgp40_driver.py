@@ -123,7 +123,7 @@ class SGP40_Reader(SensorReaderConfig):
 
         cfg_values = await self.cfgmgr.get_int_values(_VAL_BP + _VAL_BMAX + _VAL_WT)
         if cfg_values is None or len(cfg_values) != 3:
-            await self.pr.err_s("Error reading config data!", errno=12)
+            await self.pr.err_s("Error reading config data!", errno=13)
             return None, False, False, None
 
         serialize = False
@@ -171,7 +171,7 @@ class SGP40_Reader(SensorReaderConfig):
             elif not self._reset_fram_cleared:
                 self._reset_fram_cleared = await self.ts_storage.clear()
                 if not self._reset_fram_cleared:
-                    await self.pr.err_s("Error clearing FRAM!", errno=14)
+                    await self.pr.err_s("Error clearing FRAM!", errno=15)
 
         try:  # caller-supplied callback, could legitimately misbehave
             comp_data = await self.comp_callback()  # [Temperature, Humidity]
@@ -214,13 +214,13 @@ class SGP40_Reader(SensorReaderConfig):
                 if deserialized:
                     self.pr.one("Restore applied successfully")
                 else:
-                    await self.pr.err_s("Error deserializing!", errno=15)
+                    await self.pr.err_s("Error deserializing!", errno=16)
 
             if serialize:
                 if serialized:
                     self.pr.evt("Backup data created successfully")
                 else:
-                    await self.pr.err_s("Error serializing!", errno=16)
+                    await self.pr.err_s("Error serializing!", errno=17)
 
         except Exception as e:
             # I2C failed, but a pending reset_for_measure already completed above regardless.
@@ -228,7 +228,7 @@ class SGP40_Reader(SensorReaderConfig):
                 self.reset = False
             voc_index = raw = timestamp = None
             serialized = False
-            await self.pr.err_s("Read failed:", e, errno=17)
+            await self.pr.err_s("Read failed:", e, errno=11)
         return SGP40(voc_index, raw, timestamp), True, serialized
 
     async def _init_sgp(self) -> bool:
@@ -249,7 +249,7 @@ class SGP40_Reader(SensorReaderConfig):
 
         cfg_values = await self.cfgmgr.get_int_values(_VAL_BP + _VAL_WT)
         if cfg_values is None or len(cfg_values) != 2:
-            await self.pr.err_s("Error reading config data!", errno=11)
+            await self.pr.err_s("Error reading config data!", errno=12)
             return False  # error
 
         if cfg_values[0] > 0:  # backup verification period setting
@@ -329,7 +329,7 @@ class SGP40_Reader(SensorReaderConfig):
             return  # no write error
 
         if not res:  # no data was written for other reason
-            await self.pr.err_s("Write error during backup!", errno=13)
+            await self.pr.err_s("Write error during backup!", errno=14)
             return  # don't continue due to error
 
         if require_ntp:  # (ntp_synced and require_ntp) and res must have been True here

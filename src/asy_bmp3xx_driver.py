@@ -155,7 +155,7 @@ class BMP3xx_Reader(SensorReaderConfig):
             self.pr.all("read")
         except Exception as e:
             timestamp = pressure = temperature = None
-            await self.pr.err_s("Read failed:", e, errno=13)
+            await self.pr.err_s("Read failed:", e, errno=11)
         return pressure, temperature, timestamp
 
     async def _init_bmp(self) -> bool:
@@ -171,7 +171,7 @@ class BMP3xx_Reader(SensorReaderConfig):
 
         cfg_values = await self.cfgmgr.get_int_values(_VAL_SI + _VAL_POV + _VAL_TOV + _VAL_FC)
         if cfg_values is None or len(cfg_values) != 4:
-            await self.pr.err_s("Error reading config data!", errno=11)
+            await self.pr.err_s("Error reading config data!", errno=12)
             return False  # error
 
         # set_trigger_secs() never raises (logs errno=21, keeps the previous value) - a bad stored
@@ -182,7 +182,7 @@ class BMP3xx_Reader(SensorReaderConfig):
             await self.bmp.set_temperature_oversampling(cfg_values[2])  # BMPTempOvers
             await self.bmp.set_filter_coefficient(cfg_values[3])  # BMPFiltCoeff
         except Exception as e:
-            await self.pr.err_s("Error setting config data:", e, errno=12)
+            await self.pr.err_s("Error setting config data:", e, errno=13)
             return False  # error
         self.pr.one("initialized")
         return True

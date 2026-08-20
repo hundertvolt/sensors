@@ -87,26 +87,33 @@ constraints.
   original exception), every extended hold is a bounded, protocol-justified delay, and every call
   site acquires the per-sensor session lock before the shared bus lock, never the reverse. No code
   changes needed.
-- **Common driver error classes across sensors — future direction, not designed or implemented
-  yet.** Each driver currently defines and reports its own `errno`/`wrnno` values independently
-  (see `SPECIFICATION.md` Part C.7); the one exception is `errno=10` ("initial setup failed"), which
-  all three drivers already use for the same situation by independent convergence rather than by
-  any enforced scheme. Project owner's stated direction: keep per-driver definition/reporting (not
-  a single shared enum), but predefine a small set of common error *classes* so the same number
-  means the same or an equivalent condition across different drivers, beyond just the one
-  already-consistent case. No scheme (numbering ranges, category list, how a driver opts in)
-  designed yet.
+- **Common driver error classes across sensors — closed, scheme designed and applied.** Three
+  fixed common `errno` slots now sit immediately after `base_classes.py`'s own reserved 1-9:
+  `10`=init failed (already universal), `11`=primary/periodic read failed (newly unified - was 11/
+  13/17 across SCD30/BMP3XX/SGP40), `12`=persisted-config read at init failed (newly unified where
+  applicable - was 11/unused/11 across BMP3XX/SCD30/SGP40; SCD30 has no such step, so `12` is
+  simply unused there). Each driver's own remaining errors were renumbered to start right after the
+  highest common slot it uses, preserving each driver's original relative ordering - see
+  `SPECIFICATION.md` Part C.7's new "Common error classes" bullet for the full scheme and Part
+  C.7.1's table for the resulting exact numbers per driver. Verified: `scripts/lint.sh`,
+  `scripts/typecheck.sh`, and the full `scripts/test.sh` suite (2183/2183) all pass after the
+  renumbering.
 - **The task-supervisor error-budget counter** is behaviorally correct and intentional as designed,
   but flagged by the owner as implementable more efficiently — worth a cleaner implementation in
   the refactor without changing observed behavior. (Neopixel warning-flash sequencing was the other
   half of this item - resolved by the `src/asy_neopixel_driver.py`/`src/asy_notification_service.py`
   promotion, see `SPECIFICATION.md` Part A.4.)
-- **Bus-layer status has no dedicated REST endpoint or field yet.** `asy_i2c_driver.py`/
-  `asy_spi_driver.py` deliberately have no logger of their own today (see `SPECIFICATION.md` Part
-  C.7.1's table) — the natural REST shape once each bus instance gets its own logger name
-  (`"I2C0"`/`"I2C1"`/`"SPI0"`) would be one endpoint with one field per bus instance, mirroring
-  `/status`'s existing `errcount` aggregation (`SPECIFICATION.md` Part A.8). Not designed or
-  implemented yet.
+- **Bus-layer status has no dedicated REST endpoint or field — closed, no gaps found.**
+  `asy_i2c_driver.py`/`asy_spi_driver.py` deliberately have no logger of their own (see
+  `SPECIFICATION.md` Part C.7.1's table); re-examined on the premise that a dedicated bus-level
+  REST endpoint might be needed to make bus faults visible. It isn't: every I2C-bus-touching call
+  site in `asy_scd30_driver.py`/`asy_sgp40_driver.py`/`asy_bmp3xx_driver.py` is only ever reachable
+  from a higher-level method that already catches the bus exception and logs it via its own
+  `self.pr.err_s()`, confirmed by cross-checking every driver's real `errno`/`wrnno` call sites
+  against Part C.7.1's table 1:1 (this found and fixed one stale table entry - BMP3XX's `errno=22`
+  was missing from its documented range). FRAM's SPI path has no exceptions to catch in the first
+  place (real RP2040 SPI can't NAK); it already detects failures via its own status-byte checks,
+  a separate and already-complete mechanism. No code or REST changes needed.
 - **Rough sequencing, not a committed plan**: (1) dev/build environment setup (genericized
   `build-*.sh`/toolchain paths) — everything else touching CI/firmware depends on this; (2) the
   structural patterns above (per-sensor config, generalized error-counter bookkeeping) are largely

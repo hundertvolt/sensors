@@ -813,7 +813,7 @@ def test_reader_getters_log_the_correct_errno_on_bus_nak() -> None:
     log = run(scenario())["SCD30"]
     # History is a fixed-length deque (default history_length=10), left-padded with "no error"
     # sentinels until it fills - only the trailing entries are this scenario's own 6 calls.
-    assert log["ErrNum"][-6:] == [13, 15, 17, 19, 21, 23]
+    assert log["ErrNum"][-6:] == [14, 16, 18, 20, 22, 24]
     assert log["ErrType"][-6:] == ["E", "E", "E", "E", "E", "E"]
 
 
@@ -831,7 +831,7 @@ def test_reader_setters_log_the_correct_errno_on_bus_nak() -> None:
         return await reader.get_error_counter()
 
     log = run(scenario())["SCD30"]
-    assert log["ErrNum"][-6:] == [14, 16, 18, 20, 22, 24]
+    assert log["ErrNum"][-6:] == [15, 17, 19, 21, 23, 25]
     assert log["ErrType"][-6:] == ["E", "E", "E", "E", "E", "E"]
 
 
@@ -916,7 +916,7 @@ def test_reader_stop_continuous_measurement_false_returns_false_on_bus_fault() -
 
     ok, log = run(scenario())
     assert ok is False
-    assert log["SCD30"]["ErrNum"][-1] == 12
+    assert log["SCD30"]["ErrNum"][-1] == 13
 
 
 # ---------------------------------------------------------------------------
