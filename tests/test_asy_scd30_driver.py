@@ -1,12 +1,9 @@
 """Unit + integration tests for asy_scd30_driver.py (src/).
-
-Module-level tests exercise SCD30_I2C alone against tests/machine.py's fake I2C/Pin, cross-checked
-byte-for-byte against the Interface Description's own worked examples (datasheets/scd30/) rather
-than only against this file's own CRC8 computation. Integration-level tests exercise SCD30_Reader
-wired to the real src/asy_i2c_driver.py, src/base_classes.py and src/print_log.py - no mocking above
-the raw I2C bus - covering how a real OSError (bus fault) or RuntimeError (CRC mismatch) propagates
-up through the Reader's never-raises wrapper contract and into the real error counter/log.
+Module-level tests exercise SCD30_I2C against tests/machine.py's fake I2C/Pin, cross-checked byte-for-byte against the Interface Description's own worked examples (datasheets/scd30/).
+Integration-level tests wire SCD30_Reader to the real asy_i2c_driver.py/base_classes.py/print_log.py - no mocking above the raw I2C bus.
 """
+# Integration tests cover how a real OSError (bus fault) or RuntimeError (CRC mismatch) propagates
+# up through the Reader's never-raises wrapper contract and into the real error counter/log.
 
 import asyncio
 import struct

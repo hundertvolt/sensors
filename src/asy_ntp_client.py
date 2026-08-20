@@ -1,10 +1,10 @@
 """Async NTP client + CET/CEST local-time helper. Not a sensor, but config-managed the same way:
 extends base_classes.py's SensorReaderConfig, owns its own config_NTP.cfg (see SPECIFICATION.md Part C).
-Every field is persist-only - nothing here needs a live push, so base_classes.py's generic
-_set_dict_cfg() already provides full setter support with zero changes to this file (no
-self._push_callbacks entries registered). errno/wrnno numbering starts at 11 here (1-4/10 are
-base_classes.py's own).
 """
+# Every field is persist-only - nothing here needs a live push, so base_classes.py's generic
+# _set_dict_cfg() already provides full setter support with zero changes to this file (no
+# self._push_callbacks entries registered). errno/wrnno numbering starts at 11 here (1-4/10 are
+# base_classes.py's own).
 
 import asyncio
 import struct

@@ -1,10 +1,4 @@
-"""Deterministic unit tests for digital_twin/_sgp40_chip.py's own transaction-response logic -
-answers the exact raw I2C command/reply shapes tests/test_asy_sgp40_driver.py's fixtures already
-lock in for the real driver (see that file's queue_successful_init()/measure_raw() assertions),
-but generated instead of hand-scripted. No real machine.I2C/asy_sgp40_driver involved here - this
-tests Sgp40Chip in isolation, matching this step's "deterministic tests of the twin's own
-transaction responses" criterion.
-"""
+"""Deterministic unit tests for digital_twin/_sgp40_chip.py's own transaction-response logic - answers the same raw I2C command/reply shapes tests/test_asy_sgp40_driver.py's fixtures lock in for the real driver, generated rather than hand-scripted. Tests Sgp40Chip in isolation, no real machine.I2C involved."""
 
 import sys
 

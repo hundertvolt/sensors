@@ -1,10 +1,4 @@
-"""Deterministic unit tests for digital_twin/launch.py's parse_args()/parse_fault_spec() (pure,
-synchronous - the bulk of this file), plus one short-duration/fixed-seed end-to-end smoke test of
-main() itself - same "does the mechanism work at all" spirit as
-test_digital_twin_machine.py's own Timer/WDT live-timing tests and
-test_digital_twin_network_neopixel.py's own WLAN connect-timing test, not a precise-behavior
-assertion.
-"""
+"""Deterministic unit tests for digital_twin/launch.py's parse_args()/parse_fault_spec() (pure, synchronous), plus one short-duration/fixed-seed end-to-end smoke test of main() itself - a "does it work at all" check, not a precise-behavior assertion."""
 
 import asyncio
 import sys

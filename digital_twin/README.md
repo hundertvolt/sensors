@@ -18,10 +18,13 @@ Kept completely separate so nothing here can accidentally affect the determinist
   schedule via an internal `asyncio` task, not `_thread` (upstream's own `_thread.rst` docs state
   outright that it "is highly experimental and its API is not yet fully settled" — not a fit for
   load-bearing behavior here, and every real `Timer` callback in this codebase is already trivial
-  enough that true preemption buys nothing). `I2C`/`SPI` wire the real "wozi" variant's bus layout exactly
-  (see `machine.py`'s own docstring): `I2C(0, ...)` carries the SCD30 at `0x61`, `I2C(1, ...)`
+  enough that true preemption buys nothing). `I2C`/`SPI` wire the real "wozi" variant's bus layout
+  exactly, mirroring `sensortask_wozi.build_system()`'s own construction: `I2C(0, ...)` carries the SCD30 at `0x61`, `I2C(1, ...)`
   carries the SGP40 at `0x59` and BMP3xx at `0x77`, `SPI(0, ...)` carries the FRAM chip. Any other
-  address NAKs — a real bus with a fixed, known set of devices on it, not an unbounded fixture.
+  address NAKs — a real bus with a fixed, known set of devices on it, not an unbounded fixture. `Pin`
+  identity is shared by id (`Pin(8)` constructed twice returns the same underlying pin state), since
+  a real GPIO pin is one fixed physical resource and chip fakes and drivers may each construct their
+  own `Pin` object for the same id.
 - `_sgp40_chip.py` / `_scd30_chip.py` / `_bmp3xx_chip.py` — one chip fake per sensor, each verified
   against its own datasheet in `datasheets/` for the raw transaction shape and sensible value
   ranges. `_scd30_chip.py`'s RDY pin fires a real rising edge on its own internal measurement-
@@ -44,7 +47,21 @@ Kept completely separate so nothing here can accidentally affect the determinist
   `tests/network.py`/`tests/neopixel.py`'s own fakes, for full runtime independence from `tests/`.
   `network.py`'s one real behavioral difference: `WLAN.connect()` transitions to a successful,
   connected state immediately, so a live run's WiFi polling loop doesn't wait forever the way the
-  unit-test fixture (deliberately inert, hand-driven by test code) would.
+  unit-test fixture (deliberately inert, hand-driven by test code) would. It only fakes *connection
+  state* — actual traffic (NTP/DNS/HTTP) goes through the real `socket` module, a genuine wrapper
+  around the Unix port's own BSD sockets, so it transparently reaches the real network once
+  "connected". `ifconfig()` reports a plausible static address rather than a discovered one (this
+  MicroPython build's `socket.socket` has no `getsockname()`) — harmless, since nothing in `src/`
+  constructs a socket from that value.
+- `_http_client.py` — minimal hand-rolled HTTP/1.1 client over `asyncio.open_connection()`, used to
+  drive real requests against `WebserverService` in Unix-port integration runs (no HTTP client
+  library is frozen into the pinned Unix-port build). Every response it sees is `Connection: close`
+  (`asy_webserver_service.py`'s own hook), so it never needs keep-alive support.
+- `launch.py` — standalone, `src/`-free CLI demo (`micropython digital_twin/launch.py [options]`):
+  brings up the same bus wiring `sensortask_wozi.build_system()` uses and periodically drives one
+  real bus-level read per sensor, a `WLAN.connect()` attempt, and WDT feeding. `--fault
+  DEVICE:OP[:TIMES]` drives each chip fake's existing `FaultInjector`/`raise_on` API. Lighter and
+  narrower in scope than `run_wozi_integration.py` below, which boots the real object graph instead.
 
 Every chip fake exposes a `.fault` (`FaultInjector`) surface for provoking a bus NAK/CRC-corruption/
 timeout on demand — off/clean by default.
@@ -53,8 +70,10 @@ timeout on demand — off/clean by default.
 
 `src/sensortask_wozi.py` needs **zero twin-awareness** — no `if` branch anywhere distinguishing real
 hardware from simulated. The swap is pure `MICROPYPATH` ordering, the same mechanism
-`tests/machine.py` already uses transparently for the unit-test suite. The dedicated entry
-point, `scripts/run_unix_port_integration.sh`, does exactly this:
+`tests/machine.py` already uses transparently for the unit-test suite. `run_wozi_integration.py`
+also drives real HTTP over real sockets against the real `WebserverService` — never Microdot's
+`app.dispatch_request()` bypass, the same "full HTTP" standard the real system meets. The dedicated
+entry point, `scripts/run_unix_port_integration.sh`, does exactly this:
 
 ```bash
 scripts/run_unix_port_integration.sh                      # just launch + serve forever, no flags
@@ -92,8 +111,8 @@ location inside `digital_twin/` (`fram_state.json`/`config/`, both gitignored, w
 explicit shutdown — never an ephemeral per-run path, unlike the automated test tiers below). A bare,
 no-flags run just launches the real object graph and serves forever, the same as a real rp2040 boot
 would — the automated soak check (`--soak`, or `--soak-cycles N` which implies it) is a specialty,
-opted into explicitly rather than run by default. See that module's own docstring for the full flag
-list and design rationale.
+opted into explicitly rather than run by default. See `run_wozi_integration.py`'s `parse_args()`
+for the full flag list, and its `_soak()`/`_MEM_TREND_*` comments for the soak methodology.
 
 A second, lighter integration tier also landed alongside the full orchestrator:
 `tests/test_digital_twin_sensortask_integration.py` builds the real `sensortask_wozi` object graph
@@ -209,9 +228,9 @@ started with. For a new **I2C** sensor this is a small, mechanical addition:
    (no real `machine.I2C` involved, matching every existing `tests/test_digital_twin_{sgp40,scd30,
    bmp3xx}.py`) — then extend `tests/test_digital_twin_machine.py`'s own dispatch tests if the new
    chip shares a bus id those tests already probe.
-4. Update this file's "What's here" list and `machine.py`'s own module docstring (the "Bus wiring
-   mirrors..." paragraph) to mention the new chip, and consider whether `digital_twin/launch.py`'s
-   own `_sensor_loop()`/`_FAULT_DEVICE_OPS` should read from it too.
+4. Update this file's "What's here" list (the bus-wiring bullet above) to mention the new chip, and
+   consider whether `digital_twin/launch.py`'s own `_sensor_loop()`/`_FAULT_DEVICE_OPS` should read
+   from it too.
 
 **A new SPI sensor is not automatically supported yet if it would share an already-occupied SPI bus
 id with the FRAM chip.** `_wire_spi_device()`/`machine.SPI` currently wire **one fixed device per
@@ -261,5 +280,5 @@ correctly by the dedicated pass instead - see `digital_twin/typecheck.ini`'s own
   (`MICROPY_PY_SELECT_POSIX_OPTIMISATIONS`, the macro gating this code path, defaults to 0 and is
   only turned on by the Unix port's own config — rp2 defines no override, and its non-optimized
   poll object has no `pollfd` field or array to grow at all) — real hardware was never affected.
-  Fixed by `unix_port_poll_prewarm.py` (see "What's here" above); see that module's own docstring
-  for the full mechanism.
+  Fixed by `unix_port_poll_prewarm.py` (see "What's here" above and that module's own comments for
+  the pre-warming mechanism itself).

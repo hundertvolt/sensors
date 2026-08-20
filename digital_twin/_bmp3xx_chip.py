@@ -1,23 +1,5 @@
-"""Digital-twin chip fake for the Bosch BMP388/BMP390 (I2C address 0x77) - answers the exact
-register-addressed shape src/asy_bmp3xx_driver.py's BMP3XX_I2C sends via readfrom_mem()/
-writeto_mem() (CHIPID/STATUS/CONTROL/OSR/CONFIG/CAL_DATA/PRESSUREDATA - confirmed directly against
-that file). Unlike SGP40/SCD30 there is no CRC framing at all on this bus, so a randomized-but-
-plausible reading here means producing raw ADC bytes that decode, through the real driver's own
-cubic compensation formula, to a chosen target pressure/temperature - not just returning
-plausible-looking bytes directly.
-
-Calibration data: one fixed, real-shaped 21-byte calibration block (`_CAL_RAW`, format
-"<HHbhhbbHHbbhbb", matching asy_bmp3xx_driver.py's own `_read_coefficients()` exactly), picked and
-verified to round-trip cleanly across this twin's whole
-default sensible range (950-1050 hPa / 15-30 degC) with plenty of margin from both the 24-bit raw
-ADC range (0-16'777'215) and the real driver's own -40..85 degC / 300..1250 hPa operating-range
-rejection check (asy_bmp3xx_driver.py:433). `_invert_temperature()`/`_invert_pressure()` solve the
-real forward formula backward via Newton's method (both are smooth, low-order polynomials in a
-single unknown once temperature is fixed for the pressure solve - converges in a handful of
-iterations for any target inside the operating range), rather than special-casing the register
-responses directly - this exercises the real driver's own compensation math end-to-end, per the
-project owner's explicit choice.
-"""
+"""Digital-twin chip fake for the Bosch BMP388/BMP390 (I2C 0x77) — answers `asy_bmp3xx_driver.py`'s register-addressed protocol with raw ADC bytes that decode, through the real (Newton's-method-inverted) cubic compensation formula, to a chosen pressure/temperature.
+Calibration block is hand-picked, not real-chip data; see `digital_twin/README.md`'s "Known gaps" section."""
 
 import struct
 
@@ -48,8 +30,8 @@ _STATUS_DATA_READY = 0x60
 _CONTROL_FORCED_MODE = 0x13
 _CMD_SOFT_RESET = 0xB6
 
-# T1 T2 T3 P1 P2 P3 P4 P5 P6 P7 P8 P9 P10 P11 raw values - see module docstring for how these were
-# chosen/verified.
+# T1 T2 T3 P1 P2 P3 P4 P5 P6 P7 P8 P9 P10 P11 raw values - see digital_twin/README.md's "Known
+# gaps" section for how these were chosen/verified.
 _CAL_RAW = bytes.fromhex("6c6b5014fd9065a041ec05381868101ef4e0fc03fe")
 
 

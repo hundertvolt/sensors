@@ -1,24 +1,5 @@
-"""Integration tests across the real four-object chain: asy_wifi_service.py (AsyConnTime) ->
-asy_ntp_client.py (AsyNtpClient) -> {asy_fram_manager.py's timestamped FRAM chunk,
-system_service.py's SystemService} - exactly matching improved-quality/sensortask-wozi.py's real
-wiring (`ntp.ntp_issynced` passed as both SGP40_Reader's own fram_ntp_callback and SystemService's
-asy_ntp_callback: `SystemService(ntp.ntp_issynced, watchdog=watchdog, fram=fram, debug=debug)`).
-
-tests/test_ntp_wifi_dns_integration.py already proves the wifi/ntp/dns seam with real objects
-instead of lambda stand-ins; this file extends the same approach to the two *downstream* consumers
-of ntp.ntp_issynced that this repo's four-branch-merge bidirectional review flagged: several
-asy_fram_manager.py/system_service.py comments still attributed this callback to the legacy,
-unpromoted async_connect.py, when sensortask-wozi.py's actual wiring supplies it from the
-newly-promoted, audited asy_ntp_client.py instead (fixed in that same review pass - see git log).
-Every individual module already has thorough lambda-based unit tests of its own (including the
-"callback raises" guard: tests/test_asy_fram_manager.py's test_ntp_callback_raising_degrades_..., and
-tests/test_system_service.py's test_ntp_boot_signature_callback_exception_returns_none_and_logs_once);
-what those can't observe is whether the *real*, currently-wired chain - a real AsyConnTime driving
-a real AsyNtpClient through an actual UDP NTP round trip - produces the value/timing behavior
-asy_fram_manager.py's and system_service.py's own contracts assume, including the no-deadlock
-assumption that reading a shared AsyNtpClient's sync state from a concurrent FRAM/SystemService
-consumer never contends with the wifi_mode_lock a real sync attempt holds.
-"""
+"""Integration tests across the real four-object chain: AsyConnTime -> AsyNtpClient -> {asy_fram_manager.py's timestamped FRAM chunk, SystemService} - matching sensortask-wozi.py's real ntp.ntp_issynced wiring.
+Extends tests/test_ntp_wifi_dns_integration.py's real-object approach to ntp.ntp_issynced's two downstream consumers: proves the real, currently-wired chain's value/timing behavior (including the no-deadlock assumption around wifi_mode_lock) that lambda-based unit tests alone can't observe."""
 
 import asyncio
 import os

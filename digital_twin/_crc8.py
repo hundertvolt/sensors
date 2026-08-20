@@ -1,10 +1,4 @@
-"""Independent CRC-8 reimplementation (Sensirion polynomial 0x31, init 0xFF) shared by
-_sgp40_chip.py/_scd30_chip.py - both real drivers import src/crc_checks.py's own CRC8 for this same
-polynomial. Deliberately a second, independent implementation rather than importing crc_checks.py:
-a bug shared between the twin's own response-building and the driver's own validation couldn't hide
-behind a self-consistent round trip, matching tests/test_asy_sgp40_driver.py's own `_crc8()`
-helper's identical rationale.
-"""
+"""Independent CRC-8 reimplementation (Sensirion polynomial 0x31, init 0xFF) shared by `_sgp40_chip.py`/`_scd30_chip.py` — deliberately not importing `src/crc_checks.py`'s own CRC8, so a bug shared between the twin's response-building and the driver's validation can't hide behind a self-consistent round trip."""
 
 _CRC_POLY = 0x31
 

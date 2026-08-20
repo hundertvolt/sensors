@@ -280,7 +280,7 @@ The condensed version is A.2 above. Key modules if you need to go deeper (folded
 - **SGP40's VOC index is a deviation-from-learned-baseline number, not an absolute-concentration
   one — confirmed directly against `voc_algorithm.py`'s real Sensirion Gas Index Algorithm port
   while calibrating a real threshold-crossing integration test (see
-  `tests/test_notification_sgp40_integration.py`'s own module docstring for the full derivation).**
+  `tests/test_notification_sgp40_integration.py`'s own top-of-file comment for the full derivation).**
   Three facts worth knowing before writing any test or reasoning about real-world VOC behavior: (1)
   `_VOCALGORITHM_INITIAL_BLACKOUT = 45` sampling intervals must elapse before the index moves off 0
   at all; (2) under *any* constant raw-tick input, however extreme, the index converges toward 100
@@ -668,8 +668,9 @@ Connection hardening (per-call/outer-cap timeouts, reject-when-full at the conne
 ceiling, no bespoke whole-server-restart mechanism — the webserver task participates in
 `start_and_check_tasks()`'s ordinary supervisor like every other module) and the `Connection: close`
 response header are implemented directly in `WebserverService`/`_TimeoutStreamProxy`
-(`src/asy_webserver_service.py`) — see that module's own docstring/comments for the current
-constants and mechanism, and `tests/test_asy_webserver_service.py` for the full regression
+(`src/asy_webserver_service.py`) — see that module's own inline comments (near `max_connections`/
+`_TimeoutStreamProxy`) for the current constants and mechanism, and `tests/test_asy_webserver_service.py`
+for the full regression
 coverage (including its F.9 soak test, `gc.mem_free()` flat over 100+ start/wedge/reclaim cycles).
 
 ## A.9 Website stub / frozen-HTML pipeline
@@ -1793,8 +1794,9 @@ and its config read-back comes back silently wrong/empty.
 - **Silent-failure-masking convention: a teardown/cleanup method on a class with no logger of its
   own must return `bool` (success/failure), not `None`, so its caller — which does have a
   logger — can observe and log the failure instead of a bare `except Exception: pass` silently
-  swallowing it.** This is a generalizable, checkable rule: any class whose own module docstring
-  documents it as a plain sentinel-return, never-raises primitive (no `self.pr` of its own) and
+  swallowing it.** This is a generalizable, checkable rule: any class documented (in its module
+  docstring, or the comment immediately below it if the header itself was trimmed — see CLAUDE.md's
+  docstring-length rule) as a plain sentinel-return, never-raises primitive (no `self.pr` of its own) and
   that owns a teardown/cleanup helper should follow this shape. Three real instances in `src/`
   today: `asy_udp_socket.py`'s `AsyUDPSocket.disconnect()` (its one real production caller,
   `captive_dns.py`'s `DNSServer.run()`, logs a `wrn_s()` on a `False` return — a repeated, silent
@@ -2042,18 +2044,19 @@ calling an inherited async logging method) but starts out attempted inside a syn
   chunk allocation failed). Not a competing choice against the bool gate — both can coexist on the
   same class, answering different questions ("has setup run at all" vs. "did this one piece work").
 - **The response to "called before `setup()` ran" is never a free stylistic choice — it must match
-  whatever raise/never-raise contract the class already declares in its own module docstring.**
+  whatever raise/never-raise contract the class already declares (in its module docstring, or the
+  comment immediately below it if the header itself was trimmed — see CLAUDE.md's docstring-length rule).**
   - A class documented as "never raises" (every `SensorReader`/`SensorReaderConfig` subclass,
     `PrintLog` family, `ConfigManager`) returns its documented sentinel and logs, exactly like every
     other failure mode that class already handles. This holds even for `FRAM_SPI` specifically,
-    whose own docstring promises "self-healing to a safe state without raising, except
+    whose own docstring/comment promises "self-healing to a safe state without raising, except
     `__init__`/`setup()`'s one-time setup errors" — its pre-`setup()` sentinel-returning behavior
     was already correct.
   - `SPIDevice.__aenter__`'s raise is a structural necessity of Python's `async with` protocol (no
     sentinel-return option exists for a failed `__aenter__`), not a stylistic precedent — it doesn't
     extend to any other method on any other class.
-  - **Verify per class, don't assume**: check the specific class's own module docstring for an
-    already-declared raise/never-raise contract before deciding the response shape, rather than
+  - **Verify per class, don't assume**: check the specific class's own module docstring/comment for
+    an already-declared raise/never-raise contract before deciding the response shape, rather than
     copying whichever example was read most recently.
 - **Not every readiness question needs a gate at all.** `AsyFramManager.get_chunk()`/
   `get_timestamped_chunk()` are pure bookkeeping (offset arithmetic, no hardware access) — safe

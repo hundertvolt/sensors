@@ -1,16 +1,5 @@
-"""Digital-twin chip fake for the Sensirion SGP40 (I2C address 0x59) - answers the exact raw
-word-oriented command/reply shapes src/asy_sgp40_driver.py's SGP40_I2C sends (get-serial-number
-0x3682, self-test 0x280e, general-call reset via address 0x00 - handled by machine.py's I2C bus
-itself, not this class - and measure-raw 0x260f + humidity/temperature compensation words), with
-randomized-but-plausible SRAW_VOC ticks instead of a hand-scripted fixture. Verified against
-Sensirion's SGP40 datasheet (datasheets/sgp40/, v1.2 - Feb 2022, Table 1): SRAW_VOC's own documented
-range is 0-65'535 ticks; this twin's default range (26'000-34'000) is a sensible indoor-clean-air
-sub-range of that, matching the values tests/test_asy_sgp40_driver.py's own fixtures already use
-(28'000-31'000).
-
-Sits at the same raw-transaction mocking boundary as tests/machine.py's fake I2C, but is a separate,
-independent implementation (not imported from tests/machine.py).
-"""
+"""Digital-twin chip fake for the Sensirion SGP40 (I2C 0x59) — answers `asy_sgp40_driver.py`'s exact word-oriented protocol (serial-number/self-test/general-call-reset/measure-raw) with datasheet-ranged random SRAW_VOC ticks.
+Independent implementation, not shared with `tests/machine.py`'s fake I2C."""
 
 import random as _random_module
 

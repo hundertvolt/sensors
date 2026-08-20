@@ -1,13 +1,12 @@
 """Async wrapper around machine.UART: select.poll-driven non-blocking read/write, lock-scoped via
 base_classes.Lockable so a read/write exchange runs atomically under `async with`. Optional
-per-instance CRC framing (crc_checks.py's CRC_Base family) on read_until_complete/
-readinto_until_complete/write/writefrom. Not wired into any live caller yet (see BACKLOG.md).
-Whoever wires it in: GPIO24/25 and GPIO28/29 fall inside a UART pin-mux group and are
-wireless-reserved on Pico W - picking either pair for tx_pin/rx_pin silently collides with WiFi.
-
-A hardware-level framing/parity/overrun fault on rp2 never raises (see SPECIFICATION.md C.3.2) -
-every method here returns a plain None/False sentinel instead, never raises.
+per-instance CRC framing (crc_checks.py's CRC_Base family) on read_until_complete/readinto_until_complete/write/writefrom; not wired into any live caller yet (see BACKLOG.md).
 """
+# Whoever wires it in: GPIO24/25 and GPIO28/29 fall inside a UART pin-mux group and are
+# wireless-reserved on Pico W - picking either pair for tx_pin/rx_pin silently collides with WiFi.
+#
+# A hardware-level framing/parity/overrun fault on rp2 never raises (see SPECIFICATION.md C.3.2) -
+# every method here returns a plain None/False sentinel instead, never raises.
 
 import asyncio
 import select

@@ -1,69 +1,5 @@
-"""Direct, real-interpreter verification of MicroPython's
-time.ticks_ms()/time.ticks_diff()/time.ticks_add() wraparound arithmetic (SPECIFICATION.md Part
-F.1's ticks_ms()/ticks_diff() rollover facts).
-
-Every real src/ ticks_ms()/ticks_diff() use site (asy_bmp3xx_driver.py's _wait_status_bits(),
-asy_notification_service.py's _next_sleep_secs(), asy_uart_driver.py's ready(),
-asy_udp_socket.py's ready()) was directly read for this audit: all four share the identical
-bounded-short-timeout shape (`t0 = time.ticks_ms()` once; loop; `time.ticks_diff(time.ticks_ms(),
-t0)` compared against a millisecond-or-low-second `timeout_ms`) - no raw `now - t0` subtraction
-anywhere, and no timeout value anywhere near the correctness window ticks_diff() guarantees (half
-of the platform's own ticks period). No code fix was needed in src/ for this category; this file
-is the "check, don't just look" regression evidence for that conclusion.
-
-**A real, confirmed Unix-port-testing-scope gap, found while writing this file (same class of
-finding as BACKLOG.md open question #5's UDP/NTP Unix-port quirk - a genuine platform difference,
-not a bug):** the real RP2040 target's time.ticks_ms() rolls over every `2**30` ms (~12.4 days) -
-confirmed directly against the pinned v1.28.0 source, py/mpconfig.h's
-`MICROPY_PY_TIME_TICKS_PERIOD = MP_SMALL_INT_POSITIVE_MASK + 1`, which resolves per
-py/smallint.h's MICROPY_OBJ_REPR_A formula to `2**30` on rp2's 32-bit machine word. **This
-project's own MicroPython Unix-port test rig (`ports/unix`'s "standard" build, what scripts/
-test.sh actually runs everything under) has a *different* period - confirmed empirically against
-the real built binary (bisection: a time.ticks_add() delta of `2**60` succeeds, `2**61` raises
-OverflowError), consistent with the same MICROPY_OBJ_REPR_A formula evaluated for a 64-bit machine
-word instead: `2**62`.** Neither ports/rp2/mpconfigport.h nor ports/unix/mpconfigport.h overrides
-MICROPY_OBJ_REPR/MICROPY_PY_TIME_TICKS_PERIOD - the difference is purely the host word size the
-shared py/mpconfig.h formula is compiled against. **Net effect: the real RP2040-specific
-2**30/~12.4-day boundary cannot be empirically exercised under this project's own Unix-port test
-rig at all** - a synthetic ticks-space value built via time.ticks_add() wraps at *this rig's*
-2**62 boundary, not rp2's 2**30 one, and time.ticks_ms() itself cannot be monkeypatched to fake a
-value near the real boundary (see below). Confidence that real rp2 hardware behaves correctly
-rests on code identity, not empirical measurement at the real boundary: ticks_diff()/ticks_add()
-are one shared, period-parametric C implementation (extmod/modtime.c) used unchanged by every
-port, with only the compiled-in period constant differing - the tests below empirically prove that
-shared implementation's wraparound math is correct at *this build's own* period boundary, which by
-code identity (not by re-measurement) implies the same correctness at rp2's differently-valued
-boundary. Positively confirming the literal 2**30 point would need either real rp2 hardware left
-running past a real ~12.4-day boundary, or a custom-built Unix-port variant compiled with a 32-bit
-object representation to force period=2**30 here too - both out of proportion to what this audit
-category needs beyond the code-identity argument above; flagged for the project owner rather than
-pursued further.
-
-time.ticks_ms() itself cannot be monkeypatched to force a real call site through a live wraparound
-under test - confirmed directly against py/objmodule.c: a builtin C module's globals dict is built
-via MP_DEFINE_CONST_DICT (map.is_fixed = 1), and mp_obj_module_t's store-attribute path explicitly
-rejects storing to a fixed map for every module except `builtins` (MICROPY_CAN_OVERRIDE_BUILTINS's
-special-cased override dict, which `time` doesn't get) - unlike a plain `.py`-sourced module (e.g.
-tests/test_captive_dns.py's `captive_dns_module.DNSQuery = ...`), whose globals dict is an
-ordinary, mutable Python dict. This is why every test below is built entirely from
-time.ticks_add()/time.ticks_diff() with synthetic values, never by trying to control what a live
-time.ticks_ms() call returns - the same technique test_asy_notification_service.py's own
-pre-existing test_next_sleep_secs_floors_at_point_one_... test already uses
-(time.ticks_add(time.ticks_ms(), -100000)), just pushed all the way to this rig's own period
-boundary instead of an ordinary elapsed-time offset.
-
-**A confirmed gap in the third-party micropython-rp2-rpi_pico_w-stubs package** (same class of
-finding as CLAUDE.md's already-documented bare-Timer()/I2C.deinit() stub gaps): `typings/time.pyi`
-types `ticks_add()`'s first parameter as the opaque `_Ticks` TypeVar (bound only to `_TicksMs`/
-`_TicksUs`/`_TicksCPU`, deliberately excluding plain `int` to catch raw-arithmetic misuse
-elsewhere - a real, useful feature this stub package added), but the stub's *own* docstring
-demonstrates `ticks_add(0, -1)` as the canonical way to discover a port's own tick period - a
-literal `int`, which its declared signature cannot actually accept. This file needs exactly that
-pattern (seeding wraparound-boundary values from a known `0`, not from a real `time.ticks_ms()`
-reading, for reproducible test values) - `# type: ignore[type-var]` on each seeding call, not a
-restructure around the gap, matching this project's established policy of flagging (not silently
-routing around) third-party stub gaps.
-"""
+"""Direct, real-interpreter verification of MicroPython's time.ticks_ms()/time.ticks_diff()/time.ticks_add() wraparound arithmetic - see SPECIFICATION.md Part F.1 for the full rollover facts (rp2's 2**30 vs. this Unix-port rig's 2**62 period, and why time.ticks_ms() can't be monkeypatched).
+Every real src/ ticks_ms()/ticks_diff() use site was directly read for this audit: all share the same bounded-short-timeout shape, no raw `now - t0` subtraction anywhere. Built entirely from synthetic time.ticks_add()/ticks_diff() values, never a live time.ticks_ms() reading."""
 
 import time
 
@@ -81,7 +17,11 @@ def _discover_this_rigs_ticks_period() -> int:
     while lo + 1 < hi:
         mid = (lo + hi) // 2
         try:
-            time.ticks_add(0, mid)  # type: ignore[type-var]  # stub gap, see module docstring
+            # Stub gap: typings/time.pyi types ticks_add()'s first param as the opaque _Ticks
+            # TypeVar (excludes plain int), but the stub's own docstring demonstrates ticks_add(0,
+            # -1) - a literal int - as the canonical way to discover a port's tick period. Confirmed
+            # gap, flagged per this project's policy rather than routed around - hence the ignore.
+            time.ticks_add(0, mid)  # type: ignore[type-var]
             lo = mid
         except OverflowError:
             hi = mid

@@ -1,11 +1,10 @@
-"""Generalized REST response envelope + setter-dispatch orchestration for the Microdot layer -
-the replacement for improved-quality/api_helpers.py's ad hoc per-endpoint pipeline. Every response
-keeps the legacy wire shape ({"res": "OK"/"ERR", "code": int, "descr": str, "result": ...}). Two
-independent pieces: make_response() is a pure envelope/catalog primitive (no I/O, can't raise);
-handle_set_cmd() orchestrates one SensorReaderConfig's _set_dict_cfg() plus an optional post-write
-hook, with its own try/except as defense-in-depth on top of Microdot's blanket per-request catch
-(see SPECIFICATION.md Part A.5).
+"""REST response envelope + setter-dispatch orchestration for the Microdot layer -
+replaces improved-quality/api_helpers.py's ad hoc per-endpoint pipeline.
 """
+# Wire shape: {"res": "OK"/"ERR", "code": int, "descr": str, "result": ...}. make_response() is a
+# pure envelope/catalog primitive (no I/O, can't raise); handle_set_cmd() orchestrates one
+# SensorReaderConfig's _set_dict_cfg() plus an optional post-write hook, with its own try/except as
+# defense-in-depth on top of Microdot's blanket per-request catch (see SPECIFICATION.md Part A.5).
 
 from micropython import const
 

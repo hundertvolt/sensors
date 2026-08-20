@@ -148,6 +148,14 @@ information):
   value. This already had to be corrected once (a merge re-accumulated ~800 lines of per-file
   "bug found, fixed" narrative in BACKLOG.md) — treat pruning history back out as routine
   maintenance whenever an item resolves, not a one-off cleanup.
+- **Docstrings (module/function/class `"""..."""` headers) are capped at 3 lines, prefer fewer —
+  a concise header, not an essay.** Inline `#` comments have no such cap. Load-bearing detail a
+  docstring can't fit in 3 lines moves to: the relevant `SPECIFICATION.md` Part if the fact is
+  architectural and reused elsewhere (leave a short pointer in the docstring, the same
+  "Moved to `SPECIFICATION.md` Part X" pattern this file itself already uses), `digital_twin/
+  README.md` for anything `digital_twin/`-specific, or a `#`-prefixed comment right next to the
+  code it explains otherwise — never dropped outright. Applied repo-wide across `src/`,
+  `digital_twin/`, `tests/` in one pass (project owner's direction); keep new code to this bar too.
 - Prefer flagging genuinely ambiguous/architecturally significant decisions to the project owner
   over guessing — several open questions in BACKLOG.md exist precisely because the code's actual
   intent wasn't obvious from reading it alone.

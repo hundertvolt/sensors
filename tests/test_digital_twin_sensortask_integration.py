@@ -1,39 +1,4 @@
-"""Integration tier (owner decision 10, "middle
-integration tests... might point us to oversights in the regular unit tests"): builds the real
-src/sensortask_wozi.py object graph against the real digital_twin buses (not tests/machine.py's
-fakes - Step 3's own simulator, real-time Timers/randomized-but-plausible sensor values) and drives
-real REST traffic against it over a real socket (owner decision 2: "full HTTP, real sockets, real
-server", same as the real system) - not app.dispatch_request() bypass, which
-tests/test_sensortask_wozi.py's own existing suite already covers in full depth against
-tests/machine.py, and is deliberately not duplicated here.
-
-Sits between tests/test_digital_twin_*.py's own per-chip unit tests (Step 3, unaware
-sensortask_wozi.py even exists) and digital_twin/run_wozi_integration.py's full end-to-end
-soak/manual entry point (Step 5's own dedicated, separately-invoked script - see that module's own
-docstring for why it can't live here): every test in this file starts only the specific tasks it
-actually needs, always keeping an explicit reference to each one it starts and cancelling every one
-of them again in its own `finally` before the next test runs - never
-sensortask_wozi.main()/start_and_check_tasks() (see the watchdog test's own comment below for the
-real, hard-won reason why: MicroPython's globals() does not preserve test-definition order, so
-nothing here can assume "the last test written" is "the last test run", and an orphaned background
-task from one test is free to corrupt every test after it, in whatever order that turns out to be).
-This file's whole point is quick, everyday regression coverage of the twin+webserver wiring, not a
-soak.
-
-Reaches digital_twin's own machine/network fakes via the same per-file sys.path.insert(0,
-"digital_twin") trick tests/test_digital_twin_launch.py already uses - confirmed safe to combine
-with scripts/test.sh's own default "src:tests:frozen_modules:.frozen" MICROPYPATH (the insert-at-
-position-0 ordering deterministically wins over the later "tests" segment within this one process;
-digital_twin/README.md's own "never together" warning is about the separate *production*
-MICROPYPATH invocation never carrying a "tests" segment at all, not about this per-file pattern -
-see digital_twin/README.md for the full reasoning). No fram_storage fake swap
-(unlike tests/test_sensortask_wozi.py's own asy_spi_driver._SPI = FakeMB85RS64V) - the twin's own
-machine.SPI already wires a real FramChip automatically (asy_spi_driver.py wraps machine.SPI
-unchanged, per this twin's own "bus construction stays as-is" convention), and every test here
-runs FRAM in-memory-only (machine.configure_fram_state_path() is never called - its own module-level
-default is already None), matching every other automated test file's own ephemeral-state convention
-rather than digital_twin/run_wozi_integration.py's deliberately persistent default.
-"""
+"""Middle integration tier: builds the real sensortask_wozi object graph against the real digital_twin buses and drives real REST traffic over a real socket, but only ever starts the specific tasks each test needs - never the full start_and_check_tasks() supervisor. See digital_twin/README.md's "Swapping the twin in" section for the full account, including the sys.path.insert(0, "digital_twin") mechanism and a real bug this tier already found."""
 
 import asyncio
 import os

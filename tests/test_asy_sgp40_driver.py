@@ -1,10 +1,7 @@
-"""Mocks only the raw I2C bus transaction level (tests/machine.py's fake machine.I2C, extended
-with a read_queue for word-oriented protocols like this one - see its own module docstring),
-matching SPECIFICATION.md Part E.4's mocking boundary: asy_sgp40_driver.py's own protocol/CRC/locking logic
-and voc_algorithm.py's real VOCAlgorithm run unmocked. FRAM-backed backup/restore tests use the
-real AsyFramManager against tests/_fram_chip_fake.py's simulated chip, matching
-tests/test_fram_integration.py's own pattern.
+"""Mocks only the raw I2C bus transaction level (tests/machine.py's fake machine.I2C, extended with a read_queue for word-oriented protocols - see its own inline comment), matching SPECIFICATION.md Part E.4's mocking boundary: asy_sgp40_driver.py's own protocol/CRC/locking logic and voc_algorithm.py's real VOCAlgorithm run unmocked.
 """
+# FRAM-backed backup/restore tests use the real AsyFramManager against tests/_fram_chip_fake.py's
+# simulated chip, matching tests/test_fram_integration.py's own pattern.
 
 import asyncio
 import json

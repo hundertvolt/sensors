@@ -1,6 +1,5 @@
-"""Sensirion SGP40 VOC sensor driver: SGP40_I2C (chip protocol) and SGP40_Reader (async wrapper -
-trigger timer, read loop, error counting, config schema, FRAM backup/restore of voc_algorithm.py's
-VOCAlgorithm state), same shape as asy_scd30_driver.py/asy_bmp3xx_driver.py (see SPECIFICATION.md Part C).
+"""Sensirion SGP40 VOC sensor driver: SGP40_I2C (chip protocol) and SGP40_Reader (async wrapper - trigger timer, read loop, error counting, config schema, FRAM backup/restore of voc_algorithm.py's VOCAlgorithm state).
+Same shape as asy_scd30_driver.py/asy_bmp3xx_driver.py (see SPECIFICATION.md Part C).
 Verified against Sensirion's SGP40 datasheet (datasheets/sgp40/, v1.2 - Feb 2022).
 """
 

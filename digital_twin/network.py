@@ -1,36 +1,5 @@
-"""Digital-twin fake `network` module - the MicroPython Unix port build has no real network module
-(confirmed directly: `import network` raises ImportError, same finding tests/network.py's own
-module docstring already recorded). Deliberately a separate, independent copy from tests/network.py
-rather than a reuse of it (owner's explicit choice: full independence from tests/ at twin runtime, over reuse).
-
-Not datasheet-backed the way the three sensor twins are - the real rp2040/CYW43 WiFi driver this
-fakes obviously can't run on the Unix port at all. Owner-specified strategy: simulate a successful connection through all the real phases, with reasonable timing, so
-asy_wifi_service.py's own state machine sees the same shape of transitions real hardware would -
-but for actual data traffic (NTP/DNS/the webserver), just use the host computer's real network.
-That second half needs nothing built here: `network.WLAN` only ever gates the *connection state*
-asy_wifi_service.py polls (`status()`/`isconnected()`) - actual I/O goes through the separate
-`socket` module, which on the Unix port is a real wrapper around the host's own BSD sockets
-(confirmed directly: src/asy_udp_socket.py calls socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-straight through). So once this fake reports "connected", any NTP/DNS/HTTP traffic src/ code
-initiates already transparently reaches the real internet via the host machine - no interception
-needed or possible at this layer.
-
-connect() therefore transitions through STAT_CONNECTING -> STAT_GOT_IP over a short, real delay
-(_CONNECT_DELAY_S, comfortably inside asy_wifi_service.py's own ~5s/10-poll connect-status budget -
-confirmed directly against that file's _poll_sta_connect_status()), scheduled via the same
-asyncio-task mechanism machine.py's own Timer uses, rather than resolving instantly.
-
-ifconfig() reports a plausible static private-network address, not a dynamically-discovered real
-one - a UDP "connect, then read back the chosen local address" was tried first (the standard
-no-packets-sent trick for asking the OS which local interface it would route through), but this
-MicroPython build's `socket.socket` has no `getsockname()` at all (confirmed directly against the
-built interpreter: `dir(socket.socket)` lists close/read/readinto/readline/send/write/accept/bind/
-connect/fileno/listen/makefile/recv/recvfrom/sendto/setblocking/setsockopt/settimeout - no
-getsockname), so there is no portable way to ask this platform for it. Not a functional gap: real
-DNS/NTP/HTTP traffic reaches the host's actual network regardless of what this value reports (see
-module docstring above) - nothing in src/ constructs a socket using its own WLAN.ifconfig() result,
-only logs/serves it for diagnostics - so a plausible-looking static value is sufficient here.
-"""
+"""Digital-twin fake `network` module — the Unix port has no real `network` module at all. Independent copy from `tests/network.py`, not shared. `WLAN` only fakes *connection state*; real traffic (NTP/DNS/HTTP) goes through the real `socket` module straight to the host's actual network.
+`connect()` transitions through realistic phases over a short real delay rather than resolving instantly. See `digital_twin/README.md`'s "What's here" section for the full account, including why `ifconfig()` reports a static address."""
 
 import asyncio
 from collections import deque

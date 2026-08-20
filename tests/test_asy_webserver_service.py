@@ -1,88 +1,5 @@
-"""TDD test suite for src/asy_webserver_service.py (see SPECIFICATION.md Part A.8 for the full
-endpoint design), written before
-the implementation exists - per the per-step-session workflow's step 3 ("write the full set of unit
-tests first"). Every test below is expected to fail at import time until the implementation
-session creates src/asy_webserver_service.py to the contract documented here - that is the correct
-TDD "red" state, not a bug in this file. Covers the "Detailed TDD action
-list" sections A-F (section G was resolved by source research, not a test list).
-
-Concrete API contract this file assumes (the implementation session should build to this shape,
-refining only where it reveals a genuine problem - the exact call signatures were explicitly left
-open by the owner's endpoint-design decision, see SPECIFICATION.md Part A.8):
-
-    class WebserverService:
-        def __init__(
-            self,
-            app,                     # a real ext/microdot.py Microdot() instance - routes are
-                                      # registered onto it by the constructor, once
-            sensors=(),               # sequence of sensor-shaped modules, each exposing:
-                                      #   .name (str)
-                                      #   async get_dict_data() -> dict           (/measurements)
-                                      #   async get_dict_cfg() -> dict            (/sensors GET)
-                                      #   async _set_dict_cfg(fields, schema) -> dict[str, str]
-                                      #   get_cfg_schema() -> ConfigSchema
-                                      #   async get_error_counter() -> dict
-                                      #   async reset_error_counter() -> None
-                                      # Uniform across every sensor including SCD30 - decision 4's
-                                      # "schema-driven dispatch, no persistence" resolution is taken
-                                      # here to mean SCD30 grows its own _set_dict_cfg-named method
-                                      # too (mirroring the shape exactly), specifically so the
-                                      # webserver layer never needs to special-case one sensor.
-            settings=None,             # dict: endpoint name ("networking"/"system"/"notification")
-                                      # -> sequence[SettingsGroup] (below). Each group is one
-                                      # already-scoped (module, field-subset) pair - generalizes the
-                                      # existing setNetwork/setWiFiLED field-scoping convention
-                                      # (tests/test_setter_microdot_integration.py's own
-                                      # _wifi_field_schema()) to every settings route, since e.g.
-                                      # /system and /networking each combine field subsets from more
-                                      # than one underlying module.
-            system_cmd=None,           # optional async (cmd: str) -> bool - /system's SystemCmd enum
-                                      # ("reboot"/"bootloader"/"mempause")
-            notification_led=None,     # optional async (dict) -> bool - /notification's nested
-                                      # lightCmdLED sub-object, dispatched independently of the flat
-                                      # top-level settings fields in the same body
-            status_sources=None,       # dict: sub-key ("networking"/"system"/"notification") ->
-                                      # async () -> dict, feeding /status's matching live sub-key
-            maintenance_sensors=(),    # sequence of (name, async () -> dict) - /status's "sensors"
-                                      # sub-key; only sensors with real maintenance data (today: SGP40)
-            error_sources=(),          # sequence of modules exposing .name / get_error_counter() /
-                                      # reset_error_counter() - every module + every ConfigManager
-                                      # ("CFGMGR_<name>") + this service's own entry, all aggregated
-                                      # into /status's "errcount"
-            max_content_length=4096,
-            max_connections=3,         # reject-when-full ceiling; real margin below the confirmed
-                                      # MEMP_NUM_TCP_PCB=5 rp2-port ceiling (BACKLOG.md)
-            per_call_timeout_s=5.0,
-            outer_cap_s=15.0,
-            host="0.0.0.0",
-            port=80,
-            fram=None,
-            history_length=10,
-            debug=None,
-        ): ...
-
-        def get_task_starters(self) -> "list[Callable[[], asyncio.Task]]": ...
-        async def get_error_counter(self) -> dict: ...     # this module's own errcount entry
-        async def reset_error_counter(self) -> None: ...
-
-        # Connection-lifecycle internals, exercised directly by section F below - no real socket,
-        # only hand-scripted fake reader/writer doubles (never a real select.poll() - the CI-hang
-        # class test_asy_uart_driver.py's own fix already root-caused, see CLAUDE.md):
-        async def _serve(self, reader, writer) -> None: ...  # one accepted connection, full lifecycle
-        self._open_conns: "LockedCounter"     # open-connection count (base_classes.LockedCounter),
-                                              # decremented in a finally regardless of outcome
-
-    class SettingsGroup:
-        def __init__(self, module, fields, post_fct=None, post_asy_fct=None): ...
-            # module: same _set_dict_cfg()/get_cfg_schema()/get_dict_cfg() shape as a sensor above
-            # fields: tuple[str, ...] - this group's own subset of module's schema
-
-GET routes return the bare shaped dict as the JSON body (no {"res"/"code"/...} envelope - matches
-tests/test_setter_microdot_integration.py's own _ntp_getter_app() precedent). PUT routes return the
-existing api_response.py envelope ({"res", "code", "descr", "result"}), reusing
-ar.make_response()/ar.handle_set_cmd() directly - the sparse body *is* the fields dict, no "cmd"
-envelope to strip (see SPECIFICATION.md Part A.8 for the PUT-shapes decision).
-"""
+"""Test suite for src/asy_webserver_service.py's WebserverService/SettingsGroup - see SPECIFICATION.md Part A.8 for the full endpoint design and the real class signatures for the current API contract (this file predates the implementation and no longer mirrors it exactly).
+GET routes return the bare shaped dict; PUT routes return the existing api_response.py envelope - see SPECIFICATION.md Part A.8 for the PUT-shapes decision. Connection-lifecycle internals are exercised with hand-scripted fake reader/writer doubles, never a real select.poll()."""
 
 import asyncio
 import json
@@ -1225,9 +1142,8 @@ def test_f2_content_length_exceeding_max_content_length_returns_413() -> None:
 
 
 def test_f2_body_truncated_by_a_clean_peer_close_degrades_via_microdots_own_blanket_catch() -> None:
-    # Corrected during implementation (tests/test_asy_webserver_service.py's own module docstring
-    # explicitly permits this: "refining only where writing the real code reveals a genuine
-    # problem"). Traced directly against ext/microdot.py's handle_request(): the readexactly() call
+    # Corrected during implementation, once the real code revealed the actual behavior. Traced
+    # directly against ext/microdot.py's handle_request(): the readexactly() call
     # for the body sits inside Request.create(), which handle_request() wraps in `except OSError ...
     # else: raise` *then* `except Exception as exc: print_exception(exc)` - EOFError isn't an
     # OSError, so it hits the second clause, which does not re-raise. req stays None and

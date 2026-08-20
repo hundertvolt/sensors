@@ -1,21 +1,8 @@
-"""Real-pipeline integration test for the website placeholder scaffold (see SPECIFICATION.md Part
-A.9): proves the actual built artifact - scripts/build_frozen_html.sh's gzip -> freezefs --on-import mount
-output, `frozen_modules/frozen_html.py` - imports cleanly, mounts for real, and is served correctly
-end to end through a real WebserverService + real ext/microdot.py Microdot() app. This is deliberately
-separate from tests/test_asy_webserver_service.py's own Section G, which exercises the generic
-route-wiring mechanism against a synthetic VfsFrozen fixture, independent of the real stub content -
-see that file's own module docstring. Per SPECIFICATION.md Part D.12 ("if this file is one layer in
-a larger real call chain, also add integration tests that drive the real chain"), this is that real
-chain: html_stub/ -> scripts/build_frozen_html.sh -> frozen_modules/frozen_html.py ->
-`import frozen_html` (mount-on-import) -> WebserverService(static_mount=...).
-
-Requires frozen_modules/frozen_html.py to already exist on MICROPYPATH - scripts/test.sh regenerates
-it via scripts/build_frozen_html.sh before running the test suite (see that script's own comment for
-why it's frozen_modules/, never the reserved ".frozen" sentinel). `import frozen_html` mounts /html
-as a real, unconditional side effect (matches src/sensortask_wozi.py's own module-level import - see
-this project's "imports happen once, at module load" convention) - safe to do once per test-process
-run, the same way every other test file's real driver imports are.
-"""
+"""Real-pipeline integration test for the website placeholder scaffold (see SPECIFICATION.md Part A.9): proves the real built artifact - scripts/build_frozen_html.sh's output, frozen_modules/frozen_html.py - imports cleanly, mounts for real, and is served correctly end to end through a real WebserverService/Microdot() app.
+The real chain: html_stub/ -> scripts/build_frozen_html.sh -> frozen_modules/frozen_html.py -> `import frozen_html` (mount-on-import) -> WebserverService(static_mount=...)."""
+# Requires frozen_modules/frozen_html.py already on MICROPYPATH - scripts/test.sh regenerates it via
+# scripts/build_frozen_html.sh before running the suite. `import frozen_html` mounts /html as a
+# real, unconditional side effect - safe to do once per test-process run.
 
 import asyncio
 import json

@@ -1,27 +1,5 @@
-"""Digital-twin fake `machine` module: the same raw I2C/SPI
-bus-transaction mocking boundary tests/machine.py establishes for unit tests, but built for a
-different purpose - a Step 5 Unix-port integration run that should behave like it's attached to
-real hardware. Deliberately NOT tests/machine.py and does not import it (owner instruction) - a
-separate module with a separate goal: real-time-firing Timer (asyncio-task-scheduled, not manual
-.trigger()) and I2C/SPI buses wired to per-address chip simulators (_sgp40_chip.py/_scd30_chip.py/
-_bmp3xx_chip.py/_fram_chip.py) that answer with randomized-but-plausible, datasheet-range values.
-
-Bus wiring mirrors src/sensortask_wozi.py's real build_system() construction exactly (the "wozi"
-variant only, per this twin's prototype scope - confirmed directly against that file's
-own i2c0/i2c1/spi0 construction lines): i2c0 (id=0) carries the SCD30 at 0x61 with its RDY pin on
-GPIO 8; i2c1 (id=1) carries the SGP40 at 0x59 and BMP3xx at 0x77; spi0 (id=0) carries the FRAM chip.
-Any other bus id/address combination NAKs, matching a real bus with only these devices on it - the
-opposite default from tests/machine.py's open-bus-unless-explicitly-NAKed model, since a twin
-standing in for real hardware should behave like a real bus with a fixed, known set of devices on
-it, not an unbounded fixture a test primes per call. The one exception is the general-call address
-(0x00): always tolerated silently, matching a real bus where any device may (or may not) be
-listening for it - see SGP40's own general-call reset write.
-
-Pin identity is shared by id (Pin(8) constructed twice returns the same underlying pin state) -
-real GPIO pins are one fixed physical resource, and this twin's SCD30 chip fake needs to drive the
-exact same Pin object src/asy_scd30_driver.py's own SCD30_Reader.__init__ constructs independently
-via Pin(irq_pin, mode=Pin.IN), regardless of construction order.
-"""
+"""Digital-twin fake `machine` module — same raw I2C/SPI bus-transaction mocking boundary as `tests/machine.py`, but built to behave like real attached hardware instead: real-time-firing `Timer`, and I2C/SPI buses wired to per-address chip simulators. Deliberately independent, does not import `tests/machine.py`.
+Bus wiring mirrors `sensortask_wozi.build_system()` exactly; any other bus id/address NAKs. See `digital_twin/README.md`'s "What's here" section for the full wiring/`Pin`-identity account."""
 
 import asyncio
 import errno

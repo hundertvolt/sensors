@@ -1,15 +1,10 @@
-"""Generic system-housekeeping service shared by every sensortask-*.py device: uptime, a one-per-
-boot boot signature, reboot/reboot-to-bootloader with FRAM storage-pause coordination, the
-staggered driver-startup sequence, the task supervisor loop (restart dead tasks, decay a failure
-counter, feed the watchdog), and a general, module-independent persisted system-settings store
-(config_SYSTEM.cfg - DebugLevel today, expected to grow further; see get_debug_level()/
-set_debug_level() and this module's own get_cfg_schema()). A live debug-level change is pushed out
-through a registry of other loggers' own set_level() methods (set_level_setters(), set up once at
-boot - see sensortask_wozi.py's _collect_level_setters()), not a shared mutable value - each
-PrintLog instance stays a plain, independent object with no cross-module coupling. Every method
-returns a well-defined value, never raises - reboot_system()/reboot_bootloader()'s real reset
-after _RESET_DELAY is the intent, not a failure.
+"""Generic system-housekeeping service shared by every sensortask-*.py device: uptime, boot signature, reboot/reboot-to-bootloader, the staggered driver-startup sequence, the task supervisor loop, and a persisted system-settings store (config_SYSTEM.cfg).
+Every method returns a well-defined value, never raises.
 """
+# A live debug-level change is pushed via a registry of other loggers' own set_level() methods
+# (set_level_setters(), set up once at boot - see sensortask_wozi.py's _collect_level_setters()),
+# not a shared mutable value. reboot_system()/reboot_bootloader()'s real reset after _RESET_DELAY
+# is the intent, not a failure.
 
 import asyncio
 import random

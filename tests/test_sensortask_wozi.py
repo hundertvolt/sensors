@@ -1,39 +1,5 @@
-"""Construction/wiring tests for sensortask_wozi.py's build_system() - the async-safe rewrite
-of improved-quality/sensortask-wozi.py's flat, module-level construction sequence (see
-SPECIFICATION.md Part A.7 for the full rationale). Verifies, in
-one place, everything the "Criteria for this step to finish" checklist asks for:
-
-- Every module the reference file constructs is reachable as a plain module-level attribute of
-  sensortask_wozi (conn, ntp, i2c0, i2c1, spi0, fram, sysfunct, sgp_reader, bmp_reader, scd_reader,
-  pixel, notify_service) - bare globals, not a wrapper container (owner-confirmed,
-  refined-plan Q3).
-- The real FRAM chunk order (five chunks, not four):
-  SystemService -> SGP40_Reader's own log -> SGP40_Reader's VOC backup -> NeopixelDriver ->
-  NotificationCoordinator.
-- The grouped await x.setup() batch (fram -> sgp_reader -> bmp_reader -> notify_service), and the
-  one real ordering constraint that makes grouping correct rather than just tidy:
-  notify_service.setup() only runs after notify_service.finalize() (asy_notification_service.py's
-  own documented contract).
-- get_task_starters()/get_timer_starters() collection reaching every constructed module, without
-  ever driving start_and_check_tasks()'s intentionally-infinite supervisor loop - that boundary
-  (boot-to-steady-state) belongs to Step 5, not Step 1 (this project's own scoping).
-- build_system() is independently callable and returns - no top-level blocking call anywhere in
-  this module (the two-file split: the real
-  blocking-import production entry point lives in boot_entry/wozi_boot.py instead). If this file
-  hangs the test process, that alone is a real Step 1 regression.
-
-Also covers the webserver's own real wiring into this file ("Not yet done"
-follow-up, closed in a later session): build_system() now also constructs a real Microdot() app and
-WebserverService, registering every module's SettingsGroup/status_source/system_cmd/
-notification_led/maintenance_sensor/error_source - see the "Webserver wiring" section below. Deep
-per-route/per-endpoint behavior (exact GET/PUT shapes, error aggregation, connection hardening) stays
-tests/test_asy_webserver_service.py's own job (uniform fakes throughout, per that file's own
-endpoint-design decision) - this file only checks the *real* driver objects were actually registered
-correctly, not the generic dispatch logic those fakes already cover in depth.
-
-Deliberately not covered here: real sensor I2C/SPI transactions (tests/machine.py's raw bus fakes
-only - the digital twin is Step 3's job and Step 1 has no dependency on it).
-"""
+"""Construction/wiring tests for sensortask_wozi.py's build_system() - see SPECIFICATION.md Part A.7 for the full construction-order/FRAM-chunk-order/setup-batch/dependency-graph reference this file verifies against.
+Also covers the webserver's own real wiring (a real Microdot() app + WebserverService, every module's registrations) - deep per-route behavior stays tests/test_asy_webserver_service.py's job; this file only checks the real driver objects were registered correctly."""
 
 import asyncio
 import json
@@ -495,8 +461,8 @@ def test_notify_service_cfgmgr_exists_once_build_system_completes() -> None:
 # ---------------------------------------------------------------------------
 # Debug level - persisted on sysfunct, pushed live to every logger's own set_level() through a
 # registry collected once at boot (owner requirement: general, system-wide, not per-module - but
-# no shared mutable value anywhere; see sensortask_wozi.py's own module docstring and
-# _collect_level_setters() for the full logger list).
+# no shared mutable value anywhere; see SPECIFICATION.md Part A.7's "Debug-level registry"
+# section and _collect_level_setters() for the full logger list).
 # ---------------------------------------------------------------------------
 
 

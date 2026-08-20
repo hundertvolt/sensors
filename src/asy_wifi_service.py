@@ -1,9 +1,9 @@
 """Async WiFi connection/hotspot/LED service. Not a sensor, but config-managed the same way: extends
-base_classes.py's SensorReaderConfig, owns its own config_WIFI.cfg (see SPECIFICATION.md Part C). "Attempt"
-operations persist a real errno via self.pr.err_s() and set self.hw_op_failed, feeding
-wlan_connect()'s _error_check() streak; routine state observations degrade silently via
-self.pr.err() instead. errno numbering starts at 11, same convention as asy_ntp_client.py.
+base_classes.py's SensorReaderConfig, owns its own config_WIFI.cfg (see SPECIFICATION.md Part C).
 """
+# "Attempt" operations persist a real errno via self.pr.err_s() and set self.hw_op_failed, feeding
+# wlan_connect()'s _error_check() streak; routine state observations degrade silently via
+# self.pr.err() instead. errno numbering starts at 11, same convention as asy_ntp_client.py.
 
 import asyncio
 import time

@@ -1,13 +1,5 @@
-"""Tests for digital_twin/network.py and digital_twin/neopixel.py. neopixel.py is a near-verbatim
-duplicate of tests/neopixel.py (owner's explicit "duplicate for independence" choice),
-already proven correct there by test_asy_neopixel_driver.py - this
-file only locks in its basic shape. network.py's WLAN has real behavioral differences from
-tests/network.py's own inert fixture (owner's own specified strategy, same session): connect()
-transitions through STAT_CONNECTING -> STAT_GOT_IP over a short, real delay instead of resolving
-instantly or staying inert, and ifconfig() reports the host's own real network address - these are
-exercised for real here (the one place in this whole file with a genuine, bounded, generous-timeout
-wall-clock wait, matching test_digital_twin_machine.py's own precedent for Timer).
-"""
+"""Tests for digital_twin/network.py and digital_twin/neopixel.py. neopixel.py is a near-verbatim duplicate of tests/neopixel.py, already proven correct there - this file only locks in its basic shape.
+network.py's WLAN has real behavioral differences (a real, bounded connect() delay instead of instant/inert) exercised for real here, the one genuine wall-clock wait in this file."""
 
 import asyncio
 import sys

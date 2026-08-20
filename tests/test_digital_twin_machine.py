@@ -1,13 +1,5 @@
-"""Deterministic unit tests for digital_twin/machine.py - the bus-level Pin/I2C/SPI/Timer/WDT/RTC
-fakes that stand in for the Unix port's real (absent) machine module during a Step 5 integration
-run. Exercises real-wozi-wiring dispatch (i2c id 0 -> SCD30@0x61, id 1 -> SGP40@0x59+BMP3xx@0x77,
-spi id 0 -> FRAM) and bus-level fault behavior (unknown-address NAK, general-call tolerance).
-Per-chip protocol correctness is covered by tests/test_digital_twin_sgp40.py/_scd30.py/_bmp3xx.py/
-_fram.py - this file only checks that machine.py routes to the right chip and behaves like a real
-bus otherwise. The one exception to this step's "not flaky wall-clock-timing assertions" criterion
-is test_timer_fires_for_real_on_a_short_period below: a short period + a generous asyncio.wait_for
-bound, checking the scheduling mechanism works at all - not a precise-cadence assertion.
-"""
+"""Deterministic unit tests for digital_twin/machine.py's bus-level Pin/I2C/SPI/Timer/WDT/RTC fakes - exercises real-wozi-wiring dispatch and bus-level fault behavior; per-chip protocol correctness lives in the per-chip test files instead.
+test_timer_fires_for_real_on_a_short_period is the one genuine (bounded, generous-timeout) wall-clock exception."""
 
 import asyncio
 import sys

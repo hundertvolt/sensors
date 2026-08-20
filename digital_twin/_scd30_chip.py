@@ -1,32 +1,5 @@
-"""Digital-twin chip fake for the Sensirion SCD30 (I2C address 0x61) - answers the exact raw
-word-register command shapes src/asy_scd30_driver.py's SCD30_I2C sends (confirmed directly against
-that file: every command/reply is `writeto()`/`readinto()` on a 2-byte big-endian register address,
-never `readfrom_mem()`/`writeto_mem()`), with randomized-but-plausible CO2/temperature/humidity
-values and a real RDY-pin+IRQ-driven data-ready transition instead of a hand-scripted fixture.
-Verified against Sensirion's SCD30 datasheet (datasheets/scd30/Sensirion_CO2_Sensors_SCD30_Datasheet.pdf):
-CO2 accuracy-guaranteed range 400-10'000ppm, humidity 0-100%RH, temperature -40-70 degC (Tables 1-3)
-- this twin's defaults are a sensible indoor sub-range of those.
-
-The RDY pin (real hardware: "High when data is ready for read-out") is driven for real when a new
-reading is produced, firing whatever machine.Pin.irq() rising-edge handler is registered on it - the
-same path src/asy_scd30_driver.py's own SCD30_Reader.start_timer() wires up, exercising the driver's
-normal (non-self-healing) trigger path rather than only its 3-second self-heal fallback. New readings
-are produced either by a real, live-firing internal machine.Timer (auto_refresh=True, the default -
-matches src/'s own measurement-interval-driven cadence) or, for deterministic unit tests, only ever
-via the explicit _produce_new_reading() hook (auto_refresh=False, no Timer/task created at all).
-
-Persistence: mirrors _fram_chip.py's own state_path/save_state() design (an explicit call, never
-automatic - see that file's module docstring for the SSD-write-cycle reasoning, which applies here
-too), but only for the five settings src/asy_scd30_driver.py's own setters document as "NVM-persisted
-- survives reset() and power cycles" (confirmed directly against that file's set_measurement_interval/
-set_self_calibration_enabled/set_ambient_pressure/set_altitude/set_temperature_offset comments):
-measurement interval, ASC enable, ambient-pressure compensation, altitude compensation, and
-temperature offset. The live CO2/temp/humidity readings and in-flight protocol state
-(_last_cmd/_data_ready/_buffer) are deliberately NOT persisted - on real hardware a power cycle
-always restarts continuous measurement from a fresh reading, only the *settings* survive. No chunking
-here unlike _fram_chip.py's save_state()/_load_state() - this is five scalars, not an 8KB buffer, so
-plain json.dump()/json.load() carries no realistic fragmentation risk.
-"""
+"""Digital-twin chip fake for the Sensirion SCD30 (I2C 0x61) — answers `asy_scd30_driver.py`'s exact word-register protocol with datasheet-ranged random CO2/temperature/humidity and a real RDY-pin IRQ transition.
+Persists its five NVM-backed settings only; see `digital_twin/README.md`'s "SCD30 persistence" section."""
 
 import json
 import struct

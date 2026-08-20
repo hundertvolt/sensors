@@ -1,47 +1,5 @@
-"""Stage 1 standalone prototype - async-safe rewrite of
-improved-quality/sensortask-wozi.py's flat, module-level construction sequence (see
-SPECIFICATION.md Part A.7 for the full rationale, including the FRAM chunk-order determinism rule
-this file must preserve exactly).
-
-build_system() constructs every module the reference file constructs, in the same FRAM-chunk-
-preserving relative order, as bare module-level globals (owner-confirmed - no wrapper container).
-It also runs the grouped await x.setup() batch every SensorReaderConfig-descended module now needs
-(SPECIFICATION.md Part C.13's sync-__init__/async-setup() pattern) - sysfunct first (resolves the
-persisted debug level as early as possible), then fram, then sgp_reader, then bmp_reader, then
-notify_service, deliberately batched together after all synchronous construction (including
-notify_service's own register()/finalize() staged construction) rather than interleaved:
-notify_service.setup() is only valid to call after finalize() has run (asy_notification_service.py's
-own documented contract), so batching at the end is the one ordering that's correct for every
-module, not just tidy for the rest.
-
-Every logger in the whole constructed object graph - not just each module's own top-level self.pr,
-but every nested cfgmgr.pr and AsyConnTime's own dns_server.pr too, plus the webserver's own logger -
-has its own set_level() bound method collected into sysfunct's level-setter registry (see
-_collect_level_setters() below and system_service.py's set_level_setters()/_apply_level()). A change
-via sysfunct.set_debug_level() (reachable through /system's DebugLevel field, see below) calls every
-one of these set_level() methods directly - no shared mutable value anywhere, each PrintLog instance
-stays a plain, independent object.
-
-Also constructs the registration-based webserver/API service
-(`asy_webserver_service.WebserverService`) once every module it registers exists - a real `Microdot()`
-app plus every SettingsGroup/status_source/system_cmd/notification_led/maintenance_sensor/
-error_source registration, not just the driver object graph. Its own task participates
-in the ordinary `start_and_check_tasks()` supervisor like every other module - no bespoke restart
-mechanism, since reject-when-full plus the per-connection timeouts already bound every connection's
-resource usage (see SPECIFICATION.md Part A.8).
-
-`import frozen_html` (module level, unconditional - matches this project's "imports happen once, at
-module load" convention) gives the reference file's own `import frozen_html`-shaped gap
-something real to resolve to: the website-placeholder module
-(scripts/build_frozen_html.sh's own gzip -> freezefs --on-import mount output, stub content only -
-see html_stub/, not the real site; see SPECIFICATION.md Part A.9 for the full pipeline). Importing it mounts a read-only frozen filesystem at `/html` as
-a side effect, matching freezefs's own "on-import" design - build_system() passes
-`static_mount="/html"` into WebserverService so its generic `/`+`/<path:filename>` route pair serves
-it. No top-level blocking call anywhere in this module though; importing it and calling
-build_system() must always return - the real "importing this triggers boot" firmware behavior lives
-in boot_entry/wozi_boot.py instead, kept deliberately separate so this module stays independently
-testable the way every other src/ module already is.
-"""
+"""Stage 1 standalone prototype — async-safe rewrite of `improved-quality/sensortask-wozi.py`'s flat, module-level construction sequence. `build_system()` constructs every module as bare module-level globals in the same FRAM-chunk-preserving order, then runs the grouped `await x.setup()` batch; `main()` starts the task/timer supervisor.
+Importing this module never blocks — the real "import triggers boot" behavior lives in `boot_entry/wozi_boot.py` instead. See SPECIFICATION.md Part A.7 for the full construction-order/dependency-graph rationale."""
 
 import asyncio
 import time
@@ -307,17 +265,8 @@ def _collect_level_setters() -> "list[Callable[[int], None]]":
 async def build_system(
     *, cfg_path: str = "", debug: int | None = None, web_host: str = "0.0.0.0", web_port: int = 80
 ) -> None:
-    """Construct every module + run the grouped setup() batch. Independently callable/testable -
-    no task starting, no infinite loop, always returns. cfg_path lets a caller (a test, or a future
-    per-variant build) isolate every ConfigManager-backed module's on-disk config file; defaults to
-    "" (the real device filesystem root), matching the reference file's own behavior. debug is each
-    module's own construction-time logger level, exactly as before - sysfunct.setup() (in the
-    grouped batch below) then pushes the real persisted level out to every logger's own set_level()
-    via the registry _collect_level_setters() builds, overriding this initial value. web_host/
-    web_port let a caller override WebserverService's own real production default
-    (host="0.0.0.0", port=80) - added so the digital twin's Unix-port
-    integration run can bind a non-privileged port as a non-root process.
-    """
+    """Construct every module and run the grouped `setup()` batch; independently callable/testable — no task starting, no infinite loop, always returns.
+    `cfg_path` isolates on-disk config files (e.g. for tests); `web_host`/`web_port` override the real `0.0.0.0`/`80` production default. See SPECIFICATION.md Part A.7 for the full construction order."""
     global watchdog, conn, ntp, i2c0, i2c1, spi0, fram, sysfunct
     global sgp_reader, bmp_reader, scd_reader, pixel, notify_service, webserver, timers_running
 

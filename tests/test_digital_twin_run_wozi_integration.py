@@ -1,8 +1,4 @@
-"""Deterministic unit tests for digital_twin/_http_client.py's pure request/response parsing (the
-bulk of this file) plus digital_twin/run_wozi_integration.py's own parse_args() - same shape as
-tests/test_digital_twin_launch.py's own split between pure parsing tests and one short, real
-end-to-end smoke test, applied here to the digital twin's own entry point.
-"""
+"""Deterministic unit tests for digital_twin/_http_client.py's pure request/response parsing plus digital_twin/run_wozi_integration.py's own parse_args() - same split as test_digital_twin_launch.py's, applied to the twin's own entry point."""
 
 import asyncio
 import sys

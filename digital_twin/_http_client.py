@@ -1,27 +1,5 @@
-"""Minimal hand-rolled HTTP/1.1 client over asyncio.open_connection() - used by the digital twin's
-Unix-port integration run to drive real HTTP requests against src/asy_webserver_service.py's real
-asyncio.start_server()-backed WebserverService ("full HTTP, real sockets, real server" - owner
-decision 2), and no HTTP client library is frozen into (or otherwise reliably available on) the
-pinned MicroPython Unix-port build - confirmed directly, no urequests/requests import anywhere in
-this repo's own dependency set. Matches this project's established hand-roll-when-a-library-isn't-
-reliably-available convention (digital_twin/launch.py's own argparse fallback is the precedent).
-
-Every response this client will ever see has "Connection: close" set (asy_webserver_service.py's
-own _mark_connection_close(), added via Microdot's after_request/after_error_request hooks - see
-that module's own docstring) - so this client never needs to support keep-alive, and reading until
-EOF (read(-1), confirmed against the pinned v1.28.0 extmod/asyncio/stream.py source: Stream.read()
-with a negative count accumulates until the underlying read returns b"") is always a safe fallback
-for a response with no Content-Length header, even though every real response this client actually
-sees does carry one in practice (Microdot's own Response.__init__ sets it whenever missing, and
-send_file() sets it for static content too).
-
-asyncio.open_connection() returns the *same* Stream object for both reader and writer (confirmed
-directly: extmod/asyncio/stream.py aliases StreamReader = StreamWriter = Stream, and
-open_connection() returns `(ss, ss)`) - callers of this module still receive two names for
-readability/symmetry with Microdot's own reader/writer convention, they just happen to be the same
-object. Stream.close() is a no-op by design on this build (`def close(self): pass`) - the actual
-socket only closes via `await stream.wait_closed()`, which this module always calls in a finally.
-"""
+"""Minimal hand-rolled HTTP/1.1 client over `asyncio.open_connection()` — no HTTP client library is frozen into the pinned MicroPython Unix-port build, so the twin's integration run hand-rolls one instead.
+Every response it sees carries `Connection: close`, so no keep-alive support is needed. See `digital_twin/README.md`'s "What's here" section."""
 
 import asyncio
 import json
@@ -72,6 +50,9 @@ def parse_header_line(line: bytes) -> "tuple[str, str] | None":
 
 
 async def fetch(host: str, port: int, method: str, path: str, json_body: "Any | None" = None) -> HttpResponse:
+    # reader/writer are the same underlying Stream object on this build (two names kept only for
+    # readability/symmetry with Microdot's own convention) - close() is a no-op here, the socket
+    # only actually closes via wait_closed() in the finally below.
     reader, writer = await asyncio.open_connection(host, port)
     try:
         writer.write(build_request(method, path, host, json_body))
@@ -87,6 +68,8 @@ async def fetch(host: str, port: int, method: str, path: str, json_body: "Any | 
             headers[name] = value
 
         content_length = headers.get("Content-Length")
+        # read(-1) reads until EOF - a safe fallback for a missing Content-Length, though every real
+        # response this client sees does carry one (Microdot sets it whenever missing).
         body = await reader.readexactly(int(content_length)) if content_length is not None else await reader.read(-1)
 
         return HttpResponse(status_code, headers, body)

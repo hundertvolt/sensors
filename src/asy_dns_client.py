@@ -1,9 +1,8 @@
 """Async, non-blocking IPv4 DNS resolver (A-records only) built on asy_udp_socket.py's AsyUDPSocket.
-Inspired by github.com/vshymanskyy/aiodns (MIT), not a port - deliberately narrower (no cache, no
-mDNS) for this project's single low-frequency caller. resolve_ipv4() never raises, returns the
-dotted-quad str or None; only bare compression-pointer names (RFC 1035 SS4.1.4) are followed,
-matching captive_dns.py's precedent.
+Inspired by github.com/vshymanskyy/aiodns (MIT), not a port - deliberately narrower (no cache, no mDNS) for this project's single low-frequency caller.
 """
+# resolve_ipv4() never raises, returns the dotted-quad str or None; only bare compression-pointer
+# names (RFC 1035 SS4.1.4) are followed, matching captive_dns.py's precedent.
 
 import os
 

@@ -1,8 +1,6 @@
 """Cross-module integration: a real asy_neopixel_driver.py.NeopixelDriver wired to a real
-asy_notification_service.py.NotificationCoordinator via request_signal_cb=pixel.request_signal -
-the actual production shape improved-quality/sensortask-wozi.py wires (see its own construction
-block). Only tests/neopixel.py's fake write surface is mocked; overlay/arbitration, the poll loop,
-gating, config, and logging all run for real end to end.
+asy_notification_service.py.NotificationCoordinator via request_signal_cb=pixel.request_signal - the actual production shape improved-quality/sensortask-wozi.py wires.
+Only tests/neopixel.py's fake write surface is mocked; overlay/arbitration, the poll loop, gating, config, and logging all run for real end to end.
 """
 
 import asyncio

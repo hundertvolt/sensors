@@ -1,41 +1,5 @@
-"""Stateful fake for the MB85RS64V FRAM chip itself, sitting on top of tests/machine.py's fake
-`machine.SPI` (which only models the raw, dumb bus - no opcode/CS-session semantics at all, by
-design per SPECIFICATION.md Part E.4's mocking-boundary). A fourth instance of that same boundary: this
-interprets the byte streams asy_fram_driver.py's FRAM_SPI actually sends (RDID/RDSR/WRSR/WREN/
-WRDI/READ/WRITE) the way a real chip would, so FRAM_SPI's own logic (device-ID check, write-enable
--latch handling, write-protect readback, address decoding) runs for real against it.
-
-Transaction tracking is deliberately narrow, not a general SPI-FRAM emulator: it only recognizes
-the exact call shapes FRAM_SPI itself produces (a WRITE's address header and data payload arrive
-as two separate write() calls with the bus lock held throughout, matching real CS staying
-asserted across both; every other opcode is a single write(), optionally followed by one
-readinto()). WEL semantics match the datasheet exactly (DS501-00015-4v0-E, "STATUS REGISTER" ->
-WEL): WREN sets it; it's reset after WRDI recognition, at the CS rising edge after WRSR
-recognition, and at the CS rising edge after WRITE recognition (confirmed directly against the
-real datasheet PDF, not inferred from a similar part).
-
-Fault-injection knobs (`drop_wren`/`drop_next_wrdi`/`drop_wrsr`/`disturb_write_autoclear`/
-`disturb_wrsr_autoclear`/`rdid_response`/`corrupt_next_write_data`) simulate a bus disturbance
-eating one specific transaction's real effect while every other byte still moves normally - not
-"unplug the whole bus" (tests/machine.py's own
-test_disconnected_wire_is_undetectable_reads_whatever_is_on_the_bus_not_an_exception already
-covers that undetectable case at the raw-SPI layer). `disturb_write_autoclear`/
-`disturb_wrsr_autoclear` suppress the datasheet's own auto-clear specifically so
-FRAM_SPI's explicit WRDI-verification/retry path (defense-in-depth against that exact
-auto-clear mechanism itself glitching) stays exercised by a real simulated fault instead of
-being permanently unreachable now that the normal case already clears WEL before WRDI even runs.
-`corrupt_next_write_data` is different in kind: it simulates a disturbance landing on the actual
-payload bytes of a WRITE (not an opcode/latch), which is genuinely undetectable at this layer by
-design - opcodes/latches/identity are the only things FRAM_SPI itself can verify; payload-level
-data integrity is asy_fram_manager.py's CRC/dual-copy-redundancy job, one layer up.
-
-`wp_pin` (set by a test after construction, e.g. `chip.wp_pin = fram._wp_pin`, since the pin
-object doesn't exist until FRAM_SPI.__init__ runs) models the datasheet's WRITING PROTECT table:
-a WRSR is only actually accepted by real hardware when WEL=1 and (WPEN=0 or WP=1) - i.e. the
-status register itself becomes unwritable once WPEN=1 and WP is driven low. None (no pin wired)
-models WP tied permanently high (unprotected), matching the assumption the driver itself already
-makes when constructed without a wp_pin.
-"""
+"""Stateful fake for the MB85RS64V FRAM chip itself, on top of tests/machine.py's fake `machine.SPI` (raw bus only) - interprets the real opcode stream (RDID/RDSR/WRSR/WREN/WRDI/READ/WRITE) so FRAM_SPI's own logic runs for real against it, per SPECIFICATION.md Part E.4's mocking boundary.
+WEL semantics are verified directly against the MB85RS64V datasheet (DS501-00015-4v0-E). Fault-injection knobs simulate one transaction's effect being eaten by a bus disturbance, not "unplug the whole bus" - see each knob's own comment below."""
 
 from machine import SPI as FakeSPI
 
@@ -65,10 +29,23 @@ class FakeMB85RS64V(FakeSPI):
         self.drop_wren = False  # simulate WREN's opcode transfer getting corrupted on the wire
         self.drop_next_wrdi = 0  # simulate N consecutive WRDI transfers getting corrupted
         self.drop_wrsr = False  # simulate WRSR's status-byte transfer getting corrupted
+        # disturb_write_autoclear/disturb_wrsr_autoclear suppress the datasheet's own auto-clear
+        # specifically so FRAM_SPI's explicit WRDI-verification/retry path (defense-in-depth
+        # against that exact auto-clear mechanism itself glitching) stays exercised by a real
+        # simulated fault, instead of being permanently unreachable once the normal case already
+        # clears WEL before WRDI even runs.
         self.disturb_write_autoclear = False  # simulate the chip's own WRITE-completion WEL auto-clear not firing
         self.disturb_wrsr_autoclear = False  # simulate the chip's own WRSR-completion WEL auto-clear not firing
+        # Different in kind from the knobs above: simulates a disturbance landing on a WRITE's
+        # actual payload bytes (not an opcode/latch), genuinely undetectable at this layer by
+        # design - payload-level data integrity is asy_fram_manager.py's CRC/dual-copy job instead.
         self.corrupt_next_write_data: bytes | None = None  # what actually lands, if not the real payload
-        self.wp_pin: Pin | None = None  # set by the test after FRAM_SPI construction - see module docstring
+        # Set by a test after FRAM_SPI construction (e.g. chip.wp_pin = fram._wp_pin), since the pin
+        # object doesn't exist until FRAM_SPI.__init__ runs. Models the datasheet's WRITING PROTECT
+        # table via the wel property below: WRSR is only accepted when WEL=1 and (WPEN=0 or WP=1).
+        # None (no pin wired) models WP tied permanently high (unprotected) - the driver's own
+        # assumption when constructed without a wp_pin.
+        self.wp_pin: Pin | None = None
         self._pending_op: int | None = None
         self._pending_addr: int | None = None
 

@@ -1,14 +1,5 @@
-"""Digital-twin fake `neopixel` module - the MicroPython Unix port build has no real `neopixel`
-module (confirmed directly: `import neopixel` raises ImportError, same finding tests/neopixel.py's
-own module docstring already recorded). Deliberately a separate, independent copy from
-tests/neopixel.py (owner's explicit choice: full independence from tests/ at twin runtime, over reuse).
-
-Unlike WLAN (see digital_twin/network.py), no behavioral change from the tests/ shape was needed:
-a real rp2 NeoPixel.write() is a single busy-wait bit-bang call with no return value and no error
-path at all (confirmed against ports/rp2/machine_bitstream.c), so there is no "does it eventually
-succeed" state machine to simulate the way WLAN's connect() needed - this fake just records every
-committed frame, identically to the unit-test fixture's own shape.
-"""
+"""Digital-twin fake `neopixel` module — the Unix port has no real `neopixel` module at all. Independent copy from `tests/neopixel.py`, not shared.
+Unlike WLAN, no behavioral change from the `tests/` shape was needed: real `NeoPixel.write()` is a single busy-wait call with no return value/error path, so this fake just records every committed frame."""
 
 from collections import deque
 

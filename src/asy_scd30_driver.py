@@ -1,7 +1,6 @@
 """Async I2C driver for the Sensirion SCD30 CO2/temperature/relative-humidity sensor. SCD30_I2C
-wraps the raw command set (16-bit commands, CRC-8 protected); SCD30_Reader runs the read loop plus
-an IRQ-pin self-healing trigger, feeding CO2/Temp/Hum/WetBulb/DewPoint (see SPECIFICATION.md Part C). Source:
-Sensirion CO2 Sensors SCD30 Interface Description & Datasheet (datasheets/scd30/).
+wraps the raw command set (16-bit commands, CRC-8 protected); SCD30_Reader runs the read loop plus an IRQ-pin self-healing trigger, feeding CO2/Temp/Hum/WetBulb/DewPoint (see SPECIFICATION.md Part C).
+Source: Sensirion CO2 Sensors SCD30 Interface Description & Datasheet (datasheets/scd30/).
 """
 
 import asyncio

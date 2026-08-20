@@ -1,9 +1,9 @@
 """Pure Neopixel LED hardware service: overlay switch/toggle, a dimmed ramp-up/ramp-down signal, and
-internal (`request_signal()`)/external (`led_signal()`) arbitration for the one shared physical
-pixel. Promoted from improved-quality/neopixel_signal.py's proven arbitration mechanism (see
-CLAUDE.md/BACKLOG.md). No config schema (confirmed by the project owner). Also satisfies
-asy_wifi_service.py's LEDControl Protocol via `on()`/`off()`/`toggle()`.
+internal (`request_signal()`)/external (`led_signal()`) arbitration for the one shared physical pixel.
+Promoted from improved-quality/neopixel_signal.py's proven arbitration mechanism (see CLAUDE.md/BACKLOG.md).
 """
+# No config schema (confirmed by the project owner). Also satisfies asy_wifi_service.py's
+# LEDControl Protocol via `on()`/`off()`/`toggle()`.
 
 import asyncio
 

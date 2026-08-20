@@ -1,11 +1,11 @@
 """Per-sensor JSON config storage - each sensor gets its own `config_<name>.cfg` file (see
-base_classes.py's SensorReaderConfig), validated against a schema of `_VAL_*` `const()` tuples:
-(name, type, default, min, max, special). Every public function/method returns a documented
-"invalid" sentinel, never raises. `__init__` only stashes constructor args (cheap, synchronous);
-`ConfigManager` reads the file once, in `async def setup()`, into `self._cache` - every later
-`get_*`/`write_config` call reads/writes `_cache` directly (see CLAUDE.md for the
-cache-vs-external-corruption trade-off this implies).
+base_classes.py's SensorReaderConfig), validated against a schema of `_VAL_*` `const()` tuples: (name, type, default, min, max, special).
+Every public function/method returns a documented "invalid" sentinel, never raises.
 """
+# `__init__` only stashes constructor args (cheap, synchronous); `ConfigManager` reads the file
+# once, in `async def setup()`, into `self._cache` - every later `get_*`/`write_config` call
+# reads/writes `_cache` directly (see CLAUDE.md for the cache-vs-external-corruption trade-off this
+# implies).
 
 import asyncio
 import json

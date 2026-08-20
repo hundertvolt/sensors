@@ -1,11 +1,8 @@
 """Generic threshold-triggered LED notification signalling: `NotificationSignal` (per-condition data
-holder) and `NotificationCoordinator` (shared sleep-window/interval/`AutoOn`/flash brightness+
-duration, one combined `ConfigManager`/`PrintLogHistory`(Store)). Promoted from
-improved-quality/neopixel_signal.py's `airquality_auto_signal()`/`auto_led_override()` (see
-CLAUDE.md/BACKLOG.md); drives an LED through `request_signal_cb`, decoupled from any concrete LED
-implementation. Registration is staged: `register()` each signal, then `finalize()` once - see
-their own comments below.
+holder) and `NotificationCoordinator` (shared sleep-window/interval/`AutoOn`/flash brightness+duration).
+Promoted from improved-quality/neopixel_signal.py's `airquality_auto_signal()`/`auto_led_override()` (see CLAUDE.md/BACKLOG.md); drives an LED through `request_signal_cb`, decoupled from any concrete LED implementation.
 """
+# Registration is staged: `register()` each signal, then `finalize()` once - see their own comments below.
 
 import asyncio
 import time

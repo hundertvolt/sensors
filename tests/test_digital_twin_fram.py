@@ -1,10 +1,4 @@
-"""Deterministic unit tests for digital_twin/_fram_chip.py's own SPI opcode protocol and JSON
-persistence - independently reimplements the MB85RS64V opcode shapes tests/_fram_chip_fake.py
-already establishes for unit tests (WREN/WRDI/RDSR/WRSR/READ/WRITE/RDID - confirmed directly against
-src/asy_fram_driver.py's FRAM_SPI, the same source that fixture is built from), but as its own
-independent module (digital_twin/ never imports tests/machine.py or
-tests/_fram_chip_fake.py), plus save_state()/load persistence the unit-test fixture doesn't need.
-"""
+"""Deterministic unit tests for digital_twin/_fram_chip.py's own SPI opcode protocol (WREN/WRDI/RDSR/WRSR/READ/WRITE/RDID) and JSON persistence - independently reimplemented, not sharing tests/_fram_chip_fake.py."""
 
 import json
 import os

@@ -1,14 +1,13 @@
 """End-to-end integration tests for the setter generalization work: api_response.py's
-parse_cmd_request()/handle_set_cmd() driven against mocked Microdot request data (fine/partial/
-garbage), then against a real ext/microdot.py (v2.6.2) Microdot app wired the way sensortask-*.py
-will eventually wire it - a real AsyConnTime (WiFi) reader for the setter path, a real
-AsyNtpClient reader for both the getter and the setter path, a real BMP3xx_Reader/SGP40_Reader for
-the schema-driven sensor setters, and a real SCD30_Reader for the one sensor whose REST surface is
-hand-rolled per field instead of schema-driven. Only test-local Microdot apps are constructed here;
-improved-quality/sensortask-wozi.py itself is never touched (see CLAUDE.md's hard rule on editing
-improved-quality/ source files) - anything of its wiring that has to be exercised is reimplemented
-locally (_wifi_field_schema()/_SCD_SET_FIELDS/_scd_apply_field below), never imported.
+parse_cmd_request()/handle_set_cmd() driven against mocked Microdot request data (fine/partial/garbage), then against a real ext/microdot.py (v2.6.2) Microdot app wired the way sensortask-*.py will eventually wire it.
 """
+# Covers a real AsyConnTime (WiFi) reader for the setter path, a real AsyNtpClient reader for both
+# the getter and the setter path, a real BMP3xx_Reader/SGP40_Reader for the schema-driven sensor
+# setters, and a real SCD30_Reader for the one sensor whose REST surface is hand-rolled per field
+# instead of schema-driven. Only test-local Microdot apps are constructed here;
+# improved-quality/sensortask-wozi.py itself is never touched (see CLAUDE.md's hard rule on editing
+# improved-quality/ source files) - anything of its wiring that has to be exercised is reimplemented
+# locally (_wifi_field_schema()/_SCD_SET_FIELDS/_scd_apply_field below), never imported.
 
 import asyncio
 import errno as errno_mod

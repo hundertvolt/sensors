@@ -1,11 +1,5 @@
-"""Deterministic unit tests for digital_twin/_scd30_chip.py's own transaction-response logic -
-matches the raw word-register command shapes src/asy_scd30_driver.py's SCD30_I2C sends (confirmed
-directly against that file, not tests/machine.py). Real-time RDY-pin/data-ready scheduling is
-exercised only via the explicit, synchronous _produce_new_reading() test hook here - the one
-"does real-time firing actually work at all" check lives in tests/test_digital_twin_machine.py
-against the shared Timer class itself, matching this step's own "not flaky wall-clock-timing
-assertions" criterion.
-"""
+"""Deterministic unit tests for digital_twin/_scd30_chip.py's own transaction-response logic - matches the raw word-register commands src/asy_scd30_driver.py's SCD30_I2C sends.
+Real-time RDY-pin scheduling is exercised only via the synchronous _produce_new_reading() hook here; the real-time-firing check itself lives in test_digital_twin_machine.py."""
 
 import json
 import os

@@ -1,40 +1,9 @@
-"""Manual, deliberately-aggressive concurrency stress tool for a real MicroPython Unix-port
-interpreter segfault under heavy concurrent connection load, first found while investigating a real
-ECONNRESET report. 8 concurrent clients x 15 requests each (well beyond WebserverService's own
-max_connections=3 ceiling) reproduced a real interpreter segfault twice in a row, confirmed via
-`dmesg` - not a catchable Python-level exception, since it crashes the whole process
-unconditionally. `digital_twin/run_wozi_integration.py`'s own `_soak()` is deliberately
-strictly-sequential (see its own comment) and can never generate this on its own; this is a
-separate, manual tool for deliberately trying to.
+"""Manual, deliberately-aggressive concurrency stress tool for the (now root-caused and fixed, see `unix_port_poll_prewarm.py`) MicroPython Unix-port segfault under heavy concurrent connection load.
+Full account, usage, and exit/crash behavior in `digital_twin/README.md`'s "Known gaps" section."""
 
-**Root-caused and fixed**: a confirmed real bug in the pinned MicroPython v1.28.0 Unix
-port's `extmod/modselect.c` - `unix_port_poll_prewarm.py`'s own module docstring has the exact
-mechanism (found via a DEBUG=1 gdb/core-dump investigation), why it's Unix-port-only (confirmed via
-`MICROPY_PY_SELECT_POSIX_OPTIMISATIONS` being compiled out of rp2 entirely, not assumed), and why
-pre-warming the shared poller's pollfds array before anything else registers a poll object avoids
-triggering it. `main()` below now calls that pre-warm before booting `sensortask_wozi` - verified
-this stops the crash: 20/20 clean runs across both the deterministic small-heap repro and the
-original-discovery-conditions repro, versus 100% reliable crash beforehand.
-
-**Prior (Step 6) session note, kept for the record**: repeated attempts against this exact
-configuration (and several escalated variants - mixed real endpoints instead of just `/`, up to 20
-clients x 30 requests, 5 sustained rounds of 12 clients x 20 requests = 1200 requests total) did not
-reproduce the segfault in that session's own sandbox, despite genuine, repeated effort. That
-session's owner-directed scope was "repro + document only, no gdb/backtrace work"; this session's
-owner-directed scope was the opposite ("really resolve it, don't back off"), which is what actually
-found the mechanism above.
-
-Usage:
-    MICROPYPATH="src:digital_twin:ext:frozen_modules:.frozen" <micropython-unix-port-binary> \\
-        digital_twin/segfault_stress_repro.py [--clients N] [--requests N] [--rounds N] [--host H] [--port P]
-
-Exit code / crash behavior: a genuine segfault kills the whole interpreter process outright (no
-Python-level traceback, no exit code this script controls) - that IS the positive repro, observable
-via the calling shell's own exit status ($? reflecting the fatal signal) or `dmesg`. A MemoryError
-is a real but different, catchable outcome this tool has also observed at higher concurrency
-(client and server share one process/heap in this diagnostic setup, unlike a real deployment where
-they're separate machines) - reported distinctly, not confused with the segfault it's hunting for.
-"""
+# Same MICROPYPATH as run_wozi_integration.py; flags: --clients/--requests/--rounds/--host/--port.
+# A genuine segfault kills the interpreter outright (check exit status / dmesg, no Python traceback);
+# a MemoryError at higher concurrency is a distinct, catchable outcome this tool also reports.
 
 import asyncio
 import gc
@@ -105,7 +74,8 @@ def _parse_args(argv: "list[str]") -> "dict[str, object]":
 
 async def main(n_clients: int, n_requests: int, n_rounds: int, host: str, port: int) -> None:
     # Must run before anything else in the process registers a poll object - see
-    # unix_port_poll_prewarm.py's own module docstring.
+    # unix_port_poll_prewarm.py's own module docstring and digital_twin/README.md's "Known gaps"
+    # section.
     prewarm_poll_set(port=port + 1000)
     machine.configure_fram_state_path(None)
     machine.configure_scd30_state_path(None)

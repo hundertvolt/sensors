@@ -1,10 +1,9 @@
 """Async, non-blocking UDP wrapper around one socket.socket, driven by a hand-rolled select.poll
-loop. Two modes: mode="client" for a one-shot outbound request/response exchange, mode="server" for
-a bound socket answering inbound datagrams; also usable as `async with AsyUDPSocket(...) as sock:`.
-Every I/O method returns its documented None-shaped sentinel, never raises (__init__ excepted).
-Content-agnostic: never inspects datagram contents; mode="server" source-address trust is the
-caller's concern.
+loop. Two modes: mode="client" for a one-shot outbound request/response exchange, mode="server" for a bound socket answering inbound datagrams; also usable as `async with AsyUDPSocket(...) as sock:`.
 """
+# Every I/O method returns its documented None-shaped sentinel, never raises (__init__ excepted).
+# Content-agnostic: never inspects datagram contents; mode="server" source-address trust is the
+# caller's concern.
 
 import asyncio
 import select

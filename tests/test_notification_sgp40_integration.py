@@ -1,29 +1,12 @@
-"""Cross-module integration: a real asy_sgp40_driver.py.SGP40_Reader (against a fake I2C bus, same
-mocking boundary as test_asy_sgp40_driver.py's own tests) feeding a real
-asy_notification_service.py.NotificationCoordinator via a get_value() wrapper that mirrors
-improved-quality/sensortask-wozi.py's own voc_value_callback() exactly (that file itself is out of
-scope for testing - see CLAUDE.md - so the wrapper is reproduced locally, not imported), driving a
-real asy_neopixel_driver.py.NeopixelDriver. Only tests/neopixel.py's fake write surface and
-tests/machine.py's fake I2C bus are mocked; every layer above the raw I2C transaction (SGP40_Reader's
-own protocol/CRC/locking, voc_algorithm.py's real Sensirion Gas Index Algorithm, the notify poll
-loop, gating, NeopixelDriver's arbitration/ramp) runs for real.
-
-Fills the one real WarnVOC gap left after test_notification_scd30_integration.py: that file only
-ever exercises WarnCO2 (and never WarnHum either - see BACKLOG.md's mock/coverage-scan follow-up).
-WarnVOC's real chain (SGP40 -> NotificationCoordinator -> NeopixelDriver) had no integration
-coverage before this file - only unit-level coverage (test_asy_sgp40_driver.py in isolation,
-test_notification_neopixel_integration.py with a stubbed value callback).
-
-VOC index calibration note (verified directly against the real voc_algorithm.py, not assumed): a
-single raw reading never moves the index - _VOCALGORITHM_INITIAL_BLACKOUT (45 sampling intervals)
-must elapse first, and the index then settles toward 100 (the algorithm's own "clean air" baseline)
-under any *constant* raw signal, however extreme - it's a deviation-from-learned-baseline index, not
-an absolute-concentration one. A real threshold crossing needs two phases: enough constant-raw
-cycles to let the index settle near its 100 baseline, then a step change away from that raw value to
-produce an actual spike. Also confirmed directly: a higher raw tick count moves the index *down* (a
-raw increase reads as cleaner air on this sensor's convention), so the spike-inducing step is a drop
-in raw, not a rise.
-"""
+"""Cross-module integration: a real SGP40_Reader feeding a real NotificationCoordinator, driving a real NeopixelDriver - fills the WarnVOC gap test_notification_scd30_integration.py leaves (it only exercises WarnCO2).
+Only tests/neopixel.py's fake write surface and tests/machine.py's fake I2C bus are mocked; every layer above the raw I2C transaction runs for real."""
+# VOC index calibration note (verified directly against voc_algorithm.py): a single raw reading
+# never moves the index - _VOCALGORITHM_INITIAL_BLACKOUT (45 sampling intervals) must elapse first,
+# and the index then settles toward 100 (the algorithm's "clean air" baseline) under any *constant*
+# raw signal - a deviation-from-learned-baseline index, not an absolute-concentration one. A real
+# threshold crossing needs two phases: settle near 100, then step away from that raw value. Also
+# confirmed: a higher raw tick count moves the index *down* (raw increase = cleaner air on this
+# sensor's convention), so the spike-inducing step is a drop in raw, not a rise.
 
 import asyncio
 import os

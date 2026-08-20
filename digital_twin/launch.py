@@ -1,35 +1,5 @@
-"""Standalone CLI launcher/demo for the digital twin itself - runnable directly
-(`micropython digital_twin/launch.py [options]`). Deliberately twin-only: no
-`src/` import anywhere in this file (owner's explicit choice, same session) - Step 5's own entry
-point is expected to reuse parse_args()/main() the same way, it just also imports
-src/sensortask_wozi.py afterward, which this file does not.
-
-Brings up the exact same bus/peripheral wiring src/sensortask_wozi.py's real build_system() uses -
-same pin numbers/frequencies, confirmed directly against that file's own WDT(timeout=8000)/
-I2C(0, 13, 12, frequency=50000)/I2C(1, 19, 18, frequency=50000)/SPI(0, 2, 3, 4) lines (asy_i2c_driver.I2C's
-own (port_id, scl_pin, sda_pin, frequency) argument order, confirmed directly against
-src/asy_i2c_driver.py, is what fixes scl=Pin(13)/sda=Pin(12) for i2c0 and scl=Pin(19)/sda=Pin(18)
-for i2c1 below) - then runs a small asyncio loop that periodically performs one real bus-level read
-per sensor (through actual writeto()/readfrom_into()/readfrom_mem()/writeto_mem() calls shaped like
-the real drivers' own, not just inspecting each chip fake's internal state), attempts one
-WLAN.connect() and prints its phase transitions, and feeds the WDT on its own short timer (unless
-suppressed via --no-wdt-feed).
-
---fault DEVICE:OP[:TIMES] just exposes the existing scripted FaultInjector/raise_on API each chip
-fake already has via CLI flags - owner's explicit choice over a new ambient/probabilistic "randomly
-flaky bus" mode (same session): no new twin-side fault mechanism exists anywhere in this file.
-
-argparse is importable on the pinned Unix-port build (confirmed directly: `import argparse`
-succeeds against the actual built interpreter), but the vendored micropython-lib implementation
-turned out not to support what this launcher actually needs - confirmed directly by reading
-lib/micropython-lib/python-stdlib/argparse/argparse.py: no `action="append"` (so a *repeatable*
---fault/--wifi-outcome flag can't accumulate), no `choices=`, and a parse failure calls
-sys.exit(2) directly rather than raising a catchable exception. Per this project's own
-fallback instruction ("hand-roll if not [reliably available]"), parse_args() below is a small
-hand-rolled flag loop instead - consistent with this package's existing preference for not
-depending on modules that may not be frozen into the test binary (tests/microtest.py's own
-hand-rolled runner is the precedent already cited for this fallback).
-"""
+"""Standalone, `src/`-free CLI launcher/demo for the digital twin (`micropython digital_twin/launch.py [options]`) — brings up the same bus/peripheral wiring `sensortask_wozi.build_system()` uses and periodically drives one real bus-level read per sensor, a `WLAN.connect()` attempt, and WDT feeding.
+`--fault DEVICE:OP[:TIMES]` exposes each chip fake's existing `FaultInjector` API. `parse_args()` is hand-rolled (the vendored `argparse` lacks `action="append"`/`choices=`). See `digital_twin/README.md`'s "What's here" section."""
 
 import asyncio
 import errno

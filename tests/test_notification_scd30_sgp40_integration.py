@@ -1,20 +1,5 @@
-"""Cross-module integration: a real asy_scd30_driver.py.SCD30_Reader AND a real
-asy_sgp40_driver.py.SGP40_Reader (each against its own fake I2C bus, same mocking boundary as
-test_asy_scd30_driver.py's/test_asy_sgp40_driver.py's own tests) simultaneously feeding ONE shared
-asy_notification_service.py.NotificationCoordinator/asy_neopixel_driver.py.NeopixelDriver, via
-get_value() wrappers that mirror improved-quality/sensortask-wozi.py's own co2_value_callback()/
-voc_value_callback() exactly (that file itself is out of scope for testing - see CLAUDE.md - so the
-wrappers are reproduced locally, not imported).
-
-test_notification_scd30_integration.py and test_notification_sgp40_integration.py each already cover
-their own sensor feeding its own, separate NotificationCoordinator/NeopixelDriver pair - neither
-proves the real wiring's actual shape, where WarnCO2/WarnHum (SCD30) and WarnVOC (SGP40) all share
-ONE coordinator/pixel (see improved-quality/sensortask-wozi.py's own single `notify`/`pixel`
-construction). This file fills that gap: two real sensor chains, one shared downstream stack,
-proving (a) both chains can trigger their own signal correctly without cross-contaminating the
-other's state, and (b) a genuine hardware fault on one sensor stays isolated to that sensor's own
-error log and doesn't block or corrupt the healthy sensor's own notification.
-"""
+"""Cross-module integration: a real SCD30_Reader AND a real SGP40_Reader simultaneously feeding ONE shared NotificationCoordinator/NeopixelDriver (matching sensortask-wozi.py's real single notify/pixel wiring).
+Fills the gap test_notification_scd30_integration.py/test_notification_sgp40_integration.py each leave (their own separate coordinator/pixel pair): proves both chains trigger correctly without cross-contaminating, and a hardware fault on one sensor stays isolated to its own error log."""
 
 import asyncio
 import os
@@ -231,7 +216,7 @@ def _drive_sgp_cycle(reader: SGP40_Reader, fake_bus: "Any", raw: int) -> "Any":
 
 
 def _settle_and_spike(reader: SGP40_Reader, fake_bus: "Any") -> "Any":
-    # See test_notification_sgp40_integration.py's own module docstring for the calibration note
+    # See test_notification_sgp40_integration.py's own top-of-file comment for the calibration note
     # this two-phase sequence relies on.
     for _ in range(160):
         data = _drive_sgp_cycle(reader, fake_bus, 30000)

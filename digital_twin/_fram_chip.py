@@ -1,22 +1,5 @@
-"""Digital-twin chip fake for the MB85RS64V FRAM chip (SPI, CS on GPIO 1 in src/sensortask_wozi.py's
-real wozi wiring) - answers the exact opcode/CS-session shape src/asy_fram_driver.py's FRAM_SPI
-sends (RDID/RDSR/WRSR/WREN/WRDI/READ/WRITE), independently reimplementing the same protocol
-tests/_fram_chip_fake.py already establishes for unit tests against tests/machine.py (confirmed
-directly against src/asy_fram_driver.py, not copied from that file - this twin package
-never imports tests/machine.py or its fixtures). Deliberately a smaller fault-injection surface than
-that fixture's own fine-grained WEL-corruption knobs (drop_wren, disturb_write_autoclear, ...) -
-those exist there to defense-in-depth-test FRAM_SPI's own retry logic, already covered by
-tests/test_asy_fram_driver.py; this twin only needs the same generic op-keyed FaultInjector every
-other chip fake in this package uses.
-
-Persistence (owner decision): the twin
-must read back exactly what was written, including across process restarts, but must not write to
-disk on every single WRITE opcode (SSD-hosted, avoid unnecessary write cycles). Resolution: an
-explicit save_state() call (never automatic) serializes the full memory image to `state_path` as
-JSON (hex-encoded bytes, matching every other persisted-state file in this codebase's json
-convention - see ConfigManager). Whatever entry point Step 5 writes to run the assembled prototype
-is expected to call save_state() once, in a try/finally around asyncio.run(main()), on the way out.
-"""
+"""Digital-twin chip fake for the MB85RS64V FRAM chip (SPI) — answers `asy_fram_driver.py`'s exact opcode/CS-session shape (RDID/RDSR/WRSR/WREN/WRDI/READ/WRITE); independently reimplemented, not shared with `tests/_fram_chip_fake.py`.
+Persists only via explicit `save_state()`; see `digital_twin/README.md`'s "FRAM persistence" section."""
 
 from _fault_injection import FaultInjector
 

@@ -1,11 +1,11 @@
 """Shared base classes: async-lock-guarded objects/buffers (Lockable, LockableBuffer), lock-
-protected scalars (LockedCounter, LockedFlag, LockedValue), and the sensor-driver base
-(SensorReader, SensorReaderConfig) with error bookkeeping and optional JSON config storage. Every
-method returns a well-defined value, never raises. `__init__` never calls `self.pr.setup()` (sync
-vs. async) - the caller's own async setup must, or FRAM persistence stays inert.
-`SensorReaderConfig` mirrors that split one level up: `__init__` only constructs `self.cfgmgr`
-(cheap, synchronous), and its own `async def setup()` awaits `self.cfgmgr.setup()`.
+protected scalars (LockedCounter, LockedFlag, LockedValue), and the sensor-driver base (SensorReader, SensorReaderConfig) with error bookkeeping and optional JSON config storage.
+Every method returns a well-defined value, never raises.
 """
+# `__init__` never calls `self.pr.setup()` (sync vs. async) - the caller's own async setup must, or
+# FRAM persistence stays inert. `SensorReaderConfig` mirrors that split one level up: `__init__`
+# only constructs `self.cfgmgr` (cheap, synchronous), and its own `async def setup()` awaits
+# `self.cfgmgr.setup()`.
 
 import asyncio
 

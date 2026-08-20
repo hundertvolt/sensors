@@ -1,10 +1,5 @@
-"""Cross-module integration: a real asy_neopixel_driver.py.NeopixelDriver passed as
-asy_wifi_service.py's own ext_led=, proving the LEDControl Protocol (on/off/toggle) still holds
-end to end through the real WiFi driver - today's tests/test_asy_wifi_service.py only ever
-exercises a local FakeLED double for this (deliberately, since it tests the Protocol boundary, not
-a concrete class - see this repo's promotion plan). Only tests/neopixel.py's fake write surface is
-mocked; every other layer (overlay task, arbitration) runs for real.
-"""
+"""Cross-module integration: a real NeopixelDriver passed as asy_wifi_service.py's own ext_led=, proving the LEDControl Protocol (on/off/toggle) holds end to end - test_asy_wifi_service.py only exercises a FakeLED double for this.
+Only tests/neopixel.py's fake write surface is mocked; every other layer runs for real."""
 
 import asyncio
 import os

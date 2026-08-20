@@ -1,11 +1,5 @@
-"""Deterministic unit tests for digital_twin/_bmp3xx_chip.py's own transaction-response logic -
-matches the register-addressed shape src/asy_bmp3xx_driver.py's BMP3XX_I2C sends via
-readfrom_mem()/writeto_mem() (confirmed directly against that file - unlike SGP40/SCD30, BMP3xx has
-no CRC framing at all). The fixed calibration block below is verified
-to round-trip exactly through the real driver's own
-compensation formula (asy_bmp3xx_driver.py:398-434, reproduced independently here) for every target
-in the twin's default sensible range.
-"""
+"""Deterministic unit tests for digital_twin/_bmp3xx_chip.py's own transaction-response logic - matches the register-addressed shape src/asy_bmp3xx_driver.py's BMP3XX_I2C sends (no CRC framing, unlike SGP40/SCD30).
+The fixed calibration block round-trips exactly through the real driver's own compensation formula for every target in the twin's default sensible range."""
 
 import struct
 import sys

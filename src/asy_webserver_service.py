@@ -1,31 +1,5 @@
-"""Registration-based Microdot REST/API service (see SPECIFICATION.md Part A.8 for the full
-endpoint design) - modules hand this
-service named sensor-data/system-state callback groups (SettingsGroup below), and it auto-constructs
-the six external endpoints (/measurements, /sensors, /networking, /system, /status, /notification)
-plus the connection-hardening scheme BACKLOG.md's "Microdot hardening design" settled on. Optionally
-(static_mount, see SPECIFICATION.md Part A.9) also serves a mounted frozen static-content filesystem
-(freezefs's --on-import mount, see ext/freezefs/) via one generic `/` + `/<path:filename>` route pair,
-using Microdot's own send_file(compressed=True, file_extension=".gz") - matches this project's
-pre-gzip-by-hand convention (see scripts/build_frozen_html.sh), never freezefs's own --compress
-(on-device deflate decompression, a different and incompatible scheme). Registered last, after every
-API route above, so an exact-match API route always wins over the wildcard (Microdot's find_route()
-returns the first registered pattern that matches, confirmed directly against ext/microdot.py).
-composition around asyncio.start_server() (never app.start_server()/app.shutdown()), a per-call
-timeout-wrapping reader/writer proxy (_TimeoutStreamProxy), one outer asyncio.wait_for() bounding
-the whole per-connection handle_request() call, a LockedCounter-style open-connection count driving
-reject-when-full (silently close a new connection at the ceiling, no accept/response), and no bespoke
-whole-server-restart mechanism - this module's own task is registered as an ordinary task in
-system_service.py's start_and_check_tasks() like every other module, per the owner's decision 1.
-
-ext/microdot.py (vendored, unmodified) is never edited - every behavior change here happens by
-wrapping/calling it (an after_request/after_error_request hook for "Connection: close", errorhandler
-registrations for 400/404/405/413/500 plus a catch-all Exception handler that persists an otherwise-
-unlogged route-handler bug into pr.err_s()/FRAM history, the reader/writer proxy) per CLAUDE.md's
-hard rule. GET routes
-return the bare shaped dict; PUT routes return api_response.py's {"res","code","descr","result"}
-envelope, reusing make_response()/handle_set_cmd() directly - see tests/test_asy_webserver_service.py's
-own module docstring for the full endpoint/registration-API contract this file builds to.
-"""
+"""Registration-based Microdot REST/API service — modules hand it named callback groups and it auto-constructs the six external endpoints plus connection hardening (timeouts, reject-when-full).
+`ext/microdot.py` is never edited; every behavior change wraps/calls it instead (CLAUDE.md hard rule). See SPECIFICATION.md Part A.5 (Microdot layer) and A.8 (full endpoint reference) for the complete design."""
 
 import asyncio
 

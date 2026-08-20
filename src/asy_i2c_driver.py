@@ -1,9 +1,9 @@
 """Async wrapper around machine.I2C: bus-level primitives (I2C) plus a per-device, lock-scoped
-wrapper (I2CDevice) used by every I2C sensor driver (asy_scd30_driver.py, asy_sgp40_driver.py,
-asy_bmp3xx_driver.py). A method returns None only for a non-hardware failure (uninitialized bus,
-out-of-range bit-field, malformed reg_format); a real OSError always propagates to the caller. One-
-time setup (__init__/init(), I2CDevice.setup()'s probe) is exempt and may raise.
+wrapper (I2CDevice) used by every I2C sensor driver (asy_scd30_driver.py, asy_sgp40_driver.py, asy_bmp3xx_driver.py).
 """
+# A method returns None only for a non-hardware failure (uninitialized bus, out-of-range bit-field,
+# malformed reg_format); a real OSError always propagates to the caller. One-time setup
+# (__init__/init(), I2CDevice.setup()'s probe) is exempt and may raise.
 
 import asyncio
 import struct

@@ -1,18 +1,13 @@
 """Cross-module integration: a real asy_scd30_driver.py.SCD30_Reader (against a fake I2C bus, same
-mocking boundary as test_asy_scd30_driver.py's own integration-level tests) feeding a real
-asy_notification_service.py.NotificationCoordinator via a get_value() wrapper that mirrors
-improved-quality/sensortask-wozi.py's own co2_value_callback()/hum_value_callback() exactly (that
-file itself is out of scope for testing - see CLAUDE.md - so the wrapper is reproduced locally, not
-imported), driving a real asy_neopixel_driver.py.NeopixelDriver. Only tests/neopixel.py's fake write
-surface and tests/machine.py's fake I2C bus are mocked; every layer above the raw I2C transaction
-(SCD30_Reader's own protocol/error handling, the notify poll loop, gating, NeopixelDriver's
-arbitration/ramp) runs for real.
-
-Exercises the one thing none of the other integration files cover: how a genuine hardware fault on
-one driver (SCD30) propagates - or, correctly, does NOT propagate - into a sibling driver's
-(NOTIFY's) own error accounting, matching SPECIFICATION.md Part C.7's "each driver owns its own error log"
-separation of concerns.
+mocking boundary as test_asy_scd30_driver.py's own integration-level tests) feeding a real asy_notification_service.py.NotificationCoordinator, driving a real asy_neopixel_driver.py.NeopixelDriver.
+Exercises how a genuine hardware fault on one driver (SCD30) does NOT propagate into a sibling driver's (NOTIFY's) own error accounting, matching SPECIFICATION.md Part C.7's "each driver owns its own error log" separation of concerns.
 """
+# The get_value() wrapper mirrors improved-quality/sensortask-wozi.py's own
+# co2_value_callback()/hum_value_callback() exactly (that file itself is out of scope for testing -
+# see CLAUDE.md - so the wrapper is reproduced locally, not imported). Only tests/neopixel.py's
+# fake write surface and tests/machine.py's fake I2C bus are mocked; every layer above the raw I2C
+# transaction (SCD30_Reader's own protocol/error handling, the notify poll loop, gating,
+# NeopixelDriver's arbitration/ramp) runs for real.
 
 import asyncio
 import os

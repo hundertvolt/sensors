@@ -1,48 +1,5 @@
-"""End-to-end entry point for the digital twin's "full Unix-port integration" run: boots
-the real src/sensortask_wozi.py object graph (build_system()/main(), unchanged - zero
-twin-awareness anywhere in src/) against the real digital_twin buses, then drives real HTTP traffic
-against the real, real-socket asyncio.start_server()-backed WebserverService (owner decision 2:
-"full HTTP, real sockets, real server", the same as the real system - never
-app.dispatch_request() bypass, which tests/test_sensortask_wozi.py's own suite already covers
-without a twin, and tests/test_digital_twin_sensortask_integration.py's own middle tier now covers
-against the twin too). Deliberately not a tests/test_*.py file and not run by scripts/test.sh's
-own default loop: unlike that middle tier (which only ever starts the one task a given test needs,
-see that file's own module docstring), this module always runs the real, full
-start_and_check_tasks() supervisor for real, optionally forever (a bare
---duration-omitted run just keeps serving so a real browser on this machine can hit
-http://<host>:<port>/ - owner decision 3) - a `tests/test_*.py` name would make scripts/test.sh's
-own glob loop pick this up and hang it. Invoked via scripts/run_unix_port_integration.sh, which
-sets the twin-only MICROPYPATH ("src:digital_twin:frozen_modules:.frozen" - never combined with a
-"tests" segment, digital_twin/README.md's own "never together" rule) this module needs.
-
-Reuses digital_twin/launch.py's own parse_fault_spec()/_parse_wifi_outcome() directly (same
-device/op/wifi-outcome vocabulary a fault-injecting flag on *this* module needs - owner decision 7:
-"I want it to be unit tested, and see it if it happens on a manual run", so --fault/--wifi-outcome
-stay available for deliberate manual exploration) rather than reimplementing them - launch.py's own
-module docstring already anticipated this ("Step 5's own entry point is expected to reuse
-parse_args()/main() the same way").
-
-FRAM/config persistence default to a fixed, persistent location inside digital_twin/ (owner decision
-6: "why not a persistent file inside the digital twin dir? Only written when really shutting down,
-in memory only during interpreter runtime") - _config_dir()/RunConfig's own fram_state_path default,
-both gitignored build/run artifacts, never committed. This is deliberately different from
-tests/test_digital_twin_sensortask_integration.py's own per-test ephemeral-state convention, which
-stays that way for its own reasons (see that file's own module docstring).
-
-The soak loop (owner decisions 4/9) is opt-in via --soak/--soak-cycles - a bare, no-flags run skips
-it entirely and goes straight to serving forever, matching owner decision 3's own plain-launch
-default (see the top of this docstring). When enabled: real HTTP round trips fired back-to-back
-against every real endpoint, not gated by the twin's own real-time sensor-poll Timer cadence (which keeps running
-concurrently and unaffected in the background, at real intervals, exactly like the real system) -
-"everything is supposed to be async... it should run realtime on the server interface". Originally
-reused Step 2's own memory-flat methodology and tolerance verbatim (tests/test_asy_webserver_service.py's
-F.9: gc.collect() -> baseline -> N cycles -> gc.collect() -> assert after >= baseline - 4096, owner
-decision 9, "reuse step 2") applied to the real end-to-end object graph instead of Step 2's own fake
-reader/writer - replaced with a trend check (per-cycle sampling, first-quarter-vs-last-quarter mean
-comparison) once that flat two-point delta proved too fragile against this real object graph's own
-documented steady-state noise band; see _soak()'s own comment and the _MEM_TREND_* module-level
-comment for the full account and the real, repeated measurement behind the current tolerance.
-"""
+"""End-to-end entry point for the digital twin's "full Unix-port integration" run: boots the real `sensortask_wozi` object graph against the real twin buses, then drives real HTTP traffic against the real `WebserverService`. Not a `tests/test_*.py` file — it can serve forever, which would hang `scripts/test.sh`'s glob loop.
+Invoked via `scripts/run_unix_port_integration.sh`. `--soak`/`--soak-cycles` opt into a bounded HTTP+memory-trend check (see `_soak()`'s own comment for the methodology); a bare, no-flags run just serves forever. See `digital_twin/README.md`'s "Swapping the twin in" section for the full reference."""
 
 import asyncio
 import gc
@@ -59,7 +16,7 @@ if TYPE_CHECKING:
 import _http_client
 import machine
 from launch import (
-    _parse_wifi_outcome,  # deliberately reused, not reimplemented - see module docstring
+    _parse_wifi_outcome,  # deliberately reused, not reimplemented - see digital_twin/README.md
     parse_fault_spec,  # noqa: F401 - re-exported for callers that only need the spec parser
 )
 from unix_port_poll_prewarm import prewarm_poll_set
@@ -268,7 +225,7 @@ async def _soak(host: str, port: int, cycles: int) -> "list[str]":
     # Deliberately strictly-sequential (one fetch() awaited at a time, never asyncio.gather()'d) -
     # do not "optimize" this into concurrent requests. A real MicroPython Unix-port interpreter
     # segfault (confirmed via dmesg, not a catchable Python-level exception; see
-    # unix_port_poll_prewarm.py's own module docstring for the root cause and fix) was found by
+    # digital_twin/README.md's "Known gaps" section for the root cause and fix) was found by
     # firing 8+ concurrent clients against this same assembled system, well
     # beyond WebserverService's own max_connections=3 ceiling - this soak's own sequential pattern
     # never approaches that and must stay that way. digital_twin/segfault_stress_repro.py is the
@@ -345,8 +302,8 @@ def _ensure_dir(path: str) -> None:
 
 async def main(config: RunConfig) -> "dict[str, Any]":
     # Must run before anything else in the process registers a poll object - see
-    # unix_port_poll_prewarm.py's own module docstring (a confirmed Unix-port-only MicroPython bug
-    # this pre-warming avoids triggering).
+    # unix_port_poll_prewarm.py's own module docstring and digital_twin/README.md's "Known gaps"
+    # section (a confirmed Unix-port-only MicroPython bug this pre-warming avoids triggering).
     prewarm_poll_set()
     machine.configure_fram_state_path(config.fram_state_path)
     machine.configure_scd30_state_path(config.scd30_state_path)

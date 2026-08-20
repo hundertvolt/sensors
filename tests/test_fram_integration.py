@@ -1,19 +1,9 @@
-"""Full-stack integration tests: the real chain from tests/_fram_chip_fake.py's simulated
-MB85RS64V chip, through asy_spi_driver.py/asy_fram_driver.py/asy_fram_manager.py, up into
-print_log.py/base_classes.py's real consumers (SensorReader) - nothing faked above the chip-fake
-level (which itself subclasses tests/machine.py's raw fake machine.SPI, so this is genuinely mocked
-down to SPI bus interaction, not just to AsyFramManager's own boundary as tests/test_asy_fram_manager.py
-mostly does). See SPECIFICATION.md Part E.4's mocking-boundary plan and BACKLOG.md's "asy_fram_manager.py -> src/"
-sections for why each individual module is trusted rather than re-mocked here.
-
-Deliberately not modeled: a raw-SPI-bus-level fault (a real electrical disturbance corrupting a
-transfer) - confirmed via tests/machine.py's and asy_spi_driver.py's own docstrings that real RP2040
-SPI write()/readinto() genuinely cannot raise or report a fault at all once constructed (unlike I2C,
-which has a NAK/timeout errno surface tests/machine.py's I2C fake does model) - so there is no lower
-fault-injection seam to add here; tests/_fram_chip_fake.py's own opcode/latch/identity-level knobs
-already are the lowest layer where an actual failure can be observed, matching asy_fram_driver.py's
-own module docstring on this exact point.
-"""
+"""Full-stack integration tests: the real chain from tests/_fram_chip_fake.py's simulated MB85RS64V chip, through asy_spi_driver.py/asy_fram_driver.py/asy_fram_manager.py, up into print_log.py/base_classes.py's real consumers - mocked down to SPI bus interaction, not just AsyFramManager's own boundary.
+See SPECIFICATION.md Part E.4 for the mocking-boundary plan."""
+# Deliberately not modeled: a raw-SPI-bus-level fault. Real RP2040 SPI write()/readinto() genuinely
+# cannot raise or report a fault at all once constructed (unlike I2C's NAK/timeout errno surface),
+# so tests/_fram_chip_fake.py's own opcode/latch/identity-level knobs already are the lowest layer
+# where an actual failure can be observed.
 
 import asyncio
 import gc
