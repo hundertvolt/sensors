@@ -1,7 +1,10 @@
 # Third-party code and licenses
 
 This project is MIT-licensed (see `LICENSE`). It also vendors or is partly derived from other
-MIT-licensed code, listed here in one place rather than only in scattered per-file headers.
+MIT-licensed code, listed here in one place rather than only in scattered per-file headers. One
+file (`src/captive_dns.py`'s `DNSQuery` class) is derived from an Apache-2.0-licensed project and
+stays under Apache-2.0 for that portion - see "Apache License 2.0" below - so this repo is MIT
+overall with that one documented exception, not purely MIT top to bottom.
 
 ## Vendored, unmodified
 
@@ -42,9 +45,51 @@ These still carry their own correct SPDX/MIT headers in place and need no change
 - `asy_shtc3_driver.py` — © 2017 Scott Shawcroft / © 2020 Bryan Siepert for Adafruit Industries, MIT.
 - `asy_isl29125_driver.py` — © 2023 Jose D. Montoya, MIT.
 
+## Apache License 2.0 (derived, kept as a separate license within this MIT repo)
+
+Per `SPECIFICATION.md` Part F.4, this project's own MIT license does not override the terms
+attached to code derived from an Apache-2.0 project - the derived portion stays under Apache-2.0.
+
+- `src/captive_dns.py`'s `DNSQuery` class (and its pre-refactor `python/CommonDrivers/`
+  ancestor) - the packet parsing/building logic (variable names `tipo`/`ini`/`lon`, the exact
+  `\x81\x80` header/`\xC0\x0C` pointer/`0x3C` TTL byte layout, and matching inline comments) is a
+  near-verbatim derivative of
+  [`p-doyle/Micropython-DNSServer-Captive-Portal`](https://github.com/p-doyle/Micropython-DNSServer-Captive-Portal)'s
+  `main.py`, licensed Apache License 2.0. That upstream repo's own `LICENSE` file ships the
+  Apache-2.0 boilerplate with the copyright-holder line unfilled; "p-doyle" (the GitHub account
+  the project is published under) is the only identity available, and is used as the attributed
+  name here and in `src/LICENSE-captive_dns` (a sibling file, not embedded in `captive_dns.py`
+  itself, matching the `ext/LICENSE-microdot` pattern). Corroborating evidence:
+  [`metachris/micropython-captiveportal`](https://github.com/metachris/micropython-captiveportal)
+  (MIT-licensed) carries the identical `DNSQuery` class and states in its own README that it's
+  "based on" p-doyle's repo - confirming the Apache-2.0 origin isn't erased by a later MIT
+  relicensing of a fork. p-doyle's README in turn credits two earlier, older repos
+  (`Matt4/micropython-captive-portal-network-setup`, `amora-labs/micropython-captive-portal`) as
+  its own basis; the trail wasn't traced further back than p-doyle's repo, the closest
+  well-identified link.
+  Changes made in this project's version (Apache-2.0 §4(b) notice): ported from a raw blocking
+  `socket` to `AsyUDPSocket`/`asyncio`; in the `src/` version, also added type hints,
+  `PrintLogHistory`-backed logging/errno reporting, off-subnet request filtering, recv-failure
+  backoff, and a root-domain-query parsing fix.
+  Ruled out as *not* the source for this file, despite superficial DNS-server similarity: three
+  of the other candidates the project owner asked to check -
+  [`jczic/MicroDNSSrv`](https://github.com/jczic/MicroDNSSrv) (MIT, thread-based, unrelated
+  packet-building code/header bytes) and
+  [`belyalov/tinydns`](https://github.com/belyalov/tinydns) (MIT, `int.from_bytes`-based parsing,
+  different header/pointer bytes) - neither matches this file's structure or byte layout; the
+  shared DNS-protocol bytes they do have in common come from RFC 1035 itself, not copying.
+
+## Not applicable
+
+- [`urg/micropython-captive-dhcp-server`](https://github.com/urg/micropython-captive-dhcp-server)
+  (MIT, also on PyPI as `micropython-captive-dhcp-server`) - a DHCP *server* implementation. This
+  project has no DHCP server of its own (only client-side `network.dhcp` usage of MicroPython's
+  built-in WiFi stack in `asy_wifi_service.py`/`asy_ntp_client.py`), so there is nothing in this
+  repo to compare it against.
+
 ## Provenance not established
 
-- `src/captive_dns.py`, `src/asy_ntp_client.py`, `src/asy_udp_socket.py` (and their pre-refactor
+- `src/asy_ntp_client.py`, `src/asy_udp_socket.py` (and their pre-refactor
   `python/CommonDrivers/` ancestors) carry no header, source comment, or other fingerprint in
   either version, and no specific origin could be identified. Treated as original/adapted code;
   flagged here as a known, accepted residual risk rather than a certified clean-room origin.

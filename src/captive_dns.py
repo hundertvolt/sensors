@@ -1,3 +1,11 @@
+# SPDX-FileCopyrightText: Copyright 2019 p-doyle (Micropython-DNSServer-Captive-Portal) - the
+# DNSQuery class's packet parsing/building is a derivative of that project's main.py (identical
+# field layout/byte values); see src/LICENSE-captive_dns and THIRD_PARTY_LICENSES.md. Changed here
+# per Apache-2.0 §4(b): ported to asyncio/AsyUDPSocket, added type hints, PrintLogHistory-backed
+# logging/errno reporting, off-subnet request filtering, recv-failure backoff, and the root-domain
+# query fix (self._parsed_ok replacing the empty-domain sentinel).
+# SPDX-License-Identifier: Apache-2.0
+
 """Captive-portal DNS spoofer for hotspot/AP mode. DNSServer.run() runs while the device broadcasts
 its fallback hotspot; every on-subnet query gets a canned A-record pointing back at the AP's own IP, landing any client on the config page.
 Malformed/off-subnet/truncated input is dropped, never raised.

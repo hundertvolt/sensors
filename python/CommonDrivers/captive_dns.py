@@ -1,3 +1,9 @@
+# SPDX-FileCopyrightText: Copyright 2019 p-doyle (Micropython-DNSServer-Captive-Portal) - the
+# DNSQuery class's packet parsing/building is a derivative of that project's main.py (identical
+# field layout/byte values); see src/LICENSE-captive_dns and THIRD_PARTY_LICENSES.md. Changed here
+# per Apache-2.0 §4(b): wrapped in AsyUDPSocket/asyncio instead of a raw blocking socket.
+# SPDX-License-Identifier: Apache-2.0
+
 import socket
 import asyncio
 from asy_udp_socket import AsyUDPSocket
