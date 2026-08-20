@@ -304,7 +304,7 @@ def test_both_sensors_crossing_threshold_together_trigger_their_own_signal_witho
 def test_one_sensor_i2c_fault_stays_isolated_and_the_healthy_sibling_still_triggers() -> None:
     # SCD30 faults; SGP40 stays healthy and already-spiked - proves a real hardware fault on one
     # sensor's own driver neither blocks nor corrupts the sibling sensor's independent chain, and is
-    # attributed only to the faulted sensor's own error log (matching DRIVER_SPEC.md's "each driver
+    # attributed only to the faulted sensor's own error log (matching SPECIFICATION.md Part C.7's "each driver
     # owns its own error log" separation of concerns, now proven across two real sensors sharing one
     # downstream coordinator rather than just one sensor in isolation).
     scd_reader, scd_i2c = make_scd_reader()

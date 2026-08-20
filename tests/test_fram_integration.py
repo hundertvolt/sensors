@@ -3,7 +3,7 @@ MB85RS64V chip, through asy_spi_driver.py/asy_fram_driver.py/asy_fram_manager.py
 print_log.py/base_classes.py's real consumers (SensorReader) - nothing faked above the chip-fake
 level (which itself subclasses tests/machine.py's raw fake machine.SPI, so this is genuinely mocked
 down to SPI bus interaction, not just to AsyFramManager's own boundary as tests/test_asy_fram_manager.py
-mostly does). See tests/README.md's mocking-boundary plan and BACKLOG.md's "asy_fram_manager.py -> src/"
+mostly does). See SPECIFICATION.md Part E.4's mocking-boundary plan and BACKLOG.md's "asy_fram_manager.py -> src/"
 sections for why each individual module is trusted rather than re-mocked here.
 
 Deliberately not modeled: a raw-SPI-bus-level fault (a real electrical disturbance corrupting a

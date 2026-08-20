@@ -300,7 +300,7 @@ def test_set_register_struct_accepts_an_actual_float_value() -> None:
 def test_set_get_register_struct_float_round_trips_nan_and_inf() -> None:
     # Confirmed directly: struct.pack("f", ...) never raises for NaN/+-inf, unlike an
     # out-of-range int against a float format - these are valid float bit patterns, and a real
-    # sensor fault could plausibly produce one (src/README.md section 12).
+    # sensor fault could plausibly produce one (SPECIFICATION.md Part D.12).
     i2c = make_i2c()
     i2c.set_register_struct(0x50, 0x20, "f", float("nan"))
     result = i2c.get_register_struct(0x50, 0x20, "f")
@@ -896,7 +896,7 @@ def test_set_register_struct_multi_field_format_silently_zero_pads_missing_value
 
 
 def test_out_of_range_address_is_transparently_forwarded_not_validated() -> None:
-    # This driver deliberately doesn't range-check `address` itself (src/README.md section 2's
+    # This driver deliberately doesn't range-check `address` itself (SPECIFICATION.md Part D.2's
     # "don't defend against out-of-contract input" - the type contract is plain `int`; address
     # validity is the real machine.I2C's job, mirrored by the mock rather than duplicated here).
     i2c = make_i2c()

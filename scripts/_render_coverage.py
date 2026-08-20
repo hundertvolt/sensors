@@ -10,7 +10,7 @@ see toolchain/setup_toolchain.py) into a single coverage.py CoverageData file, t
 coverage.py itself render the HTML/XML/markdown reports from it.
 
 coverage.py never runs the code under test here -- it only runs under CPython, and src/ only ever
-runs under the real MicroPython Unix-port interpreter (see tests/README.md for why). This script
+runs under the real MicroPython Unix-port interpreter (see SPECIFICATION.md Part E.1 for why). This script
 is the second half of that split: MicroPython collects which lines actually ran, coverage.py
 supplies the report engine (executable-line analysis, HTML, Cobertura XML, markdown) on top of
 data it never collected first-hand -- reusing its CoverageData.add_lines() API, a real, documented

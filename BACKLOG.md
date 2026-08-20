@@ -225,7 +225,7 @@ constraints.
   post-merge audit closes.** Every `sensortask-*.py` built as part of the real rewrite needs a full
   Unix-port equivalent, runnable on a local computer, with whatever hardware is physically
   unavailable there mocked at the lowest level of bus data exchange (i.e. the same mocking boundary
-  `tests/README.md`/`tests/machine.py` already establish for unit tests — fake
+  SPECIFICATION.md Part E.4/`tests/machine.py` already establish for unit tests — fake
   `machine.I2C`/`machine.SPI`/etc. byte-level transactions, not higher-level driver stand-ins) so the
   whole wired-together sensortask can be exercised as close to the real target as possible without
   physical hardware. **Fulfilled**: `digital_twin/` is the lowest-level-mocking module this
@@ -257,7 +257,7 @@ constraints.
   hard rule on editing `improved-quality/` source without a scoped, owner-authorized exception, and
   explicitly deferred by the owner to its own future session rather than bundled into this one.
 - **Dev/build environment setup**: toolchain installer is done (`toolchain/setup_toolchain.py`, see
-  `toolchain/README.md`/README.md's "Toolchain setup"). **Still not done**: doesn't yet genericize
+  SPECIFICATION.md Part B/README.md's "Toolchain setup"). **Still not done**: doesn't yet genericize
   `build-*.sh`'s hardcoded `/home/nico/rpi_pico/...` path or the `py-include` symlink — the next
   step, and now a real near-term prerequisite for the firmware-build CI stage.
   `update_and_install.txt` re-verified against current upstream docs — structurally still accurate,

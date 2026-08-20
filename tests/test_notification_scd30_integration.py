@@ -10,7 +10,7 @@ arbitration/ramp) runs for real.
 
 Exercises the one thing none of the other integration files cover: how a genuine hardware fault on
 one driver (SCD30) propagates - or, correctly, does NOT propagate - into a sibling driver's
-(NOTIFY's) own error accounting, matching DRIVER_SPEC.md's "each driver owns its own error log"
+(NOTIFY's) own error accounting, matching SPECIFICATION.md Part C.7's "each driver owns its own error log"
 separation of concerns.
 """
 

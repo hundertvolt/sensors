@@ -26,23 +26,19 @@ testing/coverage, all in one place instead of scattered across `DRIVER_SPEC.md`,
   problem this document exists to fix.
 
 **Where the source files went**: `DRIVER_SPEC.md`, `src/README.md`, `tests/README.md`, and
-`toolchain/README.md` are now short stub files pointing here, kept so existing links/references
-elsewhere in the repo still resolve to a real file; their full content lives in Parts B-E below.
-`README.md` keeps its human-facing project description and the units-deployed table; its former
-"Repository layout"/"Architecture at a glance"/"Refactor in progress"/"Building this project's
-firmware" sections moved into Part A/B below, replaced there with a pointer. `AUDIT_PLAN.md` (the
-master action list for the full `src/` audit this document's Parts C/D harmonization came out of)
-and, later, `WIRING_CONTRACT.md`/`FINAL_WIRING_PLAN.md` (the temporary planning docs for the
+`toolchain/README.md` held no content of their own beyond a "moved here" pointer once their content
+was consolidated into Parts B-E below, and have since been deleted — every reference to them
+elsewhere in the repo (docs and code comments alike) points directly at the relevant Part here
+instead. `README.md` keeps its human-facing project description and the units-deployed table; its
+former "Repository layout"/"Architecture at a glance"/"Refactor in progress"/"Building this
+project's firmware" sections moved into Part A/B below, replaced there with a pointer. `AUDIT_PLAN.md`
+(the master action list for the full `src/` audit this document's Parts C/D harmonization came out
+of) and, later, `WIRING_CONTRACT.md`/`FINAL_WIRING_PLAN.md` (the temporary planning docs for the
 `improved-quality/` → `src/` wiring effort) were each deleted once their own effort closed —
 everything permanent each one settled was migrated here first: `WIRING_CONTRACT.md`'s construction
 order/FRAM-chunk order/dependency graph/debug-level registry now live in Part A.7,
 `FINAL_WIRING_PLAN.md`'s REST API design in Part A.8, its website-stub pipeline in Part A.9, and two
 checkable conventions its own failure-mode audit found in Parts C.7/C.9.
-
-**Not every cross-reference throughout the repo's other docs (e.g. `BACKLOG.md`) points directly
-here** — some still go through one of the stub files above, which resolve correctly via that one
-extra hop. Worth rewriting to point here directly if the indirection itself becomes annoying; not
-something this document tracks on its own.
 
 ## Table of contents
 
@@ -105,7 +101,6 @@ frozen_modules/          Gitignored build artifact - scripts/build_frozen_html.s
                           reserved MicroPython import-machinery sentinel - see "Website stub /
                           frozen-HTML pipeline" below)
 SPECIFICATION.md         This file - the central specification (repo root)
-DRIVER_SPEC.md           Stub -> Part C below: shared sensor driver architecture/interface spec
 tests/                   Unit tests for src/, run under a real MicroPython interpreter - see
                           Part E below
 toolchain/               MicroPython/pico-sdk/picotool build-environment installer

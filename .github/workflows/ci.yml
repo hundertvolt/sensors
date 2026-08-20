@@ -40,7 +40,7 @@ jobs:
 
   unit-tests:
     # Tests run under a real MicroPython Unix-port interpreter, not CPython - see
-    # BACKLOG.md's "Self-contained venv via uv" testing requirement and tests/README.md.
+    # BACKLOG.md's "Self-contained venv via uv" testing requirement and SPECIFICATION.md Part E.
     #
     # needs: lint-and-typecheck - serializes the two jobs in this workflow instead of letting them
     # run in parallel (the previous default). This dates from an earlier phase of the CI-hang
@@ -83,7 +83,7 @@ jobs:
           key: unix-port-${{ runner.os }}-${{ hashFiles('toolchain/versions.toml', 'toolchain/setup_toolchain.py') }}
       - name: Run unit tests
         run: scripts/test.sh
-      # Coverage is a report, not a gate (see tests/README.md's "Coverage" section) - never let
+      # Coverage is a report, not a gate (see SPECIFICATION.md Part E.5 ("Coverage")) - never let
       # it fail the job. The `Run unit tests` step above is the real pass/fail signal; this just
       # re-runs the same suite under the same Unix port binary (always built with
       # MICROPY_PY_SYS_SETTRACE=1 - see build_unix_port()), wrapped by tests/_coverage_runner.py

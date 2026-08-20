@@ -1144,7 +1144,7 @@ def test_set_override_led_above_the_max_clamps_and_reads_back_clamped() -> None:
     # layer's only route to it) - this drives the clamp through both of them, rather than through the
     # underlying LockedCounter, whose own [0, max_val] clamping is already covered in
     # test_base_classes.py. _MAX_OVERRIDE_TIME is const()-folded and not importable (see
-    # tests/README.md), so 3600 is hardcoded here, matching this file's other const mirrors.
+    # SPECIFICATION.md Part E.5.1), so 3600 is hardcoded here, matching this file's other const mirrors.
     coordinator, _clock, _cb = make_coordinator()
 
     async def scenario() -> "tuple[int, int, int]":

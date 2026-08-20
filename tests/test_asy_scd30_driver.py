@@ -475,7 +475,7 @@ def test_get_self_calibration_enabled_decodes_1_and_0() -> None:
 
 # ---------------------------------------------------------------------------
 # Module level: real bus faults (OSError) propagate uncaught - SCD30_I2C is the documented
-# "allowed to raise" layer (src/README.md's raw-bus-call carve-out).
+# "allowed to raise" layer (SPECIFICATION.md Part D.2's raw-bus-call carve-out).
 # ---------------------------------------------------------------------------
 
 
@@ -781,7 +781,7 @@ def test_reader_setters_return_false_on_bus_nak() -> None:
 def test_reader_getters_log_the_correct_errno_on_bus_nak() -> None:
     # Regression test for the getter forwards' own pr.err_s() logging (added alongside the
     # setters' below) - errno values per asy_scd30_driver.py's own forward-logging block, matching
-    # DRIVER_SPEC.md's documented convention that every forward logs, not just returns a sentinel.
+    # SPECIFICATION.md Part C.7's documented convention that every forward logs, not just returns a sentinel.
     reader = make_reader()
     reader_fake_i2c(reader).nak_addresses.add(_ADDR)
 
@@ -1108,7 +1108,7 @@ def test_read_loop_recovers_error_counter_after_a_good_read_following_failures()
 
 
 # ---------------------------------------------------------------------------
-# Task starters (DRIVER_SPEC.md section 9) - get_task_starters()'s own shape is already checked
+# Task starters (SPECIFICATION.md Part C.9) - get_task_starters()'s own shape is already checked
 # above; neither starter method it returns was ever actually called.
 # ---------------------------------------------------------------------------
 

@@ -1,6 +1,6 @@
 """Stateful fake for the MB85RS64V FRAM chip itself, sitting on top of tests/machine.py's fake
 `machine.SPI` (which only models the raw, dumb bus - no opcode/CS-session semantics at all, by
-design per tests/README.md's mocking-boundary). A fourth instance of that same boundary: this
+design per SPECIFICATION.md Part E.4's mocking-boundary). A fourth instance of that same boundary: this
 interprets the byte streams asy_fram_driver.py's FRAM_SPI actually sends (RDID/RDSR/WRSR/WREN/
 WRDI/READ/WRITE) the way a real chip would, so FRAM_SPI's own logic (device-ID check, write-enable
 -latch handling, write-protect readback, address decoding) runs for real against it.

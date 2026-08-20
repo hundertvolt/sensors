@@ -72,7 +72,7 @@ def _wlan(conn: AsyConnTime) -> "Any":
 # ---------------------------------------------------------------------------
 # Shared fixtures - conn/ntp construction mirrors test_ntp_wifi_dns_integration.py's own helpers
 # (kept file-local rather than imported: no test file in this suite imports another, see
-# tests/README.md's per-file self-containment convention); the FRAM side mirrors
+# SPECIFICATION.md Part E's per-file self-containment convention); the FRAM side mirrors
 # tests/test_fram_integration.py's make_manager().
 # ---------------------------------------------------------------------------
 

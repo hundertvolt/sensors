@@ -3,7 +3,7 @@
 # BACKLOG.md's "Self-contained venv via uv" testing requirement). Builds the toolchain on first
 # run via `uv run toolchain/setup_toolchain.py` (plain `setup` - building/verifying the Unix port
 # is just part of what `setup`/`test` already do, there's no separate `unix` subcommand, see
-# toolchain/README.md) if the Unix port binary isn't already there, then reuses the cached build
+# SPECIFICATION.md Part B) if the Unix port binary isn't already there, then reuses the cached build
 # on subsequent runs. This now also builds the RP2040 firmware/ARM toolchain/picotool as a side
 # effect of `setup` doing all four of its verification checks together - heavier than building
 # just the Unix port alone, but there's no lighter-weight entry point anymore now that Unix-port
@@ -23,7 +23,7 @@
 # (htmlcov_digital_twin/, coverage_digital_twin.xml, coverage_summary_digital_twin.md) for
 # digital_twin/ - kept as two separate reports, not one combined one, since the two scopes have
 # different maturity/gating expectations (see CLAUDE.md's "Code quality tooling"). See README.md's
-# "Code quality tooling" for a usage example and tests/README.md for the full pipeline this is one
+# "Code quality tooling" for a usage example and SPECIFICATION.md Part E.5 for the full pipeline this is one
 # stage of.
 #
 # Also (re)builds frozen_modules/frozen_html.py via scripts/build_frozen_html.sh before every run -

@@ -267,7 +267,7 @@ class _FastAsyncSleep:
 
 
 # ---------------------------------------------------------------------------
-# __init__ / get_task_starters / get_timer_starters (DRIVER_SPEC.md section 9)
+# __init__ / get_task_starters / get_timer_starters (SPECIFICATION.md Part C.9)
 # ---------------------------------------------------------------------------
 
 
@@ -325,7 +325,7 @@ def test_debug_level_propagates_to_the_inherited_pr_logger() -> None:
 
 
 # ---------------------------------------------------------------------------
-# get_dict_cfg / get_error_counter - the base-class getter quartet (DRIVER_SPEC.md section 4.2)
+# get_dict_cfg / get_error_counter - the base-class getter quartet (SPECIFICATION.md Part C.4.2)
 # ---------------------------------------------------------------------------
 
 
@@ -790,7 +790,7 @@ def test_set_dict_cfg_multiple_invalid_fields_reported_independently() -> None:
 
 # ---------------------------------------------------------------------------
 # _VAL_PW bounds - WPA2-PSK ASCII passphrase spec (8-63 chars if used; empty is its own distinct
-# "open network, no security" case, not just a short/weak password) - see CLAUDE.md/DRIVER_SPEC.md
+# "open network, no security" case, not just a short/weak password) - see CLAUDE.md/SPECIFICATION.md
 # for the reasoning; SSID's own 0-32 bound was already correct and needed no change.
 # ---------------------------------------------------------------------------
 
@@ -1357,7 +1357,7 @@ def test_disconnect_sta_and_wait_times_out_instead_of_hanging_forever() -> None:
     # (isconnected() always True) must not hang wlan_connect() forever - this genuinely runs the
     # full _STA_DISCONNECT_WAIT_ITERS(20) * 0.5s = 10s bound in real time (const() values are
     # compiled away, so there's no way to fast-forward this from the test side - see
-    # tests/README.md's own note on this class of MicroPython behavior). The fake WLAN's own
+    # SPECIFICATION.md Part E.5.1's own note on this class of MicroPython behavior). The fake WLAN's own
     # disconnect() normally clears _connected as a side effect (modeling a real disconnect
     # completing immediately) - overridden here to a no-op so isconnected() keeps reporting True
     # throughout, genuinely simulating a driver that never confirms disconnection.
@@ -2267,7 +2267,7 @@ def test_write_config_via_public_cfg_schema_round_trips_a_real_value() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Task/timer starter methods (DRIVER_SPEC.md section 9) - get_task_starters()/get_timer_starters()'s
+# Task/timer starter methods (SPECIFICATION.md Part C.9) - get_task_starters()/get_timer_starters()'s
 # own shape is already checked above; the starter methods they return were never actually called.
 # ---------------------------------------------------------------------------
 
@@ -2350,7 +2350,7 @@ def test_update_wifi_snapshot_sets_ts_none_when_now_overflows() -> None:
 
 # ---------------------------------------------------------------------------
 # _switch_wlan_mode() - only its exception path was exercised above; this drives the real
-# deinit/reinit happy path (DRIVER_SPEC.md's "attempt operations" convention).
+# deinit/reinit happy path (SPECIFICATION.md Part C.7's "attempt operations" convention).
 # ---------------------------------------------------------------------------
 
 

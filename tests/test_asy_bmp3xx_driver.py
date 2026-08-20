@@ -20,7 +20,7 @@ asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
 
 # Mirrors of asy_bmp3xx_driver.py's own underscore-prefixed micropython.const() values - these
 # are compiled away entirely (confirmed: MicroPython folds a const() name into every use site at
-# compile time, so it isn't a real importable module attribute - see tests/README.md's "Reading
+# compile time, so it isn't a real importable module attribute - see SPECIFICATION.md Part E.5.1's "Reading
 # the numbers" and BACKLOG.md; `ImportError: can't import name _BMP388_CHIP_ID` confirmed this
 # directly). Kept in exact sync with the driver's own values by construction/citation below, not
 # re-derived independently.
@@ -1504,7 +1504,7 @@ def test_read_byte_raises_oserror_on_deinitialized_bus() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Reader.get_data() / get_dict_data() (DRIVER_SPEC.md section 4.2) - never exercised by any test
+# Reader.get_data() / get_dict_data() (SPECIFICATION.md Part C.4.2) - never exercised by any test
 # above, unlike asy_scd30_driver.py's/asy_sgp40_driver.py's own test files.
 # ---------------------------------------------------------------------------
 
@@ -1539,7 +1539,7 @@ def test_get_data_and_get_dict_data_reflect_a_stored_reading() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Task/timer starters (DRIVER_SPEC.md section 9) - get_task_starters()/get_timer_starters()'s
+# Task/timer starters (SPECIFICATION.md Part C.9) - get_task_starters()/get_timer_starters()'s
 # shape was never checked, and none of the starter methods they return were ever actually called,
 # unlike asy_sgp40_driver.py's own test_start_asy_read_returns_a_real_task.
 # ---------------------------------------------------------------------------
@@ -1786,7 +1786,7 @@ def test_stop_timer_deinits_the_trigger_timer() -> None:
 
 # ---------------------------------------------------------------------------
 # _base_trigger() - the 1Hz base tick divided down by trigger_period into the "real" trigger_event
-# (DRIVER_SPEC.md section 9's "second small _base_trigger() task" pattern).
+# (SPECIFICATION.md Part C.9's "second small _base_trigger() task" pattern).
 # ---------------------------------------------------------------------------
 
 
@@ -1827,7 +1827,7 @@ def test_base_trigger_sets_trigger_event_only_once_the_configured_period_elapses
 # ---------------------------------------------------------------------------
 # Reader-level set_temperature_oversampling()/set_filter_coefficient() - only their protocol-layer
 # counterparts and set_pressure_oversampling()'s own Reader wrapper were exercised above; these two
-# forwards share the same success/log-and-return-False shape (DRIVER_SPEC.md section 7).
+# forwards share the same success/log-and-return-False shape (SPECIFICATION.md Part C.7).
 # ---------------------------------------------------------------------------
 
 

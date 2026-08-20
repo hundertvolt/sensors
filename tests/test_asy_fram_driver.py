@@ -8,7 +8,7 @@ from asy_spi_driver import SPI
 from print_log import PrintLogHistory
 
 # Swaps the stateful MB85RS64V chip fake in for the whole process (one test file per
-# scripts/test.sh invocation - see tests/README.md): asy_spi_driver.SPI.init() resolves `_SPI` as
+# scripts/test.sh invocation - see SPECIFICATION.md Part E.3): asy_spi_driver.SPI.init() resolves `_SPI` as
 # a plain module global at call time, so reassigning it here before any SPI bus is constructed is
 # enough, with no per-test patch/restore dance needed.
 asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]

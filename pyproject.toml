@@ -191,7 +191,7 @@ strict_equality = true
 [tool.pytest.ini_options]
 # Empty: pytest itself isn't the test runner. Per BACKLOG.md's "Self-contained venv via uv"
 # requirement, tests run under a real MicroPython Unix-port interpreter, not CPython - see
-# tests/README.md and scripts/test.sh, which shell out to the built `micropython` binary instead
+# SPECIFICATION.md Part E.1 and scripts/test.sh, which shell out to the built `micropython` binary instead
 # of invoking pytest. `pytest` stays in [dependency-groups] dev for future CPython-side
 # orchestration (e.g. driver-level tests that need to assert on subprocess output), not used yet.
 # This section exists so pyproject.toml is already the single place all dev-tooling config lives,

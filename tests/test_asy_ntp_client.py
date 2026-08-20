@@ -211,7 +211,7 @@ def make_port() -> int:
 # ---------------------------------------------------------------------------
 # __init__ - AsyNtpClient now extends base_classes.py's SensorReaderConfig: it owns its own
 # config_NTP.cfg file/schema internally (no externally-injected ConfigManager, no separate
-# get_default_cfg()/_DEFAULT_CONFIG merge step anymore - see DRIVER_SPEC.md/BACKLOG.md).
+# get_default_cfg()/_DEFAULT_CONFIG merge step anymore - see SPECIFICATION.md/BACKLOG.md).
 # ---------------------------------------------------------------------------
 
 
@@ -335,7 +335,7 @@ def test_fram_given_uses_fram_backed_logging() -> None:
 
 # ---------------------------------------------------------------------------
 # get_dict_cfg / get_data / get_dict_data / get_error_counter - the base-class getter quartet
-# (DRIVER_SPEC.md section 4.2). Setters are explicitly out of scope (see BACKLOG.md).
+# (SPECIFICATION.md Part C.4.2). Setters are explicitly out of scope (see BACKLOG.md).
 # ---------------------------------------------------------------------------
 
 

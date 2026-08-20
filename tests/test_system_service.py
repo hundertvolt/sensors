@@ -552,7 +552,7 @@ def test_reboot_system_without_fram_arms_reset_timer_and_fires_machine_reset() -
     machine.reset_count = 0
     svc.reboot_system()
     assert svc.reset_timer.mode == Timer.ONE_SHOT
-    assert svc.reset_timer.period == 4 * 1000  # _RESET_DELAY: micropython.const(), compiled away, hardcoded per tests/README.md
+    assert svc.reset_timer.period == 4 * 1000  # _RESET_DELAY: micropython.const(), compiled away, hardcoded per SPECIFICATION.md Part E.5.1
     assert machine.reset_count == 0  # not yet fired - a real Timer would still be counting down
     svc.reset_timer.trigger()
     assert machine.reset_count == 1
@@ -999,7 +999,7 @@ def test_start_and_check_tasks_restarts_a_dead_task_and_logs_a_warning() -> None
 def test_start_and_check_tasks_gives_up_and_reboots_past_the_failure_budget() -> None:
     # Reaching _TASK_FAIL_MAX (300, incrementing by 100 per restart) takes several real
     # _TASK_CHECK_TIME=2s cycles - both consts are micropython.const() and compiled away (see
-    # tests/README.md), so they can't be monkeypatched, only asyncio.sleep itself can.
+    # SPECIFICATION.md Part E.5.1), so they can't be monkeypatched, only asyncio.sleep itself can.
     svc = make_service()
     call_count = [0]
 

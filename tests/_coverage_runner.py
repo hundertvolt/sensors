@@ -8,7 +8,7 @@
 #
 # coverage.py itself never runs here: it's a CPython tool and can't execute under MicroPython.
 # scripts/_render_coverage.py is the CPython-side counterpart that turns the raw JSON this file
-# writes into an actual coverage.py report -- see that file and tests/README.md for the full
+# writes into an actual coverage.py report -- see that file and SPECIFICATION.md Part E.5 for the full
 # pipeline. scripts/test.sh renders two separate reports from this same run's combined dump (one
 # scoped to src/, one to digital_twin/) by passing --src-dir twice.
 import json

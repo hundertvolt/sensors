@@ -1,6 +1,6 @@
 """Mocks only the raw I2C bus transaction level (tests/machine.py's fake machine.I2C, extended
 with a read_queue for word-oriented protocols like this one - see its own module docstring),
-matching tests/README.md's mocking boundary: asy_sgp40_driver.py's own protocol/CRC/locking logic
+matching SPECIFICATION.md Part E.4's mocking boundary: asy_sgp40_driver.py's own protocol/CRC/locking logic
 and voc_algorithm.py's real VOCAlgorithm run unmocked. FRAM-backed backup/restore tests use the
 real AsyFramManager against tests/_fram_chip_fake.py's simulated chip, matching
 tests/test_fram_integration.py's own pattern.
@@ -160,8 +160,8 @@ def test_initialize_no_feature_set_check_is_issued() -> None:
 
 
 def test_initialize_bus_nak_propagates_as_oserror() -> None:
-    # Real transaction failures are allowed to propagate uncaught from SGP40_I2C (src/README.md
-    # section 2's I2C carve-out) - SGP40_Reader._init_sgp() is what closes this gap.
+    # Real transaction failures are allowed to propagate uncaught from SGP40_I2C
+    # (SPECIFICATION.md Part D.2's I2C carve-out) - SGP40_Reader._init_sgp() is what closes this gap.
     sgp = make_sgp()
     fake_bus = bus(sgp.i2c_sgp40.i2c_device.i2c)
     fake_bus.nak_addresses.add(0x59)
@@ -1004,7 +1004,7 @@ _SGP_CFG_FILE = "config_SGP40.cfg"
 
 # Mirrors of asy_sgp40_driver.py's own _VAL_BP/_VAL_BMAX/_VAL_WT const() tuples - not importable
 # once const()-folded (see this file's own module docstring on the mocking boundary and
-# tests/README.md's "Reading the numbers" for why), needed here for a live write_config() call.
+# SPECIFICATION.md Part E.5.1's "Reading the numbers" for why), needed here for a live write_config() call.
 _VAL_BP = (("BackupPeriod", "int", 1, 0, 1440, None),)
 _VAL_BMAX = (("BackupMaxAge", "int", 7200, 0, 10080, None),)
 _VAL_WT = (("WaitTimeNTP", "int", 30, 0, 600, None),)
@@ -1561,7 +1561,7 @@ def test_measure_raw_add_into_failure_returns_none_not_raise() -> None:
 # ---------------------------------------------------------------------------
 # I2C hardware-fault propagation - NAK/OSError specifically (distinct from the CRC-mismatch
 # RuntimeError path already covered above). Proves SGP40_I2C's documented "OSError allowed to
-# propagate" carve-out (src/README.md section 2) is actually absorbed by SGP40_Reader's own
+# propagate" carve-out (SPECIFICATION.md Part D.2) is actually absorbed by SGP40_Reader's own
 # wrapping try/except, all the way up through read_loop()'s error-counting/give-up logic.
 # ---------------------------------------------------------------------------
 

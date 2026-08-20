@@ -429,7 +429,7 @@ def test_real_microdot_handler_raising_is_caught_by_microdots_own_blanket_catch(
 # mode a disconnected/dead sensor produces) propagates all the way through _set_dict_cfg's push
 # callback, handle_set_cmd's envelope, and real Microdot dispatch as a per-field "Failed" status
 # inside a normal 200 JSON response - never as a raised exception or a bare Microdot 500. This is
-# the one place CLAUDE.md's "Microdot / REST layer" blanket-catch guarantee and DRIVER_SPEC.md's
+# the one place CLAUDE.md's "Microdot / REST layer" blanket-catch guarantee and SPECIFICATION.md Part C.4's
 # layer-3 "never raises" contract are proven to hold *together*, end-to-end, not just individually.
 # ---------------------------------------------------------------------------
 

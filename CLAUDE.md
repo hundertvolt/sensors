@@ -73,12 +73,12 @@ information):
   `improved-quality/` is.
 - **Whenever a new file is promoted into `src/`, run a bird's-eye-view scan over the whole
   content of `src/`** — not just the new file in isolation — to check that the coding guidelines
-  and `src/README.md`'s checklist (including its "API consistency, within a file and across the
-  project" and "Check against current MicroPython" items) actually hold consistently across every
-  file there, not just that the new file individually passes review on its own. **If the scan
-  surfaces a discrepancy — one file diverging from another, or from a guideline — do not silently
-  fix it.** Report it and discuss how to resolve it before changing anything, the same "flag, don't
-  silently change" treatment section 1 of `src/README.md` already gives formula/behavior
+  and `SPECIFICATION.md` Part D's checklist (including its D.10 "API consistency, within a file and
+  across the project" and D.9 "Check against current MicroPython" items) actually hold consistently
+  across every file there, not just that the new file individually passes review on its own. **If
+  the scan surfaces a discrepancy — one file diverging from another, or from a guideline — do not
+  silently fix it.** Report it and discuss how to resolve it before changing anything, the same
+  "flag, don't silently change" treatment Part D.1 already gives formula/behavior
   discrepancies, applied here to cross-file consistency instead.
 - **Do not "fix" `modules/_boot.py`'s `import sensortask.py`** (literal `.py` in the import
   statement) without testing on real hardware first. It works reliably today; MicroPython's
@@ -102,7 +102,7 @@ information):
 - **No unit tests against the current (deployed, pre-refactor) codebase — `python/`, `modules/`.**
   The agreed plan is: fully understand the current system first, confirm what's already
   transferred into `improved-quality/`, and write tests as part of that refactor — not before, and
-  not against the current code. This does **not** contradict `tests/README.md`'s testing
+  not against the current code. This does **not** contradict SPECIFICATION.md Part E's testing
   requirements (tests under a real MicroPython Unix-port interpreter, `uv`-managed venv, mocking
   boundary, etc.) — those describe what the *refactored* code must eventually have. **First
   concrete instance**: `src/math_helpers.py` has a full `tests/test_math_helpers.py` suite,
@@ -175,7 +175,7 @@ information):
 - **Config lives in root `pyproject.toml`** (ruff/mypy/pytest/uv, dev-tooling only — the shipped
   code stays frozen-bytecode-only, not restructured into an installable package). Run manually via
   `scripts/lint.sh` (ruff), `scripts/typecheck.sh` (mypy), and `scripts/test.sh` (unit tests, under
-  a real MicroPython Unix-port interpreter — see below and `tests/README.md`); `lint.sh`/
+  a real MicroPython Unix-port interpreter — see below and SPECIFICATION.md Part E); `lint.sh`/
   `typecheck.sh` assume `ruff`/`mypy` are already on `PATH` (e.g. an activated `uv sync`-created
   venv). **Wired into CI** via `.github/workflows/ci.yml` (GitHub Actions), running all three on
   every push/PR. The CI pipeline does not yet include a real firmware-build stage (see
@@ -201,11 +201,11 @@ information):
   `digital_twin/typecheck.ini`'s own docstring for the full account.
 - **Unit tests run under a real MicroPython Unix-port interpreter, not pytest/CPython** — "as close
   to the real environment as possible" means the actual runtime, not CPython plus MicroPython-
-  flavored stubs (see `tests/README.md`'s "Why not pytest"). `scripts/test.sh` builds that
+  flavored stubs — see SPECIFICATION.md Part E.1 ("Why not pytest"). `scripts/test.sh` builds that
   interpreter on first run (`toolchain/setup_toolchain.py`'s `setup` — building/verifying the
   Unix port is just part of what `setup`/`test` already do, there's no separate `unix`
   subcommand — cached under `$PICO_TOOLCHAIN_DIR`) and shells out to it once per `tests/test_*.py`
-  file; see `tests/README.md` for the full rationale and the minimal `test_*`-function runner
+  file; see SPECIFICATION.md Part E.3 for the full rationale and the minimal `test_*`-function runner
   (`tests/microtest.py`) used in place of CPython's `unittest`.
 - **`scripts/test.sh --coverage` reports `src/` line coverage; it never gates anything** — no
   threshold is enforced anywhere, by design (confirmed directly, not a placeholder for a future
@@ -213,7 +213,7 @@ information):
   under the real MicroPython Unix-port interpreter, collection (`tests/_coverage_runner.py`,
   `sys.settrace` inside MicroPython) and rendering (`scripts/_render_coverage.py`, a second
   self-contained `uv run` script, under CPython) are two separate stages glued together through
-  `coverage.py`'s own `CoverageData` API — see `tests/README.md`'s "Coverage" section for the full
+  `coverage.py`'s own `CoverageData` API — see SPECIFICATION.md Part E.5 ("Coverage") for the full
   pipeline. The Unix port binary is always built with `MICROPY_PY_SYS_SETTRACE=1`
   (`build_unix_port()` in `toolchain/setup_toolchain.py`) — an inert hook check when unused, not a
   behavior change, confirmed directly — so plain `scripts/test.sh` and `--coverage` share one
@@ -321,7 +321,7 @@ actually testing under a 3.10 interpreter. Treat this as a standing QA step, not
 skip it just because "it worked in this session's sandbox."
 
 **Recipe** (needs root; mirrors how `toolchain/setup_toolchain.py`'s own "verified from scratch"
-claims were checked — see `toolchain/README.md`'s "Evidence this actually works"):
+claims were checked — see SPECIFICATION.md Part B.7, "Evidence this actually works"):
 
 ```bash
 # One-time: build a clean Ubuntu 24.04 (noble) chroot with nothing preinstalled beyond the
@@ -414,8 +414,8 @@ installing `git`/`curl`/`ca-certificates`/`python3`/`pip`/`uv`, no need for `pyt
 time), copy the working tree in the same way, then run `uv run toolchain/setup_toolchain.py`
 (a full build: ARM toolchain + firmware + `mpy-cross` + Unix port, several minutes, not seconds)
 instead of the lint/typecheck scripts. This is exactly how the Unix port addition (and later the
-frozen-bytecode verification chain) was verified — see `toolchain/README.md`'s "Verification" for
-what a passing run must show and "Evidence this actually works" for what's already been checked.
+frozen-bytecode verification chain) was verified — see SPECIFICATION.md Part B.6 ("Verification") for
+what a passing run must show and Part B.7 ("Evidence this actually works") for what's already been checked.
 
 ## Pull request workflow
 

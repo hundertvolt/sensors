@@ -243,10 +243,10 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   file's former "Repository layout"/"Architecture at a glance"/"Refactor in progress"/"Build
   process" content, and the spec-shaped parts of `CLAUDE.md`/`BACKLOG.md` into one document. Start
   here for "how does this codebase actually work" or "what shape should a new driver's code take."
-- **DRIVER_SPEC.md**, **`src/README.md`**, **`tests/README.md`**, **`toolchain/README.md`** — now
-  short stub files pointing into `SPECIFICATION.md`'s Parts C, D, E, and B respectively, kept so
-  existing links/references throughout the repo still resolve to a real file. Read
-  `SPECIFICATION.md` directly rather than these.
+  `DRIVER_SPEC.md`, `src/README.md`, `tests/README.md`, and `toolchain/README.md` were deleted once
+  every reference to them elsewhere in the repo (docs and code comments alike) was repointed
+  directly at `SPECIFICATION.md`'s Parts C, D, E, and B respectively — they held no content of
+  their own by then, just a "moved here" pointer.
 
 **`digital_twin/README.md`** (permanent, not yet folded into `SPECIFICATION.md`):
 

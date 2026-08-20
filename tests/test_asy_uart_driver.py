@@ -1084,7 +1084,7 @@ def test_read_until_complete_returns_none_on_crc_check_memoryerror() -> None:
 # methods - there's no substitutable object to wrap/monkeypatch the way _MemoryErrorCRC does above,
 # and bytearray.__iadd__ has no Python-level hook to force MemoryError deterministically without
 # either a constrained interpreter heap (not controllable from within a running test - see
-# tests/README.md) or genuinely exhausting memory (flaky/unsafe for CI). Same category of
+# SPECIFICATION.md Part E) or genuinely exhausting memory (flaky/unsafe for CI). Same category of
 # documented, deliberate testing gap as test_print_log.py's own
 # test_history_length_huge_is_capped_instead_of_crashing_the_interpreter comment. The surrounding
 # behavior is still covered: test_read_until_complete_assembles_across_multiple_rounds and
