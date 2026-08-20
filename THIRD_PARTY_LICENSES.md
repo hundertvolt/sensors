@@ -6,6 +6,10 @@ file (`src/captive_dns.py`'s `DNSQuery` class) is derived from an Apache-2.0-lic
 stays under Apache-2.0 for that portion - see "Apache License 2.0" below - so this repo is MIT
 overall with that one documented exception, not purely MIT top to bottom.
 
+Parts of this codebase were written with AI assistance (Claude). No specific reuse of another
+project's code beyond what's documented below is known, but this is disclosed rather than assumed
+away.
+
 ## Vendored, unmodified
 
 - **Microdot** ([`miguelgrinberg/microdot`](https://github.com/miguelgrinberg/microdot),
@@ -124,19 +128,23 @@ attached to code derived from an Apache-2.0 project - the derived portion stays 
   different header/pointer bytes) - neither matches this file's structure or byte layout; the
   shared DNS-protocol bytes they do have in common come from RFC 1035 itself, not copying.
 
-## Not applicable
+## Not third-party (built into MicroPython itself)
 
-- [`urg/micropython-captive-dhcp-server`](https://github.com/urg/micropython-captive-dhcp-server)
-  (MIT, also on PyPI as `micropython-captive-dhcp-server`) - a DHCP *server* implementation. This
-  project has no DHCP server of its own (only client-side `network.dhcp` usage of MicroPython's
-  built-in WiFi stack in `asy_wifi_service.py`/`asy_ntp_client.py`), so there is nothing in this
-  repo to compare it against. Checked a second time on a more specific description (a minimal
-  responder handing out one fixed IP to a single AP client) - same result: no DHCP protocol bytes,
-  ports, opcodes, or a server class of any kind anywhere in `src/`, `python/`, `improved-quality/`,
-  `modules/`, or `digital_twin/`. The fallback-hotspot AP's DHCP behavior (assigning an IP to a
-  client that joins it) is handled entirely by the underlying MicroPython/cyw43/lwIP network
-  stack's own built-in AP-mode DHCP server, not by any code in this repository - there is nothing
-  here that could carry a third-party license in the first place.
+- The fallback hotspot AP's DHCP behavior (assigning an IP to a client that joins it) comes from
+  MicroPython's own core `shared/netutils/dhcpserver.c` (MIT, © 2018-2019 Damien P. George) - part
+  of the MicroPython project itself, not a separate third-party dependency this repo vendors or
+  derives from, so it needs no license entry of its own beyond this note. Confirmed wired into the
+  rp2/cyw43 `AP_IF` path via a live upstream report,
+  [`micropython/micropython#17401`](https://github.com/micropython/micropython/issues/17401) (AP-mode
+  DHCP server ignoring a custom `ifconfig()` subnet). This project has no DHCP server of its own
+  anywhere in `src/`, `python/`, `improved-quality/`, `modules/`, or `digital_twin/` - confirmed by
+  exhaustive search (protocol bytes, ports, opcodes, class names) and by a full history scan, including
+  for the specific "single fixed IP to one client" shape the project owner remembered possibly having
+  built at some point (no match found in this repo's history either). Also checked and ruled out on
+  this basis:
+  [`urg/micropython-captive-dhcp-server`](https://github.com/urg/micropython-captive-dhcp-server)
+  (MIT, also on PyPI as `micropython-captive-dhcp-server`) - nothing in this repo to compare it
+  against.
 
 ## Author-permitted, no formal license (public forum offer)
 
@@ -169,12 +177,3 @@ attached to code derived from an Apache-2.0 project - the derived portion stays 
     checkable basis for permission even without a formal license file. Attribution notes were
     added to both files (no formal SPDX identifier is used, since this isn't a named license) with
     a link to the discussion thread and a list of what changed from karfas's originals.
-
-## Provenance not established
-
-- As of this review, every file the project owner asked to check has a resolved or documented
-  status above. Nothing currently remains in this section pending a specific candidate source -
-  if a new one comes up, it gets checked and moved into the appropriate section above rather than
-  left listed here indefinitely.
-- Parts of this codebase were written with AI assistance (Claude). No specific reuse of another
-  project's code is known, but this is disclosed rather than assumed away.
