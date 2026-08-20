@@ -224,58 +224,28 @@ information):
   needs this repo registered at codecov.io plus a token/OIDC setup that hasn't happened yet, so
   that upload currently no-ops. Locally, `--coverage` only prints the output paths; nothing opens
   automatically. See README.md's "Test coverage" section for the full user-facing rundown.
-- **CI hang investigation (resolved)**: `unit-tests` hung intermittently and repeatedly, always the
-  same symptom — `test_asy_uart_driver.py`'s MicroPython process going completely silent for the
-  rest of the job (first seen as a full 6-hour stall before `timeout-minutes` existed; see PR
-  #24/#25's history). An early round of isolation (bisect-matrix runs, solo vs. concurrent-job-burst
-  comparisons) pointed at GitHub Actions runner-level contention and produced three successive
-  mitigations in `scripts/test.sh`/`ci.yml` (per-file `timeout`+retry, `stdbuf -oL -eL` line
-  buffering, `needs: lint-and-typecheck` job sequencing) — **none of which actually stopped the
-  hang**; they only turned a silent multi-hour stall into a fast, attributable ~12-13 minute
-  failure. The real root cause, found by adding a diagnostic `asyncio.wait_for(5)` bound around
-  the test file's own `run()` helper: ~17 tests in `test_asy_uart_driver.py` feed data via
-  `feed_rx()` then call `uart.read()`/`write()` with no explicit `timeout_ms`, hitting
-  `asy_uart_driver.py`'s `ready()`'s `timeout_ms=-1` (wait forever) branch — the only place in the
-  whole file relying on the *real* `select.poll()` to detect readiness via `tests/machine.py`'s
-  pure-Python `io.IOBase` fake UART's `ioctl()`, instead of the bounded `_StepPoller` test double
-  every other test in the file already used. On GitHub Actions specifically (never locally, including
-  under simulated single-core CPU contention), that real-poll/ioctl-on-a-non-fd-Python-object path
-  never detects readiness at all — confirmed deterministic, not intermittent, once the diagnostic
-  bound made the failure visible as `TimeoutError` instead of a silent stall. **Fix**: switched all
-  17 tests to the same `_StepPoller` double, removing the dependency entirely — verified with 21/21
-  clean CI jobs across three separate branches/configurations before landing on the real branch.
-  The three earlier mitigations (per-file timeout/retry, stdbuf, job sequencing) are kept as a
-  standing "hanging is never allowed" backstop against any *future* hang, not because they fixed
-  this one — an isolation test with all three reverted, running only the `_StepPoller` fix, passed
-  8/8 clean CI jobs on its own. Don't re-diagnose this specific symptom as a new code bug if it
-  recurs elsewhere; do treat any *new* file/test that leaves `uart.poller` (or an equivalent
-  fake-stream object) wired to a real `select.poll()` as a like-for-like risk.
-- **Non-UTC-host test failures (resolved)**: on a developer machine whose system timezone isn't
-  UTC, `tests/test_ntp_fram_system_integration.py`'s
-  `test_fram_write_into_gets_a_real_valid_timestamp_once_the_real_ntp_chain_is_synced` and
-  `test_system_service_boot_signature_resolves_via_the_real_ntp_chain_once_synced` failed every
-  run (deterministic, not flaky) with a bare `AssertionError` at their final `abs(... -
-  int(time.time())) < 5` line, while CI (GitHub-hosted `ubuntu-latest`, always UTC) stayed green.
-  Root cause, confirmed directly against both the real MicroPython v1.28.0 Unix-port source and a
-  live reproduction: the Unix port's `time.mktime()` (`ports/unix/modtime.c`) calls straight
-  through to the host's real libc `mktime()`, which — per POSIX, and unlike the deployed rp2
-  firmware — interprets its input `struct tm` as **local time** and converts using the process's
-  `$TZ`. `src/asy_fram_manager.py`'s and `src/system_service.py`'s (and every other driver's)
-  `time.mktime(time.gmtime())` idiom for "current UTC timestamp" is therefore only a true no-op
-  round trip under `TZ=UTC`; under e.g. `TZ=Europe/Berlin` it silently comes back ~1 hour off
-  (`tm_isdst` is forced to `0` by `gmtime()`'s 9-tuple, so it's standard-time offset, not the
-  actual current DST offset), reproduced identically both with a hand-rolled snippet and by
-  literally re-running the two failing tests with only `$TZ` changed (12/12 pass under `TZ=UTC`,
-  the same 2/12 fail under `TZ=Europe/Berlin`, same line numbers, same "10/12 passed"). **Not a
-  production bug**: confirmed directly from `ports/rp2/datetime_patch.c` that the deployed
-  firmware overrides libc's `mktime()`/`localtime_r()` with `shared/timeutils`' pure, TZ-agnostic
-  epoch arithmetic — real hardware has no `$TZ` concept and this idiom round-trips exactly there
-  regardless. **Fix**: `scripts/test.sh` now does `export TZ=UTC` before invoking the Unix-port
-  binary (for both the plain and `--coverage` passes, and every test file), pinning every local
-  test run to the same UTC behavior GitHub's runners already gave for free — verified with a full
-  99/99-passing `scripts/test.sh` run under `TZ=Europe/Berlin` in the calling shell after the fix.
-  Don't re-diagnose a consistent (not intermittent) failure isolated to this file's two live-clock
-  assertions as a new code bug — check the runner's `$TZ` first.
+- **Standing backstop: hanging tests are never allowed.** `scripts/test.sh`/`ci.yml` enforce a
+  per-file `timeout`+retry, `stdbuf -oL -eL` line buffering, and `needs: lint-and-typecheck` job
+  sequencing regardless of any specific hang's root cause — keep all three even after a specific
+  hang is fixed.
+- **Known hang cause, fixed**: a MicroPython Unix-port `select.poll()`/`ioctl()` call against a
+  non-fd Python object (e.g. `tests/machine.py`'s pure-Python fake-stream `ioctl()`) never detects
+  readiness on GitHub Actions runners specifically (not reproducible locally) — any test awaiting a
+  stream read/write with `timeout_ms=-1` through that real-poll path hangs forever.
+  `test_asy_uart_driver.py` hit this via `asy_uart_driver.py`'s `ready()`'s `timeout_ms=-1` branch;
+  fixed by switching every such test to the bounded `_StepPoller` test double already used
+  elsewhere in that file. **Rule: any test double for `uart.poller` (or an equivalent fake-stream
+  object) must be a bounded fake like `_StepPoller`, never backed by a real `select.poll()`.** Don't
+  re-diagnose this specific symptom as a new code bug if it recurs elsewhere.
+- **Local test runs pin `$TZ=UTC` (Unix port only).** The Unix port's `time.mktime()`
+  (`ports/unix/modtime.c`) calls the host's real libc `mktime()`, which interprets its input as
+  **local time** per the process's `$TZ` — unlike the deployed rp2 firmware, whose
+  `ports/rp2/datetime_patch.c` overrides this with `shared/timeutils`' pure, TZ-agnostic epoch
+  arithmetic. `src/`'s `time.mktime(time.gmtime())` "current UTC timestamp" idiom is therefore only
+  a true no-op round trip under `TZ=UTC`; not a production bug — real hardware has no `$TZ` concept.
+  `scripts/test.sh` exports `TZ=UTC` before invoking the Unix-port binary for exactly this reason.
+  Don't diagnose a consistent (not intermittent) failure in a live-clock assertion as a new code bug
+  before checking the runner's `$TZ`.
 - **`ruff format` is deliberately not used anywhere** — line breaks are hand-chosen throughout this
   codebase; `line-length = 320` (ruff's own ceiling) plus an `E501` ignore keep this a non-issue even
   if `format` is ever run by accident. Lint rule selection (`E`/`F`/`W`/`I`/`UP`/`B`) is stricter

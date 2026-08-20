@@ -607,7 +607,7 @@ lives in `tests/test_sensortask_wozi.py`.
 **registration-based** service: modules hand it named callback groups at construction
 (`sensors=`, `settings=`, `system_cmd=`, `notification_led=`, `status_sources=`,
 `maintenance_sensors=`, `error_sources=`, all supplied as lists/dicts at init — see
-`asy_sensortask_wozi.py`'s real construction-step-14 call for the live wiring) and it
+`src/sensortask_wozi.py`'s real construction-step-14 call for the live wiring) and it
 auto-constructs the REST surface from them, generator-friendly: a future per-variant build-script
 generator only ever needs to know "does this variant have module X," never anything about field
 names or endpoint shapes.

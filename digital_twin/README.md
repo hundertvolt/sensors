@@ -245,22 +245,17 @@ correctly by the dedicated pass instead - see `digital_twin/typecheck.ini`'s own
   `disturb_write_autoclear`, ...) were purpose-built for `FRAM_SPI`'s own defense-in-depth unit
   tests (already covered by `tests/test_asy_fram_driver.py`) and weren't reproduced here.
 - **`segfault_stress_repro.py`** is a manual, deliberately-aggressive concurrency-stress CLI tool —
-  fires many concurrent HTTP clients against the real assembled system. Not part of any automated
-  test tier (a genuine repro crashes the whole interpreter process) — run manually, same
-  `MICROPYPATH` as `run_wozi_integration.py`. It exists because firing 8 concurrent clients x 15
-  requests each against a real, already-running (heap-reduced) `sensortask_wozi` instance once
-  reproduced a real, `dmesg`-confirmed MicroPython Unix-port interpreter segfault. **This is now
-  root-caused and fixed, not an open mystery**: the crash was a dangling-pointer dereference at
-  `extmod/modselect.c:132` in the pinned MicroPython v1.28.0 Unix port — growing the shared asyncio
-  poller's `pollfds` array (needed once concurrently-registered fds cross a multiple of 4)
-  unconditionally repoints every already-registered poll object's `pollfd` field at the new buffer,
-  including non-fd poll objects whose `pollfd` is legitimately `NULL`, corrupting it into a small
-  garbage pointer the next `poll()` call dereferences. Confirmed compiled out of real rp2 firmware
-  entirely (`MICROPY_PY_SELECT_POSIX_OPTIMISATIONS`, the macro gating this code path, defaults to 0
-  and is only turned on by the Unix port's own config — rp2 defines no override, and its non-optimized
-  poll object has no `pollfd` field or array to grow at all). Fixed by `unix_port_poll_prewarm.py`
-  (see "What's here" above) — verified empirically: the unfixed tool crashed 100% of attempts at
-  both a deterministic small-heap trigger (`-X heapsize=` at or below ~800KB) and a recreation of
-  the original discovery conditions; with the fix, repeated clean runs across both conditions
-  (including against the actual committed files, not scratch copies) produced zero crashes. See
-  `unix_port_poll_prewarm.py`'s own module docstring for the full mechanism.
+  fires many concurrent HTTP clients against the real assembled system, exercising a scenario the
+  automated test tiers can't (a genuine repro crashes the whole interpreter process) — run
+  manually, same `MICROPYPATH` as `run_wozi_integration.py`. Its target bug is root-caused and
+  fixed, not open: a dangling-pointer dereference at `extmod/modselect.c:132` in the pinned
+  MicroPython v1.28.0 Unix port — growing the shared asyncio poller's `pollfds` array (needed once
+  concurrently-registered fds cross a multiple of 4) unconditionally repoints every
+  already-registered poll object's `pollfd` field at the new buffer, including non-fd poll objects
+  whose `pollfd` is legitimately `NULL`, corrupting it into a small garbage pointer the next
+  `poll()` call dereferences. Confirmed compiled out of real rp2 firmware entirely
+  (`MICROPY_PY_SELECT_POSIX_OPTIMISATIONS`, the macro gating this code path, defaults to 0 and is
+  only turned on by the Unix port's own config — rp2 defines no override, and its non-optimized
+  poll object has no `pollfd` field or array to grow at all) — real hardware was never affected.
+  Fixed by `unix_port_poll_prewarm.py` (see "What's here" above); see that module's own docstring
+  for the full mechanism.
