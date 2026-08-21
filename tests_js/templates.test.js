@@ -170,6 +170,12 @@ describe("buildErrcountGroup", () => {
         BMP3XX: { counter: 12, history: [{ num: 0, type: "N" }, { num: 2, type: "E" }] },
     };
 
+    it("wraps the rollup and module list in a card with the group's heading, like every other field group", () => {
+        const wrapper = buildErrcountGroup(THREE_MODULE_GROUP, THREE_MODULE_ERRCOUNT);
+        expect(wrapper.classList.contains("card")).toBe(true);
+        expect(mustQuery(wrapper, "h3").textContent).toBe("Errors");
+    });
+
     it("starts fully collapsed to just the rollup - no module rows visible", () => {
         const wrapper = buildErrcountGroup(THREE_MODULE_GROUP, THREE_MODULE_ERRCOUNT);
         expect(mustQuery(wrapper, ".errcount-module-list").classList.contains("hidden")).toBe(true);
@@ -207,7 +213,7 @@ describe("buildErrcountGroup", () => {
         expect(visible).toHaveLength(3);
     });
 
-    it("shows a module's own counter and expands/collapses its own history on click, with no network call", () => {
+    it("shows a module's own counter and its full history immediately once revealed - no separate expand click", () => {
         const wrapper = buildErrcountGroup(THREE_MODULE_GROUP, THREE_MODULE_ERRCOUNT);
         mustQuery(wrapper, ".action-button").click(); // reveal via "Show flagged"
         const row = mustQuery(wrapper, '.errcount-row-wrapper[data-worst="E"] .errcount-row');
@@ -215,14 +221,8 @@ describe("buildErrcountGroup", () => {
         expect(row.dataset.hasErrors).toBe("true");
 
         const list = mustQuery(/** @type {HTMLElement} */ (row.parentElement), ".history-list");
-        expect(list.classList.contains("hidden")).toBe(true);
-
-        row.click();
         expect(list.classList.contains("hidden")).toBe(false);
         expect(list.querySelectorAll(".history-entry")).toHaveLength(2);
-
-        row.click();
-        expect(list.classList.contains("hidden")).toBe(true);
     });
 
     it("shows a placeholder message for a module with no history", () => {

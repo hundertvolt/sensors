@@ -375,12 +375,7 @@ button {
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    width: 100%;
     padding: 9px 2px;
-    background: none;
-    border: none;
-    text-align: left;
-    cursor: pointer;
 }
 
 .errcount-row-name {
