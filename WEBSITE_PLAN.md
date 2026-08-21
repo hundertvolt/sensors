@@ -359,16 +359,21 @@ order.
    drawer, modernized cards), `js/poll-manager.js` (single-flight request queue enforcing §4's
    measurements/status-vs-settings mutual exclusion), `js/definitions.js` (loader + strict
    validator + JSDoc type definitions for the whole schema), `js/render.js` (generic section/group/
-   field renderer — zero device-specific code), `js/nav.js` (drawer wiring), `js/app.js` (entry
-   point, `?device=` prototype switch), `js/mock-server.js` (fetch-intercepting fake backend,
-   answers the same six REST paths/shapes A.8 documents, validates PUTs against the definitions'
-   own min/max/enum/length constraints, jitters live values so polling visibly does something —
-   explicitly a placeholder for session 5's real digital-twin backend, not a permanent fixture),
-   `html/definitions/wozi.json` + `html/definitions/dev.json` (the two worked example definitions
-   files), `mockdata/wozi.json` + `mockdata/dev.json` (their fixture data, deliberately varied error
-   histories per device). 27 Vitest unit tests across `tests_js/poll-manager.test.js`,
-   `definitions.test.js`, `mock-server.test.js`, `render.test.js`; `lint`/`typecheck`/`lint:html`/
-   `lint:css`/`test` all green. Manually verified end-to-end in real Chromium (Playwright, this
+   field renderer — zero device-specific code, delegates DOM building to `js/templates.js`),
+   `js/templates.js` (the DOM/markup-building layer extracted per §12's pre-merge amendment —
+   owns every element/class/order choice `render.js`/`nav.js` used to build inline), `js/nav.js`
+   (drawer wiring), `js/app.js` (entry point, `?device=` prototype switch), `js/mock-server.js`
+   (fetch-intercepting fake backend, answers the same six REST paths/shapes A.8 documents,
+   validates PUTs against the definitions' own min/max/enum/length constraints, jitters live
+   values so polling visibly does something — explicitly a placeholder for session 5's real
+   digital-twin backend, not a permanent fixture), `html/definitions/wozi.json` +
+   `html/definitions/dev.json` (the two worked example definitions files), `mockdata/wozi.json` +
+   `mockdata/dev.json` (their fixture data, deliberately varied error histories per device). 45
+   Vitest unit tests across `tests_js/poll-manager.test.js`, `definitions.test.js`,
+   `mock-server.test.js`, `render.test.js`, `templates.test.js` (the last two split by §12's
+   amendment); `lint`/`typecheck`/`lint:html`/`lint:css`/`test` all green — reconfirmed directly
+   against this branch's current head (`b48d6f2`), not just taken on session 2's own word.
+   Manually verified end-to-end in real Chromium (Playwright, this
    session's own pre-installed browser): both devices' full nav → section → live-poll → Apply
    (including an out-of-range value correctly rendering "Invalid") → errcount-expand flow, in both
    color schemes and at a mobile viewport width, zero console/page errors. `npm run preview` (added
