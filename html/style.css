@@ -361,21 +361,21 @@ button {
     font-size: 12px;
 }
 
+/* One horizontal, wrapping row of pills per module - not a vertical list. A module can carry
+   10+ entries; stacking each in its own row wastes vertical space for content that's just a
+   single small number, and a horizontal strip reads faster as "one module's recent history at a
+   glance" anyway. */
 .history-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
     margin: 10px 0 0;
     padding: 0;
     list-style: none;
-    font-size: 13px;
 }
 
 .history-entry {
-    display: flex;
-    padding: 6px 0;
-    border-top: 1px solid var(--color-border);
-}
-
-.history-entry:first-child {
-    border-top: none;
+    display: block;
 }
 
 /* The errno itself is the only thing ever shown - "N"/"E"/"W" (no error/error/warning) never
