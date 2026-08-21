@@ -3,24 +3,8 @@
 # requires-python = ">=3.11"
 # dependencies = ["coverage"]
 # ///
-"""
-Merges the raw per-test-file line-hit JSON dumps written by tests/_coverage_runner.py (run under
-the MicroPython Unix port build_unix_port() always builds with MICROPY_PY_SYS_SETTRACE=1 --
-see toolchain/setup_toolchain.py) into a single coverage.py CoverageData file, then lets
-coverage.py itself render the HTML/XML/markdown reports from it.
-
-coverage.py never runs the code under test here -- it only runs under CPython, and src/ only ever
-runs under the real MicroPython Unix-port interpreter (see SPECIFICATION.md Part E.1 for why). This script
-is the second half of that split: MicroPython collects which lines actually ran, coverage.py
-supplies the report engine (executable-line analysis, HTML, Cobertura XML, markdown) on top of
-data it never collected first-hand -- reusing its CoverageData.add_lines() API, a real, documented
-integration point for exactly this "foreign coverage source" scenario, rather than a bespoke
-report renderer.
-
-Self-contained via `uv run` (like toolchain/setup_toolchain.py) rather than a pyproject.toml dev
-dependency: scripts/test.sh --coverage should work standalone with only `uv` installed, the same
-way the rest of scripts/test.sh already does, without requiring `uv sync`/an activated venv first.
-"""
+"""Merges the raw per-test-file line-hit JSON dumps written by tests/_coverage_runner.py (run under the MicroPython Unix port) into a single coverage.py CoverageData file, then lets coverage.py render the HTML/XML/markdown reports from it - the second half of the collect/render split described in SPECIFICATION.md Part E.5 ("Coverage").
+Self-contained via `uv run` (like toolchain/setup_toolchain.py) rather than a pyproject.toml dev dependency: scripts/test.sh --coverage works standalone with only `uv` installed, without requiring `uv sync`/an activated venv first."""
 
 from __future__ import annotations
 

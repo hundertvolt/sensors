@@ -1,39 +1,6 @@
-"""Workaround for three confirmed MicroPython-Unix-port-only `socket` quirks (BACKLOG.md's "Real-
-hardware verification gap for asy_udp_socket.py/captive_dns.py" entry has the full source-level
-account) - all three patched here, entirely from twin-side code, `src/` untouched and left correct
-for real hardware:
-
-1. `ports/unix/modsocket.c`'s `bind()`/`connect()` require a pre-resolved buffer-protocol sockaddr;
-   the real rp2/lwIP socket module (`extmod/modlwip.c`) accepts a plain `(host: str, port: int)`
-   tuple directly - the form `AsyUDPSocket` (correctly) always passes. Patches `_connect()` to
-   pre-resolve via `socket.getaddrinfo()` first, same pattern `unix_port_poll_prewarm.py`'s
-   `prewarm_poll_set()` already uses for a different call site.
-2. `ports/unix/modsocket.c`'s `sendto()` has this exact same buffer-protocol requirement
-   (`micropython/micropython#6924`, re-checked directly this session - it's specifically about
-   `sendto()`, not bind()/connect() as first assumed) - but `sendto()`'s own destination address is
-   a *per-call* argument (a DNS/NTP client's ephemeral reply address, learned dynamically from a
-   real `recvfrom()`), not the constructor-time `self._addr` point 1 already covers, so it needs its
-   own patch on `sendto()` specifically.
-3. `ports/unix/modsocket.c`'s `recvfrom()` (confirmed directly against a real captured reply, not
-   just the C source - this build's `mp_obj_from_sockaddr()` differs from what a first look at
-   `ports/unix/modsocket.c`'s own `mod_socket_sockaddr()` utility function suggested) hands back the
-   raw 16-byte packed C `struct sockaddr_in` as a plain `bytes` object - `sin_family` (2 bytes,
-   native/little-endian on the x86_64 hosts this ever runs on), `sin_port` (2 bytes, network/
-   big-endian), `sin_addr` (4 bytes), 8 bytes padding. `extmod/modlwip.c`'s `lwip_socket_recvfrom()`
-   instead returns `(ip: str, port: int)` (`lwip_format_inet_addr()`) - a completely different
-   shape, not just the same tuple in a different byte order. `captive_dns.py`'s own subnet check
-   expects that `(str, int)` form (`addr[0]` is a dotted-decimal string) - correct for real
-   hardware, confirmed directly against the source above - so under the Unix port `addr[0]` ends up
-   being the raw bytes' own first byte (`0x02` == `AF_INET`, logged as "address 2"), degrading
-   safely to the existing "off-subnet/malformed" fallback instead of ever matching. Patches
-   `recvfrom()` to unpack the raw struct into the `(str, int)` shape whenever it sees this form -
-   which is also what feeds `sendto()`'s own per-call address in a real request/reply cycle
-   (captive_dns.py's own DNSServer echoes the client address recvfrom() gave it back into its reply
-   sendto()), so point 3 normalizing recvfrom()'s output is what makes point 2's sendto() patch see
-   an already-numeric, already-string address to resolve in the first place.
-
-Call `patch_asy_udp_socket_for_unix_port()` once, early - before anything constructs an
-`AsyUDPSocket`."""
+"""Workaround for three confirmed MicroPython-Unix-port-only `socket` quirks that would otherwise break a real UDP round trip (DNS, NTP) here - entirely from twin-side code, `src/` untouched and correct for real hardware.
+Full account: digital_twin/README.md's "`_unix_port_udp_addr_shim.py`" section.
+Call `patch_asy_udp_socket_for_unix_port()` once, early, before constructing any `AsyUDPSocket`."""
 
 import socket
 import struct

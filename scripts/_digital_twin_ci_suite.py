@@ -2,20 +2,9 @@
 # /// script
 # requires-python = ">=3.11"
 # ///
-"""Automated version of the manual digital-twin on-demand walkthrough (the project owner's own
-baseline/DebugLevel/PUT-persistence/fault-injection/soak passes, formerly run by hand only) -
-drives `digital_twin/run_wozi_integration.py` as a real subprocess, over real HTTP, through a
-sequence of real process restarts, and asserts every step. CPython/stdlib-only (no `uv sync`
-needed) since it only orchestrates the MicroPython subprocess and speaks plain HTTP/UDP to it - the
-code under test still only ever runs under the real MicroPython Unix-port interpreter.
-
-Invoked by `scripts/run_digital_twin_ci.sh` (which owns the "clean" + "build" phases); this script
-is the "test" phase. See `digital_twin/README.md`'s "Automated CI suite" section for the full
-walkthrough this reproduces and why each phase exists, including which error-counted modules are
-FRAM-persisted vs. in-memory-only by design (SPECIFICATION.md Part A.7) - and why "permanent" bus
-failures never starve the (simulated) watchdog under the current architecture, versus the one
-dedicated case (`--hang`) that actually can.
-"""
+"""Automated version of the manual digital-twin on-demand walkthrough - drives `digital_twin/run_wozi_integration.py` as a real subprocess, over real HTTP/UDP, through a sequence of real process restarts, and asserts every step.
+CPython/stdlib-only (the code under test still only ever runs under the real MicroPython Unix-port interpreter); invoked by `scripts/run_digital_twin_ci.sh` (which owns "clean"/"build") as its "test" phase.
+Full walkthrough and rationale: `digital_twin/README.md`'s "Automated CI suite" section."""
 
 from __future__ import annotations
 
@@ -443,13 +432,14 @@ def run_suite(micropython_bin: str, logs_dir: Path) -> int:
         # a real CI runner observed needing well over the first attempt's combined budget.
         entry = _wait_for_errcount_above("WIFI", 4, timeout_s=90.0)
         _check(entry.get("counter", 0) >= 5, f"Run 7: all 5 repeated WiFi connect failures drove real hotspot fallback and were recorded in WIFI's error counter ({entry!r})")
-        # 30s was enough locally but timed out twice in a row on real GitHub Actions runners even
-        # after the errcount-wait fix above landed and was confirmed working (the runner's own log
-        # showed the full 5-failure count recorded, so the DNSServer really had started) - real
-        # CI-runner wall-clock slack for this specific real-socket round trip is smaller than the
-        # local sandbox's. Widened to 90s with a faster 0.5s retry cadence (see _wait_for_dns_answer)
-        # rather than guessing a second time; this is a hotspot-fallback path, not a hot one, so a
-        # generous budget here costs nothing when the answer arrives early.
+        # 30s originally timed out twice in a row on real GitHub Actions runners even after the
+        # errcount-wait fix above landed and was confirmed working - turned out to be a red herring:
+        # the real cause was scripts/run_digital_twin_ci.sh's interpreter binary lacking
+        # CAP_NET_BIND_SERVICE, so DNSServer's bind() to privileged port 53 was silently failing and
+        # no timeout length would ever have fixed it (see digital_twin/README.md's "Automated CI
+        # suite" run 7 entry for the full account). Left at 90s with a 0.5s retry cadence (see
+        # _wait_for_dns_answer) anyway, now that the real fix is in - this is a hotspot-fallback
+        # path, not a hot one, so the extra slack costs nothing when the answer arrives early.
         answered = _wait_for_dns_answer(HOST, timeout_s=90.0)
         _check(answered, "Run 7: the real captive DNSServer answered a real UDP DNS query after WiFi hotspot fallback")
         status, _ = _http("GET", "/status")
