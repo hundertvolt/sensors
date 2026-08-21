@@ -183,6 +183,15 @@ so the next sub-session reads current state, not stale state; never touch `src/`
 build the schema-comment autocreation tooling itself in this effort — only prepare hand-written
 example definitions file(s) shaped as if they were auto-creatable.
 
+**Branching/PR requirement — applies to every sub-session, including the sessions spun off from
+each of the five below:** each sub-session branches off **this base session's branch**,
+`claude/sensor-website-redesign-w2juw6` (PR #42) — **never off `main`**. Its own pull request
+targets `claude/sensor-website-redesign-w2juw6` as the base, not `main`; that PR only merges into
+`main` once the whole multi-session effort is complete. Each session in the chain (2 off 1's
+branch, 3 off 2's, etc.) follows the same rule against its immediate parent session's branch, not
+against `main` or against this base branch directly, keeping the sessions stacked in execution
+order.
+
 1. **Folder structure + CI.** Create `html/`, `js/`, `tests_js/`, root `package.json`/tool configs
    (ESLint, TypeScript `checkJS`, Vitest+Playwright, html-validate, Stylelint), and the
    `changes`-gated web-CI tier in `ci.yml` (§6). Include trivial placeholder content (mirroring
