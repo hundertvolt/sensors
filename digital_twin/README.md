@@ -265,7 +265,16 @@ both can run side by side without colliding):
    the internal state flipped. Only possible because of
    `digital_twin/_unix_port_udp_addr_shim.py` — see its own module docstring and the "`_unix_port_udp_addr_shim.py`"
    section below for the three Unix-port-only `socket` quirks it works around, entirely from
-   twin-side code, with `src/` left untouched and correct for real hardware.
+   twin-side code, with `src/` left untouched and correct for real hardware. `src/captive_dns.py`'s
+   `DNSServer` binds the real, privileged port 53 unconditionally (correct for real hardware, which
+   has no user/privilege concept at all) — `scripts/run_digital_twin_ci.sh` grants the built
+   interpreter binary `CAP_NET_BIND_SERVICE` (via `setcap`, fresh on every invocation, since a
+   cached toolchain archive doesn't preserve it) precisely so this run works when the job itself
+   isn't root, e.g. a GitHub Actions runner. Without it, `asy_udp_socket.py`'s own `bind()` retry
+   loop swallows the resulting `PermissionError` and gives up silently — the DNS server never
+   raises, never crashes the process, it just never starts listening, so no amount of waiting fixes
+   it. Confirmed directly: two real CI failures here were a timeout-budget red herring; the actual
+   fix was the capability grant, not a longer wait.
 8. **Reboot fault-free** — WIFI's own persistence-correctness check (in-memory-only, should reset
    to `0`), plus configures an unreachable NTP host (`192.0.2.1`, RFC 5737 TEST-NET-1) for run 9.
 9. **Reboot with NTP permanently unreachable** — the other "network connections" real-world case.
