@@ -1,170 +1,19 @@
 /**
- * Generic, definitions-driven section renderer (WEBSITE_PLAN.md §10 session 2). Every section/
- * group/field is built from the fetched definitions.json - there is no per-device branching here,
- * which is the actual proof that "one skeleton/JS, content from definitions file" generalizes.
+ * Section controller (WEBSITE_PLAN.md §12): owns everything that talks to the network or
+ * validates/submits data - fetching, polling, collecting a group's input values into a PUT body,
+ * and turning a PUT response into an apply-status outcome. It builds no DOM itself; every element
+ * comes from `js/templates.js`, located afterwards only via the `data-*` attributes/CSS classes
+ * documented in WEBSITE_PLAN.md §12's contract table. A purely visual/layout redesign never
+ * touches this file.
  */
 
 import { pollManager, startPolling } from "./poll-manager.js";
+import { buildErrcountGroup, buildFieldGroupCard, buildSectionShell, formatFieldValue } from "./templates.js";
 
 /** @typedef {import("./definitions.js").SiteDefinitions} SiteDefinitions */
 /** @typedef {import("./definitions.js").Section} Section */
 /** @typedef {import("./definitions.js").FieldGroup} FieldGroup */
 /** @typedef {import("./definitions.js").FieldDef} FieldDef */
-
-/**
- * @param {FieldDef} field
- * @param {unknown} value
- * @returns {string}
- */
-function formatValue(field, value) {
-    if (value === undefined || value === null) {
-        return "—";
-    }
-    if (field.mask === true) {
-        return "••••••••";
-    }
-    if (field.kind === "enum") {
-        const match = (field.options ?? []).find((option) => option.value === value);
-        return match ? match.label : String(value);
-    }
-    return String(value);
-}
-
-/**
- * @param {FieldDef} field
- * @returns {HTMLElement}
- */
-function renderFieldDescription(field) {
-    const parts = [];
-    if (field.kind === "number" && (field.min !== undefined || field.max !== undefined)) {
-        parts.push(`Valid values: ${field.min ?? "–∞"} to ${field.max ?? "∞"}${field.unit ? ` ${field.unit}` : ""}`);
-    }
-    if (field.kind === "string" && (field.minLength !== undefined || field.maxLength !== undefined)) {
-        parts.push(`Length: ${field.minLength ?? 0} to ${field.maxLength ?? "∞"} characters`);
-    }
-    for (const special of field.specialValues ?? []) {
-        parts.push(`${special.value} = ${special.meaning}`);
-    }
-    if (field.description) {
-        parts.push(field.description);
-    }
-    const p = document.createElement("p");
-    p.className = "field-description";
-    p.textContent = parts.join(" · ");
-    return p;
-}
-
-/**
- * @param {FieldDef} field
- * @param {unknown} currentValue
- * @param {boolean} editable
- * @returns {HTMLElement}
- */
-function renderField(field, currentValue, editable) {
-    const wrapper = document.createElement("div");
-    wrapper.className = "field";
-
-    const label = document.createElement("label");
-    label.className = "field-label";
-    label.htmlFor = `field-${field.key}`;
-    label.textContent = field.label;
-    if (field.unit) {
-        const unitSpan = document.createElement("span");
-        unitSpan.className = "field-unit";
-        unitSpan.textContent = ` [${field.unit}]`;
-        label.appendChild(unitSpan);
-    }
-    wrapper.appendChild(label);
-
-    if (!editable || field.kind === "readonly") {
-        const value = document.createElement("span");
-        value.className = "field-value";
-        value.dataset.fieldKey = field.key;
-        value.textContent = formatValue(field, currentValue);
-        wrapper.appendChild(value);
-        wrapper.appendChild(renderFieldDescription(field));
-        return wrapper;
-    }
-
-    if (field.kind === "toggle") {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "toggle-button";
-        button.id = `field-${field.key}`;
-        button.dataset.fieldKey = field.key;
-        const initial = Boolean(currentValue);
-        button.dataset.value = String(initial);
-        button.setAttribute("aria-pressed", String(initial));
-        button.textContent = initial ? (field.onLabel ?? "On") : (field.offLabel ?? "Off");
-        button.addEventListener("click", () => {
-            const next = button.dataset.value !== "true";
-            button.dataset.value = String(next);
-            button.setAttribute("aria-pressed", String(next));
-            button.textContent = next ? (field.onLabel ?? "On") : (field.offLabel ?? "Off");
-        });
-        wrapper.appendChild(button);
-        wrapper.appendChild(renderFieldDescription(field));
-        return wrapper;
-    }
-
-    if (field.kind === "enum") {
-        const select = document.createElement("select");
-        select.id = `field-${field.key}`;
-        select.dataset.fieldKey = field.key;
-        for (const option of field.options ?? []) {
-            const optionEl = document.createElement("option");
-            optionEl.value = option.value;
-            optionEl.textContent = option.label;
-            if (option.value === currentValue) {
-                optionEl.selected = true;
-            }
-            select.appendChild(optionEl);
-        }
-        wrapper.appendChild(select);
-        wrapper.appendChild(renderFieldDescription(field));
-        return wrapper;
-    }
-
-    if (field.kind === "composite") {
-        const grid = document.createElement("div");
-        grid.className = "composite-fields";
-        grid.dataset.fieldKey = field.key;
-        for (const subField of field.subFields ?? []) {
-            const subWrapper = document.createElement("label");
-            const caption = document.createElement("span");
-            caption.className = "field-unit";
-            caption.textContent = subField.label;
-            const input = document.createElement("input");
-            input.type = "text";
-            input.dataset.subFieldKey = subField.key;
-            input.value = "";
-            input.placeholder = subField.label;
-            subWrapper.appendChild(caption);
-            subWrapper.appendChild(input);
-            grid.appendChild(subWrapper);
-        }
-        wrapper.appendChild(grid);
-        wrapper.appendChild(renderFieldDescription(field));
-        return wrapper;
-    }
-
-    // number or string
-    const input = document.createElement("input");
-    input.type = field.mask === true ? "password" : "text";
-    input.id = `field-${field.key}`;
-    input.dataset.fieldKey = field.key;
-    input.value = "";
-    input.placeholder = formatValue(field, currentValue);
-    wrapper.appendChild(input);
-
-    const caption = document.createElement("p");
-    caption.className = "field-description";
-    caption.dataset.currentValueFor = field.key;
-    caption.textContent = `Current value: ${formatValue(field, currentValue)}`;
-    wrapper.appendChild(caption);
-    wrapper.appendChild(renderFieldDescription(field));
-    return wrapper;
-}
 
 /**
  * @param {unknown} rawInputValue
@@ -175,10 +24,19 @@ function readInputValue(rawInputValue, field) {
     if (field.kind === "number") {
         return rawInputValue === "" ? undefined : Number(rawInputValue);
     }
+    if (field.kind === "enum") {
+        // A <select>'s own .value is always a string (DOM behavior), even when the option's real
+        // value is numeric (e.g. BMP3XX's PressOvers) - look the matching option back up so the
+        // submitted PUT body carries the same type definitions.json declared, not a stringified one.
+        const match = (field.options ?? []).find((option) => String(option.value) === rawInputValue);
+        return match ? match.value : rawInputValue;
+    }
     return rawInputValue;
 }
 
 /**
+ * Reads whatever the visitor entered/toggled in `card`'s controls back into a plain PUT body,
+ * keyed off the same `data-field-key`/`data-sub-field-key` hooks `js/templates.js` sets.
  * @param {HTMLElement} card
  * @param {FieldGroup} group
  */
@@ -230,11 +88,17 @@ function collectGroupBody(card, group) {
 
 /**
  * Worst-first ordering used to pick one status for the whole card from several field results.
+ * Real problems (Invalid/Failed) always win; between the two non-problem outcomes, a genuine
+ * Valid change outranks an Unchanged no-op, so e.g. one changed field + one resubmitted-as-is
+ * field reads as "valid" (something happened), not "unchanged" (nothing did).
  * @type {Record<string, number>}
  */
-const STATUS_SEVERITY = { Invalid: 0, Failed: 1, Unchanged: 2, Valid: 3 };
+const STATUS_SEVERITY = { Invalid: 0, Failed: 1, Valid: 2, Unchanged: 3 };
 
 /**
+ * Sets the card's `data-apply-status` to the worst of `results` and fills in the outcome text.
+ * Only ever writes the semantic status value - `html/style.css` alone decides what each status
+ * looks like (WEBSITE_PLAN.md §12).
  * @param {HTMLElement} card
  * @param {Record<string, string>} results
  * @param {string} descr
@@ -242,8 +106,9 @@ const STATUS_SEVERITY = { Invalid: 0, Failed: 1, Unchanged: 2, Valid: 3 };
 function applyResultStyling(card, results, descr) {
     const values = Object.values(results);
     const worst = values.reduce(
-        (acc, status) => (((STATUS_SEVERITY[status] ?? 3) < (STATUS_SEVERITY[acc] ?? 3)) ? status : acc),
-        "Valid",
+        (acc, status) => (((STATUS_SEVERITY[status] ?? 4) < (STATUS_SEVERITY[acc] ?? 4)) ? status : acc),
+        "Valid", // e.g. /status's ResetErrors: an empty `result` map on a successful envelope
+        // still means the action completed, not that "nothing changed" - default to success.
     );
     card.dataset.applyStatus = worst.toLowerCase();
     const resultEl = card.querySelector(".apply-result");
@@ -256,131 +121,55 @@ function applyResultStyling(card, results, descr) {
 }
 
 /**
+ * Builds a field-group card via `js/templates.js`, then - if the group is writable - attaches the
+ * real (networked) Apply-button behavior: collect the visitor's edits, PUT them, style the result.
  * @param {FieldGroup} group
  * @param {Section} section
  * @param {Record<string, unknown>} currentValues
  * @param {() => void} onApplied called after a PUT resolves, to refresh current-value captions.
  * @returns {HTMLElement}
  */
-function renderFieldGroup(group, section, currentValues, onApplied) {
-    const card = document.createElement("div");
-    card.className = "card";
-    card.dataset.groupKey = group.key;
-
-    const heading = document.createElement("h3");
-    heading.textContent = group.label;
-    card.appendChild(heading);
-
-    for (const field of group.fields) {
-        card.appendChild(renderField(field, currentValues[field.key], Boolean(group.submit)));
+function buildAndWireFieldGroup(group, section, currentValues, onApplied) {
+    const card = buildFieldGroupCard(group, currentValues);
+    if (!group.submit) {
+        return card;
     }
 
-    if (group.submit) {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "apply-button";
-        button.textContent = group.submitLabel ?? "Apply";
-        const resultEl = document.createElement("p");
-        resultEl.className = "apply-result";
-        button.addEventListener("click", async () => {
-            const putPath = section.rest.put;
-            if (putPath === undefined) {
-                return;
-            }
-            const groupBody = collectGroupBody(card, group);
-            // /sensors is the one endpoint whose PUT body nests fields under the sensor's own
-            // group key (`{"SCD30": {...}}`) - every other writable section's body is already flat.
-            const body = section.key === "sensors" ? { [group.key]: groupBody } : groupBody;
-            button.disabled = true;
-            try {
-                const response = await pollManager.request(putPath, {
-                    method: "PUT",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(body),
-                });
-                const envelope = /** @type {{descr?: string, result?: Record<string, unknown>}} */ (response.body ?? {});
-                const flatResult =
-                    section.key === "sensors"
-                        ? /** @type {Record<string, string>} */ (envelope.result?.[group.key] ?? {})
-                        : /** @type {Record<string, string>} */ (envelope.result ?? {});
-                applyResultStyling(card, flatResult, envelope.descr ?? "Done");
-                onApplied();
-            } catch (error) {
-                resultEl.textContent = `Request failed: ${String(error)}`;
-                card.dataset.applyStatus = "failed";
-            } finally {
-                button.disabled = false;
-            }
-        });
-        card.appendChild(button);
-        card.appendChild(resultEl);
-    }
-
-    return card;
-}
-
-/**
- * @param {import("./definitions.js").ErrcountGroup} group
- * @param {Record<string, {counter: number, history?: {TS: number, ErrType: string, ErrNum: number}[]}>} errcount
- * @returns {HTMLElement}
- */
-function renderErrcountGroup(group, errcount) {
-    const wrapper = document.createElement("div");
-
-    const summary = document.createElement("div");
-    summary.className = "errcount-summary";
-    for (const moduleInfo of group.modules) {
-        const entry = errcount[moduleInfo.key] ?? { counter: 0 };
-        const tile = document.createElement("button");
-        tile.type = "button";
-        tile.className = "errcount-tile";
-        tile.dataset.hasErrors = String(entry.counter > 0);
-        tile.setAttribute("aria-expanded", "false");
-
-        const count = document.createElement("div");
-        count.className = "errcount-tile-count";
-        count.textContent = String(entry.counter);
-        const label = document.createElement("div");
-        label.className = "errcount-tile-label";
-        label.textContent = moduleInfo.label;
-        tile.append(count, label);
-
-        const list = document.createElement("ul");
-        list.className = "history-list hidden";
-        const history = entry.history ?? [];
-        if (history.length === 0) {
-            const empty = document.createElement("li");
-            empty.className = "history-empty";
-            empty.textContent = "No history recorded.";
-            list.appendChild(empty);
-        } else {
-            // §8 resolution: no pagination/truncation - realistic history depth is well under
-            // 20 entries (project owner, session 2), so the whole array just renders on expand.
-            for (const item of history) {
-                const li = document.createElement("li");
-                li.className = "history-entry";
-                const when = document.createElement("span");
-                when.textContent = new Date(item.TS * 1000).toISOString().replace("T", " ").slice(0, 19);
-                const what = document.createElement("span");
-                what.textContent = `${item.ErrType} (errno ${item.ErrNum})`;
-                li.append(when, what);
-                list.appendChild(li);
-            }
+    const button = /** @type {HTMLButtonElement} */ (card.querySelector(".apply-button"));
+    const resultEl = card.querySelector(".apply-result");
+    button.addEventListener("click", async () => {
+        const putPath = section.rest.put;
+        if (putPath === undefined) {
+            return;
         }
-
-        tile.addEventListener("click", () => {
-            const expanded = tile.getAttribute("aria-expanded") === "true";
-            tile.setAttribute("aria-expanded", String(!expanded));
-            list.classList.toggle("hidden", expanded);
-        });
-
-        const tileWrapper = document.createElement("div");
-        tileWrapper.appendChild(tile);
-        tileWrapper.appendChild(list);
-        summary.appendChild(tileWrapper);
-    }
-    wrapper.appendChild(summary);
-    return wrapper;
+        const groupBody = collectGroupBody(card, group);
+        // /sensors is the one endpoint whose PUT body nests fields under the sensor's own
+        // group key (`{"SCD30": {...}}`) - every other writable section's body is already flat.
+        const body = section.key === "sensors" ? { [group.key]: groupBody } : groupBody;
+        button.disabled = true;
+        try {
+            const response = await pollManager.request(putPath, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+            });
+            const envelope = /** @type {{descr?: string, result?: Record<string, unknown>}} */ (response.body ?? {});
+            const flatResult =
+                section.key === "sensors"
+                    ? /** @type {Record<string, string>} */ (envelope.result?.[group.key] ?? {})
+                    : /** @type {Record<string, string>} */ (envelope.result ?? {});
+            applyResultStyling(card, flatResult, envelope.descr ?? "Done");
+            onApplied();
+        } catch (error) {
+            if (resultEl) {
+                resultEl.textContent = `Request failed: ${String(error)}`;
+            }
+            card.dataset.applyStatus = "failed";
+        } finally {
+            button.disabled = false;
+        }
+    });
+    return card;
 }
 
 /**
@@ -391,22 +180,7 @@ function renderErrcountGroup(group, errcount) {
  * @returns {() => void} stop function - call before switching to another section.
  */
 export function renderSection(defs, section, mainEl) {
-    mainEl.replaceChildren();
-
-    const heading = document.createElement("h2");
-    heading.className = "section-heading";
-    heading.textContent = section.label;
-    mainEl.appendChild(heading);
-    if (section.description) {
-        const desc = document.createElement("p");
-        desc.className = "section-description";
-        desc.textContent = section.description;
-        mainEl.appendChild(desc);
-    }
-
-    const grid = document.createElement("div");
-    grid.className = "group-grid";
-    mainEl.appendChild(grid);
+    const grid = buildSectionShell(section, mainEl);
 
     /** @param {Record<string, unknown>} data */
     const paint = (data) => {
@@ -415,7 +189,7 @@ export function renderSection(defs, section, mainEl) {
                 const errcountGroup = /** @type {import("./definitions.js").ErrcountGroup} */ (group);
                 const errcount = /** @type {any} */ (data).errcount ?? {};
                 const existing = grid.querySelector(`[data-group-key="${group.key}"]`);
-                const rendered = renderErrcountGroup(errcountGroup, errcount);
+                const rendered = buildErrcountGroup(errcountGroup, errcount);
                 rendered.dataset.groupKey = group.key;
                 if (existing) {
                     existing.replaceWith(rendered);
@@ -433,16 +207,16 @@ export function renderSection(defs, section, mainEl) {
                 for (const field of fieldGroup.fields) {
                     const caption = existing.querySelector(`[data-current-value-for="${field.key}"]`);
                     if (caption) {
-                        caption.textContent = `Current value: ${formatValue(field, groupValues[field.key])}`;
+                        caption.textContent = `Current value: ${formatFieldValue(field, groupValues[field.key])}`;
                     }
                     const readonlySpan = existing.querySelector(`.field-value[data-field-key="${field.key}"]`);
                     if (readonlySpan) {
-                        readonlySpan.textContent = formatValue(field, groupValues[field.key]);
+                        readonlySpan.textContent = formatFieldValue(field, groupValues[field.key]);
                     }
                 }
                 continue;
             }
-            const rendered = renderFieldGroup(fieldGroup, section, groupValues, () => void fetchOnce());
+            const rendered = buildAndWireFieldGroup(fieldGroup, section, groupValues, () => void fetchOnce());
             if (existing) {
                 existing.replaceWith(rendered);
             } else {

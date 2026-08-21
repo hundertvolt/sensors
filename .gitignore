@@ -6,6 +6,10 @@ modules/config.json
 # same "dev-tooling only" split as .venv/ above. Not meant to be committed.
 node_modules/
 
+# Vitest browser-mode failure screenshots (js/tests_js) - regenerated per run, not build output.
+.vitest-attachments/
+tests_js/__screenshots__/
+
 # Build output (see build-*.sh)
 python/build/
 firmware.uf2

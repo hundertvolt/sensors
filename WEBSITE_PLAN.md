@@ -91,6 +91,7 @@ state, not a narrated log of who asked what (matches CLAUDE.md's own documentati
 | API reachability | No dedicated API-browser page | Every endpoint's functionality just needs to be reachable somewhere in the ordinary GUI (satisfied by the nav-mirrors-endpoints decision above) — not a Swagger-style reference/try-it tool. |
 | Definitions validation | Strict — visible error state on mismatch | The JS checks the fetched definitions file's shape/version before rendering; a mismatch surfaces a visible error rather than silently rendering something broken or skipping unknown fields. |
 | Landing page | Measurements page | Matches legacy's default landing page. |
+| Visual/mechanics separation | Hard layering: `html/style.css` + `js/templates.js` vs. everything else | A future redesign (visual restyle, or reordering/regrouping what's on a page) must never require touching data-fetching/validation/submission code. **Standing requirement, not just this session's — see §12** for the full rule and the data-attribute contract between the two layers. |
 
 ## 5. Folder structure
 
@@ -482,3 +483,61 @@ dedicated session, flagged here rather than silently assumed).
 - This sketch does not attempt a full formal grammar (EBNF, escaping rules for a `"` inside a
   quoted value, etc.) — deliberately, since it's meant to prove the *shape* of the idea against
   real code, not to be implementation-ready.
+
+## 12. Visual design / functional mechanics separation (standing requirement)
+
+Project owner's explicit, standing requirement (not just for this session): the REST API and the
+overall concept are expected to stay stable for a long time; the visual design is expected to be
+revisited — restyled, reordered, regrouped — independently of that, more than once. **A purely
+visual/layout redesign must never require editing data-fetching, validation, submission, or poll-
+coordination code.**
+
+### The two layers
+
+- **Visual layer** — owns colors, spacing, typography, dark-mode tokens (`html/style.css`,
+  unchanged from §4), **and** DOM structure/order/nesting/CSS-class choices (`js/templates.js`,
+  new). `js/templates.js` also owns any interactivity that's purely cosmetic and never touches the
+  network or app state — a toggle button flipping its own On/Off label, an errcount tile
+  expanding/collapsing its own history list. A redesign session touches these two files (plus, for
+  a schema/labeling change, the `definitions.json` content itself — see §8) and nothing else.
+- **Mechanics layer** — owns data fetching, polling coordination, input validation, PUT submission,
+  and anything that calls the REST API or the poll-manager: `js/poll-manager.js`,
+  `js/mock-server.js`, `js/definitions.js` (already pure — no DOM code at all), and the
+  non-presentational parts of `js/render.js`/`js/nav.js` (now "controllers" — see below). None of
+  these files build DOM elements, choose CSS classes, or decide element order/nesting.
+
+### The contract between them
+
+Controllers never reach into a template's internals by structure (no "third child of the second
+div") — only by the same `data-*` attributes and CSS classes the templates already expose, which is
+the one thing a redesign must keep stable (renaming a hook needs a matching one-line change on the
+controller side, same as renaming a REST field needs a matching change in `definitions.json` — a
+small, obvious edit, not a redesign blocker):
+
+| Hook | Set by (`js/templates.js`) | Read by (controller) |
+|---|---|---|
+| `[data-field-key]` | every field's input/select/toggle-button/readonly span | `render.js` collects submitted values, updates readonly text/current-value captions on poll |
+| `[data-sub-field-key]` | a composite field's per-subfield input | `render.js` collects the composite's nested PUT body |
+| `[data-current-value-for]` | a writable field's "Current value: …" caption | `render.js` refreshes it after a poll/Apply |
+| `[data-group-key]` | a field-group's card | `render.js` locates the card to re-render/restyle |
+| `[data-apply-status]` | *(unset by templates.js; only ever written by the controller)* | CSS alone decides what each status value looks like (`html/style.css`'s `.card[data-apply-status="…"]` rules) |
+| `.apply-button` / `.errcount-tile` | the submit button / an errcount module tile | `render.js` attaches the real (networked) click handler |
+| `[data-section-key]` | each nav-drawer link | `nav.js` attaches the section-select click handler |
+
+Controllers only ever set the semantic `data-apply-status` value (`"valid"`/`"invalid"`/
+`"unchanged"`/`"failed"`) — never a color, class, or style directly. What that status *looks like*
+is entirely `html/style.css`'s decision, so restyling what "invalid" means visually is a pure CSS
+change.
+
+### Where this stood before this note, and what changed
+
+Session 2 already got this partially right by accident: `html/style.css` was already fully
+visual-only, and controllers already queried the DOM by `data-*` attribute rather than by
+structural position. What wasn't separated: `js/render.js` and `js/nav.js` built DOM elements,
+picked CSS classes, and decided element order **inline**, interleaved with the fetch/validate/
+submit logic in the same functions — so reordering a card's internal fields, or restyling the nav
+drawer's markup, meant editing the same file that talks to the REST API, and risked touching that
+logic by accident. Session 2 was amended, before merging, to extract that DOM-building half into
+`js/templates.js` — see that file's own module docstring, and `render.js`/`nav.js`'s updated
+docstrings, for the concrete split. No behavior changed; the JS unit tests and the manual browser
+verification were re-run to confirm.

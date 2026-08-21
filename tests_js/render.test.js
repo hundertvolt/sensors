@@ -64,6 +64,15 @@ const DEFS = {
                     fields: [
                         { key: "MeasInt", label: "Measurement Interval", kind: "number", min: 2, max: 1800 },
                         { key: "ContMeas", label: "Continuous Measurement", kind: "toggle", onLabel: "On", offLabel: "Off" },
+                        {
+                            key: "Oversampling",
+                            label: "Oversampling",
+                            kind: "enum",
+                            options: [
+                                { value: 1, label: "×1" },
+                                { value: 4, label: "×4" },
+                            ],
+                        },
                     ],
                 },
             ],
@@ -96,7 +105,7 @@ function getSection(key) {
 
 const DATA = {
     measurements: { SCD30: { CO2: 600 } },
-    sensorsConfig: { SCD30: { MeasInt: 5, ContMeas: true } },
+    sensorsConfig: { SCD30: { MeasInt: 5, ContMeas: true, Oversampling: 1 } },
     networkingConfig: {},
     systemConfig: {},
     notificationConfig: {},
@@ -183,6 +192,27 @@ describe("renderSection", () => {
         const card = mustQuery(main, '[data-group-key="SCD30"]');
         expect(card.dataset.applyStatus).toBe("invalid");
         expect(mustQuery(card, ".apply-result").textContent).toContain("MeasInt: Invalid");
+    });
+
+    it("submits a numeric-valued enum field as a number, not a stringified one (regression)", async () => {
+        // A <select>'s DOM .value is always a string, even for an option whose real value is a
+        // number (e.g. BMP3XX's PressOvers). render.js must coerce it back before PUTing, and
+        // mock-server.js must validate without forcing a string compare - otherwise every numeric
+        // enum PUT reads back "Invalid" no matter what the visitor picked.
+        uninstall = installMockFetch(DEFS, DATA);
+        const main = mount();
+        stop = renderSection(DEFS, getSection("sensors"), main);
+        await waitFor(() => main.querySelector('[data-field-key="Oversampling"]') !== null);
+
+        const select = /** @type {HTMLSelectElement} */ (mustQuery(main, '[data-field-key="Oversampling"]'));
+        select.value = "4"; // the DOM always stores/reads select values as strings
+        mustQuery(main, ".apply-button").click();
+
+        await waitFor(() => mustQuery(main, '[data-group-key="SCD30"]').dataset.applyStatus !== undefined);
+
+        const card = mustQuery(main, '[data-group-key="SCD30"]');
+        expect(card.dataset.applyStatus).toBe("valid");
+        expect(mustQuery(card, ".apply-result").textContent).toContain("Oversampling: Valid");
     });
 
     it("renders an errcount tile that expands to show its full history with no pagination", async () => {
