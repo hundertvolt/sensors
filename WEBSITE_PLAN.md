@@ -98,16 +98,24 @@ New source lives in **top-level siblings** of `src/`/`tests/` (matching the repo
 convention — `html_raw/`, `html_stub/`, `ext/`, `digital_twin/` are all top-level too, not nested):
 
 ```
-html/            Hand-written HTML skeleton(s) + CSS - the new real website source
-js/              Hand-written ES module JS source (poll-manager, API client, view renderers, ...)
-tests_js/        JS unit tests (Vitest, see §6)
+html/               Hand-written HTML skeleton(s) + CSS - the new real website source
+html/definitions/   Per-device definitions.json (schemaVersion/device/sections - see §8) - shipped,
+                     frozen alongside html/ by the same pipeline (§4's "Definitions generation stage")
+js/                 Hand-written ES module JS source (poll-manager, mock backend, definitions
+                     loader/validator, generic renderer, nav) - see §6
+tests_js/           JS unit tests (Vitest, see §6)
+mockdata/           Prototype-only mock backend fixtures (session 2) - NOT shipped, NOT part of the
+                     frozen-HTML pipeline; consumed only by js/mock-server.js for local viewing
+                     until a real backend/digital-twin exists (§7)
 ```
 
 `package.json`/`package-lock.json` at repo root (dev-tooling only, `node_modules/` gitignored) —
 mirrors `pyproject.toml`'s existing role: shipped code stays hand-written plain files, never
 restructured into a build/bundle output. `html_raw/` (legacy, still deployed) and `html_stub/`
 (placeholder, still wired into `src/sensortask_wozi.py` until this effort's output replaces it) are
-untouched by this restructuring.
+untouched by this restructuring. `npm run preview` (added session 2) serves the repo root via
+`python3 -m http.server 8000` — open `http://localhost:8000/html/index.html?device=wozi` (or
+`?device=dev`) to click through the live prototype locally; see §10 item 2.
 
 **Session 1 status: done, merged.** All three folders, `package.json`/`package-lock.json`, and
 every tool config (§6) landed via `claude/website-s1-folder-ci` (PR #43, merged into this base
@@ -118,7 +126,9 @@ PR (not just local): `web-changes`/`web-lint-and-typecheck`/`web-unit-tests` all
 Python jobs unaffected. Manual local-trigger instructions for the whole web-CI tier now live in
 **README.md's "Website tooling (JS/HTML/CSS)" section** (`npm ci` + `npm run lint`/`typecheck`/
 `lint:html`/`lint:css`/`test`) — the JS-side equivalent of that same README's existing "Code
-quality tooling" section for Python. Real layout/functionality is still session 2's job.
+quality tooling" section for Python. The `js/hello.js`/`tests_js/hello.test.js` bootstrap placeholder
+was removed in session 2 once real content replaced it (its job — proving the pipeline red→green —
+was already done and recorded here).
 
 ## 6. CI / tooling stack
 
@@ -175,25 +185,69 @@ does.
 
 ## 8. Open items — reserved for dedicated future sub-sessions
 
-- **Exact schema comment-tag grammar** — §4 settled "lightweight inline tag syntax" in principle;
-  the actual tag names/fields (label, unit, description, min/max, special values, category/grouping,
-  ...) and precise syntax still need a dedicated session, ideally paired with whichever driver
-  session first touches a schema definition under this convention.
-- **Definitions JSON's actual schema/shape** — the concrete structure the build script emits and the
-  JS consumes.
-- **Real dark-mode support** — not explicitly settled; legacy has no `prefers-color-scheme` handling
-  at all (see §2). Whether the redesign adds genuine adaptive theming or stays fixed-light is open.
-- **Visual/interaction design specifics** — actual layout, the hamburger/three-dot menu's concrete
-  behavior, card vs. other UI treatment, etc.
-- **History pagination/truncation mechanism** — history size "may vary" (project owner's note); no
-  mechanism chosen yet for bounding what's fetched/rendered.
+**Resolved by session 2** (`claude/website-s2-layout-prototype`, interactively with the project
+owner — see §10 item 2's own notes for the concrete prototype these produced):
+
+- **Definitions JSON's actual schema/shape** — settled and built. One JSON per device
+  (`html/definitions/<device>.json`), top-level `{schemaVersion, device, landingSection,
+  defaultPollIntervalMs, sections[]}`. Each `section` mirrors one of the six REST endpoints
+  (`key` matches the endpoint name, `rest: {get, put?}`, `pollGroup: "live"|"settings"|"none"`) and
+  holds `groups[]` — normally a `FieldGroup` (`key`, `label`, optional `submit`/`submitLabel`,
+  `fields[]`), except Status's error section which is a distinct `ErrcountGroup`
+  (`kind: "errcount"`, `modules[]`) since its shape (per-module counter + optional history) doesn't
+  fit the field-list model. Each `FieldDef` has a `kind` (`readonly | number | string | enum |
+  toggle | composite`) plus kind-specific metadata (`min`/`max`, `minLength`/`maxLength`, `mask`,
+  `options`, `specialValues`, `subFields`, `onLabel`/`offLabel`). `js/definitions.js` both documents
+  this shape (JSDoc typedefs) and strictly validates it (§4's "Definitions validation" decision) —
+  a `schemaVersion` major-version mismatch or a missing required field surfaces a visible error
+  banner rather than a silent partial render. See `html/definitions/wozi.json` and
+  `html/definitions/dev.json` for two fully worked, real examples (wozi's SCD30/SGP40/BMP388 vs.
+  dev's SCD30/SGP40/SHTC3/MPRLS/ISL29125 — deliberately different sensor sets, field kinds, and
+  value ranges, to prove the schema/renderer generalize rather than fitting only wozi).
+- **Real dark-mode support** — settled: automatic only, via `prefers-color-scheme`. No manual
+  toggle/override and no stored preference — CSS custom-property tokens on `:root`, redefined
+  under `@media (prefers-color-scheme: dark)` (`html/style.css`). Chosen over a manual toggle to
+  keep the page "small, lean, fully self-contained" (§3) with zero added JS/state for it.
+- **Visual/interaction design specifics** — settled interactively (project owner picked the
+  recommended option at each `AskUserQuestion` round): modernized flat cards (legacy's
+  `.card`/`.card.sub` nesting kept as the mental model, refreshed with a soft border/shadow instead
+  of flat grey fill, real light/dark tokens); a slide-in drawer nav opened by a hamburger button,
+  listing the six section links plus the device name, with no other global actions in it; single-
+  page shell with JS view-switching (matches §4's already-settled decision, now built:
+  `js/nav.js`/`js/render.js`). A per-field-result "Valid/Unchanged/Invalid/Failed" outcome (same
+  four states the real backend's `PUT` envelope reports, `api_response.py`) now shows as a left
+  accent stripe + inline per-field text on the card, not legacy's whole-card background flash.
+- **History pagination/truncation mechanism** — settled: **no pagination/truncation**. The project
+  owner's own expectation is that a module's error history realistically stays well under 20
+  entries, so building chunked "show more" loading would be overkill for the real data volume;
+  clicking a module's error-count tile just expands and renders its full `history` array as-is
+  (`js/render.js`'s `renderErrcountGroup()`). Counts stay always-visible per §4; history is
+  fetch-once-per-poll (it rides along in the same `/status` response), not a separate paginated
+  endpoint — A.8's REST shape has no such endpoint to page through in the first place.
+- **Per-device page-scheme variation mechanism** — resolved by construction: the definitions file
+  itself *is* the per-device page scheme (§4's decision already implied this; session 2 is the
+  first time it's actually built two ways). `js/render.js`/`js/nav.js` contain zero device-specific
+  branching — every card, field, and nav entry comes from the fetched `definitions.json`. wozi's
+  and dev's prototypes are the same `html/index.html` + same `js/` tree, pointed at different
+  definitions files (see §10 item 2 below for how the prototype picks one locally).
+- **Error/history endpoint-to-UI field mapping** — resolved: the Status section's `errcount` group
+  lists the module keys it expects (`{key, label}`, one entry per registered module +
+  `CFGMGR_<name>` config-store instances + the webserver's own `WEBSERVER` entry, matching A.8's
+  `_build_errcount()` shape exactly), and looks each one up directly in `/status`'s `errcount[key]`
+  response at render time — no transformation beyond that direct key lookup.
+
+**Still open / deferred to a future sub-session:**
+
+- **Exact schema comment-tag grammar** — §11 below is a first concrete *sketch* of the tag syntax
+  and worked examples against the real `src/asy_scd30_driver.py`/`asy_bmp3xx_driver.py`/
+  `asy_sgp40_driver.py` schemas, written during session 2 per its own scope (documentation only,
+  no parser). It is a proposal to start from, **not** a final decision — per the original plan,
+  actually settling it is still reserved for a dedicated session, ideally paired with whichever
+  driver session first touches a schema definition under this convention, since that session will
+  be the first to feel where the sketch is awkward in practice.
 - **Build pipeline wiring** — how `scripts/build_frozen_html.sh`/`HTML_SRC_DIRS` picks up `html/`
   (and the JS build/definitions-generation step) instead of/alongside `html_stub/`; whether the
-  existing mechanism already covers this or needs extending.
-- **Per-device page-scheme variation mechanism** — how the definitions file expresses "predefined
-  page schemes, since sensor sets differ device to device" (arzi/neu vs dev vs wozi today).
-- **Error/history endpoint-to-UI field mapping** — exact mapping from `/status`'s `errcount`
-  sub-structure (SPECIFICATION.md A.8) into the history UI's counts/history-log split.
+  existing mechanism already covers this or needs extending. Session 4's job (§10).
 
 ## 9. Sub-session working process
 
@@ -228,7 +282,8 @@ order.
    `changes`-gated web-CI tier in `ci.yml` (§6). Included trivial placeholder content (mirroring
    `html_stub/`'s own "Hello world"-shaped bootstrap role) so the pipeline was proven red→green
    before any real content existed, not just configured and left unexercised.
-2. **Layout & functionality definition, with a locally-viewable prototype.** Detailed page/section
+2. **Layout & functionality definition, with a locally-viewable prototype. Done** —
+   `claude/website-s2-layout-prototype`. Detailed page/section
    design (nav, per-endpoint sections, history UI, ...); resolve the still-open §8 decisions that
    naturally belong here — real dark-mode support or not, the history pagination/truncation
    mechanism, and the definitions JSON's concrete schema; then hand-write example definitions
@@ -253,6 +308,32 @@ order.
    rather than batching every open question into the start or silently picking based on internal
    judgment. Iterate on the prototype with the project owner's feedback before treating a layout/
    functionality decision as settled enough to write into this file or hand off to session 3.
+
+   **Session 2 status: done.** Every design-taste decision was resolved interactively via
+   `AskUserQuestion` before being built (device choice, prototype-only multi-device UX, mock-data
+   liveness, history-fixture variety, dark-mode extent, nav-menu shape, card visual treatment —
+   the project owner picked the recommended option at every round); the history
+   pagination/truncation question came back with real information (error history realistically
+   stays under 20 entries) that settled §8's item outright rather than needing a UX mechanism at
+   all. All §8 resolutions are recorded above; §11 below is the schema-comment tag grammar sketch.
+   Built: `html/index.html` + `html/style.css` (single-page shell, light/dark tokens, slide-in nav
+   drawer, modernized cards), `js/poll-manager.js` (single-flight request queue enforcing §4's
+   measurements/status-vs-settings mutual exclusion), `js/definitions.js` (loader + strict
+   validator + JSDoc type definitions for the whole schema), `js/render.js` (generic section/group/
+   field renderer — zero device-specific code), `js/nav.js` (drawer wiring), `js/app.js` (entry
+   point, `?device=` prototype switch), `js/mock-server.js` (fetch-intercepting fake backend,
+   answers the same six REST paths/shapes A.8 documents, validates PUTs against the definitions'
+   own min/max/enum/length constraints, jitters live values so polling visibly does something —
+   explicitly a placeholder for session 5's real digital-twin backend, not a permanent fixture),
+   `html/definitions/wozi.json` + `html/definitions/dev.json` (the two worked example definitions
+   files), `mockdata/wozi.json` + `mockdata/dev.json` (their fixture data, deliberately varied error
+   histories per device). 27 Vitest unit tests across `tests_js/poll-manager.test.js`,
+   `definitions.test.js`, `mock-server.test.js`, `render.test.js`; `lint`/`typecheck`/`lint:html`/
+   `lint:css`/`test` all green. Manually verified end-to-end in real Chromium (Playwright, this
+   session's own pre-installed browser): both devices' full nav → section → live-poll → Apply
+   (including an out-of-range value correctly rendering "Invalid") → errcount-expand flow, in both
+   color schemes and at a mobile viewport width, zero console/page errors. `npm run preview` (added
+   this session) serves the prototype locally — see §5.
 3. **Real implementation, TDD.** Write a spec/goal/action list derived from session 2's prototype;
    then tests-first JS unit tests (Vitest) against that spec; then the real implementation —
    mirroring this repo's own `improved-quality/` → `src/` two-phase precedent (prototype/sketch,
@@ -274,3 +355,130 @@ order.
    ever exercises Chromium via Playwright, so §1/§3's "stable and good-looking on all major
    browsers" goal needs at least one real human pass somewhere, and this is the first point the
    website is running end-to-end against a real live backend.
+
+## 11. Schema comment-tag grammar — sketch (documentation only, session 2)
+
+**Status: a worked proposal, not a decision.** §8 still reserves actually settling this for a
+dedicated future session, ideally paired with whichever driver session first touches a schema
+definition under this convention. This section exists so that session is starting from a concrete,
+already-checked-against-real-code sketch instead of a blank page — session 2 wrote no parser and
+changed no `src/` file to produce it (per its own standing instructions).
+
+### What actually needs a tag, vs. what the schema already encodes
+
+Every `src/` driver's config schema is already a tuple of `(name, pytype, default, min, max,
+special)` (`ConfigSchema`, see e.g. `src/asy_scd30_driver.py`'s `_VAL_MI = const((("MeasInt",
+"int", None, 2, 1800, None),))`). A real future parser can derive most of `html/definitions/*.json`
+straight from that tuple, with **no tag needed**:
+
+| definitions.json field | Derived from |
+|---|---|
+| `min` / `max` | tuple elements 4/5, verbatim |
+| `kind: "toggle"` | `pytype == "bool"` |
+| `kind: "string"` | `pytype == "str"` |
+| `kind: "enum"`, `min`/`max` dropped | tuple element 6 is itself a tuple/list of allowed values (e.g. BMP3XX's `_OSR_SETTINGS`/`_IIR_SETTINGS`) |
+| `specialValues: [{value: <N>}]` (meaning still missing) | tuple element 6 is a single scalar sentinel (e.g. SCD30's `AmbPres` → `0`) |
+| `kind: "number"` (the fallback) | `pytype in ("int", "float")` and none of the above apply |
+
+What's genuinely invisible to the schema tuple — and so is exactly what a tag needs to supply — is
+human-facing text and cross-cutting grouping: **label**, **unit**, **description**, the **meaning**
+of a special/sentinel value, the **label** of each enum option, an occasional **kind override**
+(for constants that aren't a `ConfigSchema` tuple at all, e.g. `asy_webserver_service.py`'s
+`_SYSTEM_CMDS`), and which **module/REST-section/submit-group** a field belongs to.
+
+### Grammar
+
+A tag is a `#`-prefixed comment line placed immediately above the schema-tuple line (or above the
+constant it annotates, for non-`ConfigSchema` values like `_SYSTEM_CMDS`) it describes — never a
+trailing same-line comment, so the parser only ever has to look one line back:
+
+```
+# @web <key>=<value> <key>="<quoted value>" ...
+```
+
+- `@web` marks a per-**field** tag. Keys are space-separated `key=value` pairs; a value containing
+  a space must be double-quoted (`label="Ambient Pressure"`); an unquoted value is any run of
+  non-whitespace characters.
+- Recognized keys: `label` (required — the one thing every field needs and the schema can never
+  supply), `unit`, `description`, `kind` (only to *override* the auto-derived kind — see the
+  `SystemCmd` example below; omit it whenever inference already gets it right), `mask=true` (for a
+  password-shaped string field), `onLabel`/`offLabel` (toggle button text, defaults to "On"/"Off"
+  if omitted).
+- `special:<value>="<meaning>"` is a repeatable key of the form `special:` + the literal value +
+  `=` + its human meaning. It's the same tag form for two different JSON targets, disambiguated by
+  what the schema tuple's 6th element already says: a single-sentinel field (`AmbPres`) puts it
+  under `specialValues`; an enumerated field (`PressOvers`) puts every `special:` entry under
+  `options` instead (one per allowed value — an enum with any unlabeled allowed value is a parser
+  error, not a silently-blank option).
+- `@web-group` marks a **module-level** tag, placed above the class/schema-declaration that owns a
+  whole set of `@web`-tagged fields (e.g. above a driver's `ConfigSchema` construction): `label`
+  (the group's own display heading, e.g. `"SCD30 — CO2, Temperature, Humidity"`), `endpoint` (which
+  of the six REST sections it belongs to — `sensors`/`networking`/`system`/`notification`/`status`),
+  `submitGroup` (an optional key when a module's fields split into more than one independent-PUT
+  card, matching A.8's "one `SettingsGroup` per field subset" note — e.g. `/networking`'s Wi-Fi
+  credentials vs. its `LedWifiOn` toggle vs. its NTP fields are three separate `submitGroup`s within
+  one module).
+
+### Worked examples, against real `src/` schema code
+
+A sentinel special value (`src/asy_scd30_driver.py`):
+
+```python
+# @web label="Ambient Pressure" unit=hPa description="Starts continuous measurement." special:0="Compensation off / use Altitude"
+_VAL_AP = const((("AmbPres", "int", None, 700, 1400, 0),))
+```
+
+→ `{"key": "AmbPres", "label": "Ambient Pressure", "unit": "hPa", "kind": "number", "min": 700,
+"max": 1400, "specialValues": [{"value": 0, "meaning": "Compensation off / use Altitude"}],
+"description": "Starts continuous measurement."}`
+
+A toggle (`src/asy_scd30_driver.py`) — `kind` needs no tag at all, `pytype: "bool"` already says it:
+
+```python
+# @web label="Automatic Self-Calibration"
+_VAL_SC = const((("SelfCal", "bool", None, None, None, None),))
+```
+
+→ `{"key": "SelfCal", "label": "Automatic Self-Calibration", "kind": "toggle", "onLabel": "On",
+"offLabel": "Off"}`
+
+An enumerated field (`src/asy_bmp3xx_driver.py`) — six `special:` entries, one per allowed
+oversampling value, become the enum's six labeled `options`:
+
+```python
+# @web label="Pressure Oversampling" special:1="×1" special:2="×2" special:4="×4" special:8="×8" special:16="×16" special:32="×32"
+_VAL_POV = const((("PressOvers", "int", 1, None, None, _OSR_SETTINGS),))
+```
+
+→ `{"key": "PressOvers", "label": "Pressure Oversampling", "kind": "enum", "options": [{"value": 1,
+"label": "×1"}, {"value": 2, "label": "×2"}, ...]}`
+
+A value with no `ConfigSchema` tuple behind it at all (`src/asy_webserver_service.py`) — this is
+the one case that genuinely needs `kind=` on the tag itself, since there's no `pytype` to infer
+from:
+
+```python
+# @web label="Command" kind=enum special:reboot="Reboot" special:bootloader="Reboot into bootloader" special:mempause="Pause backups for 5 minutes"
+_SYSTEM_CMDS = const(("reboot", "bootloader", "mempause"))
+```
+
+→ `{"key": "SystemCmd", "label": "Command", "kind": "enum", "options": [{"value": "reboot", "label":
+"Reboot"}, ...]}` (note: the field's own JSON `key` is `SystemCmd`, not the Python constant's name
+`_SYSTEM_CMDS` — the real future parser would need its own rule for that mapping, e.g. reading it
+off the webserver's own `body.get("SystemCmd")` call site rather than the tuple; left for the
+dedicated session, flagged here rather than silently assumed).
+
+### What this sketch deliberately leaves open
+
+- The composite `lightCmdLED` shape (r/g/b/t) and other webserver-level, non-driver-schema values
+  don't have an obvious single "tuple line" to anchor a tag above — the `SystemCmd` example already
+  shows the parser needs *some* per-value-shape judgment, not a fully mechanical one-tag-per-line
+  rule. A dedicated session should decide this case by case rather than this sketch guessing.
+- Whether `@web-group`'s `endpoint`/`submitGroup` really belong on the schema declaration, or read
+  better off `src/sensortask_wozi.py`'s own construction-step wiring (`SettingsGroup(...)` calls,
+  A.7/A.8) instead — the wiring site already states this same grouping today, so tagging it a
+  second time in the driver file risks the two silently drifting apart. Worth deciding before
+  building the real parser, not assumed here.
+- This sketch does not attempt a full formal grammar (EBNF, escaping rules for a `"` inside a
+  quoted value, etc.) — deliberately, since it's meant to prove the *shape* of the idea against
+  real code, not to be implementation-ready.

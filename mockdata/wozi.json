@@ -1,0 +1,70 @@
+{
+    "measurements": {
+        "SCD30": { "CO2": 612, "Temp": 21.4, "Hum": 46.2, "WetBulb": 15.1, "DewPoint": 9.8, "TS": 1755000000 },
+        "SGP40": { "VOC": 118, "Raw": 29234, "TS": 1755000000 },
+        "BMP3XX": { "Pres": 1005.3, "Temp": 21.6, "SLPres": 1013.8, "TS": 1755000000 }
+    },
+    "sensorsConfig": {
+        "SCD30": { "MeasInt": 5, "TempOffs": 2.5, "AmbPres": 0, "Altitude": 180, "ContMeas": true, "ForceCalRef": 400, "SelfCal": true },
+        "SGP40": { "BackupPeriod": 60, "BackupMaxAge": 1440, "WaitTimeNTP": 30, "SGPResetVOC": false },
+        "BMP3XX": {
+            "SampleInterv": 5, "PressOvers": 4, "PressOffset": 0.0, "TempOvers": 4, "TempOffset": 0.0,
+            "FiltCoeff": 3, "SeaLevelOffs": 0.0, "MeanAtmTemp": 15.0
+        }
+    },
+    "networkingConfig": {
+        "SSID": "sensor-net", "PW": "hunter2hunter2", "Country": "DE", "Hostname": "wozi",
+        "LedWifiOn": true, "NTP_Host": "pool.ntp.org", "NTP_Offset_S": 0, "NTP_Interv_H": 4
+    },
+    "systemConfig": { "DebugLevel": 1, "GMTOffset": 3600, "DSTOffset": 3600 },
+    "notificationConfig": {
+        "AutoOn": true, "OnH": 7, "OnM": 0, "OffH": 22, "OffM": 0, "FlashBri": 120,
+        "Interv": 900.0, "FlashDur": 2.0, "WarnCO2": 1200, "WarnVOC": 250, "WarnHum": 65.0
+    },
+    "status": {
+        "networking": {
+            "WifiUptime": 431200, "Mode": "STA", "Connected": true, "IP": "192.168.1.42", "IPv4": "192.168.1.42",
+            "Subnet": "255.255.255.0", "Gateway": "192.168.1.1", "DNS": "192.168.1.1", "Rssi": -58,
+            "NtpSynced": true, "NtpLastSyncAge": 812, "NtpLastSync": 1754999188
+        },
+        "system": {
+            "SysUptime": 431260, "BootSignature": "POWERON", "MemPaused": false,
+            "LocalTime": "2025-08-12 09:14:03", "UtcTime": "2025-08-12 08:14:03"
+        },
+        "sensors": { "SGP40": { "BackupTS": 1754996400, "RestoreTS": 1754323200 } },
+        "notification": { "Triggered": false, "TS": 1754912400, "PauseTime": 0 },
+        "errcount": {
+            "SCD30": { "counter": 0, "history": [] },
+            "SGP40": {
+                "counter": 3,
+                "history": [
+                    { "TS": 1754323100, "ErrType": "I2CBusError", "ErrNum": 3 },
+                    { "TS": 1754500000, "ErrType": "I2CBusError", "ErrNum": 3 },
+                    { "TS": 1754996300, "ErrType": "BackupWriteFailed", "ErrNum": 5 }
+                ]
+            },
+            "BMP3XX": {
+                "counter": 12,
+                "history": [
+                    { "TS": 1752000000, "ErrType": "I2CTimeout", "ErrNum": 2 },
+                    { "TS": 1752100500, "ErrType": "I2CTimeout", "ErrNum": 2 },
+                    { "TS": 1752300900, "ErrType": "I2CTimeout", "ErrNum": 2 },
+                    { "TS": 1752600200, "ErrType": "CalibReadFailed", "ErrNum": 4 },
+                    { "TS": 1752900800, "ErrType": "I2CTimeout", "ErrNum": 2 },
+                    { "TS": 1753200100, "ErrType": "I2CTimeout", "ErrNum": 2 },
+                    { "TS": 1753500600, "ErrType": "I2CTimeout", "ErrNum": 2 },
+                    { "TS": 1753800300, "ErrType": "CalibReadFailed", "ErrNum": 4 },
+                    { "TS": 1754100900, "ErrType": "I2CTimeout", "ErrNum": 2 },
+                    { "TS": 1754400200, "ErrType": "I2CTimeout", "ErrNum": 2 },
+                    { "TS": 1754700500, "ErrType": "I2CTimeout", "ErrNum": 2 },
+                    { "TS": 1754990100, "ErrType": "I2CTimeout", "ErrNum": 2 }
+                ]
+            },
+            "CFGMGR_SCD30": { "counter": 0 },
+            "WEBSERVER": {
+                "counter": 1,
+                "history": [{ "TS": 1754800000, "ErrType": "ConnectionCapExceeded", "ErrNum": 1 }]
+            }
+        }
+    }
+}

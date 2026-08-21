@@ -89,9 +89,17 @@ npm run typecheck      # tsc --noEmit (checkJS over js/, tests_js/)
 npm run lint:html      # html-validate (html/*.html)
 npm run lint:css       # Stylelint (html/*.css)
 npm test               # Vitest, real-browser mode (Playwright/Chromium) - tests_js/*.test.js
+npm run preview        # serves the repo root locally (python3 -m http.server 8000)
 ```
 
-All five run in GitHub Actions CI (`.github/workflows/ci.yml`'s `web-lint-and-typecheck`/
+`npm run preview`, then open `http://localhost:8000/html/index.html?device=wozi` (or `?device=dev`),
+opens the locally-viewable prototype from `WEBSITE_PLAN.md` §10 session 2 — the real `html/`+`js/`
+tree against a fake in-browser backend (`js/mock-server.js`, `mockdata/*.json`), driven by one of
+two worked-example `html/definitions/*.json` files. The `?device=` switch is a prototype-only
+convenience (see `js/app.js`'s own docstring) — real firmware always serves exactly one
+definitions.json, never branches on a query param.
+
+All five CI-covered checks run in GitHub Actions CI (`.github/workflows/ci.yml`'s `web-lint-and-typecheck`/
 `web-unit-tests` jobs), gated by a `dorny/paths-filter` job so they only run when `html/`, `js/`,
 `tests_js/`, or their own tooling configs actually change — alongside, not replacing, the Python
 jobs above, which keep gating on Python paths exactly as before. Config lives at the repo root

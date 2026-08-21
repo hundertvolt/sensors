@@ -2,14 +2,15 @@
   "name": "sensors-website",
   "version": "0.1.0",
   "private": true,
-  "description": "Dev-tooling config and source for the sensors website (html/, js/, tests_js/), not an installable package.",
+  "description": "Dev-tooling config and source for the sensors website (html/, js/, tests_js/, mockdata/), not an installable package.",
   "type": "module",
   "scripts": {
     "lint": "eslint js tests_js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "lint:html": "html-validate \"html/**/*.html\"",
-    "lint:css": "stylelint \"html/**/*.css\""
+    "lint:css": "stylelint \"html/**/*.css\"",
+    "preview": "python3 -m http.server 8000"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

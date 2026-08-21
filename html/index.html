@@ -2,15 +2,42 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>sensors website placeholder</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sensor Station</title>
+    <link rel="icon" href="data:,">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <h1 id="greeting">Loading...</h1>
-    <script type="module">
-        import { renderHello } from "../js/hello.js";
+    <div class="app-shell" id="app-shell">
+        <header class="app-header">
+            <button type="button" class="hamburger-button" id="hamburger-button" aria-label="Open navigation" aria-expanded="false">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+            <h1 class="app-title">Sensor Station <span class="device-name" id="device-name"></span></h1>
+        </header>
 
-        renderHello(document.getElementById("greeting"), "wozi");
+        <div class="nav-backdrop" id="nav-backdrop"></div>
+        <nav class="nav-drawer" id="nav-drawer" aria-label="Sections"></nav>
+
+        <p class="error-banner hidden" id="error-banner" role="alert"></p>
+
+        <main class="app-main" id="app-main"></main>
+    </div>
+
+    <script type="module">
+        import { startApp } from "../js/app.js";
+
+        startApp({
+            appShellEl: document.getElementById("app-shell"),
+            mainEl: document.getElementById("app-main"),
+            drawerEl: document.getElementById("nav-drawer"),
+            hamburgerEl: document.getElementById("hamburger-button"),
+            backdropEl: document.getElementById("nav-backdrop"),
+            errorBannerEl: document.getElementById("error-banner"),
+            deviceNameEl: document.getElementById("device-name"),
+        });
     </script>
 </body>
 </html>

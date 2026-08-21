@@ -1,0 +1,69 @@
+{
+    "measurements": {
+        "SCD30": { "CO2": 548, "Temp": 23.1, "Hum": 38.7, "WetBulb": 15.6, "DewPoint": 8.2, "TS": 1755000000 },
+        "SGP40": { "VOC": 95, "Raw": 28850, "TS": 1755000000 },
+        "SHTC3": { "Temp": 23.3, "Hum": 39.1, "WetBulb": 15.8, "DewPoint": 8.4, "TS": 1755000000 },
+        "MPRLS": { "Pres": 1002.9, "TS": 1755000000 },
+        "ISL29125": { "Red": 1840, "Green": 2210, "Blue": 990, "TS": 1755000000 }
+    },
+    "sensorsConfig": {
+        "SCD30": { "MeasInt": 10, "TempOffs": 1.5, "AmbPres": 950, "Altitude": 0, "ContMeas": true, "ForceCalRef": 400, "SelfCal": false },
+        "SGP40": { "BackupPeriod": 30, "BackupMaxAge": 720, "WaitTimeNTP": 15, "SGPResetVOC": false },
+        "SHTC3": { "SampleInterv": 10, "TempOffset": 0.0, "FiltCoeff": 0.2 },
+        "MPRLS": { "SampleInterv": 10, "PressOffset": 0.0, "FiltCoeff": -1.0 },
+        "ISL29125": {
+            "SampleInterv": 5, "OperationMode": 5, "SensingRange": 1, "AdcResolution": 0,
+            "IrCompensation": -1, "InterruptAssignment": 0, "InterruptHighThres": 0,
+            "InterruptLowThres": 0, "InterruptAutoClear": -1, "PersistentControl": 0
+        }
+    },
+    "networkingConfig": {
+        "SSID": "bench-net", "PW": "testbench42", "Country": "DE", "Hostname": "dev",
+        "LedWifiOn": false, "NTP_Host": "pool.ntp.org", "NTP_Offset_S": 0, "NTP_Interv_H": 6
+    },
+    "systemConfig": { "DebugLevel": 3, "GMTOffset": 3600, "DSTOffset": 0 },
+    "notificationConfig": {
+        "AutoOn": false, "OnH": 8, "OnM": 0, "OffH": 20, "OffM": 0, "FlashBri": 80,
+        "Interv": 1200.0, "FlashDur": 1.5, "WarnCO2": 1500, "WarnVOC": 300, "WarnHum": 70.0
+    },
+    "status": {
+        "networking": {
+            "WifiUptime": 9840, "Mode": "STA", "Connected": true, "IP": "192.168.1.77", "IPv4": "192.168.1.77",
+            "Subnet": "255.255.255.0", "Gateway": "192.168.1.1", "DNS": "192.168.1.1", "Rssi": -41,
+            "NtpSynced": true, "NtpLastSyncAge": 205, "NtpLastSync": 1754999795
+        },
+        "system": {
+            "SysUptime": 9900, "BootSignature": "WATCHDOG", "MemPaused": false,
+            "LocalTime": "2025-08-12 09:14:03", "UtcTime": "2025-08-12 08:14:03"
+        },
+        "sensors": { "SGP40": { "BackupTS": 1754997000, "RestoreTS": 0 } },
+        "notification": { "Triggered": false, "TS": 0, "PauseTime": 0 },
+        "errcount": {
+            "SCD30": { "counter": 0 },
+            "SGP40": { "counter": 0 },
+            "SHTC3": {
+                "counter": 8,
+                "history": [
+                    { "TS": 1753000000, "ErrType": "I2CBusError", "ErrNum": 3 },
+                    { "TS": 1753086400, "ErrType": "I2CBusError", "ErrNum": 3 },
+                    { "TS": 1753172800, "ErrType": "I2CTimeout", "ErrNum": 2 },
+                    { "TS": 1753600000, "ErrType": "I2CBusError", "ErrNum": 3 },
+                    { "TS": 1754000000, "ErrType": "I2CTimeout", "ErrNum": 2 },
+                    { "TS": 1754300000, "ErrType": "I2CBusError", "ErrNum": 3 },
+                    { "TS": 1754700000, "ErrType": "I2CTimeout", "ErrNum": 2 },
+                    { "TS": 1754990000, "ErrType": "I2CBusError", "ErrNum": 3 }
+                ]
+            },
+            "MPRLS": { "counter": 0, "history": [] },
+            "ISL29125": {
+                "counter": 2,
+                "history": [
+                    { "TS": 1754500000, "ErrType": "InterruptStuck", "ErrNum": 6 },
+                    { "TS": 1754905000, "ErrType": "InterruptStuck", "ErrNum": 6 }
+                ]
+            },
+            "CFGMGR_SCD30": { "counter": 0 },
+            "WEBSERVER": { "counter": 0 }
+        }
+    }
+}
