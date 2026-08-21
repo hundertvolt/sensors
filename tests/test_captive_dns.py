@@ -227,6 +227,24 @@ def test_response_returns_none_for_empty_domain() -> None:
     assert DNSQuery(bytes(data), make_pr()).response("192.168.4.1") is None
 
 
+def test_response_answers_the_root_domain_query_not_indistinguishable_from_a_parse_failure() -> None:
+    # Regression test for BACKLOG.md's "root-domain query can't be told apart from a failed parse"
+    # entry: a root query (a single zero-length label, ".") parses to the same empty self.domain a
+    # malformed/truncated datagram falls back to. Before this fix, response() used `if self.domain:`
+    # to decide whether to answer, so both cases returned None - contradicting this module's own
+    # docstring claim that every on-subnet query gets an answer. response() now tracks parse success
+    # separately, so a genuine root query is answered like any other.
+    query = make_query([])  # zero labels -> immediate zero-length terminator, i.e. the root domain
+    dns = DNSQuery(query, make_pr())
+    assert dns.domain == ""  # still the same empty representation as a parse failure...
+    packet = dns.response("192.168.4.1")
+    assert packet is not None  # ...but this is a successfully-parsed query, so it gets answered
+    assert packet[:2] == query[:2]  # echoed transaction ID
+    assert packet[4:6] == b"\x00\x01"  # QDCOUNT=1
+    question_len = len(query) - 12
+    assert packet[12 : 12 + question_len] == query[12:]  # the root question, echoed verbatim
+
+
 def test_dns_query_rejects_question_truncated_right_before_qtype_qclass() -> None:
     # Boundary check either side of the QTYPE/QCLASS cutoff: a label + terminator with the full 4
     # trailing bytes present must still parse and answer normally (exact boundary accepted); the
@@ -282,6 +300,19 @@ def test_dns_server_default_logger_is_off() -> None:
     assert DNSServer().pr.get_level() == PrintLog.level_off()
 
 
+def test_dns_server_get_error_counter_forwards_to_the_real_print_log() -> None:
+    server = DNSServer()
+    log = run(server.get_error_counter())
+    assert log["DNSSRV"]["ErrCount"] == 0
+
+
+def test_dns_server_get_error_counter_reflects_a_real_logged_error() -> None:
+    server = DNSServer()
+    run(server.pr.err_s("boom", errno=1))
+    log = run(server.get_error_counter())
+    assert log["DNSSRV"]["ErrCount"] == 1
+
+
 # ---------------------------------------------------------------------------
 # DNSServer.run(): driven through a controlled fake transport.
 #
@@ -301,8 +332,15 @@ class _FakeUDPS:
         self.sent: list[tuple[bytes, tuple[str, int]]] = []
         self.sendto_results: list[int | None] = []
         self.disconnect_called = False
+        self.disconnect_ok = True  # real AsyUDPSocket.disconnect()'s success return, see Step 6 note
+        # One entry per recvfrom() call, for backoff-timing assertions. "Any", not "int": mypy's
+        # time.pyi types ticks_ms() as the opaque _TicksMs marker class (deliberately incompatible
+        # with plain int to catch raw-arithmetic misuse) - these values are only ever fed back into
+        # time.ticks_diff(), never used as plain ints.
+        self.recv_call_times_ms: list[Any] = []
 
     async def recvfrom(self, bufsize: int, timeout_ms: int = -1) -> tuple[bytes | None, tuple[str, int] | None]:
+        self.recv_call_times_ms.append(time.ticks_ms())
         if self._incoming:
             data, addr = self._incoming.pop(0)
             await asyncio.sleep(0)
@@ -315,8 +353,9 @@ class _FakeUDPS:
         self.sent.append((packet, addr))
         return result
 
-    async def disconnect(self) -> None:
+    async def disconnect(self) -> bool:
         self.disconnect_called = True
+        return self.disconnect_ok
 
 
 async def _wait_until(predicate: "Any", timeout_ms: int = 1000) -> bool:
@@ -760,9 +799,10 @@ def test_response_rejects_invalid_ip_combined_with_empty_domain_state() -> None:
 
 
 def test_run_reuses_same_dns_server_instance_across_multiple_hotspot_cycles() -> None:
-    # Mirrors async_connect.py's real usage (confirmed directly against improved-quality/
-    # async_connect.py): one DNSServer instance constructed once, with run() started, cancelled,
-    # and started again across repeated hotspot activations - only safe because
+    # Mirrors asy_wifi_service.py's real usage (AsyConnTime.__init__ constructs exactly one
+    # self.dns_server = DNSServer(...), reused across every hotspot activation): one DNSServer
+    # instance constructed once, with run() started, cancelled, and started again across repeated
+    # hotspot activations - only safe because
     # AsyUDPSocket.disconnect() fully resets connected/sock state for _connect()'s next attempt.
     server_addr = resolve_addr("127.0.0.1", make_port())
     server = DNSServer()
@@ -819,12 +859,12 @@ def test_run_real_socket_survives_a_burst_of_consecutive_malformed_datagrams() -
 
 
 # ---------------------------------------------------------------------------
-# Integration contract: replicates async_connect.py's real DNSServer usage exactly. It cannot be
+# Integration contract: replicates asy_wifi_service.py's real DNSServer usage exactly. It cannot be
 # imported directly here - it depends on network.WLAN and other RP2040-only hardware this
-# environment doesn't have, and editing/testing it is out of scope per CLAUDE.md's promotion
-# rules. Confirmed directly against improved-quality/async_connect.py: one DNSServer built once in
-# __init__, run() started via evtloop.create_task(self.dns_server.run(own_ip, own_netmask)), and
-# shut down via a fire-and-forget self.dns_server_task.cancel() that the caller never awaits.
+# environment doesn't have. Confirmed directly against asy_wifi_service.py: one DNSServer built
+# once in AsyConnTime.__init__, run() started via evtloop.create_task(self.dns_server.run(own_ip,
+# own_netmask)), and shut down via a fire-and-forget self.dns_server_task.cancel() that the caller
+# never awaits.
 # ---------------------------------------------------------------------------
 
 
@@ -911,7 +951,7 @@ class _RaisingDisconnectUDPS(_FakeUDPS):
         super().__init__([])
         self._exc = exc
 
-    async def disconnect(self) -> None:
+    async def disconnect(self) -> bool:
         self.disconnect_called = True
         raise self._exc
 
@@ -931,6 +971,96 @@ def test_run_disconnect_reporting_a_genuine_exception_logs_a_persisted_error() -
     run(scenario())  # must not raise despite disconnect() itself failing
 
 
+# ---------------------------------------------------------------------------
+# run()'s recvfrom() empty-result backoff (SPECIFICATION.md Part C.9's cascading-recovery-storm
+# convention): a persistently-failing recvfrom() that returns
+# (None, None) without ever raising - e.g. a bind() that never actually succeeded - must not spin
+# the loop at zero delay (the real end-to-end run measured ~5 wrn_s() lines/second before this fix).
+# Distinct from the genuinely-unexpected-exception backoff tested above, which already had its own
+# flat 3s pause; this is the normal, no-exception "no data" path, which previously had none at all.
+# ---------------------------------------------------------------------------
+
+
+def test_run_backs_off_with_increasing_delay_on_repeated_empty_recvfrom() -> None:
+    query = make_query(["a", "io"])
+    fake = _FakeUDPS([(None, None), (None, None), (None, None), (query, ("127.0.0.5", 5000))])
+
+    async def scenario() -> list[int]:
+        server = DNSServer()
+        server.udps = fake  # type: ignore[assignment]
+        task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
+        try:
+            assert await _wait_until(lambda: len(fake.sent) >= 1, timeout_ms=15000)
+            return fake.recv_call_times_ms
+        finally:
+            await _cancel(task)
+
+    call_times = run(scenario())
+    # >= 4: 3 empty results + the one that finally returns real data - possibly a 5th call too
+    # (run() loops straight back into recvfrom() again after replying, racing this test's own
+    # _wait_until poll), which is fine - only the first 3 backoff gaps are this test's concern.
+    assert len(call_times) >= 4
+    gaps = [time.ticks_diff(call_times[i + 1], call_times[i]) for i in range(3)]
+    # gaps[i] is the pause *after* recvfrom() call i's (None, None) result, before call i+1 fires -
+    # must grow across consecutive failures, not stay at the previous zero-delay spin.
+    assert 400 <= gaps[0] < 800  # ~0.5s initial backoff
+    assert 900 <= gaps[1] < 1400  # ~1.0s (doubled)
+    assert 1900 <= gaps[2] < 2600  # ~2.0s (doubled again)
+
+
+def test_run_recv_backoff_resets_after_a_successful_receive() -> None:
+    query = make_query(["a", "io"])
+    fake = _FakeUDPS(
+        [
+            (None, None),
+            (None, None),  # ramps the backoff up
+            (query, ("127.0.0.5", 5000)),  # real data received - must reset the backoff
+            (None, None),
+            (None, None),
+        ]
+    )
+
+    async def scenario() -> list[int]:
+        server = DNSServer()
+        server.udps = fake  # type: ignore[assignment]
+        task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
+        try:
+            assert await _wait_until(lambda: len(fake.recv_call_times_ms) >= 5, timeout_ms=15000)
+            return fake.recv_call_times_ms
+        finally:
+            await _cancel(task)
+
+    call_times = run(scenario())
+    gaps = [time.ticks_diff(call_times[i + 1], call_times[i]) for i in range(4)]
+    assert 400 <= gaps[0] < 800  # first empty result -> ~0.5s
+    assert 900 <= gaps[1] < 1400  # second empty result -> ~1.0s (doubled)
+    assert gaps[2] < 300  # real data received - no backoff sleep before the next recvfrom()
+    assert 400 <= gaps[3] < 800  # backoff restarted from the initial value, not continuing from ~2.0s
+
+
+def test_run_recv_backoff_caps_at_the_ceiling() -> None:
+    # Many consecutive failures must never grow the pause past the configured ceiling - a real,
+    # bounded worst case, not just "slower than before." Uncapped doubling would reach 8.0s on the
+    # 5th failure; the fix's ceiling is 5.0s.
+    query = make_query(["a", "io"])
+    fake = _FakeUDPS([(None, None)] * 5 + [(query, ("127.0.0.5", 5000))])
+
+    async def scenario() -> list[int]:
+        server = DNSServer()
+        server.udps = fake  # type: ignore[assignment]
+        task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
+        try:
+            assert await _wait_until(lambda: len(fake.sent) >= 1, timeout_ms=20000)
+            return fake.recv_call_times_ms
+        finally:
+            await _cancel(task)
+
+    call_times = run(scenario())
+    assert len(call_times) >= 6  # 5 empty results + the one that finally returns real data
+    gaps = [time.ticks_diff(call_times[i + 1], call_times[i]) for i in range(5)]
+    assert 4700 <= gaps[4] < 5400  # 5th failure's pause is capped at ~5.0s, not the uncapped ~8.0s
+
+
 def test_run_disconnect_reporting_a_second_cancellation_does_not_raise_or_log() -> None:
     fake = _RaisingDisconnectUDPS(asyncio.CancelledError())
 
@@ -944,6 +1074,25 @@ def test_run_disconnect_reporting_a_second_cancellation_does_not_raise_or_log() 
         assert server.pr.err_count == 0  # a second CancelledError during cleanup isn't a real error
 
     run(scenario())  # a second CancelledError delivered during cleanup must not escape either
+
+
+def test_run_logs_a_persisted_warning_when_disconnect_reports_incomplete_teardown() -> None:
+    # Step 6 (silent-failure-masking finding): AsyUDPSocket.disconnect() never raises, but now
+    # reports a failed unregister()/close() via its bool return - run() must actually check it and
+    # log, not just call disconnect() and move on regardless of the result.
+    fake = _FakeUDPS([])
+    fake.disconnect_ok = False
+
+    async def scenario() -> None:
+        server = DNSServer(debug=PrintLog.level_warn())
+        server.udps = fake  # type: ignore[assignment]
+        task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
+        await asyncio.sleep_ms(20)
+        await _cancel(task)
+        assert fake.disconnect_called is True
+        assert server.pr.err_count == 1
+
+    run(scenario())
 
 
 if __name__ == "__main__":

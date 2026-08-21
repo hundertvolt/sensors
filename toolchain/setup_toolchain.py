@@ -26,7 +26,7 @@ it fetches, checks out whatever ref is now pinned, re-derives the matching pico-
 versions, and rebuilds only what's needed.
 
 Two design decisions shape most of the code below, both explained at length in
-toolchain/README.md's "How it works":
+SPECIFICATION.md Part B.3 ("How it works"):
   - Only the MicroPython ref is a hand-picked version (see versions.toml). The pico-sdk and
     picotool versions are *derived* from it (derive_pico_sdk_commit / derive_picotool_ref)
     instead of being tracked as separate pins that could quietly drift out of sync.
@@ -39,9 +39,9 @@ asserting the pieces are probably fine: it freezes one small test module as byte
 the Unix port and the RP2 firmware, then imports it inside the Unix port and checks the result —
 proof that the whole freeze pipeline (mpy-cross -> FROZEN_MANIFEST -> firmware) works end to end,
 not just that mpy-cross alone compiles something. See its docstring for the exact step order and
-toolchain/README.md's "Verification" section for the rationale.
+SPECIFICATION.md Part B.6 ("Verification") for the rationale.
 
-See toolchain/README.md for the full picture (what this does and does not cover).
+See SPECIFICATION.md Part B for the full picture (what this does and does not cover).
 """
 
 from __future__ import annotations
@@ -488,7 +488,7 @@ def clean_frozen_verification_build_dirs(toolchain_dir: Path, board: str) -> Non
 
 
 def run_verification_sequence(micropython_dir: Path, toolchain_dir: Path, board: str, jobs: int) -> tuple[Path, Path]:
-    """The frozen-bytecode verification chain described in toolchain/README.md's "Verification" -
+    """The frozen-bytecode verification chain described in SPECIFICATION.md Part B.6's "Verification" -
     each step must succeed before the next starts (a SetupError from any run()/build_*() call
     aborts the whole sequence, so this is enforced by the exception propagating, not by checking
     a return code by hand):
@@ -567,7 +567,7 @@ def print_verification_summary(board: str, mpy_cross_binary: Path, unix_binary: 
 
 
 def run_setup(args: argparse.Namespace, versions_path: Path, versions: dict) -> int:
-    """Install or update. The steps below are exactly "How it works" in toolchain/README.md:
+    """Install or update. The steps below are exactly "How it works" in SPECIFICATION.md Part B.3:
     pin MicroPython -> derive pico-sdk -> derive picotool -> install the ARM toolchain -> build
     everything in an isolated environment -> verify. ensure_repo_at_ref() doubles as the update
     mechanism (clone if missing, fetch+checkout if not), so there's no separate "update" branch
@@ -621,7 +621,7 @@ def run_setup(args: argparse.Namespace, versions_path: Path, versions: dict) -> 
 
 def run_test(args: argparse.Namespace, versions: dict) -> int:
     """Re-verify an existing install, offline: just run_verification_sequence() again against
-    whatever is already checked out — see the module docstring and toolchain/README.md's "How it
+    whatever is already checked out — see the module docstring and SPECIFICATION.md Part B.3's "How it
     works" for why apt/git network access is never needed here."""
     board = versions["toolchain"]["board"]
     toolchain_dir = args.toolchain_dir.expanduser().resolve()

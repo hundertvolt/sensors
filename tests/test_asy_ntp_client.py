@@ -55,6 +55,35 @@ _TMP_DIR = "tests/_tmp"
 _next_dir = 0
 
 
+def _sweep_stale_tmp_dirs(prefix: str) -> None:
+    # Sweeps pre-existing <prefix>* scratch dirs left behind by an earlier scripts/test.sh run on
+    # this machine - _next_dir always restarts at 0 per process, so without this a later run
+    # silently reuses an earlier run's real, persisted config_*.cfg files instead of a genuinely
+    # fresh directory. See tests/test_sensortask_wozi.py's own _sweep_stale_tmp_dirs() for the full
+    # root-cause writeup (this exact _tmp_cfg_dir() shape is copy-pasted across every test file with
+    # its own _TMP_DIR/_next_dir pair - same fix applied uniformly to each).
+    try:
+        entries = os.listdir(_TMP_DIR)
+    except OSError:
+        return  # tests/_tmp itself doesn't exist yet - nothing to clean
+    for entry in entries:
+        if not entry.startswith(prefix):
+            continue
+        dir_path = _TMP_DIR + "/" + entry
+        try:
+            for filename in os.listdir(dir_path):
+                try:
+                    os.remove(dir_path + "/" + filename)
+                except OSError:
+                    pass
+            os.rmdir(dir_path)
+        except OSError:
+            pass
+
+
+_sweep_stale_tmp_dirs("ntp_")
+
+
 def _remove_any(path: str) -> None:
     try:
         os.remove(path)
@@ -89,7 +118,7 @@ def make_client(
     wifi_mode_lock: "asyncio.Lock | None" = None,
     network_available: "Callable[[], bool] | None" = None,
     get_dns_server: "Callable[[], str | None] | None" = None,
-    max_i2c_err: int = 5,
+    max_module_error: int = 5,
     dns_timeout_ms: int = 500,
     dns_tries: int = 1,
     ntp_fetch_timeout_ms: int = 5000,
@@ -109,7 +138,7 @@ def make_client(
         wifi_mode_lock,
         network_available,
         get_dns_server,
-        max_i2c_err=max_i2c_err,
+        max_module_error=max_module_error,
         dns_timeout_ms=dns_timeout_ms,
         dns_tries=dns_tries,
         ntp_fetch_timeout_ms=ntp_fetch_timeout_ms,
@@ -182,7 +211,7 @@ def make_port() -> int:
 # ---------------------------------------------------------------------------
 # __init__ - AsyNtpClient now extends base_classes.py's SensorReaderConfig: it owns its own
 # config_NTP.cfg file/schema internally (no externally-injected ConfigManager, no separate
-# get_default_cfg()/_DEFAULT_CONFIG merge step anymore - see DRIVER_SPEC.md/BACKLOG.md).
+# get_default_cfg()/_DEFAULT_CONFIG merge step anymore - see SPECIFICATION.md/BACKLOG.md).
 # ---------------------------------------------------------------------------
 
 
@@ -306,7 +335,7 @@ def test_fram_given_uses_fram_backed_logging() -> None:
 
 # ---------------------------------------------------------------------------
 # get_dict_cfg / get_data / get_dict_data / get_error_counter - the base-class getter quartet
-# (DRIVER_SPEC.md section 4.2). Setters are explicitly out of scope (see BACKLOG.md).
+# (SPECIFICATION.md Part C.4.2). Setters are explicitly out of scope (see BACKLOG.md).
 # ---------------------------------------------------------------------------
 
 
@@ -1942,7 +1971,7 @@ def test_asy_ntp_time_gives_up_after_repeated_sync_failures_and_persists_errno_2
     # Independent, coarser safety net on top of _handle_ntp_sync_failure()'s own short-term
     # ntp_retries/_NTP_SYNC_RETRIES retry loop - see asy_ntp_time()'s own comment. A real attempt
     # that completes (network was up) but never yields a parsed time counts toward this streak.
-    client = make_client(max_i2c_err=2)
+    client = make_client(max_module_error=2)
 
     async def failing_attempt(_dns_server: "Any") -> "Any":
         return None, True  # network was available, but the attempt itself still failed
@@ -1951,7 +1980,7 @@ def test_asy_ntp_time_gives_up_after_repeated_sync_failures_and_persists_errno_2
 
     async def scenario() -> "Any":
         task = asyncio.create_task(client.asy_ntp_time())
-        for _ in range(3):  # one trigger per would-be failure cycle - max_i2c_err=2 gives up on the 3rd
+        for _ in range(3):  # one trigger per would-be failure cycle - max_module_error=2 gives up on the 3rd
             client.ntp_sync_trigger_event.set()
             await asyncio.sleep(0)
             await asyncio.sleep(0)
@@ -1966,8 +1995,8 @@ def test_asy_ntp_time_gives_up_after_repeated_sync_failures_and_persists_errno_2
 def test_asy_ntp_time_network_unavailable_cycles_never_count_toward_giving_up() -> None:
     # condition=network_ok excludes "network wasn't up yet" from the give-up streak, the same way
     # SGP40 excludes a missing-compensation read via condition=compensated - proven here by running
-    # well past max_i2c_err trigger cycles, all reporting network unavailable, without giving up.
-    client = make_client(max_i2c_err=2)
+    # well past max_module_error trigger cycles, all reporting network unavailable, without giving up.
+    client = make_client(max_module_error=2)
 
     async def unavailable_attempt(_dns_server: "Any") -> "Any":
         return None, False  # network not available - condition=False, must not count as a real failure
@@ -1994,8 +2023,8 @@ def test_asy_ntp_time_network_unavailable_cycles_never_count_toward_giving_up() 
 def test_asy_ntp_time_recovers_the_streak_on_alternating_failure_and_success() -> None:
     # A success resets tm to non-None, decrementing _err_cnt_internal (base_classes.py's own
     # _error_check() contract) - failures that never land two-in-a-row must never trip
-    # max_i2c_err=2, however many trigger cycles run in total.
-    client = make_client(max_i2c_err=2)
+    # max_module_error=2, however many trigger cycles run in total.
+    client = make_client(max_module_error=2)
     toggle = [True]
 
     async def alternating_attempt(_dns_server: "Any") -> "Any":

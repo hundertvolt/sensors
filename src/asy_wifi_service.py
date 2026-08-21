@@ -1,9 +1,9 @@
 """Async WiFi connection/hotspot/LED service. Not a sensor, but config-managed the same way: extends
-base_classes.py's SensorReaderConfig, owns its own config_WIFI.cfg (see SPECIFICATION.md Part C). "Attempt"
-operations persist a real errno via self.pr.err_s() and set self.hw_op_failed, feeding
-wlan_connect()'s _error_check() streak; routine state observations degrade silently via
-self.pr.err() instead. errno numbering starts at 11, same convention as asy_ntp_client.py.
+base_classes.py's SensorReaderConfig, owns its own config_WIFI.cfg (see SPECIFICATION.md Part C).
 """
+# "Attempt" operations persist a real errno via self.pr.err_s() and set self.hw_op_failed, feeding
+# wlan_connect()'s _error_check() streak; routine state observations degrade silently via
+# self.pr.err() instead. errno numbering starts at 11, same convention as asy_ntp_client.py.
 
 import asyncio
 import time
@@ -47,7 +47,10 @@ _VAL_HOST = const((("Hostname", "str", "SensorNode", 1, 32, None),))  # 32 = net
 _VAL_LED = const((("LedWifiOn", "bool", True, None, None, None),))
 
 _NAME = const("WIFI")
+# Kept as a literal tuple inline (not `_FIELDS` below) because mypy's namedtuple plugin can only
+# infer field names from a literal at the call site, not through a variable indirection.
 WIFI = namedtuple("WIFI", ("Mode", "Connected", "IP", "TS"))
+_FIELDS = const(("Mode", "Connected", "IP", "TS"))  # kept in sync with WIFI's own fields above
 
 _STA_DISCONNECT_WAIT_ITERS = const(20)  # 20 * 0.5s = 10s max wait for isconnected() to clear -
 # bounds _disconnect_sta_and_wait()'s loop; a real disconnect() completes far faster than this.
@@ -73,9 +76,9 @@ class AsyConnTime(SensorReaderConfig):
         ext_led: "LEDControl | None" = None,
         wifi_refresh_sec: int = 5,
         hotspot_time_min: int = 5,
-        max_i2c_err: int = 5,  # consecutive hw_op_failed cycles before giving up and letting the
+        max_module_error: int = 5,  # consecutive hw_op_failed cycles before giving up and letting the
         # task supervisor restart this task - same _error_check() contract every Reader uses,
-        # despite the misleading "i2c" name inherited from SensorReaderConfig (no I2C bus here).
+        # inherited from SensorReaderConfig (no I2C bus here, just the shared generic mechanism).
         cfg_path: str = "",
         fram: "AsyFramManager | None" = None,
         history_length: int = 10,
@@ -83,7 +86,7 @@ class AsyConnTime(SensorReaderConfig):
     ) -> None:
         super().__init__(
             WIFI(None, None, None, None),
-            max_i2c_err,
+            max_module_error,
             _NAME,
             _VAL_SSID + _VAL_PW + _VAL_CTRY + _VAL_HOST + _VAL_LED,
             cfg_path=cfg_path,
@@ -314,8 +317,15 @@ class AsyConnTime(SensorReaderConfig):
         self.wlan.active(True)
         self.wlan.config(pm=0xA11140)  # disable power-save mode
         own_ip, own_netmask = self.wlan.ifconfig()[:2]
-        evtloop = asyncio.get_event_loop()
-        self.dns_server_task = evtloop.create_task(self.dns_server.run(own_ip, own_netmask))
+        # _run_hotspot_mode() calls _start_hotspot() (and so this method) again every loop
+        # iteration for as long as wlan.status() != network.STAT_GOT_IP - true on every iteration
+        # while purely in AP mode (STAT_GOT_IP is a STA-only status an AP interface never reports).
+        # Guard against leaking a duplicate concurrent DNSServer.run() task on top of one already
+        # running - same "is None or .done()" convention system_service.py's own
+        # start_and_check_tasks() already uses for its supervised tasks.
+        if self.dns_server_task is None or self.dns_server_task.done():
+            evtloop = asyncio.get_event_loop()
+            self.dns_server_task = evtloop.create_task(self.dns_server.run(own_ip, own_netmask))
         self.pr.one("WLAN hotspot was started")
 
     def _hotspot_client_connected(self) -> None:
@@ -609,7 +619,7 @@ class AsyConnTime(SensorReaderConfig):
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         data = await self.get_data()
-        return make_dict(data)
+        return make_dict(data, _FIELDS)
 
     async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         return await self._get_dict_cfg(
@@ -619,6 +629,16 @@ class AsyConnTime(SensorReaderConfig):
     async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
         return await self.pr.get_log()
 
+    # Locking convention for this class's WLAN-observing getters (BACKLOG.md's own flagged
+    # inconsistency - documented, not redesigned, since both shapes are genuinely needed): a method
+    # whose own docstring/comment says "caller must already hold wifi_mode_lock" (network_available()
+    # below) is meant to be called from INSIDE a caller's own already-locked critical section - it
+    # never checks .locked() itself, since the caller holding it is the whole point. Every method
+    # below this comment instead checks self.wifi_mode_lock.locked() itself and degrades to a "don't
+    # know yet" sentinel (None/False) - these are the public, callable-from-anywhere getters, never
+    # meant to be wrapped in the caller's own lock. A new getter must pick one shape deliberately, not
+    # copy whichever neighbor happens to be closest - get_dns_server_ip() once returned an
+    # unconditional None because it didn't.
     def get_wlan_ifconfig(self) -> tuple[str, str, str, str] | None:
         if self.wifi_mode_lock.locked():
             return None
@@ -693,6 +713,14 @@ class AsyConnTime(SensorReaderConfig):
     async def wlan_connect(self) -> None:
         await self.pr.setup()  # required for all logged warnings and errors (base_classes.py's own
         # __init__ never calls this - matches every _init_<sensor>() in the three promoted drivers)
+        await self.dns_server.pr.setup()  # dns_server is its own separate PrintLogHistory instance
+        # (captive_dns.py's DNSServer, own construction, not covered by self.pr.setup() above) -
+        # self.dns_server.run() is only ever started later in this same function's own hotspot-
+        # activation path, so this is always called before it. Found during baseline
+        # verification: every dns_server.pr.err_s()/wrn_s() call degraded to
+        # "PrintLog: Uninitialized, call setup first!" forever (never actually logging/persisting)
+        # since nothing ever called this - real hardware falling back to hotspot mode has the
+        # identical gap, not twin-specific.
         self._err_cnt_internal = 0  # fresh failure streak each task (re)start, same as _init_<sensor>()
         self._reset_wlan_connect_state()
         await self._apply_initial_led_config()

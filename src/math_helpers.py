@@ -1,8 +1,6 @@
 """Derived meteorological quantities from raw sensor readings (wet-bulb temperature, dew point,
-barometric pressure correction, absolute/relative humidity conversions). Every function returns
-None - never raises - for a None, out-of-domain, or NaN input (see each function's own comment for
-its range/source), so a transient bad reading degrades to "no value this cycle" instead of
-crashing the calling task.
+barometric pressure correction, absolute/relative humidity conversions).
+Every function returns None - never raises - for a None, out-of-domain, or NaN input (see each function's own comment for its range/source).
 """
 
 import math

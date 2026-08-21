@@ -3,7 +3,7 @@
 # BACKLOG.md's "Self-contained venv via uv" testing requirement). Builds the toolchain on first
 # run via `uv run toolchain/setup_toolchain.py` (plain `setup` - building/verifying the Unix port
 # is just part of what `setup`/`test` already do, there's no separate `unix` subcommand, see
-# toolchain/README.md) if the Unix port binary isn't already there, then reuses the cached build
+# SPECIFICATION.md Part B) if the Unix port binary isn't already there, then reuses the cached build
 # on subsequent runs. This now also builds the RP2040 firmware/ARM toolchain/picotool as a side
 # effect of `setup` doing all four of its verification checks together - heavier than building
 # just the Unix port alone, but there's no lighter-weight entry point anymore now that Unix-port
@@ -14,12 +14,23 @@
 # --coverage: runs the same tests, under the same Unix port binary (it's always built with
 # MICROPY_PY_SYS_SETTRACE=1 - see build_unix_port() - so there's no separate coverage-only
 # interpreter to build), but with tests/_coverage_runner.py wrapping each test file to install a
-# sys.settrace line tracer scoped to src/ and record which lines actually executed. The merged
-# result is handed to scripts/_render_coverage.py (a separate, self-contained `uv run` script -
-# coverage.py itself only runs under CPython, never under MicroPython) to render an HTML report
+# sys.settrace line tracer scoped to src/ and digital_twin/ and record which lines actually
+# executed. The merged result is handed to scripts/_render_coverage.py (a separate, self-contained
+# `uv run` script - coverage.py itself only runs under CPython, never under MicroPython) TWICE -
+# once per --src-dir - to render two separate reports from the one shared raw dump: an HTML report
 # (htmlcov/), a Cobertura XML report (coverage.xml, for e.g. Codecov), and a markdown summary
-# (coverage_summary.md). See README.md's "Code quality tooling" for a usage example and
-# tests/README.md for the full pipeline this is one stage of.
+# (coverage_summary.md) for src/, plus the digital_twin/-suffixed equivalents
+# (htmlcov_digital_twin/, coverage_digital_twin.xml, coverage_summary_digital_twin.md) for
+# digital_twin/ - kept as two separate reports, not one combined one, since the two scopes have
+# different maturity/gating expectations (see CLAUDE.md's "Code quality tooling"). See README.md's
+# "Code quality tooling" for a usage example and SPECIFICATION.md Part E.5 for the full pipeline this is one
+# stage of.
+#
+# Also (re)builds frozen_modules/frozen_html.py via scripts/build_frozen_html.sh before every run -
+# the website-placeholder module (SPECIFICATION.md Part A.9), which src/sensortask_wozi.py imports
+# unconditionally at module level. Lives in its own frozen_modules/ MICROPYPATH segment, not
+# ".frozen/" - see build_frozen_html.sh's own comment for why that exact name can't hold a real,
+# importable file (it's a hardcoded MicroPython sentinel, confirmed against py/builtinimport.c).
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
@@ -59,6 +70,14 @@ if [ ! -x "$micropython_bin" ]; then
     uv run toolchain/setup_toolchain.py setup --toolchain-dir "$toolchain_dir" "${skip_apt_flag[@]}"
 fi
 
+# frozen_modules/frozen_html.py (SPECIFICATION.md Part A.9) is a plain build artifact, never
+# committed (see .gitignore) - regenerated fresh on every run, cheap (sub-second, no toolchain
+# involved), unlike the Unix-port build above. src/sensortask_wozi.py does a module-level `import
+# frozen_html`, so every test file that imports it (not just the webserver-specific ones) needs
+# this to already exist on MICROPYPATH before the test loop below runs.
+echo "== Building frozen_modules/frozen_html.py"
+scripts/build_frozen_html.sh
+
 raw_dir=""
 if [ "$coverage" = "1" ]; then
     raw_dir="$(mktemp -d)"
@@ -87,6 +106,16 @@ failed=0
 # (4096 bytes) whenever stdout isn't a tty - true for any GH Actions step. Harmless and cheap to
 # keep even though it turned out not to be what was causing the hang (see above); small,
 # immediate, line-buffered writes are still a reasonable default for CI log output.
+#
+# -X heapsize=8M (default 2097152 = 2MB) - tests/test_digital_twin_sensortask_integration.py's own
+# heaviest tests each build the whole real object graph (a fresh 8KB FramChip, ConfigManagers, ...)
+# one or more times per test, sharing one process/heap across every test function in the file (this
+# binary is invoked once per file, not once per test). Confirmed directly: with the 2MB default,
+# that file failed with a real MemoryError roughly 1 run in 3 depending on MicroPython's own
+# non-deterministic test-function run order (this file's own docstring already notes run order
+# differs from definition order); 8M cleared 5/5 consecutive runs. This is a Unix-port-only test-
+# harness setting - unrelated to the real rp2040's own RAM budget (SPECIFICATION.md Part F.1), and
+# every test file still runs under the same GC the real target uses either way.
 per_file_timeout_s="${PER_FILE_TIMEOUT_S:-180}"
 max_attempts=3
 for test_file in tests/test_*.py; do
@@ -95,6 +124,8 @@ for test_file in tests/test_*.py; do
     # rather than extending it, and the default path is what makes frozen-in modules (asyncio
     # included) resolvable at all. Confirmed directly against the built interpreter - dropping
     # this breaks `import asyncio` for any async src/ file with no import error pointing at why.
+    # frozen_modules must be included too - src/sensortask_wozi.py's `import frozen_html` resolves
+    # there (see build_frozen_html.sh's comment for why it can't be ".frozen" itself).
     if [ "$coverage" = "1" ]; then
         raw_out="$raw_dir/$(basename "$test_file" .py).json"
         cmd=(tests/_coverage_runner.py "$test_file" "$raw_out")
@@ -102,7 +133,7 @@ for test_file in tests/test_*.py; do
         cmd=("$test_file")
     fi
     for attempt in $(seq 1 "$max_attempts"); do
-        if MICROPYPATH="src:tests:.frozen" stdbuf -oL -eL timeout --kill-after=10 "$per_file_timeout_s" "$micropython_bin" "${cmd[@]}"; then
+        if MICROPYPATH="src:tests:frozen_modules:.frozen" stdbuf -oL -eL timeout --kill-after=10 "$per_file_timeout_s" "$micropython_bin" -X heapsize=8M "${cmd[@]}"; then
             ec=0
         else
             ec=$?
@@ -125,6 +156,8 @@ done
 if [ "$coverage" = "1" ]; then
     echo "== Rendering coverage report"
     uv run scripts/_render_coverage.py --raw-dir "$raw_dir" --src-dir src --html-dir htmlcov --xml-file coverage.xml --markdown-file coverage_summary.md
+    echo "== Rendering digital_twin/ coverage report"
+    uv run scripts/_render_coverage.py --raw-dir "$raw_dir" --src-dir digital_twin --html-dir htmlcov_digital_twin --xml-file coverage_digital_twin.xml --markdown-file coverage_summary_digital_twin.md
 fi
 
 exit "$failed"

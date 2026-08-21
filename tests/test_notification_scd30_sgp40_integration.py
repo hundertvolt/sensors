@@ -1,20 +1,5 @@
-"""Cross-module integration: a real asy_scd30_driver.py.SCD30_Reader AND a real
-asy_sgp40_driver.py.SGP40_Reader (each against its own fake I2C bus, same mocking boundary as
-test_asy_scd30_driver.py's/test_asy_sgp40_driver.py's own tests) simultaneously feeding ONE shared
-asy_notification_service.py.NotificationCoordinator/asy_neopixel_driver.py.NeopixelDriver, via
-get_value() wrappers that mirror improved-quality/sensortask-wozi.py's own co2_value_callback()/
-voc_value_callback() exactly (that file itself is out of scope for testing - see CLAUDE.md - so the
-wrappers are reproduced locally, not imported).
-
-test_notification_scd30_integration.py and test_notification_sgp40_integration.py each already cover
-their own sensor feeding its own, separate NotificationCoordinator/NeopixelDriver pair - neither
-proves the real wiring's actual shape, where WarnCO2/WarnHum (SCD30) and WarnVOC (SGP40) all share
-ONE coordinator/pixel (see improved-quality/sensortask-wozi.py's own single `notify`/`pixel`
-construction). This file fills that gap: two real sensor chains, one shared downstream stack,
-proving (a) both chains can trigger their own signal correctly without cross-contaminating the
-other's state, and (b) a genuine hardware fault on one sensor stays isolated to that sensor's own
-error log and doesn't block or corrupt the healthy sensor's own notification.
-"""
+"""Cross-module integration: a real SCD30_Reader AND a real SGP40_Reader simultaneously feeding ONE shared NotificationCoordinator/NeopixelDriver (matching sensortask-wozi.py's real single notify/pixel wiring).
+Fills the gap test_notification_scd30_integration.py/test_notification_sgp40_integration.py each leave (their own separate coordinator/pixel pair): proves both chains trigger correctly without cross-contaminating, and a hardware fault on one sensor stays isolated to its own error log."""
 
 import asyncio
 import os
@@ -61,6 +46,35 @@ class _FastAsyncSleep:
 
 _TMP_DIR = "tests/_tmp"
 _next_dir = 0
+
+
+def _sweep_stale_tmp_dirs(prefix: str) -> None:
+    # Sweeps pre-existing <prefix>* scratch dirs left behind by an earlier scripts/test.sh run on
+    # this machine - _next_dir always restarts at 0 per process, so without this a later run
+    # silently reuses an earlier run's real, persisted config_*.cfg files instead of a genuinely
+    # fresh directory. See tests/test_sensortask_wozi.py's own _sweep_stale_tmp_dirs() for the full
+    # root-cause writeup (this exact _tmp_cfg_dir() shape is copy-pasted across every test file with
+    # its own _TMP_DIR/_next_dir pair - same fix applied uniformly to each).
+    try:
+        entries = os.listdir(_TMP_DIR)
+    except OSError:
+        return  # tests/_tmp itself doesn't exist yet - nothing to clean
+    for entry in entries:
+        if not entry.startswith(prefix):
+            continue
+        dir_path = _TMP_DIR + "/" + entry
+        try:
+            for filename in os.listdir(dir_path):
+                try:
+                    os.remove(dir_path + "/" + filename)
+                except OSError:
+                    pass
+            os.rmdir(dir_path)
+        except OSError:
+            pass
+
+
+_sweep_stale_tmp_dirs("notify_dual_")
 
 
 def _remove_any(path: str) -> None:
@@ -114,7 +128,7 @@ async def _cancel_all(tasks: "list[asyncio.Task[None]]") -> None:
 
 def make_scd_reader() -> "tuple[SCD30_Reader, Any]":
     i2c = I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
-    reader = SCD30_Reader(i2c, irq_pin=5, trigger_sec=3, max_i2c_err=5)
+    reader = SCD30_Reader(i2c, irq_pin=5, trigger_sec=3, max_module_error=5)
     return reader, reader.scd.i2c_scd30.i2c_device.i2c._i2c
 
 
@@ -139,7 +153,7 @@ def data_frame(co2: float, temperature: float, humidity: float) -> bytes:
 
 
 async def co2_value_callback(scd_reader: SCD30_Reader) -> "int | float | None":
-    # Verbatim mirror of improved-quality/sensortask-wozi.py's own co2_value_callback() body.
+    # Verbatim mirror of src/sensortask_wozi.py's own co2_value_callback() body.
     scd_data = await scd_reader.get_data()
     if scd_data is None or scd_data.CO2 is None:
         return None
@@ -180,13 +194,13 @@ async def _comp_data() -> "list[float | None]":
 
 def make_sgp_reader() -> "tuple[SGP40_Reader, Any]":
     i2c = I2C(1, scl_pin=19, sda_pin=18, frequency=50000)
-    reader = SGP40_Reader(i2c, _comp_data, max_i2c_err=2, cfg_path=_tmp_cfg_dir("sgp"))
+    reader = SGP40_Reader(i2c, _comp_data, max_module_error=2, cfg_path=_tmp_cfg_dir("sgp"))
     run(reader.pr.setup())
     return reader, reader.sgp.i2c_sgp40.i2c_device.i2c._i2c
 
 
 async def voc_value_callback(sgp_reader: SGP40_Reader) -> "int | float | None":
-    # Verbatim mirror of improved-quality/sensortask-wozi.py's own voc_value_callback() body.
+    # Verbatim mirror of src/sensortask_wozi.py's own voc_value_callback() body.
     sgp_data = await sgp_reader.get_data()
     if sgp_data is None or sgp_data.VOC is None:
         return None
@@ -202,7 +216,7 @@ def _drive_sgp_cycle(reader: SGP40_Reader, fake_bus: "Any", raw: int) -> "Any":
 
 
 def _settle_and_spike(reader: SGP40_Reader, fake_bus: "Any") -> "Any":
-    # See test_notification_sgp40_integration.py's own module docstring for the calibration note
+    # See test_notification_sgp40_integration.py's own top-of-file comment for the calibration note
     # this two-phase sequence relies on.
     for _ in range(160):
         data = _drive_sgp_cycle(reader, fake_bus, 30000)
@@ -275,7 +289,7 @@ def test_both_sensors_crossing_threshold_together_trigger_their_own_signal_witho
 def test_one_sensor_i2c_fault_stays_isolated_and_the_healthy_sibling_still_triggers() -> None:
     # SCD30 faults; SGP40 stays healthy and already-spiked - proves a real hardware fault on one
     # sensor's own driver neither blocks nor corrupts the sibling sensor's independent chain, and is
-    # attributed only to the faulted sensor's own error log (matching DRIVER_SPEC.md's "each driver
+    # attributed only to the faulted sensor's own error log (matching SPECIFICATION.md Part C.7's "each driver
     # owns its own error log" separation of concerns, now proven across two real sensors sharing one
     # downstream coordinator rather than just one sensor in isolation).
     scd_reader, scd_i2c = make_scd_reader()

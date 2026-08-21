@@ -1,29 +1,12 @@
-"""Cross-module integration: a real asy_sgp40_driver.py.SGP40_Reader (against a fake I2C bus, same
-mocking boundary as test_asy_sgp40_driver.py's own tests) feeding a real
-asy_notification_service.py.NotificationCoordinator via a get_value() wrapper that mirrors
-improved-quality/sensortask-wozi.py's own voc_value_callback() exactly (that file itself is out of
-scope for testing - see CLAUDE.md - so the wrapper is reproduced locally, not imported), driving a
-real asy_neopixel_driver.py.NeopixelDriver. Only tests/neopixel.py's fake write surface and
-tests/machine.py's fake I2C bus are mocked; every layer above the raw I2C transaction (SGP40_Reader's
-own protocol/CRC/locking, voc_algorithm.py's real Sensirion Gas Index Algorithm, the notify poll
-loop, gating, NeopixelDriver's arbitration/ramp) runs for real.
-
-Fills the one real WarnVOC gap left after test_notification_scd30_integration.py: that file only
-ever exercises WarnCO2 (and never WarnHum either - see BACKLOG.md's mock/coverage-scan follow-up).
-WarnVOC's real chain (SGP40 -> NotificationCoordinator -> NeopixelDriver) had no integration
-coverage before this file - only unit-level coverage (test_asy_sgp40_driver.py in isolation,
-test_notification_neopixel_integration.py with a stubbed value callback).
-
-VOC index calibration note (verified directly against the real voc_algorithm.py, not assumed): a
-single raw reading never moves the index - _VOCALGORITHM_INITIAL_BLACKOUT (45 sampling intervals)
-must elapse first, and the index then settles toward 100 (the algorithm's own "clean air" baseline)
-under any *constant* raw signal, however extreme - it's a deviation-from-learned-baseline index, not
-an absolute-concentration one. A real threshold crossing needs two phases: enough constant-raw
-cycles to let the index settle near its 100 baseline, then a step change away from that raw value to
-produce an actual spike. Also confirmed directly: a higher raw tick count moves the index *down* (a
-raw increase reads as cleaner air on this sensor's convention), so the spike-inducing step is a drop
-in raw, not a rise.
-"""
+"""Cross-module integration: a real SGP40_Reader feeding a real NotificationCoordinator, driving a real NeopixelDriver - fills the WarnVOC gap test_notification_scd30_integration.py leaves (it only exercises WarnCO2).
+Only tests/neopixel.py's fake write surface and tests/machine.py's fake I2C bus are mocked; every layer above the raw I2C transaction runs for real."""
+# VOC index calibration note (verified directly against voc_algorithm.py): a single raw reading
+# never moves the index - _VOCALGORITHM_INITIAL_BLACKOUT (45 sampling intervals) must elapse first,
+# and the index then settles toward 100 (the algorithm's "clean air" baseline) under any *constant*
+# raw signal - a deviation-from-learned-baseline index, not an absolute-concentration one. A real
+# threshold crossing needs two phases: settle near 100, then step away from that raw value. Also
+# confirmed: a higher raw tick count moves the index *down* (raw increase = cleaner air on this
+# sensor's convention), so the spike-inducing step is a drop in raw, not a rise.
 
 import asyncio
 import os
@@ -69,6 +52,35 @@ class _FastAsyncSleep:
 
 _TMP_DIR = "tests/_tmp"
 _next_dir = 0
+
+
+def _sweep_stale_tmp_dirs(prefix: str) -> None:
+    # Sweeps pre-existing <prefix>* scratch dirs left behind by an earlier scripts/test.sh run on
+    # this machine - _next_dir always restarts at 0 per process, so without this a later run
+    # silently reuses an earlier run's real, persisted config_*.cfg files instead of a genuinely
+    # fresh directory. See tests/test_sensortask_wozi.py's own _sweep_stale_tmp_dirs() for the full
+    # root-cause writeup (this exact _tmp_cfg_dir() shape is copy-pasted across every test file with
+    # its own _TMP_DIR/_next_dir pair - same fix applied uniformly to each).
+    try:
+        entries = os.listdir(_TMP_DIR)
+    except OSError:
+        return  # tests/_tmp itself doesn't exist yet - nothing to clean
+    for entry in entries:
+        if not entry.startswith(prefix):
+            continue
+        dir_path = _TMP_DIR + "/" + entry
+        try:
+            for filename in os.listdir(dir_path):
+                try:
+                    os.remove(dir_path + "/" + filename)
+                except OSError:
+                    pass
+            os.rmdir(dir_path)
+        except OSError:
+            pass
+
+
+_sweep_stale_tmp_dirs("notify_sgp40_")
 
 
 def _remove_any(path: str) -> None:
@@ -120,13 +132,13 @@ async def _comp_data() -> "list[float | None]":
 
 def make_sgp_reader() -> "tuple[SGP40_Reader, Any]":
     i2c = I2C(1, scl_pin=19, sda_pin=18, frequency=50000)
-    reader = SGP40_Reader(i2c, _comp_data, max_i2c_err=2, cfg_path=_tmp_cfg_dir())
+    reader = SGP40_Reader(i2c, _comp_data, max_module_error=2, cfg_path=_tmp_cfg_dir())
     run(reader.pr.setup())
     return reader, reader.sgp.i2c_sgp40.i2c_device.i2c._i2c
 
 
 async def voc_value_callback(sgp_reader: SGP40_Reader) -> "int | float | None":
-    # Verbatim mirror of improved-quality/sensortask-wozi.py's own voc_value_callback() body.
+    # Verbatim mirror of src/sensortask_wozi.py's own voc_value_callback() body.
     sgp_data = await sgp_reader.get_data()
     if sgp_data is None or sgp_data.VOC is None:
         return None

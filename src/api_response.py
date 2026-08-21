@@ -1,11 +1,12 @@
-"""Generalized REST response envelope + setter-dispatch orchestration for the Microdot layer -
-the replacement for improved-quality/api_helpers.py's ad hoc per-endpoint pipeline. Every response
-keeps the legacy wire shape ({"res": "OK"/"ERR", "code": int, "descr": str, "result": ...}). Two
-independent pieces: make_response() is a pure envelope/catalog primitive (no I/O, can't raise);
-handle_set_cmd() orchestrates one SensorReaderConfig's _set_dict_cfg() plus an optional post-write
-hook, with its own try/except as defense-in-depth on top of Microdot's blanket per-request catch
-(see SPECIFICATION.md Part A.5).
+"""REST response envelope + setter-dispatch orchestration for the Microdot layer -
+replaces the old, now-deleted improved-quality/api_helpers.py's ad hoc per-endpoint pipeline.
 """
+# Wire shape: {"res": "OK"/"ERR", "code": int, "descr": str, "result": ...}. make_response() is a
+# pure envelope/catalog primitive (no I/O, can't raise); handle_set_cmd() orchestrates one
+# SensorReaderConfig's _set_dict_cfg() plus an optional post-write hook, with its own try/except as
+# defense-in-depth on top of Microdot's blanket per-request catch (see SPECIFICATION.md Part A.5).
+
+from micropython import const
 
 try:
     from typing import TYPE_CHECKING
@@ -26,6 +27,15 @@ if TYPE_CHECKING:
         # (SPECIFICATION.md Part C.10's typing convention).
         @property
         def json(self) -> "Any": ...
+
+# handle_set_cmd()'s own defense-in-depth errno, always logged onto whatever caller-supplied
+# SensorReaderConfig's own self.pr this is called with (see SPECIFICATION.md Part C.7) - never a
+# small number: base_classes.py already reserves errno=1-9 on every such instance (actively used by
+# _error_check(), which every real caller's own read/monitor loop calls), and every individual
+# driver's own numbering only starts at 10+ within its own, much lower range (BMP3XX up to 21, WIFI
+# up to 18, NTP up to 20, NOTIFY up to 13). A fixed, deliberately out-of-range sentinel here is the
+# only choice that can't collide with any of them regardless of which reader this ends up logging to.
+_ERRNO_UNHANDLED_DISPATCH = const(99)
 
 # Standard code -> default message catalog. A caller can override any standard code's text (pass
 # descr=...) or use an entirely different code with its own text (any code not listed here) -
@@ -95,5 +105,5 @@ async def handle_set_cmd(
         # Defense-in-depth: reader._set_dict_cfg() already catches its own internal failure modes,
         # so what reaches here is almost always a caller-supplied post_fct/post_asy_fct raising -
         # produce a precise, on-brand reply rather than relying solely on Microdot's blanket catch.
-        await reader.pr.err_s("Unhandled error in setter dispatch:", e, errno=1)
+        await reader.pr.err_s("Unhandled error in setter dispatch:", e, errno=_ERRNO_UNHANDLED_DISPATCH)
         return make_response(100)

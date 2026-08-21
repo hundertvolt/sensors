@@ -1,8 +1,6 @@
 """Leveled console logging (PrintLog), a bounded in-memory error/warning history (PrintLogHistory),
-and its optional FRAM-backed persistence (PrintLogHistoryStore), surviving a reboot. Every method
-returns a well-defined value, never raises - PrintLogHistoryStore's FRAM calls are wrapped broadly,
-matching asy_fram_manager.py's own contract plus defense-in-depth against the _FramManager/
-_FramChunk Protocol below.
+and its optional FRAM-backed persistence (PrintLogHistoryStore), surviving a reboot.
+Every method returns a well-defined value, never raises - PrintLogHistoryStore's FRAM calls are wrapped broadly, matching asy_fram_manager.py's own contract plus defense-in-depth against the _FramManager/_FramChunk Protocol below.
 """
 
 import struct

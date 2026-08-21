@@ -405,27 +405,27 @@ def test_lockedvalue_roundtrip_inf_and_nan() -> None:
 
 
 def test_sensorreader_uses_in_memory_logging_when_fram_is_none() -> None:
-    reader = SensorReader(Meas(20.0, 50), max_i2c_err=3)
+    reader = SensorReader(Meas(20.0, 50), max_module_error=3)
     assert isinstance(reader.pr, PrintLogHistory)
 
 
 def test_sensorreader_debug_level_is_forwarded_to_the_logger() -> None:
-    reader = SensorReader(Meas(20.0, 50), max_i2c_err=3, debug=PrintLog.level_err())
+    reader = SensorReader(Meas(20.0, 50), max_module_error=3, debug=PrintLog.level_err())
     assert reader.pr.get_level() == PrintLog.level_err()
 
 
 def test_sensorreader_debug_none_leaves_logger_at_off() -> None:
-    reader = SensorReader(Meas(20.0, 50), max_i2c_err=3, debug=None)
+    reader = SensorReader(Meas(20.0, 50), max_module_error=3, debug=None)
     assert reader.pr.get_level() == PrintLog.level_off()
 
 
 def test_sensorreader_name_is_baked_into_a_freshly_constructed_logger() -> None:
-    reader = SensorReader(Meas(20.0, 50), max_i2c_err=3, name="TESTNAME")
+    reader = SensorReader(Meas(20.0, 50), max_module_error=3, name="TESTNAME")
     assert reader.pr.name == "TESTNAME"
 
 
 def test_sensorreader_name_defaults_to_empty_string() -> None:
-    reader = SensorReader(Meas(20.0, 50), max_i2c_err=3)
+    reader = SensorReader(Meas(20.0, 50), max_module_error=3)
     assert reader.pr.name == ""
 
 
@@ -433,7 +433,7 @@ def test_sensorreader_reuses_a_given_logger_instead_of_constructing_a_fresh_one(
     # Reach-through mechanism for a directly-bound sibling object that should share one
     # identity/history instead of each getting its own separate PrintLogHistory.
     shared = PrintLogHistory(name="SHARED")
-    reader = SensorReader(Meas(20.0, 50), max_i2c_err=3, logger=shared)
+    reader = SensorReader(Meas(20.0, 50), max_module_error=3, logger=shared)
     assert reader.pr is shared
 
 
@@ -442,22 +442,22 @@ def test_sensorreader_logger_reuse_takes_priority_over_fram_backed_construction(
     # reused logger wins over freshly constructing a PrintLogHistoryStore.
     manager, _chip = make_fram_manager()
     shared = PrintLogHistory(name="SHARED2")
-    reader = SensorReader(Meas(20.0, 50), max_i2c_err=3, fram=manager, logger=shared)
+    reader = SensorReader(Meas(20.0, 50), max_module_error=3, fram=manager, logger=shared)
     assert reader.pr is shared
     assert not isinstance(reader.pr, PrintLogHistoryStore)
 
 
 def test_sensorreader_history_length_zero_is_forwarded_and_never_raises() -> None:
-    reader = SensorReader(Meas(None, 50), max_i2c_err=3, history_length=0)
+    reader = SensorReader(Meas(None, 50), max_module_error=3, history_length=0)
     assert run(reader._error_check(Meas(None, 50))) is True
     assert reader.pr.err_count == 1
     assert list(reader.pr.history) == []  # nothing to hold, but the count still tracked
 
 
-def test_error_check_max_i2c_err_zero_gives_up_on_first_failure() -> None:
+def test_error_check_max_module_error_zero_gives_up_on_first_failure() -> None:
     # Zero tolerance is a legitimate, if unusual, config value - not a caller mistake to guard
-    # against like a negative max_i2c_err would be (see BACKLOG.md's structural-pass note).
-    reader = SensorReader(Meas(None, 50), max_i2c_err=0)
+    # against like a negative max_module_error would be (see BACKLOG.md's structural-pass note).
+    reader = SensorReader(Meas(None, 50), max_module_error=0)
     assert run(reader._error_check(Meas(None, 50))) is False
 
 
@@ -468,20 +468,20 @@ def test_get_dict_cfg_duplicate_schema_names_collapse_to_one_key() -> None:
         ("SampleInterv", "int", 2, 1, 3600, None),
         ("SampleInterv", "int", 9, 1, 3600, None),
     )
-    reader = SensorReader(Meas(20.0, 50), max_i2c_err=3)
+    reader = SensorReader(Meas(20.0, 50), max_module_error=3)
     result = run(reader._get_dict_cfg("Sensor", dup_schema))
     assert result == {"Sensor": {"SampleInterv": None}}
 
 
 def test_sensorreader_meas_data_roundtrip() -> None:
-    reader = SensorReader(Meas(20.0, 50), max_i2c_err=3)
+    reader = SensorReader(Meas(20.0, 50), max_module_error=3)
     assert run(reader._get_meas_data()) == Meas(20.0, 50)
     run(reader._set_meas_data(Meas(21.0, 60)))
     assert run(reader._get_meas_data()) == Meas(21.0, 60)
 
 
 def test_sensorreader_reset_error_counter_clears_history() -> None:
-    reader = SensorReader(Meas(20.0, 50), max_i2c_err=3)
+    reader = SensorReader(Meas(20.0, 50), max_module_error=3)
     run(reader.pr.setup())
     run(reader.pr.err_s("boom", errno=1))
     assert reader.pr.err_count == 1
@@ -493,7 +493,7 @@ def test_sensorreader_reset_error_counter_also_clears_the_consecutive_failure_st
     # reset_error_counter() must reset both counters this file tracks, not just pr's persisted
     # history/err_count: a caller resetting "the" error counter after a task reset shouldn't have
     # the next run start partway toward giving up again via the untouched internal streak.
-    reader = SensorReader(Meas(None, 50), max_i2c_err=5)
+    reader = SensorReader(Meas(None, 50), max_module_error=5)
     run(reader._error_check(Meas(None, 50)))
     run(reader._error_check(Meas(None, 50)))
     assert reader._err_cnt_internal == 2
@@ -502,33 +502,33 @@ def test_sensorreader_reset_error_counter_also_clears_the_consecutive_failure_st
 
 
 def test_error_check_no_failure_keeps_going_and_decays_counter() -> None:
-    reader = SensorReader(Meas(20.0, 50), max_i2c_err=2)
+    reader = SensorReader(Meas(20.0, 50), max_module_error=2)
     reader._err_cnt_internal = 1
     assert run(reader._error_check(Meas(20.0, 50))) is True
     assert reader._err_cnt_internal == 0  # decayed back down since this call had no failure
 
 
 def test_error_check_failure_increments_until_giving_up() -> None:
-    reader = SensorReader(Meas(None, 50), max_i2c_err=2)
+    reader = SensorReader(Meas(None, 50), max_module_error=2)
     assert run(reader._error_check(Meas(None, 50))) is True  # 1 <= max
     assert run(reader._error_check(Meas(None, 50))) is True  # 2 <= max
     assert run(reader._error_check(Meas(None, 50))) is False  # 3 > max - give up
 
 
 def test_error_check_condition_false_ignores_none_results() -> None:
-    reader = SensorReader(Meas(None, 50), max_i2c_err=0)
+    reader = SensorReader(Meas(None, 50), max_module_error=0)
     assert run(reader._error_check(Meas(None, 50), condition=False)) is True
     assert reader._err_cnt_internal == 0
 
 
 def test_get_dict_cfg_default_returns_all_none() -> None:
-    reader = SensorReader(Meas(20.0, 50), max_i2c_err=3)
+    reader = SensorReader(Meas(20.0, 50), max_module_error=3)
     result = run(reader._get_dict_cfg("Sensor", _VAL_SI))
     assert result == {"Sensor": {"SampleInterv": None}}
 
 
 def test_get_dict_cfg_merges_callback_result() -> None:
-    reader = SensorReader(Meas(20.0, 50), max_i2c_err=3)
+    reader = SensorReader(Meas(20.0, 50), max_module_error=3)
 
     async def callback() -> "dict[str, int | float | str | None]":
         return {"SampleInterv": 5}
@@ -538,7 +538,7 @@ def test_get_dict_cfg_merges_callback_result() -> None:
 
 
 def test_get_dict_cfg_callback_exception_is_caught() -> None:
-    reader = SensorReader(Meas(20.0, 50), max_i2c_err=3)
+    reader = SensorReader(Meas(20.0, 50), max_module_error=3)
 
     async def bad_callback() -> "dict[str, int | float | str | None]":
         raise RuntimeError("sensor read failed")
@@ -548,7 +548,7 @@ def test_get_dict_cfg_callback_exception_is_caught() -> None:
 
 
 def test_get_dict_cfg_callback_extra_key_is_still_merged() -> None:
-    reader = SensorReader(Meas(20.0, 50), max_i2c_err=3)
+    reader = SensorReader(Meas(20.0, 50), max_module_error=3)
 
     async def callback() -> "dict[str, int | float | str | None]":
         return {"SampleInterv": 5, "Unexpected": 1}
@@ -566,7 +566,7 @@ def test_get_dict_cfg_mgr_cfg_extra_key_is_still_merged_and_warned() -> None:
         async def _get_mgr_cfg(self, cfg: "list[str]") -> "dict[str, int | float | str | None] | None":
             return {"SampleInterv": 5, "Unexpected": 1}
 
-    reader = ExtraKeyMgrCfgReader(Meas(20.0, 50), max_i2c_err=3)
+    reader = ExtraKeyMgrCfgReader(Meas(20.0, 50), max_module_error=3)
     result = run(reader._get_dict_cfg("Sensor", _VAL_SI))
     assert result == {"Sensor": {"SampleInterv": 5, "Unexpected": 1}}
     assert reader.pr.err_count == 1
@@ -575,7 +575,7 @@ def test_get_dict_cfg_mgr_cfg_extra_key_is_still_merged_and_warned() -> None:
 def test_get_dict_cfg_mgr_cfg_expected_keys_only_do_not_warn() -> None:
     # Negative case for the above: an override that only ever returns requested keys (the real
     # SensorReaderConfig._get_mgr_cfg's actual shape) must not trip the new warning path.
-    reader = SensorReader(Meas(20.0, 50), max_i2c_err=3)
+    reader = SensorReader(Meas(20.0, 50), max_module_error=3)
     result = run(reader._get_dict_cfg("Sensor", _VAL_SI))
     assert result == {"Sensor": {"SampleInterv": None}}
     assert reader.pr.err_count == 0
@@ -589,7 +589,7 @@ def test_get_dict_cfg_mgr_cfg_update_exception_is_caught() -> None:
         async def _get_mgr_cfg(self, cfg: "list[str]") -> "dict[str, int | float | str | None] | None":
             return 42  # type: ignore[return-value]
 
-    reader = BadMgrCfgReader(Meas(20.0, 50), max_i2c_err=3)
+    reader = BadMgrCfgReader(Meas(20.0, 50), max_module_error=3)
     result = run(reader._get_dict_cfg("Sensor", _VAL_SI))
     assert result == {"Sensor": {"SampleInterv": None}}  # update(42) raised TypeError - falls back to all-None
 
@@ -603,14 +603,14 @@ def test_get_dict_cfg_mgr_cfg_update_exception_is_caught() -> None:
 
 def test_sensorreader_uses_fram_backed_logging_when_fram_is_given() -> None:
     manager, _chip = make_fram_manager()
-    reader = SensorReader(Meas(20.0, 50), max_i2c_err=3, fram=manager)
+    reader = SensorReader(Meas(20.0, 50), max_module_error=3, fram=manager)
     assert isinstance(reader.pr, PrintLogHistoryStore)
 
 
 def test_sensorreader_fram_backed_error_check_persists_and_survives_reboot() -> None:
     manager, chip = make_fram_manager()
     run(manager.setup())
-    reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=manager)
+    reader = SensorReader(Meas(None, 50), max_module_error=5, fram=manager)
     run(reader.pr.setup())
     assert run(reader._error_check(Meas(None, 50))) is True
     assert run(reader._error_check(Meas(None, 50))) is True
@@ -621,7 +621,7 @@ def test_sensorreader_fram_backed_error_check_persists_and_survives_reboot() -> 
     manager2, _chip2 = make_fram_manager()
     manager2.fram._spidev.spi._spi = chip
     run(manager2.setup())
-    rebooted = SensorReader(Meas(None, 50), max_i2c_err=5, fram=manager2)
+    rebooted = SensorReader(Meas(None, 50), max_module_error=5, fram=manager2)
     run(rebooted.pr.setup())
     assert rebooted.pr.err_count == 2
 
@@ -632,7 +632,7 @@ def test_sensorreader_fram_backed_error_check_without_setup_never_raises() -> No
     # sync. Skipping setup() must degrade cleanly (in-memory count/history still update per
     # print_log.py's own contract; only the FRAM write is skipped), never raise.
     manager, _chip = make_fram_manager()
-    reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=manager)
+    reader = SensorReader(Meas(None, 50), max_module_error=5, fram=manager)
     assert reader.pr.initialized is False
     assert run(reader._error_check(Meas(None, 50))) is True
     assert reader.pr.err_count == 1
@@ -640,7 +640,7 @@ def test_sensorreader_fram_backed_error_check_without_setup_never_raises() -> No
 
 def test_sensorreader_fram_allocation_failure_still_logs_in_memory_without_raising() -> None:
     manager, _chip = make_fram_manager(max_size=1)  # too small for any real chunk
-    reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=manager)
+    reader = SensorReader(Meas(None, 50), max_module_error=5, fram=manager)
     assert isinstance(reader.pr, PrintLogHistoryStore)
     assert reader.pr.fram is None
     run(reader.pr.setup())  # no-op: nothing allocated, must not raise
@@ -663,7 +663,7 @@ def test_sensorreader_fram_raise_on_get_chunk_never_raises_at_construction() -> 
     # audit) - this proves SensorReader/PrintLogHistoryStore's defensive catch still holds
     # against the general _FramManager Protocol contract, not just this one well-behaved class.
     fake_manager = _RaisingFramManager(None, raise_on_get_chunk=True)
-    reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=fake_manager)  # type: ignore[arg-type]
+    reader = SensorReader(Meas(None, 50), max_module_error=5, fram=fake_manager)  # type: ignore[arg-type]
     assert isinstance(reader.pr, PrintLogHistoryStore)
     assert reader.pr.fram is None
     assert run(reader._error_check(Meas(None, 50))) is True
@@ -679,7 +679,7 @@ def test_sensorreader_fram_write_into_raising_is_caught_during_error_check() -> 
     # history_length=4 matches _RaisingFramChunk.get_buffer()'s hardcoded 6-byte buffer (2-byte
     # header + 4 history bytes) - a mismatch here makes struct.pack_into/unpack_from fail on
     # buffer size instead of exercising the intended raise_on_write path.
-    reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=fake_manager, history_length=4)  # type: ignore[arg-type]
+    reader = SensorReader(Meas(None, 50), max_module_error=5, fram=fake_manager, history_length=4)  # type: ignore[arg-type]
     assert isinstance(reader.pr, PrintLogHistoryStore)
     run(reader.pr.setup())
     assert run(reader._error_check(Meas(None, 50))) is True
@@ -691,7 +691,7 @@ def test_sensorreader_fram_write_returns_false_is_surfaced_during_error_check() 
     # chunk attempts fails cleanly.
     manager, chip = make_fram_manager()
     run(manager.setup())
-    reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=manager)
+    reader = SensorReader(Meas(None, 50), max_module_error=5, fram=manager)
     run(reader.pr.setup())
     chip.drop_wren = True
     assert run(reader._error_check(Meas(None, 50))) is True
@@ -701,7 +701,7 @@ def test_sensorreader_fram_write_returns_false_is_surfaced_during_error_check() 
 def test_sensorreader_fram_read_into_raising_falls_back_to_write_during_setup() -> None:
     chunk = _RaisingFramChunk(raise_on_read=True)
     fake_manager = _RaisingFramManager(chunk)
-    reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=fake_manager, history_length=4)  # type: ignore[arg-type]
+    reader = SensorReader(Meas(None, 50), max_module_error=5, fram=fake_manager, history_length=4)  # type: ignore[arg-type]
     run(reader.pr.setup())  # first-time setup: _read() fails, falls back to _write() succeeding
     assert reader.pr.initialized is True
 
@@ -709,7 +709,7 @@ def test_sensorreader_fram_read_into_raising_falls_back_to_write_during_setup() 
 def test_sensorreader_fram_setup_fails_cleanly_when_both_read_and_write_fail() -> None:
     manager, chip = make_fram_manager()
     run(manager.setup())
-    reader = SensorReader(Meas(None, 50), max_i2c_err=5, fram=manager)
+    reader = SensorReader(Meas(None, 50), max_module_error=5, fram=manager)
     # Nothing written yet, so _read() naturally fails (chunk reads back as uninitialized); WREN
     # never latching makes the fallback _write() of defaults fail too.
     chip.drop_wren = True

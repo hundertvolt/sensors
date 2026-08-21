@@ -277,10 +277,11 @@ def test_failed_reinit_leaves_the_bus_deinitialized_not_reverted() -> None:
 def test_deinit_calls_real_hardware_deinit_and_clears_poller() -> None:
     uart = make_uart()
     fk = fake(uart)
-    uart.deinit()
+    ok = uart.deinit()
     assert fk.deinit_called is True
     assert uart._uart is None
     assert uart.poller is None
+    assert ok is True
 
 
 class _RaisingUnregisterPoller:
@@ -291,9 +292,13 @@ class _RaisingUnregisterPoller:
 def test_deinit_swallows_poller_unregister_failure() -> None:
     uart = make_uart()
     uart.poller = _RaisingUnregisterPoller()  # type: ignore[assignment]
-    uart.deinit()  # must not raise despite the poller's own unregister() failing
+    ok = uart.deinit()  # must not raise despite the poller's own unregister() failing
     assert uart._uart is None
     assert uart.poller is None
+    # Step 6 (silent-failure-masking finding): a failed unregister() must be reported via the
+    # return value, not just silently swallowed - see asy_udp_socket.py's disconnect() for the
+    # identical pattern applied to its own logger-less class.
+    assert ok is False
 
 
 def test_double_deinit_is_idempotent() -> None:
@@ -1079,7 +1084,7 @@ def test_read_until_complete_returns_none_on_crc_check_memoryerror() -> None:
 # methods - there's no substitutable object to wrap/monkeypatch the way _MemoryErrorCRC does above,
 # and bytearray.__iadd__ has no Python-level hook to force MemoryError deterministically without
 # either a constrained interpreter heap (not controllable from within a running test - see
-# tests/README.md) or genuinely exhausting memory (flaky/unsafe for CI). Same category of
+# SPECIFICATION.md Part E) or genuinely exhausting memory (flaky/unsafe for CI). Same category of
 # documented, deliberate testing gap as test_print_log.py's own
 # test_history_length_huge_is_capped_instead_of_crashing_the_interpreter comment. The surrounding
 # behavior is still covered: test_read_until_complete_assembles_across_multiple_rounds and

@@ -1,4 +1,5 @@
 import asyncio
+import os
 
 import machine
 from _fram_chip_fake import FakeMB85RS64V
@@ -551,7 +552,7 @@ def test_reboot_system_without_fram_arms_reset_timer_and_fires_machine_reset() -
     machine.reset_count = 0
     svc.reboot_system()
     assert svc.reset_timer.mode == Timer.ONE_SHOT
-    assert svc.reset_timer.period == 4 * 1000  # _RESET_DELAY: micropython.const(), compiled away, hardcoded per tests/README.md
+    assert svc.reset_timer.period == 4 * 1000  # _RESET_DELAY: micropython.const(), compiled away, hardcoded per SPECIFICATION.md Part E.5.1
     assert machine.reset_count == 0  # not yet fired - a real Timer would still be counting down
     svc.reset_timer.trigger()
     assert machine.reset_count == 1
@@ -998,7 +999,7 @@ def test_start_and_check_tasks_restarts_a_dead_task_and_logs_a_warning() -> None
 def test_start_and_check_tasks_gives_up_and_reboots_past_the_failure_budget() -> None:
     # Reaching _TASK_FAIL_MAX (300, incrementing by 100 per restart) takes several real
     # _TASK_CHECK_TIME=2s cycles - both consts are micropython.const() and compiled away (see
-    # tests/README.md), so they can't be monkeypatched, only asyncio.sleep itself can.
+    # SPECIFICATION.md Part E.5.1), so they can't be monkeypatched, only asyncio.sleep itself can.
     svc = make_service()
     call_count = [0]
 
@@ -1013,6 +1014,180 @@ def test_start_and_check_tasks_gives_up_and_reboots_past_the_failure_budget() ->
     assert call_count[0] >= 4  # enough restart attempts to cross _TASK_FAIL_MAX (100 per attempt)
     svc.reset_timer.trigger()
     assert machine.reset_count == 1
+
+
+# ---------------------------------------------------------------------------
+# System-settings store (config_SYSTEM.cfg) - general, module-independent persisted settings,
+# DebugLevel first (see system_service.py's own module docstring for the intended future growth:
+# timing/timezone, rsyslog, ...). Own isolated cfg_path per test, same reasoning as
+# test_ntp_fram_system_integration.py's own _tmp_cfg_dir(): setup()/set_debug_level() are real
+# file I/O and must never touch the repo's own working directory.
+# ---------------------------------------------------------------------------
+
+_TMP_DIR = "tests/_tmp"
+_next_dir = 0
+
+
+def _sweep_stale_tmp_dirs(prefix: str) -> None:
+    # Sweeps pre-existing <prefix>* scratch dirs left behind by an earlier scripts/test.sh run on
+    # this machine - _next_dir always restarts at 0 per process, so without this a later run
+    # silently reuses an earlier run's real, persisted config_*.cfg files instead of a genuinely
+    # fresh directory. See tests/test_sensortask_wozi.py's own _sweep_stale_tmp_dirs() for the full
+    # root-cause writeup (this exact _tmp_cfg_dir() shape is copy-pasted across every test file with
+    # its own _TMP_DIR/_next_dir pair - same fix applied uniformly to each).
+    try:
+        entries = os.listdir(_TMP_DIR)
+    except OSError:
+        return  # tests/_tmp itself doesn't exist yet - nothing to clean
+    for entry in entries:
+        if not entry.startswith(prefix):
+            continue
+        dir_path = _TMP_DIR + "/" + entry
+        try:
+            for filename in os.listdir(dir_path):
+                try:
+                    os.remove(dir_path + "/" + filename)
+                except OSError:
+                    pass
+            os.rmdir(dir_path)
+        except OSError:
+            pass
+
+
+_sweep_stale_tmp_dirs("sysservice_")
+
+
+def _tmp_cfg_dir() -> str:
+    global _next_dir
+    try:
+        os.mkdir(_TMP_DIR)
+    except OSError:
+        pass  # already exists
+    _next_dir += 1
+    path = _TMP_DIR + "/sysservice_" + str(_next_dir)
+    try:
+        os.mkdir(path)
+    except OSError:
+        pass  # already exists from a stale previous run
+    return path + "/"
+
+
+def test_setup_resolves_cfgmgr_and_leaves_debug_level_at_the_default_on_first_boot() -> None:
+    svc = make_service(cfg_path=_tmp_cfg_dir())
+    run(svc.setup())
+    assert svc.cfgmgr.valid is True
+    assert svc.get_debug_level() == 0  # default, no level setters registered either
+
+
+def test_setup_pushes_the_persisted_value_out_through_every_registered_setter() -> None:
+    calls: list[int] = []
+    cfg_path = _tmp_cfg_dir()
+    svc = make_service(cfg_path=cfg_path)
+    svc.set_level_setters([calls.append])
+    run(svc.setup())
+    # Nothing persisted yet - first boot writes and uses the schema default (0) - but the registry
+    # still gets called once, even for the unchanged default.
+    assert calls == [0]
+    assert svc.get_debug_level() == 0
+
+
+def test_set_debug_level_persists_and_calls_every_registered_setter() -> None:
+    calls_a: list[int] = []
+    calls_b: list[int] = []
+    svc = make_service(cfg_path=_tmp_cfg_dir())
+    svc.set_level_setters([calls_a.append, calls_b.append])
+    run(svc.setup())
+    ok = run(svc.set_debug_level(PrintLog.level_info()))
+    assert ok is True
+    assert calls_a == [0, PrintLog.level_info()]  # once from setup()'s own push, once from this call
+    assert calls_b == [0, PrintLog.level_info()]
+    assert svc.get_debug_level() == PrintLog.level_info()
+
+
+def test_set_debug_level_out_of_range_is_rejected_and_never_reaches_the_registry() -> None:
+    calls: list[int] = []
+    svc = make_service(cfg_path=_tmp_cfg_dir())
+    svc.set_level_setters([calls.append])
+    run(svc.setup())
+    calls.clear()  # drop setup()'s own push of the default, isolate this call's own effect
+    ok = run(svc.set_debug_level(99))  # outside the schema's 0-5 range
+    assert ok is False
+    assert calls == []  # a rejected write never reaches the registry
+    assert svc.get_debug_level() == 0  # unchanged
+
+
+def test_set_debug_level_before_setup_fails_cleanly_not_raise() -> None:
+    svc = make_service(cfg_path=_tmp_cfg_dir())
+    ok = run(svc.set_debug_level(PrintLog.level_info()))
+    assert ok is False  # cfgmgr.valid is False before setup() - matches ConfigManager's own contract
+
+
+def test_set_debug_level_without_any_registered_setters_still_persists() -> None:
+    # No set_level_setters() call at all (the default, empty registry) degrades gracefully -
+    # persistence and get_debug_level() still work, matching every other optional dependency on
+    # this class (watchdog, fram) - _apply_level() on an empty list is simply a no-op loop.
+    cfg_path = _tmp_cfg_dir()
+    svc = make_service(cfg_path=cfg_path)
+    run(svc.setup())
+    ok = run(svc.set_debug_level(PrintLog.level_warn()))
+    assert ok is True
+    assert svc.get_debug_level() == PrintLog.level_warn()
+
+
+def test_one_bad_setter_does_not_stop_the_rest_of_the_registry() -> None:
+    # Matches _timer_sequencer()'s/_start_task()'s own established defense: a driver/caller-supplied
+    # callback could misbehave, and one failure must not take down the others.
+    calls: list[int] = []
+
+    def _raising_setter(value: int) -> None:
+        raise RuntimeError("simulated bad setter")
+
+    svc = make_service(cfg_path=_tmp_cfg_dir())
+    svc.set_level_setters([calls.append, _raising_setter, calls.append])
+    run(svc.setup())
+    ok = run(svc.set_debug_level(PrintLog.level_warn()))
+    assert ok is True  # persistence itself is unaffected by a registry-side failure
+    assert calls == [0, 0, PrintLog.level_warn(), PrintLog.level_warn()]  # both good setters still ran, both times
+
+
+def test_debug_level_survives_a_simulated_reboot() -> None:
+    cfg_path = _tmp_cfg_dir()
+    svc = make_service(cfg_path=cfg_path)
+    run(svc.setup())
+    run(svc.set_debug_level(PrintLog.level_event()))
+
+    svc_after_reboot = make_service(cfg_path=cfg_path)
+    run(svc_after_reboot.setup())
+    assert svc_after_reboot.get_debug_level() == PrintLog.level_event()
+
+
+def test_get_cfg_schema_returns_the_debug_level_field() -> None:
+    svc = make_service()
+    schema = svc.get_cfg_schema()
+    assert schema[0][0] == "DebugLevel"
+
+
+def test_set_level_setters_replaces_any_previously_registered_list() -> None:
+    first: list[int] = []
+    second: list[int] = []
+    svc = make_service(cfg_path=_tmp_cfg_dir())
+    svc.set_level_setters([first.append])
+    svc.set_level_setters([second.append])  # replaces, does not accumulate
+    run(svc.setup())
+    assert first == []
+    assert second == [0]
+
+
+def test_pr_logger_reflects_the_live_debug_level_via_the_registry() -> None:
+    # End-to-end: registering self.pr.set_level itself (exactly what sensortask_wozi.py's
+    # _collect_level_setters() does for every module, including sysfunct's own) - a real logger's
+    # own log methods actually change behavior, not just an internal bookkeeping value.
+    cfg_path = _tmp_cfg_dir()
+    svc = make_service(cfg_path=cfg_path)
+    svc.set_level_setters([svc.pr.set_level])
+    run(svc.setup())
+    run(svc.set_debug_level(PrintLog.level_err()))
+    assert svc.pr.get_level() == PrintLog.level_err()
 
 
 if __name__ == "__main__":

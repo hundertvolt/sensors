@@ -1,9 +1,10 @@
 """Async wrapper around machine.SPI: SPI (bus primitives) plus SPIDevice (per-device, lock-scoped
-CS-pin wrapper). Sole consumer: asy_fram_driver.py's FRAM_SPI. Unlike I2C, real RP2040 SPI transfers
-have no ACK/NAK concept once the bus is constructed, so write()/readinto() never raise;
-write_readinto() is the one exception (ValueError on mismatched buffer lengths, caught and turned
-into None). One-time setup (__init__/init(), configure()) is exempt and may raise.
+CS-pin wrapper). Sole consumer: asy_fram_driver.py's FRAM_SPI.
 """
+# Unlike I2C, real RP2040 SPI transfers have no ACK/NAK concept once the bus is constructed, so
+# write()/readinto() never raise; write_readinto() is the one exception (ValueError on mismatched
+# buffer lengths, caught and turned into None). One-time setup (__init__/init(), configure()) is
+# exempt and may raise.
 
 import asyncio
 

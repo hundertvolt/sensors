@@ -1,7 +1,10 @@
+# SPDX-FileCopyrightText: 2018 Carter Nelson for Adafruit Industries (original adafruit_bmp3xx,
+# CircuitPython) - restructured/rewritten for asyncio + MicroPython, see THIRD_PARTY_LICENSES.md.
+# SPDX-License-Identifier: MIT
+
 """Async I2C driver for the Bosch BMP384/BMP388/BMP390 (Sparkfun breakout, forced-mode reads only).
-BMP3XX_I2C is the protocol layer; BMP3xx_Reader is the asyncio task/config layer (see
-SPECIFICATION.md Part C). Verified against BST-BMP388-DS001/BST-BMP384-DS003 (datasheets/bmp3xx/) and the
-official BMP3_SensorAPI reference driver.
+BMP3XX_I2C is the protocol layer; BMP3xx_Reader is the asyncio task/config layer (see SPECIFICATION.md Part C).
+Verified against BST-BMP388-DS001/BST-BMP384-DS003 (datasheets/bmp3xx/) and the official BMP3_SensorAPI reference driver.
 """
 
 import asyncio
@@ -72,7 +75,10 @@ _VAL_SLO = const((("SeaLevelOffs", "float", 0.0, -1000.0, 5000.0, None),))
 _VAL_ATM = const((("MeanAtmTemp", "float", 15.0, -50.0, 50.0, None),))
 
 _NAME = const("BMP3XX")
+# Kept as a literal tuple inline (not `_FIELDS` below) because mypy's namedtuple plugin can only
+# infer field names from a literal at the call site, not through a variable indirection.
 BMP3XX = namedtuple("BMP3XX", ("Pres", "Temp", "SLPres", "TS"))
+_FIELDS = const(("Pres", "Temp", "SLPres", "TS"))  # kept in sync with BMP3XX's own fields above
 if TYPE_CHECKING:
     BMPResults = tuple[float | None, float | None, int | None]  # pressure, temperature, timestamp
 
@@ -83,7 +89,7 @@ class BMP3xx_Reader(SensorReaderConfig):
         i2c: I2C,
         address: int = 0x77,
         trigger_sec: int = 1,
-        max_i2c_err: int = 5,
+        max_module_error: int = 5,
         cfg_path: str = "",
         fram: "AsyFramManager | None" = None,
         history_length: int = 10,
@@ -91,7 +97,7 @@ class BMP3xx_Reader(SensorReaderConfig):
     ) -> None:
         super().__init__(
             BMP3XX(None, None, None, None),
-            max_i2c_err,
+            max_module_error,
             _NAME,
             _VAL_SI + _VAL_POV + _VAL_TOV + _VAL_FC + _VAL_PO + _VAL_TO + _VAL_SLO + _VAL_ATM,
             cfg_path=cfg_path,
@@ -121,12 +127,23 @@ class BMP3xx_Reader(SensorReaderConfig):
         self._get_callbacks[name_cfg(_VAL_FC)] = self.get_filter_coefficient
 
     async def _read_sensor_dict(self) -> dict[str, int | float | str | bool | None]:
-        ret: dict[str, int | float | str | bool | None] = {
-            name_cfg(_VAL_POV): await self.get_pressure_oversampling(),
-            name_cfg(_VAL_TOV): await self.get_temperature_oversampling(),
-            name_cfg(_VAL_FC): await self.get_filter_coefficient(),
+        # Single batched read (get_config_snapshot()), not three independent get_*() calls - closes
+        # the torn-read window BACKLOG.md flagged (a concurrent config write landing mid-batch used
+        # to be able to mix pre-/post-write values). Unlike the three independent get_*() wrappers
+        # this replaced, get_config_snapshot() can raise on a bus fault (BMP3XX_I2C's own "allowed
+        # to raise" layer) - caught here, not left to get_dict_cfg()'s own callback try/except,
+        # because that would skip the dict update entirely and leave these three fields at their
+        # persisted config-file defaults instead of None.
+        try:
+            pressure_oversampling, temperature_oversampling, filter_coefficient = await self.bmp.get_config_snapshot()
+        except Exception as e:
+            await self.pr.err_s("Error reading oversampling/filter config from sensor:", e, errno=22)
+            return {name_cfg(_VAL_POV): None, name_cfg(_VAL_TOV): None, name_cfg(_VAL_FC): None}
+        return {
+            name_cfg(_VAL_POV): pressure_oversampling,
+            name_cfg(_VAL_TOV): temperature_oversampling,
+            name_cfg(_VAL_FC): filter_coefficient,
         }
-        return ret  # only ever invoked as get_dict_cfg()'s callback, which already wraps this call in its own try/except
 
     async def _read_bmp(self) -> "BMPResults":
         timestamp: int | None = None
@@ -138,7 +155,7 @@ class BMP3xx_Reader(SensorReaderConfig):
             self.pr.all("read")
         except Exception as e:
             timestamp = pressure = temperature = None
-            await self.pr.err_s("Read failed:", e, errno=13)
+            await self.pr.err_s("Read failed:", e, errno=11)
         return pressure, temperature, timestamp
 
     async def _init_bmp(self) -> bool:
@@ -154,7 +171,7 @@ class BMP3xx_Reader(SensorReaderConfig):
 
         cfg_values = await self.cfgmgr.get_int_values(_VAL_SI + _VAL_POV + _VAL_TOV + _VAL_FC)
         if cfg_values is None or len(cfg_values) != 4:
-            await self.pr.err_s("Error reading config data!", errno=11)
+            await self.pr.err_s("Error reading config data!", errno=12)
             return False  # error
 
         # set_trigger_secs() never raises (logs errno=21, keeps the previous value) - a bad stored
@@ -165,7 +182,7 @@ class BMP3xx_Reader(SensorReaderConfig):
             await self.bmp.set_temperature_oversampling(cfg_values[2])  # BMPTempOvers
             await self.bmp.set_filter_coefficient(cfg_values[3])  # BMPFiltCoeff
         except Exception as e:
-            await self.pr.err_s("Error setting config data:", e, errno=12)
+            await self.pr.err_s("Error setting config data:", e, errno=13)
             return False  # error
         self.pr.one("initialized")
         return True
@@ -257,7 +274,7 @@ class BMP3xx_Reader(SensorReaderConfig):
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         data = await self.get_data()
-        return make_dict(data)
+        return make_dict(data, _FIELDS)
 
     async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         return await self._get_dict_cfg(
@@ -540,6 +557,27 @@ class BMP3XX_I2C:
         # See _get_osr_setting()'s own comment on why this needs an explicit int narrowing.
         result: int = _IIR_SETTINGS[iir]
         return result
+
+    async def get_config_snapshot(self) -> "tuple[int, int, int]":
+        # (PressOvers, TempOvers, FiltCoeff) - one device-session lock hold across all 3 bit-field
+        # reads, closing the torn-read window a concurrent set_*_oversampling()/set_filter_coefficient()
+        # call (also i2c_bmp3xx-locked) could otherwise land inside mid-batch (BACKLOG.md's
+        # BMP3xx_Reader.get_dict_cfg() torn-read entry). Same "allowed to raise" layer as every other
+        # BMP3XX_I2C method - a mid-batch fault fails the whole snapshot rather than a mix of fresh
+        # and stale fields.
+        async with self.i2c_bmp3xx as bmp3xx:  # device session
+            async with bmp3xx.i2c_device as i2c:  # bus session
+                osr_p = await i2c.get_bits(3, _REGISTER_OSR, 0)
+                osr_t = await i2c.get_bits(3, _REGISTER_OSR, 3)
+                iir = await i2c.get_bits(3, _REGISTER_CONFIG, 1)
+        if osr_p is None or osr_t is None or iir is None:
+            raise OSError("failed to read oversampling/filter bit-fields")
+        if osr_p >= len(_OSR_SETTINGS) or osr_t >= len(_OSR_SETTINGS):
+            raise OSError("OSR bit-field read back reserved encoding")
+        pressure_oversampling: int = _OSR_SETTINGS[osr_p]
+        temperature_oversampling: int = _OSR_SETTINGS[osr_t]
+        filter_coefficient: int = _IIR_SETTINGS[iir]
+        return pressure_oversampling, temperature_oversampling, filter_coefficient
 
     async def set_pressure_oversampling(self, oversample: int) -> None:
         await self._set_osr_setting(0, oversample)

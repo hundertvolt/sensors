@@ -31,6 +31,35 @@ _TMP_DIR = "tests/_tmp"
 _next_dir = 0
 
 
+def _sweep_stale_tmp_dirs(prefix: str) -> None:
+    # Sweeps pre-existing <prefix>* scratch dirs left behind by an earlier scripts/test.sh run on
+    # this machine - _next_dir always restarts at 0 per process, so without this a later run
+    # silently reuses an earlier run's real, persisted config_*.cfg files instead of a genuinely
+    # fresh directory. See tests/test_sensortask_wozi.py's own _sweep_stale_tmp_dirs() for the full
+    # root-cause writeup (this exact _tmp_cfg_dir() shape is copy-pasted across every test file with
+    # its own _TMP_DIR/_next_dir pair - same fix applied uniformly to each).
+    try:
+        entries = os.listdir(_TMP_DIR)
+    except OSError:
+        return  # tests/_tmp itself doesn't exist yet - nothing to clean
+    for entry in entries:
+        if not entry.startswith(prefix):
+            continue
+        dir_path = _TMP_DIR + "/" + entry
+        try:
+            for filename in os.listdir(dir_path):
+                try:
+                    os.remove(dir_path + "/" + filename)
+                except OSError:
+                    pass
+            os.rmdir(dir_path)
+        except OSError:
+            pass
+
+
+_sweep_stale_tmp_dirs("notify_")
+
+
 def _remove_any(path: str) -> None:
     try:
         os.remove(path)
@@ -656,7 +685,7 @@ def test_two_signals_failures_share_one_errno_but_distinct_names_in_message() ->
     log = run(read_log())
     assert log["NOTIFY"]["ErrCount"] == 2
     assert log["NOTIFY"]["ErrType"][-2:] == ["E", "E"]
-    assert log["NOTIFY"]["ErrNum"][-2:] == [1, 1]  # same errno for both - the name is in the message text, not the errno
+    assert log["NOTIFY"]["ErrNum"][-2:] == [10, 10]  # same errno for both - the name is in the message text, not the errno
 
 
 # ---------------------------------------------------------------------------
@@ -1115,7 +1144,7 @@ def test_set_override_led_above_the_max_clamps_and_reads_back_clamped() -> None:
     # layer's only route to it) - this drives the clamp through both of them, rather than through the
     # underlying LockedCounter, whose own [0, max_val] clamping is already covered in
     # test_base_classes.py. _MAX_OVERRIDE_TIME is const()-folded and not importable (see
-    # tests/README.md), so 3600 is hardcoded here, matching this file's other const mirrors.
+    # SPECIFICATION.md Part E.5.1), so 3600 is hardcoded here, matching this file's other const mirrors.
     coordinator, _clock, _cb = make_coordinator()
 
     async def scenario() -> "tuple[int, int, int]":
@@ -1255,7 +1284,7 @@ def test_methods_called_before_finalize_degrade_gracefully_not_raise() -> None:
 def test_monitor_loop_gives_up_after_too_many_consecutive_config_read_failures() -> None:
     cb = FakeSignalCb()
     clock = FakeClock()
-    coordinator = NotificationCoordinator(cb, clock.get, max_i2c_err=2, cfg_path=_tmp_cfg_dir())
+    coordinator = NotificationCoordinator(cb, clock.get, max_module_error=2, cfg_path=_tmp_cfg_dir())
     coordinator.finalize()
     run(coordinator.cfgmgr.setup())
     coordinator.cfgmgr._cache.pop("FlashBri")  # every own-config read now fails (malformed cache)
@@ -1266,7 +1295,7 @@ def test_monitor_loop_gives_up_after_too_many_consecutive_config_read_failures()
         return task.done()
 
     with _FastAsyncSleep():
-        # max_i2c_err=2 -> the 3rd consecutive failure crosses the threshold and monitor_loop()
+        # max_module_error=2 -> the 3rd consecutive failure crosses the threshold and monitor_loop()
         # returns on its own, matching every other Reader's read_loop() give-up shape.
         assert run(scenario()) is True
 

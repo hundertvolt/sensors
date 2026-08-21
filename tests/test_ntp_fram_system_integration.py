@@ -1,24 +1,5 @@
-"""Integration tests across the real four-object chain: asy_wifi_service.py (AsyConnTime) ->
-asy_ntp_client.py (AsyNtpClient) -> {asy_fram_manager.py's timestamped FRAM chunk,
-system_service.py's SystemService} - exactly matching improved-quality/sensortask-wozi.py's real
-wiring (`ntp.ntp_issynced` passed as both SGP40_Reader's own fram_ntp_callback and SystemService's
-asy_ntp_callback: `SystemService(ntp.ntp_issynced, watchdog=watchdog, fram=fram, debug=debug)`).
-
-tests/test_ntp_wifi_dns_integration.py already proves the wifi/ntp/dns seam with real objects
-instead of lambda stand-ins; this file extends the same approach to the two *downstream* consumers
-of ntp.ntp_issynced that this repo's four-branch-merge bidirectional review flagged: several
-asy_fram_manager.py/system_service.py comments still attributed this callback to the legacy,
-unpromoted async_connect.py, when sensortask-wozi.py's actual wiring supplies it from the
-newly-promoted, audited asy_ntp_client.py instead (fixed in that same review pass - see git log).
-Every individual module already has thorough lambda-based unit tests of its own (including the
-"callback raises" guard: tests/test_asy_fram_manager.py's test_ntp_callback_raising_degrades_..., and
-tests/test_system_service.py's test_ntp_boot_signature_callback_exception_returns_none_and_logs_once);
-what those can't observe is whether the *real*, currently-wired chain - a real AsyConnTime driving
-a real AsyNtpClient through an actual UDP NTP round trip - produces the value/timing behavior
-asy_fram_manager.py's and system_service.py's own contracts assume, including the no-deadlock
-assumption that reading a shared AsyNtpClient's sync state from a concurrent FRAM/SystemService
-consumer never contends with the wifi_mode_lock a real sync attempt holds.
-"""
+"""Integration tests across the real four-object chain: AsyConnTime -> AsyNtpClient -> {asy_fram_manager.py's timestamped FRAM chunk, SystemService} - matching sensortask-wozi.py's real ntp.ntp_issynced wiring.
+Extends tests/test_ntp_wifi_dns_integration.py's real-object approach to ntp.ntp_issynced's two downstream consumers: proves the real, currently-wired chain's value/timing behavior (including the no-deadlock assumption around wifi_mode_lock) that lambda-based unit tests alone can't observe."""
 
 import asyncio
 import os
@@ -72,12 +53,41 @@ def _wlan(conn: AsyConnTime) -> "Any":
 # ---------------------------------------------------------------------------
 # Shared fixtures - conn/ntp construction mirrors test_ntp_wifi_dns_integration.py's own helpers
 # (kept file-local rather than imported: no test file in this suite imports another, see
-# tests/README.md's per-file self-containment convention); the FRAM side mirrors
+# SPECIFICATION.md Part E's per-file self-containment convention); the FRAM side mirrors
 # tests/test_fram_integration.py's make_manager().
 # ---------------------------------------------------------------------------
 
 _TMP_DIR = "tests/_tmp"
 _next_dir = 0
+
+
+def _sweep_stale_tmp_dirs(prefix: str) -> None:
+    # Sweeps pre-existing <prefix>* scratch dirs left behind by an earlier scripts/test.sh run on
+    # this machine - _next_dir always restarts at 0 per process, so without this a later run
+    # silently reuses an earlier run's real, persisted config_*.cfg files instead of a genuinely
+    # fresh directory. See tests/test_sensortask_wozi.py's own _sweep_stale_tmp_dirs() for the full
+    # root-cause writeup (this exact _tmp_cfg_dir() shape is copy-pasted across every test file with
+    # its own _TMP_DIR/_next_dir pair - same fix applied uniformly to each).
+    try:
+        entries = os.listdir(_TMP_DIR)
+    except OSError:
+        return  # tests/_tmp itself doesn't exist yet - nothing to clean
+    for entry in entries:
+        if not entry.startswith(prefix):
+            continue
+        dir_path = _TMP_DIR + "/" + entry
+        try:
+            for filename in os.listdir(dir_path):
+                try:
+                    os.remove(dir_path + "/" + filename)
+                except OSError:
+                    pass
+            os.rmdir(dir_path)
+        except OSError:
+            pass
+
+
+_sweep_stale_tmp_dirs("ntpfram_")
 
 
 def _remove_any(path: str) -> None:
@@ -114,7 +124,7 @@ def make_conn() -> AsyConnTime:
 
 
 def make_ntp(
-    conn: AsyConnTime, ntp_host: str, ntp_fetch_timeout_ms: int = 5000, max_i2c_err: int = 5
+    conn: AsyConnTime, ntp_host: str, ntp_fetch_timeout_ms: int = 5000, max_module_error: int = 5
 ) -> AsyNtpClient:
     # Exactly sensortask-wozi.py's own wiring: conn.get_wifi_mode_lock()/network_available/
     # get_dns_server_ip passed straight through as ntp's own constructor arguments - the real bound
@@ -126,7 +136,7 @@ def make_ntp(
         conn.get_wifi_mode_lock(),
         conn.network_available,
         conn.get_dns_server_ip,
-        max_i2c_err=max_i2c_err,
+        max_module_error=max_module_error,
         cfg_path=cfg_path,
         ntp_fetch_timeout_ms=ntp_fetch_timeout_ms,
     )
@@ -448,7 +458,7 @@ def test_system_service_and_a_fram_backup_chunk_share_one_real_ntp_client_indepe
 # ---------------------------------------------------------------------------
 # Task-supervision propagation: applying test_asy_ntp_client.py's own
 # test_asy_ntp_time_gives_up_after_repeated_sync_failures_and_persists_errno_20 (a real asy_ntp_time()
-# task genuinely returning after exceeding max_i2c_err) together with test_system_service.py's own
+# task genuinely returning after exceeding max_module_error) together with test_system_service.py's own
 # test_start_and_check_tasks_restarts_a_dead_task_and_logs_a_warning (SystemService noticing and
 # restarting a dead task) - neither per-module test observes the other side of this seam: does a
 # real AsyNtpClient task that genuinely dies actually get detected and restarted by a real
@@ -460,7 +470,7 @@ def test_system_service_and_a_fram_backup_chunk_share_one_real_ntp_client_indepe
 def test_system_service_restarts_a_real_ntp_task_that_genuinely_gives_up() -> None:
     conn = make_conn()
     connect_wlan(conn)  # network_available() is genuinely True - failures come from resolution, not this
-    ntp = make_ntp(conn, "127.0.0.1", max_i2c_err=1)  # gives up on the 2nd consecutive real failure
+    ntp = make_ntp(conn, "127.0.0.1", max_module_error=1)  # gives up on the 2nd consecutive real failure
     svc = SystemService(ntp.ntp_issynced)
     starts: list[asyncio.Task[None]] = []
 
@@ -484,7 +494,7 @@ def test_system_service_restarts_a_real_ntp_task_that_genuinely_gives_up() -> No
             svc_task = asyncio.create_task(svc.start_and_check_tasks([spy_starter]))
             await asyncio.sleep(0)  # let start_and_check_tasks()'s own initial _start_task run
             assert len(starts) == 1
-            for _ in range(2):  # max_i2c_err=1: the 2nd consecutive real failure makes the task give up
+            for _ in range(2):  # max_module_error=1: the 2nd consecutive real failure makes the task give up
                 ntp.ntp_sync_trigger_event.set()
                 await asyncio.sleep(0)
                 await asyncio.sleep(0)
@@ -567,9 +577,9 @@ def test_fram_timestamped_chunk_torn_write_self_heals_with_a_real_ntp_derived_ti
 _BMP_ADDR = 0x77
 
 
-def make_bmp_reader(cfg_path: str, max_i2c_err: int = 1) -> BMP3xx_Reader:
+def make_bmp_reader(cfg_path: str, max_module_error: int = 1) -> BMP3xx_Reader:
     i2c = I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
-    reader = BMP3xx_Reader(i2c, address=_BMP_ADDR, max_i2c_err=max_i2c_err, cfg_path=cfg_path)
+    reader = BMP3xx_Reader(i2c, address=_BMP_ADDR, max_module_error=max_module_error, cfg_path=cfg_path)
     run(reader.cfgmgr.setup())
     return reader
 
@@ -579,7 +589,7 @@ async def _never_synced() -> bool:
 
 
 def test_system_service_restarts_a_real_sensor_reader_task_that_genuinely_gives_up() -> None:
-    reader = make_bmp_reader(_tmp_cfg_dir(), max_i2c_err=1)  # gives up on the 2nd consecutive real failure
+    reader = make_bmp_reader(_tmp_cfg_dir(), max_module_error=1)  # gives up on the 2nd consecutive real failure
     fake_i2c: FakeI2C = reader.bmp.i2c_bmp3xx.i2c_device.i2c._i2c  # type: ignore[assignment]
     fake_i2c.nak_addresses.add(_BMP_ADDR)  # every real bus op fails - setup() itself never succeeds
     svc = SystemService(_never_synced)
@@ -616,18 +626,18 @@ _SCD30_ADDR = 0x61
 _SGP40_ADDR = 0x59
 
 
-def make_scd30_reader(max_i2c_err: int = 1) -> SCD30_Reader:
+def make_scd30_reader(max_module_error: int = 1) -> SCD30_Reader:
     i2c = I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
-    return SCD30_Reader(i2c, irq_pin=5, max_i2c_err=max_i2c_err)
+    return SCD30_Reader(i2c, irq_pin=5, max_module_error=max_module_error)
 
 
 async def _no_comp_data() -> "list[float | None]":
     return [None, None]
 
 
-def make_sgp40_reader(cfg_path: str, max_i2c_err: int = 1) -> SGP40_Reader:
+def make_sgp40_reader(cfg_path: str, max_module_error: int = 1) -> SGP40_Reader:
     i2c = I2C(1, scl_pin=19, sda_pin=18, frequency=50000)
-    reader = SGP40_Reader(i2c, _no_comp_data, max_i2c_err=max_i2c_err, cfg_path=cfg_path)
+    reader = SGP40_Reader(i2c, _no_comp_data, max_module_error=max_module_error, cfg_path=cfg_path)
     run(reader.cfgmgr.setup())
     return reader
 
@@ -639,7 +649,7 @@ def test_system_service_restarts_a_real_scd30_reader_task_that_genuinely_gives_u
     # real SystemService, only ever proven at the module level (test_asy_scd30_driver.py's own
     # test_read_loop_returns_false_when_init_fails uses the identical NAK-the-address setup, just
     # without a real supervisor watching it).
-    reader = make_scd30_reader(max_i2c_err=1)
+    reader = make_scd30_reader(max_module_error=1)
     fake_i2c: FakeI2C = reader.scd.i2c_scd30.i2c_device.i2c._i2c  # type: ignore[assignment]
     fake_i2c.nak_addresses.add(_SCD30_ADDR)  # every real bus op fails - init itself never succeeds
     svc = SystemService(_never_synced)
@@ -669,7 +679,7 @@ def test_system_service_restarts_a_real_scd30_reader_task_that_genuinely_gives_u
 
 
 def test_system_service_restarts_a_real_sgp40_reader_task_that_genuinely_gives_up() -> None:
-    reader = make_sgp40_reader(_tmp_cfg_dir(), max_i2c_err=1)
+    reader = make_sgp40_reader(_tmp_cfg_dir(), max_module_error=1)
     fake_i2c: FakeI2C = reader.sgp.i2c_sgp40.i2c_device.i2c._i2c  # type: ignore[assignment]
     fake_i2c.nak_addresses.add(_SGP40_ADDR)  # every real bus op fails - init itself never succeeds
     svc = SystemService(_never_synced)

@@ -1,3 +1,6 @@
+PY_INCLUDE_DIR="$(pwd)"  # captured before any `cd` below - FROZEN_MANIFEST needs an absolute path,
+# and this script has always assumed it's run from inside py-include/ regardless of how that
+# directory got there (a real checkout or a symlink into one) - no hardcoded machine-specific path needed.
 rm -rf ../ports/rp2/build-RPI_PICO_W
 rm firmware.uf2
 cd python
@@ -34,7 +37,7 @@ cd .. # now inside basedir
 # make -C ports/rp2 BOARD=RPI_PICO_W clean
 # make -C ports/rp2 BOARD=RPI_PICO_W submodules
 
-make -C ports/rp2 BOARD=RPI_PICO_W FROZEN_MANIFEST=/home/nico/rpi_pico/micropython/py-include/python/build/manifest.py -j 16
+make -C ports/rp2 BOARD=RPI_PICO_W FROZEN_MANIFEST="$PY_INCLUDE_DIR/python/build/manifest.py" -j 16
 cd py-include
 cp ../ports/rp2/build-RPI_PICO_W/firmware.uf2 .
 rm ../ports/rp2/modules/_boot.py

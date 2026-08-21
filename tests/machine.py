@@ -1,98 +1,5 @@
-"""Test-only fake `machine` module, per BACKLOG.md's mocking-boundary plan: mock only the raw
-I2C/SPI bus-transaction level (readfrom_mem/writeto_mem/readfrom_into/writeto/scan/deinit for
-I2C; write/readinto/write_readinto/deinit for SPI), so asy_i2c_driver.py's/asy_spi_driver.py's
-own logic (bit-packing, byte order, buffer slicing, locking, error paths, CS-pin sequencing) runs
-for real against this fake instead of unavailable real hardware - the MicroPython Unix port's own
-`machine` module has no I2C/SPI/real Pin, Timer, WDT, or RTC (confirmed directly: PinBase/Signal/
-mem8/mem16/mem32/idle/time_pulse_us only). Only implements what these drivers' (and
-system_service.py's/asy_ntp_client.py's) own imports need; not a general-purpose machine stub.
-
-Pin.irq()/trigger_irq() (added for asy_scd30_driver.py, the first IRQ-pin driver reviewed): mirrors
-the Timer/trigger() pattern below - the real handler fires on every matching edge with no way for
-a test to wait on real elapsed time, so trigger_irq() fires it once, deterministically, standing in
-for one real edge interrupt. I2C's read_queue (added for the same driver): a device that talks via
-plain write()/readinto() with no repeated-start register addressing has no `registers` dict entry
-to prime, so readfrom_into() instead pops from this FIFO of byte strings, mirroring SPI's own
-read_queue/_next_read_bytes below.
-
-Timer/WDT/reset/bootloader (added for system_service.py): real rp2 Timers are software-scheduled
-virtual timers that fire their callback from an IRQ context whenever their period elapses, with no
-fixed count and no real return from a callback chain the test can observe mid-flight. This fake
-never fires a callback on its own - there is no real elapsed time to schedule against - instead
-every constructed instance self-registers into `Timer.all_timers` (cleared per test) so test code
-can reach and manually `.trigger()` even an unstored, fire-and-forget instance (e.g.
-system_service.py's own `_timer_sequencer`, which never keeps a reference to the Timer it chains
-through). `reset()`/`bootloader()` real MCU calls never return at all; this fake just records that
-they were invoked instead of actually terminating the test process.
-
-`Timer` is also a second, separate reason this file has to exist beyond I2C/SPI mocking: it's what
-makes `from machine import Timer` in `src/asy_bmp3xx_driver.py` (and, eventually, the other
-`*_Reader` drivers using the same `start_timer()`/`stop_timer()` shape) resolve at all under
-mypy's `src tests` scope (see BACKLOG.md's "Timer mypy resolution" finding) - `tests` isn't on
-`mypy_path`, but mypy still treats every standalone `.py` file inside a directory passed via
-`files` as a top-level module by its own basename, so this file *is* what `machine` resolves to
-for any other checked file in the same run, same as at real runtime via `MICROPYPATH`. Before
-`Timer` existed here, any driver needing it hit "Module has no attribute Timer" under `src tests`
-even though the real `typings/machine.pyi` stub defines it correctly.
-
-Real RP2040 I2C error codes (confirmed against ports/rp2/machine_i2c.c, not guessed): the
-hardware I2C driver only ever raises OSError(errno.EIO) - covers a NAK/no response and any other
-general bus fault, which is also what a real multi-master arbitration loss would surface as on
-this port - or OSError(errno.ETIMEDOUT), the Pico SDK's own bus-busy/clock-stretch timeout. There
-is no distinct errno for "arbitration lost" on this port; both fold into one of the two above.
-`nak_addresses`/`busy` below model exactly those two real conditions.
-
-Real RP2040 SPI error behavior (confirmed against extmod/machine_spi.c and ports/rp2/
-machine_spi.c, not guessed): unlike I2C, SPI has no ACK/NAK concept, and the rp2 hardware SPI
-transfer path (spi_write_blocking()/spi_write_read_blocking()) has no error return at all - once
-constructed, `write()`/`readinto()` genuinely cannot raise anything. There is therefore no
-NAK/busy-style fault-injection surface to model for those two methods, unlike `I2C` below.
-`write_readinto()` is the one exception: it raises a real `ValueError("buffers must be the same
-length")` (mp_machine_spi_write_readinto(), shared by hardware and soft SPI alike) when its two
-buffers differ in length - modeled directly below since it's deterministic from the buffers a
-test passes in, not something that needs fault injection to trigger.
-
-`UART` (added for asy_uart_driver.py) is a different shape from `I2C`/`SPI` above: it's the first
-fake here that a driver actually registers with real `select.poll()` (asy_uart_driver.py's
-`ready()`), not just calls methods on directly. Confirmed against py/stream.h/extmod/modselect.c:
-`select.poll().register()` requires the object's C-level *type* to carry MicroPython's stream
-protocol slot - a plain `class Foo:` can't satisfy this no matter what Python methods it defines,
-`register()` raises `OSError` immediately otherwise. `io.IOBase` is the documented builtin base
-that does carry this slot, dispatching its C-level `ioctl` callback back into a Python-level
-`ioctl(self, req, arg)` override - so `UART` below subclasses it instead of a plain class.
-`req == 3` is `MP_STREAM_POLL` (py/stream.h); the expected return is the subset of `arg`'s
-requested bits (`select.POLLIN`/`POLLOUT`, numerically identical to `MP_STREAM_POLL_RD`/`_WR`)
-that are currently ready - not a bool. Real UART read/readinto/readline return `None` on no data
-available (see asy_uart_driver.py's own module docstring - confirmed via ports/rp2/machine_uart.c
-and py/stream.c that this is MP_EAGAIN, not a raised exception); this fake matches that for the
-same "called after ready() should return True" case. `write()` is the mirror-image case on the TX
-side - real `mp_machine_uart_write()` loops internally but can still return fewer bytes than given
-(a genuine short write, once its own internal per-byte timeout hits after some progress) or `None`
-(if that timeout hits before writing anything) - see `write()`'s own comment below for how this
-fake models both via `write_limit`.
-
-`UART.__init__`'s parameter validation mirrors `mp_machine_uart_init_helper()`/
-`mp_machine_uart_make_new()` (confirmed against ports/rp2/machine_uart.c, v1.28.0 - real numeric
-constants, not guessed): `id` must be `0` or `1` (RP2040 has exactly two UART peripherals) or
-`ValueError("UART(%d) doesn't exist")`; `rxbuf`/`txbuf` above `MAX_BUFFER_SIZE` (32766) raise
-`ValueError("rxbuf/txbuf too large")` (a value below `MIN_BUFFER_SIZE` (32) silently clamps up
-instead of raising - not modeled here since it doesn't affect the raise/no-raise contract this
-fake needs); `invert` outside `UART_INVERT_MASK` (`UART_INVERT_TX (1) | UART_INVERT_RX (2)` = `3`)
-raises `ValueError("bad inversion mask")`. `baudrate`/`bits`/`stop` are real `int` fields with no
-raising validation at all in this function - a non-positive value is silently ignored (keeps
-whatever was previously set / the hardware default) rather than rejected, confirmed directly from
-the source's own `if (args[ARG_baudrate].u_int > 0) { self->baudrate = ...}` shape - so this fake
-doesn't validate them either. **Deliberately not modeled**: real hardware also validates that
-`tx`/`rx` are GPIO pins actually muxable to the *chosen* UART peripheral's TX/RX role
-(`IS_VALID_TX`/`IS_VALID_RX`, e.g. UART0 only on GPIO 0/1, 12/13, 16/17 vs. UART1 only on GPIO
-4/5, 8/9) - that table lives in the RP2040 silicon datasheet, which isn't in this repo's
-`datasheets/` folder (only the Pico W *board* datasheet is, a different document); the pin/role
-mapping above was found via public web search, not the authoritative datasheet PDF, so it isn't
-encoded here as a raise condition - flagged per CLAUDE.md rather than silently assumed. The
-existing generic `Pin(id)` range check (`0 <= id <= 28`) still applies before a pin ever reaches
-`UART()`, since `asy_uart_driver.py`'s own `init()` always constructs `Pin(tx_pin)`/`Pin(rx_pin)`
-first.
-"""
+"""Test-only fake `machine` module: mocks only the raw I2C/SPI bus-transaction level (per SPECIFICATION.md Part E.4's mocking boundary) so the real drivers' own logic runs for real against it. Only implements what src/'s own imports need.
+`Timer` is also why this file has to exist beyond I2C/SPI mocking: it's what makes `from machine import Timer` resolve under mypy's `src tests` scope (see BACKLOG.md's "Timer mypy resolution" finding)."""
 
 import errno
 import io
@@ -187,6 +94,13 @@ class Pin:
 
 
 class I2C:
+    # Real RP2040 I2C error codes (confirmed against ports/rp2/machine_i2c.c, not guessed): the
+    # hardware I2C driver only ever raises OSError(errno.EIO) - covers a NAK/no response and any
+    # other general bus fault, which is also what a real multi-master arbitration loss would
+    # surface as on this port - or OSError(errno.ETIMEDOUT), the Pico SDK's own bus-busy/
+    # clock-stretch timeout. There is no distinct errno for "arbitration lost" on this port; both
+    # fold into one of the two above. nak_addresses/busy below model exactly those two conditions.
+    #
     # Registers are a plain dict of (address, reg_addr) -> bytearray, seeded directly by a test
     # via .registers before exercising get_bits/set_bits/get_register_struct/set_register_struct
     # - a real round trip through readfrom_mem/writeto_mem, not a canned return value.
@@ -270,6 +184,12 @@ class I2C:
 
 
 class SPI:
+    # Real RP2040 SPI error behavior (confirmed against extmod/machine_spi.c and ports/rp2/
+    # machine_spi.c, not guessed): unlike I2C, SPI has no ACK/NAK concept, and the rp2 hardware SPI
+    # transfer path has no error return at all - once constructed, write()/readinto() genuinely
+    # cannot raise anything, so there's no NAK/busy-style fault-injection surface to model for
+    # those two, unlike I2C above. write_readinto() is the one exception - see its own comment.
+    #
     # No registers/addressing (SPI has none) - a test primes what readinto()/write_readinto()
     # "receive" from the simulated downstream device via read_queue, a FIFO of byte strings.
     MSB = 0
@@ -358,12 +278,26 @@ class SPI:
 
 
 class UART(io.IOBase):
+    # UART is a different shape from I2C/SPI above: it's the first fake here a driver actually
+    # registers with real select.poll() (asy_uart_driver.py's ready()), not just calls methods on
+    # directly. Confirmed against py/stream.h/extmod/modselect.c: select.poll().register() requires
+    # the object's C-level *type* to carry MicroPython's stream protocol slot - a plain `class Foo:`
+    # can't satisfy this, register() raises OSError immediately otherwise. io.IOBase is the
+    # documented builtin base that carries this slot, dispatching its C-level ioctl callback back
+    # into a Python-level ioctl(self, req, arg) override - so UART subclasses it instead of a plain
+    # class. req == 3 is MP_STREAM_POLL; the expected return is the subset of arg's requested bits
+    # (select.POLLIN/POLLOUT) that are currently ready - not a bool. Real UART read/readinto/
+    # readline return None on no data available (MP_EAGAIN, not a raised exception, confirmed via
+    # ports/rp2/machine_uart.c and py/stream.c); this fake matches that. write() is the mirror-image
+    # TX case - real mp_machine_uart_write() can return fewer bytes than given (a genuine short
+    # write) or None (if its per-byte timeout hits before writing anything) - see write()'s own
+    # comment for how this fake models both via write_limit.
+    #
     # rx_queue is a test-fed FIFO of "received" bytes; writable gates POLLOUT readiness so a test
     # can simulate a stalled/full TX path. Beyond __init__'s own real-hardware parameter validation
-    # and write()'s own write_limit (see each's docstring/comment), there's no further fault
-    # injection - unlike I2C, real UART read/readinto/readline can't raise or short-transfer, so
-    # there's nothing to inject into those specifically.
-    _MP_STREAM_POLL = 3  # py/stream.h - see module docstring
+    # and write()'s own write_limit, there's no further fault injection - unlike I2C, real UART
+    # read/readinto/readline can't raise or short-transfer, so there's nothing to inject there.
+    _MP_STREAM_POLL = 3  # py/stream.h
     _MIN_BUFFER_SIZE = 32
     _MAX_BUFFER_SIZE = 32766
     _UART_INVERT_MASK = 3  # UART_INVERT_TX (1) | UART_INVERT_RX (2)
@@ -384,10 +318,22 @@ class UART(io.IOBase):
         timeout_char: int = 1,
         invert: int = 0,
     ) -> None:
-        # Real mp_machine_uart_make_new()/init_helper() validation, in the same order the real
-        # source checks it (id, then invert, then rxbuf, then txbuf - matters for which exception
-        # surfaces first when more than one field is invalid at once) - see module docstring for
-        # the exact source-confirmed constants and what's deliberately NOT modeled.
+        # Real mp_machine_uart_make_new()/init_helper() validation (confirmed against
+        # ports/rp2/machine_uart.c, v1.28.0 - real numeric constants, not guessed), in the same
+        # order the real source checks it (id, then invert, then rxbuf, then txbuf - matters for
+        # which exception surfaces first when more than one field is invalid at once). A value below
+        # MIN_BUFFER_SIZE (32) silently clamps up instead of raising - not modeled here since it
+        # doesn't affect the raise/no-raise contract this fake needs. baudrate/bits/stop have no
+        # raising validation in real source either - a non-positive value is silently ignored
+        # (keeps the previous/hardware default) rather than rejected - so this fake doesn't validate
+        # them either. **Deliberately not modeled**: real hardware also validates that tx/rx are
+        # GPIO pins actually muxable to the *chosen* UART peripheral's TX/RX role - that table lives
+        # in the RP2040 silicon datasheet, which isn't in this repo's datasheets/ folder (only the
+        # Pico W *board* datasheet is); the mapping was found via public web search, not the
+        # authoritative datasheet PDF, so it isn't encoded here as a raise condition - flagged per
+        # CLAUDE.md rather than silently assumed. The existing generic Pin(id) range check
+        # (0 <= id <= 28) still applies before a pin ever reaches UART(), since asy_uart_driver.py's
+        # own init() always constructs Pin(tx_pin)/Pin(rx_pin) first.
         if id not in (0, 1):
             raise ValueError(f"UART({id}) doesn't exist")
         if invert & ~self._UART_INVERT_MASK:

@@ -1,10 +1,5 @@
-"""Cross-module integration: a real asy_neopixel_driver.py.NeopixelDriver passed as
-asy_wifi_service.py's own ext_led=, proving the LEDControl Protocol (on/off/toggle) still holds
-end to end through the real WiFi driver - today's tests/test_asy_wifi_service.py only ever
-exercises a local FakeLED double for this (deliberately, since it tests the Protocol boundary, not
-a concrete class - see this repo's promotion plan). Only tests/neopixel.py's fake write surface is
-mocked; every other layer (overlay task, arbitration) runs for real.
-"""
+"""Cross-module integration: a real NeopixelDriver passed as asy_wifi_service.py's own ext_led=, proving the LEDControl Protocol (on/off/toggle) holds end to end - test_asy_wifi_service.py only exercises a FakeLED double for this.
+Only tests/neopixel.py's fake write surface is mocked; every other layer runs for real."""
 
 import asyncio
 import os
@@ -30,6 +25,35 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
 
 _TMP_DIR = "tests/_tmp"
 _next_dir = 0
+
+
+def _sweep_stale_tmp_dirs(prefix: str) -> None:
+    # Sweeps pre-existing <prefix>* scratch dirs left behind by an earlier scripts/test.sh run on
+    # this machine - _next_dir always restarts at 0 per process, so without this a later run
+    # silently reuses an earlier run's real, persisted config_*.cfg files instead of a genuinely
+    # fresh directory. See tests/test_sensortask_wozi.py's own _sweep_stale_tmp_dirs() for the full
+    # root-cause writeup (this exact _tmp_cfg_dir() shape is copy-pasted across every test file with
+    # its own _TMP_DIR/_next_dir pair - same fix applied uniformly to each).
+    try:
+        entries = os.listdir(_TMP_DIR)
+    except OSError:
+        return  # tests/_tmp itself doesn't exist yet - nothing to clean
+    for entry in entries:
+        if not entry.startswith(prefix):
+            continue
+        dir_path = _TMP_DIR + "/" + entry
+        try:
+            for filename in os.listdir(dir_path):
+                try:
+                    os.remove(dir_path + "/" + filename)
+                except OSError:
+                    pass
+            os.rmdir(dir_path)
+        except OSError:
+            pass
+
+
+_sweep_stale_tmp_dirs("neopixel_wifi_")
 
 
 def _remove_any(path: str) -> None:

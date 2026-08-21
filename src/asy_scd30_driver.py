@@ -1,7 +1,11 @@
+# SPDX-FileCopyrightText: Copyright (c) 2020 Bryan Siepert for Adafruit Industries (original
+# adafruit_scd30, CircuitPython) - restructured/rewritten for asyncio + MicroPython, see
+# THIRD_PARTY_LICENSES.md.
+# SPDX-License-Identifier: MIT
+
 """Async I2C driver for the Sensirion SCD30 CO2/temperature/relative-humidity sensor. SCD30_I2C
-wraps the raw command set (16-bit commands, CRC-8 protected); SCD30_Reader runs the read loop plus
-an IRQ-pin self-healing trigger, feeding CO2/Temp/Hum/WetBulb/DewPoint (see SPECIFICATION.md Part C). Source:
-Sensirion CO2 Sensors SCD30 Interface Description & Datasheet (datasheets/scd30/).
+wraps the raw command set (16-bit commands, CRC-8 protected); SCD30_Reader runs the read loop plus an IRQ-pin self-healing trigger, feeding CO2/Temp/Hum/WetBulb/DewPoint (see SPECIFICATION.md Part C).
+Source: Sensirion CO2 Sensors SCD30 Interface Description & Datasheet (datasheets/scd30/).
 """
 
 import asyncio
@@ -17,7 +21,7 @@ import math_helpers
 from asy_fram_manager import AsyFramManager
 from asy_i2c_driver import I2C, I2CDevice
 from base_classes import Lockable, SensorReader
-from config_manager import make_dict, name_cfg
+from config_manager import make_dict, name_cfg, schema_dict, type_or_range_error
 from crc_checks import CRC8
 
 try:
@@ -29,8 +33,10 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
         return val
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Coroutine
     from typing import Any
+
+    from config_manager import ConfigSchema
 
 
 _SCD30_DEFAULT_ADDR = const(0x61)
@@ -57,7 +63,10 @@ _VAL_SC = const((("SelfCal", "bool", None, None, None, None),))
 # No local default either: these params are stored on the sensor itself, not cached locally.
 
 _NAME = const("SCD30")
+# Kept as a literal tuple inline (not `_FIELDS` below) because mypy's namedtuple plugin can only
+# infer field names from a literal at the call site, not through a variable indirection.
 SCD30 = namedtuple("SCD30", ("CO2", "Temp", "Hum", "WetBulb", "DewPoint", "TS"))
+_FIELDS = const(("CO2", "Temp", "Hum", "WetBulb", "DewPoint", "TS"))  # kept in sync with SCD30's own fields above
 
 if TYPE_CHECKING:
     SCDResults = tuple[float | None, float | None, float | None, int | None]  # CO2, temperature, humidity, timestamp
@@ -69,14 +78,14 @@ class SCD30_Reader(SensorReader):
         i2c: I2C,
         irq_pin: int,
         trigger_sec: int = 3,
-        max_i2c_err: int = 5,
+        max_module_error: int = 5,
         fram: AsyFramManager | None = None,
         history_length: int = 10,
         debug: int | None = None,
     ) -> None:
         super().__init__(
             SCD30(None, None, None, None, None, None),
-            max_i2c_err,
+            max_module_error,
             fram=fram,
             history_length=history_length,
             debug=debug,
@@ -91,15 +100,18 @@ class SCD30_Reader(SensorReader):
         self.scd_timer_triggers = 0
 
     async def _read_sensor_dict(self) -> dict[str, int | float | str | bool | None]:
-        ret: dict[str, int | float | str | bool | None] = {
-            name_cfg(_VAL_TO): await self.get_temperature_offset(),
-            name_cfg(_VAL_MI): await self.get_measurement_interval(),
-            name_cfg(_VAL_AP): await self.get_ambient_pressure(),
-            name_cfg(_VAL_ALT): await self.get_altitude(),
-            name_cfg(_VAL_CAL): await self.get_forced_recalibration_reference(),
-            name_cfg(_VAL_SC): await self.get_self_calibration_enabled(),
-        }
-        return ret  # only ever invoked as get_dict_cfg()'s callback, which already wraps this call in its own try/except
+        # Single batched read (get_config_snapshot()), not six independent get_*() calls - closes
+        # the torn-read window BACKLOG.md flagged (a concurrent config write landing between two of
+        # the six separately-locked reads used to be able to mix pre-/post-write values).
+        temp_offset, measurement_interval, ambient_pressure, altitude, frc, self_cal = await self.scd.get_config_snapshot()
+        return {
+            name_cfg(_VAL_TO): temp_offset,
+            name_cfg(_VAL_MI): measurement_interval,
+            name_cfg(_VAL_AP): ambient_pressure,
+            name_cfg(_VAL_ALT): altitude,
+            name_cfg(_VAL_CAL): frc,
+            name_cfg(_VAL_SC): self_cal,
+        }  # only ever invoked as get_dict_cfg()'s callback, which already wraps this call in its own try/except
 
     async def _init_scd(self) -> bool:
         # Continuous measurement isn't (re)started here - it's NVM-persisted and provisioned
@@ -182,7 +194,7 @@ class SCD30_Reader(SensorReader):
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         data = await self.get_data()
-        return make_dict(data)
+        return make_dict(data, _FIELDS)
 
     async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         return await self._get_dict_cfg(
@@ -191,6 +203,65 @@ class SCD30_Reader(SensorReader):
             callback=self._read_sensor_dict,
         )
 
+    def get_cfg_schema(self) -> "ConfigSchema":
+        # SCD30_Reader is a plain SensorReader, not a SensorReaderConfig subclass (no local cfgmgr -
+        # these params live on the sensor itself, see this file's own _VAL_* comment above), so it
+        # doesn't inherit base_classes.SensorReaderConfig's own get_cfg_schema(). But
+        # asy_webserver_service.py's _put_sensors() route calls module.get_cfg_schema() uniformly for
+        # every registered sensor (this file's own _set_dict_cfg() docstring already documents that
+        # expectation) - without this method, every real PUT /sensors touching SCD30 crashed with a
+        # 500 (AttributeError), found during baseline verification.
+        # Same schema _set_dict_cfg()'s own schema_dict(cfg_vals) call already expects, and identical
+        # to get_dict_cfg()'s own combined schema above.
+        return _VAL_TO + _VAL_MI + _VAL_AP + _VAL_ALT + _VAL_CAL + _VAL_SC
+
+    async def _set_dict_cfg(
+        self, data: dict[str, int | float | str | bool | None], cfg_vals: "ConfigSchema"
+    ) -> dict[str, str]:
+        # Schema-driven generic setter, structurally mirroring base_classes.SensorReaderConfig's own
+        # _set_dict_cfg() validate-against-schema/dispatch-by-name shape (decided gap closure -
+        # SCD30 has no cfgmgr, "these params are stored on the sensor
+        # itself, not cached locally" per this file's own _VAL_* comment) - but with NO persistence
+        # step at all: each validated field calls straight through to its already-existing individual
+        # setter (a real I2C write), no local cache/file involved. ContMeas has no _VAL_* schema entry
+        # (the sensor can't report whether continuous measurement is running - see get_dict_cfg()'s
+        # own comment), so it's dispatched here directly rather than through the schema loop, keeping
+        # asy_webserver_service.py itself fully sensor-agnostic - it always just calls
+        # module._set_dict_cfg(fields, module.get_cfg_schema()) uniformly for every sensor.
+        dispatch: dict[str, Callable[[Any], Coroutine[Any, Any, bool]]] = {
+            name_cfg(_VAL_TO): self.set_temperature_offset,
+            name_cfg(_VAL_MI): self.set_measurement_interval,
+            name_cfg(_VAL_AP): self.set_ambient_pressure,
+            name_cfg(_VAL_ALT): self.set_altitude,
+            name_cfg(_VAL_CAL): self.set_forced_recalibration_reference,
+            name_cfg(_VAL_SC): self.set_self_calibration_enabled,
+        }
+        schema_by_name = schema_dict(cfg_vals)
+        results: dict[str, str] = {}
+        for key, value in data.items():
+            if key == "ContMeas":
+                if isinstance(value, bool):
+                    # stop_continuous_measurement(True) is a legitimate, already-tested pure no-op
+                    # (see test_reader_stop_continuous_measurement_true_is_a_pure_noop) whose own
+                    # contract returns False for it, meaning "nothing to do", not "failed" - only a
+                    # real stop attempt (value=False) can genuinely fail (a bus fault). Normalize
+                    # here before the generic "Valid"/"Failed" mapping below ever sees it.
+                    applied = await self.stop_continuous_measurement(value)
+                    results[key] = "Valid" if (applied or value) else "Failed"
+                else:
+                    results[key] = "Invalid"
+                continue
+            field = schema_by_name.get(key)
+            setter = dispatch.get(key)
+            if field is None or setter is None:
+                results[key] = "Invalid"
+                continue
+            if type_or_range_error(value, field):
+                results[key] = "Invalid"
+                continue
+            results[key] = "Valid" if await setter(value) else "Failed"
+        return results
+
     async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
         return await self.pr.get_log()
 
@@ -198,42 +269,42 @@ class SCD30_Reader(SensorReader):
         try:
             return await self.scd.get_measurement_interval()
         except Exception as e:
-            await self.pr.err_s("Error reading measurement interval:", e, errno=13)
+            await self.pr.err_s("Error reading measurement interval:", e, errno=14)
             return None
 
     async def get_self_calibration_enabled(self) -> bool | None:
         try:
             return await self.scd.get_self_calibration_enabled()
         except Exception as e:
-            await self.pr.err_s("Error reading self calibration enabled:", e, errno=15)
+            await self.pr.err_s("Error reading self calibration enabled:", e, errno=16)
             return None
 
     async def get_ambient_pressure(self) -> int | None:
         try:
             return await self.scd.get_ambient_pressure()
         except Exception as e:
-            await self.pr.err_s("Error reading ambient pressure:", e, errno=17)
+            await self.pr.err_s("Error reading ambient pressure:", e, errno=18)
             return None
 
     async def get_altitude(self) -> int | None:
         try:
             return await self.scd.get_altitude()
         except Exception as e:
-            await self.pr.err_s("Error reading altitude:", e, errno=19)
+            await self.pr.err_s("Error reading altitude:", e, errno=20)
             return None
 
     async def get_temperature_offset(self) -> float | None:
         try:
             return await self.scd.get_temperature_offset()
         except Exception as e:
-            await self.pr.err_s("Error reading temperature offset:", e, errno=21)
+            await self.pr.err_s("Error reading temperature offset:", e, errno=22)
             return None
 
     async def get_forced_recalibration_reference(self) -> int | None:
         try:
             return await self.scd.get_forced_recalibration_reference()
         except Exception as e:
-            await self.pr.err_s("Error reading forced recalibration reference:", e, errno=23)
+            await self.pr.err_s("Error reading forced recalibration reference:", e, errno=24)
             return None
 
     async def set_measurement_interval(self, value: int) -> bool:
@@ -241,7 +312,7 @@ class SCD30_Reader(SensorReader):
             await self.scd.set_measurement_interval(value)
             return True
         except Exception as e:
-            await self.pr.err_s("Error setting measurement interval:", e, errno=14)
+            await self.pr.err_s("Error setting measurement interval:", e, errno=15)
             return False
 
     async def set_self_calibration_enabled(self, enabled: bool) -> bool:
@@ -249,7 +320,7 @@ class SCD30_Reader(SensorReader):
             await self.scd.set_self_calibration_enabled(enabled)
             return True
         except Exception as e:
-            await self.pr.err_s("Error setting self calibration enabled:", e, errno=16)
+            await self.pr.err_s("Error setting self calibration enabled:", e, errno=17)
             return False
 
     async def set_ambient_pressure(self, pressure_mbar: int | float) -> bool:
@@ -257,7 +328,7 @@ class SCD30_Reader(SensorReader):
             await self.scd.set_ambient_pressure(pressure_mbar)
             return True
         except Exception as e:
-            await self.pr.err_s("Error setting ambient pressure:", e, errno=18)
+            await self.pr.err_s("Error setting ambient pressure:", e, errno=19)
             return False
 
     async def set_altitude(self, altitude: int) -> bool:
@@ -265,7 +336,7 @@ class SCD30_Reader(SensorReader):
             await self.scd.set_altitude(altitude)
             return True
         except Exception as e:
-            await self.pr.err_s("Error setting altitude:", e, errno=20)
+            await self.pr.err_s("Error setting altitude:", e, errno=21)
             return False
 
     async def set_temperature_offset(self, offset: int | float) -> bool:
@@ -273,7 +344,7 @@ class SCD30_Reader(SensorReader):
             await self.scd.set_temperature_offset(offset)
             return True
         except Exception as e:
-            await self.pr.err_s("Error setting temperature offset:", e, errno=22)
+            await self.pr.err_s("Error setting temperature offset:", e, errno=23)
             return False
 
     async def set_forced_recalibration_reference(self, reference_value: int) -> bool:
@@ -281,7 +352,7 @@ class SCD30_Reader(SensorReader):
             await self.scd.set_forced_recalibration_reference(reference_value)
             return True
         except Exception as e:
-            await self.pr.err_s("Error setting forced recalibration reference:", e, errno=24)
+            await self.pr.err_s("Error setting forced recalibration reference:", e, errno=25)
             return False
 
     async def read_loop(self) -> bool:
@@ -318,7 +389,7 @@ class SCD30_Reader(SensorReader):
             await self.scd.stop_continuous_measurement()
             return True
         except Exception as e:
-            await self.pr.err_s("Error stopping continuous measurement:", e, errno=12)
+            await self.pr.err_s("Error stopping continuous measurement:", e, errno=13)
             return False
 
 
@@ -396,6 +467,23 @@ class SCD30_I2C:
         # Volatile readback: always returns 400 after a power cycle regardless of the last FRC
         # value applied - the calibration curve update itself is permanent, just not this readback.
         return await self._read_register(_CMD_SET_FORCED_RECALIBRATION_FACTOR)
+
+    async def get_config_snapshot(self) -> "tuple[float, int, int, int, int, bool]":
+        # (TempOffs, MeasInt, AmbPres, Altitude, ForceCalRef, SelfCal) - one device-session lock hold
+        # across all 6 config registers, closing the torn-read window a concurrent set_*() call (also
+        # i2c_scd30-locked) could otherwise land inside mid-batch, producing a dict that mixes pre-
+        # and post-write values (BACKLOG.md's SCD30_Reader.get_dict_cfg() torn-read entry). Same
+        # "allowed to raise" layer as every other SCD30_I2C method - a mid-batch fault fails the whole
+        # snapshot rather than a mix of fresh and stale fields.
+        async with self.i2c_scd30 as scd30:
+            async with scd30.i2c_device as i2c:
+                temp_offset = await self._read_dev_register(i2c, _CMD_SET_TEMPERATURE_OFFSET) / 100.0
+                measurement_interval = await self._read_dev_register(i2c, _CMD_SET_MEASUREMENT_INTERVAL)
+                ambient_pressure = await self._read_dev_register(i2c, _CMD_CONTINUOUS_MEASUREMENT)
+                altitude = await self._read_dev_register(i2c, _CMD_SET_ALTITUDE_COMPENSATION)
+                frc = await self._read_dev_register(i2c, _CMD_SET_FORCED_RECALIBRATION_FACTOR)
+                self_cal = await self._read_dev_register(i2c, _CMD_AUTOMATIC_SELF_CALIBRATION) == 1
+        return temp_offset, measurement_interval, ambient_pressure, altitude, frc, self_cal
 
     async def get_CO2(self) -> float | None:
         # Pure cache read from the last read_measurement() call, no I2C of its own - see

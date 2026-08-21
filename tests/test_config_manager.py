@@ -155,65 +155,62 @@ def test_make_dict_normal_namedtuple() -> None:
     from collections import namedtuple
 
     Meas = namedtuple("Meas", ["temp", "hum"])
-    assert cm.make_dict(Meas(20.5, 55)) == {"Meas": {"temp": 20.5, "hum": 55}}
+    assert cm.make_dict(Meas(20.5, 55), ("temp", "hum")) == {"Meas": {"temp": 20.5, "hum": 55}}
 
 
 def test_make_dict_zero_field_namedtuple() -> None:
     from collections import namedtuple
 
     Empty = namedtuple("Empty", [])
-    assert cm.make_dict(Empty()) == {"Empty": {}}
+    assert cm.make_dict(Empty(), ()) == {"Empty": {}}
 
 
-def test_make_dict_non_namedtuple_returns_empty() -> None:
-    assert cm.make_dict(object()) == {}  # type: ignore[arg-type]
+def test_make_dict_non_namedtuple_with_unmatched_fields_falls_back_to_none_per_field() -> None:
+    # No repr()/type name to fail on (type(nt).__name__ never raises for a plain object()), so the
+    # outer try always succeeds; the per-field getattr() then fails for every requested field, and
+    # the fallback still returns a well-shaped dict (never raises) rather than an empty one.
+    assert cm.make_dict(object(), ("x",)) == {"object": {"x": None}}  # type: ignore[arg-type]
 
 
-def test_make_dict_none_and_scalar_inputs_return_empty() -> None:
-    # None/int/str all have a repr() with no "(" at all, so the unpack into [name, kvpairs] fails
-    # the same way object()'s does above - never raises, regardless of the input's actual type.
-    assert cm.make_dict(None) == {}  # type: ignore[arg-type]
-    assert cm.make_dict(5) == {}  # type: ignore[arg-type]
-    assert cm.make_dict("str") == {}  # type: ignore[arg-type]
+def test_make_dict_none_and_scalar_inputs_never_raise() -> None:
+    assert cm.make_dict(None, ("x",)) == {"NoneType": {"x": None}}  # type: ignore[arg-type]
+    assert cm.make_dict(5, ("x",)) == {"int": {"x": None}}  # type: ignore[arg-type]
+    assert cm.make_dict("str", ("x",)) == {"str": {"x": None}}  # type: ignore[arg-type]
 
 
 def test_make_dict_single_field_namedtuple() -> None:
     from collections import namedtuple
 
     Single = namedtuple("Single", ["x"])
-    assert cm.make_dict(Single(42)) == {"Single": {"x": 42}}
+    assert cm.make_dict(Single(42), ("x",)) == {"Single": {"x": 42}}
 
 
 def test_make_dict_none_valued_field_passes_through() -> None:
     from collections import namedtuple
 
     Meas = namedtuple("Meas", ["temp"])
-    assert cm.make_dict(Meas(None)) == {"Meas": {"temp": None}}
+    assert cm.make_dict(Meas(None), ("temp",)) == {"Meas": {"temp": None}}
 
 
-def test_make_dict_nested_tuple_field_silently_dropped_quirk() -> None:
-    # Documented quirk (see make_dict's own comment): repr()-parsing splits on the FIRST 2 "("
-    # characters, so a field whose own value's repr contains "(" (e.g. a nested tuple) confuses the
-    # split and silently drops every field after it - "b" never appears below, no exception raised.
+def test_make_dict_nested_tuple_field_no_longer_confuses_field_extraction() -> None:
+    # Regression test for the repr()-parsing landmine make_dict() used to have: a field whose own
+    # value's repr contains "(" (e.g. a nested tuple) used to desync the parser and silently drop
+    # every field after it. fields is now an explicit tuple, not parsed out of repr(), so this
+    # value round-trips like any other.
     from collections import namedtuple
 
     Nested = namedtuple("Nested", ["a", "b"])
-    assert cm.make_dict(Nested((1, 2), 3)) == {"Nested": {"a": (1, 2)}}  # type: ignore[comparison-overlap]
+    assert cm.make_dict(Nested((1, 2), 3), ("a", "b")) == {"Nested": {"a": (1, 2), "b": 3}}
 
 
-def test_make_dict_comma_in_nested_value_repr_falls_back_to_none_quirk() -> None:
-    # A different parsing fragility from the nested-tuple quirk above: here the initial
-    # [name, kvpairs] split works fine (no stray "(" in the values), but a list-valued field's own
-    # repr contains a comma (e.g. "items=[1, 2]"), which the naive comma-split on kvpairs mistakes
-    # for a field separator - producing a garbage extra "key" ("2]") alongside the two real ones.
-    # getattr(nt, "2]") then raises, and the outer except's fallback kicks in for ALL keys (not just
-    # the garbage one) - every value comes back None rather than the two real fields' actual values.
-    # Never raises either way, just silently loses data - same "document, don't fix" treatment as
-    # the nested-tuple quirk above.
+def test_make_dict_comma_in_list_value_repr_no_longer_corrupts_result() -> None:
+    # Regression test for the sibling repr()-parsing landmine: a list-valued field's own repr
+    # contains a comma (e.g. "items=[1, 2]"), which used to be misread as a field separator and
+    # collapse the whole dict to all-None. fields is now explicit, so this is unaffected.
     from collections import namedtuple
 
     Meas = namedtuple("Meas", ["items", "count"])
-    assert cm.make_dict(Meas([1, 2], 3)) == {"Meas": {"items": None, "2]": None, "count": None}}
+    assert cm.make_dict(Meas([1, 2], 3), ("items", "count")) == {"Meas": {"items": [1, 2], "count": 3}}
 
 
 # ---------------------------------------------------------------------------

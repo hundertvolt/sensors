@@ -1,18 +1,13 @@
 """Cross-module integration: a real asy_scd30_driver.py.SCD30_Reader (against a fake I2C bus, same
-mocking boundary as test_asy_scd30_driver.py's own integration-level tests) feeding a real
-asy_notification_service.py.NotificationCoordinator via a get_value() wrapper that mirrors
-improved-quality/sensortask-wozi.py's own co2_value_callback()/hum_value_callback() exactly (that
-file itself is out of scope for testing - see CLAUDE.md - so the wrapper is reproduced locally, not
-imported), driving a real asy_neopixel_driver.py.NeopixelDriver. Only tests/neopixel.py's fake write
-surface and tests/machine.py's fake I2C bus are mocked; every layer above the raw I2C transaction
-(SCD30_Reader's own protocol/error handling, the notify poll loop, gating, NeopixelDriver's
-arbitration/ramp) runs for real.
-
-Exercises the one thing none of the other integration files cover: how a genuine hardware fault on
-one driver (SCD30) propagates - or, correctly, does NOT propagate - into a sibling driver's
-(NOTIFY's) own error accounting, matching DRIVER_SPEC.md's "each driver owns its own error log"
-separation of concerns.
+mocking boundary as test_asy_scd30_driver.py's own integration-level tests) feeding a real asy_notification_service.py.NotificationCoordinator, driving a real asy_neopixel_driver.py.NeopixelDriver.
+Exercises how a genuine hardware fault on one driver (SCD30) does NOT propagate into a sibling driver's (NOTIFY's) own error accounting, matching SPECIFICATION.md Part C.7's "each driver owns its own error log" separation of concerns.
 """
+# The get_value() wrapper mirrors src/sensortask_wozi.py's own
+# co2_value_callback()/hum_value_callback() exactly (reproduced locally rather than imported, to
+# keep this test independent of that module's own full construction sequence). Only tests/neopixel.py's
+# fake write surface and tests/machine.py's fake I2C bus are mocked; every layer above the raw I2C
+# transaction (SCD30_Reader's own protocol/error handling, the notify poll loop, gating,
+# NeopixelDriver's arbitration/ramp) runs for real.
 
 import asyncio
 import os
@@ -44,6 +39,35 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
 
 _TMP_DIR = "tests/_tmp"
 _next_dir = 0
+
+
+def _sweep_stale_tmp_dirs(prefix: str) -> None:
+    # Sweeps pre-existing <prefix>* scratch dirs left behind by an earlier scripts/test.sh run on
+    # this machine - _next_dir always restarts at 0 per process, so without this a later run
+    # silently reuses an earlier run's real, persisted config_*.cfg files instead of a genuinely
+    # fresh directory. See tests/test_sensortask_wozi.py's own _sweep_stale_tmp_dirs() for the full
+    # root-cause writeup (this exact _tmp_cfg_dir() shape is copy-pasted across every test file with
+    # its own _TMP_DIR/_next_dir pair - same fix applied uniformly to each).
+    try:
+        entries = os.listdir(_TMP_DIR)
+    except OSError:
+        return  # tests/_tmp itself doesn't exist yet - nothing to clean
+    for entry in entries:
+        if not entry.startswith(prefix):
+            continue
+        dir_path = _TMP_DIR + "/" + entry
+        try:
+            for filename in os.listdir(dir_path):
+                try:
+                    os.remove(dir_path + "/" + filename)
+                except OSError:
+                    pass
+            os.rmdir(dir_path)
+        except OSError:
+            pass
+
+
+_sweep_stale_tmp_dirs("notify_scd30_")
 
 
 def _remove_any(path: str) -> None:
@@ -84,7 +108,7 @@ async def _local_time() -> _FakeTime:
 
 def make_scd_reader() -> "tuple[SCD30_Reader, FakeI2C]":
     i2c = I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
-    reader = SCD30_Reader(i2c, irq_pin=5, trigger_sec=3, max_i2c_err=5)
+    reader = SCD30_Reader(i2c, irq_pin=5, trigger_sec=3, max_module_error=5)
     return reader, reader.scd.i2c_scd30.i2c_device.i2c._i2c  # type: ignore[return-value]
 
 
@@ -118,7 +142,7 @@ def data_frame(co2: float, temperature: float, humidity: float) -> bytes:
 
 
 async def co2_value_callback(scd_reader: SCD30_Reader) -> "int | float | None":
-    # Verbatim mirror of improved-quality/sensortask-wozi.py's own co2_value_callback() body.
+    # Verbatim mirror of src/sensortask_wozi.py's own co2_value_callback() body.
     scd_data = await scd_reader.get_data()
     if scd_data is None or scd_data.CO2 is None:
         return None
@@ -126,7 +150,7 @@ async def co2_value_callback(scd_reader: SCD30_Reader) -> "int | float | None":
 
 
 async def hum_value_callback(scd_reader: SCD30_Reader) -> "int | float | None":
-    # Verbatim mirror of improved-quality/sensortask-wozi.py's own hum_value_callback() body -
+    # Verbatim mirror of src/sensortask_wozi.py's own hum_value_callback() body -
     # same SCD30_Reader instance backs both WarnCO2 and WarnHum in the real wiring (one sensor,
     # two notification signals off its own .Hum/.CO2 fields), but no test file exercised the real
     # WarnHum chain before this one - only WarnCO2 had integration coverage.
@@ -253,7 +277,7 @@ def test_i2c_bus_fault_degrades_to_not_triggered_and_stays_isolated_to_scd30s_ow
         return scd_log, notify_log, still_running
 
     scd_log, notify_log, still_running = run(scenario())
-    assert still_running is True  # one failure, well under max_i2c_err=5 - not a give-up condition
+    assert still_running is True  # one failure, well under max_module_error=5 - not a give-up condition
     # the fault is real and counted, but attributed to SCD30 alone - one faulted cycle logs twice
     # (asy_scd30_driver.py's own _read_scd() catch, errno=11, then base_classes.py's generic
     # _error_check() streak-counter increment, errno=1 - see read_loop()'s own two-call sequence).

@@ -1,31 +1,10 @@
-"""Integration tests across the real three-file chain: asy_wifi_service.py (AsyConnTime) ->
-asy_ntp_client.py (AsyNtpClient) -> asy_dns_client.py (resolve_ipv4). Every other test file in
-this suite exercises one of these files in isolation, replacing its peers with a bare lambda
-(get_dns_server=lambda: None) or a synthetic recorder - deliberately, so each file's own contract is
-characterized independently. This file instead constructs real AsyConnTime/AsyNtpClient
-instances, wired exactly like sensortask-wozi.py does (`AsyNtpClient(conn.get_wifi_mode_lock(),
-conn.network_available, conn.get_dns_server_ip, ...)`), to prove the *linked* behavior across the
-seam: calling order, error handling, and value propagation between the two real objects - things a
-lambda-based unit test cannot observe because it never shares real state (in particular, the shared
-wifi_mode_lock instance) with a second real object the way production code does.
-
-Found and fixed one real bug this way (see BACKLOG.md and asy_ntp_client.py's own module
-docstring): get_dns_server_ip() gates on `wifi_mode_lock.locked()` as its own "WLAN mid-transition,
-ifconfig() unsafe to read" check, but AsyNtpClient used to call it *after* acquiring that same
-shared Lock for its own sync attempt - so it always saw locked()==True and always got None back,
-regardless of the real WLAN state. asy_ntp_time() now reads it via the new _safe_get_dns_server()
-before acquiring the lock; several tests below exist specifically to prove this stays fixed.
-
-No real port-53/port-123-privileged end-to-end test is attempted here, for the same reason
-tests/test_asy_ntp_client.py's own comment gives: resolve_ipv4()'s `port` parameter has no override
-through _resolve_ntp_server(), and binding a fake peer on the real privileged port needs root
-(works in this session's own sandbox, not portable to CI). Tests needing a real UDP round trip use
-either a literal-IP NTP_Host (sidesteps DNS resolution and its real port 53 entirely) or malformed
-DNS-server entries (skipped instantly by resolve_ipv4()'s own _is_ipv4_literal() guard, so no
-network wait is needed to prove the "no valid server anywhere" error path). Real UDP behavior of
-resolve_ipv4()/AsyUDPSocket themselves is already exhaustively covered by
-tests/test_asy_dns_client.py and tests/test_asy_ntp_client.py.
-"""
+"""Integration tests across the real three-file chain: AsyConnTime -> AsyNtpClient -> asy_dns_client.py's resolve_ipv4(). Every other test file replaces peers with a lambda/recorder; this file wires real instances (matching sensortask-wozi.py) to prove the *linked* behavior - calling order, error handling, value propagation - a lambda-based unit test can't observe.
+Found and fixed a real bug this way: AsyNtpClient used to call get_dns_server_ip() after acquiring the shared wifi_mode_lock, so its own locked() gate always saw True and always returned None. Fixed via _safe_get_dns_server(), called before acquiring the lock."""
+# No real port-53/port-123-privileged end-to-end test is attempted (needs root, not CI-portable).
+# Tests needing a real UDP round trip use a literal-IP NTP_Host (sidesteps DNS/port 53 entirely) or
+# malformed DNS-server entries (skipped instantly by resolve_ipv4()'s own guard, no network wait
+# needed). Real UDP behavior of resolve_ipv4()/AsyUDPSocket is already covered by
+# tests/test_asy_dns_client.py and tests/test_asy_ntp_client.py.
 
 import asyncio
 import os
@@ -67,6 +46,35 @@ def _wlan(conn: AsyConnTime) -> "Any":
 
 _TMP_DIR = "tests/_tmp"
 _next_dir = 0
+
+
+def _sweep_stale_tmp_dirs(prefix: str) -> None:
+    # Sweeps pre-existing <prefix>* scratch dirs left behind by an earlier scripts/test.sh run on
+    # this machine - _next_dir always restarts at 0 per process, so without this a later run
+    # silently reuses an earlier run's real, persisted config_*.cfg files instead of a genuinely
+    # fresh directory. See tests/test_sensortask_wozi.py's own _sweep_stale_tmp_dirs() for the full
+    # root-cause writeup (this exact _tmp_cfg_dir() shape is copy-pasted across every test file with
+    # its own _TMP_DIR/_next_dir pair - same fix applied uniformly to each).
+    try:
+        entries = os.listdir(_TMP_DIR)
+    except OSError:
+        return  # tests/_tmp itself doesn't exist yet - nothing to clean
+    for entry in entries:
+        if not entry.startswith(prefix):
+            continue
+        dir_path = _TMP_DIR + "/" + entry
+        try:
+            for filename in os.listdir(dir_path):
+                try:
+                    os.remove(dir_path + "/" + filename)
+                except OSError:
+                    pass
+            os.rmdir(dir_path)
+        except OSError:
+            pass
+
+
+_sweep_stale_tmp_dirs("integ_")
 
 
 def _remove_any(path: str) -> None:

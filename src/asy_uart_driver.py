@@ -1,13 +1,12 @@
 """Async wrapper around machine.UART: select.poll-driven non-blocking read/write, lock-scoped via
 base_classes.Lockable so a read/write exchange runs atomically under `async with`. Optional
-per-instance CRC framing (crc_checks.py's CRC_Base family) on read_until_complete/
-readinto_until_complete/write/writefrom. Not wired into any live caller yet (see BACKLOG.md).
-Whoever wires it in: GPIO24/25 and GPIO28/29 fall inside a UART pin-mux group and are
-wireless-reserved on Pico W - picking either pair for tx_pin/rx_pin silently collides with WiFi.
-
-A hardware-level framing/parity/overrun fault on rp2 never raises (see SPECIFICATION.md C.3.2) -
-every method here returns a plain None/False sentinel instead, never raises.
+per-instance CRC framing (crc_checks.py's CRC_Base family) on read_until_complete/readinto_until_complete/write/writefrom; not wired into any live caller yet (see BACKLOG.md).
 """
+# Whoever wires it in: GPIO24/25 and GPIO28/29 fall inside a UART pin-mux group and are
+# wireless-reserved on Pico W - picking either pair for tx_pin/rx_pin silently collides with WiFi.
+#
+# A hardware-level framing/parity/overrun fault on rp2 never raises (see SPECIFICATION.md C.3.2) -
+# every method here returns a plain None/False sentinel instead, never raises.
 
 import asyncio
 import select
@@ -109,18 +108,27 @@ class UART(Lockable):
         self.poller = select.poll()
         self.poller.register(self._uart, select.POLLIN | select.POLLOUT)
 
-    def deinit(self) -> None:
+    def deinit(self) -> bool:
         # machine.UART.deinit() actually turns off the hardware bus, not just drops the Python
         # reference - confirmed never to raise itself, unlike poller.unregister() below.
-        if self._uart is not None:
-            if self.poller is not None:
-                try:
-                    self.poller.unregister(self._uart)
-                except (OSError, MemoryError):
-                    pass
-            self._uart.deinit()
-            self._uart = None
-            self.poller = None
+        # Returns True if the poller was cleanly unregistered (or there was nothing to unregister),
+        # False if unregister() itself raised - this class has no logger of its own (every method
+        # here is a plain sentinel-return, never-raises primitive per the module docstring), so a
+        # caller that wants to log a failed teardown reads this return value with its own logger
+        # once this driver is actually wired in (SPECIFICATION.md Part C.7's silent-failure-masking
+        # convention - previously a bare `pass` with no signal at all, even once a real caller exists).
+        if self._uart is None:
+            return True
+        ok = True
+        if self.poller is not None:
+            try:
+                self.poller.unregister(self._uart)
+            except (OSError, MemoryError):
+                ok = False
+        self._uart.deinit()
+        self._uart = None
+        self.poller = None
+        return ok
 
     async def cancel_read_timeout(self) -> bool:
         # Lets another task abort this instance's in-flight ready()/read wait from the outside -

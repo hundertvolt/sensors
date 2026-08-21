@@ -1,7 +1,6 @@
 """Chunk-based storage manager for the FRAM chip (asy_fram_driver.py): dual-copy redundancy plus a
 busy/idle status byte and CRC give each chunk resilience against a torn write and silent bit rot.
-AsyFramManager is a bump-pointer allocator (see CLAUDE.md for the instantiation-order/on-chip-layout
-contract). Every method returns a well-defined value - never raises.
+AsyFramManager is a bump-pointer allocator (see CLAUDE.md for the instantiation-order/on-chip-layout contract); every method returns a well-defined value - never raises.
 """
 
 import asyncio
@@ -574,6 +573,8 @@ class AsyFramManager:
         self, spi_bus: SPI, spi_cs: int, max_size: int = 0x2000, history_length: int = 10, debug: int | None = None
     ) -> None:
         self.pr = PrintLogHistory(history_length, debug, name=_NAME)
+        self.name = _NAME  # matches self.pr.name - the _ModuleLike registration shape
+        # asy_webserver_service.py's registration lists key on (error_sources=).
         self.size = max_size
         self.allocated_size = 0
         self._pause = False

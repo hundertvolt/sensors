@@ -68,6 +68,35 @@ _TMP_DIR = "tests/_tmp"
 _next_dir = 0
 
 
+def _sweep_stale_tmp_dirs(prefix: str) -> None:
+    # Sweeps pre-existing <prefix>* scratch dirs left behind by an earlier scripts/test.sh run on
+    # this machine - _next_dir always restarts at 0 per process, so without this a later run
+    # silently reuses an earlier run's real, persisted config_*.cfg files instead of a genuinely
+    # fresh directory. See tests/test_sensortask_wozi.py's own _sweep_stale_tmp_dirs() for the full
+    # root-cause writeup (this exact _tmp_cfg_dir() shape is copy-pasted across every test file with
+    # its own _TMP_DIR/_next_dir pair - same fix applied uniformly to each).
+    try:
+        entries = os.listdir(_TMP_DIR)
+    except OSError:
+        return  # tests/_tmp itself doesn't exist yet - nothing to clean
+    for entry in entries:
+        if not entry.startswith(prefix):
+            continue
+        dir_path = _TMP_DIR + "/" + entry
+        try:
+            for filename in os.listdir(dir_path):
+                try:
+                    os.remove(dir_path + "/" + filename)
+                except OSError:
+                    pass
+            os.rmdir(dir_path)
+        except OSError:
+            pass
+
+
+_sweep_stale_tmp_dirs("wifi_")
+
+
 def _remove_any(path: str) -> None:
     try:
         os.remove(path)
@@ -161,7 +190,7 @@ def make_client(
     ext_led: "FakeLED | None" = None,
     wifi_refresh_sec: int = 5,
     hotspot_time_min: int = 5,
-    max_i2c_err: int = 5,
+    max_module_error: int = 5,
     cfg_path: "str | None" = None,
     debug: "int | None" = None,
 ) -> AsyConnTime:
@@ -175,7 +204,7 @@ def make_client(
         ext_led=ext_led,
         wifi_refresh_sec=wifi_refresh_sec,
         hotspot_time_min=hotspot_time_min,
-        max_i2c_err=max_i2c_err,
+        max_module_error=max_module_error,
         cfg_path=cfg_path,
         debug=debug,
     )
@@ -238,7 +267,7 @@ class _FastAsyncSleep:
 
 
 # ---------------------------------------------------------------------------
-# __init__ / get_task_starters / get_timer_starters (DRIVER_SPEC.md section 9)
+# __init__ / get_task_starters / get_timer_starters (SPECIFICATION.md Part C.9)
 # ---------------------------------------------------------------------------
 
 
@@ -296,7 +325,7 @@ def test_debug_level_propagates_to_the_inherited_pr_logger() -> None:
 
 
 # ---------------------------------------------------------------------------
-# get_dict_cfg / get_error_counter - the base-class getter quartet (DRIVER_SPEC.md section 4.2)
+# get_dict_cfg / get_error_counter - the base-class getter quartet (SPECIFICATION.md Part C.4.2)
 # ---------------------------------------------------------------------------
 
 
@@ -761,7 +790,7 @@ def test_set_dict_cfg_multiple_invalid_fields_reported_independently() -> None:
 
 # ---------------------------------------------------------------------------
 # _VAL_PW bounds - WPA2-PSK ASCII passphrase spec (8-63 chars if used; empty is its own distinct
-# "open network, no security" case, not just a short/weak password) - see CLAUDE.md/DRIVER_SPEC.md
+# "open network, no security" case, not just a short/weak password) - see CLAUDE.md/SPECIFICATION.md
 # for the reasoning; SSID's own 0-32 bound was already correct and needed no change.
 # ---------------------------------------------------------------------------
 
@@ -1328,7 +1357,7 @@ def test_disconnect_sta_and_wait_times_out_instead_of_hanging_forever() -> None:
     # (isconnected() always True) must not hang wlan_connect() forever - this genuinely runs the
     # full _STA_DISCONNECT_WAIT_ITERS(20) * 0.5s = 10s bound in real time (const() values are
     # compiled away, so there's no way to fast-forward this from the test side - see
-    # tests/README.md's own note on this class of MicroPython behavior). The fake WLAN's own
+    # SPECIFICATION.md Part E.5.1's own note on this class of MicroPython behavior). The fake WLAN's own
     # disconnect() normally clears _connected as a side effect (modeling a real disconnect
     # completing immediately) - overridden here to a no-op so isconnected() keeps reporting True
     # throughout, genuinely simulating a driver that never confirms disconnection.
@@ -1778,7 +1807,7 @@ def test_reset_wlan_connect_state_turns_the_led_off() -> None:
 
 # ---------------------------------------------------------------------------
 # wlan_connect() - the task-supervisor entry point: pr.setup(), the fresh _err_cnt_internal streak,
-# and max_i2c_err/_error_check() giving up after repeated WLAN-hardware-exception cycles
+# and max_module_error/_error_check() giving up after repeated WLAN-hardware-exception cycles
 # (independent from, and a coarser safety net than, connection_failures/conn_fail_to_hotspot's own
 # AP-reachability-driven hotspot fallback).
 # ---------------------------------------------------------------------------
@@ -1793,6 +1822,26 @@ def test_wlan_connect_calls_pr_setup_before_entering_its_loop() -> None:
         await asyncio.sleep(0)
         await asyncio.sleep(0)
         initialized = client.pr.initialized
+        await _cancel(task)
+        return initialized
+
+    assert run(scenario()) is True
+
+
+def test_wlan_connect_also_calls_dns_server_pr_setup_before_entering_its_loop() -> None:
+    # Regression test from baseline verification: dns_server is
+    # its own separate PrintLogHistory instance (captive_dns.py's DNSServer, own construction) -
+    # nothing called its own pr.setup() before this fix, so every dns_server.pr.err_s()/wrn_s() call
+    # degraded to "PrintLog: Uninitialized, call setup first!" forever, reproduced directly running
+    # the real assembled system against the digital twin in real hotspot/AP mode.
+    client = make_client(wifi_refresh_sec=0)
+    assert client.dns_server.pr.initialized is False
+
+    async def scenario() -> bool:
+        task = asyncio.create_task(client.wlan_connect())
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        initialized = client.dns_server.pr.initialized
         await _cancel(task)
         return initialized
 
@@ -1930,7 +1979,7 @@ def test_wlan_connect_calls_handle_reconnect_trigger_when_reconn_wifi_is_set() -
 
 
 def test_wlan_connect_gives_up_after_repeated_hardware_failures_and_persists_errno_17() -> None:
-    client = make_client(wifi_refresh_sec=0, max_i2c_err=2)
+    client = make_client(wifi_refresh_sec=0, max_module_error=2)
 
     async def failing_run_sta_mode() -> None:
         client.hw_op_failed = True  # simulates a real WLAN-hardware exception every cycle
@@ -1948,7 +1997,7 @@ def test_wlan_connect_gives_up_after_repeated_hardware_failures_and_persists_err
 
 
 def test_wlan_connect_never_gives_up_while_repeatedly_succeeding() -> None:
-    client = make_client(wifi_refresh_sec=0, max_i2c_err=2)
+    client = make_client(wifi_refresh_sec=0, max_module_error=2)
 
     async def succeeding_run_sta_mode() -> None:
         return None  # hw_op_failed stays False (reset every iteration by wlan_connect() itself)
@@ -1969,8 +2018,8 @@ def test_wlan_connect_never_gives_up_while_repeatedly_succeeding() -> None:
 def test_wlan_connect_recovers_the_streak_on_alternating_failure_and_success() -> None:
     # Proves the give-up decision is a genuine streak, not a monotonic lifetime counter: a success
     # decrements _err_cnt_internal (base_classes.py's own _error_check() contract), so failures that
-    # never land two-in-a-row must never trip max_i2c_err=2, however many cycles run in total.
-    client = make_client(wifi_refresh_sec=0, max_i2c_err=2)
+    # never land two-in-a-row must never trip max_module_error=2, however many cycles run in total.
+    client = make_client(wifi_refresh_sec=0, max_module_error=2)
     toggle = [True]
 
     async def alternating_run_sta_mode() -> None:
@@ -2218,7 +2267,7 @@ def test_write_config_via_public_cfg_schema_round_trips_a_real_value() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Task/timer starter methods (DRIVER_SPEC.md section 9) - get_task_starters()/get_timer_starters()'s
+# Task/timer starter methods (SPECIFICATION.md Part C.9) - get_task_starters()/get_timer_starters()'s
 # own shape is already checked above; the starter methods they return were never actually called.
 # ---------------------------------------------------------------------------
 
@@ -2301,7 +2350,7 @@ def test_update_wifi_snapshot_sets_ts_none_when_now_overflows() -> None:
 
 # ---------------------------------------------------------------------------
 # _switch_wlan_mode() - only its exception path was exercised above; this drives the real
-# deinit/reinit happy path (DRIVER_SPEC.md's "attempt operations" convention).
+# deinit/reinit happy path (SPECIFICATION.md Part C.7's "attempt operations" convention).
 # ---------------------------------------------------------------------------
 
 
@@ -2406,6 +2455,72 @@ def test_start_hotspot_valid_config_activates_the_ap() -> None:
     assert client.hotspot_started_once is True
     assert client.hw_op_failed is False
     assert {"essid": "SensorNode", "password": "12345678"} in _wlan(client).config_calls
+
+
+# ---------------------------------------------------------------------------
+# Task/timer resource leak regression: _run_hotspot_mode() calls _start_hotspot() every loop iteration where
+# wlan.status() != network.STAT_GOT_IP - true on literally every iteration while purely in AP mode,
+# since STAT_GOT_IP is a STA-only status an AP interface never reports (confirmed directly against
+# both tests/network.py's and digital_twin/network.py's WLAN fakes: nothing ever sets _status to
+# STAT_GOT_IP except a STA connect() completing). _configure_hotspot_ap() (called from
+# _start_hotspot() via _activate_hotspot_ap()) unconditionally did
+# `self.dns_server_task = evtloop.create_task(...)` with no is-already-running guard - unlike every
+# other task-holding attribute in this file (ledflash, hotspot_timer), which all null-check before
+# reassigning. Net effect before the fix: one new concurrent DNSServer.run() task leaked per
+# wifi_refresh_sec while stuck in hotspot mode (a real, long-running-uptime scenario, not an edge
+# case), all sharing the one DNSServer instance's single AsyUDPSocket/poller.
+# ---------------------------------------------------------------------------
+
+
+def test_start_hotspot_does_not_leak_a_dns_server_task_when_called_again_while_already_running() -> None:
+    client = make_client()
+
+    async def fake_select(_mode: "Any") -> None:
+        return None
+
+    client._select_wifi_mode = fake_select  # type: ignore[method-assign, assignment]  # deliberate monkeypatch
+
+    async def scenario() -> "Any":
+        # Mirrors _run_hotspot_mode() calling _start_hotspot() again on a later loop iteration
+        # while wlan.status() still isn't STAT_GOT_IP - the real, reachable repeated-call shape.
+        await client._start_hotspot()
+        first_task = client.dns_server_task
+        assert first_task is not None
+        await client._start_hotspot()
+        second_task = client.dns_server_task
+        try:
+            assert second_task is first_task  # no new task created while the first is still running
+            assert not first_task.done()  # and the original task was never cancelled out from under it
+        finally:
+            await _cancel(first_task)
+
+    run(scenario())
+
+
+def test_start_hotspot_starts_a_fresh_dns_server_task_if_the_previous_one_already_finished() -> None:
+    # The other half of the guard: a *finished* task (real crash/cancellation) must not block a
+    # legitimate restart, matching system_service.py's own start_and_check_tasks() `is None or
+    # .done()` convention.
+    client = make_client()
+
+    async def fake_select(_mode: "Any") -> None:
+        return None
+
+    client._select_wifi_mode = fake_select  # type: ignore[method-assign, assignment]  # deliberate monkeypatch
+
+    async def scenario() -> None:
+        await client._start_hotspot()
+        first_task = client.dns_server_task
+        assert first_task is not None
+        await _cancel(first_task)
+        assert first_task.done()
+        await client._start_hotspot()
+        second_task = client.dns_server_task
+        assert second_task is not None
+        assert second_task is not first_task
+        await _cancel(second_task)
+
+    run(scenario())
 
 
 if __name__ == "__main__":

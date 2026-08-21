@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Ruff lint against improved-quality/ (WIP refactor target) and src/ (fully-reviewed files moved
-# out of improved-quality/ once done - see CLAUDE.md) and tests/ (their unit tests). Lint only:
-# `ruff format` is deliberately not part of this toolchain, see pyproject.toml's [tool.ruff]
-# comment. Assumes ruff is already installed and on PATH.
+# Ruff lint against src/ (fully-reviewed code - see CLAUDE.md), tests/ (their unit tests), and
+# digital_twin/ (the hardware simulator, SPECIFICATION.md Part A.10) - all three expected to stay
+# fully clean. Lint only: `ruff format` is deliberately not part of this toolchain, see
+# pyproject.toml's [tool.ruff] comment. Assumes ruff is already installed and on PATH.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-ruff check improved-quality src tests
+ruff check src tests digital_twin

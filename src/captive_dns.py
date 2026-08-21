@@ -1,7 +1,14 @@
+# SPDX-FileCopyrightText: Copyright 2019 p-doyle (Micropython-DNSServer-Captive-Portal) - the
+# DNSQuery class's packet parsing/building is a derivative of that project's main.py (identical
+# field layout/byte values); see src/LICENSE-captive_dns and THIRD_PARTY_LICENSES.md. Changed here
+# per Apache-2.0 §4(b): ported to asyncio/AsyUDPSocket, added type hints, PrintLogHistory-backed
+# logging/errno reporting, off-subnet request filtering, recv-failure backoff, and the root-domain
+# query fix (self._parsed_ok replacing the empty-domain sentinel).
+# SPDX-License-Identifier: Apache-2.0
+
 """Captive-portal DNS spoofer for hotspot/AP mode. DNSServer.run() runs while the device broadcasts
-its fallback hotspot; every on-subnet query gets a canned A-record pointing back at the AP's own
-IP, landing any client on the config page. Malformed/off-subnet/truncated input is dropped, never
-raised.
+its fallback hotspot; every on-subnet query gets a canned A-record pointing back at the AP's own IP, landing any client on the config page.
+Malformed/off-subnet/truncated input is dropped, never raised.
 """
 
 import asyncio
@@ -20,6 +27,16 @@ if TYPE_CHECKING:
     from asy_fram_manager import AsyFramManager
 
 _NAME = const("DNSSRV")
+
+# Backoff for a persistently-failing recvfrom() that returns (None, None) without ever raising
+# (e.g. a bind() that never actually succeeded - see SPECIFICATION.md Part C.9's
+# cascading-recovery-storm convention: this path previously looped at zero delay, measured at ~5
+# wrn_s() lines/second continuously in a real end-to-end run). Distinct from the broad
+# except-Exception backoff below, which already had its own flat 3s pause for a genuinely
+# unexpected exception.
+_RECV_FAIL_BACKOFF_INITIAL_S = const(0.5)
+_RECV_FAIL_BACKOFF_MAX_S = const(5.0)
+_RECV_FAIL_BACKOFF_MULTIPLIER = const(2)
 
 
 def _ipv4_to_int(ip: str) -> int | None:
@@ -45,9 +62,17 @@ class DNSServer:
         debug: int | None = None,
     ) -> None:
         self.pr: PrintLogHistory = make_logger(fram, history_length, debug, _NAME)
+        self.name = _NAME  # matches self.pr.name - the _ModuleLike registration shape
+        # asy_webserver_service.py's registration lists key on (error_sources=).
         # mode="server" sockets receive from anyone - asy_udp_socket.py places source-address
         # trust on the caller. run() filters to the AP's own subnet before ever replying.
         self.udps = AsyUDPSocket(("0.0.0.0", 53), mode="server")
+
+    async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:
+        return await self.pr.get_log()
+
+    async def reset_error_counter(self) -> None:
+        await self.pr.reset()
 
     async def run(self, server_ip: str, netmask: str) -> None:
         netmask_int = _ipv4_to_int(netmask)
@@ -58,11 +83,13 @@ class DNSServer:
             await self.pr.err_s("Invalid server_ip/netmask, not starting:", server_ip, netmask, errno=1)
             return
         network = server_int & netmask_int
+        recv_fail_backoff_s = _RECV_FAIL_BACKOFF_INITIAL_S
         while True:
             try:
                 self.pr.evt("Waiting for DNS request...")
                 data, addr = await self.udps.recvfrom(4096)
                 if data is not None and addr is not None:
+                    recv_fail_backoff_s = _RECV_FAIL_BACKOFF_INITIAL_S  # socket is receiving fine again
                     try:
                         # addr[0] isn't guaranteed to be a str (confirmed: can come back as a
                         # plain int) - treated like off-subnet, not the outer except's 3s backoff.
@@ -86,6 +113,10 @@ class DNSServer:
                             self.pr.evt(f"Replying to {addr[0]:s}:{addr[1]}: {dns.domain:s} -> {server_ip:s}")
                 else:  # data or address is None
                     await self.pr.wrn_s("Invalid DNS request data or address, not sending response.", wrnno=2)
+                    await asyncio.sleep(recv_fail_backoff_s)
+                    recv_fail_backoff_s = min(
+                        recv_fail_backoff_s * _RECV_FAIL_BACKOFF_MULTIPLIER, _RECV_FAIL_BACKOFF_MAX_S
+                    )
 
             except asyncio.CancelledError:
                 self.pr.evt("DNS Server shutdown")
@@ -97,15 +128,23 @@ class DNSServer:
                 await asyncio.sleep(3)
 
         try:
-            await self.udps.disconnect()
+            disconnect_ok = await self.udps.disconnect()
         except asyncio.CancelledError:
             # A second cancellation delivered while this cleanup await is in flight - already
             # shutting down, nothing more to do.
-            pass
+            disconnect_ok = True
         except Exception as e:
             # disconnect() is documented as never raising, but nothing supervises this task -
             # never let cleanup itself become the uncaught exception.
             await self.pr.err_s("DNS Server error during disconnect:", e, errno=3)
+            disconnect_ok = True  # already logged above via the except-Exception branch
+        if not disconnect_ok:
+            # SPECIFICATION.md Part C.7's silent-failure-masking convention: disconnect() itself
+            # never raises (AsyUDPSocket has no logger of its own by design), but its bool return now
+            # reports whether unregister()/close() actually succeeded - log it here so a real
+            # socket/poll-slot leak
+            # over a long uptime leaves a trail instead of silently disappearing.
+            await self.pr.wrn_s("DNS Server socket teardown did not complete cleanly.", wrnno=3)
         self.pr.evt("DNS Server disconnected.")
 
 
@@ -114,6 +153,11 @@ class DNSQuery:
         self.data = data
         self.domain = ""
         self._question_end = 0  # set below once a full question is actually parsed
+        # A root-domain query (a single zero-length label, ".") parses to the same empty
+        # self.domain a truncated/malformed datagram falls back to - this flag is the only thing
+        # that tells them apart, so response() can still answer a genuine root query (BACKLOG.md's
+        # "can't be told apart from a failed parse" entry).
+        self._parsed_ok = False
         self.pr = pr
         # RFC 1035 section 4.1.1/4.1.2: opcode is bits 3-6 of header byte 2; the question section
         # (a length-prefixed label sequence) starts at byte 12, right after the 12-byte header.
@@ -134,17 +178,19 @@ class DNSQuery:
                     # ends before QTYPE/QCLASS - raise explicitly into the "malformed" except below.
                     raise ValueError("truncated question: missing QTYPE/QCLASS")
                 self._question_end = question_end
+                self._parsed_ok = True
         except Exception:
             # Truncated/malformed data (or non-bytes data, since this class is public) - not a
             # usable standard query. Reuses the empty-domain sentinel, no raise into run().
             self.domain = ""
+            self._parsed_ok = False
         self.pr.evt("DNSQuery domain:", self.domain)
 
     def response(self, ip: str) -> bytes | None:
         # RFC 1035 section 4.1.1/4.1.4: a synthesized "success, recursion available" header,
         # echoing the original question back with one compressed-pointer A-record answer.
         self.pr.evt("DNSQuery response:", self.domain, "==>", ip)
-        if self.domain:
+        if self._parsed_ok:
             # This method is public and shouldn't rely on run() only passing a validated
             # server_ip - a bad ip would otherwise build a corrupt packet (wrong RDATA length).
             if _ipv4_to_int(ip) is None:

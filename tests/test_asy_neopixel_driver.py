@@ -58,6 +58,19 @@ def test_init_bakes_name_into_the_logger() -> None:
     assert driver.pr.name == "NEOPIXEL"
 
 
+def test_get_error_counter_forwards_to_the_real_print_log() -> None:
+    driver = make_driver()
+    log = run(driver.get_error_counter())
+    assert log["NEOPIXEL"]["ErrCount"] == 0
+
+
+def test_get_error_counter_reflects_a_real_logged_error() -> None:
+    driver = make_driver()
+    run(driver.pr.err_s("boom", errno=1))
+    log = run(driver.get_error_counter())
+    assert log["NEOPIXEL"]["ErrCount"] == 1
+
+
 # ---------------------------------------------------------------------------
 # Overlay (on/off/toggle)
 # ---------------------------------------------------------------------------

@@ -1,11 +1,11 @@
 """Per-sensor JSON config storage - each sensor gets its own `config_<name>.cfg` file (see
-base_classes.py's SensorReaderConfig), validated against a schema of `_VAL_*` `const()` tuples:
-(name, type, default, min, max, special). Every public function/method returns a documented
-"invalid" sentinel, never raises. `__init__` only stashes constructor args (cheap, synchronous);
-`ConfigManager` reads the file once, in `async def setup()`, into `self._cache` - every later
-`get_*`/`write_config` call reads/writes `_cache` directly (see CLAUDE.md for the
-cache-vs-external-corruption trade-off this implies).
+base_classes.py's SensorReaderConfig), validated against a schema of `_VAL_*` `const()` tuples: (name, type, default, min, max, special).
+Every public function/method returns a documented "invalid" sentinel, never raises.
 """
+# `__init__` only stashes constructor args (cheap, synchronous); `ConfigManager` reads the file
+# once, in `async def setup()`, into `self._cache` - every later `get_*`/`write_config` call
+# reads/writes `_cache` directly (see CLAUDE.md for the cache-vs-external-corruption trade-off this
+# implies).
 
 import asyncio
 import json
@@ -76,18 +76,21 @@ def schema_dict(schema: "ConfigSchema") -> "dict[str, FieldSchema]":  # {field_n
         return {}
 
 
-def make_dict(nt: "NamedTuple") -> "dict[str, dict[str, int | float | str | None]]":  # {type_name: {field: value}} via repr() - MicroPython namedtuples have no _fields/_asdict()
+def make_dict(
+    nt: "NamedTuple", fields: "tuple[str, ...]"
+) -> "dict[str, dict[str, int | float | str | None]]":  # {type_name: {field: value}} - fields is the same
+    # literal tuple the caller's own namedtuple(name, fields) was built from (rp2's build ROM level
+    # is MICROPY_CONFIG_ROM_LEVEL_EXTRA_FEATURES, one level below the MICROPY_CONFIG_ROM_LEVEL_
+    # EVERYTHING that _asdict()/_fields require - confirmed against ports/rp2/mpconfigport.h - so
+    # neither is safe to rely on here).
     try:
-        [name, kvpairs] = repr(nt).split("(")[0:2]
-        keys = [c.split("=")[0].strip() for c in kvpairs.replace(")", "").split(",")]
+        name = type(nt).__name__
     except Exception:
         return {}
-    if keys == [""]:
-        return {name: {}}
     try:
-        return {name: {key: getattr(nt, key) for key in keys}}
+        return {name: {field: getattr(nt, field) for field in fields}}
     except Exception:
-        return {name: {key: None for key in keys}}
+        return {name: {field: None for field in fields}}
 
 
 def type_or_range_error(
@@ -157,6 +160,8 @@ if TYPE_CHECKING:
 class ConfigManager:
     def __init__(self, filename: str, cfg_vals: "ConfigSchema", name: str) -> None:
         self.pr = PrintLogHistory(name="CFGMGR_" + name)
+        self.name = "CFGMGR_" + name  # matches self.pr.name - the _ModuleLike registration shape
+        # asy_webserver_service.py's registration lists key on (error_sources=).
         self.config_lock = asyncio.Lock()
         self.config_file = filename
         self.cfg_vals = cfg_vals
@@ -185,6 +190,9 @@ class ConfigManager:
 
     async def get_error_counter(self) -> "dict[str, dict[str, int | list[int] | list[str]]]":
         return await self.pr.get_log()
+
+    async def reset_error_counter(self) -> None:
+        await self.pr.reset()
 
     async def get_dict(self, keys: "list[str]") -> "dict[str, int | float | str | bool | None] | None":
         # Reads _cache directly - no lock needed (write_config never awaits mid-mutation, so no

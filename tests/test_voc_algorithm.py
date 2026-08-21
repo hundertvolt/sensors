@@ -389,7 +389,7 @@ def test_fix16_div_result_equal_to_minimum_returns_overflow_sentinel() -> None:
 # Real-FRAM integration and fault propagation - VOCAlgorithm's own pack_into()/unpack_from()
 # through a real AsyFramManager + simulated chip, decoupled from asy_sgp40_driver.py entirely
 # (that file's own FRAM tests exercise the same mechanism, but always coupled to a full sensor
-# read cycle - see tests/test_asy_sgp40_driver.py). Matches tests/README.md's mocking-boundary plan.
+# read cycle - see tests/test_asy_sgp40_driver.py). Matches SPECIFICATION.md Part E.4's mocking-boundary plan.
 # ---------------------------------------------------------------------------
 
 

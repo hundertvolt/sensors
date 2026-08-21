@@ -1,14 +1,13 @@
 """End-to-end integration tests for the setter generalization work: api_response.py's
-parse_cmd_request()/handle_set_cmd() driven against mocked Microdot request data (fine/partial/
-garbage), then against a real ext/microdot.py (v2.6.2) Microdot app wired the way sensortask-*.py
-will eventually wire it - a real AsyConnTime (WiFi) reader for the setter path, a real
-AsyNtpClient reader for both the getter and the setter path, a real BMP3xx_Reader/SGP40_Reader for
-the schema-driven sensor setters, and a real SCD30_Reader for the one sensor whose REST surface is
-hand-rolled per field instead of schema-driven. Only test-local Microdot apps are constructed here;
-improved-quality/sensortask-wozi.py itself is never touched (see CLAUDE.md's hard rule on editing
-improved-quality/ source files) - anything of its wiring that has to be exercised is reimplemented
-locally (_wifi_field_schema()/_SCD_SET_FIELDS/_scd_apply_field below), never imported.
+parse_cmd_request()/handle_set_cmd() driven against mocked Microdot request data (fine/partial/garbage), then against a real ext/microdot.py (v2.6.2) Microdot app wired the same way src/asy_webserver_service.py's real registration-based routes are.
 """
+# Covers a real AsyConnTime (WiFi) reader for the setter path, a real AsyNtpClient reader for both
+# the getter and the setter path, a real BMP3xx_Reader/SGP40_Reader for the schema-driven sensor
+# setters, and a real SCD30_Reader for the one sensor whose REST surface is hand-rolled per field
+# instead of schema-driven. Only test-local Microdot apps are constructed here, independent of
+# src/asy_webserver_service.py's own construction - anything of its wiring that has to be exercised
+# is reimplemented locally (_wifi_field_schema()/_SCD_SET_FIELDS/_scd_apply_field below), never
+# imported, to keep this file's own scope self-contained.
 
 import asyncio
 import errno as errno_mod
@@ -25,8 +24,7 @@ import sys
 sys.path.insert(0, "ext")
 
 # ext/ isn't on this project's mypy search path yet (see pyproject.toml's [tool.mypy]) - same gap
-# as the pre-existing improved-quality/api_helpers.py and improved-quality/sensortask-wozi.py
-# imports of this module.
+# as src/asy_webserver_service.py's own import of this module.
 from microdot import Microdot, Request  # type: ignore[import-not-found]  # noqa: E402
 
 import api_response as ar
@@ -56,6 +54,35 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
 
 _TMP_DIR = "tests/_tmp"
 _next_dir = 0
+
+
+def _sweep_stale_tmp_dirs(prefix: str) -> None:
+    # Sweeps pre-existing <prefix>* scratch dirs left behind by an earlier scripts/test.sh run on
+    # this machine - _next_dir always restarts at 0 per process, so without this a later run
+    # silently reuses an earlier run's real, persisted config_*.cfg files instead of a genuinely
+    # fresh directory. See tests/test_sensortask_wozi.py's own _sweep_stale_tmp_dirs() for the full
+    # root-cause writeup (this exact _tmp_cfg_dir() shape is copy-pasted across every test file with
+    # its own _TMP_DIR/_next_dir pair - same fix applied uniformly to each).
+    try:
+        entries = os.listdir(_TMP_DIR)
+    except OSError:
+        return  # tests/_tmp itself doesn't exist yet - nothing to clean
+    for entry in entries:
+        if not entry.startswith(prefix):
+            continue
+        dir_path = _TMP_DIR + "/" + entry
+        try:
+            for filename in os.listdir(dir_path):
+                try:
+                    os.remove(dir_path + "/" + filename)
+                except OSError:
+                    pass
+            os.rmdir(dir_path)
+        except OSError:
+            pass
+
+
+_sweep_stale_tmp_dirs("msi_")
 
 
 def _tmp_cfg_dir() -> str:
@@ -127,12 +154,13 @@ class _FakeRequest:
 # quality (fine/partial/garbage), without a real Microdot app or real sockets.
 #
 # AsyConnTime owns one schema/cfgmgr for all of SSID/PW/Country/Hostname/LedWifiOn, but the real
-# /net/cmd (setNetwork) and /led/cmd (setWiFiLED) routes each only own their own subset of those
-# fields (improved-quality/sensortask-wozi.py's own _cfg_subset()) - passing the *whole* schema to
-# both would let setNetwork accept/persist LedWifiOn (and spuriously fire reconnect_wifi() for an
-# LED-only change) and let setWiFiLED silently accept/persist SSID/PW/Country/Hostname with no
-# reconnect at all. _wifi_field_schema() below mirrors that same scoping locally, since this file
-# never imports sensortask-wozi.py itself (see its own module docstring).
+# registration (src/sensortask_wozi.py's own "networking" settings list) scopes them into two
+# separate SettingsGroup(conn, ...) entries - one for SSID/PW/Country/Hostname (with
+# post_fct=conn.reconnect_wifi), one for LedWifiOn alone (no post_fct) - passing the *whole* schema
+# as one group would let a LedWifiOn-only change spuriously fire reconnect_wifi(), and vice versa
+# let an SSID/PW/Country/Hostname change silently reach LedWifiOn's own group with no reconnect at
+# all. _wifi_field_schema() below mirrors that same per-group scoping locally, since this file
+# never imports src/sensortask_wozi.py itself (see its own module docstring).
 # ---------------------------------------------------------------------------
 
 
@@ -239,11 +267,12 @@ def test_mocked_request_empty_body_dict_is_valid_but_changes_nothing() -> None:
 
 
 # ---------------------------------------------------------------------------
-# setNetwork/setWiFiLED field scoping - regression coverage for the cross-route schema leakage bug
-# found in improved-quality/sensortask-wozi.py: AsyConnTime owns one schema for both routes'
-# fields, so passing the *whole* schema to either route (instead of each route's own real subset)
-# would let setNetwork accept/persist LedWifiOn (and spuriously reconnect for an LED-only change)
-# and let setWiFiLED silently accept/persist SSID/PW/Country/Hostname with no reconnect at all.
+# setNetwork/setWiFiLED field scoping - regression coverage for the cross-route schema leakage risk
+# this pattern is designed to avoid: AsyConnTime owns one schema for both field groups, so passing
+# the *whole* schema to either route (instead of each route's own real subset, as
+# src/sensortask_wozi.py's two separate SettingsGroup(conn, ...) registrations do) would let
+# setNetwork accept/persist LedWifiOn (and spuriously reconnect for an LED-only change) and let
+# setWiFiLED silently accept/persist SSID/PW/Country/Hostname with no reconnect at all.
 # ---------------------------------------------------------------------------
 
 
@@ -400,7 +429,7 @@ def test_real_microdot_handler_raising_is_caught_by_microdots_own_blanket_catch(
 # mode a disconnected/dead sensor produces) propagates all the way through _set_dict_cfg's push
 # callback, handle_set_cmd's envelope, and real Microdot dispatch as a per-field "Failed" status
 # inside a normal 200 JSON response - never as a raised exception or a bare Microdot 500. This is
-# the one place CLAUDE.md's "Microdot / REST layer" blanket-catch guarantee and DRIVER_SPEC.md's
+# the one place CLAUDE.md's "Microdot / REST layer" blanket-catch guarantee and SPECIFICATION.md Part C.4's
 # layer-3 "never raises" contract are proven to hold *together*, end-to-end, not just individually.
 # ---------------------------------------------------------------------------
 
@@ -611,7 +640,7 @@ def make_sgp_reader() -> "tuple[SGP40_Reader, I2C]":
     # integration.py's make_sgp_reader(): a real SGP40_Reader over the real asy_i2c_driver.py I2C
     # wrapper, mocked only at tests/machine.py's raw-bus boundary.
     i2c = I2C(1, scl_pin=19, sda_pin=18, frequency=50000)
-    reader = SGP40_Reader(i2c, _sgp_comp_data, max_i2c_err=5, cfg_path=_tmp_cfg_dir())
+    reader = SGP40_Reader(i2c, _sgp_comp_data, max_module_error=5, cfg_path=_tmp_cfg_dir())
     run(reader.cfgmgr.setup())
     return reader, i2c
 
@@ -697,15 +726,15 @@ def test_real_microdot_sgp40_setter_end_to_end_write_fault_surfaces_as_failed_no
 
 # ---------------------------------------------------------------------------
 # Real Microdot end-to-end for SCD30's bespoke per-field REST wiring. Unlike every other sensor,
-# SCD30_Reader has no _set_dict_cfg/ConfigManager surface at all - its parameters live on the
-# sensor's own NVM, not in a local cache (see asy_scd30_driver.py's "No local default either"
-# comment) - so improved-quality/sensortask-wozi.py drives it through a hand-rolled
-# (key, field, setter) loop instead. That loop is reimplemented locally below rather than imported,
-# the same convention _wifi_field_schema() already follows in this file (see the module docstring);
-# only the three fields this file actually exercises are mirrored, not all seven. Every SCD30 setter
-# already returns bool and never raises (its own module docstring/SPECIFICATION.md Part C), so the
-# Valid/Failed mapping is a plain bool check - the try/except is defense-in-depth against a future
-# change to that contract, exactly as in the real file.
+# SCD30_Reader has no ConfigManager/local-cache surface at all - its parameters live on the
+# sensor's own NVM (see asy_scd30_driver.py's "No local default either" comment) - so its own real
+# `_set_dict_cfg()` drives each field through a hand-rolled (key, field, setter) dispatch dict
+# instead of a schema-backed cache read/write. That dispatch is reimplemented locally below rather
+# than imported, the same convention _wifi_field_schema() already follows in this file (see the
+# module docstring); only the three fields this file actually exercises are mirrored, not all
+# seven. Every SCD30 setter already returns bool and never raises (its own module docstring/
+# SPECIFICATION.md Part C), so the Valid/Failed mapping is a plain bool check - the try/except is
+# defense-in-depth against a future change to that contract, exactly as in the real file.
 # ---------------------------------------------------------------------------
 
 _FIELD_SCD_MEAS_INT: "cm.FieldSchema" = ("MeasInt", "int", 2, 2, 1800, None)
@@ -776,7 +805,7 @@ def make_scd_reader() -> SCD30_Reader:
     # Same construction as test_asy_scd30_driver.py's own make_reader(): a real SCD30_Reader over
     # the real asy_i2c_driver.py I2C wrapper and tests/machine.py's fake bus/Pin. No cfg_path -
     # SCD30_Reader has no ConfigManager of its own at all, which is the whole point of this section.
-    return SCD30_Reader(I2C(0, scl_pin=1, sda_pin=0, frequency=100000), irq_pin=5, trigger_sec=3, max_i2c_err=5)
+    return SCD30_Reader(I2C(0, scl_pin=1, sda_pin=0, frequency=100000), irq_pin=5, trigger_sec=3, max_module_error=5)
 
 
 def _scd_writes(reader: SCD30_Reader) -> "list[bytes]":
@@ -865,12 +894,12 @@ def test_real_microdot_scd30_per_field_setter_end_to_end_bus_fault_surfaces_as_f
     writes = _scd_writes(reader)
     assert len(writes) == 1  # the faulted write never made it into the bus log at all
     assert writes[0][:4] == b"\x00\x10\x03\xf5"
-    # The fault is real and counted, on SCD30's own error log (errno=14, its set_measurement_interval
+    # The fault is real and counted, on SCD30's own error log (errno=15, its set_measurement_interval
     # wrapper's own number) - not swallowed silently just because the response says 200.
     log = run(reader.get_error_counter())
     err_nums = log["SCD30"]["ErrNum"]
     assert isinstance(err_nums, list)
-    assert err_nums[-1] == 14
+    assert err_nums[-1] == 15
 
 
 if __name__ == "__main__":

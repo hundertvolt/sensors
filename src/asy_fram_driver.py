@@ -1,11 +1,10 @@
-"""Async SPI driver for one Fujitsu MB85RS64V FRAM chip (Adafruit's 8KB SPI FRAM breakout):
-raw byte-addressed get_values()/set_values() plus write protection. Source: Fujitsu MB85RS64V
-datasheet (DS501-00015), cross-checked against Adafruit's Adafruit_FRAM_SPI reference driver.
-CRC/dual-copy data-integrity recovery lives one layer up in asy_fram_manager.py - this file only
-detects device-ID mismatch, a write-enable latch that didn't set/clear, and a stale write-protect
-assumption, self-healing to a safe state without raising (except __init__()'s/setup()'s one-time
-setup errors).
+"""Async SPI driver for one Fujitsu MB85RS64V FRAM chip (Adafruit's 8KB SPI FRAM breakout): raw byte-addressed get_values()/set_values() plus write protection.
+Source: Fujitsu MB85RS64V datasheet (DS501-00015), cross-checked against Adafruit's Adafruit_FRAM_SPI reference driver.
 """
+# CRC/dual-copy data-integrity recovery lives one layer up in asy_fram_manager.py - this file only
+# detects device-ID mismatch, a write-enable latch that didn't set/clear, and a stale write-protect
+# assumption, self-healing to a safe state without raising (except __init__()'s/setup()'s one-time
+# setup errors).
 
 import asyncio
 

@@ -1,19 +1,9 @@
-"""Full-stack integration tests: the real chain from tests/_fram_chip_fake.py's simulated
-MB85RS64V chip, through asy_spi_driver.py/asy_fram_driver.py/asy_fram_manager.py, up into
-print_log.py/base_classes.py's real consumers (SensorReader) - nothing faked above the chip-fake
-level (which itself subclasses tests/machine.py's raw fake machine.SPI, so this is genuinely mocked
-down to SPI bus interaction, not just to AsyFramManager's own boundary as tests/test_asy_fram_manager.py
-mostly does). See tests/README.md's mocking-boundary plan and BACKLOG.md's "asy_fram_manager.py -> src/"
-sections for why each individual module is trusted rather than re-mocked here.
-
-Deliberately not modeled: a raw-SPI-bus-level fault (a real electrical disturbance corrupting a
-transfer) - confirmed via tests/machine.py's and asy_spi_driver.py's own docstrings that real RP2040
-SPI write()/readinto() genuinely cannot raise or report a fault at all once constructed (unlike I2C,
-which has a NAK/timeout errno surface tests/machine.py's I2C fake does model) - so there is no lower
-fault-injection seam to add here; tests/_fram_chip_fake.py's own opcode/latch/identity-level knobs
-already are the lowest layer where an actual failure can be observed, matching asy_fram_driver.py's
-own module docstring on this exact point.
-"""
+"""Full-stack integration tests: the real chain from tests/_fram_chip_fake.py's simulated MB85RS64V chip, through asy_spi_driver.py/asy_fram_driver.py/asy_fram_manager.py, up into print_log.py/base_classes.py's real consumers - mocked down to SPI bus interaction, not just AsyFramManager's own boundary.
+See SPECIFICATION.md Part E.4 for the mocking-boundary plan."""
+# Deliberately not modeled: a raw-SPI-bus-level fault. Real RP2040 SPI write()/readinto() genuinely
+# cannot raise or report a fault at all once constructed (unlike I2C's NAK/timeout errno surface),
+# so tests/_fram_chip_fake.py's own opcode/latch/identity-level knobs already are the lowest layer
+# where an actual failure can be observed.
 
 import asyncio
 import gc
@@ -66,7 +56,7 @@ async def _synced() -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Real multi-consumer topology - matching improved-quality/sensortask-wozi.py's actual production
+# Real multi-consumer topology - matching src/sensortask_wozi.py's actual production
 # shape: one AsyFramManager backs both a driver's own PrintLogHistoryStore (error persistence,
 # CRC8, allocated first via SensorReader's own __init__) and a separate value-backup chunk
 # (allocated second, a caller's own choice of CRC - CRC32, matching asy_sgp40_driver.py's real
@@ -162,7 +152,7 @@ def test_sensorreader_runs_in_degraded_mode_when_fram_setup_never_succeeded() ->
 
 
 # ---------------------------------------------------------------------------
-# Long-running stability - matching improved-quality/asy_sgp40_driver.py's real periodic
+# Long-running stability - matching src/asy_sgp40_driver.py's real periodic
 # write_into/read_into cycle (a fresh scratch buffer fetched via get_buffer() each cycle, CRC32,
 # dynamic verify), run across many iterations to catch any state leak a 1-2-cycle test wouldn't.
 # ---------------------------------------------------------------------------

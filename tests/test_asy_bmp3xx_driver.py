@@ -20,7 +20,7 @@ asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
 
 # Mirrors of asy_bmp3xx_driver.py's own underscore-prefixed micropython.const() values - these
 # are compiled away entirely (confirmed: MicroPython folds a const() name into every use site at
-# compile time, so it isn't a real importable module attribute - see tests/README.md's "Reading
+# compile time, so it isn't a real importable module attribute - see SPECIFICATION.md Part E.5.1's "Reading
 # the numbers" and BACKLOG.md; `ImportError: can't import name _BMP388_CHIP_ID` confirmed this
 # directly). Kept in exact sync with the driver's own values by construction/citation below, not
 # re-derived independently.
@@ -553,7 +553,7 @@ def test_read_raises_oserror_when_the_data_burst_returns_an_unexpected_result() 
 
 def test_read_bmp_logs_and_degrades_when_the_data_burst_returns_an_unexpected_result() -> None:
     # Caller side of the guard above: _read_bmp()'s blanket try/except turns that OSError into the
-    # same logged errno=13 as any other failed read, returns an all-None result, and _store_bmp()
+    # same logged errno=11 as any other failed read, returns an all-None result, and _store_bmp()
     # then discards it - the read cycle degrades exactly like a NAKed bus instead of crashing
     # read_loop()'s task or storing a half-computed reading.
     i2c, reader = make_clean_reader("bad_burst_reader")
@@ -573,7 +573,7 @@ def test_read_bmp_logs_and_degrades_when_the_data_burst_returns_an_unexpected_re
         results, counters = run(scenario())
 
     assert results == (None, None, None)
-    assert counters["BMP3XX"]["ErrNum"][-1] == 13  # errno=13, "Read failed:"
+    assert counters["BMP3XX"]["ErrNum"][-1] == 11  # errno=11, "Read failed:"
     assert counters["BMP3XX"]["ErrType"][-1] == "E"
     assert run(reader.get_data()) == BMP3XX(None, None, None, None)  # nothing corrupted got stored
 
@@ -899,11 +899,11 @@ def make_reader(name: str) -> BMP3xx_Reader:
     return reader
 
 
-def make_clean_reader(name: str, max_i2c_err: int = 5) -> "tuple[I2C, BMP3xx_Reader]":
+def make_clean_reader(name: str, max_module_error: int = 5) -> "tuple[I2C, BMP3xx_Reader]":
     # Unlike make_reader() above, the bus starts untouched (no nak_addresses/busy) - individual
     # tests seed exactly the registers they need for setup()/reads to succeed.
     i2c = make_i2c()
-    reader = BMP3xx_Reader(i2c, address=_ADDR, max_i2c_err=max_i2c_err, cfg_path=_tmp_cfg_path(name))
+    reader = BMP3xx_Reader(i2c, address=_ADDR, max_module_error=max_module_error, cfg_path=_tmp_cfg_path(name))
     run(reader.cfgmgr.setup())
     return i2c, reader
 
@@ -1252,6 +1252,35 @@ def test_get_dict_cfg_keeps_none_for_oversampling_when_sensor_unreachable() -> N
     assert cfg["SampleInterv"] == 2  # config-only field, unaffected by the sensor bus failure
 
 
+def test_get_config_snapshot_holds_the_device_lock_once_for_the_whole_batch_not_per_field() -> None:
+    # Regression test for BACKLOG.md's torn-read entry: get_dict_cfg()'s 3 config fields used to be
+    # 3 independently-locked reads, so a concurrent set_*_oversampling()/set_filter_coefficient()
+    # call (also i2c_bmp3xx-locked) could land between any two of them and produce a dict mixing
+    # pre-/post-write values. get_bits()/set_bits() never actually suspend in this fake (no real I2C
+    # bus timing to await), so the interleaving itself can't be reproduced directly here the way
+    # test_asy_scd30_driver.py's own version of this test can - this instead proves the actual fix
+    # mechanism directly: get_config_snapshot() acquires the device-session lock exactly once for
+    # the whole batch, not once per field.
+    i2c, reader = make_clean_reader("config_snapshot_lock")
+    seed_status(i2c, 0x10 | 0x60)
+    seed_err(i2c, 0x00)
+
+    lock = reader.bmp.i2c_bmp3xx.asy_lock
+    acquire_calls = 0
+    real_acquire = lock.acquire
+
+    async def counting_acquire() -> None:
+        nonlocal acquire_calls
+        acquire_calls += 1
+        await real_acquire()
+
+    lock.acquire = counting_acquire  # type: ignore[assignment]
+
+    snapshot = run(reader.bmp.get_config_snapshot())
+    assert acquire_calls == 1
+    assert snapshot == (1, 1, 0)  # schema defaults (PressOvers, TempOvers, FiltCoeff), untouched here
+
+
 # ---------------------------------------------------------------------------
 # Integration: BMP3xx_Reader driven together with real print_log.py/base_classes.py/
 # asy_i2c_driver.py collaborators (only the raw I2C bus transaction layer is faked) - successful
@@ -1305,11 +1334,11 @@ def test_init_bmp_fails_and_logs_when_config_data_unreadable() -> None:
 
     ok, counters = run(scenario())
     assert ok is False
-    assert counters["BMP3XX"]["ErrNum"][-1] == 11  # errno=11, "Error reading config data!"
+    assert counters["BMP3XX"]["ErrNum"][-1] == 12  # errno=12, "Error reading config data!"
 
 
 def test_store_bmp_falls_back_to_default_compensation_values_when_config_unreadable() -> None:
-    # _store_bmp()'s own errno=14 counterpart to _init_bmp()'s errno=11 above - same message text,
+    # _store_bmp()'s own errno=14 counterpart to _init_bmp()'s errno=12 above - same message text,
     # different call site and different consequence: the compensation values (PressOffset/
     # TempOffset/SeaLevelOffs/MeanAtmTemp) are pure post-processing math inputs, so an unreadable
     # config must not cost the whole reading. It logs, substitutes the documented
@@ -1363,10 +1392,10 @@ def test_store_bmp_falls_back_to_default_compensation_values_when_config_unreada
 
 def test_reader_read_error_check_threshold_and_self_heal() -> None:
     # base_classes.py's real _error_check(): a bus disturbance appearing mid-operation (after a
-    # clean init) must accumulate consecutive failures past max_i2c_err before giving up, and a
+    # clean init) must accumulate consecutive failures past max_module_error before giving up, and a
     # later successful read must start unwinding that streak again - the same self-healing
     # behavior read_loop() relies on to tolerate a transient disconnect without a full restart.
-    i2c, reader = make_clean_reader("threshold", max_i2c_err=2)
+    i2c, reader = make_clean_reader("threshold", max_module_error=2)
     seed_chip_id(i2c, _BMP388_CHIP_ID)
     seed_calibration(i2c)
     seed_status(i2c, 0x10 | 0x60)
@@ -1377,7 +1406,7 @@ def test_reader_read_error_check_threshold_and_self_heal() -> None:
         assert await reader._init_bmp()
         fake(i2c).nak_addresses.add(_ADDR)
         outcomes = []
-        for _ in range(3):  # max_i2c_err=2 -> the 3rd consecutive failure crosses the threshold
+        for _ in range(3):  # max_module_error=2 -> the 3rd consecutive failure crosses the threshold
             results = await reader._read_bmp()
             outcomes.append(await reader._error_check(results))
         fake(i2c).nak_addresses.discard(_ADDR)
@@ -1398,12 +1427,12 @@ def test_reader_error_counter_reflects_read_failures_via_print_log() -> None:
     async def scenario() -> dict:
         assert await reader._init_bmp()
         fake(i2c).nak_addresses.add(_ADDR)
-        await reader._read_bmp()  # errno=13, "Lesefehler:"
+        await reader._read_bmp()  # errno=11, "Lesefehler:"
         return await reader.get_error_counter()
 
     counters = run(scenario())["BMP3XX"]
     assert counters["ErrCount"] == 1
-    assert counters["ErrNum"][-1] == 13
+    assert counters["ErrNum"][-1] == 11
     assert counters["ErrType"][-1] == "E"
 
 
@@ -1504,7 +1533,7 @@ def test_read_byte_raises_oserror_on_deinitialized_bus() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Reader.get_data() / get_dict_data() (DRIVER_SPEC.md section 4.2) - never exercised by any test
+# Reader.get_data() / get_dict_data() (SPECIFICATION.md Part C.4.2) - never exercised by any test
 # above, unlike asy_scd30_driver.py's/asy_sgp40_driver.py's own test files.
 # ---------------------------------------------------------------------------
 
@@ -1539,7 +1568,7 @@ def test_get_data_and_get_dict_data_reflect_a_stored_reading() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Task/timer starters (DRIVER_SPEC.md section 9) - get_task_starters()/get_timer_starters()'s
+# Task/timer starters (SPECIFICATION.md Part C.9) - get_task_starters()/get_timer_starters()'s
 # shape was never checked, and none of the starter methods they return were ever actually called,
 # unlike asy_sgp40_driver.py's own test_start_asy_read_returns_a_real_task.
 # ---------------------------------------------------------------------------
@@ -1786,7 +1815,7 @@ def test_stop_timer_deinits_the_trigger_timer() -> None:
 
 # ---------------------------------------------------------------------------
 # _base_trigger() - the 1Hz base tick divided down by trigger_period into the "real" trigger_event
-# (DRIVER_SPEC.md section 9's "second small _base_trigger() task" pattern).
+# (SPECIFICATION.md Part C.9's "second small _base_trigger() task" pattern).
 # ---------------------------------------------------------------------------
 
 
@@ -1827,7 +1856,7 @@ def test_base_trigger_sets_trigger_event_only_once_the_configured_period_elapses
 # ---------------------------------------------------------------------------
 # Reader-level set_temperature_oversampling()/set_filter_coefficient() - only their protocol-layer
 # counterparts and set_pressure_oversampling()'s own Reader wrapper were exercised above; these two
-# forwards share the same success/log-and-return-False shape (DRIVER_SPEC.md section 7).
+# forwards share the same success/log-and-return-False shape (SPECIFICATION.md Part C.7).
 # ---------------------------------------------------------------------------
 
 
@@ -1905,7 +1934,7 @@ def test_read_loop_stores_a_result_after_one_trigger() -> None:
 
 
 def test_read_loop_gives_up_and_returns_false_after_max_errors() -> None:
-    i2c, reader = make_clean_reader("read_loop_giveup", max_i2c_err=2)
+    i2c, reader = make_clean_reader("read_loop_giveup", max_module_error=2)
     seed_chip_id(i2c, _BMP388_CHIP_ID)
     seed_calibration(i2c)
     seed_status(i2c, 0x10 | 0x60)
@@ -1916,7 +1945,7 @@ def test_read_loop_gives_up_and_returns_false_after_max_errors() -> None:
         task = asyncio.create_task(reader.read_loop())
         await _settle(10)
         fake(i2c).nak_addresses.add(_ADDR)  # every read from here on fails
-        for _ in range(4):  # max_i2c_err=2 -> the 3rd consecutive failure crosses the threshold
+        for _ in range(4):  # max_module_error=2 -> the 3rd consecutive failure crosses the threshold
             reader.trigger_event.set()
             await _settle(10)
             if task.done():

@@ -1,12 +1,11 @@
 """Full-stack FRAM integration for the Neopixel promotion: proves asy_neopixel_driver.py's own
-PrintLogHistoryStore chunk and asy_notification_service.py's single combined one (covering
-NotificationCoordinator's own fields + every registered NotificationSignal's check-failure logging
-together, per its staged-registration design - not a separate chunk per signal) are genuinely
-independent, non-overlapping allocations off one shared AsyFramManager - matching
-improved-quality/sensortask-wozi.py's real production topology (both pass fram=fram) - and that
-both survive a simulated reboot. Mirrors tests/test_fram_integration.py's established pattern: real
-chain down to the simulated chip, not mocked at AsyFramManager's own boundary.
+PrintLogHistoryStore chunk and asy_notification_service.py's single combined one are genuinely independent, non-overlapping allocations off one shared AsyFramManager, and both survive a simulated reboot.
 """
+# Matches src/sensortask_wozi.py's real production topology (both pass fram=fram).
+# NotificationCoordinator's combined chunk covers its own fields + every registered
+# NotificationSignal's check-failure logging together, per its staged-registration design - not a
+# separate chunk per signal. Mirrors tests/test_fram_integration.py's established pattern: real
+# chain down to the simulated chip, not mocked at AsyFramManager's own boundary.
 
 import asyncio
 import os
@@ -38,6 +37,35 @@ _FIELD_WARN_CO2 = (("WarnCO2", "int", 1600, 0, 3000, None),)
 
 _TMP_DIR = "tests/_tmp"
 _next_dir = 0
+
+
+def _sweep_stale_tmp_dirs(prefix: str) -> None:
+    # Sweeps pre-existing <prefix>* scratch dirs left behind by an earlier scripts/test.sh run on
+    # this machine - _next_dir always restarts at 0 per process, so without this a later run
+    # silently reuses an earlier run's real, persisted config_*.cfg files instead of a genuinely
+    # fresh directory. See tests/test_sensortask_wozi.py's own _sweep_stale_tmp_dirs() for the full
+    # root-cause writeup (this exact _tmp_cfg_dir() shape is copy-pasted across every test file with
+    # its own _TMP_DIR/_next_dir pair - same fix applied uniformly to each).
+    try:
+        entries = os.listdir(_TMP_DIR)
+    except OSError:
+        return  # tests/_tmp itself doesn't exist yet - nothing to clean
+    for entry in entries:
+        if not entry.startswith(prefix):
+            continue
+        dir_path = _TMP_DIR + "/" + entry
+        try:
+            for filename in os.listdir(dir_path):
+                try:
+                    os.remove(dir_path + "/" + filename)
+                except OSError:
+                    pass
+            os.rmdir(dir_path)
+        except OSError:
+            pass
+
+
+_sweep_stale_tmp_dirs("notify_fram_")
 
 
 def _remove_any(path: str) -> None:

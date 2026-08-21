@@ -1,11 +1,11 @@
-"""Generic bit-banged CRC engine (MSB-first, no reflection, no final XOR). CRC8 (poly 0x31, init
-0xFF) is Sensirion's documented CRC-8; CRC16 (poly 0x1021, init 0xFFFF) is CRC-16/CCITT-FALSE;
-CRC32 (poly 0x04C11DB7, init 0xFFFFFFFF) is CRC-32/MPEG-2. CRC_Pass is a zero-length no-op. Every
-public method returns None/False on invalid input - never raises - except add()/check(), which
-allocate a new buffer and let a MemoryError propagate (every caller must catch it; see
-asy_uart_driver.py). run_inc()/check_inc() share mutable state per instance - don't share one
-instance across concurrent sequences.
+"""Generic bit-banged CRC engine (MSB-first, no reflection, no final XOR): CRC8 (Sensirion's
+documented CRC-8), CRC16 (CRC-16/CCITT-FALSE), CRC32 (CRC-32/MPEG-2), plus CRC_Pass (a zero-length no-op).
 """
+# CRC8: poly 0x31, init 0xFF. CRC16: poly 0x1021, init 0xFFFF. CRC32: poly 0x04C11DB7, init
+# 0xFFFFFFFF. Every public method returns None/False on invalid input - never raises - except
+# add()/check(), which allocate a new buffer and let a MemoryError propagate (every caller must
+# catch it; see asy_uart_driver.py). run_inc()/check_inc() share mutable state per instance - don't
+# share one instance across concurrent sequences.
 
 # Zero-padding limitation inherent to this CRC class: a register at 0 stays 0 through further 0x00
 # bytes, so check()/check_from()/check_inc() can't detect trailing zero-padding past the buffer's

@@ -20,39 +20,38 @@ testing/coverage, all in one place instead of scattered across `DRIVER_SPEC.md`,
   session's context and this document is not, so a session that never opens `SPECIFICATION.md` no
   longer gets those facts for free. If that ever bites in practice, the fix is re-duplicating the
   highest-value load-bearing facts back into `CLAUDE.md`, not reverting the consolidation.
-- **`BACKLOG.md`, `WIRING_CONTRACT.md` stay separate.** By their own stated nature they are not
-  specifications: `BACKLOG.md` is active working memory (open questions, deferred work) that churns
-  as items resolve; `WIRING_CONTRACT.md` is explicitly temporary, deleted once its one-time purpose
-  (the eventual Stage-1 wiring rewrite) is served — until then it stays live and current, not
-  frozen planning content. Folding live churn or provisional planning content into a stable spec
-  would immediately start recreating the scattering problem this document exists to fix.
+- **`BACKLOG.md` stays separate.** By its own stated nature it is not a specification: it's active
+  working memory (open questions, deferred work) that churns as items resolve. Folding live churn or
+  provisional planning content into a stable spec would immediately start recreating the scattering
+  problem this document exists to fix.
 
 **Where the source files went**: `DRIVER_SPEC.md`, `src/README.md`, `tests/README.md`, and
-`toolchain/README.md` are now short stub files pointing here, kept so existing links/references
-elsewhere in the repo still resolve to a real file; their full content lives in Parts B-E below.
-`README.md` keeps its human-facing project description and the units-deployed table; its former
-"Repository layout"/"Architecture at a glance"/"Refactor in progress"/"Building this project's
-firmware" sections moved into Part A/B below, replaced there with a pointer. `AUDIT_PLAN.md`, the
-master action list for the full `src/` audit this document's Parts C/D harmonization came out of,
-followed the same temporary policy as `WIRING_CONTRACT.md` and was deleted once that audit closed
-— everything permanent it settled is migrated here.
-
-**Not every cross-reference throughout the repo's other docs (`BACKLOG.md`, `WIRING_CONTRACT.md`)
-points directly here** — some still go through one of the stub files above, which resolve correctly
-via that one extra hop. Worth rewriting to point here directly if the indirection itself becomes
-annoying; not something this document tracks on its own.
+`toolchain/README.md` held no content of their own beyond a "moved here" pointer once their content
+was consolidated into Parts B-E below, and have since been deleted — every reference to them
+elsewhere in the repo (docs and code comments alike) points directly at the relevant Part here
+instead. `README.md` keeps its human-facing project description and the units-deployed table; its
+former "Repository layout"/"Architecture at a glance"/"Refactor in progress"/"Building this
+project's firmware" sections moved into Part A/B below, replaced there with a pointer. `AUDIT_PLAN.md`
+(the master action list for the full `src/` audit this document's Parts C/D harmonization came out
+of) and, later, `WIRING_CONTRACT.md`/`FINAL_WIRING_PLAN.md` (the temporary planning docs for the
+`improved-quality/` → `src/` wiring effort) were each deleted once their own effort closed —
+everything permanent each one settled was migrated here first: `WIRING_CONTRACT.md`'s construction
+order/FRAM-chunk order/dependency graph/debug-level registry now live in Part A.7,
+`FINAL_WIRING_PLAN.md`'s REST API design in Part A.8, its website-stub pipeline in Part A.9, and two
+checkable conventions its own failure-mode audit found in Parts C.7/C.9.
 
 ## Table of contents
 
 - **Part A — Repository & Architecture Overview**: repository layout, architecture at a glance,
   refactor status, the deep module-by-module architecture reference, the Microdot/REST layer
-  contract, and datasheets.
+  contract, datasheets, the assembled prototype's construction order/dependency graph, the REST API
+  endpoint reference, the website-stub/frozen-HTML pipeline, and the digital twin.
 - **Part B — Toolchain & Build**: the MicroPython/pico-sdk/picotool/cross-compiler installer, and
   building this project's own firmware.
 - **Part C — Sensor Driver Architecture Specification**: the shared contract a new sensor driver
   follows (layering, naming, config schema, error handling, concurrency, timers, typing).
-- **Part D — `src/` Production-Quality Checklist**: what "done" means for any file moving from
-  `improved-quality/` into `src/`.
+- **Part D — `src/` Production-Quality Checklist**: what "done" means for any file added to
+  `src/`.
 - **Part E — Testing & Coverage**: why/how unit tests run under a real MicroPython interpreter,
   the hardware-mocking boundary, and the coverage pipeline.
 - **Part F — Platform Target & MicroPython Runtime Facts**: RP2040/MicroPython-1.26 specifics,
@@ -70,6 +69,8 @@ datasheets/              Real datasheet PDFs for the chips this codebase drives 
 html_raw/               Hand-written HTML/CSS/JS for the web UI, per device config
   arzi/, dev/, wozi/       device-specific pages
   general/                 shared assets (style.css, functions.js, favicon.ico, nettimeconfig.html)
+html_stub/              Placeholder ("Hello world"-shaped) website content standing in for html_raw/
+                          in the refactored build - see "Website stub / frozen-HTML pipeline" below
 modules/                Auto-started entry points, one set copied into the firmware build per device
   _boot.py                 mounts the flash filesystem, then starts the sensor task
   sensortask-{arzi,dev,neu,wozi}.py   per-device application (renamed to sensortask.py at build time)
@@ -77,11 +78,29 @@ python/
   CommonDrivers/          shared across all device configs, always copied into the build
   IndividualDrivers/      only copied in if a given device config needs them
   Manifest/manifest.py    MicroPython freeze manifest used by the build
-improved-quality/        WIP refactor target (out of scope for day-to-day work; see CLAUDE.md)
-src/                     Files moved out of improved-quality/ once fully reviewed/tested - see
-                          Part D below for the promotion checklist
+src/                     Fully-reviewed/tested refactor code, freely editable - see Part D below
+                          for the review checklist any file here must pass. Includes the assembled
+                          refactor prototype itself, src/sensortask_wozi.py (see A.7 below) and
+                          src/asy_webserver_service.py (the registration-based REST/API service,
+                          see A.8 below). `improved-quality/`, the refactor's former WIP staging
+                          directory, has been fully retired and deleted - see CLAUDE.md
+ext/                     Vendored third-party code, hands-off (see CLAUDE.md's vendoring policy)
+  microdot.py               Microdot v2.6.2, unmodified - see A.5 below
+  freezefs/                 freezefs 2.4, unmodified - gzip+freeze pipeline for html_stub/, see
+                            "Website stub / frozen-HTML pipeline" below
+boot_entry/              Real firmware entry point for src/sensortask_wozi.py
+  wozi_boot.py              the only file that actually blocks on `asyncio.run(main())` - kept
+                            separate from src/sensortask_wozi.py so the latter stays import-safe
+                            for tests (see that module's own docstring)
+digital_twin/            Hardware simulator standing in for real I2C/SPI/WiFi hardware under the
+                          MicroPython Unix-port interpreter - see A.7's "Digital twin" pointer,
+                          digital_twin/README.md, and SPECIFICATION.md Part C.11's per-driver
+                          "digital-twin extension" requirement
+frozen_modules/          Gitignored build artifact - scripts/build_frozen_html.sh's gzip+freezefs
+                          output (frozen_html.py), deliberately not placed under `.frozen/` (a
+                          reserved MicroPython import-machinery sentinel - see "Website stub /
+                          frozen-HTML pipeline" below)
 SPECIFICATION.md         This file - the central specification (repo root)
-DRIVER_SPEC.md           Stub -> Part C below: shared sensor driver architecture/interface spec
 tests/                   Unit tests for src/, run under a real MicroPython interpreter - see
                           Part E below
 toolchain/               MicroPython/pico-sdk/picotool build-environment installer
@@ -91,7 +110,10 @@ toolchain/               MicroPython/pico-sdk/picotool build-environment install
 build-{arzi,dev,neu,wozi}.sh   per-device build scripts
 update_and_install.txt   handwritten toolchain setup notes (MicroPython/pico-sdk/picotool)
 pyproject.toml           dev-tooling config (ruff/mypy/pytest/uv) - see CLAUDE.md's "Code quality tooling"
-scripts/                 lint.sh / typecheck.sh / test.sh - manual code-quality check runners
+scripts/                 lint.sh / typecheck.sh / test.sh - manual code-quality check runners.
+                          build_frozen_html.sh - gzip+freezefs pipeline for html_stub/ (see
+                          "Website stub / frozen-HTML pipeline" below). run_unix_port_integration.sh -
+                          the digital-twin end-to-end entry point, see A.7's "Digital twin" pointer
 .github/workflows/       CI: runs lint.sh/typecheck.sh/test.sh on every push/PR
 ```
 
@@ -121,9 +143,10 @@ scripts/                 lint.sh / typecheck.sh / test.sh - manual code-quality 
   `init_json_from_cfg` → `update_valid_json` → `set_sensor_value` → `cmd_post_check` (validate →
   load current → per-field validate → apply to sensor → persist + post-hooks).
   `src/api_response.py` is its generalized replacement, and is now wired into every real REST
-  handler in `improved-quality/sensortask-wozi.py` (`improved-quality/api_helpers.py`'s own copy of
-  the old pipeline has been removed entirely, once that file was fully migrated off it — see
-  BACKLOG.md): `base_classes.py`'s `_set_dict_cfg()` gives every `SensorReaderConfig` a generic,
+  handler in `src/asy_webserver_service.py` (the old `improved-quality/api_helpers.py`'s own copy
+  of the legacy pipeline, and later `improved-quality/sensortask-wozi.py` itself, were both
+  removed entirely once fully migrated off it and superseded — see CLAUDE.md's "Hard rules"):
+  `base_classes.py`'s `_set_dict_cfg()` gives every `SensorReaderConfig` a generic,
   schema-driven setter mirroring `get_dict_cfg()`'s existing generic getter, and
   `api_response.py`'s `make_response()`/`parse_cmd_request()`/`handle_set_cmd()` replace the old
   per-endpoint validate→apply→persist glue with one small, open-catalog response envelope — see
@@ -153,14 +176,25 @@ scripts/                 lint.sh / typecheck.sh / test.sh - manual code-quality 
 
 ## A.3 Refactor status
 
-The `improved-quality/` refactor (see repository layout above) isn't just a cleanup — it targets
+This refactor (see repository layout above) isn't just a cleanup — it targets
 the most recent *stable* MicroPython/pico-sdk/picotool/Microdot releases, expands error handling
 and bus/sensor fault recovery considerably beyond what's described above, and adds unit tests,
 mypy, ruff, and a CI pipeline (including a real firmware build, eventually — the current pipeline
 covers lint/type-check/unit-tests only) that don't exist for the current codebase at all. Files
-move to `src/` once fully reviewed and tested against that bar — see `src/` and `tests/` in the
+land in `src/` once fully reviewed and tested against that bar — see `src/` and `tests/` in the
 repository layout above, and Part D/Part E below. See BACKLOG.md's "Refactor targets not yet done"
 for what's still open.
+
+**The assembled prototype (`src/sensortask_wozi.py`, A.7 above) currently covers the "wozi" device
+variant only** — not `arzi`/`dev`/`neu`. The refactor's goal is the *same top-level features* as
+today's deployed units, just more consistent/stable, not a feature change (see the working
+agreement above), and a future per-variant build-script generator turning one setup-definition file
+into every variant's `sensortask-*.py`/website pair is a real planned direction (see A.8's
+"generator-friendly" registration-API note and A.9's `HTML_SRC_DIRS` mechanism, both already shaped
+around it) — but that generator itself, and wiring the other three variants through it, is not yet
+built. Real website content (beyond A.9's placeholder stub) and real-hardware build genericization
+(see BACKLOG.md's "Dev/build environment setup" item) are likewise still open, not part of what's
+landed so far.
 
 ## A.4 Architecture — deep reference
 
@@ -173,7 +207,7 @@ The condensed version is A.2 above. Key modules if you need to go deeper (folded
 - `python/CommonDrivers/async_connect.py` — WiFi STA + AP/hotspot fallback + NTP client with
   manual CET/CEST DST math (`cettime()`); exposes `get_long_block_lock()`, a shared lock
   serializing `socket.getaddrinfo()` against Neopixel animation. This is the deployed, pre-refactor
-  version only — `improved-quality/`/`src/` split this into `asy_wifi_service.py`/
+  version only — `src/` split this into `asy_wifi_service.py`/
   `asy_ntp_client.py`/`asy_dns_client.py` and retired the lock entirely (see F.2 below and
   BACKLOG.md); don't assume the two describe the same current state.
 - `python/CommonDrivers/async_manager.py` — `ConfigManager`, `DataManager`,
@@ -218,7 +252,7 @@ The condensed version is A.2 above. Key modules if you need to go deeper (folded
   never inside a branch, a loop with variable order, or anything a task restart could re-enter.
   Verified true today: task-level restarts (`system_service.py`'s `start_and_check_tasks()`) only
   re-invoke an already-captured `task_starters[n]` callable on the *existing* object, never re-run
-  `__init__`; a full reboot replays `improved-quality/sensortask-wozi.py`'s entire module-level
+  `__init__`; a full reboot replays `src/sensortask_wozi.py`'s entire `build_system()`
   construction sequence from scratch, and every current FRAM-chunk-owning construction (`sysfunct`,
   `sgp_reader`'s VOC-backup chunk, `pixel`, `notify_service`) is an unconditional top-level
   statement, confirmed by direct reading, not assumption. Before adding any *new* FRAM-backed class
@@ -229,7 +263,7 @@ The condensed version is A.2 above. Key modules if you need to go deeper (folded
   (backing both `reboot_system()`/`reboot_bootloader()`) calls `self.storage_pause(True)` before
   arming the delayed reset timer, and before the `_force_watchdog_starve` fallback too — confirmed
   via grep that `machine.reset()`/`machine.bootloader()`/`WDT()` have no other call site anywhere
-  in `src/` or `improved-quality/`. Whether the actual wait margin is sufficient for FRAM's own
+  in `src/`. Whether the actual wait margin is sufficient for FRAM's own
   in-flight transaction time, and keeping this invariant preserved as more reset call sites are
   added, are still open — see BACKLOG.md's "Every deliberate system reset..." item.
 - **SCD30's `AmbPres` (ambient-pressure compensation) is stored in the sensor's own internal
@@ -247,7 +281,7 @@ The condensed version is A.2 above. Key modules if you need to go deeper (folded
 - **SGP40's VOC index is a deviation-from-learned-baseline number, not an absolute-concentration
   one — confirmed directly against `voc_algorithm.py`'s real Sensirion Gas Index Algorithm port
   while calibrating a real threshold-crossing integration test (see
-  `tests/test_notification_sgp40_integration.py`'s own module docstring for the full derivation).**
+  `tests/test_notification_sgp40_integration.py`'s own top-of-file comment for the full derivation).**
   Three facts worth knowing before writing any test or reasoning about real-world VOC behavior: (1)
   `_VOCALGORITHM_INITIAL_BLACKOUT = 45` sampling intervals must elapse before the index moves off 0
   at all; (2) under *any* constant raw-tick input, however extreme, the index converges toward 100
@@ -258,9 +292,9 @@ The condensed version is A.2 above. Key modules if you need to go deeper (folded
   it's how Sensirion's own reference algorithm is designed to work, and `asy_sgp40_driver.py`
   already treats `VOC` as an opaque index throughout (see F.4 below for why this file's internals
   stay a literal, undisturbed port).
-- **`improved-quality/neopixel_signal.py` (LED hardware control + hardcoded CO2/VOC/Humidity
-  threshold monitoring combined in one file) is promoted and split into two `src/` files** - the old
-  file is deleted, `improved-quality/sensortask-wozi.py` wires the two replacements directly.
+- **The former `improved-quality/neopixel_signal.py` (LED hardware control + hardcoded CO2/VOC/Humidity
+  threshold monitoring combined in one file) was promoted and split into two `src/` files** - the old
+  file is deleted, `src/sensortask_wozi.py` wires the two replacements directly.
   - `src/asy_neopixel_driver.py`'s `NeopixelDriver` — pure LED hardware service: overlay
     switch/toggle, the dimmed ramp-up/ramp-down signal, and the internal/external
     (`request_signal()`/`led_signal()`) arbitration for the one shared physical pixel, unchanged
@@ -292,7 +326,7 @@ The condensed version is A.2 above. Key modules if you need to go deeper (folded
     updated to match yet.
 - In the deployed, pre-refactor codebase (`modules/sensortask-*.py`), the task supervisor is a
   hand-rolled loop inside each file's `main()`, not a shared module — duplicated per device file.
-  `improved-quality/sensortask-wozi.py` no longer matches this: its `main()` now calls
+  `src/sensortask_wozi.py` no longer matches this: its `main()` now calls
   `system_service.py`'s real `start_and_check_tasks()`/`start_timers()` instead of reimplementing
   the loop. Don't assume the two describe the same current state.
 - **Functional behaviors confirmed intentional by the project owner, not obvious from the code
@@ -339,7 +373,10 @@ The condensed version is A.2 above. Key modules if you need to go deeper (folded
 
 `ext/microdot.py` is vendored, unmodified upstream Microdot (currently pinned to tag `v2.6.2` —
 treated as a plain external resource, no edits, no "cleanup" of its style; CLAUDE.md's Hard rules
-section is the authoritative vendoring policy). The facts below were confirmed by reading its
+section is the authoritative vendoring policy; its MIT license text lives alongside it as
+`ext/LICENSE-microdot` rather than inside the file itself, the same sibling-file pattern
+`ext/freezefs/LICENSE` already uses — see `THIRD_PARTY_LICENSES.md` for the full third-party
+attribution list). The facts below were confirmed by reading its
 actual source directly (`Microdot.dispatch_request()`/`handle_request()`/`Response.write()`/
 `Request.json` in `ext/microdot.py`), not assumed from Microdot's docs or training memory — treat
 this section as the standing reference for how much stability Microdot already gives us for free
@@ -353,11 +390,15 @@ versus what our own REST layer still has to add.
   (from `abort()`) resolves by **numeric status code** through `self.error_handlers`; any other
   exception resolves by **exact exception class**, then by walking the class's MRO — so a single
   `@app.errorhandler(Exception)` registration is reachable as a catch-all fallback from any
-  exception subtype, without needing one registration per exception type. With no handler
-  registered at all (today's state, in both `improved-quality/sensortask-wozi.py` and the deployed
-  `python/CommonDrivers/microdot.py` app — confirmed, neither registers any `errorhandler`),
-  Microdot's own bare default response is used (`'Internal server error', 500`, or `'Not found',
-  404`, etc.) — safe, but not one of our own reply shapes.
+  exception subtype, without needing one registration per exception type. The deployed,
+  pre-refactor `python/CommonDrivers/microdot.py` app still registers no `errorhandler` at all
+  (confirmed) — Microdot's own bare default response is used there (`'Internal server error',
+  500`, or `'Not found', 404`, etc.), safe but not one of our own reply shapes. `src/`'s own
+  `asy_webserver_service.py` now does register handlers - see A.8 below and that module's own
+  `_ERROR_SHAPES`/`__init__`: shaped-JSON handlers for 400/404/405/413/500, plus a catch-all
+  `@app.errorhandler(Exception)` whose sole job is persisting the exception into `pr.err_s()`/FRAM
+  history (the matching status-code handler above already shapes the actual reply either way, per
+  `ext/microdot.py`'s own `error_response()` fallthrough - see that module's own comments).
 - **The one place this blanket catch does *not* cover: exceptions raised while writing the response
   itself.** `Response.write()` (and the `handle_request()` code that calls it) only catches
   `OSError`, and only mutes a short allow-list of expected socket errors (broken pipe, connection
@@ -385,15 +426,15 @@ versus what our own REST layer still has to add.
   needed — just worth knowing the guard already exists rather than re-adding one at our own layer.
 - The Microdot server task is already wired into `system_service.py`'s generic
   `start_and_check_tasks()` supervisor exactly like every other sensor task (see
-  `improved-quality/sensortask-wozi.py`'s `main()`: `start_asy_webserver()` is one of the plain
-  `task_starters`). A Microdot task that terminates — by returning or by an exception escaping it —
+  `src/sensortask_wozi.py`'s `_collect_task_starters()`: `webserver.get_task_starters()` is folded
+  into the same `task_starters` list as every other module's). A Microdot task that terminates — by returning or by an exception escaping it —
   is detected the same way any other dead task is (`task.done()`) and restarted automatically, with
   the same decaying failure counter and eventual full-reboot fallback as any other task.
   **"Restart Microdot if it crashes" is therefore already implemented generically — it does not need
   Microdot-specific supervisor code —** provided the failure actually terminates that task rather
-  than being silently contained at a level the supervisor never observes (see BACKLOG.md for the
-  still-open question of exactly what "crashes" means at the per-connection level on MicroPython's
-  `asyncio`).
+  than being silently contained at a level the supervisor never observes (answered by the next
+  bullet: each connection is its own Task, so a per-connection failure never reaches this level at
+  all — only a fully-dead server task does).
 - **Each accepted connection runs in its own independent `asyncio.Task`** (confirmed against
   `extmod/asyncio/stream.py`'s `Server._serve()`, which calls `core.create_task(cb(s2s, s2s))` per
   accepted connection — the same isolation CPython's `asyncio.start_server()` gives). Combined with
@@ -435,6 +476,311 @@ project owner has confirmed directly that the whole BMP3xx family (384/388/390) 
 register map/protocol, so `asy_bmp3xx_driver.py` treating BMP390's `0x60` chip ID the same as the
 other two is correct, not just an unverified assumption — the PDF's absence from `datasheets/` is
 a documentation-completeness gap only, not an open technical question anymore.
+
+## A.7 `src/sensortask_wozi.py` construction order and dependency graph
+
+`src/sensortask_wozi.py` is the assembled, testable refactor prototype (the "wozi" device variant
+only — see A.3): an `async def build_system(*, cfg_path: str = "", debug: int | None = None,
+web_host: str = "0.0.0.0", web_port: int = 80) -> None` function doing pure construction plus the
+`setup()` batch below (no task loop of its own — every constructed object is assigned to a
+module-level global, declared `global` at the top of the function, not returned), and `async def
+main()` (calls `build_system()`, then `start_timers()`/`start_and_check_tasks()`). Neither function
+blocks at import time — the real firmware entry point that does is the separate, minimal
+`boot_entry/wozi_boot.py` (`import asyncio; from sensortask_wozi import main; asyncio.run(main())`),
+kept apart specifically so `import sensortask_wozi` stays safe under `tests/test_sensortask_wozi.py`
+and every other test file that imports it.
+
+**Why construction order matters**: `AsyFramManager` is a bump-pointer allocator — `get_chunk()`/
+`get_timestamped_chunk()` carve out fixed offsets in call order, so a device's *instantiation
+order* of these calls is its on-chip layout and must stay identical across firmware versions for
+existing stored data to keep decoding correctly (the "FRAM chunk determinism rule", A.4 above).
+
+**Construction order, top to bottom** (module-level object names as they appear in
+`build_system()`):
+
+1. `watchdog = WDT(timeout=8000)` — hardcoded at construction time, no injection point (so no code
+   path can ever disable it once armed).
+2. `conn = AsyConnTime(...)` — owns `DNSServer` internally (`captive_dns.py`).
+3. `ntp = AsyNtpClient(conn.get_wifi_mode_lock(), conn.network_available, conn.get_dns_server_ip,
+   ...)` — takes bound methods off `conn`, not a direct import-time reference.
+4. `i2c0`, `i2c1` = `asy_i2c_driver.I2C(...)` ×2.
+5. `spi0` = `asy_spi_driver.SPI(...)`.
+6. `fram = AsyFramManager(spi0, 1, max_size=0x2000, ...)` — constructs `FRAM_SPI` internally with a
+   shared `logger=`; allocates no FRAM chunk of its own.
+7. `sysfunct = SystemService(ntp.ntp_issynced, watchdog=watchdog, fram=fram, ...)` — **FRAM chunk
+   1**.
+8. `sgp_reader = SGP40_Reader(i2c1, sgp_comp_callback, fram_storage=fram,
+   fram_ntp_callback=ntp.ntp_issynced, ...)` — **FRAM chunks 2 and 3**, in this fixed sub-order
+   within `SGP40_Reader.__init__` itself: chunk 2 is `self.pr` (already FRAM-backed via
+   `fram_storage` forwarded as `fram=fram_storage` into `super().__init__()`, which calls
+   `make_logger()` → `PrintLogHistoryStore.__init__()` → `fram.get_chunk()`); chunk 3 is the VOC
+   backup itself (`self.ts_storage = fram_storage.get_timestamped_chunk(...)`, a few lines later).
+   Both are unconditional whenever `fram_storage`/`fram_ntp_callback` are non-`None`, which they
+   always are in the real wiring.
+9. `bmp_reader = BMP3xx_Reader(i2c1, ...)` — no `fram=`, in-memory logging only.
+10. `scd_reader = SCD30_Reader(i2c0, 8, trigger_sec=3, ...)` — no `fram=`, no config schema at all
+    (params live on-sensor).
+11. `pixel = NeopixelDriver(15, fram=fram, ...)` — **FRAM chunk 4**.
+12. `notify_service = NotificationCoordinator(pixel.request_signal, ntp.cettime, fram=fram, ...)`,
+    staged registration (`register()` ×3 for `WarnCO2`/`WarnVOC`/`WarnHum`, then `finalize()`
+    exactly once — the single point `notify_service.pr`/`notify_service.cfgmgr` come into
+    existence) — **FRAM chunk 5**.
+13. `conn.set_ext_led(pixel)` — wires the WiFi-status LED callback after both exist.
+14. `app = Microdot(); webserver = WebserverService(app, sensors=(scd_reader, bmp_reader,
+    sgp_reader), settings={...}, system_cmd=..., notification_led=..., status_sources={...},
+    maintenance_sensors=(("SGP40", ...),), error_sources=_collect_error_sources(),
+    static_mount="/html", host=web_host, port=web_port)` — registers every real driver's REST
+    surface; built here because every module it registers must already exist. **No `fram=`** —
+    deliberately RAM-only: a per-call/outer-cap connection-reclaim warning (see A.8's "Connection
+    hardening" below) could churn far faster than any sensor's rare-hardware-fault log, and this
+    keeps the five-chunk FRAM order above unchanged — no sixth chunk. `static_mount="/html"`
+    registers the generic `/`+`/<path:filename>` static-file route pair *last*, after every API
+    route, so an exact-match API route always wins over the wildcard (Microdot's `find_route()`
+    returns the first registered pattern that matches). `web_host`/`web_port` default to today's
+    production values (`"0.0.0.0"`/`80`); a Unix-port integration run overrides them to a
+    non-privileged host/port (see `digital_twin/run_wozi_integration.py`).
+15. `sysfunct.set_level_setters(_collect_level_setters())` — collects every logger's own
+    `set_level()` bound method (see "Debug-level registry" below) into `sysfunct`'s registry, sync,
+    after every module (including `notify_service.finalize()` and the webserver from step 14) has
+    fully constructed.
+16. **Grouped `await x.setup()` batch** (not interleaved with construction above): `await
+    sysfunct.setup()` → `await fram.setup()` → `await conn.setup()` → `await ntp.setup()` → `await
+    sgp_reader.setup()` → `await bmp_reader.setup()` → `await notify_service.setup()`. These are
+    independent readiness domains (`sysfunct.setup()` is its own local `config_SYSTEM.cfg`;
+    `fram.setup()` is FRAM-hardware/SPI readiness; the rest are each module's own local-JSON-config
+    `ConfigManager.setup()`, unrelated to FRAM or each other) with one hard ordering constraint:
+    `notify_service.setup()` is only valid after `finalize()` (step 12) has run — `self.cfgmgr`
+    doesn't exist before then — which batching at the end satisfies automatically. `sysfunct` goes
+    first so every subsequent `setup()` call's own diagnostic logging already reflects the real
+    persisted debug level. `conn`/`ntp` both need `cfgmgr.setup()` too (both are
+    `SensorReaderConfig` subclasses) and are placed right after `fram`'s slot, matching their own
+    real construction order (both built before `fram`/`sysfunct`).
+
+**Real FRAM chunk order**: `SystemService` → `SGP40_Reader` (its own error log, chunk 2) →
+`SGP40_Reader` (VOC backup, chunk 3) → `NeopixelDriver` → `NotificationCoordinator`. Five chunks
+total. Must stay in this relative order in any future change, regardless of byte offset (which
+doesn't matter per the FRAM chunk determinism rule in A.4).
+
+**Task/timer starter collection** (`_collect_task_starters()`/`_collect_timer_starters()`, called
+from `main()`, never from `build_system()` itself): every constructed module's own
+`get_task_starters()`/`get_timer_starters()` is called uniformly, not hand-copied per module —
+including `AsyConnTime.get_task_starters()`'s `start_hotspot_timeout_watcher` (the task backing
+`hotspot_time_min`'s actual timeout) and `webserver.get_task_starters()`'s `_start_serving` (no
+bespoke restart mechanism — it participates in `start_and_check_tasks()`'s ordinary supervisor loop
+like every other module).
+
+**Debug-level registry** (`_collect_level_setters()`, `system_service.py`'s
+`SystemService.set_level_setters()`/`_apply_level()`/`get_debug_level()`/`set_debug_level()`) — a
+registry of function references, not a shared mutable value: `_collect_level_setters()` collects
+every logger's own `set_level` **bound method** (every module's own top-level `self.pr`, every
+nested `cfgmgr.pr`, and `AsyConnTime`'s own separately-named `dns_server.pr`) into a flat list,
+mirroring `_collect_task_starters()`/`_collect_timer_starters()`'s own shape.
+`sysfunct.set_level_setters(...)` receives that list once, at boot (construction step 15 above) —
+stored, not consumed immediately, since it's called again on every future level change.
+`SystemService._apply_level(value)` iterates the registry calling each entry with the new value,
+each wrapped individually in `try`/`except Exception` so one bad entry can't stop the rest of the
+registry from updating; both `setup()` and `set_debug_level()` call it, and `set_debug_level()`
+additionally validates via `ConfigManager.write_config()`'s own `type_or_range_error` range check
+first. Calling `set_level()` on any `PrintLog` instance at any time is safe: the only interrupt
+handler in `src/` (`asy_scd30_driver.py`'s pin IRQ) never touches logging, every real `PrintLog`
+call site is either plain synchronous code or a soft `machine.Timer` callback (never true hardware
+preemption — see F.1's soft-Timer-callback fact), and `self.level` is a single plain `int`
+attribute (an atomic store on this platform, no torn-write case) — worst case from a level change
+racing a log call is one line using the old-vs-new threshold at the boundary, not corruption.
+
+**Dependency graph** (who holds a reference to whom): `ntp` holds `conn`'s `wifi_mode_lock`,
+`network_available`, `get_dns_server_ip` — bound methods, not a module import. `notify_service`
+holds `pixel.request_signal` and `ntp.cettime` — same pattern. `conn` holds `pixel` (via
+`set_ext_led()`, called after both exist) for the WiFi-status LED. `sgp_reader` holds
+`ntp.ntp_issynced` for its VOC-backup timestamp validity check. Every `*_Reader`/service constructs
+its own `ConfigManager`/`PrintLog` instance internally (`base_classes.py`'s
+`SensorReaderConfig.__init__`) — no cross-module config sharing anywhere. No module in `src/`
+imports another `src/` module *by name* to reach a sibling driver/service — every cross-module
+dependency in the real wiring is constructor-injected (bound method or object reference), so the
+dependency graph is already a clean DAG at the Python-import level; the object graph above is the
+only thing a future rewrite of this file needs to reproduce.
+
+Full coverage of the above (construction order, FRAM chunk order, the `setup()`-batch order and its
+`notify_service`/`finalize()` constraint, task/timer starter collection, the debug-level registry)
+lives in `tests/test_sensortask_wozi.py`.
+
+## A.8 REST API endpoint reference (`src/asy_webserver_service.py`)
+
+`WebserverService` (see A.5 above for what Microdot itself already guarantees underneath it) is a
+**registration-based** service: modules hand it named callback groups at construction
+(`sensors=`, `settings=`, `system_cmd=`, `notification_led=`, `status_sources=`,
+`maintenance_sensors=`, `error_sources=`, all supplied as lists/dicts at init — see
+`src/sensortask_wozi.py`'s real construction-step-14 call for the live wiring) and it
+auto-constructs the REST surface from them, generator-friendly: a future per-variant build-script
+generator only ever needs to know "does this variant have module X," never anything about field
+names or endpoint shapes.
+
+**Six external endpoints**, registered in `WebserverService._register_routes()`:
+`/measurements`, `/sensors`, `/networking`, `/system`, `/status`, `/notification`. Clean
+live-vs-settings split: `/measurements` and `/status` are the only two live-data endpoints (no
+persisted settings in either); `/sensors`, `/networking`, `/system`, `/notification` are pure
+settings (no live telemetry in any of them).
+
+- **GET shapes**:
+  - `/measurements` → `{"SCD30": {...}, "SGP40": {...}, "BMP3XX": {...}}`, one entry per registered
+    sensor reader, each `get_dict_data()`.
+  - `/sensors` → same per-sensor sub-structure, each `get_dict_cfg()`.
+  - `/networking` → flat settings only: `SSID, PW(masked), Country, Hostname, LedWifiOn, NTP_Host,
+    NTP_Offset_S, NTP_Interv_H`.
+  - `/system` → flat settings only: `DebugLevel, GMTOffset, DSTOffset`.
+  - `/notification` → flat settings only: `OnH, OnM, OffH, OffM, FlashBri, Interv, FlashDur,
+    AutoOn, WarnCO2, WarnVOC, WarnHum`.
+  - `/status` → live-only, sub-structured with top-level keys named after the settings endpoints
+    they mirror: `networking` (`WifiUptime, Mode, Connected, IP, IPv4, Subnet, Gateway, DNS, Rssi,
+    NtpSynced, NtpLastSyncAge, NtpLastSync`), `system` (`SysUptime, BootSignature, MemPaused,
+    LocalTime, UtcTime`), `sensors` (one entry per sensor with maintenance data — today only
+    `SGP40`'s `BackupTS`/`RestoreTS`), `notification` (`Triggered, TS, PauseTime`), `errcount` (one
+    entry per registered module plus one per `ConfigManager` instance, `CFGMGR_<name>` — `"counter"`
+    always present, `"history"` present exactly when that logger persists `ErrNum`/`ErrType`
+    entries).
+- **PUT shapes** — one sparse JSON body per endpoint, no `cmd` envelope: any field present is
+  applied, any field/sub-object omitted is left untouched, unknown fields are silently ignored
+  (`ConfigManager.write_config()`/`_set_dict_cfg()`'s existing per-key tolerance, extended to be the
+  only strategy at the HTTP layer too).
+  - `/measurements` — no PUT.
+  - `/sensors` — `{"SCD30": {<any subset of TempOffs,MeasInt,AmbPres,Altitude,ForceCalRef,SelfCal,
+    ContMeas>}, "SGP40": {<any subset of BackupPeriod,BackupMaxAge,WaitTimeNTP,SGPResetVOC>},
+    "BMP3XX": {<any subset of the 8 fields>}}`. SCD30 dispatches through its own schema-driven,
+    non-persisting setter (`asy_scd30_driver.py` — every validated field calls straight through to
+    its already-existing individual I2C setter method; no `cfgmgr`, no local JSON file, since
+    SCD30's settings live in the sensor's own NVM, see A.4's `AmbPres` note).
+  - `/networking` — `{<any subset of SSID,PW,Country,Hostname,LedWifiOn,NTP_Host,NTP_Offset_S,
+    NTP_Interv_H>}`; a body touching only `AsyConnTime`'s WiFi-credential fields fires
+    `conn.reconnect_wifi()`, only `LedWifiOn` fires nothing, only NTP fields fire
+    `ntp.ntp_force_sync()` — one `SettingsGroup` per field subset, per module, keeps these
+    independent (mirrors the legacy `setNetwork`/`setWiFiLED` route split).
+  - `/system` — `{<any subset of DebugLevel,GMTOffset,DSTOffset>, "SystemCmd":
+    "reboot"|"bootloader"|"mempause"}` — `SystemCmd` optional, strictly enum-validated;
+    `mempause`'s duration is always the fixed 300s, never client-supplied.
+  - `/status` — `{"ResetErrors": true}` only (absent/`false` is a no-op) — resets every registered
+    module's error counter *and* history in one call.
+  - `/notification` — `{"lightCmdLED": {"r":.., "g":.., "b":.., "t":..}, "PauseTime": int, <any
+    subset of OnH,OnM,OffH,OffM,FlashBri,Interv,FlashDur,AutoOn,WarnCO2,WarnVOC,WarnHum>}`.
+
+**GET copy-safety**: `get_dict_data()` (via `config_manager.make_dict()`), `ConfigManager.get_dict()`,
+and `PrintLogHistory.get_log()` all build a brand-new dict/list of copied scalar values on every
+call with no `await` in the middle of construction, so MicroPython's cooperative, non-preemptive
+scheduling already makes each snapshot atomic — no caller ever gets a live reference into
+`_cache`/`history`. **One known, still-open exception**: `SCD30_Reader.get_dict_cfg()` (entirely)
+and three of `BMP3xx_Reader.get_dict_cfg()`'s fields (`PressOvers`/`TempOvers`/`FiltCoeff`) are live
+hardware-readback fields whose callback `await`s a real I2C transaction mid-dict-construction, so a
+concurrent config write interleaving between two such awaited reads can produce one response
+mixing pre- and post-write values across fields — see BACKLOG.md for this item's tracked status.
+
+Connection hardening (per-call/outer-cap timeouts, reject-when-full at the connection-count
+ceiling, no bespoke whole-server-restart mechanism — the webserver task participates in
+`start_and_check_tasks()`'s ordinary supervisor like every other module) and the `Connection: close`
+response header are implemented directly in `WebserverService`/`_TimeoutStreamProxy`
+(`src/asy_webserver_service.py`) — see that module's own inline comments (near `max_connections`/
+`_TimeoutStreamProxy`) for the current constants and mechanism, and `tests/test_asy_webserver_service.py`
+for the full regression
+coverage (including its F.9 soak test, `gc.mem_free()` flat over 100+ start/wedge/reclaim cycles).
+
+## A.9 Website stub / frozen-HTML pipeline
+
+`html_stub/` (7 flat files: `index.html`, `style.css`, `functions.js`, `favicon.ico`,
+`nettimeconfig.html`, `sensorconfig.html`, `systemledconfig.html`) is placeholder ("Hello
+world"-shaped) content standing in for `html_raw/{general,wozi}`'s real site content in the
+refactored build — real website content is out of scope for the refactor prototype (see A.3).
+
+`scripts/build_frozen_html.sh` gzips a temp copy of the source directory(ies) (`html_stub/` by
+default, overridable via the `HTML_SRC_DIRS` env var — a space-separated list merged into one flat
+tree first, mirroring `build-wozi.sh`'s own `general`+board-variant merge), then runs
+`PYTHONPATH=ext python -m freezefs <tmp> frozen_modules/frozen_html.py --on-import mount --target
+/html --overwrite always` (never `--compress`: this project pre-gzips by hand and serves via
+Microdot's `send_file(..., compressed=True, file_extension=".gz")`, which only sets
+`Content-Encoding` and never decompresses on-device — mixing the two would double-encode). The
+output directory is deliberately `frozen_modules/` (gitignored), not `.frozen/`: `.frozen/` is a
+hardcoded sentinel in MicroPython's own import machinery (`py/builtinimport.c`'s
+`MP_FROZEN_PATH_PREFIX ".frozen/"`) — any path starting with that literal string is routed straight
+to the compiled-in frozen-module table, so a real file placed on disk there is silently
+unimportable even though it genuinely exists. `src/sensortask_wozi.py` does a module-level,
+unconditional `import frozen_html`, mounting `/html` as a side effect of the import itself (matching
+freezefs's own on-import design); `WebserverService(..., static_mount="/html")` (construction step
+14 in A.7 above) then registers the generic static-route pair that serves it.
+
+`tests/test_frozen_html_integration.py` is the real-pipeline proof (imports the actual built
+`frozen_html` module and drives real requests through a real `WebserverService`);
+`tests/test_asy_webserver_service.py`'s Section G exercises the generic route-wiring mechanism
+against a synthetic fixture, independent of the real stub content.
+
+## A.10 Digital twin (hardware simulator)
+
+`digital_twin/` is a set of fake `machine`/`network`/`neopixel` modules sitting at the same raw
+I2C/SPI bus-transaction mocking boundary `tests/machine.py` establishes for unit tests, but with
+real-time-firing `Timer`s and randomized-but-plausible sensor values, so `src/sensortask_wozi.py`
+can run under the real MicroPython Unix-port interpreter and behave like it's attached to real
+hardware. It is deliberately independent of `tests/` (duplicated, not shared, fakes for
+`network`/`neopixel`) and needs zero twin-awareness from `src/sensortask_wozi.py` itself — the swap
+is pure `MICROPYPATH` ordering. See `digital_twin/README.md` for the full reference (what's there,
+how to swap it in, FRAM/SCD30 persistence, running its own tests, and the required steps for adding
+a new chip fake — also covered from the driver side in Part C.11 point 9 above) and README.md's
+"Digital twin (hardware simulator)" section for the user-facing quick-start commands.
+
+**Chain-completeness requirement, generalized beyond sensor drivers (owner decision).** Part C.11
+point 9 above already mandates a matching chip fake for every new *sensor* driver. That's the
+specific instance of a broader standing rule: **any new module added to this project shall be
+added to the digital twin, provided all requirements are met for it to form a complete chain
+inside the twin** — the twin's whole point is exercising the real, assembled system end to end, not
+just the three sensors it started with. Two concrete shapes this takes:
+
+- A new **sensor driver**: the existing per-driver checklist (Part C.11 point 9) — bus-level chip
+  fake, wired into `machine.py`, exercised all the way up through its REST endpoint.
+- A new **common/base module** (e.g. a shared mixin `base_classes.py` gains, or a new cross-cutting
+  service alongside `system_service.py`/`asy_webserver_service.py`): if it's wired into
+  `sensortask_wozi.build_system()`'s own real object graph, it is automatically exercised by every
+  twin-backed run and test tier already listed here — no separate "does it need a twin fake"
+  question exists for a module that has no hardware surface of its own to fake in the first place.
+
+"As long as all requirements are met for it to form a complete chain" is the actual gate, not an
+automatic yes: a module only joins the twin once it can be driven through a real, observable path —
+bus/hardware surface (if any) through to construction, to `setup()`, to whatever REST-visible
+behavior it produces. A module that can't yet complete that chain (e.g. it depends on hardware this
+project has no chip fake for yet) stays out until the missing piece exists, flagged the same way
+any other genuinely-blocking gap is (CLAUDE.md's "flag, don't silently change" working agreement) —
+not silently deferred with no record.
+
+**Automated CI suite (`scripts/run_digital_twin_ci.sh`).** The manual on-demand walkthrough this
+project's own baseline verification passes used (fresh clean boot, every GET/PUT endpoint,
+`DebugLevel=5` verbose logging from boot, bus/WiFi/network fault injection with logging still on,
+settings and error-history persistence across a real process restart, recovery after a fault
+clears, the automated soak check) is also wired into CI as its own job (`digital-twin-e2e` in
+`.github/workflows/ci.yml`), `needs: unit-tests`. **Clean**: wipes any leftover
+`digital_twin/*.json`/`digital_twin/config/` state before starting, so every run — CI or local —
+begins from a genuinely blank twin. **Build**: builds the MicroPython Unix port (cached, same
+convention as `scripts/test.sh`) and `frozen_modules/frozen_html.py`; a build failure fails the job
+before any test phase runs. **Test**: `scripts/_digital_twin_ci_suite.py` (a self-contained
+`uv run` CPython script — it only orchestrates the MicroPython subprocess and speaks plain
+HTTP/UDP to it, the code under test still only ever runs under the real Unix-port interpreter)
+drives `digital_twin/run_wozi_integration.py` through eleven real subprocess runs covering: fresh
+boot + every GET/PUT endpoint; settings persistence + verbose logging across a real reboot; a
+sustained/high-repeat-count ("permanent") fault matrix across every bus-level error-counted module
+at once, proving both graceful degradation *and* that the (simulated) watchdog never starves under
+bounded-but-sustained failure; a persistence-correctness sweep checking both directions (FRAM-backed
+modules should survive a reboot, in-memory-only modules should not); recovery after a small bounded
+fault clears; WiFi hotspot fallback proving a real answered UDP DNS query, not just an internal
+state flip; NTP permanently unreachable; the one dedicated case that genuinely can starve the
+watchdog — a real blocking hang inside a chip fake's handler (`--hang`,
+`digital_twin/_fault_injection.py`'s `inject_hang()`/`maybe_hang()`) that freezes the whole
+interpreter past the WDT window, proving the backstop itself actually engages; and a dedicated
+clean soak run. Building this suite surfaced three confirmed Unix-port-only `socket` quirks
+(`BACKLOG.md`'s "Real-hardware verification gap for `asy_udp_socket.py`/`captive_dns.py`" has the
+full source-level account) that made a real UDP round trip (DNS, NTP) genuinely impossible under
+this harness — `bind()`/`connect()`/`sendto()` rejecting `AsyUDPSocket`'s own plain
+`(host, port)` tuple, and `recvfrom()` returning a raw C struct instead of the `(str, int)` shape
+production code expects — all three correct, required behavior for real rp2 hardware (confirmed by
+reading both the Unix port's and rp2's actual socket module C sources side by side, not just a type
+stub), so not something to fix in `src/`. Worked around entirely from twin-side code instead:
+`digital_twin/_unix_port_udp_addr_shim.py`, applied by `run_wozi_integration.py`'s own `main()`
+before anything constructs a socket — see that module's own docstring and
+`digital_twin/README.md`'s own section on it for the full mechanism. This closes the gap for good:
+run 7 now asserts a real DNS reply, not just that the hotspot state flipped. See
+`digital_twin/README.md`'s "Automated CI suite" section for the full per-run breakdown.
 
 ---
 
@@ -823,20 +1169,17 @@ One file per sensor: `asy_<sensor>_driver.py`. Within it:
   need every parameter): bus handle first (`i2c: I2C`), then sensor-specific addressing/pins/
   mandatory callbacks (`address`, `irq_pin`, `asy_comp_callback`, ...), then `trigger_sec: int =
   <n>` (only if the sensor has a configurable trigger rate — SGP40 doesn't, see C.11 point
-  6), `max_i2c_err: int = 5`, then (only if `SensorReaderConfig`, see C.4.3) `cfg_path: str
+  6), `max_module_error: int = 5`, then (only if `SensorReaderConfig`, see C.4.3) `cfg_path: str
   = ""`, then the FRAM-related parameter(s) (`fram: AsyFramManager | None = None`, or — if a
   second, paired argument is needed alongside it, as SGP40's `fram_ntp_callback` is for its
   VOC-algorithm-state backup — `fram_storage`/`fram_ntp_callback` kept adjacent to each other in
   that same position), then `history_length: int = 10`, `debug: int | None = None`.
 
-  **`max_i2c_err`'s name is misleading — it's a generic consecutive-failure-streak threshold, not
-  I2C-specific**, confirmed by the project owner: `asy_wifi_service.py` and `asy_ntp_client.py`
-  (neither has an I2C bus) already rely on the same constructor parameter under this name via
-  `_error_check()` (C.7 below). A new non-I2C module should still use this parameter as-is (it's
-  the established mechanism); a rename to something bus-agnostic is a real, deliberately-deferred
-  future cleanup (see BACKLOG.md) — don't rename it unilaterally as part of an unrelated change,
-  it touches every promoted driver/service's constructor signature and every test file that
-  constructs one.
+  **`max_module_error` is a generic consecutive-failure-streak threshold, not I2C-specific** —
+  `asy_wifi_service.py` and `asy_ntp_client.py` (neither has an I2C bus) rely on the same
+  constructor parameter via `_error_check()` (C.7 below). Renamed project-wide from the old,
+  misleading `max_i2c_err` (owner-authorized) — every promoted driver/service's constructor and
+  every test file that constructs one was updated together in that one pass.
 
 ## C.3 Layer 2: `*_I2C`/`*_SPI` protocol class
 
@@ -853,8 +1196,16 @@ all, by design — those helpers already allocate internally on every call via `
 buffer requirement scopes to whichever concrete I/O style a protocol class actually uses, not
 every protocol class unconditionally. **This carve-out doesn't extend to a class that *does* build
 its own raw scratch buffers but still allocates a fresh one on every call anyway** (`FRAM_SPI`'s
-`_check_device_id()`/`_read_status()`/`_setup_addr_buffer()` are a real, current instance of this —
-see C.3.1) — that's a genuine D.4 violation, not an example of this exemption.
+`_check_device_id()`/`_read_status()`/`_send_opcode()` each build a fresh one-byte command
+bytearray on every call — a real, current instance of this; corrected from an earlier draft of
+this bullet that named `_setup_addr_buffer()` as the third offender instead of `_send_opcode()` —
+`_setup_addr_buffer()` itself already reuses the pre-allocated `self._addr_buf`, confirmed by
+reading `asy_fram_driver.py` directly, not one of the three) — that's a genuine D.4 violation, not
+an example of this exemption. Low-severity and deliberately left as-is for now: every real call
+site already holds `self._spidev`'s underlying lock (directly, or via the caller-enforced
+`self.asy_lock` contract on `get_values()`/`set_values()`), so a future fix reusing one shared
+one-byte scratch buffer across these three methods would be safe under today's call pattern, but
+isn't itself a correctness/exception-safety issue worth the churn in this pass.
 
 **Contract: raises on any real failure — this is the layer that does *not* return sentinels.**
 
@@ -957,7 +1308,7 @@ C.1-C.2 phrase the I2C convention that way. What genuinely differs from the I2C 
 ### C.3.2 UART variant — orphan module, harmonized late, precedent now settled
 
 **`asy_uart_driver.py`'s `UART(Lockable)` is a real, promoted, tested module with zero live callers
-anywhere in `src/`/`improved-quality/` today** (see BACKLOG.md). Three real architectural choices
+anywhere in `src/` today** (see BACKLOG.md). Three real architectural choices
 are resolved here as accepted, documented precedent — none were bugs, and none needed a code
 change:
 
@@ -1179,11 +1530,14 @@ methods rather than bunched into one — `setup()`'s `except (MemoryError, OSErr
 `keys` argument), and `write_config()`'s own `except (MemoryError, OSError, ValueError,
 AttributeError)` (an `AttributeError` from calling `.items()` on a non-dict `data` argument — the
 one of the three that's actually inside `write_config()`; it has no `TypeError` catch of its own).
-All three are currently dead weight — nothing in `src/`/`improved-quality/` calls any of them with
-malformed input today, since every call site is type-checked at the mypy boundary. Kept
-deliberately anyway: once the Microdot REST layer feeds real, untrusted request data into these
-paths, the catches stop being defensive-only and become load-bearing. Don't remove them as
-"unreachable dead code" — they're pre-positioned for wiring that hasn't landed yet (see
+All three are pure defense-in-depth, confirmed by direct re-investigation once the Microdot REST
+layer actually landed (not just anticipated) — `asy_webserver_service.py`'s own `_body_as_dict()`
+and `_put_sensors()`'s per-sensor `isinstance(fields, dict)` check already guarantee only
+dict-shaped data ever reaches `write_config()`, and `get_dict()`'s `keys` always comes from a
+schema (`schema_names()`), never request data, so the REST layer's own validation fully absorbs
+the risk before it gets this far. Don't remove them as "unreachable dead code" regardless — they're
+still real protection against a future caller that skips that validation, and are already covered
+by direct unit tests (`tests/test_config_manager.py`) independent of caller discipline (see
 BACKLOG.md).
 
 `ConfigManager` also exposes four typed accessor methods — `get_int_values()`/`get_float_values()`/
@@ -1295,9 +1649,13 @@ includes it.
 directly as the push callback's success signal: `_push_reset_voc` reports success unconditionally
 once the type check passes. **Any command-only/repeatable-trigger field whose setter has its own
 "no-op vs. applied" contract, distinct from "push succeeded/failed", needs the same normalization**
-in its push-callback wrapper — `improved-quality/sensortask-wozi.py`'s `_scd_apply_field`/SCD30's
-`stop_continuous_measurement()` is the other live instance (inverted: `True` input is the no-op
-there).
+in its push-callback wrapper — `src/asy_scd30_driver.py`'s own `_set_dict_cfg()` ContMeas branch/
+SCD30's `stop_continuous_measurement()` is the other live instance (inverted: `True` input is the
+no-op there). This exact normalization was dropped when `_scd_apply_field()`'s old
+`improved-quality/sensortask-wozi.py` implementation was superseded by `_set_dict_cfg()`'s own
+ContMeas dispatch — found and fixed directly in this same pass (a real client's `ContMeas: true`
+was reporting `"Failed"` for a pure no-op; see `tests/test_asy_scd30_driver.py`'s
+`test_set_dict_cfg_reports_contmeas_true_as_valid_not_failed`), not a hypothetical risk.
 
 #### C.5.2.2 Failed-push recovery chain (replaces legacy's `set_sensor_value` fallback)
 
@@ -1337,9 +1695,9 @@ special-alone exclusion, and both the snapshot-read and correction-write failure
 
 ### C.5.3 Response envelope (`api_response.py`)
 
-Replaces `improved-quality/api_helpers.py`'s ad hoc `cmd_post_check`/`special_err`/
-`generic_error_return` pipeline (left as read-only WIP reference, not edited or deleted). Same
-wire shape as before (`{"res": "OK"|"ERR", "code": int, "descr": str, "result": ...}`):
+Replaces the old, now-deleted `improved-quality/api_helpers.py`'s ad hoc `cmd_post_check`/
+`special_err`/`generic_error_return` pipeline. Same wire shape as before
+(`{"res": "OK"|"ERR", "code": int, "descr": str, "result": ...}`):
 
 - `make_response(code, descr=None, result=None)` — a small standard code catalog (`0`–`5`, `100`)
   with per-call text override, plus support for an entirely custom `(code, descr)` pair outside
@@ -1365,10 +1723,11 @@ wire shape as before (`{"res": "OK"|"ERR", "code": int, "descr": str, "result": 
   `ext/microdot.py` (v2.6.2) end-to-end proof of this whole pipeline, dispatched through
   Microdot's own real `dispatch_request()`.
 
-Every REST endpoint handler in `improved-quality/sensortask-wozi.py` now calls these directly
-(under a scoped, project-owner-authorized exception to CLAUDE.md's hard rule on editing
-`improved-quality/` source, since that file was `improved-quality/api_helpers.py`'s last remaining
-importer). `setSGP`/`setBMP` route directly through `sgp_reader.get_cfg_schema()`/
+Every REST endpoint handler in `src/asy_webserver_service.py` now calls these directly (the old
+`improved-quality/sensortask-wozi.py` was first migrated onto this same pipeline, under a scoped,
+project-owner-authorized exception to CLAUDE.md's hard rule on editing `improved-quality/` source,
+before being superseded outright and deleted once `asy_webserver_service.py` replaced it - see
+CLAUDE.md's "Hard rules"). `setSGP`/`setBMP` route directly through `sgp_reader.get_cfg_schema()`/
 `bmp_reader.get_cfg_schema()` now, not a separate `config_SYSTEM.cfg` — the legacy handlers wrote
 into that parallel file, which neither driver's own logic ever read, so a REST client setting these
 fields never actually reached the sensor; routing through the real schema fixed that disconnect.
@@ -1445,7 +1804,7 @@ and its config read-back comes back silently wrong/empty.
   pattern worth following, not a fixed convention to match number-for-number.
 - **`base_classes.py` itself already reserves `errno=1`-`9`/`wrnno=1`-`2`, inherited unmodified by
   every `SensorReader`/`SensorReaderConfig` subclass** — `_error_check()` (`errno=1`/`2`),
-  `_get_dict_cfg()` (`wrnno=1`, `errno=3`/`4`), and `_set_dict_cfg()`/`_recover_failed_push()`
+  `_get_dict_cfg()` (`wrnno=1`/`2`, `errno=3`/`4`), and `_set_dict_cfg()`/`_recover_failed_push()`
   (`errno=5`-`9`). Every driver-owned `errno`/`wrnno` list therefore isn't independent of the
   others the way "per driver, no project-wide numbering" alone would suggest — it's scoped
   starting from whatever the shared base class has already claimed, since a driver's own numbers
@@ -1456,10 +1815,32 @@ and its config read-back comes back silently wrong/empty.
   driver's own numbering should start at 10 (or higher) for exactly this reason — starting lower
   would collide with a base-class entry already using that number for something unrelated
   (e.g. a driver-chosen `errno=3` would be indistinguishable in `get_error_counter()`'s history
-  from a `_get_dict_cfg()` internal failure). A broader, deliberate scheme of shared common-error
-  *classes* (not just this base-range reservation) across drivers is a real future direction — see
-  BACKLOG.md's "common driver error classes" entry — not implemented yet and out of scope for a
-  driver's initial promotion.
+  from a `_get_dict_cfg()` internal failure).
+- **Common error classes (decided scheme, closing BACKLOG.md's former "common driver error
+  classes" entry)**: `base_classes.py`'s 1-9 reservation above already means the same condition
+  across every driver *by construction* (shared code, inherited unmodified) — the owner's
+  direction was to extend that same "same number, same meaning" property one step further into
+  the driver-owned 10+ range, without collapsing per-driver numbering into one shared enum. Three
+  fixed common slots, immediately after the base range, each driver uses if and only if it
+  actually has that failure mode:
+  - **`errno=10` = initial setup/init failed.** Already universal (see above) - formalized, not
+    changed.
+  - **`errno=11` = the driver's own primary/periodic read (measurement) failed** - what
+    `read_loop()` reports each cycle. Found genuinely inconsistent before this scheme (SCD30 was
+    already at 11 by chance; BMP3XX was at 13, SGP40 at 17) - all three now use 11.
+  - **`errno=12` = a persisted-config read at init failed** (reading stored config values needed
+    to push into the sensor during `_init_*()`, distinct from a *later*, per-cycle config read like
+    SGP40's own backup-schedule lookup, which stays driver-specific). BMP3XX and SGP40 both have
+    this failure mode (moved from their old 11); SCD30 doesn't (`SCD30_Reader` has no local
+    `cfgmgr` at all - its params live purely on-sensor NVM, see its own module docstring) - `12` is
+    simply unused by SCD30, not repurposed.
+  Each driver's own remaining, driver-specific errors are renumbered to start immediately after
+  the highest common slot it actually uses (13+ for BMP3XX/SGP40, 13+ for SCD30 since it skips
+  unused `12`), preserving each driver's own original relative ordering among its own conditions -
+  see the per-driver table rows below for the resulting exact numbers. Room to extend to a fourth+
+  common slot (up to the existing 1-20ish range before needing to renumber everything again) is
+  open if another genuinely-shared category turns up later; none was added beyond these three in
+  this pass.
 - **A driver/service whose error sources aren't a fixed, enumerable-ahead-of-time list can assign
   `wrnno`/`errno` dynamically instead of from a fixed per-number catalog** — `system_service.py`
   assigns a task-supervisor warning's `wrnno` from that task's own position in a dynamically
@@ -1475,7 +1856,7 @@ and its config read-back comes back silently wrong/empty.
   name-baking change); every current call site was confirmed to always pass exactly its own
   `_NAME` before the parameter was dropped. Returns `False` (give up, triggers task-supervisor
   restart) once
-  `self._err_cnt_internal` exceeds `max_i2c_err`; decrements the streak back down on a good read.
+  `self._err_cnt_internal` exceeds `max_module_error`; decrements the streak back down on a good read.
   `condition` lets a driver suppress counting a "failure" that isn't really the sensor's fault
   (SGP40 passes `condition=compensated` — a `None` result from a missing compensation callback
   isn't a sensor failure).
@@ -1505,8 +1886,27 @@ and its config read-back comes back silently wrong/empty.
   (e.g. a "networking" endpoint aggregating `AsyConnTime`/`asy_dns_client`/`DNSServer`) rather
   than merged at the `self.pr` level, so C.7 doesn't need to pick a single shared-vs-independent
   rule — both are valid, and which one a given owned helper uses is a wiring-layer decision, not a
-  per-class one. See `WIRING_CONTRACT.md` for where that aggregation actually lands once it's
-  designed.
+  per-class one. This aggregation has since landed: see A.8 above for `/status`'s `errcount`
+  sub-structure, which folds every registered module's (and every `ConfigManager`'s) own logger
+  into one response.
+- **Silent-failure-masking convention: a teardown/cleanup method on a class with no logger of its
+  own must return `bool` (success/failure), not `None`, so its caller — which does have a
+  logger — can observe and log the failure instead of a bare `except Exception: pass` silently
+  swallowing it.** This is a generalizable, checkable rule: any class documented (in its module
+  docstring, or the comment immediately below it if the header itself was trimmed — see CLAUDE.md's
+  docstring-length rule) as a plain sentinel-return, never-raises primitive (no `self.pr` of its own) and
+  that owns a teardown/cleanup helper should follow this shape. Three real instances in `src/`
+  today: `asy_udp_socket.py`'s `AsyUDPSocket.disconnect()` (its one real production caller,
+  `captive_dns.py`'s `DNSServer.run()`, logs a `wrn_s()` on a `False` return — a repeated, silent
+  failure here across many short-lived DNS/NTP UDP sockets over a long uptime could otherwise
+  exhaust the platform's genuinely finite socket/poll-slot budget with zero log trail pointing back
+  to the cause); `asy_webserver_service.py`'s `WebserverService._close_writer()` (logs via
+  `self.pr.wrn_s()` on the caller's own side, since this one *does* have a logger — matching this
+  file's established connection-lifecycle logging convention); and `asy_uart_driver.py`'s
+  `UART.deinit()` (returns `bool` for consistency, ready for whoever wires this orphan module in —
+  see C.3.2). Check any new teardown/cleanup helper that currently returns `None` unconditionally
+  against this rule before adding it — the failure signal is cheap (a `bool`) and the alternative is
+  a class of bug that never shows up until the resource it's supposed to free is already exhausted.
 
 ### C.7.1 Running `errno`/`wrnno` table (error-code convention, pass 2)
 
@@ -1520,17 +1920,19 @@ pass-1/pass-2 process this table is pass 2's own output.
 |---|---|---|---|
 | `base_classes.py` (inherited by every `SensorReader`/`SensorReaderConfig` subclass) | 1-9 | 1-2 | Reserved base range — see the bullet above; every driver's own numbering starts at 10+ to avoid colliding with this. |
 | `config_manager.py` (`"CFGMGR_" + name`, per instance) | 1-14 | 1-6 | Sequential in source order (`setup()`'s load/validate/first-write paths, then the three already-async accessor methods). |
-| `asy_fram_manager.py`/`asy_fram_driver.py` (shared `"FRAM"` logger — `AsyFramManager`, its chunk classes, and `FRAM_SPI` all share one stream) | 17-97 | 60-83 | `AsyFramManager`: 17-88, non-sequential — `_write_chunk()`=17/18/26, `_read_chunk()`=37/38/46-48, `_clear_chunk()`=57/58, the block-pair `_write()`/`_read()`/`clear()` helpers reuse 60-64/70-73/80 for both their own `errno` and matching `wrnno` (pause/invalid-block-data warnings), the remaining higher-level methods (`write()`, timestamp write/sync/`setup()`)=81-88. `FRAM_SPI`: 89-97, continuing sequentially (not-initialized ×5, invalid-range ×2, readback mismatch, lock-timeout) + `wrnno`=81-83 (WRDI-stuck, WEL-didn't-set ×2). |
-| `asy_bmp3xx_driver.py` (`"BMP3XX"`) | 10-21 | — | 10=init, 11-14=config read/write, 15-20=oversampling/filter forwards, 21=trigger-interval. |
-| `asy_scd30_driver.py` (`"SCD30"`) | 10-24 | — | 10=init, 11=read, 12=stop-continuous-measurement, 13-24=per-field get/set forwards in pairs. |
-| `asy_sgp40_driver.py` (`"SGP40"`) | 10-18 | 10-14 | 10=init, 11-12=config, 13-18=VOC-backup read/write/serialize; `wrnno`=backup-missing/stale conditions. |
-| `asy_wifi_service.py` (`"WIFI"`, `AsyConnTime`) | 11-18 | 1-7 | 11=mode-switch, 12=hotspot-activate, 13=STA-connect-attempt, 14=STA-poll, 15-16=STA-disconnect/deactivate, 18=disconnect-timeout; `wrnno` 1-3=missing-config per connection phase, 4-7=WLAN status conditions. |
+| `asy_fram_manager.py`/`asy_fram_driver.py` (shared `"FRAM"` logger — `AsyFramManager`, its chunk classes, and `FRAM_SPI` all share one stream) | 10-97 | 60-83 | `AsyFramManager`: 10-88, non-sequential — the shared `_handle_status_bytes()`/`_set_check_sb()` busy/idle-status-byte helper spreads its caller-supplied base `err` across 2 values when `check_idle=False` (`err`/`err+1`, one per status byte) or up to 7 when `check_idle=True` (`err` through `err+6`, covering both bytes' read-fail/mismatch/write-fail outcomes plus the two-bytes-disagree case) - confirmed directly from `_set_check_sb()`'s own branches, not just the inline comments at each call site. `_write_chunk()`=10-11 (busy-check, `check_idle=False`)/17 (CRC)/18 (write failed)/19-20 (idle-check, `check_idle=False`)/26 (exception), `_read_chunk()`=30-36 (busy-check, `check_idle=True`)/37 (read error)/38 (incremental CRC)/39-40 (idle-check, `check_idle=False`)/46 (final CRC)/47 (exception)/48 (zero-length buffer), `_clear_chunk()`=50-51 (busy-check, `check_idle=False`)/57 (write failed)/58 (exception), the block-pair `_write()`/`_read()`/`clear()` helpers reuse 60-64/70-73/80 for both their own `errno` and matching `wrnno` (pause/invalid-block-data warnings), the remaining higher-level methods (`write()`, timestamp write/sync/`setup()`)=81-88. `FRAM_SPI`: 89-97, continuing sequentially (not-initialized ×5, invalid-range ×2, readback mismatch, lock-timeout) + `wrnno`=81-83 (WRDI-stuck, WEL-didn't-set ×2). |
+| `asy_bmp3xx_driver.py` (`"BMP3XX"`) | 10-22 | — | 10=init (common slot), 11=periodic read failed (common slot), 12=config data read failed at init (common slot), 13=config data write failed at init, 14=config data read failed at store-time (`_store_bmp()`), 15-20=oversampling/filter forwards, 21=trigger-interval, 22=batched oversampling/filter-coefficient snapshot read (`_read_sensor_dict()`). See the common-error-class bullet above the table. |
+| `asy_scd30_driver.py` (`"SCD30"`) | 10-25 | — | 10=init (common slot), 11=periodic read failed (common slot; already matched the common slot before it existed), 12=reserved/unused (SCD30 has no init-time persisted-config-read step - see the common-error-class bullet above), 13=stop-continuous-measurement, 14-25=per-field get/set forwards in pairs. |
+| `asy_sgp40_driver.py` (`"SGP40"`) | 10-18 | 10-14 | 10=init (common slot), 11=periodic read failed (common slot), 12=config data read failed at init (common slot), 13-18=per-cycle backup-config-read/write/clear-FRAM/deserialize/serialize/compensation-callback. `wrnno`=backup-missing/stale conditions. |
+| `asy_wifi_service.py` (`"WIFI"`, `AsyConnTime`) | 11-18 | 1-7 | 11=mode-switch, 12=hotspot-activate, 13=STA-connect-attempt, 14=STA-poll, 15-16=STA-disconnect/deactivate, 17=hardware-failure-streak give-up (mirrors NTP's own give-up errno below), 18=disconnect-timeout; `wrnno` 1-3=missing-config per connection phase, 4-7=WLAN status conditions. |
 | `asy_ntp_client.py` (`"NTP"`) | 11-20 | 1-3 | 11=missing-config, ..., 19=time-calc, 18/20=missing-config-interval-fallback/give-up; `wrnno`=callback failures. |
-| `captive_dns.py` (`"DNSSRV"`, `DNSServer`) | 1-3 | 1-2 | 1=invalid server_ip/netmask at startup, 2=unexpected loop exception, 3=disconnect-cleanup exception; `wrnno` 1=dropped `sendto()` reply, 2=invalid recvfrom data/address. |
+| `captive_dns.py` (`"DNSSRV"`, `DNSServer`) | 1-3 | 1-3 | 1=invalid server_ip/netmask at startup, 2=unexpected loop exception, 3=disconnect-cleanup exception; `wrnno` 1=dropped `sendto()` reply, 2=invalid recvfrom data/address, 3=socket teardown (`disconnect()`) didn't complete cleanly (added alongside Part C.7's silent-failure-masking convention fix - previously missing from this table). |
 | `system_service.py` (`"SYSTEM"`) | 1-4 | dynamic (`n + 1`) | 4=task-error-budget-exceeded-rebooting; `wrnno` assigned per task-supervisor index — see the "dynamic assignment" bullet above, not a fixed catalog. |
-| `asy_notification_service.py` (`"NOTIFY"`) | 1-4 | 1-5 | 4=`request_signal_cb` callback failure. |
+| `asy_notification_service.py` (`"NOTIFY"`) | 10-13 | 1-5 | 10=value-callback failure, 11=threshold-config-read failure, 12=`local_time_callback` failure, 13=`request_signal_cb` callback failure. Renumbered off an original 1-4 (Step 7 audit finding): `_error_check()` is actively called from `monitor_loop()`, so a 1-4 errno range genuinely collided with base_classes.py's own reserved, actively-used errno=1/2 in this module's history stream - unlike wrnno (still 1-5), whose collision with base's wrnno=1-2 stays dormant here the same way it already does for `asy_wifi_service.py`/`asy_ntp_client.py` (see the bullet above). |
+| `api_response.py`'s `handle_set_cmd()` (logs onto whichever caller-supplied `SensorReaderConfig`'s own `self.pr` it's given, not a logger of its own) | 99 | — | One defense-in-depth catch (a caller-supplied `post_fct`/`post_asy_fct` raising - see Part C.5.3), fixed at 99 specifically because this can run against *any* registered module's own `.pr` (`AsyConnTime`, `AsyNtpClient`, `NotificationCoordinator`, ...) - a small number picked for one of them would still collide with another's own range or with base's reserved 1-9. |
+| `asy_webserver_service.py` (`"WEBSERVER"`) | 1-4 | 1-5 | Not a `SensorReader`/`SensorReaderConfig` subclass (own bare `PrintLogHistory` via `make_logger()`, like `captive_dns.py`/`system_service.py`), so it starts at 1 like those, not 10+. 1=unexpected exception escaping `_serve()`'s per-connection dispatch, 2=`system_cmd` callback failure, 3=`notification_led` callback failure (found missing entirely - Step 7 second-pass audit finding: both callback dispatches were unguarded, letting a raising caller-supplied `system_cmd`/`notification_led` escape the route handler instead of degrading to a `"Failed"` result with a persisted errno like every comparable callback call site elsewhere in this codebase), 4=an otherwise-unlogged exception caught by the `app.errorhandler(Exception)` catch-all (Step 8 audit finding - see BACKLOG.md's former "No `@app.errorhandler` registrations exist anywhere yet" item, now closed); `wrnno` 1=peer closed early, 2=per-call or outer-cap timeout reclaim, 3=socket error reclaim, 4=writer close failed, 5=`wait_closed()` failed. Previously missing from this table entirely despite live usage - added alongside the errno=2/3 fix above. |
 | `asy_neopixel_driver.py` (`"NEOPIXEL"`) | — | — | No persisted logging today — only informational `evt()` calls, nothing that fails in a way worth counting against `get_error_counter()`. |
-| `asy_i2c_driver.py`/`asy_spi_driver.py`, `asy_udp_socket.py`, `asy_dns_client.py` (client side) | — | — | Deliberately no logging (reverted) — every real failure already surfaces to and gets logged by exactly one upstream owner; see the standing "Bus layer"/"`asy_udp_socket.py`/`asy_dns_client.py`" conventions above. |
+| `asy_i2c_driver.py`/`asy_spi_driver.py`, `asy_udp_socket.py`, `asy_dns_client.py` (client side) | — | — | Deliberately no logging (reverted) — every real failure already surfaces to and gets logged by exactly one upstream owner; see the standing "Bus layer"/"`asy_udp_socket.py`/`asy_dns_client.py`" conventions above. **Coverage audit (closed, no gaps found)**: every I2C-bus-touching call site in `asy_scd30_driver.py`/`asy_sgp40_driver.py`/`asy_bmp3xx_driver.py` is reachable only from a higher-level method wrapped in `try`/`except Exception` that logs via `self.pr.err_s()` with its own `errno` (confirmed by matching every driver's actual `errno`/`wrnno` call sites 1:1 against this table's own per-driver row - the BMP3XX `errno=22` fix above is what that cross-check found). SGP40's one bare `except OSError: pass` (the general-call reset broadcast) is a documented, deliberately-suppressed *expected* NAK, not a swallowed real error. FRAM's SPI path has no exception-based bus errors to catch in the first place - real RP2040 SPI transfers can't NAK, so `FRAM_SPI` already detects failures via its own status-byte checks (rows above), a different and already-complete mechanism. No dedicated bus-layer REST endpoint/logger is needed on top of this - see BACKLOG.md's former "Bus-layer status has no dedicated REST endpoint" entry, closed by this audit. |
 | `asy_uart_driver.py` | — | — | Orphan module, zero live callers — no `self.pr` at all (C.3.2); would follow this same table's shape once wired in and given an owner. |
 
 See the "reserved base range" bullet above for why `errno=10` means "init failed" almost everywhere
@@ -1623,6 +2025,24 @@ minute during active WLAN instability), not a correctness bug.
   general-heap-exhaustion scenario, not a proven `Timer.init()`-internal failure mode — confirms the
   widening was correct to apply unconditionally rather than gated on proving the mode first, exactly
   as the project owner's original decision assumed.
+- **Cascading-recovery-storm convention: a retry loop that fails non-raising (returns a sentinel
+  like `(None, None)` rather than raising) needs its own capped exponential backoff, distinct from
+  any outer `except Exception` backoff, or it will spin at full speed on a persistent failure.**
+  This is a generalizable, checkable rule: any loop whose per-iteration call can fail by returning a
+  sentinel rather than raising must check for that sentinel and back off — an outer
+  `except Exception`-based backoff never fires for a call that fails this way, since nothing ever
+  raises. The real, fixed instance: `captive_dns.py`'s `DNSServer.run()` calls
+  `self.udps.recvfrom(4096)` (default `timeout_ms=-1`) in a loop; on a persistent `(None, None)` it
+  now backs off 0.5s → 1s → 2s → 4s, capped at 5s, reset to the floor on the next successful
+  `recvfrom()` — distinct from the same method's existing flat 3s backoff on its outer
+  `except Exception`. Before this fix, a persistently-failing `recvfrom()` produced roughly 5
+  warning-level log lines/second, continuously, for the DNS server task's entire lifetime. See
+  `tests/test_captive_dns.py` for the regression coverage (real-timing tests proving the backoff
+  curve and its reset-on-success behavior). Contrast `asy_ntp_client.py`'s own sync-retry path,
+  which was already correctly bounded (`_NTP_SYNC_RETRIES=3`, `_NTP_RETRY_INTERV=15s`, then gives up
+  and lets the task supervisor restart the whole task) — a new retry loop should follow that
+  existing bounded shape, or `captive_dns.py`'s capped-exponential shape, rather than looping with
+  no backoff of its own.
 
 ## C.10 Typing conventions
 
@@ -1672,6 +2092,19 @@ sensor:
    driver's own `_NAME` stream, reusing `errno=10` for "initial setup failed" to match the other
    three drivers (C.7) — no cross-driver registry to consult or update beyond that one
    precedent.
+9. **Digital-twin extension — required, not optional.** Every new sensor driver needs a matching
+   chip fake under `digital_twin/` (`_<name>_chip.py`, same `FaultInjector`/`random_source`/
+   datasheet-range/bounded-random-walk shape as `_scd30_chip.py`/`_sgp40_chip.py`/`_bmp3xx_chip.py`),
+   wired into `machine.py`'s `_wire_i2c_devices()`/`_wire_spi_device()` bus maps, plus its own
+   `tests/test_digital_twin_<name>.py` — see `digital_twin/README.md`'s "Adding a new chip fake"
+   section for the concrete steps. A new **I2C** sensor is a small, mechanical addition (one new
+   chip-fake file + one new dict entry); a new **SPI** sensor sharing an already-occupied SPI bus id
+   with the FRAM chip is **not** automatically supported by the twin's current single-device-per-
+   bus-id wiring — same README section explains what extending it would take. Do this as part of
+   finishing the driver, the same session it's promoted to `src/` (Part D's checklist), not deferred
+   — the digital twin exists to track the *whole* real driver portfolio, not just the sensors it
+   started with, and a driver with no twin counterpart silently regresses the Unix-port integration
+   run's own coverage (Part A.10).
 
 ## C.12 Testing
 
@@ -1709,18 +2142,19 @@ calling an inherited async logging method) but starts out attempted inside a syn
   chunk allocation failed). Not a competing choice against the bool gate — both can coexist on the
   same class, answering different questions ("has setup run at all" vs. "did this one piece work").
 - **The response to "called before `setup()` ran" is never a free stylistic choice — it must match
-  whatever raise/never-raise contract the class already declares in its own module docstring.**
+  whatever raise/never-raise contract the class already declares (in its module docstring, or the
+  comment immediately below it if the header itself was trimmed — see CLAUDE.md's docstring-length rule).**
   - A class documented as "never raises" (every `SensorReader`/`SensorReaderConfig` subclass,
     `PrintLog` family, `ConfigManager`) returns its documented sentinel and logs, exactly like every
     other failure mode that class already handles. This holds even for `FRAM_SPI` specifically,
-    whose own docstring promises "self-healing to a safe state without raising, except
+    whose own docstring/comment promises "self-healing to a safe state without raising, except
     `__init__`/`setup()`'s one-time setup errors" — its pre-`setup()` sentinel-returning behavior
     was already correct.
   - `SPIDevice.__aenter__`'s raise is a structural necessity of Python's `async with` protocol (no
     sentinel-return option exists for a failed `__aenter__`), not a stylistic precedent — it doesn't
     extend to any other method on any other class.
-  - **Verify per class, don't assume**: check the specific class's own module docstring for an
-    already-declared raise/never-raise contract before deciding the response shape, rather than
+  - **Verify per class, don't assume**: check the specific class's own module docstring/comment for
+    an already-declared raise/never-raise contract before deciding the response shape, rather than
     copying whichever example was read most recently.
 - **Not every readiness question needs a gate at all.** `AsyFramManager.get_chunk()`/
   `get_timestamped_chunk()` are pure bookkeeping (offset arithmetic, no hardware access) — safe
@@ -1740,8 +2174,8 @@ calling an inherited async logging method) but starts out attempted inside a syn
 
 # Part D — `src/` Production-Quality Checklist
 
-Files land in `src/` once they've cleared the full **production-quality** bar below — moved out of
-`improved-quality/` (WIP refactor target, see CLAUDE.md) once they have. This checklist keeps
+Files land in `src/` once they've cleared the full **production-quality** bar below (see CLAUDE.md's
+"Hard rules"). This checklist keeps
 getting refined against whatever file is going through it next; apply the current version in full
 to every file making the move, not just whichever ones already have. "Production quality" here
 means concretely: correct against real documentation, never raises
@@ -1920,11 +2354,8 @@ is not a machine with memory or cycles to spare:
       `run()` helper needed this guard to use `Coroutine`/`TypeVar` for its generic return type).
       Plain `X | None` annotations don't need this — the bullet above already established that
       annotation expressions are never evaluated at runtime, so names inside them don't need to
-      resolve either — but a real runtime call like `TypeVar("T")` does. This is a live, present
-      gap across much of `improved-quality/` too (most files there do an unconditional `from
-      typing import ...`, untested against the real interpreter) — not something to fix
-      opportunistically in unrelated files during an unrelated review, but the pattern every new
-      `src/`/test file should use going forward.
+      resolve either — but a real runtime call like `TypeVar("T")` does. This is the pattern every
+      new `src/`/test file should use going forward.
 - [ ] **`mpy-cross` does not dead-code-eliminate `if TYPE_CHECKING:` blocks the way it does an
       `if micropython.const(0):` branch** — confirmed empirically by compiling real `src/`/`ext/`
       files with this repo's own `mpy-cross`: the guarded imports/`Protocol` classes/type aliases
@@ -1981,10 +2412,9 @@ is not a machine with memory or cycles to spare:
 - [ ] Look specifically for the old `u`-prefixed module names (`uasyncio`, `ustruct`, `ujson`,
       `ucollections`, ...) — MicroPython consolidated these to their plain names years ago; the
       `u`-prefixed forms still work as aliases today but are the clearest tell that a file predates
-      that consolidation. (`crc_checks.py` and `improved-quality/sensortask-wozi.py` already use
-      the modern `asyncio`/`struct` names — check any other `improved-quality/`/legacy file going
-      through this review for the old `u`-prefixed pattern, don't assume it's already been swept
-      everywhere.)
+      that consolidation. (`crc_checks.py` already uses the modern `asyncio`/`struct` names — check
+      any legacy (`python/`, `modules/`) file going through this review for the old `u`-prefixed
+      pattern, don't assume it's already been swept everywhere.)
 - [ ] Same "without changing functionality" hard constraint as D.8 applies when a
       modernization is purely a rewrite for currentness — the existing test suite must still pass
       unchanged. If a newer API's *semantics* genuinely differ from what the old pattern did (not
@@ -2125,7 +2555,7 @@ planned, not "should be fine."
 
 # Part E — Testing & Coverage
 
-Unit tests for `src/` (fully-reviewed code moved out of `improved-quality/` — see CLAUDE.md). Total
+Unit tests for `src/` (fully-reviewed code — see CLAUDE.md). Total
 test/file count drifts every time a test is added, so it isn't tracked as a fixed number here — get
 the current count with `ls tests/test_*.py | wc -l` (files) and `grep -c '^def test_'
 tests/test_*.py` (tests).
@@ -2160,14 +2590,21 @@ required system packages (see `toolchain/versions.toml`) are already present. To
 test file directly once the interpreter is built:
 
 ```
-MICROPYPATH="src:tests:.frozen" ~/pico-toolchain/micropython/ports/unix/build-standard/micropython tests/test_math_helpers.py
+MICROPYPATH="src:tests:frozen_modules:.frozen" ~/pico-toolchain/micropython/ports/unix/build-standard/micropython tests/test_math_helpers.py
 ```
 
 `.frozen` is required in `MICROPYPATH` (not just `src:tests`) because MicroPython's `MICROPYPATH`
 env var replaces the interpreter's default `sys.path` rather than extending it, and the default
 path is what makes frozen-in modules (`asyncio` included) importable at all. `math_helpers.py`
 never surfaced this since it doesn't use `asyncio`; confirmed directly against the built
-interpreter for `crc_checks.py`, which does.
+interpreter for `crc_checks.py`, which does. **`.frozen` is a literal MicroPython sentinel, not an
+ordinary directory** — `py/builtinimport.c`'s `MP_FROZEN_PATH_PREFIX ".frozen/"` routes any path
+starting with that exact string straight to the compiled-in frozen-module table, never touching the
+real filesystem; a real file placed on disk under a directory actually named `.frozen/` is silently
+unimportable (confirmed directly against the pinned v1.28.0 source, after `frozen_modules/`'s own
+build pipeline hit exactly this — see Part A.9). `frozen_modules` is a separate, ordinary,
+gitignored directory (`scripts/build_frozen_html.sh`'s own output) added alongside `.frozen` for
+this reason — `src/sensortask_wozi.py`'s `import frozen_html` needs it on `MICROPYPATH` too.
 
 ## E.4 Hardware-touching files: mock at the raw bus-transaction level only
 
@@ -2351,7 +2788,7 @@ this Part — see this document's front matter for that tradeoff.
     doc-verification pass) — don't assume "current docs" and "1.26 behavior" are the same thing.
     When in doubt about whether an API changed between 1.26 and latest, say so explicitly rather
     than silently documenting latest-only behavior as if it applies to deployed devices.
-  - **1.26 is the pin for the current, deployed codebase only.** The `improved-quality/` refactor
+  - **1.26 is the pin for the current, deployed codebase only.** This refactor
     is explicitly meant to move the version target forward to whatever is the most recent *stable*
     release at that time (MicroPython, pico-sdk, picotool, Microdot) and to actively use relevant
     improvements/new features those releases introduced — not just reproduce 1.26-era behavior
@@ -2409,6 +2846,55 @@ this Part — see this document's front matter for that tradeoff.
   - **`struct.pack()`/`pack_into()` silently zero-pad or truncate on a value/argument-count
     mismatch instead of raising**, unlike CPython. Don't rely on a mismatch surfacing as an
     exception; validate shape before packing if it matters.
+  - **`time.ticks_ms()` wraps every `2**30` ms (~12.4 days)** — confirmed directly against the
+    pinned v1.28.0 source: `py/mpconfig.h`'s `MICROPY_PY_TIME_TICKS_PERIOD` is
+    `MP_SMALL_INT_POSITIVE_MASK + 1`, which resolves to `2**30` for `MICROPY_OBJ_REPR_A` (the rp2
+    port's representation) on a 32-bit target per `py/smallint.h`. `time.ticks_diff(a, b)` is
+    correct for any true elapsed time under `2**29` ms (~6.2 days) regardless of whether the raw
+    integers wrapped in between — every real `ticks_ms()`/`ticks_diff()` use site in `src/` (Step
+    6's own audit, `tests/test_ticks_rollover.py`) is a short, bounded timeout loop well inside
+    that window; a raw `now - t0` subtraction anywhere would not be. **`time.ticks_ms` (and every
+    other `time` module attribute) cannot be monkeypatched in a test** — confirmed directly against
+    `py/objmodule.c`: a builtin C module's globals dict is built via `MP_DEFINE_CONST_DICT`
+    (`map.is_fixed = 1`), and the store-attribute path explicitly rejects writing to a fixed map for
+    every module except `builtins` (which gets a dedicated override-dict special case via
+    `MICROPY_CAN_OVERRIDE_BUILTINS`) — unlike a plain `.py`-sourced module (e.g.
+    `tests/test_captive_dns.py`'s `captive_dns_module.DNSQuery = ...`), whose globals dict is an
+    ordinary, mutable dict. Test rollover-sensitive logic with synthetic ticks-space integers built
+    from `time.ticks_add()`/passed straight to `time.ticks_diff()`, not by trying to control what a
+    live `time.ticks_ms()` call returns.
+  - **This project's own MicroPython Unix-port "standard" test rig has a much larger
+    `ticks_ms()` period than real RP2040 hardware, and cannot empirically exercise the real
+    rollover boundary.** `MICROPY_PY_TIME_TICKS_PERIOD` resolves to `2**62` on the Unix port's
+    64-bit host word versus `2**30` on rp2's 32-bit one — the same shared formula
+    (`MP_SMALL_INT_POSITIVE_MASK + 1`), parametric on word size, not two different
+    implementations. `tests/test_ticks_rollover.py` proves `ticks_diff()`/`ticks_add()`'s wraparound
+    math is correct at *this test rig's own* period boundary; the RP2040-specific `2**30` boundary
+    can only be verified by code identity (one shared, period-parametric C implementation), never by
+    a test that actually rolls over the value under the Unix-port interpreter.
+  - **`globals()` does not preserve a module's own top-level `def`/statement order on this
+    interpreter** — confirmed directly (a test file's own `test_*` functions ran in a different
+    order than written). Any test file that starts a background task from one `test_*` function must
+    keep an explicit reference to it and cancel it in its own `finally`, never relying on file
+    position (e.g. "the last test in the file") for cleanup ordering.
+  - **Calling `asyncio.run()` from inside a coroutine that is already running inside another
+    `asyncio.run()` call segfaults the real interpreter outright**, rather than raising the clean
+    error CPython's own reentrancy guard would give — confirmed directly (a real interpreter crash,
+    not a Python-level exception), while writing `tests/test_digital_twin_sensortask_integration.py`/
+    `tests/test_digital_twin_run_wozi_integration.py`. `await` directly instead once already inside
+    an async context; never nest a second `asyncio.run()` call.
+  - **`await` inside a comprehension is a `SyntaxError` on MicroPython** (`'await' outside
+    function`, confirmed directly), unlike CPython. Use a plain `for` loop to build a dict/list from
+    a sequence of `await`ed calls instead — e.g. `src/asy_webserver_service.py`'s settings/status
+    aggregation methods all do this rather than a dict/list comprehension.
+  - **`asyncio.TimeoutError` is a plain `Exception`, not an `OSError` subclass** — confirmed directly
+    against the pinned v1.28.0 `extmod/asyncio/core.py` source (`class TimeoutError(Exception):
+    pass`, immediately next to `class CancelledError(BaseException): pass`). A timeout raised by
+    `asyncio.wait_for()` therefore is **not** caught by an `except OSError:` clause and is unrelated
+    to `errno`/`MUTED_SOCKET_ERRORS`-style socket-error filtering — catch it with its own
+    `except asyncio.TimeoutError:` (or a broader `except Exception:`) arm, distinct from any
+    `OSError` handling in the same call site. `src/asy_webserver_service.py`'s `_serve()`/
+    `_TimeoutStreamProxy` is the real example of code that needs both arms.
 - **Always check current MicroPython and Microdot documentation before asserting how an API
   behaves** — do not rely on training-data memory for either. This has already caught real
   discrepancies once; treat it as a standing requirement for every session, not a one-time step.
@@ -2460,8 +2946,8 @@ re-probes and re-verifies via a serial-number read + self-test round-trip (no de
 opcode exists for this chip). This **does** fully recover a clean unplug/replug (device
 power-cycles itself, comes back, responds to the next probe+reset) or a device stuck in a bad
 internal state - genuine device-level faults. What it does **not** do is reconstruct the
-underlying `machine.I2C` peripheral object itself (constructed once, at module level, in
-`improved-quality/sensortask-wozi.py`) - only a full reboot replays that construction (see A.4's
+underlying `machine.I2C` peripheral object itself (constructed once, inside `src/sensortask_wozi.py`'s
+`build_system()`) - only a full reboot replays that construction (see A.4's
 "FRAM chunk determinism rule" for the same "full reboot replays module-level construction from
 scratch" fact used there). For a **bus-level** fault (SDA/SCL physically wedged mid-transaction,
 not just a device gone quiet) a respawn's own probe call can itself hang/repeatedly fail the same
@@ -2490,7 +2976,9 @@ designed fresh — don't assume the old lock still exists or try to resurrect/re
 ## F.4 Vendor-derived code: two opposite policies by vendor, not one blanket rule
 
 Two vendors' code is currently vendored into this project, under **opposite** editing policies —
-"vendor-derived" alone doesn't imply either one, so check which vendor before assuming:
+"vendor-derived" alone doesn't imply either one, so check which vendor before assuming. Each
+file's own SPDX header carries its specific attribution; `THIRD_PARTY_LICENSES.md` at the repo
+root is the single place all of it is also listed together.
 
 - **Adafruit-derived driver code is fair game to restructure/rewrite (keeping attribution)** —
   unlike `python/CommonDrivers/microdot.py`/`ext/microdot.py`, which stay hands-off/vendored (see

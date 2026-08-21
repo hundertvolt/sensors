@@ -1,7 +1,14 @@
-"""Sensirion's Gas Index Algorithm (VOC-only variant), fixed-point (Q16.16) port of the archived C
-reference (Sensirion/embedded-sgp, sgp40_voc_index/sensirion_voc_algorithm.c/.h) - verified
-constant-for-constant and against vocalgorithm_process()'s exact operation order. Every method
-returns a well-defined value, never raises.
+# SPDX-FileCopyrightText: Copyright (c) 2010 DFRobot Co.Ltd (http://www.dfrobot.com), author
+# yangfeng (original voc_algorithm.py, a Python translation of Sensirion's C reference algorithm)
+# - see THIRD_PARTY_LICENSES.md. The algorithm itself originates with Sensirion (embedded-sgp,
+# sgp40_voc_index/sensirion_voc_algorithm.c/.h); this file is a port of DFRobot's Python
+# translation, not written directly from Sensirion's C source, hence DFRobot's copyright header
+# above the Sensirion mention below.
+# SPDX-License-Identifier: MIT
+
+"""Sensirion's Gas Index Algorithm (VOC-only variant), fixed-point (Q16.16) port of the archived C reference (Sensirion/embedded-sgp, sgp40_voc_index/sensirion_voc_algorithm.c/.h) via DFRobot's Python translation.
+Verified constant-for-constant and against vocalgorithm_process()'s exact operation order.
+Every method returns a well-defined value, never raises.
 """
 
 import struct

@@ -154,6 +154,42 @@ def test_build_query_embeds_the_given_transaction_id_verbatim() -> None:
         assert bytes(query[0:2]) == txn_id
 
 
+def test_build_query_accepts_a_label_at_the_exact_63_octet_rfc_limit() -> None:
+    # RFC 1035 SS3.1/4.1.2's own boundary - the exact limit is a real, valid DNS name, not an
+    # off-by-one over the guard added below.
+    label = b"a" * 63
+    query = _build_query(label, b"\x00\x00")
+    assert query[12] == 63
+    assert bytes(query[13 : 13 + 63]) == label
+
+
+def test_build_query_raises_value_error_for_a_label_over_the_63_octet_rfc_limit() -> None:
+    # A single dot-free label of 64+ octets (a plausible real REST-configured NTP_Host typo/paste
+    # error - see asy_ntp_client.py's NTP_Host schema, which allows up to 1024 characters with no
+    # per-label length check of its own) used to reach `query[pos] = n` with n > 63, which still
+    # wouldn't raise until n > 255 (bytearray's own byte-range limit) - i.e. a 64-254 octet label
+    # silently produced a wire-invalid-but-non-crashing query. Enforcing the real RFC limit here
+    # catches the whole invalid range, not just the crash-causing tail of it.
+    try:
+        _build_query(b"a" * 64, b"\x00\x00")
+        raised = False
+    except ValueError:
+        raised = True
+    assert raised
+
+
+def test_build_query_raises_value_error_for_a_label_past_the_bytearray_byte_range() -> None:
+    # The original, crash-causing case this guard was added for: a label long enough that
+    # `query[pos] = n` would itself raise ValueError("byte must be in range(0, 256)"), uncaught,
+    # inside the writing loop rather than the length check above.
+    try:
+        _build_query(b"a" * 300, b"\x00\x00")
+        raised = False
+    except ValueError:
+        raised = True
+    assert raised
+
+
 # ---------------------------------------------------------------------------
 # _parse_response - test fixture helpers build a realistic response by echoing the query's own
 # header/question section, matching how a real DNS server (and captive_dns.py's own
@@ -489,6 +525,16 @@ def test_resolve_ipv4_memoryerror_building_the_query_returns_none() -> None:
         result = run(resolve_ipv4("pool.ntp.org", dns_servers=(), timeout_ms=50, tries=1))
     finally:
         asy_dns_client.os = original_os
+    assert result is None
+
+
+def test_resolve_ipv4_overlong_dns_label_returns_none_not_an_exception() -> None:
+    # A real, reachable REST-configurable input (see asy_ntp_client.py's NTP_Host schema, up to
+    # 1024 characters with no per-label length check) that used to reach _build_query()'s own
+    # `query[pos] = n` with n > 255 and raise ValueError uncaught out of resolve_ipv4() - straight
+    # through asy_ntp_client.py's _resolve_ntp_server()/_run_ntp_sync_attempt(), which wrap nothing
+    # around this call, and out of the whole asy_ntp_time() task loop.
+    result = run(resolve_ipv4("a" * 300, dns_servers=(), timeout_ms=50, tries=1))
     assert result is None
 
 

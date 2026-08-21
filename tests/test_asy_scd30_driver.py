@@ -1,12 +1,9 @@
 """Unit + integration tests for asy_scd30_driver.py (src/).
-
-Module-level tests exercise SCD30_I2C alone against tests/machine.py's fake I2C/Pin, cross-checked
-byte-for-byte against the Interface Description's own worked examples (datasheets/scd30/) rather
-than only against this file's own CRC8 computation. Integration-level tests exercise SCD30_Reader
-wired to the real src/asy_i2c_driver.py, src/base_classes.py and src/print_log.py - no mocking above
-the raw I2C bus - covering how a real OSError (bus fault) or RuntimeError (CRC mismatch) propagates
-up through the Reader's never-raises wrapper contract and into the real error counter/log.
+Module-level tests exercise SCD30_I2C against tests/machine.py's fake I2C/Pin, cross-checked byte-for-byte against the Interface Description's own worked examples (datasheets/scd30/).
+Integration-level tests wire SCD30_Reader to the real asy_i2c_driver.py/base_classes.py/print_log.py - no mocking above the raw I2C bus.
 """
+# Integration tests cover how a real OSError (bus fault) or RuntimeError (CRC mismatch) propagates
+# up through the Reader's never-raises wrapper contract and into the real error counter/log.
 
 import asyncio
 import struct
@@ -15,6 +12,7 @@ from machine import I2C as FakeI2C
 from machine import Pin as FakePin
 from machine import Timer as FakeTimer
 
+import config_manager as cm
 from asy_i2c_driver import I2C
 from asy_scd30_driver import SCD30, SCD30_I2C, SCD30_Reader
 from crc_checks import CRC8
@@ -52,8 +50,8 @@ def make_scd() -> "tuple[SCD30_I2C, FakeI2C]":
     return scd, fake(i2c)
 
 
-def make_reader(trigger_sec: int = 3, max_i2c_err: int = 5) -> SCD30_Reader:
-    return SCD30_Reader(make_i2c(), irq_pin=5, trigger_sec=trigger_sec, max_i2c_err=max_i2c_err)
+def make_reader(trigger_sec: int = 3, max_module_error: int = 5) -> SCD30_Reader:
+    return SCD30_Reader(make_i2c(), irq_pin=5, trigger_sec=trigger_sec, max_module_error=max_module_error)
 
 
 def reader_fake_i2c(reader: SCD30_Reader) -> FakeI2C:
@@ -87,6 +85,25 @@ def data_frame(co2: float, temperature: float, humidity: float) -> bytes:
 async def _settle(n: int = 5) -> None:
     for _ in range(n):
         await asyncio.sleep(0)
+
+
+class _FastAsyncSleep:
+    # _read_dev_register()/_send_dev_command() each make real 0.05s asyncio.sleep() calls - fine for
+    # a directly-`run()`-awaited coroutine, but far too slow for a test driving get_config_snapshot()
+    # as a background task through a bounded sleep(0) pump loop (same technique as
+    # test_asy_bmp3xx_driver.py's own _FastAsyncSleep). asyncio.sleep is a shared, process-wide
+    # function, restored on exit regardless of how the `with` block exits.
+    def __enter__(self) -> "_FastAsyncSleep":
+        self._real_sleep = asyncio.sleep
+
+        async def _fast(_seconds: float) -> None:
+            await self._real_sleep(0)
+
+        asyncio.sleep = _fast  # type: ignore[assignment]  # deliberate monkeypatch, not a real caller mismatch
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        asyncio.sleep = self._real_sleep
 
 
 class _RaiseOnArm:
@@ -474,7 +491,7 @@ def test_get_self_calibration_enabled_decodes_1_and_0() -> None:
 
 # ---------------------------------------------------------------------------
 # Module level: real bus faults (OSError) propagate uncaught - SCD30_I2C is the documented
-# "allowed to raise" layer (src/README.md's raw-bus-call carve-out).
+# "allowed to raise" layer (SPECIFICATION.md Part D.2's raw-bus-call carve-out).
 # ---------------------------------------------------------------------------
 
 
@@ -780,7 +797,7 @@ def test_reader_setters_return_false_on_bus_nak() -> None:
 def test_reader_getters_log_the_correct_errno_on_bus_nak() -> None:
     # Regression test for the getter forwards' own pr.err_s() logging (added alongside the
     # setters' below) - errno values per asy_scd30_driver.py's own forward-logging block, matching
-    # DRIVER_SPEC.md's documented convention that every forward logs, not just returns a sentinel.
+    # SPECIFICATION.md Part C.7's documented convention that every forward logs, not just returns a sentinel.
     reader = make_reader()
     reader_fake_i2c(reader).nak_addresses.add(_ADDR)
 
@@ -796,7 +813,7 @@ def test_reader_getters_log_the_correct_errno_on_bus_nak() -> None:
     log = run(scenario())["SCD30"]
     # History is a fixed-length deque (default history_length=10), left-padded with "no error"
     # sentinels until it fills - only the trailing entries are this scenario's own 6 calls.
-    assert log["ErrNum"][-6:] == [13, 15, 17, 19, 21, 23]
+    assert log["ErrNum"][-6:] == [14, 16, 18, 20, 22, 24]
     assert log["ErrType"][-6:] == ["E", "E", "E", "E", "E", "E"]
 
 
@@ -814,7 +831,7 @@ def test_reader_setters_log_the_correct_errno_on_bus_nak() -> None:
         return await reader.get_error_counter()
 
     log = run(scenario())["SCD30"]
-    assert log["ErrNum"][-6:] == [14, 16, 18, 20, 22, 24]
+    assert log["ErrNum"][-6:] == [15, 17, 19, 21, 23, 25]
     assert log["ErrType"][-6:] == ["E", "E", "E", "E", "E", "E"]
 
 
@@ -899,7 +916,43 @@ def test_reader_stop_continuous_measurement_false_returns_false_on_bus_fault() -
 
     ok, log = run(scenario())
     assert ok is False
-    assert log["SCD30"]["ErrNum"][-1] == 12
+    assert log["SCD30"]["ErrNum"][-1] == 13
+
+
+def test_set_dict_cfg_reports_contmeas_true_as_valid_not_failed() -> None:
+    # Regression test: stop_continuous_measurement(True)'s own contract returns False for its
+    # pure-no-op case (see test_reader_stop_continuous_measurement_true_is_a_pure_noop above), and
+    # a first version of this method's ContMeas dispatch forwarded that return value straight into
+    # the generic "Valid"/"Failed" mapping, unlike improved-quality/sensortask-wozi.py's own removed
+    # _push_cont_meas wrapper - reporting a real client's ContMeas=True (the field's own default,
+    # "keep measuring") as "Failed" even though nothing failed. Never caught by any prior test since
+    # nothing exercised _set_dict_cfg's own ContMeas branch specifically.
+    reader = make_reader()
+    reader_fake_i2c(reader)
+    result = run(reader._set_dict_cfg({"ContMeas": True}, reader.get_cfg_schema()))
+    assert result == {"ContMeas": "Valid"}
+
+
+def test_set_dict_cfg_reports_contmeas_false_as_valid_when_the_real_stop_succeeds() -> None:
+    reader = make_reader()
+    i2c = reader_fake_i2c(reader)
+    result = run(reader._set_dict_cfg({"ContMeas": False}, reader.get_cfg_schema()))
+    assert result == {"ContMeas": "Valid"}
+    assert i2c.log[-1] == ("writeto", _ADDR, bytes([0x01, 0x04]), True)
+
+
+def test_set_dict_cfg_reports_contmeas_false_as_failed_on_bus_fault() -> None:
+    reader = make_reader()
+    reader_fake_i2c(reader).nak_addresses.add(_ADDR)
+    result = run(reader._set_dict_cfg({"ContMeas": False}, reader.get_cfg_schema()))
+    assert result == {"ContMeas": "Failed"}
+
+
+def test_set_dict_cfg_reports_contmeas_non_bool_as_invalid() -> None:
+    reader = make_reader()
+    reader_fake_i2c(reader)
+    result = run(reader._set_dict_cfg({"ContMeas": "yes"}, reader.get_cfg_schema()))
+    assert result == {"ContMeas": "Invalid"}
 
 
 # ---------------------------------------------------------------------------
@@ -927,6 +980,21 @@ def test_get_dict_cfg_reports_every_schema_field_by_name() -> None:
     assert fields["SelfCal"] is True
 
 
+def test_get_cfg_schema_returns_every_settable_field_by_name() -> None:
+    # Regression test from baseline verification:
+    # SCD30_Reader(SensorReader) - unlike every other reader in this codebase (SensorReaderConfig
+    # subclasses) - never inherited a get_cfg_schema() method, even though
+    # asy_webserver_service.py's _put_sensors() route calls module.get_cfg_schema() uniformly for
+    # every registered sensor (this file's own _set_dict_cfg() docstring already documented that
+    # exact expectation). Missing it meant a real PUT /sensors touching SCD30 crashed with a 500
+    # (AttributeError) - reproduced directly, never caught by any existing test since
+    # tests/test_asy_webserver_service.py's own _put_sensors tests use a fake module that already
+    # has get_cfg_schema() defined.
+    reader = make_reader()
+    names = cm.schema_names(reader.get_cfg_schema())
+    assert set(names) == {"TempOffs", "MeasInt", "AmbPres", "Altitude", "ForceCalRef", "SelfCal"}
+
+
 def test_get_dict_cfg_degrades_to_none_per_field_on_bus_fault_not_a_crash() -> None:
     reader = make_reader()
     reader_fake_i2c(reader).nak_addresses.add(_ADDR)
@@ -940,6 +1008,48 @@ def test_get_dict_cfg_degrades_to_none_per_field_on_bus_fault_not_a_crash() -> N
         "ForceCalRef": None,
         "SelfCal": None,
     }
+
+
+def test_get_dict_cfg_snapshot_is_atomic_against_a_concurrent_config_write() -> None:
+    # Regression test for BACKLOG.md's torn-read entry: get_dict_cfg()'s six config fields used to
+    # be six independently-locked register reads, so a concurrent write (also i2c_scd30-locked)
+    # could land between any two of them and produce a dict mixing pre-/post-write values.
+    # get_config_snapshot() now holds the device-session lock for the whole batch, so a concurrent
+    # write can't even start its own I2C traffic until the whole read has finished - proven here by
+    # checking the concurrent write's own writeto() log entry only appears after all 6 of the read's
+    # own log entries (2 ops/register: one writeto for the register address, one readfrom_into for
+    # the reply).
+    reader = make_reader()
+    i2c = reader_fake_i2c(reader)
+    for value in (450, 10, 1000, 200, 400, 1):  # TempOffs, MeasInt, AmbPres, Altitude, ForceCalRef, SelfCal
+        i2c.read_queue.append(register_frame(value))
+
+    async def scenario() -> "tuple[dict, list]":
+        with _FastAsyncSleep():
+            read_task = asyncio.create_task(reader.get_dict_cfg())
+            await _settle(3)  # let the read task acquire the lock and begin its first register read
+            assert not read_task.done()
+
+            write_task = asyncio.create_task(reader.scd.set_temperature_offset(9.99))
+            await _settle(3)  # give the write every chance to run if it weren't blocked by the lock
+            assert not write_task.done()  # still blocked - proves the lock is held for the whole batch
+
+            result = await read_task
+            await write_task
+        return result, list(i2c.log)
+
+    result, log = run(scenario())
+    fields = result["SCD30"]
+    assert fields["TempOffs"] == 4.5  # the pre-write value, not the concurrent write's 9.99
+    read_ops = 12  # 6 registers x (writeto register address, readfrom_into reply)
+    # The write's own command frame is 5 bytes (2-byte command + 2-byte data + 1-byte CRC) -
+    # distinct from the read's 2-byte register-address probe for the same command code (TempOffs
+    # happens to be read first in the batch, so a length-agnostic match would find that probe
+    # instead at index 0).
+    write_index = next(
+        i for i, entry in enumerate(log) if entry[0] == "writeto" and entry[2][:2] == bytes([0x54, 0x03]) and len(entry[2]) == 5
+    )
+    assert write_index >= read_ops  # the write's own bus traffic never interleaved with the read's
 
 
 def test_get_dict_data_reports_measured_values_by_name() -> None:
@@ -978,7 +1088,7 @@ def test_init_scd_returns_false_immediately_when_probe_fails_no_reset_reached() 
 
 
 def test_read_loop_full_iteration_stores_measured_data_and_derived_values() -> None:
-    reader = make_reader(max_i2c_err=1)
+    reader = make_reader(max_module_error=1)
     reader.scd.setup = _fake_setup  # type: ignore[method-assign]
     # read_measurement() is the one call that can raise post-fix; get_CO2()/get_temperature()/
     # get_relative_humidity() are pure cache reads (see src/asy_scd30_driver.py's own comment on
@@ -1021,8 +1131,8 @@ def test_read_loop_full_iteration_stores_measured_data_and_derived_values() -> N
     assert data.DewPoint is not None
 
 
-def test_read_loop_gives_up_after_max_i2c_err_consecutive_failures_and_logs_via_real_print_log() -> None:
-    reader = make_reader(max_i2c_err=1)
+def test_read_loop_gives_up_after_max_module_error_consecutive_failures_and_logs_via_real_print_log() -> None:
+    reader = make_reader(max_module_error=1)
     reader.scd.setup = _fake_setup  # type: ignore[method-assign]
 
     async def fake_fail() -> None:
@@ -1048,11 +1158,11 @@ def test_read_loop_gives_up_after_max_i2c_err_consecutive_failures_and_logs_via_
     log = run(reader.get_error_counter())
     err_count = log["SCD30"]["ErrCount"]
     assert isinstance(err_count, int)
-    assert err_count >= 2  # two consecutive failures exceed max_i2c_err=1
+    assert err_count >= 2  # two consecutive failures exceed max_module_error=1
 
 
 def test_read_loop_recovers_error_counter_after_a_good_read_following_failures() -> None:
-    reader = make_reader(max_i2c_err=5)
+    reader = make_reader(max_module_error=5)
     reader.scd.setup = _fake_setup  # type: ignore[method-assign]
     fail_next = [True, True, False]
 
@@ -1092,7 +1202,7 @@ def test_read_loop_recovers_error_counter_after_a_good_read_following_failures()
 
 
 # ---------------------------------------------------------------------------
-# Task starters (DRIVER_SPEC.md section 9) - get_task_starters()'s own shape is already checked
+# Task starters (SPECIFICATION.md Part C.9) - get_task_starters()'s own shape is already checked
 # above; neither starter method it returns was ever actually called.
 # ---------------------------------------------------------------------------
 

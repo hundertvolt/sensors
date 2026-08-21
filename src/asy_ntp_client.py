@@ -1,10 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2013, 2014 micropython-lib contributors - the NTP query
+# byte (0x1B in a 48-byte packet), the struct.unpack("!I", msg[40:44]) transmit-timestamp read, the
+# NTP/Unix epoch-delta subtraction, and _parse_ntp_reply()'s RTC().datetime((tm[0], tm[1], tm[2],
+# tm[6] + 1, tm[3], tm[4], tm[5], 0)) call all match micropython-lib's own ntptime.py module
+# byte-for-byte in the parts that overlap; see THIRD_PARTY_LICENSES.md. Leap-indicator/stratum
+# rejection, the min/max plausibility window (replacing ntptime.py's newer, differently-shaped
+# Y2036 fix), async/AsyUDPSocket integration, and the config/retry/timer machinery below are this
+# file's own additions, not present in ntptime.py.
+# SPDX-License-Identifier: MIT
+
 """Async NTP client + CET/CEST local-time helper. Not a sensor, but config-managed the same way:
 extends base_classes.py's SensorReaderConfig, owns its own config_NTP.cfg (see SPECIFICATION.md Part C).
-Every field is persist-only - nothing here needs a live push, so base_classes.py's generic
-_set_dict_cfg() already provides full setter support with zero changes to this file (no
-self._push_callbacks entries registered). errno/wrnno numbering starts at 11 here (1-4/10 are
-base_classes.py's own).
 """
+# Every field is persist-only - nothing here needs a live push, so base_classes.py's generic
+# _set_dict_cfg() already provides full setter support with zero changes to this file (no
+# self._push_callbacks entries registered). errno/wrnno numbering starts at 11 here (1-4/10 are
+# base_classes.py's own).
 
 import asyncio
 import struct
@@ -61,7 +71,10 @@ _VAL_GMT = const((("GMTOffset", "int", 3600, -43200, 43200, None),))
 _VAL_DST = const((("DSTOffset", "int", 3600, -43200, 43200, None),))
 
 _NAME = const("NTP")
+# Kept as a literal tuple inline (not `_FIELDS` below) because mypy's namedtuple plugin can only
+# infer field names from a literal at the call site, not through a variable indirection.
 NTP = namedtuple("NTP", ("Synced", "LastSyncAge", "TS"))
+_FIELDS = const(("Synced", "LastSyncAge", "TS"))  # kept in sync with NTP's own fields above
 GMTimeStruct = namedtuple("GMTimeStruct", ("year", "month", "mday", "hour", "minute", "second", "weekday", "yearday"))
 
 
@@ -76,7 +89,7 @@ class AsyNtpClient(SensorReaderConfig):
         dns_tries: int = 1,  # forwarded to resolve_ipv4() - see dns_timeout_ms's own comment.
         ntp_fetch_timeout_ms: int = _NTP_CONN_TIMEOUT,  # forwarded to _fetch_ntp_reply()'s socket
         # call - same reasoning as dns_timeout_ms.
-        max_i2c_err: int = 5,
+        max_module_error: int = 5,
         cfg_path: str = "",
         fram: "AsyFramManager | None" = None,
         history_length: int = 10,
@@ -84,7 +97,7 @@ class AsyNtpClient(SensorReaderConfig):
     ) -> None:
         super().__init__(
             NTP(False, None, None),
-            max_i2c_err,  # consecutive failed-sync-attempt streak before asy_ntp_time() gives up and
+            max_module_error,  # consecutive failed-sync-attempt streak before asy_ntp_time() gives up and
             # lets the task supervisor restart this task - see that method's own _error_check() call.
             _NAME,
             _VAL_NH + _VAL_NOS + _VAL_NIH + _VAL_GMT + _VAL_DST,
@@ -315,7 +328,7 @@ class AsyNtpClient(SensorReaderConfig):
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         data = await self.get_data()
-        return make_dict(data)
+        return make_dict(data, _FIELDS)
 
     async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         return await self._get_dict_cfg(_NAME, _VAL_NH + _VAL_NOS + _VAL_NIH + _VAL_GMT + _VAL_DST)

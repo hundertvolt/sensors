@@ -1,8 +1,6 @@
 """Cross-module integration: a real asy_neopixel_driver.py.NeopixelDriver wired to a real
-asy_notification_service.py.NotificationCoordinator via request_signal_cb=pixel.request_signal -
-the actual production shape improved-quality/sensortask-wozi.py wires (see its own construction
-block). Only tests/neopixel.py's fake write surface is mocked; overlay/arbitration, the poll loop,
-gating, config, and logging all run for real end to end.
+asy_notification_service.py.NotificationCoordinator via request_signal_cb=pixel.request_signal - the actual production shape src/sensortask_wozi.py wires.
+Only tests/neopixel.py's fake write surface is mocked; overlay/arbitration, the poll loop, gating, config, and logging all run for real end to end.
 """
 
 import asyncio
@@ -39,6 +37,35 @@ async def _local_time() -> _FakeTime:
 
 _TMP_DIR = "tests/_tmp"
 _next_dir = 0
+
+
+def _sweep_stale_tmp_dirs(prefix: str) -> None:
+    # Sweeps pre-existing <prefix>* scratch dirs left behind by an earlier scripts/test.sh run on
+    # this machine - _next_dir always restarts at 0 per process, so without this a later run
+    # silently reuses an earlier run's real, persisted config_*.cfg files instead of a genuinely
+    # fresh directory. See tests/test_sensortask_wozi.py's own _sweep_stale_tmp_dirs() for the full
+    # root-cause writeup (this exact _tmp_cfg_dir() shape is copy-pasted across every test file with
+    # its own _TMP_DIR/_next_dir pair - same fix applied uniformly to each).
+    try:
+        entries = os.listdir(_TMP_DIR)
+    except OSError:
+        return  # tests/_tmp itself doesn't exist yet - nothing to clean
+    for entry in entries:
+        if not entry.startswith(prefix):
+            continue
+        dir_path = _TMP_DIR + "/" + entry
+        try:
+            for filename in os.listdir(dir_path):
+                try:
+                    os.remove(dir_path + "/" + filename)
+                except OSError:
+                    pass
+            os.rmdir(dir_path)
+        except OSError:
+            pass
+
+
+_sweep_stale_tmp_dirs("notify_neopixel_")
 
 
 def _remove_any(path: str) -> None:

@@ -1,11 +1,8 @@
 """Generic threshold-triggered LED notification signalling: `NotificationSignal` (per-condition data
-holder) and `NotificationCoordinator` (shared sleep-window/interval/`AutoOn`/flash brightness+
-duration, one combined `ConfigManager`/`PrintLogHistory`(Store)). Promoted from
-improved-quality/neopixel_signal.py's `airquality_auto_signal()`/`auto_led_override()` (see
-CLAUDE.md/BACKLOG.md); drives an LED through `request_signal_cb`, decoupled from any concrete LED
-implementation. Registration is staged: `register()` each signal, then `finalize()` once - see
-their own comments below.
+holder) and `NotificationCoordinator` (shared sleep-window/interval/`AutoOn`/flash brightness+duration).
+Promoted from improved-quality/neopixel_signal.py's `airquality_auto_signal()`/`auto_led_override()` (see CLAUDE.md/BACKLOG.md); drives an LED through `request_signal_cb`, decoupled from any concrete LED implementation.
 """
+# Registration is staged: `register()` each signal, then `finalize()` once - see their own comments below.
 
 import asyncio
 import time
@@ -52,7 +49,10 @@ _VAL_OWN_SCHEMA = _VAL_INT_FIELDS + _VAL_FLOAT_FIELDS + _VAL_BOOL_FIELDS
 
 # Minimal but real measurement snapshot (SPECIFICATION.md C.4.2's get_data()/get_dict_data() shape, same as
 # every other Reader) - whether anything was triggered as of the most recently completed poll cycle.
+# Kept as a literal tuple inline (not `_FIELDS` below) because mypy's namedtuple plugin can only
+# infer field names from a literal at the call site, not through a variable indirection.
 NOTIFY = namedtuple("NOTIFY", ("Triggered", "TS"))
+_FIELDS = const(("Triggered", "TS"))  # kept in sync with NOTIFY's own fields above
 
 
 class NotificationSignal:
@@ -79,7 +79,7 @@ class NotificationCoordinator(SensorReaderConfig):
         self,
         request_signal_cb: "Callable[[int, int, int, float], Coroutine[Any, Any, bool]]",
         local_time_callback: "Callable[[], Coroutine[Any, Any, Any]]",
-        max_i2c_err: int = 5,
+        max_module_error: int = 5,
         cfg_path: str = "",
         fram: "AsyFramManager | None" = None,
         history_length: int = 10,
@@ -89,7 +89,7 @@ class NotificationCoordinator(SensorReaderConfig):
         # registered - self.pr/self.cfgmgr/self.cfg_schema don't exist until then.
         self._request_signal_cb = request_signal_cb
         self._local_time_callback = local_time_callback
-        self._max_i2c_err = max_i2c_err
+        self._max_module_error = max_module_error
         self._cfg_path = cfg_path
         self._fram = fram
         self._history_length = history_length
@@ -132,14 +132,14 @@ class NotificationCoordinator(SensorReaderConfig):
         try:  # caller-supplied callback, could legitimately misbehave
             return await self._local_time_callback()
         except Exception as e:
-            await self.pr.err_s("local_time_callback failed:", e, errno=3)
+            await self.pr.err_s("local_time_callback failed:", e, errno=12)
             return None
 
     async def _check_one(self, notif: NotificationSignal) -> bool:
         try:  # caller-supplied callback, could legitimately misbehave
             value = await notif.get_value()
         except Exception as e:
-            await self.pr.err_s(notif.name, "Value callback failed:", e, errno=1)
+            await self.pr.err_s(notif.name, "Value callback failed:", e, errno=10)
             value = None
         notif.last_value = value
         if value is None:
@@ -147,7 +147,7 @@ class NotificationCoordinator(SensorReaderConfig):
             return False
         thresholds = await self.cfgmgr.get_float_values(notif.field_schema)  # works for an "int" schema field too - float(cached_int) never raises
         if thresholds is None:
-            await self.pr.err_s(notif.name, "Threshold config read failed!", errno=2)
+            await self.pr.err_s(notif.name, "Threshold config read failed!", errno=11)
             notif.triggered = False
             return False
         threshold = thresholds[0]  # exactly one field - register() rejects any other shape
@@ -160,7 +160,7 @@ class NotificationCoordinator(SensorReaderConfig):
         try:  # caller-supplied callback, could legitimately misbehave
             await self._request_signal_cb(r * flash_bri, g * flash_bri, b * flash_bri, flash_dur)
         except Exception as e:
-            await self.pr.err_s(notif.name, "request_signal_cb failed:", e, errno=4)
+            await self.pr.err_s(notif.name, "request_signal_cb failed:", e, errno=13)
 
     async def _store_notif_data(self, any_triggered: bool) -> None:
         await self._set_meas_data(NOTIFY(any_triggered, self._now()))
@@ -187,7 +187,7 @@ class NotificationCoordinator(SensorReaderConfig):
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         data = await self.get_data()
-        return make_dict(data)
+        return make_dict(data, _FIELDS)
 
     async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         if not self._finalized:  # self.cfg_schema doesn't exist yet - same caller-ordering guard as get_data()
@@ -229,7 +229,7 @@ class NotificationCoordinator(SensorReaderConfig):
             return
         super().__init__(
             NOTIFY(False, None),
-            self._max_i2c_err,
+            self._max_module_error,
             _NAME,
             self._combined_schema(),
             cfg_path=self._cfg_path,
@@ -308,7 +308,7 @@ class NotificationCoordinator(SensorReaderConfig):
                                     await asyncio.sleep(2 * flash_dur)
                 await self._store_notif_data(any_triggered)
             # consecutive-failure-streak give-up, matching every other Reader's own read_loop() shape -
-            # max_i2c_err is otherwise accepted and stored but never actually enforced.
+            # max_module_error is otherwise accepted and stored but never actually enforced.
             if not await self._error_check((None,), condition=cfg_read_failed):
                 return  # too many consecutive own-config-read failures - let the task supervisor restart us
             await asyncio.sleep(self._next_sleep_secs(interv, t0))

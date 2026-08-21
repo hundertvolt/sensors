@@ -1,6 +1,10 @@
-"""Sensirion SGP40 VOC sensor driver: SGP40_I2C (chip protocol) and SGP40_Reader (async wrapper -
-trigger timer, read loop, error counting, config schema, FRAM backup/restore of voc_algorithm.py's
-VOCAlgorithm state), same shape as asy_scd30_driver.py/asy_bmp3xx_driver.py (see SPECIFICATION.md Part C).
+# SPDX-FileCopyrightText: Copyright (c) 2020 Bryan Siepert for Adafruit Industries (original
+# adafruit_sgp40, CircuitPython) - restructured/rewritten for asyncio + MicroPython, see
+# THIRD_PARTY_LICENSES.md.
+# SPDX-License-Identifier: MIT
+
+"""Sensirion SGP40 VOC sensor driver: SGP40_I2C (chip protocol) and SGP40_Reader (async wrapper - trigger timer, read loop, error counting, config schema, FRAM backup/restore of voc_algorithm.py's VOCAlgorithm state).
+Same shape as asy_scd30_driver.py/asy_bmp3xx_driver.py (see SPECIFICATION.md Part C).
 Verified against Sensirion's SGP40 datasheet (datasheets/sgp40/, v1.2 - Feb 2022).
 """
 
@@ -48,7 +52,10 @@ _NAME = const("SGP40")
 # VOC/Raw/TS also doubles as the full result of a read (see _read_sgp/_store_sgp) - no separate
 # results type needed, unlike asy_scd30_driver.py's SCDResults, which carries derived fields SGP40
 # doesn't have.
+# Kept as a literal tuple inline (not `_FIELDS` below) because mypy's namedtuple plugin can only
+# infer field names from a literal at the call site, not through a variable indirection.
 SGP40 = namedtuple("SGP40", ("VOC", "Raw", "TS"))
+_FIELDS = const(("VOC", "Raw", "TS"))  # kept in sync with SGP40's own fields above
 
 
 class SGP40_Reader(SensorReaderConfig):
@@ -56,7 +63,7 @@ class SGP40_Reader(SensorReaderConfig):
         self,
         i2c: "I2C",
         asy_comp_callback: "Callable[[], Coroutine[Any, Any, list[int | float | None]]]",
-        max_i2c_err: int = 5,
+        max_module_error: int = 5,
         cfg_path: str = "",
         fram_storage: "AsyFramManager | None" = None,
         fram_ntp_callback: "Callable[[], Coroutine[Any, Any, bool]] | None" = None,
@@ -65,7 +72,7 @@ class SGP40_Reader(SensorReaderConfig):
     ) -> None:
         super().__init__(
             SGP40(None, None, None),
-            max_i2c_err,
+            max_module_error,
             _NAME,
             _VAL_BP + _VAL_BMAX + _VAL_WT + _VAL_RESET,
             cfg_path=cfg_path,
@@ -116,7 +123,7 @@ class SGP40_Reader(SensorReaderConfig):
 
         cfg_values = await self.cfgmgr.get_int_values(_VAL_BP + _VAL_BMAX + _VAL_WT)
         if cfg_values is None or len(cfg_values) != 3:
-            await self.pr.err_s("Error reading config data!", errno=12)
+            await self.pr.err_s("Error reading config data!", errno=13)
             return None, False, False, None
 
         serialize = False
@@ -164,7 +171,7 @@ class SGP40_Reader(SensorReaderConfig):
             elif not self._reset_fram_cleared:
                 self._reset_fram_cleared = await self.ts_storage.clear()
                 if not self._reset_fram_cleared:
-                    await self.pr.err_s("Error clearing FRAM!", errno=14)
+                    await self.pr.err_s("Error clearing FRAM!", errno=15)
 
         try:  # caller-supplied callback, could legitimately misbehave
             comp_data = await self.comp_callback()  # [Temperature, Humidity]
@@ -207,13 +214,13 @@ class SGP40_Reader(SensorReaderConfig):
                 if deserialized:
                     self.pr.one("Restore applied successfully")
                 else:
-                    await self.pr.err_s("Error deserializing!", errno=15)
+                    await self.pr.err_s("Error deserializing!", errno=16)
 
             if serialize:
                 if serialized:
                     self.pr.evt("Backup data created successfully")
                 else:
-                    await self.pr.err_s("Error serializing!", errno=16)
+                    await self.pr.err_s("Error serializing!", errno=17)
 
         except Exception as e:
             # I2C failed, but a pending reset_for_measure already completed above regardless.
@@ -221,7 +228,7 @@ class SGP40_Reader(SensorReaderConfig):
                 self.reset = False
             voc_index = raw = timestamp = None
             serialized = False
-            await self.pr.err_s("Read failed:", e, errno=17)
+            await self.pr.err_s("Read failed:", e, errno=11)
         return SGP40(voc_index, raw, timestamp), True, serialized
 
     async def _init_sgp(self) -> bool:
@@ -242,7 +249,7 @@ class SGP40_Reader(SensorReaderConfig):
 
         cfg_values = await self.cfgmgr.get_int_values(_VAL_BP + _VAL_WT)
         if cfg_values is None or len(cfg_values) != 2:
-            await self.pr.err_s("Error reading config data!", errno=11)
+            await self.pr.err_s("Error reading config data!", errno=12)
             return False  # error
 
         if cfg_values[0] > 0:  # backup verification period setting
@@ -322,7 +329,7 @@ class SGP40_Reader(SensorReaderConfig):
             return  # no write error
 
         if not res:  # no data was written for other reason
-            await self.pr.err_s("Write error during backup!", errno=13)
+            await self.pr.err_s("Write error during backup!", errno=14)
             return  # don't continue due to error
 
         if require_ntp:  # (ntp_synced and require_ntp) and res must have been True here
@@ -387,7 +394,7 @@ class SGP40_Reader(SensorReaderConfig):
 
     async def get_dict_data(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         data = await self.get_data()
-        return make_dict(data)
+        return make_dict(data, _FIELDS)
 
     async def get_dict_cfg(self) -> dict[str, dict[str, int | float | str | bool | None]]:
         # Deliberately excludes _VAL_RESET (SGPResetVOC) - see that const's own comment: it's never

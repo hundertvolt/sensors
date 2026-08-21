@@ -42,43 +42,36 @@ information):
 
 ## Hard rules
 
-- **Don't edit `improved-quality/`'s *source* files (drivers, managers, etc.) — they're the WIP
-  refactor target, out of scope for routine editing.** This does **not** cover its dev-tooling
-  config: `mypy.ini`/`pycheck.sh` were an ad hoc, trial-and-error setup the project owner
-  explicitly asked to have questioned and replaced (confirmed directly, not inferred) — they've
-  been retired in favor of root-level `pyproject.toml` + `scripts/lint.sh`/`scripts/typecheck.sh`
-  (see "Code quality tooling" below). Source files elsewhere in `improved-quality/` remain
-  read-only context until the refactor itself starts. **The project owner can authorize a scoped
-  exception for a severity-justified fix** (precedent: the `ConfigManager`/`LockedValue`
-  wrong-module-import bug that would have crash-looped every deployed unit's boot) — this is a
-  standing, repeatable exception path, not a one-off; it still requires the owner's explicit
-  authorization each time, scoped narrowly to the specific fix, not a general license to edit
-  `improved-quality/` more broadly.
+- **`improved-quality/` (the refactor's WIP staging directory) has been fully retired and
+  deleted.** Every file it ever held was either promoted into `src/` once fully reviewed/tested,
+  or — its last remaining file, `sensortask-wozi.py` — confirmed fully superseded by
+  `src/sensortask_wozi.py` + `src/asy_webserver_service.py` (construction/wiring and REST routing
+  both independently rebuilt there, more generically, with real gaps in the old file fixed along
+  the way — e.g. `conn.setup()`/`ntp.setup()` were never called anywhere in the old flow) and
+  removed outright, not just left in place. Its old "don't edit source files without a scoped
+  owner exception" rule no longer has anything to apply to; the one precedent it set (the
+  `ConfigManager`/`LockedValue` wrong-module-import fix) stays as a precedent for any future
+  severity-justified exception to a similar "don't touch this WIP/vendored code" rule elsewhere in
+  this file (see the `python/CommonDrivers/microdot.py`/`ext/microdot.py` vendoring rule and the
+  `modules/_boot.py` rule below), not something that needs a live `improved-quality/` to reapply.
 - **`src/` is where files land once they're fully reviewed and tested** — formula/logic
   correctness checked, input validation and exception-safety audited, unit tests written and
-  passing (see "Code quality tooling" below and SPECIFICATION.md Part E), unlike `improved-quality/`'s
-  WIP files above. **SPECIFICATION.md Part D is the full checklist** for what "fully reviewed and tested"
-  actually requires — apply it to every file that makes this move, not just whichever ones already
-  have. **For a new sensor driver specifically, SPECIFICATION.md Part C is the shared
-  architecture/interface spec** extracted from the three drivers already in `src/` — what shape
-  the code should take (layering, naming, error handling, config schema, ...), separate from
-  Part D's "is it good enough to move" checklist. Files in `src/` aren't automatically
-  re-wired into any driver's actual import path for a
-  real firmware build just by moving there — `improved-quality/` files keep importing them by
-  their old unqualified name unchanged (e.g. `import math_helpers`, `from crc_checks import ...`),
-  which still resolves correctly both because MicroPython's frozen-module namespace is flat (it
-  doesn't matter which directory the source lives in once it's actually frozen into firmware) and,
-  for local dev-tooling checks today, because `pyproject.toml`'s `mypy_path` includes `src`. Treat
-  `src/` files as normal, freely-editable code, not as read-only WIP context the way
-  `improved-quality/` is.
-- **Whenever a new file is promoted into `src/`, run a bird's-eye-view scan over the whole
+  passing (see "Code quality tooling" below and SPECIFICATION.md Part E). **SPECIFICATION.md Part D
+  is the full checklist** for what "fully reviewed and tested" actually requires — apply it to
+  every file that makes this move, not just whichever ones already have. **For a new sensor driver
+  specifically, SPECIFICATION.md Part C is the shared architecture/interface spec** extracted from
+  the drivers already in `src/` — what shape the code should take (layering, naming, error
+  handling, config schema, ...), separate from Part D's "is it good enough to move" checklist.
+  Treat `src/` files as normal, freely-editable code — nothing in this repo is read-only WIP
+  context anymore.
+- **Whenever a new file is added to `src/`, run a bird's-eye-view scan over the whole
   content of `src/`** — not just the new file in isolation — to check that the coding guidelines
-  and `src/README.md`'s checklist (including its "API consistency, within a file and across the
-  project" and "Check against current MicroPython" items) actually hold consistently across every
-  file there, not just that the new file individually passes review on its own. **If the scan
-  surfaces a discrepancy — one file diverging from another, or from a guideline — do not silently
-  fix it.** Report it and discuss how to resolve it before changing anything, the same "flag, don't
-  silently change" treatment section 1 of `src/README.md` already gives formula/behavior
+  and `SPECIFICATION.md` Part D's checklist (including its D.10 "API consistency, within a file and
+  across the project" and D.9 "Check against current MicroPython" items) actually hold consistently
+  across every file there, not just that the new file individually passes review on its own. **If
+  the scan surfaces a discrepancy — one file diverging from another, or from a guideline — do not
+  silently fix it.** Report it and discuss how to resolve it before changing anything, the same
+  "flag, don't silently change" treatment Part D.1 already gives formula/behavior
   discrepancies, applied here to cross-file consistency instead.
 - **Do not "fix" `modules/_boot.py`'s `import sensortask.py`** (literal `.py` in the import
   statement) without testing on real hardware first. It works reliably today; MicroPython's
@@ -101,8 +94,8 @@ information):
   bugs.
 - **No unit tests against the current (deployed, pre-refactor) codebase — `python/`, `modules/`.**
   The agreed plan is: fully understand the current system first, confirm what's already
-  transferred into `improved-quality/`, and write tests as part of that refactor — not before, and
-  not against the current code. This does **not** contradict `tests/README.md`'s testing
+  promoted into `src/`, and write tests as part of that refactor — not before, and
+  not against the current code. This does **not** contradict SPECIFICATION.md Part E's testing
   requirements (tests under a real MicroPython Unix-port interpreter, `uv`-managed venv, mocking
   boundary, etc.) — those describe what the *refactored* code must eventually have. **First
   concrete instance**: `src/math_helpers.py` has a full `tests/test_math_helpers.py` suite,
@@ -135,7 +128,7 @@ information):
 ## Working agreements
 
 - Long-term goal: fully understand the current (production) system in detail, then check what's
-  already been addressed/transferred well into `improved-quality/`. The refactor should end up
+  already been addressed/promoted well into `src/`. The refactor should end up
   with the *same top-level features*, just more consistent/stable — not a feature change.
 - When a fact in this file or BACKLOG.md turns out to be stale (version drift, changed upstream
   API, etc.), update the doc in the same session rather than silently working around the
@@ -148,32 +141,73 @@ information):
   value. This already had to be corrected once (a merge re-accumulated ~800 lines of per-file
   "bug found, fixed" narrative in BACKLOG.md) — treat pruning history back out as routine
   maintenance whenever an item resolves, not a one-off cleanup.
+- **Docstrings (module/function/class `"""..."""` headers) are capped at 3 lines, prefer fewer —
+  a concise header, not an essay.** Inline `#` comments have no such cap. Load-bearing detail a
+  docstring can't fit in 3 lines moves to: the relevant `SPECIFICATION.md` Part if the fact is
+  architectural and reused elsewhere (leave a short pointer in the docstring, the same
+  "Moved to `SPECIFICATION.md` Part X" pattern this file itself already uses), `digital_twin/
+  README.md` for anything `digital_twin/`-specific, or a `#`-prefixed comment right next to the
+  code it explains otherwise — never dropped outright. Applied repo-wide across `src/`,
+  `digital_twin/`, `tests/` in one pass (project owner's direction); keep new code to this bar too.
 - Prefer flagging genuinely ambiguous/architecturally significant decisions to the project owner
   over guessing — several open questions in BACKLOG.md exist precisely because the code's actual
   intent wasn't obvious from reading it alone.
 - When changing a sensor driver's behavior, verify against the legacy driver's own actually-proven
   field behavior, not just judged correct against internal code-review logic in isolation.
+- **Step-session workflow, standing practice for any substantial unit of refactor/audit work**
+  (originated during the `improved-quality/` → `src/` wiring effort's five-plus-one step sessions,
+  still the expected shape for a comparable future unit of work — a new driver promotion, a new
+  audit pass, etc.): (1) refine the task's own scope into a detailed list — goals, doc links, and
+  the criteria that make the branch/session done — doing real research first (datasheets, current
+  MicroPython/Microdot docs, legacy driver code) rather than restating a one-line ask; (2) ask up to
+  10 top-level clarifying questions (what needs deciding, the realistic options, the consequences of
+  each), resolving as much as possible from project context/internal docs/legacy code first, but
+  raising a genuinely blocking or architecturally significant decision at any point, not only in
+  this round; (3) write the full set of unit tests first (TDD) against the criteria the refined
+  scope settled on; (4) write the implementation against those tests, refining until every test
+  passes and the result is lean, not just "technically satisfies the tests"; (5) add unit tests for
+  the resulting functional code, maximizing coverage; (6) stop and report back to the project owner
+  before doing anything more — merging, starting the next unit of work, or any scope beyond what was
+  just built is not the session's own call. A session can come back with a blocking question at any
+  point in this sequence, not only at the end.
 
 ## Code quality tooling
 
 - **Config lives in root `pyproject.toml`** (ruff/mypy/pytest/uv, dev-tooling only — the shipped
   code stays frozen-bytecode-only, not restructured into an installable package). Run manually via
   `scripts/lint.sh` (ruff), `scripts/typecheck.sh` (mypy), and `scripts/test.sh` (unit tests, under
-  a real MicroPython Unix-port interpreter — see below and `tests/README.md`); `lint.sh`/
+  a real MicroPython Unix-port interpreter — see below and SPECIFICATION.md Part E); `lint.sh`/
   `typecheck.sh` assume `ruff`/`mypy` are already on `PATH` (e.g. an activated `uv sync`-created
   venv). **Wired into CI** via `.github/workflows/ci.yml` (GitHub Actions), running all three on
   every push/PR. The CI pipeline does not yet include a real firmware-build stage (see
   BACKLOG.md).
-- **Scope is `improved-quality/`, `src/`, and `tests/`, for now.** The pre-refactor deployed
+- **Scope is `src/`, `tests/`, and `digital_twin/`.** The pre-refactor deployed
   codebase (`python/`, `modules/`) has no lint/type config yet; extending scope there is a separate
-  future decision, not assumed by this setup.
+  future decision, not assumed by this setup. All three are expected to stay fully clean — every
+  scope in this setup is fully-reviewed, freely-editable code (see "Hard rules" above), not WIP;
+  there's no tracked-debt scope left to compare `digital_twin/` against since `improved-quality/`
+  was deleted (see "Hard rules" above). `digital_twin/`'s own
+  type-check is a **separate** mypy invocation (`digital_twin/typecheck.ini`, run unconditionally by
+  `scripts/typecheck.sh` regardless of its own args) rather than folded into the main
+  `[tool.mypy]` pass — mypy resolves each bare `machine`/`network`/`neopixel` module name to exactly
+  one file per run, so this package's own hardware fakes and the real `typings/` board stubs can
+  never both be checked correctly in one invocation. `digital_twin/machine.py`/`network.py`/
+  `neopixel.py` (a straight `Duplicate module named "machine"` collision with `tests/machine.py`
+  otherwise — confirmed directly, not the softer resolution-priority hijack `tests/network.py`'s own
+  exclude guards against) and `digital_twin/launch.py`/every `tests/test_digital_twin_*.py` (attr-
+  defined noise on every twin-only API the real board stub doesn't declare, e.g.
+  `WDT.would_have_triggered_count`, `WLAN.script_connect_outcomes()` — confirmed directly, including
+  one real `mypy src tests`-only finding this design caught that a from-scratch `mypy` run missed)
+  are therefore excluded from the main `[tool.mypy]` pass and checked correctly by the dedicated
+  pass instead — see `pyproject.toml`'s own `[tool.mypy]` exclude comment and
+  `digital_twin/typecheck.ini`'s own docstring for the full account.
 - **Unit tests run under a real MicroPython Unix-port interpreter, not pytest/CPython** — "as close
   to the real environment as possible" means the actual runtime, not CPython plus MicroPython-
-  flavored stubs (see `tests/README.md`'s "Why not pytest"). `scripts/test.sh` builds that
+  flavored stubs — see SPECIFICATION.md Part E.1 ("Why not pytest"). `scripts/test.sh` builds that
   interpreter on first run (`toolchain/setup_toolchain.py`'s `setup` — building/verifying the
   Unix port is just part of what `setup`/`test` already do, there's no separate `unix`
   subcommand — cached under `$PICO_TOOLCHAIN_DIR`) and shells out to it once per `tests/test_*.py`
-  file; see `tests/README.md` for the full rationale and the minimal `test_*`-function runner
+  file; see SPECIFICATION.md Part E.3 for the full rationale and the minimal `test_*`-function runner
   (`tests/microtest.py`) used in place of CPython's `unittest`.
 - **`scripts/test.sh --coverage` reports `src/` line coverage; it never gates anything** — no
   threshold is enforced anywhere, by design (confirmed directly, not a placeholder for a future
@@ -181,7 +215,7 @@ information):
   under the real MicroPython Unix-port interpreter, collection (`tests/_coverage_runner.py`,
   `sys.settrace` inside MicroPython) and rendering (`scripts/_render_coverage.py`, a second
   self-contained `uv run` script, under CPython) are two separate stages glued together through
-  `coverage.py`'s own `CoverageData` API — see `tests/README.md`'s "Coverage" section for the full
+  `coverage.py`'s own `CoverageData` API — see SPECIFICATION.md Part E.5 ("Coverage") for the full
   pipeline. The Unix port binary is always built with `MICROPY_PY_SYS_SETTRACE=1`
   (`build_unix_port()` in `toolchain/setup_toolchain.py`) — an inert hook check when unused, not a
   behavior change, confirmed directly — so plain `scripts/test.sh` and `--coverage` share one
@@ -192,58 +226,36 @@ information):
   needs this repo registered at codecov.io plus a token/OIDC setup that hasn't happened yet, so
   that upload currently no-ops. Locally, `--coverage` only prints the output paths; nothing opens
   automatically. See README.md's "Test coverage" section for the full user-facing rundown.
-- **CI hang investigation (resolved)**: `unit-tests` hung intermittently and repeatedly, always the
-  same symptom — `test_asy_uart_driver.py`'s MicroPython process going completely silent for the
-  rest of the job (first seen as a full 6-hour stall before `timeout-minutes` existed; see PR
-  #24/#25's history). An early round of isolation (bisect-matrix runs, solo vs. concurrent-job-burst
-  comparisons) pointed at GitHub Actions runner-level contention and produced three successive
-  mitigations in `scripts/test.sh`/`ci.yml` (per-file `timeout`+retry, `stdbuf -oL -eL` line
-  buffering, `needs: lint-and-typecheck` job sequencing) — **none of which actually stopped the
-  hang**; they only turned a silent multi-hour stall into a fast, attributable ~12-13 minute
-  failure. The real root cause, found by adding a diagnostic `asyncio.wait_for(5)` bound around
-  the test file's own `run()` helper: ~17 tests in `test_asy_uart_driver.py` feed data via
-  `feed_rx()` then call `uart.read()`/`write()` with no explicit `timeout_ms`, hitting
-  `asy_uart_driver.py`'s `ready()`'s `timeout_ms=-1` (wait forever) branch — the only place in the
-  whole file relying on the *real* `select.poll()` to detect readiness via `tests/machine.py`'s
-  pure-Python `io.IOBase` fake UART's `ioctl()`, instead of the bounded `_StepPoller` test double
-  every other test in the file already used. On GitHub Actions specifically (never locally, including
-  under simulated single-core CPU contention), that real-poll/ioctl-on-a-non-fd-Python-object path
-  never detects readiness at all — confirmed deterministic, not intermittent, once the diagnostic
-  bound made the failure visible as `TimeoutError` instead of a silent stall. **Fix**: switched all
-  17 tests to the same `_StepPoller` double, removing the dependency entirely — verified with 21/21
-  clean CI jobs across three separate branches/configurations before landing on the real branch.
-  The three earlier mitigations (per-file timeout/retry, stdbuf, job sequencing) are kept as a
-  standing "hanging is never allowed" backstop against any *future* hang, not because they fixed
-  this one — an isolation test with all three reverted, running only the `_StepPoller` fix, passed
-  8/8 clean CI jobs on its own. Don't re-diagnose this specific symptom as a new code bug if it
-  recurs elsewhere; do treat any *new* file/test that leaves `uart.poller` (or an equivalent
-  fake-stream object) wired to a real `select.poll()` as a like-for-like risk.
-- **Non-UTC-host test failures (resolved)**: on a developer machine whose system timezone isn't
-  UTC, `tests/test_ntp_fram_system_integration.py`'s
-  `test_fram_write_into_gets_a_real_valid_timestamp_once_the_real_ntp_chain_is_synced` and
-  `test_system_service_boot_signature_resolves_via_the_real_ntp_chain_once_synced` failed every
-  run (deterministic, not flaky) with a bare `AssertionError` at their final `abs(... -
-  int(time.time())) < 5` line, while CI (GitHub-hosted `ubuntu-latest`, always UTC) stayed green.
-  Root cause, confirmed directly against both the real MicroPython v1.28.0 Unix-port source and a
-  live reproduction: the Unix port's `time.mktime()` (`ports/unix/modtime.c`) calls straight
-  through to the host's real libc `mktime()`, which — per POSIX, and unlike the deployed rp2
-  firmware — interprets its input `struct tm` as **local time** and converts using the process's
-  `$TZ`. `src/asy_fram_manager.py`'s and `src/system_service.py`'s (and every other driver's)
-  `time.mktime(time.gmtime())` idiom for "current UTC timestamp" is therefore only a true no-op
-  round trip under `TZ=UTC`; under e.g. `TZ=Europe/Berlin` it silently comes back ~1 hour off
-  (`tm_isdst` is forced to `0` by `gmtime()`'s 9-tuple, so it's standard-time offset, not the
-  actual current DST offset), reproduced identically both with a hand-rolled snippet and by
-  literally re-running the two failing tests with only `$TZ` changed (12/12 pass under `TZ=UTC`,
-  the same 2/12 fail under `TZ=Europe/Berlin`, same line numbers, same "10/12 passed"). **Not a
-  production bug**: confirmed directly from `ports/rp2/datetime_patch.c` that the deployed
-  firmware overrides libc's `mktime()`/`localtime_r()` with `shared/timeutils`' pure, TZ-agnostic
-  epoch arithmetic — real hardware has no `$TZ` concept and this idiom round-trips exactly there
-  regardless. **Fix**: `scripts/test.sh` now does `export TZ=UTC` before invoking the Unix-port
-  binary (for both the plain and `--coverage` passes, and every test file), pinning every local
-  test run to the same UTC behavior GitHub's runners already gave for free — verified with a full
-  99/99-passing `scripts/test.sh` run under `TZ=Europe/Berlin` in the calling shell after the fix.
-  Don't re-diagnose a consistent (not intermittent) failure isolated to this file's two live-clock
-  assertions as a new code bug — check the runner's `$TZ` first.
+- **Standing backstop: hanging tests are never allowed.** `scripts/test.sh`/`ci.yml` enforce a
+  per-file `timeout`+retry, `stdbuf -oL -eL` line buffering, and `needs: lint-and-typecheck` job
+  sequencing regardless of any specific hang's root cause — keep all three even after a specific
+  hang is fixed.
+- **Known hang cause, fixed**: a MicroPython Unix-port `select.poll()`/`ioctl()` call against a
+  non-fd Python object (e.g. `tests/machine.py`'s pure-Python fake-stream `ioctl()`) never detects
+  readiness on GitHub Actions runners specifically (not reproducible locally) — any test awaiting a
+  stream read/write with `timeout_ms=-1` through that real-poll path hangs forever.
+  `test_asy_uart_driver.py` hit this via `asy_uart_driver.py`'s `ready()`'s `timeout_ms=-1` branch;
+  fixed by switching every such test to the bounded `_StepPoller` test double already used
+  elsewhere in that file. **Rule: any test double for `uart.poller` (or an equivalent fake-stream
+  object) must be a bounded fake like `_StepPoller`, never backed by a real `select.poll()`.** Don't
+  re-diagnose this specific symptom as a new code bug if it recurs elsewhere.
+- **Known intermittent-`MemoryError` cause, fixed**: `scripts/test.sh` runs every `tests/test_*.py`
+  file as one Unix-port process for all its test functions, sharing one heap — a file whose several
+  heaviest tests each build the whole real `sensortask_wozi.build_system()` object graph (one test
+  builds it twice) could exhaust the interpreter's 2MB default heap roughly 1 run in 3, depending on
+  MicroPython's own non-deterministic test-function run order. Fixed with `-X heapsize=8M` (verified
+  10/10 clean runs) — a Unix-port-only test-harness setting, unrelated to the real rp2040's own RAM
+  budget. Don't re-diagnose a flaky `MemoryError` in a heavy test file as a new code bug before
+  checking this flag is still in place.
+- **Local test runs pin `$TZ=UTC` (Unix port only).** The Unix port's `time.mktime()`
+  (`ports/unix/modtime.c`) calls the host's real libc `mktime()`, which interprets its input as
+  **local time** per the process's `$TZ` — unlike the deployed rp2 firmware, whose
+  `ports/rp2/datetime_patch.c` overrides this with `shared/timeutils`' pure, TZ-agnostic epoch
+  arithmetic. `src/`'s `time.mktime(time.gmtime())` "current UTC timestamp" idiom is therefore only
+  a true no-op round trip under `TZ=UTC`; not a production bug — real hardware has no `$TZ` concept.
+  `scripts/test.sh` exports `TZ=UTC` before invoking the Unix-port binary for exactly this reason.
+  Don't diagnose a consistent (not intermittent) failure in a live-clock assertion as a new code bug
+  before checking the runner's `$TZ`.
 - **`ruff format` is deliberately not used anywhere** — line breaks are hand-chosen throughout this
   codebase; `line-length = 320` (ruff's own ceiling) plus an `E501` ignore keep this a non-issue even
   if `format` is ever run by accident. Lint rule selection (`E`/`F`/`W`/`I`/`UP`/`B`) is stricter
@@ -260,9 +272,7 @@ information):
   uses it and would raise `ImportError` on-device if actually reached at runtime — one more reason
   `|` is strictly better here, not just newer. This is already machine-enforced: ruff's `UP007` rule
   (part of the enabled `UP` selection) flags every `Union[...]` as a finding. `src/` and `tests/`
-  are already 100% `|`-style with zero `Union[...]` occurrences. `improved-quality/`'s one WIP file
-  (`sensortask-wozi.py`, in ruff's checked scope) is likewise already 100% `|`-style today — its
-  remaining tracked lint findings are elsewhere (`UP006`/`UP035`/`UP037`/`I001`/`F401`/`E722`). The
+  are already 100% `|`-style with zero `Union[...]` occurrences. The
   `Union[...]` usages that do exist today are confined to `python/` (deployed, frozen, no lint
   config at all) — leave those alone under the usual out-of-scope-editing hard rule; don't drive-by
   "fix" `Union` → `|` in a file you're not otherwise promoting/refactoring.
@@ -319,7 +329,7 @@ actually testing under a 3.10 interpreter. Treat this as a standing QA step, not
 skip it just because "it worked in this session's sandbox."
 
 **Recipe** (needs root; mirrors how `toolchain/setup_toolchain.py`'s own "verified from scratch"
-claims were checked — see `toolchain/README.md`'s "Evidence this actually works"):
+claims were checked — see SPECIFICATION.md Part B.7, "Evidence this actually works"):
 
 ```bash
 # One-time: build a clean Ubuntu 24.04 (noble) chroot with nothing preinstalled beyond the
@@ -395,12 +405,13 @@ umount "$CHROOT"/dev/pts "$CHROOT"/dev "$CHROOT"/sys "$CHROOT"/proc
 rm -rf "$CHROOT"
 ```
 
-**What counts as passing**: `lint.sh`/`typecheck.sh` run to completion with no config/crash errors
-— a nonzero exit from real lint/type findings is expected and fine, since `improved-quality/` isn't
-clean yet (see BACKLOG.md); the number of findings will drift as the code changes, so match against
-what the same scripts produce in the ordinary session sandbox rather than a fixed count.
-`scripts/test.sh` is different: its tests must actually pass (exit 0, every test PASS) — a test
-failure here is a real regression, not an expected/tracked finding the way lint/type findings are.
+**What counts as passing**: `lint.sh`/`typecheck.sh`/`scripts/test.sh` all run to completion with
+exit 0 — every scope this setup covers (`src/`, `tests/`, `digital_twin/`) is fully-reviewed code
+expected to stay fully clean (confirmed: both `lint.sh` and `typecheck.sh` report zero findings as
+of `improved-quality/`'s deletion), so unlike the pre-deletion state, a nonzero exit from either one
+here is a real regression to chase down, not an expected/tracked finding to compare against a
+session sandbox's own baseline count. `scripts/test.sh`'s tests must likewise actually pass (exit
+0, every test PASS) — a test failure here is a real regression too.
 What would fail this: a raw Python traceback, an "installation failed" from `uv`/`pip`/`apt`, a
 `scripts/test.sh` build failure, or any other mismatch against the ordinary-sandbox run — that
 mismatch is exactly how the `tomllib`/`requires-python` gap was found in the first place.
@@ -412,8 +423,8 @@ installing `git`/`curl`/`ca-certificates`/`python3`/`pip`/`uv`, no need for `pyt
 time), copy the working tree in the same way, then run `uv run toolchain/setup_toolchain.py`
 (a full build: ARM toolchain + firmware + `mpy-cross` + Unix port, several minutes, not seconds)
 instead of the lint/typecheck scripts. This is exactly how the Unix port addition (and later the
-frozen-bytecode verification chain) was verified — see `toolchain/README.md`'s "Verification" for
-what a passing run must show and "Evidence this actually works" for what's already been checked.
+frozen-bytecode verification chain) was verified — see SPECIFICATION.md Part B.6 ("Verification") for
+what a passing run must show and Part B.7 ("Evidence this actually works") for what's already been checked.
 
 ## Pull request workflow
 

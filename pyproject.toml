@@ -33,18 +33,21 @@ dev = [
 # MicroPython subset doesn't provide). scripts/typecheck.sh installs the pin into typings/
 # instead: an isolated directory containing only the stubs, nothing else.
 
-# Checks currently cover improved-quality/ (the WIP code-quality refactor target, where this
-# cleanup effort actually started - see CLAUDE.md), src/ (files moved out of improved-quality/
-# once fully reviewed/tested), and tests/ (their unit tests). The pre-refactor deployed codebase
-# (python/, modules/) isn't in scope yet and has no lint/type config of its own right now.
-# improved-quality/mypy.ini and improved-quality/pycheck.sh (ad hoc, trial-and-error configs)
-# have been retired in favor of this file.
+# Checks currently cover src/ (fully-reviewed, freely-editable code - see CLAUDE.md), tests/
+# (their unit tests), and digital_twin/ (the hardware simulator, SPECIFICATION.md Part A.10 - same
+# fully-reviewed status as src/). The pre-refactor deployed codebase (python/, modules/) isn't in
+# scope yet and has no lint/type config of its own right now. `improved-quality/` - the WIP
+# code-quality refactor staging area this cleanup effort originally started against, including its
+# own ad hoc improved-quality/mypy.ini and improved-quality/pycheck.sh (retired in favor of this
+# file) - has since been deleted in full: every file it held was either promoted into src/ once
+# fully reviewed/tested, or (its last remaining file, sensortask-wozi.py) confirmed fully
+# superseded by src/sensortask_wozi.py + src/asy_webserver_service.py and removed outright.
 
 [tool.ruff]
 # Deliberately 3.10, not >=3.11 like [project]'s requires-python above: this is the syntax floor
-# of the *checked* code (src/, tests/, improved-quality/ - MicroPython, not this dev-tooling
-# venv), independent of what interpreter runs ruff itself. The checked code's actual floor is PEP
-# 604 union syntax (3.10); >=3.11's tomllib requirement is specific to the dev-tooling scripts
+# of the *checked* code (src/, tests/, digital_twin/ - MicroPython, not this dev-tooling venv),
+# independent of what interpreter runs ruff itself. The checked code's actual floor is PEP 604
+# union syntax (3.10); >=3.11's tomllib requirement is specific to the dev-tooling scripts
 # (scripts/typecheck.sh), not something the checked code itself needs.
 target-version = "py310"
 # `ruff format` is deliberately not part of this toolchain, and not run in scripts/lint.sh - line
@@ -52,9 +55,6 @@ target-version = "py310"
 # ceiling for this setting) keeps length-based wrapping a non-issue on the off chance format is
 # ever run locally, on top of the E501 opt-out below.
 line-length = 320
-# Note: improved-quality/microdot.py (an unintentional fork of vendored Microdot) has been removed
-# entirely - replaced by ext/microdot.py, which was never in ruff's scan scope to begin with (see
-# CLAUDE.md's "Microdot / REST layer"). No exclude entry is needed here anymore.
 
 [tool.ruff.lint]
 select = [
@@ -68,8 +68,8 @@ select = [
 ignore = [
     "E501",  # line length - not enforced, see [tool.ruff] above
     # E722 (bare except) is intentionally NOT ignored here, unlike the old
-    # improved-quality/pycheck.sh. Bare excepts in improved-quality/ should be flagged - fixing
-    # them is in scope for the refactor (see BACKLOG.md), this is the tracking mechanism for that.
+    # improved-quality/pycheck.sh - bare excepts should be flagged wherever they appear, not
+    # silenced.
 ]
 
 [tool.mypy]
@@ -97,11 +97,11 @@ custom_typeshed_dir = "typings"
 # them against custom_typeshed_dir above - which only has the MicroPython subset of stdlib, not
 # the real one those packages actually need (contextlib, functools, inspect, ...).
 no_site_packages = true
-# A bare glob in `files` (e.g. "improved-quality/*.py") gets pre-expanded to an explicit file
-# list, which `exclude` can't then prune - passing the directory itself is what makes `exclude`
-# actually take effect during mypy's own directory walk.
-files = ["improved-quality", "src", "tests"]
-# improved-quality/microdot.py: see its own module docstring. tests/network.py: a bare top-level
+# A bare glob in `files` (e.g. "src/*.py") gets pre-expanded to an explicit file list, which
+# `exclude` can't then prune - passing the directory itself is what makes `exclude` actually take
+# effect during mypy's own directory walk.
+files = ["src", "tests", "digital_twin"]
+# tests/network.py: a bare top-level
 # `network.py` sitting inside a `files`-scanned root starts winning module resolution over
 # typings/'s real `network` stub *project-wide*, not just within tests/ - confirmed directly: with
 # it present, src/asy_wifi_service.py's own `import network` call sites silently lose
@@ -115,7 +115,56 @@ files = ["improved-quality", "src", "tests"]
 # for its own checking, exactly like every other file. tests/network.py stays runtime-resolved via
 # MICROPYPATH's tests-before-.frozen ordering (see its own module docstring) - this exclude is
 # mypy-only, doesn't touch how the real MicroPython interpreter finds it.
-exclude = ["improved-quality/microdot\\.py$", "tests/network\\.py$"]
+#
+# digital_twin/machine.py, network.py, neopixel.py: same bare-top-level-module-name hijack as
+# tests/network.py above, confirmed directly - without this exclude, mypy fails outright with
+# "Duplicate module named 'machine' (also at tests/machine.py")" the instant digital_twin is added
+# to `files` at all (a straight collision, not just a silent resolution-priority hijack, since both
+# are bare top-level `machine.py` files scanned in the same run).
+#
+# digital_twin/launch.py, digital_twin/run_wozi_integration.py, digital_twin/segfault_stress_repro.py,
+# every tests/test_digital_twin_*.py: launch.py and every test_digital_twin_*.py file import nothing
+# from src/ (confirmed directly - grepped every top-level import in all 7 pre-Step-5
+# test_digital_twin_*.py files; they reach digital_twin/ exclusively, via
+# sys.path.insert(0, "digital_twin"), never src/), so this whole subsystem's tests are a
+# self-contained scope that belongs entirely to digital_twin/typecheck.ini's own dedicated pass
+# (below), not split across both. run_wozi_integration.py and
+# segfault_stress_repro.py (the segfault-repro tool, see digital_twin/README.md) are the two
+# files that genuinely need both universes at once - each imports sensortask_wozi (src/) and
+# machine/network (digital_twin/'s own richer twin API, not the real board stub) in the same file -
+# excluded here for the same "machine/network must resolve to the twin, not the real stub" reason
+# as launch.py, and digital_twin/typecheck.ini's own mypy_path now includes src/ too so their
+# sensortask_wozi import still resolves correctly under that dedicated pass. Concretely: several
+# of these files exercise the twin's own richer `machine`/`network` API surface
+# (`WDT.would_have_triggered_count`, `WLAN.script_connect_outcomes()`, `Pin.reset_registry()`,
+# `machine.configure_fram_state_path()`/`flush_fram()`, `SimulatedReboot`, `I2C.devices`/
+# `SPI.device`, ...) that intentionally doesn't exist on the real board stub - by design, since the
+# real stub describes real hardware, not this twin's test/debug-only extensions. Under this main
+# pass's mypy_path (typings + src, no digital_twin - kept that way deliberately, see above), their
+# own `import machine`/`import network` can only ever resolve to the real stub, so checking them
+# here would only ever produce attr-defined noise on every twin-only API, never a real finding.
+# Even the files that don't hit that specific mismatch today (scd30/sgp40/bmp3xx/fram, which reach
+# their chip fake directly via `from _scd30_chip import ...` etc.) still resolve their own import
+# only by accident of `follow_imports = silent` tolerating an unresolvable module path - confirmed
+# directly: `mypy src tests` alone (this exact CI gate command) surfaces a real, digital_twin-only
+# `no-any-return` finding in test_digital_twin_bmp3xx.py that the full `mypy` invocation (files
+# includes digital_twin, so `_bmp3xx_chip`'s own return type is fully known) does not - i.e. these
+# files' apparent cleanliness under `mypy src tests` was never reliable, just an accident of which
+# invocation happened to be run. digital_twin/typecheck.ini gives the whole subsystem one, single,
+# always-reliable, fully clean type-check pass instead (mypy_path pointed at digital_twin/ itself so
+# `machine`/`network`/`neopixel` resolve to the twin's own real API, and every chip fake's own return
+# types are fully known) - see that file's own docstring for the full rationale, and
+# scripts/typecheck.sh for how it's wired into both local and CI runs.
+exclude = [
+    "tests/network\\.py$",
+    "digital_twin/machine\\.py$",
+    "digital_twin/network\\.py$",
+    "digital_twin/neopixel\\.py$",
+    "digital_twin/launch\\.py$",
+    "digital_twin/run_wozi_integration\\.py$",
+    "digital_twin/segfault_stress_repro\\.py$",
+    "tests/test_digital_twin_.*\\.py$",
+]
 
 show_error_context = true
 show_column_numbers = true
@@ -139,7 +188,7 @@ strict_equality = true
 [tool.pytest.ini_options]
 # Empty: pytest itself isn't the test runner. Per BACKLOG.md's "Self-contained venv via uv"
 # requirement, tests run under a real MicroPython Unix-port interpreter, not CPython - see
-# tests/README.md and scripts/test.sh, which shell out to the built `micropython` binary instead
+# SPECIFICATION.md Part E.1 and scripts/test.sh, which shell out to the built `micropython` binary instead
 # of invoking pytest. `pytest` stays in [dependency-groups] dev for future CPython-side
 # orchestration (e.g. driver-level tests that need to assert on subprocess output), not used yet.
 # This section exists so pyproject.toml is already the single place all dev-tooling config lives,
