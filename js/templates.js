@@ -221,16 +221,36 @@ export function buildFieldGroupCard(group, currentValues) {
 }
 
 /**
- * Builds the Status page's error-count tiles: one per module, each expandable (click) to show its
- * own full history list. The expand/collapse behavior is wired here since it's purely cosmetic -
- * it only ever toggles this tile's own `.history-list`, never touches the network.
+ * @param {{counter: number, history?: {num: number, type: "N"|"E"|"W"}[]}} entry
+ * @returns {"N"|"E"|"W"}
+ */
+function worstErrcountType(entry) {
+    const history = entry.history ?? [];
+    if (history.some((item) => item.type === "E")) {
+        return "E";
+    }
+    if (history.some((item) => item.type === "W")) {
+        return "W";
+    }
+    return "N";
+}
+
+/**
+ * Builds the Status page's error-count list: starts fully collapsed to just a rollup ("N modules
+ * with errors" / "M modules with warnings") plus two filter buttons ("Show flagged"/"Show all") -
+ * a device can have 15+ registered modules, and showing every one of them expanded (or even as its
+ * own tile) by default was too much vertical space for a page a visitor mostly just needs to
+ * glance at (project owner, session 2 follow-up). Choosing a filter is purely cosmetic (never
+ * touches the network), so it's wired here; each revealed module row is itself still individually
+ * expandable to its own history strip, same as before.
  *
  * Each history entry is the raw errno (`num`) alone - the real backend has no per-entry timestamp
  * and never attaches a human meaning to an errno (WEBSITE_PLAN.md §12/§8). `type` ("N"=no error/
  * placeholder slot, "E"=error, "W"=warning) is by design never shown as text; it only selects
  * `num`'s color via `data-err-type` + `html/style.css`'s `.history-entry[data-err-type]` rules
  * (green/yellow/red) - the same "controller/template sets a semantic value, CSS alone decides what
- * it looks like" contract §12 already uses for `data-apply-status`.
+ * it looks like" contract §12 already uses for `data-apply-status`. A row's own worst type (across
+ * its history) drives the same color on its visible counter, and is what "flagged" filters by.
  * @param {ErrcountGroup} group
  * @param {Record<string, {counter: number, history?: {num: number, type: "N"|"E"|"W"}[]}>} errcount
  * @returns {HTMLElement}
@@ -238,23 +258,54 @@ export function buildFieldGroupCard(group, currentValues) {
 export function buildErrcountGroup(group, errcount) {
     const wrapper = document.createElement("div");
 
-    const summary = document.createElement("div");
-    summary.className = "errcount-summary";
-    for (const moduleInfo of group.modules) {
-        const entry = errcount[moduleInfo.key] ?? { counter: 0 };
-        const tile = document.createElement("button");
-        tile.type = "button";
-        tile.className = "errcount-tile";
-        tile.dataset.hasErrors = String(entry.counter > 0);
-        tile.setAttribute("aria-expanded", "false");
+    const rows = group.modules.map((moduleInfo) => ({
+        moduleInfo,
+        entry: errcount[moduleInfo.key] ?? { counter: 0 },
+        worst: worstErrcountType(errcount[moduleInfo.key] ?? { counter: 0 }),
+    }));
+    const errorCount = rows.filter((row) => row.worst === "E").length;
+    const warningCount = rows.filter((row) => row.worst === "W").length;
 
-        const count = document.createElement("div");
-        count.className = "errcount-tile-count";
+    const rollup = document.createElement("div");
+    rollup.className = "errcount-rollup";
+    const errorsSpan = document.createElement("span");
+    errorsSpan.className = "errcount-rollup-count";
+    errorsSpan.dataset.rollup = "errors";
+    errorsSpan.textContent = `${errorCount} module${errorCount === 1 ? "" : "s"} with errors`;
+    const warningsSpan = document.createElement("span");
+    warningsSpan.className = "errcount-rollup-count";
+    warningsSpan.dataset.rollup = "warnings";
+    warningsSpan.textContent = `${warningCount} module${warningCount === 1 ? "" : "s"} with warnings`;
+    const flaggedButton = document.createElement("button");
+    flaggedButton.type = "button";
+    flaggedButton.className = "action-button";
+    flaggedButton.textContent = "Show flagged";
+    const allButton = document.createElement("button");
+    allButton.type = "button";
+    allButton.className = "action-button";
+    allButton.textContent = "Show all";
+    rollup.append(errorsSpan, warningsSpan, flaggedButton, allButton);
+    wrapper.appendChild(rollup);
+
+    const moduleList = document.createElement("div");
+    moduleList.className = "errcount-module-list hidden";
+    for (const { moduleInfo, entry, worst } of rows) {
+        const rowWrapper = document.createElement("div");
+        rowWrapper.className = "errcount-row-wrapper hidden";
+        rowWrapper.dataset.worst = worst;
+
+        const row = document.createElement("button");
+        row.type = "button";
+        row.className = "errcount-row";
+        row.dataset.hasErrors = String(entry.counter > 0);
+        row.setAttribute("aria-expanded", "false");
+        const name = document.createElement("span");
+        name.className = "errcount-row-name";
+        name.textContent = moduleInfo.label;
+        const count = document.createElement("span");
+        count.className = "errcount-row-count";
         count.textContent = String(entry.counter);
-        const label = document.createElement("div");
-        label.className = "errcount-tile-label";
-        label.textContent = moduleInfo.label;
-        tile.append(count, label);
+        row.append(name, count);
 
         const list = document.createElement("ul");
         list.className = "history-list hidden";
@@ -279,18 +330,30 @@ export function buildErrcountGroup(group, errcount) {
             }
         }
 
-        tile.addEventListener("click", () => {
-            const expanded = tile.getAttribute("aria-expanded") === "true";
-            tile.setAttribute("aria-expanded", String(!expanded));
+        row.addEventListener("click", () => {
+            const expanded = row.getAttribute("aria-expanded") === "true";
+            row.setAttribute("aria-expanded", String(!expanded));
             list.classList.toggle("hidden", expanded);
         });
 
-        const tileWrapper = document.createElement("div");
-        tileWrapper.appendChild(tile);
-        tileWrapper.appendChild(list);
-        summary.appendChild(tileWrapper);
+        rowWrapper.append(row, list);
+        moduleList.appendChild(rowWrapper);
     }
-    wrapper.appendChild(summary);
+    wrapper.appendChild(moduleList);
+
+    flaggedButton.addEventListener("click", () => {
+        moduleList.classList.remove("hidden");
+        for (const rowWrapper of /** @type {HTMLElement[]} */ ([...moduleList.children])) {
+            rowWrapper.classList.toggle("hidden", rowWrapper.dataset.worst === "N");
+        }
+    });
+    allButton.addEventListener("click", () => {
+        moduleList.classList.remove("hidden");
+        for (const rowWrapper of /** @type {HTMLElement[]} */ ([...moduleList.children])) {
+            rowWrapper.classList.remove("hidden");
+        }
+    });
+
     return wrapper;
 }
 

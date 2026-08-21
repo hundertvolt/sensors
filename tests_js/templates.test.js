@@ -152,29 +152,83 @@ describe("buildFieldGroupCard", () => {
 });
 
 describe("buildErrcountGroup", () => {
-    it("shows the counter and expands/collapses its own history on click, with no network call", () => {
-        const group = { key: "errcount", label: "Errors", kind: /** @type {const} */ ("errcount"), modules: [{ key: "SCD30", label: "SCD30" }] };
-        const errcount = { SCD30: { counter: 2, history: [{ num: 2, type: /** @type {const} */ ("E") }] } };
-        const wrapper = buildErrcountGroup(group, errcount);
+    /** @type {import("../js/definitions.js").ErrcountGroup} */
+    const THREE_MODULE_GROUP = {
+        key: "errcount",
+        label: "Errors",
+        kind: "errcount",
+        modules: [
+            { key: "SCD30", label: "SCD30" },
+            { key: "SGP40", label: "SGP40" },
+            { key: "BMP3XX", label: "BMP388" },
+        ],
+    };
+    /** @type {Record<string, {counter: number, history?: {num: number, type: "N"|"E"|"W"}[]}>} */
+    const THREE_MODULE_ERRCOUNT = {
+        SCD30: { counter: 0, history: [{ num: 0, type: "N" }] },
+        SGP40: { counter: 3, history: [{ num: 0, type: "N" }, { num: 5, type: "W" }] },
+        BMP3XX: { counter: 12, history: [{ num: 0, type: "N" }, { num: 2, type: "E" }] },
+    };
 
-        const tile = mustQuery(wrapper, ".errcount-tile");
-        expect(mustQuery(tile, ".errcount-tile-count").textContent).toBe("2");
-        expect(tile.dataset.hasErrors).toBe("true");
+    it("starts fully collapsed to just the rollup - no module rows visible", () => {
+        const wrapper = buildErrcountGroup(THREE_MODULE_GROUP, THREE_MODULE_ERRCOUNT);
+        expect(mustQuery(wrapper, ".errcount-module-list").classList.contains("hidden")).toBe(true);
+        // Rows exist in the DOM (built once, filtered by toggling .hidden - see the "Show
+        // flagged"/"Show all" tests below) but every one starts hidden until a filter is chosen.
+        const wrappers = wrapper.querySelectorAll(".errcount-row-wrapper");
+        expect(wrappers).toHaveLength(3);
+        expect([...wrappers].every((el) => el.classList.contains("hidden"))).toBe(true);
+    });
 
-        const list = mustQuery(/** @type {HTMLElement} */ (tile.parentElement), ".history-list");
+    it("rolls up how many modules have errors vs. warnings, by each module's worst history entry", () => {
+        const wrapper = buildErrcountGroup(THREE_MODULE_GROUP, THREE_MODULE_ERRCOUNT);
+        expect(mustQuery(wrapper, '[data-rollup="errors"]').textContent).toBe("1 module with errors");
+        expect(mustQuery(wrapper, '[data-rollup="warnings"]').textContent).toBe("1 module with warnings");
+    });
+
+    it('"Show flagged" reveals only modules whose worst entry is an error or warning', () => {
+        const wrapper = buildErrcountGroup(THREE_MODULE_GROUP, THREE_MODULE_ERRCOUNT);
+        mustQuery(wrapper, ".action-button").click(); // "Show flagged" is the first action-button
+        expect(mustQuery(wrapper, ".errcount-module-list").classList.contains("hidden")).toBe(false);
+        const visible = [...wrapper.querySelectorAll(".errcount-row-wrapper")].filter(
+            (el) => !el.classList.contains("hidden"),
+        );
+        expect(visible).toHaveLength(2);
+        expect(visible.map((el) => /** @type {HTMLElement} */ (el).dataset.worst).sort()).toEqual(["E", "W"]);
+    });
+
+    it('"Show all" reveals every module regardless of worst status', () => {
+        const wrapper = buildErrcountGroup(THREE_MODULE_GROUP, THREE_MODULE_ERRCOUNT);
+        const buttons = wrapper.querySelectorAll(".action-button");
+        /** @type {HTMLElement} */ (buttons[1]).click(); // "Show all"
+        const visible = [...wrapper.querySelectorAll(".errcount-row-wrapper")].filter(
+            (el) => !el.classList.contains("hidden"),
+        );
+        expect(visible).toHaveLength(3);
+    });
+
+    it("shows a module's own counter and expands/collapses its own history on click, with no network call", () => {
+        const wrapper = buildErrcountGroup(THREE_MODULE_GROUP, THREE_MODULE_ERRCOUNT);
+        mustQuery(wrapper, ".action-button").click(); // reveal via "Show flagged"
+        const row = mustQuery(wrapper, '.errcount-row-wrapper[data-worst="E"] .errcount-row');
+        expect(mustQuery(row, ".errcount-row-count").textContent).toBe("12");
+        expect(row.dataset.hasErrors).toBe("true");
+
+        const list = mustQuery(/** @type {HTMLElement} */ (row.parentElement), ".history-list");
         expect(list.classList.contains("hidden")).toBe(true);
 
-        tile.click();
+        row.click();
         expect(list.classList.contains("hidden")).toBe(false);
-        expect(list.querySelectorAll(".history-entry")).toHaveLength(1);
+        expect(list.querySelectorAll(".history-entry")).toHaveLength(2);
 
-        tile.click();
+        row.click();
         expect(list.classList.contains("hidden")).toBe(true);
     });
 
     it("shows a placeholder message for a module with no history", () => {
         const group = { key: "errcount", label: "Errors", kind: /** @type {const} */ ("errcount"), modules: [{ key: "SGP40", label: "SGP40" }] };
         const wrapper = buildErrcountGroup(group, { SGP40: { counter: 0 } });
+        mustQuery(wrapper, ".action-button").click();
         expect(mustQuery(wrapper, ".history-empty").textContent).toBe("No history recorded.");
     });
 
@@ -194,6 +248,7 @@ describe("buildErrcountGroup", () => {
             },
         };
         const wrapper = buildErrcountGroup(group, errcount);
+        mustQuery(wrapper, ".action-button").click();
         const entries = wrapper.querySelectorAll(".history-entry");
         expect(entries).toHaveLength(3);
         expect(/** @type {HTMLElement} */ (entries[0]).dataset.errType).toBe("N");
@@ -202,8 +257,10 @@ describe("buildErrcountGroup", () => {
         expect(mustQuery(/** @type {HTMLElement} */ (entries[1]), ".history-entry-num").textContent).toBe("3");
         expect(/** @type {HTMLElement} */ (entries[2]).dataset.errType).toBe("E");
         expect(mustQuery(/** @type {HTMLElement} */ (entries[2]), ".history-entry-num").textContent).toBe("2");
-        // No entry ever renders "N"/"E"/"W"/"error"/"warning" as visible text.
-        expect(wrapper.textContent).not.toMatch(/error|warning|\bN\b|\bE\b|\bW\b/i);
+        // No individual history entry ever renders "N"/"E"/"W"/"error"/"warning" as visible text
+        // (the rollup line above them is allowed to say "errors"/"warnings" - only per-entry text is constrained).
+        const list = mustQuery(wrapper, ".history-list");
+        expect(list.textContent).not.toMatch(/error|warning|\bN\b|\bE\b|\bW\b/i);
     });
 });
 
