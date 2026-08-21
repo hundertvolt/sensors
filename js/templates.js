@@ -236,13 +236,16 @@ function worstErrcountType(entry) {
 }
 
 /**
- * Builds the Status page's error-count list: starts fully collapsed to just a rollup ("N modules
- * with errors" / "M modules with warnings") plus two filter buttons ("Show flagged"/"Show all") -
- * a device can have 15+ registered modules, and showing every one of them expanded (or even as its
- * own tile) by default was too much vertical space for a page a visitor mostly just needs to
- * glance at (project owner, session 2 follow-up). Choosing a filter is purely cosmetic (never
- * touches the network), so it's wired here; each revealed module row is itself still individually
- * expandable to its own history strip, same as before.
+ * Builds the Status page's error-count card: same `.card` shell every other field group uses
+ * (heading + bordered/shadowed body - project owner, session 2 follow-up: the rollup/buttons were
+ * floating loose on the page, unlike every other displayed value), starting fully collapsed to
+ * just a rollup ("N modules with errors" / "M modules with warnings") plus two filter buttons
+ * ("Show flagged"/"Show all") - a device can have 15+ registered modules, and showing every one of
+ * them by default was too much vertical space for a page a visitor mostly just needs to glance at.
+ * Choosing a filter is purely cosmetic (never touches the network), so it's wired here. Once a
+ * module row is revealed by either filter, its history is shown immediately alongside it - no
+ * further per-row click needed (project owner: a collapsed history on an already-revealed,
+ * already-flagged module read as broken, not as a second layer of hiding).
  *
  * Each history entry is the raw errno (`num`) alone - the real backend has no per-entry timestamp
  * and never attaches a human meaning to an errno (WEBSITE_PLAN.md §12/§8). `type` ("N"=no error/
@@ -256,7 +259,12 @@ function worstErrcountType(entry) {
  * @returns {HTMLElement}
  */
 export function buildErrcountGroup(group, errcount) {
-    const wrapper = document.createElement("div");
+    const card = document.createElement("div");
+    card.className = "card";
+
+    const heading = document.createElement("h3");
+    heading.textContent = group.label;
+    card.appendChild(heading);
 
     const rows = group.modules.map((moduleInfo) => ({
         moduleInfo,
@@ -285,7 +293,7 @@ export function buildErrcountGroup(group, errcount) {
     allButton.className = "action-button";
     allButton.textContent = "Show all";
     rollup.append(errorsSpan, warningsSpan, flaggedButton, allButton);
-    wrapper.appendChild(rollup);
+    card.appendChild(rollup);
 
     const moduleList = document.createElement("div");
     moduleList.className = "errcount-module-list hidden";
@@ -294,11 +302,9 @@ export function buildErrcountGroup(group, errcount) {
         rowWrapper.className = "errcount-row-wrapper hidden";
         rowWrapper.dataset.worst = worst;
 
-        const row = document.createElement("button");
-        row.type = "button";
+        const row = document.createElement("div");
         row.className = "errcount-row";
         row.dataset.hasErrors = String(entry.counter > 0);
-        row.setAttribute("aria-expanded", "false");
         const name = document.createElement("span");
         name.className = "errcount-row-name";
         name.textContent = moduleInfo.label;
@@ -307,8 +313,10 @@ export function buildErrcountGroup(group, errcount) {
         count.textContent = String(entry.counter);
         row.append(name, count);
 
+        // Always rendered, never independently hidden - a shown row's history is meant to be
+        // visible right away, not gated behind a second click (project owner, session 2 follow-up).
         const list = document.createElement("ul");
-        list.className = "history-list hidden";
+        list.className = "history-list";
         const history = entry.history ?? [];
         if (history.length === 0) {
             const empty = document.createElement("li");
@@ -317,7 +325,7 @@ export function buildErrcountGroup(group, errcount) {
             list.appendChild(empty);
         } else {
             // §8 resolution: no pagination/truncation - realistic history depth is well under
-            // 20 entries (project owner, session 2), so the whole array just renders on expand.
+            // 20 entries (project owner, session 2), so the whole array just renders.
             for (const item of history) {
                 const li = document.createElement("li");
                 li.className = "history-entry";
@@ -330,16 +338,10 @@ export function buildErrcountGroup(group, errcount) {
             }
         }
 
-        row.addEventListener("click", () => {
-            const expanded = row.getAttribute("aria-expanded") === "true";
-            row.setAttribute("aria-expanded", String(!expanded));
-            list.classList.toggle("hidden", expanded);
-        });
-
         rowWrapper.append(row, list);
         moduleList.appendChild(rowWrapper);
     }
-    wrapper.appendChild(moduleList);
+    card.appendChild(moduleList);
 
     flaggedButton.addEventListener("click", () => {
         moduleList.classList.remove("hidden");
@@ -354,7 +356,7 @@ export function buildErrcountGroup(group, errcount) {
         }
     });
 
-    return wrapper;
+    return card;
 }
 
 /**

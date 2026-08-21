@@ -215,7 +215,7 @@ describe("renderSection", () => {
         expect(mustQuery(card, ".apply-result").textContent).toContain("Oversampling: Valid");
     });
 
-    it("renders an errcount rollup, revealed via 'Show flagged', that expands to show its full history with no pagination", async () => {
+    it("renders an errcount rollup, revealed via 'Show flagged', showing its full history immediately with no pagination", async () => {
         uninstall = installMockFetch(DEFS, DATA);
         const main = mount();
         stop = renderSection(DEFS, getSection("status"), main);
@@ -228,11 +228,8 @@ describe("renderSection", () => {
         const row = mustQuery(main, ".errcount-row");
         expect(mustQuery(row, ".errcount-row-count").textContent).toBe("2");
 
+        // The revealed row's history is visible right away - no separate per-row expand click.
         const list = mustQuery(/** @type {HTMLElement} */ (row.parentElement), ".history-list");
-        expect(list.classList.contains("hidden")).toBe(true);
-
-        row.click();
-
         expect(list.classList.contains("hidden")).toBe(false);
         expect(list.querySelectorAll(".history-entry")).toHaveLength(2);
     });
