@@ -109,11 +109,16 @@ restructured into a build/bundle output. `html_raw/` (legacy, still deployed) an
 (placeholder, still wired into `src/sensortask_wozi.py` until this effort's output replaces it) are
 untouched by this restructuring.
 
-**Session 1 status: done.** All three folders, `package.json`/`package-lock.json`, and every tool
-config (§6) exist on `claude/website-s1-folder-ci`, each holding only trivial "Hello world"-shaped
-placeholder content (mirroring `html_stub/`'s own bootstrap role) — `html/index.html`+`style.css`,
-one `js/hello.js` ES module, one `tests_js/hello.test.js` Vitest browser-mode test. Real
-layout/functionality is still session 2's job.
+**Session 1 status: done, merged.** All three folders, `package.json`/`package-lock.json`, and
+every tool config (§6) landed via `claude/website-s1-folder-ci` (PR #43, merged into this base
+branch) — each folder holding only trivial "Hello world"-shaped placeholder content (mirroring
+`html_stub/`'s own bootstrap role): `html/index.html`+`style.css`, one `js/hello.js` ES module, one
+`tests_js/hello.test.js` Vitest browser-mode test. Confirmed via a real GitHub Actions run on the
+PR (not just local): `web-changes`/`web-lint-and-typecheck`/`web-unit-tests` all green, existing
+Python jobs unaffected. Manual local-trigger instructions for the whole web-CI tier now live in
+**README.md's "Website tooling (JS/HTML/CSS)" section** (`npm ci` + `npm run lint`/`typecheck`/
+`lint:html`/`lint:css`/`test`) — the JS-side equivalent of that same README's existing "Code
+quality tooling" section for Python. Real layout/functionality is still session 2's job.
 
 ## 6. CI / tooling stack
 
