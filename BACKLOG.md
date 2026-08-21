@@ -246,15 +246,40 @@ constraints.
   Neither soak-test script currently has a real-hardware-runnable form (both assume the Unix-port
   `digital_twin` harness); porting/adapting them for actual on-device execution is part of this
   future work, not already done.
-- **HTML/frontend redesign — confirmed genuine near-future target, not this pass.** Owner-confirmed
-  out of scope here: the frontend work involves changes far larger than a field-name fix (a real
-  redesign, not a patch), and the refactored side's own website is still deliberately just a
-  placeholder stub (`SPECIFICATION.md` Part A.9) with no real content to wire up yet anyway. The
-  concretely-stale symptom that prompted this entry — the legacy frontend still sending the
-  pre-migration `setSGP`/`setBMP` field names/formats (see Part C.5.3's wire-format note) — is real
-  but is pre-refactor debt on the currently-deployed frontend, not something the redesign needs to
-  inherit; it'll be superseded outright once the real frontend for the refactored REST API is built,
-  not fixed in place first.
+- **HTML/frontend redesign — now underway, multi-sub-session effort.** No longer just a deferred
+  target: a dedicated base session did the initial familiarization (full scan of `html_raw/`'s
+  legacy per-device pages plus `html_stub/`'s placeholder, cross-referenced against
+  `SPECIFICATION.md` A.8's already-built new REST shape) and settled the shared architecture every
+  following sub-session builds on: single-page shell with JS-driven view switching (hamburger/
+  three-dot menu, no per-page HTML files), one build-time-generated definitions JSON (nav, fields,
+  labels, units, valid ranges, ...) driving the whole UI, targeting the *new* `src/
+  asy_webserver_service.py` REST API (not the legacy one `html_raw/general/functions.js` still
+  speaks), a shared JS poll-manager module enforcing the project owner's explicit rule that the
+  measurements and status/config endpoint groups are never polled concurrently by design (and if
+  ever unavoidable, only once the pending request's connection has fully closed — low socket
+  headroom), web-facing metadata sourced from lightweight inline tags in comments next to each
+  driver's schema fields (parsed at build time from the real `.py` source before `mpy-cross` strips
+  comments — never at runtime), and strict definitions-file shape/version validation (visible error
+  state on mismatch, not silent best-effort). Landing page stays the measurements page, matching
+  legacy. New source lives in top-level `html/`, `js/`, `tests_js/` (siblings of `src/`/`tests/`,
+  not nested), with its own CI tier (ESLint, TypeScript `checkJS`+JSDoc, Vitest against real
+  Chromium via Playwright rather than jsdom, html-validate, Stylelint) gated in the existing
+  `ci.yml` by a changes-detection job so it only runs when those paths are touched, same as the
+  Python tier only running on its own paths — full design in this effort's own session history.
+  The concretely-stale symptom that originally prompted this entry — the legacy frontend still
+  sending the pre-migration `setSGP`/`setBMP` field names/formats (see Part C.5.3's wire-format
+  note) — remains pre-refactor debt on the currently-deployed frontend only; the new frontend
+  targets the already-migrated field names from the start, not something it inherits.
+- **Digital twin integration — required once the new website prototype is functionally complete,
+  not part of building it.** Once the redesigned website (above) reaches a working prototype, it
+  must be wired into `digital_twin/` alongside every sensor/module that already has a real REST/API
+  connection there — the same generalized "any new module shall join the twin once it can complete
+  a real, observable chain" rule `SPECIFICATION.md` A.10 already states for drivers and common
+  modules, applied here to the website itself. This needs to stay a *living* integration, not a
+  one-time wire-up: whenever a new sensor/module gains an API connection in the twin afterward, the
+  website's own twin wiring must be kept in step with it (new nav sections/fields appearing via the
+  same definitions-file mechanism, not a hand-maintained parallel list). Not yet actionable — no
+  website prototype exists yet to integrate.
 - **UART sensor integration — confirmed staying unwired, not just deferred.** `asy_uart_driver.py`
   is promoted to `src/` but deliberately not wired into any `sensortask-*.py`; `asy_uart_comm.py`
   (its one real consumer) is its own separate, still out-of-scope promotion. Not a legacy deployed
