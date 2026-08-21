@@ -274,6 +274,15 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   listed here for now so it isn't only locatable by cross-reference in the meantime. See
   `SPECIFICATION.md` Part A.10 for how it fits into the rest of the architecture.
 
+**`WEBSITE_PLAN.md`** (temporary, active — current multi-sub-session effort):
+
+- **[`WEBSITE_PLAN.md`](WEBSITE_PLAN.md)** — living plan/definitions doc for the ongoing
+  website-redesign effort (goals, legacy-vs-new-REST findings, settled architecture, folder layout,
+  CI tooling plan, the digital-twin-integration requirement, and still-open items), in the same
+  spirit as `WIRING_CONTRACT.md`/`FINAL_WIRING_PLAN.md` below. Every spun-off sub-session reads and
+  updates it. Will be deleted once the effort merges, with its permanent content migrated into
+  `SPECIFICATION.md` — same lifecycle as its predecessors.
+
 `WIRING_CONTRACT.md` and `FINAL_WIRING_PLAN.md` — the temporary planning docs for the
 `improved-quality/` → `src/` wiring effort (`src/sensortask_wozi.py`'s construction restructure,
 generic webserver/API service, digital-twin simulator, website placeholder scaffold, full Unix-port
