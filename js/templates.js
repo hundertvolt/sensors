@@ -34,6 +34,13 @@ export function formatFieldValue(field, value) {
         const match = (field.options ?? []).find((option) => option.value === value);
         return match ? match.label : String(value);
     }
+    if (field.format === "gmtimestruct") {
+        // Real shape: src/sensortask_wozi.py's _gmtimestruct_to_dict() - {year, month, mday, hour,
+        // minute, second, weekday} (weekday unused here), never a pre-formatted string.
+        const t = /** @type {{year: number, month: number, mday: number, hour: number, minute: number, second: number}} */ (value);
+        const pad = (/** @type {number} */ n) => String(n).padStart(2, "0");
+        return `${t.year}-${pad(t.month)}-${pad(t.mday)} ${pad(t.hour)}:${pad(t.minute)}:${pad(t.second)}`;
+    }
     return String(value);
 }
 
@@ -217,8 +224,15 @@ export function buildFieldGroupCard(group, currentValues) {
  * Builds the Status page's error-count tiles: one per module, each expandable (click) to show its
  * own full history list. The expand/collapse behavior is wired here since it's purely cosmetic -
  * it only ever toggles this tile's own `.history-list`, never touches the network.
+ *
+ * Each history entry is the raw errno (`num`) alone - the real backend has no per-entry timestamp
+ * and never attaches a human meaning to an errno (WEBSITE_PLAN.md §12/§8). `type` ("N"=no error/
+ * placeholder slot, "E"=error, "W"=warning) is by design never shown as text; it only selects
+ * `num`'s color via `data-err-type` + `html/style.css`'s `.history-entry[data-err-type]` rules
+ * (green/yellow/red) - the same "controller/template sets a semantic value, CSS alone decides what
+ * it looks like" contract §12 already uses for `data-apply-status`.
  * @param {ErrcountGroup} group
- * @param {Record<string, {counter: number, history?: {TS: number, ErrType: string, ErrNum: number}[]}>} errcount
+ * @param {Record<string, {counter: number, history?: {num: number, type: "N"|"E"|"W"}[]}>} errcount
  * @returns {HTMLElement}
  */
 export function buildErrcountGroup(group, errcount) {
@@ -256,11 +270,11 @@ export function buildErrcountGroup(group, errcount) {
             for (const item of history) {
                 const li = document.createElement("li");
                 li.className = "history-entry";
-                const when = document.createElement("span");
-                when.textContent = new Date(item.TS * 1000).toISOString().replace("T", " ").slice(0, 19);
-                const what = document.createElement("span");
-                what.textContent = `${item.ErrType} (errno ${item.ErrNum})`;
-                li.append(when, what);
+                li.dataset.errType = item.type;
+                const num = document.createElement("span");
+                num.className = "history-entry-num";
+                num.textContent = String(item.num);
+                li.appendChild(num);
                 list.appendChild(li);
             }
         }

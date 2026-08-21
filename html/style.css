@@ -370,14 +370,39 @@ button {
 
 .history-entry {
     display: flex;
-    justify-content: space-between;
-    gap: 12px;
     padding: 6px 0;
     border-top: 1px solid var(--color-border);
 }
 
 .history-entry:first-child {
     border-top: none;
+}
+
+/* The errno itself is the only thing ever shown - "N"/"E"/"W" (no error/error/warning) never
+   render as text, they only pick this pill's color (WEBSITE_PLAN.md §12/§8). */
+.history-entry-num {
+    display: inline-block;
+    min-width: 24px;
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    text-align: center;
+}
+
+.history-entry[data-err-type="N"] .history-entry-num {
+    background-color: var(--color-success-bg);
+    color: var(--color-success);
+}
+
+.history-entry[data-err-type="W"] .history-entry-num {
+    background-color: var(--color-warn-bg);
+    color: var(--color-warn);
+}
+
+.history-entry[data-err-type="E"] .history-entry-num {
+    background-color: var(--color-danger-bg);
+    color: var(--color-danger);
 }
 
 .history-empty {

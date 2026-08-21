@@ -28,42 +28,57 @@
             "NtpSynced": true, "NtpLastSyncAge": 812, "NtpLastSync": 1754999188
         },
         "system": {
-            "SysUptime": 431260, "BootSignature": "POWERON", "MemPaused": false,
-            "LocalTime": "2025-08-12 09:14:03", "UtcTime": "2025-08-12 08:14:03"
+            "SysUptime": 431260, "BootSignature": 1754568003, "MemPaused": false,
+            "LocalTime": { "year": 2025, "month": 8, "mday": 12, "hour": 9, "minute": 14, "second": 3, "weekday": 1 },
+            "UtcTime": { "year": 2025, "month": 8, "mday": 12, "hour": 8, "minute": 14, "second": 3, "weekday": 1 }
         },
         "sensors": { "SGP40": { "BackupTS": 1754996400, "RestoreTS": 1754323200 } },
         "notification": { "Triggered": false, "TS": 1754912400, "PauseTime": 0 },
         "errcount": {
-            "SCD30": { "counter": 0, "history": [] },
+            "WIFI": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+            "CFGMGR_WIFI": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+            "DNSSRV": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+            "NTP": {
+                "counter": 2,
+                "history": [
+                    { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" },
+                    { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" },
+                    { "num": 3, "type": "W" }, { "num": 5, "type": "E" }
+                ]
+            },
+            "CFGMGR_NTP": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+            "FRAM": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+            "SYSTEM": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+            "CFGMGR_SYSTEM": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+            "SCD30": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
             "SGP40": {
                 "counter": 3,
                 "history": [
-                    { "TS": 1754323100, "ErrType": "I2CBusError", "ErrNum": 3 },
-                    { "TS": 1754500000, "ErrType": "I2CBusError", "ErrNum": 3 },
-                    { "TS": 1754996300, "ErrType": "BackupWriteFailed", "ErrNum": 5 }
+                    { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" },
+                    { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" },
+                    { "num": 3, "type": "E" }, { "num": 3, "type": "E" }, { "num": 5, "type": "E" }
                 ]
             },
+            "CFGMGR_SGP40": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
             "BMP3XX": {
                 "counter": 12,
                 "history": [
-                    { "TS": 1752000000, "ErrType": "I2CTimeout", "ErrNum": 2 },
-                    { "TS": 1752100500, "ErrType": "I2CTimeout", "ErrNum": 2 },
-                    { "TS": 1752300900, "ErrType": "I2CTimeout", "ErrNum": 2 },
-                    { "TS": 1752600200, "ErrType": "CalibReadFailed", "ErrNum": 4 },
-                    { "TS": 1752900800, "ErrType": "I2CTimeout", "ErrNum": 2 },
-                    { "TS": 1753200100, "ErrType": "I2CTimeout", "ErrNum": 2 },
-                    { "TS": 1753500600, "ErrType": "I2CTimeout", "ErrNum": 2 },
-                    { "TS": 1753800300, "ErrType": "CalibReadFailed", "ErrNum": 4 },
-                    { "TS": 1754100900, "ErrType": "I2CTimeout", "ErrNum": 2 },
-                    { "TS": 1754400200, "ErrType": "I2CTimeout", "ErrNum": 2 },
-                    { "TS": 1754700500, "ErrType": "I2CTimeout", "ErrNum": 2 },
-                    { "TS": 1754990100, "ErrType": "I2CTimeout", "ErrNum": 2 }
+                    { "num": 2, "type": "E" }, { "num": 2, "type": "E" }, { "num": 2, "type": "E" }, { "num": 4, "type": "E" },
+                    { "num": 2, "type": "E" }, { "num": 2, "type": "E" }, { "num": 2, "type": "E" }, { "num": 4, "type": "E" },
+                    { "num": 2, "type": "E" }, { "num": 2, "type": "E" }
                 ]
             },
-            "CFGMGR_SCD30": { "counter": 0 },
+            "CFGMGR_BMP3XX": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+            "NEOPIXEL": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+            "NOTIFY": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+            "CFGMGR_NOTIFY": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
             "WEBSERVER": {
                 "counter": 1,
-                "history": [{ "TS": 1754800000, "ErrType": "ConnectionCapExceeded", "ErrNum": 1 }]
+                "history": [
+                    { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" },
+                    { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" },
+                    { "num": 0, "type": "N" }, { "num": 1, "type": "W" }
+                ]
             }
         }
     }

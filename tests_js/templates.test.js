@@ -42,6 +42,14 @@ describe("formatFieldValue", () => {
         expect(formatFieldValue(field, 5)).toBe("Red + Green + Blue");
         expect(formatFieldValue(field, 99)).toBe("99"); // no matching option - falls back to the raw value
     });
+
+    it("formats a gmtimestruct field from its real structured shape, not a pre-formatted string", () => {
+        // Real shape (src/sensortask_wozi.py's _gmtimestruct_to_dict()): {year, month, mday, hour,
+        // minute, second, weekday} - never a string, unlike what the mock fixtures used to fake.
+        const field = { key: "UtcTime", label: "UTC Time", kind: /** @type {const} */ ("readonly"), format: /** @type {const} */ ("gmtimestruct") };
+        const value = { year: 2025, month: 8, mday: 2, hour: 8, minute: 4, second: 3, weekday: 6 };
+        expect(formatFieldValue(field, value)).toBe("2025-08-02 08:04:03");
+    });
 });
 
 describe("buildField", () => {
@@ -146,7 +154,7 @@ describe("buildFieldGroupCard", () => {
 describe("buildErrcountGroup", () => {
     it("shows the counter and expands/collapses its own history on click, with no network call", () => {
         const group = { key: "errcount", label: "Errors", kind: /** @type {const} */ ("errcount"), modules: [{ key: "SCD30", label: "SCD30" }] };
-        const errcount = { SCD30: { counter: 2, history: [{ TS: 1700000000, ErrType: "I2CTimeout", ErrNum: 2 }] } };
+        const errcount = { SCD30: { counter: 2, history: [{ num: 2, type: /** @type {const} */ ("E") }] } };
         const wrapper = buildErrcountGroup(group, errcount);
 
         const tile = mustQuery(wrapper, ".errcount-tile");
@@ -168,6 +176,34 @@ describe("buildErrcountGroup", () => {
         const group = { key: "errcount", label: "Errors", kind: /** @type {const} */ ("errcount"), modules: [{ key: "SGP40", label: "SGP40" }] };
         const wrapper = buildErrcountGroup(group, { SGP40: { counter: 0 } });
         expect(mustQuery(wrapper, ".history-empty").textContent).toBe("No history recorded.");
+    });
+
+    it("renders each entry's raw errno, colored by type via data-err-type only - never the type itself as text", () => {
+        // Real backend shape (src/print_log.py's get_log()): no per-entry timestamp exists, and
+        // "type" is never meant to be shown as text - only to color "num" (project owner,
+        // session 2 follow-up). html/style.css's .history-entry[data-err-type] rules pick the color.
+        const group = { key: "errcount", label: "Errors", kind: /** @type {const} */ ("errcount"), modules: [{ key: "BMP3XX", label: "BMP388" }] };
+        const errcount = {
+            BMP3XX: {
+                counter: 3,
+                history: [
+                    { num: 0, type: /** @type {const} */ ("N") },
+                    { num: 3, type: /** @type {const} */ ("W") },
+                    { num: 2, type: /** @type {const} */ ("E") },
+                ],
+            },
+        };
+        const wrapper = buildErrcountGroup(group, errcount);
+        const entries = wrapper.querySelectorAll(".history-entry");
+        expect(entries).toHaveLength(3);
+        expect(/** @type {HTMLElement} */ (entries[0]).dataset.errType).toBe("N");
+        expect(mustQuery(/** @type {HTMLElement} */ (entries[0]), ".history-entry-num").textContent).toBe("0");
+        expect(/** @type {HTMLElement} */ (entries[1]).dataset.errType).toBe("W");
+        expect(mustQuery(/** @type {HTMLElement} */ (entries[1]), ".history-entry-num").textContent).toBe("3");
+        expect(/** @type {HTMLElement} */ (entries[2]).dataset.errType).toBe("E");
+        expect(mustQuery(/** @type {HTMLElement} */ (entries[2]), ".history-entry-num").textContent).toBe("2");
+        // No entry ever renders "N"/"E"/"W"/"error"/"warning" as visible text.
+        expect(wrapper.textContent).not.toMatch(/error|warning|\bN\b|\bE\b|\bW\b/i);
     });
 });
 
