@@ -240,6 +240,19 @@ order.
    schema-comment tag grammar in driver files would need to look like to auto-produce this
    definitions shape later, keeping the example honestly "auto-creatable in principle" without
    building that parser.
+
+   **This session's process must be genuinely interactive, beyond §9/§10's standard upfront
+   10-question gate.** Every §8 item this session resolves (dark mode extent, hamburger/three-dot
+   menu concrete behavior, card vs. other visual treatment, history pagination/truncation UX, color/
+   typography/layout choices, and any other decision that's a matter of taste/preference rather than
+   something derivable from §1–§4's already-settled architecture) is a design-taste call the project
+   owner should weigh in on, not something this session decides unilaterally and only reports
+   afterward. Concretely: the initial 10 questions should surface whatever blocks starting, but as
+   each visual/UX decision point is actually reached during the design work, pause and ask again —
+   present 2–4 concrete options (sketches/descriptions of each, with tradeoffs) via `AskUserQuestion`
+   rather than batching every open question into the start or silently picking based on internal
+   judgment. Iterate on the prototype with the project owner's feedback before treating a layout/
+   functionality decision as settled enough to write into this file or hand off to session 3.
 3. **Real implementation, TDD.** Write a spec/goal/action list derived from session 2's prototype;
    then tests-first JS unit tests (Vitest) against that spec; then the real implementation —
    mirroring this repo's own `improved-quality/` → `src/` two-phase precedent (prototype/sketch,
