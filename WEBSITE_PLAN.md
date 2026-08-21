@@ -173,3 +173,51 @@ more tests/coverage → stop and report before merging/starting the next unit) �
 the settled architecture/goals that step (1)'s scope-refinement can build on directly instead of
 re-deriving, and step (2) only needs to raise what's still genuinely open (§8), not the questions
 already answered in §4.
+
+## 10. Sub-session breakdown (execution order)
+
+**Standing instructions for every sub-session below** (in addition to §9's step-session workflow):
+start with a detailed description of what it will do; ask 10 clarifying questions before starting
+actual work; update this file before ending if anything settled changes or a new decision is made,
+so the next sub-session reads current state, not stale state; never touch `src/` files; do not
+build the schema-comment autocreation tooling itself in this effort — only prepare hand-written
+example definitions file(s) shaped as if they were auto-creatable.
+
+1. **Folder structure + CI.** Create `html/`, `js/`, `tests_js/`, root `package.json`/tool configs
+   (ESLint, TypeScript `checkJS`, Vitest+Playwright, html-validate, Stylelint), and the
+   `changes`-gated web-CI tier in `ci.yml` (§6). Include trivial placeholder content (mirroring
+   `html_stub/`'s own "Hello world"-shaped bootstrap role) so the pipeline can be proven red→green
+   before any real content exists, not just configured and left unexercised.
+2. **Layout & functionality definition, with a locally-viewable prototype.** Detailed page/section
+   design (nav, per-endpoint sections, history UI, ...); resolve the still-open §8 decisions that
+   naturally belong here — real dark-mode support or not, the history pagination/truncation
+   mechanism, and the definitions JSON's concrete schema; then hand-write example definitions
+   file(s) against static/mocked fixture data (no live backend yet) so the resulting pages are
+   genuinely open-able and clickable in a local browser. **Cover two differing devices** (e.g.
+   wozi's real sensor set + a second device's very different one), not just wozi, to actually prove
+   the "one skeleton/JS, content from definitions file" claim generalizes rather than hiding
+   wozi-specific assumptions. Also sketch — documentation only, not implemented — what the eventual
+   schema-comment tag grammar in driver files would need to look like to auto-produce this
+   definitions shape later, keeping the example honestly "auto-creatable in principle" without
+   building that parser.
+3. **Real implementation, TDD.** Write a spec/goal/action list derived from session 2's prototype;
+   then tests-first JS unit tests (Vitest) against that spec; then the real implementation —
+   mirroring this repo's own `improved-quality/` → `src/` two-phase precedent (prototype/sketch,
+   then a from-spec, test-driven hardened build, not just polish of the sketch) — until session 1's
+   pipeline is fully green and coverage is maximized. Standing coding guideline: render any
+   server-supplied text via `textContent`, never `innerHTML`, so the page stays XSS-safe by
+   construction.
+4. **Full build chain.** Wire `html/`+`js/`+the definitions file(s) into a
+   `scripts/build_frozen_html.sh`-equivalent pipeline: gzip → `freezefs` → frozen bytecode → mount
+   → serve, ending with the real thing bound into an actual firmware build. Keep the mechanism
+   generic/parameterized per device (matching `build-wozi.sh`'s existing `HTML_SRC_DIRS` pattern)
+   even though only the `wozi` variant can be verified end-to-end today (`src/` doesn't assemble the
+   other variants yet — SPECIFICATION.md A.3).
+5. **Digital twin integration.** Replace `html_stub/` in `digital_twin/`'s wiring per §7; add real
+   API-endpoint-driven tests (the website's actual JS/pages exercised against the twin's live
+   server, likely via the same Playwright/Chromium foundation session 3 already set up, now against
+   a live backend instead of static fixtures). **Tail of this session**: a manual cross-browser/
+   cross-device spot check by the project owner (Safari, Firefox, real mobile) — automated CI only
+   ever exercises Chromium via Playwright, so §1/§3's "stable and good-looking on all major
+   browsers" goal needs at least one real human pass somewhere, and this is the first point the
+   website is running end-to-end against a real live backend.
