@@ -70,6 +70,38 @@ Reports `src/`-only line coverage; non-gating, never fails the build. Full pipel
 and CI behavior (Job Summary, build artifact, Codecov status): **moved to
 [`SPECIFICATION.md`](SPECIFICATION.md) Part E.5, "Coverage"**.
 
+## Website tooling (JS/HTML/CSS)
+
+The new website source (`html/`, `js/`, `tests_js/` — see [`WEBSITE_PLAN.md`](WEBSITE_PLAN.md) for
+the in-progress redesign this belongs to) has its own dev-tooling stack, the JS/HTML/CSS
+equivalent of the Python side's ruff/mypy/pytest above: ESLint (lint), TypeScript `checkJS` mode
+(type-checks JSDoc annotations in plain `.js`, no transpilation), Vitest in real-browser mode
+(Playwright + Chromium, not jsdom — same "real engine over a shim" principle as running Python
+tests under a real MicroPython Unix-port interpreter), html-validate, and Stylelint. Needs Node
+(version pinned in `.nvmrc`; `nvm use` or any Node manager that reads it will pick the right one)
+and npm:
+
+```sh
+npm ci                # one-time, and after pulling changes - installs into node_modules/ from package-lock.json
+
+npm run lint           # ESLint (js/, tests_js/)
+npm run typecheck      # tsc --noEmit (checkJS over js/, tests_js/)
+npm run lint:html      # html-validate (html/*.html)
+npm run lint:css       # Stylelint (html/*.css)
+npm test               # Vitest, real-browser mode (Playwright/Chromium) - tests_js/*.test.js
+```
+
+All five run in GitHub Actions CI (`.github/workflows/ci.yml`'s `web-lint-and-typecheck`/
+`web-unit-tests` jobs), gated by a `dorny/paths-filter` job so they only run when `html/`, `js/`,
+`tests_js/`, or their own tooling configs actually change — alongside, not replacing, the Python
+jobs above, which keep gating on Python paths exactly as before. Config lives at the repo root
+(`eslint.config.js`, `tsconfig.json`, `vitest.config.js`, `.htmlvalidate.json`,
+`.stylelintrc.json`); see `WEBSITE_PLAN.md` §6 for the full role mapping and rationale. Vitest's
+browser mode needs an actual Chromium install — CI installs its own via `playwright install`; if
+`npm test` reports a missing browser executable locally, run `npx playwright install chromium`
+first (skip this in the Claude Code web-session sandbox this effort was scaffolded in, which
+already pre-installs a matching one).
+
 ## Digital twin (hardware simulator)
 
 `digital_twin/` is a fake `machine`/`network`/`neopixel` implementation that mirrors the real `wozi` bus wiring — real-time-firing
