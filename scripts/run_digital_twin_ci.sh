@@ -38,6 +38,20 @@ if [ ! -x "$micropython_bin" ]; then
     uv run toolchain/setup_toolchain.py setup --toolchain-dir "$toolchain_dir" "${skip_apt_flag[@]}"
 fi
 
+# Run 7's real captive-portal DNSServer binds the real privileged port 53 (src/captive_dns.py); a
+# GitHub Actions runner (or any non-root dev environment) can't bind that port without either
+# running as root or holding this specific capability on the interpreter binary. Applied fresh
+# every invocation, not cached alongside the toolchain build itself - GNU tar (used by
+# actions/cache's own restore step) doesn't preserve xattrs (where Linux capabilities live)
+# without an explicit --xattrs flag it doesn't pass, so a capability baked into a cached binary
+# wouldn't survive the cache round-trip anyway.
+echo "== Granting CAP_NET_BIND_SERVICE to $micropython_bin (needed for Run 7's real port-53 DNS server)"
+if [ "$(id -u)" -eq 0 ]; then
+    setcap 'cap_net_bind_service=+ep' "$micropython_bin"
+else
+    sudo setcap 'cap_net_bind_service=+ep' "$micropython_bin"
+fi
+
 echo "== Building frozen_modules/frozen_html.py"
 scripts/build_frozen_html.sh
 
