@@ -361,10 +361,12 @@ export function buildErrcountGroup(group, errcount) {
 
 /**
  * Builds a section's static shell (heading + description) directly into `mainEl`, plus an empty
- * group grid for a controller to populate. Returns the grid.
+ * group grid for a controller to populate and an inert fetch-error banner (same `.error-banner`
+ * treatment as the app-level one in `html/index.html`, starting hidden) for a controller to show
+ * when a GET against this section's data fails.
  * @param {Section} section
  * @param {HTMLElement} mainEl
- * @returns {HTMLElement}
+ * @returns {{grid: HTMLElement, errorBanner: HTMLElement}}
  */
 export function buildSectionShell(section, mainEl) {
     mainEl.replaceChildren();
@@ -381,10 +383,15 @@ export function buildSectionShell(section, mainEl) {
         mainEl.appendChild(desc);
     }
 
+    const errorBanner = document.createElement("p");
+    errorBanner.className = "error-banner hidden";
+    errorBanner.setAttribute("role", "alert");
+    mainEl.appendChild(errorBanner);
+
     const grid = document.createElement("div");
     grid.className = "group-grid";
     mainEl.appendChild(grid);
-    return grid;
+    return { grid, errorBanner };
 }
 
 /**

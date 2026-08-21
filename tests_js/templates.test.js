@@ -77,6 +77,41 @@ describe("buildField", () => {
         expect(mustQuery(el, '[data-field-key="CO2"]').textContent).toBe("612");
     });
 
+    // An editable number/string field has two ".field-description"-classed <p>s (the "Current
+    // value: …" caption, then the hint text) - the hint is always the last one.
+    /**
+     * @param {HTMLElement} el
+     * @returns {string | null}
+     */
+    function hintText(el) {
+        const nodes = el.querySelectorAll(".field-description");
+        return nodes[nodes.length - 1].textContent;
+    }
+
+    it("shows a min/max range hint for an editable number field", () => {
+        const el = mount(buildField({ key: "MeasInt", label: "Measurement Interval", unit: "s", kind: "number", min: 2, max: 1800 }, 5, true));
+        expect(hintText(el)).toContain("Valid values: 2 to 1800 s");
+    });
+
+    it("shows a length hint for an editable string field", () => {
+        const el = mount(buildField({ key: "Hostname", label: "Hostname", kind: "string", minLength: 1, maxLength: 63 }, "wozi", true));
+        expect(hintText(el)).toContain("Length: 1 to 63 characters");
+    });
+
+    it("shows each special value's meaning in the description", () => {
+        const field = {
+            key: "AmbPres",
+            label: "Ambient Pressure",
+            unit: "hPa",
+            kind: /** @type {const} */ ("number"),
+            min: 700,
+            max: 1400,
+            specialValues: [{ value: 0, meaning: "Compensation off / use Altitude" }],
+        };
+        const el = mount(buildField(field, 1013, true));
+        expect(hintText(el)).toContain("0 = Compensation off / use Altitude");
+    });
+
     it("renders an editable toggle that flips its own On/Off state with no network call", () => {
         const el = mount(buildField({ key: "SelfCal", label: "Self-Cal", kind: "toggle" }, true, true));
         const button = mustQuery(el, '[data-field-key="SelfCal"]');
@@ -272,7 +307,7 @@ describe("buildSectionShell", () => {
         mainEl?.remove();
     });
 
-    it("builds the heading/description and returns an empty grid, clearing prior content", () => {
+    it("builds the heading/description and returns an empty grid plus a hidden error banner, clearing prior content", () => {
         mainEl = document.createElement("main");
         mainEl.innerHTML = "<p>stale content from a previous section</p>";
         document.body.appendChild(mainEl);
@@ -286,13 +321,15 @@ describe("buildSectionShell", () => {
             pollGroup: "live",
             groups: [],
         };
-        const grid = buildSectionShell(section, mainEl);
+        const { grid, errorBanner } = buildSectionShell(section, mainEl);
 
         expect(mustQuery(mainEl, ".section-heading").textContent).toBe("Measurements");
         expect(mustQuery(mainEl, ".section-description").textContent).toBe("Live readings.");
         expect(grid.className).toBe("group-grid");
         expect(grid.children).toHaveLength(0);
         expect(mainEl.textContent).not.toContain("stale content");
+        expect(errorBanner.classList.contains("hidden")).toBe(true);
+        expect(errorBanner.classList.contains("error-banner")).toBe(true);
     });
 });
 
@@ -327,5 +364,75 @@ describe("buildNavDrawer", () => {
         expect(links[0].dataset.sectionKey).toBe("measurements");
         // No listener attached yet - clicking must not throw and must have no observable effect.
         expect(() => links[0].click()).not.toThrow();
+    });
+});
+
+describe("XSS safety (standing guideline: textContent only, never innerHTML)", () => {
+    /** @type {HTMLElement | undefined} */
+    let container;
+
+    afterEach(() => {
+        container?.remove();
+    });
+
+    const HOSTILE = '<img src=x onerror="window.__xssFired = true">';
+
+    it("renders a hostile field label/value as literal text, never as parsed markup", () => {
+        container = document.createElement("div");
+        document.body.appendChild(container);
+
+        /** @type {import("../js/definitions.js").FieldDef} */
+        const field = { key: "CO2", label: HOSTILE, kind: "readonly" };
+        container.appendChild(buildField(field, HOSTILE, false));
+
+        expect(container.querySelector("img")).toBeNull();
+        expect(/** @type {any} */ (window).__xssFired).toBeUndefined();
+        expect(container.textContent).toContain(HOSTILE);
+    });
+
+    it("renders a hostile field-group label as literal text", () => {
+        container = document.createElement("div");
+        document.body.appendChild(container);
+
+        /** @type {import("../js/definitions.js").FieldGroup} */
+        const group = { key: "SCD30", label: HOSTILE, fields: [] };
+        container.appendChild(buildFieldGroupCard(group, {}));
+
+        expect(container.querySelector("img")).toBeNull();
+        expect(/** @type {any} */ (window).__xssFired).toBeUndefined();
+        expect(mustQuery(container, "h3").textContent).toBe(HOSTILE);
+    });
+
+    it("renders a hostile errcount module label as literal text", () => {
+        container = document.createElement("div");
+        document.body.appendChild(container);
+
+        /** @type {import("../js/definitions.js").ErrcountGroup} */
+        const group = { key: "errcount", label: "Errors", kind: "errcount", modules: [{ key: "SCD30", label: HOSTILE }] };
+        container.appendChild(buildErrcountGroup(group, { SCD30: { counter: 0 } }));
+
+        expect(container.querySelector("img")).toBeNull();
+        expect(/** @type {any} */ (window).__xssFired).toBeUndefined();
+        expect(container.textContent).toContain(HOSTILE);
+    });
+
+    it("renders a hostile device/section name in the nav drawer as literal text", () => {
+        container = document.createElement("nav");
+        document.body.appendChild(container);
+
+        /** @type {import("../js/definitions.js").SiteDefinitions} */
+        const defs = {
+            schemaVersion: "1.0.0",
+            device: { id: "x", displayName: HOSTILE },
+            landingSection: "measurements",
+            defaultPollIntervalMs: 3000,
+            sections: [{ key: "measurements", label: HOSTILE, rest: { get: "/measurements" }, pollGroup: "live", groups: [] }],
+        };
+
+        buildNavDrawer(defs, container);
+
+        expect(container.querySelector("img")).toBeNull();
+        expect(/** @type {any} */ (window).__xssFired).toBeUndefined();
+        expect(container.textContent).toContain(HOSTILE);
     });
 });

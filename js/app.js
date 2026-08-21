@@ -42,8 +42,19 @@ export async function startApp(elements) {
 
     deviceNameEl.textContent = defs.device.displayName;
 
-    const mockDataResponse = await fetch(`../mockdata/${device}.json`);
-    const mockData = await mockDataResponse.json();
+    /** @type {import("./definitions.js").MockDeviceData} */
+    let mockData;
+    try {
+        const mockDataResponse = await fetch(`../mockdata/${device}.json`);
+        if (!mockDataResponse.ok) {
+            throw new Error(`HTTP ${mockDataResponse.status}`);
+        }
+        mockData = await mockDataResponse.json();
+    } catch (error) {
+        errorBannerEl.textContent = `Could not load mock fixture data for "${device}": ${String(error)}`;
+        errorBannerEl.classList.remove("hidden");
+        return;
+    }
     installMockFetch(defs, mockData);
 
     let stopCurrentSection = () => {};

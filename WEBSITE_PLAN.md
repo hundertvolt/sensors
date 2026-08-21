@@ -385,6 +385,84 @@ order.
    pipeline is fully green and coverage is maximized. Standing coding guideline: render any
    server-supplied text via `textContent`, never `innerHTML`, so the page stays XSS-safe by
    construction.
+
+   **Session 3 status: done** — `claude/website-s3-tdd-implementation`. Session 2's prototype
+   turned out to already be close to production-grade on code quality (zero `innerHTML` anywhere,
+   careful edge-case handling in `mock-server.js`, a fully strict `definitions.js` validator) — so
+   this session's real spec, derived from reading every `js/` file end to end against
+   SPECIFICATION.md A.8's REST contract, turned out to be a **hardening/gap-closing** pass rather
+   than a rewrite: five concrete, confirmed-real correctness gaps, plus full test coverage for the
+   two files that had none.
+
+   Gaps found and fixed, each TDD (a failing test proving the gap, then the fix):
+   - **`js/poll-manager.js` had no client-side request timeout.** The single-flight queue (§4
+     "Poll coordination") would wait forever on one hung connection, permanently wedging every
+     future poll — the device has very few available sockets, so this was a real, not
+     hypothetical, failure mode. Fixed with an `AbortController`-based per-request timeout
+     (`DEFAULT_TIMEOUT_MS = 15000`, overridable per call), which also frees the underlying browser
+     connection, not just this app's own bookkeeping.
+   - **`js/render.js`'s `fetchOnce()` silently swallowed GET failures.** A non-ok response just
+     `return`ed with no visible effect; a thrown error (network failure, or the new timeout above)
+     was uncaught for every non-`"live"` section, becoming an unhandled promise rejection. Fixed:
+     `fetchOnce()` now throws uniformly on any failure and catches centrally, showing a per-section
+     error banner (`js/templates.js`'s `buildSectionShell()` now returns `{grid, errorBanner}`,
+     reusing the same `.error-banner`/`.hidden` treatment `html/index.html`'s app-level banner
+     already established) without clearing the stale-but-still-useful data already on screen, and
+     clearing the banner again on the next successful poll (self-healing, matches the existing
+     retry-forever polling design — no behavior change to *when* polling continues, only to
+     whether a failure is visible).
+   - **`js/app.js`'s mock-fixture-data fetch had no error handling at all** (unlike the
+     `loadDefinitions()` call immediately above it) — a failed/malformed response crashed
+     `startApp()` outright with an uncaught `SyntaxError`. Fixed to match the existing
+     definitions-load pattern: checks `.ok`, catches, shows the same error banner.
+   - **`js/mock-server.js`** gained a minimal, explicitly prototype-only failure-injection hook
+     (`installMockFetch(defs, data, controls)` — `controls.nextFailure` is `"network"` or an HTTP
+     status, one-shot) so the three gaps above could be exercised through the real mock-backed
+     integration tests (`render.test.js`/`app.test.js`), not just synthetic `window.fetch` stubs.
+     Session 5's real digital-twin backend supersedes this; kept intentionally thin.
+
+   Test coverage: `js/nav.js` and `js/app.js` had **zero** dedicated test files before
+   this session (both existing behavior turned out correct — `nav.test.js`'s 5 tests all passed on
+   the first run, no bugs found there); `tests_js/nav.test.js` (5 tests) and `tests_js/app.test.js`
+   (5 tests) added. Also added: an XSS-safe-by-construction regression suite (asserts a hostile
+   `<img onerror=...>` field label/value never becomes a real DOM element anywhere `js/templates.js`
+   builds one — locks in the standing `textContent`-only guideline against future regressions);
+   edge-case coverage for a composite field submitted with only some subfields filled (reports
+   `Invalid`, doesn't silently apply a half-specified command) and for a PUT that fails at the
+   network level (`Request failed`, `failed` apply-status, Apply button re-enabled afterward); and
+   several `definitions.js`/`mock-server.js`/`templates.js` validation-branch tests closing
+   coverage gaps surfaced by the new `test:coverage` script (below). Went from 45 tests (session 2)
+   to 82; a stray dead-code candidate (`PollManager.isBusy`, previously unused anywhere) was kept
+   and given a test rather than deleted, since it's a plausible future UI affordance (a "syncing"
+   indicator) and this session's scope was hardening existing behavior, not pruning speculative
+   public API.
+   - **Coverage tooling**: added `@vitest/coverage-v8` + non-gating `npm run test:coverage`,
+     mirroring the Python side's own non-gating `scripts/test.sh --coverage` (CLAUDE.md's "Code
+     quality tooling") — report-only, no threshold enforced anywhere. Wired into
+     `.github/workflows/ci.yml`'s `web-unit-tests` job the same way: a second, `continue-on-error`
+     instrumented test run after the real (gating) `npm test` step, its summary appended to the
+     GitHub Actions Job Summary and its HTML report uploaded as a `coverage-html-js` build
+     artifact — no Codecov upload (the Python side's own Codecov upload is itself still a no-op
+     pending repo registration; not worth wiring twice for the same not-yet-usable destination).
+     Coverage tooling didn't exist before this session, so there's no session-2 baseline number to
+     compare against; final coverage after this session's TDD additions: **96% statements / 80.9%
+     branches / 97.4% functions / 96% lines** across `js/`. The remaining uncovered lines are
+     genuinely defensive/unreachable
+     branches (e.g. a nav link somehow missing its own `data-section-key`, a `selectSection()` call
+     for a section key that isn't in the loaded definitions) — deliberately not chased further,
+     matching the Python side's own "report, never gate, never chase 100%" philosophy.
+   - Manually verified end-to-end in real Chromium (Playwright, this session's own pre-installed
+     browser, same as session 2's own verification method): both devices' full nav → section
+     click-through with zero console/page errors; the new error banner triggered against a live
+     (simulated) network failure mid-poll, confirmed correct in both light and dark color schemes,
+     confirmed the stale data underneath stays on screen, confirmed it self-clears on the next
+     successful poll.
+   - Nothing in §4/§8's settled architecture changed; §12's visual/mechanics separation held
+     throughout — every fix above lives entirely in the mechanics layer (`render.js`/`app.js`/
+     `poll-manager.js`/`mock-server.js`) except the one new visual element (`buildSectionShell()`'s
+     `errorBanner`), which `js/templates.js` builds and only `.hidden`/`.textContent` ever get
+     toggled on it by a controller — the same pattern `html/index.html`'s app-level banner already
+     used, not a new one. `src/` was never touched; §11's schema-comment tooling was not built.
 4. **Full build chain.** Wire `html/`+`js/`+the definitions file(s) into a
    `scripts/build_frozen_html.sh`-equivalent pipeline: gzip → `freezefs` → frozen bytecode → mount
    → serve, ending with the real thing bound into an actual firmware build. Keep the mechanism
@@ -571,6 +649,16 @@ Controllers only ever set the semantic `data-apply-status` value (`"valid"`/`"in
 `"unchanged"`/`"failed"`) — never a color, class, or style directly. What that status *looks like*
 is entirely `html/style.css`'s decision, so restyling what "invalid" means visually is a pure CSS
 change.
+
+**One deliberate exception to the "hooks are `data-*` attributes" rule (session 3):**
+`buildSectionShell()` returns `{grid, errorBanner}` directly to its one caller (`render.js`'s
+`renderSection()`) rather than making the controller look `errorBanner` up by attribute — there's
+only ever one error banner per rendered section and it's handed back at the exact point it's
+created, so a lookup hook would add indirection with no reuse benefit. The controller still only
+ever touches it the same two ways `app.js`'s pre-existing app-level error banner already
+established: toggling the `.hidden` utility class and setting `.textContent` — never a color or
+custom style. Restyling what a fetch-error banner looks like is still a pure `html/style.css`
+change (`.error-banner`), same as every other hook in this table.
 
 ### Where this stood before this note, and what changed
 

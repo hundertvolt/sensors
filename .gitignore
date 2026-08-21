@@ -10,6 +10,12 @@ node_modules/
 .vitest-attachments/
 tests_js/__screenshots__/
 
+# `npm run test:coverage` output (@vitest/coverage-v8) - non-gating, report-only (mirrors the
+# Python side's scripts/test.sh --coverage, see CLAUDE.md's "Code quality tooling"), regenerated
+# every run, not meant to be committed.
+coverage/
+coverage-output.txt
+
 # Build output (see build-*.sh)
 python/build/
 firmware.uf2

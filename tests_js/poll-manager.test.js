@@ -50,6 +50,63 @@ describe("pollManager", () => {
 
         expect(second.body).toEqual({ second: true });
     });
+
+    it("times out and unblocks the queue when a request hangs forever", async () => {
+        vi.useFakeTimers();
+        // A real hung connection never resolves at all - the single-flight queue must not wait
+        // on it forever (the device has very few available sockets, WEBSITE_PLAN.md §4), so a
+        // fetch() that never settles must still eventually be treated as a failure.
+        window.fetch = vi
+            .fn()
+            .mockImplementationOnce(() => new Promise(() => {}))
+            .mockResolvedValueOnce(new Response(JSON.stringify({ second: true }), { status: 200 }));
+
+        const hung = pollManager.request("/hangs", undefined, 5000);
+        const assertion = expect(hung).rejects.toThrow(/timed out/i);
+        await vi.advanceTimersByTimeAsync(5000);
+        await assertion;
+
+        vi.useRealTimers();
+        const second = await pollManager.request("/ok");
+        expect(second.body).toEqual({ second: true });
+    });
+
+    it("isBusy reflects whether a request is currently in flight", async () => {
+        /** @type {(value?: unknown) => void} */
+        let resolveFetch = () => {};
+        window.fetch = vi.fn(
+            () =>
+                new Promise((resolve) => {
+                    resolveFetch = () => resolve(new Response(JSON.stringify({}), { status: 200 }));
+                }),
+        );
+
+        expect(pollManager.isBusy).toBe(false);
+        const pending = pollManager.request("/x");
+        await vi.waitFor(() => expect(pollManager.isBusy).toBe(true));
+
+        resolveFetch();
+        await pending;
+        expect(pollManager.isBusy).toBe(false);
+    });
+
+    it("aborts the underlying fetch's signal when a request times out", async () => {
+        vi.useFakeTimers();
+        /** @type {AbortSignal | undefined} */
+        let capturedSignal;
+        window.fetch = vi.fn((_url, init) => {
+            capturedSignal = /** @type {RequestInit} */ (init).signal ?? undefined;
+            return new Promise(() => {});
+        });
+
+        const hung = pollManager.request("/hangs", undefined, 1000);
+        const assertion = expect(hung).rejects.toThrow(/timed out/i);
+        await vi.advanceTimersByTimeAsync(1000);
+        await assertion;
+
+        expect(capturedSignal?.aborted).toBe(true);
+        vi.useRealTimers();
+    });
 });
 
 describe("startPolling", () => {

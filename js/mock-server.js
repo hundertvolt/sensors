@@ -161,14 +161,24 @@ function jitterInPlace(group) {
 }
 
 /**
+ * One-shot failure to inject into the next intercepted REST request - `"network"` makes the mock
+ * fetch reject the way a real dropped/hung connection would; a number makes it resolve with that
+ * HTTP status instead (a real backend error response). Consumed and cleared after firing once.
+ * @typedef {{nextFailure?: "network" | number}} MockFetchControls
+ */
+
+/**
  * Installs the mock fetch and returns an uninstall function. Only paths in REST_PATHS are
  * intercepted - definitions.json and mock fixture files are ordinary relative fetches that pass
- * straight through to the real fetch().
+ * straight through to the real fetch(). `controls`, when passed, lets a test inject exactly one
+ * failure into the next matched request (WEBSITE_PLAN.md §10 session 3 - exercising the
+ * frontend's error-handling paths against something more realistic than a raw window.fetch stub).
  * @param {import("./definitions.js").SiteDefinitions} defs
  * @param {import("./definitions.js").MockDeviceData} initialData
+ * @param {MockFetchControls} [controls]
  * @returns {() => void}
  */
-export function installMockFetch(defs, initialData) {
+export function installMockFetch(defs, initialData, controls) {
     const state = structuredClone(initialData);
     const sensorFieldDefs = sensorFieldDefsFor(defs);
     const flatDefsByEndpoint = {
@@ -185,6 +195,15 @@ export function installMockFetch(defs, initialData) {
         );
         if (path === undefined) {
             return originalFetch(input, init);
+        }
+
+        if (controls?.nextFailure !== undefined) {
+            const failure = controls.nextFailure;
+            controls.nextFailure = undefined;
+            if (failure === "network") {
+                throw new TypeError("Failed to fetch (simulated network failure)");
+            }
+            return jsonResponse({ res: "ERR", code: 5, descr: "Simulated failure" }, failure);
         }
 
         await new Promise((resolve) => setTimeout(resolve, 80 + Math.random() * 120));

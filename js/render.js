@@ -180,7 +180,7 @@ function buildAndWireFieldGroup(group, section, currentValues, onApplied) {
  * @returns {() => void} stop function - call before switching to another section.
  */
 export function renderSection(defs, section, mainEl) {
-    const grid = buildSectionShell(section, mainEl);
+    const { grid, errorBanner } = buildSectionShell(section, mainEl);
 
     /** @param {Record<string, unknown>} data */
     const paint = (data) => {
@@ -225,22 +225,42 @@ export function renderSection(defs, section, mainEl) {
         }
     };
 
+    /**
+     * A failed GET (non-ok status, empty body, timeout, or a dropped connection - anything
+     * pollManager.request() can throw or report) never clears what's already on screen; it only
+     * surfaces `errorBanner` so a visitor sees the data may be stale, and self-heals on the next
+     * successful fetch. This is the one place that catches every fetch failure for this section -
+     * both the live-polling branch below and the single settings/none fetch that follows it rely
+     * on fetchOnce() never rejecting.
+     */
     const fetchOnce = async () => {
-        const response = await pollManager.request(section.rest.get);
-        if (!response.ok || response.body === null) {
-            return;
+        try {
+            const response = await pollManager.request(section.rest.get);
+            if (!response.ok) {
+                throw new Error(`GET ${section.rest.get} failed: HTTP ${response.status}`);
+            }
+            if (response.body === null) {
+                throw new Error(`GET ${section.rest.get} returned an empty body`);
+            }
+            const data = /** @type {Record<string, unknown>} */ (response.body);
+            if (section.key === "notification") {
+                // PauseTime is live data (SPECIFICATION.md Part A.8: it lives under GET /status's
+                // "notification" sub-key, not GET /notification's own settings-only response), but
+                // the "Pause Notifications" group still needs a current value to show/PUT against -
+                // so pull it from /status too rather than inventing a second copy of it here.
+                const statusResponse = await pollManager.request("/status");
+                if (!statusResponse.ok) {
+                    throw new Error(`GET /status failed: HTTP ${statusResponse.status}`);
+                }
+                const statusNotification = /** @type {any} */ (statusResponse.body)?.notification ?? {};
+                data.PauseTime = statusNotification.PauseTime;
+            }
+            errorBanner.classList.add("hidden");
+            paint(data);
+        } catch (error) {
+            errorBanner.textContent = `Could not refresh ${section.label}: ${String(error)}`;
+            errorBanner.classList.remove("hidden");
         }
-        const data = /** @type {Record<string, unknown>} */ (response.body);
-        if (section.key === "notification") {
-            // PauseTime is live data (SPECIFICATION.md Part A.8: it lives under GET /status's
-            // "notification" sub-key, not GET /notification's own settings-only response), but the
-            // "Pause Notifications" group still needs a current value to show/PUT against - so pull
-            // it from /status too rather than inventing a second copy of it in the settings endpoint.
-            const statusResponse = await pollManager.request("/status");
-            const statusNotification = /** @type {any} */ (statusResponse.body)?.notification ?? {};
-            data.PauseTime = statusNotification.PauseTime;
-        }
-        paint(data);
     };
 
     if (section.pollGroup === "live") {

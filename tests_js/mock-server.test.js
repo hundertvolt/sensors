@@ -124,4 +124,52 @@ describe("installMockFetch", () => {
         const get = await fetch("/status");
         expect((await get.json()).errcount.SCD30.counter).toBe(2);
     });
+
+    it("validates PUT /networking against the networking group's own field defs", async () => {
+        uninstall = installMockFetch(DEFS, DATA);
+        const response = await fetch("/networking", { method: "PUT", body: JSON.stringify({ Hostname: "" }) });
+        expect((await response.json()).result.Hostname).toBe("Invalid"); // below minLength: 1
+
+        const ok = await fetch("/networking", { method: "PUT", body: JSON.stringify({ Hostname: "new-name" }) });
+        expect((await ok.json()).result.Hostname).toBe("Valid");
+        expect((await (await fetch("/networking")).json()).Hostname).toBe("new-name");
+    });
+
+    it("validates PUT /system's SystemCmd against the fixed real command set", async () => {
+        uninstall = installMockFetch(DEFS, DATA);
+        const ok = await fetch("/system", { method: "PUT", body: JSON.stringify({ SystemCmd: "reboot" }) });
+        expect((await ok.json()).result.SystemCmd).toBe("Valid");
+
+        const bad = await fetch("/system", { method: "PUT", body: JSON.stringify({ SystemCmd: "not-a-real-command" }) });
+        expect((await bad.json()).result.SystemCmd).toBe("Invalid");
+    });
+
+    it("rejects an unsupported HTTP method with a 405", async () => {
+        uninstall = installMockFetch(DEFS, DATA);
+        const response = await fetch("/sensors", { method: "DELETE" });
+        expect(response.status).toBe(405);
+    });
+
+    it("injects exactly one network failure via controls.nextFailure, then serves normally again", async () => {
+        const controls = { nextFailure: /** @type {"network" | number | undefined} */ ("network") };
+        uninstall = installMockFetch(DEFS, DATA, controls);
+
+        await expect(fetch("/sensors")).rejects.toThrow(/failed to fetch/i);
+        expect(controls.nextFailure).toBeUndefined(); // one-shot - consumed after firing
+
+        const response = await fetch("/sensors");
+        expect(response.ok).toBe(true);
+    });
+
+    it("injects exactly one HTTP error status via controls.nextFailure, then serves normally again", async () => {
+        const controls = { nextFailure: /** @type {"network" | number | undefined} */ (500) };
+        uninstall = installMockFetch(DEFS, DATA, controls);
+
+        const response = await fetch("/sensors");
+        expect(response.ok).toBe(false);
+        expect(response.status).toBe(500);
+
+        const second = await fetch("/sensors");
+        expect(second.ok).toBe(true);
+    });
 });

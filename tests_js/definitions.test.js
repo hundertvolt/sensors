@@ -48,6 +48,61 @@ describe("validateDefinitions", () => {
         expect(validateDefinitions(broken).some((p) => p.includes("rest.get"))).toBe(true);
     });
 
+    it("rejects a missing device.id", () => {
+        const broken = { ...MINIMAL_VALID, device: {} };
+        expect(validateDefinitions(broken).some((p) => p.includes("device.id"))).toBe(true);
+    });
+
+    it("rejects a missing landingSection", () => {
+        const broken = { ...MINIMAL_VALID, landingSection: undefined };
+        expect(validateDefinitions(broken).some((p) => p.includes("landingSection"))).toBe(true);
+    });
+
+    it("rejects a missing/empty sections array", () => {
+        expect(validateDefinitions({ ...MINIMAL_VALID, sections: undefined }).some((p) => p.includes("sections"))).toBe(true);
+        expect(validateDefinitions({ ...MINIMAL_VALID, sections: [] }).some((p) => p.includes("sections"))).toBe(true);
+    });
+
+    it("rejects a section that isn't an object", () => {
+        const broken = { ...MINIMAL_VALID, sections: ["not-an-object"] };
+        expect(validateDefinitions(broken).some((p) => p.includes("sections[0] is not an object"))).toBe(true);
+    });
+
+    it("rejects a section missing groups (not an array) and a group missing key/label", () => {
+        const missingGroups = { ...MINIMAL_VALID, sections: [{ key: "x", label: "X", rest: { get: "/x" }, pollGroup: "live" }] };
+        expect(validateDefinitions(missingGroups).some((p) => p.includes("groups must be an array"))).toBe(true);
+
+        const missingGroupLabel = {
+            ...MINIMAL_VALID,
+            sections: [{ key: "x", label: "X", rest: { get: "/x" }, pollGroup: "live", groups: [{ key: "g" }] }],
+        };
+        expect(validateDefinitions(missingGroupLabel).some((p) => p.includes("missing key/label"))).toBe(true);
+    });
+
+    it("rejects an errcount group whose modules isn't an array", () => {
+        const broken = {
+            ...MINIMAL_VALID,
+            sections: [
+                {
+                    key: "status",
+                    label: "Status",
+                    rest: { get: "/status" },
+                    pollGroup: "live",
+                    groups: [{ key: "errcount", label: "Errors", kind: "errcount" }],
+                },
+            ],
+        };
+        expect(validateDefinitions(broken).some((p) => p.includes("modules must be an array"))).toBe(true);
+    });
+
+    it("rejects a non-errcount group whose fields isn't an array", () => {
+        const broken = {
+            ...MINIMAL_VALID,
+            sections: [{ key: "x", label: "X", rest: { get: "/x" }, pollGroup: "live", groups: [{ key: "g", label: "G" }] }],
+        };
+        expect(validateDefinitions(broken).some((p) => p.includes("fields must be an array"))).toBe(true);
+    });
+
     it("accepts an errcount group without requiring fields", () => {
         const withErrcount = {
             ...MINIMAL_VALID,
