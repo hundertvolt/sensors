@@ -3,7 +3,7 @@
  * version mismatch surfaces a visible error rather than silently rendering something broken or
  * skipping unknown fields (§4 "Definitions validation").
  *
- * @typedef {{value: string, label: string}} EnumOption
+ * @typedef {{value: string|number, label: string}} EnumOption
  * @typedef {{value: number, meaning: string}} SpecialValue
  * @typedef {{
  *   key: string, label: string, unit?: string, kind: "readonly"|"number"|"string"|"enum"|"toggle"|"composite",

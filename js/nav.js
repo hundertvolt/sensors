@@ -1,8 +1,11 @@
 /**
- * Hamburger + slide-in drawer nav (WEBSITE_PLAN.md §10 session 2 decision: drawer, section links
- * only). Single-page shell - selecting a link never reloads the page, it just calls back into
- * app.js to swap the rendered section.
+ * Nav controller (WEBSITE_PLAN.md §12): drawer open/close state and section-select dispatch. It
+ * builds no DOM itself - `js/templates.js`'s `buildNavDrawer()` owns the drawer's markup/order; this
+ * file only locates the resulting `[data-section-key]` links to wire the real (app-level) select
+ * behavior, and toggles the `nav-open` class that `html/style.css` uses to show/hide the drawer.
  */
+
+import { buildNavDrawer } from "./templates.js";
 
 /** @typedef {import("./definitions.js").SiteDefinitions} SiteDefinitions */
 
@@ -18,37 +21,27 @@
  * @returns {(sectionKey: string) => void} call to update which nav link is marked current.
  */
 export function initNav({ defs, appShellEl, drawerEl, hamburgerEl, backdropEl, onSelect }) {
-    drawerEl.replaceChildren();
+    buildNavDrawer(defs, drawerEl);
 
-    const heading = document.createElement("div");
-    heading.className = "nav-drawer-heading";
-    heading.textContent = defs.device.displayName;
-    drawerEl.appendChild(heading);
-
-    /** @type {Map<string, HTMLButtonElement>} */
-    const linksByKey = new Map();
-
-    for (const section of defs.sections) {
-        const link = document.createElement("button");
-        link.type = "button";
-        link.className = "nav-link";
-        link.textContent = section.label;
-        link.addEventListener("click", () => {
-            closeDrawer();
-            onSelect(section.key);
-        });
-        drawerEl.appendChild(link);
-        linksByKey.set(section.key, link);
-    }
-
-    const openDrawer = () => {
-        appShellEl.classList.add("nav-open");
-        hamburgerEl.setAttribute("aria-expanded", "true");
-    };
     const closeDrawer = () => {
         appShellEl.classList.remove("nav-open");
         hamburgerEl.setAttribute("aria-expanded", "false");
     };
+    const openDrawer = () => {
+        appShellEl.classList.add("nav-open");
+        hamburgerEl.setAttribute("aria-expanded", "true");
+    };
+
+    for (const link of /** @type {NodeListOf<HTMLElement>} */ (drawerEl.querySelectorAll("[data-section-key]"))) {
+        const sectionKey = link.dataset.sectionKey;
+        if (sectionKey === undefined) {
+            continue;
+        }
+        link.addEventListener("click", () => {
+            closeDrawer();
+            onSelect(sectionKey);
+        });
+    }
 
     hamburgerEl.addEventListener("click", () => {
         if (appShellEl.classList.contains("nav-open")) {
@@ -65,8 +58,8 @@ export function initNav({ defs, appShellEl, drawerEl, hamburgerEl, backdropEl, o
     });
 
     return (sectionKey) => {
-        for (const [key, link] of linksByKey) {
-            if (key === sectionKey) {
+        for (const link of /** @type {NodeListOf<HTMLElement>} */ (drawerEl.querySelectorAll("[data-section-key]"))) {
+            if (link.dataset.sectionKey === sectionKey) {
                 link.setAttribute("aria-current", "page");
             } else {
                 link.removeAttribute("aria-current");

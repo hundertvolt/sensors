@@ -44,9 +44,10 @@ function coerceAndValidate(field, rawValue) {
         return { valid: value.length >= minLength && value.length <= maxLength, value };
     }
     if (field.kind === "enum") {
-        const value = String(rawValue);
+        // Compare as-sent, not string-coerced: an enum's real value can be numeric (e.g. BMP3XX's
+        // PressOvers) - a real backend expects that type back, not "4" where it wrote 4.
         const options = field.options ?? [];
-        return { valid: options.some((option) => option.value === value), value };
+        return { valid: options.some((option) => option.value === rawValue), value: rawValue };
     }
     if (field.kind === "toggle") {
         return { valid: typeof rawValue === "boolean", value: Boolean(rawValue) };
