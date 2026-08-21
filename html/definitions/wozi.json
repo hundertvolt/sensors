@@ -27,8 +27,8 @@
                     "key": "SGP40",
                     "label": "SGP40 — VOC Index",
                     "fields": [
-                        { "key": "VOC", "label": "VOC Index", "unit": "ticks", "kind": "readonly" },
-                        { "key": "Raw", "label": "VOC Raw", "kind": "readonly" },
+                        { "key": "VOC", "label": "VOC Index", "kind": "readonly" },
+                        { "key": "Raw", "label": "VOC Raw", "unit": "ticks", "kind": "readonly" },
                         { "key": "TS", "label": "Timestamp", "unit": "s", "kind": "readonly" }
                     ]
                 },
@@ -209,6 +209,9 @@
                     "key": "networking",
                     "label": "Networking Status",
                     "fields": [
+                        { "key": "Mode", "label": "Wi-Fi Mode", "kind": "readonly" },
+                        { "key": "Connected", "label": "Connected", "kind": "readonly" },
+                        { "key": "IP", "label": "IP Address", "kind": "readonly" },
                         { "key": "IPv4", "label": "IPv4 Address", "kind": "readonly" },
                         { "key": "Subnet", "label": "Subnet Mask", "kind": "readonly" },
                         { "key": "Gateway", "label": "Gateway", "kind": "readonly" },
@@ -216,7 +219,8 @@
                         { "key": "Rssi", "label": "Wi-Fi RSSI", "unit": "dBm", "kind": "readonly" },
                         { "key": "WifiUptime", "label": "Wi-Fi Uptime", "unit": "s", "kind": "readonly" },
                         { "key": "NtpSynced", "label": "NTP Synced", "kind": "readonly" },
-                        { "key": "NtpLastSyncAge", "label": "NTP Last Sync Age", "unit": "s", "kind": "readonly" }
+                        { "key": "NtpLastSyncAge", "label": "NTP Last Sync Age", "unit": "s", "kind": "readonly" },
+                        { "key": "NtpLastSync", "label": "NTP Last Sync Time", "unit": "s", "kind": "readonly", "description": "Unix timestamp of the last successful sync." }
                     ]
                 },
                 {
@@ -224,10 +228,13 @@
                     "label": "System Status",
                     "fields": [
                         { "key": "SysUptime", "label": "System Uptime", "unit": "s", "kind": "readonly" },
-                        { "key": "BootSignature", "label": "Boot Signature", "kind": "readonly" },
+                        {
+                            "key": "BootSignature", "label": "Boot Signature", "kind": "readonly",
+                            "description": "Opaque value, stable for the running boot session; a different value on a later poll means the device rebooted. Not a human-readable code."
+                        },
                         { "key": "MemPaused", "label": "Backups Paused", "kind": "readonly" },
-                        { "key": "LocalTime", "label": "Local Time", "kind": "readonly" },
-                        { "key": "UtcTime", "label": "UTC Time", "kind": "readonly" }
+                        { "key": "LocalTime", "label": "Local Time", "kind": "readonly", "format": "gmtimestruct" },
+                        { "key": "UtcTime", "label": "UTC Time", "kind": "readonly", "format": "gmtimestruct" }
                     ]
                 },
                 {
@@ -252,10 +259,22 @@
                     "label": "Error Counts & History",
                     "kind": "errcount",
                     "modules": [
+                        { "key": "WIFI", "label": "Wi-Fi" },
+                        { "key": "CFGMGR_WIFI", "label": "Wi-Fi Config Store" },
+                        { "key": "DNSSRV", "label": "Captive DNS" },
+                        { "key": "NTP", "label": "NTP Client" },
+                        { "key": "CFGMGR_NTP", "label": "NTP Config Store" },
+                        { "key": "FRAM", "label": "FRAM Storage" },
+                        { "key": "SYSTEM", "label": "System" },
+                        { "key": "CFGMGR_SYSTEM", "label": "System Config Store" },
                         { "key": "SCD30", "label": "SCD30" },
                         { "key": "SGP40", "label": "SGP40" },
+                        { "key": "CFGMGR_SGP40", "label": "SGP40 Config Store" },
                         { "key": "BMP3XX", "label": "BMP388" },
-                        { "key": "CFGMGR_SCD30", "label": "SCD30 Config Store" },
+                        { "key": "CFGMGR_BMP3XX", "label": "BMP388 Config Store" },
+                        { "key": "NEOPIXEL", "label": "Neopixel LED" },
+                        { "key": "NOTIFY", "label": "Notification Service" },
+                        { "key": "CFGMGR_NOTIFY", "label": "Notification Config Store" },
                         { "key": "WEBSERVER", "label": "Web Server" }
                     ]
                 },

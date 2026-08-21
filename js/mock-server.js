@@ -222,7 +222,9 @@ export function installMockFetch(defs, initialData) {
             if (body().ResetErrors === true) {
                 for (const entry of Object.values(state.status.errcount)) {
                     entry.counter = 0;
-                    entry.history = [];
+                    // Real reset() (src/print_log.py) refills the fixed-length history with "no
+                    // error" placeholders, it never shrinks/empties the array.
+                    entry.history = (entry.history ?? []).map(() => ({ num: 0, type: "N" }));
                 }
             }
             return jsonResponse({ res: "OK", code: 0, descr: "OK" });

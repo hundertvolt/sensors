@@ -33,37 +33,55 @@
             "NtpSynced": true, "NtpLastSyncAge": 205, "NtpLastSync": 1754999795
         },
         "system": {
-            "SysUptime": 9900, "BootSignature": "WATCHDOG", "MemPaused": false,
-            "LocalTime": "2025-08-12 09:14:03", "UtcTime": "2025-08-12 08:14:03"
+            "SysUptime": 9900, "BootSignature": 1754997600, "MemPaused": false,
+            "LocalTime": { "year": 2025, "month": 8, "mday": 12, "hour": 9, "minute": 14, "second": 3, "weekday": 1 },
+            "UtcTime": { "year": 2025, "month": 8, "mday": 12, "hour": 8, "minute": 14, "second": 3, "weekday": 1 }
         },
         "sensors": { "SGP40": { "BackupTS": 1754997000, "RestoreTS": 0 } },
         "notification": { "Triggered": false, "TS": 0, "PauseTime": 0 },
         "errcount": {
-            "SCD30": { "counter": 0 },
-            "SGP40": { "counter": 0 },
+            "WIFI": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+            "CFGMGR_WIFI": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+            "DNSSRV": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+            "NTP": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+            "CFGMGR_NTP": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+            "FRAM": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+            "SYSTEM": {
+                "counter": 4,
+                "history": [
+                    { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" },
+                    { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" },
+                    { "num": 2, "type": "W" }, { "num": 2, "type": "W" }, { "num": 6, "type": "E" }
+                ]
+            },
+            "CFGMGR_SYSTEM": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+            "SCD30": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+            "SGP40": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+            "CFGMGR_SGP40": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
             "SHTC3": {
                 "counter": 8,
                 "history": [
-                    { "TS": 1753000000, "ErrType": "I2CBusError", "ErrNum": 3 },
-                    { "TS": 1753086400, "ErrType": "I2CBusError", "ErrNum": 3 },
-                    { "TS": 1753172800, "ErrType": "I2CTimeout", "ErrNum": 2 },
-                    { "TS": 1753600000, "ErrType": "I2CBusError", "ErrNum": 3 },
-                    { "TS": 1754000000, "ErrType": "I2CTimeout", "ErrNum": 2 },
-                    { "TS": 1754300000, "ErrType": "I2CBusError", "ErrNum": 3 },
-                    { "TS": 1754700000, "ErrType": "I2CTimeout", "ErrNum": 2 },
-                    { "TS": 1754990000, "ErrType": "I2CBusError", "ErrNum": 3 }
+                    { "num": 3, "type": "E" }, { "num": 3, "type": "E" }, { "num": 2, "type": "E" }, { "num": 3, "type": "E" },
+                    { "num": 2, "type": "E" }, { "num": 3, "type": "E" }, { "num": 2, "type": "E" }, { "num": 3, "type": "E" },
+                    { "num": 0, "type": "N" }, { "num": 0, "type": "N" }
                 ]
             },
-            "MPRLS": { "counter": 0, "history": [] },
+            "CFGMGR_SHTC3": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+            "MPRLS": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+            "CFGMGR_MPRLS": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
             "ISL29125": {
                 "counter": 2,
                 "history": [
-                    { "TS": 1754500000, "ErrType": "InterruptStuck", "ErrNum": 6 },
-                    { "TS": 1754905000, "ErrType": "InterruptStuck", "ErrNum": 6 }
+                    { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" },
+                    { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" },
+                    { "num": 6, "type": "E" }, { "num": 6, "type": "E" }
                 ]
             },
-            "CFGMGR_SCD30": { "counter": 0 },
-            "WEBSERVER": { "counter": 0 }
+            "CFGMGR_ISL29125": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+            "NEOPIXEL": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+            "NOTIFY": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+            "CFGMGR_NOTIFY": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+            "WEBSERVER": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] }
         }
     }
 }

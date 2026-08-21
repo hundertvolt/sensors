@@ -9,7 +9,8 @@
  *   key: string, label: string, unit?: string, kind: "readonly"|"number"|"string"|"enum"|"toggle"|"composite",
  *   description?: string, min?: number, max?: number, minLength?: number, maxLength?: number,
  *   mask?: boolean, options?: EnumOption[], specialValues?: SpecialValue[],
- *   subFields?: FieldDef[], onLabel?: string, offLabel?: string, format?: string,
+ *   subFields?: FieldDef[], onLabel?: string, offLabel?: string,
+ *   format?: "gmtimestruct",
  * }} FieldDef
  * @typedef {{key: string, label: string, fields: FieldDef[], submit?: boolean, submitLabel?: string}} FieldGroup
  * @typedef {{key: string, label: string, kind: "errcount", modules: {key: string, label: string}[]}} ErrcountGroup
@@ -32,10 +33,16 @@
  *   status: {
  *     networking: Record<string, unknown>, system: Record<string, unknown>,
  *     sensors: Record<string, Record<string, unknown>>, notification: Record<string, unknown>,
- *     errcount: Record<string, {counter: number, history?: {TS: number, ErrType: string, ErrNum: number}[]}>,
+ *     errcount: Record<string, {counter: number, history?: {num: number, type: "N"|"E"|"W"}[]}>,
  *   },
  * }} MockDeviceData
  */
+// errcount history shape matches src/print_log.py's get_log()/asy_webserver_service.py's
+// _shape_errcount_entry() exactly: no per-entry timestamp exists anywhere in the real system, and
+// "type" ("N"=no error/placeholder slot, "E"=error, "W"=warning) is never shown as text - only used
+// to color "num" (js/templates.js's buildErrcountGroup(), html/style.css's
+// .history-entry[data-err-type] rules). "num" is a raw errno the backend never attaches a
+// human-meaning catalog to.
 
 /** The only schema major version this build of the renderer understands. */
 export const SUPPORTED_SCHEMA_MAJOR = 1;

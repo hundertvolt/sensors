@@ -235,7 +235,45 @@ owner — see §10 item 2's own notes for the concrete prototype these produced)
   lists the module keys it expects (`{key, label}`, one entry per registered module +
   `CFGMGR_<name>` config-store instances + the webserver's own `WEBSERVER` entry, matching A.8's
   `_build_errcount()` shape exactly), and looks each one up directly in `/status`'s `errcount[key]`
-  response at render time — no transformation beyond that direct key lookup.
+  response at render time — no transformation beyond that direct key lookup. **Corrected in a
+  session-2 follow-up audit** (before this branch merged): the first cut of both device definitions
+  files only listed 5 of wozi's real ~17 registered error sources (`src/sensortask_wozi.py`'s
+  `_collect_error_sources()` — every module *and* every `ConfigManager` instance, not just the three
+  sensor readers) and included one name that isn't real (`CFGMGR_SCD30` — SCD30 persists to the
+  sensor's own NVM, not a `ConfigManager`, so it has no config-store error source at all). Both
+  `html/definitions/{wozi,dev}.json` now list the full real set (`WIFI`, `CFGMGR_WIFI`, `DNSSRV`,
+  `NTP`, `CFGMGR_NTP`, `FRAM`, `SYSTEM`, `CFGMGR_SYSTEM`, plus each sensor and, except SCD30, its own
+  `CFGMGR_<name>`, plus `NEOPIXEL`/`NOTIFY`/`CFGMGR_NOTIFY`/`WEBSERVER`). dev.json's own SHTC3/MPRLS/
+  ISL29125 aren't promoted to `src/` yet, so their `CFGMGR_<name>` entries are a projection from the
+  same pattern every promoted sensor already follows, not confirmed against real code — flagged here
+  for whichever session first promotes them.
+- **Error-history entry shape** — the same follow-up audit found the prototype had invented a shape
+  (`{TS, ErrType: "I2CTimeout", ErrNum}`) that doesn't exist anywhere on the real device:
+  `src/print_log.py`'s `get_log()` / `src/asy_webserver_service.py`'s `_shape_errcount_entry()`
+  return `{"num": <raw errno>, "type": "N"|"E"|"W"}` per slot, always a fixed `history_length`-long
+  list (never shorter — a healthy module's history is all `"N"` placeholders, not an empty array),
+  with **no per-entry timestamp anywhere in the system**. Resolved interactively with the project
+  owner: `type` is never rendered as text at all — its only job is to color `num` (green/yellow/red
+  for no-error/warning/error), the same "controller/template sets a semantic value, CSS alone
+  decides what it looks like" contract §12 already uses for `data-apply-status`. Implemented as
+  `js/templates.js`'s `buildErrcountGroup()` setting `data-err-type` per entry, styled by
+  `html/style.css`'s `.history-entry[data-err-type]` rules; `js/definitions.js`'s `MockDeviceData`
+  typedef and both mock fixture files now use the real shape.
+- **Other invented-vs-real mismatches found by the same audit, corrected**: `/status.networking`
+  was missing `Mode`/`Connected`/`IP`/`NtpLastSync` (real fields per
+  `sensortask_wozi.py`'s `_networking_status()`); `LocalTime`/`UtcTime` are real
+  `{year, month, mday, hour, minute, second, weekday}` dicts (`_gmtimestruct_to_dict()`), not
+  pre-formatted strings — `formatFieldValue()` now special-cases the (already-reserved but
+  previously unimplemented) `field.format: "gmtimestruct"`; `BootSignature` is a real `int | None`
+  (opaque, meaningful only by comparing across polls), not a descriptive string like `"POWERON"` —
+  the mock fixtures invented that; SGP40's `"ticks"` unit was on the wrong field (`VOC` is a
+  dimensionless index, `Raw` is the actual tick count); dev.json's `InterruptAutoClear` declared
+  `min: 0` while also declaring a `-1` special value, self-contradictory — the real legacy range is
+  `-1`–3600000. dev.json's unprefixed sensor-config field names for SHTC3/MPRLS/ISL29125 were
+  checked against this same audit and are **not** a bug — they intentionally follow `src/`'s
+  sparse-PUT contract per this file's own already-settled REST-target decision (§4), not the legacy
+  `modules/sensortask-dev.py` `cmd`-envelope/prefixed-field shape those sensors are actually served
+  under today.
 
 **Still open / deferred to a future sub-session:**
 

@@ -60,7 +60,7 @@ const DATA = {
         system: {},
         sensors: {},
         notification: {},
-        errcount: { SCD30: { counter: 2, history: [{ TS: 1, ErrType: "X", ErrNum: 1 }] } },
+        errcount: { SCD30: { counter: 2, history: [{ num: 1, type: /** @type {const} */ ("E") }] } },
     },
 };
 
@@ -107,14 +107,14 @@ describe("installMockFetch", () => {
         expect((await get.json()).SCD30.MeasInt).toBe(10);
     });
 
-    it("resets error counters and history on PUT /status ResetErrors", async () => {
+    it("resets error counters and refills history with no-error placeholders (real reset() never shrinks it)", async () => {
         uninstall = installMockFetch(DEFS, DATA);
         await fetch("/status", { method: "PUT", body: JSON.stringify({ ResetErrors: true }) });
 
         const get = await fetch("/status");
         const body = await get.json();
         expect(body.errcount.SCD30.counter).toBe(0);
-        expect(body.errcount.SCD30.history).toEqual([]);
+        expect(body.errcount.SCD30.history).toEqual([{ num: 0, type: "N" }]);
     });
 
     it("leaves error counters untouched when ResetErrors is absent", async () => {

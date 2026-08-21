@@ -118,8 +118,8 @@ const DATA = {
             SCD30: {
                 counter: 2,
                 history: [
-                    { TS: 1700000000, ErrType: "I2CTimeout", ErrNum: 2 },
-                    { TS: 1700003600, ErrType: "I2CTimeout", ErrNum: 2 },
+                    { num: 2, type: /** @type {const} */ ("E") },
+                    { num: 2, type: /** @type {const} */ ("E") },
                 ],
             },
         },
