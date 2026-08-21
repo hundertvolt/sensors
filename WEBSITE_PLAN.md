@@ -109,6 +109,12 @@ restructured into a build/bundle output. `html_raw/` (legacy, still deployed) an
 (placeholder, still wired into `src/sensortask_wozi.py` until this effort's output replaces it) are
 untouched by this restructuring.
 
+**Session 1 status: done.** All three folders, `package.json`/`package-lock.json`, and every tool
+config (§6) exist on `claude/website-s1-folder-ci`, each holding only trivial "Hello world"-shaped
+placeholder content (mirroring `html_stub/`'s own bootstrap role) — `html/index.html`+`style.css`,
+one `js/hello.js` ES module, one `tests_js/hello.test.js` Vitest browser-mode test. Real
+layout/functionality is still session 2's job.
+
 ## 6. CI / tooling stack
 
 Mirrors the Python side's actual roles (ruff/mypy/pytest), not just "any linter/tester":
@@ -117,7 +123,7 @@ Mirrors the Python side's actual roles (ruff/mypy/pytest), not just "any linter/
 |---|---|---|
 | ruff (lint) | **ESLint** | Chosen over Biome for ecosystem maturity/rule coverage. |
 | mypy (type-check) | **TypeScript `checkJS` mode** (`tsc --noEmit`) reading JSDoc annotations in plain `.js` | Pure dev-time checker, zero transpilation — shipped JS stays exactly as written, same "dev-tooling only" split as `pyproject.toml`. |
-| MicroPython Unix-port interpreter for tests (real environment, not CPython+stubs) | **Vitest in real-browser mode** (`@vitest/browser` + Playwright provider, against the Chromium already pre-installed in this environment) | Deliberately not jsdom — same "real engine over a DOM/interpreter shim" principle SPECIFICATION.md Part E.1 already argues for the Python side. |
+| MicroPython Unix-port interpreter for tests (real environment, not CPython+stubs) | **Vitest in real-browser mode** (Playwright provider, against Chromium) | Deliberately not jsdom — same "real engine over a DOM/interpreter shim" principle SPECIFICATION.md Part E.1 already argues for the Python side. |
 | — | **html-validate** for `html/`'s skeleton(s); **Stylelint** for the CSS | Lightweight npm packages, no JVM dependency (ruled out the W3C Nu Html Checker for that reason). |
 
 **CI mechanism**: extend the existing single `.github/workflows/ci.yml` (not a new workflow file)
@@ -129,6 +135,25 @@ required status check that never fires because the whole workflow never triggere
 running only against its existing paths (`src/`, `tests/`, `digital_twin/`, `pyproject.toml`,
 `scripts/`, `toolchain/`); web CI runs only against `html/`, `js/`, `tests_js/`, plus its own config
 files (`package.json`, ESLint/TS/Vitest/html-validate/Stylelint configs).
+
+**Implemented in session 1** (`claude/website-s1-folder-ci`) — confirmed against current package
+docs, not assumed from training memory, per this repo's standing "check current docs" practice:
+Vitest 4 split its browser-mode provider out of `@vitest/browser` into a separate
+**`@vitest/browser-playwright`** package (`playwright()` provider function passed to
+`test.browser.provider`, plus the `playwright` package itself as its peer dependency) — the
+settled *decision* (real-browser mode via Playwright + Chromium, not jsdom) is unchanged, only the
+package name that implements it. `typescript` is now major version 7 (the Go-based rewrite);
+`tsc --noEmit` with `checkJs`/`allowJs` works the same as before. Root `.nvmrc` pins Node 22,
+read by `actions/setup-node`'s `node-version-file` in CI. The three new CI jobs are named
+`web-changes` (the `dorny/paths-filter` gate), `web-lint-and-typecheck` (ESLint + `tsc --noEmit` +
+html-validate + Stylelint), and `web-unit-tests` (Vitest browser mode, `needs` both prior jobs).
+`vitest.config.js` conditionally passes `launchOptions.executablePath` pointing at this Claude Code
+environment's pre-installed `/opt/pw-browsers/chromium` when that path exists (so local runs in
+*this* sandbox don't hit a Playwright browser-revision mismatch and don't re-download); real CI
+runners have no such path, so `web-unit-tests` instead runs `npx playwright install --with-deps
+chromium` before the test step. All three new jobs were proven red (run against no `html/`/`js/`/
+`tests_js/` content at all — every one of ESLint/tsc/html-validate/Stylelint/Vitest fails
+appropriately) then green (against the trivial placeholder content) locally before pushing.
 
 ## 7. Digital twin integration (future requirement, not yet actionable)
 
@@ -192,11 +217,12 @@ branch, 3 off 2's, etc.) follows the same rule against its immediate parent sess
 against `main` or against this base branch directly, keeping the sessions stacked in execution
 order.
 
-1. **Folder structure + CI.** Create `html/`, `js/`, `tests_js/`, root `package.json`/tool configs
+1. **Folder structure + CI. Done** — `claude/website-s1-folder-ci`, see §5/§6 for what landed.
+   Created `html/`, `js/`, `tests_js/`, root `package.json`/tool configs
    (ESLint, TypeScript `checkJS`, Vitest+Playwright, html-validate, Stylelint), and the
-   `changes`-gated web-CI tier in `ci.yml` (§6). Include trivial placeholder content (mirroring
-   `html_stub/`'s own "Hello world"-shaped bootstrap role) so the pipeline can be proven red→green
-   before any real content exists, not just configured and left unexercised.
+   `changes`-gated web-CI tier in `ci.yml` (§6). Included trivial placeholder content (mirroring
+   `html_stub/`'s own "Hello world"-shaped bootstrap role) so the pipeline was proven red→green
+   before any real content existed, not just configured and left unexercised.
 2. **Layout & functionality definition, with a locally-viewable prototype.** Detailed page/section
    design (nav, per-endpoint sections, history UI, ...); resolve the still-open §8 decisions that
    naturally belong here — real dark-mode support or not, the history pagination/truncation

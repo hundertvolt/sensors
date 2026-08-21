@@ -10,6 +10,84 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  web-changes:
+    # Gates the web-CI tier below on whether this push/PR actually touches the website's own
+    # source (html/, js/, tests_js/) or its own tooling config - kept as a single workflow file
+    # with a changes-detection job feeding `if:` conditions, deliberately not a second workflow
+    # file with its own trigger-level `paths:` filter (which can leave a PR stuck on a required
+    # status check that never fires because the whole workflow never triggered - see
+    # WEBSITE_PLAN.md §6). The existing Python jobs below are untouched and keep running on every
+    # trigger regardless of this job's result.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            web:
+              - 'html/**'
+              - 'js/**'
+              - 'tests_js/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'eslint.config.js'
+              - 'tsconfig.json'
+              - 'vitest.config.js'
+              - '.htmlvalidate.json'
+              - '.stylelintrc.json'
+              - '.nvmrc'
+
+  web-lint-and-typecheck:
+    # JS/HTML/CSS equivalent of the Python lint-and-typecheck job below - see WEBSITE_PLAN.md §6
+    # for the role mapping (ESLint~ruff, tsc --noEmit~mypy, html-validate/Stylelint have no direct
+    # Python-side counterpart).
+    needs: web-changes
+    if: needs.web-changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: ESLint (js/, tests_js/)
+        run: npm run lint
+      - name: TypeScript checkJS (tsc --noEmit)
+        run: npm run typecheck
+      - name: html-validate (html/)
+        run: npm run lint:html
+      - name: Stylelint (html/)
+        run: npm run lint:css
+
+  web-unit-tests:
+    # Vitest in real-browser mode (Playwright + Chromium, not jsdom) - see WEBSITE_PLAN.md §6.
+    # This CI runner has no pre-installed browser (unlike the dev sandbox this effort was
+    # scaffolded in - see vitest.config.js's own comment), so it installs its own matching
+    # Chromium build via `playwright install` before running tests.
+    needs: [web-changes, web-lint-and-typecheck]
+    if: needs.web-changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run unit tests (Vitest, real-browser mode)
+        run: npm test
+
   lint-and-typecheck:
     # Gates on src/, tests/, and digital_twin/ (pyproject.toml's [tool.mypy]/[tool.ruff] default
     # scope - both fully-reviewed, expected to stay clean). Passing explicit paths to

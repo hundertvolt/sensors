@@ -2,6 +2,10 @@
 config.json
 modules/config.json
 
+# JS dev-tooling (package.json/package-lock.json) - node_modules is reinstallable via `npm ci`,
+# same "dev-tooling only" split as .venv/ above. Not meant to be committed.
+node_modules/
+
 # Build output (see build-*.sh)
 python/build/
 firmware.uf2
