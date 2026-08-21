@@ -332,33 +332,69 @@ button {
 
 /* ---- Error / status counts ---- */
 
-.errcount-summary {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 12px;
-    margin-bottom: 16px;
+/* Starts fully collapsed to just this rollup + two filter buttons - a device can have 15+
+   registered modules, and showing every one of them (even as a compact row) by default was too
+   much vertical space for a page a visitor mostly just needs to glance at. */
+.errcount-rollup {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+    margin-bottom: 4px;
 }
 
-.errcount-tile {
-    padding: 12px 14px;
-    background-color: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-card);
+.errcount-rollup-count {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.errcount-rollup-count[data-rollup="errors"] {
+    color: var(--color-danger);
+}
+
+.errcount-rollup-count[data-rollup="warnings"] {
+    color: var(--color-warn);
+}
+
+.errcount-module-list {
+    margin-top: 12px;
+}
+
+/* A plain divided list, not a grid of boxes - one line per module until expanded, with a border
+   as the only separator between modules, so many modules stay compact and clearly distinct. */
+.errcount-row-wrapper {
+    border-bottom: 1px solid var(--color-border);
+}
+
+.errcount-row-wrapper:first-child {
+    border-top: 1px solid var(--color-border);
+}
+
+.errcount-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    padding: 9px 2px;
+    background: none;
+    border: none;
+    text-align: left;
     cursor: pointer;
 }
 
-.errcount-tile[data-has-errors="true"] {
-    border-left: 3px solid var(--color-danger);
+.errcount-row-name {
+    font-size: 14px;
 }
 
-.errcount-tile-count {
-    font-size: 20px;
+.errcount-row-count {
+    font-size: 14px;
     font-weight: 700;
+    color: var(--color-text-muted);
 }
 
-.errcount-tile-label {
-    color: var(--color-text-muted);
-    font-size: 12px;
+.errcount-row[data-has-errors="true"] .errcount-row-count {
+    color: var(--color-danger);
 }
 
 /* One horizontal, wrapping row of pills per module - not a vertical list. A module can carry

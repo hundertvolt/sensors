@@ -215,19 +215,23 @@ describe("renderSection", () => {
         expect(mustQuery(card, ".apply-result").textContent).toContain("Oversampling: Valid");
     });
 
-    it("renders an errcount tile that expands to show its full history with no pagination", async () => {
+    it("renders an errcount rollup, revealed via 'Show flagged', that expands to show its full history with no pagination", async () => {
         uninstall = installMockFetch(DEFS, DATA);
         const main = mount();
         stop = renderSection(DEFS, getSection("status"), main);
-        await waitFor(() => main.querySelector(".errcount-tile") !== null);
+        await waitFor(() => main.querySelector(".errcount-rollup") !== null);
 
-        const tile = mustQuery(main, ".errcount-tile");
-        expect(mustQuery(tile, ".errcount-tile-count").textContent).toBe("2");
+        // Collapsed by default - only the rollup, no module row visible, until a filter is chosen.
+        expect(main.querySelector(".errcount-module-list")?.classList.contains("hidden")).toBe(true);
+        mustQuery(main, ".action-button").click(); // "Show flagged"
 
-        const list = mustQuery(/** @type {HTMLElement} */ (tile.parentElement), ".history-list");
+        const row = mustQuery(main, ".errcount-row");
+        expect(mustQuery(row, ".errcount-row-count").textContent).toBe("2");
+
+        const list = mustQuery(/** @type {HTMLElement} */ (row.parentElement), ".history-list");
         expect(list.classList.contains("hidden")).toBe(true);
 
-        tile.click();
+        row.click();
 
         expect(list.classList.contains("hidden")).toBe(false);
         expect(list.querySelectorAll(".history-entry")).toHaveLength(2);
