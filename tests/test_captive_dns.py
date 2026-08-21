@@ -799,9 +799,10 @@ def test_response_rejects_invalid_ip_combined_with_empty_domain_state() -> None:
 
 
 def test_run_reuses_same_dns_server_instance_across_multiple_hotspot_cycles() -> None:
-    # Mirrors async_connect.py's real usage (confirmed directly against improved-quality/
-    # async_connect.py): one DNSServer instance constructed once, with run() started, cancelled,
-    # and started again across repeated hotspot activations - only safe because
+    # Mirrors asy_wifi_service.py's real usage (AsyConnTime.__init__ constructs exactly one
+    # self.dns_server = DNSServer(...), reused across every hotspot activation): one DNSServer
+    # instance constructed once, with run() started, cancelled, and started again across repeated
+    # hotspot activations - only safe because
     # AsyUDPSocket.disconnect() fully resets connected/sock state for _connect()'s next attempt.
     server_addr = resolve_addr("127.0.0.1", make_port())
     server = DNSServer()
@@ -858,12 +859,12 @@ def test_run_real_socket_survives_a_burst_of_consecutive_malformed_datagrams() -
 
 
 # ---------------------------------------------------------------------------
-# Integration contract: replicates async_connect.py's real DNSServer usage exactly. It cannot be
+# Integration contract: replicates asy_wifi_service.py's real DNSServer usage exactly. It cannot be
 # imported directly here - it depends on network.WLAN and other RP2040-only hardware this
-# environment doesn't have, and editing/testing it is out of scope per CLAUDE.md's promotion
-# rules. Confirmed directly against improved-quality/async_connect.py: one DNSServer built once in
-# __init__, run() started via evtloop.create_task(self.dns_server.run(own_ip, own_netmask)), and
-# shut down via a fire-and-forget self.dns_server_task.cancel() that the caller never awaits.
+# environment doesn't have. Confirmed directly against asy_wifi_service.py: one DNSServer built
+# once in AsyConnTime.__init__, run() started via evtloop.create_task(self.dns_server.run(own_ip,
+# own_netmask)), and shut down via a fire-and-forget self.dns_server_task.cancel() that the caller
+# never awaits.
 # ---------------------------------------------------------------------------
 
 

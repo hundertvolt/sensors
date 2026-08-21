@@ -2,9 +2,9 @@
 mocking boundary as test_asy_scd30_driver.py's own integration-level tests) feeding a real asy_notification_service.py.NotificationCoordinator, driving a real asy_neopixel_driver.py.NeopixelDriver.
 Exercises how a genuine hardware fault on one driver (SCD30) does NOT propagate into a sibling driver's (NOTIFY's) own error accounting, matching SPECIFICATION.md Part C.7's "each driver owns its own error log" separation of concerns.
 """
-# The get_value() wrapper mirrors improved-quality/sensortask-wozi.py's own
-# co2_value_callback()/hum_value_callback() exactly (that file itself is out of scope for testing -
-# see CLAUDE.md - so the wrapper is reproduced locally, not imported). Only tests/neopixel.py's
+# The get_value() wrapper mirrors src/sensortask_wozi.py's own
+# co2_value_callback()/hum_value_callback() exactly (reproduced locally rather than imported, to
+# keep this test independent of that module's own full construction sequence). Only tests/neopixel.py's
 # fake write surface and tests/machine.py's fake I2C bus are mocked; every layer above the raw I2C
 # transaction (SCD30_Reader's own protocol/error handling, the notify poll loop, gating,
 # NeopixelDriver's arbitration/ramp) runs for real.
@@ -142,7 +142,7 @@ def data_frame(co2: float, temperature: float, humidity: float) -> bytes:
 
 
 async def co2_value_callback(scd_reader: SCD30_Reader) -> "int | float | None":
-    # Verbatim mirror of improved-quality/sensortask-wozi.py's own co2_value_callback() body.
+    # Verbatim mirror of src/sensortask_wozi.py's own co2_value_callback() body.
     scd_data = await scd_reader.get_data()
     if scd_data is None or scd_data.CO2 is None:
         return None
@@ -150,7 +150,7 @@ async def co2_value_callback(scd_reader: SCD30_Reader) -> "int | float | None":
 
 
 async def hum_value_callback(scd_reader: SCD30_Reader) -> "int | float | None":
-    # Verbatim mirror of improved-quality/sensortask-wozi.py's own hum_value_callback() body -
+    # Verbatim mirror of src/sensortask_wozi.py's own hum_value_callback() body -
     # same SCD30_Reader instance backs both WarnCO2 and WarnHum in the real wiring (one sensor,
     # two notification signals off its own .Hum/.CO2 fields), but no test file exercised the real
     # WarnHum chain before this one - only WarnCO2 had integration coverage.

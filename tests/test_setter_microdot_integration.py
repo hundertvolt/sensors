@@ -1,13 +1,13 @@
 """End-to-end integration tests for the setter generalization work: api_response.py's
-parse_cmd_request()/handle_set_cmd() driven against mocked Microdot request data (fine/partial/garbage), then against a real ext/microdot.py (v2.6.2) Microdot app wired the way sensortask-*.py will eventually wire it.
+parse_cmd_request()/handle_set_cmd() driven against mocked Microdot request data (fine/partial/garbage), then against a real ext/microdot.py (v2.6.2) Microdot app wired the same way src/asy_webserver_service.py's real registration-based routes are.
 """
 # Covers a real AsyConnTime (WiFi) reader for the setter path, a real AsyNtpClient reader for both
 # the getter and the setter path, a real BMP3xx_Reader/SGP40_Reader for the schema-driven sensor
 # setters, and a real SCD30_Reader for the one sensor whose REST surface is hand-rolled per field
-# instead of schema-driven. Only test-local Microdot apps are constructed here;
-# improved-quality/sensortask-wozi.py itself is never touched (see CLAUDE.md's hard rule on editing
-# improved-quality/ source files) - anything of its wiring that has to be exercised is reimplemented
-# locally (_wifi_field_schema()/_SCD_SET_FIELDS/_scd_apply_field below), never imported.
+# instead of schema-driven. Only test-local Microdot apps are constructed here, independent of
+# src/asy_webserver_service.py's own construction - anything of its wiring that has to be exercised
+# is reimplemented locally (_wifi_field_schema()/_SCD_SET_FIELDS/_scd_apply_field below), never
+# imported, to keep this file's own scope self-contained.
 
 import asyncio
 import errno as errno_mod
@@ -24,8 +24,7 @@ import sys
 sys.path.insert(0, "ext")
 
 # ext/ isn't on this project's mypy search path yet (see pyproject.toml's [tool.mypy]) - same gap
-# as the pre-existing improved-quality/api_helpers.py and improved-quality/sensortask-wozi.py
-# imports of this module.
+# as src/asy_webserver_service.py's own import of this module.
 from microdot import Microdot, Request  # type: ignore[import-not-found]  # noqa: E402
 
 import api_response as ar
@@ -155,12 +154,13 @@ class _FakeRequest:
 # quality (fine/partial/garbage), without a real Microdot app or real sockets.
 #
 # AsyConnTime owns one schema/cfgmgr for all of SSID/PW/Country/Hostname/LedWifiOn, but the real
-# /net/cmd (setNetwork) and /led/cmd (setWiFiLED) routes each only own their own subset of those
-# fields (improved-quality/sensortask-wozi.py's own _cfg_subset()) - passing the *whole* schema to
-# both would let setNetwork accept/persist LedWifiOn (and spuriously fire reconnect_wifi() for an
-# LED-only change) and let setWiFiLED silently accept/persist SSID/PW/Country/Hostname with no
-# reconnect at all. _wifi_field_schema() below mirrors that same scoping locally, since this file
-# never imports sensortask-wozi.py itself (see its own module docstring).
+# registration (src/sensortask_wozi.py's own "networking" settings list) scopes them into two
+# separate SettingsGroup(conn, ...) entries - one for SSID/PW/Country/Hostname (with
+# post_fct=conn.reconnect_wifi), one for LedWifiOn alone (no post_fct) - passing the *whole* schema
+# as one group would let a LedWifiOn-only change spuriously fire reconnect_wifi(), and vice versa
+# let an SSID/PW/Country/Hostname change silently reach LedWifiOn's own group with no reconnect at
+# all. _wifi_field_schema() below mirrors that same per-group scoping locally, since this file
+# never imports src/sensortask_wozi.py itself (see its own module docstring).
 # ---------------------------------------------------------------------------
 
 
@@ -267,11 +267,12 @@ def test_mocked_request_empty_body_dict_is_valid_but_changes_nothing() -> None:
 
 
 # ---------------------------------------------------------------------------
-# setNetwork/setWiFiLED field scoping - regression coverage for the cross-route schema leakage bug
-# found in improved-quality/sensortask-wozi.py: AsyConnTime owns one schema for both routes'
-# fields, so passing the *whole* schema to either route (instead of each route's own real subset)
-# would let setNetwork accept/persist LedWifiOn (and spuriously reconnect for an LED-only change)
-# and let setWiFiLED silently accept/persist SSID/PW/Country/Hostname with no reconnect at all.
+# setNetwork/setWiFiLED field scoping - regression coverage for the cross-route schema leakage risk
+# this pattern is designed to avoid: AsyConnTime owns one schema for both field groups, so passing
+# the *whole* schema to either route (instead of each route's own real subset, as
+# src/sensortask_wozi.py's two separate SettingsGroup(conn, ...) registrations do) would let
+# setNetwork accept/persist LedWifiOn (and spuriously reconnect for an LED-only change) and let
+# setWiFiLED silently accept/persist SSID/PW/Country/Hostname with no reconnect at all.
 # ---------------------------------------------------------------------------
 
 
@@ -725,15 +726,15 @@ def test_real_microdot_sgp40_setter_end_to_end_write_fault_surfaces_as_failed_no
 
 # ---------------------------------------------------------------------------
 # Real Microdot end-to-end for SCD30's bespoke per-field REST wiring. Unlike every other sensor,
-# SCD30_Reader has no _set_dict_cfg/ConfigManager surface at all - its parameters live on the
-# sensor's own NVM, not in a local cache (see asy_scd30_driver.py's "No local default either"
-# comment) - so improved-quality/sensortask-wozi.py drives it through a hand-rolled
-# (key, field, setter) loop instead. That loop is reimplemented locally below rather than imported,
-# the same convention _wifi_field_schema() already follows in this file (see the module docstring);
-# only the three fields this file actually exercises are mirrored, not all seven. Every SCD30 setter
-# already returns bool and never raises (its own module docstring/SPECIFICATION.md Part C), so the
-# Valid/Failed mapping is a plain bool check - the try/except is defense-in-depth against a future
-# change to that contract, exactly as in the real file.
+# SCD30_Reader has no ConfigManager/local-cache surface at all - its parameters live on the
+# sensor's own NVM (see asy_scd30_driver.py's "No local default either" comment) - so its own real
+# `_set_dict_cfg()` drives each field through a hand-rolled (key, field, setter) dispatch dict
+# instead of a schema-backed cache read/write. That dispatch is reimplemented locally below rather
+# than imported, the same convention _wifi_field_schema() already follows in this file (see the
+# module docstring); only the three fields this file actually exercises are mirrored, not all
+# seven. Every SCD30 setter already returns bool and never raises (its own module docstring/
+# SPECIFICATION.md Part C), so the Valid/Failed mapping is a plain bool check - the try/except is
+# defense-in-depth against a future change to that contract, exactly as in the real file.
 # ---------------------------------------------------------------------------
 
 _FIELD_SCD_MEAS_INT: "cm.FieldSchema" = ("MeasInt", "int", 2, 2, 1800, None)

@@ -33,20 +33,21 @@ dev = [
 # MicroPython subset doesn't provide). scripts/typecheck.sh installs the pin into typings/
 # instead: an isolated directory containing only the stubs, nothing else.
 
-# Checks currently cover improved-quality/ (the WIP code-quality refactor target, where this
-# cleanup effort actually started - see CLAUDE.md), src/ (files moved out of improved-quality/
-# once fully reviewed/tested), tests/ (their unit tests), and digital_twin/ (the hardware
-# simulator, SPECIFICATION.md Part A.10 - a fully-reviewed, freely-editable scope like src/, not WIP like
-# improved-quality/). The pre-refactor deployed codebase (python/, modules/) isn't in scope yet and
-# has no lint/type config of its own right now. improved-quality/mypy.ini and
-# improved-quality/pycheck.sh (ad hoc, trial-and-error configs) have been retired in favor of this
-# file.
+# Checks currently cover src/ (fully-reviewed, freely-editable code - see CLAUDE.md), tests/
+# (their unit tests), and digital_twin/ (the hardware simulator, SPECIFICATION.md Part A.10 - same
+# fully-reviewed status as src/). The pre-refactor deployed codebase (python/, modules/) isn't in
+# scope yet and has no lint/type config of its own right now. `improved-quality/` - the WIP
+# code-quality refactor staging area this cleanup effort originally started against, including its
+# own ad hoc improved-quality/mypy.ini and improved-quality/pycheck.sh (retired in favor of this
+# file) - has since been deleted in full: every file it held was either promoted into src/ once
+# fully reviewed/tested, or (its last remaining file, sensortask-wozi.py) confirmed fully
+# superseded by src/sensortask_wozi.py + src/asy_webserver_service.py and removed outright.
 
 [tool.ruff]
 # Deliberately 3.10, not >=3.11 like [project]'s requires-python above: this is the syntax floor
-# of the *checked* code (src/, tests/, improved-quality/ - MicroPython, not this dev-tooling
-# venv), independent of what interpreter runs ruff itself. The checked code's actual floor is PEP
-# 604 union syntax (3.10); >=3.11's tomllib requirement is specific to the dev-tooling scripts
+# of the *checked* code (src/, tests/, digital_twin/ - MicroPython, not this dev-tooling venv),
+# independent of what interpreter runs ruff itself. The checked code's actual floor is PEP 604
+# union syntax (3.10); >=3.11's tomllib requirement is specific to the dev-tooling scripts
 # (scripts/typecheck.sh), not something the checked code itself needs.
 target-version = "py310"
 # `ruff format` is deliberately not part of this toolchain, and not run in scripts/lint.sh - line
@@ -54,9 +55,6 @@ target-version = "py310"
 # ceiling for this setting) keeps length-based wrapping a non-issue on the off chance format is
 # ever run locally, on top of the E501 opt-out below.
 line-length = 320
-# Note: improved-quality/microdot.py (an unintentional fork of vendored Microdot) has been removed
-# entirely - replaced by ext/microdot.py, which was never in ruff's scan scope to begin with (see
-# CLAUDE.md's "Microdot / REST layer"). No exclude entry is needed here anymore.
 
 [tool.ruff.lint]
 select = [
@@ -70,8 +68,8 @@ select = [
 ignore = [
     "E501",  # line length - not enforced, see [tool.ruff] above
     # E722 (bare except) is intentionally NOT ignored here, unlike the old
-    # improved-quality/pycheck.sh. Bare excepts in improved-quality/ should be flagged - fixing
-    # them is in scope for the refactor (see BACKLOG.md), this is the tracking mechanism for that.
+    # improved-quality/pycheck.sh - bare excepts should be flagged wherever they appear, not
+    # silenced.
 ]
 
 [tool.mypy]
@@ -99,11 +97,11 @@ custom_typeshed_dir = "typings"
 # them against custom_typeshed_dir above - which only has the MicroPython subset of stdlib, not
 # the real one those packages actually need (contextlib, functools, inspect, ...).
 no_site_packages = true
-# A bare glob in `files` (e.g. "improved-quality/*.py") gets pre-expanded to an explicit file
-# list, which `exclude` can't then prune - passing the directory itself is what makes `exclude`
-# actually take effect during mypy's own directory walk.
-files = ["improved-quality", "src", "tests", "digital_twin"]
-# improved-quality/microdot.py: see its own module docstring. tests/network.py: a bare top-level
+# A bare glob in `files` (e.g. "src/*.py") gets pre-expanded to an explicit file list, which
+# `exclude` can't then prune - passing the directory itself is what makes `exclude` actually take
+# effect during mypy's own directory walk.
+files = ["src", "tests", "digital_twin"]
+# tests/network.py: a bare top-level
 # `network.py` sitting inside a `files`-scanned root starts winning module resolution over
 # typings/'s real `network` stub *project-wide*, not just within tests/ - confirmed directly: with
 # it present, src/asy_wifi_service.py's own `import network` call sites silently lose
@@ -158,7 +156,6 @@ files = ["improved-quality", "src", "tests", "digital_twin"]
 # types are fully known) - see that file's own docstring for the full rationale, and
 # scripts/typecheck.sh for how it's wired into both local and CI runs.
 exclude = [
-    "improved-quality/microdot\\.py$",
     "tests/network\\.py$",
     "digital_twin/machine\\.py$",
     "digital_twin/network\\.py$",

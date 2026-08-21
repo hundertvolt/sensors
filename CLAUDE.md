@@ -42,36 +42,29 @@ information):
 
 ## Hard rules
 
-- **Don't edit `improved-quality/`'s *source* files (drivers, managers, etc.) — they're the WIP
-  refactor target, out of scope for routine editing.** This does **not** cover its dev-tooling
-  config: `mypy.ini`/`pycheck.sh` were an ad hoc, trial-and-error setup the project owner
-  explicitly asked to have questioned and replaced (confirmed directly, not inferred) — they've
-  been retired in favor of root-level `pyproject.toml` + `scripts/lint.sh`/`scripts/typecheck.sh`
-  (see "Code quality tooling" below). Source files elsewhere in `improved-quality/` remain
-  read-only context until the refactor itself starts. **The project owner can authorize a scoped
-  exception for a severity-justified fix** (precedent: the `ConfigManager`/`LockedValue`
-  wrong-module-import bug that would have crash-looped every deployed unit's boot) — this is a
-  standing, repeatable exception path, not a one-off; it still requires the owner's explicit
-  authorization each time, scoped narrowly to the specific fix, not a general license to edit
-  `improved-quality/` more broadly.
+- **`improved-quality/` (the refactor's WIP staging directory) has been fully retired and
+  deleted.** Every file it ever held was either promoted into `src/` once fully reviewed/tested,
+  or — its last remaining file, `sensortask-wozi.py` — confirmed fully superseded by
+  `src/sensortask_wozi.py` + `src/asy_webserver_service.py` (construction/wiring and REST routing
+  both independently rebuilt there, more generically, with real gaps in the old file fixed along
+  the way — e.g. `conn.setup()`/`ntp.setup()` were never called anywhere in the old flow) and
+  removed outright, not just left in place. Its old "don't edit source files without a scoped
+  owner exception" rule no longer has anything to apply to; the one precedent it set (the
+  `ConfigManager`/`LockedValue` wrong-module-import fix) stays as a precedent for any future
+  severity-justified exception to a similar "don't touch this WIP/vendored code" rule elsewhere in
+  this file (see the `python/CommonDrivers/microdot.py`/`ext/microdot.py` vendoring rule and the
+  `modules/_boot.py` rule below), not something that needs a live `improved-quality/` to reapply.
 - **`src/` is where files land once they're fully reviewed and tested** — formula/logic
   correctness checked, input validation and exception-safety audited, unit tests written and
-  passing (see "Code quality tooling" below and SPECIFICATION.md Part E), unlike `improved-quality/`'s
-  WIP files above. **SPECIFICATION.md Part D is the full checklist** for what "fully reviewed and tested"
-  actually requires — apply it to every file that makes this move, not just whichever ones already
-  have. **For a new sensor driver specifically, SPECIFICATION.md Part C is the shared
-  architecture/interface spec** extracted from the three drivers already in `src/` — what shape
-  the code should take (layering, naming, error handling, config schema, ...), separate from
-  Part D's "is it good enough to move" checklist. Files in `src/` aren't automatically
-  re-wired into any driver's actual import path for a
-  real firmware build just by moving there — `improved-quality/` files keep importing them by
-  their old unqualified name unchanged (e.g. `import math_helpers`, `from crc_checks import ...`),
-  which still resolves correctly both because MicroPython's frozen-module namespace is flat (it
-  doesn't matter which directory the source lives in once it's actually frozen into firmware) and,
-  for local dev-tooling checks today, because `pyproject.toml`'s `mypy_path` includes `src`. Treat
-  `src/` files as normal, freely-editable code, not as read-only WIP context the way
-  `improved-quality/` is.
-- **Whenever a new file is promoted into `src/`, run a bird's-eye-view scan over the whole
+  passing (see "Code quality tooling" below and SPECIFICATION.md Part E). **SPECIFICATION.md Part D
+  is the full checklist** for what "fully reviewed and tested" actually requires — apply it to
+  every file that makes this move, not just whichever ones already have. **For a new sensor driver
+  specifically, SPECIFICATION.md Part C is the shared architecture/interface spec** extracted from
+  the drivers already in `src/` — what shape the code should take (layering, naming, error
+  handling, config schema, ...), separate from Part D's "is it good enough to move" checklist.
+  Treat `src/` files as normal, freely-editable code — nothing in this repo is read-only WIP
+  context anymore.
+- **Whenever a new file is added to `src/`, run a bird's-eye-view scan over the whole
   content of `src/`** — not just the new file in isolation — to check that the coding guidelines
   and `SPECIFICATION.md` Part D's checklist (including its D.10 "API consistency, within a file and
   across the project" and D.9 "Check against current MicroPython" items) actually hold consistently
@@ -101,7 +94,7 @@ information):
   bugs.
 - **No unit tests against the current (deployed, pre-refactor) codebase — `python/`, `modules/`.**
   The agreed plan is: fully understand the current system first, confirm what's already
-  transferred into `improved-quality/`, and write tests as part of that refactor — not before, and
+  promoted into `src/`, and write tests as part of that refactor — not before, and
   not against the current code. This does **not** contradict SPECIFICATION.md Part E's testing
   requirements (tests under a real MicroPython Unix-port interpreter, `uv`-managed venv, mocking
   boundary, etc.) — those describe what the *refactored* code must eventually have. **First
@@ -135,7 +128,7 @@ information):
 ## Working agreements
 
 - Long-term goal: fully understand the current (production) system in detail, then check what's
-  already been addressed/transferred well into `improved-quality/`. The refactor should end up
+  already been addressed/promoted well into `src/`. The refactor should end up
   with the *same top-level features*, just more consistent/stable — not a feature change.
 - When a fact in this file or BACKLOG.md turns out to be stale (version drift, changed upstream
   API, etc.), update the doc in the same session rather than silently working around the
@@ -188,11 +181,12 @@ information):
   venv). **Wired into CI** via `.github/workflows/ci.yml` (GitHub Actions), running all three on
   every push/PR. The CI pipeline does not yet include a real firmware-build stage (see
   BACKLOG.md).
-- **Scope is `improved-quality/`, `src/`, `tests/`, and `digital_twin/`.** The pre-refactor deployed
+- **Scope is `src/`, `tests/`, and `digital_twin/`.** The pre-refactor deployed
   codebase (`python/`, `modules/`) has no lint/type config yet; extending scope there is a separate
-  future decision, not assumed by this setup. Unlike `improved-quality/`'s tracked, allowed-to-be-
-  nonzero debt, `digital_twin/` is expected to stay fully clean, same as `src/`/`tests/` — it's a
-  fully-reviewed, freely-editable scope (see "Hard rules" above), not WIP. `digital_twin/`'s own
+  future decision, not assumed by this setup. All three are expected to stay fully clean — every
+  scope in this setup is fully-reviewed, freely-editable code (see "Hard rules" above), not WIP;
+  there's no tracked-debt scope left to compare `digital_twin/` against since `improved-quality/`
+  was deleted (see "Hard rules" above). `digital_twin/`'s own
   type-check is a **separate** mypy invocation (`digital_twin/typecheck.ini`, run unconditionally by
   `scripts/typecheck.sh` regardless of its own args) rather than folded into the main
   `[tool.mypy]` pass — mypy resolves each bare `machine`/`network`/`neopixel` module name to exactly
@@ -278,9 +272,7 @@ information):
   uses it and would raise `ImportError` on-device if actually reached at runtime — one more reason
   `|` is strictly better here, not just newer. This is already machine-enforced: ruff's `UP007` rule
   (part of the enabled `UP` selection) flags every `Union[...]` as a finding. `src/` and `tests/`
-  are already 100% `|`-style with zero `Union[...]` occurrences. `improved-quality/`'s one WIP file
-  (`sensortask-wozi.py`, in ruff's checked scope) is likewise already 100% `|`-style today — its
-  remaining tracked lint findings are elsewhere (`UP006`/`UP035`/`UP037`/`I001`/`F401`/`E722`). The
+  are already 100% `|`-style with zero `Union[...]` occurrences. The
   `Union[...]` usages that do exist today are confined to `python/` (deployed, frozen, no lint
   config at all) — leave those alone under the usual out-of-scope-editing hard rule; don't drive-by
   "fix" `Union` → `|` in a file you're not otherwise promoting/refactoring.
@@ -413,12 +405,13 @@ umount "$CHROOT"/dev/pts "$CHROOT"/dev "$CHROOT"/sys "$CHROOT"/proc
 rm -rf "$CHROOT"
 ```
 
-**What counts as passing**: `lint.sh`/`typecheck.sh` run to completion with no config/crash errors
-— a nonzero exit from real lint/type findings is expected and fine, since `improved-quality/` isn't
-clean yet (see BACKLOG.md); the number of findings will drift as the code changes, so match against
-what the same scripts produce in the ordinary session sandbox rather than a fixed count.
-`scripts/test.sh` is different: its tests must actually pass (exit 0, every test PASS) — a test
-failure here is a real regression, not an expected/tracked finding the way lint/type findings are.
+**What counts as passing**: `lint.sh`/`typecheck.sh`/`scripts/test.sh` all run to completion with
+exit 0 — every scope this setup covers (`src/`, `tests/`, `digital_twin/`) is fully-reviewed code
+expected to stay fully clean (confirmed: both `lint.sh` and `typecheck.sh` report zero findings as
+of `improved-quality/`'s deletion), so unlike the pre-deletion state, a nonzero exit from either one
+here is a real regression to chase down, not an expected/tracked finding to compare against a
+session sandbox's own baseline count. `scripts/test.sh`'s tests must likewise actually pass (exit
+0, every test PASS) — a test failure here is a real regression too.
 What would fail this: a raw Python traceback, an "installation failed" from `uv`/`pip`/`apt`, a
 `scripts/test.sh` build failure, or any other mismatch against the ordinary-sandbox run — that
 mismatch is exactly how the `tomllib`/`requires-python` gap was found in the first place.

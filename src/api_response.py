@@ -1,5 +1,5 @@
 """REST response envelope + setter-dispatch orchestration for the Microdot layer -
-replaces improved-quality/api_helpers.py's ad hoc per-endpoint pipeline.
+replaces the old, now-deleted improved-quality/api_helpers.py's ad hoc per-endpoint pipeline.
 """
 # Wire shape: {"res": "OK"/"ERR", "code": int, "descr": str, "result": ...}. make_response() is a
 # pure envelope/catalog primitive (no I/O, can't raise); handle_set_cmd() orchestrates one

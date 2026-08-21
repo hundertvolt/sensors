@@ -56,7 +56,7 @@ async def _synced() -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Real multi-consumer topology - matching improved-quality/sensortask-wozi.py's actual production
+# Real multi-consumer topology - matching src/sensortask_wozi.py's actual production
 # shape: one AsyFramManager backs both a driver's own PrintLogHistoryStore (error persistence,
 # CRC8, allocated first via SensorReader's own __init__) and a separate value-backup chunk
 # (allocated second, a caller's own choice of CRC - CRC32, matching asy_sgp40_driver.py's real
@@ -152,7 +152,7 @@ def test_sensorreader_runs_in_degraded_mode_when_fram_setup_never_succeeded() ->
 
 
 # ---------------------------------------------------------------------------
-# Long-running stability - matching improved-quality/asy_sgp40_driver.py's real periodic
+# Long-running stability - matching src/asy_sgp40_driver.py's real periodic
 # write_into/read_into cycle (a fresh scratch buffer fetched via get_buffer() each cycle, CRC32,
 # dynamic verify), run across many iterations to catch any state leak a 1-2-cycle test wouldn't.
 # ---------------------------------------------------------------------------

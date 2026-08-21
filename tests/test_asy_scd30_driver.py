@@ -919,6 +919,42 @@ def test_reader_stop_continuous_measurement_false_returns_false_on_bus_fault() -
     assert log["SCD30"]["ErrNum"][-1] == 13
 
 
+def test_set_dict_cfg_reports_contmeas_true_as_valid_not_failed() -> None:
+    # Regression test: stop_continuous_measurement(True)'s own contract returns False for its
+    # pure-no-op case (see test_reader_stop_continuous_measurement_true_is_a_pure_noop above), and
+    # a first version of this method's ContMeas dispatch forwarded that return value straight into
+    # the generic "Valid"/"Failed" mapping, unlike improved-quality/sensortask-wozi.py's own removed
+    # _push_cont_meas wrapper - reporting a real client's ContMeas=True (the field's own default,
+    # "keep measuring") as "Failed" even though nothing failed. Never caught by any prior test since
+    # nothing exercised _set_dict_cfg's own ContMeas branch specifically.
+    reader = make_reader()
+    reader_fake_i2c(reader)
+    result = run(reader._set_dict_cfg({"ContMeas": True}, reader.get_cfg_schema()))
+    assert result == {"ContMeas": "Valid"}
+
+
+def test_set_dict_cfg_reports_contmeas_false_as_valid_when_the_real_stop_succeeds() -> None:
+    reader = make_reader()
+    i2c = reader_fake_i2c(reader)
+    result = run(reader._set_dict_cfg({"ContMeas": False}, reader.get_cfg_schema()))
+    assert result == {"ContMeas": "Valid"}
+    assert i2c.log[-1] == ("writeto", _ADDR, bytes([0x01, 0x04]), True)
+
+
+def test_set_dict_cfg_reports_contmeas_false_as_failed_on_bus_fault() -> None:
+    reader = make_reader()
+    reader_fake_i2c(reader).nak_addresses.add(_ADDR)
+    result = run(reader._set_dict_cfg({"ContMeas": False}, reader.get_cfg_schema()))
+    assert result == {"ContMeas": "Failed"}
+
+
+def test_set_dict_cfg_reports_contmeas_non_bool_as_invalid() -> None:
+    reader = make_reader()
+    reader_fake_i2c(reader)
+    result = run(reader._set_dict_cfg({"ContMeas": "yes"}, reader.get_cfg_schema()))
+    assert result == {"ContMeas": "Invalid"}
+
+
 # ---------------------------------------------------------------------------
 # Integration: get_dict_cfg()/get_dict_data() through the real config_manager.make_dict/name_cfg
 # ---------------------------------------------------------------------------

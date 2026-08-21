@@ -11,13 +11,12 @@ concurrency:
 
 jobs:
   lint-and-typecheck:
-    # Gates on src/, tests/, and digital_twin/ - NOT improved-quality/ (the WIP refactor target,
-    # which has hundreds of pre-existing, tracked-but-not-yet-fixed findings - see BACKLOG.md;
-    # running scripts/lint.sh/typecheck.sh with no arguments here would make this job permanently
-    # red regardless of what a given PR actually touches). Passing explicit paths overrides
-    # pyproject.toml's `files`/default target for that one invocation without changing what a
-    # plain `scripts/lint.sh`/`scripts/typecheck.sh` checks locally (still full-scope: see
-    # scripts/typecheck.sh's `mypy "$@"` and ruff's own CLI-args-override-config behavior).
+    # Gates on src/, tests/, and digital_twin/ (pyproject.toml's [tool.mypy]/[tool.ruff] default
+    # scope - both fully-reviewed, expected to stay clean). Passing explicit paths to
+    # scripts/typecheck.sh overrides pyproject.toml's `files`/default target for that one
+    # invocation without changing what a plain `scripts/lint.sh`/`scripts/typecheck.sh` checks
+    # locally (still full-scope: see scripts/typecheck.sh's `mypy "$@"` and ruff's own
+    # CLI-args-override-config behavior).
     # digital_twin/ is NOT in the `ruff check`/`scripts/typecheck.sh` args below the way src/tests
     # are - see pyproject.toml's [tool.mypy] exclude comment and digital_twin/typecheck.ini's own
     # docstring for why mypy needs a wholly separate invocation for it (bare `machine`/`network`/

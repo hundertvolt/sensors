@@ -137,7 +137,7 @@ attached to code derived from an Apache-2.0 project - the derived portion stays 
   rp2/cyw43 `AP_IF` path via a live upstream report,
   [`micropython/micropython#17401`](https://github.com/micropython/micropython/issues/17401) (AP-mode
   DHCP server ignoring a custom `ifconfig()` subnet). This project has no DHCP server of its own
-  anywhere in `src/`, `python/`, `improved-quality/`, `modules/`, or `digital_twin/` - confirmed by
+  anywhere in `src/`, `python/`, `modules/`, or `digital_twin/` - confirmed by
   exhaustive search (protocol bytes, ports, opcodes, class names) and by a full history scan, including
   for the specific "single fixed IP to one client" shape the project owner remembered possibly having
   built at some point (no match found in this repo's history either). Also checked and ruled out on

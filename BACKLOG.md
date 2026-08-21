@@ -18,11 +18,12 @@ constraints.
   `pyproject.toml`'s `files`/scan scope is extended to include it - deliberately not done as part
   of this same pass, since any `pyproject.toml` change needs CLAUDE.md's "Pre-push verification"
   chroot recipe run first, and one three-line file didn't seem to warrant that on its own. Fold
-  this in next time `pyproject.toml` is touched for another reason anyway (same framing as the
-  already-tracked `improved-quality/microdot.py` exclude-entry cleanup below).
+  this in next time `pyproject.toml` is touched for another reason anyway.
 - **Bare `except:` is forbidden in refactored code** (`except Exception:` or narrower required).
-  Ruff's E722 is already enabled, so existing bare excepts in `improved-quality/` show as tracked
-  findings rather than being silenced — eliminating them is still real refactor work.
+  Ruff's E722 is already enabled to catch any future regression - `src/`/`tests/`/`digital_twin/`
+  are all currently clean of them (confirmed: `scripts/lint.sh` reports zero findings, after
+  `improved-quality/`'s own tracked bare-except debt was deleted along with the rest of that
+  directory).
 - **No CI firmware-build stage yet.** `build-*.sh`'s hardcoded `/home/nico/rpi_pico/...` path is
   fixed (each script now captures its own `$(pwd)` before any `cd`, matching how the script has
   always assumed it's invoked - from inside `py-include/`, real dir or symlink, regardless of
@@ -60,8 +61,8 @@ constraints.
   before arming the `_RESET_DELAY`-second (4s) delayed reset timer, and already does so before the
   `_force_watchdog_starve` fallback too (armed when the reset timer itself can't be allocated) - so
   the one existing deliberate-reset path already pauses-then-waits. Confirmed via grep that
-  `machine.reset()`/`machine.bootloader()`/`WDT()` have no other call site anywhere in `src/` or
-  `improved-quality/` today. **Both open sub-items closed**: (1) margin is sufficient - the FRAM
+  `machine.reset()`/`machine.bootloader()`/`WDT()` have no other call site anywhere in `src/`
+  today. **Both open sub-items closed**: (1) margin is sufficient - the FRAM
   bus runs at 1MHz (`asy_spi_driver.py`'s default `baudrate`) over a `max_size=0x2000` (8KB) chip,
   and no single chunk approaches that whole size (individual chunks are tens of bytes), so even a
   two-block write plus CRC-verify readback completes in low single-digit milliseconds - three
@@ -245,11 +246,6 @@ constraints.
   Neither soak-test script currently has a real-hardware-runnable form (both assume the Unix-port
   `digital_twin` harness); porting/adapting them for actual on-device execution is part of this
   future work, not already done.
-- **`pyproject.toml`'s mypy `exclude` list still has a dead regex entry for
-  `improved-quality/microdot.py`** (removed — see `SPECIFICATION.md` Part A.5), matching
-  nothing today, harmless but worth deleting (along with its now-dangling "see its own module
-  docstring" comment) next time `pyproject.toml` is touched for another reason — not urgent enough
-  to be the sole reason to trigger CLAUDE.md's "Pre-push verification" chroot recipe on its own.
 - **HTML/frontend redesign — confirmed genuine near-future target, not this pass.** Owner-confirmed
   out of scope here: the frontend work involves changes far larger than a field-name fix (a real
   redesign, not a patch), and the refactored side's own website is still deliberately just a
@@ -284,12 +280,6 @@ constraints.
   targets not yet done" above).
 - **`dev` config quirks** (e.g. LED/Neopixel REST routes referencing an uninstantiated object) —
   bench rig only, not bugs to fix.
-- **`improved-quality/sensortask-wozi.py` has the same task/session-narrative-comment problem the
-  rest of `src/` was already swept for** — pervasive dated migration-narrative comments, a
-  TODO/stale-comment combo, one leftover `DRIVER_SPEC.md section 7` reference, and no module-level
-  docstring (every `src/` file has one). Left untouched deliberately: out of scope under CLAUDE.md's
-  hard rule on editing `improved-quality/` source without a scoped, owner-authorized exception, and
-  explicitly deferred by the owner to its own future session rather than bundled into this one.
 - **Dev/build environment setup**: toolchain installer is done (`toolchain/setup_toolchain.py`, see
   SPECIFICATION.md Part B/README.md's "Toolchain setup"). `build-*.sh`'s hardcoded path/`py-include`
   dependency is now fixed too (see "Refactor targets not yet done" above).
@@ -303,9 +293,10 @@ constraints.
   `get_wlan_ifconfig()`/`get_dns_server_ip()`/`get_wlan_rssi()`/`wlan_isconnected()` assume the
   *caller does not* hold it (checking `.locked()` defensively instead). A rename to make this
   visible in the method name itself (e.g. `network_available_locked()`) was considered but not
-  done - `improved-quality/sensortask-wozi.py` still calls `conn.network_available` by its current
-  name, and renaming would break that WIP file without the scoped exception CLAUDE.md's hard rule
-  requires for editing it. Instead, a prominent comment now sits directly above the first
+  done - nothing blocks it now that `improved-quality/sensortask-wozi.py` (the WIP file that once
+  called `conn.network_available` by its current name) is deleted, but `src/sensortask_wozi.py`
+  itself still calls it the same way, so a rename remains a real (if small) call-site update, not
+  yet picked up. Meanwhile, a prominent comment sits directly above the first
   self-checking getter, explicitly cross-referencing `network_available()` and naming the
   convention a new getter must pick deliberately.
 - **`config_manager.py`'s three defensive `TypeError`/`AttributeError` catches** (non-string

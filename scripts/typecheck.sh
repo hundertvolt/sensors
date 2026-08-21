@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Runs mypy against improved-quality/, src/, and tests/ (pyproject.toml's [tool.mypy] `files` -
-# see scripts/lint.sh for the same scope). Pass explicit paths (e.g. `scripts/typecheck.sh src
-# tests`) to check only those instead - used by CI's lint-and-typecheck job to gate on just src/
-# tests/ without improved-quality/'s pre-existing, tracked-but-not-yet-fixed findings failing
-# every run (see .github/workflows/ci.yml). Assumes mypy is already installed and on PATH; uses
+# Runs mypy against src/, tests/, and digital_twin/ (pyproject.toml's [tool.mypy] `files` - see
+# scripts/lint.sh for the same scope). Pass explicit paths (e.g. `scripts/typecheck.sh src tests`)
+# to check only those instead - used by CI's lint-and-typecheck job to gate on just src/tests/,
+# leaving digital_twin/ to its own dedicated second pass below (see .github/workflows/ci.yml).
+# Assumes mypy is already installed and on PATH; uses
 # `uv` (assumed on PATH, same as toolchain/setup_toolchain.py) only to populate typings/, an
 # isolated directory holding just the MicroPython stub package - see pyproject.toml's [tool.mypy]
 # comments for why that has to stay separate from mypy's own venv.
@@ -92,14 +92,13 @@ mypy "$@" || main_status=$?
 # see digital_twin/typecheck.ini's own docstring and pyproject.toml's [tool.mypy] exclude comment
 # for why: mypy resolves each bare `machine`/`network`/`neopixel` module name to exactly one file
 # per run, so digital_twin/'s own fakes and the real board stubs can never both be checked
-# correctly in the single main invocation above. Unlike improved-quality/'s tracked, expected
-# pre-existing debt (which is allowed to make main_status non-zero locally), this second pass has
-# no such allowance - digital_twin/ is a fully-reviewed, freely-editable scope (CLAUDE.md), so any
-# finding here is real and must fail the script, in CI exactly as much as locally.
+# correctly in the single main invocation above. digital_twin/ is a fully-reviewed,
+# freely-editable scope (CLAUDE.md), same as src/tests/ above, so any finding here is real and
+# must fail the script, in CI exactly as much as locally - no tolerance for pre-existing debt.
 twin_status=0
 mypy --config-file digital_twin/typecheck.ini digital_twin tests/test_digital_twin_*.py || twin_status=$?
 if [ "$twin_status" -ne 0 ]; then
-    echo "error: digital_twin/typecheck.ini's dedicated pass found real findings - this scope is expected to stay fully clean, unlike improved-quality/'s tracked debt above." >&2
+    echo "error: digital_twin/typecheck.ini's dedicated pass found real findings - this scope is expected to stay fully clean." >&2
 fi
 
 if [ "$main_status" -ne 0 ] || [ "$twin_status" -ne 0 ]; then

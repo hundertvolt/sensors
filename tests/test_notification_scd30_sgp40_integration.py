@@ -153,7 +153,7 @@ def data_frame(co2: float, temperature: float, humidity: float) -> bytes:
 
 
 async def co2_value_callback(scd_reader: SCD30_Reader) -> "int | float | None":
-    # Verbatim mirror of improved-quality/sensortask-wozi.py's own co2_value_callback() body.
+    # Verbatim mirror of src/sensortask_wozi.py's own co2_value_callback() body.
     scd_data = await scd_reader.get_data()
     if scd_data is None or scd_data.CO2 is None:
         return None
@@ -200,7 +200,7 @@ def make_sgp_reader() -> "tuple[SGP40_Reader, Any]":
 
 
 async def voc_value_callback(sgp_reader: SGP40_Reader) -> "int | float | None":
-    # Verbatim mirror of improved-quality/sensortask-wozi.py's own voc_value_callback() body.
+    # Verbatim mirror of src/sensortask_wozi.py's own voc_value_callback() body.
     sgp_data = await sgp_reader.get_data()
     if sgp_data is None or sgp_data.VOC is None:
         return None

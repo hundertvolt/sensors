@@ -388,9 +388,9 @@ such driver exists yet — flagged here rather than left to surprise whoever add
 
 ## Code quality tooling
 
-`digital_twin/` is in `pyproject.toml`'s ruff/mypy scope, same as `src/`/`tests/` (not
-`improved-quality/`'s tracked-debt exemption - this scope is expected to stay fully clean).
-`scripts/lint.sh` covers it directly (`ruff check improved-quality src tests digital_twin`).
+`digital_twin/` is in `pyproject.toml`'s ruff/mypy scope, same as `src/`/`tests/` - all three are
+expected to stay fully clean, with no tracked-debt exemption anywhere in scope.
+`scripts/lint.sh` covers it directly (`ruff check src tests digital_twin`).
 `scripts/typecheck.sh` runs it as a **second, separate** mypy invocation
 (`digital_twin/typecheck.ini`, always run regardless of `"$@"`) rather than folding it into the
 main `[tool.mypy]` pass - mypy resolves each bare `machine`/`network`/`neopixel` module name to

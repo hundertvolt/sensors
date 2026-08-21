@@ -241,7 +241,13 @@ class SCD30_Reader(SensorReader):
         for key, value in data.items():
             if key == "ContMeas":
                 if isinstance(value, bool):
-                    results[key] = "Valid" if await self.stop_continuous_measurement(value) else "Failed"
+                    # stop_continuous_measurement(True) is a legitimate, already-tested pure no-op
+                    # (see test_reader_stop_continuous_measurement_true_is_a_pure_noop) whose own
+                    # contract returns False for it, meaning "nothing to do", not "failed" - only a
+                    # real stop attempt (value=False) can genuinely fail (a bus fault). Normalize
+                    # here before the generic "Valid"/"Failed" mapping below ever sees it.
+                    applied = await self.stop_continuous_measurement(value)
+                    results[key] = "Valid" if (applied or value) else "Failed"
                 else:
                     results[key] = "Invalid"
                 continue

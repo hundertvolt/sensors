@@ -41,9 +41,11 @@ _TASK_FAIL_MAX = const(300)  # ...ratio important for triggering reset (multiple
 _NAME = const("SYSTEM")
 
 # General, module-independent system-settings schema (config_SYSTEM.cfg, via _NAME above) - the
-# real, connected successor to the old improved-quality/sensortask-wozi.py "config_SYSTEM.cfg"
-# schema that migration removed as a disconnected, never-read duplicate (see that file's own
-# api_helpers.py-migration comment). DebugLevel is the first field; owner-confirmed intent is to
+# real, connected successor to the old, now-deleted improved-quality/sensortask-wozi.py
+# "config_SYSTEM.cfg" schema, which was a disconnected, never-read duplicate: its setSGP/setBMP
+# handlers wrote into it, but neither driver's own logic ever read from it, so a REST client
+# setting those fields never actually changed real sensor behavior (see SPECIFICATION.md Part
+# C.5.3). DebugLevel is the first field; owner-confirmed intent is to
 # grow this with more device-wide settings over time (e.g. timing/timezone info currently on
 # AsyNtpClient, future rsyslog settings) - adding a field here is exactly the same one-line
 # _VAL_*-tuple-concatenation pattern every other ConfigManager-backed module already uses (see

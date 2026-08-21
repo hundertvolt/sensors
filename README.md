@@ -36,7 +36,7 @@ uv run toolchain/setup_toolchain.py test          # offline re-verify an existin
 
 ## Code quality tooling
 
-Ruff and mypy checks, scoped to `improved-quality/`, `src/`, `tests/`, and `digital_twin/` (the
+Ruff and mypy checks, scoped to `src/`, `tests/`, and `digital_twin/` (the
 pre-refactor codebase — `python/`, `modules/` — isn't covered yet), plus unit tests for `src/`, can
 be run manually. Needs Python 3.11+ (`tomllib`, stdlib only since 3.11 — `uv sync` enforces this
 automatically via `pyproject.toml`'s `requires-python`, so this only matters if `uv` has to fall

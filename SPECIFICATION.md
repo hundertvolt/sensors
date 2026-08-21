@@ -50,8 +50,8 @@ checkable conventions its own failure-mode audit found in Parts C.7/C.9.
   building this project's own firmware.
 - **Part C — Sensor Driver Architecture Specification**: the shared contract a new sensor driver
   follows (layering, naming, config schema, error handling, concurrency, timers, typing).
-- **Part D — `src/` Production-Quality Checklist**: what "done" means for any file moving from
-  `improved-quality/` into `src/`.
+- **Part D — `src/` Production-Quality Checklist**: what "done" means for any file added to
+  `src/`.
 - **Part E — Testing & Coverage**: why/how unit tests run under a real MicroPython interpreter,
   the hardware-mocking boundary, and the coverage pipeline.
 - **Part F — Platform Target & MicroPython Runtime Facts**: RP2040/MicroPython-1.26 specifics,
@@ -78,12 +78,12 @@ python/
   CommonDrivers/          shared across all device configs, always copied into the build
   IndividualDrivers/      only copied in if a given device config needs them
   Manifest/manifest.py    MicroPython freeze manifest used by the build
-improved-quality/        WIP refactor target (out of scope for day-to-day work; see CLAUDE.md)
-src/                     Files moved out of improved-quality/ once fully reviewed/tested - see
-                          Part D below for the promotion checklist. Includes the assembled refactor
-                          prototype itself, src/sensortask_wozi.py (see A.7 below) and
+src/                     Fully-reviewed/tested refactor code, freely editable - see Part D below
+                          for the review checklist any file here must pass. Includes the assembled
+                          refactor prototype itself, src/sensortask_wozi.py (see A.7 below) and
                           src/asy_webserver_service.py (the registration-based REST/API service,
-                          see A.8 below)
+                          see A.8 below). `improved-quality/`, the refactor's former WIP staging
+                          directory, has been fully retired and deleted - see CLAUDE.md
 ext/                     Vendored third-party code, hands-off (see CLAUDE.md's vendoring policy)
   microdot.py               Microdot v2.6.2, unmodified - see A.5 below
   freezefs/                 freezefs 2.4, unmodified - gzip+freeze pipeline for html_stub/, see
@@ -143,9 +143,10 @@ scripts/                 lint.sh / typecheck.sh / test.sh - manual code-quality 
   `init_json_from_cfg` → `update_valid_json` → `set_sensor_value` → `cmd_post_check` (validate →
   load current → per-field validate → apply to sensor → persist + post-hooks).
   `src/api_response.py` is its generalized replacement, and is now wired into every real REST
-  handler in `improved-quality/sensortask-wozi.py` (`improved-quality/api_helpers.py`'s own copy of
-  the old pipeline has been removed entirely, once that file was fully migrated off it — see
-  BACKLOG.md): `base_classes.py`'s `_set_dict_cfg()` gives every `SensorReaderConfig` a generic,
+  handler in `src/asy_webserver_service.py` (the old `improved-quality/api_helpers.py`'s own copy
+  of the legacy pipeline, and later `improved-quality/sensortask-wozi.py` itself, were both
+  removed entirely once fully migrated off it and superseded — see CLAUDE.md's "Hard rules"):
+  `base_classes.py`'s `_set_dict_cfg()` gives every `SensorReaderConfig` a generic,
   schema-driven setter mirroring `get_dict_cfg()`'s existing generic getter, and
   `api_response.py`'s `make_response()`/`parse_cmd_request()`/`handle_set_cmd()` replace the old
   per-endpoint validate→apply→persist glue with one small, open-catalog response envelope — see
@@ -175,12 +176,12 @@ scripts/                 lint.sh / typecheck.sh / test.sh - manual code-quality 
 
 ## A.3 Refactor status
 
-The `improved-quality/` refactor (see repository layout above) isn't just a cleanup — it targets
+This refactor (see repository layout above) isn't just a cleanup — it targets
 the most recent *stable* MicroPython/pico-sdk/picotool/Microdot releases, expands error handling
 and bus/sensor fault recovery considerably beyond what's described above, and adds unit tests,
 mypy, ruff, and a CI pipeline (including a real firmware build, eventually — the current pipeline
 covers lint/type-check/unit-tests only) that don't exist for the current codebase at all. Files
-move to `src/` once fully reviewed and tested against that bar — see `src/` and `tests/` in the
+land in `src/` once fully reviewed and tested against that bar — see `src/` and `tests/` in the
 repository layout above, and Part D/Part E below. See BACKLOG.md's "Refactor targets not yet done"
 for what's still open.
 
@@ -206,7 +207,7 @@ The condensed version is A.2 above. Key modules if you need to go deeper (folded
 - `python/CommonDrivers/async_connect.py` — WiFi STA + AP/hotspot fallback + NTP client with
   manual CET/CEST DST math (`cettime()`); exposes `get_long_block_lock()`, a shared lock
   serializing `socket.getaddrinfo()` against Neopixel animation. This is the deployed, pre-refactor
-  version only — `improved-quality/`/`src/` split this into `asy_wifi_service.py`/
+  version only — `src/` split this into `asy_wifi_service.py`/
   `asy_ntp_client.py`/`asy_dns_client.py` and retired the lock entirely (see F.2 below and
   BACKLOG.md); don't assume the two describe the same current state.
 - `python/CommonDrivers/async_manager.py` — `ConfigManager`, `DataManager`,
@@ -251,7 +252,7 @@ The condensed version is A.2 above. Key modules if you need to go deeper (folded
   never inside a branch, a loop with variable order, or anything a task restart could re-enter.
   Verified true today: task-level restarts (`system_service.py`'s `start_and_check_tasks()`) only
   re-invoke an already-captured `task_starters[n]` callable on the *existing* object, never re-run
-  `__init__`; a full reboot replays `improved-quality/sensortask-wozi.py`'s entire module-level
+  `__init__`; a full reboot replays `src/sensortask_wozi.py`'s entire `build_system()`
   construction sequence from scratch, and every current FRAM-chunk-owning construction (`sysfunct`,
   `sgp_reader`'s VOC-backup chunk, `pixel`, `notify_service`) is an unconditional top-level
   statement, confirmed by direct reading, not assumption. Before adding any *new* FRAM-backed class
@@ -262,7 +263,7 @@ The condensed version is A.2 above. Key modules if you need to go deeper (folded
   (backing both `reboot_system()`/`reboot_bootloader()`) calls `self.storage_pause(True)` before
   arming the delayed reset timer, and before the `_force_watchdog_starve` fallback too — confirmed
   via grep that `machine.reset()`/`machine.bootloader()`/`WDT()` have no other call site anywhere
-  in `src/` or `improved-quality/`. Whether the actual wait margin is sufficient for FRAM's own
+  in `src/`. Whether the actual wait margin is sufficient for FRAM's own
   in-flight transaction time, and keeping this invariant preserved as more reset call sites are
   added, are still open — see BACKLOG.md's "Every deliberate system reset..." item.
 - **SCD30's `AmbPres` (ambient-pressure compensation) is stored in the sensor's own internal
@@ -291,9 +292,9 @@ The condensed version is A.2 above. Key modules if you need to go deeper (folded
   it's how Sensirion's own reference algorithm is designed to work, and `asy_sgp40_driver.py`
   already treats `VOC` as an opaque index throughout (see F.4 below for why this file's internals
   stay a literal, undisturbed port).
-- **`improved-quality/neopixel_signal.py` (LED hardware control + hardcoded CO2/VOC/Humidity
-  threshold monitoring combined in one file) is promoted and split into two `src/` files** - the old
-  file is deleted, `improved-quality/sensortask-wozi.py` wires the two replacements directly.
+- **The former `improved-quality/neopixel_signal.py` (LED hardware control + hardcoded CO2/VOC/Humidity
+  threshold monitoring combined in one file) was promoted and split into two `src/` files** - the old
+  file is deleted, `src/sensortask_wozi.py` wires the two replacements directly.
   - `src/asy_neopixel_driver.py`'s `NeopixelDriver` — pure LED hardware service: overlay
     switch/toggle, the dimmed ramp-up/ramp-down signal, and the internal/external
     (`request_signal()`/`led_signal()`) arbitration for the one shared physical pixel, unchanged
@@ -325,7 +326,7 @@ The condensed version is A.2 above. Key modules if you need to go deeper (folded
     updated to match yet.
 - In the deployed, pre-refactor codebase (`modules/sensortask-*.py`), the task supervisor is a
   hand-rolled loop inside each file's `main()`, not a shared module — duplicated per device file.
-  `improved-quality/sensortask-wozi.py` no longer matches this: its `main()` now calls
+  `src/sensortask_wozi.py` no longer matches this: its `main()` now calls
   `system_service.py`'s real `start_and_check_tasks()`/`start_timers()` instead of reimplementing
   the loop. Don't assume the two describe the same current state.
 - **Functional behaviors confirmed intentional by the project owner, not obvious from the code
@@ -389,11 +390,15 @@ versus what our own REST layer still has to add.
   (from `abort()`) resolves by **numeric status code** through `self.error_handlers`; any other
   exception resolves by **exact exception class**, then by walking the class's MRO — so a single
   `@app.errorhandler(Exception)` registration is reachable as a catch-all fallback from any
-  exception subtype, without needing one registration per exception type. With no handler
-  registered at all (today's state, in both `improved-quality/sensortask-wozi.py` and the deployed
-  `python/CommonDrivers/microdot.py` app — confirmed, neither registers any `errorhandler`),
-  Microdot's own bare default response is used (`'Internal server error', 500`, or `'Not found',
-  404`, etc.) — safe, but not one of our own reply shapes.
+  exception subtype, without needing one registration per exception type. The deployed,
+  pre-refactor `python/CommonDrivers/microdot.py` app still registers no `errorhandler` at all
+  (confirmed) — Microdot's own bare default response is used there (`'Internal server error',
+  500`, or `'Not found', 404`, etc.), safe but not one of our own reply shapes. `src/`'s own
+  `asy_webserver_service.py` now does register handlers - see A.8 below and that module's own
+  `_ERROR_SHAPES`/`__init__`: shaped-JSON handlers for 400/404/405/413/500, plus a catch-all
+  `@app.errorhandler(Exception)` whose sole job is persisting the exception into `pr.err_s()`/FRAM
+  history (the matching status-code handler above already shapes the actual reply either way, per
+  `ext/microdot.py`'s own `error_response()` fallthrough - see that module's own comments).
 - **The one place this blanket catch does *not* cover: exceptions raised while writing the response
   itself.** `Response.write()` (and the `handle_request()` code that calls it) only catches
   `OSError`, and only mutes a short allow-list of expected socket errors (broken pipe, connection
@@ -421,8 +426,8 @@ versus what our own REST layer still has to add.
   needed — just worth knowing the guard already exists rather than re-adding one at our own layer.
 - The Microdot server task is already wired into `system_service.py`'s generic
   `start_and_check_tasks()` supervisor exactly like every other sensor task (see
-  `improved-quality/sensortask-wozi.py`'s `main()`: `start_asy_webserver()` is one of the plain
-  `task_starters`). A Microdot task that terminates — by returning or by an exception escaping it —
+  `src/sensortask_wozi.py`'s `_collect_task_starters()`: `webserver.get_task_starters()` is folded
+  into the same `task_starters` list as every other module's). A Microdot task that terminates — by returning or by an exception escaping it —
   is detected the same way any other dead task is (`task.done()`) and restarted automatically, with
   the same decaying failure counter and eventual full-reboot fallback as any other task.
   **"Restart Microdot if it crashes" is therefore already implemented generically — it does not need
@@ -1303,7 +1308,7 @@ C.1-C.2 phrase the I2C convention that way. What genuinely differs from the I2C 
 ### C.3.2 UART variant — orphan module, harmonized late, precedent now settled
 
 **`asy_uart_driver.py`'s `UART(Lockable)` is a real, promoted, tested module with zero live callers
-anywhere in `src/`/`improved-quality/` today** (see BACKLOG.md). Three real architectural choices
+anywhere in `src/` today** (see BACKLOG.md). Three real architectural choices
 are resolved here as accepted, documented precedent — none were bugs, and none needed a code
 change:
 
@@ -1525,11 +1530,14 @@ methods rather than bunched into one — `setup()`'s `except (MemoryError, OSErr
 `keys` argument), and `write_config()`'s own `except (MemoryError, OSError, ValueError,
 AttributeError)` (an `AttributeError` from calling `.items()` on a non-dict `data` argument — the
 one of the three that's actually inside `write_config()`; it has no `TypeError` catch of its own).
-All three are currently dead weight — nothing in `src/`/`improved-quality/` calls any of them with
-malformed input today, since every call site is type-checked at the mypy boundary. Kept
-deliberately anyway: once the Microdot REST layer feeds real, untrusted request data into these
-paths, the catches stop being defensive-only and become load-bearing. Don't remove them as
-"unreachable dead code" — they're pre-positioned for wiring that hasn't landed yet (see
+All three are pure defense-in-depth, confirmed by direct re-investigation once the Microdot REST
+layer actually landed (not just anticipated) — `asy_webserver_service.py`'s own `_body_as_dict()`
+and `_put_sensors()`'s per-sensor `isinstance(fields, dict)` check already guarantee only
+dict-shaped data ever reaches `write_config()`, and `get_dict()`'s `keys` always comes from a
+schema (`schema_names()`), never request data, so the REST layer's own validation fully absorbs
+the risk before it gets this far. Don't remove them as "unreachable dead code" regardless — they're
+still real protection against a future caller that skips that validation, and are already covered
+by direct unit tests (`tests/test_config_manager.py`) independent of caller discipline (see
 BACKLOG.md).
 
 `ConfigManager` also exposes four typed accessor methods — `get_int_values()`/`get_float_values()`/
@@ -1641,9 +1649,13 @@ includes it.
 directly as the push callback's success signal: `_push_reset_voc` reports success unconditionally
 once the type check passes. **Any command-only/repeatable-trigger field whose setter has its own
 "no-op vs. applied" contract, distinct from "push succeeded/failed", needs the same normalization**
-in its push-callback wrapper — `improved-quality/sensortask-wozi.py`'s `_scd_apply_field`/SCD30's
-`stop_continuous_measurement()` is the other live instance (inverted: `True` input is the no-op
-there).
+in its push-callback wrapper — `src/asy_scd30_driver.py`'s own `_set_dict_cfg()` ContMeas branch/
+SCD30's `stop_continuous_measurement()` is the other live instance (inverted: `True` input is the
+no-op there). This exact normalization was dropped when `_scd_apply_field()`'s old
+`improved-quality/sensortask-wozi.py` implementation was superseded by `_set_dict_cfg()`'s own
+ContMeas dispatch — found and fixed directly in this same pass (a real client's `ContMeas: true`
+was reporting `"Failed"` for a pure no-op; see `tests/test_asy_scd30_driver.py`'s
+`test_set_dict_cfg_reports_contmeas_true_as_valid_not_failed`), not a hypothetical risk.
 
 #### C.5.2.2 Failed-push recovery chain (replaces legacy's `set_sensor_value` fallback)
 
@@ -1683,9 +1695,9 @@ special-alone exclusion, and both the snapshot-read and correction-write failure
 
 ### C.5.3 Response envelope (`api_response.py`)
 
-Replaces `improved-quality/api_helpers.py`'s ad hoc `cmd_post_check`/`special_err`/
-`generic_error_return` pipeline (left as read-only WIP reference, not edited or deleted). Same
-wire shape as before (`{"res": "OK"|"ERR", "code": int, "descr": str, "result": ...}`):
+Replaces the old, now-deleted `improved-quality/api_helpers.py`'s ad hoc `cmd_post_check`/
+`special_err`/`generic_error_return` pipeline. Same wire shape as before
+(`{"res": "OK"|"ERR", "code": int, "descr": str, "result": ...}`):
 
 - `make_response(code, descr=None, result=None)` — a small standard code catalog (`0`–`5`, `100`)
   with per-call text override, plus support for an entirely custom `(code, descr)` pair outside
@@ -1711,10 +1723,11 @@ wire shape as before (`{"res": "OK"|"ERR", "code": int, "descr": str, "result": 
   `ext/microdot.py` (v2.6.2) end-to-end proof of this whole pipeline, dispatched through
   Microdot's own real `dispatch_request()`.
 
-Every REST endpoint handler in `improved-quality/sensortask-wozi.py` now calls these directly
-(under a scoped, project-owner-authorized exception to CLAUDE.md's hard rule on editing
-`improved-quality/` source, since that file was `improved-quality/api_helpers.py`'s last remaining
-importer). `setSGP`/`setBMP` route directly through `sgp_reader.get_cfg_schema()`/
+Every REST endpoint handler in `src/asy_webserver_service.py` now calls these directly (the old
+`improved-quality/sensortask-wozi.py` was first migrated onto this same pipeline, under a scoped,
+project-owner-authorized exception to CLAUDE.md's hard rule on editing `improved-quality/` source,
+before being superseded outright and deleted once `asy_webserver_service.py` replaced it - see
+CLAUDE.md's "Hard rules"). `setSGP`/`setBMP` route directly through `sgp_reader.get_cfg_schema()`/
 `bmp_reader.get_cfg_schema()` now, not a separate `config_SYSTEM.cfg` — the legacy handlers wrote
 into that parallel file, which neither driver's own logic ever read, so a REST client setting these
 fields never actually reached the sensor; routing through the real schema fixed that disconnect.
@@ -2161,8 +2174,8 @@ calling an inherited async logging method) but starts out attempted inside a syn
 
 # Part D — `src/` Production-Quality Checklist
 
-Files land in `src/` once they've cleared the full **production-quality** bar below — moved out of
-`improved-quality/` (WIP refactor target, see CLAUDE.md) once they have. This checklist keeps
+Files land in `src/` once they've cleared the full **production-quality** bar below (see CLAUDE.md's
+"Hard rules"). This checklist keeps
 getting refined against whatever file is going through it next; apply the current version in full
 to every file making the move, not just whichever ones already have. "Production quality" here
 means concretely: correct against real documentation, never raises
@@ -2341,11 +2354,8 @@ is not a machine with memory or cycles to spare:
       `run()` helper needed this guard to use `Coroutine`/`TypeVar` for its generic return type).
       Plain `X | None` annotations don't need this — the bullet above already established that
       annotation expressions are never evaluated at runtime, so names inside them don't need to
-      resolve either — but a real runtime call like `TypeVar("T")` does. This is a live, present
-      gap across much of `improved-quality/` too (most files there do an unconditional `from
-      typing import ...`, untested against the real interpreter) — not something to fix
-      opportunistically in unrelated files during an unrelated review, but the pattern every new
-      `src/`/test file should use going forward.
+      resolve either — but a real runtime call like `TypeVar("T")` does. This is the pattern every
+      new `src/`/test file should use going forward.
 - [ ] **`mpy-cross` does not dead-code-eliminate `if TYPE_CHECKING:` blocks the way it does an
       `if micropython.const(0):` branch** — confirmed empirically by compiling real `src/`/`ext/`
       files with this repo's own `mpy-cross`: the guarded imports/`Protocol` classes/type aliases
@@ -2402,10 +2412,9 @@ is not a machine with memory or cycles to spare:
 - [ ] Look specifically for the old `u`-prefixed module names (`uasyncio`, `ustruct`, `ujson`,
       `ucollections`, ...) — MicroPython consolidated these to their plain names years ago; the
       `u`-prefixed forms still work as aliases today but are the clearest tell that a file predates
-      that consolidation. (`crc_checks.py` and `improved-quality/sensortask-wozi.py` already use
-      the modern `asyncio`/`struct` names — check any other `improved-quality/`/legacy file going
-      through this review for the old `u`-prefixed pattern, don't assume it's already been swept
-      everywhere.)
+      that consolidation. (`crc_checks.py` already uses the modern `asyncio`/`struct` names — check
+      any legacy (`python/`, `modules/`) file going through this review for the old `u`-prefixed
+      pattern, don't assume it's already been swept everywhere.)
 - [ ] Same "without changing functionality" hard constraint as D.8 applies when a
       modernization is purely a rewrite for currentness — the existing test suite must still pass
       unchanged. If a newer API's *semantics* genuinely differ from what the old pattern did (not
@@ -2546,7 +2555,7 @@ planned, not "should be fine."
 
 # Part E — Testing & Coverage
 
-Unit tests for `src/` (fully-reviewed code moved out of `improved-quality/` — see CLAUDE.md). Total
+Unit tests for `src/` (fully-reviewed code — see CLAUDE.md). Total
 test/file count drifts every time a test is added, so it isn't tracked as a fixed number here — get
 the current count with `ls tests/test_*.py | wc -l` (files) and `grep -c '^def test_'
 tests/test_*.py` (tests).
@@ -2779,7 +2788,7 @@ this Part — see this document's front matter for that tradeoff.
     doc-verification pass) — don't assume "current docs" and "1.26 behavior" are the same thing.
     When in doubt about whether an API changed between 1.26 and latest, say so explicitly rather
     than silently documenting latest-only behavior as if it applies to deployed devices.
-  - **1.26 is the pin for the current, deployed codebase only.** The `improved-quality/` refactor
+  - **1.26 is the pin for the current, deployed codebase only.** This refactor
     is explicitly meant to move the version target forward to whatever is the most recent *stable*
     release at that time (MicroPython, pico-sdk, picotool, Microdot) and to actively use relevant
     improvements/new features those releases introduced — not just reproduce 1.26-era behavior
@@ -2937,8 +2946,8 @@ re-probes and re-verifies via a serial-number read + self-test round-trip (no de
 opcode exists for this chip). This **does** fully recover a clean unplug/replug (device
 power-cycles itself, comes back, responds to the next probe+reset) or a device stuck in a bad
 internal state - genuine device-level faults. What it does **not** do is reconstruct the
-underlying `machine.I2C` peripheral object itself (constructed once, at module level, in
-`improved-quality/sensortask-wozi.py`) - only a full reboot replays that construction (see A.4's
+underlying `machine.I2C` peripheral object itself (constructed once, inside `src/sensortask_wozi.py`'s
+`build_system()`) - only a full reboot replays that construction (see A.4's
 "FRAM chunk determinism rule" for the same "full reboot replays module-level construction from
 scratch" fact used there). For a **bus-level** fault (SDA/SCL physically wedged mid-transaction,
 not just a device gone quiet) a respawn's own probe call can itself hang/repeatedly fail the same
