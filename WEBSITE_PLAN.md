@@ -217,7 +217,7 @@ branch, 3 off 2's, etc.) follows the same rule against its immediate parent sess
 against `main` or against this base branch directly, keeping the sessions stacked in execution
 order.
 
-1. **Folder structure + CI. Done** — `claude/website-s1-folder-ci`, see §5/§6 for what landed.
+1. **Folder structure + CI. Done** — `claude/website-s1-folder-ci` (PR #43), see §5/§6 for what landed.
    Created `html/`, `js/`, `tests_js/`, root `package.json`/tool configs
    (ESLint, TypeScript `checkJS`, Vitest+Playwright, html-validate, Stylelint), and the
    `changes`-gated web-CI tier in `ci.yml` (§6). Included trivial placeholder content (mirroring
