@@ -271,6 +271,52 @@ def test_put_round_trips_through_a_real_twin_backed_driver_over_real_http() -> N
     run_timed(scenario(), timeout_s=10.0)
 
 
+def test_put_pause_time_round_trips_and_counts_down_over_real_http() -> None:
+    # The special-case endpoint pairing this restores: PUT /notification (the settings/command
+    # endpoint) sets the override countdown, GET /status (the live/polling endpoint) reports its
+    # current value - PauseTime is deliberately excluded from GET /notification's flat settings (see
+    # tests/test_asy_webserver_service.py's own test_notification_get_is_flat_settings_only_no_live_fields),
+    # so it stays in the same polling/non-polling split every other live field already follows. This
+    # exercises the real auto_led_override() background task actually decrementing the value over
+    # real wall-clock time, not just the value being stored.
+    port = _next_test_port()
+
+    async def scenario() -> None:
+        await _boot(port)
+        assert sensortask_wozi.notify_service is not None
+        tasks = [starter() for starter in sensortask_wozi.notify_service.get_task_starters()]
+        tasks.append(await _start_webserver())
+        try:
+            res = await _http_client.fetch("127.0.0.1", port, "PUT", "/notification", {"PauseTime": 3})
+            assert res.status_code == 200
+            assert res.json()["result"] == {"PauseTime": "Valid"}
+
+            res = await _http_client.fetch("127.0.0.1", port, "GET", "/notification")
+            assert "PauseTime" not in res.json()  # live value, never a flat setting
+
+            res = await _http_client.fetch("127.0.0.1", port, "GET", "/status")
+            first = res.json()["notification"]["PauseTime"]
+            assert first > 0
+
+            last = first
+            reached_zero = False
+            for _ in range(20):  # bounded poll, well past the real ~1s-per-tick auto_led_override() loop
+                await asyncio.sleep(0.5)
+                res = await _http_client.fetch("127.0.0.1", port, "GET", "/status")
+                current = res.json()["notification"]["PauseTime"]
+                assert current <= last  # never increases - a real, monotonic countdown
+                last = current
+                if current == 0:
+                    reached_zero = True
+                    break
+            assert reached_zero, "PauseTime never reached 0 - the real auto_led_override() task isn't decrementing it"
+        finally:
+            for task in tasks:
+                await _cancel(task)
+
+    run_timed(scenario(), timeout_s=15.0)
+
+
 def test_sensors_put_round_trips_a_real_scd30_field_over_real_http() -> None:
     # Regression test from baseline verification: this whole file
     # never exercised PUT /sensors at all before (only PUT /notification, above) - the exact real,
