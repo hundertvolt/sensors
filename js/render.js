@@ -1,10 +1,6 @@
 /**
- * Section controller (WEBSITE_PLAN.md §12): owns everything that talks to the network or
- * validates/submits data - fetching, polling, collecting a group's input values into a PUT body,
- * and turning a PUT response into an apply-status outcome. It builds no DOM itself; every element
- * comes from `js/templates.js`, located afterwards only via the `data-*` attributes/CSS classes
- * documented in WEBSITE_PLAN.md §12's contract table. A purely visual/layout redesign never
- * touches this file.
+ * Section controller - the mechanics half of §12's visual/mechanics split. Builds no DOM
+ * itself; see WEBSITE_PLAN.md §12 for the full layer/contract definition this file follows.
  */
 
 import { pollManager, startPolling } from "./poll-manager.js";
@@ -22,7 +18,15 @@ import { buildErrcountGroup, buildFieldGroupCard, buildSectionShell, formatField
  */
 function readInputValue(rawInputValue, field) {
     if (field.kind === "number") {
-        return rawInputValue === "" ? undefined : Number(rawInputValue);
+        if (rawInputValue === "") {
+            return undefined;
+        }
+        const num = Number(rawInputValue);
+        // Non-numeric text must not silently become 0: JSON.stringify(NaN) is "null", and a
+        // naive Number(null) === 0 server-side would make garbage input look like a deliberate,
+        // possibly in-range "0" instead of failing validation. Send the raw string through
+        // instead, so the backend's own Number(value) recreates the same NaN and rejects it.
+        return Number.isFinite(num) ? num : rawInputValue;
     }
     if (field.kind === "enum") {
         // A <select>'s own .value is always a string (DOM behavior), even when the option's real
@@ -39,6 +43,7 @@ function readInputValue(rawInputValue, field) {
  * keyed off the same `data-field-key`/`data-sub-field-key` hooks `js/templates.js` sets.
  * @param {HTMLElement} card
  * @param {FieldGroup} group
+ * @returns {Record<string, unknown>}
  */
 function collectGroupBody(card, group) {
     /** @type {Record<string, unknown>} */
@@ -65,7 +70,11 @@ function collectGroupBody(card, group) {
             for (const input of grid.querySelectorAll("input")) {
                 const key = input.dataset.subFieldKey;
                 if (key !== undefined && input.value !== "") {
-                    sub[key] = Number(input.value);
+                    // Same NaN -> null -> 0 gap as readInputValue() above; every real subField
+                    // today is numeric (e.g. lightCmdLED's r/g/b/t), so this doesn't yet need
+                    // readInputValue()'s own per-kind dispatch.
+                    const num = Number(input.value);
+                    sub[key] = Number.isFinite(num) ? num : input.value;
                     anyFilled = true;
                 }
             }
@@ -86,11 +95,7 @@ function collectGroupBody(card, group) {
     return body;
 }
 
-/**
- * Worst-first ordering used to pick one status for the whole card from several field results.
- * Real problems (Invalid/Failed) always win; between the two non-problem outcomes, a genuine
- * Valid change outranks an Unchanged no-op, so e.g. one changed field + one resubmitted-as-is
- * field reads as "valid" (something happened), not "unchanged" (nothing did).
+/** Worst-first severity order for one card's overall status; see WEBSITE_PLAN.md §12.
  * @type {Record<string, number>}
  */
 const STATUS_SEVERITY = { Invalid: 0, Failed: 1, Valid: 2, Unchanged: 3 };
@@ -183,11 +188,11 @@ export function renderSection(defs, section, mainEl) {
     const { grid, errorBanner } = buildSectionShell(section, mainEl);
 
     /** @param {Record<string, unknown>} data */
-    const paint = (data) => {
+    function paint(data) {
         for (const group of section.groups) {
             if ("kind" in group && group.kind === "errcount") {
                 const errcountGroup = /** @type {import("./definitions.js").ErrcountGroup} */ (group);
-                const errcount = /** @type {any} */ (data).errcount ?? {};
+                const errcount = /** @type {Record<string, {counter: number, history?: {num: number, type: "N"|"E"|"W"}[]}>} */ (data.errcount ?? {});
                 const existing = grid.querySelector(`[data-group-key="${group.key}"]`);
                 const rendered = buildErrcountGroup(errcountGroup, errcount);
                 rendered.dataset.groupKey = group.key;
@@ -223,17 +228,14 @@ export function renderSection(defs, section, mainEl) {
                 grid.appendChild(rendered);
             }
         }
-    };
+    }
 
     /**
-     * A failed GET (non-ok status, empty body, timeout, or a dropped connection - anything
-     * pollManager.request() can throw or report) never clears what's already on screen; it only
-     * surfaces `errorBanner` so a visitor sees the data may be stale, and self-heals on the next
-     * successful fetch. This is the one place that catches every fetch failure for this section -
-     * both the live-polling branch below and the single settings/none fetch that follows it rely
-     * on fetchOnce() never rejecting.
+     * Self-healing error visibility (WEBSITE_PLAN.md §10 session 3): a failed GET surfaces
+     * `errorBanner` without clearing stale data, and self-heals on the next success. Never
+     * rejects - the one place that catches every fetch failure for this section.
      */
-    const fetchOnce = async () => {
+    async function fetchOnce() {
         try {
             const response = await pollManager.request(section.rest.get);
             if (!response.ok) {
@@ -252,7 +254,8 @@ export function renderSection(defs, section, mainEl) {
                 if (!statusResponse.ok) {
                     throw new Error(`GET /status failed: HTTP ${statusResponse.status}`);
                 }
-                const statusNotification = /** @type {any} */ (statusResponse.body)?.notification ?? {};
+                const statusBody = /** @type {Record<string, unknown> | null} */ (statusResponse.body);
+                const statusNotification = /** @type {Record<string, unknown>} */ (statusBody?.notification ?? {});
                 data.PauseTime = statusNotification.PauseTime;
             }
             errorBanner.classList.add("hidden");
@@ -261,7 +264,7 @@ export function renderSection(defs, section, mainEl) {
             errorBanner.textContent = `Could not refresh ${section.label}: ${String(error)}`;
             errorBanner.classList.remove("hidden");
         }
-    };
+    }
 
     if (section.pollGroup === "live") {
         const stop = startPolling(fetchOnce, section.pollIntervalMs ?? defs.defaultPollIntervalMs);

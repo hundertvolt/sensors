@@ -1,17 +1,10 @@
 /**
- * Single-flight request coordinator (WEBSITE_PLAN.md §4 "Poll coordination").
- * One shared instance is the sole source of truth for "is a request in flight" - the
- * measurements/status group and the settings/config group must never be polled concurrently
- * (the device has very few available sockets), so every fetch in the app - live polls and
- * config-form submits alike - goes through here rather than calling fetch() directly.
+ * Single-flight request coordinator - every fetch in the app goes through the one shared
+ * instance below rather than calling fetch() directly. See WEBSITE_PLAN.md §4 "Poll
+ * coordination" for why, and §10 session 3 for the per-request timeout's own rationale.
  */
 
-/**
- * Default per-request timeout (WEBSITE_PLAN.md §4 "Poll coordination"): the single-flight queue
- * must never wait forever on one hung connection - the device has very few available sockets, so
- * a stuck request has to eventually free the queue for the next one instead of wedging the whole
- * app's polling permanently.
- */
+/** Default per-request timeout; see WEBSITE_PLAN.md §10 session 3. */
 export const DEFAULT_TIMEOUT_MS = 15000;
 
 class PollManager {
@@ -21,12 +14,14 @@ class PollManager {
     /** @type {number} */
     #activeCount = 0;
 
+    /** @returns {boolean} true while a request is in flight. */
+    get isBusy() {
+        return this.#activeCount > 0;
+    }
+
     /**
-     * Run one HTTP request, queued behind any request already in flight. The queue only advances
-     * once the response body has been fully read - the closest a browser fetch() lets us get to
-     * "the connection has fully closed" before letting the next request start. A request that
-     * hangs past `timeoutMs` aborts (freeing the underlying connection) and rejects, so the queue
-     * is never stuck waiting on a connection that will never resolve on its own.
+     * Run one HTTP request, queued behind any request already in flight. See WEBSITE_PLAN.md §4
+     * "Poll coordination" for the timeout/queue-advance rationale.
      * @param {string} url
      * @param {RequestInit} [init]
      * @param {number} [timeoutMs]
@@ -62,11 +57,6 @@ class PollManager {
         );
         return scheduled;
     }
-
-    /** @returns {boolean} true while a request is in flight. */
-    get isBusy() {
-        return this.#activeCount > 0;
-    }
 }
 
 export const pollManager = new PollManager();
@@ -85,6 +75,9 @@ export function startPolling(pollOnce, intervalMs) {
 
     const tick = async () => {
         if (stopped) {
+            // Defensive only: today tick() is only ever invoked by void tick() below (stopped
+            // starts false) or by the setTimeout scheduled just below, itself gated on !stopped -
+            // kept in case a future caller invokes tick() directly.
             return;
         }
         try {

@@ -17,6 +17,11 @@ const launchOptions = existsSync(sandboxChromium) ? { executablePath: sandboxChr
 export default defineConfig({
     test: {
         include: ["tests_js/**/*.test.js"],
+        // Explicit backstop, not a fix for any known hang - mirrors the Python side's standing
+        // "hanging tests are never allowed" practice (CLAUDE.md's "Code quality tooling"). Generous
+        // enough to cover this suite's own longest explicit wait (5000ms, render.test.js) with
+        // margin for CI/real-browser overhead.
+        testTimeout: 20000,
         browser: {
             enabled: true,
             provider: playwright({ launchOptions }),

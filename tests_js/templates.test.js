@@ -112,6 +112,20 @@ describe("buildField", () => {
         expect(hintText(el)).toContain("0 = Compensation off / use Altitude");
     });
 
+    it("includes field.description in the hint text, alongside a range hint", () => {
+        const field = {
+            key: "MeasInt",
+            label: "Measurement Interval",
+            kind: /** @type {const} */ ("number"),
+            min: 2,
+            max: 1800,
+            description: "How often the sensor takes a new reading.",
+        };
+        const el = mount(buildField(field, 5, true));
+        expect(hintText(el)).toContain("Valid values: 2 to 1800");
+        expect(hintText(el)).toContain("How often the sensor takes a new reading.");
+    });
+
     it("renders an editable toggle that flips its own On/Off state with no network call", () => {
         const el = mount(buildField({ key: "SelfCal", label: "Self-Cal", kind: "toggle" }, true, true));
         const button = mustQuery(el, '[data-field-key="SelfCal"]');
@@ -154,6 +168,13 @@ describe("buildField", () => {
         const grid = mustQuery(el, '[data-field-key="lightCmdLED"]');
         expect(grid.querySelectorAll("input")).toHaveLength(2);
         expect(mustQuery(grid, '[data-sub-field-key="r"]')).not.toBeNull();
+    });
+
+    it("renders an editable composite field with no subFields as an empty, non-crashing grid", () => {
+        const field = { key: "lightCmdLED", label: "LED Flash", kind: /** @type {const} */ ("composite") };
+        const el = mount(buildField(field, undefined, true));
+        const grid = mustQuery(el, '[data-field-key="lightCmdLED"]');
+        expect(grid.querySelectorAll("input")).toHaveLength(0);
     });
 
     it("renders an editable number field pre-filled via a current-value caption, not the input's value", () => {
@@ -258,6 +279,15 @@ describe("buildErrcountGroup", () => {
         const list = mustQuery(/** @type {HTMLElement} */ (row.parentElement), ".history-list");
         expect(list.classList.contains("hidden")).toBe(false);
         expect(list.querySelectorAll(".history-entry")).toHaveLength(2);
+    });
+
+    it("treats a module absent from errcount entirely as a healthy, zero-count module", () => {
+        const group = { key: "errcount", label: "Errors", kind: /** @type {const} */ ("errcount"), modules: [{ key: "SGP40", label: "SGP40" }] };
+        const wrapper = buildErrcountGroup(group, {});
+        mustQuery(wrapper, ".action-button").click();
+        const row = mustQuery(wrapper, ".errcount-row");
+        expect(mustQuery(row, ".errcount-row-count").textContent).toBe("0");
+        expect(row.dataset.hasErrors).toBe("false");
     });
 
     it("shows a placeholder message for a module with no history", () => {

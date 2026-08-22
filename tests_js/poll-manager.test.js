@@ -17,7 +17,9 @@ describe("pollManager", () => {
         window.fetch = vi.fn(async () => {
             active += 1;
             concurrentPeak = Math.max(concurrentPeak, active);
-            await new Promise((resolve) => setTimeout(resolve, 20));
+            await new Promise((resolve) => {
+                setTimeout(resolve, 20);
+            });
             active -= 1;
             activeAt.push(Date.now());
             return new Response(JSON.stringify({ ok: true }), { status: 200 });
@@ -138,6 +140,28 @@ describe("startPolling", () => {
         await vi.advanceTimersByTimeAsync(1000);
         expect(callCount).toBe(2); // stopped - no further polls
 
+        vi.useRealTimers();
+    });
+
+    it("logs and keeps polling when pollOnce rejects, instead of stopping the loop", async () => {
+        vi.useFakeTimers();
+        const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+        let callCount = 0;
+
+        const stop = startPolling(async () => {
+            callCount += 1;
+            throw new Error("boom");
+        }, 10);
+
+        await vi.advanceTimersByTimeAsync(0);
+        expect(callCount).toBe(1);
+        expect(consoleError).toHaveBeenCalledWith("Poll failed:", expect.any(Error));
+
+        await vi.advanceTimersByTimeAsync(10);
+        expect(callCount).toBe(2); // one failed poll doesn't stop the loop
+
+        stop();
+        consoleError.mockRestore();
         vi.useRealTimers();
     });
 });

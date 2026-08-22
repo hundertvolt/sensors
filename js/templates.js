@@ -1,15 +1,6 @@
 /**
- * Presentation layer (WEBSITE_PLAN.md §12): every DOM element this app ever creates - its
- * structure, order, nesting, and CSS classes - is built here, and only here. This is the file (plus
- * `html/style.css`) a purely visual/layout redesign touches; it never fetches data, validates
- * input, or calls the REST API. The only interactivity here is self-contained and non-networked
- * (a toggle flipping its own On/Off label, an errcount tile expanding its own history list) -
- * anything that talks to the network or the poll-manager lives in a controller (`render.js`/
- * `nav.js`) instead, which locates the elements built here purely via the `data-*`
- * attributes/CSS classes documented in WEBSITE_PLAN.md §12's contract table, never by structural
- * position. Redesigning "what this looks like" or "what order things appear in" only ever means
- * editing this file and `html/style.css` - never `js/poll-manager.js`, `js/mock-server.js`,
- * `js/definitions.js`, or the business-logic half of `js/render.js`/`js/nav.js`.
+ * Presentation layer - the visual half of §12's visual/mechanics split. Every DOM element this
+ * app ever creates is built here, and only here; see WEBSITE_PLAN.md §12 for the full contract.
  */
 
 /** @typedef {import("./definitions.js").FieldDef} FieldDef */
@@ -69,10 +60,9 @@ function buildFieldDescription(field) {
 }
 
 /**
- * Builds one field's markup - label, its control (or a plain value span when not editable), and
- * its description/range hint. A toggle's own On/Off flip is wired here since it's purely
- * cosmetic (no network call, no validation); every other control is left inert - a controller
- * attaches the real (networked) behavior separately, keyed off this element's `data-field-key`.
+ * Builds one field's markup - label, control (or value span when not editable), description
+ * hint. A toggle's own cosmetic On/Off flip is wired here (§12); every other control is left
+ * inert for a controller to attach real behavior to, keyed off `data-field-key`.
  * @param {FieldDef} field
  * @param {unknown} currentValue
  * @param {boolean} editable
@@ -236,24 +226,9 @@ function worstErrcountType(entry) {
 }
 
 /**
- * Builds the Status page's error-count card: same `.card` shell every other field group uses
- * (heading + bordered/shadowed body - project owner, session 2 follow-up: the rollup/buttons were
- * floating loose on the page, unlike every other displayed value), starting fully collapsed to
- * just a rollup ("N modules with errors" / "M modules with warnings") plus two filter buttons
- * ("Show flagged"/"Show all") - a device can have 15+ registered modules, and showing every one of
- * them by default was too much vertical space for a page a visitor mostly just needs to glance at.
- * Choosing a filter is purely cosmetic (never touches the network), so it's wired here. Once a
- * module row is revealed by either filter, its history is shown immediately alongside it - no
- * further per-row click needed (project owner: a collapsed history on an already-revealed,
- * already-flagged module read as broken, not as a second layer of hiding).
- *
- * Each history entry is the raw errno (`num`) alone - the real backend has no per-entry timestamp
- * and never attaches a human meaning to an errno (WEBSITE_PLAN.md §12/§8). `type` ("N"=no error/
- * placeholder slot, "E"=error, "W"=warning) is by design never shown as text; it only selects
- * `num`'s color via `data-err-type` + `html/style.css`'s `.history-entry[data-err-type]` rules
- * (green/yellow/red) - the same "controller/template sets a semantic value, CSS alone decides what
- * it looks like" contract §12 already uses for `data-apply-status`. A row's own worst type (across
- * its history) drives the same color on its visible counter, and is what "flagged" filters by.
+ * Builds the Status page's error-count card: collapsed rollup + filter buttons, entries colored
+ * (never captioned) by their raw errno's type. See WEBSITE_PLAN.md §8's "Errcount rollup/collapse
+ * UX" and "Error-history entry shape" resolutions for the full rationale.
  * @param {ErrcountGroup} group
  * @param {Record<string, {counter: number, history?: {num: number, type: "N"|"E"|"W"}[]}>} errcount
  * @returns {HTMLElement}
@@ -360,10 +335,9 @@ export function buildErrcountGroup(group, errcount) {
 }
 
 /**
- * Builds a section's static shell (heading + description) directly into `mainEl`, plus an empty
- * group grid for a controller to populate and an inert fetch-error banner (same `.error-banner`
- * treatment as the app-level one in `html/index.html`, starting hidden) for a controller to show
- * when a GET against this section's data fails.
+ * Builds a section's static shell (heading + description) into `mainEl`, plus an empty group
+ * grid and an inert error banner for a controller to use. See WEBSITE_PLAN.md §12's "One
+ * deliberate exception" note for why this returns `{grid, errorBanner}` directly.
  * @param {Section} section
  * @param {HTMLElement} mainEl
  * @returns {{grid: HTMLElement, errorBanner: HTMLElement}}

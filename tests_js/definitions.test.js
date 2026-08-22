@@ -40,6 +40,14 @@ describe("validateDefinitions", () => {
         expect(problems.some((p) => p.includes("landingSection"))).toBe(true);
     });
 
+    it("rejects a section missing key or label", () => {
+        const missingKey = { ...MINIMAL_VALID, sections: [{ label: "X", rest: { get: "/x" }, pollGroup: "live", groups: [] }] };
+        expect(validateDefinitions(missingKey).some((p) => p.includes("sections[0].key"))).toBe(true);
+
+        const missingLabel = { ...MINIMAL_VALID, sections: [{ key: "x", rest: { get: "/x" }, pollGroup: "live", groups: [] }] };
+        expect(validateDefinitions(missingLabel).some((p) => p.includes("sections[0].label"))).toBe(true);
+    });
+
     it("rejects a section missing rest.get", () => {
         const broken = {
             ...MINIMAL_VALID,

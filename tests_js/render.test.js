@@ -1,12 +1,10 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { installMockFetch } from "../js/mock-server.js";
 import { renderSection } from "../js/render.js";
 
+// Polls `check` instead of a fixed sleep - the mock server's fetch has randomized latency
+// (js/mock-server.js) and some flows chain two calls, so a fixed wait would be flaky or slow.
 /**
- * Polls `check` until it returns a truthy value, instead of a fixed sleep - the mock server's
- * fetch has a randomized 80-200ms artificial latency per call (js/mock-server.js), and some
- * flows chain two calls (PUT then a refresh GET), so a fixed wait would either be flaky or
- * needlessly slow.
  * @param {() => unknown} check
  * @param {number} [timeoutMs]
  */
@@ -16,7 +14,11 @@ async function waitFor(check, timeoutMs = 2000) {
         if (check()) {
             return;
         }
-        await new Promise((resolve) => setTimeout(resolve, 10));
+        // Intentionally sequential: each retry must wait out the previous delay before rechecking.
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise((resolve) => {
+            setTimeout(resolve, 10);
+        });
     }
     throw new Error("waitFor timed out");
 }
@@ -63,6 +65,9 @@ const DEFS = {
                     submit: true,
                     fields: [
                         { key: "MeasInt", label: "Measurement Interval", kind: "number", min: 2, max: 1800 },
+                        // min: 0 deliberately, to catch a form input coerced to the number 0 by
+                        // accident (e.g. non-numeric text) rather than one genuinely submitted as 0.
+                        { key: "COffset", label: "Calibration Offset", kind: "number", min: 0, max: 500 },
                         { key: "ContMeas", label: "Continuous Measurement", kind: "toggle", onLabel: "On", offLabel: "Off" },
                         {
                             key: "Oversampling",
@@ -132,7 +137,7 @@ function getSection(key) {
 
 const DATA = {
     measurements: { SCD30: { CO2: 600 } },
-    sensorsConfig: { SCD30: { MeasInt: 5, ContMeas: true, Oversampling: 1 } },
+    sensorsConfig: { SCD30: { MeasInt: 5, COffset: 10, ContMeas: true, Oversampling: 1 } },
     networkingConfig: {},
     systemConfig: {},
     notificationConfig: {},
@@ -290,6 +295,51 @@ describe("renderSection", () => {
         expect(mustQuery(main, ".error-banner").textContent).toMatch(/sensors/i);
     });
 
+    it("reports Invalid for non-numeric text in a number field instead of silently submitting 0 (regression)", async () => {
+        // JSON.stringify(NaN) is "null", so a naive Number("abc") -> NaN -> PUT body used to
+        // arrive server-side as null, and a naive Number(null) === 0 there made typed garbage
+        // look like a deliberate, in-range "0" instead of failing validation. COffset's min is 0
+        // specifically so this can't pass by accident the way a min>0 field's own out-of-range
+        // rejection would.
+        uninstall = installMockFetch(DEFS, DATA);
+        const main = mount();
+        stop = renderSection(DEFS, getSection("sensors"), main);
+        await waitFor(() => main.querySelector('[data-field-key="COffset"]') !== null);
+
+        const input = /** @type {HTMLInputElement} */ (mustQuery(main, '[data-field-key="COffset"]'));
+        input.value = "abc";
+        mustQuery(main, ".apply-button").click();
+
+        await waitFor(() => mustQuery(main, '[data-group-key="SCD30"]').dataset.applyStatus !== undefined);
+
+        const card = mustQuery(main, '[data-group-key="SCD30"]');
+        expect(card.dataset.applyStatus).toBe("invalid");
+        expect(mustQuery(card, ".apply-result").textContent).toContain("COffset: Invalid");
+    });
+
+    it("reports Invalid for non-numeric text in a composite subfield instead of silently submitting 0 (regression)", async () => {
+        // Same NaN -> null -> 0 gap as the top-level number-field case above, but through
+        // collectGroupBody()'s separate composite-field code path - r's min is 0, so a garbage
+        // "r" that silently became 0 would otherwise pass.
+        uninstall = installMockFetch(DEFS, DATA);
+        const main = mount();
+        stop = renderSection(DEFS, getSection("notification"), main);
+        await waitFor(() => main.querySelector('[data-field-key="lightCmdLED"]') !== null);
+
+        const grid = mustQuery(main, '[data-field-key="lightCmdLED"]');
+        /** @type {HTMLInputElement} */ (mustQuery(grid, '[data-sub-field-key="r"]')).value = "abc";
+        /** @type {HTMLInputElement} */ (mustQuery(grid, '[data-sub-field-key="g"]')).value = "50";
+        /** @type {HTMLInputElement} */ (mustQuery(grid, '[data-sub-field-key="b"]')).value = "50";
+        /** @type {HTMLInputElement} */ (mustQuery(grid, '[data-sub-field-key="t"]')).value = "1";
+        mustQuery(main, ".apply-button").click();
+
+        await waitFor(() => mustQuery(main, '[data-group-key="flash"]').dataset.applyStatus !== undefined);
+
+        const card = mustQuery(main, '[data-group-key="flash"]');
+        expect(card.dataset.applyStatus).toBe("invalid");
+        expect(mustQuery(card, ".apply-result").textContent).toContain("lightCmdLED: Invalid");
+    });
+
     it("reports Invalid for a composite field submitted with only some subfields filled", async () => {
         // collectGroupBody() only sends subfields the visitor actually filled in (render.js); the
         // real backend/mock-server then requires every subField present and valid, so a partial
@@ -342,6 +392,97 @@ describe("renderSection", () => {
 
         await waitFor(() => main.querySelector('[data-field-key="SGP40_BackupTS"]') !== null);
         expect(mustQuery(main, '[data-field-key="SGP40_BackupTS"]').textContent).toBe("12345");
+    });
+
+    it("shows a visible error banner when a GET response body is empty", async () => {
+        const originalFetch = window.fetch;
+        window.fetch = async (input) => {
+            const url = typeof input === "string" ? input : input.toString();
+            if (url === "/measurements") {
+                return new Response("", { status: 200 });
+            }
+            return originalFetch(input);
+        };
+        uninstall = () => {
+            window.fetch = originalFetch;
+        };
+        const main = mount();
+        stop = renderSection(DEFS, getSection("measurements"), main);
+
+        await waitFor(() => !mustQuery(main, ".error-banner").classList.contains("hidden"));
+        expect(mustQuery(main, ".error-banner").textContent).toMatch(/measurements/i);
+        expect(mustQuery(main, ".error-banner").textContent).toMatch(/empty body/i);
+    });
+
+    it("shows a visible error banner when the notification section's own /status sub-fetch fails", async () => {
+        // The "Pause Notifications" group's current PauseTime value comes from a second, internal
+        // GET /status call (render.js's fetchOnce()), separate from the section's own GET
+        // /notification - a failure in that second call must surface too, not be swallowed.
+        uninstall = installMockFetch(DEFS, DATA);
+        const mockedFetch = window.fetch;
+        window.fetch = async (input, init) => {
+            const url = typeof input === "string" ? input : input.toString();
+            if (url === "/status") {
+                throw new TypeError("Failed to fetch (simulated)");
+            }
+            return mockedFetch(input, init);
+        };
+        const main = mount();
+        stop = renderSection(DEFS, getSection("notification"), main);
+
+        await waitFor(() => !mustQuery(main, ".error-banner").classList.contains("hidden"));
+        expect(mustQuery(main, ".error-banner").textContent).toMatch(/notification/i);
+    });
+
+    it("refreshes a readonly field embedded in a writable, live-polled group in place on the next poll", async () => {
+        // Today's real definitions files never nest a readonly field inside a submit:true group
+        // within a "live" section, but render.js's own renderer is schema-agnostic and must handle
+        // it correctly if a future schema does - this fixture exercises that path directly.
+        // Fake timers make the two poll ticks deterministic instead of racing a real interval.
+        vi.useFakeTimers();
+        /** @type {import("../js/definitions.js").SiteDefinitions} */
+        const defsWithReadonlyInWritable = {
+            ...DEFS,
+            sections: [
+                {
+                    key: "measurements",
+                    label: "Measurements",
+                    rest: { get: "/measurements" },
+                    pollGroup: "live",
+                    pollIntervalMs: 1000,
+                    groups: [{ key: "SCD30", label: "SCD30", submit: true, fields: [{ key: "Model", label: "Model", kind: "readonly" }] }],
+                },
+                ...DEFS.sections.filter((s) => s.key !== "measurements"),
+            ],
+        };
+        let callCount = 0;
+        const originalFetch = window.fetch;
+        window.fetch = async (input) => {
+            const url = typeof input === "string" ? input : input.toString();
+            if (url === "/measurements") {
+                callCount += 1;
+                return new Response(JSON.stringify({ SCD30: { Model: callCount === 1 ? "B" : "A" } }), { status: 200 });
+            }
+            return originalFetch(input);
+        };
+        uninstall = () => {
+            window.fetch = originalFetch;
+        };
+        const main = mount();
+        const section = /** @type {import("../js/definitions.js").Section} */ (defsWithReadonlyInWritable.sections.find((s) => s.key === "measurements"));
+        stop = renderSection(defsWithReadonlyInWritable, section, main);
+
+        await vi.advanceTimersByTimeAsync(0);
+        const span = mustQuery(main, '.field-value[data-field-key="Model"]');
+        expect(span.textContent).toBe("B");
+
+        await vi.advanceTimersByTimeAsync(1000);
+        // Same node, patched in place - not torn down and rebuilt - matches the "never clobber an
+        // in-progress edit elsewhere in this card" contract this refresh path exists for.
+        expect(mustQuery(main, '.field-value[data-field-key="Model"]')).toBe(span);
+        expect(span.textContent).toBe("A");
+
+        vi.useRealTimers();
     });
 
     it("shows 'Request failed' and a failed apply-status when the PUT itself fails (network failure)", async () => {

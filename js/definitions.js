@@ -69,7 +69,7 @@ export function validateDefinitions(data) {
             );
         }
     }
-    if (typeof defs.device !== "object" || defs.device === null || typeof (/** @type {any} */ (defs.device).id) !== "string") {
+    if (typeof defs.device !== "object" || defs.device === null || typeof (/** @type {Record<string, unknown>} */ (defs.device).id) !== "string") {
         problems.push("device.id is missing");
     }
     if (typeof defs.landingSection !== "string") {
@@ -95,7 +95,7 @@ export function validateDefinitions(data) {
         if (typeof s.label !== "string") {
             problems.push(`${where}.label is missing`);
         }
-        if (typeof s.rest !== "object" || s.rest === null || typeof (/** @type {any} */ (s.rest).get) !== "string") {
+        if (typeof s.rest !== "object" || s.rest === null || typeof (/** @type {Record<string, unknown>} */ (s.rest).get) !== "string") {
             problems.push(`${where}.rest.get is missing`);
         }
         if (!Array.isArray(s.groups)) {

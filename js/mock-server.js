@@ -1,10 +1,7 @@
 /**
- * Prototype-only fake backend (WEBSITE_PLAN.md §10 session 2). No live device/backend exists
- * yet - this module intercepts `window.fetch()` for the six real REST paths from
- * SPECIFICATION.md Part A.8 and answers from an in-memory mock-data fixture, so the poll-manager/
- * renderer exercise the exact same request shapes they will against a real backend later.
- * Will be replaced by the digital-twin's real live server in a future session (WEBSITE_PLAN.md §7) -
- * everything outside this one file is written against the real REST contract, not this mock.
+ * Prototype-only fake backend: intercepts `window.fetch()` for the six real REST paths
+ * (SPECIFICATION.md Part A.8) and answers from an in-memory fixture. Replaced by the digital
+ * twin's real server per WEBSITE_PLAN.md §7 - everything outside this file targets the real API.
  */
 
 const REST_PATHS = /** @type {const} */ ([
@@ -135,7 +132,10 @@ function applySparsePut(body, fieldDefs, storedConfig) {
     return results;
 }
 
-/** @param {Record<string, unknown>} result */
+/**
+ * @param {Record<string, unknown>} result
+ * @returns {{res: string, code: number, descr: string, result: Record<string, unknown>}}
+ */
 function envelope(result) {
     return { res: "OK", code: 0, descr: "OK", result };
 }
@@ -168,11 +168,9 @@ function jitterInPlace(group) {
  */
 
 /**
- * Installs the mock fetch and returns an uninstall function. Only paths in REST_PATHS are
- * intercepted - definitions.json and mock fixture files are ordinary relative fetches that pass
- * straight through to the real fetch(). `controls`, when passed, lets a test inject exactly one
- * failure into the next matched request (WEBSITE_PLAN.md §10 session 3 - exercising the
- * frontend's error-handling paths against something more realistic than a raw window.fetch stub).
+ * Installs the mock fetch and returns an uninstall function. Only REST_PATHS are intercepted -
+ * everything else passes through to the real fetch(). `controls` (WEBSITE_PLAN.md §10 session 3)
+ * lets a test inject one failure, exercising error-handling against more than a raw fetch stub.
  * @param {import("./definitions.js").SiteDefinitions} defs
  * @param {import("./definitions.js").MockDeviceData} initialData
  * @param {MockFetchControls} [controls]
@@ -206,9 +204,11 @@ export function installMockFetch(defs, initialData, controls) {
             return jsonResponse({ res: "ERR", code: 5, descr: "Simulated failure" }, failure);
         }
 
-        await new Promise((resolve) => setTimeout(resolve, 80 + Math.random() * 120));
+        await new Promise((resolve) => {
+            setTimeout(resolve, 80 + Math.random() * 120);
+        });
         const method = init?.method ?? "GET";
-        /** @returns {Record<string, any>} */
+        /** @returns {Record<string, unknown>} */
         const body = () => JSON.parse(String(init?.body ?? "{}"));
 
         if (method === "GET") {
@@ -223,7 +223,7 @@ export function installMockFetch(defs, initialData, controls) {
                     continue;
                 }
                 state.sensorsConfig[sensorKey] ??= {};
-                results[sensorKey] = applySparsePut(fields, sensorDefs, state.sensorsConfig[sensorKey]);
+                results[sensorKey] = applySparsePut(/** @type {Record<string, unknown>} */ (fields), sensorDefs, state.sensorsConfig[sensorKey]);
             }
             return jsonResponse(envelope(results));
         }
@@ -233,7 +233,7 @@ export function installMockFetch(defs, initialData, controls) {
             const results = applySparsePut(body(), flatDefsByEndpoint[endpointKey], state[configKey]);
             if (path === "/system" && "SystemCmd" in body()) {
                 const cmd = body().SystemCmd;
-                results.SystemCmd = SYSTEM_CMDS.includes(cmd) ? "Valid" : "Invalid";
+                results.SystemCmd = typeof cmd === "string" && SYSTEM_CMDS.includes(cmd) ? "Valid" : "Invalid";
             }
             return jsonResponse(envelope(results));
         }
@@ -251,7 +251,10 @@ export function installMockFetch(defs, initialData, controls) {
         return jsonResponse({ res: "ERR", code: 4, descr: "Method not allowed" }, 405);
     };
 
-    /** @param {(typeof REST_PATHS)[number]} path */
+    /**
+     * @param {(typeof REST_PATHS)[number]} path
+     * @returns {unknown}
+     */
     function handleGet(path) {
         if (path === "/measurements") {
             jitterEachSensorGroup(state.measurements);
@@ -294,6 +297,7 @@ function jitterEachSensorGroup(bySensor) {
 /**
  * @param {unknown} data
  * @param {number} [status]
+ * @returns {Response}
  */
 function jsonResponse(data, status = 200) {
     return new Response(JSON.stringify(data), {

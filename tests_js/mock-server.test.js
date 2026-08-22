@@ -46,11 +46,18 @@ const DEFS = {
                 },
             ],
         },
+        {
+            key: "measurements",
+            label: "Measurements",
+            rest: { get: "/measurements" },
+            pollGroup: "live",
+            groups: [{ key: "SCD30", label: "SCD30", fields: [{ key: "CO2", label: "CO2", kind: "readonly" }] }],
+        },
     ],
 };
 
 const DATA = {
-    measurements: { SCD30: { CO2: 600, TS: 1000 } },
+    measurements: { SCD30: { CO2: 600, TS: 1000, Model: "SCD30" } },
     sensorsConfig: { SCD30: { MeasInt: 5, ContMeas: true } },
     networkingConfig: { Hostname: "wozi" },
     systemConfig: {},
@@ -142,6 +149,29 @@ describe("installMockFetch", () => {
 
         const bad = await fetch("/system", { method: "PUT", body: JSON.stringify({ SystemCmd: "not-a-real-command" }) });
         expect((await bad.json()).result.SystemCmd).toBe("Invalid");
+    });
+
+    it("increments a TS-suffixed leaf by exactly 1 on jitter, jitters a plain number, and leaves a non-number leaf untouched", async () => {
+        uninstall = installMockFetch(DEFS, DATA);
+        const response = await fetch("/measurements");
+        const body = await response.json();
+
+        expect(body.SCD30.TS).toBe(1001); // timestamp-looking key: always +1, never randomized
+        expect(body.SCD30.Model).toBe("SCD30"); // non-number leaf: untouched
+        expect(body.SCD30.CO2).toBeGreaterThan(590);
+        expect(body.SCD30.CO2).toBeLessThan(610);
+    });
+
+    it("silently ignores a PUT /sensors group key that isn't a real sensor, applying the real ones normally", async () => {
+        uninstall = installMockFetch(DEFS, DATA);
+        const response = await fetch("/sensors", {
+            method: "PUT",
+            body: JSON.stringify({ BOGUS: { SomeField: 1 }, SCD30: { MeasInt: 10 } }),
+        });
+        const body = await response.json();
+
+        expect(body.result.BOGUS).toBeUndefined();
+        expect(body.result.SCD30.MeasInt).toBe("Valid");
     });
 
     it("rejects an unsupported HTTP method with a 405", async () => {

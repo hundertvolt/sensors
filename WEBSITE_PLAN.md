@@ -259,6 +259,16 @@ owner — see §10 item 2's own notes for the concrete prototype these produced)
   `js/templates.js`'s `buildErrcountGroup()` setting `data-err-type` per entry, styled by
   `html/style.css`'s `.history-entry[data-err-type]` rules; `js/definitions.js`'s `MockDeviceData`
   typedef and both mock fixture files now use the real shape.
+- **Errcount rollup/collapse UX** — the same `.card` shell every other field group uses (project
+  owner, session 2 follow-up: the rollup/buttons were originally floating loose on the page,
+  unlike every other displayed value), starting fully collapsed to just a rollup ("N modules with
+  errors" / "M modules with warnings") plus two filter buttons ("Show flagged"/"Show all") — a
+  device can have 15+ registered modules, and showing every one by default was too much vertical
+  space for a page a visitor mostly just needs to glance at. Once a module row is revealed by
+  either filter, its history is shown immediately alongside it — no further per-row click needed
+  (project owner: a collapsed history on an already-revealed, already-flagged module read as
+  broken, not as a second layer of hiding). Implemented in `js/templates.js`'s
+  `buildErrcountGroup()`.
 - **Other invented-vs-real mismatches found by the same audit, corrected**: `/status.networking`
   was missing `Mode`/`Connected`/`IP`/`NtpLastSync` (real fields per
   `sensortask_wozi.py`'s `_networking_status()`); `LocalTime`/`UtcTime` are real
@@ -463,6 +473,73 @@ order.
      `errorBanner`), which `js/templates.js` builds and only `.hidden`/`.textContent` ever get
      toggled on it by a controller — the same pattern `html/index.html`'s app-level banner already
      used, not a new one. `src/` was never touched; §11's schema-comment tooling was not built.
+
+   **Session 3 follow-up: Python-parity quality/stability/testing pass (same branch/PR).** Applied
+   CLAUDE.md's Python-side rules (Hard rules, Working agreements, Code quality tooling) and
+   SPECIFICATION.md Parts D/E to `js/`/`tests_js/`, finding a JS-side equivalent for each and either
+   confirming it already held or fixing it:
+   - **Real bug, found and fixed via TDD**: a number field's text `<input>` coerced non-numeric text
+     to `Number("garbage") === NaN`, and `JSON.stringify(NaN)` is `"null"` — server-side,
+     `Number(null) === 0`, so garbage typed into a field whose valid range included 0 (e.g. a
+     composite subfield's `min: 0`) silently PUT a deliberate-looking `0` instead of failing
+     validation, with no visible error. Fixed in `render.js`'s `readInputValue()` and
+     `collectGroupBody()`'s composite branch: non-finite input is now sent through as the raw string
+     so the backend's own `Number(value)` recreates the same failure and correctly rejects it.
+     Regression tests added in `render.test.js`; also verified live against the real running
+     prototype in Chromium (Playwright), not just the unit tests.
+   - **D.2/D.3-equivalent (stability)**: audited every `catch` block for silent swallowing (none
+     found — every one either surfaces a visible banner or is itself documented as defense-in-depth,
+     see below) and every event-listener/timer lifecycle for leaks on repeated polls/section
+     switches (none found — `PollManager`'s `AbortController`+timeout and `startPolling()`'s
+     resolve-before-reschedule design were already correct, confirmed empirically in real Chromium
+     that an aborted `fetch()` rejects promptly and the underlying connection actually closes).
+   - **D.6-equivalent (typing)**: replaced every remaining `@type {any}` cast (4 in `definitions.js`/
+     `render.js`, plus one `@returns {Record<string, any>}` in `mock-server.js` found only by the
+     broader D.10 sweep below) with the actual precise type, fixing two now-real type errors this
+     surfaced (an `unknown` PUT-body value flowing into `Array.prototype.includes()` and into
+     `applySparsePut()`) rather than papering over them.
+   - **D.10-equivalent (cross-file consistency)**: a bird's-eye pass over all of `js/` found and
+     fixed missing `@returns` tags on `collectGroupBody()`/`envelope()`/`jsonResponse()`/
+     `handleGet()` (every sibling helper in the same files already had one) and reordered
+     `PollManager`'s two methods (getter before the request method, matching D.15's
+     Getters-before-Others convention) — both mechanical, no behavior change.
+   - **E.5.1-equivalent (branch coverage)**: raised branch coverage 80.91% → 84.21% (94 tests, up
+     from 82) by adding real, previously-unexercised cases — `definitions.js`'s missing section
+     key/label, `templates.js`'s `field.description` hint and a module absent from `errcount`
+     entirely, `mock-server.js`'s `jitterInPlace()` non-number/timestamp branches and an unknown PUT
+     sensor key, `poll-manager.js`'s `startPolling()` catch branch, `render.js`'s empty-GET-body and
+     `/status` sub-fetch-failure error paths and a readonly field refreshed in place inside a
+     writable live-polled group. Three genuinely defensive/unreachable branches found along the way
+     (`app.js`'s unknown-section-key guard, `nav.js`'s missing-`data-section-key` guard,
+     `poll-manager.js`'s `tick()`'s redundant top-of-function `stopped` check) were left as-is and
+     documented inline with why, matching Part E.5.1's own "document, don't chase" precedent, rather
+     than force-testing them via contrived internals access.
+   - **Docstring cap (Working agreements)**: every `js/`/`tests_js/` JSDoc module/function header
+     was over CLAUDE.md's 3-line docstring cap (a rule already stated as applying to new code, not
+     yet actually applied here). Trimmed all of them to ≤3 lines; load-bearing detail that wasn't
+     already documented elsewhere moved into this file (the errcount rollup/collapse UX rationale
+     and the apply-status worst-first severity ordering, both added above/nearby) rather than being
+     dropped, mirroring the Python side's own "moved to SPECIFICATION.md Part X" pattern.
+   - **Lint stringency parity**: `eslint.config.js` gained 11 core ESLint rules beyond
+     `eslint:recommended` (`array-callback-return`, `no-await-in-loop`, `no-constructor-return`,
+     `no-duplicate-imports`, `no-promise-executor-return`, `no-self-compare`,
+     `no-template-curly-in-string`, `no-unmodified-loop-condition`, `no-unreachable-loop`,
+     `no-use-before-define`, `require-atomic-updates`) — the JS-side equivalent of ruff's
+     stricter-than-default selection, verified current/non-deprecated directly against the installed
+     `eslint` package's own rule metadata rather than assumed. Fixed the two real findings this
+     surfaced (a `paint()`/`fetchOnce()` mutual-reference in `render.js`, converted to hoisted
+     function declarations rather than suppressed) plus three idiomatic `new Promise(resolve =>
+     setTimeout(resolve, ms))` sleeps rewritten with a block body (harmless either way, but now
+     clean under `no-promise-executor-return`); one narrowly-scoped `no-await-in-loop` suppression
+     remains in `render.test.js`'s intentionally-sequential polling helper, with a comment
+     explaining why.
+   - **Hang-avoidance backstop (Code quality tooling)**: `vitest.config.js` now sets an explicit
+     `testTimeout: 20000` — not a fix for any observed hang, but an explicit backstop mirroring the
+     Python side's own standing "hanging tests are never allowed" practice, generous enough to cover
+     this suite's own longest internal wait (5000ms) with real-browser/CI margin.
+   - No lint/typecheck/test-count regression anywhere in this pass: `lint`/`typecheck`/`lint:html`/
+     `lint:css`/`test` all still green throughout, re-verified after every change, not just at the
+     end. `src/` was never touched.
 4. **Full build chain.** Wire `html/`+`js/`+the definitions file(s) into a
    `scripts/build_frozen_html.sh`-equivalent pipeline: gzip → `freezefs` → frozen bytecode → mount
    → serve, ending with the real thing bound into an actual firmware build. Keep the mechanism
@@ -649,6 +726,12 @@ Controllers only ever set the semantic `data-apply-status` value (`"valid"`/`"in
 `"unchanged"`/`"failed"`) — never a color, class, or style directly. What that status *looks like*
 is entirely `html/style.css`'s decision, so restyling what "invalid" means visually is a pure CSS
 change.
+
+A card can hold several fields, each with its own per-field result, but `data-apply-status` is one
+value for the whole card — `js/render.js`'s `STATUS_SEVERITY` picks the worst one, worst-first:
+`Invalid`/`Failed` (a real problem) always win; between the two non-problem outcomes, a genuine
+`Valid` change outranks a no-op `Unchanged`, so one changed field + one resubmitted-as-is field
+reads as "valid" (something happened), not "unchanged" (nothing did).
 
 **One deliberate exception to the "hooks are `data-*` attributes" rule (session 3):**
 `buildSectionShell()` returns `{grid, errorBanner}` directly to its one caller (`render.js`'s
