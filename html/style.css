@@ -229,7 +229,9 @@ button {
 .field {
     margin-bottom: 14px;
     padding-top: 12px;
+    padding-left: 8px;
     border-top: 1px solid var(--color-border);
+    border-left: 3px solid transparent;
 }
 
 .field:first-of-type {
@@ -312,8 +314,11 @@ button {
     color: var(--color-text-muted);
 }
 
-/* Apply-result status indicator: a left accent stripe on the card, not a full-card
-   background recolor (legacy behavior) - reads as a status badge, not a jarring flash. */
+/* Apply-result status indicator: a left accent stripe, not a full background recolor (legacy's
+   own presentation) - reads as a status badge, not a jarring flash. Shown at two levels: the
+   card as a whole (worst status across the group) and each individual field's own box (its own
+   result) - legacy colored each field's own nearest card separately, and that per-field
+   granularity is kept here too, just restyled as a stripe (WEBSITE_PLAN.md §12). */
 .card[data-apply-status="valid"] {
     border-left: 3px solid var(--color-success);
 }
@@ -328,6 +333,22 @@ button {
 
 .card[data-apply-status="failed"] {
     border-left: 3px solid var(--color-warn);
+}
+
+.field[data-apply-status="valid"] {
+    border-left-color: var(--color-success);
+}
+
+.field[data-apply-status="unchanged"] {
+    border-left-color: var(--color-neutral);
+}
+
+.field[data-apply-status="invalid"] {
+    border-left-color: var(--color-danger);
+}
+
+.field[data-apply-status="failed"] {
+    border-left-color: var(--color-warn);
 }
 
 /* ---- Error / status counts ---- */

@@ -71,6 +71,10 @@ function buildFieldDescription(field) {
 export function buildField(field, currentValue, editable) {
     const wrapper = document.createElement("div");
     wrapper.className = "field";
+    // Distinct from data-field-key below (which must keep pointing at the specific control -
+    // collectGroupBody()/paint() rely on that exact element) - this tags the whole per-field box
+    // so a PUT result can color it individually (WEBSITE_PLAN.md §12, per-field granularity).
+    wrapper.dataset.fieldWrapperKey = field.key;
 
     const label = document.createElement("label");
     label.className = "field-label";

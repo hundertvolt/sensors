@@ -216,8 +216,11 @@ owner — see §10 item 2's own notes for the concrete prototype these produced)
   listing the six section links plus the device name, with no other global actions in it; single-
   page shell with JS view-switching (matches §4's already-settled decision, now built:
   `js/nav.js`/`js/render.js`). A per-field-result "Valid/Unchanged/Invalid/Failed" outcome (same
-  four states the real backend's `PUT` envelope reports, `api_response.py`) now shows as a left
-  accent stripe + inline per-field text on the card, not legacy's whole-card background flash.
+  four states the real backend's `PUT` envelope reports, `api_response.py`) shows as a left accent
+  stripe + inline per-field text, not legacy's whole-card background flash — at **two** levels: the
+  group card as a whole (worst status across the group) and, restored to match legacy's own
+  per-field granularity (session 3 follow-up 3, §10 item 3), each individual field's own box, colored
+  by its own result via a new `data-field-wrapper-key` hook.
 - **History pagination/truncation mechanism** — settled: **no pagination/truncation**. The project
   owner's own expectation is that a module's error history realistically stays well under 20
   entries, so building chunked "show more" loading would be overkill for the real data volume;
@@ -598,6 +601,50 @@ order.
      state.
    - Nothing in §4/§8/§12's settled architecture changed; `src/` was never touched beyond reading
      it. `lint`/`typecheck`/`lint:html`/`lint:css`/`test` all green throughout.
+
+   **Session 3 follow-up 3: per-field PUT-result coloring granularity, restored to match legacy
+   (same branch/PR).** Project owner asked whether the green/red/purple PUT-result color scheme
+   from the legacy site (`html_raw/general/functions.js`'s `getColorForValue()`: light green
+   Valid, light red Invalid, light lavender/purple Failed, light grey Unchanged) had been carried
+   through end-to-end. It had, semantically — `src/base_classes.py`/`src/api_response.py` return
+   exactly that four-value vocabulary, `js/render.js` already used it, and `html/style.css`'s
+   `--color-warn` token is already a real purple (not the orange/yellow the name might suggest) —
+   but a real granularity gap turned up on inspection: legacy colors **each field's own nearest
+   card** (its own DOM ancestor walk from that specific input), so a group with one Invalid field
+   among several Valid ones shows exactly that field boxed in red while the others stay their own
+   color. The already-shipped stripe redesign (§12, session 2) only ever colored the **whole group
+   card once**, at the group's worst status, with per-field detail as plain text only — confirmed
+   not to have been a deliberate part of that redesign decision, just an unaddressed narrowing.
+   Fixed, TDD: `js/templates.js`'s `buildField()` now tags each field's own `.field` wrapper with a
+   new `data-field-wrapper-key` (kept deliberately distinct from the existing `data-field-key`,
+   which must keep pointing at the specific control — `collectGroupBody()`/`paint()` rely on that
+   exact element, so reusing the same attribute on the wrapper would have broken both). `js/render.js`'s
+   `applyResultStyling()` now sets `data-apply-status` on each field's own wrapper (only for fields
+   actually present in the response's `result`, matching legacy's own "only color what the result
+   mentions" behavior — an untouched, sparse-omitted field keeps no stripe at all) in addition to
+   the existing group-card-level worst-of-group status; the whole-request-failure `catch` block
+   (network/communication errors) now also marks every field that was part of that submission as
+   `failed` individually, not just the card border — a deliberate improvement over legacy, whose own
+   PUT `.catch()` never colored anything at all (console.error only). `html/style.css` gained a
+   `.field` baseline transparent 3px left border (matching the existing `.nav-link` "transparent
+   until active" accent-stripe idiom) plus `valid`/`unchanged`/`invalid`/`failed` color rules
+   mirroring the existing `.card[data-apply-status]` block.
+   - **Test coverage**: 110 → 113 tests (2 new `templates.test.js` cases confirming the new
+     attribute is distinct from `data-field-key` for both a plain and a composite field; 1 new
+     `render.test.js` case submitting a mixed invalid+valid+untouched group and asserting each
+     field's own box independently, plus 3 existing Apply-status tests extended with a per-field
+     assertion). Manually verified end-to-end in real Chromium (Playwright) against the wozi
+     prototype's real SCD30 sensor-settings card: submitting an out-of-range `MeasInt` alongside an
+     in-range `TempOffs`, with `AmbPres`/`Altitude`/`ForceCalRef` left untouched, correctly rendered
+     `MeasInt` red, `TempOffs` green, the two always-resubmitted toggles (`ContMeas`/`SelfCal`) grey
+     ("Unchanged"), the three untouched fields with no stripe at all, and the card's own border red
+     (worst-first) — screenshot confirmed, then discarded along with the scratch verification
+     script. The network/communication-failure ("purple") per-field path is covered by the Vitest
+     suite only (`installMockFetch()`'s in-page `fetch` override can't be intercepted by Playwright's
+     `page.route()`, which only sees real network traffic).
+   - Nothing in §4/§8's settled architecture changed. `lint`/`typecheck`/`lint:html`/`lint:css`/
+     `test`/`test:coverage` all green throughout; coverage held steady (97.19% → 97.37% statements).
+
 4. **Full build chain.** Wire `html/`+`js/`+the definitions file(s) into a
    `scripts/build_frozen_html.sh`-equivalent pipeline: gzip → `freezefs` → frozen bytecode → mount
    → serve, ending with the real thing bound into an actual firmware build. Keep the mechanism

@@ -224,6 +224,36 @@ describe("renderSection", () => {
         const card = mustQuery(main, '[data-group-key="SCD30"]');
         expect(card.dataset.applyStatus).toBe("invalid");
         expect(mustQuery(card, ".apply-result").textContent).toContain("MeasInt: Invalid");
+        // The field's own box carries its own result too, not just the card-level worst status
+        // (legacy per-field granularity, restored alongside the new accent-stripe presentation).
+        expect(mustQuery(card, '[data-field-wrapper-key="MeasInt"]').dataset.applyStatus).toBe("invalid");
+    });
+
+    it("colors each individual field's own box by its own result, not just the card's worst status", async () => {
+        uninstall = installMockFetch(DEFS, DATA);
+        const main = mount();
+        stop = renderSection(DEFS, getSection("sensors"), main);
+        await waitFor(() => main.querySelector('[data-field-key="MeasInt"]') !== null);
+
+        /** @type {HTMLInputElement} */ (mustQuery(main, '[data-field-key="MeasInt"]')).value = "3000"; // out of range
+        // COffset is left blank on purpose - a number field's sparse-PUT convention omits it
+        // entirely (unlike the toggle/enum fields below, which always resubmit their current
+        // value and so are never sparse-omittable through this UI).
+        mustQuery(main, ".apply-button").click();
+
+        await waitFor(() => mustQuery(main, '[data-group-key="SCD30"]').dataset.applyStatus !== undefined);
+
+        const card = mustQuery(main, '[data-group-key="SCD30"]');
+        expect(card.dataset.applyStatus).toBe("invalid"); // worst-first across the whole group
+
+        expect(mustQuery(card, '[data-field-wrapper-key="MeasInt"]').dataset.applyStatus).toBe("invalid");
+        // Toggle/enum fields always resubmit their current, already-valid value - reads back
+        // Unchanged, colored on their own box too, distinct from MeasInt's Invalid.
+        expect(mustQuery(card, '[data-field-wrapper-key="ContMeas"]').dataset.applyStatus).toBe("unchanged");
+        // COffset was never part of this submission at all (sparse-omitted) - no per-field result
+        // to show, matching the legacy behavior this restores: only fields present in the
+        // response's own result get colored.
+        expect(mustQuery(card, '[data-field-wrapper-key="COffset"]').dataset.applyStatus).toBeUndefined();
     });
 
     it("submits a numeric-valued enum field as a number, not a stringified one (regression)", async () => {
@@ -532,6 +562,10 @@ describe("renderSection", () => {
         const card = mustQuery(main, '[data-group-key="SCD30"]');
         expect(card.dataset.applyStatus).toBe("failed");
         expect(mustQuery(card, ".apply-result").textContent).toMatch(/request failed/i);
+        // The whole request never got a per-field breakdown at all, so every submitted field's own
+        // box shows the same "internal or communication error" purple as the card, not silently
+        // nothing (legacy's own PUT catch handler never colored anything - console.error only).
+        expect(mustQuery(card, '[data-field-wrapper-key="MeasInt"]').dataset.applyStatus).toBe("failed");
         // The Apply button is re-enabled afterward, not left permanently stuck.
         expect(/** @type {HTMLButtonElement} */ (mustQuery(main, ".apply-button")).disabled).toBe(false);
     });
@@ -616,5 +650,7 @@ describe("renderSection", () => {
         const card = mustQuery(main, '[data-group-key="SCD30"]');
         expect(card.dataset.applyStatus).toBe("failed"); // worst-first: Failed beats whatever the other fields say
         expect(mustQuery(card, ".apply-result").textContent).toContain("MeasInt: Failed");
+        // The reconciled Failed status reaches the field's own box too, not just the card border.
+        expect(mustQuery(card, '[data-field-wrapper-key="MeasInt"]').dataset.applyStatus).toBe("failed");
     });
 });

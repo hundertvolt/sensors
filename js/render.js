@@ -136,9 +136,10 @@ function reconcileResults(submitted, received) {
 }
 
 /**
- * Sets the card's `data-apply-status` to the worst of `results` and fills in the outcome text.
- * Only ever writes the semantic status value - `html/style.css` alone decides what each status
- * looks like (WEBSITE_PLAN.md §12).
+ * Sets the card's `data-apply-status` to the worst of `results`, each individual field's own box
+ * to its own result (legacy per-field granularity, kept alongside the newer accent-stripe
+ * presentation - WEBSITE_PLAN.md §12), and fills in the outcome text. Only ever writes the
+ * semantic status value - `html/style.css` alone decides what each status looks like.
  * @param {HTMLElement} card
  * @param {Record<string, string>} results
  * @param {string} descr
@@ -151,6 +152,12 @@ function applyResultStyling(card, results, descr) {
         // still means the action completed, not that "nothing changed" - default to success.
     );
     card.dataset.applyStatus = worst.toLowerCase();
+    for (const [key, status] of Object.entries(results)) {
+        const fieldEl = card.querySelector(`[data-field-wrapper-key="${key}"]`);
+        if (fieldEl instanceof HTMLElement) {
+            fieldEl.dataset.applyStatus = status.toLowerCase();
+        }
+    }
     const resultEl = card.querySelector(".apply-result");
     if (resultEl) {
         const perField = Object.entries(results)
@@ -217,6 +224,16 @@ function buildAndWireFieldGroup(group, section, currentValues, onApplied) {
             // await (this button's own `disabled` guard also rules out a concurrent re-entry).
             // eslint-disable-next-line require-atomic-updates
             card.dataset.applyStatus = "failed";
+            // The request never got far enough for a per-field breakdown, so every field that was
+            // actually submitted this round shows the same "internal or communication error"
+            // status individually too, not just the card border (legacy's own PUT failure handler
+            // never colored anything at all - console.error only; this is a deliberate improvement).
+            for (const key of Object.keys(groupBody)) {
+                const fieldEl = card.querySelector(`[data-field-wrapper-key="${key}"]`);
+                if (fieldEl instanceof HTMLElement) {
+                    fieldEl.dataset.applyStatus = "failed";
+                }
+            }
         } finally {
             button.disabled = false;
         }

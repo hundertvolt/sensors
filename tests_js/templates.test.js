@@ -183,6 +183,31 @@ describe("buildField", () => {
         expect(input.value).toBe(""); // sparse-PUT convention: starts empty, not pre-filled with the current value
         expect(mustQuery(el, '[data-current-value-for="MeasInt"]').textContent).toContain("5");
     });
+
+    // A distinct attribute from data-field-key (which must keep pointing at the specific control -
+    // collectGroupBody()/paint() in render.js rely on that) - this one tags the whole per-field
+    // wrapper, so a PUT result can color the individual field's own box (WEBSITE_PLAN.md §12
+    // follow-up: per-field granularity restored alongside the accent-stripe presentation).
+    it("tags the field's own wrapper with a distinct data-field-wrapper-key, separate from the control's data-field-key", () => {
+        const field = buildField({ key: "CO2", label: "CO2", kind: "readonly" }, 612, false);
+        expect(field.dataset.fieldWrapperKey).toBe("CO2");
+        // The wrapper is a different element from the control itself.
+        expect(field).not.toBe(mustQuery(field, '[data-field-key="CO2"]'));
+        mount(field);
+    });
+
+    it("tags a composite field's own wrapper with data-field-wrapper-key too, distinct from the grid's data-field-key", () => {
+        const fieldDef = {
+            key: "lightCmdLED",
+            label: "LED Flash",
+            kind: /** @type {const} */ ("composite"),
+            subFields: [{ key: "r", label: "Red", kind: /** @type {const} */ ("number") }],
+        };
+        const field = buildField(fieldDef, undefined, true);
+        expect(field.dataset.fieldWrapperKey).toBe("lightCmdLED");
+        expect(field).not.toBe(mustQuery(field, '[data-field-key="lightCmdLED"]'));
+        mount(field);
+    });
 });
 
 describe("buildFieldGroupCard", () => {
