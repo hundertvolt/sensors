@@ -662,6 +662,11 @@ settings (no live telemetry in any of them).
     module's error counter *and* history in one call.
   - `/notification` — `{"lightCmdLED": {"r":.., "g":.., "b":.., "t":..}, "PauseTime": int, <any
     subset of OnH,OnM,OffH,OffM,FlashBri,Interv,FlashDur,AutoOn,WarnCO2,WarnVOC,WarnHum>}`.
+    `PauseTime` is range-checked `0`-`3600` inclusive by `_dispatch_notification_pause()` itself
+    (rejected as `"Invalid"`, not silently clamped) before ever reaching
+    `NotificationCoordinator.set_override_led()`, whose own `LockedCounter.set_value()` clamps
+    into the same range — matching legacy's `pauseAutoLED` command's own reject-out-of-range
+    behavior rather than relying on the clamp.
 
 **GET copy-safety**: `get_dict_data()` (via `config_manager.make_dict()`), `ConfigManager.get_dict()`,
 and `PrintLogHistory.get_log()` all build a brand-new dict/list of copied scalar values on every

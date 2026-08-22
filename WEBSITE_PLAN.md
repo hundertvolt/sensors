@@ -693,14 +693,31 @@ order.
    - **Two more findings, flagged per CLAUDE.md's "flag, don't silently change" convention and
      resolved interactively with the project owner rather than guessed at**:
      - Notification's "Pause Notifications" submit card PUTs a `PauseTime` field the real backend
-       never processes at all: `notify_service`'s registered PUT schema doesn't include it, and
+       never processed at all: `notify_service`'s registered PUT schema didn't include it, and
        `NotificationCoordinator.set_override_led()` — the only method that could ever act on it —
-       is never called anywhere in `src/` outside its own definition (confirmed by grepping the
-       whole tree). Submitting it today silently does nothing server-side and, thanks to
-       `reconcileResults()`, renders as **Failed** — reading as a mistake rather than "not wired up
-       yet." **Project owner's decision: leave the website as-is; `src/` wiring (registering
-       `PauseTime`/`set_override_led()` into the PUT path) will be handled separately, outside this
-       effort.** Not changed here.
+       was never called anywhere in `src/` outside its own definition (confirmed by grepping the
+       whole tree). Submitting it silently did nothing server-side and, thanks to
+       `reconcileResults()`, rendered as **Failed** — reading as a mistake rather than "not wired up
+       yet." **Project owner's decision at the time: leave the website as-is; `src/` wiring would be
+       handled separately, outside this effort.** **Now resolved directly on `main`**
+       (`309b364`, "Restore LED-notification pause countdown REST wiring" — merged to `main`, then
+       this branch's whole history rebased onto it): `asy_webserver_service.py` gained a
+       `notification_pause` callback (mirroring `notification_led`/`system_cmd`'s own dispatch
+       pattern exactly — `_dispatch_notification_pause()`, errno=5), wired in
+       `sensortask_wozi.py` to `NotificationCoordinator.set_override_led()`, with unit +
+       real-object-graph + real-HTTP digital-twin integration coverage (the last confirming the
+       countdown actually decrements over real wall-clock time, not just that the value is stored).
+       **One gap found in that fix and closed in a follow-up commit on this branch**: the new
+       `_dispatch_notification_pause()` checked `payload`'s type but not its range — `LockedCounter.
+       set_value()` (which `set_override_led()` calls) silently clamps an out-of-range value into
+       `[0, 3600]` rather than rejecting it, so a `PauseTime` outside that range came back `"Valid"`
+       (clamped) instead of `"Invalid"`, unlike legacy's own `pauseAutoLED` command
+       (`update_valid_json(..., 0, 3600, ...)`, which rejects out-of-range as `"Invalid"` — the same
+       convention every other numeric field in this codebase already follows server-side via
+       `config_manager.py`'s `type_or_range_error()`, regardless of what a client sends). Fixed with
+       an explicit `0 <= payload <= 3600` check before ever calling the callback, TDD (a failing
+       test confirming the pre-fix "Valid"-on-clamp behavior, then the fix). The website side
+       needed no changes — `js/render.js` already expected exactly this `result.PauseTime` shape.
      - The real `PW` (Wi-Fi password) field explicitly allows an empty string as a deliberate
        "configure an open network" sentinel (`asy_wifi_service.py`'s `_VAL_PW`'s `special=""`), but
        the website's sparse-PUT convention (`collectGroupBody()`: a blank input is "untouched,

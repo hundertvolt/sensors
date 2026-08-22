@@ -681,6 +681,30 @@ def test_notification_put_pause_time_reported_invalid_when_not_an_int() -> None:
         assert body["result"]["PauseTime"] == "Invalid"
 
 
+def test_notification_put_pause_time_reported_invalid_when_out_of_range() -> None:
+    # Legacy's own pauseAutoLED command (modules/sensortask-wozi.py, update_valid_json(...,
+    # 0, 3600, ...)) rejects an out-of-range pauseTime as Invalid rather than silently clamping it -
+    # LockedCounter.set_value() would clamp a too-large/negative value into [0, 3600] without
+    # raising, so this dispatcher must reject it itself before ever calling the callback, the same
+    # way every other numeric field in this codebase is range-checked server-side regardless of
+    # what a client sends (config_manager.py's own type_or_range_error()).
+    pause_calls = []
+
+    async def notification_pause(secs: int) -> bool:
+        pause_calls.append(secs)
+        return True
+
+    notif = _FakeModule("NOTIF", schema=(("OnH", "int", 8, 0, 23, None),), values={"OnH": 8})
+    service, app = _make_service(
+        settings={"notification": [SettingsGroup(notif, ("OnH",))]}, notification_pause=notification_pause
+    )
+    for bad_value in (-1, 3601):
+        res = run(app.dispatch_request(_make_request(app, "PUT", "/notification", {"PauseTime": bad_value})))
+        body = json.loads(res.body)
+        assert body["result"]["PauseTime"] == "Invalid"
+    assert pause_calls == []  # the callback must never see an out-of-range value
+
+
 def test_notification_put_pause_time_raising_callback_returns_failed_not_an_exception() -> None:
     # notification_pause is a caller-supplied callback and could legitimately misbehave, the same as
     # system_cmd/notification_led (see their own identical raising-callback tests above).

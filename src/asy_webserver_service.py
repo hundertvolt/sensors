@@ -52,6 +52,10 @@ _NAME = const("WEBSERVER")
 _SYSTEM_CMDS = ("reboot", "bootloader", "mempause")  # the only enum values ever forwarded to
 # system_cmd() - never a client-supplied duration (mempause's fixed 300s lives in system_cmd()'s own
 # implementation, e.g. SystemService.pause_permanent_storage() - see SPECIFICATION.md Part A.8).
+_PAUSE_TIME_MAX = const(3600)  # inclusive upper bound for a client-supplied PauseTime - matches
+# legacy's own pauseAutoLED command range and asy_notification_service.py's own
+# LockedCounter(max_val=_MAX_OVERRIDE_TIME) clamp ceiling, kept here as its own constant (not
+# imported) since this module has no other coupling to asy_notification_service.py.
 
 _ERROR_SHAPES = (  # (status_code, descr) - registered via @app.errorhandler for shaped JSON bodies,
     # per "Criteria for this step to finish": at least 400/404/405/413/500 wired.
@@ -405,8 +409,14 @@ class WebserverService:
     async def _dispatch_notification_pause(self, payload: "Any") -> str:
         # `type(payload) is not int`, not isinstance() - excludes bool (a JSON true/false decodes to
         # a Python bool, a type(x) is int subclass) the same way config_manager.py's own
-        # type_or_range_error() rejects it for an "int"-typed schema field.
-        if self._notification_pause is None or type(payload) is not int:
+        # type_or_range_error() rejects it for an "int"-typed schema field. The range check below
+        # mirrors that same function's int branch too: LockedCounter.set_value() (called via
+        # NotificationCoordinator.set_override_led()) clamps an out-of-range value into [0, 3600]
+        # rather than raising, but legacy's own pauseAutoLED command rejects an out-of-range
+        # pauseTime as Invalid (modules/sensortask-wozi.py's update_valid_json(..., 0, 3600, ...)) -
+        # reject it here too, before the callback ever sees it, rather than silently reporting a
+        # clamped value as a successful "Valid".
+        if self._notification_pause is None or type(payload) is not int or not (0 <= payload <= _PAUSE_TIME_MAX):
             return "Invalid"
         try:  # caller-supplied callback, could legitimately misbehave - see _dispatch_system_cmd()'s
             # own comment on why this needs the same guard every comparable callback elsewhere in
