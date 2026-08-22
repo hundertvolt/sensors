@@ -190,6 +190,17 @@ function buildAndWireFieldGroup(group, section, currentValues, onApplied) {
             return;
         }
         const groupBody = collectGroupBody(card, group);
+        if (Object.keys(groupBody).length === 0) {
+            // Every toggle/enum field always resubmits its current value (see collectGroupBody()),
+            // so this can only happen when a group made only of number/string fields is submitted
+            // untouched. Skip the round trip entirely rather than PUTing an empty body and letting
+            // applyResultStyling()'s empty-result-means-success fallback show a misleading "Valid"
+            // for a request that changed nothing.
+            if (resultEl) {
+                resultEl.textContent = "Nothing to submit - no fields were changed.";
+            }
+            return;
+        }
         // /sensors is the one endpoint whose PUT body nests fields under the sensor's own
         // group key (`{"SCD30": {...}}`) - every other writable section's body is already flat.
         const body = section.key === "sensors" ? { [group.key]: groupBody } : groupBody;
@@ -213,7 +224,18 @@ function buildAndWireFieldGroup(group, section, currentValues, onApplied) {
                 section.key === "sensors"
                     ? /** @type {Record<string, string> | undefined} */ (envelope.result?.[group.key])
                     : /** @type {Record<string, string> | undefined} */ (envelope.result);
-            const flatResult = reconcileResults(groupBody, rawResult ?? {});
+            // /status's PUT (SPECIFICATION.md Part A.8's _put_status()) never returns a per-field
+            // result at all, for any of its submit groups - unlike every other writable endpoint,
+            // there's no server-side gap for reconcileResults()'s "submitted but missing = Failed"
+            // heuristic to guard against here, and applying it anyway would mark every successful
+            // submission Failed. A non-2xx/res:"ERR" response already threw above, so reaching this
+            // line at all means the call fully succeeded - mark every submitted field Valid
+            // directly, the same way the whole-request-failure catch block below marks every
+            // submitted field Failed on the opposite outcome.
+            const flatResult =
+                section.key === "status"
+                    ? Object.fromEntries(Object.keys(groupBody).map((key) => [key, "Valid"]))
+                    : reconcileResults(groupBody, rawResult ?? {});
             applyResultStyling(card, flatResult, envelope.descr ?? "Done");
             onApplied();
         } catch (error) {

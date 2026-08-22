@@ -296,6 +296,96 @@ describe("renderSection", () => {
         expect(list.querySelectorAll(".history-entry")).toHaveLength(2);
     });
 
+    it("shows Valid (not Failed) after a successful Reset All Errors submission, even though /status's PUT never returns a per-field result", async () => {
+        // src/asy_webserver_service.py's _put_status() never builds a `result` dict at all
+        // (ar.make_response(0), no result kwarg) - unlike every other writable endpoint, /status's
+        // PUT structurally can't report a per-field outcome. reconcileResults()'s "submitted but
+        // missing from the response = Failed" heuristic exists to catch a different, real
+        // server-side gap (a settings group's post-write hook dropping fields) and must not apply
+        // here, or a successful reset would always render as Failed (regression coverage).
+        /** @type {import("../js/definitions.js").SiteDefinitions} */
+        const defsWithResetErrors = {
+            ...DEFS,
+            sections: [
+                ...DEFS.sections.filter((s) => s.key !== "status"),
+                {
+                    key: "status",
+                    label: "Status",
+                    rest: { get: "/status", put: "/status" },
+                    pollGroup: "settings",
+                    groups: [
+                        {
+                            key: "resetErrors",
+                            label: "Reset Errors",
+                            submit: true,
+                            submitLabel: "Reset All Errors",
+                            fields: [{ key: "ResetErrors", label: "Confirm Reset", kind: "toggle", onLabel: "Yes, reset", offLabel: "No" }],
+                        },
+                    ],
+                },
+            ],
+        };
+        uninstall = installMockFetch(defsWithResetErrors, DATA);
+        const main = mount();
+        const section = /** @type {import("../js/definitions.js").Section} */ (defsWithResetErrors.sections.find((s) => s.key === "status"));
+        stop = renderSection(defsWithResetErrors, section, main);
+        await waitFor(() => main.querySelector('[data-field-key="ResetErrors"]') !== null);
+
+        mustQuery(main, '[data-field-key="ResetErrors"]').click(); // flips the toggle to "Yes, reset"
+        mustQuery(main, ".apply-button").click();
+
+        await waitFor(() => mustQuery(main, '[data-group-key="resetErrors"]').dataset.applyStatus !== undefined);
+
+        const card = mustQuery(main, '[data-group-key="resetErrors"]');
+        expect(card.dataset.applyStatus).toBe("valid");
+        expect(mustQuery(card, '[data-field-wrapper-key="ResetErrors"]').dataset.applyStatus).toBe("valid");
+    });
+
+    it("skips the PUT and shows a neutral message when Apply is clicked with nothing to submit", async () => {
+        // A group made only of number/string fields (no toggle/enum, which always resubmit their
+        // current value) can be genuinely empty if the visitor clicks Apply without touching
+        // anything - collectGroupBody() then returns {}. Sending that as a real PUT would round-trip
+        // to the server for nothing and, since applyResultStyling()'s empty-result fallback is
+        // "Valid", would misleadingly show green success for a request that changed nothing.
+        /** @type {import("../js/definitions.js").SiteDefinitions} */
+        const defsNumberOnly = {
+            ...DEFS,
+            sections: [
+                ...DEFS.sections.filter((s) => s.key !== "networking"),
+                {
+                    key: "networking",
+                    label: "Networking",
+                    rest: { get: "/networking", put: "/networking" },
+                    pollGroup: "settings",
+                    groups: [
+                        {
+                            key: "identity",
+                            label: "Wi-Fi & Identity",
+                            submit: true,
+                            fields: [{ key: "SSID", label: "Wi-Fi SSID", kind: "string", minLength: 2, maxLength: 32 }],
+                        },
+                    ],
+                },
+            ],
+        };
+        uninstall = installMockFetch(defsNumberOnly, DATA);
+        const main = mount();
+        const section = /** @type {import("../js/definitions.js").Section} */ (defsNumberOnly.sections.find((s) => s.key === "networking"));
+        stop = renderSection(defsNumberOnly, section, main);
+        await waitFor(() => main.querySelector('[data-field-key="SSID"]') !== null);
+
+        // SSID left blank on purpose - nothing to submit.
+        mustQuery(main, ".apply-button").click();
+
+        await waitFor(() => mustQuery(main, ".apply-result").textContent !== "");
+
+        const card = mustQuery(main, '[data-group-key="identity"]');
+        expect(mustQuery(card, ".apply-result").textContent).toMatch(/nothing to submit/i);
+        // No PUT was actually sent, so no outcome to color - the card must not claim a status
+        // (particularly not the misleading "valid" an empty-result PUT response would produce).
+        expect(card.dataset.applyStatus).toBeUndefined();
+    });
+
     it("shows a visible error banner (without clearing existing data) when a live poll's GET fails, and hides it again once the next poll succeeds", async () => {
         const controls = { nextFailure: /** @type {import("../js/mock-server.js").MockFailure | undefined} */ (undefined) };
         uninstall = installMockFetch(DEFS, DATA, controls);

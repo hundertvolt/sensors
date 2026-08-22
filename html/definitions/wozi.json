@@ -141,10 +141,10 @@
                     "label": "Wi-Fi & Identity",
                     "submit": true,
                     "fields": [
-                        { "key": "SSID", "label": "Wi-Fi SSID", "kind": "string", "minLength": 2, "maxLength": 32 },
+                        { "key": "SSID", "label": "Wi-Fi SSID", "kind": "string", "minLength": 0, "maxLength": 32 },
                         { "key": "PW", "label": "Wi-Fi Password", "kind": "string", "minLength": 8, "maxLength": 63, "mask": true },
                         { "key": "Country", "label": "Country", "kind": "string", "minLength": 2, "maxLength": 2, "description": "Two-letter ISO 3166 country code." },
-                        { "key": "Hostname", "label": "Hostname", "kind": "string", "minLength": 1, "maxLength": 63 }
+                        { "key": "Hostname", "label": "Hostname", "kind": "string", "minLength": 1, "maxLength": 32 }
                     ]
                 },
                 {
@@ -312,7 +312,7 @@
                         { "key": "Interv", "label": "Flash Interval", "unit": "s", "kind": "number", "min": 60.0, "max": 3600.0 },
                         { "key": "FlashDur", "label": "Flash Duration", "unit": "s", "kind": "number", "min": 0.5, "max": 10.0 },
                         { "key": "WarnCO2", "label": "CO2 Warning Threshold", "unit": "ppm", "kind": "number", "min": 0, "max": 3000 },
-                        { "key": "WarnVOC", "label": "VOC Warning Threshold", "unit": "ticks", "kind": "number", "min": 0, "max": 500 },
+                        { "key": "WarnVOC", "label": "VOC Warning Threshold", "kind": "number", "min": 0, "max": 500 },
                         { "key": "WarnHum", "label": "Humidity Warning Threshold", "unit": "%", "kind": "number", "min": 0.0, "max": 100.0 }
                     ]
                 },

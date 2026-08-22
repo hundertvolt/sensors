@@ -645,6 +645,89 @@ order.
    - Nothing in §4/§8's settled architecture changed. `lint`/`typecheck`/`lint:html`/`lint:css`/
      `test`/`test:coverage` all green throughout; coverage held steady (97.19% → 97.37% statements).
 
+   **Session 3 follow-up 4: full-surface audit (structure, error handling, races, REST
+   coherence/completeness, simplification) (same branch/PR).** Project owner asked for a
+   bird's-eye review of both `html/`/`js/` against nine angles (structure/leanness, setup
+   sanity, error/corner-case handling, race conditions, REST interfacing coherence/correctness/
+   completeness, whether every GET/PUT value has a real UI representation, simplification
+   room, anything missing, and overall correctness of purpose). Structure/setup/race-condition
+   review found nothing to fix (the `pollManager` single-flight queue, `startPolling()`'s
+   resolve-before-reschedule loop, and the visual/mechanics split all held up); two real,
+   confirmed correctness bugs were found and fixed, TDD, plus three real `definitions.json`
+   inaccuracies found via a fresh line-by-line cross-check against the actual `src/` driver/
+   service schemas (not re-trusting session 2's own earlier audit):
+   - **Real bug, found and fixed**: clicking "Reset All Errors" (`/status`'s only submit group)
+     always rendered **Failed** (purple), even on a genuine success. `src/asy_webserver_service.py`'s
+     `_put_status()` never returns a per-field `result` at all (`ar.make_response(0)`, no `result`
+     kwarg) — unlike every other writable endpoint. `reconcileResults()` (added in follow-up 2 to
+     catch a real, different server-side gap: a settings group's post-write hook silently dropping
+     fields from `result`) treats any submitted-but-unreturned key as `"Failed"`, so `ResetErrors`
+     — always present in `groupBody` since a toggle always resubmits its current value — was always
+     marked Failed regardless of outcome. Fixed: `js/render.js`'s PUT handler now special-cases
+     `section.key === "status"` (the only section with this structural shape), marking every
+     submitted field `"Valid"` directly once a non-2xx/`res:"ERR"` response has already been ruled
+     out, instead of running it through `reconcileResults()`. Regression test added
+     (`tests_js/render.test.js`), confirmed failing (`"failed"` !== `"valid"`) before the fix.
+   - **Real bug, found and fixed**: clicking Apply on a group made only of number/string fields
+     (no toggle/enum, which always resubmit) while every field is left blank submits a genuinely
+     empty PUT body — the real backend accepts it (`_apply_settings_groups()`'s per-group `subset`
+     is always empty, so nothing is touched) and returns `result: {}`, which
+     `applyResultStyling()`'s own empty-result-means-success fallback then painted as a misleading
+     green **Valid**, even though nothing was submitted or changed. Affects Networking's `identity`/
+     `ntp` groups, System's `settings` group, and Notification's `flash` (composite-only) and
+     `pause` groups — every submit group with no toggle/enum field. Fixed: `buildAndWireFieldGroup()`'s
+     click handler now checks `collectGroupBody()`'s result before doing anything else; an empty
+     body skips the network round trip entirely and shows "Nothing to submit - no fields were
+     changed." instead of touching `data-apply-status` at all. Regression test added.
+   - **`html/definitions/{wozi,dev}.json` — 3 real value-schema mismatches, found via a fresh
+     cross-check against `src/asy_wifi_service.py`/`asy_sgp40_driver.py`/`sensortask_wozi.py`
+     (not just re-confirming session 2's own earlier audit)**: `SSID`'s `minLength` was `2`,
+     the real schema (`_VAL_SSID`) allows `0` — the client-side validation would have rejected a
+     legitimately backend-accepted 0/1-character SSID edit. `Hostname`'s `maxLength` was `63`, the
+     real cap (`_VAL_HOST`'s own comment: "32 = `network.hostname()`'s real cap") is `32`.
+     `WarnVOC`'s `unit` was `"ticks"` (SGP40's `Raw` field's unit) but `voc_value_callback()`
+     (`sensortask_wozi.py`) feeds it from `sgp_data.VOC`, the unitless VOC Index — same mismatch
+     `measurements`'s own `VOC`/`Raw` fields already correctly avoid, just missed on this
+     unrelated `notification`-section field referencing the same underlying value. All three fixed
+     directly (plain data corrections, not a judgment call) in both device files.
+   - **Two more findings, flagged per CLAUDE.md's "flag, don't silently change" convention and
+     resolved interactively with the project owner rather than guessed at**:
+     - Notification's "Pause Notifications" submit card PUTs a `PauseTime` field the real backend
+       never processes at all: `notify_service`'s registered PUT schema doesn't include it, and
+       `NotificationCoordinator.set_override_led()` — the only method that could ever act on it —
+       is never called anywhere in `src/` outside its own definition (confirmed by grepping the
+       whole tree). Submitting it today silently does nothing server-side and, thanks to
+       `reconcileResults()`, renders as **Failed** — reading as a mistake rather than "not wired up
+       yet." **Project owner's decision: leave the website as-is; `src/` wiring (registering
+       `PauseTime`/`set_override_led()` into the PUT path) will be handled separately, outside this
+       effort.** Not changed here.
+     - The real `PW` (Wi-Fi password) field explicitly allows an empty string as a deliberate
+       "configure an open network" sentinel (`asy_wifi_service.py`'s `_VAL_PW`'s `special=""`), but
+       the website's sparse-PUT convention (`collectGroupBody()`: a blank input is "untouched,
+       omit from the body," not "submit empty") makes it structurally impossible to ever send an
+       empty string for *any* field through this UI, PW included. **Project owner's decision: leave
+       as-is** — configuring an open network is a narrow case, and the blank-always-means-omit
+       convention is simple and well understood; not worth a special-case "clear this field"
+       affordance for one field. Not changed here.
+   - **Every other angle checked clean, nothing to fix**: `js/measurements`/`/sensors` (SCD30/
+     SGP40/BMP3XX) field sets, ranges, enums, and special values all matched their real `_VAL_*`
+     schema tuples exactly; `/status`'s `networking`/`system` sub-object fields matched
+     `_networking_status()`/`_system_status()` exactly; the `errcount` module list (17 entries)
+     matched `_collect_error_sources()` + the webserver's own `WEBSERVER` entry exactly;
+     `dev.json`'s SHTC3/MPRLS/ISL29125 sensors have no real driver under `src/` yet to check
+     against (unchanged from session 2's own note — still a projection, not confirmed). No race
+     conditions found in `PollManager`'s single-flight queue or `startPolling()`'s
+     resolve-before-reschedule design (re-confirmed, not just taken on faith from follow-up 1's
+     earlier pass); the one identified inefficiency (an in-flight GET for a section the visitor has
+     already navigated away from still completes and repaints an already-detached DOM subtree, since
+     `stopCurrentSection()` only cancels *future* poll ticks, not the in-flight request) is harmless
+     — the stale repaint never reaches the visible DOM — and was left as-is rather than adding
+     `AbortController` plumbing for a purely cosmetic/performance concern with no correctness impact.
+   - **Test coverage**: 113 → 115 tests (both new regression tests TDD — written failing against
+     the pre-fix code, confirmed, then made to pass). `lint`/`typecheck`/`lint:html`/`lint:css`/
+     `test` all green throughout.
+   - Nothing in §4/§8/§12's settled architecture changed. `src/` was never touched beyond reading it.
+
 4. **Full build chain.** Wire `html/`+`js/`+the definitions file(s) into a
    `scripts/build_frozen_html.sh`-equivalent pipeline: gzip → `freezefs` → frozen bytecode → mount
    → serve, ending with the real thing bound into an actual firmware build. Keep the mechanism
