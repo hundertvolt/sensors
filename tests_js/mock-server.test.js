@@ -53,6 +53,38 @@ const DEFS = {
             pollGroup: "live",
             groups: [{ key: "SCD30", label: "SCD30", fields: [{ key: "CO2", label: "CO2", kind: "readonly" }] }],
         },
+        {
+            key: "system",
+            label: "System",
+            rest: { get: "/system", put: "/system" },
+            pollGroup: "settings",
+            groups: [
+                {
+                    key: "command",
+                    label: "System Command",
+                    submit: true,
+                    fields: [
+                        {
+                            key: "SystemCmd",
+                            label: "Command",
+                            kind: "enum",
+                            options: [
+                                { value: "reboot", label: "Reboot" },
+                                { value: "bootloader", label: "Reboot into bootloader" },
+                                { value: "mempause", label: "Pause backups for 5 minutes" },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        },
+        {
+            key: "notification",
+            label: "Notification",
+            rest: { get: "/notification", put: "/notification" },
+            pollGroup: "settings",
+            groups: [{ key: "pause", label: "Pause Notifications", submit: true, fields: [{ key: "PauseTime", label: "Pause Time", kind: "number", min: 0, max: 3600 }] }],
+        },
     ],
 };
 
@@ -149,6 +181,44 @@ describe("installMockFetch", () => {
 
         const bad = await fetch("/system", { method: "PUT", body: JSON.stringify({ SystemCmd: "not-a-real-command" }) });
         expect((await bad.json()).result.SystemCmd).toBe("Invalid");
+    });
+
+    it("never persists SystemCmd into systemConfig - it's a dispatched action, not a stored setting (matches real GET /system, which never includes it)", async () => {
+        uninstall = installMockFetch(DEFS, DATA);
+        await fetch("/system", { method: "PUT", body: JSON.stringify({ SystemCmd: "reboot" }) });
+
+        const get = await fetch("/system");
+        expect("SystemCmd" in (await get.json())).toBe(false);
+
+        // A repeat submission must still report Valid, not Unchanged - SystemCmd is dispatched
+        // fresh every time, it never "changes" or "stays the same" against a stored value.
+        const again = await fetch("/system", { method: "PUT", body: JSON.stringify({ SystemCmd: "reboot" }) });
+        expect((await again.json()).result.SystemCmd).toBe("Valid");
+    });
+
+    it("validates PUT /notification's PauseTime range like the real backend's _dispatch_notification_pause() and dispatches it to the live status value, not a stored setting", async () => {
+        // Real backend behavior this mirrors (src/asy_webserver_service.py's
+        // _dispatch_notification_pause()): PauseTime is a runtime action - range-checked 0-3600,
+        // never persisted to config storage, never reported "Unchanged", and its current value is
+        // read back from GET /status's notification.PauseTime, never GET /notification.
+        uninstall = installMockFetch(DEFS, DATA);
+
+        const tooLarge = await fetch("/notification", { method: "PUT", body: JSON.stringify({ PauseTime: 3601 }) });
+        expect((await tooLarge.json()).result.PauseTime).toBe("Invalid");
+        const negative = await fetch("/notification", { method: "PUT", body: JSON.stringify({ PauseTime: -1 }) });
+        expect((await negative.json()).result.PauseTime).toBe("Invalid");
+
+        const ok = await fetch("/notification", { method: "PUT", body: JSON.stringify({ PauseTime: 60 }) });
+        expect((await ok.json()).result.PauseTime).toBe("Valid");
+
+        // Never leaks into GET /notification's flat settings...
+        expect("PauseTime" in (await (await fetch("/notification")).json())).toBe(false);
+        // ...but does show up as the live value under GET /status.
+        expect((await (await fetch("/status")).json()).notification.PauseTime).toBe(60);
+
+        // A repeat submission of the same value must still report Valid, not Unchanged.
+        const again = await fetch("/notification", { method: "PUT", body: JSON.stringify({ PauseTime: 60 }) });
+        expect((await again.json()).result.PauseTime).toBe("Valid");
     });
 
     it("increments a TS-suffixed leaf by exactly 1 on jitter, jitters a plain number, and leaves a non-number leaf untouched", async () => {

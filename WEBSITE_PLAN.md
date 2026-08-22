@@ -717,7 +717,28 @@ order.
        `config_manager.py`'s `type_or_range_error()`, regardless of what a client sends). Fixed with
        an explicit `0 <= payload <= 3600` check before ever calling the callback, TDD (a failing
        test confirming the pre-fix "Valid"-on-clamp behavior, then the fix). The website side
-       needed no changes — `js/render.js` already expected exactly this `result.PauseTime` shape.
+       (`js/render.js`/`html/definitions/*.json`) needed no changes — it already expected exactly
+       this `result.PauseTime` shape. **`js/mock-server.js` did need one**, found while verifying
+       the whole chain end-to-end after the `src/` fix landed: `PauseTime` had no special-casing at
+       all in the mock's PUT handling (unlike `lightCmdLED`/`SystemCmd`), so it fell through the
+       generic sparse-PUT path — persisting into `state.notificationConfig` (leaking into a
+       subsequent `GET /notification`, which the real backend never includes it in), comparing
+       against the stored value for a false `"Unchanged"` on a repeat submission (the real dispatch
+       always reports `"Valid"`), and never touching `state.status.notification.PauseTime` at all
+       (so the Status page's "Remaining Pause Time" never reflected a submitted pause locally). A
+       **sibling instance of the identical bug was also found and fixed for `SystemCmd`**: it *was*
+       already special-cased for its reported result, but only after `applySparsePut()` had already
+       run generically first and persisted it into `state.systemConfig` regardless — so a `SystemCmd`
+       PUT's *result* was already correct, but it still silently leaked into a subsequent
+       `GET /system`. Fixed both with a new `dispatchRangedAction()` helper (range-validated,
+       written straight to its real destination — `state.status.notification.PauseTime` for
+       `PauseTime`, `state.systemConfig` avoided entirely for `SystemCmd`, never compared against a
+       stored value) and excluding both keys from the generic path before it ever runs. TDD, 2 new
+       tests in `tests_js/mock-server.test.js` (115 → 117 total). Manually re-verified end-to-end in
+       real Chromium against the live wozi prototype: submitting `PauseTime: 120` shows green
+       `Valid`, a repeat submission of the same `120` still shows `Valid` (not `Unchanged`),
+       `GET /notification` excludes `PauseTime`, the Status page's "Remaining Pause Time" correctly
+       shows `120`, and `PauseTime: 99999` is correctly rejected as `Invalid`.
      - The real `PW` (Wi-Fi password) field explicitly allows an empty string as a deliberate
        "configure an open network" sentinel (`asy_wifi_service.py`'s `_VAL_PW`'s `special=""`), but
        the website's sparse-PUT convention (`collectGroupBody()`: a blank input is "untouched,

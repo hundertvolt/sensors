@@ -14,6 +14,7 @@ const REST_PATHS = /** @type {const} */ ([
 ]);
 
 const SYSTEM_CMDS = ["reboot", "bootloader", "mempause"];
+const PAUSE_TIME_MAX = 3600; // matches src/asy_webserver_service.py's own _PAUSE_TIME_MAX
 
 /**
  * @param {import("./definitions.js").FieldDef} field
@@ -130,6 +131,26 @@ function applySparsePut(body, fieldDefs, storedConfig) {
         }
     }
     return results;
+}
+
+/**
+ * Dispatches a client-supplied number into `dest[destKey]`: range-validated (rejecting non-finite/
+ * out-of-range as "Invalid") but never compared against a stored value - matches a real dispatched
+ * action (SystemCmd, PauseTime), which the real backend re-runs fresh every call and never reports
+ * "Unchanged" for, unlike a genuine persisted setting.
+ * @param {unknown} rawValue
+ * @param {number} min
+ * @param {number} max
+ * @param {Record<string, unknown>} dest
+ * @param {string} destKey
+ * @returns {string}
+ */
+function dispatchRangedAction(rawValue, min, max, dest, destKey) {
+    if (typeof rawValue !== "number" || !Number.isFinite(rawValue) || rawValue < min || rawValue > max) {
+        return "Invalid";
+    }
+    dest[destKey] = rawValue;
+    return "Valid";
 }
 
 /**
@@ -268,10 +289,18 @@ export function installMockFetch(defs, initialData, controls) {
         if (method === "PUT" && (path === "/networking" || path === "/system" || path === "/notification")) {
             const endpointKey = /** @type {"networking" | "system" | "notification"} */ (path.slice(1));
             const configKey = /** @type {"networkingConfig" | "systemConfig" | "notificationConfig"} */ (`${endpointKey}Config`);
-            const results = applySparsePut(body(), flatDefsByEndpoint[endpointKey], state[configKey]);
-            if (path === "/system" && "SystemCmd" in body()) {
-                const cmd = body().SystemCmd;
-                results.SystemCmd = typeof cmd === "string" && SYSTEM_CMDS.includes(cmd) ? "Valid" : "Invalid";
+            const rawBody = body();
+            // SystemCmd/PauseTime are dispatched actions, never persisted settings on the real
+            // backend (SPECIFICATION.md Part A.8) - excluded here before the generic sparse-PUT
+            // path below so neither one leaks into state[configKey] (and so a later GET never
+            // returns them, matching _get_settings_flat()'s real behavior).
+            const { SystemCmd, PauseTime, ...persistableBody } = rawBody;
+            const results = applySparsePut(persistableBody, flatDefsByEndpoint[endpointKey], state[configKey]);
+            if (path === "/system" && "SystemCmd" in rawBody) {
+                results.SystemCmd = typeof SystemCmd === "string" && SYSTEM_CMDS.includes(SystemCmd) ? "Valid" : "Invalid";
+            }
+            if (path === "/notification" && "PauseTime" in rawBody) {
+                results.PauseTime = dispatchRangedAction(PauseTime, 0, PAUSE_TIME_MAX, state.status.notification, "PauseTime");
             }
             dropOneResultForPartialFailure(results, controls);
             return jsonResponse(envelope(results));
