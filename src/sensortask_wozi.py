@@ -151,6 +151,15 @@ async def _notification_led_callback(payload: "dict[str, Any]") -> bool:
     return await pixel.request_signal(r, g, b, t)
 
 
+async def _notification_pause_callback(payload: int) -> bool:
+    # WebserverService's own _dispatch_notification_pause() already restricts payload to a real int
+    # before ever calling this - set_override_led()/LockedCounter.set_value() clamps into
+    # [0, _MAX_OVERRIDE_TIME] itself and never raises for a plain int (see asy_notification_service.py).
+    assert notify_service is not None
+    await notify_service.set_override_led(payload)
+    return True
+
+
 async def _sgp_maintenance_status() -> "dict[str, Any]":
     assert sgp_reader is not None
     backup_ts, restore_ts = await sgp_reader.get_mem_status()
@@ -374,6 +383,7 @@ async def build_system(
         },
         system_cmd=_system_cmd_callback,
         notification_led=_notification_led_callback,
+        notification_pause=_notification_pause_callback,
         status_sources={
             "networking": _networking_status,
             "system": _system_status,

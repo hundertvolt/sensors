@@ -46,6 +46,7 @@ if TYPE_CHECKING:
     MaintenanceFct = Callable[[], Coroutine[Any, Any, dict[str, Any]]]
     SystemCmdFct = Callable[[str], Coroutine[Any, Any, bool]]
     NotificationLedFct = Callable[[dict[str, Any]], Coroutine[Any, Any, bool]]
+    NotificationPauseFct = Callable[[int], Coroutine[Any, Any, bool]]
 
 _NAME = const("WEBSERVER")
 _SYSTEM_CMDS = ("reboot", "bootloader", "mempause")  # the only enum values ever forwarded to
@@ -179,6 +180,7 @@ class WebserverService:
         settings: "dict[str, Sequence[SettingsGroup]] | None" = None,
         system_cmd: "SystemCmdFct | None" = None,
         notification_led: "NotificationLedFct | None" = None,
+        notification_pause: "NotificationPauseFct | None" = None,
         status_sources: "dict[str, StatusSourceFct] | None" = None,
         maintenance_sensors: "Sequence[tuple[str, MaintenanceFct]]" = (),
         error_sources: "Sequence[_ModuleLike]" = (),
@@ -203,6 +205,7 @@ class WebserverService:
         self._settings: dict[str, list[SettingsGroup]] = {k: list(v) for k, v in (settings or {}).items()}
         self._system_cmd = system_cmd
         self._notification_led = notification_led
+        self._notification_pause = notification_pause
         self._status_sources: dict[str, StatusSourceFct] = dict(status_sources or {})
         self._maintenance_sensors = _index_pairs(maintenance_sensors)
         self._error_sources = _index_by_name(error_sources)
@@ -383,6 +386,8 @@ class WebserverService:
         results: dict[str, Any] = dict(await self._apply_settings_groups("notification", body))
         if "lightCmdLED" in body:
             results["lightCmdLED"] = await self._dispatch_notification_led(body["lightCmdLED"])
+        if "PauseTime" in body:
+            results["PauseTime"] = await self._dispatch_notification_pause(body["PauseTime"])
         return ar.make_response(0, result=results)
 
     async def _dispatch_notification_led(self, payload: "Any") -> str:
@@ -394,6 +399,21 @@ class WebserverService:
             ok = await self._notification_led(payload)
         except Exception as e:
             await self.pr.err_s("notification_led callback failed:", e, errno=3)
+            return "Failed"
+        return "Valid" if ok else "Failed"
+
+    async def _dispatch_notification_pause(self, payload: "Any") -> str:
+        # `type(payload) is not int`, not isinstance() - excludes bool (a JSON true/false decodes to
+        # a Python bool, a type(x) is int subclass) the same way config_manager.py's own
+        # type_or_range_error() rejects it for an "int"-typed schema field.
+        if self._notification_pause is None or type(payload) is not int:
+            return "Invalid"
+        try:  # caller-supplied callback, could legitimately misbehave - see _dispatch_system_cmd()'s
+            # own comment on why this needs the same guard every comparable callback elsewhere in
+            # this codebase already has.
+            ok = await self._notification_pause(payload)
+        except Exception as e:
+            await self.pr.err_s("notification_pause callback failed:", e, errno=5)
             return "Failed"
         return "Valid" if ok else "Failed"
 
