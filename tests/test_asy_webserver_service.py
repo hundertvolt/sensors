@@ -642,16 +642,60 @@ def test_notification_put_light_cmd_led_round_trips_independently_of_flat_fields
 
 def test_notification_put_pause_time_only_leaves_schedule_fields_untouched() -> None:
     notif = _FakeModule("NOTIF", schema=(("OnH", "int", 8, 0, 23, None),), values={"OnH": 8})
+    pause_calls = []
 
-    async def notification_led(payload: "dict[str, Any]") -> bool:
+    async def notification_pause(secs: int) -> bool:
+        pause_calls.append(secs)
         return True
 
     service, app = _make_service(
-        settings={"notification": [SettingsGroup(notif, ("OnH",))]}, notification_led=notification_led
+        settings={"notification": [SettingsGroup(notif, ("OnH",))]}, notification_pause=notification_pause
     )
     res = run(app.dispatch_request(_make_request(app, "PUT", "/notification", {"PauseTime": 60})))
     assert res.status_code == 200
+    body = json.loads(res.body)
+    assert body["result"]["PauseTime"] == "Valid"
+    assert pause_calls == [60]
     assert notif.set_calls == []  # OnH group never received a body with no matching keys
+
+
+def test_notification_put_pause_time_reported_invalid_when_no_handler_registered() -> None:
+    notif = _FakeModule("NOTIF", schema=(("OnH", "int", 8, 0, 23, None),), values={"OnH": 8})
+    service, app = _make_service(settings={"notification": [SettingsGroup(notif, ("OnH",))]})  # notification_pause=None
+    res = run(app.dispatch_request(_make_request(app, "PUT", "/notification", {"PauseTime": 60})))
+    body = json.loads(res.body)
+    assert body["result"]["PauseTime"] == "Invalid"
+
+
+def test_notification_put_pause_time_reported_invalid_when_not_an_int() -> None:
+    async def notification_pause(secs: int) -> bool:
+        return True
+
+    notif = _FakeModule("NOTIF", schema=(("OnH", "int", 8, 0, 23, None),), values={"OnH": 8})
+    service, app = _make_service(
+        settings={"notification": [SettingsGroup(notif, ("OnH",))]}, notification_pause=notification_pause
+    )
+    for bad_value in ("60", 1.5, True, None):
+        res = run(app.dispatch_request(_make_request(app, "PUT", "/notification", {"PauseTime": bad_value})))
+        body = json.loads(res.body)
+        assert body["result"]["PauseTime"] == "Invalid"
+
+
+def test_notification_put_pause_time_raising_callback_returns_failed_not_an_exception() -> None:
+    # notification_pause is a caller-supplied callback and could legitimately misbehave, the same as
+    # system_cmd/notification_led (see their own identical raising-callback tests above).
+    async def notification_pause(secs: int) -> bool:
+        raise RuntimeError("simulated notification_pause failure")
+
+    notif = _FakeModule("NOTIF", schema=(("OnH", "int", 8, 0, 23, None),), values={"OnH": 8})
+    service, app = _make_service(
+        settings={"notification": [SettingsGroup(notif, ("OnH",))]}, notification_pause=notification_pause
+    )
+    res = run(app.dispatch_request(_make_request(app, "PUT", "/notification", {"PauseTime": 60})))
+    assert res.status_code == 200
+    body = json.loads(res.body)
+    assert body["result"]["PauseTime"] == "Failed"
+    assert service.pr.err_count == 1
 
 
 def test_notification_put_light_cmd_led_reported_invalid_when_no_handler_registered() -> None:
