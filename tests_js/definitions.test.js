@@ -151,4 +151,27 @@ describe("loadDefinitions", () => {
         window.fetch = vi.fn(async () => new Response(JSON.stringify({ not: "valid" }), { status: 200 }));
         await expect(loadDefinitions("definitions/broken.json")).rejects.toThrow("failed definitions validation");
     });
+
+    it("throws a clear message (not a raw SyntaxError) when the response isn't valid JSON (a transmission error)", async () => {
+        window.fetch = vi.fn(async () => new Response("{not valid json", { status: 200 }));
+        await expect(loadDefinitions("definitions/torn.json")).rejects.toThrow(/not valid json/i);
+    });
+
+    it("never hangs forever on a connection that never responds", async () => {
+        vi.useFakeTimers();
+        window.fetch = vi.fn((_url, init) => {
+            return new Promise((_resolve, reject) => {
+                /** @type {AbortSignal | undefined} */ (/** @type {RequestInit} */ (init).signal)?.addEventListener("abort", () =>
+                    reject(new DOMException("The operation was aborted", "AbortError")),
+                );
+            });
+        });
+
+        const pending = loadDefinitions("definitions/hangs.json");
+        const assertion = expect(pending).rejects.toThrow(/timed out/i);
+        await vi.advanceTimersByTimeAsync(15000); // fetchWithTimeout()'s own DEFAULT_TIMEOUT_MS
+        await assertion;
+
+        vi.useRealTimers();
+    });
 });

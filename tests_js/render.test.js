@@ -267,7 +267,7 @@ describe("renderSection", () => {
     });
 
     it("shows a visible error banner (without clearing existing data) when a live poll's GET fails, and hides it again once the next poll succeeds", async () => {
-        const controls = { nextFailure: /** @type {"network" | number | undefined} */ (undefined) };
+        const controls = { nextFailure: /** @type {import("../js/mock-server.js").MockFailure | undefined} */ (undefined) };
         uninstall = installMockFetch(DEFS, DATA, controls);
         const main = mount();
         stop = renderSection(DEFS, getSection("measurements"), main);
@@ -279,6 +279,8 @@ describe("renderSection", () => {
         controls.nextFailure = 500;
         await waitFor(() => !banner.classList.contains("hidden"));
         expect(banner.textContent).toMatch(/measurements/i);
+        // The server's own shaped-error descr surfaces verbatim, not just a bare status code.
+        expect(banner.textContent).toMatch(/simulated failure/i);
         // Stale data from before the failure is still on screen, not wiped out.
         expect(main.querySelector('[data-field-key="CO2"]')).not.toBeNull();
 
@@ -286,7 +288,7 @@ describe("renderSection", () => {
     });
 
     it("shows a visible error banner when a settings section's one-shot GET fails", async () => {
-        const controls = { nextFailure: /** @type {"network" | number | undefined} */ ("network") };
+        const controls = { nextFailure: /** @type {import("../js/mock-server.js").MockFailure | undefined} */ ("network") };
         uninstall = installMockFetch(DEFS, DATA, controls);
         const main = mount();
         stop = renderSection(DEFS, getSection("sensors"), main);
@@ -414,6 +416,34 @@ describe("renderSection", () => {
         expect(mustQuery(main, ".error-banner").textContent).toMatch(/empty body/i);
     });
 
+    it("shows a clear, non-crashing error banner when a GET response body is torn/truncated JSON (a transmission error)", async () => {
+        const controls = { nextFailure: /** @type {import("../js/mock-server.js").MockFailure | undefined} */ ("torn-json") };
+        uninstall = installMockFetch(DEFS, DATA, controls);
+        const main = mount();
+        stop = renderSection(DEFS, getSection("measurements"), main);
+
+        await waitFor(() => !mustQuery(main, ".error-banner").classList.contains("hidden"));
+        expect(mustQuery(main, ".error-banner").textContent).toMatch(/measurements/i);
+        expect(mustQuery(main, ".error-banner").textContent).toMatch(/not valid json|corrupted|truncated/i);
+    });
+
+    it("surfaces the server's own descr text when the notification section's /status sub-fetch returns a shaped HTTP error", async () => {
+        uninstall = installMockFetch(DEFS, DATA);
+        const mockedFetch = window.fetch;
+        window.fetch = async (input, init) => {
+            const url = typeof input === "string" ? input : input.toString();
+            if (url === "/status") {
+                return new Response(JSON.stringify({ res: "ERR", code: 4, descr: "Not found", result: {} }), { status: 404 });
+            }
+            return mockedFetch(input, init);
+        };
+        const main = mount();
+        stop = renderSection(DEFS, getSection("notification"), main);
+
+        await waitFor(() => !mustQuery(main, ".error-banner").classList.contains("hidden"));
+        expect(mustQuery(main, ".error-banner").textContent).toMatch(/not found/i);
+    });
+
     it("shows a visible error banner when the notification section's own /status sub-fetch fails", async () => {
         // The "Pause Notifications" group's current PauseTime value comes from a second, internal
         // GET /status call (render.js's fetchOnce()), separate from the section's own GET
@@ -486,7 +516,7 @@ describe("renderSection", () => {
     });
 
     it("shows 'Request failed' and a failed apply-status when the PUT itself fails (network failure)", async () => {
-        const controls = { nextFailure: /** @type {"network" | number | undefined} */ (undefined) };
+        const controls = { nextFailure: /** @type {import("../js/mock-server.js").MockFailure | undefined} */ (undefined) };
         uninstall = installMockFetch(DEFS, DATA, controls);
         const main = mount();
         stop = renderSection(DEFS, getSection("sensors"), main);
@@ -504,5 +534,87 @@ describe("renderSection", () => {
         expect(mustQuery(card, ".apply-result").textContent).toMatch(/request failed/i);
         // The Apply button is re-enabled afterward, not left permanently stuck.
         expect(/** @type {HTMLButtonElement} */ (mustQuery(main, ".apply-button")).disabled).toBe(false);
+    });
+
+    it("shows Failed, not silently Valid, when the PUT body is rejected as malformed (HTTP 200, res:ERR)", async () => {
+        // The real backend's own make_response(1) for a malformed body is HTTP 200 with res:"ERR"
+        // (SPECIFICATION.md Part A.8/A.5) - never a shaped HTTP error status. Before this fix,
+        // render.js never checked envelope.res, so an empty `result` on this response silently
+        // defaulted the whole card to "Valid" via applyResultStyling()'s own severity fallback.
+        const controls = { nextFailure: /** @type {import("../js/mock-server.js").MockFailure | undefined} */ (undefined) };
+        uninstall = installMockFetch(DEFS, DATA, controls);
+        const main = mount();
+        stop = renderSection(DEFS, getSection("sensors"), main);
+        await waitFor(() => main.querySelector('[data-field-key="MeasInt"]') !== null);
+
+        const input = /** @type {HTMLInputElement} */ (mustQuery(main, '[data-field-key="MeasInt"]'));
+        input.value = "10";
+        controls.nextFailure = "malformed-body";
+        mustQuery(main, ".apply-button").click();
+
+        await waitFor(() => mustQuery(main, '[data-group-key="SCD30"]').dataset.applyStatus !== undefined);
+
+        const card = mustQuery(main, '[data-group-key="SCD30"]');
+        expect(card.dataset.applyStatus).toBe("failed");
+        expect(mustQuery(card, ".apply-result").textContent).toMatch(/invalid json request/i);
+    });
+
+    it("shows Failed with the server's own descr when a PUT hits a shaped HTTP error (500)", async () => {
+        const controls = { nextFailure: /** @type {import("../js/mock-server.js").MockFailure | undefined} */ (undefined) };
+        uninstall = installMockFetch(DEFS, DATA, controls);
+        const main = mount();
+        stop = renderSection(DEFS, getSection("sensors"), main);
+        await waitFor(() => main.querySelector('[data-field-key="MeasInt"]') !== null);
+
+        const input = /** @type {HTMLInputElement} */ (mustQuery(main, '[data-field-key="MeasInt"]'));
+        input.value = "10";
+        controls.nextFailure = 500;
+        mustQuery(main, ".apply-button").click();
+
+        await waitFor(() => mustQuery(main, '[data-group-key="SCD30"]').dataset.applyStatus !== undefined);
+
+        const card = mustQuery(main, '[data-group-key="SCD30"]');
+        expect(card.dataset.applyStatus).toBe("failed");
+        expect(mustQuery(card, ".apply-result").textContent).toMatch(/simulated failure/i);
+    });
+
+    it("shows Failed when a PUT response body is empty (a torn/truncated transmission)", async () => {
+        const controls = { nextFailure: /** @type {import("../js/mock-server.js").MockFailure | undefined} */ (undefined) };
+        uninstall = installMockFetch(DEFS, DATA, controls);
+        const main = mount();
+        stop = renderSection(DEFS, getSection("sensors"), main);
+        await waitFor(() => main.querySelector('[data-field-key="MeasInt"]') !== null);
+
+        const input = /** @type {HTMLInputElement} */ (mustQuery(main, '[data-field-key="MeasInt"]'));
+        input.value = "10";
+        controls.nextFailure = "empty-body";
+        mustQuery(main, ".apply-button").click();
+
+        await waitFor(() => mustQuery(main, '[data-group-key="SCD30"]').dataset.applyStatus !== undefined);
+
+        expect(mustQuery(main, '[data-group-key="SCD30"]').dataset.applyStatus).toBe("failed");
+    });
+
+    it("shows Failed for a field silently missing from a nominally-OK PUT response, without losing the other field's real status", async () => {
+        // Real server-side gap (WEBSITE_PLAN.md §10 session 3 follow-up 2): a settings group's
+        // post-write hook raising drops that group's fields from `result` entirely, while the
+        // overall envelope still reports res:"OK". reconcileResults() treats a submitted-but-
+        // unanswered field as Failed rather than letting it silently vanish from the UI.
+        const controls = { nextFailure: /** @type {import("../js/mock-server.js").MockFailure | undefined} */ (undefined) };
+        uninstall = installMockFetch(DEFS, DATA, controls);
+        const main = mount();
+        stop = renderSection(DEFS, getSection("sensors"), main);
+        await waitFor(() => main.querySelector('[data-field-key="MeasInt"]') !== null);
+
+        const input = /** @type {HTMLInputElement} */ (mustQuery(main, '[data-field-key="MeasInt"]'));
+        input.value = "10"; // in range - would normally read back Valid
+        controls.nextFailure = "partial-result";
+        mustQuery(main, ".apply-button").click();
+
+        await waitFor(() => mustQuery(main, '[data-group-key="SCD30"]').dataset.applyStatus !== undefined);
+
+        const card = mustQuery(main, '[data-group-key="SCD30"]');
+        expect(card.dataset.applyStatus).toBe("failed"); // worst-first: Failed beats whatever the other fields say
+        expect(mustQuery(card, ".apply-result").textContent).toContain("MeasInt: Failed");
     });
 });

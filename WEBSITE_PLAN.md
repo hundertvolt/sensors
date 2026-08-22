@@ -540,6 +540,64 @@ order.
    - No lint/typecheck/test-count regression anywhere in this pass: `lint`/`typecheck`/`lint:html`/
      `lint:css`/`test` all still green throughout, re-verified after every change, not just at the
      end. `src/` was never touched.
+
+   **Session 3 follow-up 2: robustness against the real backend's full error/transmission
+   surface (same branch/PR).** Read `src/asy_webserver_service.py`/`src/api_response.py` end to
+   end plus `tests/test_asy_webserver_service.py`'s ~110 tests (SPECIFICATION.md Part A.5/A.8) to
+   enumerate every shape a real response can actually take, then made `js/` handle each one —
+   never crashing, never permanently blocking, always self-healing on the next poll/retry.
+   - **Real bug, found and fixed**: `render.js`'s PUT handler never checked the response envelope's
+     `res`/`code` — only a malformed request body (`_body_as_dict()` returning `None`) makes the
+     real backend reply `res:"ERR"`, and it does so as a **plain HTTP 200** (`ar.make_response(1)`),
+     never a shaped HTTP error status. Since that response's `result` is always `{}`,
+     `applyResultStyling()`'s own "empty result still means success" fallback (added for
+     `/status`'s `ResetErrors`, see §12 above) silently painted a rejected PUT as **Valid**. Same
+     silent-Valid outcome for a shaped HTTP error (400/404/405/413/500) reaching the PUT path,
+     since that also carries `result:{}`. Fixed: the PUT handler now treats a non-2xx status, a
+     null body, or `res:"ERR"` as a whole-request failure, surfacing the server's own `descr` text
+     (e.g. "Invalid JSON request") instead of a bare status code.
+   - **Real server-side gap found, flagged not fixed** (`src/` is out of scope for this effort):
+     `WebserverService._apply_settings_groups()` merges each `SettingsGroup`'s own
+     `ar.handle_set_cmd()` result into the overall `results` dict via `.update()`. If a group's
+     `post_fct`/`post_asy_fct` hook raises, `handle_set_cmd()`'s own except-block returns
+     `ar.make_response(100)` with `result:{}` — and that empty dict silently overwrites nothing,
+     so every field in that one group simply **vanishes from the response** with no signal at any
+     level (the top-level envelope still reports `res:"OK"`). `js/render.js`'s new
+     `reconcileResults()` defends against this from the client side: any field the visitor actually
+     submitted but that doesn't come back in `result` is now shown as `Failed` rather than silently
+     omitted. The underlying server-side swallow itself is unchanged — flagging it here per
+     CLAUDE.md's "flag, don't silently change" working agreement, for whichever session next
+     touches `asy_webserver_service.py`/`api_response.py`.
+   - **Transmission-error hardening**: `js/poll-manager.js`'s `PollManager.request()` now
+     separately catches a stream read failure (`response.text()` throwing — connection dropped
+     mid-body) and a JSON parse failure (a non-empty but unparseable body — a truncated/corrupted
+     transmission), each rethrown with a clear message and the original error preserved as
+     `Error.cause` (see below) rather than surfacing a raw `SyntaxError`/opaque stream error.
+   - **Two more startup fetches hardened to the same bar**: `definitions.js`'s `loadDefinitions()`
+     and `app.js`'s mock-fixture-data load had no timeout at all (a hung connection would leave the
+     page stuck loading forever) and no clear handling for a torn/non-JSON response. Both now go
+     through a new shared `poll-manager.js` export, `fetchWithTimeout()` (the same
+     `AbortController`-based timeout `PollManager.request()` already used, extracted so it's usable
+     outside the single-flight queue — these are one-time startup loads, not recurring REST polls,
+     so they don't need queuing, but do need the same never-hang guarantee). `PollManager.request()`
+     itself now calls this shared helper too, rather than duplicating the timeout logic.
+   - **`preserve-caught-error` (new to this session)**: fixing the two throw-sites above surfaced
+     that `eslint:recommended` itself (not one of session 3 follow-up 1's own added rules) now
+     includes this rule in the installed `eslint` 10.8.1 — confirmed directly against the
+     installed rule's own metadata, not assumed. Adopted its intended fix throughout (`new
+     Error(message, { cause: originalError })`) rather than suppressing it, since attaching the
+     real cause is a genuine improvement or debuggability, not just a lint-satisfying formality.
+   - **Test coverage**: 94 → 110 tests, covering every new failure mode via `mock-server.js`'s
+     extended `MockFetchControls` (`"malformed-body"`, `"torn-json"`, `"empty-body"`,
+     `"partial-result"` — each modeled on the real backend's own documented behavior, not invented)
+     plus direct unit tests of `poll-manager.js`'s own stream/JSON-failure handling and
+     `definitions.js`'s never-hangs-forever guarantee. Manually verified end-to-end in real
+     Chromium (Playwright): a rejected PUT correctly shows Failed with the server's real descr
+     text (not silently Valid), and the app remains fully responsive immediately afterward — the
+     next Apply on the same card succeeds normally, confirming self-healing rather than a stuck
+     state.
+   - Nothing in §4/§8/§12's settled architecture changed; `src/` was never touched beyond reading
+     it. `lint`/`typecheck`/`lint:html`/`lint:css`/`test` all green throughout.
 4. **Full build chain.** Wire `html/`+`js/`+the definitions file(s) into a
    `scripts/build_frozen_html.sh`-equivalent pipeline: gzip → `freezefs` → frozen bytecode → mount
    → serve, ending with the real thing bound into an actual firmware build. Keep the mechanism

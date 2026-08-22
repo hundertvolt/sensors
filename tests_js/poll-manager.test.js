@@ -41,6 +41,55 @@ describe("pollManager", () => {
         expect(result.body).toEqual({ hello: "world" });
     });
 
+    it("rejects with a clear message (and the original SyntaxError as cause) when the body isn't valid JSON", async () => {
+        // A genuine transmission error (truncated/corrupted response), not something the server
+        // itself would ever intentionally send - see WEBSITE_PLAN.md §10 session 3 follow-up 2.
+        window.fetch = vi.fn(async () => new Response("{not valid json", { status: 200 }));
+
+        let caught;
+        try {
+            await pollManager.request("/torn");
+        } catch (error) {
+            caught = error;
+        }
+        expect(caught).toBeInstanceOf(Error);
+        expect(/** @type {Error} */ (caught).message).toMatch(/not valid json/i);
+        expect(/** @type {Error} */ (caught).cause).toBeInstanceOf(SyntaxError);
+    });
+
+    it("rejects with a clear message when the connection drops mid-stream, while reading the response body", async () => {
+        // A response whose underlying stream errors after headers arrive but before the body
+        // finishes - a genuine dropped-connection transmission error, not a malformed JSON body.
+        const erroringStream = new ReadableStream({
+            start(controller) {
+                controller.error(new Error("simulated stream failure"));
+            },
+        });
+        window.fetch = vi.fn(async () => new Response(erroringStream, { status: 200 }));
+
+        let caught;
+        try {
+            await pollManager.request("/dropped");
+        } catch (error) {
+            caught = error;
+        }
+        expect(caught).toBeInstanceOf(Error);
+        expect(/** @type {Error} */ (caught).message).toMatch(/interrupted/i);
+        expect(/** @type {Error} */ (caught).cause).toBeDefined();
+    });
+
+    it("still advances the queue after a torn-JSON failure - the next request isn't stuck behind it", async () => {
+        window.fetch = vi
+            .fn()
+            .mockResolvedValueOnce(new Response("{not valid json", { status: 200 }))
+            .mockResolvedValueOnce(new Response(JSON.stringify({ second: true }), { status: 200 }));
+
+        await expect(pollManager.request("/torn")).rejects.toThrow(/not valid json/i);
+        const second = await pollManager.request("/ok");
+
+        expect(second.body).toEqual({ second: true });
+    });
+
     it("still advances the queue when a request fails", async () => {
         window.fetch = vi
             .fn()

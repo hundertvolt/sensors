@@ -181,7 +181,7 @@ describe("installMockFetch", () => {
     });
 
     it("injects exactly one network failure via controls.nextFailure, then serves normally again", async () => {
-        const controls = { nextFailure: /** @type {"network" | number | undefined} */ ("network") };
+        const controls = { nextFailure: /** @type {import("../js/mock-server.js").MockFailure | undefined} */ ("network") };
         uninstall = installMockFetch(DEFS, DATA, controls);
 
         await expect(fetch("/sensors")).rejects.toThrow(/failed to fetch/i);
@@ -201,5 +201,45 @@ describe("installMockFetch", () => {
 
         const second = await fetch("/sensors");
         expect(second.ok).toBe(true);
+    });
+
+    it("injects a malformed-body failure: HTTP 200 with res:ERR/code:1, matching the real backend's own make_response(1) exactly", async () => {
+        const controls = { nextFailure: /** @type {import("../js/mock-server.js").MockFailure | undefined} */ ("malformed-body") };
+        uninstall = installMockFetch(DEFS, DATA, controls);
+
+        const response = await fetch("/sensors", { method: "PUT", body: "not valid json {" });
+        expect(response.ok).toBe(true); // HTTP-level success, per SPECIFICATION.md Part A.8
+        const body = await response.json();
+        expect(body).toEqual({ res: "ERR", code: 1, descr: "Invalid JSON request", result: {} });
+        expect(controls.nextFailure).toBeUndefined();
+    });
+
+    it("injects a torn-json failure: HTTP 200 with an unparseable body, simulating a corrupted transmission", async () => {
+        const controls = { nextFailure: /** @type {import("../js/mock-server.js").MockFailure | undefined} */ ("torn-json") };
+        uninstall = installMockFetch(DEFS, DATA, controls);
+
+        const response = await fetch("/sensors");
+        expect(response.ok).toBe(true);
+        await expect(response.json()).rejects.toThrow();
+    });
+
+    it("injects an empty-body failure: HTTP 200 with a zero-length body", async () => {
+        const controls = { nextFailure: /** @type {import("../js/mock-server.js").MockFailure | undefined} */ ("empty-body") };
+        uninstall = installMockFetch(DEFS, DATA, controls);
+
+        const response = await fetch("/sensors");
+        expect(response.ok).toBe(true);
+        expect(await response.text()).toBe("");
+    });
+
+    it("injects a partial-result failure: one submitted field silently missing from a successful PUT's result", async () => {
+        const controls = { nextFailure: /** @type {import("../js/mock-server.js").MockFailure | undefined} */ ("partial-result") };
+        uninstall = installMockFetch(DEFS, DATA, controls);
+
+        const response = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: { MeasInt: 10, ContMeas: false } }) });
+        const body = await response.json();
+        expect(body.res).toBe("OK"); // the real backend's own gap: overall envelope still reports OK
+        expect(Object.keys(body.result.SCD30)).toHaveLength(1); // one of the two submitted fields is missing
+        expect(controls.nextFailure).toBeUndefined();
     });
 });

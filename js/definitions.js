@@ -37,6 +37,9 @@
  *   },
  * }} MockDeviceData
  */
+
+import { fetchWithTimeout } from "./poll-manager.js";
+
 // errcount history shape matches src/print_log.py's get_log()/asy_webserver_service.py's
 // _shape_errcount_entry() exactly: no per-entry timestamp exists anywhere in the real system, and
 // "type" ("N"=no error/placeholder slot, "E"=error, "W"=warning) is never shown as text - only used
@@ -130,11 +133,18 @@ export function validateDefinitions(data) {
  * @returns {Promise<SiteDefinitions>}
  */
 export async function loadDefinitions(path) {
-    const response = await fetch(path);
+    const response = await fetchWithTimeout(path);
     if (!response.ok) {
         throw new Error(`Failed to fetch ${path}: HTTP ${response.status}`);
     }
-    const data = await response.json();
+    let data;
+    try {
+        data = await response.json();
+    } catch (error) {
+        // A genuine transmission error (truncated/corrupted response) - not this file's own
+        // shape/version validation below, which only ever sees a syntactically valid JSON value.
+        throw new Error(`${path} was not valid JSON (likely a corrupted or truncated transmission)`, { cause: error });
+    }
     const problems = validateDefinitions(data);
     if (problems.length > 0) {
         throw new Error(`${path} failed definitions validation:\n- ${problems.join("\n- ")}`);

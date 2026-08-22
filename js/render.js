@@ -39,6 +39,25 @@ function readInputValue(rawInputValue, field) {
 }
 
 /**
+ * A GET's non-ok/empty response, worded using the server's own shaped-error `descr` when present
+ * (SPECIFICATION.md Part A.5's `_ERROR_SHAPES`/`_shaped_error_handler` - every 400/404/405/413/500
+ * carries one) rather than a bare status code.
+ * @param {{ok: boolean, status: number, body: unknown}} response
+ * @param {string} url
+ * @returns {string}
+ */
+function describeGetFailure(response, url) {
+    const body = /** @type {{descr?: string} | null} */ (response.body);
+    if (body?.descr) {
+        return `GET ${url} failed: ${body.descr}`;
+    }
+    if (response.body === null) {
+        return `GET ${url} returned an empty body`;
+    }
+    return `GET ${url} failed: HTTP ${response.status}`;
+}
+
+/**
  * Reads whatever the visitor entered/toggled in `card`'s controls back into a plain PUT body,
  * keyed off the same `data-field-key`/`data-sub-field-key` hooks `js/templates.js` sets.
  * @param {HTMLElement} card
@@ -101,6 +120,22 @@ function collectGroupBody(card, group) {
 const STATUS_SEVERITY = { Invalid: 0, Failed: 1, Valid: 2, Unchanged: 3 };
 
 /**
+ * A submitted-but-unanswered field is treated as Failed, not silently omitted (WEBSITE_PLAN.md
+ * §10 session 3 follow-up 2 - a known real server-side gap where a settings group's post-write
+ * hook raising drops that group's fields from `result` entirely, with no other signal).
+ * @param {Record<string, unknown>} submitted
+ * @param {Record<string, string>} received
+ * @returns {Record<string, string>}
+ */
+function reconcileResults(submitted, received) {
+    const reconciled = { ...received };
+    for (const key of Object.keys(submitted)) {
+        reconciled[key] ??= "Failed";
+    }
+    return reconciled;
+}
+
+/**
  * Sets the card's `data-apply-status` to the worst of `results` and fills in the outcome text.
  * Only ever writes the semantic status value - `html/style.css` alone decides what each status
  * looks like (WEBSITE_PLAN.md §12).
@@ -158,17 +193,29 @@ function buildAndWireFieldGroup(group, section, currentValues, onApplied) {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(body),
             });
-            const envelope = /** @type {{descr?: string, result?: Record<string, unknown>}} */ (response.body ?? {});
-            const flatResult =
+            const envelope = /** @type {{res?: string, descr?: string, result?: Record<string, unknown>} | null} */ (response.body);
+            // Real backend PUT failures (SPECIFICATION.md Part A.8/A.5): a malformed body is a
+            // clean HTTP 200 with res:"ERR" (never a shaped HTTP error), while a route-level
+            // failure (400/404/405/413/500) is a non-2xx status carrying the same shaped envelope
+            // - either one means the request as a whole was rejected, so per-field results (if
+            // any survived) can't be trusted as a real per-field breakdown.
+            if (!response.ok || envelope === null || envelope.res === "ERR") {
+                throw new Error(envelope?.descr ?? `HTTP ${response.status}`);
+            }
+            const rawResult =
                 section.key === "sensors"
-                    ? /** @type {Record<string, string>} */ (envelope.result?.[group.key] ?? {})
-                    : /** @type {Record<string, string>} */ (envelope.result ?? {});
+                    ? /** @type {Record<string, string> | undefined} */ (envelope.result?.[group.key])
+                    : /** @type {Record<string, string> | undefined} */ (envelope.result);
+            const flatResult = reconcileResults(groupBody, rawResult ?? {});
             applyResultStyling(card, flatResult, envelope.descr ?? "Done");
             onApplied();
         } catch (error) {
             if (resultEl) {
                 resultEl.textContent = `Request failed: ${String(error)}`;
             }
+            // `card` is a const DOM reference, never reassigned - no real race despite the prior
+            // await (this button's own `disabled` guard also rules out a concurrent re-entry).
+            // eslint-disable-next-line require-atomic-updates
             card.dataset.applyStatus = "failed";
         } finally {
             button.disabled = false;
@@ -238,11 +285,8 @@ export function renderSection(defs, section, mainEl) {
     async function fetchOnce() {
         try {
             const response = await pollManager.request(section.rest.get);
-            if (!response.ok) {
-                throw new Error(`GET ${section.rest.get} failed: HTTP ${response.status}`);
-            }
-            if (response.body === null) {
-                throw new Error(`GET ${section.rest.get} returned an empty body`);
+            if (!response.ok || response.body === null) {
+                throw new Error(describeGetFailure(response, section.rest.get));
             }
             const data = /** @type {Record<string, unknown>} */ (response.body);
             if (section.key === "notification") {
@@ -251,8 +295,8 @@ export function renderSection(defs, section, mainEl) {
                 // the "Pause Notifications" group still needs a current value to show/PUT against -
                 // so pull it from /status too rather than inventing a second copy of it here.
                 const statusResponse = await pollManager.request("/status");
-                if (!statusResponse.ok) {
-                    throw new Error(`GET /status failed: HTTP ${statusResponse.status}`);
+                if (!statusResponse.ok || statusResponse.body === null) {
+                    throw new Error(describeGetFailure(statusResponse, "/status"));
                 }
                 const statusBody = /** @type {Record<string, unknown> | null} */ (statusResponse.body);
                 const statusNotification = /** @type {Record<string, unknown>} */ (statusBody?.notification ?? {});

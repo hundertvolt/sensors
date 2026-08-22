@@ -133,6 +133,25 @@ function applySparsePut(body, fieldDefs, storedConfig) {
 }
 
 /**
+ * Simulates the real backend's own known gap (WEBSITE_PLAN.md §10 session 3 follow-up 2): a
+ * settings group's post-write hook raising drops that group's fields from `result` entirely,
+ * with the overall response still reporting `res:"OK"`. Deletes one arbitrary key in place, once,
+ * only when `controls.nextFailure === "partial-result"` (consumed either way it fires or not).
+ * @param {Record<string, string>} results
+ * @param {MockFetchControls} [controls]
+ */
+function dropOneResultForPartialFailure(results, controls) {
+    if (controls?.nextFailure !== "partial-result") {
+        return;
+    }
+    controls.nextFailure = undefined;
+    const key = Object.keys(results)[0];
+    if (key !== undefined) {
+        delete results[key];
+    }
+}
+
+/**
  * @param {Record<string, unknown>} result
  * @returns {{res: string, code: number, descr: string, result: Record<string, unknown>}}
  */
@@ -161,10 +180,11 @@ function jitterInPlace(group) {
 }
 
 /**
- * One-shot failure to inject into the next intercepted REST request - `"network"` makes the mock
- * fetch reject the way a real dropped/hung connection would; a number makes it resolve with that
- * HTTP status instead (a real backend error response). Consumed and cleared after firing once.
- * @typedef {{nextFailure?: "network" | number}} MockFetchControls
+ * One-shot failure to inject into the next intercepted REST request (WEBSITE_PLAN.md §10
+ * session 3 follow-up 2 - see that entry for the full real-backend-error-taxonomy rationale
+ * behind each variant). Consumed and cleared after firing once.
+ * @typedef {"network" | number | "malformed-body" | "torn-json" | "empty-body" | "partial-result"} MockFailure
+ * @typedef {{nextFailure?: MockFailure}} MockFetchControls
  */
 
 /**
@@ -195,11 +215,26 @@ export function installMockFetch(defs, initialData, controls) {
             return originalFetch(input, init);
         }
 
-        if (controls?.nextFailure !== undefined) {
+        if (controls?.nextFailure !== undefined && controls.nextFailure !== "partial-result") {
             const failure = controls.nextFailure;
             controls.nextFailure = undefined;
             if (failure === "network") {
                 throw new TypeError("Failed to fetch (simulated network failure)");
+            }
+            if (failure === "malformed-body") {
+                // Matches the real backend's own make_response(1) exactly (SPECIFICATION.md Part
+                // A.8/A.5): a request body Request.json can't parse, or that parses to something
+                // other than a JSON object, is a clean HTTP 200 with res:"ERR" - never a shaped
+                // HTTP error status.
+                return jsonResponse({ res: "ERR", code: 1, descr: "Invalid JSON request", result: {} });
+            }
+            if (failure === "torn-json") {
+                // A connection dropped/corrupted mid-response: HTTP succeeds but the body isn't
+                // valid JSON - a genuine transmission error, not a request the backend rejected.
+                return new Response("{\"res\": \"OK\", \"code\": 0, tru", { status: 200 });
+            }
+            if (failure === "empty-body") {
+                return new Response("", { status: 200 });
             }
             return jsonResponse({ res: "ERR", code: 5, descr: "Simulated failure" }, failure);
         }
@@ -225,6 +260,9 @@ export function installMockFetch(defs, initialData, controls) {
                 state.sensorsConfig[sensorKey] ??= {};
                 results[sensorKey] = applySparsePut(/** @type {Record<string, unknown>} */ (fields), sensorDefs, state.sensorsConfig[sensorKey]);
             }
+            for (const perSensorResult of Object.values(results)) {
+                dropOneResultForPartialFailure(perSensorResult, controls);
+            }
             return jsonResponse(envelope(results));
         }
         if (method === "PUT" && (path === "/networking" || path === "/system" || path === "/notification")) {
@@ -235,6 +273,7 @@ export function installMockFetch(defs, initialData, controls) {
                 const cmd = body().SystemCmd;
                 results.SystemCmd = typeof cmd === "string" && SYSTEM_CMDS.includes(cmd) ? "Valid" : "Invalid";
             }
+            dropOneResultForPartialFailure(results, controls);
             return jsonResponse(envelope(results));
         }
         if (method === "PUT" && path === "/status") {

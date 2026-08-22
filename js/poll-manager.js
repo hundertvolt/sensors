@@ -7,6 +7,33 @@
 /** Default per-request timeout; see WEBSITE_PLAN.md §10 session 3. */
 export const DEFAULT_TIMEOUT_MS = 15000;
 
+/**
+ * fetch() bounded by an AbortController timeout, freeing the connection and rejecting instead of
+ * waiting forever on a hung one. Used by `PollManager.request()` below and directly by one-off
+ * startup fetches outside the single-flight queue (`definitions.js`/`app.js`) that still need the
+ * same never-hang guarantee.
+ * @param {string} url
+ * @param {RequestInit} [init]
+ * @param {number} [timeoutMs]
+ * @returns {Promise<Response>}
+ */
+export async function fetchWithTimeout(url, init, timeoutMs = DEFAULT_TIMEOUT_MS) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    const timedOut = new Promise((_resolve, reject) => {
+        controller.signal.addEventListener(
+            "abort",
+            () => reject(new Error(`Request to ${url} timed out after ${timeoutMs}ms`)),
+            { once: true },
+        );
+    });
+    try {
+        return await Promise.race([fetch(url, { ...init, signal: controller.signal }), timedOut]);
+    } finally {
+        clearTimeout(timeoutId);
+    }
+}
+
 class PollManager {
     /** @type {Promise<void>} */
     #queue = Promise.resolve();
@@ -30,22 +57,26 @@ class PollManager {
     request(url, init, timeoutMs = DEFAULT_TIMEOUT_MS) {
         const run = async () => {
             this.#activeCount += 1;
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-            const timedOut = new Promise((_resolve, reject) => {
-                controller.signal.addEventListener(
-                    "abort",
-                    () => reject(new Error(`Request to ${url} timed out after ${timeoutMs}ms`)),
-                    { once: true },
-                );
-            });
             try {
-                const response = await Promise.race([fetch(url, { ...init, signal: controller.signal }), timedOut]);
-                const text = await response.text();
-                const body = text.length > 0 ? JSON.parse(text) : null;
+                const response = await fetchWithTimeout(url, init, timeoutMs);
+                let text;
+                try {
+                    text = await response.text();
+                } catch (error) {
+                    // The connection dropped mid-stream, after headers but before the full body
+                    // arrived - a genuine transmission error, not a request the server rejected.
+                    throw new Error(`Connection to ${url} was interrupted while reading the response`, { cause: error });
+                }
+                let body;
+                try {
+                    body = text.length > 0 ? JSON.parse(text) : null;
+                } catch (error) {
+                    // A non-empty but unparseable body - a truncated/corrupted transmission, or a
+                    // non-JSON response from something other than this app's own backend.
+                    throw new Error(`Response from ${url} was not valid JSON (likely a corrupted or truncated transmission)`, { cause: error });
+                }
                 return { ok: response.ok, status: response.status, body };
             } finally {
-                clearTimeout(timeoutId);
                 this.#activeCount -= 1;
             }
         };

@@ -128,4 +128,25 @@ describe("startApp", () => {
         // Never got as far as rendering a section - no stale/half-built page left behind.
         expect(elements.mainEl.querySelector(".section-heading")).toBeNull();
     });
+
+    it("shows a clear error banner (not a crash) when the mock fixture data is torn/truncated JSON", async () => {
+        window.history.pushState(null, "", "?device=wozi");
+        window.fetch = vi.fn(async (input) => {
+            const url = String(input);
+            if (url.includes("definitions/wozi.json")) {
+                return new Response(JSON.stringify(DEFS), { status: 200 });
+            }
+            if (url.includes("mockdata/wozi.json")) {
+                return new Response("{not valid json", { status: 200 });
+            }
+            return new Response("not found", { status: 404 });
+        });
+        elements = buildElements();
+
+        await startApp(elements);
+
+        expect(elements.errorBannerEl.classList.contains("hidden")).toBe(false);
+        expect(elements.errorBannerEl.textContent).toMatch(/not valid json/i);
+        expect(elements.mainEl.querySelector(".section-heading")).toBeNull();
+    });
 });

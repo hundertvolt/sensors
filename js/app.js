@@ -7,6 +7,7 @@
 import { loadDefinitions } from "./definitions.js";
 import { installMockFetch } from "./mock-server.js";
 import { initNav } from "./nav.js";
+import { fetchWithTimeout } from "./poll-manager.js";
 import { renderSection } from "./render.js";
 
 /** @typedef {import("./definitions.js").SiteDefinitions} SiteDefinitions */
@@ -42,11 +43,15 @@ export async function startApp(elements) {
     /** @type {import("./definitions.js").MockDeviceData} */
     let mockData;
     try {
-        const mockDataResponse = await fetch(`../mockdata/${device}.json`);
+        const mockDataResponse = await fetchWithTimeout(`../mockdata/${device}.json`);
         if (!mockDataResponse.ok) {
             throw new Error(`HTTP ${mockDataResponse.status}`);
         }
-        mockData = await mockDataResponse.json();
+        try {
+            mockData = await mockDataResponse.json();
+        } catch (error) {
+            throw new Error("response was not valid JSON (likely a corrupted or truncated transmission)", { cause: error });
+        }
     } catch (error) {
         errorBannerEl.textContent = `Could not load mock fixture data for "${device}": ${String(error)}`;
         errorBannerEl.classList.remove("hidden");
