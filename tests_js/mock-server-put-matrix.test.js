@@ -317,6 +317,18 @@ describe.each(CASES)("PUT $device $sectionKey/$groupKey/$field.key ($field.kind)
             expect(status).toBe("Invalid");
             expect(currentValueIn(getBody, testCase)).toBe(currentValue);
         });
+
+        if (typeof options[0]?.value === "number") {
+            it("rejects a fractional value for this numeric enum field: Invalid, not persisted (mock-server.js's coerceAndValidate() enum branch, SPECIFICATION.md Part A.8 - every declared numeric enum is itself a plain int field server-side)", async () => {
+                // Every currently-declared numeric enum's own real options are whole numbers
+                // (BMP3XX's oversampling/filter settings) - a fractional value can never coincide
+                // with one, so this is unconditionally a genuine rejection, not an accidental match.
+                const fractional = /** @type {number} */ (options[0].value) + 0.5;
+                const { status, getBody } = await putAndGet(testCase, literalOf(fractional));
+                expect(status).toBe("Invalid");
+                expect(currentValueIn(getBody, testCase)).toBe(currentValue);
+            });
+        }
     }
 
     if (field.kind === "toggle") {

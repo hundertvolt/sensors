@@ -835,6 +835,15 @@ def test_webserver_notification_put_light_cmd_led_rejects_non_numeric_field() ->
     assert json.loads(res.body)["result"]["lightCmdLED"] == "Failed"
 
 
+def test_webserver_notification_put_light_cmd_led_rejects_non_numeric_t() -> None:
+    # t goes through cm.coerce_numeric(payload["t"], float) - a distinct code path from r/g/b's own
+    # int coercion (already tested above for r specifically) - confirms the same non-numeric
+    # rejection holds for t's own float-typed branch, not just the int-typed ones.
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    res = _dispatch("PUT", "/notification", {"lightCmdLED": {"r": 10, "g": 20, "b": 30, "t": "soon"}})
+    assert json.loads(res.body)["result"]["lightCmdLED"] == "Failed"
+
+
 def test_webserver_notification_put_light_cmd_led_rejects_missing_field() -> None:
     run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
     res = _dispatch("PUT", "/notification", {"lightCmdLED": {"r": 10, "g": 20, "b": 30}})  # t missing

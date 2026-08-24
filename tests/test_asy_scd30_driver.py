@@ -956,6 +956,111 @@ def test_set_dict_cfg_reports_contmeas_non_bool_as_invalid() -> None:
 
 
 # ---------------------------------------------------------------------------
+# _set_dict_cfg - schema-driven int/float dispatch loop (TempOffs/MeasInt/AmbPres/Altitude/
+# ForceCalRef/SelfCal), distinct from the ContMeas special-case tests above: this is the branch
+# that calls config_manager.py's type_or_range_error() (coercion included, SPECIFICATION.md Part
+# A.8) before dispatching to each field's own real setter. Never exercised at all before this.
+# ---------------------------------------------------------------------------
+
+
+def test_set_dict_cfg_dispatches_a_valid_value_to_the_real_setter_and_reports_valid() -> None:
+    reader = make_reader()
+    reader_fake_i2c(reader)
+    result = run(reader._set_dict_cfg({"TempOffs": 4.5}, reader.get_cfg_schema()))
+    assert result == {"TempOffs": "Valid"}
+
+
+def test_set_dict_cfg_int_value_for_the_float_typed_tempoffs_field_is_coerced_before_dispatch() -> None:
+    # TempOffs is float-typed - a plain int PUT value must be coerced to float by
+    # type_or_range_error() before ever reaching set_temperature_offset(), not passed through as
+    # the raw int (both are structurally acceptable to the setter's own int|float signature, so
+    # only inspecting the actual argument received - via this spy - proves coercion really ran).
+    reader = make_reader()
+    reader_fake_i2c(reader)
+    received = []
+
+    async def spy(offset: "int | float") -> bool:
+        received.append(offset)
+        return True
+
+    reader.set_temperature_offset = spy  # type: ignore[method-assign]
+    result = run(reader._set_dict_cfg({"TempOffs": 5}, reader.get_cfg_schema()))
+    assert result == {"TempOffs": "Valid"}
+    assert received == [5.0]
+    assert type(received[0]) is float
+
+
+def test_set_dict_cfg_integral_float_value_for_the_int_typed_measint_field_is_coerced_before_dispatch() -> None:
+    # Mirror of the test above, in the other direction: MeasInt is int-typed - an integral float PUT
+    # value must be coerced to int before reaching set_measurement_interval().
+    reader = make_reader()
+    reader_fake_i2c(reader)
+    received = []
+
+    async def spy(value: int) -> bool:
+        received.append(value)
+        return True
+
+    reader.set_measurement_interval = spy  # type: ignore[method-assign]
+    result = run(reader._set_dict_cfg({"MeasInt": 10.0}, reader.get_cfg_schema()))
+    assert result == {"MeasInt": "Valid"}
+    assert received == [10]
+    assert type(received[0]) is int
+
+
+def test_set_dict_cfg_fractional_value_for_an_int_typed_field_rejected_before_dispatch() -> None:
+    reader = make_reader()
+    reader_fake_i2c(reader)
+    received = []
+
+    async def spy(value: int) -> bool:
+        received.append(value)
+        return True
+
+    reader.set_measurement_interval = spy  # type: ignore[method-assign]
+    result = run(reader._set_dict_cfg({"MeasInt": 10.5}, reader.get_cfg_schema()))
+    assert result == {"MeasInt": "Invalid"}
+    assert received == []  # never dispatched - rejected before the setter is ever called
+
+
+def test_set_dict_cfg_out_of_range_value_rejected_before_dispatch() -> None:
+    reader = make_reader()
+    reader_fake_i2c(reader)
+    result = run(reader._set_dict_cfg({"TempOffs": 9999.0}, reader.get_cfg_schema()))
+    assert result == {"TempOffs": "Invalid"}
+
+
+def test_set_dict_cfg_wrong_type_value_rejected_before_dispatch() -> None:
+    reader = make_reader()
+    reader_fake_i2c(reader)
+    result = run(reader._set_dict_cfg({"TempOffs": "not a number"}, reader.get_cfg_schema()))
+    assert result == {"TempOffs": "Invalid"}
+
+
+def test_set_dict_cfg_unknown_key_reported_invalid_without_dispatch() -> None:
+    reader = make_reader()
+    reader_fake_i2c(reader)
+    result = run(reader._set_dict_cfg({"NoSuchField": 5}, reader.get_cfg_schema()))
+    assert result == {"NoSuchField": "Invalid"}
+
+
+def test_set_dict_cfg_setter_reports_failed_on_bus_fault() -> None:
+    reader = make_reader()
+    reader_fake_i2c(reader).nak_addresses.add(_ADDR)
+    result = run(reader._set_dict_cfg({"TempOffs": 4.5}, reader.get_cfg_schema()))
+    assert result == {"TempOffs": "Failed"}
+
+
+def test_set_dict_cfg_multiple_fields_in_one_call_including_ambpres_special_sentinel() -> None:
+    # Exercises several dispatch fields together (not just TempOffs in isolation), including
+    # AmbPres's own special-value sentinel (0 - deactivate ambient pressure compensation).
+    reader = make_reader()
+    reader_fake_i2c(reader)
+    result = run(reader._set_dict_cfg({"TempOffs": 5, "AmbPres": 0, "SelfCal": True}, reader.get_cfg_schema()))
+    assert result == {"TempOffs": "Valid", "AmbPres": "Valid", "SelfCal": "Valid"}
+
+
+# ---------------------------------------------------------------------------
 # Integration: get_dict_cfg()/get_dict_data() through the real config_manager.make_dict/name_cfg
 # ---------------------------------------------------------------------------
 

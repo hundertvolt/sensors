@@ -214,6 +214,112 @@ def test_make_dict_comma_in_list_value_repr_no_longer_corrupts_result() -> None:
 
 
 # ---------------------------------------------------------------------------
+# coerce_numeric - direct/standalone (SPECIFICATION.md Part A.8's numeric-coercion policy). This is
+# the lower-level function type_or_range_error() itself calls before ever touching min/max/special -
+# tested here in isolation so its own contract doesn't depend on any field's range, and
+# sensortask_wozi.py's lightCmdLED dispatch (the other real caller, with no FieldSchema of its own)
+# is exercised against exactly this same surface.
+# ---------------------------------------------------------------------------
+
+
+def test_coerce_numeric_same_type_passthrough_is_a_true_identity() -> None:
+    # Not just == - the returned value must be the exact same value, never a needlessly rebuilt one.
+    assert cm.coerce_numeric(5, int) == (True, 5)
+    assert cm.coerce_numeric(5.5, float) == (True, 5.5)
+    assert cm.coerce_numeric(0, int) == (True, 0)
+    assert cm.coerce_numeric(0.0, float) == (True, 0.0)
+
+
+def test_coerce_numeric_int_to_float_always_accepted_and_coerced() -> None:
+    ok, coerced = cm.coerce_numeric(5, float)
+    assert (ok, coerced) == (True, 5.0)
+    assert type(coerced) is float
+    # Negative and zero are ordinary values here too - no special-casing around the sign or origin.
+    assert cm.coerce_numeric(-5, float) == (True, -5.0)
+    assert cm.coerce_numeric(0, float) == (True, 0.0)
+
+
+def test_coerce_numeric_float_to_int_exact_round_trip_accepted() -> None:
+    ok, coerced = cm.coerce_numeric(5.0, int)
+    assert (ok, coerced) == (True, 5)
+    assert type(coerced) is int
+    assert cm.coerce_numeric(-5.0, int) == (True, -5)
+    assert cm.coerce_numeric(0.0, int) == (True, 0)
+
+
+def test_coerce_numeric_negative_zero_float_to_int_accepted_as_plain_zero() -> None:
+    # -0.0 == 0.0 in IEEE-754 float comparison, and int(-0.0) is the plain int 0 (no negative-zero
+    # int concept to worry about) - the exact-round-trip check (float(as_int) == check_val) holds,
+    # so this is accepted like any other exact whole float, not a special case needing its own logic.
+    ok, coerced = cm.coerce_numeric(-0.0, int)
+    assert (ok, coerced) == (True, 0)
+    assert type(coerced) is int
+
+
+def test_coerce_numeric_float_to_int_fractional_rejected_not_truncated() -> None:
+    # Never silently truncated/rounded - the original float is returned unchanged alongside the
+    # rejection, so a caller can't accidentally use a "coerced" value from a failed coercion.
+    for bad in (5.5, 5.001, -0.5, 0.1):
+        ok, coerced = cm.coerce_numeric(bad, int)
+        assert (ok, coerced) == (False, bad)
+
+
+def test_coerce_numeric_float_to_int_nan_and_inf_rejected_not_raised() -> None:
+    for bad in (float("nan"), float("inf"), float("-inf")):
+        ok, coerced = cm.coerce_numeric(bad, int)
+        assert ok is False
+        assert coerced is bad  # returned as-is, not lost/replaced
+
+
+def test_coerce_numeric_bool_excluded_from_both_directions() -> None:
+    # bool subclasses int in Python/MicroPython, but type() (not isinstance()) excludes it from
+    # every branch - it must never coerce into int OR float, and never pass the same-type check
+    # for either, even though `isinstance(True, int)` and `isinstance(True, float)` would both
+    # otherwise be misleading here.
+    assert cm.coerce_numeric(True, int) == (False, True)
+    assert cm.coerce_numeric(False, int) == (False, False)
+    assert cm.coerce_numeric(True, float) == (False, True)
+    assert cm.coerce_numeric(False, float) == (False, False)
+
+
+def test_coerce_numeric_wrong_type_entirely_rejected() -> None:
+    bad_values: list[Any] = ["5", None, [5], {}, (5,)]
+    for bad in bad_values:
+        assert cm.coerce_numeric(bad, int) == (False, bad)
+        assert cm.coerce_numeric(bad, float) == (False, bad)
+
+
+def test_coerce_numeric_unsupported_scalar_type_never_raises() -> None:
+    # coerce_numeric() is only ever called with scalar_type in (int, float) by real production
+    # code (type_or_range_error()'s int/float branches, sensortask_wozi.py's lightCmdLED) - this is
+    # a defensive check on the function's own general contract, not a reachable production path.
+    assert cm.coerce_numeric(5, str) == (False, 5)
+    assert cm.coerce_numeric(5, bool) == (False, 5)
+
+
+def test_coerce_numeric_large_int_to_float_precision_limit_is_a_documented_accepted_gap() -> None:
+    # int -> float is a blanket accept (no exact-round-trip check, unlike the float -> int
+    # direction) on the stated premise that "every int is exactly representable as a float" - true
+    # for any value a real schema field's own min/max bounds could ever let through (the largest
+    # today is BMP3xx's SeaLevelOffs at 5000.0 - SPECIFICATION.md Part A.8), but not true in
+    # general: float has finite mantissa precision (24 bits / ~2**24 on the real RP2040 firmware's
+    # single-precision MICROPY_FLOAT_IMPL_FLOAT build, 52 bits / ~2**53 on this Unix-port test
+    # build's double-precision MICROPY_FLOAT_IMPL_DOUBLE - confirmed against both ports'
+    # mpconfigport.h), and MicroPython's int is arbitrary-precision (MICROPY_LONGINT_IMPL_MPZ) on
+    # both. Beyond that many bits, float(int) silently rounds instead of raising - documented,
+    # accepted risk (not a bug to fix here): no currently-registered float field's bounds go
+    # anywhere near this range, and this Unix-port test build's own double precision means it can't
+    # even reproduce the real, stricter single-precision RP2040 threshold - so this test only proves
+    # the *documented* double-precision boundary on Unix, not the deployed single-precision one.
+    exact = 2**53
+    ok, coerced = cm.coerce_numeric(exact, float)
+    assert (ok, coerced) == (True, float(exact))  # still exactly representable at 2**53 itself
+    ok, coerced = cm.coerce_numeric(exact + 1, float)
+    assert ok is True  # blanket accept fires regardless - no exactness check on this direction
+    assert coerced == float(exact)  # but the +1 was silently lost - coerced collapsed back to 2**53
+
+
+# ---------------------------------------------------------------------------
 # type_or_range_error / check_cfg_get_default
 # ---------------------------------------------------------------------------
 
@@ -815,6 +921,79 @@ def test_configmanager_valid_existing_non_default_value_preserved() -> None:
         run(mgr.setup())
         assert mgr.valid is True
         assert run(mgr.get_dict(["Count"])) == {"Count": 7}  # not overwritten back to the default (5)
+    finally:
+        _remove(path)
+
+
+def test_configmanager_setup_coerces_and_rewrites_a_hand_edited_int_value_for_a_float_field() -> None:
+    # A hand-edited (or pre-coercion-policy) file storing a float field's value as a bare-integer
+    # JSON literal ("Offset": 7, not "Offset": 7.0) must be coerced to float on load - and, since
+    # the coerced shape differs in type from what was actually on disk, setup()'s own
+    # `type(coerced_cfg) is not type(new_cfg)` rewrite check (not `!=`, which 7 != 7.0 would have
+    # missed - see config_manager.py's own inline comment) must fire and persist the corrected
+    # float shape back to disk, not just hold it in _cache until the next write.
+    path = _tmp_path("setupintforfloat.cfg")
+    _remove(path)
+    with open(path, "w") as f:
+        f.write('{"Count": 5, "Offset": 7, "Name": "abc", "Enabled": true}')  # Offset as a bare int
+    try:
+        mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
+        run(mgr.setup())
+        assert mgr.valid is True
+        assert run(mgr.get_dict(["Offset"])) == {"Offset": 7.0}
+        assert type(mgr._cache["Offset"]) is float
+        with open(path) as f:
+            on_disk = json.load(f)
+        assert on_disk["Offset"] == 7.0
+        assert type(on_disk["Offset"]) is float  # rewritten with the corrected float shape
+    finally:
+        _remove(path)
+
+
+def test_configmanager_setup_coerces_and_rewrites_a_hand_edited_integral_float_value_for_an_int_field() -> None:
+    # Mirror of the test above, in the other direction: an int field's value hand-edited/stored as
+    # "5.0" must coerce to the real int 5 and get rewritten back to disk in that shape too.
+    path = _tmp_path("setupfloatforint.cfg")
+    _remove(path)
+    with open(path, "w") as f:
+        f.write('{"Count": 5.0, "Offset": 1.5, "Name": "abc", "Enabled": true}')  # Count as an integral float
+    try:
+        mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
+        run(mgr.setup())
+        assert mgr.valid is True
+        assert run(mgr.get_dict(["Count"])) == {"Count": 5}
+        assert type(mgr._cache["Count"]) is int
+        with open(path) as f:
+            on_disk = json.load(f)
+        assert on_disk["Count"] == 5
+        assert type(on_disk["Count"]) is int  # rewritten with the corrected int shape
+    finally:
+        _remove(path)
+
+
+def test_configmanager_setup_matching_literal_shape_does_not_force_a_spurious_rewrite() -> None:
+    # Negative-space companion to the two tests above: a file whose stored values already match
+    # their field's own declared type shape exactly must NOT be flagged by the `type(coerced_cfg)
+    # is not type(new_cfg)` check - confirms that check only fires on an actual type mismatch, not
+    # on every load. Proven directly (not just indirectly via the value read back) by comparing the
+    # file's exact on-disk bytes before/after setup(): rewrite=True is the only thing that ever
+    # calls json.dump() again in setup(), so byte-identical content before and after is direct proof
+    # no rewrite happened.
+    path = _tmp_path("setupmatchingshape.cfg")
+    _remove(path)
+    with open(path, "w") as f:
+        json.dump({"Count": 7, "Offset": 2.5, "Name": "abc", "Enabled": True}, f)
+    with open(path, "rb") as f:
+        original_bytes = f.read()
+    try:
+        mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
+        run(mgr.setup())
+        assert mgr.valid is True
+        assert run(mgr.get_dict(["Count", "Offset"])) == {"Count": 7, "Offset": 2.5}
+        assert type(mgr._cache["Count"]) is int
+        assert type(mgr._cache["Offset"]) is float
+        with open(path, "rb") as f:
+            assert f.read() == original_bytes  # untouched - no spurious rewrite
     finally:
         _remove(path)
 
@@ -1426,6 +1605,61 @@ def test_write_config_nan_and_inf_rejected_end_to_end() -> None:
         _remove(path)
 
 
+def test_write_config_int_value_for_float_field_coerced_and_persisted_as_float() -> None:
+    # End-to-end proof (not just type_or_range_error's own unit-level coverage above) that the
+    # coerced value - not the caller's original int - is what actually lands in _cache and on disk.
+    mgr, path = _make("writeintforfloat.cfg", cfg_vals=_VAL_FLOAT)
+    try:
+        ok, results = run(mgr.write_config({"Offset": 7}, _VAL_FLOAT))
+        assert (ok, results) == (True, {"Offset": "Valid"})
+        assert run(mgr.get_dict(["Offset"])) == {"Offset": 7.0}
+        assert type(mgr._cache["Offset"]) is float
+        with open(path) as f:
+            on_disk = json.load(f)
+        assert on_disk["Offset"] == 7.0
+        assert type(on_disk["Offset"]) is float  # written as "7.0", not "7" - real json.dump() shape
+    finally:
+        _remove(path)
+
+
+def test_write_config_integral_float_value_for_int_field_coerced_and_persisted_as_int() -> None:
+    mgr, path = _make("writefloatforint.cfg", cfg_vals=_VAL_INT)
+    try:
+        ok, results = run(mgr.write_config({"Count": 7.0}, _VAL_INT))
+        assert (ok, results) == (True, {"Count": "Valid"})
+        assert run(mgr.get_dict(["Count"])) == {"Count": 7}
+        assert type(mgr._cache["Count"]) is int
+        with open(path) as f:
+            on_disk = json.load(f)
+        assert on_disk["Count"] == 7
+        assert type(on_disk["Count"]) is int  # written as "7", not "7.0"
+    finally:
+        _remove(path)
+
+
+def test_write_config_fractional_float_value_for_int_field_rejected_end_to_end() -> None:
+    mgr, path = _make("writefractionalforint.cfg", cfg_vals=_VAL_INT)
+    try:
+        ok, results = run(mgr.write_config({"Count": 7.5}, _VAL_INT))
+        assert (ok, results) == (True, {"Count": "Invalid"})
+        assert run(mgr.get_dict(["Count"])) == {"Count": 5}  # untouched, still the default
+    finally:
+        _remove(path)
+
+
+def test_write_config_int_value_for_float_field_equal_to_current_value_is_unchanged_not_valid() -> None:
+    # The coerced value (7.0) must be compared against the cached value, not the caller's raw int
+    # (7) - confirms new_cache[key] != value in write_config() sees the coerced shape, so a
+    # would-be-genuine-no-op int PUT correctly reports "Unchanged" rather than "Valid".
+    mgr, path = _make("writeintequalfloat.cfg", cfg_vals=_VAL_FLOAT)
+    try:
+        run(mgr.write_config({"Offset": 7}, _VAL_FLOAT))  # first: 1.5 -> 7.0
+        ok, results = run(mgr.write_config({"Offset": 7}, _VAL_FLOAT))  # second: resubmit as an int again
+        assert (ok, results) == (True, {"Offset": "Unchanged"})
+    finally:
+        _remove(path)
+
+
 def test_write_config_unknown_key_marked_invalid() -> None:
     mgr, path = _make("writeunknown.cfg")
     try:
@@ -1660,6 +1894,19 @@ def test_write_config_special_only_value_matching_sentinel_is_valid() -> None:
     mgr, path = _make("specialsentinel.cfg")
     try:
         ok, results = run(mgr.write_config({"Special": 99}, _VAL_SPECIAL))
+        assert (ok, results) == (True, {"Special": "Valid"})
+    finally:
+        _remove(path)
+
+
+def test_write_config_special_only_int_sentinel_accepts_a_coerced_integral_float() -> None:
+    # Coercion runs before the special-value bypass for a special-only field too, not just an
+    # ordinary ranged one (already covered at the type_or_range_error unit level by
+    # test_type_or_range_error_int_field_coerced_float_still_honors_special_bypass) - confirmed
+    # here end-to-end through write_config()'s own special-only ("not used for storage") path.
+    mgr, path = _make("specialsentinelcoerced.cfg")
+    try:
+        ok, results = run(mgr.write_config({"Special": 99.0}, _VAL_SPECIAL))
         assert (ok, results) == (True, {"Special": "Valid"})
     finally:
         _remove(path)

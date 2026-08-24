@@ -674,12 +674,22 @@ fields that reuse the same function against a synthetic `FieldSchema` (`PauseTim
 `_dispatch_notification_pause()`) or the same acceptance policy directly (`lightCmdLED`'s r/g/b/t
 via `sensortask_wozi.py`'s `_notification_led_callback()`), applies one uniform rule instead of
 each caller hand-rolling its own int/float shape check: a JSON int is **always** accepted for a
-float-typed field (coerced to float — every int is exactly representable as a float, a blanket
-accept); a JSON float is accepted for an int-typed field **only when it carries no fractional
+float-typed field (coerced to float — a blanket accept, with no exact-round-trip check on this
+direction); a JSON float is accepted for an int-typed field **only when it carries no fractional
 part** (e.g. `5.0` → coerced to `5`) — a fractional value (`5.7`) is rejected outright as
-`"Invalid"`, the same treatment an out-of-range value gets, never truncated or rounded. This keeps
-both directions symmetric ("accept only what's exactly representable, either direction") and never
-silently discards a digit the caller actually sent. `bool` is still never accepted for an int or
+`"Invalid"`, the same treatment an out-of-range value gets, never truncated or rounded. The intent
+is for both directions to be symmetric ("accept only what's exactly representable, either
+direction") and never silently discard a digit the caller actually sent — true for the float→int
+direction (an exact `int(check_val)`/`float(as_int) == check_val` round-trip is checked, see
+`coerce_numeric()`), but the int→float direction is a **known, accepted gap** in that symmetry, on
+the premise that every int is representable as a float — true only up to a float's mantissa
+precision (Part F.1's `MICROPY_FLOAT_IMPL_FLOAT`-vs-`_DOUBLE` fact), not in general. Accepted as-is
+because no currently-registered float field's own `min`/`max` bounds go anywhere near that range
+(the largest today is BMP3xx's `SeaLevelOffs` at `5000.0`) — the field's own range check already
+catches every value that could otherwise slip through, in practice; see `coerce_numeric()`'s own
+inline comment and `tests/test_config_manager.py`'s
+`test_coerce_numeric_large_int_to_float_precision_limit_is_a_documented_accepted_gap` for this same
+caveat at the code/test level. `bool` is still never accepted for an int or
 float field either way (`type()`, not `isinstance()`, already excludes it — see A.4/F.4's
 discussion of this same distinction elsewhere). NaN/±inf attempting int-coercion are caught (not
 raised) via MicroPython's own `int(float)` exception shapes (`ValueError` for NaN, `OverflowError`
@@ -2874,6 +2884,19 @@ this Part — see this document's front matter for that tradeoff.
   - **`MemoryError` is not an `OSError` subclass in MicroPython** — an `except OSError:` alone is
     blind to allocation failure; anywhere an `OSError` is caught around a call that could also
     plausibly exhaust memory, catch `(OSError, MemoryError)` instead.
+  - **RP2040's real firmware build uses single-precision `float` (`MICROPY_FLOAT_IMPL_FLOAT`,
+    24-bit mantissa, exact integer range up to `2**24`); this project's own Unix-port test rig uses
+    double precision instead (`MICROPY_FLOAT_IMPL_DOUBLE`, 52-bit mantissa, exact up to `2**53`)**
+    — confirmed directly against `ports/rp2/mpconfigport.h` and
+    `ports/unix/variants/mpconfigvariant_common.h`. Both targets use arbitrary-precision `int`
+    (`MICROPY_LONGINT_IMPL_MPZ`), so an `int` value can exceed either threshold; `float(int)`
+    beyond it silently rounds rather than raising. Same "the Unix-port test rig can't reproduce a
+    real-hardware boundary" shape as the `ticks_ms()` period fact below — a test proving exactness
+    up to `2**53` on this rig says nothing about the stricter `2**24` real-hardware limit.
+    `config_manager.py`'s `coerce_numeric()` (A.8's numeric-coercion policy) is the one place this
+    currently matters: its int→float direction has no exact-round-trip check, on the premise every
+    int is representable as a float — true only within this limit. Accepted, not fixed, because no
+    real schema field's own bounds go anywhere near it (see A.8 for the full reasoning).
   - **`struct.pack()`/`pack_into()` silently zero-pad or truncate on a value/argument-count
     mismatch instead of raising**, unlike CPython. Don't rely on a mismatch surfacing as an
     exception; validate shape before packing if it matters.

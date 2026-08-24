@@ -94,13 +94,15 @@ def make_dict(
 
 
 def coerce_numeric(check_val: "Any", scalar_type: type) -> "tuple[bool, Any]":
-    # Accept only what's exactly representable as scalar_type, in either direction (see
-    # SPECIFICATION.md Part A.8): int -> float is a blanket accept (every int is exactly
-    # representable as a float); float -> int is accepted only when the value carries no
-    # fractional part - rejected otherwise, never truncated/rounded, so a fat-fingered "12.5"
-    # can't silently become a stored "12". bool is deliberately excluded from both directions even
-    # though it's an int subclass in Python/MicroPython - type() (not isinstance()) already keeps
-    # it out of every branch below, same as the pre-coercion strict check did.
+    # Intent: accept only what's exactly representable as scalar_type, in either direction (see
+    # SPECIFICATION.md Part A.8) - float -> int is accepted only when the value carries no
+    # fractional part, rejected otherwise, never truncated/rounded, so a fat-fingered "12.5" can't
+    # silently become a stored "12". int -> float is a blanket accept instead (see the inline
+    # comment on that branch below for the one known, accepted gap this leaves in the "exactly
+    # representable" intent - not true in general, though every real field is unaffected today).
+    # bool is deliberately excluded from both directions even though it's an int subclass in
+    # Python/MicroPython - type() (not isinstance()) already keeps it out of every branch below,
+    # same as the pre-coercion strict check did.
     #
     # Public (no leading underscore) and reused outside this module: sensortask_wozi.py's
     # lightCmdLED dispatch (dispatch-only, not schema-backed - no FieldSchema record to hand
@@ -109,6 +111,12 @@ def coerce_numeric(check_val: "Any", scalar_type: type) -> "tuple[bool, Any]":
     if type(check_val) is scalar_type:
         return True, check_val
     if scalar_type is float and type(check_val) is int:
+        # No exact-round-trip check on this direction (unlike float->int below): documented,
+        # accepted gap, not a bug - a value large enough to lose precision here (beyond a float's
+        # mantissa - 2**24 on the real RP2040 firmware's single-precision build, 2**53 on this
+        # Unix-port test build's double precision, see SPECIFICATION.md Part A.8) would already be
+        # rejected by every current schema field's own min/max bounds (the largest today is 5000.0)
+        # long before reaching this line.
         return True, float(check_val)
     if scalar_type is int and type(check_val) is float:
         try:
