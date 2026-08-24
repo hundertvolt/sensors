@@ -78,6 +78,12 @@ export function validateDefinitions(data) {
     if (typeof defs.landingSection !== "string") {
         problems.push("landingSection is missing");
     }
+    // Falls back to for any section that omits its own pollIntervalMs (js/render.js's
+    // startPolling() call) - a missing/non-positive value would otherwise reach setTimeout() as
+    // undefined/0/negative, firing an unthrottled tight polling loop instead of failing loudly here.
+    if (typeof defs.defaultPollIntervalMs !== "number" || !(defs.defaultPollIntervalMs > 0)) {
+        problems.push("defaultPollIntervalMs must be a positive number");
+    }
     if (!Array.isArray(defs.sections) || defs.sections.length === 0) {
         problems.push("sections must be a non-empty array");
         return problems;
@@ -100,6 +106,12 @@ export function validateDefinitions(data) {
         }
         if (typeof s.rest !== "object" || s.rest === null || typeof (/** @type {Record<string, unknown>} */ (s.rest).get) !== "string") {
             problems.push(`${where}.rest.get is missing`);
+        }
+        if (s.pollGroup !== "live" && s.pollGroup !== "settings" && s.pollGroup !== "none") {
+            problems.push(`${where}.pollGroup must be "live", "settings", or "none"`);
+        }
+        if (s.pollIntervalMs !== undefined && (typeof s.pollIntervalMs !== "number" || !(s.pollIntervalMs > 0))) {
+            problems.push(`${where}.pollIntervalMs must be a positive number when present`);
         }
         if (!Array.isArray(s.groups)) {
             problems.push(`${where}.groups must be an array`);

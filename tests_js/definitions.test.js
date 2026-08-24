@@ -56,6 +56,40 @@ describe("validateDefinitions", () => {
         expect(validateDefinitions(broken).some((p) => p.includes("rest.get"))).toBe(true);
     });
 
+    it("rejects a section with a missing or unrecognized pollGroup", () => {
+        // js/render.js's renderSection() only ever checks `=== "live"`, so a missing/typo'd
+        // pollGroup silently falls back to a single one-shot fetch instead of failing loudly here -
+        // exactly the "shape mismatch surfaces a visible error" contract this module's own header
+        // comment promises for every other field.
+        const missing = { ...MINIMAL_VALID, sections: [{ key: "x", label: "X", rest: { get: "/x" }, groups: [] }] };
+        expect(validateDefinitions(missing).some((p) => p.includes("pollGroup"))).toBe(true);
+
+        const typo = { ...MINIMAL_VALID, sections: [{ key: "x", label: "X", rest: { get: "/x" }, pollGroup: "Live", groups: [] }] };
+        expect(validateDefinitions(typo).some((p) => p.includes("pollGroup"))).toBe(true);
+    });
+
+    it("accepts every real pollGroup value", () => {
+        for (const pollGroup of ["live", "settings", "none"]) {
+            const defs = { ...MINIMAL_VALID, landingSection: "x", sections: [{ key: "x", label: "X", rest: { get: "/x" }, pollGroup, groups: [] }] };
+            expect(validateDefinitions(defs)).toEqual([]);
+        }
+    });
+
+    it("rejects a non-positive or non-numeric section pollIntervalMs when present", () => {
+        // js/render.js passes this straight to setTimeout() (startPolling()) - 0/negative/NaN would
+        // otherwise reach it silently and fire an unthrottled tight polling loop.
+        for (const pollIntervalMs of [0, -1000, "3000", null]) {
+            const defs = { ...MINIMAL_VALID, sections: [{ key: "x", label: "X", rest: { get: "/x" }, pollGroup: "live", pollIntervalMs, groups: [] }] };
+            expect(validateDefinitions(defs).some((p) => p.includes("pollIntervalMs"))).toBe(true);
+        }
+    });
+
+    it("rejects a missing or non-positive defaultPollIntervalMs", () => {
+        for (const defaultPollIntervalMs of [undefined, 0, -1, "3000"]) {
+            expect(validateDefinitions({ ...MINIMAL_VALID, defaultPollIntervalMs }).some((p) => p.includes("defaultPollIntervalMs"))).toBe(true);
+        }
+    });
+
     it("rejects a missing device.id", () => {
         const broken = { ...MINIMAL_VALID, device: {} };
         expect(validateDefinitions(broken).some((p) => p.includes("device.id"))).toBe(true);

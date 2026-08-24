@@ -787,6 +787,27 @@ order.
        blank (never prefilled from a stored value, confirming no persistence leak); a partial fill
        (`r`/`g` only) shows `Failed`; non-numeric text in `r` shows `Failed`; zero console/page errors
        throughout.
+     - **`js/definitions.js`'s `validateDefinitions()` — a real gap against its own stated contract,
+       found in the same re-audit**: the module's own header comment promises "a shape/version
+       mismatch surfaces a visible error rather than silently rendering something broken," but
+       `pollGroup` (used by `js/render.js`'s `renderSection()` to decide whether a section polls at
+       all) and both `pollIntervalMs`/`defaultPollIntervalMs` (fed straight into
+       `startPolling()`'s `setTimeout()`) were never validated at all. A missing/typo'd `pollGroup`
+       doesn't error — it silently falls through to a single one-shot fetch instead of live polling;
+       a missing/non-positive `pollIntervalMs`/`defaultPollIntervalMs` would reach `setTimeout()` as
+       `undefined`/`0`/negative, firing an unthrottled tight polling loop instead of failing loudly.
+       Both real `definitions.json` files already happen to set these correctly (re-confirmed by
+       running the strengthened validator against both directly), so this was never a live bug for
+       the two shipped devices — but it's exactly the "unplanned condition with no unit test" this
+       audit pass was asked to find: a third device file with a typo'd `pollGroup` would have
+       degraded silently instead of failing the same loud `errorBanner` every other shape mismatch
+       already gets. Fixed by adding `pollGroup ∈ {"live","settings","none"}` and
+       positive-number checks for both interval fields to `validateDefinitions()`. TDD: 5 new
+       `tests_js/definitions.test.js` tests (missing/typo'd `pollGroup` rejected, all three real
+       values accepted, non-positive/non-numeric `pollIntervalMs` rejected when present, missing/
+       non-positive `defaultPollIntervalMs` rejected) — 119 → 123 total JS tests. Verified both real
+       `definitions.json` files still validate cleanly, and both devices still load end-to-end in
+       real Chromium with zero console errors and the definitions-error banner staying hidden.
      - The real `PW` (Wi-Fi password) field explicitly allows an empty string as a deliberate
        "configure an open network" sentinel (`asy_wifi_service.py`'s `_VAL_PW`'s `special=""`), but
        the website's sparse-PUT convention (`collectGroupBody()`: a blank input is "untouched,
