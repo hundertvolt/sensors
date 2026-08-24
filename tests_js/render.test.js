@@ -342,9 +342,10 @@ describe("renderSection", () => {
     });
 
     it("skips the PUT and shows a neutral message when Apply is clicked with nothing to submit", async () => {
-        // A group made only of number/string fields (no toggle/enum, which always resubmit their
-        // current value) can be genuinely empty if the visitor clicks Apply without touching
-        // anything - collectGroupBody() then returns {}. Sending that as a real PUT would round-trip
+        // A group made only of number/string fields (unlike a toggle, or an enum with a real
+        // current value, both of which always resubmit) can be genuinely empty if the visitor
+        // clicks Apply without touching anything - collectGroupBody() then returns {}. Sending that
+        // as a real PUT would round-trip
         // to the server for nothing and, since applyResultStyling()'s empty-result fallback is
         // "Valid", would misleadingly show green success for a request that changed nothing.
         /** @type {import("../js/definitions.js").SiteDefinitions} */
@@ -384,6 +385,72 @@ describe("renderSection", () => {
         // No PUT was actually sent, so no outcome to color - the card must not claim a status
         // (particularly not the misleading "valid" an empty-result PUT response would produce).
         expect(card.dataset.applyStatus).toBeUndefined();
+    });
+
+    it("skips the PUT for an enum-only submit group (e.g. SystemCmd) left untouched, instead of silently dispatching whichever command the browser defaults a bare <select> to (regression)", async () => {
+        // SystemCmd is never returned by GET /system (write-only dispatched action -
+        // SPECIFICATION.md Part A.8), so buildField() has no real current value to preselect. Before
+        // the templates.js fix, a native <select> with no option explicitly marked selected defaults
+        // to its first <option> - so visiting the System section and clicking Apply without ever
+        // touching the dropdown silently PUT {"SystemCmd":"reboot"}, confirmed live in Chromium.
+        /** @type {import("../js/definitions.js").SiteDefinitions} */
+        const defsSystemCmd = {
+            ...DEFS,
+            sections: [
+                ...DEFS.sections.filter((s) => s.key !== "system"),
+                {
+                    key: "system",
+                    label: "System",
+                    rest: { get: "/system", put: "/system" },
+                    pollGroup: "settings",
+                    groups: [
+                        {
+                            key: "command",
+                            label: "System Command",
+                            submit: true,
+                            fields: [
+                                {
+                                    key: "SystemCmd",
+                                    label: "Command",
+                                    kind: "enum",
+                                    options: [
+                                        { value: "reboot", label: "Reboot" },
+                                        { value: "bootloader", label: "Reboot into bootloader" },
+                                        { value: "mempause", label: "Pause backups for 5 minutes" },
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        };
+        uninstall = installMockFetch(defsSystemCmd, DATA);
+        // Layered on top of the mock's own fetch - afterEach's uninstall() call restores the true
+        // original regardless of how many times window.fetch was reassigned in between, so no
+        // manual restore is needed here.
+        const mockedFetch = window.fetch;
+        let putSent = false;
+        window.fetch = async (input, init) => {
+            if (String(input) === "/system" && init?.method === "PUT") {
+                putSent = true;
+            }
+            return mockedFetch(input, init);
+        };
+
+        const main = mount();
+        const section = /** @type {import("../js/definitions.js").Section} */ (defsSystemCmd.sections.find((s) => s.key === "system"));
+        stop = renderSection(defsSystemCmd, section, main);
+        await waitFor(() => main.querySelector('[data-field-key="SystemCmd"]') !== null);
+
+        const select = /** @type {HTMLSelectElement} */ (mustQuery(main, '[data-field-key="SystemCmd"]'));
+        expect(select.value).toBe(""); // never silently defaults to a real command
+
+        mustQuery(main, ".apply-button").click();
+        await waitFor(() => mustQuery(main, ".apply-result").textContent !== "");
+
+        expect(mustQuery(main, ".apply-result").textContent).toMatch(/nothing to submit/i);
+        expect(putSent).toBe(false);
     });
 
     it("shows a visible error banner (without clearing existing data) when a live poll's GET fails, and hides it again once the next poll succeeds", async () => {

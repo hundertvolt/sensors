@@ -835,6 +835,76 @@ order.
      `test` all green throughout.
    - Nothing in §4/§8/§12's settled architecture changed. `src/` was never touched beyond reading it.
 
+   **Session 3 follow-up 5: similar-bug sweep + paragraph-by-paragraph spec validation (same
+   branch/PR).** Project owner asked for two things: (1) a targeted check for bugs of the same
+   *shape* as the two most recently fixed (`lightCmdLED` dispatch fidelity,
+   `validateDefinitions()`'s unenforced contract), and (2) a fresh pass validating `html/`/`js/`
+   against this file and SPECIFICATION.md A.5/A.8 paragraph by paragraph, not just re-trusting
+   earlier sessions' own "matched exactly" claims. The dispatch-only-field sweep confirmed the set
+   (`SystemCmd`/`PauseTime`/`lightCmdLED`/`ResetErrors`) is complete and all four are now correctly
+   handled by `js/mock-server.js` — no further instances of that specific pattern exist. The
+   paragraph-by-paragraph pass re-confirmed every `/measurements`, `/sensors`, `/networking`,
+   `/system`, `/status`, `/notification` GET/PUT field list in both `html/definitions/{wozi,dev}.json`
+   against A.8's own field lists directly (not against an earlier audit's notes) — all still match
+   exactly — and found two new, real issues, one a genuine safety-relevant bug:
+   - **Real bug, found and fixed via TDD**: `js/templates.js`'s `buildField()` enum branch never
+     marked any `<option>` `selected` when a field's `currentValue` doesn't match any real option —
+     which is *always* true for `SystemCmd` (a write-only dispatched action, never returned by
+     `GET /system` per A.8). A native `<select>` with no option explicitly marked selected defaults
+     to its **first** `<option>` per the HTML living standard, so opening the System section and
+     clicking "Apply" on the System Command card, without ever touching the dropdown, silently PUT
+     `{"SystemCmd":"reboot"}` — confirmed live in real Chromium (Playwright) before this fix, on both
+     devices. Since `reboot`/`bootloader` are genuinely disruptive (a `bootloader` submission leaves
+     the device needing physical intervention to return to normal firmware) and this reproduced with
+     zero deliberate visitor intent, this is a real safety gap, not just a cosmetic one. Fixed:
+     `buildField()` now prepends a blank, initially-selected placeholder option (`value: ""`,
+     "Select…") whenever no real option matches `currentValue`, and omits it entirely when one does
+     (zero behavior change for every already-correct case, e.g. BMP3XX's `PressOvers`/ISL29125's
+     `SensingRange`, both GET-reflected and always pre-selected correctly). The existing sparse-PUT
+     convention (`collectGroupBody()`'s `control.value === ""` → omit) then does the rest for free:
+     leaving the placeholder selected and clicking Apply now correctly shows "Nothing to submit," not
+     a real command dispatch. `render.js`'s own "every toggle/enum field always resubmits" comment
+     (from the earlier empty-PUT-body fix, §10 session 3 follow-up 4) was corrected to note this new
+     exception. TDD: 2 new tests (`templates.test.js`: an enum with no matching current value renders
+     unselected; `render.test.js`: an enum-only submit group modeled directly on `System Command`
+     shows "Nothing to submit" and sends no PUT when Apply is clicked untouched, confirming the select
+     itself starts blank) — 123 → 126 total JS tests (including the `data-group-key` test below).
+     Manually re-verified end-to-end in real Chromium against both devices: the dropdown now starts
+     blank, clicking Apply untouched sends nothing, and deliberately selecting a command (verified with
+     `bootloader`) still PUTs correctly.
+   - **Real §12 layering-contract violation, found and fixed**: this file's own hook table (below)
+     names `js/templates.js` as the sole owner of the `[data-group-key]` hook, but
+     `buildErrcountGroup()` never set it — `js/render.js`'s `paint()` set `rendered.dataset.groupKey`
+     externally instead, right after calling into the template. Harmless at runtime today (the
+     controller sets it before the card is ever queried again), but it split ownership of a hook §12
+     explicitly calls out as templates.js's alone, the same "mechanics layer reaching into what
+     should be the visual layer's job" drift the whole `js/templates.js` extraction was meant to
+     prevent — and it was untested (no `templates.test.js` case ever asserted `buildErrcountGroup()`'s
+     own return value carried this attribute, unlike the equivalent `buildFieldGroupCard()` test).
+     Fixed: `buildErrcountGroup()` now sets `card.dataset.groupKey = group.key` itself, matching
+     `buildFieldGroupCard()`'s own pattern exactly; the now-redundant external assignment in
+     `render.js` was removed. Also corrected the hook table's stale `.errcount-tile` row — it
+     described an individually-clickable-tile design that was superseded, before ever being built, by
+     §8's rollup + "Show flagged"/"Show all" filter-button UX (`buildErrcountGroup()`'s actual
+     implementation); the row now correctly notes those buttons' click handlers are wired entirely
+     inside `js/templates.js` itself (purely cosmetic expand/collapse, no controller/network
+     involvement — matching §12's own "templates.js also owns purely cosmetic interactivity" rule),
+     rather than claiming a controller attaches them. TDD: 1 new `templates.test.js` test asserting
+     `buildErrcountGroup()`'s own return value carries `data-group-key`.
+   - **Every other paragraph checked clean**: A.5's Microdot exception-handling/error-shape/
+     connection-isolation guarantees are already fully accounted for by `render.js`'s PUT-envelope
+     checks and `poll-manager.js`'s stream/JSON-failure handling (session 3 follow-up 2); §4's
+     single-flight poll-queue design (`pollManager`'s `#queue` chaining plus `run()` awaiting
+     `response.text()` before returning) already guarantees the "wait until the pending request has
+     resolved and its connection has fully closed" rule verbatim, and `app.js`'s
+     `stopCurrentSection()`-before-`renderSection()` ordering in `selectSection()` already prevents
+     two sections' poll loops from ever running concurrently; §8's automatic-only dark mode
+     (`prefers-color-scheme`, tokens redefined only under the media query, no manual toggle/stored
+     preference) matches `html/style.css` exactly.
+   - `lint`/`typecheck`/`lint:html`/`lint:css`/`test` all green throughout. Nothing in §4/§8/§12's
+     settled architecture changed beyond the one hook-table correction above; `src/` was never
+     touched beyond reading it.
+
 4. **Full build chain.** Wire `html/`+`js/`+the definitions file(s) into a
    `scripts/build_frozen_html.sh`-equivalent pipeline: gzip → `freezefs` → frozen bytecode → mount
    → serve, ending with the real thing bound into an actual firmware build. Keep the mechanism
@@ -1014,7 +1084,8 @@ small, obvious edit, not a redesign blocker):
 | `[data-current-value-for]` | a writable field's "Current value: …" caption | `render.js` refreshes it after a poll/Apply |
 | `[data-group-key]` | a field-group's card | `render.js` locates the card to re-render/restyle |
 | `[data-apply-status]` | *(unset by templates.js; only ever written by the controller)* | CSS alone decides what each status value looks like (`html/style.css`'s `.card[data-apply-status="…"]` rules) |
-| `.apply-button` / `.errcount-tile` | the submit button / an errcount module tile | `render.js` attaches the real (networked) click handler |
+| `.apply-button` | the submit button | `render.js` attaches the real (networked) click handler |
+| `.errcount-rollup .action-button` ("Show flagged"/"Show all") | `buildErrcountGroup()`'s two filter buttons | *(no controller involvement — purely cosmetic expand/collapse, wired entirely inside `js/templates.js` itself; corrected here, see §10 session-3-follow-up-5's note below — this row previously described an earlier per-tile-click design superseded by §8's rollup/filter-button UX before it was ever built)* |
 | `[data-section-key]` | each nav-drawer link | `nav.js` attaches the section-select click handler |
 
 Controllers only ever set the semantic `data-apply-status` value (`"valid"`/`"invalid"`/

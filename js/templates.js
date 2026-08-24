@@ -124,7 +124,21 @@ export function buildField(field, currentValue, editable) {
         const select = document.createElement("select");
         select.id = `field-${field.key}`;
         select.dataset.fieldKey = field.key;
-        for (const option of field.options ?? []) {
+        const options = field.options ?? [];
+        if (!options.some((option) => option.value === currentValue)) {
+            // No real value to preselect (e.g. SystemCmd, a write-only dispatched action never
+            // returned by GET /system) - without this, a native <select> with no <option> marked
+            // selected defaults to its first one, so clicking Apply without ever touching the
+            // dropdown would silently submit whichever command is listed first. Left unselected,
+            // collectGroupBody()'s existing control.value === "" check omits it from the PUT body,
+            // matching every other untouched field's own sparse-PUT convention.
+            const placeholder = document.createElement("option");
+            placeholder.value = "";
+            placeholder.textContent = "Select…";
+            placeholder.selected = true;
+            select.appendChild(placeholder);
+        }
+        for (const option of options) {
             const optionEl = document.createElement("option");
             optionEl.value = String(option.value);
             optionEl.textContent = option.label;
@@ -240,6 +254,7 @@ function worstErrcountType(entry) {
 export function buildErrcountGroup(group, errcount) {
     const card = document.createElement("div");
     card.className = "card";
+    card.dataset.groupKey = group.key;
 
     const heading = document.createElement("h3");
     heading.textContent = group.label;

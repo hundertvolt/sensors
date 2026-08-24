@@ -191,9 +191,11 @@ function buildAndWireFieldGroup(group, section, currentValues, onApplied) {
         }
         const groupBody = collectGroupBody(card, group);
         if (Object.keys(groupBody).length === 0) {
-            // Every toggle/enum field always resubmits its current value (see collectGroupBody()),
-            // so this can only happen when a group made only of number/string fields is submitted
-            // untouched. Skip the round trip entirely rather than PUTing an empty body and letting
+            // A toggle always resubmits its current value, and so does an enum whose current value
+            // matches a real option (see collectGroupBody()) - so this can only happen when a group
+            // made only of number/string fields is submitted untouched, or an enum field with no
+            // matching current value (e.g. SystemCmd, never returned by GET) is left at its blank
+            // placeholder. Skip the round trip entirely rather than PUTing an empty body and letting
             // applyResultStyling()'s empty-result-means-success fallback show a misleading "Valid"
             // for a request that changed nothing.
             if (resultEl) {
@@ -281,7 +283,6 @@ export function renderSection(defs, section, mainEl) {
                 const errcount = /** @type {Record<string, {counter: number, history?: {num: number, type: "N"|"E"|"W"}[]}>} */ (data.errcount ?? {});
                 const existing = grid.querySelector(`[data-group-key="${group.key}"]`);
                 const rendered = buildErrcountGroup(errcountGroup, errcount);
-                rendered.dataset.groupKey = group.key;
                 if (existing) {
                     existing.replaceWith(rendered);
                 } else {

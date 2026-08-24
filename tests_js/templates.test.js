@@ -154,6 +154,34 @@ describe("buildField", () => {
         expect(select.value).toBe("1");
     });
 
+    it("renders an editable enum with no matching current value as unselected, not silently defaulting to the first option (regression)", () => {
+        // SystemCmd is never returned by GET /system (write-only dispatched action - SPECIFICATION.md
+        // Part A.8), so its currentValue is always undefined here. Without an explicit blank
+        // placeholder, a native <select> auto-selects its first <option> when none is marked
+        // selected - so a visitor who opened the System section and clicked Apply without ever
+        // touching the dropdown would silently submit whichever command happens to be listed first
+        // (e.g. "reboot"), with zero deliberate interaction. Confirmed live in Chromium before this
+        // fix: exactly this sequence PUT {"SystemCmd":"reboot"}.
+        const field = {
+            key: "SystemCmd",
+            label: "Command",
+            kind: /** @type {const} */ ("enum"),
+            options: [
+                { value: "reboot", label: "Reboot" },
+                { value: "bootloader", label: "Reboot into bootloader" },
+                { value: "mempause", label: "Pause backups for 5 minutes" },
+            ],
+        };
+        const el = mount(buildField(field, undefined, true));
+        const select = /** @type {HTMLSelectElement} */ (mustQuery(el, '[data-field-key="SystemCmd"]'));
+        expect(select.value).toBe("");
+        for (const option of Array.from(select.options)) {
+            if (option.value !== "") {
+                expect(option.selected).toBe(false);
+            }
+        }
+    });
+
     it("renders an editable composite field with one input per sub-field", () => {
         const field = {
             key: "lightCmdLED",
@@ -255,6 +283,11 @@ describe("buildErrcountGroup", () => {
         const wrapper = buildErrcountGroup(THREE_MODULE_GROUP, THREE_MODULE_ERRCOUNT);
         expect(wrapper.classList.contains("card")).toBe(true);
         expect(mustQuery(wrapper, "h3").textContent).toBe("Errors");
+    });
+
+    it("tags the card with data-group-key itself, like buildFieldGroupCard() does (regression - §12's layering contract names js/templates.js as the sole owner of this hook; it had drifted to being set externally by render.js instead)", () => {
+        const wrapper = buildErrcountGroup(THREE_MODULE_GROUP, THREE_MODULE_ERRCOUNT);
+        expect(wrapper.dataset.groupKey).toBe("errcount");
     });
 
     it("starts fully collapsed to just the rollup - no module rows visible", () => {
