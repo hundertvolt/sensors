@@ -905,6 +905,90 @@ order.
      settled architecture changed beyond the one hook-table correction above; `src/` was never
      touched beyond reading it.
 
+   **Session 3 follow-up 6: exhaustive PUT-behavior matrix + int/float type-fidelity fix (same
+   branch/PR).** Project owner asked for unit-test proof that every real writable field behaves
+   correctly across six categories: several valid values across the range (Valid/green), every
+   declared special value (Valid/green), the field left untouched/empty (no action, no color),
+   the field's own current value resubmitted (Unchanged/grey, except a dispatch-only action, which
+   must always report Valid even then), an out-of-range value (Invalid/red), and a value of the
+   wrong JSON data type (Invalid/red). Building the "wrong data type" case properly required first
+   determining what the real backend actually does for a type mismatch, not assuming - reading
+   `src/config_manager.py`'s `type_or_range_error()` directly (and its own test suite,
+   `tests/test_config_manager.py:228`, confirming it's deliberate) surfaced a real, previously-
+   unnoticed class of bug:
+   - **Real bug, found and fixed**: `type_or_range_error()` does a **strict Python `type()` check**
+     before ever looking at magnitude - `type(check_val) is not int`/`is not float`/`is not str`.
+     Since JSON has no separate int/float token distinction the way Python does (`json.loads`
+     decodes a bare `2` as `int`, `2.0` as `float`) and JS has no int/float type distinction at all
+     (`JSON.stringify(2.0) === "2"`, confirmed directly against both runtimes), a **float-typed
+     field** (`TempOffs`, `PressOffset`, `TempOffset`, `SeaLevelOffs`, `MeanAtmTemp`, `Interv`,
+     `FlashDur`, `WarnHum` - cross-checked against every real driver's own `ConfigSchema` tuple)
+     silently lost its "this must be a float" signal the moment a visitor typed a whole number: the
+     wire body carried a bare `2`, which the real backend would reject as the wrong type even
+     though the magnitude is perfectly valid. `js/definitions.js`'s `FieldDef` gained a new
+     `float?: boolean` marker (both real `definitions.json` files now set it on all 8 real float
+     fields, plus `dev.json`'s own `SHTC3.TempOffset`/`SHTC3.FiltCoeff`/`MPRLS.PressOffset`/
+     `MPRLS.FiltCoeff` - a projection, same "not confirmed against real code" caveat as dev.json's
+     other unpromoted-sensor fields, §8's "Error/history endpoint-to-UI field mapping" resolution).
+     `js/render.js` gained `serializePutBody()`, which forces a decimal point onto a `field.float`
+     field's whole-number value in the outgoing PUT body's raw JSON text (`JSON.stringify()` itself
+     can't do this - JS numbers carry no int/float distinction to preserve). `js/mock-server.js`
+     gained the matching fidelity fix: `scanNumericLiteralShapes()` reads the raw incoming PUT
+     body's *text* (before `JSON.parse()` discards the distinction) to determine whether each
+     number literal carried a decimal point, and `coerceAndValidate()` now rejects a shape mismatch
+     the same way `type_or_range_error()` does - including for a schema-driven numeric **enum**
+     field (`PressOvers`/`TempOvers`/`FiltCoeff`/dev.json's `ISL29125` enums are themselves plain
+     `type_or_range_error()`-backed int fields with a special-value list per §11's schema-comment
+     grammar sketch, so a decimal-shaped literal must be rejected there too - unlike `SystemCmd`,
+     whose string-valued options never reach `type_or_range_error()` at all, dispatched separately
+     via a plain `in` check). `dispatchRangedAction()` (`PauseTime`) got the same treatment directly
+     (`_dispatch_notification_pause()`'s own explicit `type(payload) is not int` check).
+     `lightCmdLED`'s own subfields are deliberately **exempt** - its real callback casts via
+     Python's lenient `int()`/`float()` *constructors*, not `type_or_range_error()`'s strict check,
+     so a numeric-string or int-for-float mismatch there is genuinely fine server-side (already
+     noted in the follow-up 4/5 write-up above).
+   - **A second, related real bug, found by the same matrix**: `coerceAndValidate()`'s "number" and
+     "string" branches used to *coerce* (`Number(rawValue)`/`String(rawValue)`) before validating,
+     rather than rejecting a wrong JSON type outright - so a JSON string like `"42"` sent to a
+     number field, or a JSON number sent to a string field whose length happened to fit (exposed by
+     `SSID`/`Hostname`/`NTP_Host`'s wider length bounds; `PW`/`Country`'s tighter bounds coincidentally
+     masked the same gap by rejecting on length first), was silently accepted as `Valid` when the
+     real backend's strict `type()` check would reject both outright. Fixed by making both branches
+     check `typeof rawValue` first and reject immediately on a mismatch, matching
+     `type_or_range_error()`'s own "type first, magnitude second" order - confirmed this doesn't
+     regress the existing NaN-garbage-text-passthrough fix (`js/render.js`'s `readInputValue()`,
+     session 3 follow-up 1): garbage text still reaches here as a non-number and is still rejected,
+     just via the type check now instead of a `Number.isFinite()` check, same outcome either way.
+   - **Test coverage**: new `tests_js/mock-server-put-matrix.test.js` - a data-driven matrix
+     (`describe.each`/`it.each`) built directly from the real `html/definitions/{wozi,dev}.json` +
+     `mockdata/{wozi,dev}.json` files (not hand-copied field lists, so it can't silently drift from
+     the real schema), generating the six categories' worth of cases per field's own real
+     `kind`/`min`/`max`/`specialValues`/`options`/`minLength`/`maxLength`. Shared field kinds
+     (SCD30/SGP40, networking, system, notification) are identical between both devices and only
+     exercised once (via wozi); `dev.json`'s own unique sensor groups (SHTC3/MPRLS/ISL29125) are
+     exercised too, to prove the matrix generalizes across enum-heavy and negative-special-value
+     shapes wozi's own sensors don't have. Dispatch-only fields
+     (`SystemCmd`/`PauseTime`/`lightCmdLED`/`ResetErrors`) and the composite `lightCmdLED` shape
+     are excluded from this generic matrix (their own distinct Invalid/Failed/Valid semantics are
+     already covered by dedicated tests elsewhere) rather than force-fit into categories that don't
+     apply to them - `ResetErrors` did gain one new dedicated assertion here (a second, identical
+     submission still reports Valid, never Unchanged, matching every other dispatch-only field's own
+     "always triggers" guarantee - the one dispatch-only field that hadn't been explicitly proven
+     this way yet); a `render.test.js` case was also added for `lightCmdLED` submitted completely
+     blank (every subfield empty), the composite-field instance of the same "nothing to submit, no
+     color" path already covered for a plain field. 468 new matrix tests + 2 more in
+     `render.test.js` - 126 → 595 total JS tests. Manually re-verified end-to-end in real Chromium
+     against the live wozi prototype: typing "2" into `TempOffs` now sends `{"TempOffs":2.0,...}`
+     (not a bare `2`) and is accepted Valid; typing "5.5" into the int-typed `MeasInt` is correctly
+     rejected Invalid; zero console/page errors.
+   - `lint`/`typecheck`/`lint:html`/`lint:css`/`test` all green throughout (each intermediate
+     failure during this pass was a bug in the *test harness itself* - a wrong-shape literal that
+     happened to already carry the intended decimal point, and a special value that happened to
+     coincide with either the field's current stored value or a naively-computed out-of-range probe
+     - not a fresh code regression; each was root-caused and fixed in the harness, not worked
+     around). Nothing in §4/§8/§12's settled architecture changed; `src/` was never touched beyond
+     reading it.
+
 4. **Full build chain.** Wire `html/`+`js/`+the definitions file(s) into a
    `scripts/build_frozen_html.sh`-equivalent pipeline: gzip → `freezefs` → frozen bytecode → mount
    → serve, ending with the real thing bound into an actual firmware build. Keep the mechanism

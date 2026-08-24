@@ -339,6 +339,16 @@ describe("renderSection", () => {
         const card = mustQuery(main, '[data-group-key="resetErrors"]');
         expect(card.dataset.applyStatus).toBe("valid");
         expect(mustQuery(card, '[data-field-wrapper-key="ResetErrors"]').dataset.applyStatus).toBe("valid");
+
+        // ResetErrors is a dispatched action, re-run fresh every call - a second, identical
+        // submission (the toggle stays "Yes, reset") must still report Valid, never Unchanged,
+        // matching every other dispatch-only field's own "always triggers" guarantee
+        // (SystemCmd/PauseTime/lightCmdLED - already covered by their own dedicated tests).
+        const button = /** @type {HTMLButtonElement} */ (mustQuery(main, ".apply-button"));
+        button.click();
+        await waitFor(() => button.disabled); // request in flight
+        await waitFor(() => !button.disabled); // request settled
+        expect(card.dataset.applyStatus).toBe("valid");
     });
 
     it("skips the PUT and shows a neutral message when Apply is clicked with nothing to submit", async () => {
@@ -578,6 +588,26 @@ describe("renderSection", () => {
         const card = mustQuery(main, '[data-group-key="flash"]');
         expect(card.dataset.applyStatus).toBe("valid");
         expect(mustQuery(card, ".apply-result").textContent).toContain("lightCmdLED: Valid");
+    });
+
+    it("skips the PUT and shows a neutral message when lightCmdLED's Apply is clicked with every subfield left blank", async () => {
+        // The "flash" group's only field is the composite lightCmdLED - collectGroupBody()'s
+        // composite branch omits it entirely when anyFilled stays false (no subfield touched), the
+        // same sparse-PUT "untouched means omit" convention every other field kind already follows -
+        // so this is the composite-field instance of the same "nothing to submit" path already
+        // covered for a plain string field (SSID) and an enum with no matching current value
+        // (SystemCmd).
+        uninstall = installMockFetch(DEFS, DATA);
+        const main = mount();
+        stop = renderSection(DEFS, getSection("notification"), main);
+        await waitFor(() => main.querySelector('[data-field-key="lightCmdLED"]') !== null);
+
+        const card = mustQuery(main, '[data-group-key="flash"]');
+        mustQuery(card, ".apply-button").click();
+
+        await waitFor(() => mustQuery(card, ".apply-result").textContent !== "");
+        expect(mustQuery(card, ".apply-result").textContent).toMatch(/nothing to submit/i);
+        expect(card.dataset.applyStatus).toBeUndefined();
     });
 
     it("flattens per-sensor maintenance data one level for the Status section's sensors group", async () => {

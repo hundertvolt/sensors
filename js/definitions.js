@@ -10,7 +10,7 @@
  *   description?: string, min?: number, max?: number, minLength?: number, maxLength?: number,
  *   mask?: boolean, options?: EnumOption[], specialValues?: SpecialValue[],
  *   subFields?: FieldDef[], onLabel?: string, offLabel?: string,
- *   format?: "gmtimestruct",
+ *   format?: "gmtimestruct", float?: boolean,
  * }} FieldDef
  * @typedef {{key: string, label: string, fields: FieldDef[], submit?: boolean, submitLabel?: string}} FieldGroup
  * @typedef {{key: string, label: string, kind: "errcount", modules: {key: string, label: string}[]}} ErrcountGroup
@@ -39,6 +39,11 @@
  */
 
 import { fetchWithTimeout } from "./poll-manager.js";
+
+// A "number"-kind field's real server-side type is Python int by default; float?: true marks the
+// few fields that are actually Python float (SPECIFICATION.md Part A.8's config_manager.py
+// type_or_range_error() rejects a JSON int literal for a float field and vice versa - js/render.js
+// and js/mock-server.js both key off this flag to stay faithful to that strictness).
 
 // errcount history shape matches src/print_log.py's get_log()/asy_webserver_service.py's
 // _shape_errcount_entry() exactly: no per-entry timestamp exists anywhere in the real system, and

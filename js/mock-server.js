@@ -17,14 +17,53 @@ const SYSTEM_CMDS = ["reboot", "bootloader", "mempause"];
 const PAUSE_TIME_MAX = 3600; // matches src/asy_webserver_service.py's own _PAUSE_TIME_MAX
 
 /**
+ * Determines, from raw PUT-body JSON text, whether each key's numeric literal carried a decimal
+ * point/exponent - JSON.parse() itself discards this (JS has no int/float type distinction),
+ * unlike Python's json.loads(), which decodes "2" as int and "2.0" as float
+ * (config_manager.py's type_or_range_error(), SPECIFICATION.md Part A.8). Global across the
+ * whole body text rather than nesting-aware; correct for every PUT shape this app's own UI ever
+ * produces (it never submits two identically-named fields with different literal shapes in one
+ * call - each Apply click submits exactly one field group), so a real per-object-scoped parse
+ * isn't needed here.
+ * @param {string} rawJson
+ * @returns {Record<string, boolean>}
+ */
+function scanNumericLiteralShapes(rawJson) {
+    /** @type {Record<string, boolean>} */
+    const shapes = {};
+    const pattern = /"([^"\\]+)"\s*:\s*(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*(?=[,}])/g;
+    for (const match of rawJson.matchAll(pattern)) {
+        const [, key, numText] = match;
+        shapes[key] = /[.eE]/.test(numText);
+    }
+    return shapes;
+}
+
+/**
  * @param {import("./definitions.js").FieldDef} field
  * @param {unknown} rawValue
+ * @param {boolean} [looksLikeFloat] whether this key's raw JSON literal carried a decimal
+ * point/exponent (scanNumericLiteralShapes()) - omitted when the raw shape is unknown/inapplicable
+ * (e.g. a composite subfield, which the real callback casts leniently via Python's own int()/
+ * float(), never `field.float`-strict - SPECIFICATION.md Part A.8's lightCmdLED note).
  * @returns {{valid: boolean, value: unknown}}
  */
-function coerceAndValidate(field, rawValue) {
+function coerceAndValidate(field, rawValue, looksLikeFloat) {
     if (field.kind === "number") {
-        const value = typeof rawValue === "number" ? rawValue : Number(rawValue);
-        if (!Number.isFinite(value)) {
+        // No Number(rawValue) coercion: config_manager.py's type_or_range_error() does a strict
+        // Python type() check before ever looking at magnitude, so a JSON string (even a
+        // numeric-looking one like "42") is rejected outright server-side, never parsed. Garbage
+        // text js/render.js's readInputValue() sends through unparsed (its own NaN-passthrough
+        // fix) reaches here as a non-number too, so it still correctly ends up Invalid - just via
+        // this type check now, not a NaN check.
+        if (typeof rawValue !== "number" || !Number.isFinite(rawValue)) {
+            return { valid: false, value: rawValue };
+        }
+        const value = rawValue;
+        // Mirrors type_or_range_error()'s own strict Python type() check: a field not marked
+        // field.float is int-typed server-side and rejects a float-shaped literal (and vice
+        // versa), regardless of whether the magnitude would otherwise be in range.
+        if (looksLikeFloat !== undefined && looksLikeFloat !== (field.float === true)) {
             return { valid: false, value };
         }
         const specialValues = field.specialValues ?? [];
@@ -36,14 +75,28 @@ function coerceAndValidate(field, rawValue) {
         return { valid: value >= min && value <= max, value };
     }
     if (field.kind === "string") {
-        const value = String(rawValue);
+        // No String(rawValue) coercion, for the same reason as the number branch above: the real
+        // backend's type_or_range_error() rejects a non-str JSON value outright (e.g. a JSON
+        // number sent to a string field), it never stringifies it first.
+        if (typeof rawValue !== "string") {
+            return { valid: false, value: rawValue };
+        }
+        const value = rawValue;
         const minLength = field.minLength ?? 0;
         const maxLength = field.maxLength ?? Infinity;
         return { valid: value.length >= minLength && value.length <= maxLength, value };
     }
     if (field.kind === "enum") {
         // Compare as-sent, not string-coerced: an enum's real value can be numeric (e.g. BMP3XX's
-        // PressOvers) - a real backend expects that type back, not "4" where it wrote 4.
+        // PressOvers) - a real backend expects that type back, not "4" where it wrote 4. Every
+        // currently-declared numeric enum is itself a plain type_or_range_error()-backed int field
+        // with a special-value list (SPECIFICATION.md Part A.8's schema-comment grammar sketch,
+        // "kind: enum" derivation), so it needs the same int-shape strictness as an ordinary number
+        // field - unlike SystemCmd, whose string-valued options never reach coerceAndValidate() at
+        // all (dispatched separately via SYSTEM_CMDS.includes(), no type_or_range_error involved).
+        if (typeof rawValue === "number" && looksLikeFloat === true) {
+            return { valid: false, value: rawValue };
+        }
         const options = field.options ?? [];
         return { valid: options.some((option) => option.value === rawValue), value: rawValue };
     }
@@ -97,9 +150,10 @@ function sensorFieldDefsFor(defs) {
  * @param {Record<string, unknown>} body
  * @param {Map<string, import("./definitions.js").FieldDef>} fieldDefs
  * @param {Record<string, unknown>} storedConfig
+ * @param {Record<string, boolean>} [numberShapes] scanNumericLiteralShapes() of the raw request body
  * @returns {Record<string, string>}
  */
-function applySparsePut(body, fieldDefs, storedConfig) {
+function applySparsePut(body, fieldDefs, storedConfig, numberShapes) {
     /** @type {Record<string, string>} */
     const results = {};
     for (const [key, rawValue] of Object.entries(body)) {
@@ -118,7 +172,7 @@ function applySparsePut(body, fieldDefs, storedConfig) {
             results[key] = allValid ? "Valid" : "Invalid";
             continue;
         }
-        const { valid, value } = coerceAndValidate(field, rawValue);
+        const { valid, value } = coerceAndValidate(field, rawValue, numberShapes?.[key]);
         if (!valid) {
             results[key] = "Invalid";
             continue;
@@ -137,16 +191,21 @@ function applySparsePut(body, fieldDefs, storedConfig) {
  * Dispatches a client-supplied number into `dest[destKey]`: range-validated (rejecting non-finite/
  * out-of-range as "Invalid") but never compared against a stored value - matches a real dispatched
  * action (SystemCmd, PauseTime), which the real backend re-runs fresh every call and never reports
- * "Unchanged" for, unlike a genuine persisted setting.
+ * "Unchanged" for, unlike a genuine persisted setting. This helper's only current caller
+ * (PauseTime) is strictly int-typed server-side (`_dispatch_notification_pause()`'s own
+ * `type(payload) is not int` check, SPECIFICATION.md Part A.8) - a float-shaped literal is
+ * rejected too, regardless of magnitude, so `looksLikeFloat` is checked unconditionally here
+ * rather than threaded per-field like coerceAndValidate()'s own `field.float` flag.
  * @param {unknown} rawValue
  * @param {number} min
  * @param {number} max
  * @param {Record<string, unknown>} dest
  * @param {string} destKey
+ * @param {boolean} [looksLikeFloat] scanNumericLiteralShapes()'s verdict for this key
  * @returns {string}
  */
-function dispatchRangedAction(rawValue, min, max, dest, destKey) {
-    if (typeof rawValue !== "number" || !Number.isFinite(rawValue) || rawValue < min || rawValue > max) {
+function dispatchRangedAction(rawValue, min, max, dest, destKey, looksLikeFloat) {
+    if (typeof rawValue !== "number" || !Number.isFinite(rawValue) || rawValue < min || rawValue > max || looksLikeFloat === true) {
         return "Invalid";
     }
     dest[destKey] = rawValue;
@@ -289,8 +348,10 @@ export function installMockFetch(defs, initialData, controls) {
             setTimeout(resolve, 80 + Math.random() * 120);
         });
         const method = init?.method ?? "GET";
+        const rawBodyText = String(init?.body ?? "{}");
         /** @returns {Record<string, unknown>} */
-        const body = () => JSON.parse(String(init?.body ?? "{}"));
+        const body = () => JSON.parse(rawBodyText);
+        const numberShapes = scanNumericLiteralShapes(rawBodyText);
 
         if (method === "GET") {
             return jsonResponse(handleGet(path));
@@ -304,7 +365,7 @@ export function installMockFetch(defs, initialData, controls) {
                     continue;
                 }
                 state.sensorsConfig[sensorKey] ??= {};
-                results[sensorKey] = applySparsePut(/** @type {Record<string, unknown>} */ (fields), sensorDefs, state.sensorsConfig[sensorKey]);
+                results[sensorKey] = applySparsePut(/** @type {Record<string, unknown>} */ (fields), sensorDefs, state.sensorsConfig[sensorKey], numberShapes);
             }
             for (const perSensorResult of Object.values(results)) {
                 dropOneResultForPartialFailure(perSensorResult, controls);
@@ -320,12 +381,12 @@ export function installMockFetch(defs, initialData, controls) {
             // sparse-PUT path below so none of them leak into state[configKey] (and so a later GET
             // never returns them, matching _get_settings_flat()'s real behavior).
             const { SystemCmd, PauseTime, lightCmdLED, ...persistableBody } = rawBody;
-            const results = applySparsePut(persistableBody, flatDefsByEndpoint[endpointKey], state[configKey]);
+            const results = applySparsePut(persistableBody, flatDefsByEndpoint[endpointKey], state[configKey], numberShapes);
             if (path === "/system" && "SystemCmd" in rawBody) {
                 results.SystemCmd = typeof SystemCmd === "string" && SYSTEM_CMDS.includes(SystemCmd) ? "Valid" : "Invalid";
             }
             if (path === "/notification" && "PauseTime" in rawBody) {
-                results.PauseTime = dispatchRangedAction(PauseTime, 0, PAUSE_TIME_MAX, state.status.notification, "PauseTime");
+                results.PauseTime = dispatchRangedAction(PauseTime, 0, PAUSE_TIME_MAX, state.status.notification, "PauseTime", numberShapes.PauseTime);
             }
             if (path === "/notification" && "lightCmdLED" in rawBody) {
                 results.lightCmdLED = dispatchLightCmdLed(lightCmdLED);
