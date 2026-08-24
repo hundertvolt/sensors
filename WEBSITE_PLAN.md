@@ -739,6 +739,54 @@ order.
        `Valid`, a repeat submission of the same `120` still shows `Valid` (not `Unchanged`),
        `GET /notification` excludes `PauseTime`, the Status page's "Remaining Pause Time" correctly
        shows `120`, and `PauseTime: 99999` is correctly rejected as `Invalid`.
+     - **Follow-up full-surface re-audit (same branch): the "unlike `lightCmdLED`/`SystemCmd`" claim
+       two paragraphs up was itself wrong** — `lightCmdLED` (the composite "LED Flash" command) was
+       never actually excluded from the generic sparse-PUT path either; it was only assumed correct
+       by pattern-matching against `SystemCmd`, not re-checked against the real backend. Re-reading
+       `asy_webserver_service.py`'s `_put_notification()` confirmed `lightCmdLED` is dispatch-only
+       too (`if "lightCmdLED" in body: results["lightCmdLED"] = await
+       self._dispatch_notification_led(body["lightCmdLED"])`, same shape as `PauseTime`) — never
+       part of `notify_service`'s registered `SettingsGroup` schema. But `_dispatch_notification_led()`
+       and `_notification_led_callback()` (`sensortask_wozi.py`) have their own distinct semantics,
+       different from both `PauseTime`'s and the mock's prior assumption: no range/type check at the
+       dispatch layer beyond `isinstance(payload, dict)` (→ `"Invalid"` only for a non-dict payload);
+       a missing or non-numeric `r`/`g`/`b`/`t` subfield only fails inside the callback's own
+       `int()`/`float()` cast, caught by the same generic callback-exception handler every dispatch
+       action shares, and reported `"Failed"` — never `"Invalid"`; and no upper/lower bound rejection
+       at all for any subfield (`asy_neopixel_driver.py`'s `_clamp_byte()` silently clamps `r`/`g`/`b`
+       into `[0, 255]`, and `t` is never bounded at the callback, only floored to `0.1` deep inside
+       `neopixel_signal()`'s own consumer loop) — a real behavior change from legacy's own
+       `lightCmdLED` handler (`modules/sensortask-wozi.py`'s `led_cmd()`), which validated and
+       *rejected* out-of-range `r`/`g`/`b`/`t` via `update_valid_json(..., 0, 255, ...)`/
+       `update_valid_json(..., 0.5, 60.0, ...)` rather than silently clamping/accepting; that
+       legacy-vs-`src/` divergence is flagged here for the project owner's awareness, not changed —
+       it's an existing, already-tested `src/` contract (`tests/test_asy_webserver_service.py`'s
+       `test_notification_put_light_cmd_led_*` tests), out of this audit's own scope. What *was* in
+       scope and got fixed: `js/mock-server.js`'s `applySparsePut()` was still treating `lightCmdLED`
+       as an ordinary persisted composite `SettingsGroup` field — validating each subfield against
+       `field.min`/`field.max` and rejecting out-of-range as `"Invalid"`, persisting a valid
+       submission into `state.notificationConfig.lightCmdLED` (leaking into a subsequent
+       `GET /notification`, which the real backend never includes it in), and reporting `"Unchanged"`
+       on an identical repeat submission (the real dispatch always re-fires fresh). Two existing
+       `tests_js/render.test.js` tests had locked in the wrong mock behavior as "expected" (asserting
+       `"Invalid"` for a partial/non-numeric composite submission, when the real backend reports
+       `"Failed"` for both). Fixed with a new `dispatchLightCmdLed()` helper in `js/mock-server.js`
+       (mirrors the real dispatch's own two-tier `"Invalid"`-only-for-non-dict /
+       `"Failed"`-for-anything-else-wrong / `"Valid"`-otherwise-regardless-of-magnitude semantics,
+       never persisted, never `"Unchanged"`) and excluding `lightCmdLED` from the generic sparse-PUT
+       path the same way `SystemCmd`/`PauseTime` already are. TDD: corrected the two existing
+       `render.test.js` tests' expectations from `"Invalid"` to `"Failed"`, added a new
+       `render.test.js` positive-case test (full valid submission → `"Valid"`), and added
+       `tests_js/mock-server.test.js`'s first-ever `lightCmdLED` coverage (5 assertions: non-dict →
+       `"Invalid"`; missing subfield → `"Failed"`; non-numeric subfield → `"Failed"`; genuinely
+       out-of-range but well-typed → still `"Valid"`, proving the mock doesn't over-reject relative to
+       the real backend; never leaks into `GET /notification`; a repeat identical submission stays
+       `"Valid"`, never `"Unchanged"`) — 117 → 119 total JS tests. Manually re-verified end-to-end in
+       real Chromium against the live wozi prototype: a fully-specified flash submission shows green
+       `Valid`; navigating away and back to the Notification section leaves the LED Flash subfields
+       blank (never prefilled from a stored value, confirming no persistence leak); a partial fill
+       (`r`/`g` only) shows `Failed`; non-numeric text in `r` shows `Failed`; zero console/page errors
+       throughout.
      - The real `PW` (Wi-Fi password) field explicitly allows an empty string as a deliberate
        "configure an open network" sentinel (`asy_wifi_service.py`'s `_VAL_PW`'s `special=""`), but
        the website's sparse-PUT convention (`collectGroupBody()`: a blank input is "untouched,

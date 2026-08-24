@@ -154,6 +154,31 @@ function dispatchRangedAction(rawValue, min, max, dest, destKey) {
 }
 
 /**
+ * Dispatches lightCmdLED (SPECIFICATION.md Part A.8): a fire-and-forget flash command, never a
+ * persisted setting - matches src/asy_webserver_service.py's _dispatch_notification_led() +
+ * src/sensortask_wozi.py's _notification_led_callback() exactly: "Invalid" only when the payload
+ * isn't an object at all, "Failed" when any of r/g/b/t is missing or not a finite number (the real
+ * callback's own int()/float() cast raising is caught and reported the same way) - never a range
+ * check, since the real driver silently clamps r/g/b (asy_neopixel_driver.py's _clamp_byte()) and
+ * never bounds t at all.
+ * @param {unknown} rawValue
+ * @returns {string}
+ */
+function dispatchLightCmdLed(rawValue) {
+    if (typeof rawValue !== "object" || rawValue === null || Array.isArray(rawValue)) {
+        return "Invalid";
+    }
+    const payload = /** @type {Record<string, unknown>} */ (rawValue);
+    for (const key of ["r", "g", "b", "t"]) {
+        const num = typeof payload[key] === "number" ? payload[key] : Number(payload[key]);
+        if (!Number.isFinite(num)) {
+            return "Failed";
+        }
+    }
+    return "Valid";
+}
+
+/**
  * Simulates the real backend's own known gap (WEBSITE_PLAN.md §10 session 3 follow-up 2): a
  * settings group's post-write hook raising drops that group's fields from `result` entirely,
  * with the overall response still reporting `res:"OK"`. Deletes one arbitrary key in place, once,
@@ -290,17 +315,20 @@ export function installMockFetch(defs, initialData, controls) {
             const endpointKey = /** @type {"networking" | "system" | "notification"} */ (path.slice(1));
             const configKey = /** @type {"networkingConfig" | "systemConfig" | "notificationConfig"} */ (`${endpointKey}Config`);
             const rawBody = body();
-            // SystemCmd/PauseTime are dispatched actions, never persisted settings on the real
-            // backend (SPECIFICATION.md Part A.8) - excluded here before the generic sparse-PUT
-            // path below so neither one leaks into state[configKey] (and so a later GET never
-            // returns them, matching _get_settings_flat()'s real behavior).
-            const { SystemCmd, PauseTime, ...persistableBody } = rawBody;
+            // SystemCmd/PauseTime/lightCmdLED are dispatched actions, never persisted settings on
+            // the real backend (SPECIFICATION.md Part A.8) - excluded here before the generic
+            // sparse-PUT path below so none of them leak into state[configKey] (and so a later GET
+            // never returns them, matching _get_settings_flat()'s real behavior).
+            const { SystemCmd, PauseTime, lightCmdLED, ...persistableBody } = rawBody;
             const results = applySparsePut(persistableBody, flatDefsByEndpoint[endpointKey], state[configKey]);
             if (path === "/system" && "SystemCmd" in rawBody) {
                 results.SystemCmd = typeof SystemCmd === "string" && SYSTEM_CMDS.includes(SystemCmd) ? "Valid" : "Invalid";
             }
             if (path === "/notification" && "PauseTime" in rawBody) {
                 results.PauseTime = dispatchRangedAction(PauseTime, 0, PAUSE_TIME_MAX, state.status.notification, "PauseTime");
+            }
+            if (path === "/notification" && "lightCmdLED" in rawBody) {
+                results.lightCmdLED = dispatchLightCmdLed(lightCmdLED);
             }
             dropOneResultForPartialFailure(results, controls);
             return jsonResponse(envelope(results));

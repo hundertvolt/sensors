@@ -83,7 +83,27 @@ const DEFS = {
             label: "Notification",
             rest: { get: "/notification", put: "/notification" },
             pollGroup: "settings",
-            groups: [{ key: "pause", label: "Pause Notifications", submit: true, fields: [{ key: "PauseTime", label: "Pause Time", kind: "number", min: 0, max: 3600 }] }],
+            groups: [
+                { key: "pause", label: "Pause Notifications", submit: true, fields: [{ key: "PauseTime", label: "Pause Time", kind: "number", min: 0, max: 3600 }] },
+                {
+                    key: "flash",
+                    label: "Manual Flash Command",
+                    submit: true,
+                    fields: [
+                        {
+                            key: "lightCmdLED",
+                            label: "LED Flash",
+                            kind: "composite",
+                            subFields: [
+                                { key: "r", label: "Red", kind: "number", min: 0, max: 255 },
+                                { key: "g", label: "Green", kind: "number", min: 0, max: 255 },
+                                { key: "b", label: "Blue", kind: "number", min: 0, max: 255 },
+                                { key: "t", label: "Time (s)", kind: "number", min: 0.5, max: 60.0 },
+                            ],
+                        },
+                    ],
+                },
+            ],
         },
     ],
 };
@@ -219,6 +239,36 @@ describe("installMockFetch", () => {
         // A repeat submission of the same value must still report Valid, not Unchanged.
         const again = await fetch("/notification", { method: "PUT", body: JSON.stringify({ PauseTime: 60 }) });
         expect((await again.json()).result.PauseTime).toBe("Valid");
+    });
+
+    it("dispatches PUT /notification's lightCmdLED like the real backend's _dispatch_notification_led()/_notification_led_callback(), never as a persisted setting", async () => {
+        // Real behavior this mirrors: no range/type check at the dispatch layer beyond
+        // isinstance(payload, dict) ("Invalid" only for a non-dict payload); every subfield missing
+        // or non-numeric raises inside the real callback's own int()/float() cast, caught and
+        // reported "Failed" (never "Invalid"); a fully-specified numeric payload is always "Valid"
+        // regardless of magnitude, since the real driver silently clamps r/g/b and never bounds t.
+        uninstall = installMockFetch(DEFS, DATA);
+
+        const notADict = await fetch("/notification", { method: "PUT", body: JSON.stringify({ lightCmdLED: "not-a-dict" }) });
+        expect((await notADict.json()).result.lightCmdLED).toBe("Invalid");
+
+        const missingSubfield = await fetch("/notification", { method: "PUT", body: JSON.stringify({ lightCmdLED: { r: 10, g: 20, b: 30 } }) });
+        expect((await missingSubfield.json()).result.lightCmdLED).toBe("Failed");
+
+        const nonNumeric = await fetch("/notification", { method: "PUT", body: JSON.stringify({ lightCmdLED: { r: "abc", g: 20, b: 30, t: 1 } }) });
+        expect((await nonNumeric.json()).result.lightCmdLED).toBe("Failed");
+
+        // Out-of-range is still Valid - the real backend never rejects lightCmdLED on magnitude.
+        const outOfRange = await fetch("/notification", { method: "PUT", body: JSON.stringify({ lightCmdLED: { r: 9999, g: -50, b: 30, t: 999 } }) });
+        expect((await outOfRange.json()).result.lightCmdLED).toBe("Valid");
+
+        // Never persisted - doesn't leak into GET /notification's flat settings...
+        expect("lightCmdLED" in (await (await fetch("/notification")).json())).toBe(false);
+
+        // ...and a repeat identical submission still reports Valid, never Unchanged (dispatched
+        // fresh every call, exactly like SystemCmd/PauseTime).
+        const again = await fetch("/notification", { method: "PUT", body: JSON.stringify({ lightCmdLED: { r: 10, g: 20, b: 30, t: 1 } }) });
+        expect((await again.json()).result.lightCmdLED).toBe("Valid");
     });
 
     it("increments a TS-suffixed leaf by exactly 1 on jitter, jitters a plain number, and leaves a non-number leaf untouched", async () => {

@@ -439,10 +439,15 @@ describe("renderSection", () => {
         expect(mustQuery(card, ".apply-result").textContent).toContain("COffset: Invalid");
     });
 
-    it("reports Invalid for non-numeric text in a composite subfield instead of silently submitting 0 (regression)", async () => {
+    it("reports Failed (not Invalid) for non-numeric text in a composite subfield instead of silently submitting 0 (regression)", async () => {
         // Same NaN -> null -> 0 gap as the top-level number-field case above, but through
         // collectGroupBody()'s separate composite-field code path - r's min is 0, so a garbage
-        // "r" that silently became 0 would otherwise pass.
+        // "r" that silently became 0 would otherwise pass. "Failed", not "Invalid": the real
+        // backend never range/type-checks lightCmdLED at the dispatch layer (only
+        // isinstance(payload, dict)) - a non-numeric subfield only fails inside
+        // _notification_led_callback()'s own int()/float() cast, which asy_webserver_service.py's
+        // _dispatch_notification_led() catches and reports as "Failed", the same as any other
+        // caller-supplied-callback exception.
         uninstall = installMockFetch(DEFS, DATA);
         const main = mount();
         stop = renderSection(DEFS, getSection("notification"), main);
@@ -458,14 +463,18 @@ describe("renderSection", () => {
         await waitFor(() => mustQuery(main, '[data-group-key="flash"]').dataset.applyStatus !== undefined);
 
         const card = mustQuery(main, '[data-group-key="flash"]');
-        expect(card.dataset.applyStatus).toBe("invalid");
-        expect(mustQuery(card, ".apply-result").textContent).toContain("lightCmdLED: Invalid");
+        expect(card.dataset.applyStatus).toBe("failed");
+        expect(mustQuery(card, ".apply-result").textContent).toContain("lightCmdLED: Failed");
     });
 
-    it("reports Invalid for a composite field submitted with only some subfields filled", async () => {
-        // collectGroupBody() only sends subfields the visitor actually filled in (render.js); the
-        // real backend/mock-server then requires every subField present and valid, so a partial
-        // submit must read back Invalid rather than silently applying a half-specified command.
+    it("reports Failed (not Invalid) for a composite field submitted with only some subfields filled", async () => {
+        // collectGroupBody() only sends subfields the visitor actually filled in (render.js).
+        // lightCmdLED is a dispatch-only action (SPECIFICATION.md Part A.8), not a persisted
+        // SettingsGroup field: the real _notification_led_callback() indexes payload["r"]/["g"]/
+        // ["b"]/["t"] directly, so a missing subfield raises KeyError inside the callback -
+        // _dispatch_notification_led() catches that the same as any other callback exception and
+        // reports "Failed", never "Invalid" (which is reserved for a payload that isn't even a
+        // dict at all).
         uninstall = installMockFetch(DEFS, DATA);
         const main = mount();
         stop = renderSection(DEFS, getSection("notification"), main);
@@ -480,8 +489,28 @@ describe("renderSection", () => {
         await waitFor(() => mustQuery(main, '[data-group-key="flash"]').dataset.applyStatus !== undefined);
 
         const card = mustQuery(main, '[data-group-key="flash"]');
-        expect(card.dataset.applyStatus).toBe("invalid");
-        expect(mustQuery(card, ".apply-result").textContent).toContain("lightCmdLED: Invalid");
+        expect(card.dataset.applyStatus).toBe("failed");
+        expect(mustQuery(card, ".apply-result").textContent).toContain("lightCmdLED: Failed");
+    });
+
+    it("reports Valid for a fully-specified composite lightCmdLED submission and never persists it (dispatch-only, matches real GET /notification)", async () => {
+        uninstall = installMockFetch(DEFS, DATA);
+        const main = mount();
+        stop = renderSection(DEFS, getSection("notification"), main);
+        await waitFor(() => main.querySelector('[data-field-key="lightCmdLED"]') !== null);
+
+        const grid = mustQuery(main, '[data-field-key="lightCmdLED"]');
+        /** @type {HTMLInputElement} */ (mustQuery(grid, '[data-sub-field-key="r"]')).value = "10";
+        /** @type {HTMLInputElement} */ (mustQuery(grid, '[data-sub-field-key="g"]')).value = "20";
+        /** @type {HTMLInputElement} */ (mustQuery(grid, '[data-sub-field-key="b"]')).value = "30";
+        /** @type {HTMLInputElement} */ (mustQuery(grid, '[data-sub-field-key="t"]')).value = "1";
+        mustQuery(main, ".apply-button").click();
+
+        await waitFor(() => mustQuery(main, '[data-group-key="flash"]').dataset.applyStatus !== undefined);
+
+        const card = mustQuery(main, '[data-group-key="flash"]');
+        expect(card.dataset.applyStatus).toBe("valid");
+        expect(mustQuery(card, ".apply-result").textContent).toContain("lightCmdLED: Valid");
     });
 
     it("flattens per-sensor maintenance data one level for the Status section's sensors group", async () => {
