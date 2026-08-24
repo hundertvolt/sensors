@@ -220,13 +220,17 @@ describe("installMockFetch", () => {
         // Real backend behavior this mirrors (src/asy_webserver_service.py's
         // _dispatch_notification_pause()): PauseTime is a runtime action - range-checked 0-3600,
         // never persisted to config storage, never reported "Unchanged", and its current value is
-        // read back from GET /status's notification.PauseTime, never GET /notification.
+        // read back from GET /status's notification.PauseTime, never GET /notification. Now reuses
+        // config_manager.py's own coerce_numeric() policy (SPECIFICATION.md Part A.8) - a
+        // fractional value is rejected outright, not truncated.
         uninstall = installMockFetch(DEFS, DATA);
 
         const tooLarge = await fetch("/notification", { method: "PUT", body: JSON.stringify({ PauseTime: 3601 }) });
         expect((await tooLarge.json()).result.PauseTime).toBe("Invalid");
         const negative = await fetch("/notification", { method: "PUT", body: JSON.stringify({ PauseTime: -1 }) });
         expect((await negative.json()).result.PauseTime).toBe("Invalid");
+        const fractional = await fetch("/notification", { method: "PUT", body: JSON.stringify({ PauseTime: 60.5 }) });
+        expect((await fractional.json()).result.PauseTime).toBe("Invalid");
 
         const ok = await fetch("/notification", { method: "PUT", body: JSON.stringify({ PauseTime: 60 }) });
         expect((await ok.json()).result.PauseTime).toBe("Valid");
@@ -242,11 +246,13 @@ describe("installMockFetch", () => {
     });
 
     it("dispatches PUT /notification's lightCmdLED like the real backend's _dispatch_notification_led()/_notification_led_callback(), never as a persisted setting", async () => {
-        // Real behavior this mirrors: no range/type check at the dispatch layer beyond
-        // isinstance(payload, dict) ("Invalid" only for a non-dict payload); every subfield missing
-        // or non-numeric raises inside the real callback's own int()/float() cast, caught and
-        // reported "Failed" (never "Invalid"); a fully-specified numeric payload is always "Valid"
-        // regardless of magnitude, since the real driver silently clamps r/g/b and never bounds t.
+        // Real behavior this mirrors: "Invalid" only for a non-dict payload; every subfield
+        // missing, non-numeric, or (for the int-typed r/g/b) fractional is rejected via
+        // config_manager.py's coerce_numeric() (SPECIFICATION.md Part A.8) and reported "Failed"
+        // (never "Invalid") - r/g/b/t's shared int/float coercion policy is now the same one every
+        // schema-backed field gets, not a separate lenient int()/float() cast; a fully-specified,
+        // correctly-shaped payload is "Valid" regardless of out-of-range magnitude, since the real
+        // driver silently clamps r/g/b and never bounds t.
         uninstall = installMockFetch(DEFS, DATA);
 
         const notADict = await fetch("/notification", { method: "PUT", body: JSON.stringify({ lightCmdLED: "not-a-dict" }) });
@@ -257,6 +263,15 @@ describe("installMockFetch", () => {
 
         const nonNumeric = await fetch("/notification", { method: "PUT", body: JSON.stringify({ lightCmdLED: { r: "abc", g: 20, b: 30, t: 1 } }) });
         expect((await nonNumeric.json()).result.lightCmdLED).toBe("Failed");
+
+        // A fractional r/g/b is rejected outright, not truncated - the int<->float coercion policy
+        // applied to lightCmdLED too (superseding the old raw int()/float() truncating casts).
+        const fractionalRgb = await fetch("/notification", { method: "PUT", body: JSON.stringify({ lightCmdLED: { r: 10.5, g: 20, b: 30, t: 1 } }) });
+        expect((await fractionalRgb.json()).result.lightCmdLED).toBe("Failed");
+
+        // A fractional t is fine - it's float-typed, a blanket accept regardless of shape.
+        const fractionalT = await fetch("/notification", { method: "PUT", body: JSON.stringify({ lightCmdLED: { r: 10, g: 20, b: 30, t: 1.5 } }) });
+        expect((await fractionalT.json()).result.lightCmdLED).toBe("Valid");
 
         // Out-of-range is still Valid - the real backend never rejects lightCmdLED on magnitude.
         const outOfRange = await fetch("/notification", { method: "PUT", body: JSON.stringify({ lightCmdLED: { r: 9999, g: -50, b: 30, t: 999 } }) });

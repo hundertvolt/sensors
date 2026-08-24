@@ -114,41 +114,6 @@ function collectGroupBody(card, group) {
     return body;
 }
 
-/**
- * @param {string} key
- * @returns {string}
- */
-function escapeRegExp(key) {
-    return key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-/**
- * JSON.stringify() renders a whole-number JS value without a decimal point (JS has no int/float
- * type distinction), but the real backend's type_or_range_error() (SPECIFICATION.md Part A.8)
- * does a strict Python type() check - json.loads() decodes a bare "2" as int, "2.0" as float. A
- * `field.float`-marked field's whole-number value must therefore be forced to carry a decimal
- * point, or the real backend rejects it as the wrong type even though the magnitude is valid.
- * @param {Record<string, unknown>} body the (possibly /sensors-nested) object actually PUT
- * @param {Record<string, unknown>} groupBody the always-flat body `collectGroupBody()` produced,
- * used only to look up each field's own value regardless of `body`'s own nesting
- * @param {FieldGroup} group
- * @returns {string}
- */
-function serializePutBody(body, groupBody, group) {
-    let json = JSON.stringify(body);
-    for (const field of group.fields) {
-        if (field.kind !== "number" || field.float !== true) {
-            continue;
-        }
-        const value = groupBody[field.key];
-        if (typeof value !== "number" || !Number.isInteger(value)) {
-            continue; // already fractional (or absent/untouched) - JSON.stringify() already emits a decimal point
-        }
-        json = json.replace(new RegExp(`("${escapeRegExp(field.key)}":${value})([,}])`), `$1.0$2`);
-    }
-    return json;
-}
-
 /** Worst-first severity order for one card's overall status; see WEBSITE_PLAN.md §12.
  * @type {Record<string, number>}
  */
@@ -243,10 +208,14 @@ function buildAndWireFieldGroup(group, section, currentValues, onApplied) {
         const body = section.key === "sensors" ? { [group.key]: groupBody } : groupBody;
         button.disabled = true;
         try {
+            // No decimal-point forcing needed for a field.float-marked field's whole-number value:
+            // the real backend now accepts a JSON int for a float-typed field too, coerced
+            // (config_manager.py's coerce_numeric(), SPECIFICATION.md Part A.8) - JSON.stringify()
+            // is sufficient on its own.
             const response = await pollManager.request(putPath, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
-                body: serializePutBody(body, groupBody, group),
+                body: JSON.stringify(body),
             });
             const envelope = /** @type {{res?: string, descr?: string, result?: Record<string, unknown>} | null} */ (response.body);
             // Real backend PUT failures (SPECIFICATION.md Part A.8/A.5): a malformed body is a

@@ -415,11 +415,12 @@ def test_each_field_wrong_type_rejected() -> None:
     async def scenario() -> None:
         assert await write_one("OnH", "10") == "Invalid"  # str instead of int
         assert await write_one("OnH", True) == "Invalid"  # bool instead of int - type(), not isinstance()
-        assert await write_one("Interv", 100) == "Invalid"  # int instead of float
+        assert await write_one("Interv", 100) == "Valid"  # int accepted for a float field, coerced (SPECIFICATION.md Part A.8)
         assert await write_one("FlashDur", "2.0") == "Invalid"  # str instead of float
         assert await write_one("AutoOn", 1) == "Invalid"  # int instead of bool
         assert await write_one("AutoOn", "true") == "Invalid"  # str instead of bool
-        assert await write_one("WarnCO2", 1500.0) == "Invalid"  # float instead of int
+        assert await write_one("WarnCO2", 1500.0) == "Valid"  # integral float accepted for an int field, coerced
+        assert await write_one("WarnCO2", 1500.5) == "Invalid"  # fractional float still rejected, not truncated
 
     run(scenario())
 
@@ -451,10 +452,12 @@ def test_unknown_field_key_reported_invalid_and_ignored() -> None:
     assert results["NotARealField"] == "Invalid"
 
 
-def test_registered_int_field_boundaries_and_type_enforced() -> None:
+def test_registered_int_field_boundaries_and_coercion_enforced() -> None:
     # A registered NotificationSignal's own field goes through the exact same combined-schema path
     # as the coordinator's own static fields above - proven here with its real WarnCO2 bounds
-    # (0-3000), not just the coordinator's own 8 fields.
+    # (0-3000), not just the coordinator's own 8 fields. An integral float is now accepted and
+    # coerced (SPECIFICATION.md Part A.8's int<->float coercion policy); a fractional one is still
+    # rejected, same treatment as out-of-range.
     coordinator, _clock, _cb = make_coordinator()
     signal, _fv = make_signal("WarnCO2")
     coordinator.register(signal)
@@ -465,25 +468,29 @@ def test_registered_int_field_boundaries_and_type_enforced() -> None:
         results = await coordinator._set_dict_cfg({"WarnCO2": value}, coordinator.get_cfg_schema())
         return results["WarnCO2"]
 
-    async def scenario() -> "tuple[str, str, str, str, str]":
+    async def scenario() -> "tuple[str, str, str, str, str, str]":
         lo = await write_one(0)
         hi = await write_one(3000)
         below = await write_one(-1)
         above = await write_one(3001)
-        wrong_type = await write_one(1500.0)
-        return lo, hi, below, above, wrong_type
+        coerced = await write_one(1500.0)
+        fractional = await write_one(1500.5)
+        return lo, hi, below, above, coerced, fractional
 
-    lo, hi, below, above, wrong_type = run(scenario())
+    lo, hi, below, above, coerced, fractional = run(scenario())
     assert lo == "Valid"
     assert hi == "Valid"
     assert below == "Invalid"
     assert above == "Invalid"
-    assert wrong_type == "Invalid"
+    assert coerced == "Valid"
+    assert fractional == "Invalid"
 
 
-def test_registered_float_field_boundaries_and_type_enforced() -> None:
+def test_registered_float_field_boundaries_and_coercion_enforced() -> None:
     # A second registered signal with a float-typed field (WarnHum's real production shape) -
-    # proves the combined schema isn't accidentally int-only.
+    # proves the combined schema isn't accidentally int-only. An int is always accepted and
+    # coerced for a float field (SPECIFICATION.md Part A.8) - a blanket accept, since every int is
+    # exactly representable as a float.
     coordinator, _clock, _cb = make_coordinator()
     fv = FakeValue(50.0)
     field_schema = (("WarnHum", "float", 65.0, 0.0, 100.0, None),)
@@ -501,15 +508,15 @@ def test_registered_float_field_boundaries_and_type_enforced() -> None:
         hi = await write_one(100.0)
         below = await write_one(-0.1)
         above = await write_one(100.1)
-        wrong_type = await write_one(50)  # int instead of float
-        return lo, hi, below, above, wrong_type
+        coerced = await write_one(50)
+        return lo, hi, below, above, coerced
 
-    lo, hi, below, above, wrong_type = run(scenario())
+    lo, hi, below, above, coerced = run(scenario())
     assert lo == "Valid"
     assert hi == "Valid"
     assert below == "Invalid"
     assert above == "Invalid"
-    assert wrong_type == "Invalid"
+    assert coerced == "Valid"
 
 
 def test_multiple_invalid_fields_in_one_write_each_reported_independently() -> None:
