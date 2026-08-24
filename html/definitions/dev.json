@@ -386,7 +386,7 @@
                                 { "key": "r", "label": "Red", "kind": "number", "min": 0, "max": 255 },
                                 { "key": "g", "label": "Green", "kind": "number", "min": 0, "max": 255 },
                                 { "key": "b", "label": "Blue", "kind": "number", "min": 0, "max": 255 },
-                                { "key": "t", "label": "Time (s)", "kind": "number", "min": 0.5, "max": 60.0 }
+                                { "key": "t", "label": "Time (s)", "kind": "number", "min": 0.5, "max": 60.0, "float": true }
                             ]
                         }
                     ]

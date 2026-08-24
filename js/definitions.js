@@ -41,9 +41,12 @@
 import { fetchWithTimeout } from "./poll-manager.js";
 
 // A "number"-kind field's real server-side type is Python int by default; float?: true marks the
-// few fields that are actually Python float (SPECIFICATION.md Part A.8's config_manager.py
-// type_or_range_error() rejects a JSON int literal for a float field and vice versa - js/render.js
-// and js/mock-server.js both key off this flag to stay faithful to that strictness).
+// few fields that are actually Python float. config_manager.py's coerce_numeric()/
+// type_or_range_error() (SPECIFICATION.md Part A.8) accepts a JSON int for a float field
+// unconditionally (a blanket accept - every int is exactly representable as a float), but a
+// float field's own value is never subject to the int-only "no fractional part" check - so this
+// flag's only remaining job (js/mock-server.js's coerceAndValidate()) is telling an int-typed
+// field apart from a float-typed one so a fractional value is rejected only where it should be.
 
 // errcount history shape matches src/print_log.py's get_log()/asy_webserver_service.py's
 // _shape_errcount_entry() exactly: no per-entry timestamp exists anywhere in the real system, and

@@ -124,10 +124,11 @@ class _FakeModule:
             if key not in defaults:
                 results[key] = "Invalid"
                 continue
-            if cm.type_or_range_error(value, defaults[key]):
+            is_error, coerced_value = cm.type_or_range_error(value, defaults[key])
+            if is_error:
                 results[key] = "Invalid"
                 continue
-            self._values[key] = value
+            self._values[key] = coerced_value
             results[key] = "Valid"
         return results
 

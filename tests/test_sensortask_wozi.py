@@ -808,6 +808,39 @@ def test_webserver_notification_put_light_cmd_led_dispatches_to_the_real_pixel_d
     assert json.loads(res.body)["result"]["lightCmdLED"] == "Valid"
 
 
+def test_webserver_notification_put_light_cmd_led_accepts_integral_float_rgb_and_int_t_coerced() -> None:
+    # config_manager.py's coerce_numeric() policy applied to lightCmdLED too (SPECIFICATION.md
+    # Part A.8): an integral float r/g/b coerces to int, a plain int t coerces to float - both
+    # directions a real client could plausibly send.
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    res = _dispatch("PUT", "/notification", {"lightCmdLED": {"r": 10.0, "g": 20.0, "b": 30.0, "t": 1}})
+    assert json.loads(res.body)["result"]["lightCmdLED"] == "Valid"
+
+
+def test_webserver_notification_put_light_cmd_led_rejects_fractional_rgb() -> None:
+    # Regression test for the behavior this callback used to have (raw int()/float() truncating
+    # casts, commits 53b5147/b5502c8): a fractional r/g/b is now rejected outright, not silently
+    # truncated (12.5 no longer becomes a silent 12).
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    res = _dispatch("PUT", "/notification", {"lightCmdLED": {"r": 10.5, "g": 20, "b": 30, "t": 1.0}})
+    assert json.loads(res.body)["result"]["lightCmdLED"] == "Failed"
+
+
+def test_webserver_notification_put_light_cmd_led_rejects_non_numeric_field() -> None:
+    # Another behavior change from the old raw int()/float() casts: those would silently parse a
+    # numeric-looking string ("10") via Python's lenient int()/float() constructors - coerce_numeric()
+    # never parses strings, only coerces between the two numeric types, so this is now rejected too.
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    res = _dispatch("PUT", "/notification", {"lightCmdLED": {"r": "10", "g": 20, "b": 30, "t": 1.0}})
+    assert json.loads(res.body)["result"]["lightCmdLED"] == "Failed"
+
+
+def test_webserver_notification_put_light_cmd_led_rejects_missing_field() -> None:
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    res = _dispatch("PUT", "/notification", {"lightCmdLED": {"r": 10, "g": 20, "b": 30}})  # t missing
+    assert json.loads(res.body)["result"]["lightCmdLED"] == "Failed"
+
+
 def test_webserver_notification_put_pause_time_dispatches_to_the_real_coordinator() -> None:
     # Regression test: the legacy `pauseAutoLED` override-countdown command (pixel.set_override_led()
     # in modules/sensortask-wozi.py) had no equivalent wiring at all in the promoted REST layer until

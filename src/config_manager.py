@@ -93,45 +93,76 @@ def make_dict(
         return {name: {field: None for field in fields}}
 
 
+def coerce_numeric(check_val: "Any", scalar_type: type) -> "tuple[bool, Any]":
+    # Accept only what's exactly representable as scalar_type, in either direction (see
+    # SPECIFICATION.md Part A.8): int -> float is a blanket accept (every int is exactly
+    # representable as a float); float -> int is accepted only when the value carries no
+    # fractional part - rejected otherwise, never truncated/rounded, so a fat-fingered "12.5"
+    # can't silently become a stored "12". bool is deliberately excluded from both directions even
+    # though it's an int subclass in Python/MicroPython - type() (not isinstance()) already keeps
+    # it out of every branch below, same as the pre-coercion strict check did.
+    #
+    # Public (no leading underscore) and reused outside this module: sensortask_wozi.py's
+    # lightCmdLED dispatch (dispatch-only, not schema-backed - no FieldSchema record to hand
+    # type_or_range_error()) calls this directly for its r/g/b/t coercion instead of duplicating
+    # the same int<->float acceptance logic a second time.
+    if type(check_val) is scalar_type:
+        return True, check_val
+    if scalar_type is float and type(check_val) is int:
+        return True, float(check_val)
+    if scalar_type is int and type(check_val) is float:
+        try:
+            as_int = int(check_val)  # MicroPython/CPython alike: ValueError for NaN, OverflowError
+        except (OverflowError, ValueError):  # for +-inf (py/objint.c's mp_obj_new_int_from_float)
+            return False, check_val
+        if float(as_int) == check_val:  # exact round-trip - no fractional part was discarded
+            return True, as_int
+    return False, check_val
+
+
 def type_or_range_error(
     check_val: "Any", field: "FieldSchema", check_special: bool = True
-) -> bool:  # True if check_val doesn't satisfy field's own type/min/max(/special) schema entry
+) -> "tuple[bool, Any]":  # (True, check_val) if check_val doesn't satisfy field's own type/min/
+    # max(/special) schema entry (coercion included) - (False, coerced_val) otherwise, where
+    # coerced_val is check_val itself unless an int<->float coercion above actually applied.
     try:
         _name, val_type, _def, val_min, val_max, val_special = field
 
-        if val_type == "int":  # check for int and bounds
-            if type(check_val) is not int:
-                return True
+        if val_type == "int":  # check for int (coercing an integral float) and bounds
+            ok, check_val = coerce_numeric(check_val, int)
+            if not ok:
+                return True, check_val
             if val_special is not None:
                 bypass = _special_bypass(check_val, val_special, int, check_special)
                 if bypass is not None:
-                    return bypass
+                    return bypass, check_val
             if type(val_max) is int and type(val_min) is int and val_min <= check_val <= val_max:
-                return False
-        elif val_type == "float":  # check for float and bounds
-            if type(check_val) is not float:
-                return True
+                return False, check_val
+        elif val_type == "float":  # check for float (coercing an int) and bounds
+            ok, check_val = coerce_numeric(check_val, float)
+            if not ok:
+                return True, check_val
             if val_special is not None:
                 bypass = _special_bypass(check_val, val_special, float, check_special)
                 if bypass is not None:
-                    return bypass
+                    return bypass, check_val
             if type(val_max) is float and type(val_min) is float and val_min <= check_val <= val_max:
-                return False
+                return False, check_val
         elif val_type == "str":  # check for str and length bounds
             if type(check_val) is not str:
-                return True
+                return True, check_val
             if val_special is not None:
                 bypass = _special_bypass(check_val, val_special, str, check_special)
                 if bypass is not None:
-                    return bypass
+                    return bypass, check_val
             if type(val_max) is int and type(val_min) is int and val_min <= len(check_val) <= val_max:
-                return False
+                return False, check_val
         elif val_type == "bool":  # check for bool
             if type(check_val) is bool:
-                return False
+                return False, check_val
     except Exception:
         pass
-    return True
+    return True, check_val
 
 
 def check_cfg_get_default(
@@ -146,9 +177,10 @@ def check_cfg_get_default(
         if def_val is None and special_val is not None and not isinstance(special_val, (tuple, list)):
             def_val = special_val
             use_value = False
-        if type_or_range_error(def_val, field, check_special=True):
+        is_error, coerced_val = type_or_range_error(def_val, field, check_special=True)
+        if is_error:
             return True, None  # self-check of defaults
-        return use_value, def_val
+        return use_value, coerced_val
     except Exception:  # malformed field record
         return True, None
 
@@ -247,10 +279,12 @@ class ConfigManager:
                         return False, {}
                     # Sentinel values are validated against their own definition (check_special bypass);
                     # non-sentinel values still go through the ordinary range check.
-                    if type_or_range_error(value, defaults[key]):
+                    is_error, coerced_value = type_or_range_error(value, defaults[key])
+                    if is_error:
                         await self.pr.err_s(self.config_file, "- Type / range error in", key, "- skipping!", errno=12)
                         dict_results[key] = "Invalid"
                         continue
+                    value = coerced_value  # use the coerced (e.g. int->float) shape for storage below
                     if not use_value:
                         dict_results[key] = "Valid"
                         self.pr.evt(self.config_file, "- Key", key, "is valid but not in storage, skipping.")
@@ -320,10 +354,17 @@ class ConfigManager:
                 new_cfg = default_val  # immediately take default value
             else:  # file exists and is valid
                 new_cfg = data.pop(key, None)  # remove all used and known keys from config
-                if type_or_range_error(new_cfg, field):  # if new_cfg is None or any other error
+                is_error, coerced_cfg = type_or_range_error(new_cfg, field)  # new_cfg=None or any other error -> is_error
+                if is_error:
                     rewrite = True
                     new_cfg = default_val
                     await self.pr.wrn_s(self.config_file, "- Key", key, "has error or is missing, using default!", wrnno=4)
+                else:
+                    if type(coerced_cfg) is not type(new_cfg):  # e.g. a hand-edited file's "5" for a
+                        rewrite = True  # float field - persist the coerced shape back to disk too.
+                        # (`!=` alone would miss this: 5 != 5.0 is False in Python despite the type
+                        # differing - type() is the only reliable signal that coercion actually fired.)
+                    new_cfg = coerced_cfg
             valid_cfg[key] = new_cfg
         if data is None:  # no file -> always create
             rewrite = True

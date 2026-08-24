@@ -2,7 +2,8 @@
  * Exhaustive PUT-behavior matrix over every real writable field in both shipped devices'
  * definitions.json, run directly against js/mock-server.js's real fetch interception (no DOM).
  * Six categories per field (project owner's own request, verified against the real backend's
- * documented semantics - SPECIFICATION.md Part A.8/config_manager.py's type_or_range_error()):
+ * documented semantics - SPECIFICATION.md Part A.8/config_manager.py's coerce_numeric()/
+ * type_or_range_error()):
  *   1. several valid values across the range -> "Valid"
  *   2. every declared special value -> "Valid"
  *   3. the field omitted from the PUT body (the sparse-PUT "untouched" case) -> not in the result,
@@ -12,10 +13,11 @@
  *      an identical resubmission; those are tested separately, not by this generic matrix)
  *   5. an out-of-range value (and, for a field with special values, one that matches neither the
  *      normal range nor any special value) -> "Invalid"
- *   6. a value of the wrong JSON type -> "Invalid", including the real backend's own strict
- *      Python int-vs-float type() distinction for a "number"-kind field (a field not marked
- *      `field.float` is int-typed and rejects a decimal-point literal; a `field.float`-marked
- *      field rejects a bare-integer literal) - not just "any non-numeric text"
+ *   6. a value of the wrong JSON type -> "Invalid" (any non-numeric text, for every field kind);
+ *      for a "number"-kind field specifically, the real backend's own int<->float coercion policy
+ *      is exercised too - a `field.float`-marked field accepts a bare-integer literal (a blanket
+ *      accept, coerced), while a field not marked `field.float` still rejects a decimal-point
+ *      (fractional) literal outright, never truncated
  *
  * Shared field kinds (SCD30/SGP40, networking, system, notification) are identical between wozi.json
  * and dev.json, so they're only exercised once (via wozi) to avoid pure duplication; dev.json's own
@@ -145,8 +147,10 @@ function literalOf(value) {
 
 /**
  * @param {number} value
- * @param {boolean} asFloat force a decimal point even for a whole number (mirrors
- * js/render.js's own serializePutBody() fix for a `field.float`-marked field)
+ * @param {boolean} asFloat force a decimal point even for a whole number - no longer required for
+ * the real backend to accept a `field.float`-marked field's value (it now coerces a bare-integer
+ * literal, SPECIFICATION.md Part A.8), kept only so tests can still control literal shape
+ * explicitly where the test's own intent is to exercise a specific shape either way.
  * @returns {string}
  */
 function numberLiteral(value, asFloat) {
@@ -240,16 +244,32 @@ describe.each(CASES)("PUT $device $sectionKey/$groupKey/$field.key ($field.kind)
             });
         }
 
-        it(`rejects a ${isFloat ? "bare-integer" : "decimal-point"} literal for this ${isFloat ? "float" : "int"}-typed field: Invalid (matches config_manager.py's strict Python type() check, SPECIFICATION.md Part A.8)`, async () => {
-            // Deliberately the *other* shape than field.float requires - Math.round() guarantees a
-            // genuine whole number to start from, regardless of whether (max - min) happens to be
-            // odd (which would otherwise leave `mid` itself already fractional for an int field).
-            const wrongShapeBase = Math.round(mid);
-            const literal = isFloat ? String(wrongShapeBase) : `${wrongShapeBase}.5`;
-            const { status, getBody } = await putAndGet(testCase, literal);
-            expect(status).toBe("Invalid");
-            expect(currentValueIn(getBody, testCase)).toBe(currentValue);
-        });
+        if (isFloat) {
+            it("accepts a bare-integer literal for this float-typed field: Valid, coerced (config_manager.py's coerce_numeric(), SPECIFICATION.md Part A.8 - int -> float is a blanket accept)", async () => {
+                // A whole number in [min, max], distinct from the field's own current value (else
+                // this would legitimately resubmit-as-Unchanged instead) and from any declared
+                // special (kept out of this test's own intent, even though a special would also
+                // still just be Valid). Round(mid)/round(min)/round(max) between them always find
+                // one for any real field's range.
+                const wrongShapeBase = [Math.round(mid), Math.round(min), Math.round(max)].find(
+                    (v) => v >= min && v <= max && v !== currentValue && !specialMagnitudes.has(v),
+                );
+                const { status, getBody } = await putAndGet(testCase, numberLiteral(/** @type {number} */ (wrongShapeBase), false));
+                expect(status).toBe("Valid");
+                expect(currentValueIn(getBody, testCase)).toBe(wrongShapeBase);
+            });
+        } else {
+            it("rejects a decimal-point (fractional) literal for this int-typed field: Invalid, not truncated (config_manager.py's coerce_numeric() policy, SPECIFICATION.md Part A.8)", async () => {
+                // Math.round() guarantees a genuine whole number to start from, regardless of
+                // whether (max - min) happens to be odd (which would otherwise leave `mid` itself
+                // already fractional).
+                const wrongShapeBase = Math.round(mid);
+                const literal = `${wrongShapeBase}.5`;
+                const { status, getBody } = await putAndGet(testCase, literal);
+                expect(status).toBe("Invalid");
+                expect(currentValueIn(getBody, testCase)).toBe(currentValue);
+            });
+        }
     }
 
     if (field.kind === "string") {

@@ -668,6 +668,31 @@ settings (no live telemetry in any of them).
     into the same range — matching legacy's `pauseAutoLED` command's own reject-out-of-range
     behavior rather than relying on the clamp.
 
+**Numeric int/float coercion policy** (`config_manager.py`'s `coerce_numeric()`, called from
+`type_or_range_error()`): every schema-backed int/float field, plus the two dispatch-only numeric
+fields that reuse the same function against a synthetic `FieldSchema` (`PauseTime` via
+`_dispatch_notification_pause()`) or the same acceptance policy directly (`lightCmdLED`'s r/g/b/t
+via `sensortask_wozi.py`'s `_notification_led_callback()`), applies one uniform rule instead of
+each caller hand-rolling its own int/float shape check: a JSON int is **always** accepted for a
+float-typed field (coerced to float — every int is exactly representable as a float, a blanket
+accept); a JSON float is accepted for an int-typed field **only when it carries no fractional
+part** (e.g. `5.0` → coerced to `5`) — a fractional value (`5.7`) is rejected outright as
+`"Invalid"`, the same treatment an out-of-range value gets, never truncated or rounded. This keeps
+both directions symmetric ("accept only what's exactly representable, either direction") and never
+silently discards a digit the caller actually sent. `bool` is still never accepted for an int or
+float field either way (`type()`, not `isinstance()`, already excludes it — see A.4/F.4's
+discussion of this same distinction elsewhere). NaN/±inf attempting int-coercion are caught (not
+raised) via MicroPython's own `int(float)` exception shapes (`ValueError` for NaN, `OverflowError`
+for ±inf — confirmed against `py/objint.c`'s `mp_obj_new_int_from_float()`) and rejected the same
+way as any other non-representable value. The website's JS mirror (`js/mock-server.js`'s
+`coerceAndValidate()`/`dispatchRangedAction()`/`dispatchLightCmdLed()`) applies the equivalent
+policy — trivially simpler there, since JS has no int/float runtime type distinction to begin with
+(`5` and `5.0` parse to the identical JS number): only a `field.float`-marked field's own value is
+ever checked for having no fractional part, via `Number.isInteger()`, with no need to recover or
+compare the original JSON literal's shape at all (the now-removed `scanNumericLiteralShapes()`
+JSON-text regex scan, and `js/render.js`'s now-removed `serializePutBody()` decimal-point-forcing,
+both existed only to fight that literal-shape problem under the old strict-shape-match policy).
+
 **GET copy-safety**: `get_dict_data()` (via `config_manager.make_dict()`), `ConfigManager.get_dict()`,
 and `PrintLogHistory.get_log()` all build a brand-new dict/list of copied scalar values on every
 call with no `await` in the middle of construction, so MicroPython's cooperative, non-preemptive
