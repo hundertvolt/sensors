@@ -301,27 +301,56 @@ owner — see §10 item 2's own notes for the concrete prototype these produced)
   (and the JS build/definitions-generation step) instead of/alongside `html_stub/`; whether the
   existing mechanism already covers this or needs extending. Session 4's job (§10).
 
-**Known, already-flagged gaps left open by session 3 (not silently missed — each was explicitly
-raised in §10 item 3's own write-up; recorded here too so a later session doesn't have to re-dig
-through that history to find them):**
+**Gaps left open by session 3, since resolved directly by this base session (project owner's
+direction — a second, deliberate, minimal `src/` exception, same review-and-confirm pattern as
+follow-up 7, not a standing relaxation of §10's "never touch `src/` files"):**
 
-- **`WebserverService._apply_settings_groups()`'s silent result-swallow (server-side, `src/`)** —
-  session 3 follow-up 2 found that a `SettingsGroup`'s `post_fct`/`post_asy_fct` hook raising causes
-  that whole group's fields to vanish from the PUT response with no signal at any level (`res:"OK"`
-  still reported). `js/render.js`'s `reconcileResults()` defends against this client-side (shows
-  `"Failed"` for a submitted-but-unreturned field) but the server-side swallow itself is **still
-  unfixed** — follow-up 7's `src/` exception (int/float coercion) touched
-  `asy_webserver_service.py` but did not touch this unrelated function. Flagged for whichever
-  session next touches `asy_webserver_service.py`/`api_response.py`.
-- **`lightCmdLED`'s legacy-vs-`src/` behavior divergence** — legacy's `led_cmd()` validated and
-  rejected out-of-range r/g/b/t; the promoted `src/` backend silently clamps/floors instead
-  (`asy_neopixel_driver.py`'s `_clamp_byte()`, `neopixel_signal()`'s own `t` floor). Flagged for the
-  project owner's awareness in follow-up 4's re-audit, explicitly left unchanged as an existing,
-  already-tested `src/` contract out of that audit's scope. Still open if it's ever worth revisiting.
-- **`dev.json`'s SHTC3/MPRLS/ISL29125 fields remain an unconfirmed projection** — these sensors
-  have no real driver under `src/` yet (unchanged since session 2; re-confirmed clean in session 3
-  follow-up 4's full field-list audit, nothing new found). Resolves naturally once a future session
-  promotes those drivers.
+- **`WebserverService._apply_settings_groups()`'s silent result-swallow — fixed.** Was: a
+  `SettingsGroup`'s `post_fct`/`post_asy_fct` hook raising caused that whole group's fields to
+  vanish from the PUT response with no signal at any level (`res:"OK"` still reported), since
+  `handle_set_cmd()`'s own except-path (`api_response.py`) discards its already-computed per-field
+  results. `js/render.js`'s `reconcileResults()` already defended against this client-side (shows
+  `"Failed"` for a submitted-but-unreturned field) but the server-side swallow itself was unfixed.
+  **Fixed**: `_apply_settings_groups()` now checks each group's own envelope for `res == "ERR"` and,
+  when it fires, explicitly marks every field the group actually attempted as `"Failed"` in the
+  returned `result` dict, instead of silently omitting them — the overall envelope still reports
+  `res:"OK"`/`code:0` (per-field detail carries the failure, matching every other endpoint's own
+  "never fail the overall request for per-field detail" convention). TDD regression test:
+  `tests/test_asy_webserver_service.py::test_networking_put_raising_post_fct_marks_every_attempted_field_in_that_group_failed`
+  (a two-field group's raising `post_fct` — both fields now come back `"Failed"`, confirmed failing
+  against the pre-fix code first).
+- **`lightCmdLED`'s legacy-vs-`src/` behavior divergence — fixed.** Was: legacy's `led_cmd()`
+  (`modules/sensortask-wozi.py`) validated and rejected out-of-range r/g/b (0-255)/t (0.5-60.0); the
+  promoted `src/` backend silently clamped r/g/b (`asy_neopixel_driver.py`'s `_clamp_byte()`) and
+  floored/never-bounded t instead. **Fixed**: `src/sensortask_wozi.py`'s
+  `_notification_led_callback()` now runs each of r/g/b/t through `config_manager.py`'s
+  `type_or_range_error()` against four new synthetic `FieldSchema` records (`_FIELD_LED_R/G/B/T`,
+  mirroring `asy_webserver_service.py`'s own `_PAUSE_TIME_FIELD` pattern) matching legacy's exact
+  bounds — doing int/float coercion and range-checking in one step instead of the bare
+  `coerce_numeric()` calls follow-up 7 left in place; an out-of-range value is now rejected
+  (`"Failed"`, same category as a missing/non-numeric subfield) before ever reaching
+  `pixel.request_signal()`, never silently clamped/floored. `js/mock-server.js`'s
+  `dispatchLightCmdLed()` mirrors the same bounds now (was previously deliberately never
+  range-checking, matching the old `src/` clamp behavior). TDD: 5 new
+  `tests/test_sensortask_wozi.py` tests (out-of-range/negative rgb, out-of-range t both directions,
+  lower/upper boundary accepted — the boundary cases deliberately split into two single-dispatch
+  test functions, not one two-dispatch test: `_dispatch()`'s own fresh-`asyncio.run()`-per-call
+  design means `NeopixelDriver`'s background `neopixel_signal()` consumer never actually runs in
+  this test harness, so a **second** real `request_signal()` call in the same test hangs forever in
+  `request_signal()`'s own `while start_signal_event.is_set(): await asyncio.sleep(0)` loop —
+  discovered directly by hitting this hang while first writing the test, not theorized) plus updated/
+  new `tests_js/mock-server.test.js` assertions (the old "out-of-range is still Valid" case flipped
+  to `"Failed"`, two new boundary-accepted cases added).
+- **Verification**: independently re-run in full after both fixes, not just the two touched files —
+  Python: `scripts/lint.sh`/`scripts/typecheck.sh` clean, `scripts/test.sh` (real MicroPython
+  Unix-port interpreter) **2246/2246 passing across 47 files, zero failures** (up from follow-up 7's
+  2240, +6 new tests). JS: `lint`/`typecheck`/`lint:html`/`lint:css` clean, **603/603** Vitest tests
+  passing. Nothing in §4/§8/§12's settled architecture changed beyond the two fixes above.
+- **Still open** (left as-is per project owner's direction — not a matter of taste, just not this
+  round's scope): **`dev.json`'s SHTC3/MPRLS/ISL29125 fields remain an unconfirmed projection** —
+  these sensors have no real driver under `src/` yet (unchanged since session 2; re-confirmed clean
+  in session 3 follow-up 4's full field-list audit, nothing new found). Resolves naturally once a
+  future session promotes those drivers.
 
 ## 9. Sub-session working process
 
@@ -350,12 +379,17 @@ branch, 3 off 2's, etc.) follows the same rule against its immediate parent sess
 against `main` or against this base branch directly, keeping the sessions stacked in execution
 order.
 
-**"Never touch `src/` files" reaffirmed after session 3's one exception:** session 3 (item 3 below,
-follow-up 7) deviated from this instruction once, deliberately and with project-owner sign-off, to
-fix a real, significant int/float coercion bug in shared backend code that a website-only fix
-couldn't actually address at the root. **The project owner has since confirmed that exception was
-justified but is not a standing relaxation** — every session from here on (4 onward) is bound by
-"never touch `src/` files" exactly as originally written, with no expectation of a repeat. This
+**"Never touch `src/` files" reaffirmed after two deliberate, confirmed exceptions:** session 3
+(item 3 below, follow-up 7) deviated from this instruction once, deliberately and with
+project-owner sign-off, to fix a real, significant int/float coercion bug in shared backend code
+that a website-only fix couldn't actually address at the root. The project owner then directly
+authorized a second, minimal `src/` touch (§8's own record, above) to fix two more real,
+significant gaps this file had flagged but left open (the settings-group result-swallow, and
+`lightCmdLED`'s legacy-vs-`src/` clamping divergence) — done by this base/orchestrating session
+directly, not a spun-off sub-session, but under the exact same discipline: raised, confirmed, TDD,
+independently re-verified against the full test suite before merging. **Both were confirmed
+justified but neither is a standing relaxation** — every session from here on (4 onward) is bound
+by "never touch `src/` files" exactly as originally written, with no expectation of a repeat. This
 effort's own local verification reverts to JS-only accordingly: `npm run lint`/`typecheck`/
 `lint:html`/`lint:css`/`test`, not the Python suite (`scripts/lint.sh`/`typecheck.sh`/`test.sh`) —
 that's only warranted again if a future session finds another genuinely significant reason to touch

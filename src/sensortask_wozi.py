@@ -142,22 +142,33 @@ async def _system_cmd_callback(cmd: str) -> bool:
     return True
 
 
+# r/g/b/t is dispatch-only, not backed by a real ConfigManager - four synthetic FieldSchema
+# records (mirroring asy_webserver_service.py's own _PAUSE_TIME_FIELD pattern) so
+# type_or_range_error() does both int<->float coercion and range-checking in one step, matching
+# legacy's own led_cmd() bounds exactly (modules/sensortask-wozi.py: r/g/b 0-255, t 0.5-60.0).
+# The promoted src/ callback used to silently clamp r/g/b (asy_neopixel_driver.py's _clamp_byte())
+# and floor/never-bound t instead of rejecting - WEBSITE_PLAN.md §8's "lightCmdLED legacy-vs-src/
+# divergence" gap, now closed.
+_FIELD_LED_R: "cm.FieldSchema" = ("r", "int", None, 0, 255, None)
+_FIELD_LED_G: "cm.FieldSchema" = ("g", "int", None, 0, 255, None)
+_FIELD_LED_B: "cm.FieldSchema" = ("b", "int", None, 0, 255, None)
+_FIELD_LED_T: "cm.FieldSchema" = ("t", "float", None, 0.5, 60.0, None)
+
+
 async def _notification_led_callback(payload: "dict[str, Any]") -> bool:
-    # r/g/b/t is dispatch-only, not schema-backed (no FieldSchema record to hand
-    # config_manager.py's type_or_range_error()) - reuses that module's own coerce_numeric()
-    # directly instead of the raw int()/float() truncating casts this used to have, so a fractional
-    # r/g/b (e.g. 12.5) is now rejected rather than silently truncated to 12 - the same
-    # accept-only-if-exactly-representable policy every schema-backed field gets
-    # (SPECIFICATION.md Part A.8). int -> float for t is still a blanket accept either way.
+    # type_or_range_error() coerces (config_manager.py's coerce_numeric() policy - a fractional
+    # r/g/b, e.g. 12.5, is rejected rather than silently truncated; an int t coerces to float) and
+    # range-checks in one step, rejecting anything outside legacy's own bounds above instead of
+    # silently clamping/flooring it (SPECIFICATION.md Part A.8).
     assert pixel is not None
     try:
-        r_ok, r = cm.coerce_numeric(payload["r"], int)
-        g_ok, g = cm.coerce_numeric(payload["g"], int)
-        b_ok, b = cm.coerce_numeric(payload["b"], int)
-        t_ok, t = cm.coerce_numeric(payload["t"], float)
+        r_err, r = cm.type_or_range_error(payload["r"], _FIELD_LED_R)
+        g_err, g = cm.type_or_range_error(payload["g"], _FIELD_LED_G)
+        b_err, b = cm.type_or_range_error(payload["b"], _FIELD_LED_B)
+        t_err, t = cm.type_or_range_error(payload["t"], _FIELD_LED_T)
     except KeyError:
         return False
-    if not (r_ok and g_ok and b_ok and t_ok):
+    if r_err or g_err or b_err or t_err:
         return False
     return await pixel.request_signal(r, g, b, t)
 

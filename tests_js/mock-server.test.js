@@ -247,12 +247,12 @@ describe("installMockFetch", () => {
 
     it("dispatches PUT /notification's lightCmdLED like the real backend's _dispatch_notification_led()/_notification_led_callback(), never as a persisted setting", async () => {
         // Real behavior this mirrors: "Invalid" only for a non-dict payload; every subfield
-        // missing, non-numeric, or (for the int-typed r/g/b) fractional is rejected via
-        // config_manager.py's coerce_numeric() (SPECIFICATION.md Part A.8) and reported "Failed"
-        // (never "Invalid") - r/g/b/t's shared int/float coercion policy is now the same one every
-        // schema-backed field gets, not a separate lenient int()/float() cast; a fully-specified,
-        // correctly-shaped payload is "Valid" regardless of out-of-range magnitude, since the real
-        // driver silently clamps r/g/b and never bounds t.
+        // missing, non-numeric, (for the int-typed r/g/b) fractional, or out-of-range is rejected
+        // via config_manager.py's coerce_numeric()/type_or_range_error() (SPECIFICATION.md Part
+        // A.8) and reported "Failed" (never "Invalid") - r/g/b/t's shared int/float coercion +
+        // range policy is now the same one every schema-backed field gets, matching legacy's own
+        // led_cmd() bounds (r/g/b 0-255, t 0.5-60.0) rather than the src/ backend's old
+        // silent-clamp/floor behavior.
         uninstall = installMockFetch(DEFS, DATA);
 
         const notADict = await fetch("/notification", { method: "PUT", body: JSON.stringify({ lightCmdLED: "not-a-dict" }) });
@@ -273,9 +273,16 @@ describe("installMockFetch", () => {
         const fractionalT = await fetch("/notification", { method: "PUT", body: JSON.stringify({ lightCmdLED: { r: 10, g: 20, b: 30, t: 1.5 } }) });
         expect((await fractionalT.json()).result.lightCmdLED).toBe("Valid");
 
-        // Out-of-range is still Valid - the real backend never rejects lightCmdLED on magnitude.
+        // Out-of-range r/g/b/t is now rejected, matching legacy's own led_cmd() bounds.
         const outOfRange = await fetch("/notification", { method: "PUT", body: JSON.stringify({ lightCmdLED: { r: 9999, g: -50, b: 30, t: 999 } }) });
-        expect((await outOfRange.json()).result.lightCmdLED).toBe("Valid");
+        expect((await outOfRange.json()).result.lightCmdLED).toBe("Failed");
+
+        // Boundary values (0/255 for r/g/b, 0.5/60.0 for t) are still accepted - only genuinely
+        // outside the range is rejected.
+        const lowerBoundary = await fetch("/notification", { method: "PUT", body: JSON.stringify({ lightCmdLED: { r: 0, g: 255, b: 0, t: 0.5 } }) });
+        expect((await lowerBoundary.json()).result.lightCmdLED).toBe("Valid");
+        const upperBoundary = await fetch("/notification", { method: "PUT", body: JSON.stringify({ lightCmdLED: { r: 255, g: 0, b: 255, t: 60.0 } }) });
+        expect((await upperBoundary.json()).result.lightCmdLED).toBe("Valid");
 
         // Never persisted - doesn't leak into GET /notification's flat settings...
         expect("lightCmdLED" in (await (await fetch("/notification")).json())).toBe(false);

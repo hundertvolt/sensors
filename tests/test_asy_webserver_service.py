@@ -458,6 +458,32 @@ async def _record_async(sink: "list[int]") -> None:
     sink.append(1)
 
 
+def test_networking_put_raising_post_fct_marks_every_attempted_field_in_that_group_failed() -> None:
+    # Regression test for the real, confirmed gap this file's own WEBSITE_PLAN.md §8 flagged
+    # ("silent result-swallow"): handle_set_cmd() (api_response.py) discards its already-computed
+    # per-field results when post_fct/post_asy_fct raises and returns an empty result dict -
+    # _apply_settings_groups() used to just .update() that empty dict in, silently dropping every
+    # field the group actually attempted from the overall response, with the top-level envelope
+    # still reporting success. Every field in `subset` must now come back explicitly "Failed"
+    # instead of vanishing.
+    wifi = _FakeModule(
+        "WIFI",
+        schema=(("SSID", "str", "", 0, 32, None), ("PW", "str", "", 0, 63, None)),
+        values={"SSID": "", "PW": ""},
+    )
+
+    def _raise() -> None:
+        raise RuntimeError("simulated post_fct failure")
+
+    net_group = SettingsGroup(wifi, ("SSID", "PW"), post_fct=_raise)
+    service, app = _make_service(settings={"networking": [net_group]})
+    res = run(app.dispatch_request(_make_request(app, "PUT", "/networking", {"SSID": "NewNet", "PW": "hunter2"})))
+    assert res.status_code == 200
+    body = json.loads(res.body)
+    assert body["res"] == "OK"  # per-field detail carries the failure, not the overall envelope
+    assert body["result"] == {"SSID": "Failed", "PW": "Failed"}
+
+
 def test_system_get_is_flat_debug_gmt_dst_only() -> None:
     sysm = _FakeModule(
         "SYSTEM",

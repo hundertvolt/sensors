@@ -850,6 +850,51 @@ def test_webserver_notification_put_light_cmd_led_rejects_missing_field() -> Non
     assert json.loads(res.body)["result"]["lightCmdLED"] == "Failed"
 
 
+def test_webserver_notification_put_light_cmd_led_rejects_out_of_range_rgb() -> None:
+    # Regression test for WEBSITE_PLAN.md §8's "lightCmdLED legacy-vs-src/ divergence" gap: legacy's
+    # own led_cmd() (modules/sensortask-wozi.py) validates and rejects out-of-range r/g/b (0-255) via
+    # update_valid_json(...) - the promoted src/ callback used to silently clamp instead
+    # (asy_neopixel_driver.py's _clamp_byte()). Rejected exactly like a missing/non-numeric field.
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    res = _dispatch("PUT", "/notification", {"lightCmdLED": {"r": 256, "g": 20, "b": 30, "t": 1.0}})
+    assert json.loads(res.body)["result"]["lightCmdLED"] == "Failed"
+
+
+def test_webserver_notification_put_light_cmd_led_rejects_negative_rgb() -> None:
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    res = _dispatch("PUT", "/notification", {"lightCmdLED": {"r": 10, "g": -1, "b": 30, "t": 1.0}})
+    assert json.loads(res.body)["result"]["lightCmdLED"] == "Failed"
+
+
+def test_webserver_notification_put_light_cmd_led_rejects_out_of_range_t() -> None:
+    # Legacy's own t bound is 0.5-60.0 (modules/sensortask-wozi.py) - the promoted src/ callback used
+    # to floor a too-small t to 0.1 (asy_neopixel_driver.py's neopixel_signal()) and never bounded a
+    # too-large one at all.
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    res = _dispatch("PUT", "/notification", {"lightCmdLED": {"r": 10, "g": 20, "b": 30, "t": 0.1}})
+    assert json.loads(res.body)["result"]["lightCmdLED"] == "Failed"
+    res = _dispatch("PUT", "/notification", {"lightCmdLED": {"r": 10, "g": 20, "b": 30, "t": 100.0}})
+    assert json.loads(res.body)["result"]["lightCmdLED"] == "Failed"
+
+
+def test_webserver_notification_put_light_cmd_led_accepts_lower_boundary_rgb_and_t() -> None:
+    # Deliberately one dispatch per test (not both boundaries in one test function): _dispatch()
+    # drives each call through its own fresh asyncio.run(), so NeopixelDriver's background
+    # neopixel_signal() consumer task never actually runs here - a second real request_signal()
+    # call in the same test would find start_signal_event already set from the first call and
+    # never cleared, hanging forever in request_signal()'s own `while ...: await asyncio.sleep(0)`
+    # loop. Matches every other lightCmdLED test in this file's own single-dispatch convention.
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    res = _dispatch("PUT", "/notification", {"lightCmdLED": {"r": 0, "g": 255, "b": 0, "t": 0.5}})
+    assert json.loads(res.body)["result"]["lightCmdLED"] == "Valid"
+
+
+def test_webserver_notification_put_light_cmd_led_accepts_upper_boundary_rgb_and_t() -> None:
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    res = _dispatch("PUT", "/notification", {"lightCmdLED": {"r": 255, "g": 0, "b": 255, "t": 60.0}})
+    assert json.loads(res.body)["result"]["lightCmdLED"] == "Valid"
+
+
 def test_webserver_notification_put_pause_time_dispatches_to_the_real_coordinator() -> None:
     # Regression test: the legacy `pauseAutoLED` override-countdown command (pixel.set_override_led()
     # in modules/sensortask-wozi.py) had no equivalent wiring at all in the promoted REST layer until

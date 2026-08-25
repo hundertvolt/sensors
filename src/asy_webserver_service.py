@@ -344,6 +344,17 @@ class WebserverService:
                 group.post_fct,
                 group.post_asy_fct,
             )
+            if envelope.get("res") == "ERR":
+                # handle_set_cmd()'s own post_fct/post_asy_fct exception path (api_response.py)
+                # discards its already-computed per-field results and returns an empty result dict -
+                # previously this silently dropped every field in `subset` from the overall response
+                # with no signal at any level (WEBSITE_PLAN.md §8's "silent result-swallow" gap).
+                # The group's post-write hook failed, so nothing it attempted can be trusted as
+                # applied even if a field's own value would otherwise have validated - report every
+                # field the group actually attempted as "Failed" instead of silently omitting them.
+                for key in subset:
+                    results[key] = "Failed"
+                continue
             group_result = envelope.get("result")
             if isinstance(group_result, dict):
                 results.update(group_result)

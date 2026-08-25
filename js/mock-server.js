@@ -189,15 +189,24 @@ function dispatchRangedAction(rawValue, min, max, dest, destKey) {
     return "Valid";
 }
 
+// Legacy's own led_cmd() bounds (modules/sensortask-wozi.py), now enforced server-side too
+// (src/sensortask_wozi.py's _notification_led_callback(), synthetic FieldSchema records) instead
+// of silently clamping/flooring - see this function's own docstring below.
+const LIGHT_CMD_LED_RGB_MIN = 0;
+const LIGHT_CMD_LED_RGB_MAX = 255;
+const LIGHT_CMD_LED_T_MIN = 0.5;
+const LIGHT_CMD_LED_T_MAX = 60.0;
+
 /**
  * Dispatches lightCmdLED (SPECIFICATION.md Part A.8): a fire-and-forget flash command, never a
  * persisted setting - matches src/asy_webserver_service.py's _dispatch_notification_led() +
  * src/sensortask_wozi.py's _notification_led_callback() exactly: "Invalid" only when the payload
- * isn't an object at all, "Failed" when r/g/b is missing/non-numeric/fractional or t is
- * missing/non-numeric (config_manager.py's coerce_numeric() policy, SPECIFICATION.md Part A.8 -
- * r/g/b are int-typed and reject a fractional value the same way any other int-typed field does;
- * t is float-typed and accepts any finite value) - never a range check, since the real driver
- * silently clamps r/g/b (asy_neopixel_driver.py's _clamp_byte()) and never bounds t at all.
+ * isn't an object at all, "Failed" when r/g/b is missing/non-numeric/fractional/out-of-range
+ * (0-255) or t is missing/non-numeric/out-of-range (0.5-60.0) - config_manager.py's
+ * coerce_numeric()/type_or_range_error() policy (SPECIFICATION.md Part A.8): r/g/b are int-typed
+ * and reject a fractional value the same way any other int-typed field does; t is float-typed and
+ * accepts any finite in-range value. Legacy rejected out-of-range r/g/b/t outright too - the
+ * promoted src/ backend used to silently clamp/floor instead, now closed to match.
  * @param {unknown} rawValue
  * @returns {string}
  */
@@ -208,12 +217,18 @@ function dispatchLightCmdLed(rawValue) {
     const payload = /** @type {Record<string, unknown>} */ (rawValue);
     for (const key of ["r", "g", "b"]) {
         const num = payload[key];
-        if (typeof num !== "number" || !Number.isFinite(num) || !Number.isInteger(num)) {
+        if (
+            typeof num !== "number" ||
+            !Number.isFinite(num) ||
+            !Number.isInteger(num) ||
+            num < LIGHT_CMD_LED_RGB_MIN ||
+            num > LIGHT_CMD_LED_RGB_MAX
+        ) {
             return "Failed";
         }
     }
     const t = payload.t;
-    if (typeof t !== "number" || !Number.isFinite(t)) {
+    if (typeof t !== "number" || !Number.isFinite(t) || t < LIGHT_CMD_LED_T_MIN || t > LIGHT_CMD_LED_T_MAX) {
         return "Failed";
     }
     return "Valid";
