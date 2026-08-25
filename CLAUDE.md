@@ -68,11 +68,16 @@ information):
   content of `src/`** — not just the new file in isolation — to check that the coding guidelines
   and `SPECIFICATION.md` Part D's checklist (including its D.10 "API consistency, within a file and
   across the project" and D.9 "Check against current MicroPython" items) actually hold consistently
-  across every file there, not just that the new file individually passes review on its own. **If
-  the scan surfaces a discrepancy — one file diverging from another, or from a guideline — do not
-  silently fix it.** Report it and discuss how to resolve it before changing anything, the same
-  "flag, don't silently change" treatment Part D.1 already gives formula/behavior
-  discrepancies, applied here to cross-file consistency instead.
+  across every file there, not just that the new file individually passes review on its own. **This
+  scan also covers `SPECIFICATION.md` Part G's shared-primitive catalog and discovery procedure**
+  (numeric validation/coercion, callback dispatch guarding, response envelopes, locked state,
+  logging, and — for anything website-facing — the `src/`↔`js/` cross-language mirror obligation):
+  before writing any new function/module, check Part G's catalog first for an existing primitive to
+  reuse or model on, and re-run Part G.3's grep-for-the-shape check across the codebase as part of
+  this same scan, not as a separate pass. **If the scan surfaces a discrepancy — one file diverging
+  from another, or from a guideline — do not silently fix it.** Report it and discuss how to resolve
+  it before changing anything, the same "flag, don't silently change" treatment Part D.1 already
+  gives formula/behavior discrepancies, applied here to cross-file consistency instead.
 - **Do not "fix" `modules/_boot.py`'s `import sensortask.py`** (literal `.py` in the import
   statement) without testing on real hardware first. It works reliably today; MicroPython's
   documented freeze/import behavior says the module should be named `sensortask` with the

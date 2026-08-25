@@ -56,6 +56,11 @@ checkable conventions its own failure-mode audit found in Parts C.7/C.9.
   the hardware-mocking boundary, and the coverage pipeline.
 - **Part F — Platform Target & MicroPython Runtime Facts**: RP2040/MicroPython-1.26 specifics,
   gotchas, and the load-bearing constraints they impose on every driver/service in Parts C-E.
+- **Part G — Shared Pattern & Primitive Reuse**: the living catalog of established shared
+  primitives (numeric validation/coercion, callback dispatch guarding, response envelopes, locked
+  state, logging, driver architecture, the `src/`↔`js/` cross-language mirror) and the discovery
+  procedure to run against it before writing any new function/module — cross-cutting across
+  `src/`, `js/`, and any future layer, not scoped to one language the way Part D is.
 
 ---
 
@@ -3046,3 +3051,134 @@ root is the single place all of it is also listed together.
   "clean up" this file's internals the way Adafruit-derived code is fair game for — a genuine bug
   fix or a real behavior-preserving optimization (see D.8) is still in scope, the same as for any
   other file going through Part D's checklist; a stylistic rewrite for idiomaticity is not.
+
+---
+
+# Part G — Shared Pattern & Primitive Reuse
+
+Where D.10 states the general principle ("give related functions/classes the same shape; check how
+comparable code elsewhere already does this"), this Part is its concrete, checkable instance: a
+living catalog of the actual shared primitives this project has already established, plus the
+discovery procedure every new function/module/endpoint must run *before* being written, not after.
+Cross-cutting by design — it applies to `src/`, `js/`/`tests_js/` (the website effort,
+`WEBSITE_PLAN.md`), and any future layer this project grows, not just Python's `src/` the way Part D
+is scoped.
+
+## G.0 Why this Part exists
+
+Found directly, not theorized: the website-redesign effort's session 3 established that a
+dispatch-only numeric field (one with no real `ConfigSchema`/`ConfigManager` behind it — a
+fire-and-forget action like a PUT command) should still get range-checked the *same* way a
+schema-backed field does, via a synthetic `FieldSchema` record handed to
+`config_manager.py`'s `type_or_range_error()` — first established for `PauseTime`
+(`asy_webserver_service.py`'s `_PAUSE_TIME_FIELD`). `lightCmdLED` (`sensortask_wozi.py`'s
+`_notification_led_callback()`, r/g/b/t) needed the exact same treatment, one file over, but shipped
+instead with a bespoke, weaker set of bare `coerce_numeric()` calls and no range check at all — a
+real, live gap (silently clamped/floored instead of rejecting an out-of-range value, unlike legacy)
+that went out into a merged PR before being caught and fixed. The fix, once made, was a handful of
+lines because the right primitive already existed one file away and had already solved the exact
+same *kind* of problem (see `WEBSITE_PLAN.md` §8/§10 for the full incident). The lesson this Part
+encodes: that gap — and the rework it caused — was avoidable at zero research cost, if "what
+existing primitive already does this kind of thing" had been the first question asked, not a
+question asked in a later audit pass.
+
+## G.1 The rule
+
+- [ ] Before writing a new function, method, module, or endpoint, identify what *kind* of problem
+      it solves — not its specific field names or business logic, its *shape*: a numeric value
+      needing type/range validation, a caller-supplied callback that could misbehave, a REST
+      response envelope, a piece of mutable state shared across tasks, a per-module error/event
+      log, a background task/timer registration, a config-file-backed setting, and so on.
+- [ ] Search this Part's catalog (G.2) first, then the wider codebase, for an existing primitive
+      that already solves that *kind* of problem — not just within the file being edited (D.10
+      already requires that), across `src/` as a whole, and across `js/` too when the new code has
+      a website-facing counterpart. This is a search to actually perform, not a rhetorical
+      question — grep for the shape (e.g. a `FieldSchema`-like tuple, a `try/except` around an
+      awaited caller-supplied callable, a hand-built `{"res": ...}`-shaped dict) before concluding
+      nothing already exists.
+- [ ] If a matching primitive exists: use it directly. Import it, construct the right
+      tuple/record/argument shape it expects, call it — never reimplement any part of what it
+      already does, even a version that looks locally simpler for this one call site. A simpler
+      *inline* version is exactly how the G.0 gap happened.
+- [ ] If no primitive covers this exact *kind* of problem, but a comparable one already exists for
+      a structurally similar problem (e.g. `_PAUSE_TIME_FIELD`'s synthetic-record pattern, built for
+      a scalar dispatch-only field, generalizes directly to `lightCmdLED`'s per-subfield case), model
+      the new code on that existing shape explicitly — cite it in a comment — rather than designing
+      a fresh shape from first principles.
+- [ ] Only once the above turn up nothing to reuse or model on, design something new. If the new
+      thing is plausibly going to recur elsewhere (a second, third call site would want the same
+      shape), add it to G.2's catalog in the same change that introduces it — don't leave that for
+      a future retrospective audit to notice and backfill.
+- [ ] When the new code has both a `src/` (or other backend) side and a `js/` (website) side, the
+      two must encode the *identical* policy, written or updated together in the same change — see
+      G.2's own "cross-language mirror" entry. Shipping one side now and "the other later" is
+      exactly how a real policy gap survives into a merged PR; there is no such thing as a
+      backend-only or frontend-only validation/coercion policy change in this project.
+
+## G.2 Known reusable primitives (living catalog — extend whenever a new one is established)
+
+- [ ] **Numeric type/range validation & coercion** — `config_manager.py`'s `type_or_range_error()`
+      (+ `coerce_numeric()`, which it now calls internally). The canonical way to validate/coerce
+      *any* int/float value against declared bounds, whether the value is genuinely schema-backed
+      (a real `ConfigSchema` tuple, e.g. any driver's `_VAL_*` constants) or dispatch-only (a
+      synthetic `FieldSchema` record built just for this check — `asy_webserver_service.py`'s
+      `_PAUSE_TIME_FIELD`, `sensortask_wozi.py`'s `_FIELD_LED_R`/`_FIELD_LED_G`/`_FIELD_LED_B`/
+      `_FIELD_LED_T`). Never hand-roll a bespoke `int()`/`float()` cast, a manual `min <= x <= max`
+      comparison, or a standalone `coerce_numeric()` call with no accompanying range check for any
+      new numeric field, dispatch-only or not — construct a `FieldSchema` tuple (real or synthetic)
+      and call `type_or_range_error()` against it instead.
+- [ ] **Caller-supplied callback dispatch guarding** — `asy_webserver_service.py`'s
+      `_dispatch_system_cmd()`/`_dispatch_notification_led()`/`_dispatch_notification_pause()`
+      three-part shape: validate the payload first (type/range via the primitive above, or an
+      allowed-value check), `try/await` the caller-supplied callback, `except Exception` →
+      `self.pr.err_s(...)` with a dedicated errno → return `"Failed"`. Every new dispatch-only PUT
+      action follows this exact shape; a bespoke try/except around a callback invocation is a sign
+      this primitive wasn't checked first.
+- [ ] **REST response envelope construction** — `api_response.py`'s `make_response()` is the only
+      way to build a `{"res", "code", "descr", "result"}` envelope. Never hand-build this dict
+      shape inline, even for a one-off error path.
+- [ ] **Task-scoped mutable state shared across coroutines** — `base_classes.py`'s
+      `Lockable`/`LockedCounter`/`LockedFlag`/`LockedValue`. Any new piece of state that's written
+      from one task and read from another (or vice versa) uses one of these, not a bare
+      module-level variable plus an ad hoc `asyncio.Lock()`.
+- [ ] **Per-module logging/error-history** — `print_log.py`'s `make_logger()`/`PrintLog`/
+      `PrintLogHistory`/`PrintLogHistoryStore`. Every module that logs events/warnings/errors or
+      exposes an error counter to `/status` (SPECIFICATION.md A.8) goes through this, constructed
+      via `make_logger()` — never a bespoke `print()`-based or hand-rolled counter/history
+      mechanism.
+- [ ] **Driver layering/naming/config-schema/error-handling/concurrency/timer shape** — Part C in
+      full is this same cross-cutting-reuse principle already applied, in depth, to one specific
+      *kind* of module (a sensor driver) — read it before writing a new driver rather than treating
+      this Part as a replacement for it. Part C and this Part are complementary, not overlapping:
+      Part C is the deep spec for one module *kind*; this Part is the general discovery procedure
+      plus the catalog of primitives that cut across every kind.
+- [ ] **Cross-language mirror: `js/` must encode the same policy `src/` enforces for anything it
+      simulates.** `js/mock-server.js` (SPECIFICATION.md's website effort) is not "a JS server that
+      seems reasonable" — every validation/coercion/dispatch rule it implements must match the real
+      `src/` endpoint it stands in for, field for field, bound for bound. This is D.10's
+      within-project consistency principle applied across a language boundary, and it is exactly
+      where G.0's gap slipped through: a `src/`-side policy (int/float coercion, then later
+      `lightCmdLED`'s range bounds) shipped before its `js/` mirror was updated to match, twice,
+      each time only caught by a later audit rather than the same change that made the `src/` edit.
+
+## G.3 Re-validating the existing project against this Part
+
+- [ ] Whenever a new file lands in `src/` (already required by CLAUDE.md's own bird's-eye-scan
+      hard rule — this Part's catalog is now explicitly part of what that scan checks, alongside
+      Part D's checklist) or in `js/`, grep the whole of `src/` (and `js/` for a website-facing
+      change) for the *shape* of each G.2 primitive's problem, not just its name — a raw
+      `int(`/`float(` cast on a value that then gets compared against literal bounds inline; a
+      `try/except Exception` wrapping an `await` of a caller-supplied callable that doesn't end in
+      `self.pr.err_s(...)` + a `"Failed"`-shaped return; a dict literal containing `"res"`/`"code"`
+      keys built by hand instead of via `make_response()`; a plain module-level variable mutated
+      from more than one coroutine with no `Lockable`-family wrapper; a per-module log/error/event
+      mechanism that isn't `make_logger()`-based.
+- [ ] Each such finding is a candidate migration to the matching G.2 primitive, not something to
+      "leave as a known quirk" — flag it the same way D.10's own last bullet already requires for a
+      plain API-shape mismatch, then discuss before changing (this Part doesn't relax D.1's
+      "flag, don't silently change" convention for anything behavior-relevant).
+- [ ] This is a periodic, ongoing check across the whole project, the same standing cadence D.10
+      already establishes for general API-shape consistency — not a one-time pass to run once and
+      consider done. Re-run it whenever G.2 gains a new catalog entry too, since a primitive named
+      today may have earlier, still-unmigrated instances of its exact problem sitting elsewhere in
+      the codebase from before it existed.
