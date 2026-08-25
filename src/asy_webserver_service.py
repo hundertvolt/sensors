@@ -1,7 +1,8 @@
-"""Registration-based Microdot REST/API service — modules hand it named callback groups and it auto-constructs the six external endpoints plus connection hardening (timeouts, reject-when-full).
+"""Registration-based Microdot REST/API service — modules hand it named callback groups and it auto-constructs the six external endpoints plus connection hardening (timeouts, reject-when-full, keep-alive).
 `ext/microdot.py` is never edited; every behavior change wraps/calls it instead (CLAUDE.md hard rule). See SPECIFICATION.md Part A.5 (Microdot layer) and A.8 (full endpoint reference) for the complete design."""
 
 import asyncio
+import os
 
 # Vendored ext/microdot.py isn't on this project's mypy search path (mypy_path=["typings","src"]) -
 # real device firmware freezes ext/ and src/ flat together, so this resolves fine at runtime; see
@@ -57,6 +58,8 @@ _PAUSE_TIME_MAX = const(3600)  # inclusive upper bound for a client-supplied Pau
 # legacy's own pauseAutoLED command range and asy_notification_service.py's own
 # LockedCounter(max_val=_MAX_OVERRIDE_TIME) clamp ceiling, kept here as its own constant (not
 # imported) since this module has no other coupling to asy_notification_service.py.
+_WRITE_CAPTURE_CAP = const(512)  # bytes - see _TimeoutStreamProxy.awrite()'s own comment.
+
 _PAUSE_TIME_FIELD: "cm.FieldSchema" = ("PauseTime", "int", 0, 0, _PAUSE_TIME_MAX, None)  # dispatch-only, not schema-
 # backed by a real ConfigManager - a synthetic FieldSchema record so _dispatch_notification_pause()
 # can reuse config_manager.py's own type_or_range_error() (and its int<->float coercion policy,
@@ -150,6 +153,11 @@ class _TimeoutStreamProxy:
         self._stream = stream
         self._timeout_s = timeout_s
         self._pr = pr
+        self.captured_write = b""  # see reset_write_capture()/awrite() below - a bounded prefix of
+        # what's actually been written for the in-progress response, consulted only on the
+        # writer-role instance (WebserverService._serve()'s own keep-alive continuation decision,
+        # _decide_connection_header()'s module comment); harmless, never read, on the reader-role
+        # instance _serve() constructs identically.
 
     async def _bounded(self, coro: "Any") -> "Any":
         try:
@@ -158,6 +166,9 @@ class _TimeoutStreamProxy:
             await self._pr.wrn_s("Connection reclaimed (per-call timeout):", e, wrnno=2)
             raise
 
+    def reset_write_capture(self) -> None:
+        self.captured_write = b""
+
     async def readline(self) -> bytes:
         return await self._bounded(self._stream.readline())  # type: ignore[no-any-return]
 
@@ -165,13 +176,38 @@ class _TimeoutStreamProxy:
         return await self._bounded(self._stream.readexactly(n))  # type: ignore[no-any-return]
 
     async def awrite(self, data: bytes) -> None:
+        # Bounded capture, not the full response: ext/microdot.py's Response.write() always writes
+        # the status line, then every header (one awrite() call each), then a blank-line separator,
+        # THEN the body - so the leading _WRITE_CAPTURE_CAP bytes always contain the whole status
+        # line and header block for every response this module ever produces (small JSON envelopes,
+        # a handful of short header lines) with real headroom, regardless of how large a static
+        # file's own body ends up being - keeps this bounded on a real rp2040's limited RAM.
+        if len(self.captured_write) < _WRITE_CAPTURE_CAP:
+            self.captured_write += data
         await self._bounded(self._stream.awrite(data))
 
     async def aclose(self) -> None:
-        await self._bounded(self._stream.aclose())
+        # Deliberately a no-op on the real stream, not a forward - see the class's own docstring for
+        # why this differs from every other method here. ext/microdot.py's handle_request()
+        # unconditionally calls `await writer.aclose()` after writing every single response
+        # (confirmed directly: the one call site in the vendored file), which is exactly right for a
+        # single-request connection but would tear down the real socket out from under
+        # WebserverService._serve()'s own keep-alive loop before it ever gets a chance to try
+        # reading a next request. The real close is _serve()'s own job alone (its `finally` clause
+        # calls _close_writer() directly against the raw writer, never through this proxy) - already
+        # true even before keep-alive existed (tests/test_asy_webserver_service.py's own
+        # test_f5_double_close_paths_dont_raise_or_double_decrement already documents "our own
+        # finally + Microdot's own aclose() both run" as the accepted, tested shape), so suppressing
+        # this call removes a redundant close, not a required one.
+        return
 
     def close(self) -> None:
-        self._stream.close()
+        # Same reasoning as aclose() above - Microdot itself never actually calls this synchronous
+        # variant on the writer in the handle_request() path (confirmed by grepping ext/microdot.py:
+        # its one writer .close() call site is aclose(), not this), but kept as a no-op too rather
+        # than left forwarding, so this proxy can never be the thing that closes the real connection
+        # regardless of which close-shaped method some future Microdot version calls.
+        return
 
     async def wait_closed(self) -> None:
         await self._bounded(self._stream.wait_closed())
@@ -206,6 +242,29 @@ class WebserverService:
         # alongside a browser session) even connects - see scripts/build_website.sh's own "Bundling"
         # comment for the matching fix on the JS-file-count side (6 files down to 1), which was the
         # bigger lever; this one small bump uses one more slot of the real remaining headroom.
+        # max_requests_per_connection (below) is the session-5 follow-up lever on top of both: with
+        # keep-alive, a single browser tab or polling client now needs far fewer *simultaneous*
+        # connections in the first place, not just a smaller number of slots for the same traffic.
+        max_requests_per_connection: int = 50,  # keep-alive request cap per physical TCP
+        # connection (WEBSITE_PLAN.md's session-5 follow-up: real per-connection accounting
+        # exercised for the first time revealed max_connections alone can't fix the real problem -
+        # a single page load needs several *sequential* HTTP requests over the same origin, and
+        # this server previously forced `Connection: close` on every single one of them
+        # (_decide_connection_header() below), meaning every fetch, even from one already-open
+        # browser tab, cost its own fresh TCP connection against the real MEMP_NUM_TCP_PCB=5
+        # ceiling). Reusing one connection across several logical requests bounds how many
+        # connections a browser tab or a polling client like OpenHAB needs at once, independent of
+        # max_connections. This cap bounds the opposite risk: a client that reuses its connection
+        # forever would otherwise pin one of max_connections' slots indefinitely even while
+        # behaving perfectly. 50 comfortably covers one full page load (4 requests - index.html,
+        # style.css, app.js, definitions.json, see scripts/build_website.sh's own "Bundling"
+        # comment) plus a long burst of REST polling sharing the same connection, while still
+        # guaranteeing periodic turnover. Enforced independently in _serve()'s own loop, which is
+        # always the sole authority on whether the physical socket stays open - a response may
+        # still say "keep-alive" on the request that hits this cap (deciding that per-response,
+        # in _decide_connection_header(), doesn't know about this per-connection count), which is
+        # fine: the client simply opens a fresh connection on its next attempt, exactly like an
+        # ordinary server-side keepalive_requests expiry on any real HTTP server.
         per_call_timeout_s: float = 5.0,
         outer_cap_s: float = 15.0,
         host: str = "0.0.0.0",
@@ -229,6 +288,7 @@ class WebserverService:
         self._maintenance_sensors = _index_pairs(maintenance_sensors)
         self._error_sources = _index_by_name(error_sources)
         self._max_connections = max_connections
+        self._max_requests_per_connection = max_requests_per_connection
         self._per_call_timeout_s = per_call_timeout_s
         self._outer_cap_s = outer_cap_s
         self._host = host
@@ -253,8 +313,8 @@ class WebserverService:
         app.get("/notification")(self._get_notification)
         app.put("/notification")(self._put_notification)
 
-        app.after_request(_mark_connection_close)
-        app.after_error_request(_mark_connection_close)  # after_request alone misses every
+        app.after_request(_decide_connection_header)
+        app.after_error_request(_decide_connection_header)  # after_request alone misses every
         # error-response path (400/404/405/413/500) - dispatch_request() only runs after_request
         # handlers on its happy path (see SPECIFICATION.md Part A.8, decision 7).
         for status_code, descr in _ERROR_SHAPES:
@@ -515,11 +575,27 @@ class WebserverService:
             # guard is cheap, correct regardless of the underlying VFS, and gives a uniform 404
             # instead of relying on that implementation detail.
         assert self._static_mount is not None  # only ever registered as a route when it isn't
+        path = self._static_mount + "/" + filename  # send_file() appends file_extension itself
         try:
-            return send_file(self._static_mount + "/" + filename, compressed=True, file_extension=".gz")
+            response = send_file(path, compressed=True, file_extension=".gz")
         except OSError:  # no such file in the mounted filesystem (freezefs's VfsFrozen.open()
             # raises OSError(ENOENT), matching a real missing-file open() everywhere else)
             abort(404)
+        # send_file()'s own Response body is the raw opened file stream (ext/microdot.py's
+        # Response.complete() only auto-fills Content-Length for a `bytes` body, never a stream) -
+        # every static route here would otherwise ship with no Content-Length at all, which was
+        # harmless when every response force-closed the connection (the client just read until
+        # EOF), but would silently hang a keep-alive client (no Content-Length and no
+        # connection-close leaves no way to know where the body ends - see
+        # _decide_connection_header()'s own comment). os.stat() against this same VfsFrozen mount
+        # (ext/freezefs/ffsmount.py's own stat(), confirmed directly: returns dir_entry[2], the
+        # exact byte count freezefs's own archive builder recorded for this file - this project
+        # never passes freezefs's own --compress flag, see scripts/build_frozen_html.sh's own
+        # comment, so that recorded size always matches what open() actually yields byte-for-byte,
+        # never a freezefs-internal-deflate-decompressed size) gives that size without opening a
+        # second stream or buffering the file ourselves.
+        response.headers["Content-Length"] = str(os.stat(path + ".gz")[6])
+        return response
 
     # -- error handling ----------------------------------------------------------------------------
 
@@ -559,31 +635,54 @@ class WebserverService:
         try:
             proxy_reader = _TimeoutStreamProxy(reader, self._per_call_timeout_s, self.pr)
             proxy_writer = _TimeoutStreamProxy(writer, self._per_call_timeout_s, self.pr)
-            try:
-                await asyncio.wait_for(self._app.handle_request(proxy_reader, proxy_writer), self._outer_cap_s)
-            except asyncio.CancelledError:
-                raise  # never swallow a genuine task cancellation
-            except EOFError as e:
-                # Structurally unreachable today (Microdot's own blanket catch around
-                # Request.create() already absorbs any EOFError raised there - see
-                # _TimeoutStreamProxy's own module comment on the identical TimeoutError case) but
-                # kept as defense-in-depth per the module's own "never raise" convention.
-                await self.pr.wrn_s("Connection reclaimed (peer closed early):", e, wrnno=1)
-            except asyncio.TimeoutError as e:
-                # Reaches here from exactly two places: the outer wait_for() immediately above
-                # timing out itself (bounding a Slowloris-paced client no single per-call timeout
-                # alone would catch - decision 2), or a per-call proxy timeout during the *write*
-                # phase (handle_request()'s own except-OSError-only wrapping around res.write()/
-                # writer.aclose() doesn't absorb this the way it absorbs a read-phase one - see
-                # _TimeoutStreamProxy's own comment). A read-phase per-call timeout already logged
-                # its own warning inside the proxy itself and never reaches this far.
-                await self.pr.wrn_s("Connection reclaimed (timed out):", e, wrnno=2)
-            except OSError as e:  # a genuine, real socket-level failure (e.g. a broken pipe) -
-                # never actually raised by any of this module's own fakes/proxy, kept for real
-                # hardware defense-in-depth.
-                await self.pr.wrn_s("Connection reclaimed (socket error):", e, wrnno=3)
-            except Exception as e:  # never raises out of this task - see module docstring
-                await self.pr.err_s("Unexpected error serving connection:", e, errno=1)
+            requests_served = 0
+            while True:
+                proxy_writer.reset_write_capture()  # see _decide_connection_header()'s own
+                # comment - this is how _serve() learns, after the fact, what that hook decided
+                # for THIS response, without re-deriving the same decision a second time.
+                try:
+                    await asyncio.wait_for(self._app.handle_request(proxy_reader, proxy_writer), self._outer_cap_s)
+                except asyncio.CancelledError:
+                    raise  # never swallow a genuine task cancellation
+                except EOFError as e:
+                    # Structurally unreachable today (Microdot's own blanket catch around
+                    # Request.create() already absorbs any EOFError raised there - see
+                    # _TimeoutStreamProxy's own module comment on the identical TimeoutError case) but
+                    # kept as defense-in-depth per the module's own "never raise" convention.
+                    await self.pr.wrn_s("Connection reclaimed (peer closed early):", e, wrnno=1)
+                    break
+                except asyncio.TimeoutError as e:
+                    # Reaches here from exactly two places: the outer wait_for() immediately above
+                    # timing out itself (bounding a Slowloris-paced client no single per-call timeout
+                    # alone would catch - decision 2, and also the ordinary way an idle kept-alive
+                    # connection whose client never sends a next request gets reclaimed - a fresh
+                    # outer_cap_s window applies to each loop iteration, including the "wait for the
+                    # next request line to start arriving" portion of the next handle_request() call),
+                    # or a per-call proxy timeout during the *write* phase (handle_request()'s own
+                    # except-OSError-only wrapping around res.write()/writer.aclose() doesn't absorb
+                    # this the way it absorbs a read-phase one - see _TimeoutStreamProxy's own
+                    # comment). A read-phase per-call timeout already logged its own warning inside
+                    # the proxy itself and never reaches this far.
+                    await self.pr.wrn_s("Connection reclaimed (timed out):", e, wrnno=2)
+                    break
+                except OSError as e:  # a genuine, real socket-level failure (e.g. a broken pipe) -
+                    # never actually raised by any of this module's own fakes/proxy, kept for real
+                    # hardware defense-in-depth.
+                    await self.pr.wrn_s("Connection reclaimed (socket error):", e, wrnno=3)
+                    break
+                except Exception as e:  # never raises out of this task - see module docstring
+                    await self.pr.err_s("Unexpected error serving connection:", e, errno=1)
+                    break
+                requests_served += 1
+                if requests_served >= self._max_requests_per_connection:
+                    break  # see max_requests_per_connection's own comment - a response already
+                    # written for this final request may still have said "keep-alive"; that's fine.
+                if b"Connection: keep-alive\r\n" not in proxy_writer.captured_write:
+                    break  # _decide_connection_header() said "close" for this response (or wrote
+                    # nothing recognizable at all, e.g. a hypothetical future Response.already_handled
+                    # streaming route bypassing write() entirely - captured_write would stay empty,
+                    # which also doesn't contain the marker, so this degrades to the same safe "close"
+                    # by construction, with no separate case needed).
         finally:
             await self._close_writer(writer)
             await self._open_conns.decrement()
@@ -637,12 +736,66 @@ def _body_as_dict(request: "Any") -> "dict[str, Any] | None":
     return data if isinstance(data, dict) else None
 
 
-def _mark_connection_close(request: "Any", response: "Any") -> "Any":
+def _decide_connection_header(request: "Any", response: "Any") -> "Any":
     # ext/microdot.py speaks HTTP/1.0 (Response.write()'s literal status line) whose spec default is
-    # already non-persistent, but RFC 7230 SS6.6 recommends a server that intends to close after
-    # responding say so explicitly - added via Microdot's own supported hook, never by editing the
-    # vendored file (decision 7).
-    response.headers["Connection"] = "close"
+    # non-persistent - a server that wants the connection kept open says so explicitly via
+    # `Connection: keep-alive` (the long-established, widely-honored HTTP/1.0 keep-alive
+    # extension), added via Microdot's own supported hook, never by editing the vendored file
+    # (decision 7). WebserverService._serve() is the sole authority on whether the physical socket
+    # actually stays open (its own max_requests_per_connection cap, and any exception/timeout
+    # tear-down, both close regardless of what this function decided) - this function only decides
+    # what the CLIENT is told to expect, but _serve() also reads its own decision back out of the
+    # bytes actually written (see _TimeoutStreamProxy.awrite()'s capture) to know whether to try
+    # reading another request off this same connection at all, so the two can never disagree about
+    # what was promised - only "promised keep-alive, closed anyway" is possible (see
+    # max_requests_per_connection's own comment on why that direction is always safe).
+    #
+    # Keep-alive is only safe when the stream is provably positioned at the next request's exact
+    # byte boundary once this response is written - true whenever Request.create() (ext/microdot.py)
+    # built a complete `req` (it fully consumed the request line, headers, and exactly
+    # content_length body bytes via readexactly()) AND the response body's own length is known in
+    # advance (an explicit Content-Length, the client's only way to know where THIS response's body
+    # ends without us falling back to connection-close framing).
+    #   - status_code == 400 is, in this codebase, always Microdot's own dispatch_request() `if
+    #     req: ... else: 400` branch (req stayed None - a malformed request line, or a read
+    #     timeout/early EOF absorbed internally by Microdot itself, see
+    #     _TimeoutStreamProxy's own module comment) - no route registered anywhere in this module
+    #     ever calls abort(400) or raises HTTPException(400) itself (confirmed by inspecting every
+    #     route above), so a 400 here always means the parse failed and how much of the stream was
+    #     actually consumed before that failure isn't reliably known. Every other status code this
+    #     module produces (2xx, 404, 405, 413, 500) is only ever reached with a real, fully-parsed
+    #     `req`, so framing is safe on that count regardless of which of those it is.
+    #   - Every JSON-envelope route's response body is a `bytes` object by the time this hook runs
+    #     (ext/microdot.py's Response.__init__ JSON-encodes a dict/list body immediately, before any
+    #     hook ever sees it) - Response.complete() (called later, during write()) auto-fills
+    #     Content-Length for exactly this case, so these are always safe. The two static-file routes
+    #     (_serve_static(), send_file()) are the one exception: their body is the raw opened file
+    #     stream, which complete() does NOT auto-length - _serve_static() now sets Content-Length on
+    #     these itself for exactly this reason, so checking "was a Content-Length header already
+    #     supplied" (rather than re-deriving is-this-the-static-route-ness some other way) covers
+    #     both cases uniformly and stays correct even if a future route grows a genuinely unbounded
+    #     streaming body with no Content-Length of its own - that response falls back to close, safely.
+    #   - A client that explicitly asked to close (rare in practice - real browsers manage this
+    #     silently rather than sending the header, but some HTTP libraries/proxies do send it) is
+    #     honored too, even though nothing above would otherwise force it.
+    #
+    # Guard-clause ordering matters here, not just style (D.2's own convention): `request` is `None`
+    # on exactly the status_code == 400 path (dispatch_request()'s after_error_request handlers are
+    # invoked with the same `req` that stayed `None`) - checking status_code first, and returning
+    # before ever touching `request.headers`, avoids an AttributeError on that path. (Confirmed
+    # directly: an earlier version of this function computed `request.headers.get(...)`
+    # unconditionally up front and crashed dispatch_request() itself on every malformed-request-line
+    # test - caught by tests/test_asy_webserver_service.py's own F.2/F.5 coverage.)
+    if response.status_code == 400:
+        response.headers["Connection"] = "close"
+        return response
+    if not (isinstance(response.body, bytes) or "Content-Length" in response.headers):
+        response.headers["Connection"] = "close"
+        return response
+    if request is not None and request.headers.get("Connection", "").lower() == "close":
+        response.headers["Connection"] = "close"
+        return response
+    response.headers["Connection"] = "keep-alive"
     return response
 
 

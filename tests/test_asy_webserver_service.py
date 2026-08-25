@@ -1188,7 +1188,7 @@ def test_f1_a_slot_freed_by_reclaim_accepts_the_next_connection_immediately() ->
     async def scenario() -> None:
         await service._serve(_HangingReader(), _ScriptedWriter())  # reclaimed by per-call timeout
         assert await service._open_conns.get_value() == 0
-        second_reader = _ScriptedReader([(0, _request_bytes("GET", "/status"))])
+        second_reader = _ScriptedReader([(0, _request_bytes("GET", "/status"))], eof=True)
         second_writer = _ScriptedWriter()
         await service._serve(second_reader, second_writer)
         assert second_writer.written != b""  # actually served this time, no cooldown gap
@@ -1252,7 +1252,11 @@ def test_f2_content_length_larger_than_body_sent_then_silence_times_out() -> Non
 def test_f2_content_length_exceeding_max_content_length_returns_413() -> None:
     service, app = _make_service(max_content_length=64, per_call_timeout_s=2.0, outer_cap_s=2.0)
     body = json.dumps({"Interval": 1, "Padding": "x" * 200}).encode()
-    reader = _ScriptedReader([(0, _request_bytes("PUT", "/networking", body))])
+    # eof=True: a 413 leaves req fully parsed (safe framing), so it now offers keep-alive
+    # (_decide_connection_header()) - without eof=True, _serve() would try reading a second
+    # request here and burn the full per_call_timeout_s/outer_cap_s budget finding none, which
+    # this test's own tight 3.0s timeout has no margin for.
+    reader = _ScriptedReader([(0, _request_bytes("PUT", "/networking", body))], eof=True)
     writer = _ScriptedWriter()
     run_timed(service._serve(reader, writer), timeout_s=3.0)
     assert run(service._open_conns.get_value()) == 0
@@ -1284,25 +1288,78 @@ def test_f2_body_truncated_by_a_clean_peer_close_degrades_via_microdots_own_blan
 
 def test_f5_normal_close_decrements_counter_exactly_once() -> None:
     service, app = _make_service()
-    reader = _ScriptedReader([(0, _request_bytes("GET", "/status"))])
+    reader = _ScriptedReader([(0, _request_bytes("GET", "/status"))], eof=True)  # a real client
+    # closing cleanly after its one request - eof=True keeps this test isolated to a single
+    # request/response cycle rather than also exercising the keep-alive loop (covered separately
+    # below).
     writer = _ScriptedWriter()
     run_timed(service._serve(reader, writer))
     assert run(service._open_conns.get_value()) == 0
     assert writer.close_called
 
 
-def test_f5_connection_close_header_present_on_every_response_including_errors() -> None:
+def test_f5_connection_keep_alive_offered_for_every_unambiguously_framed_response() -> None:
+    # 200/404/405 (never 400) all reach _decide_connection_header() with a fully-parsed req and a
+    # bytes body (an api_response.py envelope) - see that function's own comment for why every one
+    # of these is safe to offer keep-alive for. This replaces the old "every response force-closes"
+    # assumption from before keep-alive existed (WEBSITE_PLAN.md's session-5 follow-up).
     service, app = _make_service()
     for method, path in (("GET", "/status"), ("GET", "/no/such/route"), ("DELETE", "/status")):
         writer = _ScriptedWriter()
-        reader = _ScriptedReader([(0, _request_bytes(method, path))])
+        reader = _ScriptedReader([(0, _request_bytes(method, path))], eof=True)
         run_timed(service._serve(reader, writer))
-        assert b"Connection: close" in writer.written, path
+        assert b"Connection: keep-alive" in writer.written, path
+
+
+def test_f5_connection_close_offered_for_the_one_ambiguously_framed_response() -> None:
+    # A malformed request line never produces a real `req` (dispatch_request()'s own "if req: ...
+    # else: 400" branch) - the only status code this module ever returns where how much of the
+    # stream was consumed before the failure isn't reliably known, so it must always close
+    # regardless of keep-alive eligibility otherwise (_decide_connection_header()).
+    service, app = _make_service()
+    writer = _ScriptedWriter()
+    reader = _ScriptedReader([(0, b"NOT A VALID REQUEST LINE AT ALL\r\n\r\n")], eof=True)
+    run_timed(service._serve(reader, writer))
+    assert b"Connection: close" in writer.written
+
+
+def test_f5_client_explicitly_asking_close_is_honored_even_though_the_response_would_otherwise_offer_keep_alive() -> None:
+    service, app = _make_service()
+    writer = _ScriptedWriter()
+    reader = _ScriptedReader([(0, _request_bytes("GET", "/status", extra_headers={"Connection": "close"}))], eof=True)
+    run_timed(service._serve(reader, writer))
+    assert b"Connection: close" in writer.written
+
+
+def test_f5_keep_alive_serves_a_second_request_on_the_same_connection() -> None:
+    # The actual point of keep-alive: a client that reuses the connection for a second request
+    # gets it served without a fresh TCP connection - _serve() loops internally rather than
+    # returning after one request/response.
+    service, app = _make_service()
+    two_requests = _request_bytes("GET", "/status") + _request_bytes("GET", "/status")
+    reader = _ScriptedReader([(0, two_requests)], eof=True)
+    writer = _ScriptedWriter()
+    run_timed(service._serve(reader, writer))
+    assert writer.written.count(b"HTTP/1.0 200") == 2
+    assert run(service._open_conns.get_value()) == 0
+
+
+def test_f5_max_requests_per_connection_caps_keep_alive_even_when_every_response_offered_it() -> None:
+    service, app = _make_service(max_requests_per_connection=2)
+    three_requests = _request_bytes("GET", "/status") * 3
+    reader = _ScriptedReader([(0, three_requests)], eof=True)
+    writer = _ScriptedWriter()
+    run_timed(service._serve(reader, writer))
+    # Capped at max_requests_per_connection - even though a plain /status 200 always offers
+    # keep-alive on its own merits (see the test above), _serve()'s own loop is the sole authority
+    # on whether the physical socket stays open past this cap.
+    assert writer.written.count(b"HTTP/1.0 200") == 2
+    assert run(service._open_conns.get_value()) == 0
 
 
 def test_f5_double_close_paths_dont_raise_or_double_decrement() -> None:
     service, app = _make_service()
-    reader = _ScriptedReader([(0, _request_bytes("GET", "/status"))])
+    reader = _ScriptedReader([(0, _request_bytes("GET", "/status"))], eof=True)
     writer = _ScriptedWriter()
     run_timed(service._serve(reader, writer))  # our own finally + Microdot's own aclose() both run
     assert run(service._open_conns.get_value()) == 0
@@ -1397,15 +1454,29 @@ def test_close_writer_logs_a_persisted_warning_when_wait_closed_raises() -> None
     assert service.pr.err_count == 1
 
 
-def test_timeout_stream_proxy_close_and_wait_closed_forward_to_the_wrapped_stream() -> None:
-    # Direct unit coverage of the two Stream-forwarding methods ext/microdot.py's own request/
-    # response handling never actually calls in any of Section F's protocol-level scenarios (close()
-    # is sync, wait_closed() is only ever invoked by WebserverService._close_writer() on the raw
-    # writer, not the proxy) - still real, real-Stream-matching forwards that must work correctly.
+def test_timeout_stream_proxy_close_and_aclose_are_deliberate_no_ops_on_the_wrapped_stream() -> None:
+    # Session-5 follow-up (WEBSITE_PLAN.md): close()/aclose() used to forward to the wrapped
+    # stream, matching a single-request connection's own real close - but ext/microdot.py's
+    # handle_request() unconditionally calls `await writer.aclose()` after every response, which
+    # would tear down the real socket out from under _serve()'s own keep-alive loop before it ever
+    # tries reading a next request. The real close is _serve()'s own job alone, via the raw writer
+    # in its own `finally` clause (see _TimeoutStreamProxy.aclose()'s own comment) - so both
+    # close-shaped methods on this proxy must now never touch the wrapped stream at all.
     writer = _ScriptedWriter()
     proxy = _TimeoutStreamProxy(writer, 1.0, _FakeLogger("X"))  # type: ignore[arg-type]
     proxy.close()
-    assert writer.close_called is True
+    assert writer.close_called is False
+    run_timed(proxy.aclose())
+    assert writer.close_called is False
+
+
+def test_timeout_stream_proxy_wait_closed_still_forwards_to_the_wrapped_stream() -> None:
+    # Unlike close()/aclose() above, wait_closed() is never called on this proxy by ext/microdot.py
+    # (only by WebserverService._close_writer() on the raw writer directly - see this file's own
+    # module docstring) and has no real-close side effect of its own to suppress, so it keeps
+    # forwarding like every other Stream-forwarding method here.
+    writer = _ScriptedWriter()
+    proxy = _TimeoutStreamProxy(writer, 1.0, _FakeLogger("X"))  # type: ignore[arg-type]
     run_timed(proxy.wait_closed())
     assert writer.wait_closed_called is True
 
@@ -1456,7 +1527,7 @@ def test_serve_absorbs_an_unexpected_exception_raised_directly_by_handle_request
 
 def test_f7_unknown_path_returns_404_shaped_response() -> None:
     service, app = _make_service()
-    reader = _ScriptedReader([(0, _request_bytes("GET", "/no/such/route"))])
+    reader = _ScriptedReader([(0, _request_bytes("GET", "/no/such/route"))], eof=True)
     writer = _ScriptedWriter()
     run_timed(service._serve(reader, writer))
     assert b" 404 " in writer.written
@@ -1464,7 +1535,7 @@ def test_f7_unknown_path_returns_404_shaped_response() -> None:
 
 def test_f7_wrong_http_method_on_a_known_path_returns_405_shaped_response() -> None:
     service, app = _make_service()
-    reader = _ScriptedReader([(0, _request_bytes("DELETE", "/status"))])
+    reader = _ScriptedReader([(0, _request_bytes("DELETE", "/status"))], eof=True)
     writer = _ScriptedWriter()
     run_timed(service._serve(reader, writer))
     assert b" 405 " in writer.written
@@ -1473,7 +1544,9 @@ def test_f7_wrong_http_method_on_a_known_path_returns_405_shaped_response() -> N
 def test_f7_extremely_long_url_path_is_handled_cleanly_not_a_crash() -> None:
     service, app = _make_service(per_call_timeout_s=2.0, outer_cap_s=2.0)
     long_path = "/status/" + ("a" * 8192)
-    reader = _ScriptedReader([(0, _request_bytes("GET", long_path))])
+    # eof=True: whatever status this 404s to still offers keep-alive - see the 413 test's own
+    # comment above for why that matters to this test's tight timeout budget.
+    reader = _ScriptedReader([(0, _request_bytes("GET", long_path))], eof=True)
     writer = _ScriptedWriter()
     run_timed(service._serve(reader, writer), timeout_s=3.0)
     assert run(service._open_conns.get_value()) == 0  # reclaimed or 404'd, never an escaped exception
@@ -1494,7 +1567,7 @@ def test_f7_dedicated_multi_connection_slowloris_simulation_all_reclaimed_and_sl
         assert await service._open_conns.get_value() == 0
         # A fresh, well-formed connection right after confirms slots are reusable, not permanently
         # poisoned by the Slowloris attempt.
-        fresh_reader = _ScriptedReader([(0, _request_bytes("GET", "/status"))])
+        fresh_reader = _ScriptedReader([(0, _request_bytes("GET", "/status"))], eof=True)
         fresh_writer = _ScriptedWriter()
         await service._serve(fresh_reader, fresh_writer)
         assert fresh_writer.written != b""
@@ -1549,7 +1622,7 @@ def test_f9_soak_100_plus_start_wedge_reclaim_cycles_hold_counter_and_memory_fla
         if i % 3 == 0:
             await service._serve(_HangingReader(), _ScriptedWriter())
         else:
-            reader = _ScriptedReader([(0, _request_bytes("GET", "/status"))])
+            reader = _ScriptedReader([(0, _request_bytes("GET", "/status"))], eof=True)
             await service._serve(reader, _ScriptedWriter())
         assert await service._open_conns.get_value() == 0
 
@@ -1607,6 +1680,10 @@ def test_g_static_root_serves_the_configured_index_file() -> None:
     assert res.body.read() == b"<h1>hi</h1>"
     assert res.headers["Content-Type"].startswith("text/html")
     assert res.headers["Content-Encoding"] == "gzip"
+    assert res.headers["Content-Length"] == "11"  # len(b"<h1>hi</h1>") - send_file()'s own body is
+    # a raw file stream, which ext/microdot.py's Response.complete() never auto-lengths (only a
+    # `bytes` body gets that) - _serve_static() sets this itself; see its own comment for why a
+    # missing Content-Length here would silently hang a keep-alive client.
 
 
 def test_g_static_wildcard_also_serves_the_index_file_by_its_own_name() -> None:
@@ -1647,6 +1724,21 @@ def test_g_static_nested_path_not_found_since_the_stub_mount_is_flat() -> None:
     _, app = _make_service(static_mount=mount)
     res = run(app.dispatch_request(_make_request(app, "GET", "/sub/deep/file.txt", None)))
     assert res.status_code == 404
+
+
+def test_g_static_route_offers_keep_alive_now_that_content_length_is_known() -> None:
+    # Session-5 follow-up (WEBSITE_PLAN.md): before _serve_static() started setting Content-Length
+    # itself, a static file response's body was a bare stream with no declared length, which
+    # _decide_connection_header() must treat as unsafe for keep-alive (see its own comment) - this
+    # is the actual motivating case (a page load's own index.html/style.css/app.js/
+    # definitions.json fetches), so confirm the gap is really closed, not just that the header is
+    # present on the JSON-envelope routes.
+    mount = _mount_static_fixture({"index.html": b"<h1>hi</h1>"})
+    service, app = _make_service(static_mount=mount)
+    reader = _ScriptedReader([(0, _request_bytes("GET", "/"))], eof=True)
+    writer = _ScriptedWriter()
+    run_timed(service._serve(reader, writer))
+    assert b"Connection: keep-alive" in writer.written
 
 
 def test_g_static_routes_never_shadow_a_real_api_endpoint() -> None:

@@ -12,6 +12,7 @@ import sys
 import _http_client
 import machine
 from unix_port_poll_prewarm import prewarm_poll_set
+from unix_port_sigpipe_ignore import ignore_sigpipe
 
 import sensortask_wozi
 
@@ -77,6 +78,9 @@ async def main(n_clients: int, n_requests: int, n_rounds: int, host: str, port: 
     # unix_port_poll_prewarm.py's own module docstring and digital_twin/README.md's "Known gaps"
     # section.
     prewarm_poll_set(port=port + 1000)
+    ignore_sigpipe()  # see unix_port_sigpipe_ignore.py's own module docstring - keep-alive means
+    # this tool's own repeated-request clients can now trigger a server-side write to an
+    # already-closed peer, which crashes the process outright without this.
     machine.configure_fram_state_path(None)
     machine.configure_scd30_state_path(None)
     main_task = asyncio.get_event_loop().create_task(

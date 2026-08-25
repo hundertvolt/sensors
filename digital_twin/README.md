@@ -40,6 +40,10 @@ Kept completely separate so nothing here can accidentally affect the determinist
   for the full account). Called as the first statement of `run_wozi_integration.py`'s and
   `segfault_stress_repro.py`'s own `main()`, before anything else in the process registers a poll
   object.
+- `unix_port_sigpipe_ignore.py` — a workaround for a confirmed, real Unix-port-only `SIGPIPE`
+  crash (see "Known gaps / follow-ups" below) when `WebserverService`'s keep-alive support writes a
+  response over a connection whose peer already closed its own end. Called alongside
+  `prewarm_poll_set()` in the same entry points, plus `tests/test_digital_twin_webserver_concurrency.py`.
 - `_crc8.py` / `_fault_injection.py` — small shared helpers (CRC-8 for SGP40/SCD30's word protocol;
   a generic op-keyed fault-injection queue, mirroring `tests/machine.py`'s own
   `inject_fault()`/`_maybe_raise()` convention) used by more than one chip fake.
@@ -437,3 +441,41 @@ correctly by the dedicated pass instead - see `digital_twin/typecheck.ini`'s own
   poll object has no `pollfd` field or array to grow at all) — real hardware was never affected.
   Fixed by `unix_port_poll_prewarm.py` (see "What's here" above and that module's own comments for
   the pre-warming mechanism itself).
+- **Keep-alive (WEBSITE_PLAN.md's session-5 follow-up) re-triggered the `modselect.c:132` bug above
+  at a lower connection count than before, plus surfaced a second, independent Unix-port-only crash.**
+  `WebserverService` (`src/asy_webserver_service.py`) now reuses one TCP connection for several
+  logical HTTP requests instead of closing after every response — a real, needed fix (a single
+  browser page load previously opened far more simultaneous connections than necessary against the
+  real rp2040/lwIP `MEMP_NUM_TCP_PCB=5` ceiling), but it meant, for the first time, one physical
+  connection cycling through several `asyncio.wait_for()`-driven poll registrations instead of just
+  one, and the server itself writing a *second* response over a connection whose client-side peer
+  may already be gone (an ordinary HTTP client that only intended one request closes its own socket
+  right after reading the reply). Both were found via `tests/test_digital_twin_webserver_concurrency.py`
+  reliably segfaulting (or, before the fix below, crashing outright via an unhandled signal) once its
+  own high-concurrency test was extended to exercise keep-alive — root-caused with the same real
+  debug-build-plus-`gdb` method as the original `modselect.c:132` bug, not assumed to be "the same
+  bug" just because both are Unix-port-only crashes:
+  1. **A raw `SIGPIPE`, not `SIGSEGV`.** `modsocket.c`'s `socket_write()` calls the raw libc `write()`
+     syscall directly (no `MSG_NOSIGNAL`); writing to a socket whose peer already reset its own end
+     raises `SIGPIPE`, and this pinned Unix-port build has no `signal` module at all (`import signal`
+     raises `ImportError`, confirmed directly) to install a catch/ignore handler through the normal
+     Python API — so the process's default disposition (terminate) kills the whole interpreter
+     instead of `write()` returning an ordinary `OSError(EPIPE)` for `WebserverService._serve()`'s
+     own, already-present `except OSError` clause to handle (that branch's own comment already
+     anticipated "a genuine, real socket-level failure, e.g. a broken pipe" — this bug is exactly why
+     it could never actually be reached before keep-alive existed). Fixed by
+     `unix_port_sigpipe_ignore.py`: a direct libc `signal(SIGPIPE, SIG_IGN)` call via the Unix port's
+     `ffi` module (confirmed directly: a real closed-peer write raises a clean `OSError(EPIPE)`
+     afterward, not a crash), called from `run_wozi_integration.py`, `segfault_stress_repro.py`, and
+     `tests/test_digital_twin_webserver_concurrency.py` itself. Confirmed Unix-port-only the same way
+     as the `modselect.c` bug: real rp2 firmware's socket layer wraps lwIP directly, with no raw libc
+     `write()`/POSIX signal delivery mechanism at all — a send to an already-reset lwIP connection
+     returns a normal lwIP error code, translated into an ordinary `OSError` there already.
+  2. **The original `modselect.c:132` dangling-pointer bug, now actually reachable.** Confirmed via a
+     fresh debug-build `gdb` backtrace (after fixing the `SIGPIPE` crash above, which had been masking
+     this one — the process died via `SIGPIPE` before ever accumulating enough poll-registration churn
+     to trigger the array growth this bug needs) landing at the exact same `poll_obj_get_revents`
+     site as the original finding. `tests/test_digital_twin_webserver_concurrency.py` itself never
+     called `prewarm_poll_set()` at all before this — its own pre-keep-alive tests never drove enough
+     registration churn to need it. Fixed the same way as everywhere else this bug can occur: an added
+     `prewarm_poll_set()` call at the top of that test file.

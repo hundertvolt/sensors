@@ -22,6 +22,7 @@ from launch import (
     parse_hang_spec,  # noqa: F401 - re-exported for callers that only need the spec parser
 )
 from unix_port_poll_prewarm import prewarm_poll_set
+from unix_port_sigpipe_ignore import ignore_sigpipe
 
 import sensortask_wozi
 
@@ -330,6 +331,12 @@ async def main(config: RunConfig) -> "dict[str, Any]":
     # unix_port_poll_prewarm.py's own module docstring and digital_twin/README.md's "Known gaps"
     # section (a confirmed Unix-port-only MicroPython bug this pre-warming avoids triggering).
     prewarm_poll_set()
+    # Keep-alive (WEBSITE_PLAN.md's session-5 follow-up) means WebserverService may write a second
+    # response to a connection whose peer already closed its own end - see
+    # unix_port_sigpipe_ignore.py's own module docstring for the confirmed Unix-port-only SIGPIPE
+    # crash that would otherwise cause. Order relative to prewarm_poll_set() above doesn't matter
+    # (independent mechanisms), but both must run before any real socket traffic.
+    ignore_sigpipe()
     # Must also run before anything constructs a real AsyUDPSocket (captive_dns.py's DNSServer,
     # asy_ntp_client.py's NTP fetch, asy_dns_client.py's own resolver) - see
     # _unix_port_udp_addr_shim.py's own module docstring for the confirmed Unix-port-only

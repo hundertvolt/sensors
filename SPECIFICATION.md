@@ -720,12 +720,33 @@ mixing pre- and post-write values across fields — see BACKLOG.md for this item
 
 Connection hardening (per-call/outer-cap timeouts, reject-when-full at the connection-count
 ceiling, no bespoke whole-server-restart mechanism — the webserver task participates in
-`start_and_check_tasks()`'s ordinary supervisor like every other module) and the `Connection: close`
-response header are implemented directly in `WebserverService`/`_TimeoutStreamProxy`
-(`src/asy_webserver_service.py`) — see that module's own inline comments (near `max_connections`/
-`_TimeoutStreamProxy`) for the current constants and mechanism, and `tests/test_asy_webserver_service.py`
-for the full regression
-coverage (including its F.9 soak test, `gc.mem_free()` flat over 100+ start/wedge/reclaim cycles).
+`start_and_check_tasks()`'s ordinary supervisor like every other module) is implemented directly in
+`WebserverService`/`_TimeoutStreamProxy` (`src/asy_webserver_service.py`) — see that module's own
+inline comments (near `max_connections`/`_TimeoutStreamProxy`) for the current constants and
+mechanism, and `tests/test_asy_webserver_service.py` for the full regression coverage (including
+its F.9 soak test, `gc.mem_free()` flat over 100+ start/wedge/reclaim cycles).
+
+**Keep-alive (WEBSITE_PLAN.md §10 item 5's session-5 follow-up)**: the response `Connection` header
+is no longer always `close` — `_decide_connection_header()` offers `keep-alive` for every response
+whose framing is unambiguous (not the one status code, 400, that means the request couldn't be
+parsed at all) and whose body length is known upfront (a `bytes` body, or an explicit
+`Content-Length` — `_serve_static()` now sets one itself for exactly this reason, since
+`send_file()`'s raw file-stream body isn't auto-lengthed by `ext/microdot.py`'s own `complete()`),
+unless the client's own request explicitly asked to close. `WebserverService._serve()` is the sole
+authority on whether the physical socket actually stays open: it loops calling
+`app.handle_request()` again on the same connection as long as the just-written response's own
+bytes said `keep-alive` (read back from `_TimeoutStreamProxy`'s own bounded write-capture, so the
+loop and the header the client saw can never disagree) and `max_requests_per_connection` hasn't
+been reached yet — and `_TimeoutStreamProxy.aclose()`/`.close()` are now deliberate no-ops on the
+real stream (rather than forwarding), since `ext/microdot.py`'s own `handle_request()`
+unconditionally closes the writer after every response, which would otherwise tear the connection
+down before the loop ever got a chance to try reading a next request; the real close is `_serve()`'s
+own job alone, via the raw writer in its own `finally` clause. This exists specifically because a
+single browser page load previously needed far more simultaneous TCP connections than necessary
+against the real rp2040/lwIP `MEMP_NUM_TCP_PCB=5` ceiling — see `max_connections`'s and
+`max_requests_per_connection`'s own inline comments for the full rationale, and
+`digital_twin/README.md`'s "Known gaps" section for two Unix-port-only crashes this surfaced and
+fixed along the way (a `SIGPIPE` crash and a re-triggered `extmod/modselect.c` dangling-pointer bug).
 
 ## A.9 Website stub / frozen-HTML pipeline
 
