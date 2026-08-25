@@ -24,12 +24,17 @@ constraints.
   are all currently clean of them (confirmed: `scripts/lint.sh` reports zero findings, after
   `improved-quality/`'s own tracked bare-except debt was deleted along with the rest of that
   directory).
-- **No CI firmware-build stage yet.** `build-*.sh`'s hardcoded `/home/nico/rpi_pico/...` path is
-  fixed (each script now captures its own `$(pwd)` before any `cd`, matching how the script has
-  always assumed it's invoked - from inside `py-include/`, real dir or symlink, regardless of
-  machine - and passes that as `FROZEN_MANIFEST`; verified with a real end-to-end
-  `build-wozi.sh` run producing a successful `firmware.elf` link against the pinned v1.28.0
-  toolchain). Still open: wiring an actual firmware-build stage into CI itself.
+- **No CI firmware-build stage yet for the legacy `build-*.sh` scripts.** `build-*.sh`'s hardcoded
+  `/home/nico/rpi_pico/...` path is fixed (each script now captures its own `$(pwd)` before any
+  `cd`, matching how the script has always assumed it's invoked - from inside `py-include/`, real
+  dir or symlink, regardless of machine - and passes that as `FROZEN_MANIFEST`; verified with a
+  real end-to-end `build-wozi.sh` run producing a successful `firmware.elf` link against the pinned
+  v1.28.0 toolchain). Still open: wiring an actual firmware-build stage into CI for these legacy
+  scripts specifically. The *new*, `src/`-based toolchain (`scripts/build_firmware.py`,
+  WEBSITE_PLAN.md §10 item 4) already has this: `.github/workflows/ci.yml`'s `firmware-build-verify`
+  job builds a real `firmware.uf2` end to end on every push/PR - not the same gap, since the two
+  build paths (legacy `python/`+`build-*.sh` vs. `src/`+`scripts/build_firmware.py`) are entirely
+  separate pipelines.
 - **Mypy shall be configured to disallow `Any` types** (owner-specified, not yet implemented). The
   closest existing option is `disallow_any_explicit`; `pyproject.toml` deliberately stops short of
   it and the other `--strict`-only checks today. Blast-radius check (re-run, not stale): `Any`

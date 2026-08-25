@@ -49,7 +49,9 @@ source .venv/bin/activate  # scripts/lint.sh and scripts/typecheck.sh assume ruf
 scripts/lint.sh            # ruff check
 scripts/typecheck.sh       # mypy, using MicroPython stubs matching toolchain/versions.toml (see above)
 scripts/test.sh            # runs every test in tests/, under a real MicroPython Unix-port interpreter -
-                            # builds that interpreter automatically on first run (see tests/README.md)
+                            # builds that interpreter automatically on first run (see tests/README.md) -
+                            # plus tests_scripts/, a CPython/pytest suite covering the host-only build
+                            # tooling (scripts/build_frozen_html.sh, build_website.sh, build_firmware.py)
 scripts/test.sh --coverage # same, plus a src/-only line coverage report (HTML/XML/markdown) - see below
 ```
 
@@ -109,6 +111,35 @@ browser mode needs an actual Chromium install — CI installs its own via `playw
 `npm test` reports a missing browser executable locally, run `npx playwright install chromium`
 first (skip this in the Claude Code web-session sandbox this effort was scaffolded in, which
 already pre-installs a matching one).
+
+## Building real firmware
+
+`scripts/build_firmware.py <device>` assembles a real, deployable `firmware.uf2` from `src/` +
+`ext/microdot.py` + the real website (`html/`+`js/`, staged by `scripts/build_website.sh`) for one
+device. Build-only, like every other RP2 build this project's tooling produces — nothing here
+flashes or tests real hardware. Needs the toolchain already installed
+(`uv run toolchain/setup_toolchain.py`, see above):
+
+```sh
+uv run scripts/build_firmware.py wozi                                   # -> build/firmware-wozi.uf2
+uv run scripts/build_firmware.py wozi --output build/my-firmware.uf2    # explicit output path
+uv run scripts/build_firmware.py wozi --jobs 8                          # override parallel make jobs
+```
+
+`<device>` must match an `html/definitions/<device>.json` file (`wozi` today — the only variant
+`src/` currently assembles). Under the hood this also stages and freezes the real website for that
+one device, runnable on its own for just that step:
+
+```sh
+scripts/build_website.sh wozi                                 # -> frozen_modules/frozen_html.py
+scripts/build_website.sh wozi build/frozen_website_wozi.py    # explicit output path
+```
+
+`.github/workflows/ci.yml`'s `firmware-build-verify` job runs the real `build_firmware.py` build on
+every push/PR; `scripts/test.sh` (above) covers both scripts' own logic fast and offline via
+`tests_scripts/` instead of repeating the multi-minute real compile every run — see
+`tests_scripts/test_build_firmware.py`'s `RUN_SLOW_FIRMWARE_BUILD=1` opt-in for running that real
+compile locally.
 
 ## Digital twin (hardware simulator)
 
