@@ -86,6 +86,16 @@ scripts/build_frozen_html.sh
 echo "== Building frozen_modules/frozen_website_wozi.py"
 scripts/build_website.sh wozi frozen_modules/frozen_website_wozi.py
 
+# CPython-side tests for the build tooling itself (scripts/build_frozen_html.sh, scripts/
+# build_website.sh, scripts/build_firmware.py - WEBSITE_PLAN.md §10 item 4's "fully verified"
+# follow-up) - see tests_scripts/conftest.py's own docstring for why these run under CPython/
+# pytest rather than the MicroPython Unix port loop below: none of these scripts are MicroPython-
+# target code. RUN_SLOW_FIRMWARE_BUILD is deliberately left unset here, so the one real (but cheap,
+# ~1 minute with a warm toolchain) ARM firmware compile it gates stays opt-in for fast local
+# iteration - .github/workflows/ci.yml's firmware-build-verify job is what actually sets it.
+echo "== Running tests_scripts/ (CPython-side build-tooling tests)"
+uv run pytest tests_scripts -q
+
 raw_dir=""
 if [ "$coverage" = "1" ]; then
     raw_dir="$(mktemp -d)"

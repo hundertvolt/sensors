@@ -38,3 +38,9 @@ def test_wdt_constructed_only_once_in_sensortask_wozi() -> None:
         if "WDT(" in source:
             offenders.append(filename)
     assert offenders == []
+
+
+if __name__ == "__main__":
+    import microtest
+
+    microtest.run(globals())

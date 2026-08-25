@@ -288,3 +288,38 @@ jobs:
           path: digital_twin_ci_logs/
           if-no-files-found: ignore
         continue-on-error: true
+
+  firmware-build-verify:
+    # The real end-to-end proof for WEBSITE_PLAN.md §10 item 4's build chain: assembles an actual
+    # src/-based firmware.uf2 (scripts/build_firmware.py, ext/microdot.py + the real website +
+    # every src/ module, frozen and linked against the pinned toolchain) rather than only checking
+    # the assembly logic's inputs/outputs in isolation, the way tests_scripts/test_build_firmware.py's
+    # fast tests do. This is the "wiring an actual firmware-build stage into CI" gap BACKLOG.md's
+    # "No CI firmware-build stage yet" entry describes, closed here for the new src/-based toolchain
+    # (that entry itself stays open - it's specifically about the legacy build-*.sh scripts, a
+    # separate, not-yet-done piece of work).
+    #
+    # needs: unit-tests, not digital-twin-e2e - this only needs the toolchain cache unit-tests'
+    # own setup step already populates (mpy-cross + ARM toolchain + pico-sdk + picotool), not
+    # anything digital-twin-e2e itself produces, so it runs in parallel with that job instead of
+    # serializing after it.
+    needs: unit-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install uv
+        run: pip install uv
+      - name: Cache MicroPython Unix port build
+        uses: actions/cache@v6
+        with:
+          path: ~/pico-toolchain
+          # Same cache key as unit-tests'/digital-twin-e2e's own identical step - see unit-tests'
+          # step comment for why both toolchain/setup_toolchain.py and toolchain/versions.toml must
+          # be hashed together. A cache miss here would mean scripts/test.sh itself hasn't run yet
+          # on this exact toolchain pin, which shouldn't happen given needs: unit-tests above, but
+          # if it does, build_firmware.py's own "no toolchain found - run setup first" error message
+          # fails this job clearly rather than silently skipping the real build.
+          key: unix-port-${{ runner.os }}-${{ hashFiles('toolchain/versions.toml', 'toolchain/setup_toolchain.py') }}
+      - name: Build a real firmware.uf2 for wozi and verify it
+        run: RUN_SLOW_FIRMWARE_BUILD=1 uv run pytest tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2 -v

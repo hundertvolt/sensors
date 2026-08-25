@@ -186,10 +186,12 @@ warn_unreachable = true
 strict_equality = true
 
 [tool.pytest.ini_options]
-# Empty: pytest itself isn't the test runner. Per BACKLOG.md's "Self-contained venv via uv"
-# requirement, tests run under a real MicroPython Unix-port interpreter, not CPython - see
-# SPECIFICATION.md Part E.1 and scripts/test.sh, which shell out to the built `micropython` binary instead
-# of invoking pytest. `pytest` stays in [dependency-groups] dev for future CPython-side
-# orchestration (e.g. driver-level tests that need to assert on subprocess output), not used yet.
-# This section exists so pyproject.toml is already the single place all dev-tooling config lives,
-# per BACKLOG.md's "Centralized config" requirement.
+# src/'s own MicroPython-target tests never run under pytest - per BACKLOG.md's "Self-contained
+# venv via uv" requirement, those run under a real MicroPython Unix-port interpreter instead, see
+# SPECIFICATION.md Part E.1 and scripts/test.sh, which shells out to the built `micropython` binary
+# for tests/test_*.py. pytest's own job is narrower: tests_scripts/, CPython-side tests for the
+# host-only build tooling (scripts/build_frozen_html.sh, scripts/build_website.sh, scripts/
+# build_firmware.py - none of which are MicroPython-target code, so the real-interpreter rationale
+# above doesn't apply to them) - see tests_scripts/conftest.py's own docstring. scripts/test.sh
+# runs `uv run pytest tests_scripts` as one more step alongside the MicroPython suite.
+testpaths = ["tests_scripts"]

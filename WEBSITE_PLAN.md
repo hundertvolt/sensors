@@ -394,6 +394,32 @@ order.
    gates; `scripts/build_frozen_html.sh`/`build_website.sh`/`build_firmware.py` are new/changed
    *build* scripts, not changes to the dev-tooling install path itself, and were verified directly
    against a real, freshly-installed toolchain in this session's own sandbox instead.
+
+   **Build-chain verification automated (follow-on within this same session)**: the manual
+   verification above (a one-off `uv run scripts/build_firmware.py wozi` run, checked by hand) is
+   now a standing, repeatable test series instead. `tests_scripts/` (new, CPython/pytest — see
+   `tests_scripts/conftest.py`'s own docstring and CLAUDE.md's "Code quality tooling") tests
+   `build_frozen_html.sh`'s recursive multi-source-dir merge (including nested subdirectories,
+   previously only checked by hand), `build_website.sh`'s staging (right files renamed/flattened/
+   excluded, missing-device error handling), and `build_firmware.py`'s assembly logic (`_BOOT_PY`/
+   `_MANIFEST_TEMPLATE` content, `build_stage_dir()`'s file set, CLI error paths for a missing
+   definitions file or missing toolchain) — all fast and offline. One further test in that same
+   file, `test_real_firmware_build_produces_a_valid_uf2`, does the real end-to-end build (gated
+   behind `RUN_SLOW_FIRMWARE_BUILD=1` so it stays opt-in for fast local iteration; ~1 minute with a
+   warm toolchain, confirmed directly). `scripts/test.sh` now runs the fast `tests_scripts/` suite
+   as one more step alongside the MicroPython one; `.github/workflows/ci.yml`'s new
+   `firmware-build-verify` job (needs: `unit-tests`, reuses its toolchain cache) sets that env var
+   and runs the real build in CI on every push/PR — the actual "wiring an actual firmware-build
+   stage into CI" BACKLOG.md's "No CI firmware-build stage yet" entry asks for, closed here for
+   this new `src/`-based toolchain specifically (that entry itself is about the separate legacy
+   `build-*.sh` scripts and stays open). Also fixed in this same pass, flagged by the previous
+   sub-session rather than fixed silently per CLAUDE.md's "flag, don't silently fix" convention:
+   `tests/test_reset_call_site_invariant.py` was missing its `microtest.run(globals())` trailer, so
+   its two invariant checks (`machine.reset()`/`bootloader()` confined to `system_service.py`;
+   `WDT()` constructed exactly once) were silently never executing under `scripts/test.sh` — both
+   now run and pass. `tests_scripts/` is deliberately not added to `pyproject.toml`'s
+   `[tool.mypy]`/`[tool.ruff]` scope, matching the existing decision that `scripts/`/`toolchain/`
+   themselves (the tooling these tests exercise) aren't linted/type-checked either.
 5. **Digital twin integration.** Replace `html_stub/` in `digital_twin/`'s wiring per §7; add real
    API-endpoint-driven tests (the website's actual JS/pages exercised against the twin's live
    server, likely via the same Playwright/Chromium foundation session 3 already set up, now against

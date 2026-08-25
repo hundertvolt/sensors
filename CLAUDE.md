@@ -213,7 +213,16 @@ information):
   Unix port is just part of what `setup`/`test` already do, there's no separate `unix`
   subcommand — cached under `$PICO_TOOLCHAIN_DIR`) and shells out to it once per `tests/test_*.py`
   file; see SPECIFICATION.md Part E.3 for the full rationale and the minimal `test_*`-function runner
-  (`tests/microtest.py`) used in place of CPython's `unittest`.
+  (`tests/microtest.py`) used in place of CPython's `unittest`. This is specifically about `src/`'s
+  own MicroPython-target code — `tests_scripts/` (pytest, real CPython) covers the host-only build
+  tooling instead (`scripts/build_frozen_html.sh`, `scripts/build_website.sh`, `scripts/
+  build_firmware.py`), none of which are MicroPython-target code, so the real-interpreter rationale
+  above doesn't apply to them; see `tests_scripts/conftest.py`'s own docstring. `scripts/test.sh`
+  runs both: the MicroPython suite as described above, plus `uv run pytest tests_scripts` as one
+  more step before it. `tests_scripts/` isn't in `pyproject.toml`'s `[tool.mypy]`/`[tool.ruff]`
+  scope, matching the existing decision that `scripts/`/`toolchain/` (the dev-tooling scripts these
+  tests exercise) aren't linted/type-checked either — extending that scope is a separate future
+  decision, not assumed here.
 - **`scripts/test.sh --coverage` reports `src/` line coverage; it never gates anything** — no
   threshold is enforced anywhere, by design (confirmed directly, not a placeholder for a future
   gate). Since `coverage.py` only runs under CPython while `src/` only ever runs
