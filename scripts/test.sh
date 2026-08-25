@@ -78,6 +78,14 @@ fi
 echo "== Building frozen_modules/frozen_html.py"
 scripts/build_frozen_html.sh
 
+# A second, real-content frozen module (WEBSITE_PLAN.md §10 item 4) alongside the html_stub one
+# above - same "cheap, no toolchain involved" property, built fresh every run. Only
+# tests/test_website_build_integration.py imports it (as `frozen_website_wozi`, its own distinct
+# module name - see scripts/build_website.sh), so it never conflicts with frozen_html's own /html
+# mount; every other test file is unaffected by its presence on MICROPYPATH.
+echo "== Building frozen_modules/frozen_website_wozi.py"
+scripts/build_website.sh wozi frozen_modules/frozen_website_wozi.py
+
 raw_dir=""
 if [ "$coverage" = "1" ]; then
     raw_dir="$(mktemp -d)"

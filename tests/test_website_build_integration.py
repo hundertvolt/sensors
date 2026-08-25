@@ -1,0 +1,123 @@
+"""Real-pipeline integration test for the real website build (WEBSITE_PLAN.md §10 item 4): proves
+scripts/build_website.sh's staged, recursive merge - html/ + the production js/ module set, for one
+device - imports cleanly, mounts for real, and is served correctly end to end through a real
+WebserverService/Microdot() app, with the prototype-only files (js/app.js, js/mock-server.js,
+other devices' definitions) confirmed absent.
+The real chain: html/ + js/ -> scripts/build_website.sh wozi -> frozen_modules/frozen_website_wozi.py
+-> `import frozen_website_wozi` (mount-on-import) -> WebserverService(static_mount=...)."""
+# Requires frozen_modules/frozen_website_wozi.py already on MICROPYPATH - scripts/test.sh
+# regenerates it via scripts/build_website.sh before running the suite. `import
+# frozen_website_wozi` mounts /html as a real, unconditional side effect - safe to do once per
+# test-process run, and distinct from test_frozen_html_integration.py's own `import frozen_html`
+# (a different frozen module, built from html_stub/, never imported by this file - see that
+# module's own docstring for why the two never conflict).
+
+import asyncio
+import json
+import sys
+
+sys.path.insert(0, "ext")
+
+import frozen_website_wozi  # type: ignore[import-not-found]  # noqa: E402,F401  # mounts /html on import
+from microdot import Microdot, Request  # type: ignore[import-not-found]  # noqa: E402
+
+from asy_webserver_service import WebserverService  # noqa: E402
+
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    from typing import Any
+
+
+def run(coro: "Any") -> "Any":
+    return asyncio.run(coro)
+
+
+def _decompress(body: "Any") -> bytes:
+    # See test_frozen_html_integration.py's own _decompress() for the full rationale - identical
+    # mechanism, applied here to the real website's gzip-Content-Encoding bytes instead.
+    import io
+
+    import deflate
+
+    d = deflate.DeflateIO(io.BytesIO(body.read()), deflate.AUTO, 0, True)
+    return d.read()  # type: ignore[no-any-return]
+
+
+def _make_request(app: "Microdot", method: str, path: str) -> Request:
+    return Request(app, ("127.0.0.1", 12345), method, path, "1.1", {"Content-Length": "0"}, body=b"")
+
+
+def _make_app() -> "tuple[WebserverService, Microdot]":
+    app = Microdot()
+    service = WebserverService(app, static_mount="/html")
+    return service, app
+
+
+def test_root_serves_the_real_index_html() -> None:
+    _, app = _make_app()
+    res = run(app.dispatch_request(_make_request(app, "GET", "/")))
+    assert res.status_code == 200
+    assert res.headers["Content-Encoding"] == "gzip"
+    assert res.headers["Content-Type"].startswith("text/html")
+    assert b"Sensor Station" in _decompress(res.body)
+
+
+def test_style_css_is_served() -> None:
+    _, app = _make_app()
+    res = run(app.dispatch_request(_make_request(app, "GET", "/style.css")))
+    assert res.status_code == 200
+    assert res.headers["Content-Type"].startswith("text/css")
+
+
+def test_definitions_json_is_served_at_the_root_no_device_segment() -> None:
+    _, app = _make_app()
+    res = run(app.dispatch_request(_make_request(app, "GET", "/definitions.json")))
+    assert res.status_code == 200
+    assert res.headers["Content-Type"].startswith("application/json")
+    data = json.loads(_decompress(res.body))
+    assert data["device"]["id"] == "wozi"
+
+
+def test_definitions_dir_path_is_gone_devices_definitions_not_shipped() -> None:
+    # html/definitions/wozi.json (the nested dev-preview path) and definitions/dev.json (a
+    # different device's file) must both be absent - only the one staged definitions.json exists.
+    _, app = _make_app()
+    for path in ("/definitions/wozi.json", "/definitions/dev.json"):
+        res = run(app.dispatch_request(_make_request(app, "GET", path)))
+        assert res.status_code == 404, path
+
+
+def test_production_js_modules_are_served_under_js() -> None:
+    _, app = _make_app()
+    for path in ("/js/app.js", "/js/definitions.js", "/js/poll-manager.js", "/js/render.js", "/js/templates.js", "/js/nav.js"):
+        res = run(app.dispatch_request(_make_request(app, "GET", path)))
+        assert res.status_code == 200, path
+        assert res.headers["Content-Type"].startswith("application/javascript"), path
+
+
+def test_js_app_js_is_the_real_production_entry_not_the_prototype() -> None:
+    # js/main.js's content, staged as js/app.js (see scripts/build_website.sh) - distinguished from
+    # the prototype js/app.js by the absence of its mock-install/device-switch machinery.
+    _, app = _make_app()
+    res = run(app.dispatch_request(_make_request(app, "GET", "/js/app.js")))
+    body = _decompress(res.body)
+    assert b"installMockFetch" not in body
+    assert b"KNOWN_DEVICES" not in body
+    assert b"definitions.json" in body
+
+
+def test_prototype_only_files_are_not_shipped() -> None:
+    _, app = _make_app()
+    for path in ("/js/mock-server.js",):
+        res = run(app.dispatch_request(_make_request(app, "GET", path)))
+        assert res.status_code == 404, path
+
+
+if __name__ == "__main__":
+    import microtest
+
+    microtest.run(globals())

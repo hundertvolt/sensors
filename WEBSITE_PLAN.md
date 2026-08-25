@@ -181,14 +181,17 @@ untouched by this restructuring. `npm run preview` serves the repo root via
 `python3 -m http.server 8000` — open `http://localhost:8000/html/index.html?device=wozi` (or
 `?device=dev`) to click through the live prototype locally.
 
-Current `js/` modules: `app.js` (entry point, `?device=` prototype switch), `definitions.js`
-(loader + strict validator + JSDoc type definitions for the whole schema, no DOM code), `render.js`
-(section/group/field controller — fetch/validate/submit logic, delegates all DOM building to
-`templates.js`), `templates.js` (the DOM/markup-building layer — owns every element/class/order
-choice, see §12), `nav.js` (drawer wiring), `poll-manager.js` (single-flight request queue +
-shared fetch-timeout helper), `mock-server.js` (fetch-intercepting fake backend, answers the same
-six REST paths/shapes A.8 documents — an explicit placeholder for §7's real digital-twin backend,
-not a permanent fixture).
+Current `js/` modules: `app.js` (**prototype-only** entry point: mock fetch, `?device=` switch,
+dev-server-relative paths — never shipped), `main.js` (the **real production** entry point — no
+mock install, single build-fixed device via a plain `definitions.json` fetch, no `?device=`
+branching; see §10 item 4 for why it's staged as `app.js` in the real build rather than requiring
+an `html/index.html` edit), `definitions.js` (loader + strict validator + JSDoc type definitions
+for the whole schema, no DOM code), `render.js` (section/group/field controller — fetch/validate/
+submit logic, delegates all DOM building to `templates.js`), `templates.js` (the DOM/markup-building
+layer — owns every element/class/order choice, see §12), `nav.js` (drawer wiring), `poll-manager.js`
+(single-flight request queue + shared fetch-timeout helper), `mock-server.js` (**prototype-only**
+fetch-intercepting fake backend, answers the same six REST paths/shapes A.8 documents — an explicit
+placeholder for §7's real digital-twin backend, never shipped).
 
 ## 6. CI / tooling stack
 
@@ -309,45 +312,88 @@ order.
    confirmed with the project owner before being made. §10's standing "never touch `src/`"
    instruction applies to every session from here on exactly as written, with no expectation of a
    repeat.
-4. **Full build chain.** Wire `html/`+`js/`+the definitions file(s) into a real gzip → `freezefs` →
-   frozen bytecode → mount → serve pipeline, generic/parameterized per device, verified end-to-end
-   for the `wozi` variant (the only one `src/` currently assembles — SPECIFICATION.md A.3).
+4. **Full build chain.** **Done** — `claude/website-s4-build-chain`. Wires `html/`+`js/`+the
+   definitions file(s) into a real gzip → `freezefs` → frozen bytecode → mount → serve pipeline,
+   generic/parameterized per device, verified end-to-end for the `wozi` variant (the only one
+   `src/` currently assembles — SPECIFICATION.md A.3). Its own project-owner-confirmed scope also
+   grew to include a real `src/`-based `firmware.uf2` assembly script (originally an open scoping
+   question this item itself raised — resolved "include it" before implementation started), so both
+   pieces below landed in this one session.
 
-   **Confirmed current state this session starts from (verified directly against the code, not
-   assumed):**
-   - `scripts/build_frozen_html.sh` already exists, already builds `frozen_modules/frozen_html.py`
-     from a source-directory list (`HTML_SRC_DIRS`, default `html_stub/`), and is already wired into
-     `scripts/test.sh` and `scripts/run_digital_twin_ci.sh` (`tests/test_frozen_html_integration.py`
-     proves the real pipeline end to end). This is real, working infrastructure to extend, not
-     something to build from scratch — but treat its current shape as one example to learn from, not
-     a fixed constraint: it was written against `html_stub/`'s 7 flat files and has real gaps against
-     `html/`'s actual shape (below).
-   - `HTML_SRC_DIRS` belongs to `scripts/build_frozen_html.sh`, not `build-wozi.sh`. `build-wozi.sh`
-     (the only script that currently produces a real `firmware.uf2`) has its own separate, hardcoded,
-     non-parameterized `freezefs` call that assembles the **legacy `python/` tree**
-     (`CommonDrivers`/`IndividualDrivers`), not `src/` — and that call uses `-s`, a flag the currently
-     vendored `ext/freezefs` (pinned 2.4) no longer has. It is a stale, unrelated pipeline, not a
-     pattern to mirror.
-   - `scripts/build_frozen_html.sh`'s source-merge step (`cp "$src_dir"/* "$tmp_dir"/`) is flat and
-     non-recursive — it silently drops nested content. `html/definitions/` is a subdirectory, and
-     `js/` is a separate top-level tree that also has to end up reachable through the one
-     `static_mount="/html"` route. Neither freezefs itself nor the mount/serve side is the
-     limiter here: freezefs's own archiver walks nested paths (`archive.py`'s `glob("**", ...,
-     recursive=True)`), its mount-side `VfsFrozen` traverses `filename.split("/")`, and Microdot's
-     `path` route converter (`/(.+)`) already matches slashes — `_serve_static()`
-     (`src/asy_webserver_service.py`) just joins `static_mount + "/" + filename` and hands it to
-     `send_file()`. The gap is specifically the build script's own shallow copy.
-   - `js/app.js` is today's only entry point, and it is prototype-only: it installs a mock `fetch`
-     (`installMockFetch`), switches device via a `?device=` query param, and fetches via paths
-     (`../js/app.js`, `../mockdata/...`) shaped for `npm run preview`'s repo-root dev server. No
-     production entry point exists yet — one is needed with no mock, a single fixed device, and paths
-     that resolve once everything is merged under one mounted root.
-   - No script anywhere currently assembles `src/`+`ext/`+the frozen website into a deployable,
-     `src/`-based `firmware.uf2`. `toolchain/setup_toolchain.py`'s RP2 build (SPECIFICATION.md Part B)
-     is a toolchain-verification smoke test — it freezes one dummy module to prove the freeze
-     mechanism works, not a real assembly. Whether producing that real assembly script is in this
-     session's own scope, or a separate follow-on item, is an open scoping question for the session
-     to raise, not assumed either way here.
+   **What shipped:**
+   - `scripts/build_frozen_html.sh`'s source-merge step is now a recursive `cp -r "$src_dir"/.
+     "$tmp_dir"/` (was a flat, non-recursive `cp "$src_dir"/*`) plus a recursive `find ... -exec gzip
+     -9`, so nested subdirectories (`html/definitions/`) survive the merge. Default behavior against
+     `html_stub/` is unchanged — confirmed identical output, `tests/test_frozen_html_integration.py`
+     still passes as-is.
+   - `js/main.js` — the real production entry point (no mock install, no `?device=` switch; fetches
+     a fixed `definitions.json` with no device segment, so no device string is baked into checked-in
+     JS at all). `js/app.js` stays exactly as it was (prototype-only, used by `npm run preview`).
+   - `scripts/build_website.sh <device> [output_path]` — stages exactly one device's real site
+     (`html/index.html`, `html/style.css`, `html/definitions/<device>.json` renamed to
+     `definitions.json`, and the production `js/` module set: `definitions.js`, `poll-manager.js`,
+     `render.js`, `templates.js`, `nav.js`, plus `js/main.js` **renamed to `app.js`**) into a temp
+     dir, then calls `build_frozen_html.sh` via `HTML_SRC_DIRS`. The `main.js` → `app.js` rename at
+     staging time is deliberate: `html/index.html`'s one `<script>` tag imports `"../js/app.js"`
+     unconditionally, and relative-URL resolution (browsers clamp `../` at the document root, and
+     `fetch()`/inline-module-specifier resolution both key off the *document's* URL, not the
+     importing module's own URL — confirmed by reasoning through the spec, not assumed) makes that
+     exact same reference resolve correctly under both `npm run preview` (repo-root dev server,
+     `js/app.js` is really the prototype) and the real frozen mount (`/js/app.js` is really
+     `main.js`'s content) with **zero changes to `html/index.html`** either way.
+     `js/mock-server.js` and `js/app.js` itself are deliberately never staged — dead weight against
+     §3's "stays small, lean" goal, confirmed absent by `tests/test_website_build_integration.py`.
+   - `tests/test_website_build_integration.py` — a new MicroPython Unix-port integration test
+     (mirrors `test_frozen_html_integration.py`'s own pattern) proving the staged, real content
+     mounts and serves correctly end to end: nested `js/*.js` paths, `definitions.json` at the root
+     (not `definitions/<device>.json`), the real `main.js` content (not the prototype) at
+     `/js/app.js`, and every prototype-only path (`/js/mock-server.js`, `/definitions/*.json`)
+     404ing. `scripts/test.sh` now builds a second frozen module,
+     `frozen_modules/frozen_website_wozi.py` (via `scripts/build_website.sh wozi ...`), alongside its
+     existing `frozen_modules/frozen_html.py` (still built from `html_stub/`, unchanged) — the two
+     never conflict since only this one new test file ever imports the website one.
+   - `scripts/build_firmware.py <device> [--output PATH]` — a self-contained `uv run` script
+     assembling a real `firmware.uf2` from `src/` + `ext/microdot.py` + the real website for one
+     device. **Verified directly, not just written**: `uv run scripts/build_firmware.py wozi`
+     produced a genuine, valid UF2 image (RP2040, 2078720 bytes, 4060 blocks) with zero
+     errors/warnings against the toolchain this same session installed via `uv run
+     toolchain/setup_toolchain.py setup`. Build-only, matching every other RP2 build this repo's
+     tooling produces — nothing here flashes or tests real hardware.
+     - **Why it needs its own `manifest.py`** rather than including the board's default one
+       (`boards/RPI_PICO_W/manifest.py` → `boards/manifest.py`): that default manifest's own
+       `freeze("$(PORT_DIR)/modules")` line freezes `ports/rp2/modules/_boot.py` under the exact
+       frozen name `shared/runtime/pyexec.c`'s rp2 `main.c` looks up via
+       `pyexec_frozen_module("_boot.py", ...)` at every boot (confirmed directly against the pinned
+       v1.28.0 source). `src/`'s own real entry point needs a different `_boot.py` — one that mounts
+       the filesystem (identical to the port's own stock logic) and then imports `wozi_boot`
+       (`boot_entry/wozi_boot.py`) instead of anything from `ports/rp2/modules`. Freezing a second file
+       under that same name would collide with/shadow the default manifest's own copy, so
+       `build_firmware.py` skips including the board's default manifest entirely and re-states its
+       other `require()`s verbatim (`bundle-networking`, `aioble`, `asyncio`, `onewire`, `ds18x20`,
+       `dht`, `neopixel`) alongside its own single `freeze()` of a self-built staging directory
+       (`src/*.py` flattened + `ext/microdot.py` + the real website frozen as `frozen_html.py`, so
+       `src/sensortask_wozi.py`'s existing `import frozen_html` resolves with no code change + the new
+       `_boot.py` + `boot_entry/wozi_boot.py` copied in unmodified).
+     - **This repo's own top-level `modules/_boot.py` is never read, copied from, or touched** by
+       this script — the new `_boot.py`'s content is the *port's own stock* content (from the
+       toolchain's own MicroPython checkout) plus one added `import wozi_boot` line (no literal
+       `.py` — unlike BACKLOG.md #1's still-unresolved legacy case, this is new code, free to do it
+       the documented way). Fully consistent with CLAUDE.md's hard rule; no exception needed or
+       raised, since the protected file itself is never in this script's path.
+   - No `src/` files were touched or needed an exception — the whole build-chain effort (website
+     wiring + firmware assembly) stayed within `html/`, `js/`, `tests_js/`, `scripts/`,
+     `tests/test_website_build_integration.py`, and this plan.
+
+   **Verification performed this session**: `npm run lint`/`typecheck`/`lint:html`/`lint:css`/`test`
+   (607/607 Vitest tests across 9 files, including the new `main.test.js`) all clean; the full
+   `scripts/test.sh` Python suite (real MicroPython Unix-port interpreter) run end to end including
+   the two new/changed test files; a real `uv run scripts/build_firmware.py wozi` firmware build
+   producing a valid `.uf2`. Pre-push verification (CLAUDE.md's clean-chroot recipe) was not run for
+   this branch — nothing here touches `pyproject.toml`/`scripts/lint.sh`/`scripts/typecheck.sh`/
+   `toolchain/versions.toml`'s own dev-tooling/build-environment setup in the sense that recipe
+   gates; `scripts/build_frozen_html.sh`/`build_website.sh`/`build_firmware.py` are new/changed
+   *build* scripts, not changes to the dev-tooling install path itself, and were verified directly
+   against a real, freshly-installed toolchain in this session's own sandbox instead.
 5. **Digital twin integration.** Replace `html_stub/` in `digital_twin/`'s wiring per §7; add real
    API-endpoint-driven tests (the website's actual JS/pages exercised against the twin's live
    server, likely via the same Playwright/Chromium foundation session 3 already set up, now against
