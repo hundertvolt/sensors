@@ -438,6 +438,47 @@ order.
    `[tool.mypy]`/`[tool.ruff]` scope, matching the existing decision that `scripts/`/`toolchain/`
    themselves (the tooling these tests exercise) aren't linted/type-checked either.
 
+   **Post-merge oversight audit (follow-on within this same session)**: a bird's-eye scan over the
+   whole build chain (every new/changed script, test, and CI job from this session, cross-checked
+   directly against the real installed toolchain checkout - `_BOOT_PY`/`_MANIFEST_TEMPLATE` diffed
+   byte-for-byte against `ports/rp2/modules/_boot.py`/`boards/RPI_PICO_W/manifest.py`/
+   `boards/manifest.py` from a real `~/pico-toolchain` install, confirming no drift from what this
+   session's own docstrings claim) found two real robustness gaps, both closed:
+   - `build_firmware.py`'s `build_stage_dir()` copies `src/*.py` into the same flat stage directory
+     as its own infra files (`microdot.py`, `wozi_boot.py`, `_boot.py`, `frozen_html.py`) with no
+     collision check - a future `src/` file sharing one of those names would be silently
+     overwritten (or would silently overwrite the infra file copied after it), shipping wrong
+     firmware content with no error. Now raises immediately if `src/` ever collides with a reserved
+     name. No collision exists today (checked directly), so this is pure hardening against a future
+     regression, not a fix for an active bug.
+   - `build_website.sh`'s `html/`-root and production-`js/`-module lists are hand-kept, not derived
+     from directory contents - a new `html/*.html` or `js/*.js` file added later (a new page, a new
+     controller module) would silently ship without it, or silently stay unshipped with no
+     deliberate "stays prototype-only" decision recorded, and nothing would fail to flag it.
+     `tests_scripts/test_build_website_sh.py` now has a drift-detection test cross-checking the real
+     directory contents against the script's own source text, so an unaccounted-for file fails the
+     suite instead of silently under- or over-shipping.
+   No correctness bugs were found in the shipped build chain itself - both gaps were missing
+   defenses against *future* drift, not wrong behavior today. `README.md`'s "Code quality tooling"
+   section was also updated (it still described `scripts/test.sh` as running only the MicroPython
+   suite, not the CPython-side `tests_scripts/` step this session added) and now mentions
+   `scripts/build_firmware.py` directly, since it's a real, always-available dev-tooling entry point
+   now, not something scoped to only exist once the full website effort merges.
+
+   **Honest production-readiness scope, stated explicitly rather than implied**: this session
+   proves the build chain assembles correctly and that the *booted, Unix-port digital twin* serves
+   the real website correctly end to end - it does **not** prove anything about real rp2040
+   hardware, which has never been flashed or booted with this output (`build_firmware.py`'s own
+   docstring already says as much: build-only, like every RP2 build this toolchain produces).
+   `digital_twin/`'s own *default* wiring (the `digital-twin-e2e` CI job, and README's "Manual
+   baseline verification walkthrough") still serves `html_stub/`, not the real website - swapping
+   that default is session 5's job (§10 item 5), not done here; only the one dedicated test file
+   this session added exercises the real website against the real booted object graph. No
+   cross-browser/cross-device check has happened yet either (Safari, Firefox, real mobile - also
+   session 5's explicit tail item). None of this is new scope creep into session 4 - it's the
+   pre-existing, already-documented boundary of what this session's own item 4 was ever scoped to
+   prove, restated here so "build chain fully verified" isn't misread as "ready to flash."
+
    **Still missing after the above, raised directly and closed in the same pass**: none of
    `tests_scripts/`, `test_website_build_integration.py`, or `build_firmware.py`'s real build
    actually proves the real, *booted* system serves the real website — the first two never boot

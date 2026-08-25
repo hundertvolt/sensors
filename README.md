@@ -49,9 +49,17 @@ source .venv/bin/activate  # scripts/lint.sh and scripts/typecheck.sh assume ruf
 scripts/lint.sh            # ruff check
 scripts/typecheck.sh       # mypy, using MicroPython stubs matching toolchain/versions.toml (see above)
 scripts/test.sh            # runs every test in tests/, under a real MicroPython Unix-port interpreter -
-                            # builds that interpreter automatically on first run (see tests/README.md)
+                            # builds that interpreter automatically on first run (see tests/README.md) -
+                            # plus tests_scripts/, a CPython/pytest suite covering the host-only build
+                            # tooling (scripts/build_frozen_html.sh, build_website.sh, build_firmware.py)
 scripts/test.sh --coverage # same, plus a src/-only line coverage report (HTML/XML/markdown) - see below
 ```
+
+`scripts/build_firmware.py <device>` (e.g. `uv run scripts/build_firmware.py wozi`) assembles a real,
+deployable `firmware.uf2` from `src/` + `ext/microdot.py` + the real website
+(`scripts/build_website.sh`) for one device — build-only, like every other RP2 build this project's
+tooling produces (nothing flashes or tests real hardware). `.github/workflows/ci.yml`'s
+`firmware-build-verify` job runs this for real on every push/PR.
 
 All three (`lint.sh`/`typecheck.sh`/`test.sh`) run in GitHub Actions CI
 (`.github/workflows/ci.yml`) on every push/PR, plus `test.sh --coverage` as a non-gating extra

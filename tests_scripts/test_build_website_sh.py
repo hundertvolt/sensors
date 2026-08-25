@@ -52,6 +52,25 @@ def test_unknown_device_fails_with_no_matching_definitions_file(repo_root, tmp_p
     assert not out_file.exists()
 
 
+def test_every_real_js_and_html_file_is_accounted_for_by_the_staging_script(repo_root):
+    # scripts/build_website.sh's cp lists (html root files, production js/ modules) are hand-kept,
+    # not derived from directory contents - a new html/*.html or js/*.js file added later would
+    # silently ship without it (or without a deliberate "stays prototype-only" decision) with no
+    # test catching the drift. Cross-checks the real directories against the script's own source,
+    # so a mismatch fails loudly instead of silently under-shipping the built website.
+    script_text = (repo_root / "scripts" / "build_website.sh").read_text()
+
+    html_root_files = {p.name for p in (repo_root / "html").iterdir() if p.is_file()}
+    for name in html_root_files:
+        assert name in script_text, f"html/{name} exists but isn't referenced by build_website.sh"
+
+    js_files = {p.name for p in (repo_root / "js").glob("*.js")}
+    # js/main.js is staged under a different name (see build_website.sh's own comment) - checked
+    # for by content ("main.js" itself), not "js/app.js.gz" like the others.
+    for name in js_files:
+        assert name in script_text, f"js/{name} exists but isn't referenced by build_website.sh"
+
+
 def test_output_path_argument_is_forwarded_to_build_frozen_html(repo_root, tmp_path):
     # A distinctive, non-default output path proves scripts/build_website.sh really forwards its
     # second argument through to scripts/build_frozen_html.sh rather than always writing to the

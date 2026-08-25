@@ -93,7 +93,17 @@ def log(msg: str) -> None:
 
 
 def build_stage_dir(stage_dir: Path, device: str) -> None:
-    for py_file in sorted((REPO_ROOT / "src").glob("*.py")):
+    # This script freezes src/*.py alongside its own infra files (microdot.py, wozi_boot.py,
+    # _boot.py, frozen_html.py) into the SAME flat stage_dir - a future src/ file sharing one of
+    # those names would be silently overwritten (or would silently overwrite the infra file copied
+    # after it) with no error, shipping wrong firmware content. Fail loud instead.
+    reserved = {"microdot.py", "wozi_boot.py", "_boot.py", "frozen_html.py"}
+    src_files = sorted((REPO_ROOT / "src").glob("*.py"))
+    collisions = reserved & {f.name for f in src_files}
+    if collisions:
+        raise RuntimeError(f"src/ file(s) collide with this build's own reserved staging names: {sorted(collisions)}")
+
+    for py_file in src_files:
         shutil.copy(py_file, stage_dir / py_file.name)
     shutil.copy(REPO_ROOT / "ext" / "microdot.py", stage_dir / "microdot.py")
     shutil.copy(REPO_ROOT / "boot_entry" / "wozi_boot.py", stage_dir / "wozi_boot.py")
