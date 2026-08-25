@@ -301,6 +301,28 @@ owner — see §10 item 2's own notes for the concrete prototype these produced)
   (and the JS build/definitions-generation step) instead of/alongside `html_stub/`; whether the
   existing mechanism already covers this or needs extending. Session 4's job (§10).
 
+**Known, already-flagged gaps left open by session 3 (not silently missed — each was explicitly
+raised in §10 item 3's own write-up; recorded here too so a later session doesn't have to re-dig
+through that history to find them):**
+
+- **`WebserverService._apply_settings_groups()`'s silent result-swallow (server-side, `src/`)** —
+  session 3 follow-up 2 found that a `SettingsGroup`'s `post_fct`/`post_asy_fct` hook raising causes
+  that whole group's fields to vanish from the PUT response with no signal at any level (`res:"OK"`
+  still reported). `js/render.js`'s `reconcileResults()` defends against this client-side (shows
+  `"Failed"` for a submitted-but-unreturned field) but the server-side swallow itself is **still
+  unfixed** — follow-up 7's `src/` exception (int/float coercion) touched
+  `asy_webserver_service.py` but did not touch this unrelated function. Flagged for whichever
+  session next touches `asy_webserver_service.py`/`api_response.py`.
+- **`lightCmdLED`'s legacy-vs-`src/` behavior divergence** — legacy's `led_cmd()` validated and
+  rejected out-of-range r/g/b/t; the promoted `src/` backend silently clamps/floors instead
+  (`asy_neopixel_driver.py`'s `_clamp_byte()`, `neopixel_signal()`'s own `t` floor). Flagged for the
+  project owner's awareness in follow-up 4's re-audit, explicitly left unchanged as an existing,
+  already-tested `src/` contract out of that audit's scope. Still open if it's ever worth revisiting.
+- **`dev.json`'s SHTC3/MPRLS/ISL29125 fields remain an unconfirmed projection** — these sensors
+  have no real driver under `src/` yet (unchanged since session 2; re-confirmed clean in session 3
+  follow-up 4's full field-list audit, nothing new found). Resolves naturally once a future session
+  promotes those drivers.
+
 ## 9. Sub-session working process
 
 Each spun-off sub-session should follow CLAUDE.md's existing "Step-session workflow" working
@@ -327,6 +349,17 @@ targets `claude/sensor-website-redesign-w2juw6` as the base, not `main`; that PR
 branch, 3 off 2's, etc.) follows the same rule against its immediate parent session's branch, not
 against `main` or against this base branch directly, keeping the sessions stacked in execution
 order.
+
+**"Never touch `src/` files" reaffirmed after session 3's one exception:** session 3 (item 3 below,
+follow-up 7) deviated from this instruction once, deliberately and with project-owner sign-off, to
+fix a real, significant int/float coercion bug in shared backend code that a website-only fix
+couldn't actually address at the root. **The project owner has since confirmed that exception was
+justified but is not a standing relaxation** — every session from here on (4 onward) is bound by
+"never touch `src/` files" exactly as originally written, with no expectation of a repeat. This
+effort's own local verification reverts to JS-only accordingly: `npm run lint`/`typecheck`/
+`lint:html`/`lint:css`/`test`, not the Python suite (`scripts/lint.sh`/`typecheck.sh`/`test.sh`) —
+that's only warranted again if a future session finds another genuinely significant reason to touch
+`src/`, and that would again need to be raised and confirmed, not assumed.
 
 1. **Folder structure + CI. Done** — `claude/website-s1-folder-ci` (PR #43), see §5/§6 for what landed.
    Created `html/`, `js/`, `tests_js/`, root `package.json`/tool configs
@@ -988,6 +1021,53 @@ order.
      - not a fresh code regression; each was root-caused and fixed in the harness, not worked
      around). Nothing in §4/§8/§12's settled architecture changed; `src/` was never touched beyond
      reading it.
+
+   **Session 3 follow-up 7: uniform int/float coercion policy — the one deliberate `src/` exception
+   in this whole effort (stacked branch/PR, `claude/uniform-int-float-coercion` → PR #47, merged into
+   this session's own branch/PR).** Follow-up 6's PUT-behavior matrix surfaced a real bug that could
+   not be fixed on the website side alone: `src/config_manager.py`'s `type_or_range_error()` does a
+   strict Python `type()` check before checking magnitude, so a float-typed field sent a whole-number
+   JSON literal (`2` instead of `2.0` — indistinguishable in both JSON and JS, which has no int/float
+   type distinction at all) was wrongly rejected by the real backend even though the value itself was
+   valid. Follow-up 6 worked around this from the client side (forcing a decimal point onto outgoing
+   float-typed literals); this follow-up instead fixed the actual root cause.
+   - **Explicit, deliberate deviation from this file's own "never touch `src/` files" standing
+     instruction (§10)** — raised and confirmed with the project owner rather than assumed: a real,
+     significant correctness gap in shared backend code (affecting every numeric config field, not
+     just the website) is worth fixing at the root rather than papering over from one caller. **Project
+     owner's ruling after review: the deviation was justified — a real, significant gap, correctly
+     escalated rather than silently patched around.** This is confirmed as a one-time exception, not a
+     standing relaxation: every later sub-session in this effort (session 4 onward) is still bound by
+     §10's "never touch `src/` files" instruction exactly as before, and this effort's own local
+     verification reverts to JS-only (`npm run lint`/`typecheck`/`lint:html`/`lint:css`/`test`) — no
+     need to re-run the Python suite (`scripts/lint.sh`/`typecheck.sh`/`test.sh`) with every commit
+     going forward, since no further `src/` changes are expected from this effort.
+   - **What changed** — new `coerce_numeric()` in `src/config_manager.py` (public, reused by
+     `sensortask_wozi.py`'s `lightCmdLED` dispatch too): accepts int→float unconditionally; accepts
+     float→int only when the value is exactly integral (`5.0` → `5`, `5.7` rejected — the project
+     owner's explicit resolution, superseding follow-up 6's own tentative recommendation), with NaN/
+     ±inf caught via MicroPython's own `py/objint.c` exception shapes. `type_or_range_error()` reworked
+     to call it and return `(is_error, coerced_value)` instead of a bare bool — every one of its ~30
+     pre-existing tests and all real call sites (`base_classes.py`, `asy_scd30_driver.py`,
+     `asy_webserver_service.py`, `sensortask_wozi.py`) updated to the new tuple shape and to use the
+     coerced value downstream; `ConfigManager.setup()` additionally re-persists a coerced value back to
+     disk on a genuine type-only change. `js/mock-server.js`/`js/render.js`/`js/definitions.js` reworked
+     to mirror the same policy natively (JS has no int/float runtime distinction to fight, so this
+     simplified rather than complicated the JS side — follow-up 6's decimal-point-forcing hack in
+     `serializePutBody()` was removed as no longer needed) plus a second, related real bug the same
+     matrix surfaced: `coerceAndValidate()`'s number/string branches used to coerce before validating
+     rather than rejecting a wrong JSON type outright. `SPECIFICATION.md` Part A.8 gained a new section
+     documenting the policy end-to-end (backend + JS mirror).
+   - **Testing**: `scripts/lint.sh`/`scripts/typecheck.sh`/`scripts/test.sh` (real MicroPython
+     Unix-port interpreter) all clean, full suite green — independently reproduced after merge, not
+     just taken on the PR's own word: **2240/2240 Python tests passing across 47 files, zero
+     failures** (`test_config_manager.py` alone at 192/192). JS side independently reproduced too:
+     `lint`/`typecheck`/`lint:html`/`lint:css` clean, **603/603** Vitest tests passing. All 6 GitHub
+     Actions CI checks green on the merged commit.
+   - Nothing in §4/§8/§12's settled architecture changed. This is the only commit in the entire
+     website-redesign effort (sessions 1-3) that touches `src/` — every other file this session and
+     its six earlier follow-ups touched stayed within `html/`/`js/`/`tests_js/`/this plan/
+     `SPECIFICATION.md`.
 
 4. **Full build chain.** Wire `html/`+`js/`+the definitions file(s) into a
    `scripts/build_frozen_html.sh`-equivalent pipeline: gzip → `freezefs` → frozen bytecode → mount
