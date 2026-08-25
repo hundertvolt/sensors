@@ -24,14 +24,21 @@ def test_wozi_device_stages_the_expected_files_renamed_and_flattened(repo_root, 
         "/index.html.gz",
         "/style.css.gz",
         "/definitions.json.gz",  # html/definitions/wozi.json, renamed+flattened - not nested under /definitions/
-        "/js/app.js.gz",  # js/main.js, renamed at staging time - see scripts/build_website.sh's own comment
+        "/js/app.js.gz",  # the bundled production JS (poll-manager.js, templates.js, definitions.js,
+        # render.js, nav.js, main.js concatenated - see scripts/build_website.sh's own "Bundling"
+        # comment for why) - a single file now, not six separate ones (WEBSITE_PLAN.md §10 item 5).
+    ):
+        assert expected in text, expected
+
+    # The six production modules must NOT be individually staged any more - only the bundle above.
+    for not_staged in (
         "/js/definitions.js.gz",
         "/js/poll-manager.js.gz",
         "/js/render.js.gz",
         "/js/templates.js.gz",
         "/js/nav.js.gz",
     ):
-        assert expected in text, expected
+        assert not_staged not in text, not_staged
 
 
 def test_prototype_only_files_are_never_staged(repo_root, tmp_path):

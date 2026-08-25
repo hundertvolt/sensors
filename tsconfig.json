@@ -10,5 +10,13 @@
         "strict": true,
         "skipLibCheck": true
     },
-    "include": ["js/**/*.js", "tests_js/**/*.js"]
+    "include": ["js/**/*.js", "tests_js/**/*.js", "tests_js/**/*.d.ts"],
+    // tests_js/_live_twin_command.js is Node-context (a server-side Vitest Commands API
+    // implementation, not browser code - see that file's own header comment) and is type-checked
+    // separately instead, via tsconfig.node.json - same "two separate invocations for two
+    // environments that would otherwise wrongly share one global-type scope" shape as
+    // digital_twin/typecheck.ini's own split from the main mypy pass (see CLAUDE.md's "Code
+    // quality tooling"). Excluded here so this browser-context pass doesn't also see Node's
+    // ambient globals (process, require, "node:*" specifiers) as if they existed in a real browser.
+    "exclude": ["tests_js/_live_twin_command.js"]
 }

@@ -146,6 +146,9 @@ compile locally.
 `digital_twin/` is a fake `machine`/`network`/`neopixel` implementation that mirrors the real `wozi` bus wiring — real-time-firing
 `Timer`s, randomized-but-plausible sensor values, and a scripted `WLAN` connect sequence — so driver
 code can run under the real MicroPython Unix-port interpreter with no physical hardware attached.
+Its default wiring (`scripts/run_unix_port_integration.sh`, `scripts/run_digital_twin_ci.sh`) serves
+the real, production `wozi` website (`scripts/build_website.sh wozi`), not the `html_stub`
+placeholder — see WEBSITE_PLAN.md §7 for the full account.
 
 Start its standalone CLI demo directly with the same Unix-port binary `scripts/test.sh` builds:
 
@@ -196,7 +199,8 @@ scripts/run_unix_port_integration.sh --host 127.0.0.1 --port 8080 --soak
 ```
 
 Leave this running in its own terminal. In a second terminal, walk every GET endpoint plus the
-stub website:
+real website (`scripts/run_unix_port_integration.sh` builds and serves the real `wozi` site by
+default — not the `html_stub` placeholder, see "Digital twin" above):
 
 ```sh
 curl -s http://127.0.0.1:8080/measurements | python3 -m json.tool
@@ -205,7 +209,7 @@ curl -s http://127.0.0.1:8080/networking | python3 -m json.tool
 curl -s http://127.0.0.1:8080/system | python3 -m json.tool
 curl -s http://127.0.0.1:8080/notification | python3 -m json.tool
 curl -s http://127.0.0.1:8080/status | python3 -m json.tool
-open http://127.0.0.1:8080/   # or just curl -s http://127.0.0.1:8080/ - the stub site's index
+open http://127.0.0.1:8080/   # the real website - a browser (not curl) is the useful way to view it
 ```
 
 **2. Set the log level to `all` (5) via the real API, then reboot to see a full startup log.**

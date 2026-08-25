@@ -71,10 +71,19 @@ jobs:
     # This CI runner has no pre-installed browser (unlike the dev sandbox this effort was
     # scaffolded in - see vitest.config.js's own comment), so it installs its own matching
     # Chromium build via `playwright install` before running tests.
+    #
+    # Also builds the MicroPython Unix-port toolchain (below) - tests_js/live-backend.test.js
+    # (WEBSITE_PLAN.md §10 item 5) drives a real digital-twin subprocess as part of the Vitest
+    # suite, the first thing in this job's history to need it. This does cost this job the same
+    # toolchain-build time the Python-side unit-tests job already pays (mitigated the same way:
+    # the toolchain-cache step below shares that job's exact cache key, so a normal PR run hits a
+    # warm cache here too) - a deliberate tradeoff, not an oversight: see WEBSITE_PLAN.md §10 item
+    # 5 for why the live-backend test needed to actually drive the twin rather than stay
+    # mock-server.js-only.
     needs: [web-changes, web-lint-and-typecheck]
     if: needs.web-changes.outputs.web == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v5
@@ -100,6 +109,24 @@ jobs:
       - name: Install Playwright OS dependencies (cache hit)
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
+      - name: Install uv
+        run: pip install uv
+      - name: Cache MicroPython Unix port build
+        uses: actions/cache@v6
+        with:
+          path: ~/pico-toolchain
+          # Same cache key as the Python unit-tests job's own identical step - see that step's
+          # comment for why both toolchain/setup_toolchain.py and toolchain/versions.toml must be
+          # hashed together. Sharing the exact key means a PR that already ran the Python job in
+          # this same workflow run hits a warm cache here too, not a second cold build.
+          key: unix-port-${{ runner.os }}-${{ hashFiles('toolchain/versions.toml', 'toolchain/setup_toolchain.py') }}
+      - name: Build MicroPython Unix port (if not cached) and the real wozi website
+        run: |
+          bin="$HOME/pico-toolchain/micropython/ports/unix/build-standard/micropython"
+          if [ ! -x "$bin" ]; then
+            uv run toolchain/setup_toolchain.py setup
+          fi
+          scripts/build_website.sh wozi
       - name: Run unit tests (Vitest, real-browser mode)
         run: npm test
       # Coverage is a report, not a gate (mirrors the Python side's own non-gating

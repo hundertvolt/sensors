@@ -91,12 +91,42 @@ def test_definitions_dir_path_is_gone_devices_definitions_not_shipped() -> None:
         assert res.status_code == 404, path
 
 
-def test_production_js_modules_are_served_under_js() -> None:
+def test_production_js_is_served_as_one_bundle_under_js() -> None:
+    # The six production modules (poll-manager.js, templates.js, definitions.js, render.js,
+    # nav.js, main.js) are concatenated into one js/app.js at staging time (scripts/
+    # build_website.sh's own "Bundling" comment - WEBSITE_PLAN.md §10 item 5), not shipped as six
+    # separate files - each of their own paths must now 404, not 200.
     _, app = _make_app()
-    for path in ("/js/app.js", "/js/definitions.js", "/js/poll-manager.js", "/js/render.js", "/js/templates.js", "/js/nav.js"):
+    res = run(app.dispatch_request(_make_request(app, "GET", "/js/app.js")))
+    assert res.status_code == 200
+    assert res.headers["Content-Type"].startswith("application/javascript")
+
+    for path in ("/js/definitions.js", "/js/poll-manager.js", "/js/render.js", "/js/templates.js", "/js/nav.js"):
         res = run(app.dispatch_request(_make_request(app, "GET", path)))
-        assert res.status_code == 200, path
-        assert res.headers["Content-Type"].startswith("application/javascript"), path
+        assert res.status_code == 404, path
+
+
+def test_bundled_js_contains_every_production_module_with_no_leftover_local_imports() -> None:
+    _, app = _make_app()
+    res = run(app.dispatch_request(_make_request(app, "GET", "/js/app.js")))
+    body = _decompress(res.body)
+
+    # Every production module's own distinctive top-level declaration made it into the bundle -
+    # a real, direct check that concatenation didn't silently drop one.
+    for marker in (
+        b"function fetchWithTimeout",  # poll-manager.js
+        b"function buildFieldGroupCard",  # templates.js
+        b"function validateDefinitions",  # definitions.js
+        b"function renderSection",  # render.js
+        b"function initNav",  # nav.js
+        b"function startApp",  # main.js
+    ):
+        assert marker in body, marker
+
+    # No `import { ... } from "./local-file.js";` line survived - every such line only worked
+    # because the imported name is now already in scope earlier in the same concatenated file.
+    for line in body.split(b"\n"):
+        assert not line.startswith(b"import "), line
 
 
 def test_js_app_js_is_the_real_production_entry_not_the_prototype() -> None:

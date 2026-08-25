@@ -150,7 +150,7 @@ def test_fetch_round_trips_a_real_request_through_a_real_socket() -> None:
 # ---------------------------------------------------------------------------
 # _soak() resilience - regression coverage for a real crash found via a real user report running
 # this exact soak against the real assembled system: src/asy_webserver_service.py's own
-# max_connections=3 reject-when-full path (WebserverService._serve()) closes a rejected connection
+# max_connections=4 reject-when-full path (WebserverService._serve()) closes a rejected connection
 # immediately with zero response ever written, by design (BACKLOG.md's own "reject-when-full"
 # decision) - a real client hitting it sees an ECONNRESET (or an EOF-before-any-bytes, depending on
 # the OS/kernel's own close-with-unread-data semantics) with no HTTP-level response at all. The real

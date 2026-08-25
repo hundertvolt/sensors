@@ -220,26 +220,75 @@ Manual local-trigger instructions for the whole web-CI tier live in **README.md'
 (JS/HTML/CSS)" section** (`npm ci` + `npm run lint`/`typecheck`/`lint:html`/`lint:css`/`test`) — the
 JS-side equivalent of that same README's existing "Code quality tooling" section for Python.
 
-## 7. Digital twin integration (session 5's job)
+## 7. Digital twin integration — **done** (session 5)
 
-The website (functionally complete as of item 4) must be wired into `digital_twin/` alongside every
+The website (functionally complete as of item 4) is now wired into `digital_twin/` alongside every
 sensor/module that already has a real REST/API connection there — the same generalized "any new
 module joins the twin once it can complete a real, observable chain" rule SPECIFICATION.md A.10
-already states for drivers and common modules, applied here to the website itself. This must stay a
-**living** integration: whenever a new sensor/module gains an API connection in the twin afterward,
-the website's own twin wiring has to be kept in step automatically — via the same definitions-file
-mechanism (new nav sections/fields just appear from the regenerated definitions JSON), not a
-hand-maintained parallel list.
+already states for drivers and common modules, applied here to the website itself.
 
-**Current state, now actionable**: a real, functionally complete website exists (`html/`+`js/`) and
-a real build chain assembles it (`scripts/build_website.sh`, item 4). One dedicated test,
-`tests/test_digital_twin_real_website_integration.py`, already proves the real website serves
-correctly against the real, booted `sensortask_wozi.build_system()` object graph over `digital_twin/`
-buses — but only in that one standalone test. The twin's *default* wiring — `scripts/
-run_digital_twin_ci.sh` (and therefore `digital-twin-e2e`'s CI job), README's manual baseline
-walkthrough — still calls `scripts/build_frozen_html.sh` with no `HTML_SRC_DIRS` override, so it
-still builds and serves `html_stub/`, not the real website. Swapping that default is item 5's
-actual work.
+**Default wiring swap**: `scripts/run_digital_twin_ci.sh` (and therefore `digital-twin-e2e`'s CI
+job) and `scripts/run_unix_port_integration.sh` (the manual walkthrough's own entry point) now call
+`scripts/build_website.sh wozi` instead of `scripts/build_frozen_html.sh`'s own `html_stub`
+default — the twin serves the real, production `wozi` website by default now, for the one device
+`src/` currently assembles, matching what real deployed hardware actually serves. Verified
+end-to-end: a full `scripts/run_digital_twin_ci.sh` run (all 11 automated-suite runs — baseline
+boot, reboot/persistence, sustained/bounded bus faults, WiFi hotspot/DNS, NTP-unreachable, the
+watchdog-backstop hang case, the clean soak) passes with the real website mounted, not the stub.
+
+**Living-integration checklist gap, found and closed**: §7's own "living integration" claim — that
+a new twin-connected module's fields appear on the website automatically via the definitions-file
+mechanism — turned out not to actually hold as a *process* guarantee, only as a mechanism one:
+neither `SPECIFICATION.md` Part C.11 point 9 (the driver-promotion checklist) nor
+`digital_twin/README.md`'s "Adding a new chip fake" steps ever told anyone to update
+`html/definitions/<device>.json` when a new driver/module gains a live REST connection — a driver
+could ship with a working chip fake and REST endpoint yet never surface on the website, silently,
+with nothing pointing back at the gap. Both docs now have an explicit checklist step for this
+(`SPECIFICATION.md` C.11 point 9, `digital_twin/README.md`'s own list, item 5). The
+definitions-file *mechanism* itself was already correct (confirmed: `js/render.js`/`js/nav.js` have
+zero device-specific branching, per §4's existing "per-device page-scheme mechanism" row) — the gap
+was purely the missing checklist pointer, not a design flaw.
+
+**Real API-endpoint-driven browser test, against a live backend**: `tests_js/live-backend.test.js`
+drives the real website's own JS (not `js/mock-server.js`'s static fixtures) in a real Chromium
+browser against a real, live-booted digital twin subprocess — opens the real page, reads the real
+rendered DOM, submits a real PUT through the real UI, and asserts the real backend's own response
+reflects in the UI. This needed a genuine escape hatch: Vitest's own browser-mode `page` object has
+no API for navigating to an external origin (confirmed against `vitest-dev/vitest#7875`, open,
+unresolved) — `tests_js/_live_twin_command.js` is a server-side Vitest Commands-API function
+(`vitest.config.js`'s `test.browser.commands`) that spawns the twin subprocess and drives a genuine
+second Playwright page (`context.newPage()`, the real `BrowserContext` Vitest already launched) at
+it directly, sidestepping the browser-side sandbox entirely. `.github/workflows/ci.yml`'s
+`web-unit-tests` job now also builds the MicroPython Unix-port toolchain (sharing the Python
+unit-tests job's own cache key) before `npm test`, so this runs for real in CI, not just locally.
+
+**A real, previously-untested concurrency gap, found and fixed during this work**: every test
+client this project had before this session (curl, Python's `http.client`,
+`digital_twin/_http_client.py`) issues exactly one request at a time — nothing had ever driven more
+than one simultaneous real TCP connection against a live server, including a real browser's own
+ordinary page-load behavior (opening several connections at once for sub-resources). Investigating
+this (full account: git history around this session) ruled out a false-alarm "crash" from an early,
+racy ad-hoc repro script, but confirmed two real, worthwhile findings:
+- A real browser tab loading the pre-session-5 website opened up to ~9 concurrent connections
+  (`index.html` + `style.css` + `definitions.json` + 6 separate JS module files) against a hard,
+  confirmed rp2040/lwIP ceiling of 5 simultaneously active TCP connections
+  (`MEMP_NUM_TCP_PCB=5`, lwIP's own compile-time default for this build, no project override) —
+  `max_connections=3`'s own reject-when-full margin left almost no room for anything else (an
+  OpenHAB instance's own concurrent polling, say) once a single browser tab was open. Fixed by
+  **bundling** the six production JS modules into one file at build time
+  (`scripts/build_website.sh`'s own "Bundling" comment has the full mechanism/rationale) — a page
+  load is now 4 connections, not ~9. `src/asy_webserver_service.py`'s `max_connections` was also
+  raised from 3 to 4 (one more slot of the now-larger real headroom under the same hard 5-PCB
+  ceiling; see that constructor arg's own updated comment).
+- `tests/test_digital_twin_webserver_concurrency.py` is new, real regression coverage for this
+  whole area — genuinely concurrent real-socket connections (not `tests/test_asy_webserver_service.py`
+  Section F's in-process `_serve()`-against-fakes tests, which never touch the real accept()/
+  `select.poll()` layer at all): healthy-only bursts up to and beyond `max_connections`, mixed
+  healthy/flaky and all-flaky connections, and a repeated high-concurrency burst (12 concurrent,
+  5 rounds) deliberately re-visiting the exact scale of a real, historical, already-fixed
+  MicroPython Unix-port segfault this project's own history records (`digital_twin/README.md`'s
+  "Known gaps" section, `digital_twin/unix_port_poll_prewarm.py`) — confirmed still fixed under
+  current code, not just trusted from that fix's own original history.
 
 ## 8. Open items — reserved for dedicated future sub-sessions
 
@@ -414,14 +463,37 @@ order.
    walkthrough) still serves `html_stub/`, not the real website; swapping that default is session
    5's job (§10 item 5). No cross-browser/cross-device check has happened yet either — also session
    5's tail item.
-5. **Digital twin integration.** Replace `html_stub/` in `digital_twin/`'s wiring per §7; add real
-   API-endpoint-driven tests (the website's actual JS/pages exercised against the twin's live
-   server, likely via the same Playwright/Chromium foundation session 3 already set up, now against
-   a live backend instead of static fixtures). **Tail of this session**: a manual cross-browser/
-   cross-device spot check by the project owner (Safari, Firefox, real mobile) — automated CI only
-   ever exercises Chromium via Playwright, so §1/§3's "stable and good-looking on all major
-   browsers" goal needs at least one real human pass somewhere, and this is the first point the
-   website is running end-to-end against a real live backend.
+5. **Digital twin integration.** **Done** — `claude/website-s5-digital-twin-integration`. Replaced
+   `html_stub/` in `digital_twin/`'s default wiring, closed the living-integration checklist gap,
+   and added a real API-endpoint-driven browser test against a live twin backend — full account in
+   §7. Also found and fixed a real, previously-untested concurrent-connection capacity gap (JS
+   bundling + a `max_connections` bump), with new dedicated regression coverage — also in §7.
+   Scope for this item covered `digital_twin/`, `scripts/run_digital_twin_ci.sh`,
+   `scripts/run_unix_port_integration.sh`, `.github/workflows/ci.yml`'s `digital-twin-e2e` and
+   `web-unit-tests` jobs, `digital_twin/README.md`/`README.md`'s digital-twin sections, plus a
+   confirmed, narrow `src/` exception (`asy_webserver_service.py`'s `max_connections` constant and
+   its own comment only) raised and confirmed with the project owner mid-session once real-browser
+   testing surfaced the concurrency-capacity gap — not assumed from any prior exception.
+
+   **Tail item, not yet done — needs the project owner directly**: a manual cross-browser/
+   cross-device spot check (Safari, Firefox, real mobile) — automated CI only ever exercises
+   Chromium via Playwright, so §1/§3's "stable and good-looking on all major browsers" goal still
+   needs at least one real human pass somewhere. This is the first point in the whole effort the
+   website has been running end-to-end against a real live backend (rather than static
+   `js/mock-server.js` fixtures), so it's also the first point this check is actually meaningful to
+   do. Not silently skipped or silently assumed done — flagging it explicitly here, same as this
+   item's own original scope required.
+
+   **Effort readiness — also needs the project owner's call, not this session's own**: this was the
+   last item in this section's planned breakdown. Everything in §1–§4's goals/architecture is built
+   and tested; §8's two open items (the schema-comment-tag grammar, `dev.json`'s unconfirmed
+   SHTC3/MPRLS/ISL29125 projection) are both explicitly scoped as *future* dedicated sessions, not
+   blockers to this effort's own completion. Whether that means the whole multi-session effort is
+   ready for final merge-back into `main` (per this file's own stated lifecycle — permanent content
+   migrates into `SPECIFICATION.md`, this file gets deleted) or whether more work is wanted first
+   (e.g. waiting on the cross-browser tail item above, or deciding to fold §8's items in before
+   merging rather than after) is the project owner's decision to make, not this session's to assume
+   either way.
 
 ## 11. Schema comment-tag grammar — sketch (documentation only, not yet decided)
 

@@ -194,8 +194,18 @@ class WebserverService:
         maintenance_sensors: "Sequence[tuple[str, MaintenanceFct]]" = (),
         error_sources: "Sequence[_ModuleLike]" = (),
         max_content_length: int = 4096,
-        max_connections: int = 3,  # reject-when-full ceiling - real margin below the confirmed
-        # MEMP_NUM_TCP_PCB=5 rp2-port ceiling (BACKLOG.md's now-resolved companion open question).
+        max_connections: int = 4,  # reject-when-full ceiling - one slot of margin below the
+        # confirmed MEMP_NUM_TCP_PCB=5 rp2-port ceiling (lwIP's own compile-time default for this
+        # build - confirmed directly against the vendored lwIP source and the rp2 port's own
+        # lwipopts, no project override anywhere), for TIME_WAIT sockets from just-closed
+        # connections (every response sends `Connection: close`) to drain without blocking a new
+        # one. Raised from the original 3 once WEBSITE_PLAN.md §10 item 5's real-browser testing
+        # showed a single page load's own concurrent connections (previously up to ~9: index.html +
+        # style.css + 6 separate JS module files + definitions.json) could alone approach this
+        # ceiling before any other client (e.g. an OpenHAB instance polling REST endpoints
+        # alongside a browser session) even connects - see scripts/build_website.sh's own "Bundling"
+        # comment for the matching fix on the JS-file-count side (6 files down to 1), which was the
+        # bigger lever; this one small bump uses one more slot of the real remaining headroom.
         per_call_timeout_s: float = 5.0,
         outer_cap_s: float = 15.0,
         host: str = "0.0.0.0",

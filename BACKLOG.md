@@ -265,9 +265,6 @@ constraints.
   the pre-migration `setSGP`/`setBMP` field names/formats (see Part C.5.3's wire-format note) —
   remains pre-refactor debt on the currently-deployed frontend only; the new frontend targets the
   already-migrated field names from the start, not something it inherits.
-- **Digital twin integration for the new website.** Full detail in `WEBSITE_PLAN.md` §7 — the
-  website is now functionally complete with a real build chain; the twin's *default* wiring still
-  serves the `html_stub/` placeholder, not the real site. Session 5's job.
 - **UART sensor integration — confirmed staying unwired, not just deferred.** `asy_uart_driver.py`
   is promoted to `src/` but deliberately not wired into any `sensortask-*.py`; `asy_uart_comm.py`
   (its one real consumer) is its own separate, still out-of-scope promotion. Not a legacy deployed

@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "lint": "eslint js tests_js",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "lint:html": "html-validate \"html/**/*.html\"",

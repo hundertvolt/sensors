@@ -2150,7 +2150,13 @@ sensor:
    finishing the driver, the same session it's promoted to `src/` (Part D's checklist), not deferred
    — the digital twin exists to track the *whole* real driver portfolio, not just the sensors it
    started with, and a driver with no twin counterpart silently regresses the Unix-port integration
-   run's own coverage (Part A.10).
+   run's own coverage (Part A.10). **Also update `html/definitions/<device>.json`** for every device
+   the new driver's REST fields should appear on (WEBSITE_PLAN.md §4.1) — the website's own nav/
+   sections/fields come entirely from that file (zero device-specific branching in `js/render.js`/
+   `js/nav.js`), so a promoted driver with a working chip fake and REST endpoint but no matching
+   definitions-file entry stays invisible on the website indefinitely, with nothing else in the
+   pipeline surfacing the gap. Same session, not deferred, same rationale as the digital-twin
+   extension itself.
 
 ## C.12 Testing
 

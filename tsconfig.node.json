@@ -1,0 +1,20 @@
+{
+    // Second, separate tsc invocation for tests_js/_live_twin_command.js - Node-context server-side
+    // code (a Vitest Commands API implementation), not browser code. See tsconfig.json's own
+    // "exclude" comment for why this can't just be folded into the main pass, and CLAUDE.md's
+    // "Code quality tooling" for the identical shape this mirrors on the Python side
+    // (digital_twin/typecheck.ini).
+    "compilerOptions": {
+        "target": "ES2022",
+        "module": "ES2022",
+        "moduleResolution": "bundler",
+        "lib": ["ES2022"],
+        "types": ["node"],
+        "allowJs": true,
+        "checkJs": true,
+        "noEmit": true,
+        "strict": true,
+        "skipLibCheck": true
+    },
+    "include": ["tests_js/_live_twin_command.js"]
+}
