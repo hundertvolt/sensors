@@ -662,6 +662,46 @@ settings (no live telemetry in any of them).
     module's error counter *and* history in one call.
   - `/notification` — `{"lightCmdLED": {"r":.., "g":.., "b":.., "t":..}, "PauseTime": int, <any
     subset of OnH,OnM,OffH,OffM,FlashBri,Interv,FlashDur,AutoOn,WarnCO2,WarnVOC,WarnHum>}`.
+    `PauseTime` is range-checked `0`-`3600` inclusive by `_dispatch_notification_pause()` itself
+    (rejected as `"Invalid"`, not silently clamped) before ever reaching
+    `NotificationCoordinator.set_override_led()`, whose own `LockedCounter.set_value()` clamps
+    into the same range — matching legacy's `pauseAutoLED` command's own reject-out-of-range
+    behavior rather than relying on the clamp.
+
+**Numeric int/float coercion policy** (`config_manager.py`'s `coerce_numeric()`, called from
+`type_or_range_error()`): every schema-backed int/float field, plus the two dispatch-only numeric
+fields that reuse the same function against a synthetic `FieldSchema` (`PauseTime` via
+`_dispatch_notification_pause()`) or the same acceptance policy directly (`lightCmdLED`'s r/g/b/t
+via `sensortask_wozi.py`'s `_notification_led_callback()`), applies one uniform rule instead of
+each caller hand-rolling its own int/float shape check: a JSON int is **always** accepted for a
+float-typed field (coerced to float — a blanket accept, with no exact-round-trip check on this
+direction); a JSON float is accepted for an int-typed field **only when it carries no fractional
+part** (e.g. `5.0` → coerced to `5`) — a fractional value (`5.7`) is rejected outright as
+`"Invalid"`, the same treatment an out-of-range value gets, never truncated or rounded. The intent
+is for both directions to be symmetric ("accept only what's exactly representable, either
+direction") and never silently discard a digit the caller actually sent — true for the float→int
+direction (an exact `int(check_val)`/`float(as_int) == check_val` round-trip is checked, see
+`coerce_numeric()`), but the int→float direction is a **known, accepted gap** in that symmetry, on
+the premise that every int is representable as a float — true only up to a float's mantissa
+precision (Part F.1's `MICROPY_FLOAT_IMPL_FLOAT`-vs-`_DOUBLE` fact), not in general. Accepted as-is
+because no currently-registered float field's own `min`/`max` bounds go anywhere near that range
+(the largest today is BMP3xx's `SeaLevelOffs` at `5000.0`) — the field's own range check already
+catches every value that could otherwise slip through, in practice; see `coerce_numeric()`'s own
+inline comment and `tests/test_config_manager.py`'s
+`test_coerce_numeric_large_int_to_float_precision_limit_is_a_documented_accepted_gap` for this same
+caveat at the code/test level. `bool` is still never accepted for an int or
+float field either way (`type()`, not `isinstance()`, already excludes it — see A.4/F.4's
+discussion of this same distinction elsewhere). NaN/±inf attempting int-coercion are caught (not
+raised) via MicroPython's own `int(float)` exception shapes (`ValueError` for NaN, `OverflowError`
+for ±inf — confirmed against `py/objint.c`'s `mp_obj_new_int_from_float()`) and rejected the same
+way as any other non-representable value. The website's JS mirror (`js/mock-server.js`'s
+`coerceAndValidate()`/`dispatchRangedAction()`/`dispatchLightCmdLed()`) applies the equivalent
+policy — trivially simpler there, since JS has no int/float runtime type distinction to begin with
+(`5` and `5.0` parse to the identical JS number): only a `field.float`-marked field's own value is
+ever checked for having no fractional part, via `Number.isInteger()`, with no need to recover or
+compare the original JSON literal's shape at all (the now-removed `scanNumericLiteralShapes()`
+JSON-text regex scan, and `js/render.js`'s now-removed `serializePutBody()` decimal-point-forcing,
+both existed only to fight that literal-shape problem under the old strict-shape-match policy).
 
 **GET copy-safety**: `get_dict_data()` (via `config_manager.make_dict()`), `ConfigManager.get_dict()`,
 and `PrintLogHistory.get_log()` all build a brand-new dict/list of copied scalar values on every
@@ -2844,6 +2884,19 @@ this Part — see this document's front matter for that tradeoff.
   - **`MemoryError` is not an `OSError` subclass in MicroPython** — an `except OSError:` alone is
     blind to allocation failure; anywhere an `OSError` is caught around a call that could also
     plausibly exhaust memory, catch `(OSError, MemoryError)` instead.
+  - **RP2040's real firmware build uses single-precision `float` (`MICROPY_FLOAT_IMPL_FLOAT`,
+    24-bit mantissa, exact integer range up to `2**24`); this project's own Unix-port test rig uses
+    double precision instead (`MICROPY_FLOAT_IMPL_DOUBLE`, 52-bit mantissa, exact up to `2**53`)**
+    — confirmed directly against `ports/rp2/mpconfigport.h` and
+    `ports/unix/variants/mpconfigvariant_common.h`. Both targets use arbitrary-precision `int`
+    (`MICROPY_LONGINT_IMPL_MPZ`), so an `int` value can exceed either threshold; `float(int)`
+    beyond it silently rounds rather than raising. Same "the Unix-port test rig can't reproduce a
+    real-hardware boundary" shape as the `ticks_ms()` period fact below — a test proving exactness
+    up to `2**53` on this rig says nothing about the stricter `2**24` real-hardware limit.
+    `config_manager.py`'s `coerce_numeric()` (A.8's numeric-coercion policy) is the one place this
+    currently matters: its int→float direction has no exact-round-trip check, on the premise every
+    int is representable as a float — true only within this limit. Accepted, not fixed, because no
+    real schema field's own bounds go anywhere near it (see A.8 for the full reasoning).
   - **`struct.pack()`/`pack_into()` silently zero-pad or truncate on a value/argument-count
     mismatch instead of raising**, unlike CPython. Don't rely on a mismatch surfacing as an
     exception; validate shape before packing if it matters.

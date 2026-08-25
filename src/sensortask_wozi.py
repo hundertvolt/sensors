@@ -143,10 +143,21 @@ async def _system_cmd_callback(cmd: str) -> bool:
 
 
 async def _notification_led_callback(payload: "dict[str, Any]") -> bool:
+    # r/g/b/t is dispatch-only, not schema-backed (no FieldSchema record to hand
+    # config_manager.py's type_or_range_error()) - reuses that module's own coerce_numeric()
+    # directly instead of the raw int()/float() truncating casts this used to have, so a fractional
+    # r/g/b (e.g. 12.5) is now rejected rather than silently truncated to 12 - the same
+    # accept-only-if-exactly-representable policy every schema-backed field gets
+    # (SPECIFICATION.md Part A.8). int -> float for t is still a blanket accept either way.
     assert pixel is not None
     try:
-        r, g, b, t = int(payload["r"]), int(payload["g"]), int(payload["b"]), float(payload["t"])
-    except (KeyError, TypeError, ValueError):
+        r_ok, r = cm.coerce_numeric(payload["r"], int)
+        g_ok, g = cm.coerce_numeric(payload["g"], int)
+        b_ok, b = cm.coerce_numeric(payload["b"], int)
+        t_ok, t = cm.coerce_numeric(payload["t"], float)
+    except KeyError:
+        return False
+    if not (r_ok and g_ok and b_ok and t_ok):
         return False
     return await pixel.request_signal(r, g, b, t)
 

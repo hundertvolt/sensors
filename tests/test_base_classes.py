@@ -1217,6 +1217,41 @@ def test_set_dict_cfg_failed_push_getter_returning_out_of_schema_value_falls_thr
         _remove(path_prefix + "config_pushfailgetteroor.cfg")
 
 
+def test_set_dict_cfg_failed_push_getter_returning_coercible_value_is_coerced_before_persisting() -> None:
+    # A getter reading real hardware can plausibly hand back an integral float for an int-typed
+    # field (e.g. a register readback library that always returns float) - _recover_failed_push's
+    # own type_or_range_error() call must coerce it the same way any other entry point does, not
+    # just accept/reject on type alone. Confirms the coerced (int) value - not the getter's raw
+    # float - is what actually gets persisted.
+    path_prefix = _tmp_path("") + "/"
+    _remove(path_prefix + "config_pushfailgettercoerce.cfg")
+    try:
+        reader = SensorReaderConfig(Meas(20.0, 50), 3, "pushfailgettercoerce", _VAL_SI, cfg_path=path_prefix)
+        run(reader.cfgmgr.setup())
+
+        async def push_ok(value: "int | float | str | bool | None") -> bool:
+            return True
+
+        async def push_fail(value: "int | float | str | bool | None") -> bool:
+            return False
+
+        async def coercible_getter() -> "int | float | str | bool | None":
+            return 99.0  # integral float - not the int SampleInterv's schema declares, but coercible
+
+        reader._push_callbacks["SampleInterv"] = push_ok
+        run(reader._set_dict_cfg({"SampleInterv": 5}, _VAL_SI))
+
+        reader._push_callbacks["SampleInterv"] = push_fail
+        reader._get_callbacks["SampleInterv"] = coercible_getter
+        results = run(reader._set_dict_cfg({"SampleInterv": 42}, _VAL_SI))
+        assert results == {"SampleInterv": "Failed"}
+        recovered = run(reader._get_dict_cfg("Sensor", _VAL_SI))
+        assert recovered == {"Sensor": {"SampleInterv": 99}}
+        assert type(recovered["Sensor"]["SampleInterv"]) is int
+    finally:
+        _remove(path_prefix + "config_pushfailgettercoerce.cfg")
+
+
 def test_set_dict_cfg_failed_push_on_first_ever_request_recovers_to_schema_default() -> None:
     # No prior successful write and no getter registered - the pre-write snapshot itself is just
     # the freshly-created config's own default, so the fallback chain's last rung (the schema

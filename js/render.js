@@ -1,10 +1,6 @@
 /**
- * Section controller (WEBSITE_PLAN.md §12): owns everything that talks to the network or
- * validates/submits data - fetching, polling, collecting a group's input values into a PUT body,
- * and turning a PUT response into an apply-status outcome. It builds no DOM itself; every element
- * comes from `js/templates.js`, located afterwards only via the `data-*` attributes/CSS classes
- * documented in WEBSITE_PLAN.md §12's contract table. A purely visual/layout redesign never
- * touches this file.
+ * Section controller - the mechanics half of §12's visual/mechanics split. Builds no DOM
+ * itself; see WEBSITE_PLAN.md §12 for the full layer/contract definition this file follows.
  */
 
 import { pollManager, startPolling } from "./poll-manager.js";
@@ -22,7 +18,15 @@ import { buildErrcountGroup, buildFieldGroupCard, buildSectionShell, formatField
  */
 function readInputValue(rawInputValue, field) {
     if (field.kind === "number") {
-        return rawInputValue === "" ? undefined : Number(rawInputValue);
+        if (rawInputValue === "") {
+            return undefined;
+        }
+        const num = Number(rawInputValue);
+        // Non-numeric text must not silently become 0: JSON.stringify(NaN) is "null", and a
+        // naive Number(null) === 0 server-side would make garbage input look like a deliberate,
+        // possibly in-range "0" instead of failing validation. Send the raw string through
+        // instead, so the backend's own Number(value) recreates the same NaN and rejects it.
+        return Number.isFinite(num) ? num : rawInputValue;
     }
     if (field.kind === "enum") {
         // A <select>'s own .value is always a string (DOM behavior), even when the option's real
@@ -35,10 +39,30 @@ function readInputValue(rawInputValue, field) {
 }
 
 /**
+ * A GET's non-ok/empty response, worded using the server's own shaped-error `descr` when present
+ * (SPECIFICATION.md Part A.5's `_ERROR_SHAPES`/`_shaped_error_handler` - every 400/404/405/413/500
+ * carries one) rather than a bare status code.
+ * @param {{ok: boolean, status: number, body: unknown}} response
+ * @param {string} url
+ * @returns {string}
+ */
+function describeGetFailure(response, url) {
+    const body = /** @type {{descr?: string} | null} */ (response.body);
+    if (body?.descr) {
+        return `GET ${url} failed: ${body.descr}`;
+    }
+    if (response.body === null) {
+        return `GET ${url} returned an empty body`;
+    }
+    return `GET ${url} failed: HTTP ${response.status}`;
+}
+
+/**
  * Reads whatever the visitor entered/toggled in `card`'s controls back into a plain PUT body,
  * keyed off the same `data-field-key`/`data-sub-field-key` hooks `js/templates.js` sets.
  * @param {HTMLElement} card
  * @param {FieldGroup} group
+ * @returns {Record<string, unknown>}
  */
 function collectGroupBody(card, group) {
     /** @type {Record<string, unknown>} */
@@ -65,7 +89,11 @@ function collectGroupBody(card, group) {
             for (const input of grid.querySelectorAll("input")) {
                 const key = input.dataset.subFieldKey;
                 if (key !== undefined && input.value !== "") {
-                    sub[key] = Number(input.value);
+                    // Same NaN -> null -> 0 gap as readInputValue() above; every real subField
+                    // today is numeric (e.g. lightCmdLED's r/g/b/t), so this doesn't yet need
+                    // readInputValue()'s own per-kind dispatch.
+                    const num = Number(input.value);
+                    sub[key] = Number.isFinite(num) ? num : input.value;
                     anyFilled = true;
                 }
             }
@@ -86,19 +114,32 @@ function collectGroupBody(card, group) {
     return body;
 }
 
-/**
- * Worst-first ordering used to pick one status for the whole card from several field results.
- * Real problems (Invalid/Failed) always win; between the two non-problem outcomes, a genuine
- * Valid change outranks an Unchanged no-op, so e.g. one changed field + one resubmitted-as-is
- * field reads as "valid" (something happened), not "unchanged" (nothing did).
+/** Worst-first severity order for one card's overall status; see WEBSITE_PLAN.md §12.
  * @type {Record<string, number>}
  */
 const STATUS_SEVERITY = { Invalid: 0, Failed: 1, Valid: 2, Unchanged: 3 };
 
 /**
- * Sets the card's `data-apply-status` to the worst of `results` and fills in the outcome text.
- * Only ever writes the semantic status value - `html/style.css` alone decides what each status
- * looks like (WEBSITE_PLAN.md §12).
+ * A submitted-but-unanswered field is treated as Failed, not silently omitted (WEBSITE_PLAN.md
+ * §10 session 3 follow-up 2 - a known real server-side gap where a settings group's post-write
+ * hook raising drops that group's fields from `result` entirely, with no other signal).
+ * @param {Record<string, unknown>} submitted
+ * @param {Record<string, string>} received
+ * @returns {Record<string, string>}
+ */
+function reconcileResults(submitted, received) {
+    const reconciled = { ...received };
+    for (const key of Object.keys(submitted)) {
+        reconciled[key] ??= "Failed";
+    }
+    return reconciled;
+}
+
+/**
+ * Sets the card's `data-apply-status` to the worst of `results`, each individual field's own box
+ * to its own result (legacy per-field granularity, kept alongside the newer accent-stripe
+ * presentation - WEBSITE_PLAN.md §12), and fills in the outcome text. Only ever writes the
+ * semantic status value - `html/style.css` alone decides what each status looks like.
  * @param {HTMLElement} card
  * @param {Record<string, string>} results
  * @param {string} descr
@@ -111,6 +152,12 @@ function applyResultStyling(card, results, descr) {
         // still means the action completed, not that "nothing changed" - default to success.
     );
     card.dataset.applyStatus = worst.toLowerCase();
+    for (const [key, status] of Object.entries(results)) {
+        const fieldEl = card.querySelector(`[data-field-wrapper-key="${key}"]`);
+        if (fieldEl instanceof HTMLElement) {
+            fieldEl.dataset.applyStatus = status.toLowerCase();
+        }
+    }
     const resultEl = card.querySelector(".apply-result");
     if (resultEl) {
         const perField = Object.entries(results)
@@ -143,28 +190,78 @@ function buildAndWireFieldGroup(group, section, currentValues, onApplied) {
             return;
         }
         const groupBody = collectGroupBody(card, group);
+        if (Object.keys(groupBody).length === 0) {
+            // A toggle always resubmits its current value, and so does an enum whose current value
+            // matches a real option (see collectGroupBody()) - so this can only happen when a group
+            // made only of number/string fields is submitted untouched, or an enum field with no
+            // matching current value (e.g. SystemCmd, never returned by GET) is left at its blank
+            // placeholder. Skip the round trip entirely rather than PUTing an empty body and letting
+            // applyResultStyling()'s empty-result-means-success fallback show a misleading "Valid"
+            // for a request that changed nothing.
+            if (resultEl) {
+                resultEl.textContent = "Nothing to submit - no fields were changed.";
+            }
+            return;
+        }
         // /sensors is the one endpoint whose PUT body nests fields under the sensor's own
         // group key (`{"SCD30": {...}}`) - every other writable section's body is already flat.
         const body = section.key === "sensors" ? { [group.key]: groupBody } : groupBody;
         button.disabled = true;
         try {
+            // No decimal-point forcing needed for a field.float-marked field's whole-number value:
+            // the real backend now accepts a JSON int for a float-typed field too, coerced
+            // (config_manager.py's coerce_numeric(), SPECIFICATION.md Part A.8) - JSON.stringify()
+            // is sufficient on its own.
             const response = await pollManager.request(putPath, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(body),
             });
-            const envelope = /** @type {{descr?: string, result?: Record<string, unknown>}} */ (response.body ?? {});
-            const flatResult =
+            const envelope = /** @type {{res?: string, descr?: string, result?: Record<string, unknown>} | null} */ (response.body);
+            // Real backend PUT failures (SPECIFICATION.md Part A.8/A.5): a malformed body is a
+            // clean HTTP 200 with res:"ERR" (never a shaped HTTP error), while a route-level
+            // failure (400/404/405/413/500) is a non-2xx status carrying the same shaped envelope
+            // - either one means the request as a whole was rejected, so per-field results (if
+            // any survived) can't be trusted as a real per-field breakdown.
+            if (!response.ok || envelope === null || envelope.res === "ERR") {
+                throw new Error(envelope?.descr ?? `HTTP ${response.status}`);
+            }
+            const rawResult =
                 section.key === "sensors"
-                    ? /** @type {Record<string, string>} */ (envelope.result?.[group.key] ?? {})
-                    : /** @type {Record<string, string>} */ (envelope.result ?? {});
+                    ? /** @type {Record<string, string> | undefined} */ (envelope.result?.[group.key])
+                    : /** @type {Record<string, string> | undefined} */ (envelope.result);
+            // /status's PUT (SPECIFICATION.md Part A.8's _put_status()) never returns a per-field
+            // result at all, for any of its submit groups - unlike every other writable endpoint,
+            // there's no server-side gap for reconcileResults()'s "submitted but missing = Failed"
+            // heuristic to guard against here, and applying it anyway would mark every successful
+            // submission Failed. A non-2xx/res:"ERR" response already threw above, so reaching this
+            // line at all means the call fully succeeded - mark every submitted field Valid
+            // directly, the same way the whole-request-failure catch block below marks every
+            // submitted field Failed on the opposite outcome.
+            const flatResult =
+                section.key === "status"
+                    ? Object.fromEntries(Object.keys(groupBody).map((key) => [key, "Valid"]))
+                    : reconcileResults(groupBody, rawResult ?? {});
             applyResultStyling(card, flatResult, envelope.descr ?? "Done");
             onApplied();
         } catch (error) {
             if (resultEl) {
                 resultEl.textContent = `Request failed: ${String(error)}`;
             }
+            // `card` is a const DOM reference, never reassigned - no real race despite the prior
+            // await (this button's own `disabled` guard also rules out a concurrent re-entry).
+            // eslint-disable-next-line require-atomic-updates
             card.dataset.applyStatus = "failed";
+            // The request never got far enough for a per-field breakdown, so every field that was
+            // actually submitted this round shows the same "internal or communication error"
+            // status individually too, not just the card border (legacy's own PUT failure handler
+            // never colored anything at all - console.error only; this is a deliberate improvement).
+            for (const key of Object.keys(groupBody)) {
+                const fieldEl = card.querySelector(`[data-field-wrapper-key="${key}"]`);
+                if (fieldEl instanceof HTMLElement) {
+                    fieldEl.dataset.applyStatus = "failed";
+                }
+            }
         } finally {
             button.disabled = false;
         }
@@ -180,17 +277,16 @@ function buildAndWireFieldGroup(group, section, currentValues, onApplied) {
  * @returns {() => void} stop function - call before switching to another section.
  */
 export function renderSection(defs, section, mainEl) {
-    const grid = buildSectionShell(section, mainEl);
+    const { grid, errorBanner } = buildSectionShell(section, mainEl);
 
     /** @param {Record<string, unknown>} data */
-    const paint = (data) => {
+    function paint(data) {
         for (const group of section.groups) {
             if ("kind" in group && group.kind === "errcount") {
                 const errcountGroup = /** @type {import("./definitions.js").ErrcountGroup} */ (group);
-                const errcount = /** @type {any} */ (data).errcount ?? {};
+                const errcount = /** @type {Record<string, {counter: number, history?: {num: number, type: "N"|"E"|"W"}[]}>} */ (data.errcount ?? {});
                 const existing = grid.querySelector(`[data-group-key="${group.key}"]`);
                 const rendered = buildErrcountGroup(errcountGroup, errcount);
-                rendered.dataset.groupKey = group.key;
                 if (existing) {
                     existing.replaceWith(rendered);
                 } else {
@@ -223,25 +319,40 @@ export function renderSection(defs, section, mainEl) {
                 grid.appendChild(rendered);
             }
         }
-    };
+    }
 
-    const fetchOnce = async () => {
-        const response = await pollManager.request(section.rest.get);
-        if (!response.ok || response.body === null) {
-            return;
+    /**
+     * Self-healing error visibility (WEBSITE_PLAN.md §10 session 3): a failed GET surfaces
+     * `errorBanner` without clearing stale data, and self-heals on the next success. Never
+     * rejects - the one place that catches every fetch failure for this section.
+     */
+    async function fetchOnce() {
+        try {
+            const response = await pollManager.request(section.rest.get);
+            if (!response.ok || response.body === null) {
+                throw new Error(describeGetFailure(response, section.rest.get));
+            }
+            const data = /** @type {Record<string, unknown>} */ (response.body);
+            if (section.key === "notification") {
+                // PauseTime is live data (SPECIFICATION.md Part A.8: it lives under GET /status's
+                // "notification" sub-key, not GET /notification's own settings-only response), but
+                // the "Pause Notifications" group still needs a current value to show/PUT against -
+                // so pull it from /status too rather than inventing a second copy of it here.
+                const statusResponse = await pollManager.request("/status");
+                if (!statusResponse.ok || statusResponse.body === null) {
+                    throw new Error(describeGetFailure(statusResponse, "/status"));
+                }
+                const statusBody = /** @type {Record<string, unknown> | null} */ (statusResponse.body);
+                const statusNotification = /** @type {Record<string, unknown>} */ (statusBody?.notification ?? {});
+                data.PauseTime = statusNotification.PauseTime;
+            }
+            errorBanner.classList.add("hidden");
+            paint(data);
+        } catch (error) {
+            errorBanner.textContent = `Could not refresh ${section.label}: ${String(error)}`;
+            errorBanner.classList.remove("hidden");
         }
-        const data = /** @type {Record<string, unknown>} */ (response.body);
-        if (section.key === "notification") {
-            // PauseTime is live data (SPECIFICATION.md Part A.8: it lives under GET /status's
-            // "notification" sub-key, not GET /notification's own settings-only response), but the
-            // "Pause Notifications" group still needs a current value to show/PUT against - so pull
-            // it from /status too rather than inventing a second copy of it in the settings endpoint.
-            const statusResponse = await pollManager.request("/status");
-            const statusNotification = /** @type {any} */ (statusResponse.body)?.notification ?? {};
-            data.PauseTime = statusNotification.PauseTime;
-        }
-        paint(data);
-    };
+    }
 
     if (section.pollGroup === "live") {
         const stop = startPolling(fetchOnce, section.pollIntervalMs ?? defs.defaultPollIntervalMs);

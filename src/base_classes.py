@@ -353,8 +353,9 @@ class SensorReaderConfig(SensorReader):
             # A getter reads live, possibly-adversarial hardware state - a value outside this
             # field's own schema is treated the same as a raised exception (fall through), so
             # every rung this cascade accepts is guaranteed schema-valid before it's persisted.
-            if recovered is not None and type_or_range_error(recovered, field):
-                recovered = None
+            if recovered is not None:
+                is_error, coerced = type_or_range_error(recovered, field)
+                recovered = None if is_error else coerced
         if recovered is None:
             recovered = old_values.get(key, default_val)
 

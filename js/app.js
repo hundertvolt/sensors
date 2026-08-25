@@ -1,15 +1,13 @@
 /**
- * Prototype entry point (WEBSITE_PLAN.md §10 session 2). Reads `?device=` to pick which
- * definitions.json + mock fixture to load - a **prototype-only** convenience: real firmware
- * bakes exactly one device's definitions.json into the frozen build and never branches on a
- * query param (SPECIFICATION.md Part A.9), it just always fetches the one file it was shipped
- * with. This switch exists purely so both devices can be clicked through from one static
- * checkout without two separate local copies.
+ * Prototype entry point. The `?device=` switch below is prototype-only (real firmware ships
+ * exactly one device's definitions.json, never branches on a query param) - see
+ * WEBSITE_PLAN.md §10 session 2 for why, and SPECIFICATION.md Part A.9 for the real build.
  */
 
 import { loadDefinitions } from "./definitions.js";
 import { installMockFetch } from "./mock-server.js";
 import { initNav } from "./nav.js";
+import { fetchWithTimeout } from "./poll-manager.js";
 import { renderSection } from "./render.js";
 
 /** @typedef {import("./definitions.js").SiteDefinitions} SiteDefinitions */
@@ -42,8 +40,23 @@ export async function startApp(elements) {
 
     deviceNameEl.textContent = defs.device.displayName;
 
-    const mockDataResponse = await fetch(`../mockdata/${device}.json`);
-    const mockData = await mockDataResponse.json();
+    /** @type {import("./definitions.js").MockDeviceData} */
+    let mockData;
+    try {
+        const mockDataResponse = await fetchWithTimeout(`../mockdata/${device}.json`);
+        if (!mockDataResponse.ok) {
+            throw new Error(`HTTP ${mockDataResponse.status}`);
+        }
+        try {
+            mockData = await mockDataResponse.json();
+        } catch (error) {
+            throw new Error("response was not valid JSON (likely a corrupted or truncated transmission)", { cause: error });
+        }
+    } catch (error) {
+        errorBannerEl.textContent = `Could not load mock fixture data for "${device}": ${String(error)}`;
+        errorBannerEl.classList.remove("hidden");
+        return;
+    }
     installMockFetch(defs, mockData);
 
     let stopCurrentSection = () => {};
@@ -60,6 +73,9 @@ export async function startApp(elements) {
     function selectSection(sectionKey) {
         const section = defs.sections.find((/** @type {SiteDefinitions["sections"][number]} */ entry) => entry.key === sectionKey);
         if (section === undefined) {
+            // Defensive only: every real sectionKey traces back to defs.sections itself (a nav
+            // click, or defs.landingSection, which validateDefinitions() already requires to
+            // match a real section key), so this can't currently fire.
             return;
         }
         stopCurrentSection();

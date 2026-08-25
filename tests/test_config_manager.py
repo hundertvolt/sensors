@@ -214,29 +214,221 @@ def test_make_dict_comma_in_list_value_repr_no_longer_corrupts_result() -> None:
 
 
 # ---------------------------------------------------------------------------
+# coerce_numeric - direct/standalone (SPECIFICATION.md Part A.8's numeric-coercion policy). This is
+# the lower-level function type_or_range_error() itself calls before ever touching min/max/special -
+# tested here in isolation so its own contract doesn't depend on any field's range, and
+# sensortask_wozi.py's lightCmdLED dispatch (the other real caller, with no FieldSchema of its own)
+# is exercised against exactly this same surface.
+# ---------------------------------------------------------------------------
+
+
+def test_coerce_numeric_same_type_passthrough_is_a_true_identity() -> None:
+    # Not just == - the returned value must be the exact same value, never a needlessly rebuilt one.
+    assert cm.coerce_numeric(5, int) == (True, 5)
+    assert cm.coerce_numeric(5.5, float) == (True, 5.5)
+    assert cm.coerce_numeric(0, int) == (True, 0)
+    assert cm.coerce_numeric(0.0, float) == (True, 0.0)
+
+
+def test_coerce_numeric_int_to_float_always_accepted_and_coerced() -> None:
+    ok, coerced = cm.coerce_numeric(5, float)
+    assert (ok, coerced) == (True, 5.0)
+    assert type(coerced) is float
+    # Negative and zero are ordinary values here too - no special-casing around the sign or origin.
+    assert cm.coerce_numeric(-5, float) == (True, -5.0)
+    assert cm.coerce_numeric(0, float) == (True, 0.0)
+
+
+def test_coerce_numeric_float_to_int_exact_round_trip_accepted() -> None:
+    ok, coerced = cm.coerce_numeric(5.0, int)
+    assert (ok, coerced) == (True, 5)
+    assert type(coerced) is int
+    assert cm.coerce_numeric(-5.0, int) == (True, -5)
+    assert cm.coerce_numeric(0.0, int) == (True, 0)
+
+
+def test_coerce_numeric_negative_zero_float_to_int_accepted_as_plain_zero() -> None:
+    # -0.0 == 0.0 in IEEE-754 float comparison, and int(-0.0) is the plain int 0 (no negative-zero
+    # int concept to worry about) - the exact-round-trip check (float(as_int) == check_val) holds,
+    # so this is accepted like any other exact whole float, not a special case needing its own logic.
+    ok, coerced = cm.coerce_numeric(-0.0, int)
+    assert (ok, coerced) == (True, 0)
+    assert type(coerced) is int
+
+
+def test_coerce_numeric_float_to_int_fractional_rejected_not_truncated() -> None:
+    # Never silently truncated/rounded - the original float is returned unchanged alongside the
+    # rejection, so a caller can't accidentally use a "coerced" value from a failed coercion.
+    for bad in (5.5, 5.001, -0.5, 0.1):
+        ok, coerced = cm.coerce_numeric(bad, int)
+        assert (ok, coerced) == (False, bad)
+
+
+def test_coerce_numeric_float_to_int_nan_and_inf_rejected_not_raised() -> None:
+    for bad in (float("nan"), float("inf"), float("-inf")):
+        ok, coerced = cm.coerce_numeric(bad, int)
+        assert ok is False
+        assert coerced is bad  # returned as-is, not lost/replaced
+
+
+def test_coerce_numeric_bool_excluded_from_both_directions() -> None:
+    # bool subclasses int in Python/MicroPython, but type() (not isinstance()) excludes it from
+    # every branch - it must never coerce into int OR float, and never pass the same-type check
+    # for either, even though `isinstance(True, int)` and `isinstance(True, float)` would both
+    # otherwise be misleading here.
+    assert cm.coerce_numeric(True, int) == (False, True)
+    assert cm.coerce_numeric(False, int) == (False, False)
+    assert cm.coerce_numeric(True, float) == (False, True)
+    assert cm.coerce_numeric(False, float) == (False, False)
+
+
+def test_coerce_numeric_wrong_type_entirely_rejected() -> None:
+    bad_values: list[Any] = ["5", None, [5], {}, (5,)]
+    for bad in bad_values:
+        assert cm.coerce_numeric(bad, int) == (False, bad)
+        assert cm.coerce_numeric(bad, float) == (False, bad)
+
+
+def test_coerce_numeric_unsupported_scalar_type_never_raises() -> None:
+    # coerce_numeric() is only ever called with scalar_type in (int, float) by real production
+    # code (type_or_range_error()'s int/float branches, sensortask_wozi.py's lightCmdLED) - this is
+    # a defensive check on the function's own general contract, not a reachable production path.
+    assert cm.coerce_numeric(5, str) == (False, 5)
+    assert cm.coerce_numeric(5, bool) == (False, 5)
+
+
+def test_coerce_numeric_large_int_to_float_precision_limit_is_a_documented_accepted_gap() -> None:
+    # int -> float is a blanket accept (no exact-round-trip check, unlike the float -> int
+    # direction) on the stated premise that "every int is exactly representable as a float" - true
+    # for any value a real schema field's own min/max bounds could ever let through (the largest
+    # today is BMP3xx's SeaLevelOffs at 5000.0 - SPECIFICATION.md Part A.8), but not true in
+    # general: float has finite mantissa precision (24 bits / ~2**24 on the real RP2040 firmware's
+    # single-precision MICROPY_FLOAT_IMPL_FLOAT build, 52 bits / ~2**53 on this Unix-port test
+    # build's double-precision MICROPY_FLOAT_IMPL_DOUBLE - confirmed against both ports'
+    # mpconfigport.h), and MicroPython's int is arbitrary-precision (MICROPY_LONGINT_IMPL_MPZ) on
+    # both. Beyond that many bits, float(int) silently rounds instead of raising - documented,
+    # accepted risk (not a bug to fix here): no currently-registered float field's bounds go
+    # anywhere near this range, and this Unix-port test build's own double precision means it can't
+    # even reproduce the real, stricter single-precision RP2040 threshold - so this test only proves
+    # the *documented* double-precision boundary on Unix, not the deployed single-precision one.
+    exact = 2**53
+    ok, coerced = cm.coerce_numeric(exact, float)
+    assert (ok, coerced) == (True, float(exact))  # still exactly representable at 2**53 itself
+    ok, coerced = cm.coerce_numeric(exact + 1, float)
+    assert ok is True  # blanket accept fires regardless - no exactness check on this direction
+    assert coerced == float(exact)  # but the +1 was silently lost - coerced collapsed back to 2**53
+
+
+# ---------------------------------------------------------------------------
 # type_or_range_error / check_cfg_get_default
 # ---------------------------------------------------------------------------
 
 
 def test_type_or_range_error_int_in_and_out_of_range() -> None:
     field: cm.FieldSchema = ("X", "int", None, 0, 10, None)
-    assert cm.type_or_range_error(5, field) is False
-    assert cm.type_or_range_error(0, field) is False  # lower boundary accepted
-    assert cm.type_or_range_error(10, field) is False  # upper boundary accepted
-    assert cm.type_or_range_error(-1, field) is True
-    assert cm.type_or_range_error(11, field) is True
-    assert cm.type_or_range_error(5.0, field) is True  # wrong type (float, not int)
+    assert cm.type_or_range_error(5, field) == (False, 5)
+    assert cm.type_or_range_error(0, field) == (False, 0)  # lower boundary accepted
+    assert cm.type_or_range_error(10, field) == (False, 10)  # upper boundary accepted
+    assert cm.type_or_range_error(-1, field)[0] is True
+    assert cm.type_or_range_error(11, field)[0] is True
+
+
+# ---------------------------------------------------------------------------
+# type_or_range_error - int<->float coercion (SPECIFICATION.md Part A.8's numeric-coercion policy):
+# a JSON int is always accepted for a float field (lossless in every case), a JSON float is
+# accepted for an int field only when it carries no fractional part (accept only what's exactly
+# representable, in either direction - never silently discards a digit the caller actually sent).
+# ---------------------------------------------------------------------------
+
+
+def test_type_or_range_error_int_field_accepts_integral_float_coerced_to_int() -> None:
+    field: cm.FieldSchema = ("X", "int", None, 0, 10, None)
+    assert cm.type_or_range_error(5.0, field) == (False, 5)  # coerced, and the coerced value is a real int
+    assert cm.type_or_range_error(0.0, field) == (False, 0)  # lower boundary, coerced form
+    assert cm.type_or_range_error(10.0, field) == (False, 10)  # upper boundary, coerced form
+    coerced = cm.type_or_range_error(5.0, field)[1]
+    assert type(coerced) is int  # not just == 5 - must be a real int, not a float that compares equal
+
+
+def test_type_or_range_error_int_field_rejects_fractional_float() -> None:
+    # A fractional value is never truncated/rounded - rejected outright, same treatment as
+    # out-of-range, so a fat-fingered "12.5" can't silently become a wrong stored "12".
+    field: cm.FieldSchema = ("X", "int", None, 0, 10, None)
+    assert cm.type_or_range_error(5.7, field)[0] is True
+    assert cm.type_or_range_error(9.999, field)[0] is True
+    assert cm.type_or_range_error(0.1, field)[0] is True
+
+
+def test_type_or_range_error_int_field_rejects_nan_and_inf_coercion_attempt() -> None:
+    # A float attempting int-coercion that happens to be NaN/+-inf must not raise - MicroPython's
+    # own int(float) conversion raises ValueError for NaN, OverflowError for +-inf (confirmed
+    # against py/objint.c's mp_obj_new_int_from_float) - both are caught and treated as a normal
+    # rejection, not a crash.
+    field: cm.FieldSchema = ("X", "int", None, 0, 10, None)
+    assert cm.type_or_range_error(float("nan"), field)[0] is True
+    assert cm.type_or_range_error(float("inf"), field)[0] is True
+    assert cm.type_or_range_error(float("-inf"), field)[0] is True
+
+
+def test_type_or_range_error_int_field_coerced_float_still_subject_to_range_check() -> None:
+    # Coercion happens before the range check, not instead of it - an integral float outside the
+    # field's own bounds is still rejected, exactly like an out-of-range plain int would be.
+    field: cm.FieldSchema = ("X", "int", None, 0, 10, None)
+    assert cm.type_or_range_error(11.0, field)[0] is True
+    assert cm.type_or_range_error(-1.0, field)[0] is True
+
+
+def test_type_or_range_error_float_field_accepts_int_coerced_to_float() -> None:
+    field: cm.FieldSchema = ("X", "float", None, 0.0, 10.0, None)
+    assert cm.type_or_range_error(5, field) == (False, 5.0)
+    assert cm.type_or_range_error(0, field) == (False, 0.0)  # lower boundary, coerced form
+    assert cm.type_or_range_error(10, field) == (False, 10.0)  # upper boundary, coerced form
+    coerced = cm.type_or_range_error(5, field)[1]
+    assert type(coerced) is float  # not just == 5.0 - must be a real float, not an int that compares equal
+
+
+def test_type_or_range_error_float_field_coerced_int_still_subject_to_range_check() -> None:
+    field: cm.FieldSchema = ("X", "float", None, 0.0, 10.0, None)
+    assert cm.type_or_range_error(11, field)[0] is True
+    assert cm.type_or_range_error(-1, field)[0] is True
+
+
+def test_type_or_range_error_int_field_still_rejects_bool() -> None:
+    # bool must never be coerced into an int field even though `type(True) is bool` sits in
+    # Python's int-subclass hierarchy - type() (not isinstance()) already excludes it.
+    field: cm.FieldSchema = ("X", "int", None, 0, 10, None)
+    assert cm.type_or_range_error(True, field)[0] is True
+    assert cm.type_or_range_error(False, field)[0] is True
+
+
+def test_type_or_range_error_float_field_still_rejects_bool() -> None:
+    field: cm.FieldSchema = ("X", "float", None, 0.0, 10.0, None)
+    assert cm.type_or_range_error(True, field)[0] is True
+    assert cm.type_or_range_error(False, field)[0] is True
+
+
+def test_type_or_range_error_int_field_coerced_float_still_honors_special_bypass() -> None:
+    # Coercion runs before the special-value bypass too - an integral float matching the special
+    # sentinel bypasses range the same way the plain int form already does.
+    field: cm.FieldSchema = ("X", "int", None, 0, 10, 99)
+    assert cm.type_or_range_error(99.0, field, check_special=True) == (False, 99)
+    assert cm.type_or_range_error(99.0, field, check_special=False)[0] is True  # out of range, special not honored
+
+
+def test_type_or_range_error_int_field_coerced_float_still_rejected_by_malformed_special() -> None:
+    field: cm.FieldSchema = ("X", "int", None, 0, 10, "99")  # malformed: special should be int
+    assert cm.type_or_range_error(5.0, field, check_special=True)[0] is True
 
 
 def test_type_or_range_error_special_value_bypasses_range() -> None:
     field: cm.FieldSchema = ("X", "int", None, 0, 10, 99)
-    assert cm.type_or_range_error(99, field, check_special=True) is False
-    assert cm.type_or_range_error(99, field, check_special=False) is True  # out of [0, 10], special not honored
+    assert cm.type_or_range_error(99, field, check_special=True)[0] is False
+    assert cm.type_or_range_error(99, field, check_special=False)[0] is True  # out of [0, 10], special not honored
 
 
 def test_type_or_range_error_int_missing_or_wrong_typed_bounds_rejected() -> None:
-    assert cm.type_or_range_error(5, ("X", "int", None, None, None, None)) is True  # no min/max at all
-    assert cm.type_or_range_error(5, ("X", "int", None, "0", "10", None)) is True  # type: ignore[arg-type]  # bounds wrong type
+    assert cm.type_or_range_error(5, ("X", "int", None, None, None, None))[0] is True  # no min/max at all
+    assert cm.type_or_range_error(5, ("X", "int", None, "0", "10", None))[0] is True  # type: ignore[arg-type]  # bounds wrong type
 
 
 def test_type_or_range_error_int_malformed_special_type_rejects_any_value() -> None:
@@ -245,37 +437,37 @@ def test_type_or_range_error_int_malformed_special_type_rejects_any_value() -> N
     # practice check_cfg_get_default's own self-check (see below) already rejects such a schema
     # before ConfigManager/write_config ever calls type_or_range_error against real data.
     field: cm.FieldSchema = ("X", "int", None, 0, 10, "99")
-    assert cm.type_or_range_error(5, field, check_special=True) is True
-    assert cm.type_or_range_error(5, field, check_special=False) is True
+    assert cm.type_or_range_error(5, field, check_special=True)[0] is True
+    assert cm.type_or_range_error(5, field, check_special=False)[0] is True
 
 
 def test_type_or_range_error_float_missing_or_wrong_typed_bounds_rejected() -> None:
-    assert cm.type_or_range_error(1.0, ("X", "float", None, None, None, None)) is True  # no min/max at all
-    assert cm.type_or_range_error(1.0, ("X", "float", None, 0, 10, None)) is True  # bounds wrong type (int)
+    assert cm.type_or_range_error(1.0, ("X", "float", None, None, None, None))[0] is True  # no min/max at all
+    assert cm.type_or_range_error(1.0, ("X", "float", None, 0, 10, None))[0] is True  # bounds wrong type (int)
 
 
 def test_type_or_range_error_float_malformed_special_type_rejects_any_value() -> None:
     field: cm.FieldSchema = ("X", "float", None, 0.0, 10.0, 99)
-    assert cm.type_or_range_error(5.0, field, check_special=True) is True
+    assert cm.type_or_range_error(5.0, field, check_special=True)[0] is True
 
 
 def test_type_or_range_error_float_check_special_combos() -> None:
     # A genuinely valid float special, tested with both check_special values - the int/str
     # equivalents of this were already covered; float itself wasn't, until now.
     field: cm.FieldSchema = ("X", "float", None, 0.0, 10.0, 99.0)
-    assert cm.type_or_range_error(99.0, field, check_special=True) is False  # bypasses [0.0, 10.0]
-    assert cm.type_or_range_error(99.0, field, check_special=False) is True  # out of range, special not honored
+    assert cm.type_or_range_error(99.0, field, check_special=True)[0] is False  # bypasses [0.0, 10.0]
+    assert cm.type_or_range_error(99.0, field, check_special=False)[0] is True  # out of range, special not honored
 
 
 def test_type_or_range_error_str_check_special_combos() -> None:
     field: cm.FieldSchema = ("X", "str", None, 2, 4, "SPECIAL")
-    assert cm.type_or_range_error("SPECIAL", field, check_special=True) is False  # bypasses length bounds
-    assert cm.type_or_range_error("SPECIAL", field, check_special=False) is True  # 7 chars, out of [2, 4]
+    assert cm.type_or_range_error("SPECIAL", field, check_special=True)[0] is False  # bypasses length bounds
+    assert cm.type_or_range_error("SPECIAL", field, check_special=False)[0] is True  # 7 chars, out of [2, 4]
 
 
 def test_type_or_range_error_str_malformed_special_type_rejects_any_value() -> None:
     field: cm.FieldSchema = ("X", "str", None, 1, 5, 1)
-    assert cm.type_or_range_error("abc", field, check_special=True) is True
+    assert cm.type_or_range_error("abc", field, check_special=True)[0] is True
 
 
 # ---------------------------------------------------------------------------
@@ -290,16 +482,16 @@ def test_type_or_range_error_int_discrete_set_membership() -> None:
     # A pure enumeration field (e.g. BMP3xx's _OSR_SETTINGS): min/max disabled (None), special
     # holds every legal value as a tuple - membership in the tuple is the only way to pass.
     field: cm.FieldSchema = ("X", "int", None, None, None, (1, 2, 4, 8, 16, 32))
-    assert cm.type_or_range_error(1, field) is False
-    assert cm.type_or_range_error(32, field) is False
-    assert cm.type_or_range_error(16, field) is False
-    assert cm.type_or_range_error(3, field) is True  # not one of the allowed discrete values
-    assert cm.type_or_range_error(0, field) is True
+    assert cm.type_or_range_error(1, field)[0] is False
+    assert cm.type_or_range_error(32, field)[0] is False
+    assert cm.type_or_range_error(16, field)[0] is False
+    assert cm.type_or_range_error(3, field)[0] is True  # not one of the allowed discrete values
+    assert cm.type_or_range_error(0, field)[0] is True
 
 
 def test_type_or_range_error_int_discrete_set_check_special_false_rejects_membership() -> None:
     field: cm.FieldSchema = ("X", "int", None, None, None, (1, 2, 4, 8, 16, 32))
-    assert cm.type_or_range_error(8, field, check_special=False) is True
+    assert cm.type_or_range_error(8, field, check_special=False)[0] is True
 
 
 def test_type_or_range_error_int_discrete_set_malformed_element_type_rejects_any_value() -> None:
@@ -307,8 +499,8 @@ def test_type_or_range_error_int_discrete_set_malformed_element_type_rejects_any
     # the scalar-special case (test_type_or_range_error_int_malformed_special_type_rejects_any_value
     # above) - one wrong-typed element among otherwise-good ones is enough to reject the whole field.
     field: cm.FieldSchema = ("X", "int", None, None, None, (1, 2, "4", 8))  # type: ignore[assignment]
-    assert cm.type_or_range_error(1, field, check_special=True) is True
-    assert cm.type_or_range_error(1, field, check_special=False) is True
+    assert cm.type_or_range_error(1, field, check_special=True)[0] is True
+    assert cm.type_or_range_error(1, field, check_special=False)[0] is True
 
 
 def test_type_or_range_error_int_discrete_set_bool_element_rejected_like_scalar_case() -> None:
@@ -316,33 +508,33 @@ def test_type_or_range_error_int_discrete_set_bool_element_rejected_like_scalar_
     # same distinction must hold for a discrete-set element (bool subclasses int in Python/
     # MicroPython, but `type(v) is int` still correctly excludes it).
     field: cm.FieldSchema = ("X", "int", None, None, None, (1, True, 8))  # bool subclasses int for mypy - no ignore needed here, only at runtime (type() is int excludes it)
-    assert cm.type_or_range_error(1, field) is True  # malformed set (a bool element) rejects everything
+    assert cm.type_or_range_error(1, field)[0] is True  # malformed set (a bool element) rejects everything
 
 
 def test_type_or_range_error_str_discrete_set_membership() -> None:
     # systemCmd's shape: a closed string enum, no continuous length range at all.
     field: cm.FieldSchema = ("X", "str", None, None, None, ("reboot", "bootloader", "mempause"))
-    assert cm.type_or_range_error("reboot", field) is False
-    assert cm.type_or_range_error("bootloader", field) is False
-    assert cm.type_or_range_error("mempause", field) is False
-    assert cm.type_or_range_error("unknown", field) is True
-    assert cm.type_or_range_error("", field) is True
+    assert cm.type_or_range_error("reboot", field)[0] is False
+    assert cm.type_or_range_error("bootloader", field)[0] is False
+    assert cm.type_or_range_error("mempause", field)[0] is False
+    assert cm.type_or_range_error("unknown", field)[0] is True
+    assert cm.type_or_range_error("", field)[0] is True
 
 
 def test_type_or_range_error_str_discrete_set_malformed_element_type_rejects_any_value() -> None:
     field: cm.FieldSchema = ("X", "str", None, None, None, ("reboot", 1, "mempause"))  # type: ignore[assignment]
-    assert cm.type_or_range_error("reboot", field) is True
+    assert cm.type_or_range_error("reboot", field)[0] is True
 
 
 def test_type_or_range_error_float_discrete_set_membership() -> None:
     field: cm.FieldSchema = ("X", "float", None, None, None, (1.0, 2.5, 10.0))
-    assert cm.type_or_range_error(2.5, field) is False
-    assert cm.type_or_range_error(3.0, field) is True
+    assert cm.type_or_range_error(2.5, field)[0] is False
+    assert cm.type_or_range_error(3.0, field)[0] is True
 
 
 def test_type_or_range_error_float_discrete_set_malformed_element_type_rejects_any_value() -> None:
     field: cm.FieldSchema = ("X", "float", None, None, None, (1.0, 2))  # int literal 2 is mypy-assignable to float (numeric tower) - no ignore needed; runtime type(2) is not float still rejects it
-    assert cm.type_or_range_error(1.0, field) is True
+    assert cm.type_or_range_error(1.0, field)[0] is True
 
 
 def test_type_or_range_error_discrete_set_alongside_a_real_range() -> None:
@@ -350,10 +542,10 @@ def test_type_or_range_error_discrete_set_alongside_a_real_range() -> None:
     # single-scalar-special shape generalizes to "any of several" without disturbing the ordinary
     # range check for values that satisfy it directly.
     field: cm.FieldSchema = ("X", "int", None, 10, 20, (0, 99))
-    assert cm.type_or_range_error(15, field) is False  # in range, discrete set not even needed
-    assert cm.type_or_range_error(0, field) is False  # bypasses via the discrete set
-    assert cm.type_or_range_error(99, field) is False
-    assert cm.type_or_range_error(5, field) is True  # neither in range nor in the discrete set
+    assert cm.type_or_range_error(15, field)[0] is False  # in range, discrete set not even needed
+    assert cm.type_or_range_error(0, field)[0] is False  # bypasses via the discrete set
+    assert cm.type_or_range_error(99, field)[0] is False
+    assert cm.type_or_range_error(5, field)[0] is True  # neither in range nor in the discrete set
 
 
 def test_type_or_range_error_discrete_set_empty_tuple_rejects_every_value() -> None:
@@ -361,16 +553,16 @@ def test_type_or_range_error_discrete_set_empty_tuple_rejects_every_value() -> N
     # "special is not None", but nothing can ever be a member of an empty tuple. min/max also None,
     # so there is no other way to pass - every value is rejected.
     field: cm.FieldSchema = ("X", "int", None, None, None, ())
-    assert cm.type_or_range_error(1, field) is True
-    assert cm.type_or_range_error(0, field) is True
+    assert cm.type_or_range_error(1, field)[0] is True
+    assert cm.type_or_range_error(0, field)[0] is True
 
 
 def test_type_or_range_error_discrete_set_accepts_a_list_not_just_a_tuple() -> None:
     # Schema authors write tuples (const()-folded) in practice, but the check itself shouldn't care
     # whether the special collection is a tuple or a plain list.
     field: cm.FieldSchema = ("X", "int", None, None, None, [1, 2, 4, 8])  # type: ignore[assignment]
-    assert cm.type_or_range_error(4, field) is False
-    assert cm.type_or_range_error(5, field) is True
+    assert cm.type_or_range_error(4, field)[0] is False
+    assert cm.type_or_range_error(5, field)[0] is True
 
 
 def test_check_cfg_get_default_discrete_set_with_real_default() -> None:
@@ -396,34 +588,34 @@ def test_check_cfg_get_default_discrete_set_special_only_field_is_rejected() -> 
 
 def test_type_or_range_error_str_zero_length_boundary() -> None:
     field: cm.FieldSchema = ("X", "str", None, 0, 4, None)
-    assert cm.type_or_range_error("", field) is False  # empty string accepted at the min=0 boundary
+    assert cm.type_or_range_error("", field)[0] is False  # empty string accepted at the min=0 boundary
 
 
 def test_type_or_range_error_bool_additional_wrong_types() -> None:
     field: cm.FieldSchema = ("X", "bool", None, None, None, None)
-    assert cm.type_or_range_error(False, field) is False
-    assert cm.type_or_range_error(0, field) is True  # int, not bool
-    assert cm.type_or_range_error(1.0, field) is True
-    assert cm.type_or_range_error("true", field) is True
-    assert cm.type_or_range_error(None, field) is True
+    assert cm.type_or_range_error(False, field)[0] is False
+    assert cm.type_or_range_error(0, field)[0] is True  # int, not bool
+    assert cm.type_or_range_error(1.0, field)[0] is True
+    assert cm.type_or_range_error("true", field)[0] is True
+    assert cm.type_or_range_error(None, field)[0] is True
 
 
 def test_type_or_range_error_float_nan_and_inf_rejected() -> None:
     field: cm.FieldSchema = ("X", "float", None, -10.0, 10.0, None)
     nan = float("nan")
     inf = float("inf")
-    assert cm.type_or_range_error(1.0, field) is False
-    assert cm.type_or_range_error(nan, field) is True
-    assert cm.type_or_range_error(inf, field) is True
-    assert cm.type_or_range_error(-inf, field) is True
+    assert cm.type_or_range_error(1.0, field)[0] is False
+    assert cm.type_or_range_error(nan, field)[0] is True
+    assert cm.type_or_range_error(inf, field)[0] is True
+    assert cm.type_or_range_error(-inf, field)[0] is True
 
 
 def test_type_or_range_error_str_length_bounds() -> None:
     field: cm.FieldSchema = ("X", "str", None, 2, 4, None)
-    assert cm.type_or_range_error("ab", field) is False
-    assert cm.type_or_range_error("abcd", field) is False
-    assert cm.type_or_range_error("a", field) is True
-    assert cm.type_or_range_error("abcde", field) is True
+    assert cm.type_or_range_error("ab", field)[0] is False
+    assert cm.type_or_range_error("abcd", field)[0] is False
+    assert cm.type_or_range_error("a", field)[0] is True
+    assert cm.type_or_range_error("abcde", field)[0] is True
 
 
 def test_type_or_range_error_min_greater_than_max_rejects_every_value() -> None:
@@ -431,31 +623,31 @@ def test_type_or_range_error_min_greater_than_max_rejects_every_value() -> None:
     # for any int, including the boundary values themselves - not just "genuinely out of range"
     # ones. Never crashes, just always returns True.
     field: cm.FieldSchema = ("X", "int", None, 10, 0, None)
-    assert cm.type_or_range_error(5, field) is True
-    assert cm.type_or_range_error(10, field) is True
-    assert cm.type_or_range_error(0, field) is True
+    assert cm.type_or_range_error(5, field)[0] is True
+    assert cm.type_or_range_error(10, field)[0] is True
+    assert cm.type_or_range_error(0, field)[0] is True
 
 
 def test_type_or_range_error_str_min_greater_than_max_rejects_every_value() -> None:
     field: cm.FieldSchema = ("X", "str", None, 4, 2, None)
-    assert cm.type_or_range_error("ab", field) is True
-    assert cm.type_or_range_error("abc", field) is True
+    assert cm.type_or_range_error("ab", field)[0] is True
+    assert cm.type_or_range_error("abc", field)[0] is True
 
 
 def test_type_or_range_error_asymmetric_wrong_typed_bound_rejected() -> None:
     # Only one of min/max wrong-typed (not both, unlike the existing "missing_or_wrong_typed_bounds"
     # test) - the `type(val_max) is int and type(val_min) is int` guard requires both, so either one
     # being wrong-typed alone is enough to reject a value that would otherwise be in range.
-    assert cm.type_or_range_error(5, ("X", "int", None, "0", 10, None)) is True  # type: ignore[arg-type]  # only min wrong
-    assert cm.type_or_range_error(5, ("X", "int", None, 0, "10", None)) is True  # type: ignore[arg-type]  # only max wrong
+    assert cm.type_or_range_error(5, ("X", "int", None, "0", 10, None))[0] is True  # type: ignore[arg-type]  # only min wrong
+    assert cm.type_or_range_error(5, ("X", "int", None, 0, "10", None))[0] is True  # type: ignore[arg-type]  # only max wrong
 
 
 def test_type_or_range_error_bool_ignores_nonsensical_min_max() -> None:
     # A bool field has no range concept - min/max are simply never read, so garbage values there
     # (an authoring mistake, e.g. copy-pasted from an int field) don't affect a genuinely valid bool.
     field: cm.FieldSchema = ("X", "bool", None, 5, 10, None)
-    assert cm.type_or_range_error(True, field) is False
-    assert cm.type_or_range_error(False, field) is False
+    assert cm.type_or_range_error(True, field)[0] is False
+    assert cm.type_or_range_error(False, field)[0] is False
 
 
 def test_type_or_range_error_bool_value_against_int_field_rejected() -> None:
@@ -463,8 +655,8 @@ def test_type_or_range_error_bool_value_against_int_field_rejected() -> None:
     # would treat True/False as ints too, since bool subclasses int) - the reverse direction of the
     # existing "int value against a bool field" tests above.
     field: cm.FieldSchema = ("X", "int", None, 0, 10, None)
-    assert cm.type_or_range_error(True, field) is True
-    assert cm.type_or_range_error(False, field) is True
+    assert cm.type_or_range_error(True, field)[0] is True
+    assert cm.type_or_range_error(False, field)[0] is True
 
 
 def test_type_or_range_error_str_length_counts_unicode_codepoints_not_bytes() -> None:
@@ -472,27 +664,42 @@ def test_type_or_range_error_str_length_counts_unicode_codepoints_not_bytes() ->
     # string with one multi-byte UTF-8 character has len() == 4, not the 5-byte UTF-8 encoding
     # length - str length bounds are codepoint bounds, not byte bounds, on this MicroPython build.
     field: cm.FieldSchema = ("X", "str", None, 4, 4, None)
-    assert cm.type_or_range_error("café", field) is False  # 4 codepoints, satisfies [4, 4]
+    assert cm.type_or_range_error("café", field)[0] is False  # 4 codepoints, satisfies [4, 4]
 
 
 def test_type_or_range_error_bool() -> None:
     field: cm.FieldSchema = ("X", "bool", None, None, None, None)
-    assert cm.type_or_range_error(True, field) is False
-    assert cm.type_or_range_error(1, field) is True  # int, not bool - `type() is bool` rejects it
+    assert cm.type_or_range_error(True, field)[0] is False
+    assert cm.type_or_range_error(1, field)[0] is True  # int, not bool - `type() is bool` rejects it
 
 
 def test_type_or_range_error_unknown_type_rejected() -> None:
-    assert cm.type_or_range_error(1, ("X", "unknown", None, None, None, None)) is True
+    assert cm.type_or_range_error(1, ("X", "unknown", None, None, None, None))[0] is True
 
 
 def test_type_or_range_error_wrong_length_field_rejected() -> None:
-    assert cm.type_or_range_error(1, ()) is True  # type: ignore[arg-type]  # nothing to unpack
-    assert cm.type_or_range_error(1, ("X", "int")) is True  # type: ignore[arg-type]  # too short
+    assert cm.type_or_range_error(1, ())[0] is True  # type: ignore[arg-type]  # nothing to unpack
+    assert cm.type_or_range_error(1, ("X", "int"))[0] is True  # type: ignore[arg-type]  # too short
 
 
 def test_check_cfg_get_default_normal() -> None:
     use_value, default = cm.check_cfg_get_default(("Count", "int", 5, 0, 10, None))
     assert (use_value, default) == (True, 5)
+
+
+def test_check_cfg_get_default_coerces_an_integral_float_default_to_int() -> None:
+    # An authoring shape that used to be rejected outright (def declared "int" but written as a
+    # float literal) is now accepted, and check_cfg_get_default returns the coerced int - not the
+    # original float - as the usable default, same as type_or_range_error's own coercion.
+    use_value, default = cm.check_cfg_get_default(("Count", "int", 5.0, 0, 10, None))
+    assert (use_value, default) == (True, 5)
+    assert type(default) is int
+
+
+def test_check_cfg_get_default_coerces_an_int_default_to_float() -> None:
+    use_value, default = cm.check_cfg_get_default(("Offset", "float", 5, -10.0, 10.0, None))
+    assert (use_value, default) == (True, 5.0)
+    assert type(default) is float
 
 
 def test_check_cfg_get_default_special_only() -> None:
@@ -537,7 +744,7 @@ def test_check_cfg_get_default_bool_special_only() -> None:
 def test_type_or_range_error_type_field_wrong_type_rejected() -> None:
     # "type" itself isn't a string (an authoring mistake) - no branch matches, same fallthrough
     # result as an unrecognized type name.
-    assert cm.type_or_range_error(5, ("X", 123, None, 0, 10, None)) is True  # type: ignore[arg-type]
+    assert cm.type_or_range_error(5, ("X", 123, None, 0, 10, None))[0] is True  # type: ignore[arg-type]
 
 
 def test_check_cfg_get_default_def_type_mismatched_from_declared_type_rejected() -> None:
@@ -567,7 +774,7 @@ def test_type_or_range_error_bool_ignores_malformed_special_for_a_genuinely_vali
     # a bool to bypass - so a wrong-typed special only ever surfaces via check_cfg_get_default's
     # own self-check (previous test), never by rejecting an otherwise-valid bool value outright.
     # Longstanding, deliberate asymmetry (see BACKLOG.md), not new to the tuple schema.
-    assert cm.type_or_range_error(True, ("X", "bool", None, None, None, 1)) is False
+    assert cm.type_or_range_error(True, ("X", "bool", None, None, None, 1))[0] is False
 
 
 def test_schema_dict_non_string_name_quirk() -> None:
@@ -714,6 +921,79 @@ def test_configmanager_valid_existing_non_default_value_preserved() -> None:
         run(mgr.setup())
         assert mgr.valid is True
         assert run(mgr.get_dict(["Count"])) == {"Count": 7}  # not overwritten back to the default (5)
+    finally:
+        _remove(path)
+
+
+def test_configmanager_setup_coerces_and_rewrites_a_hand_edited_int_value_for_a_float_field() -> None:
+    # A hand-edited (or pre-coercion-policy) file storing a float field's value as a bare-integer
+    # JSON literal ("Offset": 7, not "Offset": 7.0) must be coerced to float on load - and, since
+    # the coerced shape differs in type from what was actually on disk, setup()'s own
+    # `type(coerced_cfg) is not type(new_cfg)` rewrite check (not `!=`, which 7 != 7.0 would have
+    # missed - see config_manager.py's own inline comment) must fire and persist the corrected
+    # float shape back to disk, not just hold it in _cache until the next write.
+    path = _tmp_path("setupintforfloat.cfg")
+    _remove(path)
+    with open(path, "w") as f:
+        f.write('{"Count": 5, "Offset": 7, "Name": "abc", "Enabled": true}')  # Offset as a bare int
+    try:
+        mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
+        run(mgr.setup())
+        assert mgr.valid is True
+        assert run(mgr.get_dict(["Offset"])) == {"Offset": 7.0}
+        assert type(mgr._cache["Offset"]) is float
+        with open(path) as f:
+            on_disk = json.load(f)
+        assert on_disk["Offset"] == 7.0
+        assert type(on_disk["Offset"]) is float  # rewritten with the corrected float shape
+    finally:
+        _remove(path)
+
+
+def test_configmanager_setup_coerces_and_rewrites_a_hand_edited_integral_float_value_for_an_int_field() -> None:
+    # Mirror of the test above, in the other direction: an int field's value hand-edited/stored as
+    # "5.0" must coerce to the real int 5 and get rewritten back to disk in that shape too.
+    path = _tmp_path("setupfloatforint.cfg")
+    _remove(path)
+    with open(path, "w") as f:
+        f.write('{"Count": 5.0, "Offset": 1.5, "Name": "abc", "Enabled": true}')  # Count as an integral float
+    try:
+        mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
+        run(mgr.setup())
+        assert mgr.valid is True
+        assert run(mgr.get_dict(["Count"])) == {"Count": 5}
+        assert type(mgr._cache["Count"]) is int
+        with open(path) as f:
+            on_disk = json.load(f)
+        assert on_disk["Count"] == 5
+        assert type(on_disk["Count"]) is int  # rewritten with the corrected int shape
+    finally:
+        _remove(path)
+
+
+def test_configmanager_setup_matching_literal_shape_does_not_force_a_spurious_rewrite() -> None:
+    # Negative-space companion to the two tests above: a file whose stored values already match
+    # their field's own declared type shape exactly must NOT be flagged by the `type(coerced_cfg)
+    # is not type(new_cfg)` check - confirms that check only fires on an actual type mismatch, not
+    # on every load. Proven directly (not just indirectly via the value read back) by comparing the
+    # file's exact on-disk bytes before/after setup(): rewrite=True is the only thing that ever
+    # calls json.dump() again in setup(), so byte-identical content before and after is direct proof
+    # no rewrite happened.
+    path = _tmp_path("setupmatchingshape.cfg")
+    _remove(path)
+    with open(path, "w") as f:
+        json.dump({"Count": 7, "Offset": 2.5, "Name": "abc", "Enabled": True}, f)
+    with open(path, "rb") as f:
+        original_bytes = f.read()
+    try:
+        mgr = cm.ConfigManager(path, _SCHEMA, "TEST")
+        run(mgr.setup())
+        assert mgr.valid is True
+        assert run(mgr.get_dict(["Count", "Offset"])) == {"Count": 7, "Offset": 2.5}
+        assert type(mgr._cache["Count"]) is int
+        assert type(mgr._cache["Offset"]) is float
+        with open(path, "rb") as f:
+            assert f.read() == original_bytes  # untouched - no spurious rewrite
     finally:
         _remove(path)
 
@@ -1325,6 +1605,61 @@ def test_write_config_nan_and_inf_rejected_end_to_end() -> None:
         _remove(path)
 
 
+def test_write_config_int_value_for_float_field_coerced_and_persisted_as_float() -> None:
+    # End-to-end proof (not just type_or_range_error's own unit-level coverage above) that the
+    # coerced value - not the caller's original int - is what actually lands in _cache and on disk.
+    mgr, path = _make("writeintforfloat.cfg", cfg_vals=_VAL_FLOAT)
+    try:
+        ok, results = run(mgr.write_config({"Offset": 7}, _VAL_FLOAT))
+        assert (ok, results) == (True, {"Offset": "Valid"})
+        assert run(mgr.get_dict(["Offset"])) == {"Offset": 7.0}
+        assert type(mgr._cache["Offset"]) is float
+        with open(path) as f:
+            on_disk = json.load(f)
+        assert on_disk["Offset"] == 7.0
+        assert type(on_disk["Offset"]) is float  # written as "7.0", not "7" - real json.dump() shape
+    finally:
+        _remove(path)
+
+
+def test_write_config_integral_float_value_for_int_field_coerced_and_persisted_as_int() -> None:
+    mgr, path = _make("writefloatforint.cfg", cfg_vals=_VAL_INT)
+    try:
+        ok, results = run(mgr.write_config({"Count": 7.0}, _VAL_INT))
+        assert (ok, results) == (True, {"Count": "Valid"})
+        assert run(mgr.get_dict(["Count"])) == {"Count": 7}
+        assert type(mgr._cache["Count"]) is int
+        with open(path) as f:
+            on_disk = json.load(f)
+        assert on_disk["Count"] == 7
+        assert type(on_disk["Count"]) is int  # written as "7", not "7.0"
+    finally:
+        _remove(path)
+
+
+def test_write_config_fractional_float_value_for_int_field_rejected_end_to_end() -> None:
+    mgr, path = _make("writefractionalforint.cfg", cfg_vals=_VAL_INT)
+    try:
+        ok, results = run(mgr.write_config({"Count": 7.5}, _VAL_INT))
+        assert (ok, results) == (True, {"Count": "Invalid"})
+        assert run(mgr.get_dict(["Count"])) == {"Count": 5}  # untouched, still the default
+    finally:
+        _remove(path)
+
+
+def test_write_config_int_value_for_float_field_equal_to_current_value_is_unchanged_not_valid() -> None:
+    # The coerced value (7.0) must be compared against the cached value, not the caller's raw int
+    # (7) - confirms new_cache[key] != value in write_config() sees the coerced shape, so a
+    # would-be-genuine-no-op int PUT correctly reports "Unchanged" rather than "Valid".
+    mgr, path = _make("writeintequalfloat.cfg", cfg_vals=_VAL_FLOAT)
+    try:
+        run(mgr.write_config({"Offset": 7}, _VAL_FLOAT))  # first: 1.5 -> 7.0
+        ok, results = run(mgr.write_config({"Offset": 7}, _VAL_FLOAT))  # second: resubmit as an int again
+        assert (ok, results) == (True, {"Offset": "Unchanged"})
+    finally:
+        _remove(path)
+
+
 def test_write_config_unknown_key_marked_invalid() -> None:
     mgr, path = _make("writeunknown.cfg")
     try:
@@ -1559,6 +1894,19 @@ def test_write_config_special_only_value_matching_sentinel_is_valid() -> None:
     mgr, path = _make("specialsentinel.cfg")
     try:
         ok, results = run(mgr.write_config({"Special": 99}, _VAL_SPECIAL))
+        assert (ok, results) == (True, {"Special": "Valid"})
+    finally:
+        _remove(path)
+
+
+def test_write_config_special_only_int_sentinel_accepts_a_coerced_integral_float() -> None:
+    # Coercion runs before the special-value bypass for a special-only field too, not just an
+    # ordinary ranged one (already covered at the type_or_range_error unit level by
+    # test_type_or_range_error_int_field_coerced_float_still_honors_special_bypass) - confirmed
+    # here end-to-end through write_config()'s own special-only ("not used for storage") path.
+    mgr, path = _make("specialsentinelcoerced.cfg")
+    try:
+        ok, results = run(mgr.write_config({"Special": 99.0}, _VAL_SPECIAL))
         assert (ok, results) == (True, {"Special": "Valid"})
     finally:
         _remove(path)

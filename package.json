@@ -8,6 +8,7 @@
     "lint": "eslint js tests_js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "lint:html": "html-validate \"html/**/*.html\"",
     "lint:css": "stylelint \"html/**/*.css\"",
     "preview": "python3 -m http.server 8000"
@@ -16,6 +17,7 @@
     "@eslint/js": "^10.0.1",
     "@types/node": "^26.2.0",
     "@vitest/browser-playwright": "^4.1.11",
+    "@vitest/coverage-v8": "^4.1.11",
     "eslint": "^10.8.1",
     "globals": "^17.11.0",
     "html-validate": "^11.9.0",

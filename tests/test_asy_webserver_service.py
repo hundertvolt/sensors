@@ -124,10 +124,11 @@ class _FakeModule:
             if key not in defaults:
                 results[key] = "Invalid"
                 continue
-            if cm.type_or_range_error(value, defaults[key]):
+            is_error, coerced_value = cm.type_or_range_error(value, defaults[key])
+            if is_error:
                 results[key] = "Invalid"
                 continue
-            self._values[key] = value
+            self._values[key] = coerced_value
             results[key] = "Valid"
         return results
 
@@ -679,6 +680,53 @@ def test_notification_put_pause_time_reported_invalid_when_not_an_int() -> None:
         res = run(app.dispatch_request(_make_request(app, "PUT", "/notification", {"PauseTime": bad_value})))
         body = json.loads(res.body)
         assert body["result"]["PauseTime"] == "Invalid"
+
+
+def test_notification_put_pause_time_accepts_integral_float_coerced_to_int() -> None:
+    # Mirror of the fractional-rejected test above, in the accept direction: config_manager.py's
+    # coerce_numeric() policy (SPECIFICATION.md Part A.8) accepts an integral float for PauseTime's
+    # own synthetic int FieldSchema, and the callback must receive the coerced int, not the raw
+    # float - a real client's json.dumps(60.0)-shaped body must not reach notification_pause() as
+    # a float when its own signature (and the real coordinator behind it) expects int.
+    pause_calls = []
+
+    async def notification_pause(secs: int) -> bool:
+        pause_calls.append(secs)
+        return True
+
+    notif = _FakeModule("NOTIF", schema=(("OnH", "int", 8, 0, 23, None),), values={"OnH": 8})
+    service, app = _make_service(
+        settings={"notification": [SettingsGroup(notif, ("OnH",))]}, notification_pause=notification_pause
+    )
+    res = run(app.dispatch_request(_make_request(app, "PUT", "/notification", {"PauseTime": 60.0})))
+    body = json.loads(res.body)
+    assert body["result"]["PauseTime"] == "Valid"
+    assert pause_calls == [60]
+    assert type(pause_calls[0]) is int
+
+
+def test_notification_put_pause_time_reported_invalid_when_out_of_range() -> None:
+    # Legacy's own pauseAutoLED command (modules/sensortask-wozi.py, update_valid_json(...,
+    # 0, 3600, ...)) rejects an out-of-range pauseTime as Invalid rather than silently clamping it -
+    # LockedCounter.set_value() would clamp a too-large/negative value into [0, 3600] without
+    # raising, so this dispatcher must reject it itself before ever calling the callback, the same
+    # way every other numeric field in this codebase is range-checked server-side regardless of
+    # what a client sends (config_manager.py's own type_or_range_error()).
+    pause_calls = []
+
+    async def notification_pause(secs: int) -> bool:
+        pause_calls.append(secs)
+        return True
+
+    notif = _FakeModule("NOTIF", schema=(("OnH", "int", 8, 0, 23, None),), values={"OnH": 8})
+    service, app = _make_service(
+        settings={"notification": [SettingsGroup(notif, ("OnH",))]}, notification_pause=notification_pause
+    )
+    for bad_value in (-1, 3601):
+        res = run(app.dispatch_request(_make_request(app, "PUT", "/notification", {"PauseTime": bad_value})))
+        body = json.loads(res.body)
+        assert body["result"]["PauseTime"] == "Invalid"
+    assert pause_calls == []  # the callback must never see an out-of-range value
 
 
 def test_notification_put_pause_time_raising_callback_returns_failed_not_an_exception() -> None:

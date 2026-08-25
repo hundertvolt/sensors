@@ -77,6 +77,55 @@ describe("buildField", () => {
         expect(mustQuery(el, '[data-field-key="CO2"]').textContent).toBe("612");
     });
 
+    // An editable number/string field has two ".field-description"-classed <p>s (the "Current
+    // value: …" caption, then the hint text) - the hint is always the last one.
+    /**
+     * @param {HTMLElement} el
+     * @returns {string | null}
+     */
+    function hintText(el) {
+        const nodes = el.querySelectorAll(".field-description");
+        return nodes[nodes.length - 1].textContent;
+    }
+
+    it("shows a min/max range hint for an editable number field", () => {
+        const el = mount(buildField({ key: "MeasInt", label: "Measurement Interval", unit: "s", kind: "number", min: 2, max: 1800 }, 5, true));
+        expect(hintText(el)).toContain("Valid values: 2 to 1800 s");
+    });
+
+    it("shows a length hint for an editable string field", () => {
+        const el = mount(buildField({ key: "Hostname", label: "Hostname", kind: "string", minLength: 1, maxLength: 63 }, "wozi", true));
+        expect(hintText(el)).toContain("Length: 1 to 63 characters");
+    });
+
+    it("shows each special value's meaning in the description", () => {
+        const field = {
+            key: "AmbPres",
+            label: "Ambient Pressure",
+            unit: "hPa",
+            kind: /** @type {const} */ ("number"),
+            min: 700,
+            max: 1400,
+            specialValues: [{ value: 0, meaning: "Compensation off / use Altitude" }],
+        };
+        const el = mount(buildField(field, 1013, true));
+        expect(hintText(el)).toContain("0 = Compensation off / use Altitude");
+    });
+
+    it("includes field.description in the hint text, alongside a range hint", () => {
+        const field = {
+            key: "MeasInt",
+            label: "Measurement Interval",
+            kind: /** @type {const} */ ("number"),
+            min: 2,
+            max: 1800,
+            description: "How often the sensor takes a new reading.",
+        };
+        const el = mount(buildField(field, 5, true));
+        expect(hintText(el)).toContain("Valid values: 2 to 1800");
+        expect(hintText(el)).toContain("How often the sensor takes a new reading.");
+    });
+
     it("renders an editable toggle that flips its own On/Off state with no network call", () => {
         const el = mount(buildField({ key: "SelfCal", label: "Self-Cal", kind: "toggle" }, true, true));
         const button = mustQuery(el, '[data-field-key="SelfCal"]');
@@ -105,6 +154,34 @@ describe("buildField", () => {
         expect(select.value).toBe("1");
     });
 
+    it("renders an editable enum with no matching current value as unselected, not silently defaulting to the first option (regression)", () => {
+        // SystemCmd is never returned by GET /system (write-only dispatched action - SPECIFICATION.md
+        // Part A.8), so its currentValue is always undefined here. Without an explicit blank
+        // placeholder, a native <select> auto-selects its first <option> when none is marked
+        // selected - so a visitor who opened the System section and clicked Apply without ever
+        // touching the dropdown would silently submit whichever command happens to be listed first
+        // (e.g. "reboot"), with zero deliberate interaction. Confirmed live in Chromium before this
+        // fix: exactly this sequence PUT {"SystemCmd":"reboot"}.
+        const field = {
+            key: "SystemCmd",
+            label: "Command",
+            kind: /** @type {const} */ ("enum"),
+            options: [
+                { value: "reboot", label: "Reboot" },
+                { value: "bootloader", label: "Reboot into bootloader" },
+                { value: "mempause", label: "Pause backups for 5 minutes" },
+            ],
+        };
+        const el = mount(buildField(field, undefined, true));
+        const select = /** @type {HTMLSelectElement} */ (mustQuery(el, '[data-field-key="SystemCmd"]'));
+        expect(select.value).toBe("");
+        for (const option of Array.from(select.options)) {
+            if (option.value !== "") {
+                expect(option.selected).toBe(false);
+            }
+        }
+    });
+
     it("renders an editable composite field with one input per sub-field", () => {
         const field = {
             key: "lightCmdLED",
@@ -121,11 +198,43 @@ describe("buildField", () => {
         expect(mustQuery(grid, '[data-sub-field-key="r"]')).not.toBeNull();
     });
 
+    it("renders an editable composite field with no subFields as an empty, non-crashing grid", () => {
+        const field = { key: "lightCmdLED", label: "LED Flash", kind: /** @type {const} */ ("composite") };
+        const el = mount(buildField(field, undefined, true));
+        const grid = mustQuery(el, '[data-field-key="lightCmdLED"]');
+        expect(grid.querySelectorAll("input")).toHaveLength(0);
+    });
+
     it("renders an editable number field pre-filled via a current-value caption, not the input's value", () => {
         const el = mount(buildField({ key: "MeasInt", label: "Measurement Interval", unit: "s", kind: "number", min: 2, max: 1800 }, 5, true));
         const input = /** @type {HTMLInputElement} */ (mustQuery(el, '[data-field-key="MeasInt"]'));
         expect(input.value).toBe(""); // sparse-PUT convention: starts empty, not pre-filled with the current value
         expect(mustQuery(el, '[data-current-value-for="MeasInt"]').textContent).toContain("5");
+    });
+
+    // A distinct attribute from data-field-key (which must keep pointing at the specific control -
+    // collectGroupBody()/paint() in render.js rely on that) - this one tags the whole per-field
+    // wrapper, so a PUT result can color the individual field's own box (WEBSITE_PLAN.md §12
+    // follow-up: per-field granularity restored alongside the accent-stripe presentation).
+    it("tags the field's own wrapper with a distinct data-field-wrapper-key, separate from the control's data-field-key", () => {
+        const field = buildField({ key: "CO2", label: "CO2", kind: "readonly" }, 612, false);
+        expect(field.dataset.fieldWrapperKey).toBe("CO2");
+        // The wrapper is a different element from the control itself.
+        expect(field).not.toBe(mustQuery(field, '[data-field-key="CO2"]'));
+        mount(field);
+    });
+
+    it("tags a composite field's own wrapper with data-field-wrapper-key too, distinct from the grid's data-field-key", () => {
+        const fieldDef = {
+            key: "lightCmdLED",
+            label: "LED Flash",
+            kind: /** @type {const} */ ("composite"),
+            subFields: [{ key: "r", label: "Red", kind: /** @type {const} */ ("number") }],
+        };
+        const field = buildField(fieldDef, undefined, true);
+        expect(field.dataset.fieldWrapperKey).toBe("lightCmdLED");
+        expect(field).not.toBe(mustQuery(field, '[data-field-key="lightCmdLED"]'));
+        mount(field);
     });
 });
 
@@ -174,6 +283,11 @@ describe("buildErrcountGroup", () => {
         const wrapper = buildErrcountGroup(THREE_MODULE_GROUP, THREE_MODULE_ERRCOUNT);
         expect(wrapper.classList.contains("card")).toBe(true);
         expect(mustQuery(wrapper, "h3").textContent).toBe("Errors");
+    });
+
+    it("tags the card with data-group-key itself, like buildFieldGroupCard() does (regression - §12's layering contract names js/templates.js as the sole owner of this hook; it had drifted to being set externally by render.js instead)", () => {
+        const wrapper = buildErrcountGroup(THREE_MODULE_GROUP, THREE_MODULE_ERRCOUNT);
+        expect(wrapper.dataset.groupKey).toBe("errcount");
     });
 
     it("starts fully collapsed to just the rollup - no module rows visible", () => {
@@ -225,6 +339,15 @@ describe("buildErrcountGroup", () => {
         expect(list.querySelectorAll(".history-entry")).toHaveLength(2);
     });
 
+    it("treats a module absent from errcount entirely as a healthy, zero-count module", () => {
+        const group = { key: "errcount", label: "Errors", kind: /** @type {const} */ ("errcount"), modules: [{ key: "SGP40", label: "SGP40" }] };
+        const wrapper = buildErrcountGroup(group, {});
+        mustQuery(wrapper, ".action-button").click();
+        const row = mustQuery(wrapper, ".errcount-row");
+        expect(mustQuery(row, ".errcount-row-count").textContent).toBe("0");
+        expect(row.dataset.hasErrors).toBe("false");
+    });
+
     it("shows a placeholder message for a module with no history", () => {
         const group = { key: "errcount", label: "Errors", kind: /** @type {const} */ ("errcount"), modules: [{ key: "SGP40", label: "SGP40" }] };
         const wrapper = buildErrcountGroup(group, { SGP40: { counter: 0 } });
@@ -272,7 +395,7 @@ describe("buildSectionShell", () => {
         mainEl?.remove();
     });
 
-    it("builds the heading/description and returns an empty grid, clearing prior content", () => {
+    it("builds the heading/description and returns an empty grid plus a hidden error banner, clearing prior content", () => {
         mainEl = document.createElement("main");
         mainEl.innerHTML = "<p>stale content from a previous section</p>";
         document.body.appendChild(mainEl);
@@ -286,13 +409,15 @@ describe("buildSectionShell", () => {
             pollGroup: "live",
             groups: [],
         };
-        const grid = buildSectionShell(section, mainEl);
+        const { grid, errorBanner } = buildSectionShell(section, mainEl);
 
         expect(mustQuery(mainEl, ".section-heading").textContent).toBe("Measurements");
         expect(mustQuery(mainEl, ".section-description").textContent).toBe("Live readings.");
         expect(grid.className).toBe("group-grid");
         expect(grid.children).toHaveLength(0);
         expect(mainEl.textContent).not.toContain("stale content");
+        expect(errorBanner.classList.contains("hidden")).toBe(true);
+        expect(errorBanner.classList.contains("error-banner")).toBe(true);
     });
 });
 
@@ -327,5 +452,75 @@ describe("buildNavDrawer", () => {
         expect(links[0].dataset.sectionKey).toBe("measurements");
         // No listener attached yet - clicking must not throw and must have no observable effect.
         expect(() => links[0].click()).not.toThrow();
+    });
+});
+
+describe("XSS safety (standing guideline: textContent only, never innerHTML)", () => {
+    /** @type {HTMLElement | undefined} */
+    let container;
+
+    afterEach(() => {
+        container?.remove();
+    });
+
+    const HOSTILE = '<img src=x onerror="window.__xssFired = true">';
+
+    it("renders a hostile field label/value as literal text, never as parsed markup", () => {
+        container = document.createElement("div");
+        document.body.appendChild(container);
+
+        /** @type {import("../js/definitions.js").FieldDef} */
+        const field = { key: "CO2", label: HOSTILE, kind: "readonly" };
+        container.appendChild(buildField(field, HOSTILE, false));
+
+        expect(container.querySelector("img")).toBeNull();
+        expect(/** @type {any} */ (window).__xssFired).toBeUndefined();
+        expect(container.textContent).toContain(HOSTILE);
+    });
+
+    it("renders a hostile field-group label as literal text", () => {
+        container = document.createElement("div");
+        document.body.appendChild(container);
+
+        /** @type {import("../js/definitions.js").FieldGroup} */
+        const group = { key: "SCD30", label: HOSTILE, fields: [] };
+        container.appendChild(buildFieldGroupCard(group, {}));
+
+        expect(container.querySelector("img")).toBeNull();
+        expect(/** @type {any} */ (window).__xssFired).toBeUndefined();
+        expect(mustQuery(container, "h3").textContent).toBe(HOSTILE);
+    });
+
+    it("renders a hostile errcount module label as literal text", () => {
+        container = document.createElement("div");
+        document.body.appendChild(container);
+
+        /** @type {import("../js/definitions.js").ErrcountGroup} */
+        const group = { key: "errcount", label: "Errors", kind: "errcount", modules: [{ key: "SCD30", label: HOSTILE }] };
+        container.appendChild(buildErrcountGroup(group, { SCD30: { counter: 0 } }));
+
+        expect(container.querySelector("img")).toBeNull();
+        expect(/** @type {any} */ (window).__xssFired).toBeUndefined();
+        expect(container.textContent).toContain(HOSTILE);
+    });
+
+    it("renders a hostile device/section name in the nav drawer as literal text", () => {
+        container = document.createElement("nav");
+        document.body.appendChild(container);
+
+        /** @type {import("../js/definitions.js").SiteDefinitions} */
+        const defs = {
+            schemaVersion: "1.0.0",
+            device: { id: "x", displayName: HOSTILE },
+            landingSection: "measurements",
+            defaultPollIntervalMs: 3000,
+            sections: [{ key: "measurements", label: HOSTILE, rest: { get: "/measurements" }, pollGroup: "live", groups: [] }],
+        };
+
+        buildNavDrawer(defs, container);
+
+        expect(container.querySelector("img")).toBeNull();
+        expect(/** @type {any} */ (window).__xssFired).toBeUndefined();
+        expect(container.textContent).toContain(HOSTILE);
     });
 });

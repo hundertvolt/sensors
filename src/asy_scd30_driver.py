@@ -256,10 +256,11 @@ class SCD30_Reader(SensorReader):
             if field is None or setter is None:
                 results[key] = "Invalid"
                 continue
-            if type_or_range_error(value, field):
+            is_error, coerced_value = type_or_range_error(value, field)
+            if is_error:
                 results[key] = "Invalid"
                 continue
-            results[key] = "Valid" if await setter(value) else "Failed"
+            results[key] = "Valid" if await setter(coerced_value) else "Failed"
         return results
 
     async def get_error_counter(self) -> dict[str, dict[str, int | list[int] | list[str]]]:

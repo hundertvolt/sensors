@@ -57,7 +57,7 @@
                     "submit": true,
                     "fields": [
                         { "key": "MeasInt", "label": "Measurement Interval", "unit": "s", "kind": "number", "min": 2, "max": 1800 },
-                        { "key": "TempOffs", "label": "Temperature Offset", "unit": "K", "kind": "number", "min": 0.0, "max": 655.35 },
+                        { "key": "TempOffs", "label": "Temperature Offset", "unit": "K", "kind": "number", "min": 0.0, "max": 655.35, "float": true },
                         {
                             "key": "AmbPres", "label": "Ambient Pressure (starts continuous measurement)", "unit": "hPa", "kind": "number",
                             "min": 700, "max": 1400,
@@ -108,12 +108,12 @@
                             { "value": 1, "label": "×1" }, { "value": 2, "label": "×2" }, { "value": 4, "label": "×4" },
                             { "value": 8, "label": "×8" }, { "value": 16, "label": "×16" }, { "value": 32, "label": "×32" }
                         ] },
-                        { "key": "PressOffset", "label": "Pressure Offset", "unit": "hPa", "kind": "number", "min": -500.0, "max": 500.0 },
+                        { "key": "PressOffset", "label": "Pressure Offset", "unit": "hPa", "kind": "number", "min": -500.0, "max": 500.0, "float": true },
                         { "key": "TempOvers", "label": "Temperature Oversampling", "kind": "enum", "options": [
                             { "value": 1, "label": "×1" }, { "value": 2, "label": "×2" }, { "value": 4, "label": "×4" },
                             { "value": 8, "label": "×8" }, { "value": 16, "label": "×16" }, { "value": 32, "label": "×32" }
                         ] },
-                        { "key": "TempOffset", "label": "Temperature Offset", "unit": "K", "kind": "number", "min": -10.0, "max": 10.0 },
+                        { "key": "TempOffset", "label": "Temperature Offset", "unit": "K", "kind": "number", "min": -10.0, "max": 10.0, "float": true },
                         {
                             "key": "FiltCoeff", "label": "Filter Coefficient", "kind": "enum",
                             "description": "First-order IIR lowpass filter coefficient.",
@@ -123,8 +123,8 @@
                                 { "value": 63, "label": "63" }, { "value": 127, "label": "127" }
                             ]
                         },
-                        { "key": "SeaLevelOffs", "label": "Sensor Sea Level Offset", "unit": "m", "kind": "number", "min": -1000.0, "max": 5000.0 },
-                        { "key": "MeanAtmTemp", "label": "Mean Atmospheric Temperature", "unit": "°C", "kind": "number", "min": -50.0, "max": 50.0 }
+                        { "key": "SeaLevelOffs", "label": "Sensor Sea Level Offset", "unit": "m", "kind": "number", "min": -1000.0, "max": 5000.0, "float": true },
+                        { "key": "MeanAtmTemp", "label": "Mean Atmospheric Temperature", "unit": "°C", "kind": "number", "min": -50.0, "max": 50.0, "float": true }
                     ]
                 }
             ]
@@ -141,10 +141,10 @@
                     "label": "Wi-Fi & Identity",
                     "submit": true,
                     "fields": [
-                        { "key": "SSID", "label": "Wi-Fi SSID", "kind": "string", "minLength": 2, "maxLength": 32 },
+                        { "key": "SSID", "label": "Wi-Fi SSID", "kind": "string", "minLength": 0, "maxLength": 32 },
                         { "key": "PW", "label": "Wi-Fi Password", "kind": "string", "minLength": 8, "maxLength": 63, "mask": true },
                         { "key": "Country", "label": "Country", "kind": "string", "minLength": 2, "maxLength": 2, "description": "Two-letter ISO 3166 country code." },
-                        { "key": "Hostname", "label": "Hostname", "kind": "string", "minLength": 1, "maxLength": 63 }
+                        { "key": "Hostname", "label": "Hostname", "kind": "string", "minLength": 1, "maxLength": 32 }
                     ]
                 },
                 {
@@ -309,11 +309,11 @@
                         { "key": "OffH", "label": "Auto Off Hour", "kind": "number", "min": 0, "max": 23 },
                         { "key": "OffM", "label": "Auto Off Minute", "kind": "number", "min": 0, "max": 59 },
                         { "key": "FlashBri", "label": "Flash Brightness", "kind": "number", "min": 1, "max": 255 },
-                        { "key": "Interv", "label": "Flash Interval", "unit": "s", "kind": "number", "min": 60.0, "max": 3600.0 },
-                        { "key": "FlashDur", "label": "Flash Duration", "unit": "s", "kind": "number", "min": 0.5, "max": 10.0 },
+                        { "key": "Interv", "label": "Flash Interval", "unit": "s", "kind": "number", "min": 60.0, "max": 3600.0, "float": true },
+                        { "key": "FlashDur", "label": "Flash Duration", "unit": "s", "kind": "number", "min": 0.5, "max": 10.0, "float": true },
                         { "key": "WarnCO2", "label": "CO2 Warning Threshold", "unit": "ppm", "kind": "number", "min": 0, "max": 3000 },
-                        { "key": "WarnVOC", "label": "VOC Warning Threshold", "unit": "ticks", "kind": "number", "min": 0, "max": 500 },
-                        { "key": "WarnHum", "label": "Humidity Warning Threshold", "unit": "%", "kind": "number", "min": 0.0, "max": 100.0 }
+                        { "key": "WarnVOC", "label": "VOC Warning Threshold", "kind": "number", "min": 0, "max": 500 },
+                        { "key": "WarnHum", "label": "Humidity Warning Threshold", "unit": "%", "kind": "number", "min": 0.0, "max": 100.0, "float": true }
                     ]
                 },
                 {
@@ -328,7 +328,7 @@
                                 { "key": "r", "label": "Red", "kind": "number", "min": 0, "max": 255 },
                                 { "key": "g", "label": "Green", "kind": "number", "min": 0, "max": 255 },
                                 { "key": "b", "label": "Blue", "kind": "number", "min": 0, "max": 255 },
-                                { "key": "t", "label": "Time (s)", "kind": "number", "min": 0.5, "max": 60.0 }
+                                { "key": "t", "label": "Time (s)", "kind": "number", "min": 0.5, "max": 60.0, "float": true }
                             ]
                         }
                     ]

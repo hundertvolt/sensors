@@ -1,15 +1,6 @@
 /**
- * Presentation layer (WEBSITE_PLAN.md §12): every DOM element this app ever creates - its
- * structure, order, nesting, and CSS classes - is built here, and only here. This is the file (plus
- * `html/style.css`) a purely visual/layout redesign touches; it never fetches data, validates
- * input, or calls the REST API. The only interactivity here is self-contained and non-networked
- * (a toggle flipping its own On/Off label, an errcount tile expanding its own history list) -
- * anything that talks to the network or the poll-manager lives in a controller (`render.js`/
- * `nav.js`) instead, which locates the elements built here purely via the `data-*`
- * attributes/CSS classes documented in WEBSITE_PLAN.md §12's contract table, never by structural
- * position. Redesigning "what this looks like" or "what order things appear in" only ever means
- * editing this file and `html/style.css` - never `js/poll-manager.js`, `js/mock-server.js`,
- * `js/definitions.js`, or the business-logic half of `js/render.js`/`js/nav.js`.
+ * Presentation layer - the visual half of §12's visual/mechanics split. Every DOM element this
+ * app ever creates is built here, and only here; see WEBSITE_PLAN.md §12 for the full contract.
  */
 
 /** @typedef {import("./definitions.js").FieldDef} FieldDef */
@@ -69,10 +60,9 @@ function buildFieldDescription(field) {
 }
 
 /**
- * Builds one field's markup - label, its control (or a plain value span when not editable), and
- * its description/range hint. A toggle's own On/Off flip is wired here since it's purely
- * cosmetic (no network call, no validation); every other control is left inert - a controller
- * attaches the real (networked) behavior separately, keyed off this element's `data-field-key`.
+ * Builds one field's markup - label, control (or value span when not editable), description
+ * hint. A toggle's own cosmetic On/Off flip is wired here (§12); every other control is left
+ * inert for a controller to attach real behavior to, keyed off `data-field-key`.
  * @param {FieldDef} field
  * @param {unknown} currentValue
  * @param {boolean} editable
@@ -81,6 +71,10 @@ function buildFieldDescription(field) {
 export function buildField(field, currentValue, editable) {
     const wrapper = document.createElement("div");
     wrapper.className = "field";
+    // Distinct from data-field-key below (which must keep pointing at the specific control -
+    // collectGroupBody()/paint() rely on that exact element) - this tags the whole per-field box
+    // so a PUT result can color it individually (WEBSITE_PLAN.md §12, per-field granularity).
+    wrapper.dataset.fieldWrapperKey = field.key;
 
     const label = document.createElement("label");
     label.className = "field-label";
@@ -130,7 +124,21 @@ export function buildField(field, currentValue, editable) {
         const select = document.createElement("select");
         select.id = `field-${field.key}`;
         select.dataset.fieldKey = field.key;
-        for (const option of field.options ?? []) {
+        const options = field.options ?? [];
+        if (!options.some((option) => option.value === currentValue)) {
+            // No real value to preselect (e.g. SystemCmd, a write-only dispatched action never
+            // returned by GET /system) - without this, a native <select> with no <option> marked
+            // selected defaults to its first one, so clicking Apply without ever touching the
+            // dropdown would silently submit whichever command is listed first. Left unselected,
+            // collectGroupBody()'s existing control.value === "" check omits it from the PUT body,
+            // matching every other untouched field's own sparse-PUT convention.
+            const placeholder = document.createElement("option");
+            placeholder.value = "";
+            placeholder.textContent = "Select…";
+            placeholder.selected = true;
+            select.appendChild(placeholder);
+        }
+        for (const option of options) {
             const optionEl = document.createElement("option");
             optionEl.value = String(option.value);
             optionEl.textContent = option.label;
@@ -236,24 +244,9 @@ function worstErrcountType(entry) {
 }
 
 /**
- * Builds the Status page's error-count card: same `.card` shell every other field group uses
- * (heading + bordered/shadowed body - project owner, session 2 follow-up: the rollup/buttons were
- * floating loose on the page, unlike every other displayed value), starting fully collapsed to
- * just a rollup ("N modules with errors" / "M modules with warnings") plus two filter buttons
- * ("Show flagged"/"Show all") - a device can have 15+ registered modules, and showing every one of
- * them by default was too much vertical space for a page a visitor mostly just needs to glance at.
- * Choosing a filter is purely cosmetic (never touches the network), so it's wired here. Once a
- * module row is revealed by either filter, its history is shown immediately alongside it - no
- * further per-row click needed (project owner: a collapsed history on an already-revealed,
- * already-flagged module read as broken, not as a second layer of hiding).
- *
- * Each history entry is the raw errno (`num`) alone - the real backend has no per-entry timestamp
- * and never attaches a human meaning to an errno (WEBSITE_PLAN.md §12/§8). `type` ("N"=no error/
- * placeholder slot, "E"=error, "W"=warning) is by design never shown as text; it only selects
- * `num`'s color via `data-err-type` + `html/style.css`'s `.history-entry[data-err-type]` rules
- * (green/yellow/red) - the same "controller/template sets a semantic value, CSS alone decides what
- * it looks like" contract §12 already uses for `data-apply-status`. A row's own worst type (across
- * its history) drives the same color on its visible counter, and is what "flagged" filters by.
+ * Builds the Status page's error-count card: collapsed rollup + filter buttons, entries colored
+ * (never captioned) by their raw errno's type. See WEBSITE_PLAN.md §8's "Errcount rollup/collapse
+ * UX" and "Error-history entry shape" resolutions for the full rationale.
  * @param {ErrcountGroup} group
  * @param {Record<string, {counter: number, history?: {num: number, type: "N"|"E"|"W"}[]}>} errcount
  * @returns {HTMLElement}
@@ -261,6 +254,7 @@ function worstErrcountType(entry) {
 export function buildErrcountGroup(group, errcount) {
     const card = document.createElement("div");
     card.className = "card";
+    card.dataset.groupKey = group.key;
 
     const heading = document.createElement("h3");
     heading.textContent = group.label;
@@ -360,11 +354,12 @@ export function buildErrcountGroup(group, errcount) {
 }
 
 /**
- * Builds a section's static shell (heading + description) directly into `mainEl`, plus an empty
- * group grid for a controller to populate. Returns the grid.
+ * Builds a section's static shell (heading + description) into `mainEl`, plus an empty group
+ * grid and an inert error banner for a controller to use. See WEBSITE_PLAN.md §12's "One
+ * deliberate exception" note for why this returns `{grid, errorBanner}` directly.
  * @param {Section} section
  * @param {HTMLElement} mainEl
- * @returns {HTMLElement}
+ * @returns {{grid: HTMLElement, errorBanner: HTMLElement}}
  */
 export function buildSectionShell(section, mainEl) {
     mainEl.replaceChildren();
@@ -381,10 +376,15 @@ export function buildSectionShell(section, mainEl) {
         mainEl.appendChild(desc);
     }
 
+    const errorBanner = document.createElement("p");
+    errorBanner.className = "error-banner hidden";
+    errorBanner.setAttribute("role", "alert");
+    mainEl.appendChild(errorBanner);
+
     const grid = document.createElement("div");
     grid.className = "group-grid";
     mainEl.appendChild(grid);
-    return grid;
+    return { grid, errorBanner };
 }
 
 /**

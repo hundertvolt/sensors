@@ -10,7 +10,7 @@
  *   description?: string, min?: number, max?: number, minLength?: number, maxLength?: number,
  *   mask?: boolean, options?: EnumOption[], specialValues?: SpecialValue[],
  *   subFields?: FieldDef[], onLabel?: string, offLabel?: string,
- *   format?: "gmtimestruct",
+ *   format?: "gmtimestruct", float?: boolean,
  * }} FieldDef
  * @typedef {{key: string, label: string, fields: FieldDef[], submit?: boolean, submitLabel?: string}} FieldGroup
  * @typedef {{key: string, label: string, kind: "errcount", modules: {key: string, label: string}[]}} ErrcountGroup
@@ -37,6 +37,17 @@
  *   },
  * }} MockDeviceData
  */
+
+import { fetchWithTimeout } from "./poll-manager.js";
+
+// A "number"-kind field's real server-side type is Python int by default; float?: true marks the
+// few fields that are actually Python float. config_manager.py's coerce_numeric()/
+// type_or_range_error() (SPECIFICATION.md Part A.8) accepts a JSON int for a float field
+// unconditionally (a blanket accept - every int is exactly representable as a float), but a
+// float field's own value is never subject to the int-only "no fractional part" check - so this
+// flag's only remaining job (js/mock-server.js's coerceAndValidate()) is telling an int-typed
+// field apart from a float-typed one so a fractional value is rejected only where it should be.
+
 // errcount history shape matches src/print_log.py's get_log()/asy_webserver_service.py's
 // _shape_errcount_entry() exactly: no per-entry timestamp exists anywhere in the real system, and
 // "type" ("N"=no error/placeholder slot, "E"=error, "W"=warning) is never shown as text - only used
@@ -69,11 +80,17 @@ export function validateDefinitions(data) {
             );
         }
     }
-    if (typeof defs.device !== "object" || defs.device === null || typeof (/** @type {any} */ (defs.device).id) !== "string") {
+    if (typeof defs.device !== "object" || defs.device === null || typeof (/** @type {Record<string, unknown>} */ (defs.device).id) !== "string") {
         problems.push("device.id is missing");
     }
     if (typeof defs.landingSection !== "string") {
         problems.push("landingSection is missing");
+    }
+    // Falls back to for any section that omits its own pollIntervalMs (js/render.js's
+    // startPolling() call) - a missing/non-positive value would otherwise reach setTimeout() as
+    // undefined/0/negative, firing an unthrottled tight polling loop instead of failing loudly here.
+    if (typeof defs.defaultPollIntervalMs !== "number" || !(defs.defaultPollIntervalMs > 0)) {
+        problems.push("defaultPollIntervalMs must be a positive number");
     }
     if (!Array.isArray(defs.sections) || defs.sections.length === 0) {
         problems.push("sections must be a non-empty array");
@@ -95,8 +112,14 @@ export function validateDefinitions(data) {
         if (typeof s.label !== "string") {
             problems.push(`${where}.label is missing`);
         }
-        if (typeof s.rest !== "object" || s.rest === null || typeof (/** @type {any} */ (s.rest).get) !== "string") {
+        if (typeof s.rest !== "object" || s.rest === null || typeof (/** @type {Record<string, unknown>} */ (s.rest).get) !== "string") {
             problems.push(`${where}.rest.get is missing`);
+        }
+        if (s.pollGroup !== "live" && s.pollGroup !== "settings" && s.pollGroup !== "none") {
+            problems.push(`${where}.pollGroup must be "live", "settings", or "none"`);
+        }
+        if (s.pollIntervalMs !== undefined && (typeof s.pollIntervalMs !== "number" || !(s.pollIntervalMs > 0))) {
+            problems.push(`${where}.pollIntervalMs must be a positive number when present`);
         }
         if (!Array.isArray(s.groups)) {
             problems.push(`${where}.groups must be an array`);
@@ -130,11 +153,18 @@ export function validateDefinitions(data) {
  * @returns {Promise<SiteDefinitions>}
  */
 export async function loadDefinitions(path) {
-    const response = await fetch(path);
+    const response = await fetchWithTimeout(path);
     if (!response.ok) {
         throw new Error(`Failed to fetch ${path}: HTTP ${response.status}`);
     }
-    const data = await response.json();
+    let data;
+    try {
+        data = await response.json();
+    } catch (error) {
+        // A genuine transmission error (truncated/corrupted response) - not this file's own
+        // shape/version validation below, which only ever sees a syntactically valid JSON value.
+        throw new Error(`${path} was not valid JSON (likely a corrupted or truncated transmission)`, { cause: error });
+    }
     const problems = validateDefinitions(data);
     if (problems.length > 0) {
         throw new Error(`${path} failed definitions validation:\n- ${problems.join("\n- ")}`);

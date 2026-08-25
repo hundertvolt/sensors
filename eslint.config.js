@@ -6,6 +6,24 @@ import globals from "globals";
  * pass (see CLAUDE.md's "Code quality tooling" / WEBSITE_PLAN.md §6). Shipped JS stays plain,
  * hand-written ES modules; this is dev-tooling only, mirroring pyproject.toml's [tool.ruff] role.
  */
+// Beyond eslint:recommended: core rules that catch real bugs (accidental narrowing, race-prone
+// async patterns, ...), not style - the JS-side equivalent of pyproject.toml's stricter-than-
+// default ruff selection (CLAUDE.md's "Code quality tooling"). Verified current/non-deprecated
+// directly against the installed `eslint` package's own rule metadata (10.8.1), not assumed.
+const BUG_CATCHING_RULES = {
+    "array-callback-return": "error",
+    "no-await-in-loop": "error",
+    "no-constructor-return": "error",
+    "no-duplicate-imports": "error",
+    "no-promise-executor-return": "error",
+    "no-self-compare": "error",
+    "no-template-curly-in-string": "error",
+    "no-unmodified-loop-condition": "error",
+    "no-unreachable-loop": "error",
+    "no-use-before-define": ["error", { functions: false }],
+    "require-atomic-updates": "error",
+};
+
 export default [
     js.configs.recommended,
     {
@@ -17,6 +35,7 @@ export default [
                 ...globals.browser,
             },
         },
+        rules: BUG_CATCHING_RULES,
     },
     {
         files: ["tests_js/**/*.js"],
@@ -27,5 +46,6 @@ export default [
                 ...globals.browser,
             },
         },
+        rules: BUG_CATCHING_RULES,
     },
 ];

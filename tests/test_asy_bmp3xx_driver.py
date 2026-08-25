@@ -1091,23 +1091,44 @@ def test_config_write_accepts_every_field_at_its_valid_boundaries_and_midpoint()
             assert stored[name] == value
 
 
-def test_config_write_rejects_single_out_of_range_or_wrong_type_field() -> None:
+def test_config_write_rejects_single_out_of_range_field() -> None:
     i2c, reader = make_clean_reader("cfg_single_invalid")
     for name, (kind, lo, hi) in _FIELD_BOUNDS.items():
         step = 1 if kind == "int" else 0.1
         below = lo - step
         above = hi + step
-        wrong_type = "nope" if kind == "int" else 1  # str for int fields, int for float fields
         before_dict = run(reader.cfgmgr.get_dict([name]))
         assert before_dict is not None
         before = before_dict[name]
-        for bad in (below, above, wrong_type):
+        for bad in (below, above):
             ok, results = run(reader.cfgmgr.write_config({name: bad}, _FULL_SCHEMA))
             assert ok is True  # the write call itself still succeeds; only the field is rejected
             assert results[name] == "Invalid"
         after_dict = run(reader.cfgmgr.get_dict([name]))
         assert after_dict is not None
         assert after_dict[name] == before  # rejected values never reach storage
+
+
+def test_config_write_wrong_type_rejected_for_int_field_but_coerced_for_float_field() -> None:
+    # An int-typed field still strictly rejects a non-numeric string (unaffected by the coercion
+    # policy - str is never coerced to int). A float-typed field now accepts and coerces an
+    # in-range int instead of rejecting it as "wrong type" (SPECIFICATION.md Part A.8) - every
+    # field in _FIELD_BOUNDS has 1 within its own [lo, hi], so this exercises acceptance, not an
+    # accidental out-of-range rejection.
+    i2c, reader = make_clean_reader("cfg_wrong_type")
+    for name, (kind, _lo, _hi) in _FIELD_BOUNDS.items():
+        if kind == "int":
+            ok, results = run(reader.cfgmgr.write_config({name: "nope"}, _FULL_SCHEMA))
+            assert ok is True
+            assert results[name] == "Invalid"
+            continue
+        ok, results = run(reader.cfgmgr.write_config({name: 1}, _FULL_SCHEMA))
+        assert ok is True
+        assert results[name] == "Valid"
+        stored = run(reader.cfgmgr.get_dict([name]))
+        assert stored is not None
+        assert stored[name] == 1.0
+        assert type(stored[name]) is float
 
 
 def test_config_write_rejects_bool_for_int_field_despite_bool_being_an_int_subclass() -> None:

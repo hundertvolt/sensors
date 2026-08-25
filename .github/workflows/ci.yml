@@ -102,6 +102,28 @@ jobs:
         run: npx playwright install-deps chromium
       - name: Run unit tests (Vitest, real-browser mode)
         run: npm test
+      # Coverage is a report, not a gate (mirrors the Python side's own non-gating
+      # scripts/test.sh --coverage - see CLAUDE.md's "Code quality tooling", SPECIFICATION.md
+      # Part E.5). The `Run unit tests` step above is the real pass/fail signal; this just
+      # re-runs the same suite once more, instrumented, to measure js/ line coverage.
+      - name: Run unit tests with coverage
+        run: npm run test:coverage 2>&1 | tee coverage-output.txt
+        continue-on-error: true
+      - name: Add coverage summary to job summary
+        if: hashFiles('coverage-output.txt') != ''
+        run: |
+          echo '### JS coverage (`js/`)' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          tail -n 15 coverage-output.txt >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+        continue-on-error: true
+      - name: Upload HTML coverage report artifact
+        if: hashFiles('coverage/index.html') != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-html-js
+          path: coverage/
+        continue-on-error: true
 
   lint-and-typecheck:
     # Gates on src/, tests/, and digital_twin/ (pyproject.toml's [tool.mypy]/[tool.ruff] default

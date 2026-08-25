@@ -1,8 +1,6 @@
 /**
- * Nav controller (WEBSITE_PLAN.md §12): drawer open/close state and section-select dispatch. It
- * builds no DOM itself - `js/templates.js`'s `buildNavDrawer()` owns the drawer's markup/order; this
- * file only locates the resulting `[data-section-key]` links to wire the real (app-level) select
- * behavior, and toggles the `nav-open` class that `html/style.css` uses to show/hide the drawer.
+ * Nav controller: drawer open/close state and section-select dispatch. Builds no DOM itself -
+ * see WEBSITE_PLAN.md §12 for the full mechanics/visual split this file follows.
  */
 
 import { buildNavDrawer } from "./templates.js";
@@ -35,7 +33,7 @@ export function initNav({ defs, appShellEl, drawerEl, hamburgerEl, backdropEl, o
     for (const link of /** @type {NodeListOf<HTMLElement>} */ (drawerEl.querySelectorAll("[data-section-key]"))) {
         const sectionKey = link.dataset.sectionKey;
         if (sectionKey === undefined) {
-            continue;
+            continue; // defensive only: buildNavDrawer() always sets this on every link it builds
         }
         link.addEventListener("click", () => {
             closeDrawer();
