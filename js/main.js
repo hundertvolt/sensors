@@ -17,16 +17,16 @@ import { renderSection } from "./render.js";
  * @param {{
  *   appShellEl: HTMLElement, mainEl: HTMLElement, drawerEl: HTMLElement,
  *   hamburgerEl: HTMLElement, backdropEl: HTMLElement, errorBannerEl: HTMLElement,
- *   deviceNameEl: HTMLElement,
+ *   deviceNameEl: HTMLElement, inlinedDefinitionsEl?: HTMLElement | null,
  * }} elements
  */
 export async function startApp(elements) {
-    const { appShellEl, mainEl, drawerEl, hamburgerEl, backdropEl, errorBannerEl, deviceNameEl } = elements;
+    const { appShellEl, mainEl, drawerEl, hamburgerEl, backdropEl, errorBannerEl, deviceNameEl, inlinedDefinitionsEl } = elements;
 
     /** @type {SiteDefinitions} */
     let defs;
     try {
-        defs = await loadDefinitions("definitions.json");
+        defs = await loadDefinitions("definitions.json", inlinedDefinitionsEl);
     } catch (error) {
         errorBannerEl.textContent = `Could not load definitions: ${String(error)}`;
         errorBannerEl.classList.remove("hidden");

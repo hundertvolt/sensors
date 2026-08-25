@@ -118,7 +118,10 @@ def test_real_website_root_serves_the_actual_production_index_html_not_the_stub(
     run_timed(scenario(), timeout_s=10.0)
 
 
-def test_real_website_definitions_json_matches_the_booted_devices_own_id() -> None:
+def test_real_website_inlined_definitions_matches_the_booted_devices_own_id() -> None:
+    # definitions.json is no longer a separately-fetched route (scripts/build_website.sh's own
+    # "Inlining" comment - WEBSITE_PLAN.md §7's follow-up round): it's embedded directly into
+    # index.html at build time instead, so this now reads it out of the real page body.
     port = _next_test_port()
 
     async def scenario() -> None:
@@ -126,8 +129,15 @@ def test_real_website_definitions_json_matches_the_booted_devices_own_id() -> No
         task = await _start_webserver()
         try:
             res = await _http_client.fetch("127.0.0.1", port, "GET", "/definitions.json")
+            assert res.status_code == 404  # no longer a separate route at all
+
+            res = await _http_client.fetch("127.0.0.1", port, "GET", "/")
             assert res.status_code == 200
-            data = json.loads(_decompress(res.body))
+            body = _decompress(res.body).decode()
+            marker_start = '<script type="application/json" id="inlined-definitions">'
+            start = body.index(marker_start) + len(marker_start)
+            end = body.index("</script>", start)
+            data = json.loads(body[start:end])
             assert data["device"]["id"] == "wozi"
         finally:
             await _cancel(task)

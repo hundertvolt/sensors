@@ -290,6 +290,48 @@ racy ad-hoc repro script, but confirmed two real, worthwhile findings:
   "Known gaps" section, `digital_twin/unix_port_poll_prewarm.py`) — confirmed still fixed under
   current code, not just trusted from that fix's own original history.
 
+**Follow-up round: minimizing connections-per-page-load further, without persistent connections.**
+The project owner reviewed the above and asked whether connections-per-page-load had actually been
+driven to its minimum, whether exceeding `max_connections` really only rejects new arrivals (never
+disturbs an in-flight one), and whether test coverage spans 1..max connections, every above-max
+combination, real-time fluctuating connection counts, and realistic mixed API+website traffic (an
+OpenHAB instance polling two endpoints alongside a browser session).
+
+- **The overflow-behavior expectation was already correctly implemented** — confirmed by reading
+  `_serve()`/`_open_conns` directly: a full `max_connections` ceiling only ever rejects the *new*
+  arrival (silently, before any response is written), never touches an existing connection, and a
+  stale one is reclaimed only by its own per-call/outer-cap timeout. No behavior change was needed
+  here, only the test coverage below.
+- **A real HTTP keep-alive attempt was tried and reverted.** `WebserverService` briefly grew a
+  per-connection request loop plus a stream-proxy wrapper that intercepted and no-op'd vendored
+  `ext/microdot.py`'s own unconditional post-response `writer.aclose()` call, so a page load or a
+  persistent client could reuse one TCP connection across several logical requests. It worked (real
+  bugs found and fixed along the way: a Unix-port-only `SIGPIPE` crash, a re-triggered
+  `extmod/modselect.c` dangling-pointer bug, and the `aclose()` interception itself), but was judged
+  too fragile to keep: vendored Microdot has no concept of persistent connections at all — confirmed
+  directly against its current upstream `main` branch, not just the pinned `v2.6.2` — so every part
+  of "keep-alive" had to be built entirely in application code, silently overriding one of the one
+  framework call this project has an explicit hard rule never to touch the behavior of. Reverted in
+  favor of the simpler fix below.
+- **Real fix: inline `style.css` and the device's own `definitions.json` directly into `index.html`
+  at build time** (`scripts/build_website.sh`'s own "Inlining" comment has the full mechanism) —
+  cuts a page load from 4 concurrent connections (`index.html` + `style.css` + `app.js` +
+  `definitions.json`) to 2 (`index.html` + `app.js`), with zero change to `WebserverService`'s own
+  connection-per-request model and zero risk to Microdot's own request lifecycle. `js/definitions.js`'s
+  `loadDefinitions()` now accepts an optional already-parsed-DOM-element argument and uses it in
+  preference to fetching, falling back to a real fetch identically to before whenever that element
+  is absent (always true in dev/preview mode, where `html/index.html` itself is never inlined).
+  Raising the rp2 firmware's own `MEMP_NUM_TCP_PCB` compile constant (the fix MicroPython's own
+  maintainers point to for this same 5-connection ceiling elsewhere) was researched and explicitly
+  set aside for this round, at the project owner's direction — a firmware-level change, out of scope
+  for a website-only fix.
+- **`tests/test_digital_twin_webserver_concurrency.py` grew from 5 to 14 tests**: a 1..max
+  connections sweep, above-max in every healthy/flaky/mixed combination, real-time fluctuating
+  connection-count churn, and API-only/website-only/mixed-client scenarios (including the OpenHAB +
+  browser example named directly), plus two dedicated tests locking in the already-correct
+  overflow behavior above. NTP sync (the third named concurrent actor) is deliberately not
+  simulated — it's UDP traffic that never touches `WebserverService`'s connection ceiling.
+
 ## 8. Open items — reserved for dedicated future sub-sessions
 
 - **Exact schema comment-tag grammar** — §11 is a worked *sketch* of the tag syntax against real

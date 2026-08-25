@@ -44,10 +44,28 @@ function buildElements() {
     return elements;
 }
 
+/**
+ * Builds a `<script type="application/json" id="inlined-definitions">` element the same shape
+ * scripts/build_website.sh's own "Inlining" comment describes a real device build embedding into
+ * index.html - not attached to `elements` by buildElements() itself (dev/preview mode's own
+ * html/index.html never has one), so each test that wants one builds and passes it explicitly.
+ * @param {string} jsonText
+ */
+function buildInlinedDefinitionsEl(jsonText) {
+    const el = document.createElement("script");
+    el.type = "application/json";
+    el.id = "inlined-definitions";
+    el.textContent = jsonText;
+    document.body.appendChild(el);
+    return el;
+}
+
 describe("startApp (production entry)", () => {
     const originalFetch = window.fetch;
     /** @type {ReturnType<typeof buildElements> | undefined} */
     let elements;
+    /** @type {HTMLElement | undefined} */
+    let inlinedEl;
 
     afterEach(() => {
         window.fetch = originalFetch;
@@ -55,6 +73,10 @@ describe("startApp (production entry)", () => {
             for (const el of Object.values(elements)) {
                 el.remove();
             }
+        }
+        if (inlinedEl) {
+            inlinedEl.remove();
+            inlinedEl = undefined;
         }
     });
 
@@ -100,5 +122,48 @@ describe("startApp (production entry)", () => {
         expect(elements.errorBannerEl.classList.contains("hidden")).toBe(false);
         expect(elements.errorBannerEl.textContent).toMatch(/not valid json/i);
         expect(elements.mainEl.querySelector(".section-heading")).toBeNull();
+    });
+
+    it("uses an inlined definitions element instead of fetching, when a real device build provides one", async () => {
+        // The actual point of inlining (scripts/build_website.sh's own "Inlining" comment,
+        // WEBSITE_PLAN.md §7's follow-up round): a real device build must never hit the network
+        // for definitions.json at all once this element is present.
+        const fetchStub = buildFetchStub();
+        window.fetch = fetchStub;
+        elements = buildElements();
+        inlinedEl = buildInlinedDefinitionsEl(JSON.stringify(DEFS));
+
+        await startApp({ ...elements, inlinedDefinitionsEl: inlinedEl });
+
+        expect(fetchStub).not.toHaveBeenCalled();
+        expect(elements.deviceNameEl.textContent).toBe("Wozi Test");
+        expect(elements.errorBannerEl.classList.contains("hidden")).toBe(true);
+        expect(elements.mainEl.querySelector(".section-heading")?.textContent).toBe("Measurements");
+    });
+
+    it("shows a clear error banner (not a crash) when the inlined definitions element holds corrupted JSON", async () => {
+        // Would only ever indicate a corrupted build (scripts/build_website.sh always writes valid
+        // JSON) - still must degrade the same clean way as a torn network response, not throw.
+        window.fetch = vi.fn(() => {
+            throw new Error("must not be called when an inlined element is present");
+        });
+        elements = buildElements();
+        inlinedEl = buildInlinedDefinitionsEl("{not valid json");
+
+        await startApp({ ...elements, inlinedDefinitionsEl: inlinedEl });
+
+        expect(elements.errorBannerEl.classList.contains("hidden")).toBe(false);
+        expect(elements.mainEl.querySelector(".section-heading")).toBeNull();
+    });
+
+    it("falls back to fetching definitions.json when no inlined element is present (dev/preview mode)", async () => {
+        const fetchStub = buildFetchStub();
+        window.fetch = fetchStub;
+        elements = buildElements();
+
+        await startApp({ ...elements, inlinedDefinitionsEl: null });
+
+        expect(fetchStub).toHaveBeenCalledWith("definitions.json", expect.anything());
+        expect(elements.deviceNameEl.textContent).toBe("Wozi Test");
     });
 });

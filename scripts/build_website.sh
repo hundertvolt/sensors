@@ -6,12 +6,13 @@
 # script's own job is only building the one merged dir HTML_SRC_DIRS points at.
 #
 # What gets staged, and why each rename/selection exists:
-#   - html/index.html, html/style.css - copied verbatim.
-#   - html/definitions/<device>.json -> definitions.json (renamed, no "definitions/" nesting) -
-#     a real device's firmware only ever ships its own one definitions file, so js/main.js fetches
-#     a fixed "definitions.json" rather than needing a "device" constant baked into checked-in JS
-#     (mirrors how html/index.html itself never branches on device - WEBSITE_PLAN.md §4's
-#     "per-device page-scheme mechanism" row).
+#   - html/index.html - staged with html/style.css and the device's own definitions.json inlined
+#     directly into it (see "Inlining" below) - neither is staged as a separate file any more.
+#   - html/definitions/<device>.json - inlined into index.html, not staged under its own name; a
+#     real device's firmware only ever ships its own one definitions file, so the inlined data is
+#     always the one matching this build's own device rather than needing a "device" constant
+#     baked into checked-in JS (mirrors how html/index.html itself never branches on device -
+#     WEBSITE_PLAN.md §4's "per-device page-scheme mechanism" row).
 #   - The production JS module set (js/poll-manager.js, templates.js, definitions.js, render.js,
 #     nav.js, main.js) - concatenated into one bundled js/app.js (see "Bundling" below), not copied
 #     as separate files. js/mock-server.js (prototype-only fake backend) is deliberately NOT
@@ -46,6 +47,30 @@
 # direct inspection, and cross-checked mechanically below) rather than because concatenation is a
 # generally-safe substitute for real bundling.
 #
+# Inlining (WEBSITE_PLAN.md §7's follow-up round): html/style.css and the device's own
+# definitions.json are embedded directly into the staged index.html (a `<style>` block replacing
+# the `<link rel="stylesheet">`, and a `<script type="application/json" id="inlined-definitions">`
+# element js/definitions.js's own loadDefinitions() reads in preference to fetching) instead of
+# being staged as separate files - cuts a single page load from 4 concurrent connections (index.html
+# + style.css + app.js + definitions.json) to 2 (index.html + app.js), reducing how much of the
+# real rp2040 lwIP build's MEMP_NUM_TCP_PCB=5 ceiling one browser tab alone can consume, the same
+# problem the JS bundling above already addresses for the six production modules. This was chosen
+# deliberately over real HTTP keep-alive/persistent connections after an earlier attempt: vendored
+# ext/microdot.py (checked directly, including its current upstream `main` branch - no keep-alive
+# support has been added even there) always closes the connection after exactly one request by
+# design, and building persistent-connection support entirely in application code around it (a
+# stream-proxy wrapper intercepting Microdot's own close call, a write-capture loop) proved fragile
+# and easy to break silently on any future Microdot change - reverted in favor of this simpler,
+# framework-respecting reduction instead. Raising the rp2 firmware's own MEMP_NUM_TCP_PCB compile
+# constant (the standard fix MicroPython's own maintainers point to for this exact ceiling elsewhere)
+# was also considered and set aside for this round - out of scope for a website-only change.
+# The definitions JSON is embedded with every literal `<` replaced by the escape sequence
+# backslash-u-zero-zero-three-c (semantically identical once JSON-parsed) - `<script>` is an HTML
+# "raw text" element, terminated by a literal
+# `</script` (case-insensitively) wherever it appears, so a field value that happened to contain
+# that exact substring would otherwise prematurely close the tag and corrupt the page; escaping
+# away every `<` removes any possibility of that substring surviving in the embedded text at all.
+#
 # Usage: scripts/build_website.sh <device> [output_path]
 #   <device>     matches an html/definitions/<device>.json file, e.g. "wozi".
 #   output_path  forwarded to build_frozen_html.sh (default: frozen_modules/frozen_html.py).
@@ -64,8 +89,40 @@ fi
 stage_dir="$(mktemp -d)"
 trap 'rm -rf "$stage_dir"' EXIT
 
-cp html/index.html html/style.css "$stage_dir"/
-cp "$definitions_src" "$stage_dir"/definitions.json
+STAGE_DIR="$stage_dir" DEFINITIONS_SRC="$definitions_src" python3 <<'PYEOF'
+import os
+
+stage_dir = os.environ["STAGE_DIR"]
+definitions_src = os.environ["DEFINITIONS_SRC"]
+
+with open("html/index.html", encoding="utf-8") as f:
+    html = f.read()
+with open("html/style.css", encoding="utf-8") as f:
+    css = f.read()
+with open(definitions_src, encoding="utf-8") as f:
+    definitions_json = f.read()
+
+# Built via chr(92) rather than a literal backslash in this script's own source, purely to keep
+# this heredoc's own escaping unambiguous - the resulting six-character sequence (backslash,
+# "u003c") is standard JSON's own escape for "<", semantically identical to a literal "<" once
+# JSON.parse()'d (see this script's own "Inlining" comment above for why every "<" is escaped
+# this way before embedding).
+escaped_lt = chr(92) + "u003c"
+definitions_json = definitions_json.replace("<", escaped_lt)
+
+link_tag = '<link rel="stylesheet" href="style.css">'
+if link_tag not in html:
+    raise SystemExit("html/index.html's stylesheet <link> tag not found - update build_website.sh")
+html = html.replace(link_tag, "<style>\n" + css + "</style>")
+
+inlined_script = '<script type="application/json" id="inlined-definitions">' + definitions_json + "</script>\n"
+if "</head>" not in html:
+    raise SystemExit("html/index.html has no </head> - update build_website.sh")
+html = html.replace("</head>", inlined_script + "</head>")
+
+with open(os.path.join(stage_dir, "index.html"), "w", encoding="utf-8") as f:
+    f.write(html)
+PYEOF
 
 mkdir -p "$stage_dir"/js
 {

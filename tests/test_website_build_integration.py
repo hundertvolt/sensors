@@ -66,29 +66,35 @@ def test_root_serves_the_real_index_html() -> None:
     assert b"Sensor Station" in _decompress(res.body)
 
 
-def test_style_css_is_served() -> None:
+def test_style_css_and_definitions_json_are_not_served_as_separate_files() -> None:
+    # Both are inlined directly into index.html at build time now (scripts/build_website.sh's own
+    # "Inlining" comment - WEBSITE_PLAN.md §7's follow-up round) instead of being staged as their
+    # own files - a page load needs one fewer connection than before. html/definitions/wozi.json
+    # (the nested dev-preview path) and definitions/dev.json (a different device's file) were
+    # already never shipped this way either.
     _, app = _make_app()
-    res = run(app.dispatch_request(_make_request(app, "GET", "/style.css")))
-    assert res.status_code == 200
-    assert res.headers["Content-Type"].startswith("text/css")
-
-
-def test_definitions_json_is_served_at_the_root_no_device_segment() -> None:
-    _, app = _make_app()
-    res = run(app.dispatch_request(_make_request(app, "GET", "/definitions.json")))
-    assert res.status_code == 200
-    assert res.headers["Content-Type"].startswith("application/json")
-    data = json.loads(_decompress(res.body))
-    assert data["device"]["id"] == "wozi"
-
-
-def test_definitions_dir_path_is_gone_devices_definitions_not_shipped() -> None:
-    # html/definitions/wozi.json (the nested dev-preview path) and definitions/dev.json (a
-    # different device's file) must both be absent - only the one staged definitions.json exists.
-    _, app = _make_app()
-    for path in ("/definitions/wozi.json", "/definitions/dev.json"):
+    for path in ("/style.css", "/definitions.json", "/definitions/wozi.json", "/definitions/dev.json"):
         res = run(app.dispatch_request(_make_request(app, "GET", path)))
         assert res.status_code == 404, path
+
+
+def test_inlined_definitions_and_stylesheet_replace_the_two_separately_staged_files() -> None:
+    _, app = _make_app()
+    res = run(app.dispatch_request(_make_request(app, "GET", "/")))
+    body = _decompress(res.body).decode()
+
+    # style.css's own stylesheet <link> is gone - its content is a real <style> block instead.
+    assert '<link rel="stylesheet" href="style.css">' not in body
+    assert "<style>" in body
+    assert ":root {" in body  # a real, distinctive style.css rule, not an empty block
+
+    # definitions.json's own content is a real, valid, correctly-scoped-to-this-device JSON blob
+    # inside a dedicated <script> element, not a fetch target any more.
+    marker_start = '<script type="application/json" id="inlined-definitions">'
+    start = body.index(marker_start) + len(marker_start)
+    end = body.index("</script>", start)
+    data = json.loads(body[start:end])
+    assert data["device"]["id"] == "wozi"
 
 
 def test_production_js_is_served_as_one_bundle_under_js() -> None:

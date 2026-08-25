@@ -169,6 +169,59 @@ async def _still_serving(host: str, port: int, timeout_s: float = 5.0) -> bool:
         await asyncio.sleep(0.1)
 
 
+async def _browser_page_load(host: str, port: int) -> "list[int]":
+    """Simulates one browser tab's page-load connection burst - two concurrent GETs, matching the
+    real production website's own post-inlining footprint (WEBSITE_PLAN.md §7's follow-up round:
+    style.css/definitions.json are now inlined directly into index.html at build time, cutting a
+    real page load from four connections to two - index.html + app.js). Uses this test file's own
+    default (html_stub) mount's real routes ("/" and "/style.css" both exist there too) rather than
+    swapping in the real website like test_digital_twin_real_website_integration.py does - this
+    file cares about connection-count/timing behavior, not content, so reusing whatever's already
+    mounted keeps it dependency-light while still exercising two real, concurrently-opened sockets."""
+
+    async def _get(path: str) -> int:
+        res = await _http_client.fetch(host, port, "GET", path)
+        return res.status_code
+
+    return list(await asyncio.gather(_get("/"), _get("/style.css")))
+
+
+async def _openhab_poll(host: str, port: int) -> "list[int]":
+    """Simulates one OpenHAB polling cycle: two concurrent GETs against two real REST endpoints -
+    the project owner's own named example, matching how a real binding polls several channels at
+    once rather than one at a time."""
+
+    async def _get(path: str) -> int:
+        res = await _http_client.fetch(host, port, "GET", path)
+        return res.status_code
+
+    return list(await asyncio.gather(_get("/measurements"), _get("/status")))
+
+
+async def _slow_but_healthy_put(host: str, port: int, delay_s: float) -> int:
+    """Opens a real connection and sends a legitimate, harmless PUT (an empty /system body - a real
+    no-op, SPECIFICATION.md Part A.8) with its own body trickled in two halves and a real delay
+    between them - stays genuinely open and in-flight for `delay_s`, unlike _flaky_connection()
+    (which never completes a request at all). Used to prove an existing, legitimately slow
+    connection survives a concurrent overflow burst landing while it's still in flight."""
+    reader, writer = await asyncio.open_connection(host, port)
+    try:
+        body = b"{}"
+        header = (
+            f"PUT /system HTTP/1.1\r\nHost: test\r\nContent-Type: application/json\r\nContent-Length: {len(body)}\r\n\r\n"
+        ).encode()
+        writer.write(header + body[:1])
+        await writer.drain()
+        await asyncio.sleep(delay_s)
+        writer.write(body[1:])
+        await writer.drain()
+        line = await reader.readline()
+        return _http_client.parse_status_line(line)
+    finally:
+        writer.close()
+        await writer.wait_closed()
+
+
 def test_n_healthy_concurrent_connections_up_to_max_connections_all_succeed() -> None:
     port = _next_test_port()
 
@@ -287,6 +340,270 @@ def test_high_concurrency_burst_at_historical_segfault_repro_scale_survives() ->
             await _cancel(task)
 
     run_timed(scenario(), timeout_s=60.0)
+
+
+def test_connections_at_each_count_from_one_to_max_connections_all_succeed() -> None:
+    port = _next_test_port()
+
+    async def scenario() -> None:
+        await _boot(port)
+        task = await _start_webserver()
+        try:
+            for n in range(1, 5):  # 1..max_connections=4 inclusive - every count in this range
+                # must be admitted in full, not just the exact ceiling (already covered above).
+                results = await asyncio.gather(*(_healthy_request("127.0.0.1", port) for _ in range(n)))
+                assert results.count(200) == n, (n, results)
+                # A brief settle delay between rounds - the same real, benign timing window
+                # _still_serving()'s own docstring already documents: without it, a round's own
+                # connections can still be mid-close (_close_writer()'s own wait_closed()) when the
+                # next round's burst arrives, transiently making max_connections' slots look fuller
+                # than they really are and reset one of the next round's own connections.
+                await asyncio.sleep(0.2)
+        finally:
+            await _cancel(task)
+
+    run_timed(scenario(), timeout_s=20.0)
+
+
+def test_above_max_connections_mixed_healthy_and_flaky_at_least_one_healthy_succeeds() -> None:
+    # test_mixed_healthy_and_flaky_connections_dont_wedge_the_server above only exercises exactly
+    # max_connections total (2 healthy + 2 flaky = 4) - this is genuinely above it (4 + 4 = 8).
+    port = _next_test_port()
+
+    async def scenario() -> None:
+        await _boot(port)
+        task = await _start_webserver()
+        try:
+            healthy = [_healthy_request("127.0.0.1", port) for _ in range(4)]
+            flaky = [_flaky_connection("127.0.0.1", port) for _ in range(4)]
+            results = await asyncio.gather(*healthy, *flaky, return_exceptions=True)
+            healthy_results = results[: len(healthy)]
+            assert healthy_results.count(200) >= 1, results  # not every healthy attempt is
+            # guaranteed a slot above the ceiling, but at least one must get through
+            assert await _still_serving("127.0.0.1", port)
+        finally:
+            await _cancel(task)
+
+    run_timed(scenario(), timeout_s=20.0)
+
+
+def test_above_max_connections_all_flaky_survives() -> None:
+    # test_all_flaky_connections_dont_wedge_the_server above only exercises exactly max_connections
+    # (4) flaky connections - this is genuinely above it (8, double the ceiling).
+    port = _next_test_port()
+
+    async def scenario() -> None:
+        await _boot(port)
+        task = await _start_webserver()
+        try:
+            await asyncio.gather(*(_flaky_connection("127.0.0.1", port) for _ in range(8)), return_exceptions=True)
+            assert await _still_serving("127.0.0.1", port)
+        finally:
+            await _cancel(task)
+
+    run_timed(scenario(), timeout_s=20.0)
+
+
+def test_connection_count_fluctuating_in_real_time_server_stays_healthy() -> None:
+    # Every burst test above fires its whole batch at once - real traffic doesn't arrive in
+    # lockstep. This staggers healthy and flaky connection attempts over a real wall-clock window
+    # and checks the server's health *during* the fluctuation via a concurrent health-check loop,
+    # not just once at the end.
+    port = _next_test_port()
+
+    async def scenario() -> None:
+        await _boot(port)
+        task = await _start_webserver()
+        try:
+            results: list[int | str] = []
+
+            async def staggered_healthy(delay_s: float) -> None:
+                await asyncio.sleep(delay_s)
+                try:
+                    results.append(await _healthy_request("127.0.0.1", port))
+                except OSError:
+                    results.append("rejected")
+
+            async def staggered_flaky(delay_s: float) -> None:
+                await asyncio.sleep(delay_s)
+                await _flaky_connection("127.0.0.1", port)
+
+            waves = []
+            for i in range(6):
+                delay = i * 0.15
+                shape = i % 3
+                if shape == 2:
+                    waves.append(staggered_healthy(delay))
+                    waves.append(staggered_flaky(delay + 0.02))
+                elif shape == 1:
+                    waves.append(staggered_flaky(delay))
+                else:
+                    waves.append(staggered_healthy(delay))
+
+            async def health_checks() -> None:
+                for _ in range(4):
+                    await asyncio.sleep(0.25)
+                    assert await _still_serving("127.0.0.1", port, timeout_s=3.0)
+
+            await asyncio.gather(*waves, health_checks())
+            assert results.count(200) >= 1, results
+            assert await _still_serving("127.0.0.1", port)
+        finally:
+            await _cancel(task)
+
+    run_timed(scenario(), timeout_s=30.0)
+
+
+def test_existing_connections_survive_an_overflow_burst_untouched() -> None:
+    # The project owner's own stated expectation: exceeding max_connections rejects only the new
+    # arrival, never resets or disturbs an already-open connection. Confirmed correct by reading
+    # _serve()/_open_conns directly (no behavior change needed) - this is the dedicated proof.
+    port = _next_test_port()
+
+    async def scenario() -> None:
+        await _boot(port)
+        task = await _start_webserver()
+        try:
+            # Two legitimately slow (but healthy) connections occupy 2 of max_connections=4's own
+            # slots for a real wall-clock window - long enough for a concurrent overflow burst to
+            # land while they're still in flight.
+            evtloop = asyncio.get_event_loop()
+            slow = [evtloop.create_task(_slow_but_healthy_put("127.0.0.1", port, 1.0)) for _ in range(2)]
+            await asyncio.sleep(0.3)  # let both slow connections actually open and start reading
+
+            async def one() -> "int | str":
+                try:
+                    return await _healthy_request("127.0.0.1", port)
+                except OSError:
+                    return "rejected"
+
+            # 6 more concurrent attempts while the 2 slow ones are still open - above the remaining
+            # headroom (4 - 2 = 2 free slots), so at least one of these must be rejected, not
+            # silently dropped and not a crash of either already-in-flight slow connection.
+            overflow_results = await asyncio.gather(*(one() for _ in range(6)))
+            assert overflow_results.count("rejected") >= 1, overflow_results
+
+            slow_results = await asyncio.gather(*slow)
+            # The actual point of this test: neither pre-existing slow connection was disturbed by
+            # the overflow burst landing mid-flight - both still complete normally with a real 200.
+            assert slow_results == [200, 200], slow_results
+        finally:
+            await _cancel(task)
+
+    run_timed(scenario(), timeout_s=20.0)
+
+
+def test_a_slot_freed_by_a_stale_connections_timeout_accepts_a_new_connection() -> None:
+    # Real production wiring's own outer_cap_s default (15.0s - sensortask_wozi.py's
+    # WebserverService(...) call has no override) - genuinely waits out a real reclaim rather than
+    # asserting the mechanism only against a short test-only timeout (already covered in-process,
+    # against a short timeout, by tests/test_asy_webserver_service.py's own F.1 test).
+    port = _next_test_port()
+
+    async def scenario() -> None:
+        await _boot(port)
+        task = await _start_webserver()
+        try:
+            # Fill every slot with a connection that opens but never sends anything - the
+            # "Slowloris-shaped" gap _flaky_connection() itself doesn't quite cover (it does send a
+            # partial request line) - these are reclaimed by outer_cap_s, not a per-call timeout.
+            hanging = []
+            for _ in range(4):
+                _reader, writer = await asyncio.open_connection("127.0.0.1", port)
+                hanging.append(writer)
+            await asyncio.sleep(0.2)
+
+            # Every slot is genuinely full right now - a fresh attempt must be rejected.
+            try:
+                immediate: int | str = await _healthy_request("127.0.0.1", port)
+            except OSError:
+                immediate = "rejected"
+            assert immediate == "rejected", immediate
+
+            # Once outer_cap_s elapses, the server reclaims all four - _still_serving() already
+            # retries for up to its own timeout_s budget, which comfortably covers that reclaim.
+            assert await _still_serving("127.0.0.1", port, timeout_s=20.0)
+        finally:
+            for writer in hanging:
+                writer.close()
+                await writer.wait_closed()
+            await _cancel(task)
+
+    run_timed(scenario(), timeout_s=30.0)
+
+
+def test_multiple_browser_like_sessions_concurrently_all_succeed() -> None:
+    port = _next_test_port()
+
+    async def scenario() -> None:
+        await _boot(port)
+        task = await _start_webserver()
+        try:
+            # Two browser tabs open at once - 2 connections each, 4 total, exactly max_connections.
+            results = await asyncio.gather(_browser_page_load("127.0.0.1", port), _browser_page_load("127.0.0.1", port))
+            for page_results in results:
+                assert page_results == [200, 200], results
+        finally:
+            await _cancel(task)
+
+    run_timed(scenario(), timeout_s=20.0)
+
+
+def test_realistic_mixed_openhab_polling_and_browser_session_concurrently() -> None:
+    # The project owner's own named example: an OpenHAB instance polling two endpoints alongside a
+    # website open for manual sensor calibration - 2 + 2 = 4, exactly max_connections, all must
+    # succeed cleanly together.
+    port = _next_test_port()
+
+    async def scenario() -> None:
+        await _boot(port)
+        task = await _start_webserver()
+        try:
+            browser, openhab = await asyncio.gather(
+                _browser_page_load("127.0.0.1", port),
+                _openhab_poll("127.0.0.1", port),
+            )
+            assert browser == [200, 200], browser
+            assert openhab == [200, 200], openhab
+        finally:
+            await _cancel(task)
+
+    run_timed(scenario(), timeout_s=20.0)
+
+
+def test_realistic_mixed_traffic_above_the_connection_ceiling_degrades_gracefully() -> None:
+    # Same mix as above, pushed past max_connections=4: a second browser tab opens while OpenHAB is
+    # already polling and the first tab is still loading - 6 connections at once against a ceiling
+    # of 4. Some individual GETs may see a rejected connection, but nothing must crash or wedge.
+    port = _next_test_port()
+
+    async def scenario() -> None:
+        await _boot(port)
+        task = await _start_webserver()
+        try:
+
+            async def _get_tolerant(path: str) -> "int | str":
+                try:
+                    res = await _http_client.fetch("127.0.0.1", port, "GET", path)
+                    return res.status_code
+                except OSError:
+                    return "rejected"
+
+            async def page_load_tolerant() -> "list[int | str]":
+                return list(await asyncio.gather(_get_tolerant("/"), _get_tolerant("/style.css")))
+
+            async def poll_tolerant() -> "list[int | str]":
+                return list(await asyncio.gather(_get_tolerant("/measurements"), _get_tolerant("/status")))
+
+            results = await asyncio.gather(page_load_tolerant(), page_load_tolerant(), poll_tolerant())
+            flat = [r for group in results for r in group]
+            assert flat.count(200) >= 1, flat
+            assert all(r in (200, "rejected") for r in flat), flat
+            assert await _still_serving("127.0.0.1", port)
+        finally:
+            await _cancel(task)
+
+    run_timed(scenario(), timeout_s=20.0)
 
 
 if __name__ == "__main__":

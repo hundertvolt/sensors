@@ -37,6 +37,11 @@
             backdropEl: document.getElementById("nav-backdrop"),
             errorBannerEl: document.getElementById("error-banner"),
             deviceNameEl: document.getElementById("device-name"),
+            // Present only in a real device build (scripts/build_website.sh's own "Inlining"
+            // comment inlines this element straight into index.html at build time) - null here in
+            // dev/preview mode, where js/definitions.js's own loadDefinitions() falls back to
+            // fetching definitions.json normally.
+            inlinedDefinitionsEl: document.getElementById("inlined-definitions"),
         });
     </script>
 </body>
