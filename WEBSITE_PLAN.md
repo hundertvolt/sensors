@@ -290,56 +290,6 @@ racy ad-hoc repro script, but confirmed two real, worthwhile findings:
   "Known gaps" section, `digital_twin/unix_port_poll_prewarm.py`) — confirmed still fixed under
   current code, not just trusted from that fix's own original history.
 
-**Follow-up round: real HTTP keep-alive, plus a deeper concurrency test matrix.** The project owner
-reviewed the above and asked two direct questions: (1) whether the test coverage actually spans
-1..max connections, above-max in every healthy/flaky combination, real-time fluctuating connection
-counts, and the API-only/website-only/mixed-client shapes a real deployment sees (an OpenHAB
-instance polling two endpoints alongside a browser session); (2) whether the connections-per-page-load
-count had been driven to its true minimum, and whether exceeding `max_connections` really only
-rejects the new arrival, never disturbs an already-admitted connection. Honest answers at the time:
-the JS-bundling fix (6 files to 1) was real but connections-per-page-load was never actually driven
-below 4 (`index.html`/`style.css`/`app.js`/`definitions.json`, each its own connection because
-`WebserverService` forced `Connection: close` on every response), and the test matrix covered only
-"at max" shapes, always via direct-API traffic, never a website-like or mixed client. Both gaps are
-now closed:
-
-- **Real keep-alive**, not just fewer files. `WebserverService` now offers `Connection: keep-alive`
-  for every response whose framing is unambiguous (see SPECIFICATION.md Part A.5/A.8's own updated
-  account for the exact eligibility rule and the `_serve()` loop mechanism), so a browser page load
-  or a persistent OpenHAB client can serve several logical requests over one physical TCP
-  connection instead of opening a fresh one per resource — the actual minimization the project
-  owner asked about, beyond what file-count bundling alone could reach. Two real, Unix-port-only
-  bugs were found and fixed while building this (full account in `digital_twin/README.md`'s "Known
-  gaps" section, root-caused via a debug-build `gdb` session each time, not assumed): a `SIGPIPE`
-  crash (writing a second response to an already-peer-closed connection had never been reachable
-  code before keep-alive existed) and a re-triggered `extmod/modselect.c` dangling-pointer bug (kept
-  connections cycle through more poll registrations per physical connection than before, crossing
-  the growth threshold at a lower connection count than the original finding). A third, purely
-  logical bug was also found and fixed during implementation, not by a crash: `ext/microdot.py`'s
-  own `handle_request()` unconditionally closes the writer after every response regardless of the
-  `Connection` header, which would have silently defeated keep-alive entirely (torn the connection
-  down before `_serve()`'s own loop ever got a second attempt) had `_TimeoutStreamProxy.aclose()`/
-  `.close()` not been changed to deliberate no-ops on the real stream.
-- **The overflow-behavior question was already correctly implemented, confirmed by reading
-  `WebserverService._serve()` directly**: exceeding `max_connections` closes only the new arrival
-  that pushed the count over the limit (`current > self._max_connections`); every already-admitted
-  connection is a separate, untouched concurrent task, and a stale one is reclaimed independently by
-  `per_call_timeout_s`/`outer_cap_s`, freeing its slot. `test_existing_connections_survive_an_overflow_burst_untouched`
-  and `test_a_slot_freed_by_a_stale_connections_timeout_accepts_a_new_connection`
-  (`tests/test_digital_twin_webserver_concurrency.py`) now cover this directly at the real-socket
-  level, rather than leaving it as an inferred property of the other tests.
-- **The full requested test matrix** is now in `tests/test_digital_twin_webserver_concurrency.py`
-  (14 tests total): a 1..max_connections sweep (not just "at max"), above-max in every
-  healthy/flaky/mixed combination, a continuously-fluctuating real-time connection-count churn test,
-  and three shapes for client mix — API-only (the pre-existing tests, direct REST polling), website-only
-  (`_keep_alive_client()`, several concurrent sessions each reusing one connection across a
-  page-load-shaped sequence of fetches), and the realistic mixed case the project owner named
-  directly ("an OpenHAB instance querying two endpoints and a full browser session in parallel"),
-  both within and pushed above the connection ceiling. NTP sync — the project owner's third named
-  concurrent actor — is deliberately not simulated: it's UDP traffic that never touches
-  `WebserverService`'s TCP `accept()`/`max_connections` ceiling at all, so a fake NTP client would
-  add no real coverage of the thing these tests actually exercise.
-
 ## 8. Open items — reserved for dedicated future sub-sessions
 
 - **Exact schema comment-tag grammar** — §11 is a worked *sketch* of the tag syntax against real

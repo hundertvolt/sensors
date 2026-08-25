@@ -1,5 +1,5 @@
 """Minimal hand-rolled HTTP/1.1 client over `asyncio.open_connection()` — no HTTP client library is frozen into the pinned MicroPython Unix-port build, so the twin's integration run hand-rolls one instead.
-Every request it sends carries its own `Connection: close` (deliberately, for one-request-per-connection simplicity), which `WebserverService` honors regardless of whether it would otherwise offer keep-alive (`src/asy_webserver_service.py`'s `_decide_connection_header()`) — so this client itself needs no keep-alive support. `tests/test_digital_twin_webserver_concurrency.py`'s own `_keep_alive_client()` is the one place in this codebase that drives real keep-alive reuse instead. See `digital_twin/README.md`'s "What's here" section."""
+Every response it sees carries `Connection: close`, so no keep-alive support is needed. See `digital_twin/README.md`'s "What's here" section."""
 
 import asyncio
 import json
