@@ -3064,23 +3064,16 @@ Cross-cutting by design — it applies to `src/`, `js/`/`tests_js/` (the website
 `WEBSITE_PLAN.md`), and any future layer this project grows, not just Python's `src/` the way Part D
 is scoped.
 
-## G.0 Why this Part exists
+## G.0 What this Part prevents
 
-Found directly, not theorized: the website-redesign effort's session 3 established that a
-dispatch-only numeric field (one with no real `ConfigSchema`/`ConfigManager` behind it — a
-fire-and-forget action like a PUT command) should still get range-checked the *same* way a
-schema-backed field does, via a synthetic `FieldSchema` record handed to
-`config_manager.py`'s `type_or_range_error()` — first established for `PauseTime`
-(`asy_webserver_service.py`'s `_PAUSE_TIME_FIELD`). `lightCmdLED` (`sensortask_wozi.py`'s
-`_notification_led_callback()`, r/g/b/t) needed the exact same treatment, one file over, but shipped
-instead with a bespoke, weaker set of bare `coerce_numeric()` calls and no range check at all — a
-real, live gap (silently clamped/floored instead of rejecting an out-of-range value, unlike legacy)
-that went out into a merged PR before being caught and fixed. The fix, once made, was a handful of
-lines because the right primitive already existed one file away and had already solved the exact
-same *kind* of problem (see `WEBSITE_PLAN.md` §8/§10 for the full incident). The lesson this Part
-encodes: that gap — and the rework it caused — was avoidable at zero research cost, if "what
-existing primitive already does this kind of thing" had been the first question asked, not a
-question asked in a later audit pass.
+A freshly-invented, locally-plausible solution to a problem this project has already solved
+elsewhere is a correctness risk, not just a style inconsistency: an established shared primitive
+typically encodes edge cases (type coercion, NaN/±inf handling, error-shape conventions, boundary
+inclusivity) that a fresh reimplementation easily misses or narrows. Each independent
+reimplementation is a separate place that gap can hide, and each one only surfaces when a later
+review happens to compare it against the primitive it should have used — strictly more expensive
+than checking G.2's catalog before writing the new code in the first place. Reuse is therefore the
+default; a new primitive is what needs justifying, not the other way around.
 
 ## G.1 The rule
 
@@ -3099,7 +3092,7 @@ question asked in a later audit pass.
 - [ ] If a matching primitive exists: use it directly. Import it, construct the right
       tuple/record/argument shape it expects, call it — never reimplement any part of what it
       already does, even a version that looks locally simpler for this one call site. A simpler
-      *inline* version is exactly how the G.0 gap happened.
+      *inline* version is exactly the shape of mistake G.0 describes.
 - [ ] If no primitive covers this exact *kind* of problem, but a comparable one already exists for
       a structurally similar problem (e.g. `_PAUSE_TIME_FIELD`'s synthetic-record pattern, built for
       a scalar dispatch-only field, generalizes directly to `lightCmdLED`'s per-subfield case), model
@@ -3156,10 +3149,9 @@ question asked in a later audit pass.
       simulates.** `js/mock-server.js` (SPECIFICATION.md's website effort) is not "a JS server that
       seems reasonable" — every validation/coercion/dispatch rule it implements must match the real
       `src/` endpoint it stands in for, field for field, bound for bound. This is D.10's
-      within-project consistency principle applied across a language boundary, and it is exactly
-      where G.0's gap slipped through: a `src/`-side policy (int/float coercion, then later
-      `lightCmdLED`'s range bounds) shipped before its `js/` mirror was updated to match, twice,
-      each time only caught by a later audit rather than the same change that made the `src/` edit.
+      within-project consistency principle applied across a language boundary: a `src/`-side policy
+      change and its `js/` mirror are one change, not two, and neither side is ever "done" while the
+      other still reflects the old behavior.
 
 ## G.3 Re-validating the existing project against this Part
 

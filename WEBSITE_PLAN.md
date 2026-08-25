@@ -10,8 +10,10 @@ predecessors.
 
 **How to use this file**: read it in full before starting a sub-session. If your session settles an
 open item, a new architecture decision, or a new goal, update the relevant section here before
-ending — don't leave it only in that session's own transcript. Keep entries as settled facts/current
-state, not a narrated log of who asked what (matches CLAUDE.md's own documentation philosophy).
+ending — don't leave it only in that session's own transcript. **Entries here are settled facts,
+conventions, and current state — never a narrated log of who found or asked what, when, or why.**
+State the rule/decision itself, generically enough that it reads the same whether it was reached on
+the first try or the fifth; the "how we got here" belongs in git/PR history, not in this file.
 
 ---
 
@@ -38,16 +40,14 @@ state, not a narrated log of who asked what (matches CLAUDE.md's own documentati
   `data.result[field]`, re-polls after 2s), `getColorForValue`/`getColorForCode`,
   `toggleButtonSwitch` (On/Off state kept in button `textContent`, not a real checkbox).
 - `style.css` (98 lines): `.container` > `.group` (flexbox, `flex-wrap: wrap`) > `.card`/`.card.sub`
-  nesting, fixed light-grey/white palette. **No media queries at all** — "works in light and dark"
-  in practice means a fixed-light page that simply doesn't break under a dark OS theme, not real
-  `prefers-color-scheme` adaptation. Whether the redesign adds real dark-mode support is still open
-  (see §8).
-- **Legacy REST shape (important, still targeted by `functions.js` today) differs from the new
-  backend**: `/sensors/status`, `/sensors/config`, `/sensors/cmd`, `/net/config`, `/net/cmd`,
-  `/led/cmd`, `/led/config`, `/system/cmd`, `/system/status`, etc. — PUT-with-`cmd`-envelope,
-  `Led`-prefixed field names (`LedWarnCO2`, `LedAutoOn`, ...). This is **not** what
-  `src/asy_webserver_service.py` (SPECIFICATION.md A.8) already exposes — see §4's REST-target
-  decision.
+  nesting, fixed light-grey/white palette. No media queries at all — "works in light and dark" in
+  practice means a fixed-light page that simply doesn't break under a dark OS theme, not real
+  `prefers-color-scheme` adaptation (the redesign's own dark-mode support is settled in §4).
+- **Legacy REST shape (still targeted by `functions.js` today) differs from the new backend**:
+  `/sensors/status`, `/sensors/config`, `/sensors/cmd`, `/net/config`, `/net/cmd`, `/led/cmd`,
+  `/led/config`, `/system/cmd`, `/system/status`, etc. — PUT-with-`cmd`-envelope, `Led`-prefixed
+  field names (`LedWarnCO2`, `LedAutoOn`, ...). This is **not** what `src/asy_webserver_service.py`
+  (SPECIFICATION.md A.8) already exposes — see §4's REST-target decision.
 - `html_stub/` (7 flat files) — deliberate "Hello world"-shaped placeholder standing in for real
   content in the refactored build (SPECIFICATION.md A.9). The gzip → `freezefs` →
   `frozen_modules/frozen_html.py` → mount-at-`/html` → Microdot `send_file(..., compressed=True)`
@@ -81,17 +81,80 @@ state, not a narrated log of who asked what (matches CLAUDE.md's own documentati
 | Topic | Decision | Rationale / notes |
 |---|---|---|
 | Page model | Single-page shell, JS-driven view switching | One HTML skeleton; hamburger/three-dot menu swaps sections via JS, no page reload. Makes the poll-manager's single-active-poll rule trivial to enforce globally. |
-| Definitions file | One single JSON, fetched once | Covers nav, page/field labels, units, valid ranges, special values, etc. |
-| Definitions generation stage | Build-time, static JSON | A build script parses the tagged schema comments from the real `.py` source **before** `mpy-cross` strips comments, emits a static JSON frozen alongside the HTML in the same `freezefs` pipeline. Never computed/served at runtime — zero device RAM/CPU cost. |
-| REST target | New `src/asy_webserver_service.py` API (SPECIFICATION.md A.8) | Six endpoints (`/measurements`, `/sensors`, `/networking`, `/system`, `/status`, `/notification`), sparse-body PUT, no `cmd` envelope, no `Led`-prefixed fields. **Not** the legacy shape §2 describes — this website assumes the refactored backend from day one. |
-| Schema comment-tag scheme | Lightweight inline tag syntax | One tagged comment line per schema field (key=value-style), placed close to that field's definition in the driver's schema. Exact tag grammar/field set (label/unit/description/range/special values/category/...) is **not yet decided** — reserved for a dedicated sub-session (see §8). |
+| Definitions file | One single JSON per device, fetched once | Covers nav, page/field labels, units, valid ranges, special values, etc. Concrete schema in §4.1. |
+| Definitions generation stage | Build-time, static JSON | A build script parses the tagged schema comments from the real `.py` source **before** `mpy-cross` strips comments, emits a static JSON frozen alongside the HTML in the same `freezefs` pipeline. Never computed/served at runtime — zero device RAM/CPU cost. Tag grammar not yet decided — see §8/§11. |
+| REST target | `src/asy_webserver_service.py` API (SPECIFICATION.md A.8) | Six endpoints (`/measurements`, `/sensors`, `/networking`, `/system`, `/status`, `/notification`), sparse-body PUT, no `cmd` envelope, no `Led`-prefixed fields. **Not** the legacy shape §2 describes — this website targets the refactored backend from day one. |
 | Nav grouping | Mirrors the 6 REST endpoints 1:1 | Sections: Measurements, Sensors, Networking, System, Status, Notification. |
-| History depth | Both — counts always visible, expandable to full history | Per-module counts/last-error always shown; full `PrintLogHistory` log available on demand. History size can vary — needs a pagination/truncation mechanism (open, see §8). |
-| Poll coordination | One shared JS poll-manager module | Single source of truth for "is a request in flight." Enforces the project owner's explicit rule: **the measurements group and the status/config group are never polled concurrently by design** (a page only ever needs one or the other); if that ever becomes unavoidable, a new poll must wait until the pending request has resolved **and its connection has fully closed** before starting — the device has very few available sockets. |
+| History depth/pagination | Counts always visible; full history on demand; **no pagination/truncation** | Per-module error-count/last-error always shown. Clicking a module's error-count entry expands its full `history` array as-is — a realistic history depth stays well under 20 entries, so chunked loading would be overkill. History rides along in the same `/status` response (fetch-once-per-poll), not a separate paginated endpoint. |
+| Poll coordination | One shared JS poll-manager module (single-flight queue) | Single source of truth for "is a request in flight." The measurements group and the status/settings group are never polled concurrently by design (a page only ever needs one or the other); if that ever becomes unavoidable, a new poll must wait until the pending request has resolved **and its connection has fully closed** before starting — the device has very few available sockets. Every fetch (recurring polls and one-time startup loads alike) goes through a shared `AbortController`-based timeout so nothing can hang forever. |
 | API reachability | No dedicated API-browser page | Every endpoint's functionality just needs to be reachable somewhere in the ordinary GUI (satisfied by the nav-mirrors-endpoints decision above) — not a Swagger-style reference/try-it tool. |
-| Definitions validation | Strict — visible error state on mismatch | The JS checks the fetched definitions file's shape/version before rendering; a mismatch surfaces a visible error rather than silently rendering something broken or skipping unknown fields. |
+| Definitions validation | Strict — visible error state on mismatch | The JS checks the fetched definitions file's shape/version before rendering, including `pollGroup` (must be `"live"`/`"settings"`/`"none"`) and both poll-interval fields (must be a positive number) — a mismatch surfaces a visible error banner rather than silently rendering something broken or skipping unknown fields. |
 | Landing page | Measurements page | Matches legacy's default landing page. |
-| Visual/mechanics separation | Hard layering: `html/style.css` + `js/templates.js` vs. everything else | A future redesign (visual restyle, or reordering/regrouping what's on a page) must never require touching data-fetching/validation/submission code. **Standing requirement, not just this session's — see §12** for the full rule and the data-attribute contract between the two layers. |
+| Dark mode | Automatic only, via `prefers-color-scheme` | No manual toggle, no stored preference. CSS custom-property tokens on `:root`, redefined under `@media (prefers-color-scheme: dark)` (`html/style.css`). Keeps the page "small, lean, fully self-contained" (§3) with zero added JS/state for it. |
+| Card/nav visual treatment | Modernized flat cards; slide-in drawer nav | Cards: soft border/shadow (not legacy's flat grey fill), real light/dark tokens. Nav: a slide-in drawer opened by a hamburger button, listing the six section links plus the device name, no other global actions in it. |
+| Rendering safety | Server-supplied text via `textContent` only, never `innerHTML` | Standing coding guideline for all new JS — keeps the page XSS-safe by construction. |
+| Visual/mechanics separation | Hard layering: `html/style.css` + `js/templates.js` vs. everything else | A future redesign (visual restyle, or reordering/regrouping what's on a page) must never require touching data-fetching/validation/submission code. **Standing requirement — see §12** for the full contract and the data-attribute hooks between the two layers. |
+| Numeric int/float coercion & validation | `config_manager.py`'s `type_or_range_error()`/`coerce_numeric()`, mirrored in `js/mock-server.js` | Canonical policy for every numeric field, schema-backed or dispatch-only alike — see SPECIFICATION.md Part A.8 (backend) and Part G (the reuse pattern this establishes for any new numeric field). A float-typed field's `definitions.json` entry sets `"float": true`; `js/render.js`'s `serializePutBody()` forces a decimal point onto an outgoing whole-number float value so the wire body preserves the int/float distinction JSON itself can't carry. |
+| Dispatch-only PUT fields | `SystemCmd`, `PauseTime`, `lightCmdLED`, `ResetErrors` — the complete set | None of these are persisted settings: each re-dispatches fresh on every submission (never reports `"Unchanged"`), and each has its own validation shape (see §4.2). `js/mock-server.js` excludes all four from its generic sparse-PUT persistence path. An enum field with no value matching the current GET-reflected state (true for every dispatch-only enum, since these are never returned by GET) renders with a blank placeholder option selected by default — never silently defaulting to the first real option — so an untouched Apply click submits nothing rather than an unintended command. |
+| PUT-result coloring | 4-state vocabulary (`Valid`/`Unchanged`/`Invalid`/`Failed`), colored at two levels | Matches the real backend's own vocabulary (`base_classes.py`/`api_response.py`). Colored on the group card as a whole (worst status across the group — `Invalid`/`Failed` always outrank `Valid`/`Unchanged`; between the two non-problem outcomes, `Valid` outranks `Unchanged`) **and** on each individual field's own wrapper (only for fields actually present in the response's `result`; an untouched, sparse-omitted field keeps no stripe). A whole-request failure (network/communication error) marks every field in that submission `Failed` individually, not just the card border. |
+| PUT/GET error handling | Every fetch treats a non-2xx status, a null body, or `res:"ERR"` as a whole-request failure, surfacing the server's own `descr` text | Applies uniformly to polls and submissions. A field the visitor submitted but that doesn't come back in the response's `result` is shown `"Failed"` (client-side defense; the matching server-side contract — a failing settings-group hook never silently drops fields either — is stated in §4.2). A GET failure shows a per-section error banner without clearing the stale-but-still-useful data already on screen, clearing again on the next successful poll. `/status`'s own PUT (`ResetErrors`) never returns a per-field `result` at all — every submitted field there is marked `Valid` directly once a request-level failure has been ruled out, not run through the generic per-field reconciliation above. |
+| Per-device page-scheme mechanism | The definitions file itself | `js/render.js`/`js/nav.js` contain zero device-specific branching — every card, field, and nav entry comes from the fetched `definitions.json`. All devices share the same `html/index.html` + `js/` tree, pointed at different definitions files. |
+| Known accepted gap: empty-string fields | Cannot currently be set to an empty string via this UI, for any field | The sparse-PUT convention (a blank input means "untouched, omit from the body") makes an explicit empty-string submission structurally impossible — affects `PW`'s real "configure an open network" sentinel (`asy_wifi_service.py`'s `_VAL_PW`). Accepted as-is; not planned to change. |
+
+### 4.1 Definitions JSON schema
+
+One JSON file per device (`html/definitions/<device>.json`), shipped and frozen alongside `html/`
+by the build pipeline (§4's "Definitions generation stage"). `js/definitions.js` documents this
+shape via JSDoc typedefs and strictly validates it at load time (§4's "Definitions validation" row).
+
+- **Top level**: `{schemaVersion, device, landingSection, defaultPollIntervalMs, sections[]}`.
+- **`section`**: mirrors one of the six REST endpoints — `key` matches the endpoint name,
+  `rest: {get, put?}`, `pollGroup: "live"|"settings"|"none"` — and holds `groups[]`.
+- **`group`**: normally a `FieldGroup` (`key`, `label`, optional `submit`/`submitLabel`,
+  `fields[]`). Status's error section is instead the distinct `ErrcountGroup`
+  (`kind: "errcount"`, `modules[]`), since its shape (per-module counter + optional history)
+  doesn't fit the field-list model.
+- **`FieldDef`**: a `kind` (`readonly | number | string | enum | toggle | composite`) plus
+  kind-specific metadata (`min`/`max`, `minLength`/`maxLength`, `mask`, `options`, `specialValues`,
+  `subFields`, `onLabel`/`offLabel`, `float`).
+- See `html/definitions/wozi.json` and `html/definitions/dev.json` for the two worked, real
+  examples (wozi's SCD30/SGP40/BMP388 vs. dev's SCD30/SGP40/SHTC3/MPRLS/ISL29125 — deliberately
+  different sensor sets, field kinds, and value ranges). `dev.json`'s SHTC3/MPRLS/ISL29125 entries
+  are a projection from the same pattern every promoted sensor follows, not confirmed against real
+  driver code — these sensors have no real driver under `src/` yet (see §8).
+
+### 4.2 Errcount (Status section) and dispatch-only field conventions
+
+- **Errcount module list**: `{key, label}` per entry — one per registered module, plus each
+  module's own `CFGMGR_<name>` config-store instance (except SCD30, which persists to the sensor's
+  own NVM, not a `ConfigManager`, so it has no config-store error source), plus the webserver's own
+  `WEBSERVER` entry — matching `asy_webserver_service.py`'s `_build_errcount()` shape exactly.
+  Looked up directly in `/status`'s `errcount[key]` response at render time, no transformation
+  beyond the key lookup.
+- **History entry shape**: `{"num": <raw errno>, "type": "N"|"E"|"W"}` per slot, always a fixed
+  `history_length`-long list (never shorter — a healthy module's history is all `"N"` placeholders,
+  not an empty array). No per-entry timestamp anywhere in the system. `type` is never rendered as
+  text — its only job is to color `num` (green/yellow/red for no-error/warning/error) via
+  `data-err-type`, styled entirely by `html/style.css`.
+- **Errcount UX**: rendered in the same `.card` shell every other field group uses. Starts fully
+  collapsed to a rollup ("N modules with errors" / "M modules with warnings") plus two filter
+  buttons ("Show flagged"/"Show all"); revealing a module row shows its history immediately, no
+  further per-row click needed. Wired entirely inside `js/templates.js` (purely cosmetic
+  expand/collapse, no controller/network involvement).
+- **Dispatch-only field semantics** — `SystemCmd`, `PauseTime`, `lightCmdLED` (r/g/b/t composite,
+  bounds 0-255/0-255/0-255/0.5-60.0, matching legacy's own bounds exactly and rejecting — never
+  clamping — a value outside them), `ResetErrors`: `"Invalid"` only for a structurally wrong
+  payload (non-dict for `lightCmdLED`, not in the allowed set for `SystemCmd`, out of type/range
+  for `PauseTime`); anything else wrong (missing/non-numeric/out-of-range subfield) reports
+  `"Failed"`; a well-formed submission always reports `"Valid"`, including on an identical repeat
+  (never `"Unchanged"` — these re-dispatch fresh every call). `js/mock-server.js` mirrors this
+  exactly via `dispatchRangedAction()` (`PauseTime`) and `dispatchLightCmdLed()`, writing straight
+  to each field's real destination state and never persisting into the generic settings store.
+- **Server-side settings-group failure**: if a `SettingsGroup`'s post-write hook raises, every
+  field that group actually attempted is reported `"Failed"` in the PUT response — never silently
+  dropped — while the overall envelope still reports success (per-field detail carries the
+  failure, matching every other endpoint's own convention of never failing the overall request for
+  per-field detail).
 
 ## 5. Folder structure
 
@@ -100,36 +163,32 @@ convention — `html_raw/`, `html_stub/`, `ext/`, `digital_twin/` are all top-le
 
 ```
 html/               Hand-written HTML skeleton(s) + CSS - the new real website source
-html/definitions/   Per-device definitions.json (schemaVersion/device/sections - see §8) - shipped,
+html/definitions/   Per-device definitions.json (schemaVersion/device/sections - see §4.1) - shipped,
                      frozen alongside html/ by the same pipeline (§4's "Definitions generation stage")
 js/                 Hand-written ES module JS source (poll-manager, mock backend, definitions
-                     loader/validator, generic renderer, nav) - see §6
+                     loader/validator, generic renderer, templates, nav) - see §6
 tests_js/           JS unit tests (Vitest, see §6)
-mockdata/           Prototype-only mock backend fixtures (session 2) - NOT shipped, NOT part of the
-                     frozen-HTML pipeline; consumed only by js/mock-server.js for local viewing
-                     until a real backend/digital-twin exists (§7)
+mockdata/           Prototype-only mock backend fixtures - NOT shipped, NOT part of the frozen-HTML
+                     pipeline; consumed only by js/mock-server.js for local viewing until a real
+                     backend/digital-twin exists (§7)
 ```
 
 `package.json`/`package-lock.json` at repo root (dev-tooling only, `node_modules/` gitignored) —
 mirrors `pyproject.toml`'s existing role: shipped code stays hand-written plain files, never
 restructured into a build/bundle output. `html_raw/` (legacy, still deployed) and `html_stub/`
 (placeholder, still wired into `src/sensortask_wozi.py` until this effort's output replaces it) are
-untouched by this restructuring. `npm run preview` (added session 2) serves the repo root via
+untouched by this restructuring. `npm run preview` serves the repo root via
 `python3 -m http.server 8000` — open `http://localhost:8000/html/index.html?device=wozi` (or
-`?device=dev`) to click through the live prototype locally; see §10 item 2.
+`?device=dev`) to click through the live prototype locally.
 
-**Session 1 status: done, merged.** All three folders, `package.json`/`package-lock.json`, and
-every tool config (§6) landed via `claude/website-s1-folder-ci` (PR #43, merged into this base
-branch) — each folder holding only trivial "Hello world"-shaped placeholder content (mirroring
-`html_stub/`'s own bootstrap role): `html/index.html`+`style.css`, one `js/hello.js` ES module, one
-`tests_js/hello.test.js` Vitest browser-mode test. Confirmed via a real GitHub Actions run on the
-PR (not just local): `web-changes`/`web-lint-and-typecheck`/`web-unit-tests` all green, existing
-Python jobs unaffected. Manual local-trigger instructions for the whole web-CI tier now live in
-**README.md's "Website tooling (JS/HTML/CSS)" section** (`npm ci` + `npm run lint`/`typecheck`/
-`lint:html`/`lint:css`/`test`) — the JS-side equivalent of that same README's existing "Code
-quality tooling" section for Python. The `js/hello.js`/`tests_js/hello.test.js` bootstrap placeholder
-was removed in session 2 once real content replaced it (its job — proving the pipeline red→green —
-was already done and recorded here).
+Current `js/` modules: `app.js` (entry point, `?device=` prototype switch), `definitions.js`
+(loader + strict validator + JSDoc type definitions for the whole schema, no DOM code), `render.js`
+(section/group/field controller — fetch/validate/submit logic, delegates all DOM building to
+`templates.js`), `templates.js` (the DOM/markup-building layer — owns every element/class/order
+choice, see §12), `nav.js` (drawer wiring), `poll-manager.js` (single-flight request queue +
+shared fetch-timeout helper), `mock-server.js` (fetch-intercepting fake backend, answers the same
+six REST paths/shapes A.8 documents — an explicit placeholder for §7's real digital-twin backend,
+not a permanent fixture).
 
 ## 6. CI / tooling stack
 
@@ -137,39 +196,26 @@ Mirrors the Python side's actual roles (ruff/mypy/pytest), not just "any linter/
 
 | Python role | JS/HTML/CSS equivalent | Notes |
 |---|---|---|
-| ruff (lint) | **ESLint** | Chosen over Biome for ecosystem maturity/rule coverage. |
-| mypy (type-check) | **TypeScript `checkJS` mode** (`tsc --noEmit`) reading JSDoc annotations in plain `.js` | Pure dev-time checker, zero transpilation — shipped JS stays exactly as written, same "dev-tooling only" split as `pyproject.toml`. |
-| MicroPython Unix-port interpreter for tests (real environment, not CPython+stubs) | **Vitest in real-browser mode** (Playwright provider, against Chromium) | Deliberately not jsdom — same "real engine over a DOM/interpreter shim" principle SPECIFICATION.md Part E.1 already argues for the Python side. |
+| ruff (lint) | **ESLint** (flat config, `eslint.config.js`) | Chosen over Biome for ecosystem maturity/rule coverage. Beyond `eslint:recommended`: `array-callback-return`, `no-await-in-loop`, `no-constructor-return`, `no-duplicate-imports`, `no-promise-executor-return`, `no-self-compare`, `no-template-curly-in-string`, `no-unmodified-loop-condition`, `no-unreachable-loop`, `no-use-before-define`, `require-atomic-updates` — the JS-side equivalent of ruff's stricter-than-default selection. |
+| mypy (type-check) | **TypeScript `checkJS` mode** (`tsc --noEmit`) reading JSDoc annotations in plain `.js` | Pure dev-time checker, zero transpilation — shipped JS stays exactly as written, same "dev-tooling only" split as `pyproject.toml`. `tsconfig.json`: `ES2022` target/module, `checkJs`/`allowJs`, `strict`. |
+| MicroPython Unix-port interpreter for tests (real environment, not CPython+stubs) | **Vitest in real-browser mode** (`@vitest/browser-playwright`'s `playwright()` provider, against real Chromium) | Deliberately not jsdom — same "real engine over a DOM/interpreter shim" principle SPECIFICATION.md Part E.1 already argues for the Python side. `vitest.config.js` conditionally passes `launchOptions.executablePath` pointing at a Claude Code sandbox's pre-installed `/opt/pw-browsers/chromium` when that path exists; CI runners instead run `npx playwright install --with-deps chromium` first. `testTimeout: 20000` is an explicit hang-avoidance backstop, mirroring the Python side's own standing "hanging tests are never allowed" practice. |
+| `scripts/test.sh --coverage` (non-gating) | `@vitest/coverage-v8` + non-gating `npm run test:coverage` | Report-only, no threshold enforced anywhere — mirrors the Python side's "report, never gate, never chase 100%" philosophy. Wired into `.github/workflows/ci.yml`'s `web-unit-tests` job as a second, `continue-on-error` instrumented run after the real (gating) `npm test` step; summary in the GitHub Actions Job Summary, HTML report as a `coverage-html-js` build artifact. No Codecov upload (the Python side's own upload is itself still a no-op pending repo registration). |
 | — | **html-validate** for `html/`'s skeleton(s); **Stylelint** for the CSS | Lightweight npm packages, no JVM dependency (ruled out the W3C Nu Html Checker for that reason). |
 
-**CI mechanism**: extend the existing single `.github/workflows/ci.yml` (not a new workflow file)
-with a `changes`-detection job (e.g. via `dorny/paths-filter`) whose output gates both the existing
-Python jobs and the new web-CI jobs via `if:` conditions. The workflow itself always triggers and
-always reports a status for every job (irrelevant jobs just skip) — deliberately not two separate
-workflow files with independent trigger-level `paths:` filters, which can leave a PR stuck on a
-required status check that never fires because the whole workflow never triggered. Python CI keeps
-running only against its existing paths (`src/`, `tests/`, `digital_twin/`, `pyproject.toml`,
-`scripts/`, `toolchain/`); web CI runs only against `html/`, `js/`, `tests_js/`, plus its own config
-files (`package.json`, ESLint/TS/Vitest/html-validate/Stylelint configs).
+**CI mechanism**: the existing single `.github/workflows/ci.yml` (not a separate workflow file)
+carries a `web-changes` `dorny/paths-filter` gate job whose output feeds `if:` conditions on
+`web-lint-and-typecheck` (ESLint + `tsc --noEmit` + html-validate + Stylelint) and `web-unit-tests`
+(Vitest browser mode, `needs` both prior jobs) — deliberately not a second workflow file with its
+own trigger-level `paths:` filter, which can leave a PR stuck on a required status check that never
+fires because the whole workflow never triggered. Python CI keeps running only against its existing
+paths (`src/`, `tests/`, `digital_twin/`, `pyproject.toml`, `scripts/`, `toolchain/`); web CI runs
+only against `html/`, `js/`, `tests_js/`, plus its own config files (`package.json`,
+ESLint/TS/Vitest/html-validate/Stylelint configs, `.nvmrc`). Root `.nvmrc` pins Node 22, read by
+`actions/setup-node`'s `node-version-file` in CI.
 
-**Implemented in session 1** (`claude/website-s1-folder-ci`) — confirmed against current package
-docs, not assumed from training memory, per this repo's standing "check current docs" practice:
-Vitest 4 split its browser-mode provider out of `@vitest/browser` into a separate
-**`@vitest/browser-playwright`** package (`playwright()` provider function passed to
-`test.browser.provider`, plus the `playwright` package itself as its peer dependency) — the
-settled *decision* (real-browser mode via Playwright + Chromium, not jsdom) is unchanged, only the
-package name that implements it. `typescript` is now major version 7 (the Go-based rewrite);
-`tsc --noEmit` with `checkJs`/`allowJs` works the same as before. Root `.nvmrc` pins Node 22,
-read by `actions/setup-node`'s `node-version-file` in CI. The three new CI jobs are named
-`web-changes` (the `dorny/paths-filter` gate), `web-lint-and-typecheck` (ESLint + `tsc --noEmit` +
-html-validate + Stylelint), and `web-unit-tests` (Vitest browser mode, `needs` both prior jobs).
-`vitest.config.js` conditionally passes `launchOptions.executablePath` pointing at this Claude Code
-environment's pre-installed `/opt/pw-browsers/chromium` when that path exists (so local runs in
-*this* sandbox don't hit a Playwright browser-revision mismatch and don't re-download); real CI
-runners have no such path, so `web-unit-tests` instead runs `npx playwright install --with-deps
-chromium` before the test step. All three new jobs were proven red (run against no `html/`/`js/`/
-`tests_js/` content at all — every one of ESLint/tsc/html-validate/Stylelint/Vitest fails
-appropriately) then green (against the trivial placeholder content) locally before pushing.
+Manual local-trigger instructions for the whole web-CI tier live in **README.md's "Website tooling
+(JS/HTML/CSS)" section** (`npm ci` + `npm run lint`/`typecheck`/`lint:html`/`lint:css`/`test`) — the
+JS-side equivalent of that same README's existing "Code quality tooling" section for Python.
 
 ## 7. Digital twin integration (future requirement, not yet actionable)
 
@@ -186,171 +232,16 @@ does.
 
 ## 8. Open items — reserved for dedicated future sub-sessions
 
-**Resolved by session 2** (`claude/website-s2-layout-prototype`, interactively with the project
-owner — see §10 item 2's own notes for the concrete prototype these produced):
-
-- **Definitions JSON's actual schema/shape** — settled and built. One JSON per device
-  (`html/definitions/<device>.json`), top-level `{schemaVersion, device, landingSection,
-  defaultPollIntervalMs, sections[]}`. Each `section` mirrors one of the six REST endpoints
-  (`key` matches the endpoint name, `rest: {get, put?}`, `pollGroup: "live"|"settings"|"none"`) and
-  holds `groups[]` — normally a `FieldGroup` (`key`, `label`, optional `submit`/`submitLabel`,
-  `fields[]`), except Status's error section which is a distinct `ErrcountGroup`
-  (`kind: "errcount"`, `modules[]`) since its shape (per-module counter + optional history) doesn't
-  fit the field-list model. Each `FieldDef` has a `kind` (`readonly | number | string | enum |
-  toggle | composite`) plus kind-specific metadata (`min`/`max`, `minLength`/`maxLength`, `mask`,
-  `options`, `specialValues`, `subFields`, `onLabel`/`offLabel`). `js/definitions.js` both documents
-  this shape (JSDoc typedefs) and strictly validates it (§4's "Definitions validation" decision) —
-  a `schemaVersion` major-version mismatch or a missing required field surfaces a visible error
-  banner rather than a silent partial render. See `html/definitions/wozi.json` and
-  `html/definitions/dev.json` for two fully worked, real examples (wozi's SCD30/SGP40/BMP388 vs.
-  dev's SCD30/SGP40/SHTC3/MPRLS/ISL29125 — deliberately different sensor sets, field kinds, and
-  value ranges, to prove the schema/renderer generalize rather than fitting only wozi).
-- **Real dark-mode support** — settled: automatic only, via `prefers-color-scheme`. No manual
-  toggle/override and no stored preference — CSS custom-property tokens on `:root`, redefined
-  under `@media (prefers-color-scheme: dark)` (`html/style.css`). Chosen over a manual toggle to
-  keep the page "small, lean, fully self-contained" (§3) with zero added JS/state for it.
-- **Visual/interaction design specifics** — settled interactively (project owner picked the
-  recommended option at each `AskUserQuestion` round): modernized flat cards (legacy's
-  `.card`/`.card.sub` nesting kept as the mental model, refreshed with a soft border/shadow instead
-  of flat grey fill, real light/dark tokens); a slide-in drawer nav opened by a hamburger button,
-  listing the six section links plus the device name, with no other global actions in it; single-
-  page shell with JS view-switching (matches §4's already-settled decision, now built:
-  `js/nav.js`/`js/render.js`). A per-field-result "Valid/Unchanged/Invalid/Failed" outcome (same
-  four states the real backend's `PUT` envelope reports, `api_response.py`) shows as a left accent
-  stripe + inline per-field text, not legacy's whole-card background flash — at **two** levels: the
-  group card as a whole (worst status across the group) and, restored to match legacy's own
-  per-field granularity (session 3 follow-up 3, §10 item 3), each individual field's own box, colored
-  by its own result via a new `data-field-wrapper-key` hook.
-- **History pagination/truncation mechanism** — settled: **no pagination/truncation**. The project
-  owner's own expectation is that a module's error history realistically stays well under 20
-  entries, so building chunked "show more" loading would be overkill for the real data volume;
-  clicking a module's error-count tile just expands and renders its full `history` array as-is
-  (`js/render.js`'s `renderErrcountGroup()`). Counts stay always-visible per §4; history is
-  fetch-once-per-poll (it rides along in the same `/status` response), not a separate paginated
-  endpoint — A.8's REST shape has no such endpoint to page through in the first place.
-- **Per-device page-scheme variation mechanism** — resolved by construction: the definitions file
-  itself *is* the per-device page scheme (§4's decision already implied this; session 2 is the
-  first time it's actually built two ways). `js/render.js`/`js/nav.js` contain zero device-specific
-  branching — every card, field, and nav entry comes from the fetched `definitions.json`. wozi's
-  and dev's prototypes are the same `html/index.html` + same `js/` tree, pointed at different
-  definitions files (see §10 item 2 below for how the prototype picks one locally).
-- **Error/history endpoint-to-UI field mapping** — resolved: the Status section's `errcount` group
-  lists the module keys it expects (`{key, label}`, one entry per registered module +
-  `CFGMGR_<name>` config-store instances + the webserver's own `WEBSERVER` entry, matching A.8's
-  `_build_errcount()` shape exactly), and looks each one up directly in `/status`'s `errcount[key]`
-  response at render time — no transformation beyond that direct key lookup. **Corrected in a
-  session-2 follow-up audit** (before this branch merged): the first cut of both device definitions
-  files only listed 5 of wozi's real ~17 registered error sources (`src/sensortask_wozi.py`'s
-  `_collect_error_sources()` — every module *and* every `ConfigManager` instance, not just the three
-  sensor readers) and included one name that isn't real (`CFGMGR_SCD30` — SCD30 persists to the
-  sensor's own NVM, not a `ConfigManager`, so it has no config-store error source at all). Both
-  `html/definitions/{wozi,dev}.json` now list the full real set (`WIFI`, `CFGMGR_WIFI`, `DNSSRV`,
-  `NTP`, `CFGMGR_NTP`, `FRAM`, `SYSTEM`, `CFGMGR_SYSTEM`, plus each sensor and, except SCD30, its own
-  `CFGMGR_<name>`, plus `NEOPIXEL`/`NOTIFY`/`CFGMGR_NOTIFY`/`WEBSERVER`). dev.json's own SHTC3/MPRLS/
-  ISL29125 aren't promoted to `src/` yet, so their `CFGMGR_<name>` entries are a projection from the
-  same pattern every promoted sensor already follows, not confirmed against real code — flagged here
-  for whichever session first promotes them.
-- **Error-history entry shape** — the same follow-up audit found the prototype had invented a shape
-  (`{TS, ErrType: "I2CTimeout", ErrNum}`) that doesn't exist anywhere on the real device:
-  `src/print_log.py`'s `get_log()` / `src/asy_webserver_service.py`'s `_shape_errcount_entry()`
-  return `{"num": <raw errno>, "type": "N"|"E"|"W"}` per slot, always a fixed `history_length`-long
-  list (never shorter — a healthy module's history is all `"N"` placeholders, not an empty array),
-  with **no per-entry timestamp anywhere in the system**. Resolved interactively with the project
-  owner: `type` is never rendered as text at all — its only job is to color `num` (green/yellow/red
-  for no-error/warning/error), the same "controller/template sets a semantic value, CSS alone
-  decides what it looks like" contract §12 already uses for `data-apply-status`. Implemented as
-  `js/templates.js`'s `buildErrcountGroup()` setting `data-err-type` per entry, styled by
-  `html/style.css`'s `.history-entry[data-err-type]` rules; `js/definitions.js`'s `MockDeviceData`
-  typedef and both mock fixture files now use the real shape.
-- **Errcount rollup/collapse UX** — the same `.card` shell every other field group uses (project
-  owner, session 2 follow-up: the rollup/buttons were originally floating loose on the page,
-  unlike every other displayed value), starting fully collapsed to just a rollup ("N modules with
-  errors" / "M modules with warnings") plus two filter buttons ("Show flagged"/"Show all") — a
-  device can have 15+ registered modules, and showing every one by default was too much vertical
-  space for a page a visitor mostly just needs to glance at. Once a module row is revealed by
-  either filter, its history is shown immediately alongside it — no further per-row click needed
-  (project owner: a collapsed history on an already-revealed, already-flagged module read as
-  broken, not as a second layer of hiding). Implemented in `js/templates.js`'s
-  `buildErrcountGroup()`.
-- **Other invented-vs-real mismatches found by the same audit, corrected**: `/status.networking`
-  was missing `Mode`/`Connected`/`IP`/`NtpLastSync` (real fields per
-  `sensortask_wozi.py`'s `_networking_status()`); `LocalTime`/`UtcTime` are real
-  `{year, month, mday, hour, minute, second, weekday}` dicts (`_gmtimestruct_to_dict()`), not
-  pre-formatted strings — `formatFieldValue()` now special-cases the (already-reserved but
-  previously unimplemented) `field.format: "gmtimestruct"`; `BootSignature` is a real `int | None`
-  (opaque, meaningful only by comparing across polls), not a descriptive string like `"POWERON"` —
-  the mock fixtures invented that; SGP40's `"ticks"` unit was on the wrong field (`VOC` is a
-  dimensionless index, `Raw` is the actual tick count); dev.json's `InterruptAutoClear` declared
-  `min: 0` while also declaring a `-1` special value, self-contradictory — the real legacy range is
-  `-1`–3600000. dev.json's unprefixed sensor-config field names for SHTC3/MPRLS/ISL29125 were
-  checked against this same audit and are **not** a bug — they intentionally follow `src/`'s
-  sparse-PUT contract per this file's own already-settled REST-target decision (§4), not the legacy
-  `modules/sensortask-dev.py` `cmd`-envelope/prefixed-field shape those sensors are actually served
-  under today.
-
-**Still open / deferred to a future sub-session:**
-
-- **Exact schema comment-tag grammar** — §11 below is a first concrete *sketch* of the tag syntax
-  and worked examples against the real `src/asy_scd30_driver.py`/`asy_bmp3xx_driver.py`/
-  `asy_sgp40_driver.py` schemas, written during session 2 per its own scope (documentation only,
-  no parser). It is a proposal to start from, **not** a final decision — per the original plan,
-  actually settling it is still reserved for a dedicated session, ideally paired with whichever
-  driver session first touches a schema definition under this convention, since that session will
-  be the first to feel where the sketch is awkward in practice.
+- **Exact schema comment-tag grammar** — §11 is a worked *sketch* of the tag syntax against real
+  `src/` driver schemas, documentation only, no parser built. It is a proposal to start from, not a
+  final decision — actually settling it is reserved for a dedicated session, ideally paired with
+  whichever driver session first touches a schema definition under this convention.
 - **Build pipeline wiring** — how `scripts/build_frozen_html.sh`/`HTML_SRC_DIRS` picks up `html/`
   (and the JS build/definitions-generation step) instead of/alongside `html_stub/`; whether the
   existing mechanism already covers this or needs extending. Session 4's job (§10).
-
-**Gaps left open by session 3, since resolved directly by this base session (project owner's
-direction — a second, deliberate, minimal `src/` exception, same review-and-confirm pattern as
-follow-up 7, not a standing relaxation of §10's "never touch `src/` files"):**
-
-- **`WebserverService._apply_settings_groups()`'s silent result-swallow — fixed.** Was: a
-  `SettingsGroup`'s `post_fct`/`post_asy_fct` hook raising caused that whole group's fields to
-  vanish from the PUT response with no signal at any level (`res:"OK"` still reported), since
-  `handle_set_cmd()`'s own except-path (`api_response.py`) discards its already-computed per-field
-  results. `js/render.js`'s `reconcileResults()` already defended against this client-side (shows
-  `"Failed"` for a submitted-but-unreturned field) but the server-side swallow itself was unfixed.
-  **Fixed**: `_apply_settings_groups()` now checks each group's own envelope for `res == "ERR"` and,
-  when it fires, explicitly marks every field the group actually attempted as `"Failed"` in the
-  returned `result` dict, instead of silently omitting them — the overall envelope still reports
-  `res:"OK"`/`code:0` (per-field detail carries the failure, matching every other endpoint's own
-  "never fail the overall request for per-field detail" convention). TDD regression test:
-  `tests/test_asy_webserver_service.py::test_networking_put_raising_post_fct_marks_every_attempted_field_in_that_group_failed`
-  (a two-field group's raising `post_fct` — both fields now come back `"Failed"`, confirmed failing
-  against the pre-fix code first).
-- **`lightCmdLED`'s legacy-vs-`src/` behavior divergence — fixed.** Was: legacy's `led_cmd()`
-  (`modules/sensortask-wozi.py`) validated and rejected out-of-range r/g/b (0-255)/t (0.5-60.0); the
-  promoted `src/` backend silently clamped r/g/b (`asy_neopixel_driver.py`'s `_clamp_byte()`) and
-  floored/never-bounded t instead. **Fixed**: `src/sensortask_wozi.py`'s
-  `_notification_led_callback()` now runs each of r/g/b/t through `config_manager.py`'s
-  `type_or_range_error()` against four new synthetic `FieldSchema` records (`_FIELD_LED_R/G/B/T`,
-  mirroring `asy_webserver_service.py`'s own `_PAUSE_TIME_FIELD` pattern) matching legacy's exact
-  bounds — doing int/float coercion and range-checking in one step instead of the bare
-  `coerce_numeric()` calls follow-up 7 left in place; an out-of-range value is now rejected
-  (`"Failed"`, same category as a missing/non-numeric subfield) before ever reaching
-  `pixel.request_signal()`, never silently clamped/floored. `js/mock-server.js`'s
-  `dispatchLightCmdLed()` mirrors the same bounds now (was previously deliberately never
-  range-checking, matching the old `src/` clamp behavior). TDD: 5 new
-  `tests/test_sensortask_wozi.py` tests (out-of-range/negative rgb, out-of-range t both directions,
-  lower/upper boundary accepted — the boundary cases deliberately split into two single-dispatch
-  test functions, not one two-dispatch test: `_dispatch()`'s own fresh-`asyncio.run()`-per-call
-  design means `NeopixelDriver`'s background `neopixel_signal()` consumer never actually runs in
-  this test harness, so a **second** real `request_signal()` call in the same test hangs forever in
-  `request_signal()`'s own `while start_signal_event.is_set(): await asyncio.sleep(0)` loop —
-  discovered directly by hitting this hang while first writing the test, not theorized) plus updated/
-  new `tests_js/mock-server.test.js` assertions (the old "out-of-range is still Valid" case flipped
-  to `"Failed"`, two new boundary-accepted cases added).
-- **Verification**: independently re-run in full after both fixes, not just the two touched files —
-  Python: `scripts/lint.sh`/`scripts/typecheck.sh` clean, `scripts/test.sh` (real MicroPython
-  Unix-port interpreter) **2246/2246 passing across 47 files, zero failures** (up from follow-up 7's
-  2240, +6 new tests). JS: `lint`/`typecheck`/`lint:html`/`lint:css` clean, **603/603** Vitest tests
-  passing. Nothing in §4/§8/§12's settled architecture changed beyond the two fixes above.
-- **Still open** (left as-is per project owner's direction — not a matter of taste, just not this
-  round's scope): **`dev.json`'s SHTC3/MPRLS/ISL29125 fields remain an unconfirmed projection** —
-  these sensors have no real driver under `src/` yet (unchanged since session 2; re-confirmed clean
-  in session 3 follow-up 4's full field-list audit, nothing new found). Resolves naturally once a
-  future session promotes those drivers.
+- **`dev.json`'s SHTC3/MPRLS/ISL29125 fields remain an unconfirmed projection** — these sensors
+  have no real driver under `src/` yet. Resolves naturally once a future session promotes those
+  drivers.
 
 ## 9. Sub-session working process
 
@@ -361,14 +252,25 @@ the settled architecture/goals that step (1)'s scope-refinement can build on dir
 re-deriving, and step (2) only needs to raise what's still genuinely open (§8), not the questions
 already answered in §4.
 
+**Any decision that's a matter of taste/preference rather than derivable from §1–§4's settled
+architecture** (visual/UX choices, color/typography/layout, and the like) needs the project owner's
+interactive input, not a unilateral pick reported after the fact: present 2–4 concrete options via
+`AskUserQuestion` at the point the decision is actually reached, rather than batching every such
+question into the upfront round or guessing.
+
 ## 10. Sub-session breakdown (execution order)
 
 **Standing instructions for every sub-session below** (in addition to §9's step-session workflow):
 start with a detailed description of what it will do; ask 10 clarifying questions before starting
 actual work; update this file before ending if anything settled changes or a new decision is made,
-so the next sub-session reads current state, not stale state; never touch `src/` files; do not
-build the schema-comment autocreation tooling itself in this effort — only prepare hand-written
-example definitions file(s) shaped as if they were auto-creatable.
+so the next sub-session reads current state, not stale state; **never touch `src/` files** —
+website work stays confined to `html/`/`js/`/`tests_js/`/this plan/`SPECIFICATION.md`; a genuine
+exception requires being raised and confirmed with the project owner first, every time, and is
+never assumed from a past exception having been granted; do not build the schema-comment
+autocreation tooling itself in this effort — only prepare hand-written example definitions file(s)
+shaped as if they were auto-creatable. This effort's own local verification is JS-only (`npm run
+lint`/`typecheck`/`lint:html`/`lint:css`/`test`) unless a confirmed `src/`-touching exception is
+active for that session.
 
 **Branching/PR requirement — applies to every sub-session, including the sessions spun off from
 each of the five below:** each sub-session branches off **this base session's branch**,
@@ -379,730 +281,34 @@ branch, 3 off 2's, etc.) follows the same rule against its immediate parent sess
 against `main` or against this base branch directly, keeping the sessions stacked in execution
 order.
 
-**"Never touch `src/` files" reaffirmed after two deliberate, confirmed exceptions:** session 3
-(item 3 below, follow-up 7) deviated from this instruction once, deliberately and with
-project-owner sign-off, to fix a real, significant int/float coercion bug in shared backend code
-that a website-only fix couldn't actually address at the root. The project owner then directly
-authorized a second, minimal `src/` touch (§8's own record, above) to fix two more real,
-significant gaps this file had flagged but left open (the settings-group result-swallow, and
-`lightCmdLED`'s legacy-vs-`src/` clamping divergence) — done by this base/orchestrating session
-directly, not a spun-off sub-session, but under the exact same discipline: raised, confirmed, TDD,
-independently re-verified against the full test suite before merging. **Both were confirmed
-justified but neither is a standing relaxation** — every session from here on (4 onward) is bound
-by "never touch `src/` files" exactly as originally written, with no expectation of a repeat. This
-effort's own local verification reverts to JS-only accordingly: `npm run lint`/`typecheck`/
-`lint:html`/`lint:css`/`test`, not the Python suite (`scripts/lint.sh`/`typecheck.sh`/`test.sh`) —
-that's only warranted again if a future session finds another genuinely significant reason to touch
-`src/`, and that would again need to be raised and confirmed, not assumed.
+1. **Folder structure + CI.** Create `html/`, `js/`, `tests_js/`, root `package.json`/tool configs,
+   and the `changes`-gated web-CI tier in `ci.yml` (§5/§6). **Done** — `claude/website-s1-folder-ci`
+   (PR #43).
+2. **Layout & functionality definition, with a locally-viewable prototype.** Page/section design
+   (nav, per-endpoint sections, history UI), the definitions JSON schema, hand-written example
+   definitions file(s) against static/mocked fixture data for two differing devices (proving the
+   "one skeleton/JS, content from definitions file" claim generalizes, not just for wozi), plus a
+   documentation-only sketch of the eventual schema-comment tag grammar. **Done** —
+   `claude/website-s2-layout-prototype` (PR #44). Settled decisions from this phase are recorded in
+   §4; the tag-grammar sketch is §11.
+3. **Real implementation, TDD.** A spec/goal/action list derived from the prototype; tests-first JS
+   unit tests against that spec; then the implementation, hardening the prototype until the CI
+   pipeline is fully green and coverage is maximized — mirroring this repo's own
+   `improved-quality/` → `src/` two-phase precedent (prototype/sketch, then a from-spec,
+   test-driven hardened build). **Done** — `claude/website-s3-tdd-implementation` (PR #45).
+   Behavioral/architectural outcomes from this phase are recorded in §4/§4.2; current test/coverage
+   state is verifiable directly (`npm test`/`npm run test:coverage`), not restated here.
 
-1. **Folder structure + CI. Done** — `claude/website-s1-folder-ci` (PR #43), see §5/§6 for what landed.
-   Created `html/`, `js/`, `tests_js/`, root `package.json`/tool configs
-   (ESLint, TypeScript `checkJS`, Vitest+Playwright, html-validate, Stylelint), and the
-   `changes`-gated web-CI tier in `ci.yml` (§6). Included trivial placeholder content (mirroring
-   `html_stub/`'s own "Hello world"-shaped bootstrap role) so the pipeline was proven red→green
-   before any real content existed, not just configured and left unexercised.
-2. **Layout & functionality definition, with a locally-viewable prototype. Done** —
-   `claude/website-s2-layout-prototype`. Detailed page/section
-   design (nav, per-endpoint sections, history UI, ...); resolve the still-open §8 decisions that
-   naturally belong here — real dark-mode support or not, the history pagination/truncation
-   mechanism, and the definitions JSON's concrete schema; then hand-write example definitions
-   file(s) against static/mocked fixture data (no live backend yet) so the resulting pages are
-   genuinely open-able and clickable in a local browser. **Cover two differing devices** (e.g.
-   wozi's real sensor set + a second device's very different one), not just wozi, to actually prove
-   the "one skeleton/JS, content from definitions file" claim generalizes rather than hiding
-   wozi-specific assumptions. Also sketch — documentation only, not implemented — what the eventual
-   schema-comment tag grammar in driver files would need to look like to auto-produce this
-   definitions shape later, keeping the example honestly "auto-creatable in principle" without
-   building that parser.
-
-   **This session's process must be genuinely interactive, beyond §9/§10's standard upfront
-   10-question gate.** Every §8 item this session resolves (dark mode extent, hamburger/three-dot
-   menu concrete behavior, card vs. other visual treatment, history pagination/truncation UX, color/
-   typography/layout choices, and any other decision that's a matter of taste/preference rather than
-   something derivable from §1–§4's already-settled architecture) is a design-taste call the project
-   owner should weigh in on, not something this session decides unilaterally and only reports
-   afterward. Concretely: the initial 10 questions should surface whatever blocks starting, but as
-   each visual/UX decision point is actually reached during the design work, pause and ask again —
-   present 2–4 concrete options (sketches/descriptions of each, with tradeoffs) via `AskUserQuestion`
-   rather than batching every open question into the start or silently picking based on internal
-   judgment. Iterate on the prototype with the project owner's feedback before treating a layout/
-   functionality decision as settled enough to write into this file or hand off to session 3.
-
-   **Session 2 status: done.** Every design-taste decision was resolved interactively via
-   `AskUserQuestion` before being built (device choice, prototype-only multi-device UX, mock-data
-   liveness, history-fixture variety, dark-mode extent, nav-menu shape, card visual treatment —
-   the project owner picked the recommended option at every round); the history
-   pagination/truncation question came back with real information (error history realistically
-   stays under 20 entries) that settled §8's item outright rather than needing a UX mechanism at
-   all. All §8 resolutions are recorded above; §11 below is the schema-comment tag grammar sketch.
-   Built: `html/index.html` + `html/style.css` (single-page shell, light/dark tokens, slide-in nav
-   drawer, modernized cards), `js/poll-manager.js` (single-flight request queue enforcing §4's
-   measurements/status-vs-settings mutual exclusion), `js/definitions.js` (loader + strict
-   validator + JSDoc type definitions for the whole schema), `js/render.js` (generic section/group/
-   field renderer — zero device-specific code, delegates DOM building to `js/templates.js`),
-   `js/templates.js` (the DOM/markup-building layer extracted per §12's pre-merge amendment —
-   owns every element/class/order choice `render.js`/`nav.js` used to build inline), `js/nav.js`
-   (drawer wiring), `js/app.js` (entry point, `?device=` prototype switch), `js/mock-server.js`
-   (fetch-intercepting fake backend, answers the same six REST paths/shapes A.8 documents,
-   validates PUTs against the definitions' own min/max/enum/length constraints, jitters live
-   values so polling visibly does something — explicitly a placeholder for session 5's real
-   digital-twin backend, not a permanent fixture), `html/definitions/wozi.json` +
-   `html/definitions/dev.json` (the two worked example definitions files), `mockdata/wozi.json` +
-   `mockdata/dev.json` (their fixture data, deliberately varied error histories per device). 45
-   Vitest unit tests across `tests_js/poll-manager.test.js`, `definitions.test.js`,
-   `mock-server.test.js`, `render.test.js`, `templates.test.js` (the last two split by §12's
-   amendment); `lint`/`typecheck`/`lint:html`/`lint:css`/`test` all green — reconfirmed directly
-   against this branch's current head (`b48d6f2`), not just taken on session 2's own word.
-   Manually verified end-to-end in real Chromium (Playwright, this
-   session's own pre-installed browser): both devices' full nav → section → live-poll → Apply
-   (including an out-of-range value correctly rendering "Invalid") → errcount-expand flow, in both
-   color schemes and at a mobile viewport width, zero console/page errors. `npm run preview` (added
-   this session) serves the prototype locally — see §5.
-3. **Real implementation, TDD.** Write a spec/goal/action list derived from session 2's prototype;
-   then tests-first JS unit tests (Vitest) against that spec; then the real implementation —
-   mirroring this repo's own `improved-quality/` → `src/` two-phase precedent (prototype/sketch,
-   then a from-spec, test-driven hardened build, not just polish of the sketch) — until session 1's
-   pipeline is fully green and coverage is maximized. Standing coding guideline: render any
-   server-supplied text via `textContent`, never `innerHTML`, so the page stays XSS-safe by
-   construction.
-
-   **Session 3 status: done** — `claude/website-s3-tdd-implementation`. Session 2's prototype
-   turned out to already be close to production-grade on code quality (zero `innerHTML` anywhere,
-   careful edge-case handling in `mock-server.js`, a fully strict `definitions.js` validator) — so
-   this session's real spec, derived from reading every `js/` file end to end against
-   SPECIFICATION.md A.8's REST contract, turned out to be a **hardening/gap-closing** pass rather
-   than a rewrite: five concrete, confirmed-real correctness gaps, plus full test coverage for the
-   two files that had none.
-
-   Gaps found and fixed, each TDD (a failing test proving the gap, then the fix):
-   - **`js/poll-manager.js` had no client-side request timeout.** The single-flight queue (§4
-     "Poll coordination") would wait forever on one hung connection, permanently wedging every
-     future poll — the device has very few available sockets, so this was a real, not
-     hypothetical, failure mode. Fixed with an `AbortController`-based per-request timeout
-     (`DEFAULT_TIMEOUT_MS = 15000`, overridable per call), which also frees the underlying browser
-     connection, not just this app's own bookkeeping.
-   - **`js/render.js`'s `fetchOnce()` silently swallowed GET failures.** A non-ok response just
-     `return`ed with no visible effect; a thrown error (network failure, or the new timeout above)
-     was uncaught for every non-`"live"` section, becoming an unhandled promise rejection. Fixed:
-     `fetchOnce()` now throws uniformly on any failure and catches centrally, showing a per-section
-     error banner (`js/templates.js`'s `buildSectionShell()` now returns `{grid, errorBanner}`,
-     reusing the same `.error-banner`/`.hidden` treatment `html/index.html`'s app-level banner
-     already established) without clearing the stale-but-still-useful data already on screen, and
-     clearing the banner again on the next successful poll (self-healing, matches the existing
-     retry-forever polling design — no behavior change to *when* polling continues, only to
-     whether a failure is visible).
-   - **`js/app.js`'s mock-fixture-data fetch had no error handling at all** (unlike the
-     `loadDefinitions()` call immediately above it) — a failed/malformed response crashed
-     `startApp()` outright with an uncaught `SyntaxError`. Fixed to match the existing
-     definitions-load pattern: checks `.ok`, catches, shows the same error banner.
-   - **`js/mock-server.js`** gained a minimal, explicitly prototype-only failure-injection hook
-     (`installMockFetch(defs, data, controls)` — `controls.nextFailure` is `"network"` or an HTTP
-     status, one-shot) so the three gaps above could be exercised through the real mock-backed
-     integration tests (`render.test.js`/`app.test.js`), not just synthetic `window.fetch` stubs.
-     Session 5's real digital-twin backend supersedes this; kept intentionally thin.
-
-   Test coverage: `js/nav.js` and `js/app.js` had **zero** dedicated test files before
-   this session (both existing behavior turned out correct — `nav.test.js`'s 5 tests all passed on
-   the first run, no bugs found there); `tests_js/nav.test.js` (5 tests) and `tests_js/app.test.js`
-   (5 tests) added. Also added: an XSS-safe-by-construction regression suite (asserts a hostile
-   `<img onerror=...>` field label/value never becomes a real DOM element anywhere `js/templates.js`
-   builds one — locks in the standing `textContent`-only guideline against future regressions);
-   edge-case coverage for a composite field submitted with only some subfields filled (reports
-   `Invalid`, doesn't silently apply a half-specified command) and for a PUT that fails at the
-   network level (`Request failed`, `failed` apply-status, Apply button re-enabled afterward); and
-   several `definitions.js`/`mock-server.js`/`templates.js` validation-branch tests closing
-   coverage gaps surfaced by the new `test:coverage` script (below). Went from 45 tests (session 2)
-   to 82; a stray dead-code candidate (`PollManager.isBusy`, previously unused anywhere) was kept
-   and given a test rather than deleted, since it's a plausible future UI affordance (a "syncing"
-   indicator) and this session's scope was hardening existing behavior, not pruning speculative
-   public API.
-   - **Coverage tooling**: added `@vitest/coverage-v8` + non-gating `npm run test:coverage`,
-     mirroring the Python side's own non-gating `scripts/test.sh --coverage` (CLAUDE.md's "Code
-     quality tooling") — report-only, no threshold enforced anywhere. Wired into
-     `.github/workflows/ci.yml`'s `web-unit-tests` job the same way: a second, `continue-on-error`
-     instrumented test run after the real (gating) `npm test` step, its summary appended to the
-     GitHub Actions Job Summary and its HTML report uploaded as a `coverage-html-js` build
-     artifact — no Codecov upload (the Python side's own Codecov upload is itself still a no-op
-     pending repo registration; not worth wiring twice for the same not-yet-usable destination).
-     Coverage tooling didn't exist before this session, so there's no session-2 baseline number to
-     compare against; final coverage after this session's TDD additions: **96% statements / 80.9%
-     branches / 97.4% functions / 96% lines** across `js/`. The remaining uncovered lines are
-     genuinely defensive/unreachable
-     branches (e.g. a nav link somehow missing its own `data-section-key`, a `selectSection()` call
-     for a section key that isn't in the loaded definitions) — deliberately not chased further,
-     matching the Python side's own "report, never gate, never chase 100%" philosophy.
-   - Manually verified end-to-end in real Chromium (Playwright, this session's own pre-installed
-     browser, same as session 2's own verification method): both devices' full nav → section
-     click-through with zero console/page errors; the new error banner triggered against a live
-     (simulated) network failure mid-poll, confirmed correct in both light and dark color schemes,
-     confirmed the stale data underneath stays on screen, confirmed it self-clears on the next
-     successful poll.
-   - Nothing in §4/§8's settled architecture changed; §12's visual/mechanics separation held
-     throughout — every fix above lives entirely in the mechanics layer (`render.js`/`app.js`/
-     `poll-manager.js`/`mock-server.js`) except the one new visual element (`buildSectionShell()`'s
-     `errorBanner`), which `js/templates.js` builds and only `.hidden`/`.textContent` ever get
-     toggled on it by a controller — the same pattern `html/index.html`'s app-level banner already
-     used, not a new one. `src/` was never touched; §11's schema-comment tooling was not built.
-
-   **Session 3 follow-up: Python-parity quality/stability/testing pass (same branch/PR).** Applied
-   CLAUDE.md's Python-side rules (Hard rules, Working agreements, Code quality tooling) and
-   SPECIFICATION.md Parts D/E to `js/`/`tests_js/`, finding a JS-side equivalent for each and either
-   confirming it already held or fixing it:
-   - **Real bug, found and fixed via TDD**: a number field's text `<input>` coerced non-numeric text
-     to `Number("garbage") === NaN`, and `JSON.stringify(NaN)` is `"null"` — server-side,
-     `Number(null) === 0`, so garbage typed into a field whose valid range included 0 (e.g. a
-     composite subfield's `min: 0`) silently PUT a deliberate-looking `0` instead of failing
-     validation, with no visible error. Fixed in `render.js`'s `readInputValue()` and
-     `collectGroupBody()`'s composite branch: non-finite input is now sent through as the raw string
-     so the backend's own `Number(value)` recreates the same failure and correctly rejects it.
-     Regression tests added in `render.test.js`; also verified live against the real running
-     prototype in Chromium (Playwright), not just the unit tests.
-   - **D.2/D.3-equivalent (stability)**: audited every `catch` block for silent swallowing (none
-     found — every one either surfaces a visible banner or is itself documented as defense-in-depth,
-     see below) and every event-listener/timer lifecycle for leaks on repeated polls/section
-     switches (none found — `PollManager`'s `AbortController`+timeout and `startPolling()`'s
-     resolve-before-reschedule design were already correct, confirmed empirically in real Chromium
-     that an aborted `fetch()` rejects promptly and the underlying connection actually closes).
-   - **D.6-equivalent (typing)**: replaced every remaining `@type {any}` cast (4 in `definitions.js`/
-     `render.js`, plus one `@returns {Record<string, any>}` in `mock-server.js` found only by the
-     broader D.10 sweep below) with the actual precise type, fixing two now-real type errors this
-     surfaced (an `unknown` PUT-body value flowing into `Array.prototype.includes()` and into
-     `applySparsePut()`) rather than papering over them.
-   - **D.10-equivalent (cross-file consistency)**: a bird's-eye pass over all of `js/` found and
-     fixed missing `@returns` tags on `collectGroupBody()`/`envelope()`/`jsonResponse()`/
-     `handleGet()` (every sibling helper in the same files already had one) and reordered
-     `PollManager`'s two methods (getter before the request method, matching D.15's
-     Getters-before-Others convention) — both mechanical, no behavior change.
-   - **E.5.1-equivalent (branch coverage)**: raised branch coverage 80.91% → 84.21% (94 tests, up
-     from 82) by adding real, previously-unexercised cases — `definitions.js`'s missing section
-     key/label, `templates.js`'s `field.description` hint and a module absent from `errcount`
-     entirely, `mock-server.js`'s `jitterInPlace()` non-number/timestamp branches and an unknown PUT
-     sensor key, `poll-manager.js`'s `startPolling()` catch branch, `render.js`'s empty-GET-body and
-     `/status` sub-fetch-failure error paths and a readonly field refreshed in place inside a
-     writable live-polled group. Three genuinely defensive/unreachable branches found along the way
-     (`app.js`'s unknown-section-key guard, `nav.js`'s missing-`data-section-key` guard,
-     `poll-manager.js`'s `tick()`'s redundant top-of-function `stopped` check) were left as-is and
-     documented inline with why, matching Part E.5.1's own "document, don't chase" precedent, rather
-     than force-testing them via contrived internals access.
-   - **Docstring cap (Working agreements)**: every `js/`/`tests_js/` JSDoc module/function header
-     was over CLAUDE.md's 3-line docstring cap (a rule already stated as applying to new code, not
-     yet actually applied here). Trimmed all of them to ≤3 lines; load-bearing detail that wasn't
-     already documented elsewhere moved into this file (the errcount rollup/collapse UX rationale
-     and the apply-status worst-first severity ordering, both added above/nearby) rather than being
-     dropped, mirroring the Python side's own "moved to SPECIFICATION.md Part X" pattern.
-   - **Lint stringency parity**: `eslint.config.js` gained 11 core ESLint rules beyond
-     `eslint:recommended` (`array-callback-return`, `no-await-in-loop`, `no-constructor-return`,
-     `no-duplicate-imports`, `no-promise-executor-return`, `no-self-compare`,
-     `no-template-curly-in-string`, `no-unmodified-loop-condition`, `no-unreachable-loop`,
-     `no-use-before-define`, `require-atomic-updates`) — the JS-side equivalent of ruff's
-     stricter-than-default selection, verified current/non-deprecated directly against the installed
-     `eslint` package's own rule metadata rather than assumed. Fixed the two real findings this
-     surfaced (a `paint()`/`fetchOnce()` mutual-reference in `render.js`, converted to hoisted
-     function declarations rather than suppressed) plus three idiomatic `new Promise(resolve =>
-     setTimeout(resolve, ms))` sleeps rewritten with a block body (harmless either way, but now
-     clean under `no-promise-executor-return`); one narrowly-scoped `no-await-in-loop` suppression
-     remains in `render.test.js`'s intentionally-sequential polling helper, with a comment
-     explaining why.
-   - **Hang-avoidance backstop (Code quality tooling)**: `vitest.config.js` now sets an explicit
-     `testTimeout: 20000` — not a fix for any observed hang, but an explicit backstop mirroring the
-     Python side's own standing "hanging tests are never allowed" practice, generous enough to cover
-     this suite's own longest internal wait (5000ms) with real-browser/CI margin.
-   - No lint/typecheck/test-count regression anywhere in this pass: `lint`/`typecheck`/`lint:html`/
-     `lint:css`/`test` all still green throughout, re-verified after every change, not just at the
-     end. `src/` was never touched.
-
-   **Session 3 follow-up 2: robustness against the real backend's full error/transmission
-   surface (same branch/PR).** Read `src/asy_webserver_service.py`/`src/api_response.py` end to
-   end plus `tests/test_asy_webserver_service.py`'s ~110 tests (SPECIFICATION.md Part A.5/A.8) to
-   enumerate every shape a real response can actually take, then made `js/` handle each one —
-   never crashing, never permanently blocking, always self-healing on the next poll/retry.
-   - **Real bug, found and fixed**: `render.js`'s PUT handler never checked the response envelope's
-     `res`/`code` — only a malformed request body (`_body_as_dict()` returning `None`) makes the
-     real backend reply `res:"ERR"`, and it does so as a **plain HTTP 200** (`ar.make_response(1)`),
-     never a shaped HTTP error status. Since that response's `result` is always `{}`,
-     `applyResultStyling()`'s own "empty result still means success" fallback (added for
-     `/status`'s `ResetErrors`, see §12 above) silently painted a rejected PUT as **Valid**. Same
-     silent-Valid outcome for a shaped HTTP error (400/404/405/413/500) reaching the PUT path,
-     since that also carries `result:{}`. Fixed: the PUT handler now treats a non-2xx status, a
-     null body, or `res:"ERR"` as a whole-request failure, surfacing the server's own `descr` text
-     (e.g. "Invalid JSON request") instead of a bare status code.
-   - **Real server-side gap found, flagged not fixed** (`src/` is out of scope for this effort):
-     `WebserverService._apply_settings_groups()` merges each `SettingsGroup`'s own
-     `ar.handle_set_cmd()` result into the overall `results` dict via `.update()`. If a group's
-     `post_fct`/`post_asy_fct` hook raises, `handle_set_cmd()`'s own except-block returns
-     `ar.make_response(100)` with `result:{}` — and that empty dict silently overwrites nothing,
-     so every field in that one group simply **vanishes from the response** with no signal at any
-     level (the top-level envelope still reports `res:"OK"`). `js/render.js`'s new
-     `reconcileResults()` defends against this from the client side: any field the visitor actually
-     submitted but that doesn't come back in `result` is now shown as `Failed` rather than silently
-     omitted. The underlying server-side swallow itself is unchanged — flagging it here per
-     CLAUDE.md's "flag, don't silently change" working agreement, for whichever session next
-     touches `asy_webserver_service.py`/`api_response.py`.
-   - **Transmission-error hardening**: `js/poll-manager.js`'s `PollManager.request()` now
-     separately catches a stream read failure (`response.text()` throwing — connection dropped
-     mid-body) and a JSON parse failure (a non-empty but unparseable body — a truncated/corrupted
-     transmission), each rethrown with a clear message and the original error preserved as
-     `Error.cause` (see below) rather than surfacing a raw `SyntaxError`/opaque stream error.
-   - **Two more startup fetches hardened to the same bar**: `definitions.js`'s `loadDefinitions()`
-     and `app.js`'s mock-fixture-data load had no timeout at all (a hung connection would leave the
-     page stuck loading forever) and no clear handling for a torn/non-JSON response. Both now go
-     through a new shared `poll-manager.js` export, `fetchWithTimeout()` (the same
-     `AbortController`-based timeout `PollManager.request()` already used, extracted so it's usable
-     outside the single-flight queue — these are one-time startup loads, not recurring REST polls,
-     so they don't need queuing, but do need the same never-hang guarantee). `PollManager.request()`
-     itself now calls this shared helper too, rather than duplicating the timeout logic.
-   - **`preserve-caught-error` (new to this session)**: fixing the two throw-sites above surfaced
-     that `eslint:recommended` itself (not one of session 3 follow-up 1's own added rules) now
-     includes this rule in the installed `eslint` 10.8.1 — confirmed directly against the
-     installed rule's own metadata, not assumed. Adopted its intended fix throughout (`new
-     Error(message, { cause: originalError })`) rather than suppressing it, since attaching the
-     real cause is a genuine improvement or debuggability, not just a lint-satisfying formality.
-   - **Test coverage**: 94 → 110 tests, covering every new failure mode via `mock-server.js`'s
-     extended `MockFetchControls` (`"malformed-body"`, `"torn-json"`, `"empty-body"`,
-     `"partial-result"` — each modeled on the real backend's own documented behavior, not invented)
-     plus direct unit tests of `poll-manager.js`'s own stream/JSON-failure handling and
-     `definitions.js`'s never-hangs-forever guarantee. Manually verified end-to-end in real
-     Chromium (Playwright): a rejected PUT correctly shows Failed with the server's real descr
-     text (not silently Valid), and the app remains fully responsive immediately afterward — the
-     next Apply on the same card succeeds normally, confirming self-healing rather than a stuck
-     state.
-   - Nothing in §4/§8/§12's settled architecture changed; `src/` was never touched beyond reading
-     it. `lint`/`typecheck`/`lint:html`/`lint:css`/`test` all green throughout.
-
-   **Session 3 follow-up 3: per-field PUT-result coloring granularity, restored to match legacy
-   (same branch/PR).** Project owner asked whether the green/red/purple PUT-result color scheme
-   from the legacy site (`html_raw/general/functions.js`'s `getColorForValue()`: light green
-   Valid, light red Invalid, light lavender/purple Failed, light grey Unchanged) had been carried
-   through end-to-end. It had, semantically — `src/base_classes.py`/`src/api_response.py` return
-   exactly that four-value vocabulary, `js/render.js` already used it, and `html/style.css`'s
-   `--color-warn` token is already a real purple (not the orange/yellow the name might suggest) —
-   but a real granularity gap turned up on inspection: legacy colors **each field's own nearest
-   card** (its own DOM ancestor walk from that specific input), so a group with one Invalid field
-   among several Valid ones shows exactly that field boxed in red while the others stay their own
-   color. The already-shipped stripe redesign (§12, session 2) only ever colored the **whole group
-   card once**, at the group's worst status, with per-field detail as plain text only — confirmed
-   not to have been a deliberate part of that redesign decision, just an unaddressed narrowing.
-   Fixed, TDD: `js/templates.js`'s `buildField()` now tags each field's own `.field` wrapper with a
-   new `data-field-wrapper-key` (kept deliberately distinct from the existing `data-field-key`,
-   which must keep pointing at the specific control — `collectGroupBody()`/`paint()` rely on that
-   exact element, so reusing the same attribute on the wrapper would have broken both). `js/render.js`'s
-   `applyResultStyling()` now sets `data-apply-status` on each field's own wrapper (only for fields
-   actually present in the response's `result`, matching legacy's own "only color what the result
-   mentions" behavior — an untouched, sparse-omitted field keeps no stripe at all) in addition to
-   the existing group-card-level worst-of-group status; the whole-request-failure `catch` block
-   (network/communication errors) now also marks every field that was part of that submission as
-   `failed` individually, not just the card border — a deliberate improvement over legacy, whose own
-   PUT `.catch()` never colored anything at all (console.error only). `html/style.css` gained a
-   `.field` baseline transparent 3px left border (matching the existing `.nav-link` "transparent
-   until active" accent-stripe idiom) plus `valid`/`unchanged`/`invalid`/`failed` color rules
-   mirroring the existing `.card[data-apply-status]` block.
-   - **Test coverage**: 110 → 113 tests (2 new `templates.test.js` cases confirming the new
-     attribute is distinct from `data-field-key` for both a plain and a composite field; 1 new
-     `render.test.js` case submitting a mixed invalid+valid+untouched group and asserting each
-     field's own box independently, plus 3 existing Apply-status tests extended with a per-field
-     assertion). Manually verified end-to-end in real Chromium (Playwright) against the wozi
-     prototype's real SCD30 sensor-settings card: submitting an out-of-range `MeasInt` alongside an
-     in-range `TempOffs`, with `AmbPres`/`Altitude`/`ForceCalRef` left untouched, correctly rendered
-     `MeasInt` red, `TempOffs` green, the two always-resubmitted toggles (`ContMeas`/`SelfCal`) grey
-     ("Unchanged"), the three untouched fields with no stripe at all, and the card's own border red
-     (worst-first) — screenshot confirmed, then discarded along with the scratch verification
-     script. The network/communication-failure ("purple") per-field path is covered by the Vitest
-     suite only (`installMockFetch()`'s in-page `fetch` override can't be intercepted by Playwright's
-     `page.route()`, which only sees real network traffic).
-   - Nothing in §4/§8's settled architecture changed. `lint`/`typecheck`/`lint:html`/`lint:css`/
-     `test`/`test:coverage` all green throughout; coverage held steady (97.19% → 97.37% statements).
-
-   **Session 3 follow-up 4: full-surface audit (structure, error handling, races, REST
-   coherence/completeness, simplification) (same branch/PR).** Project owner asked for a
-   bird's-eye review of both `html/`/`js/` against nine angles (structure/leanness, setup
-   sanity, error/corner-case handling, race conditions, REST interfacing coherence/correctness/
-   completeness, whether every GET/PUT value has a real UI representation, simplification
-   room, anything missing, and overall correctness of purpose). Structure/setup/race-condition
-   review found nothing to fix (the `pollManager` single-flight queue, `startPolling()`'s
-   resolve-before-reschedule loop, and the visual/mechanics split all held up); two real,
-   confirmed correctness bugs were found and fixed, TDD, plus three real `definitions.json`
-   inaccuracies found via a fresh line-by-line cross-check against the actual `src/` driver/
-   service schemas (not re-trusting session 2's own earlier audit):
-   - **Real bug, found and fixed**: clicking "Reset All Errors" (`/status`'s only submit group)
-     always rendered **Failed** (purple), even on a genuine success. `src/asy_webserver_service.py`'s
-     `_put_status()` never returns a per-field `result` at all (`ar.make_response(0)`, no `result`
-     kwarg) — unlike every other writable endpoint. `reconcileResults()` (added in follow-up 2 to
-     catch a real, different server-side gap: a settings group's post-write hook silently dropping
-     fields from `result`) treats any submitted-but-unreturned key as `"Failed"`, so `ResetErrors`
-     — always present in `groupBody` since a toggle always resubmits its current value — was always
-     marked Failed regardless of outcome. Fixed: `js/render.js`'s PUT handler now special-cases
-     `section.key === "status"` (the only section with this structural shape), marking every
-     submitted field `"Valid"` directly once a non-2xx/`res:"ERR"` response has already been ruled
-     out, instead of running it through `reconcileResults()`. Regression test added
-     (`tests_js/render.test.js`), confirmed failing (`"failed"` !== `"valid"`) before the fix.
-   - **Real bug, found and fixed**: clicking Apply on a group made only of number/string fields
-     (no toggle/enum, which always resubmit) while every field is left blank submits a genuinely
-     empty PUT body — the real backend accepts it (`_apply_settings_groups()`'s per-group `subset`
-     is always empty, so nothing is touched) and returns `result: {}`, which
-     `applyResultStyling()`'s own empty-result-means-success fallback then painted as a misleading
-     green **Valid**, even though nothing was submitted or changed. Affects Networking's `identity`/
-     `ntp` groups, System's `settings` group, and Notification's `flash` (composite-only) and
-     `pause` groups — every submit group with no toggle/enum field. Fixed: `buildAndWireFieldGroup()`'s
-     click handler now checks `collectGroupBody()`'s result before doing anything else; an empty
-     body skips the network round trip entirely and shows "Nothing to submit - no fields were
-     changed." instead of touching `data-apply-status` at all. Regression test added.
-   - **`html/definitions/{wozi,dev}.json` — 3 real value-schema mismatches, found via a fresh
-     cross-check against `src/asy_wifi_service.py`/`asy_sgp40_driver.py`/`sensortask_wozi.py`
-     (not just re-confirming session 2's own earlier audit)**: `SSID`'s `minLength` was `2`,
-     the real schema (`_VAL_SSID`) allows `0` — the client-side validation would have rejected a
-     legitimately backend-accepted 0/1-character SSID edit. `Hostname`'s `maxLength` was `63`, the
-     real cap (`_VAL_HOST`'s own comment: "32 = `network.hostname()`'s real cap") is `32`.
-     `WarnVOC`'s `unit` was `"ticks"` (SGP40's `Raw` field's unit) but `voc_value_callback()`
-     (`sensortask_wozi.py`) feeds it from `sgp_data.VOC`, the unitless VOC Index — same mismatch
-     `measurements`'s own `VOC`/`Raw` fields already correctly avoid, just missed on this
-     unrelated `notification`-section field referencing the same underlying value. All three fixed
-     directly (plain data corrections, not a judgment call) in both device files.
-   - **Two more findings, flagged per CLAUDE.md's "flag, don't silently change" convention and
-     resolved interactively with the project owner rather than guessed at**:
-     - Notification's "Pause Notifications" submit card PUTs a `PauseTime` field the real backend
-       never processed at all: `notify_service`'s registered PUT schema didn't include it, and
-       `NotificationCoordinator.set_override_led()` — the only method that could ever act on it —
-       was never called anywhere in `src/` outside its own definition (confirmed by grepping the
-       whole tree). Submitting it silently did nothing server-side and, thanks to
-       `reconcileResults()`, rendered as **Failed** — reading as a mistake rather than "not wired up
-       yet." **Project owner's decision at the time: leave the website as-is; `src/` wiring would be
-       handled separately, outside this effort.** **Now resolved directly on `main`**
-       (`309b364`, "Restore LED-notification pause countdown REST wiring" — merged to `main`, then
-       this branch's whole history rebased onto it): `asy_webserver_service.py` gained a
-       `notification_pause` callback (mirroring `notification_led`/`system_cmd`'s own dispatch
-       pattern exactly — `_dispatch_notification_pause()`, errno=5), wired in
-       `sensortask_wozi.py` to `NotificationCoordinator.set_override_led()`, with unit +
-       real-object-graph + real-HTTP digital-twin integration coverage (the last confirming the
-       countdown actually decrements over real wall-clock time, not just that the value is stored).
-       **One gap found in that fix and closed in a follow-up commit on this branch**: the new
-       `_dispatch_notification_pause()` checked `payload`'s type but not its range — `LockedCounter.
-       set_value()` (which `set_override_led()` calls) silently clamps an out-of-range value into
-       `[0, 3600]` rather than rejecting it, so a `PauseTime` outside that range came back `"Valid"`
-       (clamped) instead of `"Invalid"`, unlike legacy's own `pauseAutoLED` command
-       (`update_valid_json(..., 0, 3600, ...)`, which rejects out-of-range as `"Invalid"` — the same
-       convention every other numeric field in this codebase already follows server-side via
-       `config_manager.py`'s `type_or_range_error()`, regardless of what a client sends). Fixed with
-       an explicit `0 <= payload <= 3600` check before ever calling the callback, TDD (a failing
-       test confirming the pre-fix "Valid"-on-clamp behavior, then the fix). The website side
-       (`js/render.js`/`html/definitions/*.json`) needed no changes — it already expected exactly
-       this `result.PauseTime` shape. **`js/mock-server.js` did need one**, found while verifying
-       the whole chain end-to-end after the `src/` fix landed: `PauseTime` had no special-casing at
-       all in the mock's PUT handling (unlike `lightCmdLED`/`SystemCmd`), so it fell through the
-       generic sparse-PUT path — persisting into `state.notificationConfig` (leaking into a
-       subsequent `GET /notification`, which the real backend never includes it in), comparing
-       against the stored value for a false `"Unchanged"` on a repeat submission (the real dispatch
-       always reports `"Valid"`), and never touching `state.status.notification.PauseTime` at all
-       (so the Status page's "Remaining Pause Time" never reflected a submitted pause locally). A
-       **sibling instance of the identical bug was also found and fixed for `SystemCmd`**: it *was*
-       already special-cased for its reported result, but only after `applySparsePut()` had already
-       run generically first and persisted it into `state.systemConfig` regardless — so a `SystemCmd`
-       PUT's *result* was already correct, but it still silently leaked into a subsequent
-       `GET /system`. Fixed both with a new `dispatchRangedAction()` helper (range-validated,
-       written straight to its real destination — `state.status.notification.PauseTime` for
-       `PauseTime`, `state.systemConfig` avoided entirely for `SystemCmd`, never compared against a
-       stored value) and excluding both keys from the generic path before it ever runs. TDD, 2 new
-       tests in `tests_js/mock-server.test.js` (115 → 117 total). Manually re-verified end-to-end in
-       real Chromium against the live wozi prototype: submitting `PauseTime: 120` shows green
-       `Valid`, a repeat submission of the same `120` still shows `Valid` (not `Unchanged`),
-       `GET /notification` excludes `PauseTime`, the Status page's "Remaining Pause Time" correctly
-       shows `120`, and `PauseTime: 99999` is correctly rejected as `Invalid`.
-     - **Follow-up full-surface re-audit (same branch): the "unlike `lightCmdLED`/`SystemCmd`" claim
-       two paragraphs up was itself wrong** — `lightCmdLED` (the composite "LED Flash" command) was
-       never actually excluded from the generic sparse-PUT path either; it was only assumed correct
-       by pattern-matching against `SystemCmd`, not re-checked against the real backend. Re-reading
-       `asy_webserver_service.py`'s `_put_notification()` confirmed `lightCmdLED` is dispatch-only
-       too (`if "lightCmdLED" in body: results["lightCmdLED"] = await
-       self._dispatch_notification_led(body["lightCmdLED"])`, same shape as `PauseTime`) — never
-       part of `notify_service`'s registered `SettingsGroup` schema. But `_dispatch_notification_led()`
-       and `_notification_led_callback()` (`sensortask_wozi.py`) have their own distinct semantics,
-       different from both `PauseTime`'s and the mock's prior assumption: no range/type check at the
-       dispatch layer beyond `isinstance(payload, dict)` (→ `"Invalid"` only for a non-dict payload);
-       a missing or non-numeric `r`/`g`/`b`/`t` subfield only fails inside the callback's own
-       `int()`/`float()` cast, caught by the same generic callback-exception handler every dispatch
-       action shares, and reported `"Failed"` — never `"Invalid"`; and no upper/lower bound rejection
-       at all for any subfield (`asy_neopixel_driver.py`'s `_clamp_byte()` silently clamps `r`/`g`/`b`
-       into `[0, 255]`, and `t` is never bounded at the callback, only floored to `0.1` deep inside
-       `neopixel_signal()`'s own consumer loop) — a real behavior change from legacy's own
-       `lightCmdLED` handler (`modules/sensortask-wozi.py`'s `led_cmd()`), which validated and
-       *rejected* out-of-range `r`/`g`/`b`/`t` via `update_valid_json(..., 0, 255, ...)`/
-       `update_valid_json(..., 0.5, 60.0, ...)` rather than silently clamping/accepting; that
-       legacy-vs-`src/` divergence is flagged here for the project owner's awareness, not changed —
-       it's an existing, already-tested `src/` contract (`tests/test_asy_webserver_service.py`'s
-       `test_notification_put_light_cmd_led_*` tests), out of this audit's own scope. What *was* in
-       scope and got fixed: `js/mock-server.js`'s `applySparsePut()` was still treating `lightCmdLED`
-       as an ordinary persisted composite `SettingsGroup` field — validating each subfield against
-       `field.min`/`field.max` and rejecting out-of-range as `"Invalid"`, persisting a valid
-       submission into `state.notificationConfig.lightCmdLED` (leaking into a subsequent
-       `GET /notification`, which the real backend never includes it in), and reporting `"Unchanged"`
-       on an identical repeat submission (the real dispatch always re-fires fresh). Two existing
-       `tests_js/render.test.js` tests had locked in the wrong mock behavior as "expected" (asserting
-       `"Invalid"` for a partial/non-numeric composite submission, when the real backend reports
-       `"Failed"` for both). Fixed with a new `dispatchLightCmdLed()` helper in `js/mock-server.js`
-       (mirrors the real dispatch's own two-tier `"Invalid"`-only-for-non-dict /
-       `"Failed"`-for-anything-else-wrong / `"Valid"`-otherwise-regardless-of-magnitude semantics,
-       never persisted, never `"Unchanged"`) and excluding `lightCmdLED` from the generic sparse-PUT
-       path the same way `SystemCmd`/`PauseTime` already are. TDD: corrected the two existing
-       `render.test.js` tests' expectations from `"Invalid"` to `"Failed"`, added a new
-       `render.test.js` positive-case test (full valid submission → `"Valid"`), and added
-       `tests_js/mock-server.test.js`'s first-ever `lightCmdLED` coverage (5 assertions: non-dict →
-       `"Invalid"`; missing subfield → `"Failed"`; non-numeric subfield → `"Failed"`; genuinely
-       out-of-range but well-typed → still `"Valid"`, proving the mock doesn't over-reject relative to
-       the real backend; never leaks into `GET /notification`; a repeat identical submission stays
-       `"Valid"`, never `"Unchanged"`) — 117 → 119 total JS tests. Manually re-verified end-to-end in
-       real Chromium against the live wozi prototype: a fully-specified flash submission shows green
-       `Valid`; navigating away and back to the Notification section leaves the LED Flash subfields
-       blank (never prefilled from a stored value, confirming no persistence leak); a partial fill
-       (`r`/`g` only) shows `Failed`; non-numeric text in `r` shows `Failed`; zero console/page errors
-       throughout.
-     - **`js/definitions.js`'s `validateDefinitions()` — a real gap against its own stated contract,
-       found in the same re-audit**: the module's own header comment promises "a shape/version
-       mismatch surfaces a visible error rather than silently rendering something broken," but
-       `pollGroup` (used by `js/render.js`'s `renderSection()` to decide whether a section polls at
-       all) and both `pollIntervalMs`/`defaultPollIntervalMs` (fed straight into
-       `startPolling()`'s `setTimeout()`) were never validated at all. A missing/typo'd `pollGroup`
-       doesn't error — it silently falls through to a single one-shot fetch instead of live polling;
-       a missing/non-positive `pollIntervalMs`/`defaultPollIntervalMs` would reach `setTimeout()` as
-       `undefined`/`0`/negative, firing an unthrottled tight polling loop instead of failing loudly.
-       Both real `definitions.json` files already happen to set these correctly (re-confirmed by
-       running the strengthened validator against both directly), so this was never a live bug for
-       the two shipped devices — but it's exactly the "unplanned condition with no unit test" this
-       audit pass was asked to find: a third device file with a typo'd `pollGroup` would have
-       degraded silently instead of failing the same loud `errorBanner` every other shape mismatch
-       already gets. Fixed by adding `pollGroup ∈ {"live","settings","none"}` and
-       positive-number checks for both interval fields to `validateDefinitions()`. TDD: 5 new
-       `tests_js/definitions.test.js` tests (missing/typo'd `pollGroup` rejected, all three real
-       values accepted, non-positive/non-numeric `pollIntervalMs` rejected when present, missing/
-       non-positive `defaultPollIntervalMs` rejected) — 119 → 123 total JS tests. Verified both real
-       `definitions.json` files still validate cleanly, and both devices still load end-to-end in
-       real Chromium with zero console errors and the definitions-error banner staying hidden.
-     - The real `PW` (Wi-Fi password) field explicitly allows an empty string as a deliberate
-       "configure an open network" sentinel (`asy_wifi_service.py`'s `_VAL_PW`'s `special=""`), but
-       the website's sparse-PUT convention (`collectGroupBody()`: a blank input is "untouched,
-       omit from the body," not "submit empty") makes it structurally impossible to ever send an
-       empty string for *any* field through this UI, PW included. **Project owner's decision: leave
-       as-is** — configuring an open network is a narrow case, and the blank-always-means-omit
-       convention is simple and well understood; not worth a special-case "clear this field"
-       affordance for one field. Not changed here.
-   - **Every other angle checked clean, nothing to fix**: `js/measurements`/`/sensors` (SCD30/
-     SGP40/BMP3XX) field sets, ranges, enums, and special values all matched their real `_VAL_*`
-     schema tuples exactly; `/status`'s `networking`/`system` sub-object fields matched
-     `_networking_status()`/`_system_status()` exactly; the `errcount` module list (17 entries)
-     matched `_collect_error_sources()` + the webserver's own `WEBSERVER` entry exactly;
-     `dev.json`'s SHTC3/MPRLS/ISL29125 sensors have no real driver under `src/` yet to check
-     against (unchanged from session 2's own note — still a projection, not confirmed). No race
-     conditions found in `PollManager`'s single-flight queue or `startPolling()`'s
-     resolve-before-reschedule design (re-confirmed, not just taken on faith from follow-up 1's
-     earlier pass); the one identified inefficiency (an in-flight GET for a section the visitor has
-     already navigated away from still completes and repaints an already-detached DOM subtree, since
-     `stopCurrentSection()` only cancels *future* poll ticks, not the in-flight request) is harmless
-     — the stale repaint never reaches the visible DOM — and was left as-is rather than adding
-     `AbortController` plumbing for a purely cosmetic/performance concern with no correctness impact.
-   - **Test coverage**: 113 → 115 tests (both new regression tests TDD — written failing against
-     the pre-fix code, confirmed, then made to pass). `lint`/`typecheck`/`lint:html`/`lint:css`/
-     `test` all green throughout.
-   - Nothing in §4/§8/§12's settled architecture changed. `src/` was never touched beyond reading it.
-
-   **Session 3 follow-up 5: similar-bug sweep + paragraph-by-paragraph spec validation (same
-   branch/PR).** Project owner asked for two things: (1) a targeted check for bugs of the same
-   *shape* as the two most recently fixed (`lightCmdLED` dispatch fidelity,
-   `validateDefinitions()`'s unenforced contract), and (2) a fresh pass validating `html/`/`js/`
-   against this file and SPECIFICATION.md A.5/A.8 paragraph by paragraph, not just re-trusting
-   earlier sessions' own "matched exactly" claims. The dispatch-only-field sweep confirmed the set
-   (`SystemCmd`/`PauseTime`/`lightCmdLED`/`ResetErrors`) is complete and all four are now correctly
-   handled by `js/mock-server.js` — no further instances of that specific pattern exist. The
-   paragraph-by-paragraph pass re-confirmed every `/measurements`, `/sensors`, `/networking`,
-   `/system`, `/status`, `/notification` GET/PUT field list in both `html/definitions/{wozi,dev}.json`
-   against A.8's own field lists directly (not against an earlier audit's notes) — all still match
-   exactly — and found two new, real issues, one a genuine safety-relevant bug:
-   - **Real bug, found and fixed via TDD**: `js/templates.js`'s `buildField()` enum branch never
-     marked any `<option>` `selected` when a field's `currentValue` doesn't match any real option —
-     which is *always* true for `SystemCmd` (a write-only dispatched action, never returned by
-     `GET /system` per A.8). A native `<select>` with no option explicitly marked selected defaults
-     to its **first** `<option>` per the HTML living standard, so opening the System section and
-     clicking "Apply" on the System Command card, without ever touching the dropdown, silently PUT
-     `{"SystemCmd":"reboot"}` — confirmed live in real Chromium (Playwright) before this fix, on both
-     devices. Since `reboot`/`bootloader` are genuinely disruptive (a `bootloader` submission leaves
-     the device needing physical intervention to return to normal firmware) and this reproduced with
-     zero deliberate visitor intent, this is a real safety gap, not just a cosmetic one. Fixed:
-     `buildField()` now prepends a blank, initially-selected placeholder option (`value: ""`,
-     "Select…") whenever no real option matches `currentValue`, and omits it entirely when one does
-     (zero behavior change for every already-correct case, e.g. BMP3XX's `PressOvers`/ISL29125's
-     `SensingRange`, both GET-reflected and always pre-selected correctly). The existing sparse-PUT
-     convention (`collectGroupBody()`'s `control.value === ""` → omit) then does the rest for free:
-     leaving the placeholder selected and clicking Apply now correctly shows "Nothing to submit," not
-     a real command dispatch. `render.js`'s own "every toggle/enum field always resubmits" comment
-     (from the earlier empty-PUT-body fix, §10 session 3 follow-up 4) was corrected to note this new
-     exception. TDD: 2 new tests (`templates.test.js`: an enum with no matching current value renders
-     unselected; `render.test.js`: an enum-only submit group modeled directly on `System Command`
-     shows "Nothing to submit" and sends no PUT when Apply is clicked untouched, confirming the select
-     itself starts blank) — 123 → 126 total JS tests (including the `data-group-key` test below).
-     Manually re-verified end-to-end in real Chromium against both devices: the dropdown now starts
-     blank, clicking Apply untouched sends nothing, and deliberately selecting a command (verified with
-     `bootloader`) still PUTs correctly.
-   - **Real §12 layering-contract violation, found and fixed**: this file's own hook table (below)
-     names `js/templates.js` as the sole owner of the `[data-group-key]` hook, but
-     `buildErrcountGroup()` never set it — `js/render.js`'s `paint()` set `rendered.dataset.groupKey`
-     externally instead, right after calling into the template. Harmless at runtime today (the
-     controller sets it before the card is ever queried again), but it split ownership of a hook §12
-     explicitly calls out as templates.js's alone, the same "mechanics layer reaching into what
-     should be the visual layer's job" drift the whole `js/templates.js` extraction was meant to
-     prevent — and it was untested (no `templates.test.js` case ever asserted `buildErrcountGroup()`'s
-     own return value carried this attribute, unlike the equivalent `buildFieldGroupCard()` test).
-     Fixed: `buildErrcountGroup()` now sets `card.dataset.groupKey = group.key` itself, matching
-     `buildFieldGroupCard()`'s own pattern exactly; the now-redundant external assignment in
-     `render.js` was removed. Also corrected the hook table's stale `.errcount-tile` row — it
-     described an individually-clickable-tile design that was superseded, before ever being built, by
-     §8's rollup + "Show flagged"/"Show all" filter-button UX (`buildErrcountGroup()`'s actual
-     implementation); the row now correctly notes those buttons' click handlers are wired entirely
-     inside `js/templates.js` itself (purely cosmetic expand/collapse, no controller/network
-     involvement — matching §12's own "templates.js also owns purely cosmetic interactivity" rule),
-     rather than claiming a controller attaches them. TDD: 1 new `templates.test.js` test asserting
-     `buildErrcountGroup()`'s own return value carries `data-group-key`.
-   - **Every other paragraph checked clean**: A.5's Microdot exception-handling/error-shape/
-     connection-isolation guarantees are already fully accounted for by `render.js`'s PUT-envelope
-     checks and `poll-manager.js`'s stream/JSON-failure handling (session 3 follow-up 2); §4's
-     single-flight poll-queue design (`pollManager`'s `#queue` chaining plus `run()` awaiting
-     `response.text()` before returning) already guarantees the "wait until the pending request has
-     resolved and its connection has fully closed" rule verbatim, and `app.js`'s
-     `stopCurrentSection()`-before-`renderSection()` ordering in `selectSection()` already prevents
-     two sections' poll loops from ever running concurrently; §8's automatic-only dark mode
-     (`prefers-color-scheme`, tokens redefined only under the media query, no manual toggle/stored
-     preference) matches `html/style.css` exactly.
-   - `lint`/`typecheck`/`lint:html`/`lint:css`/`test` all green throughout. Nothing in §4/§8/§12's
-     settled architecture changed beyond the one hook-table correction above; `src/` was never
-     touched beyond reading it.
-
-   **Session 3 follow-up 6: exhaustive PUT-behavior matrix + int/float type-fidelity fix (same
-   branch/PR).** Project owner asked for unit-test proof that every real writable field behaves
-   correctly across six categories: several valid values across the range (Valid/green), every
-   declared special value (Valid/green), the field left untouched/empty (no action, no color),
-   the field's own current value resubmitted (Unchanged/grey, except a dispatch-only action, which
-   must always report Valid even then), an out-of-range value (Invalid/red), and a value of the
-   wrong JSON data type (Invalid/red). Building the "wrong data type" case properly required first
-   determining what the real backend actually does for a type mismatch, not assuming - reading
-   `src/config_manager.py`'s `type_or_range_error()` directly (and its own test suite,
-   `tests/test_config_manager.py:228`, confirming it's deliberate) surfaced a real, previously-
-   unnoticed class of bug:
-   - **Real bug, found and fixed**: `type_or_range_error()` does a **strict Python `type()` check**
-     before ever looking at magnitude - `type(check_val) is not int`/`is not float`/`is not str`.
-     Since JSON has no separate int/float token distinction the way Python does (`json.loads`
-     decodes a bare `2` as `int`, `2.0` as `float`) and JS has no int/float type distinction at all
-     (`JSON.stringify(2.0) === "2"`, confirmed directly against both runtimes), a **float-typed
-     field** (`TempOffs`, `PressOffset`, `TempOffset`, `SeaLevelOffs`, `MeanAtmTemp`, `Interv`,
-     `FlashDur`, `WarnHum` - cross-checked against every real driver's own `ConfigSchema` tuple)
-     silently lost its "this must be a float" signal the moment a visitor typed a whole number: the
-     wire body carried a bare `2`, which the real backend would reject as the wrong type even
-     though the magnitude is perfectly valid. `js/definitions.js`'s `FieldDef` gained a new
-     `float?: boolean` marker (both real `definitions.json` files now set it on all 8 real float
-     fields, plus `dev.json`'s own `SHTC3.TempOffset`/`SHTC3.FiltCoeff`/`MPRLS.PressOffset`/
-     `MPRLS.FiltCoeff` - a projection, same "not confirmed against real code" caveat as dev.json's
-     other unpromoted-sensor fields, §8's "Error/history endpoint-to-UI field mapping" resolution).
-     `js/render.js` gained `serializePutBody()`, which forces a decimal point onto a `field.float`
-     field's whole-number value in the outgoing PUT body's raw JSON text (`JSON.stringify()` itself
-     can't do this - JS numbers carry no int/float distinction to preserve). `js/mock-server.js`
-     gained the matching fidelity fix: `scanNumericLiteralShapes()` reads the raw incoming PUT
-     body's *text* (before `JSON.parse()` discards the distinction) to determine whether each
-     number literal carried a decimal point, and `coerceAndValidate()` now rejects a shape mismatch
-     the same way `type_or_range_error()` does - including for a schema-driven numeric **enum**
-     field (`PressOvers`/`TempOvers`/`FiltCoeff`/dev.json's `ISL29125` enums are themselves plain
-     `type_or_range_error()`-backed int fields with a special-value list per §11's schema-comment
-     grammar sketch, so a decimal-shaped literal must be rejected there too - unlike `SystemCmd`,
-     whose string-valued options never reach `type_or_range_error()` at all, dispatched separately
-     via a plain `in` check). `dispatchRangedAction()` (`PauseTime`) got the same treatment directly
-     (`_dispatch_notification_pause()`'s own explicit `type(payload) is not int` check).
-     `lightCmdLED`'s own subfields are deliberately **exempt** - its real callback casts via
-     Python's lenient `int()`/`float()` *constructors*, not `type_or_range_error()`'s strict check,
-     so a numeric-string or int-for-float mismatch there is genuinely fine server-side (already
-     noted in the follow-up 4/5 write-up above).
-   - **A second, related real bug, found by the same matrix**: `coerceAndValidate()`'s "number" and
-     "string" branches used to *coerce* (`Number(rawValue)`/`String(rawValue)`) before validating,
-     rather than rejecting a wrong JSON type outright - so a JSON string like `"42"` sent to a
-     number field, or a JSON number sent to a string field whose length happened to fit (exposed by
-     `SSID`/`Hostname`/`NTP_Host`'s wider length bounds; `PW`/`Country`'s tighter bounds coincidentally
-     masked the same gap by rejecting on length first), was silently accepted as `Valid` when the
-     real backend's strict `type()` check would reject both outright. Fixed by making both branches
-     check `typeof rawValue` first and reject immediately on a mismatch, matching
-     `type_or_range_error()`'s own "type first, magnitude second" order - confirmed this doesn't
-     regress the existing NaN-garbage-text-passthrough fix (`js/render.js`'s `readInputValue()`,
-     session 3 follow-up 1): garbage text still reaches here as a non-number and is still rejected,
-     just via the type check now instead of a `Number.isFinite()` check, same outcome either way.
-   - **Test coverage**: new `tests_js/mock-server-put-matrix.test.js` - a data-driven matrix
-     (`describe.each`/`it.each`) built directly from the real `html/definitions/{wozi,dev}.json` +
-     `mockdata/{wozi,dev}.json` files (not hand-copied field lists, so it can't silently drift from
-     the real schema), generating the six categories' worth of cases per field's own real
-     `kind`/`min`/`max`/`specialValues`/`options`/`minLength`/`maxLength`. Shared field kinds
-     (SCD30/SGP40, networking, system, notification) are identical between both devices and only
-     exercised once (via wozi); `dev.json`'s own unique sensor groups (SHTC3/MPRLS/ISL29125) are
-     exercised too, to prove the matrix generalizes across enum-heavy and negative-special-value
-     shapes wozi's own sensors don't have. Dispatch-only fields
-     (`SystemCmd`/`PauseTime`/`lightCmdLED`/`ResetErrors`) and the composite `lightCmdLED` shape
-     are excluded from this generic matrix (their own distinct Invalid/Failed/Valid semantics are
-     already covered by dedicated tests elsewhere) rather than force-fit into categories that don't
-     apply to them - `ResetErrors` did gain one new dedicated assertion here (a second, identical
-     submission still reports Valid, never Unchanged, matching every other dispatch-only field's own
-     "always triggers" guarantee - the one dispatch-only field that hadn't been explicitly proven
-     this way yet); a `render.test.js` case was also added for `lightCmdLED` submitted completely
-     blank (every subfield empty), the composite-field instance of the same "nothing to submit, no
-     color" path already covered for a plain field. 468 new matrix tests + 2 more in
-     `render.test.js` - 126 → 595 total JS tests. Manually re-verified end-to-end in real Chromium
-     against the live wozi prototype: typing "2" into `TempOffs` now sends `{"TempOffs":2.0,...}`
-     (not a bare `2`) and is accepted Valid; typing "5.5" into the int-typed `MeasInt` is correctly
-     rejected Invalid; zero console/page errors.
-   - `lint`/`typecheck`/`lint:html`/`lint:css`/`test` all green throughout (each intermediate
-     failure during this pass was a bug in the *test harness itself* - a wrong-shape literal that
-     happened to already carry the intended decimal point, and a special value that happened to
-     coincide with either the field's current stored value or a naively-computed out-of-range probe
-     - not a fresh code regression; each was root-caused and fixed in the harness, not worked
-     around). Nothing in §4/§8/§12's settled architecture changed; `src/` was never touched beyond
-     reading it.
-
-   **Session 3 follow-up 7: uniform int/float coercion policy — the one deliberate `src/` exception
-   in this whole effort (stacked branch/PR, `claude/uniform-int-float-coercion` → PR #47, merged into
-   this session's own branch/PR).** Follow-up 6's PUT-behavior matrix surfaced a real bug that could
-   not be fixed on the website side alone: `src/config_manager.py`'s `type_or_range_error()` does a
-   strict Python `type()` check before checking magnitude, so a float-typed field sent a whole-number
-   JSON literal (`2` instead of `2.0` — indistinguishable in both JSON and JS, which has no int/float
-   type distinction at all) was wrongly rejected by the real backend even though the value itself was
-   valid. Follow-up 6 worked around this from the client side (forcing a decimal point onto outgoing
-   float-typed literals); this follow-up instead fixed the actual root cause.
-   - **Explicit, deliberate deviation from this file's own "never touch `src/` files" standing
-     instruction (§10)** — raised and confirmed with the project owner rather than assumed: a real,
-     significant correctness gap in shared backend code (affecting every numeric config field, not
-     just the website) is worth fixing at the root rather than papering over from one caller. **Project
-     owner's ruling after review: the deviation was justified — a real, significant gap, correctly
-     escalated rather than silently patched around.** This is confirmed as a one-time exception, not a
-     standing relaxation: every later sub-session in this effort (session 4 onward) is still bound by
-     §10's "never touch `src/` files" instruction exactly as before, and this effort's own local
-     verification reverts to JS-only (`npm run lint`/`typecheck`/`lint:html`/`lint:css`/`test`) — no
-     need to re-run the Python suite (`scripts/lint.sh`/`typecheck.sh`/`test.sh`) with every commit
-     going forward, since no further `src/` changes are expected from this effort.
-   - **What changed** — new `coerce_numeric()` in `src/config_manager.py` (public, reused by
-     `sensortask_wozi.py`'s `lightCmdLED` dispatch too): accepts int→float unconditionally; accepts
-     float→int only when the value is exactly integral (`5.0` → `5`, `5.7` rejected — the project
-     owner's explicit resolution, superseding follow-up 6's own tentative recommendation), with NaN/
-     ±inf caught via MicroPython's own `py/objint.c` exception shapes. `type_or_range_error()` reworked
-     to call it and return `(is_error, coerced_value)` instead of a bare bool — every one of its ~30
-     pre-existing tests and all real call sites (`base_classes.py`, `asy_scd30_driver.py`,
-     `asy_webserver_service.py`, `sensortask_wozi.py`) updated to the new tuple shape and to use the
-     coerced value downstream; `ConfigManager.setup()` additionally re-persists a coerced value back to
-     disk on a genuine type-only change. `js/mock-server.js`/`js/render.js`/`js/definitions.js` reworked
-     to mirror the same policy natively (JS has no int/float runtime distinction to fight, so this
-     simplified rather than complicated the JS side — follow-up 6's decimal-point-forcing hack in
-     `serializePutBody()` was removed as no longer needed) plus a second, related real bug the same
-     matrix surfaced: `coerceAndValidate()`'s number/string branches used to coerce before validating
-     rather than rejecting a wrong JSON type outright. `SPECIFICATION.md` Part A.8 gained a new section
-     documenting the policy end-to-end (backend + JS mirror).
-   - **Testing**: `scripts/lint.sh`/`scripts/typecheck.sh`/`scripts/test.sh` (real MicroPython
-     Unix-port interpreter) all clean, full suite green — independently reproduced after merge, not
-     just taken on the PR's own word: **2240/2240 Python tests passing across 47 files, zero
-     failures** (`test_config_manager.py` alone at 192/192). JS side independently reproduced too:
-     `lint`/`typecheck`/`lint:html`/`lint:css` clean, **603/603** Vitest tests passing. All 6 GitHub
-     Actions CI checks green on the merged commit.
-   - Nothing in §4/§8/§12's settled architecture changed. This is the only commit in the entire
-     website-redesign effort (sessions 1-3) that touches `src/` — every other file this session and
-     its six earlier follow-ups touched stayed within `html/`/`js/`/`tests_js/`/this plan/
-     `SPECIFICATION.md`.
-
+   **Two confirmed `src/` exceptions occurred in this phase, both closed.** PR #47 (stacked on
+   PR #45) fixed a numeric type-fidelity gap in `config_manager.py`'s `type_or_range_error()` that
+   couldn't be fixed on the website side alone, since JSON/JS carry no int/float type distinction
+   to preserve — the resulting policy is documented in SPECIFICATION.md Part A.8 (backend) and this
+   file's §4 (the JS mirror); the reuse pattern it establishes is SPECIFICATION.md Part G. A second,
+   separate change (on this base branch directly) fixed the settings-group result-swallow and
+   `lightCmdLED` range-clamping gaps now recorded as current behavior in §4.2. Both were raised and
+   confirmed with the project owner before being made. §10's standing "never touch `src/`"
+   instruction applies to every session from here on exactly as written, with no expectation of a
+   repeat.
 4. **Full build chain.** Wire `html/`+`js/`+the definitions file(s) into a
    `scripts/build_frozen_html.sh`-equivalent pipeline: gzip → `freezefs` → frozen bytecode → mount
    → serve, ending with the real thing bound into an actual firmware build. Keep the mechanism
@@ -1118,13 +324,12 @@ that's only warranted again if a future session finds another genuinely signific
    browsers" goal needs at least one real human pass somewhere, and this is the first point the
    website is running end-to-end against a real live backend.
 
-## 11. Schema comment-tag grammar — sketch (documentation only, session 2)
+## 11. Schema comment-tag grammar — sketch (documentation only, not yet decided)
 
-**Status: a worked proposal, not a decision.** §8 still reserves actually settling this for a
-dedicated future session, ideally paired with whichever driver session first touches a schema
-definition under this convention. This section exists so that session is starting from a concrete,
-already-checked-against-real-code sketch instead of a blank page — session 2 wrote no parser and
-changed no `src/` file to produce it (per its own standing instructions).
+**Status: a worked proposal, not a decision.** §8 reserves actually settling this for a dedicated
+future session, ideally paired with whichever driver session first touches a schema definition
+under this convention. This section is a concrete, already-checked-against-real-code starting
+sketch — no parser has been built and no `src/` file has been changed to produce it.
 
 ### What actually needs a tag, vs. what the schema already encodes
 
@@ -1247,25 +452,24 @@ dedicated session, flagged here rather than silently assumed).
 
 ## 12. Visual design / functional mechanics separation (standing requirement)
 
-Project owner's explicit, standing requirement (not just for this session): the REST API and the
-overall concept are expected to stay stable for a long time; the visual design is expected to be
-revisited — restyled, reordered, regrouped — independently of that, more than once. **A purely
-visual/layout redesign must never require editing data-fetching, validation, submission, or poll-
-coordination code.**
+Project owner's explicit, standing requirement: the REST API and the overall concept are expected
+to stay stable for a long time; the visual design is expected to be revisited — restyled,
+reordered, regrouped — independently of that, more than once. **A purely visual/layout redesign
+must never require editing data-fetching, validation, submission, or poll-coordination code.**
 
 ### The two layers
 
-- **Visual layer** — owns colors, spacing, typography, dark-mode tokens (`html/style.css`,
-  unchanged from §4), **and** DOM structure/order/nesting/CSS-class choices (`js/templates.js`,
-  new). `js/templates.js` also owns any interactivity that's purely cosmetic and never touches the
-  network or app state — a toggle button flipping its own On/Off label, an errcount tile
-  expanding/collapsing its own history list. A redesign session touches these two files (plus, for
-  a schema/labeling change, the `definitions.json` content itself — see §8) and nothing else.
+- **Visual layer** — owns colors, spacing, typography, dark-mode tokens (`html/style.css`) **and**
+  DOM structure/order/nesting/CSS-class choices (`js/templates.js`). `js/templates.js` also owns
+  any interactivity that's purely cosmetic and never touches the network or app state — a toggle
+  button flipping its own On/Off label, an errcount rollup expanding/collapsing its own filtered
+  module list. A redesign touches these two files (plus, for a schema/labeling change, the
+  `definitions.json` content itself — §4.1) and nothing else.
 - **Mechanics layer** — owns data fetching, polling coordination, input validation, PUT submission,
   and anything that calls the REST API or the poll-manager: `js/poll-manager.js`,
-  `js/mock-server.js`, `js/definitions.js` (already pure — no DOM code at all), and the
-  non-presentational parts of `js/render.js`/`js/nav.js` (now "controllers" — see below). None of
-  these files build DOM elements, choose CSS classes, or decide element order/nesting.
+  `js/mock-server.js`, `js/definitions.js` (pure — no DOM code at all), and the non-presentational
+  parts of `js/render.js`/`js/nav.js` (the controllers). None of these files build DOM elements,
+  choose CSS classes, or decide element order/nesting.
 
 ### The contract between them
 
@@ -1280,10 +484,11 @@ small, obvious edit, not a redesign blocker):
 | `[data-field-key]` | every field's input/select/toggle-button/readonly span | `render.js` collects submitted values, updates readonly text/current-value captions on poll |
 | `[data-sub-field-key]` | a composite field's per-subfield input | `render.js` collects the composite's nested PUT body |
 | `[data-current-value-for]` | a writable field's "Current value: …" caption | `render.js` refreshes it after a poll/Apply |
-| `[data-group-key]` | a field-group's card | `render.js` locates the card to re-render/restyle |
-| `[data-apply-status]` | *(unset by templates.js; only ever written by the controller)* | CSS alone decides what each status value looks like (`html/style.css`'s `.card[data-apply-status="…"]` rules) |
+| `[data-group-key]` | a field-group's card (both `buildFieldGroupCard()` and `buildErrcountGroup()` set it themselves) | `render.js` locates the card to re-render/restyle |
+| `[data-field-wrapper-key]` | each field's own wrapper (distinct from `[data-field-key]`, which must keep pointing at the control itself) | `render.js` colors each field's own per-result outcome independently of the group card's own status |
+| `[data-apply-status]` | *(unset by templates.js; only ever written by the controller)* | CSS alone decides what each status value looks like (`html/style.css`'s `[data-apply-status="…"]` rules), on both the group card and each field wrapper |
 | `.apply-button` | the submit button | `render.js` attaches the real (networked) click handler |
-| `.errcount-rollup .action-button` ("Show flagged"/"Show all") | `buildErrcountGroup()`'s two filter buttons | *(no controller involvement — purely cosmetic expand/collapse, wired entirely inside `js/templates.js` itself; corrected here, see §10 session-3-follow-up-5's note below — this row previously described an earlier per-tile-click design superseded by §8's rollup/filter-button UX before it was ever built)* |
+| `.errcount-rollup .action-button` ("Show flagged"/"Show all") | `buildErrcountGroup()`'s two filter buttons | *(no controller involvement — purely cosmetic expand/collapse, wired entirely inside `js/templates.js` itself)* |
 | `[data-section-key]` | each nav-drawer link | `nav.js` attaches the section-select click handler |
 
 Controllers only ever set the semantic `data-apply-status` value (`"valid"`/`"invalid"`/
@@ -1291,31 +496,11 @@ Controllers only ever set the semantic `data-apply-status` value (`"valid"`/`"in
 is entirely `html/style.css`'s decision, so restyling what "invalid" means visually is a pure CSS
 change.
 
-A card can hold several fields, each with its own per-field result, but `data-apply-status` is one
-value for the whole card — `js/render.js`'s `STATUS_SEVERITY` picks the worst one, worst-first:
-`Invalid`/`Failed` (a real problem) always win; between the two non-problem outcomes, a genuine
-`Valid` change outranks a no-op `Unchanged`, so one changed field + one resubmitted-as-is field
-reads as "valid" (something happened), not "unchanged" (nothing did).
-
-**One deliberate exception to the "hooks are `data-*` attributes" rule (session 3):**
-`buildSectionShell()` returns `{grid, errorBanner}` directly to its one caller (`render.js`'s
-`renderSection()`) rather than making the controller look `errorBanner` up by attribute — there's
-only ever one error banner per rendered section and it's handed back at the exact point it's
-created, so a lookup hook would add indirection with no reuse benefit. The controller still only
-ever touches it the same two ways `app.js`'s pre-existing app-level error banner already
-established: toggling the `.hidden` utility class and setting `.textContent` — never a color or
-custom style. Restyling what a fetch-error banner looks like is still a pure `html/style.css`
-change (`.error-banner`), same as every other hook in this table.
-
-### Where this stood before this note, and what changed
-
-Session 2 already got this partially right by accident: `html/style.css` was already fully
-visual-only, and controllers already queried the DOM by `data-*` attribute rather than by
-structural position. What wasn't separated: `js/render.js` and `js/nav.js` built DOM elements,
-picked CSS classes, and decided element order **inline**, interleaved with the fetch/validate/
-submit logic in the same functions — so reordering a card's internal fields, or restyling the nav
-drawer's markup, meant editing the same file that talks to the REST API, and risked touching that
-logic by accident. Session 2 was amended, before merging, to extract that DOM-building half into
-`js/templates.js` — see that file's own module docstring, and `render.js`/`nav.js`'s updated
-docstrings, for the concrete split. No behavior changed; the JS unit tests and the manual browser
-verification were re-run to confirm.
+**One deliberate exception to the "hooks are `data-*` attributes" rule**: `buildSectionShell()`
+returns `{grid, errorBanner}` directly to its one caller (`render.js`'s `renderSection()`) rather
+than making the controller look `errorBanner` up by attribute — there's only ever one error banner
+per rendered section and it's handed back at the exact point it's created, so a lookup hook would
+add indirection with no reuse benefit. The controller still only ever touches it the same two ways
+`app.js`'s own app-level error banner does: toggling the `.hidden` utility class and setting
+`.textContent` — never a color or custom style. Restyling what a fetch-error banner looks like is
+still a pure `html/style.css` change (`.error-banner`), same as every other hook in this table.
