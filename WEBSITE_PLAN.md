@@ -236,9 +236,9 @@ does.
   `src/` driver schemas, documentation only, no parser built. It is a proposal to start from, not a
   final decision — actually settling it is reserved for a dedicated session, ideally paired with
   whichever driver session first touches a schema definition under this convention.
-- **Build pipeline wiring** — how `scripts/build_frozen_html.sh`/`HTML_SRC_DIRS` picks up `html/`
-  (and the JS build/definitions-generation step) instead of/alongside `html_stub/`; whether the
-  existing mechanism already covers this or needs extending. Session 4's job (§10).
+- **Build pipeline wiring** — see §10 item 4 for the confirmed current state of
+  `scripts/build_frozen_html.sh`/`build-wozi.sh`/the toolchain's RP2 build, and the concrete gaps
+  between that state and a real `html/`+`js/` build chain. Session 4's job (§10).
 - **`dev.json`'s SHTC3/MPRLS/ISL29125 fields remain an unconfirmed projection** — these sensors
   have no real driver under `src/` yet. Resolves naturally once a future session promotes those
   drivers.
@@ -309,12 +309,45 @@ order.
    confirmed with the project owner before being made. §10's standing "never touch `src/`"
    instruction applies to every session from here on exactly as written, with no expectation of a
    repeat.
-4. **Full build chain.** Wire `html/`+`js/`+the definitions file(s) into a
-   `scripts/build_frozen_html.sh`-equivalent pipeline: gzip → `freezefs` → frozen bytecode → mount
-   → serve, ending with the real thing bound into an actual firmware build. Keep the mechanism
-   generic/parameterized per device (matching `build-wozi.sh`'s existing `HTML_SRC_DIRS` pattern)
-   even though only the `wozi` variant can be verified end-to-end today (`src/` doesn't assemble the
-   other variants yet — SPECIFICATION.md A.3).
+4. **Full build chain.** Wire `html/`+`js/`+the definitions file(s) into a real gzip → `freezefs` →
+   frozen bytecode → mount → serve pipeline, generic/parameterized per device, verified end-to-end
+   for the `wozi` variant (the only one `src/` currently assembles — SPECIFICATION.md A.3).
+
+   **Confirmed current state this session starts from (verified directly against the code, not
+   assumed):**
+   - `scripts/build_frozen_html.sh` already exists, already builds `frozen_modules/frozen_html.py`
+     from a source-directory list (`HTML_SRC_DIRS`, default `html_stub/`), and is already wired into
+     `scripts/test.sh` and `scripts/run_digital_twin_ci.sh` (`tests/test_frozen_html_integration.py`
+     proves the real pipeline end to end). This is real, working infrastructure to extend, not
+     something to build from scratch — but treat its current shape as one example to learn from, not
+     a fixed constraint: it was written against `html_stub/`'s 7 flat files and has real gaps against
+     `html/`'s actual shape (below).
+   - `HTML_SRC_DIRS` belongs to `scripts/build_frozen_html.sh`, not `build-wozi.sh`. `build-wozi.sh`
+     (the only script that currently produces a real `firmware.uf2`) has its own separate, hardcoded,
+     non-parameterized `freezefs` call that assembles the **legacy `python/` tree**
+     (`CommonDrivers`/`IndividualDrivers`), not `src/` — and that call uses `-s`, a flag the currently
+     vendored `ext/freezefs` (pinned 2.4) no longer has. It is a stale, unrelated pipeline, not a
+     pattern to mirror.
+   - `scripts/build_frozen_html.sh`'s source-merge step (`cp "$src_dir"/* "$tmp_dir"/`) is flat and
+     non-recursive — it silently drops nested content. `html/definitions/` is a subdirectory, and
+     `js/` is a separate top-level tree that also has to end up reachable through the one
+     `static_mount="/html"` route. Neither freezefs itself nor the mount/serve side is the
+     limiter here: freezefs's own archiver walks nested paths (`archive.py`'s `glob("**", ...,
+     recursive=True)`), its mount-side `VfsFrozen` traverses `filename.split("/")`, and Microdot's
+     `path` route converter (`/(.+)`) already matches slashes — `_serve_static()`
+     (`src/asy_webserver_service.py`) just joins `static_mount + "/" + filename` and hands it to
+     `send_file()`. The gap is specifically the build script's own shallow copy.
+   - `js/app.js` is today's only entry point, and it is prototype-only: it installs a mock `fetch`
+     (`installMockFetch`), switches device via a `?device=` query param, and fetches via paths
+     (`../js/app.js`, `../mockdata/...`) shaped for `npm run preview`'s repo-root dev server. No
+     production entry point exists yet — one is needed with no mock, a single fixed device, and paths
+     that resolve once everything is merged under one mounted root.
+   - No script anywhere currently assembles `src/`+`ext/`+the frozen website into a deployable,
+     `src/`-based `firmware.uf2`. `toolchain/setup_toolchain.py`'s RP2 build (SPECIFICATION.md Part B)
+     is a toolchain-verification smoke test — it freezes one dummy module to prove the freeze
+     mechanism works, not a real assembly. Whether producing that real assembly script is in this
+     session's own scope, or a separate follow-on item, is an open scoping question for the session
+     to raise, not assumed either way here.
 5. **Digital twin integration.** Replace `html_stub/` in `digital_twin/`'s wiring per §7; add real
    API-endpoint-driven tests (the website's actual JS/pages exercised against the twin's live
    server, likely via the same Playwright/Chromium foundation session 3 already set up, now against
