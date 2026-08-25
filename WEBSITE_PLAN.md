@@ -383,6 +383,23 @@ order.
    - No `src/` files were touched or needed an exception — the whole build-chain effort (website
      wiring + firmware assembly) stayed within `html/`, `js/`, `tests_js/`, `scripts/`,
      `tests/test_website_build_integration.py`, and this plan.
+   - `tests/test_digital_twin_real_website_integration.py` — the Unix-port counterpart to the real
+     ARM build above, and the piece that closes the actual gap: `build_firmware.py`'s own real
+     build is *build-only* (no real hardware to run it on, per its own docstring), and
+     `test_website_build_integration.py` only ever serves the real website through a bare,
+     standalone `Microdot()`/`WebserverService()` the test itself constructs — neither proves the
+     real, *booted* system (the real `sensortask_wozi.build_system()` object graph, against the
+     real `digital_twin/` buses, over real HTTP) actually serves the real website when it comes up.
+     This file does: it pre-registers `sys.modules["frozen_html"] = frozen_website_wozi` before
+     `import sensortask_wozi` runs (confirmed directly against the pinned v1.28.0 MicroPython
+     source, `py/builtinimport.c`'s `process_import_at_level()` — the same "check `sys.modules` by
+     name before the filesystem" lookup CPython does), so `sensortask_wozi.py`'s own top-level
+     `import frozen_html` binds to the real website instead of `frozen_modules/frozen_html.py`'s
+     `html_stub` build every other digital-twin run (including `digital-twin-e2e`'s CI job) still
+     uses. Then it boots the real object graph and drives real HTTP at it, proving: the real
+     `index.html`/`definitions.json`/production `js/app.js` are served correctly (and are
+     genuinely the real ones, not the stub or the prototype), and that mounting the real website
+     doesn't shadow a real API route (`/measurements` still works). 4/4 passing.
 
    **Verification performed this session**: `npm run lint`/`typecheck`/`lint:html`/`lint:css`/`test`
    (607/607 Vitest tests across 9 files, including the new `main.test.js`) all clean; the full
@@ -420,6 +437,17 @@ order.
    now run and pass. `tests_scripts/` is deliberately not added to `pyproject.toml`'s
    `[tool.mypy]`/`[tool.ruff]` scope, matching the existing decision that `scripts/`/`toolchain/`
    themselves (the tooling these tests exercise) aren't linted/type-checked either.
+
+   **Still missing after the above, raised directly and closed in the same pass**: none of
+   `tests_scripts/`, `test_website_build_integration.py`, or `build_firmware.py`'s real build
+   actually proves the real, *booted* system serves the real website — the first two never boot
+   `sensortask_wozi.py`'s real object graph, and the third can only be build-verified (no hardware
+   to run it on). `tests/test_digital_twin_real_website_integration.py` (see its own entry above,
+   under "What shipped") closes exactly that gap: the real object graph, the real digital-twin
+   buses, the real website, real HTTP, in one running, checkable test. `scripts/test.sh` already
+   runs it as part of the ordinary `tests/test_*.py` loop (no wiring needed — it's just another
+   file in that glob); `digital-twin-e2e`'s own CI job is unaffected and keeps using the
+   `html_stub` build, exactly as before.
 5. **Digital twin integration.** Replace `html_stub/` in `digital_twin/`'s wiring per §7; add real
    API-endpoint-driven tests (the website's actual JS/pages exercised against the twin's live
    server, likely via the same Playwright/Chromium foundation session 3 already set up, now against
