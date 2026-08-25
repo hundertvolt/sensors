@@ -300,9 +300,11 @@ jobs:
     # separate, not-yet-done piece of work).
     #
     # needs: unit-tests, not digital-twin-e2e - this only needs the toolchain cache unit-tests'
-    # own setup step already populates (mpy-cross + ARM toolchain + pico-sdk + picotool), not
-    # anything digital-twin-e2e itself produces, so it runs in parallel with that job instead of
-    # serializing after it.
+    # own setup step already populates (mpy-cross + pico-sdk + picotool + the MicroPython/pico-sdk
+    # git checkouts), not anything digital-twin-e2e itself produces, so it runs in parallel with
+    # that job instead of serializing after it. The ARM cross-compiler itself (gcc-arm-none-eabi
+    # and friends) is a separate apt install, not part of that cached directory - see the
+    # dedicated step below for why it still has to run here even on a cache hit.
     needs: unit-tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -321,5 +323,25 @@ jobs:
           # if it does, build_firmware.py's own "no toolchain found - run setup first" error message
           # fails this job clearly rather than silently skipping the real build.
           key: unix-port-${{ runner.os }}-${{ hashFiles('toolchain/versions.toml', 'toolchain/setup_toolchain.py') }}
+      # Each CI job runs on its own fresh VM - the cache step above restores ~/pico-toolchain's
+      # git checkouts/build dirs (populated by unit-tests' own scripts/test.sh run earlier in this
+      # same workflow run), but apt-installed system packages never survive across jobs. This bit
+      # a first version of this job directly: it assumed the toolchain cache alone was enough and
+      # failed with "Compiler 'arm-none-eabi-gcc' not found" - unit-tests never needed the ARM
+      # cross-compiler itself (only the already-cached, already-built Unix port binary), so nothing
+      # upstream of this job ever installs it. Reuses setup_toolchain.py's own
+      # ensure_apt_packages() against versions.toml's apt_packages list - the same single source of
+      # truth toolchain/setup_toolchain.py setup itself uses - rather than hand-duplicating the
+      # package list here, where it could quietly drift out of sync.
+      - name: Install ARM toolchain apt packages
+        run: |
+          python3 - <<'PYEOF'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, "toolchain")
+          import setup_toolchain as st
+          versions = st.load_versions(Path("toolchain/versions.toml"))
+          st.ensure_apt_packages(versions["toolchain"]["apt_packages"], skip=False)
+          PYEOF
       - name: Build a real firmware.uf2 for wozi and verify it
         run: RUN_SLOW_FIRMWARE_BUILD=1 uv run pytest tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2 -v
