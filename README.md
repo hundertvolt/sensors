@@ -308,9 +308,10 @@ When a new doc is added, add it here too instead of letting the map go stale aga
 
 - **[`SPECIFICATION.md`](SPECIFICATION.md)** — the single central specification document:
   repository/architecture overview, the toolchain/build-environment installer, the sensor driver
-  architecture spec, the `src/` production-quality checklist, testing & coverage, and
-  MicroPython/RP2040 platform-target facts — all in one place, organized into lettered Parts
-  (A-F) for different needs. Produced by a first-pass doc-scatter cleanup that merged
+  architecture spec, the `src/` production-quality checklist, testing & coverage,
+  MicroPython/RP2040 platform-target facts, and the cross-cutting shared-pattern/primitive-reuse
+  catalog — all in one place, organized into lettered Parts (A-G) for different needs. Produced by
+  a first-pass doc-scatter cleanup that merged
   `DRIVER_SPEC.md`, `src/README.md`, `tests/README.md`, `toolchain/README.md`, most of this
   file's former "Repository layout"/"Architecture at a glance"/"Refactor in progress"/"Build
   process" content, and the spec-shaped parts of `CLAUDE.md`/`BACKLOG.md` into one document. Start

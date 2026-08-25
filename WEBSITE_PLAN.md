@@ -220,18 +220,26 @@ Manual local-trigger instructions for the whole web-CI tier live in **README.md'
 (JS/HTML/CSS)" section** (`npm ci` + `npm run lint`/`typecheck`/`lint:html`/`lint:css`/`test`) — the
 JS-side equivalent of that same README's existing "Code quality tooling" section for Python.
 
-## 7. Digital twin integration (future requirement, not yet actionable)
+## 7. Digital twin integration (session 5's job)
 
-Once the website prototype (built from the decisions above) is functionally complete, it must be
-wired into `digital_twin/` alongside every sensor/module that already has a real REST/API
-connection there — the same generalized "any new module joins the twin once it can complete a
-real, observable chain" rule SPECIFICATION.md A.10 already states for drivers and common modules,
-applied here to the website itself. This must stay a **living** integration: whenever a new
-sensor/module gains an API connection in the twin afterward, the website's own twin wiring has to
-be kept in step automatically — via the same definitions-file mechanism (new nav sections/fields
-just appear from the regenerated definitions JSON), not a hand-maintained parallel list. No website
-prototype exists yet, so this isn't actionable yet — tracked here so it isn't forgotten once one
-does.
+The website (functionally complete as of item 4) must be wired into `digital_twin/` alongside every
+sensor/module that already has a real REST/API connection there — the same generalized "any new
+module joins the twin once it can complete a real, observable chain" rule SPECIFICATION.md A.10
+already states for drivers and common modules, applied here to the website itself. This must stay a
+**living** integration: whenever a new sensor/module gains an API connection in the twin afterward,
+the website's own twin wiring has to be kept in step automatically — via the same definitions-file
+mechanism (new nav sections/fields just appear from the regenerated definitions JSON), not a
+hand-maintained parallel list.
+
+**Current state, now actionable**: a real, functionally complete website exists (`html/`+`js/`) and
+a real build chain assembles it (`scripts/build_website.sh`, item 4). One dedicated test,
+`tests/test_digital_twin_real_website_integration.py`, already proves the real website serves
+correctly against the real, booted `sensortask_wozi.build_system()` object graph over `digital_twin/`
+buses — but only in that one standalone test. The twin's *default* wiring — `scripts/
+run_digital_twin_ci.sh` (and therefore `digital-twin-e2e`'s CI job), README's manual baseline
+walkthrough — still calls `scripts/build_frozen_html.sh` with no `HTML_SRC_DIRS` override, so it
+still builds and serves `html_stub/`, not the real website. Swapping that default is item 5's
+actual work.
 
 ## 8. Open items — reserved for dedicated future sub-sessions
 
@@ -239,9 +247,6 @@ does.
   `src/` driver schemas, documentation only, no parser built. It is a proposal to start from, not a
   final decision — actually settling it is reserved for a dedicated session, ideally paired with
   whichever driver session first touches a schema definition under this convention.
-- **Build pipeline wiring** — see §10 item 4 for the confirmed current state of
-  `scripts/build_frozen_html.sh`/`build-wozi.sh`/the toolchain's RP2 build, and the concrete gaps
-  between that state and a real `html/`+`js/` build chain. Session 4's job (§10).
 - **`dev.json`'s SHTC3/MPRLS/ISL29125 fields remain an unconfirmed projection** — these sensors
   have no real driver under `src/` yet. Resolves naturally once a future session promotes those
   drivers.
@@ -266,14 +271,19 @@ question into the upfront round or guessing.
 **Standing instructions for every sub-session below** (in addition to §9's step-session workflow):
 start with a detailed description of what it will do; ask 10 clarifying questions before starting
 actual work; update this file before ending if anything settled changes or a new decision is made,
-so the next sub-session reads current state, not stale state; **never touch `src/` files** —
-website work stays confined to `html/`/`js/`/`tests_js/`/this plan/`SPECIFICATION.md`; a genuine
-exception requires being raised and confirmed with the project owner first, every time, and is
-never assumed from a past exception having been granted; do not build the schema-comment
-autocreation tooling itself in this effort — only prepare hand-written example definitions file(s)
-shaped as if they were auto-creatable. This effort's own local verification is JS-only (`npm run
-lint`/`typecheck`/`lint:html`/`lint:css`/`test`) unless a confirmed `src/`-touching exception is
-active for that session.
+so the next sub-session reads current state, not stale state; **never touch `src/` files** — a
+genuine exception requires being raised and confirmed with the project owner first, every time, and
+is never assumed from a past exception having been granted (two such exceptions exist to date, both
+in item 3, both closed); do not build the schema-comment autocreation tooling itself in this effort
+— only prepare hand-written example definitions file(s) shaped as if they were auto-creatable.
+Default scope outside `src/` is `html/`/`js/`/`tests_js/`/this plan/`SPECIFICATION.md`; a session
+whose own item description below states a wider scope (item 4's `scripts/`/`tests/`/
+`tests_scripts/`/CI-config wiring; item 5's `digital_twin/`/CI wiring) works within that wider scope
+instead, no separate exception needed — the item description itself is the scope grant. This
+effort's own local verification is JS-only (`npm run lint`/`typecheck`/`lint:html`/`lint:css`/
+`test`) unless a confirmed `src/`-touching exception is active, or the session's own item scope
+calls for a different verification surface (e.g. item 4's Python-side `tests_scripts/`/build
+verification, item 5's digital-twin suite).
 
 **Branching/PR requirement — applies to every sub-session, including the sessions spun off from
 each of the five below:** each sub-session branches off **this base session's branch**,
