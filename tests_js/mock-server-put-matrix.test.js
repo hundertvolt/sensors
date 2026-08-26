@@ -1,45 +1,7 @@
 /**
- * Exhaustive PUT-behavior matrix over every real writable field in both shipped devices'
- * definitions.json, run directly against js/mock-server.js's real fetch interception (no DOM).
- * Six categories per field (project owner's own request, verified against the real backend's
- * documented semantics - SPECIFICATION.md Part A.8/config_manager.py's coerce_numeric()/
- * type_or_range_error()):
- *   1. several valid values across the range -> "Valid"
- *   2. every declared special value -> "Valid"
- *   3. the field omitted from the PUT body (the sparse-PUT "untouched" case) -> not in the result,
- *      value not persisted
- *   4. the field's own current stored value resubmitted -> "Unchanged" (never reached for a
- *      dispatch-only action - SystemCmd/PauseTime/lightCmdLED/ResetErrors always report "Valid" on
- *      an identical resubmission; those are tested separately, not by this generic matrix)
- *   5. an out-of-range value (and, for a field with special values, one that matches neither the
- *      normal range nor any special value) -> "Invalid"
- *   6. a value of the wrong JSON type -> "Invalid" (any non-numeric text, for every field kind);
- *      for a "number"-kind field specifically, the real backend's own int<->float coercion policy
- *      is exercised too - a `field.float`-marked field accepts a bare-integer literal (a blanket
- *      accept, coerced), while a field not marked `field.float` still rejects a decimal-point
- *      (fractional) literal outright, never truncated
- *
- * Shared field kinds (SCD30/SGP40, networking, system, notification) are identical between wozi.json
- * and dev.json, so they're only exercised once (via wozi) to avoid pure duplication; dev.json's own
- * unique sensor groups (SHTC3/MPRLS/ISL29125) are exercised too, to prove the matrix generalizes
- * across enum-heavy and negative-special-value field shapes wozi's own sensors don't have.
- * Dispatch-only fields (SystemCmd/PauseTime/lightCmdLED/ResetErrors) and the composite lightCmdLED
- * shape have their own distinct Invalid/Failed/Valid semantics, already covered by dedicated tests
- * elsewhere (mock-server.test.js, render.test.js) - excluded from this generic matrix rather than
- * force-fit into categories that don't apply to them. Same treatment for ForceCalRef/ContMeas/
- * SGPResetVOC (SPECIFICATION.md Part H.7): js/mock-server.js now models their real GET-readback quirks
- * (a fixed 400 for ForceCalRef, total omission for the other two), which this generic matrix's
- * own "resubmit -> Unchanged" and "valid value -> reflected in the next GET" categories both
- * assume doesn't hold - see mock-server.test.js's own dedicated tests for these three instead.
- * PW has the same shape of quirk for a different reason: js/mock-server.js masks it on every GET
- * (mirroring src/asy_wifi_service.py's own _mask_pw() overlay - a real credential is never echoed
- * in plaintext, on real hardware or here), so a GET never reflects what was actually just written
- * for this field either - found diverging in a pre-merge audit (the mock previously echoed PW
- * unmasked). Excluded locally (GET_READBACK_QUIRK_FIELDS below), not via _put_field_cases.js's
- * shared DISPATCH_ONLY_KEYS, since tests_js/live-backend-put-matrix.test.js also consumes that
- * shared list and already exercises these fields correctly against real hardware via its own
- * ALWAYS_REMOUNTS_AS override (ForceCalRef/ContMeas/SGPResetVOC) and its own masked-field
- * "resubmittable" exclusion (PW) - excluding them there too would silently drop that coverage.
+ * PUT-behavior matrix over every real writable field in both shipped devices' definitions.json,
+ * against js/mock-server.js's real fetch interception - six categories per field (valid, special,
+ * omitted, resubmit-unchanged, out-of-range, wrong-type), matching SPECIFICATION.md Part A.8.
  */
 import { describe, expect, it } from "vitest";
 import wozi from "../html/definitions/wozi.json";
@@ -56,8 +18,10 @@ import { collectPutFieldCases } from "./_put_field_cases.js";
 // Shared driver/module field sets - identical between devices, so only wozi's copy is exercised.
 const DEV_UNIQUE_GROUPS = new Set(["SHTC3", "MPRLS", "ISL29125"]);
 
-// Excluded from this file's own CASES only - see this file's header comment for why this can't be
-// folded into _put_field_cases.js's shared DISPATCH_ONLY_KEYS.
+// GET never reflects what this generic matrix's "resubmit -> Unchanged"/"valid value -> reflected
+// in GET" categories assume (SPECIFICATION.md Part H.4's mock-server-quirks note) - excluded here
+// only, not via _put_field_cases.js's shared DISPATCH_ONLY_KEYS, since
+// tests_js/live-backend-put-matrix.test.js also consumes that list and covers these fields for real.
 const GET_READBACK_QUIRK_FIELDS = new Set(["ForceCalRef", "ContMeas", "SGPResetVOC", "PW"]);
 
 /**

@@ -315,12 +315,8 @@ class SensorReaderConfig(SensorReader):
             callback = self._push_callbacks.get(key)
             if callback is None:
                 continue  # persist-only field, nothing to push
-            # Push the coerced (e.g. int->float) shape that was actually persisted, not the
-            # caller's raw pre-coercion value - a push callback (e.g. every int-typed BMP3xx
-            # setter) type-checks its argument and would wrongly reject/revert an accepted
-            # coercible value like 45.0 for an int field otherwise. Re-deriving via
-            # type_or_range_error() reproduces write_config()'s own coercion exactly, since this
-            # field already validated "Valid" above with the same (value, field) inputs.
+            # Push the coerced value that was actually persisted, not the caller's raw
+            # pre-coercion one - see SPECIFICATION.md Part C.5.2's push-callback contract.
             field = schema_dict(cfg_vals).get(key)
             if field is not None:
                 _is_error, value = type_or_range_error(value, field)

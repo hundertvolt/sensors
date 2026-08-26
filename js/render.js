@@ -291,8 +291,8 @@ export function renderSection(defs, section, mainEl) {
                 if (existing) {
                     // A live poll (e.g. wozi.json/dev.json's "status" section, pollGroup "live")
                     // rebuilds this card from scratch every tick - without restoring "Show
-                    // flagged"/"Show all" here, a visitor's expand choice was silently collapsed back
-                    // to the default rollup mid-read, every few seconds. Found in a pre-merge audit.
+                    // flagged"/"Show all" here, a visitor's expand choice would silently collapse
+                    // back to the default rollup mid-read, every few seconds.
                     const prevModuleList = existing.querySelector(".errcount-module-list");
                     const wasExpanded = prevModuleList instanceof HTMLElement && !prevModuleList.classList.contains("hidden");
                     const wasShowingAll = wasExpanded && [...prevModuleList.children].every((el) => el instanceof HTMLElement && !el.classList.contains("hidden"));

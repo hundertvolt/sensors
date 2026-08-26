@@ -1,18 +1,6 @@
-// Exercises the real website (html/ + js/, the real production entry point - never
-// js/mock-server.js's static fixtures) against a live digital-twin backend: a real MicroPython
-// Unix-port process serving the real REST API over real HTTP, the same "living integration" this
-// project's other test tiers already prove for the Python side
-// (tests/test_digital_twin_real_website_integration.py) and for a standalone boot
-// (tests/test_digital_twin_sensortask_integration.py) - this is the missing third leg, the
-// website's own JS actually driving a real browser against that live backend. See
-// SPECIFICATION.md Part H.7.
-//
-// Needs the MicroPython Unix-port toolchain built (`uv run toolchain/setup_toolchain.py setup`)
-// and the real wozi website frozen (`scripts/build_website.sh wozi`) - both are prerequisites the
-// Python side's own test tiers already share, not something this file re-derives. Skips itself
-// with a clear message if the toolchain isn't present (e.g. a quick local `npm test` with no
-// MicroPython toolchain installed yet) rather than failing the whole suite; CI's web-unit-tests
-// job builds both before running `npm test`, so it always exercises this for real.
+// Exercises the real website's own JS in a real browser against a live digital-twin backend (real
+// REST API over real HTTP) - see SPECIFICATION.md Part H.7. Skips itself with a clear message if
+// the MicroPython toolchain/frozen website aren't built yet, rather than failing the suite.
 import { commands } from "vitest/browser";
 import { describe, expect, test } from "vitest";
 

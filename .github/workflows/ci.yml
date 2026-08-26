@@ -71,8 +71,8 @@ jobs:
 
   web-unit-tests:
     # Vitest in real-browser mode (Playwright + Chromium, not jsdom) - see SPECIFICATION.md Part H.8.
-    # This CI runner has no pre-installed browser (unlike the dev sandbox this effort was
-    # scaffolded in - see vitest.config.js's own comment), so it installs its own matching
+    # This CI runner has no pre-installed browser (unlike a Claude Code dev sandbox - see
+    # vitest.config.js's own comment), so it installs its own matching
     # Chromium build via `playwright install` before running tests.
     #
     # Also builds the MicroPython Unix-port toolchain (below) - tests_js/live-backend.test.js

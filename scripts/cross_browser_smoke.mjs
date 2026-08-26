@@ -1,31 +1,6 @@
-// Standalone (non-Vitest) cross-browser smoke check: boots the real digital twin, then drives the
-// real production website through three engines Vitest's own Playwright-only browser mode can't
-// reach - WebKitGTK (real WebKit), real Firefox (Gecko), and real Microsoft Edge (Blink, but a
-// genuinely different Chromium-family build/UA than the Playwright Chromium the rest of tests_js/
-// already covers) - plus Playwright's own Chromium, included here too so every engine goes through
-// the exact same check. Each engine is driven at both a desktop-sized and a mobile-sized (iPhone-
-// ish) viewport: nav to the live site -> open the nav drawer -> go to Sensors -> edit one field ->
-// Apply -> confirm the real backend validated it and the UI reflects it. See SPECIFICATION.md
-// Part H.7 ("Cross-browser coverage") for why this exists and the "Coverage depth"/"Test architecture"
-// decisions behind its deliberately narrow scope (one field, not the full PUT matrix; raw WebDriver
-// HTTP, not a second Vitest browser provider).
-//
-// WebKit/Firefox are driven via their own real W3C WebDriver servers (WebKitWebDriver/
-// geckodriver) over plain HTTP - Playwright itself can only automate Chromium-family browsers
-// (attaching to any real installed build via `executablePath`) plus its own specially patched
-// Firefox/WebKit builds, which this project's network policy can't download (see SPECIFICATION.md
-// Part H.7). Edge is Chromium-family, so it's driven the same way the rest of tests_js/ already drives
-// Chromium: Playwright's own `chromium.launch({executablePath})`.
-//
-// Preconditions this script assumes are already met (same as tests_js/_live_twin_command.js):
-// the MicroPython Unix port is built, and `scripts/build_website.sh wozi` has already produced
-// frozen_modules/frozen_html.py. scripts/setup_cross_browser_toolchain.sh installs the three
-// browser engines themselves. Any engine whose binary isn't found is skipped with a clear message
-// (not a hard failure) - CI's web-cross-browser-smoke job always installs all three via that
-// script, so a skip there would itself be the real bug; a local run without them just gets partial
-// coverage.
-//
-// Run: node scripts/cross_browser_smoke.mjs
+// Standalone (non-Vitest) cross-browser smoke check: drives the real production website through
+// WebKitGTK, real Firefox, real Microsoft Edge, and Playwright Chromium via their own WebDriver
+// servers. Run: `node scripts/cross_browser_smoke.mjs`. See SPECIFICATION.md Part H.7 ("Cross-browser coverage").
 
 import { spawn } from "node:child_process";
 import { existsSync, rmSync } from "node:fs";
@@ -215,8 +190,7 @@ async function wdExecute(base, sid, script) {
 // The nav-to-Sensors click, run alone (not combined with the field fill below): renderSection()
 // swaps the visible section in asynchronously (a real fetch-then-render, not a synchronous DOM
 // swap), so a script that clicks the nav link and immediately queries for the target field in the
-// same synchronous execution can genuinely find it still null - confirmed directly (both WebKit
-// and Firefox failed exactly this way before this was split into a poll, see git history). Kept as
+// same synchronous execution can genuinely find it still null on both WebKit and Firefox. Kept as
 // its own tiny script/poll pair rather than folded into an `await` inside one execute/sync call,
 // since WebDriver's execute/sync has no way to await an in-page Promise across the wire anyway.
 const NAV_TO_SENSORS_SCRIPT = `

@@ -350,8 +350,8 @@ The condensed version is A.2 above. Key modules if you need to go deeper (folded
     weight (0/1), not an absolute color — scaled by the shared `FlashBri` at trigger time, which is
     what makes one global brightness setting actually apply to every registered condition.
   - Config field names drop the "Led" prefix everywhere (`WarnCO2` not `LedWarnCO2`) — a deliberate
-    wire-format change; the (already known-brittle, deferred — see BACKLOG.md) frontend isn't
-    updated to match yet.
+    wire-format change; only the legacy `html_raw/` frontend isn't updated to match (Part H.1's
+    "Predecessor" note) — accepted pre-refactor debt.
 - In the deployed, pre-refactor codebase (`modules/sensortask-*.py`), the task supervisor is a
   hand-rolled loop inside each file's `main()`, not a shared module — duplicated per device file.
   `src/sensortask_wozi.py` no longer matches this: its `main()` now calls
@@ -1699,7 +1699,12 @@ Config setters are implemented, mirroring the getter pair (C.4.4) one level down
   independently in the returned dict, including an unrecognized key (matches
   `ConfigManager.write_config()`'s own existing per-key tolerance — one bad key never invalidates
   the rest of a multi-field request). A whole-operation persist failure (invalid `ConfigManager`,
-  or an internal write error) marks every requested key `"Failed"`, not `"Invalid"`.
+  or an internal write error) marks every requested key `"Failed"`, not `"Invalid"`. **A push
+  callback always receives the coerced value that was actually persisted, not the caller's raw
+  pre-coercion one** (re-derived via `type_or_range_error()` against the same `(value, field)`
+  inputs the persist step already validated) — a callback that type-checks its argument (e.g. any
+  `int`-typed setter) would otherwise wrongly reject an accepted coercible value like `45.0` for an
+  int field.
 - **`self._push_callbacks`** — a plain `{field_name: async_push_fn}` dict, initialized empty in
   `SensorReaderConfig.__init__` and populated by each subclass's own `__init__`, once, at
   construction time (project decision: no central field→module registry anywhere — each module
@@ -1850,8 +1855,9 @@ fields never actually reached the sensor; routing through the real schema fixed 
 Two wire-format conventions apply project-wide as a result: a field's wire name drops any redundant
 per-driver prefix (`"BackupPeriod"`, not `"SGPBackupPeriod"` — the endpoint itself already scopes
 the field set), and every bool-typed field is native JSON `true`/`false`, replacing the legacy
-`"switch"` `"On"`/`"Off"` string dtype everywhere it had a live route. The HTML/JS frontend has not
-been updated to match either change yet (see BACKLOG.md).
+`"switch"` `"On"`/`"Off"` string dtype everywhere it had a live route. The refactored website
+(Part H) targets these conventions from the start; only the legacy, still-deployed `html_raw/`
+frontend has not been updated to match — accepted pre-refactor debt (Part H.1's "Predecessor" note).
 
 **A module whose single schema is split across more than one REST route must narrow
 `get_cfg_schema()`'s tuple per route, not hand each route the whole schema**: `AsyConnTime` owns

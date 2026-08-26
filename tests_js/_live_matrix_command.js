@@ -1,9 +1,6 @@
-// Server-side Vitest Commands API module (registered in vitest.config.js's
-// `test.browser.commands`) backing tests_js/live-backend-put-matrix.test.js: a shared,
-// boot-once-per-file live digital-twin + real-browser harness driving many real UI actions against
-// one real backend. See SPECIFICATION.md Part H.7 ("a real end-to-end field-by-field PUT matrix")
-// for the architecture rationale and the real-UI-action boundaries this harness deliberately
-// doesn't cross.
+// Server-side Vitest Commands API module backing tests_js/live-backend-put-matrix.test.js: a
+// shared, boot-once-per-file live digital-twin + real-browser harness driving many real UI
+// actions against one real backend. See SPECIFICATION.md Part H.7.
 import { spawn } from "node:child_process";
 import { existsSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
@@ -123,7 +120,7 @@ export async function startLiveMatrix({ context }) {
         // before its own afterAll(() => commands.stopLiveMatrix()) is ever registered - without
         // tearing the twin down right here, a boot failure (a slow/flaky page load, most commonly)
         // orphans the twin subprocess for the rest of the process's lifetime, pinning PORT for
-        // every subsequent run until someone manually kills it. Confirmed directly (pre-merge audit).
+        // every subsequent run until someone manually kills it.
         if (livePage) {
             await livePage.close().catch(() => {});
             // eslint-disable-next-line require-atomic-updates -- see stopLiveMatrix()'s own comment below

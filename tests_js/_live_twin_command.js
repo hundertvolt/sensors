@@ -1,19 +1,6 @@
-// Server-side Vitest custom browser command (registered in vitest.config.js's
-// `test.browser.commands`) backing tests_js/live-backend.test.js.
-//
-// Vitest browser mode's own `page` object (imported from "vitest/browser" inside a test) has no
-// API for navigating to an arbitrary external origin - confirmed against vitest-dev/vitest#7875
-// (open, unresolved) and the current commands/context docs, which only expose iframe-scoped
-// helpers on the browser side. The supported escape hatch is the Commands API: a command function
-// runs server-side (real Node, not the sandboxed browser context) and receives the *real*
-// Playwright `BrowserContext` already launched for this test run, from which a genuine new page
-// can be opened and navigated anywhere - exactly what's needed to drive the real, live digital
-// twin (a full external HTTP server, not anything Vitest's own dev server is serving).
-//
-// This file does the whole live-backend round trip itself (spawn the twin, wait for it to serve,
-// drive a real page against it, tear down) rather than splitting the work across several
-// browser<->server RPC calls, since the subprocess/Playwright-navigation work is all server-side
-// anyway - only the final serializable result crosses back to the test.
+// Server-side Vitest Commands API module backing tests_js/live-backend.test.js: spawns the twin
+// and drives a real Playwright page against it directly (Vitest's own browser-mode `page` has no
+// API for navigating to an external origin - vitest-dev/vitest#7875). See SPECIFICATION.md Part H.7.
 
 import { spawn } from "node:child_process";
 import { existsSync, rmSync } from "node:fs";
@@ -80,17 +67,16 @@ function spawnTwin() {
             cwd: REPO_ROOT,
             env: { ...process.env, MICROPYPATH, TZ: "UTC" },
             // stdout: ignored (never read) - an unconsumed piped stream keeps Node's event loop
-            // alive (and can eventually block the child if its OS pipe buffer fills), which is
-            // exactly what left the vitest process hanging on exit before this was "ignore".
+            // alive (and can eventually block the child if its OS pipe buffer fills), leaving the
+            // vitest process hanging on exit otherwise.
             // stderr: piped and drained below, only for surfacing into a failure's error message.
             stdio: ["ignore", "ignore", "pipe"],
         },
     );
     // An unhandled ChildProcess 'error' event (e.g. a spawn failure) crashes the whole Node/Vitest
-    // process synchronously, skipping this file's own try/finally cleanup entirely - confirmed as a
-    // real gap (pre-merge audit). A no-op listener is enough: it just prevents the crash: the
-    // existing waitUntilServing()/goto() error paths already surface a spawn failure via their own
-    // timeouts.
+    // process synchronously, skipping this file's own try/finally cleanup entirely. A no-op
+    // listener is enough: the existing waitUntilServing()/goto() error paths already surface a
+    // spawn failure via their own timeouts.
     proc.on("error", () => {});
     return proc;
 }

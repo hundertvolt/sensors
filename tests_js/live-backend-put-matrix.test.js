@@ -1,11 +1,7 @@
 /**
- * Field-by-field PUT matrix, driven end to end: a real MicroPython Unix-port digital twin, a real
- * Chromium browser filling and submitting the real rendered controls, and assertions against what
- * the page actually renders afterward. Generalizes tests_js/live-backend.test.js's single-field
- * proof to every real writable field in wozi.json. See SPECIFICATION.md Part H.7 ("a real
- * end-to-end field-by-field PUT matrix") for the shared-session architecture and the real-UI-action
- * boundaries
- * this file deliberately doesn't cross (those stay covered only by the mock-backend matrix).
+ * Field-by-field PUT matrix, driven end to end through a real browser against a real digital twin
+ * (generalizes tests_js/live-backend.test.js's single-field proof to every writable wozi.json field).
+ * See SPECIFICATION.md Part H.7.
  */
 import { commands } from "vitest/browser";
 import { afterAll, describe, expect, it } from "vitest";
@@ -119,7 +115,7 @@ if (boot.skipped) {
         // _mask_pw() overlay), never the real stored credential - resubmitting that placeholder
         // isn't a no-op probe, it's a genuinely new (if coincidentally valid-length) password that
         // the real backend would accept and persist, silently overwriting the twin's actual Wi-Fi
-        // credential and firing a real reconnect. Found and fixed in a pre-merge audit.
+        // credential and firing a real reconnect.
         const resubmittable = currentValue !== undefined && !(field.kind === "string" && currentValue === "") && field.mask !== true;
         if (resubmittable) {
             it(

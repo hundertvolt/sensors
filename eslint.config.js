@@ -66,9 +66,7 @@ export default [
     },
     {
         // Standalone Node scripts under scripts/ (e.g. cross_browser_smoke.mjs) - real Node
-        // process, same reasoning/globals as the two Vitest command files above. Found unchecked by
-        // any configured tool during a pre-merge audit (its own eslint-disable comments implied
-        // coverage that didn't actually exist).
+        // process, same reasoning/globals as the two Vitest command files above.
         files: ["scripts/**/*.mjs"],
         languageOptions: {
             ecmaVersion: "latest",

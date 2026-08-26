@@ -1,10 +1,7 @@
 /**
- * Real production entry point (SPECIFICATION.md Part H.2). Unlike js/app.js (prototype-only:
- * mock fetch, `?device=` switch, dev-server-relative paths), this installs no mock and targets
- * exactly one device - the real backend is reached at plain root-relative REST paths, and the
- * device is fixed by which definitions file the build staged as `definitions.json` (see
- * scripts/build_website.sh), not by a runtime switch. Staged into the frozen build as `app.js` -
- * see build_website.sh's own comment for why html/index.html needs no change to pick this up.
+ * Real production entry point - no mock, one build-fixed device, no `?device=` switch.
+ * Staged into the frozen build as `app.js` (js/app.js is the prototype-only entry).
+ * See SPECIFICATION.md Part H.2.
  */
 
 import { loadDefinitions } from "./definitions.js";

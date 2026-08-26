@@ -197,14 +197,6 @@ constraints.
   Neither soak-test script currently has a real-hardware-runnable form (both assume the Unix-port
   `digital_twin` harness); porting/adapting them for actual on-device execution is part of this
   future work, not already done.
-- **HTML/frontend redesign — website functionally complete, its permanent architecture now lives in
-  `SPECIFICATION.md` Part H.** `WEBSITE_PLAN.md` (the effort's temporary planning doc) has been
-  deleted per its own stated lifecycle; its settled architecture migrated to Part H, its still-open
-  items are the three entries below. The concretely-stale symptom that originally prompted this
-  entry — the legacy frontend still sending the pre-migration `setSGP`/`setBMP` field names/formats
-  (see Part C.5.3's wire-format note) — remains pre-refactor debt on the currently-deployed
-  `html_raw/` frontend only; the new `html/`/`js/` frontend (Part H) targets the already-migrated
-  field names from the start, not something it inherits.
 - **Website definitions-file autogeneration — not yet built.** `html/definitions/<device>.json`
   (Part H.5) is currently hand-written. A worked, already-checked-against-real-code *sketch* exists
   for deriving most of it at build time from `#`-prefixed comment tags placed above each driver's
@@ -262,6 +254,15 @@ constraints.
   targets not yet done" above).
 - **`dev` config quirks** (e.g. LED/Neopixel REST routes referencing an uninstantiated object) —
   bench rig only, not bugs to fix.
+- **`js/nav.js`'s `initNav()` registers a `document`-level `keydown` listener with no matching
+  removal** — harmless today (called exactly once per real page load), but a latent leak if it's
+  ever called more than once without a full page reload (e.g. a future hot-reload path, or a test
+  file that calls it repeatedly against the same `document`). Worth a `removeEventListener`/cleanup
+  return value if that ever becomes a real scenario.
+- **`selectSection()` is duplicated near-verbatim between `js/app.js` and `js/main.js`** (both
+  entry points build their own local closure over `onSelect`/nav rebuild). Low priority: the two
+  entry points are deliberately separate (prototype vs. production, Part H.2), and the duplication
+  is small: extracting a shared helper is a minor simplification, not a correctness fix.
 - **Dev/build environment setup**: toolchain installer is done (`toolchain/setup_toolchain.py`, see
   SPECIFICATION.md Part B/README.md's "Toolchain setup"). `build-*.sh`'s hardcoded path/`py-include`
   dependency is now fixed too (see "Refactor targets not yet done" above).

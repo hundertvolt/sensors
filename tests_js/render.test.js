@@ -301,11 +301,10 @@ describe("renderSection", () => {
     });
 
     it("preserves an expanded errcount card's 'Show flagged'/'Show all' state across a live poll rebuild", async () => {
-        // Regression test for a bug found in pre-merge audit: both real definitions files
-        // (wozi.json/dev.json) declare "status" as pollGroup "live" - this fixture's own DEFS
-        // deliberately doesn't (see its own comment), so this scenario needs its own local variant
-        // to actually exercise the poll-rebuild path, same pattern as the "readonly field embedded
-        // in a writable, live-polled group" test above.
+        // Both real definitions files (wozi.json/dev.json) declare "status" as pollGroup "live" -
+        // this fixture's own DEFS deliberately doesn't (see its own comment), so this scenario
+        // needs its own local variant to actually exercise the poll-rebuild path, same pattern as
+        // the "readonly field embedded in a writable, live-polled group" test above.
         /** @type {import("../js/definitions.js").SiteDefinitions} */
         const defsWithLiveErrcount = {
             ...DEFS,
@@ -829,9 +828,9 @@ describe("renderSection", () => {
 
     it("shows Failed, not silently Valid, when the PUT body is rejected as malformed (HTTP 200, res:ERR)", async () => {
         // The real backend's own make_response(1) for a malformed body is HTTP 200 with res:"ERR"
-        // (SPECIFICATION.md Part A.8/A.5) - never a shaped HTTP error status. Before this fix,
-        // render.js never checked envelope.res, so an empty `result` on this response silently
-        // defaulted the whole card to "Valid" via applyResultStyling()'s own severity fallback.
+        // (SPECIFICATION.md Part A.8/A.5) - never a shaped HTTP error status, so render.js must
+        // check envelope.res itself rather than relying on an empty `result` to fall through to
+        // applyResultStyling()'s own severity fallback.
         const controls = { nextFailure: /** @type {import("../js/mock-server.js").MockFailure | undefined} */ (undefined) };
         uninstall = installMockFetch(DEFS, DATA, controls);
         const main = mount();

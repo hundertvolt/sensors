@@ -75,8 +75,8 @@ and CI behavior (Job Summary, build artifact, Codecov status): **moved to
 ## Website tooling (JS/HTML/CSS)
 
 The website source (`html/`, `js/`, `tests_js/` — see [`SPECIFICATION.md`](SPECIFICATION.md) Part H
-for its architecture) has its own dev-tooling stack, the JS/HTML/CSS
-equivalent of the Python side's ruff/mypy/pytest above: ESLint (lint), TypeScript `checkJS` mode
+for its architecture) has its own dev-tooling stack, the JS/HTML/CSS equivalent of the Python
+side's ruff/mypy/pytest above: ESLint (lint), TypeScript `checkJS` mode
 (type-checks JSDoc annotations in plain `.js`, no transpilation), Vitest in real-browser mode
 (Playwright + Chromium, not jsdom — same "real engine over a shim" principle as running Python
 tests under a real MicroPython Unix-port interpreter), html-validate, and Stylelint. Needs Node
@@ -85,8 +85,8 @@ and npm:
 
 ```sh
 npm ci                            # one-time, and after pulling changes - installs into node_modules/ from package-lock.json
-npx playwright install chromium   # one-time - only if `npm test` reports a missing browser executable (already
-                                   # pre-installed in the Claude Code web-session sandbox this effort was scaffolded in)
+npx playwright install chromium   # one-time - only if `npm test` reports a missing browser executable
+                                   # (a Claude Code web-session sandbox has this pre-installed already)
 
 npm run lint           # ESLint (js/, tests_js/)
 npm run typecheck      # tsc --noEmit (checkJS over js/, tests_js/)
@@ -345,9 +345,9 @@ When a new doc is added, add it here too instead of letting the map go stale aga
 - **[`SPECIFICATION.md`](SPECIFICATION.md)** — the single central specification document:
   repository/architecture overview, the toolchain/build-environment installer, the sensor driver
   architecture spec, the `src/` production-quality checklist, testing & coverage,
-  MicroPython/RP2040 platform-target facts, and the cross-cutting shared-pattern/primitive-reuse
-  catalog — all in one place, organized into lettered Parts (A-G) for different needs. Produced by
-  a first-pass doc-scatter cleanup that merged
+  MicroPython/RP2040 platform-target facts, the cross-cutting shared-pattern/primitive-reuse
+  catalog, and the website's own architecture — all in one place, organized into lettered Parts
+  (A-H) for different needs. Produced by a first-pass doc-scatter cleanup that merged
   `DRIVER_SPEC.md`, `src/README.md`, `tests/README.md`, `toolchain/README.md`, most of this
   file's former "Repository layout"/"Architecture at a glance"/"Refactor in progress"/"Build
   process" content, and the spec-shaped parts of `CLAUDE.md`/`BACKLOG.md` into one document. Start

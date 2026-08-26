@@ -1721,13 +1721,11 @@ def test_set_dict_cfg_sample_interv_end_to_end_persists_and_pushes() -> None:
 
 
 def test_set_dict_cfg_coerces_int_field_before_pushing_not_just_persisting() -> None:
-    # Regression test for a bug found in pre-merge audit: _set_dict_cfg's push loop must dispatch
-    # the coerced (int) shape that was actually persisted, not the caller's raw pre-coercion float.
-    # config_manager.py's int<->float coercion accepts an integral float for an int-typed field
-    # (SPECIFICATION.md Part A.8), but every BMP3xx push wrapper type-checks its argument with
-    # `type(value) is not int` - before this was fixed, a request like this one persisted
-    # successfully but the push wrapper then rejected the raw float, reporting "Failed" and
-    # reverting the just-written config via _recover_failed_push.
+    # _set_dict_cfg's push loop must dispatch the coerced (int) shape that was actually persisted,
+    # not the caller's raw pre-coercion float: config_manager.py's int<->float coercion accepts an
+    # integral float for an int-typed field (SPECIFICATION.md Part A.8), but every BMP3xx push
+    # wrapper type-checks its argument with `type(value) is not int` - dispatching the raw float
+    # would make the wrapper reject it, reporting "Failed" and reverting the just-written config.
     i2c, reader = make_clean_reader("set_dict_cfg_coerce_push")
     seed_status(i2c, 0x10 | 0x60)
     seed_err(i2c, 0x00)
