@@ -1,5 +1,6 @@
 import js from "@eslint/js";
 import globals from "globals";
+import html from "eslint-plugin-html";
 
 /**
  * ESLint flat config for js/ and tests_js/ - the JS/HTML/CSS website's ruff-equivalent lint
@@ -74,6 +75,26 @@ export default [
             sourceType: "module",
             globals: {
                 ...globals.node,
+            },
+        },
+        rules: BUG_CATCHING_RULES,
+    },
+    {
+        // html/index.html's <script type="module"> bootstrap can't be extracted into its own
+        // js/ file: scripts/build_website.sh relies on that <script> importing the literal path
+        // "../js/app.js", which stays identical between `npm run preview` (the real, separate
+        // js/app.js prototype entry point) and a real device build (where js/app.js is the staged
+        // bundle) - extracting it would either break that path identity or require a build-time
+        // text rewrite the script deliberately avoids (see build_website.sh's own header comment).
+        // eslint-plugin-html instead lints the inline script in place, exactly like any other
+        // module script, without moving it out of the HTML file.
+        files: ["html/**/*.html"],
+        plugins: { html },
+        languageOptions: {
+            ecmaVersion: "latest",
+            sourceType: "module",
+            globals: {
+                ...globals.browser,
             },
         },
         rules: BUG_CATCHING_RULES,
