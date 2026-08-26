@@ -25,6 +25,24 @@ const ALWAYS_REMOUNTS_AS = { ForceCalRef: 400, ContMeas: false, SGPResetVOC: fal
 // against a local twin, but under real browser/event-loop scheduling.
 const CASE_TIMEOUT_MS = 15000;
 
+/**
+ * True if `sectionKey`/`groupKey`'s own field list carries a `dispatch: true` field (js/render.js's
+ * collectGroupBody() always resubmits one) - such a field keeps every Apply on that shared group
+ * card a real round trip even when every other field is left at its own current/blank value, so a
+ * resubmit-unchanged probe on any field in that group still gets a real "Valid"/"Unchanged" back.
+ * Without a dispatch sibling, resubmitting an unchanged non-dispatch toggle/enum field is now
+ * sparse-omitted (see below) - so this is what decides which of the two commands to use.
+ * @param {SiteDefinitions} defs
+ * @param {string} sectionKey
+ * @param {string} groupKey
+ * @returns {boolean}
+ */
+function groupHasDispatchField(defs, sectionKey, groupKey) {
+    const section = defs.sections.find((s) => s.key === sectionKey);
+    const group = section?.groups.find((g) => "fields" in g && g.key === groupKey);
+    return group !== undefined && "fields" in group && group.fields.some((f) => f.dispatch === true);
+}
+
 const boot = await commands.startLiveMatrix();
 
 /** @type {PutFieldCase[]} */
@@ -118,13 +136,41 @@ if (boot.skipped) {
         // credential and firing a real reconnect.
         const resubmittable = currentValue !== undefined && !(field.kind === "string" && currentValue === "") && field.mask !== true;
         if (resubmittable) {
-            it(
-                "resubmitting the field's own current value renders correctly (Valid or Unchanged)",
-                async () => {
-                    await applyAndExpectRendered(currentValue, "ValidOrUnchanged");
-                },
-                CASE_TIMEOUT_MS,
-            );
+            // A non-dispatch toggle/enum field is now sparse-omitted when resubmitted unchanged
+            // (js/render.js's collectGroupBody() fix) - no round trip fires unless a sibling field
+            // in the same group is dispatch-marked and keeps the shared card's Apply body non-empty
+            // regardless. number/string fields are unaffected either way: applyAndExpectRendered()
+            // always fills a real, non-blank value, so they were never sparse-omittable here.
+            const willRoundTrip =
+                field.kind === "number" ||
+                field.kind === "string" ||
+                field.dispatch === true ||
+                groupHasDispatchField(testCase.defs, sectionKey, groupKey);
+            if (willRoundTrip) {
+                it(
+                    "resubmitting the field's own current value renders correctly (Valid or Unchanged)",
+                    async () => {
+                        await applyAndExpectRendered(currentValue, "ValidOrUnchanged");
+                    },
+                    CASE_TIMEOUT_MS,
+                );
+            } else {
+                it(
+                    "resubmitting the field's own current value is sparse-omitted (nothing to submit, no round trip)",
+                    async () => {
+                        const result = await commands.applyUnchangedFieldExpectNothingToSubmit({
+                            sectionKey,
+                            groupKey,
+                            fieldKey: field.key,
+                            kind: /** @type {"toggle" | "enum"} */ (field.kind),
+                            value: currentValue,
+                        });
+                        expect(result.resultText).toBe("Nothing to submit - no fields were changed.");
+                        expect(result.applyStatus).toBeNull();
+                    },
+                    CASE_TIMEOUT_MS,
+                );
+            }
         }
 
         if (field.kind === "number") {

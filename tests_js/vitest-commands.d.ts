@@ -45,6 +45,13 @@ declare module "vitest/browser" {
             toggleValue: string | null;
             selectValue: string | null;
         }>;
+        applyUnchangedFieldExpectNothingToSubmit: (args: {
+            sectionKey: string;
+            groupKey: string;
+            fieldKey: string;
+            kind: "toggle" | "enum";
+            value: unknown;
+        }) => Promise<{ resultText: string | null; applyStatus: string | null }>;
         remountAndReadField: (args: { sectionKey: string; groupKey: string; fieldKey: string; kind: string }) => Promise<{
             placeholder: string | null;
             toggleValue: string | null;
