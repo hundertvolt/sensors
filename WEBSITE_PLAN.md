@@ -256,161 +256,112 @@ sensor/module that already has a real REST/API connection there — the same gen
 module joins the twin once it can complete a real, observable chain" rule SPECIFICATION.md A.10
 already states for drivers and common modules, applied here to the website itself.
 
-**Default wiring swap**: `scripts/run_digital_twin_ci.sh` (and therefore `digital-twin-e2e`'s CI
-job) and `scripts/run_unix_port_integration.sh` (the manual walkthrough's own entry point) now call
-`scripts/build_website.sh wozi` instead of `scripts/build_frozen_html.sh`'s own `html_stub`
-default — the twin serves the real, production `wozi` website by default now, for the one device
-`src/` currently assembles, matching what real deployed hardware actually serves. Verified
-end-to-end: a full `scripts/run_digital_twin_ci.sh` run (all 11 automated-suite runs — baseline
-boot, reboot/persistence, sustained/bounded bus faults, WiFi hotspot/DNS, NTP-unreachable, the
-watchdog-backstop hang case, the clean soak) passes with the real website mounted, not the stub.
+**Default wiring**: `scripts/run_digital_twin_ci.sh` (and therefore `digital-twin-e2e`'s CI job)
+and `scripts/run_unix_port_integration.sh` (the manual walkthrough's own entry point) call
+`scripts/build_website.sh wozi` — the twin serves the real, production `wozi` website by default,
+for the one device `src/` currently assembles, matching what real deployed hardware serves.
+`scripts/build_frozen_html.sh`'s own `html_stub` default is unchanged and still used elsewhere
+(`scripts/test.sh`'s `test_frozen_html_integration.py` coverage of the generic pipeline).
 
-**Living-integration checklist gap, found and closed**: §7's own "living integration" claim — that
-a new twin-connected module's fields appear on the website automatically via the definitions-file
-mechanism — turned out not to actually hold as a *process* guarantee, only as a mechanism one:
-neither `SPECIFICATION.md` Part C.11 point 9 (the driver-promotion checklist) nor
-`digital_twin/README.md`'s "Adding a new chip fake" steps ever told anyone to update
-`html/definitions/<device>.json` when a new driver/module gains a live REST connection — a driver
-could ship with a working chip fake and REST endpoint yet never surface on the website, silently,
-with nothing pointing back at the gap. Both docs now have an explicit checklist step for this
-(`SPECIFICATION.md` C.11 point 9, `digital_twin/README.md`'s own list, item 5). The
-definitions-file *mechanism* itself was already correct (confirmed: `js/render.js`/`js/nav.js` have
-zero device-specific branching, per §4's existing "per-device page-scheme mechanism" row) — the gap
-was purely the missing checklist pointer, not a design flaw.
+**Living-integration checklist**: `SPECIFICATION.md` Part C.11 point 9 (the driver-promotion
+checklist) and `digital_twin/README.md`'s "Adding a new chip fake" list (item 5) both require
+updating `html/definitions/<device>.json` for any device a new driver/module's fields should appear
+on, whenever that module gains a live REST connection — same session as the digital-twin extension
+itself, not deferred. The definitions-file mechanism itself has zero device-specific branching in
+`js/render.js`/`js/nav.js` (§4's "per-device page-scheme mechanism" row); the checklist step is
+what keeps a promoted driver from staying invisible on the website with nothing else surfacing that.
 
-**Real API-endpoint-driven browser test, against a live backend**: `tests_js/live-backend.test.js`
-drives the real website's own JS (not `js/mock-server.js`'s static fixtures) in a real Chromium
-browser against a real, live-booted digital twin subprocess — opens the real page, reads the real
-rendered DOM, submits a real PUT through the real UI, and asserts the real backend's own response
-reflects in the UI. This needed a genuine escape hatch: Vitest's own browser-mode `page` object has
-no API for navigating to an external origin (confirmed against `vitest-dev/vitest#7875`, open,
-unresolved) — `tests_js/_live_twin_command.js` is a server-side Vitest Commands-API function
-(`vitest.config.js`'s `test.browser.commands`) that spawns the twin subprocess and drives a genuine
-second Playwright page (`context.newPage()`, the real `BrowserContext` Vitest already launched) at
-it directly, sidestepping the browser-side sandbox entirely. `.github/workflows/ci.yml`'s
-`web-unit-tests` job now also builds the MicroPython Unix-port toolchain (sharing the Python
-unit-tests job's own cache key) before `npm test`, so this runs for real in CI, not just locally.
+**Live-backend browser test**: `tests_js/live-backend.test.js` drives the real website's own JS
+(not `js/mock-server.js`) in a real Chromium browser against a real, live-booted digital twin
+subprocess — opens the real page, submits a real PUT through the real UI, asserts the backend's
+response reflects in the UI. `tests_js/_live_twin_command.js` is a server-side Vitest Commands-API
+function (`vitest.config.js`'s `test.browser.commands`) that spawns the twin subprocess and drives
+a second real Playwright page (`context.newPage()`) at it directly — needed since Vitest's
+browser-mode `page` object has no API for navigating to an external origin
+(`vitest-dev/vitest#7875`, open upstream). `.github/workflows/ci.yml`'s `web-unit-tests` job builds
+the MicroPython Unix-port toolchain (sharing `unit-tests`' own cache key) before `npm test` so this
+runs for real in CI.
 
-**A real, previously-untested concurrency gap, found and fixed during this work**: every test
-client this project had before this session (curl, Python's `http.client`,
-`digital_twin/_http_client.py`) issues exactly one request at a time — nothing had ever driven more
-than one simultaneous real TCP connection against a live server, including a real browser's own
-ordinary page-load behavior (opening several connections at once for sub-resources). Investigating
-this (full account: git history around this session) ruled out a false-alarm "crash" from an early,
-racy ad-hoc repro script, but confirmed two real, worthwhile findings:
-- A real browser tab loading the pre-session-5 website opened up to ~9 concurrent connections
-  (`index.html` + `style.css` + `definitions.json` + 6 separate JS module files) against a hard,
-  confirmed rp2040/lwIP ceiling of 5 simultaneously active TCP connections
-  (`MEMP_NUM_TCP_PCB=5`, lwIP's own compile-time default for this build, no project override) —
-  `max_connections=3`'s own reject-when-full margin left almost no room for anything else (an
-  OpenHAB instance's own concurrent polling, say) once a single browser tab was open. Fixed by
-  **bundling** the six production JS modules into one file at build time
-  (`scripts/build_website.sh`'s own "Bundling" comment has the full mechanism/rationale) — a page
-  load is now 4 connections, not ~9. `src/asy_webserver_service.py`'s `max_connections` was also
-  raised from 3 to 4 (one more slot of the now-larger real headroom under the same hard 5-PCB
-  ceiling; see that constructor arg's own updated comment).
-- `tests/test_digital_twin_webserver_concurrency.py` is new, real regression coverage for this
-  whole area — genuinely concurrent real-socket connections (not `tests/test_asy_webserver_service.py`
-  Section F's in-process `_serve()`-against-fakes tests, which never touch the real accept()/
-  `select.poll()` layer at all): healthy-only bursts up to and beyond `max_connections`, mixed
-  healthy/flaky and all-flaky connections, and a repeated high-concurrency burst (12 concurrent,
-  5 rounds) deliberately re-visiting the exact scale of a real, historical, already-fixed
-  MicroPython Unix-port segfault this project's own history records (`digital_twin/README.md`'s
-  "Known gaps" section, `digital_twin/unix_port_poll_prewarm.py`) — confirmed still fixed under
-  current code, not just trusted from that fix's own original history.
+**Connection-concurrency ceiling and mitigations**: the real rp2040/lwIP build has a hard ceiling of
+5 simultaneously active TCP connections (`MEMP_NUM_TCP_PCB=5`, lwIP's own compile-time default, no
+project override). A page load is kept well under that ceiling two ways, both at build time
+(`scripts/build_website.sh`'s own "Bundling"/"Inlining" comments have the full mechanism): the
+seven production JS modules are concatenated into one `js/app.js` bundle (no real bundler —
+`import`/`export` lines are dropped/left as-is by a plain, dependency-free text concatenation, safe
+specifically because every production `js/*.js` file uses only simple same-relative-path imports
+with no default exports, dynamic imports, re-exports, or cross-file naming collisions), and
+`html/style.css` plus the device's own `definitions.json` are embedded directly into the staged
+`index.html` (a `<style>` block; a `<script type="application/json">` element, with every literal
+`<` escaped to `<` since `<script>` is an HTML raw-text element that a literal `</script`
+substring inside the JSON would otherwise prematurely close). A page load is 2 connections
+(`index.html` + `app.js`), down from up to ~9 (`index.html` + `style.css` + `definitions.json` + 6
+separate JS files) before this. `js/definitions.js`'s `loadDefinitions()` accepts an optional
+already-parsed DOM element and uses it in preference to fetching, falling back to a real fetch
+identically to before whenever that element is absent (always true in dev/preview mode, where
+`html/index.html` is never inlined). `src/asy_webserver_service.py`'s `max_connections` is raised
+from 3 to 4 (one more slot of the headroom the bundling/inlining above freed up under the same
+5-PCB ceiling; see that constructor arg's own comment) — a confirmed, narrow `src/` exception (that
+constant and its comment only), raised and confirmed with the project owner, not assumed from any
+prior exception.
 
-**Follow-up round: minimizing connections-per-page-load further, without persistent connections.**
-The project owner reviewed the above and asked whether connections-per-page-load had actually been
-driven to its minimum, whether exceeding `max_connections` really only rejects new arrivals (never
-disturbs an in-flight one), and whether test coverage spans 1..max connections, every above-max
-combination, real-time fluctuating connection counts, and realistic mixed API+website traffic (an
-OpenHAB instance polling two endpoints alongside a browser session).
+HTTP keep-alive/persistent connections are deliberately not implemented: vendored `ext/microdot.py`
+always closes the connection after exactly one request by design (confirmed against its current
+upstream `main` branch, not just the pinned `v2.6.2` — no keep-alive support exists there either),
+and this project's own hard rule never touches that file's behavior. Persistent connections would
+have to be built entirely in application code around Microdot's own request lifecycle, which proved
+fragile in practice; the bundling/inlining reduction above achieves the same practical goal without
+touching Microdot's behavior at all. Raising the rp2 firmware's own `MEMP_NUM_TCP_PCB` compile
+constant (the fix MicroPython's own maintainers point to for this same ceiling elsewhere) is a
+firmware-level change, out of scope for a website-only fix — not done here.
 
-- **The overflow-behavior expectation was already correctly implemented** — confirmed by reading
-  `_serve()`/`_open_conns` directly: a full `max_connections` ceiling only ever rejects the *new*
-  arrival (silently, before any response is written), never touches an existing connection, and a
-  stale one is reclaimed only by its own per-call/outer-cap timeout. No behavior change was needed
-  here, only the test coverage below.
-- **A real HTTP keep-alive attempt was tried and reverted.** `WebserverService` briefly grew a
-  per-connection request loop plus a stream-proxy wrapper that intercepted and no-op'd vendored
-  `ext/microdot.py`'s own unconditional post-response `writer.aclose()` call, so a page load or a
-  persistent client could reuse one TCP connection across several logical requests. It worked (real
-  bugs found and fixed along the way: a Unix-port-only `SIGPIPE` crash, a re-triggered
-  `extmod/modselect.c` dangling-pointer bug, and the `aclose()` interception itself), but was judged
-  too fragile to keep: vendored Microdot has no concept of persistent connections at all — confirmed
-  directly against its current upstream `main` branch, not just the pinned `v2.6.2` — so every part
-  of "keep-alive" had to be built entirely in application code, silently overriding one of the one
-  framework call this project has an explicit hard rule never to touch the behavior of. Reverted in
-  favor of the simpler fix below.
-- **Real fix: inline `style.css` and the device's own `definitions.json` directly into `index.html`
-  at build time** (`scripts/build_website.sh`'s own "Inlining" comment has the full mechanism) —
-  cuts a page load from 4 concurrent connections (`index.html` + `style.css` + `app.js` +
-  `definitions.json`) to 2 (`index.html` + `app.js`), with zero change to `WebserverService`'s own
-  connection-per-request model and zero risk to Microdot's own request lifecycle. `js/definitions.js`'s
-  `loadDefinitions()` now accepts an optional already-parsed-DOM-element argument and uses it in
-  preference to fetching, falling back to a real fetch identically to before whenever that element
-  is absent (always true in dev/preview mode, where `html/index.html` itself is never inlined).
-  Raising the rp2 firmware's own `MEMP_NUM_TCP_PCB` compile constant (the fix MicroPython's own
-  maintainers point to for this same 5-connection ceiling elsewhere) was researched and explicitly
-  set aside for this round, at the project owner's direction — a firmware-level change, out of scope
-  for a website-only fix.
-- **`tests/test_digital_twin_webserver_concurrency.py` grew from 5 to 14 tests**: a 1..max
-  connections sweep, above-max in every healthy/flaky/mixed combination, real-time fluctuating
-  connection-count churn, and API-only/website-only/mixed-client scenarios (including the OpenHAB +
-  browser example named directly), plus two dedicated tests locking in the already-correct
-  overflow behavior above. NTP sync (the third named concurrent actor) is deliberately not
-  simulated — it's UDP traffic that never touches `WebserverService`'s connection ceiling.
+The `max_connections` ceiling only ever rejects a *new* arrival (silently, before any response is
+written) — it never touches an already-open connection, and a stale one is reclaimed only by its
+own per-call/outer-cap timeout (`_serve()`/`_open_conns`, confirmed by direct reading).
+`tests/test_digital_twin_webserver_concurrency.py` (14 tests) covers this with genuinely concurrent
+real-socket connections (distinct from `tests/test_asy_webserver_service.py` Section F's in-process
+`_serve()`-against-fakes tests, which never touch the real accept()/`select.poll()` layer): a
+1..`max_connections` sweep, above-max in every healthy/flaky/mixed combination, real-time
+fluctuating connection-count churn, API-only/website-only/mixed-client scenarios (an OpenHAB
+instance polling REST endpoints alongside a browser session), the overflow-never-disturbs-existing
+behavior above, and a repeated high-concurrency burst (12 concurrent, 5 rounds) at the same scale as
+a real, historical, already-fixed MicroPython Unix-port segfault (`digital_twin/README.md`'s "Known
+gaps" section, `digital_twin/unix_port_poll_prewarm.py`) — confirmed still fixed under current code.
+NTP sync is not simulated in this suite: it's UDP traffic that never touches `WebserverService`'s
+connection ceiling.
 
-**Follow-up round: a real end-to-end field-by-field PUT matrix.** An audit of the existing test
-landscape found that "real digital twin → real HTTP → real rendered website" coverage existed for
-exactly one field (`tests_js/live-backend.test.js`'s own `System`/`DebugLevel` case) — every other
-endpoint/field either stopped at raw HTTP (the Python `test_digital_twin_*` tests, no rendering) or
-was verified against `js/mock-server.js`'s own hand-written fake backend (`tests_js/
-mock-server-put-matrix.test.js`'s already-exhaustive matrix), never both at once.
+**Real end-to-end field-by-field PUT matrix**: `tests_js/live-backend-put-matrix.test.js` covers
+every real writable field in `wozi.json` (the only device the twin ever boots as) via a real UI
+action (fill/select/toggle + a real Apply click) against a real, shared twin+browser session
+(booted once per file, not once per field — `tests_js/_live_matrix_command.js`'s
+`startLiveMatrix()`/`applyField()`/`remountAndReadField()`), verified two ways: same-view (the
+caption/control right after Apply) and a full from-scratch remount (a real nav-drawer click) —
+needed because only a number/string field's caption self-refreshes in place on a poll/Apply
+(`js/render.js`'s `paint()` never rewrites a toggle button's own On/Off state or a `<select>`'s
+selected option), so a remount is the only real-UI-driven proof a toggle/enum field's persisted
+value round-tripped at all. 243 cases, ~8 minutes end to end. `js/field-format.js` (split out of
+`js/templates.js`, no DOM dependency) supplies `formatFieldValue()` to this matrix's Node-context
+harness without pulling `js/templates.js`'s own DOM surface into a no-`"dom"`-lib type-check
+program; the production bundle is seven modules accordingly (was six).
 
-- **`tests_js/live-backend-put-matrix.test.js`** generalizes the single-field pattern to every real
-  writable field in `wozi.json` (the only device the digital twin ever boots as): a real UI action
-  (fill/select/toggle + a real Apply click) against a real, shared twin+browser session (booted once
-  per file — `tests_js/_live_matrix_command.js`'s `startLiveMatrix()`/`applyField()`/
-  `remountAndReadField()` — not once per field, which would have multiplied a real subprocess boot
-  across ~50 fields for no benefit), verified two ways: same-view (the caption/control right after
-  Apply) and a full from-scratch remount (a real nav-drawer click, since only a number/string
-  field's caption self-refreshes in place — a toggle/enum control never does, per `js/render.js`'s
-  own `paint()` — so a remount is the only real-UI-driven proof those kinds' persisted value
-  round-tripped at all). 243 cases, ~8 minutes end to end.
-- **Real UI action boundaries, deliberately not crossed**: rejecting an invalid enum option, a
-  wrong-JSON-type body, and a field omitted from the request body have no real user gesture behind
-  them (a `<select>` only ever offers its own declared options; a typed value is already exactly
-  what a real PUT body carries) — those three categories, plus every field unique to the `dev`
-  device, stay covered only by the mock-backend matrix.
-- **Three real, confirmed backend quirks found building this**, none of them bugs: `ForceCalRef`'s
-  GET readback always reports `400` regardless of what was applied (`src/asy_scd30_driver.py`'s own
-  docstring: "Volatile readback ... regardless of the last FRC value applied" — a real SCD30
-  register limitation, modeled exactly in `digital_twin/_scd30_chip.py`'s fake); `ContMeas` and
-  `SGPResetVOC` are never reported by GET at all (both are documented command-only triggers, never
-  persisted — "the SCD30 can't report whether continuous measurement is running" /
-  `asy_sgp40_driver.py`'s `_VAL_RESET` comment). All three surfaced first as what looked like a
-  stale-render bug before being traced to their real cause. **`js/mock-server.js` models none of
-  the three** (confirmed directly — none of the three field keys is referenced by name anywhere in
-  that file, so all three go through its generic store-and-echo path) — a real divergence between
-  the mock backend's own model and the real backend's documented behavior, flagged to the project
-  owner rather than silently changed in either file.
-- **A fourth finding, matching an already-established precedent rather than a new one**: the real
-  backend's `Unchanged` result essentially never fires on an exact resubmit — confirmed directly
-  even for a plain `system`/`settings` field like `DebugLevel` (`config_manager.py`'s own
-  `new_cache[key] != value` comparison exists, but this matrix's resubmit cases still consistently
-  observed `Valid`) and, separately, is architecturally impossible for the SCD30 driver's own
-  schema-based setters (`src/asy_scd30_driver.py`'s `_set_dict_cfg()`: `"Valid" if await
-  setter(coerced_value) else "Failed"` — no comparison against a prior value at all, since these
-  fields have no local cache to compare against). `tests_js/live-backend.test.js` had already
-  accepted `["valid", "unchanged"]` for exactly this reason; this matrix's own resubmit cases follow
-  that same established tolerance rather than asserting a stricter, newly-invented one.
-- **`js/field-format.js`** was split out of `js/templates.js` along the way: `formatFieldValue()`
-  has no DOM dependency and this matrix's own Node-context harness needed it (to compute the exact
-  expected rendered text to poll for) without pulling `js/templates.js`'s own `document`/
-  `HTMLElement` surface into a type-check program that has no `"dom"` lib. `scripts/
-  build_website.sh`'s bundle grew from six production modules to seven accordingly (see that
-  script's own "Bundling" comment).
+Rejecting an invalid enum option, a wrong-JSON-type body, and a field omitted from the request body
+have no real user gesture behind them (a `<select>` only ever offers its own declared options; a
+typed value is already exactly what a real PUT body carries) — those three categories, plus every
+field unique to the `dev` device, stay covered only by `tests_js/mock-server-put-matrix.test.js`'s
+mock-backend matrix, not this live one.
+
+Three real backend behaviors this matrix confirmed, none of them bugs: `ForceCalRef`'s GET readback
+always reports `400` regardless of what was applied (a real SCD30 register limitation — see
+`src/asy_scd30_driver.py`'s own docstring — modeled exactly in `digital_twin/_scd30_chip.py`'s
+fake); `ContMeas` and `SGPResetVOC` are never reported by GET at all (both are documented
+command-only triggers, never persisted). `js/mock-server.js` models none of the three (none of the
+three field keys is referenced by name anywhere in that file, so all three fall through to its
+generic store-and-echo path) — a confirmed divergence between the mock backend's model and the real
+backend's documented behavior, open item in §8 below rather than resolved here. Separately, the
+real backend's `Unchanged` PUT result essentially never fires on an exact resubmit in practice
+(confirmed even for a plain settings field like `DebugLevel`; architecturally impossible for the
+SCD30 driver's own schema-based setters, which compare against no prior value at all) — this
+matrix's resubmit cases accept `["valid", "unchanged"]`, the same tolerance
+`tests_js/live-backend.test.js` already established.
 
 ## 8. Open items — reserved for dedicated future sub-sessions
 
@@ -421,6 +372,11 @@ mock-server-put-matrix.test.js`'s already-exhaustive matrix), never both at once
 - **`dev.json`'s SHTC3/MPRLS/ISL29125 fields remain an unconfirmed projection** — these sensors
   have no real driver under `src/` yet. Resolves naturally once a future session promotes those
   drivers.
+- **`js/mock-server.js` vs. the real backend's documented behavior for three fields** —
+  `ForceCalRef` (always GETs back `400`), `ContMeas`, `SGPResetVOC` (never reported by GET at all)
+  are all documented real-hardware behaviors (§7) that the mock's generic store-and-echo model
+  doesn't reproduce. Whether to special-case the mock, exclude these fields from its own PUT-matrix
+  test, or leave the divergence as documented/accepted is the project owner's call, not assumed.
 
 ## 9. Sub-session working process
 
@@ -608,9 +564,9 @@ order.
 
    **Effort readiness — also needs the project owner's call, not this session's own**: this was the
    last item in this section's planned breakdown. Everything in §1–§4's goals/architecture is built
-   and tested; §8's two open items (the schema-comment-tag grammar, `dev.json`'s unconfirmed
-   SHTC3/MPRLS/ISL29125 projection) are both explicitly scoped as *future* dedicated sessions, not
-   blockers to this effort's own completion. Whether that means the whole multi-session effort is
+   and tested; §8's open items are each explicitly scoped as a *future* dedicated session or a
+   project-owner decision, not a blocker to this effort's own completion. Whether that means the
+   whole multi-session effort is
    ready for final merge-back into `main` (per this file's own stated lifecycle — permanent content
    migrates into `SPECIFICATION.md`, this file gets deleted) or whether more work is wanted first
    (e.g. waiting on the cross-browser tail item above, or deciding to fold §8's items in before
