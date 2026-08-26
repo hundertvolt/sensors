@@ -126,8 +126,8 @@ describe("startApp (production entry)", () => {
 
     it("uses an inlined definitions element instead of fetching, when a real device build provides one", async () => {
         // The actual point of inlining (scripts/build_website.sh's own "Inlining" comment,
-        // WEBSITE_PLAN.md §7's follow-up round): a real device build must never hit the network
-        // for definitions.json at all once this element is present.
+        // SPECIFICATION.md Part H.7's follow-up round): a real device build must never hit the
+        // network for definitions.json at all once this element is present.
         const fetchStub = buildFetchStub();
         window.fetch = fetchStub;
         elements = buildElements();

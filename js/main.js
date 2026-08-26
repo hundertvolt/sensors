@@ -1,5 +1,5 @@
 /**
- * Real production entry point (WEBSITE_PLAN.md §10 item 4). Unlike js/app.js (prototype-only:
+ * Real production entry point (SPECIFICATION.md Part H.2). Unlike js/app.js (prototype-only:
  * mock fetch, `?device=` switch, dev-server-relative paths), this installs no mock and targets
  * exactly one device - the real backend is reached at plain root-relative REST paths, and the
  * device is fixed by which definitions file the build staged as `definitions.json` (see

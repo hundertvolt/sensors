@@ -1,6 +1,6 @@
 /**
  * Nav controller: drawer open/close state and section-select dispatch. Builds no DOM itself -
- * see WEBSITE_PLAN.md §12 for the full mechanics/visual split this file follows.
+ * see SPECIFICATION.md Part H.3 for the full mechanics/visual split this file follows.
  */
 
 import { buildNavDrawer } from "./templates.js";

@@ -5,16 +5,16 @@
 // already covers) - plus Playwright's own Chromium, included here too so every engine goes through
 // the exact same check. Each engine is driven at both a desktop-sized and a mobile-sized (iPhone-
 // ish) viewport: nav to the live site -> open the nav drawer -> go to Sensors -> edit one field ->
-// Apply -> confirm the real backend validated it and the UI reflects it. See WEBSITE_PLAN.md §7
-// ("Cross-browser coverage") for why this exists and the "Coverage depth"/"Test architecture"
+// Apply -> confirm the real backend validated it and the UI reflects it. See SPECIFICATION.md
+// Part H.7 ("Cross-browser coverage") for why this exists and the "Coverage depth"/"Test architecture"
 // decisions behind its deliberately narrow scope (one field, not the full PUT matrix; raw WebDriver
 // HTTP, not a second Vitest browser provider).
 //
 // WebKit/Firefox are driven via their own real W3C WebDriver servers (WebKitWebDriver/
 // geckodriver) over plain HTTP - Playwright itself can only automate Chromium-family browsers
 // (attaching to any real installed build via `executablePath`) plus its own specially patched
-// Firefox/WebKit builds, which this project's network policy can't download (see WEBSITE_PLAN.md
-// §7). Edge is Chromium-family, so it's driven the same way the rest of tests_js/ already drives
+// Firefox/WebKit builds, which this project's network policy can't download (see SPECIFICATION.md
+// Part H.7). Edge is Chromium-family, so it's driven the same way the rest of tests_js/ already drives
 // Chromium: Playwright's own `chromium.launch({executablePath})`.
 //
 // Preconditions this script assumes are already met (same as tests_js/_live_twin_command.js):
@@ -103,7 +103,7 @@ async function waitUntilServing(url, timeoutMs) {
 // missing binary) from *outside* any of this file's own try/catch frames, skipping every
 // try/finally cleanup below and leaking whatever else is already running. Tracking every process
 // here, and killing whatever's left on the way out (a crash or a local Ctrl-C alike), closes that
-// gap. See WEBSITE_PLAN.md §7's "Cross-browser coverage" for this script's overall design.
+// gap. See SPECIFICATION.md Part H.7's "Cross-browser coverage" for this script's overall design.
 /** @type {Set<import("node:child_process").ChildProcess>} */
 const activeProcesses = new Set();
 

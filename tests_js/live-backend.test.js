@@ -5,7 +5,7 @@
 // (tests/test_digital_twin_real_website_integration.py) and for a standalone boot
 // (tests/test_digital_twin_sensortask_integration.py) - this is the missing third leg, the
 // website's own JS actually driving a real browser against that live backend. See
-// WEBSITE_PLAN.md §10 item 5.
+// SPECIFICATION.md Part H.7.
 //
 // Needs the MicroPython Unix-port toolchain built (`uv run toolchain/setup_toolchain.py setup`)
 // and the real wozi website frozen (`scripts/build_website.sh wozi`) - both are prerequisites the
@@ -31,8 +31,8 @@ describe("live digital-twin backend", () => {
             expect(result.deviceName).toContain("wozi");
             // "Valid" or "Unchanged" both mean the real backend genuinely accepted the write -
             // matching every other tier's own acceptance predicate for this same field
-            // (scripts/_digital_twin_ci_suite.py's Run 1, WEBSITE_PLAN.md §4's PUT-result
-            // vocabulary lowercased on the wire by the controller - see §12's hooks table).
+            // (scripts/_digital_twin_ci_suite.py's Run 1, SPECIFICATION.md Part H.4's PUT-result
+            // vocabulary lowercased on the wire by the controller - see Part H.3's hooks table).
             expect(["valid", "unchanged"]).toContain(result.debugLevelApplyStatus);
         },
         45000, // real subprocess boot + real HTTP + real browser navigation - well past the

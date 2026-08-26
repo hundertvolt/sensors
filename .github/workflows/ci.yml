@@ -16,7 +16,7 @@ jobs:
     # with a changes-detection job feeding `if:` conditions, deliberately not a second workflow
     # file with its own trigger-level `paths:` filter (which can leave a PR stuck on a required
     # status check that never fires because the whole workflow never triggered - see
-    # WEBSITE_PLAN.md §6). The existing Python jobs below are untouched and keep running on every
+    # SPECIFICATION.md Part H.8). The existing Python jobs below are untouched and keep running on every
     # trigger regardless of this job's result.
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -45,8 +45,8 @@ jobs:
               - '.nvmrc'
 
   web-lint-and-typecheck:
-    # JS/HTML/CSS equivalent of the Python lint-and-typecheck job below - see WEBSITE_PLAN.md §6
-    # for the role mapping (ESLint~ruff, tsc --noEmit~mypy, html-validate/Stylelint have no direct
+    # JS/HTML/CSS equivalent of the Python lint-and-typecheck job below - see SPECIFICATION.md
+    # Part H.8 for the role mapping (ESLint~ruff, tsc --noEmit~mypy, html-validate/Stylelint have no direct
     # Python-side counterpart).
     needs: web-changes
     if: needs.web-changes.outputs.web == 'true'
@@ -70,18 +70,18 @@ jobs:
         run: npm run lint:css
 
   web-unit-tests:
-    # Vitest in real-browser mode (Playwright + Chromium, not jsdom) - see WEBSITE_PLAN.md §6.
+    # Vitest in real-browser mode (Playwright + Chromium, not jsdom) - see SPECIFICATION.md Part H.8.
     # This CI runner has no pre-installed browser (unlike the dev sandbox this effort was
     # scaffolded in - see vitest.config.js's own comment), so it installs its own matching
     # Chromium build via `playwright install` before running tests.
     #
     # Also builds the MicroPython Unix-port toolchain (below) - tests_js/live-backend.test.js
-    # (WEBSITE_PLAN.md §10 item 5) drives a real digital-twin subprocess as part of the Vitest
+    # (SPECIFICATION.md Part H.7) drives a real digital-twin subprocess as part of the Vitest
     # suite, the first thing in this job's history to need it. This does cost this job the same
     # toolchain-build time the Python-side unit-tests job already pays (mitigated the same way:
     # the toolchain-cache step below shares that job's exact cache key, so a normal PR run hits a
-    # warm cache here too) - a deliberate tradeoff, not an oversight: see WEBSITE_PLAN.md §10 item
-    # 5 for why the live-backend test needed to actually drive the twin rather than stay
+    # warm cache here too) - a deliberate tradeoff, not an oversight: see SPECIFICATION.md Part H.7
+    # for why the live-backend test needed to actually drive the twin rather than stay
     # mock-server.js-only.
     needs: [web-changes, web-lint-and-typecheck]
     if: needs.web-changes.outputs.web == 'true'
@@ -112,17 +112,8 @@ jobs:
       - name: Install Playwright OS dependencies (cache hit)
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
-      - name: Install uv
-        run: pip install uv
-      - name: Cache MicroPython Unix port build
-        uses: actions/cache@v6
-        with:
-          path: ~/pico-toolchain
-          # Same cache key as the Python unit-tests job's own identical step - see that step's
-          # comment for why both toolchain/setup_toolchain.py and toolchain/versions.toml must be
-          # hashed together. Sharing the exact key means a PR that already ran the Python job in
-          # this same workflow run hits a warm cache here too, not a second cold build.
-          key: unix-port-${{ runner.os }}-${{ hashFiles('toolchain/versions.toml', 'toolchain/setup_toolchain.py') }}
+      - name: Set up MicroPython toolchain (install uv, restore cache)
+        uses: ./.github/actions/setup-micropython-toolchain
       - name: Build MicroPython Unix port (if not cached) and the real wozi website
         run: |
           bin="$HOME/pico-toolchain/micropython/ports/unix/build-standard/micropython"
@@ -160,8 +151,8 @@ jobs:
     # can't reach (WebKitGTK, real Firefox, real Microsoft Edge), plus Playwright's own Chromium for
     # a consistent baseline - each at a desktop and a mobile-sized viewport. Deliberately narrow
     # scope: one field edit+apply per (engine, viewport), not the full PUT matrix - see
-    # scripts/cross_browser_smoke.mjs's own header comment and WEBSITE_PLAN.md §7 ("Cross-browser
-    # coverage") for the "Coverage depth"/"Test architecture" decisions behind that.
+    # scripts/cross_browser_smoke.mjs's own header comment and SPECIFICATION.md Part H.7
+    # ("Cross-browser coverage") for the "Coverage depth"/"Test architecture" decisions behind that.
     #
     # needs: web-unit-tests, not just web-lint-and-typecheck - no reason to spend several more
     # minutes installing three more browser engines if the fast native-Chromium suite already
@@ -198,18 +189,8 @@ jobs:
       - name: Install Playwright OS dependencies (cache hit)
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
-      - name: Install uv
-        run: pip install uv
-      - name: Cache MicroPython Unix port build
-        uses: actions/cache@v6
-        with:
-          path: ~/pico-toolchain
-          # Same cache key as every other job's identical step - see unit-tests' step comment for
-          # why both toolchain/setup_toolchain.py and toolchain/versions.toml must be hashed
-          # together. Each CI job is its own fresh VM, so this job needs its own restore even though
-          # web-unit-tests (which this job needs:) already built the same thing moments earlier in
-          # this same workflow run.
-          key: unix-port-${{ runner.os }}-${{ hashFiles('toolchain/versions.toml', 'toolchain/setup_toolchain.py') }}
+      - name: Set up MicroPython toolchain (install uv, restore cache)
+        uses: ./.github/actions/setup-micropython-toolchain
       - name: Build MicroPython Unix port (if not cached) and the real wozi website
         run: |
           bin="$HOME/pico-toolchain/micropython/ports/unix/build-standard/micropython"
@@ -291,20 +272,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
-      - name: Install uv
-        run: pip install uv
-      - name: Cache MicroPython Unix port build
-        uses: actions/cache@v6
-        with:
-          path: ~/pico-toolchain
-          # Must also hash toolchain/setup_toolchain.py, not just versions.toml: the Unix port's
-          # build flags (e.g. MICROPY_PY_SYS_SETTRACE=1 - see build_unix_port()) live in that
-          # script, not in versions.toml. Keying on versions.toml alone let a stale cached binary
-          # built before that flag existed survive untouched across this PR's own commits - a real
-          # bug, not hypothetical: it's exactly what caused `scripts/test.sh --coverage` to fail in
-          # CI with "module 'sys' has no attribute 'settrace'" while working locally, since a local
-          # run always starts from a genuinely fresh ~/pico-toolchain.
-          key: unix-port-${{ runner.os }}-${{ hashFiles('toolchain/versions.toml', 'toolchain/setup_toolchain.py') }}
+      - name: Set up MicroPython toolchain (install uv, restore cache)
+        uses: ./.github/actions/setup-micropython-toolchain
       - name: Run unit tests
         run: scripts/test.sh
       # Coverage is a report, not a gate (see SPECIFICATION.md Part E.5 ("Coverage")) - never let
@@ -378,16 +347,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-      - name: Install uv
-        run: pip install uv
-      - name: Cache MicroPython Unix port build
-        uses: actions/cache@v6
-        with:
-          path: ~/pico-toolchain
-          # Same cache key as the unit-tests job's own identical step above - see that step's
-          # comment for why both toolchain/setup_toolchain.py and toolchain/versions.toml must be
-          # hashed together.
-          key: unix-port-${{ runner.os }}-${{ hashFiles('toolchain/versions.toml', 'toolchain/setup_toolchain.py') }}
+      - name: Set up MicroPython toolchain (install uv, restore cache)
+        uses: ./.github/actions/setup-micropython-toolchain
       - name: Run digital-twin clean/build/test cycle
         run: scripts/run_digital_twin_ci.sh
       - name: Upload digital-twin subprocess logs
@@ -400,7 +361,7 @@ jobs:
         continue-on-error: true
 
   firmware-build-verify:
-    # The real end-to-end proof for WEBSITE_PLAN.md §10 item 4's build chain: assembles an actual
+    # The real end-to-end proof for SPECIFICATION.md Part B.11's src/-based build chain: assembles an actual
     # src/-based firmware.uf2 (scripts/build_firmware.py, ext/microdot.py + the real website +
     # every src/ module, frozen and linked against the pinned toolchain) rather than only checking
     # the assembly logic's inputs/outputs in isolation, the way tests_scripts/test_build_firmware.py's
@@ -420,19 +381,13 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
-      - name: Install uv
-        run: pip install uv
-      - name: Cache MicroPython Unix port build
-        uses: actions/cache@v6
-        with:
-          path: ~/pico-toolchain
-          # Same cache key as unit-tests'/digital-twin-e2e's own identical step - see unit-tests'
-          # step comment for why both toolchain/setup_toolchain.py and toolchain/versions.toml must
-          # be hashed together. A cache miss here would mean scripts/test.sh itself hasn't run yet
-          # on this exact toolchain pin, which shouldn't happen given needs: unit-tests above, but
-          # if it does, build_firmware.py's own "no toolchain found - run setup first" error message
-          # fails this job clearly rather than silently skipping the real build.
-          key: unix-port-${{ runner.os }}-${{ hashFiles('toolchain/versions.toml', 'toolchain/setup_toolchain.py') }}
+      - name: Set up MicroPython toolchain (install uv, restore cache)
+        uses: ./.github/actions/setup-micropython-toolchain
+      # A cache miss here would mean scripts/test.sh itself hasn't run yet on this exact toolchain
+      # pin, which shouldn't happen given needs: unit-tests above, but if it does, build_firmware.py's
+      # own "no toolchain found - run setup first" error message fails this job clearly rather than
+      # silently skipping the real build.
+      #
       # Each CI job runs on its own fresh VM - the cache step above restores ~/pico-toolchain's
       # git checkouts/build dirs (populated by unit-tests' own scripts/test.sh run earlier in this
       # same workflow run), but apt-installed system packages never survive across jobs. This bit

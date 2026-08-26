@@ -1,4 +1,4 @@
-"""Shared fixtures for tests_scripts/ (WEBSITE_PLAN.md §10 item 4's build-chain verification).
+"""Shared fixtures for tests_scripts/ (SPECIFICATION.md Part B.11's build-chain verification).
 See CLAUDE.md's "Code quality tooling" for why this suite runs under CPython/pytest rather than
 the real MicroPython Unix-port interpreter tests/ uses (SPECIFICATION.md Part E.1)."""
 

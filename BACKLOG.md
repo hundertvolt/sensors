@@ -31,7 +31,7 @@ constraints.
   real end-to-end `build-wozi.sh` run producing a successful `firmware.elf` link against the pinned
   v1.28.0 toolchain). Still open: wiring an actual firmware-build stage into CI for these legacy
   scripts specifically. The *new*, `src/`-based toolchain (`scripts/build_firmware.py`,
-  WEBSITE_PLAN.md §10 item 4) already has this: `.github/workflows/ci.yml`'s `firmware-build-verify`
+  `SPECIFICATION.md` Part B.11) already has this: `.github/workflows/ci.yml`'s `firmware-build-verify`
   job builds a real `firmware.uf2` end to end on every push/PR - not the same gap, since the two
   build paths (legacy `python/`+`build-*.sh` vs. `src/`+`scripts/build_firmware.py`) are entirely
   separate pipelines.
@@ -197,20 +197,46 @@ constraints.
   Neither soak-test script currently has a real-hardware-runnable form (both assume the Unix-port
   `digital_twin` harness); porting/adapting them for actual on-device execution is part of this
   future work, not already done.
-- **HTML/frontend redesign — now underway, multi-sub-session effort. Full plan/settled architecture
-  moved to `WEBSITE_PLAN.md`** (repo root) — a living planning doc every spun-off sub-session reads
-  and updates, in the same spirit as this repo's earlier `WIRING_CONTRACT.md`/`FINAL_WIRING_PLAN.md`
-  (see README.md's "Further reading"). Covers: the legacy-vs-new REST API mismatch
-  (`html_raw/general/functions.js` still targets the old `cmd`-envelope shape, not
-  `src/asy_webserver_service.py`'s new one), the settled single-page-shell/definitions-file/
-  poll-manager/comment-tag architecture, the `html/`/`js/`/`tests_js/` folder layout, the JS/HTML CI
-  tooling plan, and the still-open items reserved for later sub-sessions. Once this effort merges,
-  its permanent content migrates into `SPECIFICATION.md` and `WEBSITE_PLAN.md` is deleted — same
-  lifecycle as its predecessors. This entry stays only as a pointer/index item until then. The
-  concretely-stale symptom that originally prompted this entry — the legacy frontend still sending
-  the pre-migration `setSGP`/`setBMP` field names/formats (see Part C.5.3's wire-format note) —
-  remains pre-refactor debt on the currently-deployed frontend only; the new frontend targets the
-  already-migrated field names from the start, not something it inherits.
+- **HTML/frontend redesign — website functionally complete, its permanent architecture now lives in
+  `SPECIFICATION.md` Part H.** `WEBSITE_PLAN.md` (the effort's temporary planning doc) has been
+  deleted per its own stated lifecycle; its settled architecture migrated to Part H, its still-open
+  items are the three entries below. The concretely-stale symptom that originally prompted this
+  entry — the legacy frontend still sending the pre-migration `setSGP`/`setBMP` field names/formats
+  (see Part C.5.3's wire-format note) — remains pre-refactor debt on the currently-deployed
+  `html_raw/` frontend only; the new `html/`/`js/` frontend (Part H) targets the already-migrated
+  field names from the start, not something it inherits.
+- **Website definitions-file autogeneration — not yet built.** `html/definitions/<device>.json`
+  (Part H.5) is currently hand-written. A worked, already-checked-against-real-code *sketch* exists
+  for deriving most of it at build time from `#`-prefixed comment tags placed above each driver's
+  `ConfigSchema` tuple (most fields — `min`/`max`, toggle/string/enum/number `kind`, special/enum
+  option values — are already inferable from the schema tuple itself with no tag at all; a tag only
+  needs to supply what the tuple can't: `label` (required), `unit`, `description`, an occasional
+  `kind` override for a non-`ConfigSchema` value like `asy_webserver_service.py`'s `_SYSTEM_CMDS`,
+  and `special:<value>="<meaning>"` for a sentinel/enum-option's human-readable meaning). Grammar:
+  `# @web <key>=<value> <key>="<quoted value>" ...` for a per-field tag; `@web-group` for a
+  module-level tag (`label`, `endpoint`, optional `submitGroup`). Three worked examples against real
+  `src/` code: a sentinel special value (`asy_scd30_driver.py`'s `AmbPres`), a toggle needing no
+  `kind` tag at all (`SelfCal`), and an enumerated field (`asy_bmp3xx_driver.py`'s `PressOvers`, six
+  `special:` entries becoming six labeled `options`). **Not a decision** — no parser has been built
+  and no `src/` file carries these tags yet. Left open, case by case, for whoever builds the real
+  parser: where the composite `lightCmdLED` shape (r/g/b/t) and other non-driver-schema webserver
+  values anchor a tag at all; whether `@web-group`'s `endpoint`/`submitGroup` belong on the schema
+  declaration or should instead read off `src/sensortask_wozi.py`'s own `SettingsGroup(...)`
+  construction-site wiring (which already states the same grouping, risking silent drift if tagged
+  twice); a full formal grammar (escaping a `"` inside a quoted value, etc.) was deliberately not
+  attempted, since the sketch's job was proving the *shape* of the idea against real code, not being
+  implementation-ready.
+- **`dev.json`'s SHTC3/MPRLS/ISL29125 field entries remain an unconfirmed projection.** These sensors
+  have no real driver under `src/` yet, so their `html/definitions/dev.json` entries follow the same
+  pattern every promoted sensor's entry does, without a real driver to confirm the projection against.
+  Resolves naturally once a future session promotes those drivers — Part C.11 point 9's
+  driver-promotion checklist already requires a matching definitions-file update in that same
+  session.
+- **Manual cross-browser/cross-device spot check not yet done — needs the project owner directly.**
+  Automated coverage (Part H.7's cross-browser smoke script, Vitest's browser-mode suite) only ever
+  exercises Chromium/WebKitGTK/Firefox/Edge on Linux CI runners — Part H.1's "stable and
+  good-looking on major mobile/desktop browsers" goal still wants at least one real human pass on
+  real Safari and a real mobile device, which no automation here can substitute for.
 - **UART sensor integration — confirmed staying unwired, not just deferred.** `asy_uart_driver.py`
   is promoted to `src/` but deliberately not wired into any `sensortask-*.py`; `asy_uart_comm.py`
   (its one real consumer) is its own separate, still out-of-scope promotion. Not a legacy deployed

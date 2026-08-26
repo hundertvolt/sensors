@@ -1,5 +1,5 @@
 /*
- * Design tokens + layout for the sensors website (WEBSITE_PLAN.md §4/§10 session 2).
+ * Design tokens + layout for the sensors website (SPECIFICATION.md Part H).
  * Light palette lives on :root; the dark variant only redefines tokens under
  * prefers-color-scheme - there is no manual toggle (settled: automatic-only dark mode).
  * Legacy html_raw/general/style.css's .container > .group > .card nesting is kept as the
@@ -318,7 +318,7 @@ button {
    own presentation) - reads as a status badge, not a jarring flash. Shown at two levels: the
    card as a whole (worst status across the group) and each individual field's own box (its own
    result) - legacy colored each field's own nearest card separately, and that per-field
-   granularity is kept here too, just restyled as a stripe (WEBSITE_PLAN.md §12). */
+   granularity is kept here too, just restyled as a stripe (SPECIFICATION.md Part H.3). */
 .card[data-apply-status="valid"] {
     border-left: 3px solid var(--color-success);
 }
@@ -431,7 +431,7 @@ button {
 }
 
 /* The errno itself is the only thing ever shown - "N"/"E"/"W" (no error/error/warning) never
-   render as text, they only pick this pill's color (WEBSITE_PLAN.md §12/§8). */
+   render as text, they only pick this pill's color (SPECIFICATION.md Part H.3/H.6). */
 .history-entry-num {
     display: inline-block;
     min-width: 24px;

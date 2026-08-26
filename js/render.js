@@ -1,6 +1,6 @@
 /**
- * Section controller - the mechanics half of §12's visual/mechanics split. Builds no DOM
- * itself; see WEBSITE_PLAN.md §12 for the full layer/contract definition this file follows.
+ * Section controller - the mechanics half of the visual/mechanics split. Builds no DOM
+ * itself; see SPECIFICATION.md Part H.3 for the full layer/contract definition this file follows.
  */
 
 import { formatFieldValue } from "./field-format.js";
@@ -115,14 +115,14 @@ function collectGroupBody(card, group) {
     return body;
 }
 
-/** Worst-first severity order for one card's overall status; see WEBSITE_PLAN.md §12.
+/** Worst-first severity order for one card's overall status; see SPECIFICATION.md Part H.3.
  * @type {Record<string, number>}
  */
 const STATUS_SEVERITY = { Invalid: 0, Failed: 1, Valid: 2, Unchanged: 3 };
 
 /**
- * A submitted-but-unanswered field is treated as Failed, not silently omitted (WEBSITE_PLAN.md
- * §10 session 3 follow-up 2 - a known real server-side gap where a settings group's post-write
+ * A submitted-but-unanswered field is treated as Failed, not silently omitted (SPECIFICATION.md
+ * Part H.6 - a known real server-side gap where a settings group's post-write
  * hook raising drops that group's fields from `result` entirely, with no other signal).
  * @param {Record<string, unknown>} submitted
  * @param {Record<string, string>} received
@@ -139,7 +139,7 @@ function reconcileResults(submitted, received) {
 /**
  * Sets the card's `data-apply-status` to the worst of `results`, each individual field's own box
  * to its own result (legacy per-field granularity, kept alongside the newer accent-stripe
- * presentation - WEBSITE_PLAN.md §12), and fills in the outcome text. Only ever writes the
+ * presentation - SPECIFICATION.md Part H.3), and fills in the outcome text. Only ever writes the
  * semantic status value - `html/style.css` alone decides what each status looks like.
  * @param {HTMLElement} card
  * @param {Record<string, string>} results
@@ -337,7 +337,7 @@ export function renderSection(defs, section, mainEl) {
     }
 
     /**
-     * Self-healing error visibility (WEBSITE_PLAN.md §10 session 3): a failed GET surfaces
+     * Self-healing error visibility (SPECIFICATION.md Part H.4): a failed GET surfaces
      * `errorBanner` without clearing stale data, and self-heals on the next success. Never
      * rejects - the one place that catches every fetch failure for this section.
      */

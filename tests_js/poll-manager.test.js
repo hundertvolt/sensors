@@ -43,7 +43,8 @@ describe("pollManager", () => {
 
     it("rejects with a clear message (and the original SyntaxError as cause) when the body isn't valid JSON", async () => {
         // A genuine transmission error (truncated/corrupted response), not something the server
-        // itself would ever intentionally send - see WEBSITE_PLAN.md §10 session 3 follow-up 2.
+        // itself would ever intentionally send - see SPECIFICATION.md Part H.4's "PUT/GET error
+        // handling" row.
         window.fetch = vi.fn(async () => new Response("{not valid json", { status: 200 }));
 
         let caught;
@@ -105,7 +106,7 @@ describe("pollManager", () => {
     it("times out and unblocks the queue when a request hangs forever", async () => {
         vi.useFakeTimers();
         // A real hung connection never resolves at all - the single-flight queue must not wait
-        // on it forever (the device has very few available sockets, WEBSITE_PLAN.md §4), so a
+        // on it forever (the device has very few available sockets, SPECIFICATION.md Part H.4), so a
         // fetch() that never settles must still eventually be treated as a failure.
         window.fetch = vi
             .fn()

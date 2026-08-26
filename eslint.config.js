@@ -4,7 +4,7 @@ import html from "eslint-plugin-html";
 
 /**
  * ESLint flat config for js/ and tests_js/ - the JS/HTML/CSS website's ruff-equivalent lint
- * pass (see CLAUDE.md's "Code quality tooling" / WEBSITE_PLAN.md §6). Shipped JS stays plain,
+ * pass (see CLAUDE.md's "Code quality tooling" / SPECIFICATION.md Part H.8). Shipped JS stays plain,
  * hand-written ES modules; this is dev-tooling only, mirroring pyproject.toml's [tool.ruff] role.
  */
 // Beyond eslint:recommended: core rules that catch real bugs (accidental narrowing, race-prone
@@ -52,8 +52,8 @@ export default [
     },
     {
         // Vitest Commands API implementations run server-side, in the real Node process - not the
-        // sandboxed browser context every other tests_js/*.js file runs in (WEBSITE_PLAN.md §10
-        // item 5's own rationale for needing this file at all). Node globals, not browser ones.
+        // sandboxed browser context every other tests_js/*.js file runs in (SPECIFICATION.md Part
+        // H.7's own rationale for needing this file at all). Node globals, not browser ones.
         files: ["tests_js/_live_twin_command.js", "tests_js/_live_matrix_command.js"],
         languageOptions: {
             ecmaVersion: "latest",

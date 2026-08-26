@@ -1,6 +1,6 @@
 """Tests scripts/build_frozen_html.sh directly (real subprocess invocations, real freezefs output)
 - in particular the recursive, multi-source-dir merge its own header comment describes
-(WEBSITE_PLAN.md §10 item 4) but that had previously only been verified by hand."""
+(SPECIFICATION.md Part B.11) but that had previously only been verified by hand."""
 
 import os
 import subprocess

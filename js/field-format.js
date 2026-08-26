@@ -1,10 +1,10 @@
 /**
  * Pure field-value formatting - split out of js/templates.js so a Node-context test harness can
- * reuse it with no DOM dependency. See WEBSITE_PLAN.md §6.1 for the full rationale.
+ * reuse it with no DOM dependency. See SPECIFICATION.md Part H.8.1 for the full rationale.
  */
 
-// Deliberately a narrow local shape, not `import("./definitions.js").FieldDef` - see WEBSITE_PLAN.md
-// §6.1 for why. A real FieldDef object satisfies it structurally either way.
+// Deliberately a narrow local shape, not `import("./definitions.js").FieldDef` - see
+// SPECIFICATION.md Part H.8.1 for why. A real FieldDef object satisfies it structurally either way.
 /** @typedef {{kind: string, mask?: boolean, format?: string, options?: {value: unknown, label: string}[]} & Record<string, unknown>} FormattableField */
 
 /**

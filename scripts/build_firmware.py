@@ -4,7 +4,7 @@
 # dependencies = []
 # ///
 """Assembles a real, deployable firmware.uf2 from src/ + ext/microdot.py + the real website
-(scripts/build_website.sh) for one device (WEBSITE_PLAN.md §10 item 4). Build-only, like every
+(scripts/build_website.sh) for one device (SPECIFICATION.md Part B.11). Build-only, like every
 other RP2 build this toolchain produces (toolchain/setup_toolchain.py's own verification build is
 the existing precedent) - nothing in this project's tooling flashes/tests real hardware, so
 "verified" here means "compiles clean and produces a firmware.uf2", not an on-device functional

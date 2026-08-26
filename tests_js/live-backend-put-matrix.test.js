@@ -2,8 +2,9 @@
  * Field-by-field PUT matrix, driven end to end: a real MicroPython Unix-port digital twin, a real
  * Chromium browser filling and submitting the real rendered controls, and assertions against what
  * the page actually renders afterward. Generalizes tests_js/live-backend.test.js's single-field
- * proof to every real writable field in wozi.json. See WEBSITE_PLAN.md §7 ("a real end-to-end
- * field-by-field PUT matrix") for the shared-session architecture and the real-UI-action boundaries
+ * proof to every real writable field in wozi.json. See SPECIFICATION.md Part H.7 ("a real
+ * end-to-end field-by-field PUT matrix") for the shared-session architecture and the real-UI-action
+ * boundaries
  * this file deliberately doesn't cross (those stay covered only by the mock-backend matrix).
  */
 import { commands } from "vitest/browser";
@@ -18,8 +19,8 @@ import { collectPutFieldCases } from "./_put_field_cases.js";
 const REAL_PATHS = /** @type {const} */ (["/sensors", "/networking", "/system", "/notification"]);
 
 // Three real, documented backend quirks where a field's GET readback never reflects a value that
-// was just applied - see WEBSITE_PLAN.md §7 for the full account (driver sources, the digital-twin
-// fake, and the confirmed js/mock-server.js divergence this exposed).
+// was just applied - see SPECIFICATION.md Part H.7 for the full account (driver sources, the
+// digital-twin fake, and the confirmed js/mock-server.js divergence this exposed).
 /** @type {Record<string, unknown>} */
 const ALWAYS_REMOUNTS_AS = { ForceCalRef: 400, ContMeas: false, SGPResetVOC: false };
 
@@ -56,18 +57,18 @@ if (boot.skipped) {
 
         /**
          * Fills+applies `value` through the real UI, then confirms it rendered correctly both
-         * same-view and after a full remount (WEBSITE_PLAN.md §12: only number/string captions
-         * self-refresh in place, so a remount is the only proof for toggle/enum).
+         * same-view and after a full remount (SPECIFICATION.md Part H.3: only number/string
+         * captions self-refresh in place, so a remount is the only proof for toggle/enum).
          * @param {unknown} value
          * @param {"Valid" | "ValidOrUnchanged"} expectedStatus "ValidOrUnchanged" tolerates either
          * outcome for a resubmit case - the real backend's "Unchanged" detection doesn't reliably
-         * fire (WEBSITE_PLAN.md §7), matching tests_js/live-backend.test.js's own established
+         * fire (SPECIFICATION.md Part H.7), matching tests_js/live-backend.test.js's own established
          * tolerance for this scenario.
          */
         async function applyAndExpectRendered(value, expectedStatus) {
             // Same-view caption AND remount both reflect a real GET round-trip (js/render.js's
             // onApplied() -> fetchOnce()) - so both need ALWAYS_REMOUNTS_AS's override for the three
-            // quirky fields (WEBSITE_PLAN.md §7). A toggle/enum's same-view state is local to the
+            // quirky fields (SPECIFICATION.md Part H.7). A toggle/enum's same-view state is local to the
             // click instead (no in-place poll touches it), so raw `value` is still correct there.
             const expectedRemountValue = field.key in ALWAYS_REMOUNTS_AS ? ALWAYS_REMOUNTS_AS[field.key] : value;
 
@@ -112,7 +113,7 @@ if (boot.skipped) {
         }
 
         // An empty-string current value has no real "resubmit" gesture - typing nothing is
-        // indistinguishable from untouched under the sparse-PUT convention (WEBSITE_PLAN.md §4).
+        // indistinguishable from untouched under the sparse-PUT convention (SPECIFICATION.md Part H.4).
         // A masked field (PW) has no real "resubmit its own current value" gesture either: its GET
         // readback is always the fixed placeholder "********" (src/asy_wifi_service.py's own
         // _mask_pw() overlay), never the real stored credential - resubmitting that placeholder

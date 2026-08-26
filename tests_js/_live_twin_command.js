@@ -155,7 +155,7 @@ export async function runLiveBackendSmoke({ context }) {
         const titleHasSensorStation = (await livePage.title()).includes("Sensor Station");
         const deviceName = (await livePage.locator("#device-name").textContent())?.trim() ?? "";
 
-        // The nav is a slide-in drawer (WEBSITE_PLAN.md §4), off-screen/hidden until the
+        // The nav is a slide-in drawer (SPECIFICATION.md Part H.4), off-screen/hidden until the
         // hamburger button opens it - the section links exist in the DOM immediately (confirmed
         // above via waitForSelector) but aren't clickable until the drawer is actually open.
         await livePage.locator("#hamburger-button").click();

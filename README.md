@@ -74,8 +74,8 @@ and CI behavior (Job Summary, build artifact, Codecov status): **moved to
 
 ## Website tooling (JS/HTML/CSS)
 
-The new website source (`html/`, `js/`, `tests_js/` — see [`WEBSITE_PLAN.md`](WEBSITE_PLAN.md) for
-the in-progress redesign this belongs to) has its own dev-tooling stack, the JS/HTML/CSS
+The website source (`html/`, `js/`, `tests_js/` — see [`SPECIFICATION.md`](SPECIFICATION.md) Part H
+for its architecture) has its own dev-tooling stack, the JS/HTML/CSS
 equivalent of the Python side's ruff/mypy/pytest above: ESLint (lint), TypeScript `checkJS` mode
 (type-checks JSDoc annotations in plain `.js`, no transpilation), Vitest in real-browser mode
 (Playwright + Chromium, not jsdom — same "real engine over a shim" principle as running Python
@@ -107,7 +107,7 @@ node scripts/cross_browser_smoke.mjs       # drives the real site through all of
 ```
 
 `npm run preview`, then open `http://localhost:8000/html/index.html?device=wozi` (or `?device=dev`),
-opens the locally-viewable prototype from `WEBSITE_PLAN.md` §10 session 2 — the real `html/`+`js/`
+opens the locally-viewable prototype — the real `html/`+`js/`
 tree against a fake in-browser backend (`js/mock-server.js`, `mockdata/*.json`), driven by one of
 two worked-example `html/definitions/*.json` files. The `?device=` switch is a prototype-only
 convenience (see `js/app.js`'s own docstring) — real firmware always serves exactly one
@@ -118,7 +118,7 @@ All five CI-covered checks run in GitHub Actions CI (`.github/workflows/ci.yml`'
 `tests_js/`, or their own tooling configs actually change — alongside, not replacing, the Python
 jobs above, which keep gating on Python paths exactly as before. Config lives at the repo root
 (`eslint.config.js`, `tsconfig.json`, `vitest.config.js`, `.htmlvalidate.json`,
-`.stylelintrc.json`); see `WEBSITE_PLAN.md` §6 for the full role mapping and rationale. Vitest's
+`.stylelintrc.json`); see `SPECIFICATION.md` Part H.8 for the full role mapping and rationale. Vitest's
 browser mode needs an actual Chromium install — CI installs its own via `playwright install`; see
 the `npx playwright install chromium` line above if `npm test` reports a missing browser executable
 locally.
@@ -128,8 +128,8 @@ Firefox, and real Microsoft Edge too (not just Vitest's own Playwright/Chromium)
 edit+apply per engine, at both a desktop and a mobile-sized viewport, against a real booted digital
 twin. Vitest's browser mode can't reach any of these itself (it's wired to a single Playwright
 provider, which can only automate Chromium-family browsers), so this runs as a standalone script,
-`scripts/cross_browser_smoke.mjs`, rather than a Vitest test file — see `WEBSITE_PLAN.md` §7's
-"Cross-browser coverage" for the full account of why and how.
+`scripts/cross_browser_smoke.mjs`, rather than a Vitest test file — see `SPECIFICATION.md` Part
+H.7's "Cross-browser coverage" for the full account of why and how.
 
 ## Building real firmware
 
@@ -167,7 +167,7 @@ compile locally.
 code can run under the real MicroPython Unix-port interpreter with no physical hardware attached.
 Its default wiring (`scripts/run_unix_port_integration.sh`, `scripts/run_digital_twin_ci.sh`) serves
 the real, production `wozi` website (`scripts/build_website.sh wozi`), not the `html_stub`
-placeholder — see WEBSITE_PLAN.md §7 for the full account.
+placeholder — see `SPECIFICATION.md` Part H.7 for the full account.
 
 **Quick start: twin + real website, in one command** (builds the MicroPython Unix port and the
 website automatically if either is missing, then serves both forever):
@@ -382,25 +382,19 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   listed here for now so it isn't only locatable by cross-reference in the meantime. See
   `SPECIFICATION.md` Part A.10 for how it fits into the rest of the architecture.
 
-**`WEBSITE_PLAN.md`** (temporary, active — current multi-sub-session effort):
-
-- **[`WEBSITE_PLAN.md`](WEBSITE_PLAN.md)** — living plan/definitions doc for the ongoing
-  website-redesign effort (goals, legacy-vs-new-REST findings, settled architecture, folder layout,
-  CI tooling plan, the digital-twin-integration requirement, and still-open items), in the same
-  spirit as `WIRING_CONTRACT.md`/`FINAL_WIRING_PLAN.md` below. Every spun-off sub-session reads and
-  updates it. Will be deleted once the effort merges, with its permanent content migrated into
-  `SPECIFICATION.md` — same lifecycle as its predecessors.
-
-`WIRING_CONTRACT.md` and `FINAL_WIRING_PLAN.md` — the temporary planning docs for the
-`improved-quality/` → `src/` wiring effort (`src/sensortask_wozi.py`'s construction restructure,
-generic webserver/API service, digital-twin simulator, website placeholder scaffold, full Unix-port
-integration, and the self-healing-system failure-mode audit) — were deleted once that whole effort
-merged back. Everything permanent they settled was migrated into `SPECIFICATION.md` first: the
+`WIRING_CONTRACT.md`, `FINAL_WIRING_PLAN.md`, and `WEBSITE_PLAN.md` — temporary planning docs for,
+respectively, the `improved-quality/` → `src/` wiring effort (`src/sensortask_wozi.py`'s
+construction restructure, generic webserver/API service, digital-twin simulator, website placeholder
+scaffold, full Unix-port integration, and the self-healing-system failure-mode audit) and the
+JS/HTML/CSS website redesign — were each deleted once their effort merged back. Everything permanent
+they settled was migrated into `SPECIFICATION.md` first: `WIRING_CONTRACT.md`/`FINAL_WIRING_PLAN.md`'s
 construction order/FRAM-chunk order/dependency graph/debug-level registry (Part A.7), the REST API
 endpoint reference (Part A.8), the website-stub/frozen-HTML pipeline (Part A.9), the digital-twin
 pointer (Part A.10), and two new checkable conventions found during the audit (the
-silent-failure-masking and cascading-recovery-storm rules, Parts C.7/C.9) — plus a handful of
-still-open items folded into `BACKLOG.md`. `AUDIT_PLAN.md`, the master action list for the earlier
-full `src/` audit, was deleted the same way once that audit closed — everything permanent it
+silent-failure-masking and cascading-recovery-storm rules, Parts C.7/C.9); `WEBSITE_PLAN.md`'s
+settled website architecture (Part H) and its `src/`-based firmware-assembly pipeline (Part B.11) —
+plus, in both cases, a handful of still-open items folded into `BACKLOG.md`. `AUDIT_PLAN.md`, the
+master action list for the earlier full `src/` audit, was deleted the same way once that audit
+closed — everything permanent it
 settled was migrated into `SPECIFICATION.md` (the style-guideline harmonization it drove lives in
 Parts C/D) first.

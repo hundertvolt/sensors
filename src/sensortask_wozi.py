@@ -147,8 +147,8 @@ async def _system_cmd_callback(cmd: str) -> bool:
 # type_or_range_error() does both int<->float coercion and range-checking in one step, matching
 # legacy's own led_cmd() bounds exactly (modules/sensortask-wozi.py: r/g/b 0-255, t 0.5-60.0).
 # The promoted src/ callback used to silently clamp r/g/b (asy_neopixel_driver.py's _clamp_byte())
-# and floor/never-bound t instead of rejecting - WEBSITE_PLAN.md §8's "lightCmdLED legacy-vs-src/
-# divergence" gap, now closed.
+# and floor/never-bound t instead of rejecting - a "lightCmdLED legacy-vs-src/ divergence" gap,
+# now closed.
 _FIELD_LED_R: "cm.FieldSchema" = ("r", "int", None, 0, 255, None)
 _FIELD_LED_G: "cm.FieldSchema" = ("g", "int", None, 0, 255, None)
 _FIELD_LED_B: "cm.FieldSchema" = ("b", "int", None, 0, 255, None)

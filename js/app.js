@@ -1,7 +1,7 @@
 /**
  * Prototype entry point. The `?device=` switch below is prototype-only (real firmware ships
  * exactly one device's definitions.json, never branches on a query param) - see
- * WEBSITE_PLAN.md §10 session 2 for why, and SPECIFICATION.md Part A.9 for the real build.
+ * SPECIFICATION.md Part H.2 for why, and Part A.9 for the real build.
  */
 
 import { loadDefinitions } from "./definitions.js";

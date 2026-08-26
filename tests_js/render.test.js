@@ -70,7 +70,7 @@ const DEFS = {
                         { key: "COffset", label: "Calibration Offset", kind: "number", min: 0, max: 500 },
                         // Named unlike the real SCD30 field "ContMeas" on purpose - js/mock-server.js
                         // now special-cases that exact key name for a real hardware quirk
-                        // (WEBSITE_PLAN.md §7), which this fixture's own generic toggle-rendering
+                        // (SPECIFICATION.md Part H.7), which this fixture's own generic toggle-rendering
                         // scenario must stay clear of.
                         { key: "MeasEnabled", label: "Continuous Measurement", kind: "toggle", onLabel: "On", offLabel: "Off" },
                         {
@@ -887,7 +887,7 @@ describe("renderSection", () => {
     });
 
     it("shows Failed for a field silently missing from a nominally-OK PUT response, without losing the other field's real status", async () => {
-        // Real server-side gap (WEBSITE_PLAN.md §10 session 3 follow-up 2): a settings group's
+        // Real server-side gap (SPECIFICATION.md Part H.6, "Server-side settings-group failure"): a settings group's
         // post-write hook raising drops that group's fields from `result` entirely, while the
         // overall envelope still reports res:"OK". reconcileResults() treats a submitted-but-
         // unanswered field as Failed rather than letting it silently vanish from the UI.

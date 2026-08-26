@@ -246,7 +246,7 @@ async def _soak(host: str, port: int, cycles: int) -> "list[str]":
     # never approaches that and must stay that way. digital_twin/segfault_stress_repro.py is the
     # dedicated, separate, manual tool for deliberately exploring that concurrency - never fold its
     # pattern into this automated soak.
-    # `tests/test_digital_twin_webserver_concurrency.py` (WEBSITE_PLAN.md §10 item 5) is now the
+    # `tests/test_digital_twin_webserver_concurrency.py` (SPECIFICATION.md Part H.7) is now the
     # project's real, automated regression coverage for that exact concurrency scale (12+ real
     # concurrent connections, repeated bursts) - re-confirmed clean (no crash, no hang) against
     # current code, not just trusted from the original fix's own history.

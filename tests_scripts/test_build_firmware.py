@@ -1,4 +1,4 @@
-"""Tests scripts/build_firmware.py (WEBSITE_PLAN.md §10 item 4's real firmware.uf2 assembly
+"""Tests scripts/build_firmware.py (SPECIFICATION.md Part B.11's real firmware.uf2 assembly
 script). Fast tests cover its own logic (_BOOT_PY/_MANIFEST_TEMPLATE content, build_stage_dir()'s
 file assembly, CLI error paths) without the real, minutes-long ARM compile - see
 test_real_firmware_build_produces_a_valid_uf2's own comment for the one test that does that."""
@@ -83,7 +83,7 @@ def test_build_stage_dir_frozen_html_contains_the_real_website_not_the_stub(buil
     # no js/ directory at all - see test_build_frozen_html_sh.py's own stub-side coverage). No
     # separate /definitions.json.gz or /style.css.gz check any more - both are inlined directly
     # into index.html at build time now (scripts/build_website.sh's own "Inlining" comment,
-    # WEBSITE_PLAN.md §7's follow-up round), never staged as their own files.
+    # SPECIFICATION.md Part H.7), never staged as their own files.
     assert "/js/app.js.gz" in frozen_html_text
 
 
@@ -119,7 +119,7 @@ def test_cli_missing_toolchain_dir_fails_before_attempting_a_build(repo_root, tm
     "(see .github/workflows/ci.yml's firmware-build-verify job, which sets it)",
 )
 def test_real_firmware_build_produces_a_valid_uf2(repo_root, tmp_path):
-    # The actual end-to-end proof WEBSITE_PLAN.md §10 item 4 asked for: a real src/-based
+    # The actual end-to-end proof SPECIFICATION.md Part B.11 asked for: a real src/-based
     # firmware.uf2, built by the exact same script/manifest a device build would use, not just its
     # staging logic checked in isolation above. Needs the real toolchain already installed
     # (uv run toolchain/setup_toolchain.py setup) - scripts/test.sh and CI's unit-tests job both

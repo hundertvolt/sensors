@@ -27,7 +27,7 @@
  * shape have their own distinct Invalid/Failed/Valid semantics, already covered by dedicated tests
  * elsewhere (mock-server.test.js, render.test.js) - excluded from this generic matrix rather than
  * force-fit into categories that don't apply to them. Same treatment for ForceCalRef/ContMeas/
- * SGPResetVOC (WEBSITE_PLAN.md §7): js/mock-server.js now models their real GET-readback quirks
+ * SGPResetVOC (SPECIFICATION.md Part H.7): js/mock-server.js now models their real GET-readback quirks
  * (a fixed 400 for ForceCalRef, total omission for the other two), which this generic matrix's
  * own "resubmit -> Unchanged" and "valid value -> reflected in the next GET" categories both
  * assume doesn't hold - see mock-server.test.js's own dedicated tests for these three instead.

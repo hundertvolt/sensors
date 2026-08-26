@@ -1,6 +1,6 @@
 """Boots the real sensortask_wozi object graph (digital_twin) with the REAL website - not
 html_stub - wired in as `frozen_html`, and proves it over real HTTP: the Unix-port counterpart to
-scripts/build_firmware.py's real ARM build (WEBSITE_PLAN.md §10 item 4), runnable and checkable
+scripts/build_firmware.py's real ARM build (SPECIFICATION.md Part B.11), runnable and checkable
 here where the ARM build can only be compiled, never executed."""
 
 import asyncio
@@ -120,7 +120,7 @@ def test_real_website_root_serves_the_actual_production_index_html_not_the_stub(
 
 def test_real_website_inlined_definitions_matches_the_booted_devices_own_id() -> None:
     # definitions.json is no longer a separately-fetched route (scripts/build_website.sh's own
-    # "Inlining" comment - WEBSITE_PLAN.md §7's follow-up round): it's embedded directly into
+    # "Inlining" comment - SPECIFICATION.md Part H.7): it's embedded directly into
     # index.html at build time instead, so this now reads it out of the real page body.
     port = _next_test_port()
 

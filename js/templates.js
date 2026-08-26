@@ -1,6 +1,6 @@
 /**
- * Presentation layer - the visual half of §12's visual/mechanics split. Every DOM element this
- * app ever creates is built here, and only here; see WEBSITE_PLAN.md §12 for the full contract.
+ * Presentation layer - the visual half of the visual/mechanics split. Every DOM element this
+ * app ever creates is built here, and only here; see SPECIFICATION.md Part H.3 for the full contract.
  */
 
 // formatFieldValue() itself now lives in ./field-format.js (pure formatting, no DOM dependency -
@@ -56,7 +56,7 @@ export function buildField(field, currentValue, editable) {
     wrapper.className = "field";
     // Distinct from data-field-key below (which must keep pointing at the specific control -
     // collectGroupBody()/paint() rely on that exact element) - this tags the whole per-field box
-    // so a PUT result can color it individually (WEBSITE_PLAN.md §12, per-field granularity).
+    // so a PUT result can color it individually (SPECIFICATION.md Part H.3, per-field granularity).
     wrapper.dataset.fieldWrapperKey = field.key;
 
     const label = document.createElement("label");
@@ -228,8 +228,8 @@ function worstErrcountType(entry) {
 
 /**
  * Builds the Status page's error-count card: collapsed rollup + filter buttons, entries colored
- * (never captioned) by their raw errno's type. See WEBSITE_PLAN.md §8's "Errcount rollup/collapse
- * UX" and "Error-history entry shape" resolutions for the full rationale.
+ * (never captioned) by their raw errno's type. See SPECIFICATION.md Part H.6's "Errcount UX"
+ * and "History entry shape" for the full rationale.
  * @param {ErrcountGroup} group
  * @param {Record<string, {counter: number, history?: {num: number, type: "N"|"E"|"W"}[]}>} errcount
  * @returns {HTMLElement}
@@ -340,7 +340,7 @@ export function buildErrcountGroup(group, errcount) {
 
 /**
  * Builds a section's static shell (heading + description) into `mainEl`, plus an empty group
- * grid and an inert error banner for a controller to use. See WEBSITE_PLAN.md §12's "One
+ * grid and an inert error banner for a controller to use. See SPECIFICATION.md Part H.3's "One
  * deliberate exception" note for why this returns `{grid, errorBanner}` directly.
  * @param {Section} section
  * @param {HTMLElement} mainEl

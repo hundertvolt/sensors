@@ -1,10 +1,10 @@
 /**
  * Single-flight request coordinator - every fetch in the app goes through the one shared
- * instance below rather than calling fetch() directly. See WEBSITE_PLAN.md §4 "Poll
- * coordination" for why, and §10 session 3 for the per-request timeout's own rationale.
+ * instance below rather than calling fetch() directly. See SPECIFICATION.md Part H.4's "Poll
+ * coordination" row for why, and for the per-request timeout's own rationale.
  */
 
-/** Default per-request timeout; see WEBSITE_PLAN.md §10 session 3. */
+/** Default per-request timeout; see SPECIFICATION.md Part H.4's "Poll coordination" row. */
 export const DEFAULT_TIMEOUT_MS = 15000;
 
 /**
@@ -47,8 +47,8 @@ class PollManager {
     }
 
     /**
-     * Run one HTTP request, queued behind any request already in flight. See WEBSITE_PLAN.md §4
-     * "Poll coordination" for the timeout/queue-advance rationale.
+     * Run one HTTP request, queued behind any request already in flight. See SPECIFICATION.md
+     * Part H.4's "Poll coordination" row for the timeout/queue-advance rationale.
      * @param {string} url
      * @param {RequestInit} [init]
      * @param {number} [timeoutMs]

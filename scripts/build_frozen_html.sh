@@ -36,7 +36,7 @@
 # src_dirs can each contribute their own subtree (e.g. a staged website-build dir laid out as
 # <staged>/index.html, <staged>/definitions/wozi.json, <staged>/js/render.js). freezefs's own
 # archiver already walks nested paths and Microdot's static route already matches slashes - see
-# WEBSITE_PLAN.md §10 item 4 - so a plain recursive copy is the only piece this script needs.
+# SPECIFICATION.md Part A.9 - so a plain recursive copy is the only piece this script needs.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 

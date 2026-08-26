@@ -1,7 +1,7 @@
 /**
  * Prototype-only fake backend: intercepts `window.fetch()` for the six real REST paths
  * (SPECIFICATION.md Part A.8) and answers from an in-memory fixture. Replaced by the digital
- * twin's real server per WEBSITE_PLAN.md §7 - everything outside this file targets the real API.
+ * twin's real server per SPECIFICATION.md Part H.7 - everything outside this file targets the real API.
  */
 
 const REST_PATHS = /** @type {const} */ ([
@@ -16,7 +16,7 @@ const REST_PATHS = /** @type {const} */ ([
 const SYSTEM_CMDS = ["reboot", "bootloader", "mempause"];
 const PAUSE_TIME_MAX = 3600; // matches src/asy_webserver_service.py's own _PAUSE_TIME_MAX
 
-// Three /sensors fields with real, documented hardware quirks (WEBSITE_PLAN.md §7;
+// Three /sensors fields with real, documented hardware quirks (SPECIFICATION.md Part H.4;
 // src/asy_scd30_driver.py's _set_dict_cfg()/get_forced_recalibration_reference(),
 // src/asy_sgp40_driver.py's _push_reset_voc()): each is a direct hardware dispatch re-run every
 // request, never compared against a stored value ("Unchanged" can never fire) and never persisted
@@ -281,7 +281,7 @@ function applySensorQuirksForGet(sensorsConfig) {
 }
 
 /**
- * Simulates the real backend's own known gap (WEBSITE_PLAN.md §10 session 3 follow-up 2): a
+ * Simulates the real backend's own known gap (SPECIFICATION.md Part H.6): a
  * settings group's post-write hook raising drops that group's fields from `result` entirely,
  * with the overall response still reporting `res:"OK"`. Deletes one arbitrary key in place, once,
  * only when `controls.nextFailure === "partial-result"` (consumed either way it fires or not).
@@ -328,16 +328,16 @@ function jitterInPlace(group) {
 }
 
 /**
- * One-shot failure to inject into the next intercepted REST request (WEBSITE_PLAN.md §10
- * session 3 follow-up 2 - see that entry for the full real-backend-error-taxonomy rationale
- * behind each variant). Consumed and cleared after firing once.
+ * One-shot failure to inject into the next intercepted REST request (see SPECIFICATION.md
+ * Part H.6 for the settings-group-failure rationale behind one of these variants).
+ * Consumed and cleared after firing once.
  * @typedef {"network" | number | "malformed-body" | "torn-json" | "empty-body" | "partial-result"} MockFailure
  * @typedef {{nextFailure?: MockFailure}} MockFetchControls
  */
 
 /**
  * Installs the mock fetch and returns an uninstall function. Only REST_PATHS are intercepted -
- * everything else passes through to the real fetch(). `controls` (WEBSITE_PLAN.md §10 session 3)
+ * everything else passes through to the real fetch(). `controls`
  * lets a test inject one failure, exercising error-handling against more than a raw fetch stub.
  * @param {import("./definitions.js").SiteDefinitions} defs
  * @param {import("./definitions.js").MockDeviceData} initialData

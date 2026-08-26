@@ -851,7 +851,8 @@ def test_webserver_notification_put_light_cmd_led_rejects_missing_field() -> Non
 
 
 def test_webserver_notification_put_light_cmd_led_rejects_out_of_range_rgb() -> None:
-    # Regression test for WEBSITE_PLAN.md §8's "lightCmdLED legacy-vs-src/ divergence" gap: legacy's
+    # Regression test for a real legacy-vs-src/ divergence (SPECIFICATION.md Part H.6's dispatch-only
+    # field rules): legacy's
     # own led_cmd() (modules/sensortask-wozi.py) validates and rejects out-of-range r/g/b (0-255) via
     # update_valid_json(...) - the promoted src/ callback used to silently clamp instead
     # (asy_neopixel_driver.py's _clamp_byte()). Rejected exactly like a missing/non-numeric field.

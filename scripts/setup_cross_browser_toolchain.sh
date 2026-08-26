@@ -16,7 +16,7 @@
 #   project's outbound network policy where this was first verified. conda-forge (via
 #   conda.anaconda.org, a different distribution channel entirely) packages a real, current
 #   Firefox plus geckodriver (Mozilla's own official WebDriver server) and was reachable - see
-#   WEBSITE_PLAN.md §7 for the full investigation trail.
+#   SPECIFICATION.md Part H.7 for the full investigation trail.
 set -euo pipefail
 
 # --- WebKit: webkit2gtk-driver + xvfb (headless WebKitGTK needs a virtual display) ---
@@ -43,7 +43,7 @@ fi
 # --- Firefox + geckodriver: conda-forge via a standalone micromamba binary ---
 # Deliberately unpinned (unlike toolchain/versions.toml's strict MicroPython pin) - this installs
 # whatever conda-forge currently publishes as "firefox"/"geckodriver". Acceptable for a browser-
-# engine-diversity smoke check (WEBSITE_PLAN.md §7's "Coverage depth" decision); bump
+# engine-diversity smoke check (SPECIFICATION.md Part H.7's "Coverage depth" decision); bump
 # CROSS_BROWSER_DIR below (or just delete it) to force a fresh install if conda-forge's build ever
 # needs re-pulling.
 CROSS_BROWSER_DIR="${CROSS_BROWSER_TOOLCHAIN_DIR:-$HOME/cross-browser-toolchain}"

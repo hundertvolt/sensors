@@ -1,7 +1,7 @@
 """Real-socket concurrent-connection regression coverage for WebserverService, booted against the
 real digital_twin buses - genuinely concurrent TCP connections, not
 tests/test_asy_webserver_service.py Section F's in-process _serve()-against-fakes tests. See
-WEBSITE_PLAN.md §10 item 5 and this module's own comments below for the full rationale."""
+SPECIFICATION.md Part H.7 and this module's own comments below for the full rationale."""
 
 # Every existing test client in this project before this file (curl, Python's http.client,
 # digital_twin/_http_client.py itself) has always issued exactly one request at a time, so nothing
@@ -171,7 +171,7 @@ async def _still_serving(host: str, port: int, timeout_s: float = 5.0) -> bool:
 
 async def _browser_page_load(host: str, port: int) -> "list[int]":
     """Simulates one browser tab's page-load connection burst - two concurrent GETs, matching the
-    real production website's own post-inlining footprint (WEBSITE_PLAN.md §7's follow-up round:
+    real production website's own post-inlining footprint (SPECIFICATION.md Part H.7:
     style.css/definitions.json are now inlined directly into index.html at build time, cutting a
     real page load from four connections to two - index.html + app.js). Uses this test file's own
     default (html_stub) mount's real routes ("/" and "/style.css" both exist there too) rather than

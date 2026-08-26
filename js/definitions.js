@@ -1,7 +1,7 @@
 /**
- * Loads and strictly validates a device's definitions.json (WEBSITE_PLAN.md §4/§8). A shape/
+ * Loads and strictly validates a device's definitions.json (SPECIFICATION.md Part H.5). A shape/
  * version mismatch surfaces a visible error rather than silently rendering something broken or
- * skipping unknown fields (§4 "Definitions validation").
+ * skipping unknown fields (Part H.4's "Definitions validation").
  *
  * @typedef {{value: string|number, label: string}} EnumOption
  * @typedef {{value: number, meaning: string}} SpecialValue

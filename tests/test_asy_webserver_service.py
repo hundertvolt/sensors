@@ -459,8 +459,9 @@ async def _record_async(sink: "list[int]") -> None:
 
 
 def test_networking_put_raising_post_fct_marks_every_attempted_field_in_that_group_failed() -> None:
-    # Regression test for the real, confirmed gap this file's own WEBSITE_PLAN.md §8 flagged
-    # ("silent result-swallow"): handle_set_cmd() (api_response.py) discards its already-computed
+    # Regression test for a real, confirmed gap (SPECIFICATION.md Part H.6's "Server-side
+    # settings-group failure" rule, "silent result-swallow"): handle_set_cmd() (api_response.py)
+    # discards its already-computed
     # per-field results when post_fct/post_asy_fct raises and returns an empty result dict -
     # _apply_settings_groups() used to just .update() that empty dict in, silently dropping every
     # field the group actually attempted from the overall response, with the top-level envelope

@@ -199,7 +199,7 @@ class WebserverService:
         # build - confirmed directly against the vendored lwIP source and the rp2 port's own
         # lwipopts, no project override anywhere), for TIME_WAIT sockets from just-closed
         # connections (every response sends `Connection: close`) to drain without blocking a new
-        # one. Raised from the original 3 once WEBSITE_PLAN.md §10 item 5's real-browser testing
+        # one. Raised from the original 3 once SPECIFICATION.md Part H.7's real-browser testing
         # showed a single page load's own concurrent connections (previously up to ~9: index.html +
         # style.css + 6 separate JS module files + definitions.json) could alone approach this
         # ceiling before any other client (e.g. an OpenHAB instance polling REST endpoints
@@ -358,7 +358,7 @@ class WebserverService:
                 # handle_set_cmd()'s own post_fct/post_asy_fct exception path (api_response.py)
                 # discards its already-computed per-field results and returns an empty result dict -
                 # previously this silently dropped every field in `subset` from the overall response
-                # with no signal at any level (WEBSITE_PLAN.md §8's "silent result-swallow" gap).
+                # with no signal at any level (a "silent result-swallow" gap).
                 # The group's post-write hook failed, so nothing it attempted can be trusted as
                 # applied even if a field's own value would otherwise have validated - report every
                 # field the group actually attempted as "Failed" instead of silently omitting them.

@@ -14,7 +14,7 @@
 # Build: builds the MicroPython Unix port (if not already cached - same
 # $PICO_TOOLCHAIN_DIR/SKIP_APT convention as scripts/test.sh and
 # scripts/run_unix_port_integration.sh) and the real, production `wozi` website (the only device
-# `src/` currently assembles - WEBSITE_PLAN.md §7) as frozen_modules/frozen_html.py, via
+# `src/` currently assembles - SPECIFICATION.md Part H.7) as frozen_modules/frozen_html.py, via
 # scripts/build_website.sh - not scripts/build_frozen_html.sh's own html_stub default. Must
 # succeed before any test phase can run - a build failure here fails the job immediately via
 # `set -e`, before scripts/_digital_twin_ci_suite.py ever launches a twin subprocess.

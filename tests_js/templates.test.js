@@ -208,7 +208,7 @@ describe("buildField", () => {
 
     // A distinct attribute from data-field-key (which must keep pointing at the specific control -
     // collectGroupBody()/paint() in render.js rely on that) - this one tags the whole per-field
-    // wrapper, so a PUT result can color the individual field's own box (WEBSITE_PLAN.md §12
+    // wrapper, so a PUT result can color the individual field's own box (SPECIFICATION.md Part H.3
     // follow-up: per-field granularity restored alongside the accent-stripe presentation).
     it("tags the field's own wrapper with a distinct data-field-wrapper-key, separate from the control's data-field-key", () => {
         const field = buildField({ key: "CO2", label: "CO2", kind: "readonly" }, 612, false);

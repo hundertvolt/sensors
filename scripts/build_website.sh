@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Stages the real website (html/ + js/) for exactly one device into the shape scripts/
-# build_frozen_html.sh expects, then invokes it. See WEBSITE_PLAN.md §10 item 4 for the design
+# build_frozen_html.sh expects, then invokes it. See SPECIFICATION.md Part H.2 for the design
 # this follows and the gaps it closes; scripts/build_frozen_html.sh itself is unchanged by this
 # script's existence - it stays a generic "merge N source dirs, gzip, freezefs" pipeline, this
 # script's own job is only building the one merged dir HTML_SRC_DIRS points at.
@@ -12,7 +12,7 @@
 #     real device's firmware only ever ships its own one definitions file, so the inlined data is
 #     always the one matching this build's own device rather than needing a "device" constant
 #     baked into checked-in JS (mirrors how html/index.html itself never branches on device -
-#     WEBSITE_PLAN.md §4's "per-device page-scheme mechanism" row).
+#     SPECIFICATION.md Part H.4's "per-device page-scheme mechanism" row).
 #   - The production JS module set (js/field-format.js, poll-manager.js, templates.js,
 #     definitions.js, render.js, nav.js, main.js) - concatenated into one bundled js/app.js (see
 #     "Bundling" below), not copied as separate files. js/mock-server.js (prototype-only fake
@@ -22,10 +22,10 @@
 #     "../js/app.js" unconditionally, and that one path is meant to stay identical between
 #     `npm run preview` (serves the real repo layout, where js/app.js is the separate,
 #     prototype-only entry file) and a real device build (where the staged js/app.js is really the
-#     bundle below) - see WEBSITE_PLAN.md §10 item 4's "no production entry point exists yet" note.
+#     bundle below) - see SPECIFICATION.md Part H.2's own account of this staging rename.
 #     Staging under this name means html/index.html never needs a build-time text rewrite.
 #
-# Bundling (WEBSITE_PLAN.md §10 item 5): concatenated into one file, not copied as 7 separate
+# Bundling (SPECIFICATION.md Part H.7): concatenated into one file, not copied as 7 separate
 # js/*.js files, so a single page load opens far fewer concurrent TCP connections - the real
 # rp2040 lwIP build's MEMP_NUM_TCP_PCB=5 (lwIP's own default, confirmed against the vendored
 # source, no project override) is a hard ceiling on simultaneously active TCP connections that no
@@ -42,13 +42,13 @@
 # keywords are left as-is - a module script can freely contain unused exports, and stripping them
 # would be one more thing that could get the regex wrong for no real benefit. This is a plain,
 # dependency-free text concatenation (matching this project's own small/lean/no-build-step-magic
-# philosophy - WEBSITE_PLAN.md §3), not a real bundler - safe here specifically because every
+# philosophy - SPECIFICATION.md Part H.1), not a real bundler - safe here specifically because every
 # production js/*.js file uses only simple `import { name, ... } from "./relative.js"` (no default
 # exports, no dynamic imports, no re-exports, no naming collisions across files - confirmed by
 # direct inspection, and cross-checked mechanically below) rather than because concatenation is a
 # generally-safe substitute for real bundling.
 #
-# Inlining (WEBSITE_PLAN.md §7's follow-up round): html/style.css and the device's own
+# Inlining (SPECIFICATION.md Part H.7): html/style.css and the device's own
 # definitions.json are embedded directly into the staged index.html (a `<style>` block replacing
 # the `<link rel="stylesheet">`, and a `<script type="application/json" id="inlined-definitions">`
 # element js/definitions.js's own loadDefinitions() reads in preference to fetching) instead of

@@ -25,7 +25,7 @@ def test_wozi_device_stages_the_expected_files_renamed_and_flattened(repo_root, 
         "/js/app.js.gz",  # the bundled production JS (field-format.js, poll-manager.js, templates.js,
         # definitions.js, render.js, nav.js, main.js concatenated - see scripts/build_website.sh's
         # own "Bundling" comment for why) - a single file now, not seven separate ones
-        # (WEBSITE_PLAN.md §10 item 5).
+        # (SPECIFICATION.md Part H.7).
     ):
         assert expected in text, expected
 

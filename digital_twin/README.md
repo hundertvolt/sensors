@@ -382,7 +382,7 @@ started with. For a new **I2C** sensor this is a small, mechanical addition:
    consider whether `digital_twin/launch.py`'s own `_sensor_loop()`/`_FAULT_DEVICE_OPS` should read
    from it too.
 5. **Update `html/definitions/<device>.json`** for every device the new driver's fields should
-   appear on (`WEBSITE_PLAN.md` §4.1/§7, `SPECIFICATION.md` Part C.11 point 9) — the website has no
+   appear on (`SPECIFICATION.md` Part H.5/H.7, Part C.11 point 9) — the website has no
    other place a new sensor's fields get wired in, so skipping this step leaves the driver fully
    working (real chip fake, real REST endpoint, twin-tested) but permanently invisible on the
    website until someone remembers to come back and add it by hand.

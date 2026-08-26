@@ -15,7 +15,7 @@ const launchOptions = existsSync(sandboxChromium) ? { executablePath: sandboxChr
 /**
  * Vitest in real-browser mode (Playwright + Chromium, not jsdom) - the JS unit-test tier's
  * "real environment over a shim" equivalent to running Python tests under a real MicroPython
- * Unix-port interpreter (SPECIFICATION.md Part E.1). See WEBSITE_PLAN.md §6.
+ * Unix-port interpreter (SPECIFICATION.md Part E.1). See SPECIFICATION.md Part H.8.
  */
 export default defineConfig({
     test: {
@@ -33,7 +33,7 @@ export default defineConfig({
             // Custom Commands API (server-side, real Node - not the sandboxed browser test
             // context): backs tests_js/live-backend.test.js's real-digital-twin round trip. See
             // tests_js/_live_twin_command.js's own header comment for why this needs the Commands
-            // API rather than Vitest's browser-side `page` object (WEBSITE_PLAN.md §10 item 5).
+            // API rather than Vitest's browser-side `page` object (SPECIFICATION.md Part H.7).
             commands: { runLiveBackendSmoke, startLiveMatrix, stopLiveMatrix, getRealCurrentValues, applyField, remountAndReadField },
         },
     },

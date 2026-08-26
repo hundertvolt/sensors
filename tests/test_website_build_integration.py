@@ -1,4 +1,4 @@
-"""Real-pipeline integration test for the real website build (WEBSITE_PLAN.md §10 item 4): proves
+"""Real-pipeline integration test for the real website build (SPECIFICATION.md Part H.7): proves
 scripts/build_website.sh's staged, recursive merge - html/ + the production js/ module set, for one
 device - imports cleanly, mounts for real, and is served correctly end to end through a real
 WebserverService/Microdot() app, with the prototype-only files (js/app.js, js/mock-server.js,
@@ -68,7 +68,7 @@ def test_root_serves_the_real_index_html() -> None:
 
 def test_style_css_and_definitions_json_are_not_served_as_separate_files() -> None:
     # Both are inlined directly into index.html at build time now (scripts/build_website.sh's own
-    # "Inlining" comment - WEBSITE_PLAN.md §7's follow-up round) instead of being staged as their
+    # "Inlining" comment - SPECIFICATION.md Part H.7) instead of being staged as their
     # own files - a page load needs one fewer connection than before. html/definitions/wozi.json
     # (the nested dev-preview path) and definitions/dev.json (a different device's file) were
     # already never shipped this way either.
@@ -100,7 +100,7 @@ def test_inlined_definitions_and_stylesheet_replace_the_two_separately_staged_fi
 def test_production_js_is_served_as_one_bundle_under_js() -> None:
     # The seven production modules (field-format.js, poll-manager.js, templates.js,
     # definitions.js, render.js, nav.js, main.js) are concatenated into one js/app.js at staging
-    # time (scripts/build_website.sh's own "Bundling" comment - WEBSITE_PLAN.md §10 item 5), not
+    # time (scripts/build_website.sh's own "Bundling" comment - SPECIFICATION.md Part H.7), not
     # shipped as seven separate files - each of their own paths must now 404, not 200.
     _, app = _make_app()
     res = run(app.dispatch_request(_make_request(app, "GET", "/js/app.js")))

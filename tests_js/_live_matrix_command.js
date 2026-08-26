@@ -1,15 +1,17 @@
 // Server-side Vitest Commands API module (registered in vitest.config.js's
 // `test.browser.commands`) backing tests_js/live-backend-put-matrix.test.js: a shared,
 // boot-once-per-file live digital-twin + real-browser harness driving many real UI actions against
-// one real backend. See WEBSITE_PLAN.md §7 ("a real end-to-end field-by-field PUT matrix") for the
-// architecture rationale and the real-UI-action boundaries this harness deliberately doesn't cross.
+// one real backend. See SPECIFICATION.md Part H.7 ("a real end-to-end field-by-field PUT matrix")
+// for the architecture rationale and the real-UI-action boundaries this harness deliberately
+// doesn't cross.
 import { spawn } from "node:child_process";
 import { existsSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 // Reused (not hand-duplicated) so this module knows the *exact* expected caption text to poll for
-// below - see WEBSITE_PLAN.md §6.1 for why this is a DOM-free module, not a js/templates.js import.
+// below - see SPECIFICATION.md Part H.8.1 for why this is a DOM-free module, not a
+// js/templates.js import.
 import { formatFieldValue } from "../js/field-format.js";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -23,7 +25,7 @@ const PORT = 19412;
 const READY_TIMEOUT_MS = 20000;
 const SHUTDOWN_TIMEOUT_MS = 15000;
 const APPLY_STATUS_TIMEOUT_MS = 5000;
-// Generous bound for pollForText() - see WEBSITE_PLAN.md §6.1 ("Testing an async DOM refresh").
+// Generous bound for pollForText() - see SPECIFICATION.md Part H.8.1 ("Testing an async DOM refresh").
 const CAPTION_POLL_TIMEOUT_MS = 3000;
 
 /** @param {number} ms */
@@ -218,8 +220,8 @@ async function waitForApplyStatus(card, timeoutMs) {
 
 /**
  * Polls `locator`'s text content until it equals `expectedText` or `timeoutMs` elapses, returning
- * whatever's there either way. See WEBSITE_PLAN.md §6.1 ("Testing an async DOM refresh") for why
- * this polls instead of using a fixed sleep.
+ * whatever's there either way. See SPECIFICATION.md Part H.8.1 ("Testing an async DOM refresh")
+ * for why this polls instead of using a fixed sleep.
  * @param {import("playwright").Locator} locator
  * @param {string} expectedText
  * @param {number} timeoutMs
@@ -274,7 +276,7 @@ export async function applyField(_context, { sectionKey, groupKey, fieldKey, fie
     } else if (kind === "enum") {
         await control.selectOption({ value: String(value) });
     } else {
-        throw new Error(`applyField: unsupported kind "${kind}" - composite/readonly/dispatch-only fields aren't driven through this generic matrix (see WEBSITE_PLAN.md §7)`);
+        throw new Error(`applyField: unsupported kind "${kind}" - composite/readonly/dispatch-only fields aren't driven through this generic matrix (see SPECIFICATION.md Part H.7)`);
     }
 
     await card.locator(".apply-button").click();
@@ -286,7 +288,7 @@ export async function applyField(_context, { sectionKey, groupKey, fieldKey, fie
         const expectedCaption = `Current value: ${formatFieldValue(field, expectRenderedValue)}`;
         captionText = await pollForText(captionLocator, expectedCaption, CAPTION_POLL_TIMEOUT_MS);
     } else {
-        // Toggle/select never self-refresh in place (WEBSITE_PLAN.md §12) - the control's current
+        // Toggle/select never self-refresh in place (SPECIFICATION.md Part H.3) - the control's current
         // state IS this action's own synchronous DOM write, just worth a short event-loop beat.
         await sleep(50);
     }
@@ -299,7 +301,7 @@ export async function applyField(_context, { sectionKey, groupKey, fieldKey, fie
 /**
  * Forces a genuinely fresh remount of `sectionKey` and reads back `fieldKey`'s freshly-rendered
  * initial state - the only real-UI-driven proof a toggle/enum field's persisted value round-tripped
- * (WEBSITE_PLAN.md §12: an in-place poll never touches those controls).
+ * (SPECIFICATION.md Part H.3: an in-place poll never touches those controls).
  * @param {import("playwright").BrowserContext} _context unused - every command here still declares
  * this leading parameter since Vitest's BrowserCommand type always calls `(context, ...payload)`.
  * @param {{sectionKey: string, groupKey: string, fieldKey: string, kind: string}} args

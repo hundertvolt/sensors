@@ -78,7 +78,7 @@ fi
 echo "== Building frozen_modules/frozen_html.py"
 scripts/build_frozen_html.sh
 
-# A second, real-content frozen module (WEBSITE_PLAN.md §10 item 4) alongside the html_stub one
+# A second, real-content frozen module (SPECIFICATION.md Part H.7) alongside the html_stub one
 # above - same "cheap, no toolchain involved" property, built fresh every run. Only
 # tests/test_website_build_integration.py imports it (as `frozen_website_wozi`, its own distinct
 # module name - see scripts/build_website.sh), so it never conflicts with frozen_html's own /html
@@ -87,7 +87,7 @@ echo "== Building frozen_modules/frozen_website_wozi.py"
 scripts/build_website.sh wozi frozen_modules/frozen_website_wozi.py
 
 # CPython-side tests for the build tooling itself (scripts/build_frozen_html.sh, scripts/
-# build_website.sh, scripts/build_firmware.py - WEBSITE_PLAN.md §10 item 4's "fully verified"
+# build_website.sh, scripts/build_firmware.py - SPECIFICATION.md Part B.11's "fully verified"
 # follow-up) - see tests_scripts/conftest.py's own docstring for why these run under CPython/
 # pytest rather than the MicroPython Unix port loop below: none of these scripts are MicroPython-
 # target code. RUN_SLOW_FIRMWARE_BUILD is deliberately left unset here, so the one real (but cheap,
