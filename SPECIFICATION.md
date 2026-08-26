@@ -283,6 +283,12 @@ The condensed version is A.2 above. Key modules if you need to go deeper (folded
   as outdoor ambient), then `ForceCalRef` is set to that known reference concentration via the
   REST setter. There is no separate exposure-timing/frequency schedule beyond "whenever a
   recalibration is judged needed" — no automation of this procedure is planned.
+- **SCD30's `TempOffs` (temperature offset) has a real 0.01°C hardware resolution, not just a
+  cosmetic rounding choice**: `set_temperature_offset()` sends `int(offset * 100)` to the sensor's
+  register — a genuine truncation (not rounding) unique to this one field/driver (no other driver
+  scales-then-truncates a value this way). A value with more than two decimal digits is silently
+  truncated by the real chip, not rejected; anything writing or testing this field should account
+  for that instead of expecting an exact round-trip.
 - **SGP40's VOC index is a deviation-from-learned-baseline number, not an absolute-concentration
   one — confirmed directly against `voc_algorithm.py`'s real Sensirion Gas Index Algorithm port
   while calibrating a real threshold-crossing integration test (see

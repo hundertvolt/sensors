@@ -186,12 +186,20 @@ dev-server-relative paths — never shipped), `main.js` (the **real production**
 mock install, single build-fixed device via a plain `definitions.json` fetch, no `?device=`
 branching; see §10 item 4 for why it's staged as `app.js` in the real build rather than requiring
 an `html/index.html` edit), `definitions.js` (loader + strict validator + JSDoc type definitions
-for the whole schema, no DOM code), `render.js` (section/group/field controller — fetch/validate/
-submit logic, delegates all DOM building to `templates.js`), `templates.js` (the DOM/markup-building
-layer — owns every element/class/order choice, see §12), `nav.js` (drawer wiring), `poll-manager.js`
-(single-flight request queue + shared fetch-timeout helper), `mock-server.js` (**prototype-only**
+for the whole schema, no DOM code), `field-format.js` (pure field-value formatting, no DOM
+dependency — split out of `templates.js` so Node-context test harnesses can reuse it, see §6.1),
+`render.js` (section/group/field controller — fetch/validate/ submit logic, delegates all DOM
+building to `templates.js`), `templates.js` (the DOM/markup-building layer — owns every
+element/class/order choice, see §12), `nav.js` (drawer wiring), `poll-manager.js` (single-flight
+request queue + shared fetch-timeout helper), `mock-server.js` (**prototype-only**
 fetch-intercepting fake backend, answers the same six REST paths/shapes A.8 documents — an explicit
 placeholder for §7's real digital-twin backend, never shipped).
+
+**Splitting a module**: `scripts/build_website.sh`'s bundler strips local `import` lines but never
+strips `export` lines (its own "Bundling" comment has the mechanism) — two production files that
+both `export` the same name collide into a duplicate-export `SyntaxError` once concatenated. A
+module split out for reuse (like `field-format.js`) must therefore never be *re-exported* by
+another production file; every importer imports it directly.
 
 ## 6. CI / tooling stack
 
@@ -204,6 +212,27 @@ Mirrors the Python side's actual roles (ruff/mypy/pytest), not just "any linter/
 | MicroPython Unix-port interpreter for tests (real environment, not CPython+stubs) | **Vitest in real-browser mode** (`@vitest/browser-playwright`'s `playwright()` provider, against real Chromium) | Deliberately not jsdom — same "real engine over a DOM/interpreter shim" principle SPECIFICATION.md Part E.1 already argues for the Python side. `vitest.config.js` conditionally passes `launchOptions.executablePath` pointing at a Claude Code sandbox's pre-installed `/opt/pw-browsers/chromium` when that path exists; CI runners instead run `npx playwright install --with-deps chromium` first. `testTimeout: 20000` is an explicit hang-avoidance backstop, mirroring the Python side's own standing "hanging tests are never allowed" practice. |
 | `scripts/test.sh --coverage` (non-gating) | `@vitest/coverage-v8` + non-gating `npm run test:coverage` | Report-only, no threshold enforced anywhere — mirrors the Python side's "report, never gate, never chase 100%" philosophy. Wired into `.github/workflows/ci.yml`'s `web-unit-tests` job as a second, `continue-on-error` instrumented run after the real (gating) `npm test` step; summary in the GitHub Actions Job Summary, HTML report as a `coverage-html-js` build artifact. No Codecov upload (the Python side's own upload is itself still a no-op pending repo registration). |
 | — | **html-validate** for `html/`'s skeleton(s); **Stylelint** for the CSS | Lightweight npm packages, no JVM dependency (ruled out the W3C Nu Html Checker for that reason). |
+
+### 6.1 JSDoc typedef imports across the browser/Node split
+
+A JSDoc `@typedef {import("./x.js").Y}` reference pulls the *entire* referenced file into whichever
+type-check program (`tsconfig.json`, browser context, or `tsconfig.node.json`, no `"dom"` lib) does
+the importing, even when only one exported type is used — not just that type. A Node-context module
+(e.g. a Vitest Commands-API file under `tests_js/`) that references a shape from a DOM-context
+module (`js/definitions.js`, `js/templates.js`) this way inherits that module's own DOM-typed JSDoc
+too, and fails to type-check on it. **Convention**: a Node-context module needing a shape from a
+DOM-context one declares its own narrow, structural local typedef instead of importing the real
+one — a real object satisfies it structurally either way. `js/field-format.js`'s own
+`FormattableField` typedef (intersected with `Record<string, unknown>` so a real, wider object
+literal doesn't trip excess-property checking at call sites) is the worked example.
+
+**Testing an async DOM refresh** (live-backend browser tests, `tests_js/_live_matrix_command.js`):
+poll for the exact expected rendered text/state, never a fixed sleep. A number/string field's
+"Current value" caption refreshes via a real, separate async GET round-trip
+(`js/render.js`'s `onApplied()` → `fetchOnce()`) after the click handler's own synchronous
+`data-apply-status` write — a fixed delay can catch a still-in-flight *previous* case's caption
+instead of a real race. Poll the DOM for the specific text a real GET response should produce
+(computed via `formatFieldValue()`) up to a generous bounded timeout instead.
 
 **CI mechanism**: the existing single `.github/workflows/ci.yml` (not a separate workflow file)
 carries a `web-changes` `dorny/paths-filter` gate job whose output feeds `if:` conditions on
@@ -747,7 +776,7 @@ small, obvious edit, not a redesign blocker):
 |---|---|---|
 | `[data-field-key]` | every field's input/select/toggle-button/readonly span | `render.js` collects submitted values, updates readonly text/current-value captions on poll |
 | `[data-sub-field-key]` | a composite field's per-subfield input | `render.js` collects the composite's nested PUT body |
-| `[data-current-value-for]` | a writable field's "Current value: …" caption | `render.js` refreshes it after a poll/Apply |
+| `[data-current-value-for]` | a writable field's "Current value: …" caption (number/string fields only) | `render.js` refreshes it after a poll/Apply |
 | `[data-group-key]` | a field-group's card (both `buildFieldGroupCard()` and `buildErrcountGroup()` set it themselves) | `render.js` locates the card to re-render/restyle |
 | `[data-field-wrapper-key]` | each field's own wrapper (distinct from `[data-field-key]`, which must keep pointing at the control itself) | `render.js` colors each field's own per-result outcome independently of the group card's own status |
 | `[data-apply-status]` | *(unset by templates.js; only ever written by the controller)* | CSS alone decides what each status value looks like (`html/style.css`'s `[data-apply-status="…"]` rules), on both the group card and each field wrapper |
@@ -759,6 +788,14 @@ Controllers only ever set the semantic `data-apply-status` value (`"valid"`/`"in
 `"unchanged"`/`"failed"`) — never a color, class, or style directly. What that status *looks like*
 is entirely `html/style.css`'s decision, so restyling what "invalid" means visually is a pure CSS
 change.
+
+**In-place refresh only ever touches a number/string field's caption.** `render.js`'s `paint()`
+"existing card" branch (the one a background poll or a post-Apply `fetchOnce()` triggers) updates
+`[data-current-value-for]` captions and readonly spans only — it never rewrites a toggle button's
+own On/Off state or a `<select>`'s selected option. Proving a toggle/enum field's persisted value
+actually round-tripped therefore needs a genuine full remount (a nav-drawer click — `main.js`'s
+`selectSection()` always tears down and rebuilds, even for the already-active section), not an
+in-place poll.
 
 **One deliberate exception to the "hooks are `data-*` attributes" rule**: `buildSectionShell()`
 returns `{grid, errorBanner}` directly to its one caller (`render.js`'s `renderSection()`) rather

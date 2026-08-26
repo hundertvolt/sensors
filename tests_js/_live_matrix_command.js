@@ -1,39 +1,15 @@
 // Server-side Vitest Commands API module (registered in vitest.config.js's
 // `test.browser.commands`) backing tests_js/live-backend-put-matrix.test.js: a shared,
-// boot-once-per-file live digital-twin + real-browser harness that drives many real UI actions
-// (not just tests_js/live-backend.test.js's single field) against one real backend, so a whole
-// field-by-field PUT matrix doesn't pay a fresh subprocess-boot + page-navigation cost per case.
-//
-// Shares tests_js/_live_twin_command.js's own spawn/wait/teardown mechanics (deliberately
-// duplicated rather than imported - that file's own `runLiveBackendSmoke()` owns its subprocess
-// and page for exactly one command call's lifetime, while this module holds both across many
-// separate command calls for one whole test file's lifetime; forcing a shared abstraction across
-// those two different lifecycles would obscure both more than it would save).
-//
-// Real UI action boundaries this harness (and tests_js/live-backend-put-matrix.test.js, which
-// uses it) deliberately does NOT cross - each is a genuine constraint of the real rendered
-// controls, not a shortcut:
-//   - A native <select> can only ever hold one of its own declared <option>s - there is no real
-//     user gesture that submits an enum value outside the option list, so "reject an invalid enum
-//     value" stays covered only by tests_js/mock-server-put-matrix.test.js's raw-fetch level.
-//   - Every text <input> here (js/templates.js's buildField()) only ever produces a value that
-//     becomes part of a real JSON PUT body shaped by js/render.js's own readInputValue() - there
-//     is no real typed gesture that submits a wrong JSON *type* (e.g. a string body for a number
-//     field is just... a string a user typed, which is exactly what readInputValue() already
-//     forwards) or that physically omits a field from the request the way a hand-built raw body
-//     can - both stay covered only by the mock-based matrix and the Python-side digital-twin HTTP
-//     tests, not reproduced here.
+// boot-once-per-file live digital-twin + real-browser harness driving many real UI actions against
+// one real backend. See WEBSITE_PLAN.md §7 ("a real end-to-end field-by-field PUT matrix") for the
+// architecture rationale and the real-UI-action boundaries this harness deliberately doesn't cross.
 import { spawn } from "node:child_process";
 import { existsSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-// js/field-format.js has no DOM dependency (unlike the rest of js/templates.js, which imports
-// formatFieldValue from it too) - importing the whole of templates.js here instead would leak its
-// document/HTMLElement references into this Node-context program's own type-check (tsconfig.node.json
-// has no "dom" lib - confirmed directly, that exact mistake produced dozens of unrelated errors).
-// Reusing this (rather than a second hand-kept copy) is what lets this module know the *exact*
-// expected caption text to poll for below, instead of guessing a fixed delay.
+// Reused (not hand-duplicated) so this module knows the *exact* expected caption text to poll for
+// below - see WEBSITE_PLAN.md §6.1 for why this is a DOM-free module, not a js/templates.js import.
 import { formatFieldValue } from "../js/field-format.js";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -41,19 +17,13 @@ const TOOLCHAIN_DIR = process.env.PICO_TOOLCHAIN_DIR || path.join(homedir(), "pi
 const MICROPYTHON_BIN = path.join(TOOLCHAIN_DIR, "micropython", "ports", "unix", "build-standard", "micropython");
 const MICROPYPATH = "src:digital_twin:ext:frozen_modules:.frozen";
 const HOST = "127.0.0.1";
-// Distinct from every other fixed port this repo already uses (see tests_js/_live_twin_command.js's
-// own PORT comment for the full "never together" list this extends) - this harness's own twin runs
-// alongside that file's within the same `npm test` run, so it needs its own value too.
+// Distinct from every other fixed port this repo uses - see tests_js/_live_twin_command.js's own
+// PORT comment for the full list; this harness's twin runs alongside that file's in one `npm test` run.
 const PORT = 19412;
 const READY_TIMEOUT_MS = 20000;
 const SHUTDOWN_TIMEOUT_MS = 15000;
 const APPLY_STATUS_TIMEOUT_MS = 5000;
-// Bound for pollForText()'s own wait on a number/string field's current-value caption to reach its
-// expected post-apply text - NOT a blind sleep (an earlier version of this file used one, and two
-// consecutive real cases against the same field each observed the *previous* case's own
-// still-in-flight caption text instead of a hypothetical race - see pollForText()'s own comment).
-// A local Unix-port twin answers a GET in low single-digit milliseconds, so this is generous
-// margin for the slowest real case, not a guess.
+// Generous bound for pollForText() - see WEBSITE_PLAN.md §6.1 ("Testing an async DOM refresh").
 const CAPTION_POLL_TIMEOUT_MS = 3000;
 
 /** @param {number} ms */
@@ -169,11 +139,8 @@ export async function stopLiveMatrix() {
  * Raw HTTP GETs straight against the twin (bypassing the browser entirely) - the real baseline
  * every matrix case is generated against, the live-backend equivalent of
  * tests_js/mock-server-put-matrix.test.js's own `mockdata/*.json` fixtures.
- * @param {import("playwright").BrowserContext} _context unused - see this module's own commands
- * for why every one of them still declares this leading parameter (Vitest's own BrowserCommand
- * type always calls `(context, ...payload)`, regardless of whether a given command needs `context`
- * itself - confirmed directly against node_modules/vitest/dist/chunks/reporters.d.*.d.ts's own
- * `BrowserCommand` interface, not assumed).
+ * @param {import("playwright").BrowserContext} _context unused - every command here still declares
+ * this leading parameter since Vitest's BrowserCommand type always calls `(context, ...payload)`.
  * @param {string[]} paths e.g. ["/sensors", "/networking", "/system", "/notification", "/status"]
  * @returns {Promise<Record<string, unknown>>} keyed by path
  */
@@ -231,13 +198,9 @@ async function waitForApplyStatus(card, timeoutMs) {
 }
 
 /**
- * Polls `locator`'s own text content until it equals `expectedText` or `timeoutMs` elapses, then
- * returns whatever text is actually there either way - a fixed sleep can't be trusted here since
- * js/render.js's own onApplied() -> fetchOnce() caption refresh is a genuinely separate async step
- * from the click handler's own synchronous data-apply-status write (this module's own header
- * comment on RENDER_SETTLE_MS's replacement explains why a blind delay proved unreliable in
- * practice - two consecutive real cases against the same field each caught the *previous* case's
- * own still-in-flight caption text, not a hypothetical race).
+ * Polls `locator`'s text content until it equals `expectedText` or `timeoutMs` elapses, returning
+ * whatever's there either way. See WEBSITE_PLAN.md §6.1 ("Testing an async DOM refresh") for why
+ * this polls instead of using a fixed sleep.
  * @param {import("playwright").Locator} locator
  * @param {string} expectedText
  * @param {number} timeoutMs
@@ -261,19 +224,16 @@ async function pollForText(locator, expectedText, timeoutMs) {
 
 /**
  * Fills one field's real control with `value` (per its real `kind`) and clicks its group card's
- * real Apply button - the exact same gesture tests_js/live-backend.test.js's own single DebugLevel
- * case already drives, generalized to every writable field kind.
- * @param {import("playwright").BrowserContext} _context unused - see getRealCurrentValues()'s own
- * comment for why every command here still declares this leading parameter.
+ * real Apply button - the same gesture tests_js/live-backend.test.js's single DebugLevel case
+ * drives, generalized to every writable field kind.
+ * @param {import("playwright").BrowserContext} _context unused - every command here still declares
+ * this leading parameter since Vitest's BrowserCommand type always calls `(context, ...payload)`.
  * @param {{
  *   sectionKey: string, groupKey: string, fieldKey: string,
  *   field: import("../js/field-format.js").FormattableField, value: unknown, expectRenderedValue: unknown,
- * }} args `field` is typed against field-format.js's own narrower local shape, not the real
- * FieldDef - see that file's own comment for why (avoids pulling js/definitions.js into this
- * file's Node-context type-check program); a real FieldDef object satisfies it structurally either
- * way. `expectRenderedValue` is what the caller expects to see rendered afterward - the applied
- * `value` itself when it should be accepted, or the field's own untouched current value when it
- * should be rejected - so this command always knows the exact text to poll for (see pollForText()).
+ * }} args `expectRenderedValue` is what the caller expects rendered afterward - the applied `value`
+ * when it should be accepted, or the field's own untouched current value when it should be
+ * rejected - so this command always knows the exact text to poll for (see pollForText()).
  * @returns {Promise<{applyStatus: string, captionText: string | null, toggleValue: string | null, selectValue: string | null}>}
  */
 export async function applyField(_context, { sectionKey, groupKey, fieldKey, field, value, expectRenderedValue }) {
@@ -295,7 +255,7 @@ export async function applyField(_context, { sectionKey, groupKey, fieldKey, fie
     } else if (kind === "enum") {
         await control.selectOption({ value: String(value) });
     } else {
-        throw new Error(`applyField: unsupported kind "${kind}" - composite/readonly/dispatch-only fields aren't driven through this generic matrix (see this module's own header comment)`);
+        throw new Error(`applyField: unsupported kind "${kind}" - composite/readonly/dispatch-only fields aren't driven through this generic matrix (see WEBSITE_PLAN.md §7)`);
     }
 
     await card.locator(".apply-button").click();
@@ -307,10 +267,9 @@ export async function applyField(_context, { sectionKey, groupKey, fieldKey, fie
         const expectedCaption = `Current value: ${formatFieldValue(field, expectRenderedValue)}`;
         captionText = await pollForText(captionLocator, expectedCaption, CAPTION_POLL_TIMEOUT_MS);
     } else {
-        // Neither a toggle button nor a <select> self-refreshes via js/render.js's own paint() (see
-        // this module's own header comment) - what the control shows right now IS this action's own
-        // synchronous DOM write (control.click()/selectOption() above), not an async race to wait out.
-        await sleep(50); // still worth a short beat for the click handler's own event-loop turn
+        // Toggle/select never self-refresh in place (WEBSITE_PLAN.md §12) - the control's current
+        // state IS this action's own synchronous DOM write, just worth a short event-loop beat.
+        await sleep(50);
     }
     const toggleValue = kind === "toggle" ? await control.getAttribute("data-value") : null;
     const selectValue = kind === "enum" ? await control.inputValue() : null;
@@ -319,14 +278,11 @@ export async function applyField(_context, { sectionKey, groupKey, fieldKey, fie
 }
 
 /**
- * Forces a genuinely fresh remount of `sectionKey` (real nav-drawer click, real teardown, real GET,
- * real from-scratch DOM build - js/render.js's buildSectionShell() wipes and rebuilds the whole
- * section) and reads back `fieldKey`'s freshly-rendered initial state - the only real-UI-driven way
- * to prove a toggle/enum field's persisted value actually round-tripped, since (per js/render.js's
- * own paint()) an in-place poll only ever refreshes a number/string field's caption, never a
- * toggle/select control.
- * @param {import("playwright").BrowserContext} _context unused - see getRealCurrentValues()'s own
- * comment for why every command here still declares this leading parameter.
+ * Forces a genuinely fresh remount of `sectionKey` and reads back `fieldKey`'s freshly-rendered
+ * initial state - the only real-UI-driven proof a toggle/enum field's persisted value round-tripped
+ * (WEBSITE_PLAN.md §12: an in-place poll never touches those controls).
+ * @param {import("playwright").BrowserContext} _context unused - every command here still declares
+ * this leading parameter since Vitest's BrowserCommand type always calls `(context, ...payload)`.
  * @param {{sectionKey: string, groupKey: string, fieldKey: string, kind: string}} args
  * @returns {Promise<{placeholder: string | null, toggleValue: string | null, toggleText: string | null, selectValue: string | null}>}
  */

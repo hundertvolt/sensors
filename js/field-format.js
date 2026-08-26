@@ -1,26 +1,10 @@
 /**
- * Pure field-value formatting - deliberately split out of js/templates.js (the visual/DOM layer,
- * WEBSITE_PLAN.md §12) since this one function has zero DOM dependency and needs to run in a
- * Node context too: tests_js/_live_matrix_command.js (a server-side Vitest Commands API
- * implementation, not browser code) imports it directly to compute the exact rendered text a real
- * UI action should produce, without pulling js/templates.js's own `document`/`HTMLElement` surface
- * into that Node-context type-check program (tsconfig.node.json has no "dom" lib - importing the
- * whole file there produced dozens of unrelated errors, confirmed directly).
+ * Pure field-value formatting - split out of js/templates.js so a Node-context test harness can
+ * reuse it with no DOM dependency. See WEBSITE_PLAN.md §6.1 for the full rationale.
  */
 
-// Deliberately NOT `import("./definitions.js").FieldDef`: js/definitions.js has its own
-// HTMLElement-typed JSDoc elsewhere (loadDefinitions()'s inlinedEl param) - checkJs mode still
-// full-type-checks a JSDoc-imported module even when only one of its exported types is used, so
-// referencing the real FieldDef here would pull js/definitions.js into
-// tests_js/_live_matrix_command.js's own Node-context type-check program too (this file is
-// imported there - see this file's own header comment), which has no "dom" lib and would then
-// fail on that unrelated HTMLElement reference (confirmed directly - that's exactly what happened
-// before this comment existed). This narrower local shape covers everything formatFieldValue()
-// itself actually reads; a real FieldDef object satisfies it structurally at runtime either way.
-// Intersected with Record<string, unknown> (not just the bare shape) so a real FieldDef literal's
-// extra properties (key, label, min, ...) don't trip TS's excess-property check at call sites that
-// pass one directly (tests_js/templates.test.js does exactly this) - this type only *requires* the
-// fields below, it was never meant to *forbid* every other real FieldDef property.
+// Deliberately a narrow local shape, not `import("./definitions.js").FieldDef` - see WEBSITE_PLAN.md
+// §6.1 for why. A real FieldDef object satisfies it structurally either way.
 /** @typedef {{kind: string, mask?: boolean, format?: string, options?: {value: unknown, label: string}[]} & Record<string, unknown>} FormattableField */
 
 /**
