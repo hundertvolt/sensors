@@ -189,6 +189,29 @@ def test_build_system_constructs_every_legacy_named_module() -> None:
         assert getattr(sensortask_wozi, name) is not None
 
 
+def test_scd30s_own_i2c_bus_uses_a_clock_stretch_timeout_wide_enough_for_it() -> None:
+    # SCD30 documents up to 150ms of clock stretching once per day for internal calibration
+    # (datasheets/scd30/..._Interface_Description.pdf p.2) - rp2's own I2C timeout default is
+    # 50ms (DEFAULT_I2C_TIMEOUT, ports/rp2/machine_i2c.c), so whichever bus SCD30 sits on must
+    # override it or that expected stretch surfaces as a spurious OSError roughly once a day.
+    # Looked up through scd_reader itself (not assumed to be i2c0) - wozi wires SCD30 to i2c0
+    # today, but a future variant could wire it to a different bus (BACKLOG.md's "Per-variant
+    # generator" entry); this test, unlike the FRAM-chunk assertions below, stays correct as-is
+    # for that case.
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    assert sensortask_wozi.scd_reader is not None
+    scd_bus = sensortask_wozi.scd_reader.scd.i2c_scd30.i2c_device.i2c
+    assert scd_bus._i2c is not None
+    assert scd_bus._i2c.freq == 50000
+    assert scd_bus._i2c.timeout >= 150000
+
+    # Whichever bus that isn't (SGP40/BMP3xx's) has no such requirement and keeps the port default.
+    assert sensortask_wozi.i2c0 is not None and sensortask_wozi.i2c1 is not None
+    other_bus = sensortask_wozi.i2c1 if scd_bus is sensortask_wozi.i2c0 else sensortask_wozi.i2c0
+    assert other_bus._i2c is not None
+    assert other_bus._i2c.timeout == 50000
+
+
 def test_build_system_wires_the_wifi_led_callback_after_both_exist() -> None:
     # conn.set_ext_led(pixel) - the one cross-wiring step that must run after both objects exist.
     # Confirmed indirectly: AsyConnTime's own ext_led slot is set.
@@ -261,11 +284,11 @@ def test_main_forwards_web_host_and_port_to_build_system() -> None:
 
 
 # ---------------------------------------------------------------------------
-# FRAM chunk order - five chunks, exact relative sequence.
+# FRAM chunk order - seven chunks, exact relative sequence.
 # ---------------------------------------------------------------------------
 
 
-def test_fram_chunk_allocation_order_matches_the_documented_five_chunk_sequence() -> None:
+def test_fram_chunk_allocation_order_matches_the_documented_seven_chunk_sequence() -> None:
     calls: list[str] = []
     from asy_fram_manager import AsyFramManager
 
@@ -289,8 +312,9 @@ def test_fram_chunk_allocation_order_matches_the_documented_five_chunk_sequence(
         AsyFramManager.get_timestamped_chunk = real_get_timestamped_chunk  # type: ignore[method-assign]
 
     # SystemService(chunk) -> SGP40 own log(chunk) -> SGP40 VOC backup(timestamped) ->
-    # NeopixelDriver(chunk) -> NotificationCoordinator(chunk), in that order, unconditionally.
-    assert calls == ["chunk", "chunk", "timestamped", "chunk", "chunk"]
+    # BMP3xx_Reader(chunk) -> SCD30_Reader(chunk) -> NeopixelDriver(chunk) ->
+    # NotificationCoordinator(chunk), in that order, unconditionally.
+    assert calls == ["chunk", "chunk", "timestamped", "chunk", "chunk", "chunk", "chunk"]
 
 
 def test_fram_chunks_are_all_successfully_allocated_not_out_of_memory() -> None:
@@ -300,6 +324,8 @@ def test_fram_chunks_are_all_successfully_allocated_not_out_of_memory() -> None:
     # assert the happy path actually got real FRAM-backed chunks, not a silently-degraded one.
     assert sensortask_wozi.sysfunct is not None
     assert sensortask_wozi.sgp_reader is not None
+    assert sensortask_wozi.bmp_reader is not None
+    assert sensortask_wozi.scd_reader is not None
     assert sensortask_wozi.pixel is not None
     assert sensortask_wozi.notify_service is not None
     assert isinstance(sensortask_wozi.sysfunct.pr, PrintLogHistoryStore)
@@ -307,6 +333,10 @@ def test_fram_chunks_are_all_successfully_allocated_not_out_of_memory() -> None:
     assert isinstance(sensortask_wozi.sgp_reader.pr, PrintLogHistoryStore)
     assert sensortask_wozi.sgp_reader.pr.fram is not None
     assert sensortask_wozi.sgp_reader.ts_storage is not None
+    assert isinstance(sensortask_wozi.bmp_reader.pr, PrintLogHistoryStore)
+    assert sensortask_wozi.bmp_reader.pr.fram is not None
+    assert isinstance(sensortask_wozi.scd_reader.pr, PrintLogHistoryStore)
+    assert sensortask_wozi.scd_reader.pr.fram is not None
     assert isinstance(sensortask_wozi.pixel.pr, PrintLogHistoryStore)
     assert sensortask_wozi.pixel.pr.fram is not None
     assert isinstance(sensortask_wozi.notify_service.pr, PrintLogHistoryStore)
@@ -342,6 +372,8 @@ def test_build_system_never_insists_on_fram_hardware_being_available() -> None:
     assert sensortask_wozi.fram.fram.initialized is False  # the dead chip, confirmed never ready
     assert sensortask_wozi.sysfunct is not None
     assert sensortask_wozi.sgp_reader is not None
+    assert sensortask_wozi.bmp_reader is not None
+    assert sensortask_wozi.scd_reader is not None
     assert sensortask_wozi.pixel is not None
     assert sensortask_wozi.notify_service is not None
 
@@ -359,6 +391,15 @@ def test_build_system_never_insists_on_fram_hardware_being_available() -> None:
     assert isinstance(sensortask_wozi.sgp_reader.pr, PrintLogHistoryStore)
     assert sensortask_wozi.sgp_reader.ts_storage is not None
     assert run(sensortask_wozi.sgp_reader.get_error_counter())["SGP40"]["ErrCount"] == 0
+
+    # BMP3xx/SCD30: same degraded-mode contract as sysfunct above - a FRAM-backed logger stays
+    # functional in plain memory when the chip never comes up.
+    assert isinstance(sensortask_wozi.bmp_reader.pr, PrintLogHistoryStore)
+    run(sensortask_wozi.bmp_reader.pr.err_s("boom", errno=1))
+    assert run(sensortask_wozi.bmp_reader.get_error_counter())["BMP3XX"]["ErrCount"] == 1
+    assert isinstance(sensortask_wozi.scd_reader.pr, PrintLogHistoryStore)
+    run(sensortask_wozi.scd_reader.pr.err_s("boom", errno=1))
+    assert run(sensortask_wozi.scd_reader.get_error_counter())["SCD30"]["ErrCount"] == 1
 
     # The rest of the system is unaffected - task/timer starter collection still works end to end.
     starters = sensortask_wozi._collect_task_starters()
@@ -684,8 +725,7 @@ def _dispatch(method: str, path: str, json_body: "dict[str, Any] | None" = None)
 def test_webserver_pr_is_ram_only_not_fram_backed() -> None:
     # Deliberate decision (see build_system()'s own comment): a warning on every per-call/outer-cap
     # reclaim could churn far faster than any sensor's rare-hardware-fault log - keeping it RAM-only
-    # also preserves the five-chunk FRAM allocation order (see SPECIFICATION.md Part A.7) unchanged, not a
-    # sixth chunk.
+    # also preserves the seven-chunk FRAM allocation order (see SPECIFICATION.md Part A.7) unchanged.
     run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
     assert sensortask_wozi.webserver is not None
     assert isinstance(sensortask_wozi.webserver.pr, PrintLogHistory)
@@ -805,6 +845,94 @@ def test_webserver_system_put_invalid_cmd_is_rejected_without_side_effects() -> 
 def test_webserver_notification_put_light_cmd_led_dispatches_to_the_real_pixel_driver() -> None:
     run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
     res = _dispatch("PUT", "/notification", {"lightCmdLED": {"r": 10, "g": 20, "b": 30, "t": 1.0}})
+    assert json.loads(res.body)["result"]["lightCmdLED"] == "Valid"
+
+
+def test_webserver_notification_put_light_cmd_led_accepts_integral_float_rgb_and_int_t_coerced() -> None:
+    # config_manager.py's coerce_numeric() policy applied to lightCmdLED too (SPECIFICATION.md
+    # Part A.8): an integral float r/g/b coerces to int, a plain int t coerces to float - both
+    # directions a real client could plausibly send.
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    res = _dispatch("PUT", "/notification", {"lightCmdLED": {"r": 10.0, "g": 20.0, "b": 30.0, "t": 1}})
+    assert json.loads(res.body)["result"]["lightCmdLED"] == "Valid"
+
+
+def test_webserver_notification_put_light_cmd_led_rejects_fractional_rgb() -> None:
+    # Regression test for the behavior this callback used to have (raw int()/float() truncating
+    # casts, commits 53b5147/b5502c8): a fractional r/g/b is now rejected outright, not silently
+    # truncated (12.5 no longer becomes a silent 12).
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    res = _dispatch("PUT", "/notification", {"lightCmdLED": {"r": 10.5, "g": 20, "b": 30, "t": 1.0}})
+    assert json.loads(res.body)["result"]["lightCmdLED"] == "Failed"
+
+
+def test_webserver_notification_put_light_cmd_led_rejects_non_numeric_field() -> None:
+    # Another behavior change from the old raw int()/float() casts: those would silently parse a
+    # numeric-looking string ("10") via Python's lenient int()/float() constructors - coerce_numeric()
+    # never parses strings, only coerces between the two numeric types, so this is now rejected too.
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    res = _dispatch("PUT", "/notification", {"lightCmdLED": {"r": "10", "g": 20, "b": 30, "t": 1.0}})
+    assert json.loads(res.body)["result"]["lightCmdLED"] == "Failed"
+
+
+def test_webserver_notification_put_light_cmd_led_rejects_non_numeric_t() -> None:
+    # t goes through cm.coerce_numeric(payload["t"], float) - a distinct code path from r/g/b's own
+    # int coercion (already tested above for r specifically) - confirms the same non-numeric
+    # rejection holds for t's own float-typed branch, not just the int-typed ones.
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    res = _dispatch("PUT", "/notification", {"lightCmdLED": {"r": 10, "g": 20, "b": 30, "t": "soon"}})
+    assert json.loads(res.body)["result"]["lightCmdLED"] == "Failed"
+
+
+def test_webserver_notification_put_light_cmd_led_rejects_missing_field() -> None:
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    res = _dispatch("PUT", "/notification", {"lightCmdLED": {"r": 10, "g": 20, "b": 30}})  # t missing
+    assert json.loads(res.body)["result"]["lightCmdLED"] == "Failed"
+
+
+def test_webserver_notification_put_light_cmd_led_rejects_out_of_range_rgb() -> None:
+    # Regression test for a real legacy-vs-src/ divergence (SPECIFICATION.md Part H.6's dispatch-only
+    # field rules): legacy's
+    # own led_cmd() (modules/sensortask-wozi.py) validates and rejects out-of-range r/g/b (0-255) via
+    # update_valid_json(...) - the promoted src/ callback used to silently clamp instead
+    # (asy_neopixel_driver.py's _clamp_byte()). Rejected exactly like a missing/non-numeric field.
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    res = _dispatch("PUT", "/notification", {"lightCmdLED": {"r": 256, "g": 20, "b": 30, "t": 1.0}})
+    assert json.loads(res.body)["result"]["lightCmdLED"] == "Failed"
+
+
+def test_webserver_notification_put_light_cmd_led_rejects_negative_rgb() -> None:
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    res = _dispatch("PUT", "/notification", {"lightCmdLED": {"r": 10, "g": -1, "b": 30, "t": 1.0}})
+    assert json.loads(res.body)["result"]["lightCmdLED"] == "Failed"
+
+
+def test_webserver_notification_put_light_cmd_led_rejects_out_of_range_t() -> None:
+    # Legacy's own t bound is 0.5-60.0 (modules/sensortask-wozi.py) - the promoted src/ callback used
+    # to floor a too-small t to 0.1 (asy_neopixel_driver.py's neopixel_signal()) and never bounded a
+    # too-large one at all.
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    res = _dispatch("PUT", "/notification", {"lightCmdLED": {"r": 10, "g": 20, "b": 30, "t": 0.1}})
+    assert json.loads(res.body)["result"]["lightCmdLED"] == "Failed"
+    res = _dispatch("PUT", "/notification", {"lightCmdLED": {"r": 10, "g": 20, "b": 30, "t": 100.0}})
+    assert json.loads(res.body)["result"]["lightCmdLED"] == "Failed"
+
+
+def test_webserver_notification_put_light_cmd_led_accepts_lower_boundary_rgb_and_t() -> None:
+    # Deliberately one dispatch per test (not both boundaries in one test function): _dispatch()
+    # drives each call through its own fresh asyncio.run(), so NeopixelDriver's background
+    # neopixel_signal() consumer task never actually runs here - a second real request_signal()
+    # call in the same test would find start_signal_event already set from the first call and
+    # never cleared, hanging forever in request_signal()'s own `while ...: await asyncio.sleep(0)`
+    # loop. Matches every other lightCmdLED test in this file's own single-dispatch convention.
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    res = _dispatch("PUT", "/notification", {"lightCmdLED": {"r": 0, "g": 255, "b": 0, "t": 0.5}})
+    assert json.loads(res.body)["result"]["lightCmdLED"] == "Valid"
+
+
+def test_webserver_notification_put_light_cmd_led_accepts_upper_boundary_rgb_and_t() -> None:
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    res = _dispatch("PUT", "/notification", {"lightCmdLED": {"r": 255, "g": 0, "b": 255, "t": 60.0}})
     assert json.loads(res.body)["result"]["lightCmdLED"] == "Valid"
 
 

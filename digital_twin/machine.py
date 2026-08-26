@@ -3,6 +3,7 @@ Bus wiring mirrors `sensortask_wozi.build_system()` exactly; any other bus id/ad
 
 import asyncio
 import errno
+import time
 from collections import deque
 
 _LOG_MAXLEN = 200  # I2C.log/SPI.log below are an ad-hoc introspection aid (nothing in tests/ or
@@ -397,21 +398,34 @@ class WDT:
         self.would_have_triggered_log: deque[int] = deque((), _LOG_MAXLEN)
         self._on_would_trigger = on_would_trigger
         self._task: asyncio.Task | None = None
+        self._armed_at_ms: Any | None = None  # an opaque ticks_ms() value, not a plain int
         self._arm()
 
     def _arm(self) -> None:
+        # A feed() can arrive after a real --hang has already blown past the previous deadline (see
+        # digital_twin/README.md's "WDT._arm()'s late-feed backstop") - credit that already-elapsed
+        # window before cancelling it away, since real hardware can't un-reset itself retroactively.
+        now = time.ticks_ms()
+        if self._armed_at_ms is not None:
+            elapsed = time.ticks_diff(now, self._armed_at_ms)
+            if elapsed >= self.timeout:
+                self._record_would_trigger()
         if self._task is not None:
             self._task.cancel()
+        self._armed_at_ms = now
         self._task = asyncio.get_event_loop().create_task(self._countdown())
+
+    def _record_would_trigger(self) -> None:
+        self.would_have_triggered_count += 1
+        self.would_have_triggered_log.append(self.feed_count)
+        if self._on_would_trigger is not None:
+            self._on_would_trigger(self)
 
     async def _countdown(self) -> None:
         try:
             while True:
                 await asyncio.sleep_ms(self.timeout)
-                self.would_have_triggered_count += 1
-                self.would_have_triggered_log.append(self.feed_count)
-                if self._on_would_trigger is not None:
-                    self._on_would_trigger(self)
+                self._record_would_trigger()
         except asyncio.CancelledError:
             pass
 

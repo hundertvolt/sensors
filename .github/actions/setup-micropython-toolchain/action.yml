@@ -1,0 +1,30 @@
+name: Setup MicroPython toolchain
+description: >
+  Installs uv and restores (or lets the caller build) the cached MicroPython Unix-port toolchain
+  build under ~/pico-toolchain. Shared by every job that needs to run the Unix-port interpreter
+  (web-unit-tests, web-cross-browser-smoke, unit-tests, digital-twin-e2e, firmware-build-verify) -
+  factored out here so all five stay on the exact same cache key/path instead of five hand-kept
+  copies of the same two steps. Each job still runs its own actual toolchain build (or skip, on a
+  cache hit) afterward - this action only restores the cache, it never runs setup_toolchain.py
+  itself, since a couple of callers need extra logic around that step (e.g. web jobs also stage the
+  real website; firmware-build-verify additionally needs the ARM cross-compiler apt packages).
+
+runs:
+  using: composite
+  steps:
+    - name: Install uv
+      shell: bash
+      run: pip install uv
+    - name: Cache MicroPython Unix port build
+      uses: actions/cache@v6
+      with:
+        path: ~/pico-toolchain
+        # Must hash toolchain/setup_toolchain.py, not just versions.toml: the Unix port's build
+        # flags (e.g. MICROPY_PY_SYS_SETTRACE=1) live in that script, not in versions.toml. Keying
+        # on versions.toml alone let a stale cached binary built before that flag existed survive
+        # untouched across commits - a real bug, not hypothetical: it's exactly what caused
+        # `scripts/test.sh --coverage` to fail in CI with "module 'sys' has no attribute 'settrace'"
+        # while working locally, since a local run always starts from a genuinely fresh
+        # ~/pico-toolchain. Every caller of this action shares this exact key, so whichever job runs
+        # first in a workflow run builds it once and every later job hits a warm cache.
+        key: unix-port-${{ runner.os }}-${{ hashFiles('toolchain/versions.toml', 'toolchain/setup_toolchain.py') }}

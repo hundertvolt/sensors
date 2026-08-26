@@ -25,11 +25,18 @@
 #   sentinel it already needs for `import asyncio` etc.
 #
 # Source directory(ies) default to html_stub - override via the HTML_SRC_DIRS env var, a
-# space-separated list of directories whose contents are merged into one flat build tree before
+# space-separated list of directories whose contents are merged into one build tree before
 # gzipping. This is what lets this same script build the real website later without editing it:
 # build-wozi.sh's own legacy pipeline merged html_raw/general (shared) with a board-specific folder
 # (html_raw/wozi, /dev, /arzi) the same way - e.g. once the real content lands,
 # `HTML_SRC_DIRS="html/general html/wozi" scripts/build_frozen_html.sh` reuses this script as-is.
+#
+# The merge is recursive, not flat: each src_dir's contents (including nested subdirectories, e.g.
+# html/definitions/) are merged into tmp_dir preserving their own relative paths, so multiple
+# src_dirs can each contribute their own subtree (e.g. a staged website-build dir laid out as
+# <staged>/index.html, <staged>/definitions/wozi.json, <staged>/js/render.js). freezefs's own
+# archiver already walks nested paths and Microdot's static route already matches slashes - see
+# SPECIFICATION.md Part A.9 - so a plain recursive copy is the only piece this script needs.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
@@ -41,9 +48,9 @@ tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 
 for src_dir in $src_dirs; do
-    cp "$src_dir"/* "$tmp_dir"/
+    cp -r "$src_dir"/. "$tmp_dir"/
 done
-gzip -9 "$tmp_dir"/*
+find "$tmp_dir" -type f -exec gzip -9 {} +
 
 mkdir -p "$(dirname "$out_file")"
 rm -f "$out_file"

@@ -68,11 +68,16 @@ information):
   content of `src/`** — not just the new file in isolation — to check that the coding guidelines
   and `SPECIFICATION.md` Part D's checklist (including its D.10 "API consistency, within a file and
   across the project" and D.9 "Check against current MicroPython" items) actually hold consistently
-  across every file there, not just that the new file individually passes review on its own. **If
-  the scan surfaces a discrepancy — one file diverging from another, or from a guideline — do not
-  silently fix it.** Report it and discuss how to resolve it before changing anything, the same
-  "flag, don't silently change" treatment Part D.1 already gives formula/behavior
-  discrepancies, applied here to cross-file consistency instead.
+  across every file there, not just that the new file individually passes review on its own. **This
+  scan also covers `SPECIFICATION.md` Part G's shared-primitive catalog and discovery procedure**
+  (numeric validation/coercion, callback dispatch guarding, response envelopes, locked state,
+  logging, and — for anything website-facing — the `src/`↔`js/` cross-language mirror obligation):
+  before writing any new function/module, check Part G's catalog first for an existing primitive to
+  reuse or model on, and re-run Part G.3's grep-for-the-shape check across the codebase as part of
+  this same scan, not as a separate pass. **If the scan surfaces a discrepancy — one file diverging
+  from another, or from a guideline — do not silently fix it.** Report it and discuss how to resolve
+  it before changing anything, the same "flag, don't silently change" treatment Part D.1 already
+  gives formula/behavior discrepancies, applied here to cross-file consistency instead.
 - **Do not "fix" `modules/_boot.py`'s `import sensortask.py`** (literal `.py` in the import
   statement) without testing on real hardware first. It works reliably today; MicroPython's
   documented freeze/import behavior says the module should be named `sensortask` with the
@@ -141,14 +146,20 @@ information):
   value. This already had to be corrected once (a merge re-accumulated ~800 lines of per-file
   "bug found, fixed" narrative in BACKLOG.md) — treat pruning history back out as routine
   maintenance whenever an item resolves, not a one-off cleanup.
-- **Docstrings (module/function/class `"""..."""` headers) are capped at 3 lines, prefer fewer —
-  a concise header, not an essay.** Inline `#` comments have no such cap. Load-bearing detail a
-  docstring can't fit in 3 lines moves to: the relevant `SPECIFICATION.md` Part if the fact is
-  architectural and reused elsewhere (leave a short pointer in the docstring, the same
-  "Moved to `SPECIFICATION.md` Part X" pattern this file itself already uses), `digital_twin/
-  README.md` for anything `digital_twin/`-specific, or a `#`-prefixed comment right next to the
-  code it explains otherwise — never dropped outright. Applied repo-wide across `src/`,
-  `digital_twin/`, `tests/` in one pass (project owner's direction); keep new code to this bar too.
+- **Every module gets exactly one header comment block — module/function/class `"""..."""`
+  docstrings in Python, the equivalent leading `/** ... */`/`//` block in JS — capped at 3 lines,
+  prefer fewer: a concise header, not an essay. This applies to all code in the repo, not just
+  Python — `js/`, `tests_js/`, `html/style.css`, `digital_twin/`, everything.** Inline comments
+  (`#` in Python, `//`/inline `/** */` in JS) have no hard numeric cap, but stay disciplined: a few
+  short, genuinely load-bearing WHY notes next to the line they explain, never a multi-paragraph
+  block of narrative reasoning. Load-bearing detail that doesn't fit that bar moves to: the
+  relevant `SPECIFICATION.md` Part if the fact is architectural and reused elsewhere (leave a short
+  pointer in the header block, the same "Moved to `SPECIFICATION.md` Part X" pattern this file
+  itself already uses — website-facing facts go to Part H specifically),
+  `digital_twin/README.md` for anything `digital_twin/`-specific, or a
+  short comment right next to the code it explains otherwise — never dropped outright. Applied
+  repo-wide across `src/`, `digital_twin/`, `tests/`, `js/`, `tests_js/` in one pass (project
+  owner's direction); keep new code to this bar too.
 - Prefer flagging genuinely ambiguous/architecturally significant decisions to the project owner
   over guessing — several open questions in BACKLOG.md exist precisely because the code's actual
   intent wasn't obvious from reading it alone.
@@ -208,7 +219,16 @@ information):
   Unix port is just part of what `setup`/`test` already do, there's no separate `unix`
   subcommand — cached under `$PICO_TOOLCHAIN_DIR`) and shells out to it once per `tests/test_*.py`
   file; see SPECIFICATION.md Part E.3 for the full rationale and the minimal `test_*`-function runner
-  (`tests/microtest.py`) used in place of CPython's `unittest`.
+  (`tests/microtest.py`) used in place of CPython's `unittest`. This is specifically about `src/`'s
+  own MicroPython-target code — `tests_scripts/` (pytest, real CPython) covers the host-only build
+  tooling instead (`scripts/build_frozen_html.sh`, `scripts/build_website.sh`, `scripts/
+  build_firmware.py`), none of which are MicroPython-target code, so the real-interpreter rationale
+  above doesn't apply to them; see `tests_scripts/conftest.py`'s own docstring. `scripts/test.sh`
+  runs both: the MicroPython suite as described above, plus `uv run pytest tests_scripts` as one
+  more step before it. `tests_scripts/` isn't in `pyproject.toml`'s `[tool.mypy]`/`[tool.ruff]`
+  scope, matching the existing decision that `scripts/`/`toolchain/` (the dev-tooling scripts these
+  tests exercise) aren't linted/type-checked either — extending that scope is a separate future
+  decision, not assumed here.
 - **`scripts/test.sh --coverage` reports `src/` line coverage; it never gates anything** — no
   threshold is enforced anywhere, by design (confirmed directly, not a placeholder for a future
   gate). Since `coverage.py` only runs under CPython while `src/` only ever runs

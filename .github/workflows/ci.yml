@@ -10,6 +10,214 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  web-changes:
+    # Gates the web-CI tier below on whether this push/PR actually touches the website's own
+    # source (html/, js/, tests_js/) or its own tooling config - kept as a single workflow file
+    # with a changes-detection job feeding `if:` conditions, deliberately not a second workflow
+    # file with its own trigger-level `paths:` filter (which can leave a PR stuck on a required
+    # status check that never fires because the whole workflow never triggered - see
+    # SPECIFICATION.md Part H.8). The existing Python jobs below are untouched and keep running on every
+    # trigger regardless of this job's result.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            web:
+              - 'html/**'
+              - 'js/**'
+              - 'tests_js/**'
+              - 'mockdata/**'
+              - 'scripts/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'eslint.config.js'
+              - 'tsconfig.json'
+              - 'tsconfig.node.json'
+              - 'vitest.config.js'
+              - '.htmlvalidate.json'
+              - '.stylelintrc.json'
+              - '.nvmrc'
+
+  web-lint-and-typecheck:
+    # JS/HTML/CSS equivalent of the Python lint-and-typecheck job below - see SPECIFICATION.md
+    # Part H.8 for the role mapping (ESLint~ruff, tsc --noEmit~mypy, html-validate/Stylelint have no direct
+    # Python-side counterpart).
+    needs: web-changes
+    if: needs.web-changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: ESLint (js/, tests_js/)
+        run: npm run lint
+      - name: TypeScript checkJS (tsc --noEmit)
+        run: npm run typecheck
+      - name: html-validate (html/)
+        run: npm run lint:html
+      - name: Stylelint (html/)
+        run: npm run lint:css
+
+  web-unit-tests:
+    # Vitest in real-browser mode (Playwright + Chromium, not jsdom) - see SPECIFICATION.md Part H.8.
+    # This CI runner has no pre-installed browser (unlike a Claude Code dev sandbox - see
+    # vitest.config.js's own comment), so it installs its own matching
+    # Chromium build via `playwright install` before running tests.
+    #
+    # Also builds the MicroPython Unix-port toolchain (below) - tests_js/live-backend.test.js
+    # (SPECIFICATION.md Part H.7) drives a real digital-twin subprocess as part of the Vitest
+    # suite, the first thing in this job's history to need it. This does cost this job the same
+    # toolchain-build time the Python-side unit-tests job already pays (mitigated the same way:
+    # the toolchain-cache step below shares that job's exact cache key, so a normal PR run hits a
+    # warm cache here too) - a deliberate tradeoff, not an oversight: see SPECIFICATION.md Part H.7
+    # for why the live-backend test needed to actually drive the twin rather than stay
+    # mock-server.js-only.
+    needs: [web-changes, web-lint-and-typecheck]
+    if: needs.web-changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      # Mirrors the Python side's "Cache MicroPython Unix port build" steps below - the browser
+      # binary itself is cached across runs (keyed on package-lock.json, which pins the exact
+      # playwright version); OS-level dependencies (apt packages headless Chromium needs) are
+      # cheap and reinstalled every run regardless, since they aren't part of the cached path -
+      # this is Playwright's own documented CI caching pattern.
+      - name: Cache Playwright Chromium
+        id: playwright-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Install Playwright Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Install Playwright OS dependencies (cache hit)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - name: Set up MicroPython toolchain (install uv, restore cache)
+        uses: ./.github/actions/setup-micropython-toolchain
+      - name: Build MicroPython Unix port (if not cached)
+        run: |
+          bin="$HOME/pico-toolchain/micropython/ports/unix/build-standard/micropython"
+          if [ ! -x "$bin" ]; then
+            uv run toolchain/setup_toolchain.py setup
+          fi
+      # The real wozi website is built automatically by npm's own `pretest`/`pretest:coverage`
+      # hooks (package.json) - single source of truth for "build before test", shared with local
+      # dev (see "Run unit tests" comment above).
+      - name: Run unit tests (Vitest, real-browser mode)
+        run: npm test
+      # Coverage is a report, not a gate (mirrors the Python side's own non-gating
+      # scripts/test.sh --coverage - see CLAUDE.md's "Code quality tooling", SPECIFICATION.md
+      # Part E.5). The `Run unit tests` step above is the real pass/fail signal; this just
+      # re-runs the same suite once more, instrumented, to measure js/ line coverage.
+      - name: Run unit tests with coverage
+        run: npm run test:coverage 2>&1 | tee coverage-output.txt
+        continue-on-error: true
+      - name: Add coverage summary to job summary
+        if: hashFiles('coverage-output.txt') != ''
+        run: |
+          echo '### JS coverage (`js/`)' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          tail -n 15 coverage-output.txt >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+        continue-on-error: true
+      - name: Upload HTML coverage report artifact
+        if: hashFiles('coverage/index.html') != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-html-js
+          path: coverage/
+        continue-on-error: true
+
+  web-cross-browser-smoke:
+    # Runs the real production website through three engines Vitest's Playwright-only browser mode
+    # can't reach (WebKitGTK, real Firefox, real Microsoft Edge), plus Playwright's own Chromium for
+    # a consistent baseline - each at a desktop and a mobile-sized viewport. Deliberately narrow
+    # scope: one field edit+apply per (engine, viewport), not the full PUT matrix - see
+    # scripts/cross_browser_smoke.mjs's own header comment and SPECIFICATION.md Part H.7
+    # ("Cross-browser coverage") for the "Coverage depth"/"Test architecture" decisions behind that.
+    #
+    # needs: web-unit-tests, not just web-lint-and-typecheck - no reason to spend several more
+    # minutes installing three more browser engines if the fast native-Chromium suite already
+    # caught a regression (same fail-fast reasoning as digital-twin-e2e's own needs: unit-tests).
+    needs: [web-changes, web-unit-tests]
+    if: needs.web-changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      # Mirrors web-unit-tests' own identical step (see its comment) - this job's Chromium leg
+      # (scripts/cross_browser_smoke.mjs's runChromiumFamily("chromium", ...)) needs Playwright's
+      # own browser binary too, and each CI job is its own fresh VM with no browser cache carried
+      # over from web-unit-tests even though that job (this one's own `needs:`) already installed
+      # it moments earlier in the same workflow run. Confirmed necessary directly: an earlier
+      # version of this job omitted this step entirely and both Chromium checks failed in real CI
+      # with "Executable doesn't exist" - WebKit/Firefox/Edge all passed correctly in that same run,
+      # proving the three new engines were never the problem.
+      - name: Cache Playwright Chromium
+        id: playwright-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Install Playwright Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Install Playwright OS dependencies (cache hit)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - name: Set up MicroPython toolchain (install uv, restore cache)
+        uses: ./.github/actions/setup-micropython-toolchain
+      - name: Build MicroPython Unix port (if not cached) and the real wozi website
+        run: |
+          bin="$HOME/pico-toolchain/micropython/ports/unix/build-standard/micropython"
+          if [ ! -x "$bin" ]; then
+            uv run toolchain/setup_toolchain.py setup
+          fi
+          scripts/build_website.sh wozi
+      # Firefox+geckodriver (via conda-forge/micromamba - see scripts/setup_cross_browser_toolchain.sh's
+      # own comment for why) is the one piece of this job's toolchain worth caching across runs: it's
+      # a ~106MB download from a channel with no version-pin file to key on (deliberately unpinned,
+      # unlike the MicroPython toolchain above), so this just caches "whatever conda-forge currently
+      # publishes" under a fixed key - bump the key's trailing version number to force a fresh pull
+      # if that ever needs to happen. WebKit (a plain apt package) and Edge (Microsoft's own apt repo)
+      # are cheap enough to reinstall every run, matching Playwright Chromium's OS-deps-only-on-cache-
+      # hit precedent above.
+      - name: Cache Firefox + geckodriver (conda-forge)
+        uses: actions/cache@v6
+        with:
+          path: ~/cross-browser-toolchain
+          key: cross-browser-firefox-v1-${{ runner.os }}
+      - name: Install WebKit, Edge, and Firefox+geckodriver
+        run: scripts/setup_cross_browser_toolchain.sh
+      - name: Run cross-browser smoke check
+        run: node scripts/cross_browser_smoke.mjs
+
   lint-and-typecheck:
     # Gates on src/, tests/, and digital_twin/ (pyproject.toml's [tool.mypy]/[tool.ruff] default
     # scope - both fully-reviewed, expected to stay clean). Passing explicit paths to
@@ -66,20 +274,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
-      - name: Install uv
-        run: pip install uv
-      - name: Cache MicroPython Unix port build
-        uses: actions/cache@v6
-        with:
-          path: ~/pico-toolchain
-          # Must also hash toolchain/setup_toolchain.py, not just versions.toml: the Unix port's
-          # build flags (e.g. MICROPY_PY_SYS_SETTRACE=1 - see build_unix_port()) live in that
-          # script, not in versions.toml. Keying on versions.toml alone let a stale cached binary
-          # built before that flag existed survive untouched across this PR's own commits - a real
-          # bug, not hypothetical: it's exactly what caused `scripts/test.sh --coverage` to fail in
-          # CI with "module 'sys' has no attribute 'settrace'" while working locally, since a local
-          # run always starts from a genuinely fresh ~/pico-toolchain.
-          key: unix-port-${{ runner.os }}-${{ hashFiles('toolchain/versions.toml', 'toolchain/setup_toolchain.py') }}
+      - name: Set up MicroPython toolchain (install uv, restore cache)
+        uses: ./.github/actions/setup-micropython-toolchain
       - name: Run unit tests
         run: scripts/test.sh
       # Coverage is a report, not a gate (see SPECIFICATION.md Part E.5 ("Coverage")) - never let
@@ -153,16 +349,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-      - name: Install uv
-        run: pip install uv
-      - name: Cache MicroPython Unix port build
-        uses: actions/cache@v6
-        with:
-          path: ~/pico-toolchain
-          # Same cache key as the unit-tests job's own identical step above - see that step's
-          # comment for why both toolchain/setup_toolchain.py and toolchain/versions.toml must be
-          # hashed together.
-          key: unix-port-${{ runner.os }}-${{ hashFiles('toolchain/versions.toml', 'toolchain/setup_toolchain.py') }}
+      - name: Set up MicroPython toolchain (install uv, restore cache)
+        uses: ./.github/actions/setup-micropython-toolchain
       - name: Run digital-twin clean/build/test cycle
         run: scripts/run_digital_twin_ci.sh
       - name: Upload digital-twin subprocess logs
@@ -173,3 +361,54 @@ jobs:
           path: digital_twin_ci_logs/
           if-no-files-found: ignore
         continue-on-error: true
+
+  firmware-build-verify:
+    # The real end-to-end proof for SPECIFICATION.md Part B.11's src/-based build chain: assembles an actual
+    # src/-based firmware.uf2 (scripts/build_firmware.py, ext/microdot.py + the real website +
+    # every src/ module, frozen and linked against the pinned toolchain) rather than only checking
+    # the assembly logic's inputs/outputs in isolation, the way tests_scripts/test_build_firmware.py's
+    # fast tests do. This is the "wiring an actual firmware-build stage into CI" gap BACKLOG.md's
+    # "No CI firmware-build stage yet" entry describes, closed here for the new src/-based toolchain
+    # (that entry itself stays open - it's specifically about the legacy build-*.sh scripts, a
+    # separate, not-yet-done piece of work).
+    #
+    # needs: unit-tests, not digital-twin-e2e - this only needs the toolchain cache unit-tests'
+    # own setup step already populates (mpy-cross + pico-sdk + picotool + the MicroPython/pico-sdk
+    # git checkouts), not anything digital-twin-e2e itself produces, so it runs in parallel with
+    # that job instead of serializing after it. The ARM cross-compiler itself (gcc-arm-none-eabi
+    # and friends) is a separate apt install, not part of that cached directory - see the
+    # dedicated step below for why it still has to run here even on a cache hit.
+    needs: unit-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up MicroPython toolchain (install uv, restore cache)
+        uses: ./.github/actions/setup-micropython-toolchain
+      # A cache miss here would mean scripts/test.sh itself hasn't run yet on this exact toolchain
+      # pin, which shouldn't happen given needs: unit-tests above, but if it does, build_firmware.py's
+      # own "no toolchain found - run setup first" error message fails this job clearly rather than
+      # silently skipping the real build.
+      #
+      # Each CI job runs on its own fresh VM - the cache step above restores ~/pico-toolchain's
+      # git checkouts/build dirs (populated by unit-tests' own scripts/test.sh run earlier in this
+      # same workflow run), but apt-installed system packages never survive across jobs. This bit
+      # a first version of this job directly: it assumed the toolchain cache alone was enough and
+      # failed with "Compiler 'arm-none-eabi-gcc' not found" - unit-tests never needed the ARM
+      # cross-compiler itself (only the already-cached, already-built Unix port binary), so nothing
+      # upstream of this job ever installs it. Reuses setup_toolchain.py's own
+      # ensure_apt_packages() against versions.toml's apt_packages list - the same single source of
+      # truth toolchain/setup_toolchain.py setup itself uses - rather than hand-duplicating the
+      # package list here, where it could quietly drift out of sync.
+      - name: Install ARM toolchain apt packages
+        run: |
+          python3 - <<'PYEOF'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, "toolchain")
+          import setup_toolchain as st
+          versions = st.load_versions(Path("toolchain/versions.toml"))
+          st.ensure_apt_packages(versions["toolchain"]["apt_packages"], skip=False)
+          PYEOF
+      - name: Build a real firmware.uf2 for wozi and verify it
+        run: RUN_SLOW_FIRMWARE_BUILD=1 uv run pytest tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2 -v

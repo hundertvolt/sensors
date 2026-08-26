@@ -765,7 +765,8 @@ async def _scd_apply_field(
     if key not in data:
         return None  # not requested - omitted keys are left alone (project-wide convention)
     value = data[key]
-    if cm.type_or_range_error(value, field):
+    is_error, value = cm.type_or_range_error(value, field)
+    if is_error:
         return "Invalid"
     try:
         applied = await setter(value)

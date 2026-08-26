@@ -38,7 +38,10 @@ of) and, later, `WIRING_CONTRACT.md`/`FINAL_WIRING_PLAN.md` (the temporary plann
 everything permanent each one settled was migrated here first: `WIRING_CONTRACT.md`'s construction
 order/FRAM-chunk order/dependency graph/debug-level registry now live in Part A.7,
 `FINAL_WIRING_PLAN.md`'s REST API design in Part A.8, its website-stub pipeline in Part A.9, and two
-checkable conventions its own failure-mode audit found in Parts C.7/C.9.
+checkable conventions its own failure-mode audit found in Parts C.7/C.9. `WEBSITE_PLAN.md` (the
+temporary planning doc for the JS/HTML/CSS website redesign) followed the same lifecycle once that
+effort completed: its settled architecture now lives in Part H below, its still-open items moved to
+`BACKLOG.md`, and the file itself was deleted.
 
 ## Table of contents
 
@@ -56,6 +59,15 @@ checkable conventions its own failure-mode audit found in Parts C.7/C.9.
   the hardware-mocking boundary, and the coverage pipeline.
 - **Part F — Platform Target & MicroPython Runtime Facts**: RP2040/MicroPython-1.26 specifics,
   gotchas, and the load-bearing constraints they impose on every driver/service in Parts C-E.
+- **Part G — Shared Pattern & Primitive Reuse**: the living catalog of established shared
+  primitives (numeric validation/coercion, callback dispatch guarding, response envelopes, locked
+  state, logging, driver architecture, the `src/`↔`js/` cross-language mirror) and the discovery
+  procedure to run against it before writing any new function/module — cross-cutting across
+  `src/`, `js/`, and any future layer, not scoped to one language the way Part D is.
+- **Part H — Website (JS/HTML/CSS) Architecture**: the browser-side sensor-station website's
+  purpose/design constraints, folder/module map, the visual-vs-mechanics layering contract, its
+  REST-mirroring architecture and definitions-file schema, digital-twin integration (bundling,
+  connection-concurrency ceiling, cross-browser coverage), and its CI/tooling stack.
 
 ---
 
@@ -66,11 +78,16 @@ checkable conventions its own failure-mode audit found in Parts C.7/C.9.
 ```
 datasheets/              Real datasheet PDFs for the chips this codebase drives - see CLAUDE.md
   bmp3xx/, fram/, pico w/, scd30/, sgp40/
-html_raw/               Hand-written HTML/CSS/JS for the web UI, per device config
+html_raw/               Legacy, still-deployed hand-written HTML/CSS/JS for the web UI, per device
+                          config - targets the pre-refactor REST shape, superseded by html/ below
+                          for devices the refactor has reached - see Part H.1
   arzi/, dev/, wozi/       device-specific pages
   general/                 shared assets (style.css, functions.js, favicon.ico, nettimeconfig.html)
-html_stub/              Placeholder ("Hello world"-shaped) website content standing in for html_raw/
-                          in the refactored build - see "Website stub / frozen-HTML pipeline" below
+html_stub/              Placeholder ("Hello world"-shaped) website content standing in for the real
+                          site in the refactored build's generic pipeline tests - see "Website stub /
+                          frozen-HTML pipeline" below
+html/, js/, tests_js/,  The real, refactored website (JS/HTML/CSS) - source, tests, and prototype-
+  mockdata/               only mock-backend fixtures respectively - see Part H below
 modules/                Auto-started entry points, one set copied into the firmware build per device
   _boot.py                 mounts the flash filesystem, then starts the sensor task
   sensortask-{arzi,dev,neu,wozi}.py   per-device application (renamed to sensortask.py at build time)
@@ -258,14 +275,19 @@ The condensed version is A.2 above. Key modules if you need to go deeper (folded
   statement, confirmed by direct reading, not assumption. Before adding any *new* FRAM-backed class
   (a new driver, or a currently-in-memory-only logger — e.g. a `CFGMGR_*` or `"DNSSRV"` logger ever
   becoming FRAM-backed), prove single, deterministic construction first, not after.
-  **Every deliberate system reset already pauses FRAM first, confirmed directly** (found during a
-  BACKLOG.md scan for settled facts sitting in working memory): `system_service.py`'s `_reboot()`
-  (backing both `reboot_system()`/`reboot_bootloader()`) calls `self.storage_pause(True)` before
-  arming the delayed reset timer, and before the `_force_watchdog_starve` fallback too — confirmed
-  via grep that `machine.reset()`/`machine.bootloader()`/`WDT()` have no other call site anywhere
-  in `src/`. Whether the actual wait margin is sufficient for FRAM's own
-  in-flight transaction time, and keeping this invariant preserved as more reset call sites are
-  added, are still open — see BACKLOG.md's "Every deliberate system reset..." item.
+  **Every deliberate system reset already pauses FRAM first, confirmed directly**:
+  `system_service.py`'s `_reboot()` (backing both `reboot_system()`/`reboot_bootloader()`) calls
+  `self.storage_pause(True)` before arming the delayed reset timer, and before the
+  `_force_watchdog_starve` fallback too. The margin is sufficient: the FRAM bus runs at 1MHz
+  (`asy_spi_driver.py`'s default `baudrate`) over a `max_size=0x2000` (8KB) chip, and no single
+  chunk approaches that whole size (individual chunks are tens of bytes), so even a two-block write
+  plus CRC-verify readback completes in low single-digit milliseconds — three orders of magnitude
+  under both the deliberate 4s `_RESET_DELAY` and the worst-case ~8s watchdog-starve wait; a
+  genuinely wedged bus is the separate, already-accepted "hardware watchdog is the backstop" case
+  (CLAUDE.md). The invariant is actively enforced, not just true by chance:
+  `tests/test_reset_call_site_invariant.py` scans every `src/*.py` file and fails if
+  `machine.reset()`/`machine.bootloader()` appear anywhere but `system_service.py`, or `WDT()`
+  anywhere but `sensortask_wozi.py`.
 - **SCD30's `AmbPres` (ambient-pressure compensation) is stored in the sensor's own internal
   non-volatile memory as a one-time-set value, not a continuously-updated live input.** This is why
   it's a static config value on every unit — including wozi, which has a live BMP388 — and why
@@ -278,6 +300,12 @@ The condensed version is A.2 above. Key modules if you need to go deeper (folded
   as outdoor ambient), then `ForceCalRef` is set to that known reference concentration via the
   REST setter. There is no separate exposure-timing/frequency schedule beyond "whenever a
   recalibration is judged needed" — no automation of this procedure is planned.
+- **SCD30's `TempOffs` (temperature offset) has a real 0.01°C hardware resolution, not just a
+  cosmetic rounding choice**: `set_temperature_offset()` sends `int(offset * 100)` to the sensor's
+  register — a genuine truncation (not rounding) unique to this one field/driver (no other driver
+  scales-then-truncates a value this way). A value with more than two decimal digits is silently
+  truncated by the real chip, not rejected; anything writing or testing this field should account
+  for that instead of expecting an exact round-trip.
 - **SGP40's VOC index is a deviation-from-learned-baseline number, not an absolute-concentration
   one — confirmed directly against `voc_algorithm.py`'s real Sensirion Gas Index Algorithm port
   while calibrating a real threshold-crossing integration test (see
@@ -322,8 +350,8 @@ The condensed version is A.2 above. Key modules if you need to go deeper (folded
     weight (0/1), not an absolute color — scaled by the shared `FlashBri` at trigger time, which is
     what makes one global brightness setting actually apply to every registered condition.
   - Config field names drop the "Led" prefix everywhere (`WarnCO2` not `LedWarnCO2`) — a deliberate
-    wire-format change; the (already known-brittle, deferred — see BACKLOG.md) frontend isn't
-    updated to match yet.
+    wire-format change; only the legacy `html_raw/` frontend isn't updated to match (Part H.1's
+    "Predecessor" note) — accepted pre-refactor debt.
 - In the deployed, pre-refactor codebase (`modules/sensortask-*.py`), the task supervisor is a
   hand-rolled loop inside each file's `main()`, not a shared module — duplicated per device file.
   `src/sensortask_wozi.py` no longer matches this: its `main()` now calls
@@ -503,7 +531,11 @@ existing stored data to keep decoding correctly (the "FRAM chunk determinism rul
 2. `conn = AsyConnTime(...)` — owns `DNSServer` internally (`captive_dns.py`).
 3. `ntp = AsyNtpClient(conn.get_wifi_mode_lock(), conn.network_available, conn.get_dns_server_ip,
    ...)` — takes bound methods off `conn`, not a direct import-time reference.
-4. `i2c0`, `i2c1` = `asy_i2c_driver.I2C(...)` ×2.
+4. `i2c0`, `i2c1` = `asy_i2c_driver.I2C(...)` ×2. `i2c0` (carries `SCD30_Reader`, step 10) sets
+   `timeout=200000` (200ms): the SCD30 datasheet documents up to 150ms of clock stretching once
+   per day for internal calibration, past rp2's own I2C timeout default (`DEFAULT_I2C_TIMEOUT`,
+   `ports/rp2/machine_i2c.c`, 50ms) — without the override, that expected once-daily stretch would
+   surface as a spurious `OSError`. `i2c1` (SGP40/BMP3xx) keeps the port default.
 5. `spi0` = `asy_spi_driver.SPI(...)`.
 6. `fram = AsyFramManager(spi0, 1, max_size=0x2000, ...)` — constructs `FRAM_SPI` internally with a
    shared `logger=`; allocates no FRAM chunk of its own.
@@ -517,14 +549,15 @@ existing stored data to keep decoding correctly (the "FRAM chunk determinism rul
    backup itself (`self.ts_storage = fram_storage.get_timestamped_chunk(...)`, a few lines later).
    Both are unconditional whenever `fram_storage`/`fram_ntp_callback` are non-`None`, which they
    always are in the real wiring.
-9. `bmp_reader = BMP3xx_Reader(i2c1, ...)` — no `fram=`, in-memory logging only.
-10. `scd_reader = SCD30_Reader(i2c0, 8, trigger_sec=3, ...)` — no `fram=`, no config schema at all
-    (params live on-sensor).
-11. `pixel = NeopixelDriver(15, fram=fram, ...)` — **FRAM chunk 4**.
+9. `bmp_reader = BMP3xx_Reader(i2c1, ..., fram=fram, ...)` — **FRAM chunk 4**.
+10. `scd_reader = SCD30_Reader(i2c0, 8, trigger_sec=3, ..., fram=fram, ...)` — **FRAM chunk 5**; no
+    config schema at all (params live on-sensor) — the FRAM-backed error log is independent of
+    that and applies regardless.
+11. `pixel = NeopixelDriver(15, fram=fram, ...)` — **FRAM chunk 6**.
 12. `notify_service = NotificationCoordinator(pixel.request_signal, ntp.cettime, fram=fram, ...)`,
     staged registration (`register()` ×3 for `WarnCO2`/`WarnVOC`/`WarnHum`, then `finalize()`
     exactly once — the single point `notify_service.pr`/`notify_service.cfgmgr` come into
-    existence) — **FRAM chunk 5**.
+    existence) — **FRAM chunk 7**.
 13. `conn.set_ext_led(pixel)` — wires the WiFi-status LED callback after both exist.
 14. `app = Microdot(); webserver = WebserverService(app, sensors=(scd_reader, bmp_reader,
     sgp_reader), settings={...}, system_cmd=..., notification_led=..., notification_pause=...,
@@ -534,7 +567,7 @@ existing stored data to keep decoding correctly (the "FRAM chunk determinism rul
     surface; built here because every module it registers must already exist. **No `fram=`** —
     deliberately RAM-only: a per-call/outer-cap connection-reclaim warning (see A.8's "Connection
     hardening" below) could churn far faster than any sensor's rare-hardware-fault log, and this
-    keeps the five-chunk FRAM order above unchanged — no sixth chunk. `static_mount="/html"`
+    keeps the seven-chunk FRAM order above unchanged. `static_mount="/html"`
     registers the generic `/`+`/<path:filename>` static-file route pair *last*, after every API
     route, so an exact-match API route always wins over the wildcard (Microdot's `find_route()`
     returns the first registered pattern that matches). `web_host`/`web_port` default to today's
@@ -555,12 +588,30 @@ existing stored data to keep decoding correctly (the "FRAM chunk determinism rul
     first so every subsequent `setup()` call's own diagnostic logging already reflects the real
     persisted debug level. `conn`/`ntp` both need `cfgmgr.setup()` too (both are
     `SensorReaderConfig` subclasses) and are placed right after `fram`'s slot, matching their own
-    real construction order (both built before `fram`/`sysfunct`).
+    real construction order (both built before `fram`/`sysfunct`). `scd_reader.setup()` is not in
+    this batch — `SCD30_Reader` has no `ConfigManager`/local-JSON config to set up (C.13's
+    readiness-gate scheme doesn't apply to it), only the FRAM-backed error log wired in step 10.
 
 **Real FRAM chunk order**: `SystemService` → `SGP40_Reader` (its own error log, chunk 2) →
-`SGP40_Reader` (VOC backup, chunk 3) → `NeopixelDriver` → `NotificationCoordinator`. Five chunks
-total. Must stay in this relative order in any future change, regardless of byte offset (which
-doesn't matter per the FRAM chunk determinism rule in A.4).
+`SGP40_Reader` (VOC backup, chunk 3) → `BMP3xx_Reader` → `SCD30_Reader` → `NeopixelDriver` →
+`NotificationCoordinator`. Seven chunks total — **every module with a FRAM-backed error-log option
+uses it** (owner requirement: no module capable of FRAM-backed error logging goes without, on a
+device where FRAM is available). Must stay in this relative order in any future change, regardless
+of byte offset (which doesn't matter per the FRAM chunk determinism rule in A.4). `src/` has not
+yet been deployed to real hardware (A.3) — no on-chip FRAM layout from an earlier chunk order
+exists to preserve compatibility with, which is why this seven-chunk order could be adopted
+directly rather than needing a migration path.
+
+**This seven-chunk order, and `i2c0`'s SCD30-specific `timeout=200000`, are wozi's own — not a
+sequence a future per-variant generator (A.3) can copy verbatim.** Both are conditioned on wozi's
+own fixed sensor set (SCD30 + BMP3xx + SGP40 all present); a variant lacking one of these sensors
+allocates fewer chunks (in the same *relative* order for whichever modules it does have — the
+determinism rule above is per-device, not a fixed global sequence) and, if it has no SCD30 at all,
+needs no I2C clock-stretch override in the first place. The generator must derive both from the
+variant's own module set ("does this variant have module X," the same question A.8's registration
+API and A.9's `HTML_SRC_DIRS` are already shaped around), not assume wozi's answer applies
+everywhere. See BACKLOG.md's "Per-variant generator" entry for the matching requirement on that
+generator's own emitted unit tests.
 
 **Task/timer starter collection** (`_collect_task_starters()`/`_collect_timer_starters()`, called
 from `main()`, never from `build_system()` itself): every constructed module's own
@@ -662,6 +713,46 @@ settings (no live telemetry in any of them).
     module's error counter *and* history in one call.
   - `/notification` — `{"lightCmdLED": {"r":.., "g":.., "b":.., "t":..}, "PauseTime": int, <any
     subset of OnH,OnM,OffH,OffM,FlashBri,Interv,FlashDur,AutoOn,WarnCO2,WarnVOC,WarnHum>}`.
+    `PauseTime` is range-checked `0`-`3600` inclusive by `_dispatch_notification_pause()` itself
+    (rejected as `"Invalid"`, not silently clamped) before ever reaching
+    `NotificationCoordinator.set_override_led()`, whose own `LockedCounter.set_value()` clamps
+    into the same range — matching legacy's `pauseAutoLED` command's own reject-out-of-range
+    behavior rather than relying on the clamp.
+
+**Numeric int/float coercion policy** (`config_manager.py`'s `coerce_numeric()`, called from
+`type_or_range_error()`): every schema-backed int/float field, plus the two dispatch-only numeric
+fields that reuse the same function against a synthetic `FieldSchema` (`PauseTime` via
+`_dispatch_notification_pause()`) or the same acceptance policy directly (`lightCmdLED`'s r/g/b/t
+via `sensortask_wozi.py`'s `_notification_led_callback()`), applies one uniform rule instead of
+each caller hand-rolling its own int/float shape check: a JSON int is **always** accepted for a
+float-typed field (coerced to float — a blanket accept, with no exact-round-trip check on this
+direction); a JSON float is accepted for an int-typed field **only when it carries no fractional
+part** (e.g. `5.0` → coerced to `5`) — a fractional value (`5.7`) is rejected outright as
+`"Invalid"`, the same treatment an out-of-range value gets, never truncated or rounded. The intent
+is for both directions to be symmetric ("accept only what's exactly representable, either
+direction") and never silently discard a digit the caller actually sent — true for the float→int
+direction (an exact `int(check_val)`/`float(as_int) == check_val` round-trip is checked, see
+`coerce_numeric()`), but the int→float direction is a **known, accepted gap** in that symmetry, on
+the premise that every int is representable as a float — true only up to a float's mantissa
+precision (Part F.1's `MICROPY_FLOAT_IMPL_FLOAT`-vs-`_DOUBLE` fact), not in general. Accepted as-is
+because no currently-registered float field's own `min`/`max` bounds go anywhere near that range
+(the largest today is BMP3xx's `SeaLevelOffs` at `5000.0`) — the field's own range check already
+catches every value that could otherwise slip through, in practice; see `coerce_numeric()`'s own
+inline comment and `tests/test_config_manager.py`'s
+`test_coerce_numeric_large_int_to_float_precision_limit_is_a_documented_accepted_gap` for this same
+caveat at the code/test level. `bool` is still never accepted for an int or
+float field either way (`type()`, not `isinstance()`, already excludes it — see A.4/F.4's
+discussion of this same distinction elsewhere). NaN/±inf attempting int-coercion are caught (not
+raised) via MicroPython's own `int(float)` exception shapes (`ValueError` for NaN, `OverflowError`
+for ±inf — confirmed against `py/objint.c`'s `mp_obj_new_int_from_float()`) and rejected the same
+way as any other non-representable value. The website's JS mirror (`js/mock-server.js`'s
+`coerceAndValidate()`/`dispatchRangedAction()`/`dispatchLightCmdLed()`) applies the equivalent
+policy — trivially simpler there, since JS has no int/float runtime type distinction to begin with
+(`5` and `5.0` parse to the identical JS number): only a `field.float`-marked field's own value is
+ever checked for having no fractional part, via `Number.isInteger()`, with no need to recover or
+compare the original JSON literal's shape at all (the now-removed `scanNumericLiteralShapes()`
+JSON-text regex scan, and `js/render.js`'s now-removed `serializePutBody()` decimal-point-forcing,
+both existed only to fight that literal-shape problem under the old strict-shape-match policy).
 
 **GET copy-safety**: `get_dict_data()` (via `config_manager.make_dict()`), `ConfigManager.get_dict()`,
 and `PrintLogHistory.get_log()` all build a brand-new dict/list of copied scalar values on every
@@ -691,7 +782,9 @@ refactored build — real website content is out of scope for the refactor proto
 
 `scripts/build_frozen_html.sh` gzips a temp copy of the source directory(ies) (`html_stub/` by
 default, overridable via the `HTML_SRC_DIRS` env var — a space-separated list merged into one flat
-tree first, mirroring `build-wozi.sh`'s own `general`+board-variant merge), then runs
+tree first, mirroring `build-wozi.sh`'s own `general`+board-variant merge; the merge step is a
+recursive `cp -r "$src_dir"/. "$tmp_dir"/` and the gzip step a recursive `find ... -exec gzip -9`, so
+nested subdirectories such as `html/definitions/` survive intact), then runs
 `PYTHONPATH=ext python -m freezefs <tmp> frozen_modules/frozen_html.py --on-import mount --target
 /html --overwrite always` (never `--compress`: this project pre-gzips by hand and serves via
 Microdot's `send_file(..., compressed=True, file_extension=".gz")`, which only sets
@@ -709,6 +802,10 @@ freezefs's own on-import design); `WebserverService(..., static_mount="/html")` 
 `frozen_html` module and drives real requests through a real `WebserverService`);
 `tests/test_asy_webserver_service.py`'s Section G exercises the generic route-wiring mechanism
 against a synthetic fixture, independent of the real stub content.
+
+This section describes the generic, device-agnostic pipeline itself. The real, non-stub website that
+now ships via this same pipeline (`scripts/build_website.sh`, digital-twin wiring, cross-browser
+coverage) is Part H.
 
 ## A.10 Digital twin (hardware simulator)
 
@@ -754,8 +851,9 @@ clears, the automated soak check) is also wired into CI as its own job (`digital
 `.github/workflows/ci.yml`), `needs: unit-tests`. **Clean**: wipes any leftover
 `digital_twin/*.json`/`digital_twin/config/` state before starting, so every run — CI or local —
 begins from a genuinely blank twin. **Build**: builds the MicroPython Unix port (cached, same
-convention as `scripts/test.sh`) and `frozen_modules/frozen_html.py`; a build failure fails the job
-before any test phase runs. **Test**: `scripts/_digital_twin_ci_suite.py` (a self-contained
+convention as `scripts/test.sh`) and `frozen_modules/frozen_html.py` — via `scripts/build_website.sh
+wozi`, i.e. the real, production website (Part H.7), not the generic `html_stub` default; a build
+failure fails the job before any test phase runs. **Test**: `scripts/_digital_twin_ci_suite.py` (a self-contained
 `uv run` CPython script — it only orchestrates the MicroPython subprocess and speaks plain
 HTTP/UDP to it, the code under test still only ever runs under the real Unix-port interpreter)
 drives `digital_twin/run_wozi_integration.py` through eleven real subprocess runs covering: fresh
@@ -1081,6 +1179,46 @@ This still assumes the repo's `python/` directory is checked out as `py-include/
 the `micropython` tree that `toolchain/setup_toolchain.py` sets up, with `FROZEN_MANIFEST`'s
 hardcoded `/home/nico/rpi_pico/...` path in each `build-<device>.sh` genericized to match — not yet
 done, see BACKLOG.md.
+
+**The `src/`-based build (parallel, separate pipeline)**: `scripts/build_firmware.py <device>
+[--output PATH]` is a self-contained `uv run` script assembling a real `firmware.uf2` from `src/` +
+`ext/microdot.py` + the real website (Part H) for one device — build-only, like the legacy path
+above; nothing here flashes or tests real hardware. It needs its own `manifest.py` rather than the
+board's default one: the default's `freeze("$(PORT_DIR)/modules")` line freezes
+`ports/rp2/modules/_boot.py` under the exact frozen name `shared/runtime/pyexec.c`'s rp2 `main.c`
+looks up via `pyexec_frozen_module("_boot.py", ...)` at every boot, but `src/`'s own real entry point
+needs a different `_boot.py` — one that mounts the filesystem (identical to the port's own stock
+logic) and then imports `wozi_boot` (`boot_entry/wozi_boot.py`) instead of anything from
+`ports/rp2/modules`. Freezing a second file under the same name would collide with the default
+manifest's own copy, so `build_firmware.py` skips the default manifest entirely and re-states its
+other `require()`s verbatim (`bundle-networking`, `aioble`, `asyncio`, `onewire`, `ds18x20`, `dht`,
+`neopixel`) alongside its own single `freeze()` of a self-built staging directory (`src/*.py`
+flattened + `ext/microdot.py` + the real website frozen as `frozen_html.py`, so
+`src/sensortask_wozi.py`'s existing `import frozen_html` resolves with no code change, + the new
+`_boot.py` + `boot_entry/wozi_boot.py`). This repo's own top-level `modules/_boot.py` is never read,
+copied from, or touched by this script — consistent with CLAUDE.md's hard rule with no exception
+needed, since that file is never in this script's path. `build_stage_dir()` raises immediately if
+any `src/` filename collides with one of its own reserved staging names (`microdot.py`,
+`wozi_boot.py`, `_boot.py`, `frozen_html.py`) rather than silently overwriting one or the other.
+
+`tests_scripts/` (CPython/pytest — see `tests_scripts/conftest.py` and CLAUDE.md's "Code quality
+tooling") covers `build_frozen_html.sh`'s recursive merge, `build_website.sh`'s staging, and
+`build_firmware.py`'s assembly logic (`_BOOT_PY`/`_MANIFEST_TEMPLATE` content, `build_stage_dir()`'s
+file set, CLI error paths) fast and offline. One test in that suite,
+`test_real_firmware_build_produces_a_valid_uf2`, does the real end-to-end build, gated behind
+`RUN_SLOW_FIRMWARE_BUILD=1` so it stays opt-in for fast local iteration. `scripts/test.sh` runs the
+fast `tests_scripts/` suite as one more step alongside the MicroPython one;
+`.github/workflows/ci.yml`'s `firmware-build-verify` job (`needs: unit-tests`, reusing its toolchain
+cache) sets that env var and runs the real build in CI on every push/PR. `tests_scripts/` is not in
+`pyproject.toml`'s `[tool.mypy]`/`[tool.ruff]` scope, matching the existing decision that
+`scripts/`/`toolchain/` themselves aren't linted/type-checked either. This closes the "no CI
+firmware-build stage" gap for this `src/`-based toolchain specifically — the separate legacy
+`build-*.sh` scripts above stay open (see BACKLOG.md).
+
+**Production-readiness scope**: this pipeline proves the build assembles correctly and (via
+`tests/test_digital_twin_real_website_integration.py`, Part H.7) that the booted Unix-port digital
+twin serves the real website end to end. It does not prove anything about real rp2040 hardware —
+nothing produced by this pipeline has been flashed or booted on one.
 
 ---
 
@@ -1584,7 +1722,12 @@ Config setters are implemented, mirroring the getter pair (C.4.4) one level down
   independently in the returned dict, including an unrecognized key (matches
   `ConfigManager.write_config()`'s own existing per-key tolerance — one bad key never invalidates
   the rest of a multi-field request). A whole-operation persist failure (invalid `ConfigManager`,
-  or an internal write error) marks every requested key `"Failed"`, not `"Invalid"`.
+  or an internal write error) marks every requested key `"Failed"`, not `"Invalid"`. **A push
+  callback always receives the coerced value that was actually persisted, not the caller's raw
+  pre-coercion one** (re-derived via `type_or_range_error()` against the same `(value, field)`
+  inputs the persist step already validated) — a callback that type-checks its argument (e.g. any
+  `int`-typed setter) would otherwise wrongly reject an accepted coercible value like `45.0` for an
+  int field.
 - **`self._push_callbacks`** — a plain `{field_name: async_push_fn}` dict, initialized empty in
   `SensorReaderConfig.__init__` and populated by each subclass's own `__init__`, once, at
   construction time (project decision: no central field→module registry anywhere — each module
@@ -1735,8 +1878,9 @@ fields never actually reached the sensor; routing through the real schema fixed 
 Two wire-format conventions apply project-wide as a result: a field's wire name drops any redundant
 per-driver prefix (`"BackupPeriod"`, not `"SGPBackupPeriod"` — the endpoint itself already scopes
 the field set), and every bool-typed field is native JSON `true`/`false`, replacing the legacy
-`"switch"` `"On"`/`"Off"` string dtype everywhere it had a live route. The HTML/JS frontend has not
-been updated to match either change yet (see BACKLOG.md).
+`"switch"` `"On"`/`"Off"` string dtype everywhere it had a live route. The refactored website
+(Part H) targets these conventions from the start; only the legacy, still-deployed `html_raw/`
+frontend has not been updated to match — accepted pre-refactor debt (Part H.1's "Predecessor" note).
 
 **A module whose single schema is split across more than one REST route must narrow
 `get_cfg_schema()`'s tuple per route, not hand each route the whole schema**: `AsyConnTime` owns
@@ -1957,7 +2101,14 @@ Two independent lock layers, both needed:
 
 Pattern: `async with self.i2c_<sensor> as dev:` (acquires lock 2) wrapping one or more
 `async with dev.i2c_device as i2c:` blocks (acquires lock 1 for just that one transaction) —
-see any `*_I2C` class's multi-step methods for the concrete nesting.
+see any `*_I2C` class's multi-step methods for the concrete nesting. **Lock ordering is fixed and
+must stay that way**: every call site acquires the device-session lock (2) before the bus lock (1),
+never the reverse — audited across every `*_DeviceSession(Lockable)` driver in `src/`
+(SCD30/BMP3xx/SGP40/I2CDevice, plus FRAM's structurally identical `_op_lock`) with no violation
+found: no method re-acquires an already-held lock, `Lockable.__aexit__` always releases
+(try/except around `.release()`, never suppresses the original exception), and every extended hold
+is a bounded, protocol-justified delay. A new driver that acquires these two locks in the opposite
+order risks a real deadlock against a concurrent caller of an existing driver.
 
 **Known inconsistency (`asy_wifi_service.py`), worth checking before adding a similar getter
 anywhere**: its getters hide two opposite locking contracts under one shape —
@@ -2105,7 +2256,13 @@ sensor:
    finishing the driver, the same session it's promoted to `src/` (Part D's checklist), not deferred
    — the digital twin exists to track the *whole* real driver portfolio, not just the sensors it
    started with, and a driver with no twin counterpart silently regresses the Unix-port integration
-   run's own coverage (Part A.10).
+   run's own coverage (Part A.10). **Also update `html/definitions/<device>.json`** for every device
+   the new driver's REST fields should appear on (Part H.5) — the website's own nav/
+   sections/fields come entirely from that file (zero device-specific branching in `js/render.js`/
+   `js/nav.js`), so a promoted driver with a working chip fake and REST endpoint but no matching
+   definitions-file entry stays invisible on the website indefinitely, with nothing else in the
+   pipeline surfacing the gap. Same session, not deferred, same rationale as the digital-twin
+   extension itself.
 
 ## C.12 Testing
 
@@ -2844,6 +3001,19 @@ this Part — see this document's front matter for that tradeoff.
   - **`MemoryError` is not an `OSError` subclass in MicroPython** — an `except OSError:` alone is
     blind to allocation failure; anywhere an `OSError` is caught around a call that could also
     plausibly exhaust memory, catch `(OSError, MemoryError)` instead.
+  - **RP2040's real firmware build uses single-precision `float` (`MICROPY_FLOAT_IMPL_FLOAT`,
+    24-bit mantissa, exact integer range up to `2**24`); this project's own Unix-port test rig uses
+    double precision instead (`MICROPY_FLOAT_IMPL_DOUBLE`, 52-bit mantissa, exact up to `2**53`)**
+    — confirmed directly against `ports/rp2/mpconfigport.h` and
+    `ports/unix/variants/mpconfigvariant_common.h`. Both targets use arbitrary-precision `int`
+    (`MICROPY_LONGINT_IMPL_MPZ`), so an `int` value can exceed either threshold; `float(int)`
+    beyond it silently rounds rather than raising. Same "the Unix-port test rig can't reproduce a
+    real-hardware boundary" shape as the `ticks_ms()` period fact below — a test proving exactness
+    up to `2**53` on this rig says nothing about the stricter `2**24` real-hardware limit.
+    `config_manager.py`'s `coerce_numeric()` (A.8's numeric-coercion policy) is the one place this
+    currently matters: its int→float direction has no exact-round-trip check, on the premise every
+    int is representable as a float — true only within this limit. Accepted, not fixed, because no
+    real schema field's own bounds go anywhere near it (see A.8 for the full reasoning).
   - **`struct.pack()`/`pack_into()` silently zero-pad or truncate on a value/argument-count
     mismatch instead of raising**, unlike CPython. Don't rely on a mismatch surfacing as an
     exception; validate shape before packing if it matters.
@@ -2993,3 +3163,549 @@ root is the single place all of it is also listed together.
   "clean up" this file's internals the way Adafruit-derived code is fair game for — a genuine bug
   fix or a real behavior-preserving optimization (see D.8) is still in scope, the same as for any
   other file going through Part D's checklist; a stylistic rewrite for idiomaticity is not.
+
+---
+
+# Part G — Shared Pattern & Primitive Reuse
+
+Where D.10 states the general principle ("give related functions/classes the same shape; check how
+comparable code elsewhere already does this"), this Part is its concrete, checkable instance: a
+living catalog of the actual shared primitives this project has already established, plus the
+discovery procedure every new function/module/endpoint must run *before* being written, not after.
+Cross-cutting by design — it applies to `src/`, `js/`/`tests_js/` (the website, Part H), and any
+future layer this project grows, not just Python's `src/` the way Part D is scoped.
+
+## G.0 What this Part prevents
+
+A freshly-invented, locally-plausible solution to a problem this project has already solved
+elsewhere is a correctness risk, not just a style inconsistency: an established shared primitive
+typically encodes edge cases (type coercion, NaN/±inf handling, error-shape conventions, boundary
+inclusivity) that a fresh reimplementation easily misses or narrows. Each independent
+reimplementation is a separate place that gap can hide, and each one only surfaces when a later
+review happens to compare it against the primitive it should have used — strictly more expensive
+than checking G.2's catalog before writing the new code in the first place. Reuse is therefore the
+default; a new primitive is what needs justifying, not the other way around.
+
+## G.1 The rule
+
+- [ ] Before writing a new function, method, module, or endpoint, identify what *kind* of problem
+      it solves — not its specific field names or business logic, its *shape*: a numeric value
+      needing type/range validation, a caller-supplied callback that could misbehave, a REST
+      response envelope, a piece of mutable state shared across tasks, a per-module error/event
+      log, a background task/timer registration, a config-file-backed setting, and so on.
+- [ ] Search this Part's catalog (G.2) first, then the wider codebase, for an existing primitive
+      that already solves that *kind* of problem — not just within the file being edited (D.10
+      already requires that), across `src/` as a whole, and across `js/` too when the new code has
+      a website-facing counterpart. This is a search to actually perform, not a rhetorical
+      question — grep for the shape (e.g. a `FieldSchema`-like tuple, a `try/except` around an
+      awaited caller-supplied callable, a hand-built `{"res": ...}`-shaped dict) before concluding
+      nothing already exists.
+- [ ] If a matching primitive exists: use it directly. Import it, construct the right
+      tuple/record/argument shape it expects, call it — never reimplement any part of what it
+      already does, even a version that looks locally simpler for this one call site. A simpler
+      *inline* version is exactly the shape of mistake G.0 describes.
+- [ ] If no primitive covers this exact *kind* of problem, but a comparable one already exists for
+      a structurally similar problem (e.g. `_PAUSE_TIME_FIELD`'s synthetic-record pattern, built for
+      a scalar dispatch-only field, generalizes directly to `lightCmdLED`'s per-subfield case), model
+      the new code on that existing shape explicitly — cite it in a comment — rather than designing
+      a fresh shape from first principles.
+- [ ] Only once the above turn up nothing to reuse or model on, design something new. If the new
+      thing is plausibly going to recur elsewhere (a second, third call site would want the same
+      shape), add it to G.2's catalog in the same change that introduces it — don't leave that for
+      a future retrospective audit to notice and backfill.
+- [ ] When the new code has both a `src/` (or other backend) side and a `js/` (website) side, the
+      two must encode the *identical* policy, written or updated together in the same change — see
+      G.2's own "cross-language mirror" entry. Shipping one side now and "the other later" is
+      exactly how a real policy gap survives into a merged PR; there is no such thing as a
+      backend-only or frontend-only validation/coercion policy change in this project.
+
+## G.2 Known reusable primitives (living catalog — extend whenever a new one is established)
+
+- [ ] **Numeric type/range validation & coercion** — `config_manager.py`'s `type_or_range_error()`
+      (+ `coerce_numeric()`, which it now calls internally). The canonical way to validate/coerce
+      *any* int/float value against declared bounds, whether the value is genuinely schema-backed
+      (a real `ConfigSchema` tuple, e.g. any driver's `_VAL_*` constants) or dispatch-only (a
+      synthetic `FieldSchema` record built just for this check — `asy_webserver_service.py`'s
+      `_PAUSE_TIME_FIELD`, `sensortask_wozi.py`'s `_FIELD_LED_R`/`_FIELD_LED_G`/`_FIELD_LED_B`/
+      `_FIELD_LED_T`). Never hand-roll a bespoke `int()`/`float()` cast, a manual `min <= x <= max`
+      comparison, or a standalone `coerce_numeric()` call with no accompanying range check for any
+      new numeric field, dispatch-only or not — construct a `FieldSchema` tuple (real or synthetic)
+      and call `type_or_range_error()` against it instead.
+- [ ] **Caller-supplied callback dispatch guarding** — `asy_webserver_service.py`'s
+      `_dispatch_system_cmd()`/`_dispatch_notification_led()`/`_dispatch_notification_pause()`
+      three-part shape: validate the payload first (type/range via the primitive above, or an
+      allowed-value check), `try/await` the caller-supplied callback, `except Exception` →
+      `self.pr.err_s(...)` with a dedicated errno → return `"Failed"`. Every new dispatch-only PUT
+      action follows this exact shape; a bespoke try/except around a callback invocation is a sign
+      this primitive wasn't checked first.
+- [ ] **REST response envelope construction** — `api_response.py`'s `make_response()` is the only
+      way to build a `{"res", "code", "descr", "result"}` envelope. Never hand-build this dict
+      shape inline, even for a one-off error path.
+- [ ] **Task-scoped mutable state shared across coroutines** — `base_classes.py`'s
+      `Lockable`/`LockedCounter`/`LockedFlag`/`LockedValue`. Any new piece of state that's written
+      from one task and read from another (or vice versa) uses one of these, not a bare
+      module-level variable plus an ad hoc `asyncio.Lock()`.
+- [ ] **Per-module logging/error-history** — `print_log.py`'s `make_logger()`/`PrintLog`/
+      `PrintLogHistory`/`PrintLogHistoryStore`. Every module that logs events/warnings/errors or
+      exposes an error counter to `/status` (SPECIFICATION.md A.8) goes through this, constructed
+      via `make_logger()` — never a bespoke `print()`-based or hand-rolled counter/history
+      mechanism.
+- [ ] **Driver layering/naming/config-schema/error-handling/concurrency/timer shape** — Part C in
+      full is this same cross-cutting-reuse principle already applied, in depth, to one specific
+      *kind* of module (a sensor driver) — read it before writing a new driver rather than treating
+      this Part as a replacement for it. Part C and this Part are complementary, not overlapping:
+      Part C is the deep spec for one module *kind*; this Part is the general discovery procedure
+      plus the catalog of primitives that cut across every kind.
+- [ ] **Cross-language mirror: `js/` must encode the same policy `src/` enforces for anything it
+      simulates.** `js/mock-server.js` (SPECIFICATION.md's website effort) is not "a JS server that
+      seems reasonable" — every validation/coercion/dispatch rule it implements must match the real
+      `src/` endpoint it stands in for, field for field, bound for bound. This is D.10's
+      within-project consistency principle applied across a language boundary: a `src/`-side policy
+      change and its `js/` mirror are one change, not two, and neither side is ever "done" while the
+      other still reflects the old behavior.
+
+## G.3 Re-validating the existing project against this Part
+
+- [ ] Whenever a new file lands in `src/` (already required by CLAUDE.md's own bird's-eye-scan
+      hard rule — this Part's catalog is now explicitly part of what that scan checks, alongside
+      Part D's checklist) or in `js/`, grep the whole of `src/` (and `js/` for a website-facing
+      change) for the *shape* of each G.2 primitive's problem, not just its name — a raw
+      `int(`/`float(` cast on a value that then gets compared against literal bounds inline; a
+      `try/except Exception` wrapping an `await` of a caller-supplied callable that doesn't end in
+      `self.pr.err_s(...)` + a `"Failed"`-shaped return; a dict literal containing `"res"`/`"code"`
+      keys built by hand instead of via `make_response()`; a plain module-level variable mutated
+      from more than one coroutine with no `Lockable`-family wrapper; a per-module log/error/event
+      mechanism that isn't `make_logger()`-based.
+- [ ] Each such finding is a candidate migration to the matching G.2 primitive, not something to
+      "leave as a known quirk" — flag it the same way D.10's own last bullet already requires for a
+      plain API-shape mismatch, then discuss before changing (this Part doesn't relax D.1's
+      "flag, don't silently change" convention for anything behavior-relevant).
+- [ ] This is a periodic, ongoing check across the whole project, the same standing cadence D.10
+      already establishes for general API-shape consistency — not a one-time pass to run once and
+      consider done. Re-run it whenever G.2 gains a new catalog entry too, since a primitive named
+      today may have earlier, still-unmigrated instances of its exact problem sitting elsewhere in
+      the codebase from before it existed.
+
+---
+
+# Part H — Website (JS/HTML/CSS) Architecture
+
+## H.1 Purpose and design constraints
+
+The website is the sensor station's browser-facing UI: show current measurement values, show
+current configuration, set configuration, issue commands, and show system/error state and history.
+Every REST endpoint's functionality must be reachable somewhere in the GUI — not necessarily a
+dedicated API-browser page, just reachable.
+
+Standing design constraints, all currently met:
+
+- No boilerplate — small HTML skeleton(s) only; look/content is generated dynamically by JS from a
+  per-device definitions file (H.5).
+- Same skeleton/JS for every device — `js/render.js`/`js/nav.js` contain zero device-specific
+  branching (H.4's "per-device page-scheme mechanism" row).
+- Full REST API coverage retained, nothing dropped versus the legacy site.
+- Stays small, lean, fully self-contained — no external runtime dependencies.
+- Stable and good-looking on major mobile/desktop browsers, light and dark schemes (H.7's
+  cross-browser coverage; dark mode is automatic-only, via `prefers-color-scheme`, no manual
+  toggle/stored preference — CSS custom-property tokens on `:root`, redefined under
+  `@media (prefers-color-scheme: dark)` in `html/style.css`).
+- Modern nav (hamburger/drawer menu) replacing the legacy bottom link list.
+- Build process: gzip each file individually at highest compression → wrap with `freezefs` →
+  include in the cross-compile/frozen-bytecode build → mount on startup → serve via Microdot as
+  gzip-compressed HTML (Part A.9).
+
+**Predecessor**: `html_raw/{general,arzi,dev,wozi}` is the legacy, still-deployed per-device site
+(four hand-written pages per device, cross-linked via a bottom `.links` bar, targeting the legacy
+`/sensors/status`, `/sensors/config`, `/sensors/cmd`, `/net/config`, `/net/cmd`, `/led/cmd`,
+`/led/config`, `/system/cmd`, `/system/status` REST shape — a PUT-with-`cmd`-envelope, `Led`-prefixed
+convention that predates `src/asy_webserver_service.py`, see Part A.8). The website described in
+this Part targets the refactored backend's REST shape from the start, not the legacy one; it is not
+a reskin of `html_raw/`. `html_stub/` (Part A.9) remains a separate, deliberately placeholder-shaped
+stand-in used by the generic frozen-HTML pipeline's own tests, independent of both.
+
+## H.2 Folder structure and module map
+
+New source lives in top-level siblings of `src/`/`tests/`, matching the repo's existing flat
+convention:
+
+```
+html/               Hand-written HTML skeleton(s) + CSS - the website source
+html/definitions/    Per-device definitions.json (schemaVersion/device/sections - see H.5) - shipped,
+                     frozen alongside html/ by the build pipeline (scripts/build_website.sh)
+js/                  Hand-written ES module JS source (poll-manager, mock backend, definitions
+                     loader/validator, generic renderer, templates, nav) - see H.8
+tests_js/            JS unit tests (Vitest, see H.8)
+mockdata/            Prototype-only mock backend fixtures - NOT shipped, NOT part of the frozen-HTML
+                     pipeline; consumed only by js/mock-server.js for local viewing without a real
+                     backend/digital-twin
+```
+
+`package.json`/`package-lock.json` at repo root (dev-tooling only, `node_modules/` gitignored)
+mirror `pyproject.toml`'s role: shipped code stays hand-written plain files, never restructured into
+a build/bundle output. `npm run preview` serves the repo root via `python3 -m http.server 8000` —
+open `http://localhost:8000/html/index.html?device=wozi` (or `?device=dev`) to click through the
+live prototype locally, against `js/mock-server.js`'s fake backend.
+
+**JS modules**: `app.js` (**prototype-only** entry point: mock fetch, `?device=` switch,
+dev-server-relative paths — never shipped), `main.js` (the **real production** entry point — no
+mock install, single build-fixed device via a plain `definitions.json` fetch, no `?device=`
+branching; staged as `app.js` in the real build — see below), `definitions.js` (loader + strict
+validator + JSDoc type definitions for the whole schema, no DOM code), `field-format.js` (pure
+field-value formatting, no DOM dependency — split out of `templates.js` so Node-context test
+harnesses can reuse it without pulling in DOM types, see H.8.1), `render.js` (section/group/field
+controller — fetch/validate/submit logic, delegates all DOM building to `templates.js`),
+`templates.js` (the DOM/markup-building layer — owns every element/class/order choice, see H.3),
+`nav.js` (drawer wiring), `poll-manager.js` (single-flight request queue + shared fetch-timeout
+helper), `mock-server.js` (**prototype-only** fetch-intercepting fake backend, answers the same six
+REST paths/shapes A.8 documents — a placeholder for a real digital-twin backend, never shipped).
+
+**`scripts/build_website.sh <device> [output_path]`** stages exactly one device's real site
+(matching `html/definitions/<device>.json`) into a temp dir, then calls `build_frozen_html.sh` via
+`HTML_SRC_DIRS`: `html/index.html` (with `html/style.css` and the device's own `definitions.json`
+inlined directly into it — see H.7), the production `js/` module set concatenated into one bundled
+`js/app.js` (H.7), and `js/main.js` renamed to `app.js` within that bundle's role. `js/mock-server.js`
+and `js/app.js` (the prototype entry) are never staged. Staging the production entry point under the
+name `app.js` means `html/index.html`'s one `<script type="module">` tag
+(`import { startApp } from "../js/app.js";`) never needs a build-time text rewrite — that one import
+path resolves identically in `npm run preview` (to the separate prototype `js/app.js`) and in a real
+build (to the staged bundle), since relative-URL resolution keys off the document's own URL in both
+cases. `build_website.sh`'s file lists are cross-checked against `html/`'s and `js/`'s real directory
+contents by `tests_scripts/test_build_website_sh.py`, so a file added to either later fails the
+suite instead of silently shipping or silently staying unshipped.
+
+**Splitting a module**: `scripts/build_website.sh`'s bundler strips local `import` lines but never
+strips `export` lines — two production files that both `export` the same name would collide into a
+duplicate-export `SyntaxError` once concatenated. A module split out for reuse (like
+`field-format.js`) must therefore never be *re-exported* by another production file; every importer
+imports it directly.
+
+**`html/index.html`'s inline bootstrap `<script type="module">`** cannot be extracted into its own
+`js/` file for the reason above (it must keep importing the literal path `"../js/app.js"`, which
+only resolves correctly because it is never rewritten). ESLint still covers it in place —
+`eslint-plugin-html` (wired into `eslint.config.js`'s `html/**/*.html` block) parses and lints the
+inline script with the same rules as every other browser JS file; `npm run lint` includes `html/`
+accordingly. `tsc`'s JSDoc-based type-checking has no equivalent mechanism for inline `<script>`
+blocks and does not cover it — accepted, since the inline script is a thin, low-logic bootstrap
+(element lookups plus one `startApp(...)` call) rather than a place non-trivial type errors are
+likely to hide.
+
+## H.3 Layering: visual vs. mechanics (standing requirement)
+
+The REST API and overall concept are expected to stay stable for a long time; the visual design is
+expected to be revisited — restyled, reordered, regrouped — independently of that, more than once.
+**A purely visual/layout redesign must never require editing data-fetching, validation, submission,
+or poll-coordination code.**
+
+- **Visual layer** — owns colors, spacing, typography, dark-mode tokens (`html/style.css`) **and**
+  DOM structure/order/nesting/CSS-class choices (`js/templates.js`). `js/templates.js` also owns any
+  interactivity that's purely cosmetic and never touches the network or app state — a toggle button
+  flipping its own On/Off label, an errcount rollup expanding/collapsing its own filtered module
+  list. A redesign touches these two files (plus, for a schema/labeling change, the
+  `definitions.json` content itself — H.5) and nothing else.
+- **Mechanics layer** — owns data fetching, polling coordination, input validation, PUT submission,
+  and anything that calls the REST API or the poll-manager: `js/poll-manager.js`,
+  `js/mock-server.js`, `js/definitions.js` (pure — no DOM code at all), and the non-presentational
+  parts of `js/render.js`/`js/nav.js` (the controllers). None of these files build DOM elements,
+  choose CSS classes, or decide element order/nesting.
+
+**The contract between them**: controllers never reach into a template's internals by structure (no
+"third child of the second div") — only by the `data-*` attributes and CSS classes the templates
+already expose, which is the one thing a redesign must keep stable (renaming a hook needs a matching
+one-line change on the controller side, the same way renaming a REST field needs a matching change
+in `definitions.json`):
+
+| Hook | Set by (`js/templates.js`) | Read by (controller) |
+|---|---|---|
+| `[data-field-key]` | every field's input/select/toggle-button/readonly span | `render.js` collects submitted values, updates readonly text/current-value captions on poll |
+| `[data-sub-field-key]` | a composite field's per-subfield input | `render.js` collects the composite's nested PUT body |
+| `[data-current-value-for]` | a writable field's "Current value: …" caption (number/string fields only) | `render.js` refreshes it after a poll/Apply |
+| `[data-group-key]` | a field-group's card (both `buildFieldGroupCard()` and `buildErrcountGroup()` set it themselves) | `render.js` locates the card to re-render/restyle |
+| `[data-field-wrapper-key]` | each field's own wrapper (distinct from `[data-field-key]`, which must keep pointing at the control itself) | `render.js` colors each field's own per-result outcome independently of the group card's own status |
+| `[data-apply-status]` | *(unset by templates.js; only ever written by the controller)* | CSS alone decides what each status value looks like (`html/style.css`'s `[data-apply-status="…"]` rules), on both the group card and each field wrapper |
+| `.apply-button` | the submit button | `render.js` attaches the real (networked) click handler |
+| `.errcount-rollup .action-button` ("Show flagged"/"Show all") | `buildErrcountGroup()`'s two filter buttons | *(no controller involvement — purely cosmetic expand/collapse, wired entirely inside `js/templates.js` itself)* |
+| `[data-section-key]` | each nav-drawer link | `nav.js` attaches the section-select click handler |
+
+Controllers only ever set the semantic `data-apply-status` value (`"valid"`/`"invalid"`/
+`"unchanged"`/`"failed"`) — never a color, class, or style directly. What that status *looks like* is
+entirely `html/style.css`'s decision.
+
+**In-place refresh only ever touches a number/string field's caption.** `render.js`'s `paint()`
+"existing card" branch (the one a background poll or a post-Apply `fetchOnce()` triggers) updates
+`[data-current-value-for]` captions and readonly spans only — it never rewrites a toggle button's own
+On/Off state or a `<select>`'s selected option. Proving a toggle/enum field's persisted value
+actually round-tripped therefore needs a genuine full remount (a nav-drawer click — `main.js`'s
+`selectSection()` always tears down and rebuilds, even for the already-active section), not an
+in-place poll. The one deliberate exception to "hooks are `data-*` attributes": `buildSectionShell()`
+returns `{grid, errorBanner}` directly to its one caller (`render.js`'s `renderSection()`) rather than
+making the controller look `errorBanner` up by attribute — there's only ever one error banner per
+rendered section, handed back at the exact point it's created, so a lookup hook would add indirection
+with no reuse benefit; the controller still only ever touches it by toggling the `.hidden` utility
+class and setting `.textContent`, never a color or custom style.
+
+## H.4 Architecture decisions
+
+| Topic | Current behavior | Rationale / notes |
+|---|---|---|
+| Page model | Single-page shell, JS-driven view switching | One HTML skeleton; hamburger/three-dot menu swaps sections via JS, no page reload. Makes the poll-manager's single-active-poll rule trivial to enforce globally. |
+| Definitions file | One single JSON per device, fetched once | Covers nav, page/field labels, units, valid ranges, special values, etc. Concrete schema in H.5. |
+| REST target | `src/asy_webserver_service.py` API (Part A.8) | Six endpoints (`/measurements`, `/sensors`, `/networking`, `/system`, `/status`, `/notification`), sparse-body PUT, no `cmd` envelope, no `Led`-prefixed fields. |
+| Nav grouping | Mirrors the 6 REST endpoints 1:1 | Sections: Measurements, Sensors, Networking, System, Status, Notification. |
+| History depth/pagination | Counts always visible; full history on demand; **no pagination/truncation** | Per-module error-count/last-error always shown. Clicking a module's error-count entry expands its full `history` array as-is — a realistic history depth stays well under 20 entries. History rides along in the same `/status` response (fetch-once-per-poll), not a separate paginated endpoint. |
+| Poll coordination | One shared JS poll-manager module (single-flight queue) | Single source of truth for "is a request in flight." The measurements group and the status/settings group are never polled concurrently by design (a page only ever needs one or the other); if that ever becomes unavoidable, a new poll must wait until the pending request has resolved **and its connection has fully closed** before starting — the device has very few available sockets (H.7). Every fetch (recurring polls and one-time startup loads alike) goes through a shared `AbortController`-based timeout so nothing can hang forever. |
+| API reachability | No dedicated API-browser page | Every endpoint's functionality just needs to be reachable somewhere in the ordinary GUI (satisfied by the nav-mirrors-endpoints decision above), not a Swagger-style reference/try-it tool. |
+| Definitions validation | Strict — visible error state on mismatch | The JS checks the fetched definitions file's shape/version before rendering, including `pollGroup` (must be `"live"`/`"settings"`/`"none"`) and both poll-interval fields (must be a positive number) — a mismatch surfaces a visible error banner rather than silently rendering something broken or skipping unknown fields. |
+| Landing page | Measurements page | Matches legacy's default landing page. |
+| Card/nav visual treatment | Modernized flat cards; slide-in drawer nav | Cards: soft border/shadow (not legacy's flat grey fill), real light/dark tokens. Nav: a slide-in drawer opened by a hamburger button, listing the six section links plus the device name, no other global actions in it. |
+| Rendering safety | Server-supplied text via `textContent` only, never `innerHTML` | Standing coding guideline for all JS — keeps the page XSS-safe by construction. |
+| Numeric int/float coercion & validation | `config_manager.py`'s `type_or_range_error()`/`coerce_numeric()`, mirrored in `js/mock-server.js` | Canonical policy for every numeric field, schema-backed or dispatch-only alike — see Part A.8 (backend) and Part G (the reuse pattern this establishes for any new numeric field). A float-typed field's `definitions.json` entry sets `"float": true`. |
+| Dispatch-only PUT fields | `SystemCmd`, `PauseTime`, `lightCmdLED`, `ResetErrors` — the complete set | None of these are persisted settings: each re-dispatches fresh on every submission (never reports `"Unchanged"`), and each has its own validation shape (H.6). `js/mock-server.js` excludes all four from its generic sparse-PUT persistence path. An enum field with no value matching the current GET-reflected state (true for every dispatch-only enum, since these are never returned by GET) renders with a blank placeholder option selected by default — never silently defaulting to the first real option — so an untouched Apply click submits nothing rather than an unintended command. |
+| PUT-result coloring | 4-state vocabulary (`Valid`/`Unchanged`/`Invalid`/`Failed`), colored at two levels | Matches the real backend's own vocabulary (`base_classes.py`/`api_response.py`). Colored on the group card as a whole (worst status across the group — `Invalid`/`Failed` always outrank `Valid`/`Unchanged`; between the two non-problem outcomes, `Valid` outranks `Unchanged`) **and** on each individual field's own wrapper (only for fields actually present in the response's `result`; an untouched, sparse-omitted field keeps no stripe). A whole-request failure (network/communication error) marks every field in that submission `Failed` individually, not just the card border. |
+| PUT/GET error handling | Every fetch treats a non-2xx status, a null body, or `res:"ERR"` as a whole-request failure, surfacing the server's own `descr` text | Applies uniformly to polls and submissions. A field the visitor submitted but that doesn't come back in the response's `result` is shown `"Failed"` (client-side defense; the matching server-side contract — a failing settings-group hook never silently drops fields either — is stated in H.6). A GET failure shows a per-section error banner without clearing the stale-but-still-useful data already on screen, clearing again on the next successful poll. `/status`'s own PUT (`ResetErrors`) never returns a per-field `result` at all — every submitted field there is marked `Valid` directly once a request-level failure has been ruled out, not run through the generic per-field reconciliation above. |
+| Per-device page-scheme mechanism | The definitions file itself | `js/render.js`/`js/nav.js` contain zero device-specific branching — every card, field, and nav entry comes from the fetched `definitions.json`. All devices share the same `html/index.html` + `js/` tree, pointed at different definitions files. |
+| Known accepted gap: empty-string fields | Cannot currently be set to an empty string via this UI, for any field | The sparse-PUT convention (a blank input means "untouched, omit from the body") makes an explicit empty-string submission structurally impossible — affects `PW`'s real "configure an open network" sentinel (`asy_wifi_service.py`'s `_VAL_PW`). Accepted as-is. |
+
+**`js/mock-server.js` mirrors every real backend quirk it fakes, not just the happy path** — the
+prototype-only mock backend is only useful for local development if it behaves like the real one,
+including its edge cases. Confirmed instances: `/networking`'s `PW` field is masked as `"********"`
+on every GET response (`_mask_pw()`'s overlay in `src/asy_wifi_service.py`, mirrored in
+`handleGet()`); SCD30's `ForceCalRef` always reports `400` on GET regardless of what was applied (a
+real sensor register limitation — see `src/asy_scd30_driver.py`'s own docstring); `ContMeas` and
+`SGPResetVOC` are never reported by GET at all (both are command-only trigger fields — C.5.2.1 — with
+no persisted value to read back). `js/mock-server.js` dispatches all of these separately from its
+generic sparse-PUT/store-and-echo path used by every ordinary settings field, and `tests_js/
+mock-server.test.js` covers each explicitly rather than relying on the generic PUT-matrix tests
+(whose own categories — "resubmit ⇒ Unchanged", "valid value ⇒ reflected in the next GET" — don't
+hold for any of these).
+
+## H.5 Definitions JSON schema
+
+One JSON file per device (`html/definitions/<device>.json`), shipped and frozen alongside `html/` by
+the build pipeline (H.2). `js/definitions.js` documents this shape via JSDoc typedefs and strictly
+validates it at load time (H.4's "Definitions validation" row).
+
+- **Top level**: `{schemaVersion, device, landingSection, defaultPollIntervalMs, sections[]}`.
+- **`section`**: mirrors one of the six REST endpoints — `key` matches the endpoint name,
+  `rest: {get, put?}`, `pollGroup: "live"|"settings"|"none"` — and holds `groups[]`.
+- **`group`**: normally a `FieldGroup` (`key`, `label`, optional `submit`/`submitLabel`, `fields[]`).
+  Status's error section is instead the distinct `ErrcountGroup` (`kind: "errcount"`, `modules[]`),
+  since its shape (per-module counter + optional history) doesn't fit the field-list model.
+- **`FieldDef`**: a `kind` (`readonly | number | string | enum | toggle | composite`) plus
+  kind-specific metadata (`min`/`max`, `minLength`/`maxLength`, `mask`, `options`, `specialValues`,
+  `subFields`, `onLabel`/`offLabel`, `float`).
+- See `html/definitions/wozi.json` and `html/definitions/dev.json` for two worked, real examples
+  (wozi's SCD30/SGP40/BMP388 vs. dev's SCD30/SGP40/SHTC3/MPRLS/ISL29125 — deliberately different
+  sensor sets, field kinds, and value ranges). `dev.json`'s SHTC3/MPRLS/ISL29125 entries are a
+  projection from the same pattern every promoted sensor follows, not confirmed against real driver
+  code — these sensors have no real driver under `src/` yet; resolves naturally once a future
+  session promotes those drivers.
+
+**Autogeneration is not yet built.** The definitions file is currently hand-written; a build-time
+generator deriving it from tagged schema comments in the real `.py` source (before `mpy-cross` strips
+comments) is a deferred future direction — see `BACKLOG.md`'s "Website definitions-file
+autogeneration" entry for the worked grammar sketch this direction already has.
+
+## H.6 Errcount (Status section) and dispatch-only field conventions
+
+- **Errcount module list**: `{key, label}` per entry — one per registered module, plus each module's
+  own `CFGMGR_<name>` config-store instance (except SCD30, which persists to the sensor's own NVM,
+  not a `ConfigManager`, so it has no config-store error source), plus the webserver's own
+  `WEBSERVER` entry — matching `asy_webserver_service.py`'s `_build_errcount()` shape exactly.
+  Looked up directly in `/status`'s `errcount[key]` response at render time, no transformation beyond
+  the key lookup.
+- **History entry shape**: `{"num": <raw errno>, "type": "N"|"E"|"W"}` per slot, always a fixed
+  `history_length`-long list (never shorter — a healthy module's history is all `"N"` placeholders,
+  not an empty array). No per-entry timestamp anywhere in the system. `type` is never rendered as
+  text — its only job is to color `num` (green/yellow/red for no-error/warning/error) via
+  `data-err-type`, styled entirely by `html/style.css`.
+- **Errcount UX**: rendered in the same `.card` shell every other field group uses. Starts fully
+  collapsed to a rollup ("N modules with errors" / "M modules with warnings") plus two filter buttons
+  ("Show flagged"/"Show all"); revealing a module row shows its history immediately, no further
+  per-row click needed. Wired entirely inside `js/templates.js` (purely cosmetic expand/collapse, no
+  controller/network involvement) — including preserving which filter state was showing across a
+  live poll's card rebuild (`js/render.js`'s `paint()` re-applies the previously active filter button
+  to the freshly built card).
+- **Dispatch-only field semantics** — `SystemCmd`, `PauseTime`, `lightCmdLED` (r/g/b/t composite,
+  bounds 0-255/0-255/0-255/0.5-60.0, matching legacy's own bounds exactly and rejecting — never
+  clamping — a value outside them), `ResetErrors`: `"Invalid"` only for a structurally wrong payload
+  (non-dict for `lightCmdLED`, not in the allowed set for `SystemCmd`, out of type/range for
+  `PauseTime`); anything else wrong (missing/non-numeric/out-of-range subfield) reports `"Failed"`; a
+  well-formed submission always reports `"Valid"`, including on an identical repeat (never
+  `"Unchanged"` — these re-dispatch fresh every call). `js/mock-server.js` mirrors this exactly via
+  `dispatchRangedAction()` (`PauseTime`) and `dispatchLightCmdLed()`, writing straight to each field's
+  real destination state and never persisting into the generic settings store.
+- **Server-side settings-group failure**: if a `SettingsGroup`'s post-write hook raises, every field
+  that group actually attempted is reported `"Failed"` in the PUT response — never silently dropped —
+  while the overall envelope still reports success (per-field detail carries the failure, matching
+  every other endpoint's own convention of never failing the overall request for per-field detail).
+
+## H.7 Digital twin integration
+
+The website is wired into `digital_twin/` alongside every sensor/module that has a real REST/API
+connection there — the same generalized "any new module joins the twin once it can complete a real,
+observable chain" rule Part A.10 states for drivers and common modules, applied here to the website
+itself. `scripts/run_digital_twin_ci.sh` (and therefore `digital-twin-e2e`'s CI job) and
+`scripts/run_unix_port_integration.sh` build the real, production `wozi` website via
+`scripts/build_website.sh wozi` — the twin serves the real site by default, for the one device
+`src/` currently assembles, matching what real deployed hardware serves. `npm test`/`npm run
+test:coverage` build it too, automatically, via `package.json`'s `pretest`/`pretest:coverage` hooks —
+the single source of truth for "build before test," shared by CI and local dev, so a plain `npm test`
+on a fresh checkout always exercises the real site rather than a stale/placeholder one.
+`tests_js/_live_twin_command.js`'s own skip-guard only checks that the MicroPython interpreter is
+built, not that the website is current — the `pretest` hook is what actually keeps that true, not
+the guard.
+`scripts/build_frozen_html.sh`'s own `html_stub` default (Part A.9) is unchanged and still used
+elsewhere (`scripts/test.sh`'s `test_frozen_html_integration.py` coverage of the generic pipeline).
+
+**Build-chain integration proof, two layers**: `tests/test_website_build_integration.py` (a
+MicroPython Unix-port integration test, mirroring `test_frozen_html_integration.py`) proves the
+staged site mounts and serves correctly on its own — nested `js/*.js` paths, `definitions.json` at
+the root, the real `main.js` content (not the prototype) at `/js/app.js`, every prototype-only path
+404ing — without booting the full application. `tests/test_digital_twin_real_website_integration.py`
+closes the remaining gap: neither that test nor `test_frozen_html_integration.py` boots the real
+`sensortask_wozi.build_system()` object graph, so neither proves the real, *booted* system actually
+serves the real website. This file pre-registers `sys.modules["frozen_html"]` to the real website
+build before `import sensortask_wozi` runs (the same "check `sys.modules` before the filesystem"
+import-resolution rule CPython uses too), boots the real object graph against `digital_twin/`'s
+buses, and drives real HTTP at it.
+
+**Living-integration checklist**: Part C.11 point 9 (the driver-promotion checklist) and
+`digital_twin/README.md`'s "Adding a new chip fake" list both require updating
+`html/definitions/<device>.json` for any device a new driver/module's fields should appear on,
+whenever that module gains a live REST connection — same session as the digital-twin extension
+itself, not deferred.
+
+**Live-backend browser test**: `tests_js/live-backend.test.js` drives the real website's own JS (not
+`js/mock-server.js`) in a real Chromium browser against a real, live-booted digital twin subprocess —
+opens the real page, submits a real PUT through the real UI, asserts the backend's response reflects
+in the UI. `tests_js/_live_twin_command.js` is a server-side Vitest Commands-API function
+(`vitest.config.js`'s `test.browser.commands`) that spawns the twin subprocess and drives a second
+real Playwright page (`context.newPage()`) at it directly — needed since Vitest's browser-mode `page`
+object has no API for navigating to an external origin (`vitest-dev/vitest#7875`, open upstream).
+`tests_js/live-backend-put-matrix.test.js` extends this to every real writable field in `wozi.json`
+(the only device the twin ever boots as), verified both same-view (the caption/control right after
+Apply) and via a full from-scratch remount (needed because only a number/string field's caption
+self-refreshes in place — H.3's "in-place refresh" note).
+
+**Connection-concurrency ceiling and mitigations**: the real rp2040/lwIP build has a hard ceiling of 5
+simultaneously active TCP connections (`MEMP_NUM_TCP_PCB=5`, lwIP's own compile-time default, no
+project override). A page load is kept well under that ceiling two ways, both at build time
+(`scripts/build_website.sh`'s own "Bundling"/"Inlining" comments have the full mechanism):
+
+- **Bundling**: the seven production JS modules are concatenated into one `js/app.js` bundle — no
+  real bundler, a plain dependency-free text concatenation (`import`/`export` lines dropped/left
+  as-is), safe specifically because every production `js/*.js` file uses only simple
+  same-relative-path imports with no default exports, dynamic imports, re-exports, or cross-file
+  naming collisions.
+- **Inlining**: `html/style.css` and the device's own `definitions.json` are embedded directly into
+  the staged `index.html` — a `<style>` block, and a `<script type="application/json">` element with
+  every literal `<` escaped to `<` (since `<script>` is an HTML raw-text element that a literal
+  `</script` substring inside the JSON would otherwise prematurely close).
+
+A page load is 2 connections (`index.html` + `app.js`), down from up to ~9 before this.
+`js/definitions.js`'s `loadDefinitions()` accepts an optional already-parsed DOM element and uses it
+in preference to fetching, falling back to a real fetch identically to before whenever that element
+is absent (always true in dev/preview mode, where `html/index.html` is never inlined).
+`src/asy_webserver_service.py`'s `max_connections` is `4` (raised from an original `3`), one more
+slot of the headroom the bundling/inlining above freed up under the same 5-PCB ceiling.
+
+HTTP keep-alive/persistent connections are deliberately not implemented: vendored `ext/microdot.py`
+always closes the connection after exactly one request by design (confirmed against its current
+upstream `main` branch too, not just the pinned tag — no keep-alive support exists there either), and
+this project's own hard rule never touches that file's behavior (CLAUDE.md's vendoring policy).
+Persistent connections would have to be built entirely in application code around Microdot's own
+request lifecycle, which proved fragile in practice; the bundling/inlining reduction above achieves
+the same practical goal without touching Microdot's behavior at all. Raising the rp2 firmware's own
+`MEMP_NUM_TCP_PCB` compile constant is a firmware-level change, out of scope for a website-only fix.
+
+The `max_connections` ceiling only ever rejects a *new* arrival (silently, before any response is
+written) — it never touches an already-open connection, and a stale one is reclaimed only by its own
+per-call/outer-cap timeout. `tests/test_digital_twin_webserver_concurrency.py` covers this with
+genuinely concurrent real-socket connections.
+
+### Cross-browser coverage
+
+Vitest's own browser mode is wired to a single provider (Playwright), which can only automate
+Chromium-family browsers — it cannot drive a real, unpatched WebKit or Firefox at all.
+`scripts/cross_browser_smoke.mjs` is a standalone (non-Vitest) script that closes this gap: it boots
+the real digital twin and drives the real production website through **WebKitGTK** (real WebKit, via
+`WebKitWebDriver`'s own W3C WebDriver server — installed by `apt`'s `webkit2gtk-driver`), **real
+Firefox** (Gecko, via Mozilla's own `geckodriver` — installed from conda-forge via a standalone
+`micromamba` binary, since Ubuntu's `firefox` apt package is a snap-only stub with no working snapd in
+this project's CI/sandbox environments), and **real Microsoft Edge** (Chromium-family, installed from
+Microsoft's own apt repo, driven the same way as Chromium via Playwright's `executablePath`) — plus
+Playwright's own Chromium, included so every engine goes through the identical check. Each engine
+runs at both a desktop-sized and a mobile-sized viewport: nav to the live site → open the nav drawer
+→ go to Sensors → edit one field → Apply → confirm the real backend validated it and the UI reflects
+it (both the `data-apply-status` attribute and the current-value caption, which updates via a
+separate, slightly later GET round trip — `render.js`'s `onApplied()` → `fetchOnce()` — so a correct
+check has to poll for both together, not just the former).
+
+Deliberately narrow scope, not a second exhaustive PUT matrix: each real WebDriver round trip costs
+low single-digit seconds, so replicating the full field-by-field matrix across three more engines
+would cost many extra CI minutes for marginal confidence beyond what engine diversity alone already
+buys. WebKit/Firefox have no device-emulation API over plain WebDriver (no touch synthesis, no mobile
+UA) — their "mobile" viewport is a real window resize only, confirmed to still land under the site's
+own 640px responsive breakpoint (`html/style.css`) but not an exact device match; Chromium/Edge get
+Playwright's fuller `devices` preset emulation (real touch, exact device viewport, mobile UA).
+
+`scripts/setup_cross_browser_toolchain.sh` installs all three non-Chromium-Playwright toolchains
+(idempotent, safe to re-run) and is shared between CI (`web-cross-browser-smoke` job in
+`.github/workflows/ci.yml`) and local dev. A missing engine binary is skipped with a clear message
+rather than failing the whole script — CI always installs all three, so a skip there is itself the
+bug to chase; a local run without the full toolchain just gets partial coverage.
+
+Two process-hygiene gotchas worth keeping in mind for anything similar: (1) spawning
+`WebKitWebDriver`/`geckodriver` via the `xvfb-run` wrapper script can leave both the driver process
+and its own `Xvfb` still running after `SIGINT` is sent to the wrapper's PID alone — spawn `Xvfb`
+directly instead and kill both processes explicitly. (2) reading an applied result immediately after
+`data-apply-status` appears can occasionally read back the *previous* check's stale caption instead
+of the one just applied, since the caption's own GET round trip can complete slightly after the PUT's
+— poll for both together instead.
+
+## H.8 CI / tooling stack
+
+Mirrors Python's role split (ruff/mypy/pytest), not just "any linter/tester":
+
+| Python role | JS/HTML/CSS equivalent | Notes |
+|---|---|---|
+| ruff (lint) | **ESLint** (flat config, `eslint.config.js`) | Beyond `eslint:recommended`: `array-callback-return`, `no-await-in-loop`, `no-constructor-return`, `no-duplicate-imports`, `no-promise-executor-return`, `no-self-compare`, `no-template-curly-in-string`, `no-unmodified-loop-condition`, `no-unreachable-loop`, `no-use-before-define`, `require-atomic-updates`. Covers `js/`, `tests_js/`, `scripts/*.mjs`, and (via `eslint-plugin-html`) the inline script in `html/index.html` — see H.2. |
+| mypy (type-check) | **TypeScript `checkJS` mode** (`tsc --noEmit`) reading JSDoc annotations in plain `.js` | Pure dev-time checker, zero transpilation. Two separate invocations — `tsconfig.json` (browser context, DOM lib) and `tsconfig.node.json` (Node context, `@types/node` only, no DOM lib) — since a Node-context file (`tests_js/_live_twin_command.js`, `tests_js/_live_matrix_command.js`, `scripts/cross_browser_smoke.mjs`) and a browser-context file can't correctly share one `tsc` program's ambient globals (see H.8.1). |
+| MicroPython Unix-port interpreter for tests (real environment, not CPython+stubs) | **Vitest in real-browser mode** (`@vitest/browser-playwright`'s `playwright()` provider, against real Chromium) | Deliberately not jsdom — same "real engine over a DOM/interpreter shim" principle Part E.1 argues for the Python side. `testTimeout: 20000` is an explicit hang-avoidance backstop, mirroring the Python side's own standing "hanging tests are never allowed" practice. |
+| `scripts/test.sh --coverage` (non-gating) | `@vitest/coverage-v8` + non-gating `npm run test:coverage` | Report-only, no threshold enforced anywhere. |
+| — | **html-validate** for `html/`'s skeleton(s); **Stylelint** for the CSS | Lightweight npm packages, no JVM dependency. |
+
+**CI mechanism**: the single `.github/workflows/ci.yml` carries a `web-changes` `dorny/paths-filter`
+gate job whose output feeds `if:` conditions on `web-lint-and-typecheck` (ESLint + `tsc --noEmit` +
+html-validate + Stylelint) and `web-unit-tests` (Vitest browser mode) — deliberately not a second
+workflow file with its own trigger-level `paths:` filter, which can leave a PR stuck on a required
+status check that never fires because the whole workflow never triggered. Python CI keeps running
+only against its existing paths; web CI runs only against `html/`, `js/`, `tests_js/`,
+`scripts/*.mjs`, `mockdata/`, plus its own config files (`package.json`, ESLint/TS/Vitest/
+html-validate/Stylelint configs, `.nvmrc`). Root `.nvmrc` pins the Node version, read by
+`actions/setup-node`'s `node-version-file` in CI.
+
+Manual local-trigger instructions for the whole web-CI tier live in README.md's "Website tooling
+(JS/HTML/CSS)" section (`npm ci` + `npm run lint`/`typecheck`/`lint:html`/`lint:css`/`test`) — the
+JS-side equivalent of that same README's "Code quality tooling" section for Python.
+
+### H.8.1 JSDoc typedef imports across the browser/Node split
+
+A JSDoc `@typedef {import("./x.js").Y}` reference pulls the *entire* referenced file into whichever
+type-check program (`tsconfig.json`, browser context, or `tsconfig.node.json`, no `"dom"` lib) does
+the importing, even when only one exported type is used — not just that type. A Node-context module
+(e.g. a Vitest Commands-API file under `tests_js/`) that references a shape from a DOM-context module
+(`js/definitions.js`, `js/templates.js`) this way inherits that module's own DOM-typed JSDoc too, and
+fails to type-check on it. **Convention**: a Node-context module needing a shape from a DOM-context
+one declares its own narrow, structural local typedef instead of importing the real one — a real
+object satisfies it structurally either way. `js/field-format.js`'s own `FormattableField` typedef
+(intersected with `Record<string, unknown>` so a real, wider object literal doesn't trip
+excess-property checking at call sites) is the worked example.
+
+**Testing an async DOM refresh** (live-backend browser tests, `tests_js/_live_matrix_command.js`):
+poll for the exact expected rendered text/state, never a fixed sleep. A number/string field's
+"Current value" caption refreshes via a real, separate async GET round-trip (`js/render.js`'s
+`onApplied()` → `fetchOnce()`) after the click handler's own synchronous `data-apply-status` write —
+a fixed delay can catch a still-in-flight *previous* case's caption instead of a real race. Poll the
+DOM for the specific text a real GET response should produce (computed via `formatFieldValue()`) up
+to a generous bounded timeout instead.

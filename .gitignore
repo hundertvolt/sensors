@@ -2,6 +2,20 @@
 config.json
 modules/config.json
 
+# JS dev-tooling (package.json/package-lock.json) - node_modules is reinstallable via `npm ci`,
+# same "dev-tooling only" split as .venv/ above. Not meant to be committed.
+node_modules/
+
+# Vitest browser-mode failure screenshots (js/tests_js) - regenerated per run, not build output.
+.vitest-attachments/
+tests_js/__screenshots__/
+
+# `npm run test:coverage` output (@vitest/coverage-v8) - non-gating, report-only (mirrors the
+# Python side's scripts/test.sh --coverage, see CLAUDE.md's "Code quality tooling"), regenerated
+# every run, not meant to be committed.
+coverage/
+coverage-output.txt
+
 # Build output (see build-*.sh)
 python/build/
 firmware.uf2

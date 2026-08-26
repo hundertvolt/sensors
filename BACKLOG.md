@@ -24,12 +24,17 @@ constraints.
   are all currently clean of them (confirmed: `scripts/lint.sh` reports zero findings, after
   `improved-quality/`'s own tracked bare-except debt was deleted along with the rest of that
   directory).
-- **No CI firmware-build stage yet.** `build-*.sh`'s hardcoded `/home/nico/rpi_pico/...` path is
-  fixed (each script now captures its own `$(pwd)` before any `cd`, matching how the script has
-  always assumed it's invoked - from inside `py-include/`, real dir or symlink, regardless of
-  machine - and passes that as `FROZEN_MANIFEST`; verified with a real end-to-end
-  `build-wozi.sh` run producing a successful `firmware.elf` link against the pinned v1.28.0
-  toolchain). Still open: wiring an actual firmware-build stage into CI itself.
+- **No CI firmware-build stage yet for the legacy `build-*.sh` scripts.** `build-*.sh`'s hardcoded
+  `/home/nico/rpi_pico/...` path is fixed (each script now captures its own `$(pwd)` before any
+  `cd`, matching how the script has always assumed it's invoked - from inside `py-include/`, real
+  dir or symlink, regardless of machine - and passes that as `FROZEN_MANIFEST`; verified with a
+  real end-to-end `build-wozi.sh` run producing a successful `firmware.elf` link against the pinned
+  v1.28.0 toolchain). Still open: wiring an actual firmware-build stage into CI for these legacy
+  scripts specifically. The *new*, `src/`-based toolchain (`scripts/build_firmware.py`,
+  `SPECIFICATION.md` Part B.11) already has this: `.github/workflows/ci.yml`'s `firmware-build-verify`
+  job builds a real `firmware.uf2` end to end on every push/PR - not the same gap, since the two
+  build paths (legacy `python/`+`build-*.sh` vs. `src/`+`scripts/build_firmware.py`) are entirely
+  separate pipelines.
 - **Mypy shall be configured to disallow `Any` types** (owner-specified, not yet implemented). The
   closest existing option is `disallow_any_explicit`; `pyproject.toml` deliberately stops short of
   it and the other `--strict`-only checks today. Blast-radius check (re-run, not stale): `Any`
@@ -48,30 +53,6 @@ constraints.
   re-probe of anything — and no task supervisor for FRAM specifically. Whoever wires this up must wrap
   the calls in the same `try/except Exception` discipline this file's other methods already use —
   `asy_fram_driver.py` doesn't catch its own inherited `RuntimeError` path on these three itself.
-- **Every deliberate system reset (reboot, bootloader entry, or a deliberate watchdog-starve
-  give-up) must pause FRAM operations first and give it a brief wait before the reset actually
-  happens** — a real risk (mid-write/mid-read power loss, MB85RS64V reads are destructively
-  read internally per `SPECIFICATION.md` Part A.4) that a reset triggered while a FRAM transaction is
-  in flight could corrupt data, same class of concern as the dual-copy/status-byte design
-  `asy_fram_manager.py` already guards against for power loss but not specifically for a
-  self-triggered reset racing an in-progress transaction. Owner-flagged as important for the final
-  wiring-up of this refactor's task/reset plumbing, likely needing rework across several files, not
-  just one. **Current state, confirmed by reading `system_service.py` directly**: `_reboot()`
-  (backing both `reboot_system()`/`reboot_bootloader()`) already calls `self.storage_pause(True)`
-  before arming the `_RESET_DELAY`-second (4s) delayed reset timer, and already does so before the
-  `_force_watchdog_starve` fallback too (armed when the reset timer itself can't be allocated) - so
-  the one existing deliberate-reset path already pauses-then-waits. Confirmed via grep that
-  `machine.reset()`/`machine.bootloader()`/`WDT()` have no other call site anywhere in `src/`
-  today. **Both open sub-items closed**: (1) margin is sufficient - the FRAM
-  bus runs at 1MHz (`asy_spi_driver.py`'s default `baudrate`) over a `max_size=0x2000` (8KB) chip,
-  and no single chunk approaches that whole size (individual chunks are tens of bytes), so even a
-  two-block write plus CRC-verify readback completes in low single-digit milliseconds - three
-  orders of magnitude under both the deliberate 4s `_RESET_DELAY` and the worst-case ~8s
-  watchdog-starve wait; a genuinely wedged bus is the separate, already-accepted "hardware
-  watchdog is the backstop" case (CLAUDE.md). (2) the invariant is now actively enforced, not just
-  true by chance: `tests/test_reset_call_site_invariant.py` scans every `src/*.py` file and fails
-  if `machine.reset()`/`machine.bootloader()` appear anywhere but `system_service.py`, or `WDT()`
-  anywhere but `sensortask_wozi.py`.
 - **No standardized timeout/cancellation mechanism yet for blocking calls that genuinely can be
   timeout-wrapped** (FRAM SPI transactions, `src/asy_udp_socket.py`'s own `select.poll`-driven
   `ready()`/`write_and_recvfrom()` — anything that isn't a raw blocking `machine.I2C` call
@@ -80,41 +61,11 @@ constraints.
   out to belong in the *can't* bucket instead and is gone from this codebase entirely now). Each
   remaining call currently uses its own bespoke approach rather than one consistent mechanism
   applied everywhere.
-- **Bus concurrency (`asyncio.Lock` + `async with`) coverage audit — closed, no gaps found.** Every
-  `*_DeviceSession(Lockable)` driver in `src/` (SCD30/BMP3xx/SGP40/I2CDevice, plus FRAM's
-  structurally identical `_op_lock`) was audited for re-entrant acquisition, exception-safety on
-  release, starvation, and cross-lock ordering: no method re-acquires an already-held lock,
-  `Lockable.__aexit__` always releases (try/except around `.release()`, never suppresses the
-  original exception), every extended hold is a bounded, protocol-justified delay, and every call
-  site acquires the per-sensor session lock before the shared bus lock, never the reverse. No code
-  changes needed.
-- **Common driver error classes across sensors — closed, scheme designed and applied.** Three
-  fixed common `errno` slots now sit immediately after `base_classes.py`'s own reserved 1-9:
-  `10`=init failed (already universal), `11`=primary/periodic read failed (newly unified - was 11/
-  13/17 across SCD30/BMP3XX/SGP40), `12`=persisted-config read at init failed (newly unified where
-  applicable - was 11/unused/11 across BMP3XX/SCD30/SGP40; SCD30 has no such step, so `12` is
-  simply unused there). Each driver's own remaining errors were renumbered to start right after the
-  highest common slot it uses, preserving each driver's original relative ordering - see
-  `SPECIFICATION.md` Part C.7's new "Common error classes" bullet for the full scheme and Part
-  C.7.1's table for the resulting exact numbers per driver. Verified: `scripts/lint.sh`,
-  `scripts/typecheck.sh`, and the full `scripts/test.sh` suite (2183/2183) all pass after the
-  renumbering.
 - **The task-supervisor error-budget counter** is behaviorally correct and intentional as designed,
   but flagged by the owner as implementable more efficiently — worth a cleaner implementation in
   the refactor without changing observed behavior. (Neopixel warning-flash sequencing was the other
   half of this item - resolved by the `src/asy_neopixel_driver.py`/`src/asy_notification_service.py`
   promotion, see `SPECIFICATION.md` Part A.4.)
-- **Bus-layer status has no dedicated REST endpoint or field — closed, no gaps found.**
-  `asy_i2c_driver.py`/`asy_spi_driver.py` deliberately have no logger of their own (see
-  `SPECIFICATION.md` Part C.7.1's table); re-examined on the premise that a dedicated bus-level
-  REST endpoint might be needed to make bus faults visible. It isn't: every I2C-bus-touching call
-  site in `asy_scd30_driver.py`/`asy_sgp40_driver.py`/`asy_bmp3xx_driver.py` is only ever reachable
-  from a higher-level method that already catches the bus exception and logs it via its own
-  `self.pr.err_s()`, confirmed by cross-checking every driver's real `errno`/`wrnno` call sites
-  against Part C.7.1's table 1:1 (this found and fixed one stale table entry - BMP3XX's `errno=22`
-  was missing from its documented range). FRAM's SPI path has no exceptions to catch in the first
-  place (real RP2040 SPI can't NAK); it already detects failures via its own status-byte checks,
-  a separate and already-complete mechanism. No code or REST changes needed.
 - **Rough sequencing, not a committed plan**: (1) dev/build environment setup (genericized
   `build-*.sh`/toolchain paths) — everything else touching CI/firmware depends on this; (2) the
   structural patterns above (per-sensor config, generalized error-counter bookkeeping) are largely
@@ -246,15 +197,65 @@ constraints.
   Neither soak-test script currently has a real-hardware-runnable form (both assume the Unix-port
   `digital_twin` harness); porting/adapting them for actual on-device execution is part of this
   future work, not already done.
-- **HTML/frontend redesign — confirmed genuine near-future target, not this pass.** Owner-confirmed
-  out of scope here: the frontend work involves changes far larger than a field-name fix (a real
-  redesign, not a patch), and the refactored side's own website is still deliberately just a
-  placeholder stub (`SPECIFICATION.md` Part A.9) with no real content to wire up yet anyway. The
-  concretely-stale symptom that prompted this entry — the legacy frontend still sending the
-  pre-migration `setSGP`/`setBMP` field names/formats (see Part C.5.3's wire-format note) — is real
-  but is pre-refactor debt on the currently-deployed frontend, not something the redesign needs to
-  inherit; it'll be superseded outright once the real frontend for the refactored REST API is built,
-  not fixed in place first.
+- **Website definitions-file autogeneration — not yet built.** `html/definitions/<device>.json`
+  (Part H.5) is currently hand-written. A worked, already-checked-against-real-code *sketch* exists
+  for deriving most of it at build time from `#`-prefixed comment tags placed above each driver's
+  `ConfigSchema` tuple (most fields — `min`/`max`, toggle/string/enum/number `kind`, special/enum
+  option values — are already inferable from the schema tuple itself with no tag at all; a tag only
+  needs to supply what the tuple can't: `label` (required), `unit`, `description`, an occasional
+  `kind` override for a non-`ConfigSchema` value like `asy_webserver_service.py`'s `_SYSTEM_CMDS`,
+  and `special:<value>="<meaning>"` for a sentinel/enum-option's human-readable meaning). Grammar:
+  `# @web <key>=<value> <key>="<quoted value>" ...` for a per-field tag; `@web-group` for a
+  module-level tag (`label`, `endpoint`, optional `submitGroup`). Three worked examples against real
+  `src/` code: a sentinel special value (`asy_scd30_driver.py`'s `AmbPres`), a toggle needing no
+  `kind` tag at all (`SelfCal`), and an enumerated field (`asy_bmp3xx_driver.py`'s `PressOvers`, six
+  `special:` entries becoming six labeled `options`). **Not a decision** — no parser has been built
+  and no `src/` file carries these tags yet. Left open, case by case, for whoever builds the real
+  parser: where the composite `lightCmdLED` shape (r/g/b/t) and other non-driver-schema webserver
+  values anchor a tag at all; whether `@web-group`'s `endpoint`/`submitGroup` belong on the schema
+  declaration or should instead read off `src/sensortask_wozi.py`'s own `SettingsGroup(...)`
+  construction-site wiring (which already states the same grouping, risking silent drift if tagged
+  twice); a full formal grammar (escaping a `"` inside a quoted value, etc.) was deliberately not
+  attempted, since the sketch's job was proving the *shape* of the idea against real code, not being
+  implementation-ready.
+- **Per-variant `sensortask-*.py` generator — not yet built.** SPECIFICATION.md Part A.3 already
+  names this as a real planned direction (one setup-definition file → every variant's
+  `sensortask-*.py`/website pair), shaped for by A.8's registration-API/A.9's `HTML_SRC_DIRS`
+  mechanisms; `src/sensortask_wozi.py` today only covers the "wozi" variant, hand-written with its
+  own fixed sensor set (SCD30 + BMP3xx + SGP40, all FRAM-backed) assumed present unconditionally.
+  Two concrete requirements for whenever this generator is actually built, so they aren't lost
+  between now and then: (1) any hardware-presence-conditioned wiring `sensortask_wozi.py` currently
+  hardcodes for its own fixed sensor set — which FRAM chunks get allocated (Part A.7's seven-chunk
+  order is wozi-specific) and any sensor-specific bus parameter (e.g. SCD30's own I2C
+  clock-stretch `timeout=200000`) — must be derived from the target variant's actual module set,
+  not copied verbatim into a variant lacking that sensor; (2) **every generated variant needs its
+  own real unit tests** (owner requirement - a generated `sensortask-*.py` is exactly as much "real
+  code" as a hand-written one, same Part D bar applies; the build script that generates the
+  `sensortask-*.py`/test pair is also the natural place to activate/select which of the generated
+  tests actually run for a given variant, rather than a separate manual step), and those tests must
+  themselves check which sensors/FRAM a given variant actually has before asserting anything
+  sensor- or FRAM-specific — asserting e.g. `scd_reader.pr.fram is not None` unconditionally against
+  a variant with no SCD30 (or no FRAM at all) would either hard-fail on a module that was never
+  supposed to exist, or - the sharper risk - pass vacuously for the wrong reason if the assertion is
+  generated loosely enough to skip rather than genuinely check. A variant-specific test also can't
+  hardcode *which bus* a sensor sits on (SCD30 is wired to `i2c0` on wozi, but a different variant
+  could wire it to `i2c1` or a third bus entirely) — it must look the bus up through the sensor's
+  own object graph (e.g. `scd_reader.scd.i2c_scd30.i2c_device.i2c`), never assume a specific
+  `i2cN` name. `tests/test_sensortask_wozi.py`'s own
+  `test_scd30s_own_i2c_bus_uses_a_clock_stretch_timeout_wide_enough_for_it` is the worked example
+  this generalizes from (both the bus lookup and the FRAM assertions), not a template to copy
+  unconditionally.
+- **`dev.json`'s SHTC3/MPRLS/ISL29125 field entries remain an unconfirmed projection.** These sensors
+  have no real driver under `src/` yet, so their `html/definitions/dev.json` entries follow the same
+  pattern every promoted sensor's entry does, without a real driver to confirm the projection against.
+  Resolves naturally once a future session promotes those drivers — Part C.11 point 9's
+  driver-promotion checklist already requires a matching definitions-file update in that same
+  session.
+- **Manual cross-browser/cross-device spot check not yet done — needs the project owner directly.**
+  Automated coverage (Part H.7's cross-browser smoke script, Vitest's browser-mode suite) only ever
+  exercises Chromium/WebKitGTK/Firefox/Edge on Linux CI runners — Part H.1's "stable and
+  good-looking on major mobile/desktop browsers" goal still wants at least one real human pass on
+  real Safari and a real mobile device, which no automation here can substitute for.
 - **UART sensor integration — confirmed staying unwired, not just deferred.** `asy_uart_driver.py`
   is promoted to `src/` but deliberately not wired into any `sensortask-*.py`; `asy_uart_comm.py`
   (its one real consumer) is its own separate, still out-of-scope promotion. Not a legacy deployed
@@ -280,6 +281,15 @@ constraints.
   targets not yet done" above).
 - **`dev` config quirks** (e.g. LED/Neopixel REST routes referencing an uninstantiated object) —
   bench rig only, not bugs to fix.
+- **`js/nav.js`'s `initNav()` registers a `document`-level `keydown` listener with no matching
+  removal** — harmless today (called exactly once per real page load), but a latent leak if it's
+  ever called more than once without a full page reload (e.g. a future hot-reload path, or a test
+  file that calls it repeatedly against the same `document`). Worth a `removeEventListener`/cleanup
+  return value if that ever becomes a real scenario.
+- **`selectSection()` is duplicated near-verbatim between `js/app.js` and `js/main.js`** (both
+  entry points build their own local closure over `onSelect`/nav rebuild). Low priority: the two
+  entry points are deliberately separate (prototype vs. production, Part H.2), and the duplication
+  is small: extracting a shared helper is a minor simplification, not a correctness fix.
 - **Dev/build environment setup**: toolchain installer is done (`toolchain/setup_toolchain.py`, see
   SPECIFICATION.md Part B/README.md's "Toolchain setup"). `build-*.sh`'s hardcoded path/`py-include`
   dependency is now fixed too (see "Refactor targets not yet done" above).
@@ -299,22 +309,6 @@ constraints.
   yet picked up. Meanwhile, a prominent comment sits directly above the first
   self-checking getter, explicitly cross-referencing `network_available()` and naming the
   convention a new getter must pick deliberately.
-- **`config_manager.py`'s three defensive `TypeError`/`AttributeError` catches** (non-string
-  filename, non-iterable `keys`, non-dict `data` passed to `write_config()`) — **re-investigated now
-  that the Microdot REST layer exists**: they're still not load-bearing. `asy_webserver_service.py`'s
-  own `_body_as_dict()` and `_put_sensors()`'s per-sensor `isinstance(fields, dict)` check already
-  guarantee only dict-shaped data ever reaches `write_config()`, and `get_dict()`'s `keys` always
-  comes from a schema (`schema_names()`), never request data - so these three catches remain pure
-  defense-in-depth, not because the REST wiring is missing but because the REST layer's own
-  validation already fully absorbs the risk before it gets this far. Already covered by direct unit
-  tests (`tests/test_config_manager.py`) independent of caller discipline - no further action.
-- **Whole-system integration test scope — closed.** `tests/test_sensortask_wozi.py` and
-  `tests/test_digital_twin_sensortask_integration.py` exercise the real `build_system()` object
-  graph end-to-end (construction order, FRAM chunk order, the `setup()`-batch order, every REST
-  endpoint reachable over real HTTP against real twin-backed drivers, task-supervisor restart
-  against the real full task list, the WiFi hotspot/DNS/status-LED chain through a real STA→hotspot
-  transition, and SGP40 VOC-backup reboot survival through the real `sgp_reader`/`fram`
-  construction order and a real simulated reboot) — see `SPECIFICATION.md` Parts A.7/A.8.
 - **`asy_i2c_driver.py`'s `get_bits`/`set_bits`/`get_register_struct` still call the allocating
   `readfrom_mem()` rather than zero-copy `readfrom_mem_into()`** — no real caller needs the
   zero-copy path yet, but worth doing before `asy_isl29125_driver.py` (its one plausible future

@@ -134,7 +134,7 @@ async def _wait_until(predicate: "Callable[[], bool]", timeout_s: float, interva
 
 
 def test_build_system_boots_against_the_real_twin_buses_without_exception() -> None:
-    # Confirms every FRAM chunk (see SPECIFICATION.md Part A.7 for the five-chunk order) still allocates cleanly
+    # Confirms every FRAM chunk (see SPECIFICATION.md Part A.7 for the seven-chunk order) still allocates cleanly
     # against the twin's own real FramChip, not just tests/machine.py's fake - a real gap nothing
     # before this file ever exercised (Step 1/2's own tests/test_sensortask_wozi.py never touches
     # digital_twin at all).

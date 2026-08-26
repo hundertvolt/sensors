@@ -11,6 +11,7 @@ from micropython import const
 
 import api_response as ar
 from base_classes import LockedCounter
+from config_manager import type_or_range_error
 from print_log import make_logger
 
 try:
@@ -52,6 +53,14 @@ _NAME = const("WEBSERVER")
 _SYSTEM_CMDS = ("reboot", "bootloader", "mempause")  # the only enum values ever forwarded to
 # system_cmd() - never a client-supplied duration (mempause's fixed 300s lives in system_cmd()'s own
 # implementation, e.g. SystemService.pause_permanent_storage() - see SPECIFICATION.md Part A.8).
+_PAUSE_TIME_MAX = const(3600)  # inclusive upper bound for a client-supplied PauseTime - matches
+# legacy's own pauseAutoLED command range and asy_notification_service.py's own
+# LockedCounter(max_val=_MAX_OVERRIDE_TIME) clamp ceiling, kept here as its own constant (not
+# imported) since this module has no other coupling to asy_notification_service.py.
+_PAUSE_TIME_FIELD: "cm.FieldSchema" = ("PauseTime", "int", 0, 0, _PAUSE_TIME_MAX, None)  # dispatch-only, not schema-
+# backed by a real ConfigManager - a synthetic FieldSchema record so _dispatch_notification_pause()
+# can reuse config_manager.py's own type_or_range_error() (and its int<->float coercion policy,
+# SPECIFICATION.md Part A.8) instead of a second, hand-rolled strict check.
 
 _ERROR_SHAPES = (  # (status_code, descr) - registered via @app.errorhandler for shaped JSON bodies,
     # per "Criteria for this step to finish": at least 400/404/405/413/500 wired.
@@ -185,8 +194,18 @@ class WebserverService:
         maintenance_sensors: "Sequence[tuple[str, MaintenanceFct]]" = (),
         error_sources: "Sequence[_ModuleLike]" = (),
         max_content_length: int = 4096,
-        max_connections: int = 3,  # reject-when-full ceiling - real margin below the confirmed
-        # MEMP_NUM_TCP_PCB=5 rp2-port ceiling (BACKLOG.md's now-resolved companion open question).
+        max_connections: int = 4,  # reject-when-full ceiling - one slot of margin below the
+        # confirmed MEMP_NUM_TCP_PCB=5 rp2-port ceiling (lwIP's own compile-time default for this
+        # build - confirmed directly against the vendored lwIP source and the rp2 port's own
+        # lwipopts, no project override anywhere), for TIME_WAIT sockets from just-closed
+        # connections (every response sends `Connection: close`) to drain without blocking a new
+        # one. Raised from the original 3 once SPECIFICATION.md Part H.7's real-browser testing
+        # showed a single page load's own concurrent connections (previously up to ~9: index.html +
+        # style.css + 6 separate JS module files + definitions.json) could alone approach this
+        # ceiling before any other client (e.g. an OpenHAB instance polling REST endpoints
+        # alongside a browser session) even connects - see scripts/build_website.sh's own "Bundling"
+        # comment for the matching fix on the JS-file-count side (6 files down to 1), which was the
+        # bigger lever; this one small bump uses one more slot of the real remaining headroom.
         per_call_timeout_s: float = 5.0,
         outer_cap_s: float = 15.0,
         host: str = "0.0.0.0",
@@ -335,6 +354,17 @@ class WebserverService:
                 group.post_fct,
                 group.post_asy_fct,
             )
+            if envelope.get("res") == "ERR":
+                # handle_set_cmd()'s own post_fct/post_asy_fct exception path (api_response.py)
+                # discards its already-computed per-field results and returns an empty result dict -
+                # previously this silently dropped every field in `subset` from the overall response
+                # with no signal at any level (a "silent result-swallow" gap).
+                # The group's post-write hook failed, so nothing it attempted can be trusted as
+                # applied even if a field's own value would otherwise have validated - report every
+                # field the group actually attempted as "Failed" instead of silently omitting them.
+                for key in subset:
+                    results[key] = "Failed"
+                continue
             group_result = envelope.get("result")
             if isinstance(group_result, dict):
                 results.update(group_result)
@@ -403,15 +433,25 @@ class WebserverService:
         return "Valid" if ok else "Failed"
 
     async def _dispatch_notification_pause(self, payload: "Any") -> str:
-        # `type(payload) is not int`, not isinstance() - excludes bool (a JSON true/false decodes to
-        # a Python bool, a type(x) is int subclass) the same way config_manager.py's own
-        # type_or_range_error() rejects it for an "int"-typed schema field.
-        if self._notification_pause is None or type(payload) is not int:
+        # Reuses config_manager.py's own type_or_range_error() against a synthetic FieldSchema
+        # (_PAUSE_TIME_FIELD) instead of a second, hand-rolled strict check - same int<->float
+        # coercion policy every schema-backed field gets (SPECIFICATION.md Part A.8): a bool is
+        # still rejected (type() excludes it, not isinstance()), and an integral float (e.g. 30.0)
+        # is now accepted and coerced to int, same as any other int-typed field would be.
+        # LockedCounter.set_value() (called via NotificationCoordinator.set_override_led()) clamps
+        # an out-of-range value into [0, 3600] rather than raising, but legacy's own pauseAutoLED
+        # command rejects an out-of-range pauseTime as Invalid (modules/sensortask-wozi.py's
+        # update_valid_json(..., 0, 3600, ...)) - reject it here too, before the callback ever sees
+        # it, rather than silently reporting a clamped value as a successful "Valid".
+        if self._notification_pause is None:
+            return "Invalid"
+        is_error, coerced_payload = type_or_range_error(payload, _PAUSE_TIME_FIELD)
+        if is_error:
             return "Invalid"
         try:  # caller-supplied callback, could legitimately misbehave - see _dispatch_system_cmd()'s
             # own comment on why this needs the same guard every comparable callback elsewhere in
             # this codebase already has.
-            ok = await self._notification_pause(payload)
+            ok = await self._notification_pause(coerced_payload)
         except Exception as e:
             await self.pr.err_s("notification_pause callback failed:", e, errno=5)
             return "Failed"

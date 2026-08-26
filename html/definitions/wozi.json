@@ -1,0 +1,350 @@
+{
+    "schemaVersion": "1.0.0",
+    "device": { "id": "wozi", "displayName": "wozi" },
+    "landingSection": "measurements",
+    "defaultPollIntervalMs": 3000,
+    "sections": [
+        {
+            "key": "measurements",
+            "label": "Measurements",
+            "description": "Live sensor readings, refreshed automatically.",
+            "rest": { "get": "/measurements" },
+            "pollGroup": "live",
+            "groups": [
+                {
+                    "key": "SCD30",
+                    "label": "SCD30 — CO2, Temperature, Humidity",
+                    "fields": [
+                        { "key": "CO2", "label": "CO2", "unit": "ppm", "kind": "readonly" },
+                        { "key": "Temp", "label": "Temperature", "unit": "°C", "kind": "readonly" },
+                        { "key": "Hum", "label": "Relative Humidity", "unit": "%", "kind": "readonly" },
+                        { "key": "WetBulb", "label": "Wet Bulb Temperature", "unit": "°C", "kind": "readonly" },
+                        { "key": "DewPoint", "label": "Dew Point", "unit": "°C", "kind": "readonly" },
+                        { "key": "TS", "label": "Timestamp", "unit": "s", "kind": "readonly" }
+                    ]
+                },
+                {
+                    "key": "SGP40",
+                    "label": "SGP40 — VOC Index",
+                    "fields": [
+                        { "key": "VOC", "label": "VOC Index", "kind": "readonly" },
+                        { "key": "Raw", "label": "VOC Raw", "unit": "ticks", "kind": "readonly" },
+                        { "key": "TS", "label": "Timestamp", "unit": "s", "kind": "readonly" }
+                    ]
+                },
+                {
+                    "key": "BMP3XX",
+                    "label": "BMP388 — Pressure, Temperature",
+                    "fields": [
+                        { "key": "Pres", "label": "Pressure", "unit": "hPa", "kind": "readonly" },
+                        { "key": "Temp", "label": "Temperature", "unit": "°C", "kind": "readonly" },
+                        { "key": "SLPres", "label": "Sea Level Pressure", "unit": "hPa", "kind": "readonly" },
+                        { "key": "TS", "label": "Timestamp", "unit": "s", "kind": "readonly" }
+                    ]
+                }
+            ]
+        },
+        {
+            "key": "sensors",
+            "label": "Sensors",
+            "description": "Per-sensor configuration. Each card applies independently.",
+            "rest": { "get": "/sensors", "put": "/sensors" },
+            "pollGroup": "settings",
+            "groups": [
+                {
+                    "key": "SCD30",
+                    "label": "SCD30 — CO2, Temperature, Humidity",
+                    "submit": true,
+                    "fields": [
+                        { "key": "MeasInt", "label": "Measurement Interval", "unit": "s", "kind": "number", "min": 2, "max": 1800 },
+                        { "key": "TempOffs", "label": "Temperature Offset", "unit": "K", "kind": "number", "min": 0.0, "max": 655.35, "float": true },
+                        {
+                            "key": "AmbPres", "label": "Ambient Pressure (starts continuous measurement)", "unit": "hPa", "kind": "number",
+                            "min": 700, "max": 1400,
+                            "specialValues": [{ "value": 0, "meaning": "Compensation off / use Altitude" }]
+                        },
+                        {
+                            "key": "Altitude", "label": "Altitude above sea level", "unit": "m", "kind": "number", "min": 0, "max": 65535,
+                            "description": "Only used if Ambient Pressure is 0."
+                        },
+                        {
+                            "key": "ContMeas", "label": "Continuous Measurement", "kind": "toggle", "onLabel": "On", "offLabel": "Off",
+                            "description": "Setting this to Off stops continuous measurement; restart it via Ambient Pressure above."
+                        },
+                        { "key": "ForceCalRef", "label": "Forced Calibration Reference", "unit": "ppm", "kind": "number", "min": 400, "max": 2000 },
+                        { "key": "SelfCal", "label": "Automatic Self-Calibration", "kind": "toggle", "onLabel": "On", "offLabel": "Off" }
+                    ]
+                },
+                {
+                    "key": "SGP40",
+                    "label": "SGP40 — VOC Index",
+                    "submit": true,
+                    "fields": [
+                        {
+                            "key": "BackupPeriod", "label": "VOC Index Backup Interval", "unit": "min", "kind": "number", "min": 0, "max": 1440,
+                            "specialValues": [{ "value": 0, "meaning": "Backups off" }]
+                        },
+                        {
+                            "key": "BackupMaxAge", "label": "VOC Index Backup Max Age", "unit": "min", "kind": "number", "min": 0, "max": 10080,
+                            "specialValues": [{ "value": 0, "meaning": "Use all found backups" }]
+                        },
+                        {
+                            "key": "WaitTimeNTP", "label": "VOC Index NTP Wait Time", "unit": "s", "kind": "number", "min": 0, "max": 600,
+                            "specialValues": [{ "value": 0, "meaning": "Never wait for NTP sync" }]
+                        },
+                        {
+                            "key": "SGPResetVOC", "label": "Reset VOC Index", "kind": "toggle", "onLabel": "On", "offLabel": "Off",
+                            "description": "Only 'On' has effect. Resets the VOC algorithm and deletes the current backup."
+                        }
+                    ]
+                },
+                {
+                    "key": "BMP3XX",
+                    "label": "BMP388 — Pressure, Temperature",
+                    "submit": true,
+                    "fields": [
+                        { "key": "SampleInterv", "label": "Measurement Interval", "unit": "s", "kind": "number", "min": 1, "max": 3600 },
+                        { "key": "PressOvers", "label": "Pressure Oversampling", "kind": "enum", "options": [
+                            { "value": 1, "label": "×1" }, { "value": 2, "label": "×2" }, { "value": 4, "label": "×4" },
+                            { "value": 8, "label": "×8" }, { "value": 16, "label": "×16" }, { "value": 32, "label": "×32" }
+                        ] },
+                        { "key": "PressOffset", "label": "Pressure Offset", "unit": "hPa", "kind": "number", "min": -500.0, "max": 500.0, "float": true },
+                        { "key": "TempOvers", "label": "Temperature Oversampling", "kind": "enum", "options": [
+                            { "value": 1, "label": "×1" }, { "value": 2, "label": "×2" }, { "value": 4, "label": "×4" },
+                            { "value": 8, "label": "×8" }, { "value": 16, "label": "×16" }, { "value": 32, "label": "×32" }
+                        ] },
+                        { "key": "TempOffset", "label": "Temperature Offset", "unit": "K", "kind": "number", "min": -10.0, "max": 10.0, "float": true },
+                        {
+                            "key": "FiltCoeff", "label": "Filter Coefficient", "kind": "enum",
+                            "description": "First-order IIR lowpass filter coefficient.",
+                            "options": [
+                                { "value": 0, "label": "Off" }, { "value": 1, "label": "1" }, { "value": 3, "label": "3" },
+                                { "value": 7, "label": "7" }, { "value": 15, "label": "15" }, { "value": 31, "label": "31" },
+                                { "value": 63, "label": "63" }, { "value": 127, "label": "127" }
+                            ]
+                        },
+                        { "key": "SeaLevelOffs", "label": "Sensor Sea Level Offset", "unit": "m", "kind": "number", "min": -1000.0, "max": 5000.0, "float": true },
+                        { "key": "MeanAtmTemp", "label": "Mean Atmospheric Temperature", "unit": "°C", "kind": "number", "min": -50.0, "max": 50.0, "float": true }
+                    ]
+                }
+            ]
+        },
+        {
+            "key": "networking",
+            "label": "Networking",
+            "description": "Wi-Fi credentials, identity, and NTP time sync. Live status (IP, RSSI, uptime, sync age) is on the Status page.",
+            "rest": { "get": "/networking", "put": "/networking" },
+            "pollGroup": "settings",
+            "groups": [
+                {
+                    "key": "identity",
+                    "label": "Wi-Fi & Identity",
+                    "submit": true,
+                    "fields": [
+                        { "key": "SSID", "label": "Wi-Fi SSID", "kind": "string", "minLength": 0, "maxLength": 32 },
+                        { "key": "PW", "label": "Wi-Fi Password", "kind": "string", "minLength": 8, "maxLength": 63, "mask": true },
+                        { "key": "Country", "label": "Country", "kind": "string", "minLength": 2, "maxLength": 2, "description": "Two-letter ISO 3166 country code." },
+                        { "key": "Hostname", "label": "Hostname", "kind": "string", "minLength": 1, "maxLength": 32 }
+                    ]
+                },
+                {
+                    "key": "wifiLed",
+                    "label": "Wi-Fi Status LED",
+                    "submit": true,
+                    "fields": [
+                        { "key": "LedWifiOn", "label": "Wi-Fi Status LED", "kind": "toggle", "onLabel": "On", "offLabel": "Off" }
+                    ]
+                },
+                {
+                    "key": "ntp",
+                    "label": "NTP Time Sync",
+                    "submit": true,
+                    "fields": [
+                        { "key": "NTP_Host", "label": "NTP Server Address", "kind": "string", "minLength": 3, "maxLength": 1024 },
+                        { "key": "NTP_Offset_S", "label": "NTP Offset", "unit": "s", "kind": "number", "min": -43200, "max": 43200, "description": "Added to Unix time; affects system time and all timestamps." },
+                        { "key": "NTP_Interv_H", "label": "NTP Sync Interval", "unit": "h", "kind": "number", "min": 1, "max": 24 }
+                    ]
+                }
+            ]
+        },
+        {
+            "key": "system",
+            "label": "System",
+            "rest": { "get": "/system", "put": "/system" },
+            "pollGroup": "settings",
+            "groups": [
+                {
+                    "key": "settings",
+                    "label": "System Settings",
+                    "submit": true,
+                    "fields": [
+                        { "key": "DebugLevel", "label": "Debug Level", "kind": "number", "min": 0, "max": 5 },
+                        { "key": "GMTOffset", "label": "GMT Offset", "unit": "s", "kind": "number", "min": -43200, "max": 43200, "description": "Timezone offset to GMT; affects local time only." },
+                        { "key": "DSTOffset", "label": "DST Offset", "unit": "s", "kind": "number", "min": -43200, "max": 43200, "description": "Daylight Savings offset; affects local time only." }
+                    ]
+                },
+                {
+                    "key": "command",
+                    "label": "System Command",
+                    "submit": true,
+                    "fields": [
+                        { "key": "SystemCmd", "label": "Command", "kind": "enum", "options": [
+                            { "value": "reboot", "label": "Reboot" },
+                            { "value": "bootloader", "label": "Reboot into bootloader" },
+                            { "value": "mempause", "label": "Pause backups for 5 minutes" }
+                        ] }
+                    ]
+                }
+            ]
+        },
+        {
+            "key": "status",
+            "label": "Status",
+            "description": "Live system/network/error state. Error counts are always visible; click a module to see its history.",
+            "rest": { "get": "/status", "put": "/status" },
+            "pollGroup": "live",
+            "pollIntervalMs": 3000,
+            "groups": [
+                {
+                    "key": "networking",
+                    "label": "Networking Status",
+                    "fields": [
+                        { "key": "Mode", "label": "Wi-Fi Mode", "kind": "readonly" },
+                        { "key": "Connected", "label": "Connected", "kind": "readonly" },
+                        { "key": "IP", "label": "IP Address", "kind": "readonly" },
+                        { "key": "IPv4", "label": "IPv4 Address", "kind": "readonly" },
+                        { "key": "Subnet", "label": "Subnet Mask", "kind": "readonly" },
+                        { "key": "Gateway", "label": "Gateway", "kind": "readonly" },
+                        { "key": "DNS", "label": "Name Server", "kind": "readonly" },
+                        { "key": "Rssi", "label": "Wi-Fi RSSI", "unit": "dBm", "kind": "readonly" },
+                        { "key": "WifiUptime", "label": "Wi-Fi Uptime", "unit": "s", "kind": "readonly" },
+                        { "key": "NtpSynced", "label": "NTP Synced", "kind": "readonly" },
+                        { "key": "NtpLastSyncAge", "label": "NTP Last Sync Age", "unit": "s", "kind": "readonly" },
+                        { "key": "NtpLastSync", "label": "NTP Last Sync Time", "unit": "s", "kind": "readonly", "description": "Unix timestamp of the last successful sync." }
+                    ]
+                },
+                {
+                    "key": "system",
+                    "label": "System Status",
+                    "fields": [
+                        { "key": "SysUptime", "label": "System Uptime", "unit": "s", "kind": "readonly" },
+                        {
+                            "key": "BootSignature", "label": "Boot Signature", "kind": "readonly",
+                            "description": "Opaque value, stable for the running boot session; a different value on a later poll means the device rebooted. Not a human-readable code."
+                        },
+                        { "key": "MemPaused", "label": "Backups Paused", "kind": "readonly" },
+                        { "key": "LocalTime", "label": "Local Time", "kind": "readonly", "format": "gmtimestruct" },
+                        { "key": "UtcTime", "label": "UTC Time", "kind": "readonly", "format": "gmtimestruct" }
+                    ]
+                },
+                {
+                    "key": "sensors",
+                    "label": "Sensor Maintenance",
+                    "fields": [
+                        { "key": "SGP40_BackupTS", "label": "SGP40 Last Backup", "kind": "readonly" },
+                        { "key": "SGP40_RestoreTS", "label": "SGP40 Restore Timestamp", "kind": "readonly" }
+                    ]
+                },
+                {
+                    "key": "notification",
+                    "label": "Notification Status",
+                    "fields": [
+                        { "key": "Triggered", "label": "Currently Triggered", "kind": "readonly" },
+                        { "key": "TS", "label": "Last Trigger Timestamp", "kind": "readonly" },
+                        { "key": "PauseTime", "label": "Remaining Pause Time", "unit": "s", "kind": "readonly" }
+                    ]
+                },
+                {
+                    "key": "errcount",
+                    "label": "Error Counts & History",
+                    "kind": "errcount",
+                    "modules": [
+                        { "key": "WIFI", "label": "Wi-Fi" },
+                        { "key": "CFGMGR_WIFI", "label": "Wi-Fi Config Store" },
+                        { "key": "DNSSRV", "label": "Captive DNS" },
+                        { "key": "NTP", "label": "NTP Client" },
+                        { "key": "CFGMGR_NTP", "label": "NTP Config Store" },
+                        { "key": "FRAM", "label": "FRAM Storage" },
+                        { "key": "SYSTEM", "label": "System" },
+                        { "key": "CFGMGR_SYSTEM", "label": "System Config Store" },
+                        { "key": "SCD30", "label": "SCD30" },
+                        { "key": "SGP40", "label": "SGP40" },
+                        { "key": "CFGMGR_SGP40", "label": "SGP40 Config Store" },
+                        { "key": "BMP3XX", "label": "BMP388" },
+                        { "key": "CFGMGR_BMP3XX", "label": "BMP388 Config Store" },
+                        { "key": "NEOPIXEL", "label": "Neopixel LED" },
+                        { "key": "NOTIFY", "label": "Notification Service" },
+                        { "key": "CFGMGR_NOTIFY", "label": "Notification Config Store" },
+                        { "key": "WEBSERVER", "label": "Web Server" }
+                    ]
+                },
+                {
+                    "key": "resetErrors",
+                    "label": "Reset Errors",
+                    "submit": true,
+                    "submitLabel": "Reset All Errors",
+                    "fields": [
+                        {
+                            "key": "ResetErrors", "label": "Confirm Reset", "kind": "toggle", "onLabel": "Yes, reset", "offLabel": "No",
+                            "description": "Resets every module's error counter and history in one call. Absent/No is a no-op."
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "key": "notification",
+            "label": "Notification",
+            "rest": { "get": "/notification", "put": "/notification" },
+            "pollGroup": "settings",
+            "groups": [
+                {
+                    "key": "autoConfig",
+                    "label": "Automatic Notification Configuration",
+                    "submit": true,
+                    "fields": [
+                        { "key": "AutoOn", "label": "Automatic Notifications", "kind": "toggle", "onLabel": "On", "offLabel": "Off", "description": "Auto On must be before Off, on the same day." },
+                        { "key": "OnH", "label": "Auto On Hour", "kind": "number", "min": 0, "max": 23 },
+                        { "key": "OnM", "label": "Auto On Minute", "kind": "number", "min": 0, "max": 59 },
+                        { "key": "OffH", "label": "Auto Off Hour", "kind": "number", "min": 0, "max": 23 },
+                        { "key": "OffM", "label": "Auto Off Minute", "kind": "number", "min": 0, "max": 59 },
+                        { "key": "FlashBri", "label": "Flash Brightness", "kind": "number", "min": 1, "max": 255 },
+                        { "key": "Interv", "label": "Flash Interval", "unit": "s", "kind": "number", "min": 60.0, "max": 3600.0, "float": true },
+                        { "key": "FlashDur", "label": "Flash Duration", "unit": "s", "kind": "number", "min": 0.5, "max": 10.0, "float": true },
+                        { "key": "WarnCO2", "label": "CO2 Warning Threshold", "unit": "ppm", "kind": "number", "min": 0, "max": 3000 },
+                        { "key": "WarnVOC", "label": "VOC Warning Threshold", "kind": "number", "min": 0, "max": 500 },
+                        { "key": "WarnHum", "label": "Humidity Warning Threshold", "unit": "%", "kind": "number", "min": 0.0, "max": 100.0, "float": true }
+                    ]
+                },
+                {
+                    "key": "flash",
+                    "label": "Manual Flash Command",
+                    "submit": true,
+                    "submitLabel": "Flash LED",
+                    "fields": [
+                        {
+                            "key": "lightCmdLED", "label": "LED Flash", "kind": "composite",
+                            "subFields": [
+                                { "key": "r", "label": "Red", "kind": "number", "min": 0, "max": 255 },
+                                { "key": "g", "label": "Green", "kind": "number", "min": 0, "max": 255 },
+                                { "key": "b", "label": "Blue", "kind": "number", "min": 0, "max": 255 },
+                                { "key": "t", "label": "Time (s)", "kind": "number", "min": 0.5, "max": 60.0, "float": true }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "key": "pause",
+                    "label": "Pause Notifications",
+                    "submit": true,
+                    "fields": [
+                        {
+                            "key": "PauseTime", "label": "Pause Time", "unit": "s", "kind": "number", "min": 0, "max": 3600,
+                            "description": "Temporarily suppress automatic LED notifications. Current value is live (from Status)."
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

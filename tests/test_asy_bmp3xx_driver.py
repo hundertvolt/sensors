@@ -1091,23 +1091,44 @@ def test_config_write_accepts_every_field_at_its_valid_boundaries_and_midpoint()
             assert stored[name] == value
 
 
-def test_config_write_rejects_single_out_of_range_or_wrong_type_field() -> None:
+def test_config_write_rejects_single_out_of_range_field() -> None:
     i2c, reader = make_clean_reader("cfg_single_invalid")
     for name, (kind, lo, hi) in _FIELD_BOUNDS.items():
         step = 1 if kind == "int" else 0.1
         below = lo - step
         above = hi + step
-        wrong_type = "nope" if kind == "int" else 1  # str for int fields, int for float fields
         before_dict = run(reader.cfgmgr.get_dict([name]))
         assert before_dict is not None
         before = before_dict[name]
-        for bad in (below, above, wrong_type):
+        for bad in (below, above):
             ok, results = run(reader.cfgmgr.write_config({name: bad}, _FULL_SCHEMA))
             assert ok is True  # the write call itself still succeeds; only the field is rejected
             assert results[name] == "Invalid"
         after_dict = run(reader.cfgmgr.get_dict([name]))
         assert after_dict is not None
         assert after_dict[name] == before  # rejected values never reach storage
+
+
+def test_config_write_wrong_type_rejected_for_int_field_but_coerced_for_float_field() -> None:
+    # An int-typed field still strictly rejects a non-numeric string (unaffected by the coercion
+    # policy - str is never coerced to int). A float-typed field now accepts and coerces an
+    # in-range int instead of rejecting it as "wrong type" (SPECIFICATION.md Part A.8) - every
+    # field in _FIELD_BOUNDS has 1 within its own [lo, hi], so this exercises acceptance, not an
+    # accidental out-of-range rejection.
+    i2c, reader = make_clean_reader("cfg_wrong_type")
+    for name, (kind, _lo, _hi) in _FIELD_BOUNDS.items():
+        if kind == "int":
+            ok, results = run(reader.cfgmgr.write_config({name: "nope"}, _FULL_SCHEMA))
+            assert ok is True
+            assert results[name] == "Invalid"
+            continue
+        ok, results = run(reader.cfgmgr.write_config({name: 1}, _FULL_SCHEMA))
+        assert ok is True
+        assert results[name] == "Valid"
+        stored = run(reader.cfgmgr.get_dict([name]))
+        assert stored is not None
+        assert stored[name] == 1.0
+        assert type(stored[name]) is float
 
 
 def test_config_write_rejects_bool_for_int_field_despite_bool_being_an_int_subclass() -> None:
@@ -1694,6 +1715,30 @@ def test_set_dict_cfg_sample_interv_end_to_end_persists_and_pushes() -> None:
     # seeding needed.
     reader = make_reader("set_dict_cfg_si")
     results = run(reader._set_dict_cfg({"SampleInterv": 45}, reader.get_cfg_schema()))
+    assert results == {"SampleInterv": "Valid"}
+    assert run(reader.cfgmgr.get_dict(["SampleInterv"])) == {"SampleInterv": 45}
+    assert run(reader.trigger_period.get_value()) == 45
+
+
+def test_set_dict_cfg_coerces_int_field_before_pushing_not_just_persisting() -> None:
+    # _set_dict_cfg's push loop must dispatch the coerced (int) shape that was actually persisted,
+    # not the caller's raw pre-coercion float: config_manager.py's int<->float coercion accepts an
+    # integral float for an int-typed field (SPECIFICATION.md Part A.8), but every BMP3xx push
+    # wrapper type-checks its argument with `type(value) is not int` - dispatching the raw float
+    # would make the wrapper reject it, reporting "Failed" and reverting the just-written config.
+    i2c, reader = make_clean_reader("set_dict_cfg_coerce_push")
+    seed_status(i2c, 0x10 | 0x60)
+    seed_err(i2c, 0x00)
+    results = run(reader._set_dict_cfg({"TempOvers": 4.0}, reader.get_cfg_schema()))
+    assert results == {"TempOvers": "Valid"}
+    assert run(reader.cfgmgr.get_dict(["TempOvers"])) == {"TempOvers": 4}
+    assert run(reader.bmp.get_temperature_oversampling()) == 4
+
+
+def test_set_dict_cfg_coerces_pure_software_int_field_before_pushing() -> None:
+    # Same regression as above, for the pure-software (non-I2C) SampleInterv push path.
+    reader = make_reader("set_dict_cfg_coerce_push_sw")
+    results = run(reader._set_dict_cfg({"SampleInterv": 45.0}, reader.get_cfg_schema()))
     assert results == {"SampleInterv": "Valid"}
     assert run(reader.cfgmgr.get_dict(["SampleInterv"])) == {"SampleInterv": 45}
     assert run(reader.trigger_period.get_value()) == 45

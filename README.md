@@ -49,7 +49,9 @@ source .venv/bin/activate  # scripts/lint.sh and scripts/typecheck.sh assume ruf
 scripts/lint.sh            # ruff check
 scripts/typecheck.sh       # mypy, using MicroPython stubs matching toolchain/versions.toml (see above)
 scripts/test.sh            # runs every test in tests/, under a real MicroPython Unix-port interpreter -
-                            # builds that interpreter automatically on first run (see tests/README.md)
+                            # builds that interpreter automatically on first run (see SPECIFICATION.md Part E) -
+                            # plus tests_scripts/, a CPython/pytest suite covering the host-only build
+                            # tooling (scripts/build_frozen_html.sh, build_website.sh, build_firmware.py)
 scripts/test.sh --coverage # same, plus a src/-only line coverage report (HTML/XML/markdown) - see below
 ```
 
@@ -70,13 +72,117 @@ Reports `src/`-only line coverage; non-gating, never fails the build. Full pipel
 and CI behavior (Job Summary, build artifact, Codecov status): **moved to
 [`SPECIFICATION.md`](SPECIFICATION.md) Part E.5, "Coverage"**.
 
+## Website tooling (JS/HTML/CSS)
+
+The website source (`html/`, `js/`, `tests_js/` — see [`SPECIFICATION.md`](SPECIFICATION.md) Part H
+for its architecture) has its own dev-tooling stack, the JS/HTML/CSS equivalent of the Python
+side's ruff/mypy/pytest above: ESLint (lint), TypeScript `checkJS` mode
+(type-checks JSDoc annotations in plain `.js`, no transpilation), Vitest in real-browser mode
+(Playwright + Chromium, not jsdom — same "real engine over a shim" principle as running Python
+tests under a real MicroPython Unix-port interpreter), html-validate, and Stylelint. Needs Node
+(version pinned in `.nvmrc`; `nvm use` or any Node manager that reads it will pick the right one)
+and npm:
+
+```sh
+npm ci                            # one-time, and after pulling changes - installs into node_modules/ from package-lock.json
+npx playwright install chromium   # one-time - only if `npm test` reports a missing browser executable
+                                   # (a Claude Code web-session sandbox has this pre-installed already)
+
+npm run lint           # ESLint (js/, tests_js/)
+npm run typecheck      # tsc --noEmit (checkJS over js/, tests_js/)
+npm run lint:html      # html-validate (html/*.html)
+npm run lint:css       # Stylelint (html/*.css)
+npm test               # Vitest, real-browser mode (Playwright/Chromium) - tests_js/*.test.js
+npm run preview        # serves the repo root locally (python3 -m http.server 8000)
+```
+
+`web-cross-browser-smoke`'s check (real WebKit/Firefox/Edge, not just Vitest's own Playwright/Chromium)
+needs the MicroPython Unix port and the real website built first, then its own one-time browser install:
+
+```sh
+uv run toolchain/setup_toolchain.py        # one-time - builds the MicroPython Unix port (see above)
+scripts/build_website.sh wozi              # build the real website into frozen_modules/frozen_html.py
+scripts/setup_cross_browser_toolchain.sh   # one-time - installs real WebKit/Firefox/Edge
+node scripts/cross_browser_smoke.mjs       # drives the real site through all of them, desktop + mobile
+```
+
+`npm run preview`, then open `http://localhost:8000/html/index.html?device=wozi` (or `?device=dev`),
+opens the locally-viewable prototype — the real `html/`+`js/`
+tree against a fake in-browser backend (`js/mock-server.js`, `mockdata/*.json`), driven by one of
+two worked-example `html/definitions/*.json` files. The `?device=` switch is a prototype-only
+convenience (see `js/app.js`'s own docstring) — real firmware always serves exactly one
+definitions.json, never branches on a query param.
+
+All five CI-covered checks run in GitHub Actions CI (`.github/workflows/ci.yml`'s `web-lint-and-typecheck`/
+`web-unit-tests` jobs), gated by a `dorny/paths-filter` job so they only run when `html/`, `js/`,
+`tests_js/`, or their own tooling configs actually change — alongside, not replacing, the Python
+jobs above, which keep gating on Python paths exactly as before. Config lives at the repo root
+(`eslint.config.js`, `tsconfig.json`, `vitest.config.js`, `.htmlvalidate.json`,
+`.stylelintrc.json`); see `SPECIFICATION.md` Part H.8 for the full role mapping and rationale. Vitest's
+browser mode needs an actual Chromium install — CI installs its own via `playwright install`; see
+the `npx playwright install chromium` line above if `npm test` reports a missing browser executable
+locally.
+
+A separate CI job, `web-cross-browser-smoke`, drives the real site through real WebKit, real
+Firefox, and real Microsoft Edge too (not just Vitest's own Playwright/Chromium) — one field
+edit+apply per engine, at both a desktop and a mobile-sized viewport, against a real booted digital
+twin. Vitest's browser mode can't reach any of these itself (it's wired to a single Playwright
+provider, which can only automate Chromium-family browsers), so this runs as a standalone script,
+`scripts/cross_browser_smoke.mjs`, rather than a Vitest test file — see `SPECIFICATION.md` Part
+H.7's "Cross-browser coverage" for the full account of why and how.
+
+## Building real firmware
+
+`scripts/build_firmware.py <device>` assembles a real, deployable `firmware.uf2` from `src/` +
+`ext/microdot.py` + the real website (`html/`+`js/`, staged by `scripts/build_website.sh`) for one
+device. Build-only, like every other RP2 build this project's tooling produces — nothing here
+flashes or tests real hardware. Needs the toolchain already installed
+(`uv run toolchain/setup_toolchain.py`, see above):
+
+```sh
+uv run scripts/build_firmware.py wozi                                   # -> build/firmware-wozi.uf2
+uv run scripts/build_firmware.py wozi --output build/my-firmware.uf2    # explicit output path
+uv run scripts/build_firmware.py wozi --jobs 8                          # override parallel make jobs
+```
+
+`<device>` must match an `html/definitions/<device>.json` file (`wozi` today — the only variant
+`src/` currently assembles). Under the hood this also stages and freezes the real website for that
+one device, runnable on its own for just that step:
+
+```sh
+scripts/build_website.sh wozi                                 # -> frozen_modules/frozen_html.py
+scripts/build_website.sh wozi build/frozen_website_wozi.py    # explicit output path
+```
+
+`.github/workflows/ci.yml`'s `firmware-build-verify` job runs the real `build_firmware.py` build on
+every push/PR; `scripts/test.sh` (above) covers both scripts' own logic fast and offline via
+`tests_scripts/` instead of repeating the multi-minute real compile every run — see
+`tests_scripts/test_build_firmware.py`'s `RUN_SLOW_FIRMWARE_BUILD=1` opt-in for running that real
+compile locally.
+
 ## Digital twin (hardware simulator)
 
 `digital_twin/` is a fake `machine`/`network`/`neopixel` implementation that mirrors the real `wozi` bus wiring — real-time-firing
 `Timer`s, randomized-but-plausible sensor values, and a scripted `WLAN` connect sequence — so driver
 code can run under the real MicroPython Unix-port interpreter with no physical hardware attached.
+Its default wiring (`scripts/run_unix_port_integration.sh`, `scripts/run_digital_twin_ci.sh`) serves
+the real, production `wozi` website (`scripts/build_website.sh wozi`), not the `html_stub`
+placeholder — see `SPECIFICATION.md` Part H.7 for the full account.
 
-Start its standalone CLI demo directly with the same Unix-port binary `scripts/test.sh` builds:
+**Quick start: twin + real website, in one command** (builds the MicroPython Unix port and the
+website automatically if either is missing, then serves both forever):
+
+```sh
+scripts/run_unix_port_integration.sh --host 127.0.0.1 --port 8080
+```
+
+Then open `http://127.0.0.1:8080/` in a browser — that's the real `html/`+`js/` site, driven by the
+real REST API, backed by the twin instead of physical hardware. See "Manual baseline verification
+walkthrough" below for a longer copy-paste sequence that also exercises every endpoint and
+fault-injection flag over `curl`.
+
+Start the twin's standalone CLI demo (no website, twin only) directly with the same Unix-port binary
+`scripts/test.sh` builds:
 
 ```sh
 $HOME/pico-toolchain/micropython/ports/unix/build-standard/micropython digital_twin/launch.py \
@@ -125,7 +231,8 @@ scripts/run_unix_port_integration.sh --host 127.0.0.1 --port 8080 --soak
 ```
 
 Leave this running in its own terminal. In a second terminal, walk every GET endpoint plus the
-stub website:
+real website (`scripts/run_unix_port_integration.sh` builds and serves the real `wozi` site by
+default — not the `html_stub` placeholder, see "Digital twin" above):
 
 ```sh
 curl -s http://127.0.0.1:8080/measurements | python3 -m json.tool
@@ -134,7 +241,7 @@ curl -s http://127.0.0.1:8080/networking | python3 -m json.tool
 curl -s http://127.0.0.1:8080/system | python3 -m json.tool
 curl -s http://127.0.0.1:8080/notification | python3 -m json.tool
 curl -s http://127.0.0.1:8080/status | python3 -m json.tool
-open http://127.0.0.1:8080/   # or just curl -s http://127.0.0.1:8080/ - the stub site's index
+open http://127.0.0.1:8080/   # the real website - a browser (not curl) is the useful way to view it
 ```
 
 **2. Set the log level to `all` (5) via the real API, then reboot to see a full startup log.**
@@ -237,9 +344,10 @@ When a new doc is added, add it here too instead of letting the map go stale aga
 
 - **[`SPECIFICATION.md`](SPECIFICATION.md)** — the single central specification document:
   repository/architecture overview, the toolchain/build-environment installer, the sensor driver
-  architecture spec, the `src/` production-quality checklist, testing & coverage, and
-  MicroPython/RP2040 platform-target facts — all in one place, organized into lettered Parts
-  (A-F) for different needs. Produced by a first-pass doc-scatter cleanup that merged
+  architecture spec, the `src/` production-quality checklist, testing & coverage,
+  MicroPython/RP2040 platform-target facts, the cross-cutting shared-pattern/primitive-reuse
+  catalog, and the website's own architecture — all in one place, organized into lettered Parts
+  (A-H) for different needs. Produced by a first-pass doc-scatter cleanup that merged
   `DRIVER_SPEC.md`, `src/README.md`, `tests/README.md`, `toolchain/README.md`, most of this
   file's former "Repository layout"/"Architecture at a glance"/"Refactor in progress"/"Build
   process" content, and the spec-shaped parts of `CLAUDE.md`/`BACKLOG.md` into one document. Start
@@ -274,16 +382,19 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   listed here for now so it isn't only locatable by cross-reference in the meantime. See
   `SPECIFICATION.md` Part A.10 for how it fits into the rest of the architecture.
 
-`WIRING_CONTRACT.md` and `FINAL_WIRING_PLAN.md` — the temporary planning docs for the
-`improved-quality/` → `src/` wiring effort (`src/sensortask_wozi.py`'s construction restructure,
-generic webserver/API service, digital-twin simulator, website placeholder scaffold, full Unix-port
-integration, and the self-healing-system failure-mode audit) — were deleted once that whole effort
-merged back. Everything permanent they settled was migrated into `SPECIFICATION.md` first: the
+`WIRING_CONTRACT.md`, `FINAL_WIRING_PLAN.md`, and `WEBSITE_PLAN.md` — temporary planning docs for,
+respectively, the `improved-quality/` → `src/` wiring effort (`src/sensortask_wozi.py`'s
+construction restructure, generic webserver/API service, digital-twin simulator, website placeholder
+scaffold, full Unix-port integration, and the self-healing-system failure-mode audit) and the
+JS/HTML/CSS website redesign — were each deleted once their effort merged back. Everything permanent
+they settled was migrated into `SPECIFICATION.md` first: `WIRING_CONTRACT.md`/`FINAL_WIRING_PLAN.md`'s
 construction order/FRAM-chunk order/dependency graph/debug-level registry (Part A.7), the REST API
 endpoint reference (Part A.8), the website-stub/frozen-HTML pipeline (Part A.9), the digital-twin
 pointer (Part A.10), and two new checkable conventions found during the audit (the
-silent-failure-masking and cascading-recovery-storm rules, Parts C.7/C.9) — plus a handful of
-still-open items folded into `BACKLOG.md`. `AUDIT_PLAN.md`, the master action list for the earlier
-full `src/` audit, was deleted the same way once that audit closed — everything permanent it
+silent-failure-masking and cascading-recovery-storm rules, Parts C.7/C.9); `WEBSITE_PLAN.md`'s
+settled website architecture (Part H) and its `src/`-based firmware-assembly pipeline (Part B.11) —
+plus, in both cases, a handful of still-open items folded into `BACKLOG.md`. `AUDIT_PLAN.md`, the
+master action list for the earlier full `src/` audit, was deleted the same way once that audit
+closed — everything permanent it
 settled was migrated into `SPECIFICATION.md` (the style-guideline harmonization it drove lives in
 Parts C/D) first.

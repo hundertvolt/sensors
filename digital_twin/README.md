@@ -84,10 +84,13 @@ scripts/run_unix_port_integration.sh --soak --duration 0   # same, but exits rig
 scripts/run_unix_port_integration.sh --fault sgp40:writeto # manual fault-injection exploration
 ```
 
-Under the hood (builds the toolchain + `frozen_modules/frozen_html.py` the same way `scripts/
-test.sh` does, then runs `digital_twin/run_wozi_integration.py` — the real orchestrator, not
-`boot_entry/wozi_boot.py` directly, since it also needs to drive the soak/fault-injection/
-`--duration`-forever logic around `sensortask_wozi.main()`, not just block on it):
+Under the hood (builds the toolchain, then builds the real `wozi` website into
+`frozen_modules/frozen_html.py` via `scripts/build_website.sh wozi` — **not**
+`scripts/build_frozen_html.sh`'s own `html_stub` default; this is the twin's normal, default
+wiring, matching what a real deployed unit actually serves, not a placeholder — then runs
+`digital_twin/run_wozi_integration.py` — the real orchestrator, not `boot_entry/wozi_boot.py`
+directly, since it also needs to drive the soak/fault-injection/`--duration`-forever logic around
+`sensortask_wozi.main()`, not just block on it):
 
 ```bash
 MICROPYPATH="src:digital_twin:ext:frozen_modules:.frozen" <micropython-unix-port-binary> digital_twin/run_wozi_integration.py [flags]
@@ -214,8 +217,9 @@ scripts/run_digital_twin_ci.sh   # clean -> build -> test, same as CI runs it
 whatever a previous local run or CI job happened to leave behind.
 
 **Build**: builds the MicroPython Unix port (if not already cached at `$PICO_TOOLCHAIN_DIR`, same
-convention as `scripts/test.sh`/`scripts/run_unix_port_integration.sh`) and
-`frozen_modules/frozen_html.py`. Must succeed before any test phase runs.
+convention as `scripts/test.sh`/`scripts/run_unix_port_integration.sh`) and the real `wozi` website
+into `frozen_modules/frozen_html.py` (`scripts/build_website.sh wozi`, not the `html_stub`
+placeholder). Must succeed before any test phase runs.
 
 **Test**: hands off to `scripts/_digital_twin_ci_suite.py`, a self-contained `uv run` CPython
 script (stdlib-only — no `uv sync` needed) that drives `digital_twin/run_wozi_integration.py` as a
@@ -310,6 +314,24 @@ whole interpreter for real wall-clock seconds, the only way to simulate a truly 
 than a bus that merely errors. `wlan` has no `--hang` vocabulary — its faults are a synchronous
 `raise_on[]` check, not a bus transaction with a real HAL call underneath.
 
+### `WDT._arm()`'s late-feed backstop
+
+A real `--hang` freezes the whole interpreter, so every asyncio task — including `WDT`'s own
+pending `_countdown()` sleep — sits unable to run for the hang's full real duration. Once the
+interpreter unfreezes, `system_service.py`'s periodic `feed()` (its own check interval is
+deliberately shorter than any real watchdog `timeout`) can win the race to run before
+`_countdown()`'s own already-expired `sleep_ms()` gets its turn, since both became ready at the
+same moment. A plain cancel-and-restart in `_arm()` would silently erase that already-elapsed
+deadline — real hardware can't un-reset itself just because a feed arrived right after it should
+already have fired. `_arm()` now checks, before cancelling the previous `_countdown()` task,
+whether its own deadline had already elapsed; if so it credits the would-have-triggered event
+itself, exactly once per elapsed window, before rearming — `_countdown()` still owns the normal,
+not-yet-hung case, so this is purely the "a feed arrived too late" backstop, not a second counting
+path. `run10_watchdog_hang_backstop.log`'s check depends on this same fix and on
+`scripts/_digital_twin_ci_suite.py`'s Run 10 giving the twin enough `--duration` (15s, not 0) for
+SGP40's own bus access — now queued behind BMP3xx's and SCD30's own FRAM-backed startup I/O on the
+shared FRAM SPI bus — to actually reach its hung `writeto` before the run exits.
+
 ### `_unix_port_udp_addr_shim.py` (real UDP round trips under the Unix port)
 
 `patch_asy_udp_socket_for_unix_port()` — called once, early, as `run_wozi_integration.py`'s own
@@ -377,6 +399,11 @@ started with. For a new **I2C** sensor this is a small, mechanical addition:
 4. Update this file's "What's here" list (the bus-wiring bullet above) to mention the new chip, and
    consider whether `digital_twin/launch.py`'s own `_sensor_loop()`/`_FAULT_DEVICE_OPS` should read
    from it too.
+5. **Update `html/definitions/<device>.json`** for every device the new driver's fields should
+   appear on (`SPECIFICATION.md` Part H.5/H.7, Part C.11 point 9) — the website has no
+   other place a new sensor's fields get wired in, so skipping this step leaves the driver fully
+   working (real chip fake, real REST endpoint, twin-tested) but permanently invisible on the
+   website until someone remembers to come back and add it by hand.
 
 **A new SPI sensor is not automatically supported yet if it would share an already-occupied SPI bus
 id with the FRAM chip.** `_wire_spi_device()`/`machine.SPI` currently wire **one fixed device per

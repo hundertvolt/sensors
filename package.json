@@ -1,0 +1,33 @@
+{
+  "name": "sensors-website",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Dev-tooling config and source for the sensors website (html/, js/, tests_js/, mockdata/), not an installable package.",
+  "type": "module",
+  "scripts": {
+    "lint": "eslint js tests_js scripts html",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
+    "pretest": "scripts/build_website.sh wozi",
+    "test": "vitest run",
+    "pretest:coverage": "scripts/build_website.sh wozi",
+    "test:coverage": "vitest run --coverage",
+    "lint:html": "html-validate \"html/**/*.html\"",
+    "lint:css": "stylelint \"html/**/*.css\"",
+    "preview": "python3 -m http.server 8000"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.2.0",
+    "@vitest/browser-playwright": "^4.1.11",
+    "@vitest/coverage-v8": "^4.1.11",
+    "eslint": "^10.8.1",
+    "eslint-plugin-html": "^8.1.4",
+    "globals": "^17.11.0",
+    "html-validate": "^11.9.0",
+    "playwright": "^1.62.1",
+    "stylelint": "^17.14.1",
+    "stylelint-config-standard": "^40.0.0",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11"
+  }
+}

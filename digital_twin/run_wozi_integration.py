@@ -242,14 +242,18 @@ async def _soak(host: str, port: int, cycles: int) -> "list[str]":
     # segfault (confirmed via dmesg, not a catchable Python-level exception; see
     # digital_twin/README.md's "Known gaps" section for the root cause and fix) was found by
     # firing 8+ concurrent clients against this same assembled system, well
-    # beyond WebserverService's own max_connections=3 ceiling - this soak's own sequential pattern
+    # beyond WebserverService's own max_connections=4 ceiling - this soak's own sequential pattern
     # never approaches that and must stay that way. digital_twin/segfault_stress_repro.py is the
     # dedicated, separate, manual tool for deliberately exploring that concurrency - never fold its
     # pattern into this automated soak.
+    # `tests/test_digital_twin_webserver_concurrency.py` (SPECIFICATION.md Part H.7) is now the
+    # project's real, automated regression coverage for that exact concurrency scale (12+ real
+    # concurrent connections, repeated bursts) - re-confirmed clean (no crash, no hang) against
+    # current code, not just trusted from the original fix's own history.
     #
     # Every fetch() below is wrapped, not left to propagate - the real server already tolerates an
     # individual connection failure gracefully (WebserverService._serve()'s own broad exception
-    # handling, its max_connections=3 reject-when-full path among them: a rejected connection is
+    # handling, its max_connections=4 reject-when-full path among them: a rejected connection is
     # closed with zero response ever written, by design - BACKLOG.md's own "reject-when-full"
     # decision), but _http_client.fetch() itself has no such tolerance and previously let a single
     # failed request (a real OSError - ECONNRESET was reported directly, running this exact soak

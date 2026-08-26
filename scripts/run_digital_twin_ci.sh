@@ -13,9 +13,11 @@
 #
 # Build: builds the MicroPython Unix port (if not already cached - same
 # $PICO_TOOLCHAIN_DIR/SKIP_APT convention as scripts/test.sh and
-# scripts/run_unix_port_integration.sh) and frozen_modules/frozen_html.py. Must succeed before any
-# test phase can run - a build failure here fails the job immediately via `set -e`, before
-# scripts/_digital_twin_ci_suite.py ever launches a twin subprocess.
+# scripts/run_unix_port_integration.sh) and the real, production `wozi` website (the only device
+# `src/` currently assembles - SPECIFICATION.md Part H.7) as frozen_modules/frozen_html.py, via
+# scripts/build_website.sh - not scripts/build_frozen_html.sh's own html_stub default. Must
+# succeed before any test phase can run - a build failure here fails the job immediately via
+# `set -e`, before scripts/_digital_twin_ci_suite.py ever launches a twin subprocess.
 #
 # Test: hands off to scripts/_digital_twin_ci_suite.py (a self-contained `uv run` CPython script,
 # not MicroPython - it only orchestrates the MicroPython subprocess and speaks plain HTTP to it),
@@ -52,8 +54,8 @@ else
     sudo setcap 'cap_net_bind_service=+ep' "$micropython_bin"
 fi
 
-echo "== Building frozen_modules/frozen_html.py"
-scripts/build_frozen_html.sh
+echo "== Building the real wozi website into frozen_modules/frozen_html.py"
+scripts/build_website.sh wozi
 
 echo "== Running digital-twin automated CI suite"
 uv run scripts/_digital_twin_ci_suite.py --micropython-bin "$micropython_bin" --logs-dir "digital_twin_ci_logs"

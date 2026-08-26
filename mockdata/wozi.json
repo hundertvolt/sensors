@@ -1,0 +1,85 @@
+{
+    "measurements": {
+        "SCD30": { "CO2": 612, "Temp": 21.4, "Hum": 46.2, "WetBulb": 15.1, "DewPoint": 9.8, "TS": 1755000000 },
+        "SGP40": { "VOC": 118, "Raw": 29234, "TS": 1755000000 },
+        "BMP3XX": { "Pres": 1005.3, "Temp": 21.6, "SLPres": 1013.8, "TS": 1755000000 }
+    },
+    "sensorsConfig": {
+        "SCD30": { "MeasInt": 5, "TempOffs": 2.5, "AmbPres": 0, "Altitude": 180, "ForceCalRef": 400, "SelfCal": true },
+        "SGP40": { "BackupPeriod": 60, "BackupMaxAge": 1440, "WaitTimeNTP": 30 },
+        "BMP3XX": {
+            "SampleInterv": 5, "PressOvers": 4, "PressOffset": 0.0, "TempOvers": 4, "TempOffset": 0.0,
+            "FiltCoeff": 3, "SeaLevelOffs": 0.0, "MeanAtmTemp": 15.0
+        }
+    },
+    "networkingConfig": {
+        "SSID": "sensor-net", "PW": "hunter2hunter2", "Country": "DE", "Hostname": "wozi",
+        "LedWifiOn": true, "NTP_Host": "pool.ntp.org", "NTP_Offset_S": 0, "NTP_Interv_H": 4
+    },
+    "systemConfig": { "DebugLevel": 1, "GMTOffset": 3600, "DSTOffset": 3600 },
+    "notificationConfig": {
+        "AutoOn": true, "OnH": 7, "OnM": 0, "OffH": 22, "OffM": 0, "FlashBri": 120,
+        "Interv": 900.0, "FlashDur": 2.0, "WarnCO2": 1200, "WarnVOC": 250, "WarnHum": 65.0
+    },
+    "status": {
+        "networking": {
+            "WifiUptime": 431200, "Mode": "STA", "Connected": true, "IP": "192.168.1.42", "IPv4": "192.168.1.42",
+            "Subnet": "255.255.255.0", "Gateway": "192.168.1.1", "DNS": "192.168.1.1", "Rssi": -58,
+            "NtpSynced": true, "NtpLastSyncAge": 812, "NtpLastSync": 1754999188
+        },
+        "system": {
+            "SysUptime": 431260, "BootSignature": 1754568003, "MemPaused": false,
+            "LocalTime": { "year": 2025, "month": 8, "mday": 12, "hour": 9, "minute": 14, "second": 3, "weekday": 1 },
+            "UtcTime": { "year": 2025, "month": 8, "mday": 12, "hour": 8, "minute": 14, "second": 3, "weekday": 1 }
+        },
+        "sensors": { "SGP40": { "BackupTS": 1754996400, "RestoreTS": 1754323200 } },
+        "notification": { "Triggered": false, "TS": 1754912400, "PauseTime": 0 },
+        "errcount": {
+            "WIFI": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+            "CFGMGR_WIFI": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+            "DNSSRV": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+            "NTP": {
+                "counter": 2,
+                "history": [
+                    { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" },
+                    { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" },
+                    { "num": 3, "type": "W" }, { "num": 5, "type": "E" }
+                ]
+            },
+            "CFGMGR_NTP": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+            "FRAM": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+            "SYSTEM": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+            "CFGMGR_SYSTEM": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+            "SCD30": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+            "SGP40": {
+                "counter": 3,
+                "history": [
+                    { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" },
+                    { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" },
+                    { "num": 3, "type": "E" }, { "num": 3, "type": "E" }, { "num": 5, "type": "E" }
+                ]
+            },
+            "CFGMGR_SGP40": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+            "BMP3XX": {
+                "counter": 12,
+                "history": [
+                    { "num": 2, "type": "E" }, { "num": 2, "type": "E" }, { "num": 2, "type": "E" }, { "num": 4, "type": "E" },
+                    { "num": 2, "type": "E" }, { "num": 2, "type": "E" }, { "num": 2, "type": "E" }, { "num": 4, "type": "E" },
+                    { "num": 2, "type": "E" }, { "num": 2, "type": "E" }
+                ]
+            },
+            "CFGMGR_BMP3XX": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+            "NEOPIXEL": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+            "NOTIFY": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+            "CFGMGR_NOTIFY": { "counter": 0, "history": [{ "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }] },
+            "WEBSERVER": {
+                "counter": 1,
+                "history": [
+                    { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" },
+                    { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" }, { "num": 0, "type": "N" },
+                    { "num": 0, "type": "N" }, { "num": 1, "type": "W" }
+                ]
+            }
+        }
+    }
+}

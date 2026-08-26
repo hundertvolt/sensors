@@ -1,0 +1,486 @@
+/*
+ * Design tokens + layout for the sensors website (SPECIFICATION.md Part H).
+ * Light palette lives on :root; the dark variant only redefines tokens under
+ * prefers-color-scheme - there is no manual toggle (settled: automatic-only dark mode).
+ * Legacy html_raw/general/style.css's .container > .group > .card nesting is kept as the
+ * mental model (still matches the data shape well) but modernized: bordered/soft-shadow cards
+ * instead of flat grey fill, spacing/typography hierarchy, and real tokens instead of hex.
+ */
+
+:root {
+    --color-bg: #f2f3f5;
+    --color-surface: #fff;
+    --color-surface-alt: #f6f7f9;
+    --color-border: #d8dbe0;
+    --color-text: #1b1e22;
+    --color-text-muted: #5b6270;
+    --color-accent: #2f6fed;
+    --color-accent-contrast: #fff;
+    --color-success: #1f9d55;
+    --color-success-bg: #e5f7ec;
+    --color-neutral: #6b7280;
+    --color-neutral-bg: #eceef1;
+    --color-danger: #d64545;
+    --color-danger-bg: #fbe9e9;
+    --color-warn: #9457c7;
+    --color-warn-bg: #f2e9fa;
+    --shadow-card: 0 1px 2px rgb(20 22 26 / 6%), 0 1px 1px rgb(20 22 26 / 4%);
+    --radius-card: 10px;
+    --radius-control: 6px;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --color-bg: #16181c;
+        --color-surface: #1e2126;
+        --color-surface-alt: #262a31;
+        --color-border: #34383f;
+        --color-text: #e7e9ec;
+        --color-text-muted: #9aa1ac;
+        --color-accent: #6d9dff;
+        --color-accent-contrast: #0d1117;
+        --color-success: #3fce7d;
+        --color-success-bg: #10331f;
+        --color-neutral: #9aa1ac;
+        --color-neutral-bg: #2b2f36;
+        --color-danger: #ef6f6f;
+        --color-danger-bg: #3a1c1c;
+        --color-warn: #c398ec;
+        --color-warn-bg: #33223f;
+        --shadow-card: 0 1px 2px rgb(0 0 0 / 40%), 0 1px 1px rgb(0 0 0 / 30%);
+    }
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.4;
+}
+
+button {
+    font: inherit;
+}
+
+/* ---- App shell / header ---- */
+
+.app-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    background-color: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.hamburger-button {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    background: none;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-control);
+    cursor: pointer;
+}
+
+.hamburger-button span {
+    display: block;
+    height: 2px;
+    margin: 0 7px;
+    background-color: var(--color-text);
+    border-radius: 1px;
+}
+
+.app-title {
+    font-size: 17px;
+    font-weight: 600;
+}
+
+.app-title .device-name {
+    color: var(--color-text-muted);
+    font-weight: 400;
+}
+
+/* ---- Nav drawer ---- */
+
+.nav-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    background-color: rgb(0 0 0 / 35%);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.18s ease;
+}
+
+.app-shell.nav-open .nav-backdrop {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.nav-drawer {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 21;
+    width: min(280px, 80vw);
+    padding: 16px 0;
+    background-color: var(--color-surface);
+    border-right: 1px solid var(--color-border);
+    transform: translateX(-100%);
+    transition: transform 0.18s ease;
+    overflow-y: auto;
+}
+
+.app-shell.nav-open .nav-drawer {
+    transform: translateX(0);
+}
+
+.nav-drawer-heading {
+    padding: 0 20px 12px;
+    color: var(--color-text-muted);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.nav-link {
+    display: block;
+    padding: 12px 20px;
+    color: var(--color-text);
+    text-decoration: none;
+    font-size: 15px;
+    border-left: 3px solid transparent;
+    cursor: pointer;
+    background: none;
+    width: 100%;
+    text-align: left;
+    border-top: none;
+    border-right: none;
+    border-bottom: none;
+}
+
+.nav-link:hover {
+    background-color: var(--color-surface-alt);
+}
+
+.nav-link[aria-current="page"] {
+    border-left-color: var(--color-accent);
+    background-color: var(--color-surface-alt);
+    font-weight: 600;
+}
+
+/* ---- Main content ---- */
+
+.app-main {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 20px 16px 64px;
+}
+
+.section-heading {
+    margin: 0 0 4px;
+    font-size: 22px;
+}
+
+.section-description {
+    margin: 0 0 20px;
+    color: var(--color-text-muted);
+    font-size: 14px;
+}
+
+.group-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+/* ---- Cards ---- */
+
+.card {
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-card);
+    padding: 16px;
+}
+
+.card h3 {
+    margin: 0 0 12px;
+    font-size: 15px;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.field {
+    margin-bottom: 14px;
+    padding-top: 12px;
+    padding-left: 8px;
+    border-top: 1px solid var(--color-border);
+    border-left: 3px solid transparent;
+}
+
+.field:first-of-type {
+    padding-top: 0;
+    border-top: none;
+}
+
+.field-label {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.field-unit {
+    font-weight: 400;
+    color: var(--color-text-muted);
+}
+
+.field-value {
+    font-size: 15px;
+}
+
+.field-description {
+    margin: 4px 0 0;
+    color: var(--color-text-muted);
+    font-size: 12px;
+}
+
+.field input[type="text"],
+.field input[type="number"],
+.field select {
+    width: 100%;
+    padding: 7px 9px;
+    background-color: var(--color-surface-alt);
+    color: var(--color-text);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-control);
+    font-size: 14px;
+}
+
+.composite-fields {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+}
+
+.toggle-button,
+.action-button {
+    padding: 7px 14px;
+    background-color: var(--color-surface-alt);
+    color: var(--color-text);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-control);
+    cursor: pointer;
+}
+
+.toggle-button[aria-pressed="true"] {
+    background-color: var(--color-accent);
+    color: var(--color-accent-contrast);
+    border-color: var(--color-accent);
+}
+
+.apply-button {
+    display: block;
+    width: 100%;
+    margin-top: 16px;
+    padding: 9px 14px;
+    background-color: var(--color-accent);
+    color: var(--color-accent-contrast);
+    border: none;
+    border-radius: var(--radius-control);
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.apply-result {
+    margin: 8px 0 0;
+    font-size: 13px;
+    color: var(--color-text-muted);
+}
+
+/* Apply-result status indicator: a left accent stripe, not a full background recolor (legacy's
+   own presentation) - reads as a status badge, not a jarring flash. Shown at two levels: the
+   card as a whole (worst status across the group) and each individual field's own box (its own
+   result) - legacy colored each field's own nearest card separately, and that per-field
+   granularity is kept here too, just restyled as a stripe (SPECIFICATION.md Part H.3). */
+.card[data-apply-status="valid"] {
+    border-left: 3px solid var(--color-success);
+}
+
+.card[data-apply-status="unchanged"] {
+    border-left: 3px solid var(--color-neutral);
+}
+
+.card[data-apply-status="invalid"] {
+    border-left: 3px solid var(--color-danger);
+}
+
+.card[data-apply-status="failed"] {
+    border-left: 3px solid var(--color-warn);
+}
+
+.field[data-apply-status="valid"] {
+    border-left-color: var(--color-success);
+}
+
+.field[data-apply-status="unchanged"] {
+    border-left-color: var(--color-neutral);
+}
+
+.field[data-apply-status="invalid"] {
+    border-left-color: var(--color-danger);
+}
+
+.field[data-apply-status="failed"] {
+    border-left-color: var(--color-warn);
+}
+
+/* ---- Error / status counts ---- */
+
+/* Starts fully collapsed to just this rollup + two filter buttons - a device can have 15+
+   registered modules, and showing every one of them (even as a compact row) by default was too
+   much vertical space for a page a visitor mostly just needs to glance at. */
+.errcount-rollup {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+    margin-bottom: 4px;
+}
+
+.errcount-rollup-count {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.errcount-rollup-count[data-rollup="errors"] {
+    color: var(--color-danger);
+}
+
+.errcount-rollup-count[data-rollup="warnings"] {
+    color: var(--color-warn);
+}
+
+.errcount-module-list {
+    margin-top: 12px;
+}
+
+/* A plain divided list, not a grid of boxes - one line per module until expanded, with a border
+   as the only separator between modules, so many modules stay compact and clearly distinct. */
+.errcount-row-wrapper {
+    border-bottom: 1px solid var(--color-border);
+}
+
+.errcount-row-wrapper:first-child {
+    border-top: 1px solid var(--color-border);
+}
+
+.errcount-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 9px 2px;
+}
+
+.errcount-row-name {
+    font-size: 14px;
+}
+
+.errcount-row-count {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--color-text-muted);
+}
+
+.errcount-row[data-has-errors="true"] .errcount-row-count {
+    color: var(--color-danger);
+}
+
+/* One horizontal, wrapping row of pills per module - not a vertical list. A module can carry
+   10+ entries; stacking each in its own row wastes vertical space for content that's just a
+   single small number, and a horizontal strip reads faster as "one module's recent history at a
+   glance" anyway. */
+.history-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 10px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.history-entry {
+    display: block;
+}
+
+/* The errno itself is the only thing ever shown - "N"/"E"/"W" (no error/error/warning) never
+   render as text, they only pick this pill's color (SPECIFICATION.md Part H.3/H.6). */
+.history-entry-num {
+    display: inline-block;
+    min-width: 24px;
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    text-align: center;
+}
+
+.history-entry[data-err-type="N"] .history-entry-num {
+    background-color: var(--color-success-bg);
+    color: var(--color-success);
+}
+
+.history-entry[data-err-type="W"] .history-entry-num {
+    background-color: var(--color-warn-bg);
+    color: var(--color-warn);
+}
+
+.history-entry[data-err-type="E"] .history-entry-num {
+    background-color: var(--color-danger-bg);
+    color: var(--color-danger);
+}
+
+.history-empty {
+    color: var(--color-text-muted);
+    font-size: 13px;
+}
+
+/* ---- Banners ---- */
+
+.error-banner {
+    max-width: 1100px;
+    margin: 16px auto 0;
+    padding: 12px 16px;
+    background-color: var(--color-danger-bg);
+    color: var(--color-danger);
+    border: 1px solid var(--color-danger);
+    border-radius: var(--radius-control);
+    font-size: 14px;
+}
+
+.hidden {
+    display: none !important;
+}
+
+@media (width >= 640px) {
+    .app-main {
+        padding: 28px 24px 72px;
+    }
+}

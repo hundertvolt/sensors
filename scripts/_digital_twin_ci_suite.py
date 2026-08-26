@@ -78,7 +78,7 @@ def _clean_state() -> None:
 
 
 def _http(method: str, path: str, body: dict | None = None, timeout: float = 5.0) -> tuple[int, Any]:
-    # "/" serves the static frozen_html stub (gzip bytes, not JSON - see asy_webserver_service.py's
+    # "/" serves the real, static website (gzip bytes, not JSON - see asy_webserver_service.py's
     # own generic "/" route) - only the REST endpoints return a JSON body, so parsing is keyed off
     # the real Content-Type header rather than assumed for every path.
     conn = http.client.HTTPConnection(HOST, PORT, timeout=timeout)
@@ -490,19 +490,16 @@ def run_suite(micropython_bin: str, logs_dir: Path) -> int:
     # bounded errors (Run 3) cannot demonstrate. See digital_twin/_fault_injection.py's own module
     # docstring for why this - and only this - is what real hardware's "genuinely wedged bus"
     # scenario requires (SPECIFICATION.md Part F.2, CLAUDE.md's own settled "hardware watchdog is
-    # the accepted backstop" rule). --duration 0 exits as soon as _wait_until_serving() succeeds,
-    # which itself is delayed by the hang - no signal needed. ----
+    # the accepted backstop" rule). --duration 15, not 0: since BMP3xx/SCD30 gained FRAM-backed
+    # error logging, SGP40's own first bus access queues behind theirs on the shared FRAM SPI bus,
+    # so the hang can fire well after webserver readiness - --duration 0 raced that and sometimes
+    # exited before the hang ever fired at all. See digital_twin/README.md's "WDT._arm()'s
+    # late-feed backstop" for the full account (this and that fix were found together). ----
     _clean_state()
     log10 = logs_dir / "run10_watchdog_hang_backstop.log"
-    proc = _spawn(micropython_bin, ["--hang", "sgp40:writeto:12", "--duration", "0"], log10)
+    proc = _spawn(micropython_bin, ["--hang", "sgp40:writeto:12", "--duration", "15"], log10)
     try:
-        # Deliberately NOT _wait_until_serving() here: --duration 0 exits as soon as its own
-        # internal _wait_until_serving() succeeds, which races this external check for the socket
-        # - by the time this process's own HTTP poll could land, the twin subprocess may already be
-        # past that point and mid-shutdown (confirmed by direct reproduction). The only outcomes
-        # that actually matter are "did it exit cleanly" and "did the log show the backstop fired",
-        # both checked below without needing serving to still be observable from outside.
-        ec = _wait_exit(proc, timeout_s=30.0)
+        ec = _wait_exit(proc, timeout_s=45.0)
         _check(ec == 0, f"Run 10: process survived a genuinely wedged bus and exited cleanly (exit code {ec})")
     except Exception as exc:  # noqa: BLE001
         _fail(f"Run 10 (watchdog hang backstop): {exc!r}")
