@@ -53,30 +53,6 @@ constraints.
   re-probe of anything — and no task supervisor for FRAM specifically. Whoever wires this up must wrap
   the calls in the same `try/except Exception` discipline this file's other methods already use —
   `asy_fram_driver.py` doesn't catch its own inherited `RuntimeError` path on these three itself.
-- **Every deliberate system reset (reboot, bootloader entry, or a deliberate watchdog-starve
-  give-up) must pause FRAM operations first and give it a brief wait before the reset actually
-  happens** — a real risk (mid-write/mid-read power loss, MB85RS64V reads are destructively
-  read internally per `SPECIFICATION.md` Part A.4) that a reset triggered while a FRAM transaction is
-  in flight could corrupt data, same class of concern as the dual-copy/status-byte design
-  `asy_fram_manager.py` already guards against for power loss but not specifically for a
-  self-triggered reset racing an in-progress transaction. Owner-flagged as important for the final
-  wiring-up of this refactor's task/reset plumbing, likely needing rework across several files, not
-  just one. **Current state, confirmed by reading `system_service.py` directly**: `_reboot()`
-  (backing both `reboot_system()`/`reboot_bootloader()`) already calls `self.storage_pause(True)`
-  before arming the `_RESET_DELAY`-second (4s) delayed reset timer, and already does so before the
-  `_force_watchdog_starve` fallback too (armed when the reset timer itself can't be allocated) - so
-  the one existing deliberate-reset path already pauses-then-waits. Confirmed via grep that
-  `machine.reset()`/`machine.bootloader()`/`WDT()` have no other call site anywhere in `src/`
-  today. **Both open sub-items closed**: (1) margin is sufficient - the FRAM
-  bus runs at 1MHz (`asy_spi_driver.py`'s default `baudrate`) over a `max_size=0x2000` (8KB) chip,
-  and no single chunk approaches that whole size (individual chunks are tens of bytes), so even a
-  two-block write plus CRC-verify readback completes in low single-digit milliseconds - three
-  orders of magnitude under both the deliberate 4s `_RESET_DELAY` and the worst-case ~8s
-  watchdog-starve wait; a genuinely wedged bus is the separate, already-accepted "hardware
-  watchdog is the backstop" case (CLAUDE.md). (2) the invariant is now actively enforced, not just
-  true by chance: `tests/test_reset_call_site_invariant.py` scans every `src/*.py` file and fails
-  if `machine.reset()`/`machine.bootloader()` appear anywhere but `system_service.py`, or `WDT()`
-  anywhere but `sensortask_wozi.py`.
 - **No standardized timeout/cancellation mechanism yet for blocking calls that genuinely can be
   timeout-wrapped** (FRAM SPI transactions, `src/asy_udp_socket.py`'s own `select.poll`-driven
   `ready()`/`write_and_recvfrom()` — anything that isn't a raw blocking `machine.I2C` call
@@ -85,41 +61,11 @@ constraints.
   out to belong in the *can't* bucket instead and is gone from this codebase entirely now). Each
   remaining call currently uses its own bespoke approach rather than one consistent mechanism
   applied everywhere.
-- **Bus concurrency (`asyncio.Lock` + `async with`) coverage audit — closed, no gaps found.** Every
-  `*_DeviceSession(Lockable)` driver in `src/` (SCD30/BMP3xx/SGP40/I2CDevice, plus FRAM's
-  structurally identical `_op_lock`) was audited for re-entrant acquisition, exception-safety on
-  release, starvation, and cross-lock ordering: no method re-acquires an already-held lock,
-  `Lockable.__aexit__` always releases (try/except around `.release()`, never suppresses the
-  original exception), every extended hold is a bounded, protocol-justified delay, and every call
-  site acquires the per-sensor session lock before the shared bus lock, never the reverse. No code
-  changes needed.
-- **Common driver error classes across sensors — closed, scheme designed and applied.** Three
-  fixed common `errno` slots now sit immediately after `base_classes.py`'s own reserved 1-9:
-  `10`=init failed (already universal), `11`=primary/periodic read failed (newly unified - was 11/
-  13/17 across SCD30/BMP3XX/SGP40), `12`=persisted-config read at init failed (newly unified where
-  applicable - was 11/unused/11 across BMP3XX/SCD30/SGP40; SCD30 has no such step, so `12` is
-  simply unused there). Each driver's own remaining errors were renumbered to start right after the
-  highest common slot it uses, preserving each driver's original relative ordering - see
-  `SPECIFICATION.md` Part C.7's new "Common error classes" bullet for the full scheme and Part
-  C.7.1's table for the resulting exact numbers per driver. Verified: `scripts/lint.sh`,
-  `scripts/typecheck.sh`, and the full `scripts/test.sh` suite (2183/2183) all pass after the
-  renumbering.
 - **The task-supervisor error-budget counter** is behaviorally correct and intentional as designed,
   but flagged by the owner as implementable more efficiently — worth a cleaner implementation in
   the refactor without changing observed behavior. (Neopixel warning-flash sequencing was the other
   half of this item - resolved by the `src/asy_neopixel_driver.py`/`src/asy_notification_service.py`
   promotion, see `SPECIFICATION.md` Part A.4.)
-- **Bus-layer status has no dedicated REST endpoint or field — closed, no gaps found.**
-  `asy_i2c_driver.py`/`asy_spi_driver.py` deliberately have no logger of their own (see
-  `SPECIFICATION.md` Part C.7.1's table); re-examined on the premise that a dedicated bus-level
-  REST endpoint might be needed to make bus faults visible. It isn't: every I2C-bus-touching call
-  site in `asy_scd30_driver.py`/`asy_sgp40_driver.py`/`asy_bmp3xx_driver.py` is only ever reachable
-  from a higher-level method that already catches the bus exception and logs it via its own
-  `self.pr.err_s()`, confirmed by cross-checking every driver's real `errno`/`wrnno` call sites
-  against Part C.7.1's table 1:1 (this found and fixed one stale table entry - BMP3XX's `errno=22`
-  was missing from its documented range). FRAM's SPI path has no exceptions to catch in the first
-  place (real RP2040 SPI can't NAK); it already detects failures via its own status-byte checks,
-  a separate and already-complete mechanism. No code or REST changes needed.
 - **Rough sequencing, not a committed plan**: (1) dev/build environment setup (genericized
   `build-*.sh`/toolchain paths) — everything else touching CI/firmware depends on this; (2) the
   structural patterns above (per-sensor config, generalized error-counter bookkeeping) are largely
@@ -309,22 +255,6 @@ constraints.
   yet picked up. Meanwhile, a prominent comment sits directly above the first
   self-checking getter, explicitly cross-referencing `network_available()` and naming the
   convention a new getter must pick deliberately.
-- **`config_manager.py`'s three defensive `TypeError`/`AttributeError` catches** (non-string
-  filename, non-iterable `keys`, non-dict `data` passed to `write_config()`) — **re-investigated now
-  that the Microdot REST layer exists**: they're still not load-bearing. `asy_webserver_service.py`'s
-  own `_body_as_dict()` and `_put_sensors()`'s per-sensor `isinstance(fields, dict)` check already
-  guarantee only dict-shaped data ever reaches `write_config()`, and `get_dict()`'s `keys` always
-  comes from a schema (`schema_names()`), never request data - so these three catches remain pure
-  defense-in-depth, not because the REST wiring is missing but because the REST layer's own
-  validation already fully absorbs the risk before it gets this far. Already covered by direct unit
-  tests (`tests/test_config_manager.py`) independent of caller discipline - no further action.
-- **Whole-system integration test scope — closed.** `tests/test_sensortask_wozi.py` and
-  `tests/test_digital_twin_sensortask_integration.py` exercise the real `build_system()` object
-  graph end-to-end (construction order, FRAM chunk order, the `setup()`-batch order, every REST
-  endpoint reachable over real HTTP against real twin-backed drivers, task-supervisor restart
-  against the real full task list, the WiFi hotspot/DNS/status-LED chain through a real STA→hotspot
-  transition, and SGP40 VOC-backup reboot survival through the real `sgp_reader`/`fram`
-  construction order and a real simulated reboot) — see `SPECIFICATION.md` Parts A.7/A.8.
 - **`asy_i2c_driver.py`'s `get_bits`/`set_bits`/`get_register_struct` still call the allocating
   `readfrom_mem()` rather than zero-copy `readfrom_mem_into()`** — no real caller needs the
   zero-copy path yet, but worth doing before `asy_isl29125_driver.py` (its one plausible future

@@ -8,7 +8,7 @@ elsewhere, when a new user-facing behavior needs explaining.
 
 One physical LED serves two independent purposes, arbitrated by `asy_neopixel_driver.py`:
 
-- **WiFi status overlay** — a dim white glow, on/off only, driven by `/networking`'s `WifiLED`
+- **WiFi status overlay** — a dim white glow, on/off only, driven by `/networking`'s `LedWifiOn`
   config field. This is a static preference ("is the indicator enabled"), not a live connectivity
   signal — it's (re)applied whenever the WiFi service (re)establishes its state, not continuously
   tied to connection health.

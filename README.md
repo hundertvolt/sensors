@@ -49,7 +49,7 @@ source .venv/bin/activate  # scripts/lint.sh and scripts/typecheck.sh assume ruf
 scripts/lint.sh            # ruff check
 scripts/typecheck.sh       # mypy, using MicroPython stubs matching toolchain/versions.toml (see above)
 scripts/test.sh            # runs every test in tests/, under a real MicroPython Unix-port interpreter -
-                            # builds that interpreter automatically on first run (see tests/README.md) -
+                            # builds that interpreter automatically on first run (see SPECIFICATION.md Part E) -
                             # plus tests_scripts/, a CPython/pytest suite covering the host-only build
                             # tooling (scripts/build_frozen_html.sh, build_website.sh, build_firmware.py)
 scripts/test.sh --coverage # same, plus a src/-only line coverage report (HTML/XML/markdown) - see below

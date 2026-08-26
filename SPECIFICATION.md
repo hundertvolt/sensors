@@ -263,14 +263,19 @@ The condensed version is A.2 above. Key modules if you need to go deeper (folded
   statement, confirmed by direct reading, not assumption. Before adding any *new* FRAM-backed class
   (a new driver, or a currently-in-memory-only logger — e.g. a `CFGMGR_*` or `"DNSSRV"` logger ever
   becoming FRAM-backed), prove single, deterministic construction first, not after.
-  **Every deliberate system reset already pauses FRAM first, confirmed directly** (found during a
-  BACKLOG.md scan for settled facts sitting in working memory): `system_service.py`'s `_reboot()`
-  (backing both `reboot_system()`/`reboot_bootloader()`) calls `self.storage_pause(True)` before
-  arming the delayed reset timer, and before the `_force_watchdog_starve` fallback too — confirmed
-  via grep that `machine.reset()`/`machine.bootloader()`/`WDT()` have no other call site anywhere
-  in `src/`. Whether the actual wait margin is sufficient for FRAM's own
-  in-flight transaction time, and keeping this invariant preserved as more reset call sites are
-  added, are still open — see BACKLOG.md's "Every deliberate system reset..." item.
+  **Every deliberate system reset already pauses FRAM first, confirmed directly**:
+  `system_service.py`'s `_reboot()` (backing both `reboot_system()`/`reboot_bootloader()`) calls
+  `self.storage_pause(True)` before arming the delayed reset timer, and before the
+  `_force_watchdog_starve` fallback too. The margin is sufficient: the FRAM bus runs at 1MHz
+  (`asy_spi_driver.py`'s default `baudrate`) over a `max_size=0x2000` (8KB) chip, and no single
+  chunk approaches that whole size (individual chunks are tens of bytes), so even a two-block write
+  plus CRC-verify readback completes in low single-digit milliseconds — three orders of magnitude
+  under both the deliberate 4s `_RESET_DELAY` and the worst-case ~8s watchdog-starve wait; a
+  genuinely wedged bus is the separate, already-accepted "hardware watchdog is the backstop" case
+  (CLAUDE.md). The invariant is actively enforced, not just true by chance:
+  `tests/test_reset_call_site_invariant.py` scans every `src/*.py` file and fails if
+  `machine.reset()`/`machine.bootloader()` appear anywhere but `system_service.py`, or `WDT()`
+  anywhere but `sensortask_wozi.py`.
 - **SCD30's `AmbPres` (ambient-pressure compensation) is stored in the sensor's own internal
   non-volatile memory as a one-time-set value, not a continuously-updated live input.** This is why
   it's a static config value on every unit — including wozi, which has a live BMP388 — and why
@@ -2008,7 +2013,14 @@ Two independent lock layers, both needed:
 
 Pattern: `async with self.i2c_<sensor> as dev:` (acquires lock 2) wrapping one or more
 `async with dev.i2c_device as i2c:` blocks (acquires lock 1 for just that one transaction) —
-see any `*_I2C` class's multi-step methods for the concrete nesting.
+see any `*_I2C` class's multi-step methods for the concrete nesting. **Lock ordering is fixed and
+must stay that way**: every call site acquires the device-session lock (2) before the bus lock (1),
+never the reverse — audited across every `*_DeviceSession(Lockable)` driver in `src/`
+(SCD30/BMP3xx/SGP40/I2CDevice, plus FRAM's structurally identical `_op_lock`) with no violation
+found: no method re-acquires an already-held lock, `Lockable.__aexit__` always releases
+(try/except around `.release()`, never suppresses the original exception), and every extended hold
+is a bounded, protocol-justified delay. A new driver that acquires these two locks in the opposite
+order risks a real deadlock against a concurrent caller of an existing driver.
 
 **Known inconsistency (`asy_wifi_service.py`), worth checking before adding a similar getter
 anywhere**: its getters hide two opposite locking contracts under one shape —
