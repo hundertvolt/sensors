@@ -1720,6 +1720,32 @@ def test_set_dict_cfg_sample_interv_end_to_end_persists_and_pushes() -> None:
     assert run(reader.trigger_period.get_value()) == 45
 
 
+def test_set_dict_cfg_coerces_int_field_before_pushing_not_just_persisting() -> None:
+    # Regression test for a bug found in pre-merge audit: _set_dict_cfg's push loop must dispatch
+    # the coerced (int) shape that was actually persisted, not the caller's raw pre-coercion float.
+    # config_manager.py's int<->float coercion accepts an integral float for an int-typed field
+    # (SPECIFICATION.md Part A.8), but every BMP3xx push wrapper type-checks its argument with
+    # `type(value) is not int` - before this was fixed, a request like this one persisted
+    # successfully but the push wrapper then rejected the raw float, reporting "Failed" and
+    # reverting the just-written config via _recover_failed_push.
+    i2c, reader = make_clean_reader("set_dict_cfg_coerce_push")
+    seed_status(i2c, 0x10 | 0x60)
+    seed_err(i2c, 0x00)
+    results = run(reader._set_dict_cfg({"TempOvers": 4.0}, reader.get_cfg_schema()))
+    assert results == {"TempOvers": "Valid"}
+    assert run(reader.cfgmgr.get_dict(["TempOvers"])) == {"TempOvers": 4}
+    assert run(reader.bmp.get_temperature_oversampling()) == 4
+
+
+def test_set_dict_cfg_coerces_pure_software_int_field_before_pushing() -> None:
+    # Same regression as above, for the pure-software (non-I2C) SampleInterv push path.
+    reader = make_reader("set_dict_cfg_coerce_push_sw")
+    results = run(reader._set_dict_cfg({"SampleInterv": 45.0}, reader.get_cfg_schema()))
+    assert results == {"SampleInterv": "Valid"}
+    assert run(reader.cfgmgr.get_dict(["SampleInterv"])) == {"SampleInterv": 45}
+    assert run(reader.trigger_period.get_value()) == 45
+
+
 def test_push_wrapper_functions_reject_a_non_int_value_defensively() -> None:
     # _set_dict_cfg only ever invokes these with an already schema-validated int (see each
     # wrapper's own comment) - calling them directly with the wrong type exercises the defensive
