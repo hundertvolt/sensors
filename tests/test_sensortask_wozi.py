@@ -194,7 +194,9 @@ def test_i2c0_uses_a_clock_stretch_timeout_wide_enough_for_scd30() -> None:
     # calibration (datasheets/scd30/..._Interface_Description.pdf p.2) - rp2's own I2C timeout
     # default is 50ms (DEFAULT_I2C_TIMEOUT, ports/rp2/machine_i2c.c), so i2c0 must override it or
     # that expected stretch surfaces as a spurious OSError roughly once a day. i2c1 (SGP40/BMP3xx)
-    # has no such requirement and keeps the port default.
+    # has no such requirement and keeps the port default. wozi-specific, like every FRAM-chunk
+    # assertion below - see BACKLOG.md's "Per-variant generator" entry before copying this test
+    # unconditionally for a future variant that may lack SCD30 or FRAM entirely.
     run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
     assert sensortask_wozi.i2c0 is not None and sensortask_wozi.i2c1 is not None
     assert sensortask_wozi.i2c0._i2c is not None and sensortask_wozi.i2c1._i2c is not None

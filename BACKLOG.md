@@ -218,6 +218,26 @@ constraints.
   twice); a full formal grammar (escaping a `"` inside a quoted value, etc.) was deliberately not
   attempted, since the sketch's job was proving the *shape* of the idea against real code, not being
   implementation-ready.
+- **Per-variant `sensortask-*.py` generator — not yet built.** SPECIFICATION.md Part A.3 already
+  names this as a real planned direction (one setup-definition file → every variant's
+  `sensortask-*.py`/website pair), shaped for by A.8's registration-API/A.9's `HTML_SRC_DIRS`
+  mechanisms; `src/sensortask_wozi.py` today only covers the "wozi" variant, hand-written with its
+  own fixed sensor set (SCD30 + BMP3xx + SGP40, all FRAM-backed) assumed present unconditionally.
+  Two concrete requirements for whenever this generator is actually built, so they aren't lost
+  between now and then: (1) any hardware-presence-conditioned wiring `sensortask_wozi.py` currently
+  hardcodes for its own fixed sensor set — which FRAM chunks get allocated (Part A.7's seven-chunk
+  order is wozi-specific) and any sensor-specific bus parameter (e.g. SCD30's own I2C
+  clock-stretch `timeout=200000`) — must be derived from the target variant's actual module set,
+  not copied verbatim into a variant lacking that sensor; (2) **every generated variant needs its
+  own real unit tests** (owner requirement - a generated `sensortask-*.py` is exactly as much "real
+  code" as a hand-written one, same Part D bar applies), and those tests must themselves check
+  which sensors/FRAM a given variant actually has before asserting anything sensor- or
+  FRAM-specific — asserting e.g. `scd_reader.pr.fram is not None` unconditionally against a variant
+  with no SCD30 (or no FRAM at all) would either hard-fail on a module that was never supposed to
+  exist, or - the sharper risk - pass vacuously for the wrong reason if the assertion is generated
+  loosely enough to skip rather than genuinely check. `tests/test_sensortask_wozi.py`'s own
+  FRAM/I2C-timing tests are the worked example this generalizes from, not a template to copy
+  unconditionally.
 - **`dev.json`'s SHTC3/MPRLS/ISL29125 field entries remain an unconfirmed projection.** These sensors
   have no real driver under `src/` yet, so their `html/definitions/dev.json` entries follow the same
   pattern every promoted sensor's entry does, without a real driver to confirm the projection against.

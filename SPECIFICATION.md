@@ -602,6 +602,17 @@ yet been deployed to real hardware (A.3) — no on-chip FRAM layout from an earl
 exists to preserve compatibility with, which is why this seven-chunk order could be adopted
 directly rather than needing a migration path.
 
+**This seven-chunk order, and `i2c0`'s SCD30-specific `timeout=200000`, are wozi's own — not a
+sequence a future per-variant generator (A.3) can copy verbatim.** Both are conditioned on wozi's
+own fixed sensor set (SCD30 + BMP3xx + SGP40 all present); a variant lacking one of these sensors
+allocates fewer chunks (in the same *relative* order for whichever modules it does have — the
+determinism rule above is per-device, not a fixed global sequence) and, if it has no SCD30 at all,
+needs no I2C clock-stretch override in the first place. The generator must derive both from the
+variant's own module set ("does this variant have module X," the same question A.8's registration
+API and A.9's `HTML_SRC_DIRS` are already shaped around), not assume wozi's answer applies
+everywhere. See BACKLOG.md's "Per-variant generator" entry for the matching requirement on that
+generator's own emitted unit tests.
+
 **Task/timer starter collection** (`_collect_task_starters()`/`_collect_timer_starters()`, called
 from `main()`, never from `build_system()` itself): every constructed module's own
 `get_task_starters()`/`get_timer_starters()` is called uniformly, not hand-copied per module —
