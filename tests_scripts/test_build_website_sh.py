@@ -22,16 +22,30 @@ def test_wozi_device_stages_the_expected_files_renamed_and_flattened(repo_root, 
     text = out_file.read_text()
     for expected in (
         "/index.html.gz",
-        "/style.css.gz",
-        "/definitions.json.gz",  # html/definitions/wozi.json, renamed+flattened - not nested under /definitions/
-        "/js/app.js.gz",  # js/main.js, renamed at staging time - see scripts/build_website.sh's own comment
+        "/js/app.js.gz",  # the bundled production JS (field-format.js, poll-manager.js, templates.js,
+        # definitions.js, render.js, nav.js, main.js concatenated - see scripts/build_website.sh's
+        # own "Bundling" comment for why) - a single file now, not seven separate ones
+        # (WEBSITE_PLAN.md §10 item 5).
+    ):
+        assert expected in text, expected
+
+    # The seven production modules must NOT be individually staged any more - only the bundle
+    # above. style.css and definitions.json (html/definitions/wozi.json) must NOT be staged as
+    # separate files either any more - both are now inlined directly into index.html at build time
+    # (see build_website.sh's own "Inlining" comment) - test_website_build_integration.py's own
+    # test_inlined_definitions_and_stylesheet_replace_the_two_separately_staged_files proves the
+    # inlined content itself is correct; this file only checks staging, not content.
+    for not_staged in (
         "/js/definitions.js.gz",
         "/js/poll-manager.js.gz",
         "/js/render.js.gz",
         "/js/templates.js.gz",
         "/js/nav.js.gz",
+        "/js/field-format.js.gz",
+        "/style.css.gz",
+        "/definitions.json.gz",
     ):
-        assert expected in text, expected
+        assert not_staged not in text, not_staged
 
 
 def test_prototype_only_files_are_never_staged(repo_root, tmp_path):

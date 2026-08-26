@@ -49,8 +49,8 @@ if [ ! -x "$micropython_bin" ]; then
     uv run toolchain/setup_toolchain.py setup --toolchain-dir "$toolchain_dir" "${skip_apt_flag[@]}"
 fi
 
-echo "== Building frozen_modules/frozen_html.py"
-scripts/build_frozen_html.sh
+echo "== Building the real wozi website into frozen_modules/frozen_html.py"
+scripts/build_website.sh wozi
 
 echo "== Running digital_twin/run_wozi_integration.py"
 MICROPYPATH="src:digital_twin:ext:frozen_modules:.frozen" "$micropython_bin" digital_twin/run_wozi_integration.py "$@"

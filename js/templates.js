@@ -3,37 +3,20 @@
  * app ever creates is built here, and only here; see WEBSITE_PLAN.md §12 for the full contract.
  */
 
+// formatFieldValue() itself now lives in ./field-format.js (pure formatting, no DOM dependency -
+// see that file's own header comment for why) - imported here for this file's own internal use,
+// not re-exported: scripts/build_website.sh's own concatenation-based bundler leaves every file's
+// `export` keywords as-is (never strips them, unlike `import` lines), so a second `export
+// {formatFieldValue}` here would collide with field-format.js's own `export function
+// formatFieldValue` once both are concatenated into one module - callers that need this function
+// import it from js/field-format.js directly instead (js/render.js, tests_js/templates.test.js).
+import { formatFieldValue } from "./field-format.js";
+
 /** @typedef {import("./definitions.js").FieldDef} FieldDef */
 /** @typedef {import("./definitions.js").FieldGroup} FieldGroup */
 /** @typedef {import("./definitions.js").ErrcountGroup} ErrcountGroup */
 /** @typedef {import("./definitions.js").Section} Section */
 /** @typedef {import("./definitions.js").SiteDefinitions} SiteDefinitions */
-
-/**
- * @param {FieldDef} field
- * @param {unknown} value
- * @returns {string}
- */
-export function formatFieldValue(field, value) {
-    if (value === undefined || value === null) {
-        return "—";
-    }
-    if (field.mask === true) {
-        return "••••••••";
-    }
-    if (field.kind === "enum") {
-        const match = (field.options ?? []).find((option) => option.value === value);
-        return match ? match.label : String(value);
-    }
-    if (field.format === "gmtimestruct") {
-        // Real shape: src/sensortask_wozi.py's _gmtimestruct_to_dict() - {year, month, mday, hour,
-        // minute, second, weekday} (weekday unused here), never a pre-formatted string.
-        const t = /** @type {{year: number, month: number, mday: number, hour: number, minute: number, second: number}} */ (value);
-        const pad = (/** @type {number} */ n) => String(n).padStart(2, "0");
-        return `${t.year}-${pad(t.month)}-${pad(t.mday)} ${pad(t.hour)}:${pad(t.minute)}:${pad(t.second)}`;
-    }
-    return String(value);
-}
 
 /**
  * @param {FieldDef} field

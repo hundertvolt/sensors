@@ -84,10 +84,13 @@ scripts/run_unix_port_integration.sh --soak --duration 0   # same, but exits rig
 scripts/run_unix_port_integration.sh --fault sgp40:writeto # manual fault-injection exploration
 ```
 
-Under the hood (builds the toolchain + `frozen_modules/frozen_html.py` the same way `scripts/
-test.sh` does, then runs `digital_twin/run_wozi_integration.py` — the real orchestrator, not
-`boot_entry/wozi_boot.py` directly, since it also needs to drive the soak/fault-injection/
-`--duration`-forever logic around `sensortask_wozi.main()`, not just block on it):
+Under the hood (builds the toolchain, then builds the real `wozi` website into
+`frozen_modules/frozen_html.py` via `scripts/build_website.sh wozi` — **not**
+`scripts/build_frozen_html.sh`'s own `html_stub` default; this is the twin's normal, default
+wiring, matching what a real deployed unit actually serves, not a placeholder — then runs
+`digital_twin/run_wozi_integration.py` — the real orchestrator, not `boot_entry/wozi_boot.py`
+directly, since it also needs to drive the soak/fault-injection/`--duration`-forever logic around
+`sensortask_wozi.main()`, not just block on it):
 
 ```bash
 MICROPYPATH="src:digital_twin:ext:frozen_modules:.frozen" <micropython-unix-port-binary> digital_twin/run_wozi_integration.py [flags]
@@ -214,8 +217,9 @@ scripts/run_digital_twin_ci.sh   # clean -> build -> test, same as CI runs it
 whatever a previous local run or CI job happened to leave behind.
 
 **Build**: builds the MicroPython Unix port (if not already cached at `$PICO_TOOLCHAIN_DIR`, same
-convention as `scripts/test.sh`/`scripts/run_unix_port_integration.sh`) and
-`frozen_modules/frozen_html.py`. Must succeed before any test phase runs.
+convention as `scripts/test.sh`/`scripts/run_unix_port_integration.sh`) and the real `wozi` website
+into `frozen_modules/frozen_html.py` (`scripts/build_website.sh wozi`, not the `html_stub`
+placeholder). Must succeed before any test phase runs.
 
 **Test**: hands off to `scripts/_digital_twin_ci_suite.py`, a self-contained `uv run` CPython
 script (stdlib-only — no `uv sync` needed) that drives `digital_twin/run_wozi_integration.py` as a
@@ -377,6 +381,11 @@ started with. For a new **I2C** sensor this is a small, mechanical addition:
 4. Update this file's "What's here" list (the bus-wiring bullet above) to mention the new chip, and
    consider whether `digital_twin/launch.py`'s own `_sensor_loop()`/`_FAULT_DEVICE_OPS` should read
    from it too.
+5. **Update `html/definitions/<device>.json`** for every device the new driver's fields should
+   appear on (`WEBSITE_PLAN.md` §4.1/§7, `SPECIFICATION.md` Part C.11 point 9) — the website has no
+   other place a new sensor's fields get wired in, so skipping this step leaves the driver fully
+   working (real chip fake, real REST endpoint, twin-tested) but permanently invisible on the
+   website until someone remembers to come back and add it by hand.
 
 **A new SPI sensor is not automatically supported yet if it would share an already-occupied SPI bus
 id with the FRAM chip.** `_wire_spi_device()`/`machine.SPI` currently wire **one fixed device per

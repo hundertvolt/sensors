@@ -78,7 +78,7 @@ def _clean_state() -> None:
 
 
 def _http(method: str, path: str, body: dict | None = None, timeout: float = 5.0) -> tuple[int, Any]:
-    # "/" serves the static frozen_html stub (gzip bytes, not JSON - see asy_webserver_service.py's
+    # "/" serves the real, static website (gzip bytes, not JSON - see asy_webserver_service.py's
     # own generic "/" route) - only the REST endpoints return a JSON body, so parsing is keyed off
     # the real Content-Type header rather than assumed for every path.
     conn = http.client.HTTPConnection(HOST, PORT, timeout=timeout)

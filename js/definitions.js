@@ -150,20 +150,40 @@ export function validateDefinitions(data) {
 
 /**
  * @param {string} path
+ * @param {HTMLElement | null} [inlinedEl] a `<script type="application/json">` element already
+ *   present in the page carrying this same data, or `null`/omitted if none - see this module's own
+ *   docstring update below. Never queried from `document` here (this file, like every other js/*.js
+ *   module, only ever touches DOM elements it's handed - html/index.html's own inline script is
+ *   the one place that calls `document.getElementById(...)`, matching every other element it
+ *   already passes down to startApp()).
  * @returns {Promise<SiteDefinitions>}
  */
-export async function loadDefinitions(path) {
-    const response = await fetchWithTimeout(path);
-    if (!response.ok) {
-        throw new Error(`Failed to fetch ${path}: HTTP ${response.status}`);
-    }
+export async function loadDefinitions(path, inlinedEl) {
     let data;
-    try {
-        data = await response.json();
-    } catch (error) {
-        // A genuine transmission error (truncated/corrupted response) - not this file's own
-        // shape/version validation below, which only ever sees a syntactically valid JSON value.
-        throw new Error(`${path} was not valid JSON (likely a corrupted or truncated transmission)`, { cause: error });
+    if (inlinedEl) {
+        // A real device build inlines its own definitions.json straight into index.html at build
+        // time (scripts/build_website.sh's own "Inlining" comment) instead of shipping it as a
+        // separately-fetched file - cuts one connection off every page load. Dev/preview mode
+        // (html/index.html itself, unbuilt) never has this element, so `inlinedEl` is always
+        // `null` there and this branch is simply never taken - the fetch path below is exercised
+        // identically to before.
+        try {
+            data = JSON.parse(inlinedEl.textContent ?? "");
+        } catch (error) {
+            throw new Error("inlined definitions data was not valid JSON (a corrupted build)", { cause: error });
+        }
+    } else {
+        const response = await fetchWithTimeout(path);
+        if (!response.ok) {
+            throw new Error(`Failed to fetch ${path}: HTTP ${response.status}`);
+        }
+        try {
+            data = await response.json();
+        } catch (error) {
+            // A genuine transmission error (truncated/corrupted response) - not this file's own
+            // shape/version validation below, which only ever sees a syntactically valid JSON value.
+            throw new Error(`${path} was not valid JSON (likely a corrupted or truncated transmission)`, { cause: error });
+        }
     }
     const problems = validateDefinitions(data);
     if (problems.length > 0) {

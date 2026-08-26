@@ -9,7 +9,7 @@ import select
 import socket
 
 _DEFAULT_CEILING = 512  # ~28x every concurrent-registration count observed in this codebase's own
-# soak/stress testing (webserver max_connections=3, plus the fixed small set of background service
+# soak/stress testing (webserver max_connections=4, plus the fixed small set of background service
 # sockets - DNS/NTP/wifi - peaking around 18 in a deliberately adversarial 8-concurrent-client burst).
 # This workaround is still fundamentally a raised threshold, not an unconditional fix - see the
 # module docstring's "as long as real peak concurrent fd registrations never reach the ceiling again"

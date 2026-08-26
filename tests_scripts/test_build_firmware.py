@@ -78,7 +78,12 @@ def test_build_stage_dir_assembles_every_expected_file(build_firmware, repo_root
 def test_build_stage_dir_frozen_html_contains_the_real_website_not_the_stub(build_firmware, tmp_path):
     build_firmware.build_stage_dir(tmp_path, "wozi")
     frozen_html_text = (tmp_path / "frozen_html.py").read_text()
-    assert "/definitions.json.gz" in frozen_html_text
+    assert "/index.html.gz" in frozen_html_text
+    # /js/app.js.gz alone already distinguishes this from html_stub's own frozen build (which has
+    # no js/ directory at all - see test_build_frozen_html_sh.py's own stub-side coverage). No
+    # separate /definitions.json.gz or /style.css.gz check any more - both are inlined directly
+    # into index.html at build time now (scripts/build_website.sh's own "Inlining" comment,
+    # WEBSITE_PLAN.md §7's follow-up round), never staged as their own files.
     assert "/js/app.js.gz" in frozen_html_text
 
 
