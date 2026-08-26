@@ -3,6 +3,7 @@
  * itself; see SPECIFICATION.md Part H.3 for the full layer/contract definition this file follows.
  */
 
+import { resolveFieldValue } from "./definitions.js";
 import { formatFieldValue } from "./field-format.js";
 import { pollManager, startPolling } from "./poll-manager.js";
 import { buildErrcountGroup, buildFieldGroupCard, buildSectionShell } from "./templates.js";
@@ -62,8 +63,9 @@ function describeGetFailure(response, url) {
  * Reads whatever the visitor entered/toggled in `card`'s controls back into a plain PUT body,
  * keyed off the same `data-field-key`/`data-sub-field-key` hooks `js/templates.js` sets. A toggle
  * or enum field is sparse-omitted (like every number/string field already is) when it still
- * matches `currentValues` and isn't `dispatch`-marked - see definitions.js's own comment on
- * `FieldDef.dispatch`.
+ * matches its resolveFieldValue() baseline (the real current value, or the field's own
+ * `defaultValue` when GET never reports one) and isn't `dispatch`-marked - see definitions.js's own
+ * comments on both flags.
  * @param {HTMLElement} card
  * @param {FieldGroup} group
  * @param {Record<string, unknown>} currentValues
@@ -80,7 +82,7 @@ function collectGroupBody(card, group, currentValues) {
             const button = card.querySelector(`[data-field-key="${field.key}"]`);
             if (button instanceof HTMLElement) {
                 const value = button.dataset.value === "true";
-                if (field.dispatch || value !== Boolean(currentValues[field.key])) {
+                if (field.dispatch || value !== Boolean(resolveFieldValue(field, currentValues))) {
                     body[field.key] = value;
                 }
             }
@@ -118,7 +120,7 @@ function collectGroupBody(card, group, currentValues) {
             continue; // sparse PUT: an untouched input is omitted, not sent as empty
         }
         const value = readInputValue(control.value, field);
-        if (field.kind === "enum" && !field.dispatch && value === currentValues[field.key]) {
+        if (field.kind === "enum" && !field.dispatch && value === resolveFieldValue(field, currentValues)) {
             continue; // dropdown still at its current selection - nothing changed for this field
         }
         body[field.key] = value;

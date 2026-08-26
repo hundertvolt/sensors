@@ -10,7 +10,7 @@
  *   description?: string, min?: number, max?: number, minLength?: number, maxLength?: number,
  *   mask?: boolean, options?: EnumOption[], specialValues?: SpecialValue[],
  *   subFields?: FieldDef[], onLabel?: string, offLabel?: string,
- *   format?: "gmtimestruct", float?: boolean, dispatch?: boolean,
+ *   format?: "gmtimestruct", float?: boolean, dispatch?: boolean, defaultValue?: unknown,
  * }} FieldDef
  * @typedef {{key: string, label: string, fields: FieldDef[], submit?: boolean, submitLabel?: string}} FieldGroup
  * @typedef {{key: string, label: string, kind: "errcount", modules: {key: string, label: string}[]}} ErrcountGroup
@@ -57,13 +57,42 @@ import { fetchWithTimeout } from "./poll-manager.js";
 
 // dispatch?: true marks a toggle/enum field the real backend always re-runs fresh, never compares
 // against a stored value (SPECIFICATION.md Part H.6's dispatch-only field list: SystemCmd,
-// ResetErrors, ContMeas, SGPResetVOC). js/render.js's collectGroupBody() must always resubmit such
-// a field even when it looks unchanged from its last-known value; every other toggle/enum field is
-// a genuine persisted setting and is sparse-omitted when left at its current value, matching every
+// ResetErrors, SGPResetVOC). js/render.js's collectGroupBody() must always resubmit such a field
+// even when it looks unchanged from its last-known value; every other toggle/enum field is a
+// genuine persisted setting and is sparse-omitted when left at its current value, matching every
 // number/string/composite field's own "untouched means omit" convention.
+
+// defaultValue marks a field's own safe synthetic baseline for when GET never reports a real value
+// at all (a hardware command with no persisted state, e.g. SCD30's ContMeas - see
+// asy_scd30_driver.py's own "not readable from sensor" comment). Without one, resolveFieldValue()
+// below falls back to plain `undefined`, and a toggle's own Boolean(undefined) coercion silently
+// picks `false` regardless of which of the field's two states is actually safe to assume untouched
+// - confirmed a real hazard for ContMeas specifically (`false` there means "stop measurement", not
+// "no-op"), by checking the field's own legacy behavior (modules/sensortask-wozi.py's
+// `data["ContMeas"] = True  # not readable from sensor, just as reference for parsing"): legacy
+// picked `True`, the safe state, as this exact same kind of reference value. `defaultValue` is this
+// same idea, generalized to any current/future field with the same "no real readback" shape rather
+// than a one-off special case - see resolveFieldValue()'s own doc for how it's used.
 
 /** The only schema major version this build of the renderer understands. */
 export const SUPPORTED_SCHEMA_MAJOR = 1;
+
+/**
+ * A field's effective current value: the real value from `currentValues` when GET actually
+ * reported one, otherwise `field.defaultValue` when the schema declares one (see that flag's own
+ * comment above), otherwise `undefined` - exactly what every caller already handled before
+ * `defaultValue` existed (an enum's own blank-placeholder path in js/templates.js, a toggle's own
+ * `Boolean(undefined) = false` there and in js/render.js's collectGroupBody()). Both files call
+ * this instead of reading `currentValues[field.key]` directly, so a field's rendered initial state
+ * and its "did the visitor actually change this" comparison baseline can never drift apart.
+ * @param {FieldDef} field
+ * @param {Record<string, unknown>} currentValues
+ * @returns {unknown}
+ */
+export function resolveFieldValue(field, currentValues) {
+    const value = currentValues[field.key];
+    return value !== undefined ? value : field.defaultValue;
+}
 
 /**
  * @param {unknown} data

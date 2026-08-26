@@ -426,6 +426,80 @@ describe("renderSection", () => {
         expect(card.dataset.applyStatus).toBe("valid");
     });
 
+    describe("a toggle field with no real GET readback but a schema-declared defaultValue", () => {
+        // Generic coverage for js/definitions.js's resolveFieldValue()/FieldDef.defaultValue -
+        // reusable in any future field shaped like the real ContMeas (see SPECIFICATION.md Part H.5):
+        // never returned by GET, but with a well-defined safe baseline other than a bare toggle's own
+        // Boolean(undefined) = false fallback. "AuxEnabled" is a made-up field, not the real ContMeas
+        // key (js/mock-server.js special-cases that exact name for its own hardware-quirk fake).
+        /** @type {import("../js/definitions.js").SiteDefinitions} */
+        const defsWithDefaultValue = {
+            ...DEFS,
+            sections: [
+                ...DEFS.sections.filter((s) => s.key !== "networking"),
+                {
+                    key: "networking",
+                    label: "Networking",
+                    rest: { get: "/networking", put: "/networking" },
+                    pollGroup: "settings",
+                    groups: [
+                        {
+                            key: "aux",
+                            label: "Auxiliary",
+                            submit: true,
+                            fields: [{ key: "AuxEnabled", label: "Auxiliary Output", kind: "toggle", onLabel: "On", offLabel: "Off", defaultValue: true }],
+                        },
+                    ],
+                },
+            ],
+        };
+        // networkingConfig deliberately never mentions AuxEnabled - the mock GET response omits it
+        // entirely, the same "never returned by GET" shape the real ContMeas has.
+        const dataWithoutReadback = { ...DATA, networkingConfig: {} };
+
+        it("renders On (the schema defaultValue), not Off, despite no real current value", async () => {
+            uninstall = installMockFetch(defsWithDefaultValue, dataWithoutReadback);
+            const main = mount();
+            const section = /** @type {import("../js/definitions.js").Section} */ (defsWithDefaultValue.sections.find((s) => s.key === "networking"));
+            stop = renderSection(defsWithDefaultValue, section, main);
+            await waitFor(() => main.querySelector('[data-field-key="AuxEnabled"]') !== null);
+
+            const toggle = mustQuery(main, '[data-field-key="AuxEnabled"]');
+            expect(toggle.getAttribute("aria-pressed")).toBe("true");
+            expect(toggle.textContent).toBe("On");
+        });
+
+        it("sparse-omits it when left untouched at the defaultValue (nothing to submit)", async () => {
+            uninstall = installMockFetch(defsWithDefaultValue, dataWithoutReadback);
+            const main = mount();
+            const section = /** @type {import("../js/definitions.js").Section} */ (defsWithDefaultValue.sections.find((s) => s.key === "networking"));
+            stop = renderSection(defsWithDefaultValue, section, main);
+            await waitFor(() => main.querySelector('[data-field-key="AuxEnabled"]') !== null);
+
+            mustQuery(main, ".apply-button").click();
+            await waitFor(() => mustQuery(main, ".apply-result").textContent !== "");
+
+            expect(mustQuery(main, ".apply-result").textContent).toBe("Nothing to submit - no fields were changed.");
+            expect(mustQuery(main, '[data-group-key="aux"]').dataset.applyStatus).toBeUndefined();
+        });
+
+        it("submits it once deliberately flipped away from the defaultValue", async () => {
+            uninstall = installMockFetch(defsWithDefaultValue, dataWithoutReadback);
+            const main = mount();
+            const section = /** @type {import("../js/definitions.js").Section} */ (defsWithDefaultValue.sections.find((s) => s.key === "networking"));
+            stop = renderSection(defsWithDefaultValue, section, main);
+            await waitFor(() => main.querySelector('[data-field-key="AuxEnabled"]') !== null);
+
+            mustQuery(main, '[data-field-key="AuxEnabled"]').click(); // On -> Off: a real, deliberate change
+            mustQuery(main, ".apply-button").click();
+            await waitFor(() => mustQuery(main, '[data-group-key="aux"]').dataset.applyStatus !== undefined);
+
+            const card = mustQuery(main, '[data-group-key="aux"]');
+            expect(card.dataset.applyStatus).toBe("valid");
+            expect(mustQuery(card, ".apply-result").textContent).toContain("AuxEnabled: Valid");
+        });
+    });
+
     it("skips the PUT and shows a neutral message when Apply is clicked with nothing to submit", async () => {
         // A group made only of number/string fields (unlike a toggle, or an enum with a real
         // current value, both of which always resubmit) can be genuinely empty if the visitor

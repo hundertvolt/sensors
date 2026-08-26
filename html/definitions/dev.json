@@ -89,7 +89,7 @@
                         {
                             "key": "ContMeas", "label": "Continuous Measurement", "kind": "toggle", "onLabel": "On", "offLabel": "Off",
                             "description": "Setting this to Off stops continuous measurement; restart it via Ambient Pressure above.",
-                            "dispatch": true
+                            "defaultValue": true
                         },
                         { "key": "ForceCalRef", "label": "Forced Calibration Reference", "unit": "ppm", "kind": "number", "min": 400, "max": 2000 },
                         { "key": "SelfCal", "label": "Automatic Self-Calibration", "kind": "toggle", "onLabel": "On", "offLabel": "Off" }

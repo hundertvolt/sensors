@@ -16,9 +16,13 @@ const REAL_PATHS = /** @type {const} */ (["/sensors", "/networking", "/system", 
 
 // Three real, documented backend quirks where a field's GET readback never reflects a value that
 // was just applied - see SPECIFICATION.md Part H.7 for the full account (driver sources, the
-// digital-twin fake, and the confirmed js/mock-server.js divergence this exposed).
+// digital-twin fake, and the confirmed js/mock-server.js divergence this exposed). ContMeas's own
+// remount value is `true` ("On"), matching its FieldDef `defaultValue` (SPECIFICATION.md Part
+// H.5/H.6) - the safe state legacy itself used as ContMeas's synthetic reference
+// (modules/sensortask-wozi.py's `data["ContMeas"] = True`), not a bare toggle's own
+// Boolean(undefined) fallback.
 /** @type {Record<string, unknown>} */
-const ALWAYS_REMOUNTS_AS = { ForceCalRef: 400, ContMeas: false, SGPResetVOC: false };
+const ALWAYS_REMOUNTS_AS = { ForceCalRef: 400, ContMeas: true, SGPResetVOC: false };
 
 // Generous per-case ceiling: one real nav-drawer click, one real fill/select/toggle, one real
 // Apply click, a data-apply-status poll, and (for most cases) a second real remount+read - all
@@ -67,7 +71,13 @@ if (boot.skipped) {
 } else {
     describe.each(CASES)("live PUT $sectionKey/$groupKey/$field.key ($field.kind)", (testCase) => {
         const { sectionKey, groupKey, field } = testCase;
-        let currentValue = testCase.currentValue;
+        // Same fallback as js/definitions.js's resolveFieldValue(): a field with no real GET
+        // readback (testCase.currentValue undefined) may still declare a schema-level defaultValue
+        // as its safe synthetic baseline (ContMeas - SPECIFICATION.md Part H.5) - resolve it once
+        // here so every probe below (resubmit-unchanged gating, the toggle "opposite" state, the
+        // enum "every other option" list) reasons about the same effective current value the real
+        // UI does, not the raw possibly-undefined GET value alone.
+        let currentValue = testCase.currentValue !== undefined ? testCase.currentValue : field.defaultValue;
 
         /**
          * Fills+applies `value` through the real UI, then confirms it rendered correctly both
@@ -190,7 +200,7 @@ if (boot.skipped) {
             // would silently fail against; harmless for every other field.
             const validValues = [min, mid, max]
                 .map((v) => (wholeRange ? Math.round(v) : Math.round(v * 100) / 100))
-                .filter((v) => v !== testCase.currentValue);
+                .filter((v) => v !== currentValue);
 
             /**
              * @param {number} start
@@ -236,7 +246,7 @@ if (boot.skipped) {
                 it(
                     `accepts the declared special value ${special.value} ("${special.meaning}"), rendered correctly`,
                     async () => {
-                        await applyAndExpectRendered(special.value, special.value === testCase.currentValue ? "ValidOrUnchanged" : "Valid");
+                        await applyAndExpectRendered(special.value, special.value === currentValue ? "ValidOrUnchanged" : "Valid");
                     },
                     CASE_TIMEOUT_MS,
                 );
@@ -267,7 +277,7 @@ if (boot.skipped) {
                 CASE_TIMEOUT_MS,
             );
 
-            it.each(validLengths.map((len) => "x".repeat(len)).filter((v) => v !== testCase.currentValue))(
+            it.each(validLengths.map((len) => "x".repeat(len)).filter((v) => v !== currentValue))(
                 "accepts a %s-char string (a valid value distributed across the length range), rendered correctly",
                 async (value) => {
                     await applyAndExpectRendered(value, "Valid");
@@ -276,7 +286,7 @@ if (boot.skipped) {
         }
 
         if (field.kind === "toggle") {
-            const opposite = !testCase.currentValue;
+            const opposite = !currentValue;
             it(
                 "flipping to the opposite state renders Valid with the new state actually shown",
                 async () => {
@@ -287,7 +297,7 @@ if (boot.skipped) {
         }
 
         if (field.kind === "enum") {
-            const options = (field.options ?? []).filter((o) => o.value !== testCase.currentValue);
+            const options = (field.options ?? []).filter((o) => o.value !== currentValue);
             it.each(options.map((o) => o.value))("selecting option %s renders Valid with that option actually shown selected", async (value) => {
                 await applyAndExpectRendered(value, "Valid");
             });

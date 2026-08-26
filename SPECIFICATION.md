@@ -3524,12 +3524,30 @@ validates it at load time (H.4's "Definitions validation" row).
   since its shape (per-module counter + optional history) doesn't fit the field-list model.
 - **`FieldDef`**: a `kind` (`readonly | number | string | enum | toggle | composite`) plus
   kind-specific metadata (`min`/`max`, `minLength`/`maxLength`, `mask`, `options`, `specialValues`,
-  `subFields`, `onLabel`/`offLabel`, `float`, `dispatch`). `dispatch: true` marks a `toggle`/`enum`
-  field from H.6's dispatch-only list below — `js/render.js`'s `collectGroupBody()` always
-  resubmits it, even when it looks unchanged from its last-known value, instead of the sparse-PUT
-  "omit when unchanged" convention every other field (including a `dispatch`-less toggle/enum) now
-  follows. A `number`/`string`/`composite` field never needs this flag: its own blank-input/
-  no-subfield-filled convention already omits it correctly when untouched.
+  `subFields`, `onLabel`/`offLabel`, `float`, `dispatch`, `defaultValue`).
+  - `dispatch: true` marks a `toggle`/`enum` field as a **repeatable command** — H.6's dispatch-only
+    list below, minus `ContMeas` (see `defaultValue` immediately below) — where re-submitting the
+    exact same value must still re-run the action (`ResetErrors`'s own "Reset All Errors" twice in a
+    row genuinely resets twice; there is no meaningful "already applied, skip" state for a trigger).
+    `js/render.js`'s `collectGroupBody()` always resubmits such a field, even when it looks
+    unchanged from its last-known value, instead of the sparse-PUT "omit when unchanged" convention
+    every other field (including a `dispatch`-less toggle/enum) now follows. A
+    `number`/`string`/`composite` field never needs this flag: its own blank-input/no-subfield-filled
+    convention already omits it correctly when untouched.
+  - `defaultValue` marks a field's own safe synthetic baseline for when GET never reports a real
+    value at all (`js/definitions.js`'s `resolveFieldValue(field, currentValues)`, used by both
+    `js/templates.js`'s rendering and `js/render.js`'s sparse-PUT comparison, so the two can never
+    disagree). Unlike `dispatch`, this is for a field that behaves like any other persisted
+    two-state setting — genuinely sparse-omittable when unchanged, a single deliberate transition
+    submits it — it just has no GET readback to compare against. Without a declared `defaultValue`,
+    a `toggle` field with no real current value falls back to plain `Boolean(undefined) = false`,
+    which is only correct if `false` happens to be the safe/no-op state; verify which one actually
+    is against the field's own real backend contract (and, where one exists, its legacy-proven
+    behavior — CLAUDE.md's own working agreement) rather than assuming. `ContMeas` is the first real
+    case: `false` ("Off") is the state that actually stops measurement, not a no-op, so its
+    `defaultValue` is `true` — matching `modules/sensortask-wozi.py`'s own legacy synthetic
+    reference (`data["ContMeas"] = True  # not readable from sensor, just as reference for
+    parsing`), not the toggle's own naive default.
 - See `html/definitions/wozi.json` and `html/definitions/dev.json` for two worked, real examples
   (wozi's SCD30/SGP40/BMP388 vs. dev's SCD30/SGP40/SHTC3/MPRLS/ISL29125 — deliberately different
   sensor sets, field kinds, and value ranges). `dev.json`'s SHTC3/MPRLS/ISL29125 entries are a
@@ -3569,14 +3587,23 @@ autogeneration" entry for the worked grammar sketch this direction already has.
   of type/range for `PauseTime`); anything else wrong (missing/non-numeric/out-of-range subfield)
   reports `"Failed"`; a well-formed submission always reports `"Valid"`, including on an identical
   repeat (never `"Unchanged"` — these re-dispatch fresh every call, direct hardware commands rather
-  than a compare-against-stored-value settings write). `js/mock-server.js` mirrors this exactly via
+  than a compare-against-stored-value settings write) — this server-side contract holds for
+  `ContMeas` exactly like the other five whenever it's actually submitted. What differs is only the
+  FieldDef schema flag controlling when the *client* submits it at all: the other five carry
+  `dispatch: true` (H.5) so they're always resubmitted regardless of touch, matching their own
+  repeatable-command intent; `ContMeas` instead carries `defaultValue: true`, since unlike them it
+  behaves like an ordinary sparse-omittable two-state setting from the visitor's side — H.5 explains
+  the distinction and why `false` (matching a bare `toggle`'s own `Boolean(undefined)` fallback)
+  would have been the *wrong* baseline here specifically. `js/mock-server.js` mirrors this exactly via
   `dispatchRangedAction()` (`PauseTime`), `dispatchLightCmdLed()`, and `SENSOR_QUIRK_FIELDS`'
   `dispatchSensorQuirkField()` (`ContMeas`, `SGPResetVOC`, and `ForceCalRef` — a plain `number` field,
   so it already omits correctly via H.5's own blank-input convention with no schema flag needed) —
-  none of these are ever persisted into the generic settings store. `SystemCmd`, `ResetErrors`,
-  `ContMeas`, and `SGPResetVOC` (the `toggle`/`enum`-kind members of this list) carry
-  `dispatch: true` in `html/definitions/*.json` for exactly this reason — see H.5's own note on the
-  flag. `PauseTime`/`lightCmdLED` don't need it (see H.5) even though they're dispatch-only too.
+  none of these are ever persisted into the generic settings store. `SystemCmd`, `ResetErrors`, and
+  `SGPResetVOC` (the `toggle`/`enum`-kind members of this list with a genuine repeatable-command
+  intent) carry `dispatch: true` in `html/definitions/*.json` for exactly this reason — see H.5's
+  own note on the flag. `ContMeas` (also `toggle`-kind) carries `defaultValue: true` instead — see
+  above and H.5. `PauseTime`/`lightCmdLED` need neither (see H.5) even though they're dispatch-only
+  too.
 - **Server-side settings-group failure**: if a `SettingsGroup`'s post-write hook raises, every field
   that group actually attempted is reported `"Failed"` in the PUT response — never silently dropped —
   while the overall envelope still reports success (per-field detail carries the failure, matching
