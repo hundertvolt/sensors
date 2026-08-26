@@ -175,6 +175,26 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      # Mirrors web-unit-tests' own identical step (see its comment) - this job's Chromium leg
+      # (scripts/cross_browser_smoke.mjs's runChromiumFamily("chromium", ...)) needs Playwright's
+      # own browser binary too, and each CI job is its own fresh VM with no browser cache carried
+      # over from web-unit-tests even though that job (this one's own `needs:`) already installed
+      # it moments earlier in the same workflow run. Confirmed necessary directly: an earlier
+      # version of this job omitted this step entirely and both Chromium checks failed in real CI
+      # with "Executable doesn't exist" - WebKit/Firefox/Edge all passed correctly in that same run,
+      # proving the three new engines were never the problem.
+      - name: Cache Playwright Chromium
+        id: playwright-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Install Playwright Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Install Playwright OS dependencies (cache hit)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
       - name: Install uv
         run: pip install uv
       - name: Cache MicroPython Unix port build
