@@ -84,7 +84,9 @@ tests under a real MicroPython Unix-port interpreter), html-validate, and Stylel
 and npm:
 
 ```sh
-npm ci                # one-time, and after pulling changes - installs into node_modules/ from package-lock.json
+npm ci                            # one-time, and after pulling changes - installs into node_modules/ from package-lock.json
+npx playwright install chromium   # one-time - only if `npm test` reports a missing browser executable (already
+                                   # pre-installed in the Claude Code web-session sandbox this effort was scaffolded in)
 
 npm run lint           # ESLint (js/, tests_js/)
 npm run typecheck      # tsc --noEmit (checkJS over js/, tests_js/)
@@ -92,7 +94,14 @@ npm run lint:html      # html-validate (html/*.html)
 npm run lint:css       # Stylelint (html/*.css)
 npm test               # Vitest, real-browser mode (Playwright/Chromium) - tests_js/*.test.js
 npm run preview        # serves the repo root locally (python3 -m http.server 8000)
+```
 
+`web-cross-browser-smoke`'s check (real WebKit/Firefox/Edge, not just Vitest's own Playwright/Chromium)
+needs the MicroPython Unix port and the real website built first, then its own one-time browser install:
+
+```sh
+uv run toolchain/setup_toolchain.py        # one-time - builds the MicroPython Unix port (see above)
+scripts/build_website.sh wozi              # build the real website into frozen_modules/frozen_html.py
 scripts/setup_cross_browser_toolchain.sh   # one-time - installs real WebKit/Firefox/Edge
 node scripts/cross_browser_smoke.mjs       # drives the real site through all of them, desktop + mobile
 ```
@@ -110,10 +119,9 @@ All five CI-covered checks run in GitHub Actions CI (`.github/workflows/ci.yml`'
 jobs above, which keep gating on Python paths exactly as before. Config lives at the repo root
 (`eslint.config.js`, `tsconfig.json`, `vitest.config.js`, `.htmlvalidate.json`,
 `.stylelintrc.json`); see `WEBSITE_PLAN.md` §6 for the full role mapping and rationale. Vitest's
-browser mode needs an actual Chromium install — CI installs its own via `playwright install`; if
-`npm test` reports a missing browser executable locally, run `npx playwright install chromium`
-first (skip this in the Claude Code web-session sandbox this effort was scaffolded in, which
-already pre-installs a matching one).
+browser mode needs an actual Chromium install — CI installs its own via `playwright install`; see
+the `npx playwright install chromium` line above if `npm test` reports a missing browser executable
+locally.
 
 A separate CI job, `web-cross-browser-smoke`, drives the real site through real WebKit, real
 Firefox, and real Microsoft Edge too (not just Vitest's own Playwright/Chromium) — one field
@@ -161,7 +169,20 @@ Its default wiring (`scripts/run_unix_port_integration.sh`, `scripts/run_digital
 the real, production `wozi` website (`scripts/build_website.sh wozi`), not the `html_stub`
 placeholder — see WEBSITE_PLAN.md §7 for the full account.
 
-Start its standalone CLI demo directly with the same Unix-port binary `scripts/test.sh` builds:
+**Quick start: twin + real website, in one command** (builds the MicroPython Unix port and the
+website automatically if either is missing, then serves both forever):
+
+```sh
+scripts/run_unix_port_integration.sh --host 127.0.0.1 --port 8080
+```
+
+Then open `http://127.0.0.1:8080/` in a browser — that's the real `html/`+`js/` site, driven by the
+real REST API, backed by the twin instead of physical hardware. See "Manual baseline verification
+walkthrough" below for a longer copy-paste sequence that also exercises every endpoint and
+fault-injection flag over `curl`.
+
+Start the twin's standalone CLI demo (no website, twin only) directly with the same Unix-port binary
+`scripts/test.sh` builds:
 
 ```sh
 $HOME/pico-toolchain/micropython/ports/unix/build-standard/micropython digital_twin/launch.py \
