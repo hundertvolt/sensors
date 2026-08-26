@@ -189,20 +189,27 @@ def test_build_system_constructs_every_legacy_named_module() -> None:
         assert getattr(sensortask_wozi, name) is not None
 
 
-def test_i2c0_uses_a_clock_stretch_timeout_wide_enough_for_scd30() -> None:
-    # SCD30 (on i2c0) documents up to 150ms of clock stretching once per day for internal
-    # calibration (datasheets/scd30/..._Interface_Description.pdf p.2) - rp2's own I2C timeout
-    # default is 50ms (DEFAULT_I2C_TIMEOUT, ports/rp2/machine_i2c.c), so i2c0 must override it or
-    # that expected stretch surfaces as a spurious OSError roughly once a day. i2c1 (SGP40/BMP3xx)
-    # has no such requirement and keeps the port default. wozi-specific, like every FRAM-chunk
-    # assertion below - see BACKLOG.md's "Per-variant generator" entry before copying this test
-    # unconditionally for a future variant that may lack SCD30 or FRAM entirely.
+def test_scd30s_own_i2c_bus_uses_a_clock_stretch_timeout_wide_enough_for_it() -> None:
+    # SCD30 documents up to 150ms of clock stretching once per day for internal calibration
+    # (datasheets/scd30/..._Interface_Description.pdf p.2) - rp2's own I2C timeout default is
+    # 50ms (DEFAULT_I2C_TIMEOUT, ports/rp2/machine_i2c.c), so whichever bus SCD30 sits on must
+    # override it or that expected stretch surfaces as a spurious OSError roughly once a day.
+    # Looked up through scd_reader itself (not assumed to be i2c0) - wozi wires SCD30 to i2c0
+    # today, but a future variant could wire it to a different bus (BACKLOG.md's "Per-variant
+    # generator" entry); this test, unlike the FRAM-chunk assertions below, stays correct as-is
+    # for that case.
     run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    assert sensortask_wozi.scd_reader is not None
+    scd_bus = sensortask_wozi.scd_reader.scd.i2c_scd30.i2c_device.i2c
+    assert scd_bus._i2c is not None
+    assert scd_bus._i2c.freq == 50000
+    assert scd_bus._i2c.timeout >= 150000
+
+    # Whichever bus that isn't (SGP40/BMP3xx's) has no such requirement and keeps the port default.
     assert sensortask_wozi.i2c0 is not None and sensortask_wozi.i2c1 is not None
-    assert sensortask_wozi.i2c0._i2c is not None and sensortask_wozi.i2c1._i2c is not None
-    assert sensortask_wozi.i2c0._i2c.freq == 50000
-    assert sensortask_wozi.i2c0._i2c.timeout >= 150000
-    assert sensortask_wozi.i2c1._i2c.timeout == 50000  # unmodified port default
+    other_bus = sensortask_wozi.i2c1 if scd_bus is sensortask_wozi.i2c0 else sensortask_wozi.i2c0
+    assert other_bus._i2c is not None
+    assert other_bus._i2c.timeout == 50000
 
 
 def test_build_system_wires_the_wifi_led_callback_after_both_exist() -> None:

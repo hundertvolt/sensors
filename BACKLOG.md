@@ -230,13 +230,20 @@ constraints.
   clock-stretch `timeout=200000`) — must be derived from the target variant's actual module set,
   not copied verbatim into a variant lacking that sensor; (2) **every generated variant needs its
   own real unit tests** (owner requirement - a generated `sensortask-*.py` is exactly as much "real
-  code" as a hand-written one, same Part D bar applies), and those tests must themselves check
-  which sensors/FRAM a given variant actually has before asserting anything sensor- or
-  FRAM-specific — asserting e.g. `scd_reader.pr.fram is not None` unconditionally against a variant
-  with no SCD30 (or no FRAM at all) would either hard-fail on a module that was never supposed to
-  exist, or - the sharper risk - pass vacuously for the wrong reason if the assertion is generated
-  loosely enough to skip rather than genuinely check. `tests/test_sensortask_wozi.py`'s own
-  FRAM/I2C-timing tests are the worked example this generalizes from, not a template to copy
+  code" as a hand-written one, same Part D bar applies; the build script that generates the
+  `sensortask-*.py`/test pair is also the natural place to activate/select which of the generated
+  tests actually run for a given variant, rather than a separate manual step), and those tests must
+  themselves check which sensors/FRAM a given variant actually has before asserting anything
+  sensor- or FRAM-specific — asserting e.g. `scd_reader.pr.fram is not None` unconditionally against
+  a variant with no SCD30 (or no FRAM at all) would either hard-fail on a module that was never
+  supposed to exist, or - the sharper risk - pass vacuously for the wrong reason if the assertion is
+  generated loosely enough to skip rather than genuinely check. A variant-specific test also can't
+  hardcode *which bus* a sensor sits on (SCD30 is wired to `i2c0` on wozi, but a different variant
+  could wire it to `i2c1` or a third bus entirely) — it must look the bus up through the sensor's
+  own object graph (e.g. `scd_reader.scd.i2c_scd30.i2c_device.i2c`), never assume a specific
+  `i2cN` name. `tests/test_sensortask_wozi.py`'s own
+  `test_scd30s_own_i2c_bus_uses_a_clock_stretch_timeout_wide_enough_for_it` is the worked example
+  this generalizes from (both the bus lookup and the FRAM assertions), not a template to copy
   unconditionally.
 - **`dev.json`'s SHTC3/MPRLS/ISL29125 field entries remain an unconfirmed projection.** These sensors
   have no real driver under `src/` yet, so their `html/definitions/dev.json` entries follow the same
