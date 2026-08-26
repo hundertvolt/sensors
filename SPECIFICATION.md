@@ -3524,7 +3524,12 @@ validates it at load time (H.4's "Definitions validation" row).
   since its shape (per-module counter + optional history) doesn't fit the field-list model.
 - **`FieldDef`**: a `kind` (`readonly | number | string | enum | toggle | composite`) plus
   kind-specific metadata (`min`/`max`, `minLength`/`maxLength`, `mask`, `options`, `specialValues`,
-  `subFields`, `onLabel`/`offLabel`, `float`).
+  `subFields`, `onLabel`/`offLabel`, `float`, `dispatch`). `dispatch: true` marks a `toggle`/`enum`
+  field from H.6's dispatch-only list below — `js/render.js`'s `collectGroupBody()` always
+  resubmits it, even when it looks unchanged from its last-known value, instead of the sparse-PUT
+  "omit when unchanged" convention every other field (including a `dispatch`-less toggle/enum) now
+  follows. A `number`/`string`/`composite` field never needs this flag: its own blank-input/
+  no-subfield-filled convention already omits it correctly when untouched.
 - See `html/definitions/wozi.json` and `html/definitions/dev.json` for two worked, real examples
   (wozi's SCD30/SGP40/BMP388 vs. dev's SCD30/SGP40/SHTC3/MPRLS/ISL29125 — deliberately different
   sensor sets, field kinds, and value ranges). `dev.json`'s SHTC3/MPRLS/ISL29125 entries are a
@@ -3559,13 +3564,19 @@ autogeneration" entry for the worked grammar sketch this direction already has.
   to the freshly built card).
 - **Dispatch-only field semantics** — `SystemCmd`, `PauseTime`, `lightCmdLED` (r/g/b/t composite,
   bounds 0-255/0-255/0-255/0.5-60.0, matching legacy's own bounds exactly and rejecting — never
-  clamping — a value outside them), `ResetErrors`: `"Invalid"` only for a structurally wrong payload
-  (non-dict for `lightCmdLED`, not in the allowed set for `SystemCmd`, out of type/range for
-  `PauseTime`); anything else wrong (missing/non-numeric/out-of-range subfield) reports `"Failed"`; a
-  well-formed submission always reports `"Valid"`, including on an identical repeat (never
-  `"Unchanged"` — these re-dispatch fresh every call). `js/mock-server.js` mirrors this exactly via
-  `dispatchRangedAction()` (`PauseTime`) and `dispatchLightCmdLed()`, writing straight to each field's
-  real destination state and never persisting into the generic settings store.
+  clamping — a value outside them), `ResetErrors`, `ContMeas`, `SGPResetVOC`: `"Invalid"` only for a
+  structurally wrong payload (non-dict for `lightCmdLED`, not in the allowed set for `SystemCmd`, out
+  of type/range for `PauseTime`); anything else wrong (missing/non-numeric/out-of-range subfield)
+  reports `"Failed"`; a well-formed submission always reports `"Valid"`, including on an identical
+  repeat (never `"Unchanged"` — these re-dispatch fresh every call, direct hardware commands rather
+  than a compare-against-stored-value settings write). `js/mock-server.js` mirrors this exactly via
+  `dispatchRangedAction()` (`PauseTime`), `dispatchLightCmdLed()`, and `SENSOR_QUIRK_FIELDS`'
+  `dispatchSensorQuirkField()` (`ContMeas`, `SGPResetVOC`, and `ForceCalRef` — a plain `number` field,
+  so it already omits correctly via H.5's own blank-input convention with no schema flag needed) —
+  none of these are ever persisted into the generic settings store. `SystemCmd`, `ResetErrors`,
+  `ContMeas`, and `SGPResetVOC` (the `toggle`/`enum`-kind members of this list) carry
+  `dispatch: true` in `html/definitions/*.json` for exactly this reason — see H.5's own note on the
+  flag. `PauseTime`/`lightCmdLED` don't need it (see H.5) even though they're dispatch-only too.
 - **Server-side settings-group failure**: if a `SettingsGroup`'s post-write hook raises, every field
   that group actually attempted is reported `"Failed"` in the PUT response — never silently dropped —
   while the overall envelope still reports success (per-field detail carries the failure, matching

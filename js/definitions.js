@@ -10,7 +10,7 @@
  *   description?: string, min?: number, max?: number, minLength?: number, maxLength?: number,
  *   mask?: boolean, options?: EnumOption[], specialValues?: SpecialValue[],
  *   subFields?: FieldDef[], onLabel?: string, offLabel?: string,
- *   format?: "gmtimestruct", float?: boolean,
+ *   format?: "gmtimestruct", float?: boolean, dispatch?: boolean,
  * }} FieldDef
  * @typedef {{key: string, label: string, fields: FieldDef[], submit?: boolean, submitLabel?: string}} FieldGroup
  * @typedef {{key: string, label: string, kind: "errcount", modules: {key: string, label: string}[]}} ErrcountGroup
@@ -54,6 +54,13 @@ import { fetchWithTimeout } from "./poll-manager.js";
 // to color "num" (js/templates.js's buildErrcountGroup(), html/style.css's
 // .history-entry[data-err-type] rules). "num" is a raw errno the backend never attaches a
 // human-meaning catalog to.
+
+// dispatch?: true marks a toggle/enum field the real backend always re-runs fresh, never compares
+// against a stored value (SPECIFICATION.md Part H.6's dispatch-only field list: SystemCmd,
+// ResetErrors, ContMeas, SGPResetVOC). js/render.js's collectGroupBody() must always resubmit such
+// a field even when it looks unchanged from its last-known value; every other toggle/enum field is
+// a genuine persisted setting and is sparse-omitted when left at its current value, matching every
+// number/string/composite field's own "untouched means omit" convention.
 
 /** The only schema major version this build of the renderer understands. */
 export const SUPPORTED_SCHEMA_MAJOR = 1;

@@ -88,7 +88,8 @@
                         },
                         {
                             "key": "ContMeas", "label": "Continuous Measurement", "kind": "toggle", "onLabel": "On", "offLabel": "Off",
-                            "description": "Setting this to Off stops continuous measurement; restart it via Ambient Pressure above."
+                            "description": "Setting this to Off stops continuous measurement; restart it via Ambient Pressure above.",
+                            "dispatch": true
                         },
                         { "key": "ForceCalRef", "label": "Forced Calibration Reference", "unit": "ppm", "kind": "number", "min": 400, "max": 2000 },
                         { "key": "SelfCal", "label": "Automatic Self-Calibration", "kind": "toggle", "onLabel": "On", "offLabel": "Off" }
@@ -113,7 +114,8 @@
                         },
                         {
                             "key": "SGPResetVOC", "label": "Reset VOC Index", "kind": "toggle", "onLabel": "On", "offLabel": "Off",
-                            "description": "Only 'On' has effect. Resets the VOC algorithm and deletes the current backup."
+                            "description": "Only 'On' has effect. Resets the VOC algorithm and deletes the current backup.",
+                            "dispatch": true
                         }
                     ]
                 },
@@ -242,7 +244,7 @@
                     "label": "System Command",
                     "submit": true,
                     "fields": [
-                        { "key": "SystemCmd", "label": "Command", "kind": "enum", "options": [
+                        { "key": "SystemCmd", "label": "Command", "kind": "enum", "dispatch": true, "options": [
                             { "value": "reboot", "label": "Reboot" },
                             { "value": "bootloader", "label": "Reboot into bootloader" },
                             { "value": "mempause", "label": "Pause backups for 5 minutes" }
@@ -344,7 +346,8 @@
                     "fields": [
                         {
                             "key": "ResetErrors", "label": "Confirm Reset", "kind": "toggle", "onLabel": "Yes, reset", "offLabel": "No",
-                            "description": "Resets every module's error counter and history in one call. Absent/No is a no-op."
+                            "description": "Resets every module's error counter and history in one call. Absent/No is a no-op.",
+                            "dispatch": true
                         }
                     ]
                 }

@@ -240,9 +240,10 @@ describe("renderSection", () => {
         await waitFor(() => main.querySelector('[data-field-key="MeasInt"]') !== null);
 
         /** @type {HTMLInputElement} */ (mustQuery(main, '[data-field-key="MeasInt"]')).value = "3000"; // out of range
-        // COffset is left blank on purpose - a number field's sparse-PUT convention omits it
-        // entirely (unlike the toggle/enum fields below, which always resubmit their current
-        // value and so are never sparse-omittable through this UI).
+        // COffset and MeasEnabled are left untouched on purpose - a number field's sparse-PUT
+        // convention omits a blank input, and a non-dispatch toggle/enum field (unlike the real
+        // ContMeas/SystemCmd/ResetErrors/SGPResetVOC) is now sparse-omitted the same way when it
+        // still matches its current value (collectGroupBody()).
         mustQuery(main, ".apply-button").click();
 
         await waitFor(() => mustQuery(main, '[data-group-key="SCD30"]').dataset.applyStatus !== undefined);
@@ -251,13 +252,47 @@ describe("renderSection", () => {
         expect(card.dataset.applyStatus).toBe("invalid"); // worst-first across the whole group
 
         expect(mustQuery(card, '[data-field-wrapper-key="MeasInt"]').dataset.applyStatus).toBe("invalid");
-        // Toggle/enum fields always resubmit their current, already-valid value - reads back
-        // Unchanged, colored on their own box too, distinct from MeasInt's Invalid.
-        expect(mustQuery(card, '[data-field-wrapper-key="MeasEnabled"]').dataset.applyStatus).toBe("unchanged");
-        // COffset was never part of this submission at all (sparse-omitted) - no per-field result
-        // to show, matching the legacy behavior this restores: only fields present in the
-        // response's own result get colored.
+        // Neither COffset nor MeasEnabled was part of this submission at all (both sparse-omitted) -
+        // no per-field result to show, matching the legacy behavior this restores: only fields
+        // present in the response's own result get colored.
+        expect(mustQuery(card, '[data-field-wrapper-key="MeasEnabled"]').dataset.applyStatus).toBeUndefined();
         expect(mustQuery(card, '[data-field-wrapper-key="COffset"]').dataset.applyStatus).toBeUndefined();
+    });
+
+    it("sparse-omits an untouched toggle/enum field left at its current value, unlike a dispatch-marked field", async () => {
+        uninstall = installMockFetch(DEFS, DATA);
+        const main = mount();
+        stop = renderSection(DEFS, getSection("sensors"), main);
+        await waitFor(() => main.querySelector('[data-field-key="MeasEnabled"]') !== null);
+
+        // MeasEnabled/Oversampling both start at their real current value (DATA.sensorsConfig.SCD30)
+        // and are never touched - only MeasInt is genuinely changed.
+        /** @type {HTMLInputElement} */ (mustQuery(main, '[data-field-key="MeasInt"]')).value = "10";
+        mustQuery(main, ".apply-button").click();
+
+        await waitFor(() => mustQuery(main, '[data-group-key="SCD30"]').dataset.applyStatus !== undefined);
+
+        const card = mustQuery(main, '[data-group-key="SCD30"]');
+        expect(card.dataset.applyStatus).toBe("valid");
+        // Only the field that actually changed shows up in the result text.
+        expect(mustQuery(card, ".apply-result").textContent).toBe("OK — MeasInt: Valid");
+    });
+
+    it("still submits a toggle/enum field explicitly flipped back to its original value (a real, deliberate change)", async () => {
+        uninstall = installMockFetch(DEFS, DATA);
+        const main = mount();
+        stop = renderSection(DEFS, getSection("sensors"), main);
+        await waitFor(() => main.querySelector('[data-field-key="MeasEnabled"]') !== null);
+
+        const toggle = mustQuery(main, '[data-field-key="MeasEnabled"]');
+        toggle.click(); // On -> Off: a real, deliberate change from the current value (true)
+        mustQuery(main, ".apply-button").click();
+
+        await waitFor(() => mustQuery(main, '[data-group-key="SCD30"]').dataset.applyStatus !== undefined);
+
+        const card = mustQuery(main, '[data-group-key="SCD30"]');
+        expect(card.dataset.applyStatus).toBe("valid");
+        expect(mustQuery(card, ".apply-result").textContent).toContain("MeasEnabled: Valid");
     });
 
     it("submits a numeric-valued enum field as a number, not a stringified one (regression)", async () => {
@@ -359,7 +394,7 @@ describe("renderSection", () => {
                             label: "Reset Errors",
                             submit: true,
                             submitLabel: "Reset All Errors",
-                            fields: [{ key: "ResetErrors", label: "Confirm Reset", kind: "toggle", onLabel: "Yes, reset", offLabel: "No" }],
+                            fields: [{ key: "ResetErrors", label: "Confirm Reset", kind: "toggle", onLabel: "Yes, reset", offLabel: "No", dispatch: true }],
                         },
                     ],
                 },
