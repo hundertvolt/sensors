@@ -3,8 +3,9 @@
  * itself; see WEBSITE_PLAN.md §12 for the full layer/contract definition this file follows.
  */
 
+import { formatFieldValue } from "./field-format.js";
 import { pollManager, startPolling } from "./poll-manager.js";
-import { buildErrcountGroup, buildFieldGroupCard, buildSectionShell, formatFieldValue } from "./templates.js";
+import { buildErrcountGroup, buildFieldGroupCard, buildSectionShell } from "./templates.js";
 
 /** @typedef {import("./definitions.js").SiteDefinitions} SiteDefinitions */
 /** @typedef {import("./definitions.js").Section} Section */

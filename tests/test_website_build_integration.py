@@ -98,16 +98,16 @@ def test_inlined_definitions_and_stylesheet_replace_the_two_separately_staged_fi
 
 
 def test_production_js_is_served_as_one_bundle_under_js() -> None:
-    # The six production modules (poll-manager.js, templates.js, definitions.js, render.js,
-    # nav.js, main.js) are concatenated into one js/app.js at staging time (scripts/
-    # build_website.sh's own "Bundling" comment - WEBSITE_PLAN.md §10 item 5), not shipped as six
-    # separate files - each of their own paths must now 404, not 200.
+    # The seven production modules (field-format.js, poll-manager.js, templates.js,
+    # definitions.js, render.js, nav.js, main.js) are concatenated into one js/app.js at staging
+    # time (scripts/build_website.sh's own "Bundling" comment - WEBSITE_PLAN.md §10 item 5), not
+    # shipped as seven separate files - each of their own paths must now 404, not 200.
     _, app = _make_app()
     res = run(app.dispatch_request(_make_request(app, "GET", "/js/app.js")))
     assert res.status_code == 200
     assert res.headers["Content-Type"].startswith("application/javascript")
 
-    for path in ("/js/definitions.js", "/js/poll-manager.js", "/js/render.js", "/js/templates.js", "/js/nav.js"):
+    for path in ("/js/definitions.js", "/js/poll-manager.js", "/js/render.js", "/js/templates.js", "/js/nav.js", "/js/field-format.js"):
         res = run(app.dispatch_request(_make_request(app, "GET", path)))
         assert res.status_code == 404, path
 
@@ -120,6 +120,7 @@ def test_bundled_js_contains_every_production_module_with_no_leftover_local_impo
     # Every production module's own distinctive top-level declaration made it into the bundle -
     # a real, direct check that concatenation didn't silently drop one.
     for marker in (
+        b"function formatFieldValue",  # field-format.js
         b"function fetchWithTimeout",  # poll-manager.js
         b"function buildFieldGroupCard",  # templates.js
         b"function validateDefinitions",  # definitions.js
@@ -130,9 +131,15 @@ def test_bundled_js_contains_every_production_module_with_no_leftover_local_impo
         assert marker in body, marker
 
     # No `import { ... } from "./local-file.js";` line survived - every such line only worked
-    # because the imported name is now already in scope earlier in the same concatenated file.
+    # because the imported name is now already in scope earlier in the same concatenated file. A
+    # leftover `export { ... } from "./local-file.js";` re-export would be just as broken (the
+    # bundle is one file; there is no "./local-file.js" left to resolve at runtime) but isn't
+    # caught by the import-line check above - checked directly after a real instance of exactly
+    # this mistake (js/templates.js briefly re-exported field-format.js's formatFieldValue this
+    # way) was caught only by manually tracing the build, not by this test.
     for line in body.split(b"\n"):
         assert not line.startswith(b"import "), line
+        assert not (line.startswith(b"export ") and b" from \"./" in line), line
 
 
 def test_js_app_js_is_the_real_production_entry_not_the_prototype() -> None:

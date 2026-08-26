@@ -39,7 +39,7 @@ export default [
     },
     {
         files: ["tests_js/**/*.js"],
-        ignores: ["tests_js/_live_twin_command.js"],
+        ignores: ["tests_js/_live_twin_command.js", "tests_js/_live_matrix_command.js"],
         languageOptions: {
             ecmaVersion: "latest",
             sourceType: "module",
@@ -53,7 +53,7 @@ export default [
         // Vitest Commands API implementations run server-side, in the real Node process - not the
         // sandboxed browser context every other tests_js/*.js file runs in (WEBSITE_PLAN.md §10
         // item 5's own rationale for needing this file at all). Node globals, not browser ones.
-        files: ["tests_js/_live_twin_command.js"],
+        files: ["tests_js/_live_twin_command.js", "tests_js/_live_matrix_command.js"],
         languageOptions: {
             ecmaVersion: "latest",
             sourceType: "module",

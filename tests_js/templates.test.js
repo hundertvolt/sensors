@@ -1,12 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
-import {
-    buildErrcountGroup,
-    buildField,
-    buildFieldGroupCard,
-    buildNavDrawer,
-    buildSectionShell,
-    formatFieldValue,
-} from "../js/templates.js";
+import { buildErrcountGroup, buildField, buildFieldGroupCard, buildNavDrawer, buildSectionShell } from "../js/templates.js";
+import { formatFieldValue } from "../js/field-format.js";
 
 /**
  * @template {Element} [T=HTMLElement]

@@ -34,21 +34,14 @@ import dev from "../html/definitions/dev.json";
 import woziData from "../mockdata/wozi.json";
 import devData from "../mockdata/dev.json";
 import { installMockFetch } from "../js/mock-server.js";
+import { collectPutFieldCases } from "./_put_field_cases.js";
 
 /** @typedef {import("../js/definitions.js").SiteDefinitions} SiteDefinitions */
 /** @typedef {import("../js/definitions.js").MockDeviceData} MockDeviceData */
-/** @typedef {import("../js/definitions.js").FieldDef} FieldDef */
+/** @typedef {import("./_put_field_cases.js").PutFieldCase & {data: MockDeviceData}} PutFieldCase */
 
-const DISPATCH_ONLY_KEYS = new Set(["SystemCmd", "PauseTime", "lightCmdLED", "ResetErrors"]);
 // Shared driver/module field sets - identical between devices, so only wozi's copy is exercised.
 const DEV_UNIQUE_GROUPS = new Set(["SHTC3", "MPRLS", "ISL29125"]);
-
-/**
- * @typedef {{
- *   device: string, defs: SiteDefinitions, data: MockDeviceData, sectionKey: string,
- *   groupKey: string, field: FieldDef, putPath: string, currentValue: unknown,
- * }} PutFieldCase
- */
 
 /**
  * @param {string} device
@@ -56,44 +49,13 @@ const DEV_UNIQUE_GROUPS = new Set(["SHTC3", "MPRLS", "ISL29125"]);
  * @param {MockDeviceData} data
  * @returns {PutFieldCase[]}
  */
-function collectPutFieldCases(device, defs, data) {
-    /** @type {PutFieldCase[]} */
-    const cases = [];
-    for (const section of defs.sections) {
-        if (!["sensors", "networking", "system", "notification"].includes(section.key) || section.rest.put === undefined) {
-            continue; // measurements has no PUT; status's only field (ResetErrors) is dispatch-only
-        }
-        for (const group of section.groups) {
-            if (!("fields" in group) || !group.submit) {
-                continue;
-            }
-            for (const field of group.fields) {
-                if (field.kind === "readonly" || field.kind === "composite" || DISPATCH_ONLY_KEYS.has(field.key)) {
-                    continue;
-                }
-                const storedConfig =
-                    section.key === "sensors"
-                        ? data.sensorsConfig[group.key]
-                        : /** @type {Record<string, unknown>} */ (data[/** @type {"networkingConfig"|"systemConfig"|"notificationConfig"} */ (`${section.key}Config`)]);
-                cases.push({
-                    device,
-                    defs,
-                    data,
-                    sectionKey: section.key,
-                    groupKey: group.key,
-                    field,
-                    putPath: section.rest.put,
-                    currentValue: storedConfig?.[field.key],
-                });
-            }
-        }
-    }
-    return cases;
+function collectMockPutFieldCases(device, defs, data) {
+    return collectPutFieldCases(device, defs, data).map((c) => ({ ...c, data }));
 }
 
 const CASES = [
-    ...collectPutFieldCases("wozi", /** @type {SiteDefinitions} */ (wozi), /** @type {MockDeviceData} */ (woziData)),
-    ...collectPutFieldCases("dev", /** @type {SiteDefinitions} */ (dev), /** @type {MockDeviceData} */ (devData)).filter((c) => DEV_UNIQUE_GROUPS.has(c.groupKey)),
+    ...collectMockPutFieldCases("wozi", /** @type {SiteDefinitions} */ (wozi), /** @type {MockDeviceData} */ (woziData)),
+    ...collectMockPutFieldCases("dev", /** @type {SiteDefinitions} */ (dev), /** @type {MockDeviceData} */ (devData)).filter((c) => DEV_UNIQUE_GROUPS.has(c.groupKey)),
 ];
 
 /**

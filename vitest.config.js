@@ -3,6 +3,7 @@ import { defineConfig } from "vitest/config";
 import { playwright } from "@vitest/browser-playwright";
 
 import { runLiveBackendSmoke } from "./tests_js/_live_twin_command.js";
+import { applyField, getRealCurrentValues, remountAndReadField, startLiveMatrix, stopLiveMatrix } from "./tests_js/_live_matrix_command.js";
 
 // This dev sandbox pre-installs Chromium at a fixed path/revision and asks tools not to fetch
 // their own copy (see the environment's own README); CI runners have no such path and instead
@@ -33,7 +34,7 @@ export default defineConfig({
             // context): backs tests_js/live-backend.test.js's real-digital-twin round trip. See
             // tests_js/_live_twin_command.js's own header comment for why this needs the Commands
             // API rather than Vitest's browser-side `page` object (WEBSITE_PLAN.md §10 item 5).
-            commands: { runLiveBackendSmoke },
+            commands: { runLiveBackendSmoke, startLiveMatrix, stopLiveMatrix, getRealCurrentValues, applyField, remountAndReadField },
         },
     },
 });

@@ -332,6 +332,57 @@ OpenHAB instance polling two endpoints alongside a browser session).
   overflow behavior above. NTP sync (the third named concurrent actor) is deliberately not
   simulated — it's UDP traffic that never touches `WebserverService`'s connection ceiling.
 
+**Follow-up round: a real end-to-end field-by-field PUT matrix.** An audit of the existing test
+landscape found that "real digital twin → real HTTP → real rendered website" coverage existed for
+exactly one field (`tests_js/live-backend.test.js`'s own `System`/`DebugLevel` case) — every other
+endpoint/field either stopped at raw HTTP (the Python `test_digital_twin_*` tests, no rendering) or
+was verified against `js/mock-server.js`'s own hand-written fake backend (`tests_js/
+mock-server-put-matrix.test.js`'s already-exhaustive matrix), never both at once.
+
+- **`tests_js/live-backend-put-matrix.test.js`** generalizes the single-field pattern to every real
+  writable field in `wozi.json` (the only device the digital twin ever boots as): a real UI action
+  (fill/select/toggle + a real Apply click) against a real, shared twin+browser session (booted once
+  per file — `tests_js/_live_matrix_command.js`'s `startLiveMatrix()`/`applyField()`/
+  `remountAndReadField()` — not once per field, which would have multiplied a real subprocess boot
+  across ~50 fields for no benefit), verified two ways: same-view (the caption/control right after
+  Apply) and a full from-scratch remount (a real nav-drawer click, since only a number/string
+  field's caption self-refreshes in place — a toggle/enum control never does, per `js/render.js`'s
+  own `paint()` — so a remount is the only real-UI-driven proof those kinds' persisted value
+  round-tripped at all). 243 cases, ~8 minutes end to end.
+- **Real UI action boundaries, deliberately not crossed**: rejecting an invalid enum option, a
+  wrong-JSON-type body, and a field omitted from the request body have no real user gesture behind
+  them (a `<select>` only ever offers its own declared options; a typed value is already exactly
+  what a real PUT body carries) — those three categories, plus every field unique to the `dev`
+  device, stay covered only by the mock-backend matrix.
+- **Three real, confirmed backend quirks found building this**, none of them bugs: `ForceCalRef`'s
+  GET readback always reports `400` regardless of what was applied (`src/asy_scd30_driver.py`'s own
+  docstring: "Volatile readback ... regardless of the last FRC value applied" — a real SCD30
+  register limitation, modeled exactly in `digital_twin/_scd30_chip.py`'s fake); `ContMeas` and
+  `SGPResetVOC` are never reported by GET at all (both are documented command-only triggers, never
+  persisted — "the SCD30 can't report whether continuous measurement is running" /
+  `asy_sgp40_driver.py`'s `_VAL_RESET` comment). All three surfaced first as what looked like a
+  stale-render bug before being traced to their real cause. **`js/mock-server.js` models none of
+  the three** (confirmed directly — none of the three field keys is referenced by name anywhere in
+  that file, so all three go through its generic store-and-echo path) — a real divergence between
+  the mock backend's own model and the real backend's documented behavior, flagged to the project
+  owner rather than silently changed in either file.
+- **A fourth finding, matching an already-established precedent rather than a new one**: the real
+  backend's `Unchanged` result essentially never fires on an exact resubmit — confirmed directly
+  even for a plain `system`/`settings` field like `DebugLevel` (`config_manager.py`'s own
+  `new_cache[key] != value` comparison exists, but this matrix's resubmit cases still consistently
+  observed `Valid`) and, separately, is architecturally impossible for the SCD30 driver's own
+  schema-based setters (`src/asy_scd30_driver.py`'s `_set_dict_cfg()`: `"Valid" if await
+  setter(coerced_value) else "Failed"` — no comparison against a prior value at all, since these
+  fields have no local cache to compare against). `tests_js/live-backend.test.js` had already
+  accepted `["valid", "unchanged"]` for exactly this reason; this matrix's own resubmit cases follow
+  that same established tolerance rather than asserting a stricter, newly-invented one.
+- **`js/field-format.js`** was split out of `js/templates.js` along the way: `formatFieldValue()`
+  has no DOM dependency and this matrix's own Node-context harness needed it (to compute the exact
+  expected rendered text to poll for) without pulling `js/templates.js`'s own `document`/
+  `HTMLElement` surface into a type-check program that has no `"dom"` lib. `scripts/
+  build_website.sh`'s bundle grew from six production modules to seven accordingly (see that
+  script's own "Bundling" comment).
+
 ## 8. Open items — reserved for dedicated future sub-sessions
 
 - **Exact schema comment-tag grammar** — §11 is a worked *sketch* of the tag syntax against real
