@@ -152,6 +152,66 @@ jobs:
           path: coverage/
         continue-on-error: true
 
+  web-cross-browser-smoke:
+    # Runs the real production website through three engines Vitest's Playwright-only browser mode
+    # can't reach (WebKitGTK, real Firefox, real Microsoft Edge), plus Playwright's own Chromium for
+    # a consistent baseline - each at a desktop and a mobile-sized viewport. Deliberately narrow
+    # scope: one field edit+apply per (engine, viewport), not the full PUT matrix - see
+    # scripts/cross_browser_smoke.mjs's own header comment and WEBSITE_PLAN.md §7 ("Cross-browser
+    # coverage") for the "Coverage depth"/"Test architecture" decisions behind that.
+    #
+    # needs: web-unit-tests, not just web-lint-and-typecheck - no reason to spend several more
+    # minutes installing three more browser engines if the fast native-Chromium suite already
+    # caught a regression (same fail-fast reasoning as digital-twin-e2e's own needs: unit-tests).
+    needs: [web-changes, web-unit-tests]
+    if: needs.web-changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Install uv
+        run: pip install uv
+      - name: Cache MicroPython Unix port build
+        uses: actions/cache@v6
+        with:
+          path: ~/pico-toolchain
+          # Same cache key as every other job's identical step - see unit-tests' step comment for
+          # why both toolchain/setup_toolchain.py and toolchain/versions.toml must be hashed
+          # together. Each CI job is its own fresh VM, so this job needs its own restore even though
+          # web-unit-tests (which this job needs:) already built the same thing moments earlier in
+          # this same workflow run.
+          key: unix-port-${{ runner.os }}-${{ hashFiles('toolchain/versions.toml', 'toolchain/setup_toolchain.py') }}
+      - name: Build MicroPython Unix port (if not cached) and the real wozi website
+        run: |
+          bin="$HOME/pico-toolchain/micropython/ports/unix/build-standard/micropython"
+          if [ ! -x "$bin" ]; then
+            uv run toolchain/setup_toolchain.py setup
+          fi
+          scripts/build_website.sh wozi
+      # Firefox+geckodriver (via conda-forge/micromamba - see scripts/setup_cross_browser_toolchain.sh's
+      # own comment for why) is the one piece of this job's toolchain worth caching across runs: it's
+      # a ~106MB download from a channel with no version-pin file to key on (deliberately unpinned,
+      # unlike the MicroPython toolchain above), so this just caches "whatever conda-forge currently
+      # publishes" under a fixed key - bump the key's trailing version number to force a fresh pull
+      # if that ever needs to happen. WebKit (a plain apt package) and Edge (Microsoft's own apt repo)
+      # are cheap enough to reinstall every run, matching Playwright Chromium's OS-deps-only-on-cache-
+      # hit precedent above.
+      - name: Cache Firefox + geckodriver (conda-forge)
+        uses: actions/cache@v6
+        with:
+          path: ~/cross-browser-toolchain
+          key: cross-browser-firefox-v1-${{ runner.os }}
+      - name: Install WebKit, Edge, and Firefox+geckodriver
+        run: scripts/setup_cross_browser_toolchain.sh
+      - name: Run cross-browser smoke check
+        run: node scripts/cross_browser_smoke.mjs
+
   lint-and-typecheck:
     # Gates on src/, tests/, and digital_twin/ (pyproject.toml's [tool.mypy]/[tool.ruff] default
     # scope - both fully-reviewed, expected to stay clean). Passing explicit paths to

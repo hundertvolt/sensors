@@ -92,6 +92,9 @@ npm run lint:html      # html-validate (html/*.html)
 npm run lint:css       # Stylelint (html/*.css)
 npm test               # Vitest, real-browser mode (Playwright/Chromium) - tests_js/*.test.js
 npm run preview        # serves the repo root locally (python3 -m http.server 8000)
+
+scripts/setup_cross_browser_toolchain.sh   # one-time - installs real WebKit/Firefox/Edge
+node scripts/cross_browser_smoke.mjs       # drives the real site through all of them, desktop + mobile
 ```
 
 `npm run preview`, then open `http://localhost:8000/html/index.html?device=wozi` (or `?device=dev`),
@@ -111,6 +114,14 @@ browser mode needs an actual Chromium install — CI installs its own via `playw
 `npm test` reports a missing browser executable locally, run `npx playwright install chromium`
 first (skip this in the Claude Code web-session sandbox this effort was scaffolded in, which
 already pre-installs a matching one).
+
+A separate CI job, `web-cross-browser-smoke`, drives the real site through real WebKit, real
+Firefox, and real Microsoft Edge too (not just Vitest's own Playwright/Chromium) — one field
+edit+apply per engine, at both a desktop and a mobile-sized viewport, against a real booted digital
+twin. Vitest's browser mode can't reach any of these itself (it's wired to a single Playwright
+provider, which can only automate Chromium-family browsers), so this runs as a standalone script,
+`scripts/cross_browser_smoke.mjs`, rather than a Vitest test file — see `WEBSITE_PLAN.md` §7's
+"Cross-browser coverage" for the full account of why and how.
 
 ## Building real firmware
 

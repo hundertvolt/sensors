@@ -374,6 +374,52 @@ SCD30 driver's own schema-based setters, which compare against no prior value at
 matrix's resubmit cases accept `["valid", "unchanged"]`, the same tolerance
 `tests_js/live-backend.test.js` already established.
 
+### Cross-browser coverage
+
+Vitest's own browser mode here is wired to a single provider (Playwright), which can only automate
+Chromium-family browsers — it cannot drive a real, unpatched WebKit or Firefox at all (Playwright's
+own Firefox/WebKit builds need patches unrelated engines don't have, and downloading Playwright's
+own copies is blocked by this project's outbound network policy where this was investigated).
+`scripts/cross_browser_smoke.mjs` is a standalone (non-Vitest) script that closes this gap: it boots
+the real digital twin and drives the real production website through **WebKitGTK** (real WebKit,
+via `WebKitWebDriver`'s own W3C WebDriver server — installed by `apt`'s `webkit2gtk-driver`), **real
+Firefox** (Gecko, via Mozilla's own `geckodriver` — installed from conda-forge via a standalone
+`micromamba` binary, since Ubuntu's `firefox` apt package is a snap-only stub with no working snapd
+in this project's CI/sandbox environments, and every other usual source — Mozilla's own CDN, the
+mozillateam PPA, Playwright's own bundled build — is blocked by the same network policy), and **real
+Microsoft Edge** (Chromium-family, installed from Microsoft's own apt repo, driven the same way as
+Chromium via Playwright's `executablePath`) — plus Playwright's own Chromium, included so every
+engine goes through the identical check. Each engine runs at both a desktop-sized and a mobile-sized
+viewport: nav to the live site → open the nav drawer → go to Sensors → edit one field → Apply →
+confirm the real backend validated it and the UI reflects it (both the `data-apply-status` attribute
+and the current-value caption, which updates via a separate, slightly later GET round trip —
+`render.js`'s `onApplied()` → `fetchOnce()` — so a correct check has to poll for both together, not
+just the former).
+
+Deliberately narrow scope, not a second exhaustive PUT matrix: each real WebDriver round trip costs
+low single-digit seconds, so replicating the full 243-case matrix across three more engines would
+cost many extra CI minutes for marginal confidence beyond what engine diversity alone already buys.
+WebKit/Firefox have no device-emulation API over plain WebDriver (no touch synthesis, no mobile UA)
+— their "mobile" viewport is a real window resize only, confirmed to still land under the site's own
+640px responsive breakpoint (`html/style.css`) but not an exact device match; Chromium/Edge get
+Playwright's fuller `devices` preset emulation (real touch, exact device viewport, mobile UA).
+
+`scripts/setup_cross_browser_toolchain.sh` installs all three non-Chromium-Playwright toolchains
+(idempotent, safe to re-run) and is shared between CI (`web-cross-browser-smoke` job in
+`.github/workflows/ci.yml`, gated on `web-changes` same as the rest of the web CI tier, and on
+`web-unit-tests` for fail-fast ordering) and local dev. A missing engine binary is skipped with a
+clear message rather than failing the whole script — CI always installs all three, so a skip there
+is itself the bug to chase; a local run without the full toolchain just gets partial coverage.
+
+Two bugs this file's own development found and fixed, worth keeping in mind for anything similar in
+the future: (1) spawning `WebKitWebDriver`/`geckodriver` via the `xvfb-run` wrapper script left both
+the driver process and its own `Xvfb` still running after this script sent `SIGINT` to the wrapper's
+PID — a real process leak, found by checking `pgrep` after a run, not by inspection; fixed by
+spawning `Xvfb` directly instead and killing both processes explicitly. (2) an early version read
+the applied result immediately after `data-apply-status` appeared, occasionally reading back the
+*previous* check's stale caption instead of the one it had just applied, since the caption's own GET
+round trip can complete slightly after the PUT's — fixed by polling for both together.
+
 ## 8. Open items — reserved for dedicated future sub-sessions
 
 - **Exact schema comment-tag grammar** — §11 is a worked *sketch* of the tag syntax against real
