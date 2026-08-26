@@ -3547,7 +3547,13 @@ observable chain" rule Part A.10 states for drivers and common modules, applied 
 itself. `scripts/run_digital_twin_ci.sh` (and therefore `digital-twin-e2e`'s CI job) and
 `scripts/run_unix_port_integration.sh` build the real, production `wozi` website via
 `scripts/build_website.sh wozi` — the twin serves the real site by default, for the one device
-`src/` currently assembles, matching what real deployed hardware serves.
+`src/` currently assembles, matching what real deployed hardware serves. `npm test`/`npm run
+test:coverage` build it too, automatically, via `package.json`'s `pretest`/`pretest:coverage` hooks —
+the single source of truth for "build before test," shared by CI and local dev, so a plain `npm test`
+on a fresh checkout always exercises the real site rather than a stale/placeholder one.
+`tests_js/_live_twin_command.js`'s own skip-guard only checks that the MicroPython interpreter is
+built, not that the website is current — the `pretest` hook is what actually keeps that true, not
+the guard.
 `scripts/build_frozen_html.sh`'s own `html_stub` default (Part A.9) is unchanged and still used
 elsewhere (`scripts/test.sh`'s `test_frozen_html_integration.py` coverage of the generic pipeline).
 

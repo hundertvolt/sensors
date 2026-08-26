@@ -114,13 +114,15 @@ jobs:
         run: npx playwright install-deps chromium
       - name: Set up MicroPython toolchain (install uv, restore cache)
         uses: ./.github/actions/setup-micropython-toolchain
-      - name: Build MicroPython Unix port (if not cached) and the real wozi website
+      - name: Build MicroPython Unix port (if not cached)
         run: |
           bin="$HOME/pico-toolchain/micropython/ports/unix/build-standard/micropython"
           if [ ! -x "$bin" ]; then
             uv run toolchain/setup_toolchain.py setup
           fi
-          scripts/build_website.sh wozi
+      # The real wozi website is built automatically by npm's own `pretest`/`pretest:coverage`
+      # hooks (package.json) - single source of truth for "build before test", shared with local
+      # dev (see "Run unit tests" comment above).
       - name: Run unit tests (Vitest, real-browser mode)
         run: npm test
       # Coverage is a report, not a gate (mirrors the Python side's own non-gating

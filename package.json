@@ -7,7 +7,9 @@
   "scripts": {
     "lint": "eslint js tests_js scripts html",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
+    "pretest": "scripts/build_website.sh wozi",
     "test": "vitest run",
+    "pretest:coverage": "scripts/build_website.sh wozi",
     "test:coverage": "vitest run --coverage",
     "lint:html": "html-validate \"html/**/*.html\"",
     "lint:css": "stylelint \"html/**/*.css\"",
