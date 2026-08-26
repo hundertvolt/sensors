@@ -314,6 +314,24 @@ whole interpreter for real wall-clock seconds, the only way to simulate a truly 
 than a bus that merely errors. `wlan` has no `--hang` vocabulary — its faults are a synchronous
 `raise_on[]` check, not a bus transaction with a real HAL call underneath.
 
+### `WDT._arm()`'s late-feed backstop
+
+A real `--hang` freezes the whole interpreter, so every asyncio task — including `WDT`'s own
+pending `_countdown()` sleep — sits unable to run for the hang's full real duration. Once the
+interpreter unfreezes, `system_service.py`'s periodic `feed()` (its own check interval is
+deliberately shorter than any real watchdog `timeout`) can win the race to run before
+`_countdown()`'s own already-expired `sleep_ms()` gets its turn, since both became ready at the
+same moment. A plain cancel-and-restart in `_arm()` would silently erase that already-elapsed
+deadline — real hardware can't un-reset itself just because a feed arrived right after it should
+already have fired. `_arm()` now checks, before cancelling the previous `_countdown()` task,
+whether its own deadline had already elapsed; if so it credits the would-have-triggered event
+itself, exactly once per elapsed window, before rearming — `_countdown()` still owns the normal,
+not-yet-hung case, so this is purely the "a feed arrived too late" backstop, not a second counting
+path. `run10_watchdog_hang_backstop.log`'s check depends on this same fix and on
+`scripts/_digital_twin_ci_suite.py`'s Run 10 giving the twin enough `--duration` (15s, not 0) for
+SGP40's own bus access — now queued behind BMP3xx's and SCD30's own FRAM-backed startup I/O on the
+shared FRAM SPI bus — to actually reach its hung `writeto` before the run exits.
+
 ### `_unix_port_udp_addr_shim.py` (real UDP round trips under the Unix port)
 
 `patch_asy_udp_socket_for_unix_port()` — called once, early, as `run_wozi_integration.py`'s own
