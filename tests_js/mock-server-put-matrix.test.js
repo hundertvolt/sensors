@@ -26,7 +26,15 @@
  * Dispatch-only fields (SystemCmd/PauseTime/lightCmdLED/ResetErrors) and the composite lightCmdLED
  * shape have their own distinct Invalid/Failed/Valid semantics, already covered by dedicated tests
  * elsewhere (mock-server.test.js, render.test.js) - excluded from this generic matrix rather than
- * force-fit into categories that don't apply to them.
+ * force-fit into categories that don't apply to them. Same treatment for ForceCalRef/ContMeas/
+ * SGPResetVOC (WEBSITE_PLAN.md §7): js/mock-server.js now models their real GET-readback quirks
+ * (a fixed 400 for ForceCalRef, total omission for the other two), which this generic matrix's
+ * own "resubmit -> Unchanged" and "valid value -> reflected in the next GET" categories both
+ * assume doesn't hold - see mock-server.test.js's own dedicated tests for these three instead.
+ * Excluded locally (SENSOR_QUIRK_FIELDS below), not via _put_field_cases.js's shared
+ * DISPATCH_ONLY_KEYS, since tests_js/live-backend-put-matrix.test.js also consumes that shared
+ * list and already exercises these three correctly against real hardware via its own
+ * ALWAYS_REMOUNTS_AS override - excluding them there too would silently drop that coverage.
  */
 import { describe, expect, it } from "vitest";
 import wozi from "../html/definitions/wozi.json";
@@ -43,6 +51,10 @@ import { collectPutFieldCases } from "./_put_field_cases.js";
 // Shared driver/module field sets - identical between devices, so only wozi's copy is exercised.
 const DEV_UNIQUE_GROUPS = new Set(["SHTC3", "MPRLS", "ISL29125"]);
 
+// Excluded from this file's own CASES only - see this file's header comment for why this can't be
+// folded into _put_field_cases.js's shared DISPATCH_ONLY_KEYS.
+const SENSOR_QUIRK_FIELDS = new Set(["ForceCalRef", "ContMeas", "SGPResetVOC"]);
+
 /**
  * @param {string} device
  * @param {SiteDefinitions} defs
@@ -50,7 +62,9 @@ const DEV_UNIQUE_GROUPS = new Set(["SHTC3", "MPRLS", "ISL29125"]);
  * @returns {PutFieldCase[]}
  */
 function collectMockPutFieldCases(device, defs, data) {
-    return collectPutFieldCases(device, defs, data).map((c) => ({ ...c, data }));
+    return collectPutFieldCases(device, defs, data)
+        .filter((c) => !SENSOR_QUIRK_FIELDS.has(c.field.key))
+        .map((c) => ({ ...c, data }));
 }
 
 const CASES = [

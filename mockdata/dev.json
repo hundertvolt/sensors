@@ -7,8 +7,8 @@
         "ISL29125": { "Red": 1840, "Green": 2210, "Blue": 990, "TS": 1755000000 }
     },
     "sensorsConfig": {
-        "SCD30": { "MeasInt": 10, "TempOffs": 1.5, "AmbPres": 950, "Altitude": 0, "ContMeas": true, "ForceCalRef": 400, "SelfCal": false },
-        "SGP40": { "BackupPeriod": 30, "BackupMaxAge": 720, "WaitTimeNTP": 15, "SGPResetVOC": false },
+        "SCD30": { "MeasInt": 10, "TempOffs": 1.5, "AmbPres": 950, "Altitude": 0, "ForceCalRef": 400, "SelfCal": false },
+        "SGP40": { "BackupPeriod": 30, "BackupMaxAge": 720, "WaitTimeNTP": 15 },
         "SHTC3": { "SampleInterv": 10, "TempOffset": 0.0, "FiltCoeff": 0.2 },
         "MPRLS": { "SampleInterv": 10, "PressOffset": 0.0, "FiltCoeff": -1.0 },
         "ISL29125": {

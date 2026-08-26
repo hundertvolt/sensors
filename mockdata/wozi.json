@@ -5,8 +5,8 @@
         "BMP3XX": { "Pres": 1005.3, "Temp": 21.6, "SLPres": 1013.8, "TS": 1755000000 }
     },
     "sensorsConfig": {
-        "SCD30": { "MeasInt": 5, "TempOffs": 2.5, "AmbPres": 0, "Altitude": 180, "ContMeas": true, "ForceCalRef": 400, "SelfCal": true },
-        "SGP40": { "BackupPeriod": 60, "BackupMaxAge": 1440, "WaitTimeNTP": 30, "SGPResetVOC": false },
+        "SCD30": { "MeasInt": 5, "TempOffs": 2.5, "AmbPres": 0, "Altitude": 180, "ForceCalRef": 400, "SelfCal": true },
+        "SGP40": { "BackupPeriod": 60, "BackupMaxAge": 1440, "WaitTimeNTP": 30 },
         "BMP3XX": {
             "SampleInterv": 5, "PressOvers": 4, "PressOffset": 0.0, "TempOvers": 4, "TempOffset": 0.0,
             "FiltCoeff": 3, "SeaLevelOffs": 0.0, "MeanAtmTemp": 15.0

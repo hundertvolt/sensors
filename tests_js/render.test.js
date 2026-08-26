@@ -68,7 +68,11 @@ const DEFS = {
                         // min: 0 deliberately, to catch a form input coerced to the number 0 by
                         // accident (e.g. non-numeric text) rather than one genuinely submitted as 0.
                         { key: "COffset", label: "Calibration Offset", kind: "number", min: 0, max: 500 },
-                        { key: "ContMeas", label: "Continuous Measurement", kind: "toggle", onLabel: "On", offLabel: "Off" },
+                        // Named unlike the real SCD30 field "ContMeas" on purpose - js/mock-server.js
+                        // now special-cases that exact key name for a real hardware quirk
+                        // (WEBSITE_PLAN.md §7), which this fixture's own generic toggle-rendering
+                        // scenario must stay clear of.
+                        { key: "MeasEnabled", label: "Continuous Measurement", kind: "toggle", onLabel: "On", offLabel: "Off" },
                         {
                             key: "Oversampling",
                             label: "Oversampling",
@@ -137,7 +141,7 @@ function getSection(key) {
 
 const DATA = {
     measurements: { SCD30: { CO2: 600 } },
-    sensorsConfig: { SCD30: { MeasInt: 5, COffset: 10, ContMeas: true, Oversampling: 1 } },
+    sensorsConfig: { SCD30: { MeasInt: 5, COffset: 10, MeasEnabled: true, Oversampling: 1 } },
     networkingConfig: {},
     systemConfig: {},
     notificationConfig: {},
@@ -204,7 +208,7 @@ describe("renderSection", () => {
         const caption = mustQuery(main, '[data-current-value-for="MeasInt"]');
         expect(caption.textContent).toContain("5");
 
-        const toggle = mustQuery(main, '[data-field-key="ContMeas"]');
+        const toggle = mustQuery(main, '[data-field-key="MeasEnabled"]');
         expect(toggle.getAttribute("aria-pressed")).toBe("true");
         expect(toggle.textContent).toBe("On");
     });
@@ -249,7 +253,7 @@ describe("renderSection", () => {
         expect(mustQuery(card, '[data-field-wrapper-key="MeasInt"]').dataset.applyStatus).toBe("invalid");
         // Toggle/enum fields always resubmit their current, already-valid value - reads back
         // Unchanged, colored on their own box too, distinct from MeasInt's Invalid.
-        expect(mustQuery(card, '[data-field-wrapper-key="ContMeas"]').dataset.applyStatus).toBe("unchanged");
+        expect(mustQuery(card, '[data-field-wrapper-key="MeasEnabled"]').dataset.applyStatus).toBe("unchanged");
         // COffset was never part of this submission at all (sparse-omitted) - no per-field result
         // to show, matching the legacy behavior this restores: only fields present in the
         // response's own result get colored.

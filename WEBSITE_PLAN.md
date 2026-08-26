@@ -353,11 +353,22 @@ Three real backend behaviors this matrix confirmed, none of them bugs: `ForceCal
 always reports `400` regardless of what was applied (a real SCD30 register limitation — see
 `src/asy_scd30_driver.py`'s own docstring — modeled exactly in `digital_twin/_scd30_chip.py`'s
 fake); `ContMeas` and `SGPResetVOC` are never reported by GET at all (both are documented
-command-only triggers, never persisted). `js/mock-server.js` models none of the three (none of the
-three field keys is referenced by name anywhere in that file, so all three fall through to its
-generic store-and-echo path) — a confirmed divergence between the mock backend's model and the real
-backend's documented behavior, open item in §8 below rather than resolved here. Separately, the
-real backend's `Unchanged` PUT result essentially never fires on an exact resubmit in practice
+command-only triggers, never persisted). `js/mock-server.js` now models all three explicitly
+(`SENSOR_QUIRK_FIELDS`, dispatched separately from the generic sparse-PUT/store-and-echo path used
+by every ordinary settings field): PUT validates ForceCalRef's normal range and both toggles' bool
+type exactly like the generic path would, but never compares against a stored value (so a resubmit
+is always `"Valid"`, never `"Unchanged"` — matching the real direct-hardware-write dispatch, which
+has nothing to compare against either) and never persists the submitted value; GET always returns
+the fixed `400` for ForceCalRef and omits `ContMeas`/`SGPResetVOC` entirely, matching the real
+`get_dict_cfg()` schema exclusion for the latter two. Covered by three dedicated tests in
+`tests_js/mock-server.test.js` (the same treatment already used there for `SystemCmd`/`PauseTime`/
+`lightCmdLED`); `tests_js/mock-server-put-matrix.test.js`'s own generic matrix excludes all three
+locally (its own categories — "resubmit ⇒ Unchanged", "valid value ⇒ reflected in the next GET" —
+don't hold for them), without touching `tests_js/_put_field_cases.js`'s shared `DISPATCH_ONLY_KEYS`
+list, since `tests_js/live-backend-put-matrix.test.js` also consumes that shared list and already
+exercises all three correctly against real hardware via its own `ALWAYS_REMOUNTS_AS` override.
+Separately, the real backend's `Unchanged` PUT result essentially never fires on an exact resubmit
+in practice
 (confirmed even for a plain settings field like `DebugLevel`; architecturally impossible for the
 SCD30 driver's own schema-based setters, which compare against no prior value at all) — this
 matrix's resubmit cases accept `["valid", "unchanged"]`, the same tolerance
@@ -372,11 +383,6 @@ matrix's resubmit cases accept `["valid", "unchanged"]`, the same tolerance
 - **`dev.json`'s SHTC3/MPRLS/ISL29125 fields remain an unconfirmed projection** — these sensors
   have no real driver under `src/` yet. Resolves naturally once a future session promotes those
   drivers.
-- **`js/mock-server.js` vs. the real backend's documented behavior for three fields** —
-  `ForceCalRef` (always GETs back `400`), `ContMeas`, `SGPResetVOC` (never reported by GET at all)
-  are all documented real-hardware behaviors (§7) that the mock's generic store-and-echo model
-  doesn't reproduce. Whether to special-case the mock, exclude these fields from its own PUT-matrix
-  test, or leave the divergence as documented/accepted is the project owner's call, not assumed.
 
 ## 9. Sub-session working process
 

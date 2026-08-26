@@ -16,6 +16,15 @@ const REST_PATHS = /** @type {const} */ ([
 const SYSTEM_CMDS = ["reboot", "bootloader", "mempause"];
 const PAUSE_TIME_MAX = 3600; // matches src/asy_webserver_service.py's own _PAUSE_TIME_MAX
 
+// Three /sensors fields with real, documented hardware quirks (WEBSITE_PLAN.md §7;
+// src/asy_scd30_driver.py's _set_dict_cfg()/get_forced_recalibration_reference(),
+// src/asy_sgp40_driver.py's _push_reset_voc()): each is a direct hardware dispatch re-run every
+// request, never compared against a stored value ("Unchanged" can never fire) and never persisted
+// the way an ordinary settings field is - modeled here instead of falling through to the generic
+// store-and-echo path, which would wrongly report "Unchanged" on a resubmit and echo back whatever
+// was just PUT rather than the real GET-readback quirk below.
+const SENSOR_QUIRK_FIELDS = new Set(["ForceCalRef", "ContMeas", "SGPResetVOC"]);
+
 /**
  * @param {import("./definitions.js").FieldDef} field
  * @param {unknown} rawValue
@@ -235,6 +244,43 @@ function dispatchLightCmdLed(rawValue) {
 }
 
 /**
+ * Validates+dispatches one of SENSOR_QUIRK_FIELDS' PUT value exactly like the real driver's own
+ * type_or_range_error()-then-direct-hardware-write path: "Valid"/"Invalid" only (never "Failed" -
+ * there's no real I2C bus here to fail), and never written to storedConfig, so a later GET falls
+ * through to applySensorQuirksForGet()'s own override/omission for these three keys instead of
+ * echoing back whatever was just PUT. `field` is undefined when this device's schema doesn't
+ * declare the key at all - treated the same as applySparsePut()'s own unknown-field tolerance.
+ * @param {import("./definitions.js").FieldDef | undefined} field
+ * @param {unknown} rawValue
+ * @returns {string | undefined}
+ */
+function dispatchSensorQuirkField(field, rawValue) {
+    if (field === undefined) {
+        return undefined;
+    }
+    return coerceAndValidate(field, rawValue).valid ? "Valid" : "Invalid";
+}
+
+/**
+ * Applies SENSOR_QUIRK_FIELDS' real GET-readback behavior to a /sensors response: `ForceCalRef`
+ * always reports the fixed constant 400 regardless of what was last applied (SCD30's own volatile-
+ * register limitation - get_forced_recalibration_reference()'s own docstring); `ContMeas`/
+ * `SGPResetVOC` are omitted entirely, matching get_dict_cfg()'s explicit schema exclusion for both
+ * (neither is ever in ConfigManager's cache to read back in the first place).
+ * @param {Record<string, Record<string, unknown>>} sensorsConfig
+ * @returns {Record<string, Record<string, unknown>>}
+ */
+function applySensorQuirksForGet(sensorsConfig) {
+    /** @type {Record<string, Record<string, unknown>>} */
+    const result = {};
+    for (const [sensorKey, fields] of Object.entries(sensorsConfig)) {
+        const rest = Object.fromEntries(Object.entries(fields).filter(([key]) => key !== "ContMeas" && key !== "SGPResetVOC"));
+        result[sensorKey] = "ForceCalRef" in rest ? { ...rest, ForceCalRef: 400 } : rest;
+    }
+    return result;
+}
+
+/**
  * Simulates the real backend's own known gap (WEBSITE_PLAN.md §10 session 3 follow-up 2): a
  * settings group's post-write hook raising drops that group's fields from `result` entirely,
  * with the overall response still reporting `res:"OK"`. Deletes one arbitrary key in place, once,
@@ -361,7 +407,22 @@ export function installMockFetch(defs, initialData, controls) {
                     continue;
                 }
                 state.sensorsConfig[sensorKey] ??= {};
-                results[sensorKey] = applySparsePut(/** @type {Record<string, unknown>} */ (fields), sensorDefs, state.sensorsConfig[sensorKey]);
+                const rawFields = /** @type {Record<string, unknown>} */ (fields);
+                // SENSOR_QUIRK_FIELDS are excluded before the generic sparse-PUT path below, same
+                // shape as SystemCmd/PauseTime/lightCmdLED's own exclusion further down - none of
+                // them are real persisted settings, so none should reach state.sensorsConfig.
+                const persistableFields = Object.fromEntries(Object.entries(rawFields).filter(([key]) => !SENSOR_QUIRK_FIELDS.has(key)));
+                const sensorResults = applySparsePut(persistableFields, sensorDefs, state.sensorsConfig[sensorKey]);
+                for (const quirkKey of SENSOR_QUIRK_FIELDS) {
+                    if (!(quirkKey in rawFields)) {
+                        continue;
+                    }
+                    const status = dispatchSensorQuirkField(sensorDefs.get(quirkKey), rawFields[quirkKey]);
+                    if (status !== undefined) {
+                        sensorResults[quirkKey] = status;
+                    }
+                }
+                results[sensorKey] = sensorResults;
             }
             for (const perSensorResult of Object.values(results)) {
                 dropOneResultForPartialFailure(perSensorResult, controls);
@@ -414,7 +475,7 @@ export function installMockFetch(defs, initialData, controls) {
             return state.measurements;
         }
         if (path === "/sensors") {
-            return state.sensorsConfig;
+            return applySensorQuirksForGet(state.sensorsConfig);
         }
         if (path === "/networking") {
             return state.networkingConfig;

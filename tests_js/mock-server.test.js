@@ -21,7 +21,14 @@ const DEFS = {
                     fields: [
                         { key: "MeasInt", label: "Measurement Interval", kind: "number", min: 2, max: 1800 },
                         { key: "ContMeas", label: "Continuous Measurement", kind: "toggle" },
+                        { key: "ForceCalRef", label: "Forced Calibration Reference", kind: "number", min: 400, max: 2000 },
                     ],
+                },
+                {
+                    key: "SGP40",
+                    label: "SGP40",
+                    submit: true,
+                    fields: [{ key: "SGPResetVOC", label: "Reset VOC Index", kind: "toggle" }],
                 },
             ],
         },
@@ -110,7 +117,7 @@ const DEFS = {
 
 const DATA = {
     measurements: { SCD30: { CO2: 600, TS: 1000, Model: "SCD30" } },
-    sensorsConfig: { SCD30: { MeasInt: 5, ContMeas: true } },
+    sensorsConfig: { SCD30: { MeasInt: 5, ForceCalRef: 400 }, SGP40: {} },
     networkingConfig: { Hostname: "wozi" },
     systemConfig: {},
     notificationConfig: {},
@@ -148,13 +155,11 @@ describe("installMockFetch", () => {
 
     it("validates PUT /sensors against field min/max and reports Valid/Invalid/Unchanged", async () => {
         uninstall = installMockFetch(DEFS, DATA);
-        const response = await fetch("/sensors", {
-            method: "PUT",
-            body: JSON.stringify({ SCD30: { MeasInt: 3000, ContMeas: true } }),
-        });
-        const body = await response.json();
-        expect(body.result.SCD30.MeasInt).toBe("Invalid"); // 3000 > max 1800
-        expect(body.result.SCD30.ContMeas).toBe("Unchanged"); // fixture already has ContMeas: true
+        const invalid = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: { MeasInt: 3000 } }) });
+        expect((await invalid.json()).result.SCD30.MeasInt).toBe("Invalid"); // 3000 > max 1800
+
+        const unchanged = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: { MeasInt: 5 } }) });
+        expect((await unchanged.json()).result.SCD30.MeasInt).toBe("Unchanged"); // fixture already has MeasInt: 5
     });
 
     it("marks an in-range changed value as Valid and persists it for the next GET", async () => {
@@ -291,6 +296,62 @@ describe("installMockFetch", () => {
         // fresh every call, exactly like SystemCmd/PauseTime).
         const again = await fetch("/notification", { method: "PUT", body: JSON.stringify({ lightCmdLED: { r: 10, g: 20, b: 30, t: 1 } }) });
         expect((await again.json()).result.lightCmdLED).toBe("Valid");
+    });
+
+    it("dispatches PUT /sensors' ForceCalRef like the real backend's set_forced_recalibration_reference(): range-validated but never Unchanged, and GET always reads back the fixed real-hardware constant 400 regardless of what was applied", async () => {
+        uninstall = installMockFetch(DEFS, DATA);
+
+        const outOfRange = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: { ForceCalRef: 399 } }) });
+        expect((await outOfRange.json()).result.SCD30.ForceCalRef).toBe("Invalid");
+
+        const applied = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: { ForceCalRef: 900 } }) });
+        expect((await applied.json()).result.SCD30.ForceCalRef).toBe("Valid");
+
+        // Real SCD30 register limitation (src/asy_scd30_driver.py's get_forced_recalibration_reference()
+        // docstring): the calibration update is permanent, but this readback always reports 400, never
+        // whatever was just applied.
+        expect((await (await fetch("/sensors")).json()).SCD30.ForceCalRef).toBe(400);
+
+        // Resubmitting the exact fixture-seeded value (400) still reports Valid, never Unchanged - a
+        // direct hardware write is re-run every request, with no stored value to compare against.
+        const resubmit = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: { ForceCalRef: 400 } }) });
+        expect((await resubmit.json()).result.SCD30.ForceCalRef).toBe("Valid");
+    });
+
+    it("dispatches PUT /sensors' ContMeas like the real backend's _set_dict_cfg() ContMeas branch: bool-only, always Valid, never persisted or reported by GET at all", async () => {
+        uninstall = installMockFetch(DEFS, DATA);
+
+        const wrongType = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: { ContMeas: "not-a-bool" } }) });
+        expect((await wrongType.json()).result.SCD30.ContMeas).toBe("Invalid");
+
+        // True (keep running) and False (stop) both report Valid in the mock - there's no real I2C
+        // bus here to ever produce the real driver's "Failed" (a genuine stop-attempt bus fault).
+        const stop = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: { ContMeas: false } }) });
+        expect((await stop.json()).result.SCD30.ContMeas).toBe("Valid");
+        const resume = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: { ContMeas: true } }) });
+        expect((await resume.json()).result.SCD30.ContMeas).toBe("Valid");
+
+        // ContMeas has no schema entry on the real backend (the sensor can't report whether
+        // continuous measurement is running) - never shows up in GET /sensors at all.
+        expect("ContMeas" in (await (await fetch("/sensors")).json()).SCD30).toBe(false);
+    });
+
+    it("dispatches PUT /sensors' SGPResetVOC like the real backend's _push_reset_voc(): bool-only, always Valid, never persisted or reported by GET at all", async () => {
+        uninstall = installMockFetch(DEFS, DATA);
+
+        const wrongType = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SGP40: { SGPResetVOC: "not-a-bool" } }) });
+        expect((await wrongType.json()).result.SGP40.SGPResetVOC).toBe("Invalid");
+
+        // A command-only, repeatable trigger (SPECIFICATION.md C.5.2.1): every request re-fires it,
+        // reported Valid every time, never Unchanged.
+        const first = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SGP40: { SGPResetVOC: true } }) });
+        expect((await first.json()).result.SGP40.SGPResetVOC).toBe("Valid");
+        const again = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SGP40: { SGPResetVOC: true } }) });
+        expect((await again.json()).result.SGP40.SGPResetVOC).toBe("Valid");
+
+        // SGPResetVOC is a special-alone schema field, deliberately excluded from get_dict_cfg() -
+        // never in ConfigManager's cache, so never shows up in GET /sensors at all.
+        expect("SGPResetVOC" in (await (await fetch("/sensors")).json()).SGP40).toBe(false);
     });
 
     it("increments a TS-suffixed leaf by exactly 1 on jitter, jitters a plain number, and leaves a non-number leaf untouched", async () => {
