@@ -323,7 +323,12 @@ async def build_system(
         cfg_path=cfg_path,
         debug=debug,
     )
-    i2c0 = asy_i2c_driver.I2C(0, 13, 12, frequency=50000)
+    # i2c0 carries SCD30 (below): datasheets/scd30/..._Interface_Description.pdf p.2 - max 100kHz,
+    # Sensirion recommends <=50kHz (matched by frequency=50000); clock stretching is normally
+    # <=30ms but can reach 150ms once/day for internal calibration, well past rp2's own I2C
+    # timeout default (DEFAULT_I2C_TIMEOUT, ports/rp2/machine_i2c.c, 50ms) - timeout=200000 (200ms)
+    # keeps that expected once-daily stretch from surfacing as a spurious OSError.
+    i2c0 = asy_i2c_driver.I2C(0, 13, 12, frequency=50000, timeout=200000)
     i2c1 = asy_i2c_driver.I2C(1, 19, 18, frequency=50000)
     spi0 = asy_spi_driver.SPI(0, 2, 3, 4)
     fram = AsyFramManager(spi0, 1, max_size=0x2000, debug=debug)
@@ -340,15 +345,17 @@ async def build_system(
         cfg_path=cfg_path,
         debug=debug,
     )
-    bmp_reader = BMP3xx_Reader(i2c1, max_module_error=_MAX_MODULE_ERROR, cfg_path=cfg_path, debug=debug)
-    scd_reader = SCD30_Reader(i2c0, 8, trigger_sec=3, max_module_error=_MAX_MODULE_ERROR, debug=debug)
     # FRAM chunk 4.
+    bmp_reader = BMP3xx_Reader(i2c1, max_module_error=_MAX_MODULE_ERROR, cfg_path=cfg_path, fram=fram, debug=debug)
+    # FRAM chunk 5.
+    scd_reader = SCD30_Reader(i2c0, 8, trigger_sec=3, max_module_error=_MAX_MODULE_ERROR, fram=fram, debug=debug)
+    # FRAM chunk 6.
     pixel = NeopixelDriver(15, fram=fram, debug=debug)
     # Staged registration (asy_notification_service.py's own module docstring): construct every
     # NotificationSignal, register() each in the same order the reference file's hardcoded
     # CO2/VOC/Humidity checks ran in (this becomes the poll loop's own deterministic check order),
     # then finalize() exactly once - the one point notify_service.pr/notify_service.cfgmgr actually
-    # come into existence (FRAM chunk 5), before its own setup() below or any task starter runs.
+    # come into existence (FRAM chunk 7), before its own setup() below or any task starter runs.
     notify_service = NotificationCoordinator(
         pixel.request_signal,
         ntp.cettime,
@@ -375,8 +382,8 @@ async def build_system(
         # connection reclaim (BACKLOG.md's decision 8), a rate a hostile or merely flaky client could
         # drive far higher than any sensor's rare-hardware-fault error log ever does; persisting that
         # to FRAM would risk real wear-leveling pressure this module's own diagnostics don't need to
-        # survive a reboot to be useful. Keeps the five-chunk FRAM allocation order (see
-        # SPECIFICATION.md Part A.7) exactly as documented - this module allocates no FRAM chunk at all, not a sixth.
+        # survive a reboot to be useful. Keeps the seven-chunk FRAM allocation order (see
+        # SPECIFICATION.md Part A.7) exactly as documented - this module allocates no FRAM chunk at all.
         sensors=(scd_reader, bmp_reader, sgp_reader),  # type: ignore[arg-type]  # structurally
         # _ModuleLike-shaped (SensorReader/SensorReaderConfig subclasses) - _ModuleLike is a
         # narrower Protocol defined in asy_webserver_service.py, not importable here without a real
@@ -430,7 +437,7 @@ async def build_system(
     # style choice. sysfunct first - resolves the real persisted debug level as early as possible,
     # so every subsequent setup() call's own diagnostic logging already reflects it. Order among
     # the ConfigManager-domain calls after it matches their own construction order (conn/ntp were
-    # both built before fram/sysfunct - the five-chunk FRAM order (SPECIFICATION.md Part A.7) is about FRAM
+    # both built before fram/sysfunct - the seven-chunk FRAM order (SPECIFICATION.md Part A.7) is about FRAM
     # *chunk allocation* order specifically, unrelated to this ConfigManager-only setup() ordering);
     # fram (a different, FRAM-hardware readiness domain entirely) keeps its existing position from
     # the reference file's own async_onetime list.

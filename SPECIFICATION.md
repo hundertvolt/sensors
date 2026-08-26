@@ -531,7 +531,11 @@ existing stored data to keep decoding correctly (the "FRAM chunk determinism rul
 2. `conn = AsyConnTime(...)` — owns `DNSServer` internally (`captive_dns.py`).
 3. `ntp = AsyNtpClient(conn.get_wifi_mode_lock(), conn.network_available, conn.get_dns_server_ip,
    ...)` — takes bound methods off `conn`, not a direct import-time reference.
-4. `i2c0`, `i2c1` = `asy_i2c_driver.I2C(...)` ×2.
+4. `i2c0`, `i2c1` = `asy_i2c_driver.I2C(...)` ×2. `i2c0` (carries `SCD30_Reader`, step 10) sets
+   `timeout=200000` (200ms): the SCD30 datasheet documents up to 150ms of clock stretching once
+   per day for internal calibration, past rp2's own I2C timeout default (`DEFAULT_I2C_TIMEOUT`,
+   `ports/rp2/machine_i2c.c`, 50ms) — without the override, that expected once-daily stretch would
+   surface as a spurious `OSError`. `i2c1` (SGP40/BMP3xx) keeps the port default.
 5. `spi0` = `asy_spi_driver.SPI(...)`.
 6. `fram = AsyFramManager(spi0, 1, max_size=0x2000, ...)` — constructs `FRAM_SPI` internally with a
    shared `logger=`; allocates no FRAM chunk of its own.
@@ -545,14 +549,15 @@ existing stored data to keep decoding correctly (the "FRAM chunk determinism rul
    backup itself (`self.ts_storage = fram_storage.get_timestamped_chunk(...)`, a few lines later).
    Both are unconditional whenever `fram_storage`/`fram_ntp_callback` are non-`None`, which they
    always are in the real wiring.
-9. `bmp_reader = BMP3xx_Reader(i2c1, ...)` — no `fram=`, in-memory logging only.
-10. `scd_reader = SCD30_Reader(i2c0, 8, trigger_sec=3, ...)` — no `fram=`, no config schema at all
-    (params live on-sensor).
-11. `pixel = NeopixelDriver(15, fram=fram, ...)` — **FRAM chunk 4**.
+9. `bmp_reader = BMP3xx_Reader(i2c1, ..., fram=fram, ...)` — **FRAM chunk 4**.
+10. `scd_reader = SCD30_Reader(i2c0, 8, trigger_sec=3, ..., fram=fram, ...)` — **FRAM chunk 5**; no
+    config schema at all (params live on-sensor) — the FRAM-backed error log is independent of
+    that and applies regardless.
+11. `pixel = NeopixelDriver(15, fram=fram, ...)` — **FRAM chunk 6**.
 12. `notify_service = NotificationCoordinator(pixel.request_signal, ntp.cettime, fram=fram, ...)`,
     staged registration (`register()` ×3 for `WarnCO2`/`WarnVOC`/`WarnHum`, then `finalize()`
     exactly once — the single point `notify_service.pr`/`notify_service.cfgmgr` come into
-    existence) — **FRAM chunk 5**.
+    existence) — **FRAM chunk 7**.
 13. `conn.set_ext_led(pixel)` — wires the WiFi-status LED callback after both exist.
 14. `app = Microdot(); webserver = WebserverService(app, sensors=(scd_reader, bmp_reader,
     sgp_reader), settings={...}, system_cmd=..., notification_led=..., notification_pause=...,
@@ -562,7 +567,7 @@ existing stored data to keep decoding correctly (the "FRAM chunk determinism rul
     surface; built here because every module it registers must already exist. **No `fram=`** —
     deliberately RAM-only: a per-call/outer-cap connection-reclaim warning (see A.8's "Connection
     hardening" below) could churn far faster than any sensor's rare-hardware-fault log, and this
-    keeps the five-chunk FRAM order above unchanged — no sixth chunk. `static_mount="/html"`
+    keeps the seven-chunk FRAM order above unchanged. `static_mount="/html"`
     registers the generic `/`+`/<path:filename>` static-file route pair *last*, after every API
     route, so an exact-match API route always wins over the wildcard (Microdot's `find_route()`
     returns the first registered pattern that matches). `web_host`/`web_port` default to today's
@@ -583,12 +588,19 @@ existing stored data to keep decoding correctly (the "FRAM chunk determinism rul
     first so every subsequent `setup()` call's own diagnostic logging already reflects the real
     persisted debug level. `conn`/`ntp` both need `cfgmgr.setup()` too (both are
     `SensorReaderConfig` subclasses) and are placed right after `fram`'s slot, matching their own
-    real construction order (both built before `fram`/`sysfunct`).
+    real construction order (both built before `fram`/`sysfunct`). `scd_reader.setup()` is not in
+    this batch — `SCD30_Reader` has no `ConfigManager`/local-JSON config to set up (C.13's
+    readiness-gate scheme doesn't apply to it), only the FRAM-backed error log wired in step 10.
 
 **Real FRAM chunk order**: `SystemService` → `SGP40_Reader` (its own error log, chunk 2) →
-`SGP40_Reader` (VOC backup, chunk 3) → `NeopixelDriver` → `NotificationCoordinator`. Five chunks
-total. Must stay in this relative order in any future change, regardless of byte offset (which
-doesn't matter per the FRAM chunk determinism rule in A.4).
+`SGP40_Reader` (VOC backup, chunk 3) → `BMP3xx_Reader` → `SCD30_Reader` → `NeopixelDriver` →
+`NotificationCoordinator`. Seven chunks total — **every module with a FRAM-backed error-log option
+uses it** (owner requirement: no module capable of FRAM-backed error logging goes without, on a
+device where FRAM is available). Must stay in this relative order in any future change, regardless
+of byte offset (which doesn't matter per the FRAM chunk determinism rule in A.4). `src/` has not
+yet been deployed to real hardware (A.3) — no on-chip FRAM layout from an earlier chunk order
+exists to preserve compatibility with, which is why this seven-chunk order could be adopted
+directly rather than needing a migration path.
 
 **Task/timer starter collection** (`_collect_task_starters()`/`_collect_timer_starters()`, called
 from `main()`, never from `build_system()` itself): every constructed module's own

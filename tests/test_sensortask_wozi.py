@@ -189,6 +189,20 @@ def test_build_system_constructs_every_legacy_named_module() -> None:
         assert getattr(sensortask_wozi, name) is not None
 
 
+def test_i2c0_uses_a_clock_stretch_timeout_wide_enough_for_scd30() -> None:
+    # SCD30 (on i2c0) documents up to 150ms of clock stretching once per day for internal
+    # calibration (datasheets/scd30/..._Interface_Description.pdf p.2) - rp2's own I2C timeout
+    # default is 50ms (DEFAULT_I2C_TIMEOUT, ports/rp2/machine_i2c.c), so i2c0 must override it or
+    # that expected stretch surfaces as a spurious OSError roughly once a day. i2c1 (SGP40/BMP3xx)
+    # has no such requirement and keeps the port default.
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    assert sensortask_wozi.i2c0 is not None and sensortask_wozi.i2c1 is not None
+    assert sensortask_wozi.i2c0._i2c is not None and sensortask_wozi.i2c1._i2c is not None
+    assert sensortask_wozi.i2c0._i2c.freq == 50000
+    assert sensortask_wozi.i2c0._i2c.timeout >= 150000
+    assert sensortask_wozi.i2c1._i2c.timeout == 50000  # unmodified port default
+
+
 def test_build_system_wires_the_wifi_led_callback_after_both_exist() -> None:
     # conn.set_ext_led(pixel) - the one cross-wiring step that must run after both objects exist.
     # Confirmed indirectly: AsyConnTime's own ext_led slot is set.
@@ -261,11 +275,11 @@ def test_main_forwards_web_host_and_port_to_build_system() -> None:
 
 
 # ---------------------------------------------------------------------------
-# FRAM chunk order - five chunks, exact relative sequence.
+# FRAM chunk order - seven chunks, exact relative sequence.
 # ---------------------------------------------------------------------------
 
 
-def test_fram_chunk_allocation_order_matches_the_documented_five_chunk_sequence() -> None:
+def test_fram_chunk_allocation_order_matches_the_documented_seven_chunk_sequence() -> None:
     calls: list[str] = []
     from asy_fram_manager import AsyFramManager
 
@@ -289,8 +303,9 @@ def test_fram_chunk_allocation_order_matches_the_documented_five_chunk_sequence(
         AsyFramManager.get_timestamped_chunk = real_get_timestamped_chunk  # type: ignore[method-assign]
 
     # SystemService(chunk) -> SGP40 own log(chunk) -> SGP40 VOC backup(timestamped) ->
-    # NeopixelDriver(chunk) -> NotificationCoordinator(chunk), in that order, unconditionally.
-    assert calls == ["chunk", "chunk", "timestamped", "chunk", "chunk"]
+    # BMP3xx_Reader(chunk) -> SCD30_Reader(chunk) -> NeopixelDriver(chunk) ->
+    # NotificationCoordinator(chunk), in that order, unconditionally.
+    assert calls == ["chunk", "chunk", "timestamped", "chunk", "chunk", "chunk", "chunk"]
 
 
 def test_fram_chunks_are_all_successfully_allocated_not_out_of_memory() -> None:
@@ -300,6 +315,8 @@ def test_fram_chunks_are_all_successfully_allocated_not_out_of_memory() -> None:
     # assert the happy path actually got real FRAM-backed chunks, not a silently-degraded one.
     assert sensortask_wozi.sysfunct is not None
     assert sensortask_wozi.sgp_reader is not None
+    assert sensortask_wozi.bmp_reader is not None
+    assert sensortask_wozi.scd_reader is not None
     assert sensortask_wozi.pixel is not None
     assert sensortask_wozi.notify_service is not None
     assert isinstance(sensortask_wozi.sysfunct.pr, PrintLogHistoryStore)
@@ -307,6 +324,10 @@ def test_fram_chunks_are_all_successfully_allocated_not_out_of_memory() -> None:
     assert isinstance(sensortask_wozi.sgp_reader.pr, PrintLogHistoryStore)
     assert sensortask_wozi.sgp_reader.pr.fram is not None
     assert sensortask_wozi.sgp_reader.ts_storage is not None
+    assert isinstance(sensortask_wozi.bmp_reader.pr, PrintLogHistoryStore)
+    assert sensortask_wozi.bmp_reader.pr.fram is not None
+    assert isinstance(sensortask_wozi.scd_reader.pr, PrintLogHistoryStore)
+    assert sensortask_wozi.scd_reader.pr.fram is not None
     assert isinstance(sensortask_wozi.pixel.pr, PrintLogHistoryStore)
     assert sensortask_wozi.pixel.pr.fram is not None
     assert isinstance(sensortask_wozi.notify_service.pr, PrintLogHistoryStore)
@@ -342,6 +363,8 @@ def test_build_system_never_insists_on_fram_hardware_being_available() -> None:
     assert sensortask_wozi.fram.fram.initialized is False  # the dead chip, confirmed never ready
     assert sensortask_wozi.sysfunct is not None
     assert sensortask_wozi.sgp_reader is not None
+    assert sensortask_wozi.bmp_reader is not None
+    assert sensortask_wozi.scd_reader is not None
     assert sensortask_wozi.pixel is not None
     assert sensortask_wozi.notify_service is not None
 
@@ -359,6 +382,15 @@ def test_build_system_never_insists_on_fram_hardware_being_available() -> None:
     assert isinstance(sensortask_wozi.sgp_reader.pr, PrintLogHistoryStore)
     assert sensortask_wozi.sgp_reader.ts_storage is not None
     assert run(sensortask_wozi.sgp_reader.get_error_counter())["SGP40"]["ErrCount"] == 0
+
+    # BMP3xx/SCD30: same degraded-mode contract as sysfunct above - a FRAM-backed logger stays
+    # functional in plain memory when the chip never comes up.
+    assert isinstance(sensortask_wozi.bmp_reader.pr, PrintLogHistoryStore)
+    run(sensortask_wozi.bmp_reader.pr.err_s("boom", errno=1))
+    assert run(sensortask_wozi.bmp_reader.get_error_counter())["BMP3XX"]["ErrCount"] == 1
+    assert isinstance(sensortask_wozi.scd_reader.pr, PrintLogHistoryStore)
+    run(sensortask_wozi.scd_reader.pr.err_s("boom", errno=1))
+    assert run(sensortask_wozi.scd_reader.get_error_counter())["SCD30"]["ErrCount"] == 1
 
     # The rest of the system is unaffected - task/timer starter collection still works end to end.
     starters = sensortask_wozi._collect_task_starters()
@@ -684,8 +716,7 @@ def _dispatch(method: str, path: str, json_body: "dict[str, Any] | None" = None)
 def test_webserver_pr_is_ram_only_not_fram_backed() -> None:
     # Deliberate decision (see build_system()'s own comment): a warning on every per-call/outer-cap
     # reclaim could churn far faster than any sensor's rare-hardware-fault log - keeping it RAM-only
-    # also preserves the five-chunk FRAM allocation order (see SPECIFICATION.md Part A.7) unchanged, not a
-    # sixth chunk.
+    # also preserves the seven-chunk FRAM allocation order (see SPECIFICATION.md Part A.7) unchanged.
     run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
     assert sensortask_wozi.webserver is not None
     assert isinstance(sensortask_wozi.webserver.pr, PrintLogHistory)
