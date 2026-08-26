@@ -63,4 +63,19 @@ export default [
         },
         rules: BUG_CATCHING_RULES,
     },
+    {
+        // Standalone Node scripts under scripts/ (e.g. cross_browser_smoke.mjs) - real Node
+        // process, same reasoning/globals as the two Vitest command files above. Found unchecked by
+        // any configured tool during a pre-merge audit (its own eslint-disable comments implied
+        // coverage that didn't actually exist).
+        files: ["scripts/**/*.mjs"],
+        languageOptions: {
+            ecmaVersion: "latest",
+            sourceType: "module",
+            globals: {
+                ...globals.node,
+            },
+        },
+        rules: BUG_CATCHING_RULES,
+    },
 ];

@@ -289,7 +289,21 @@ export function renderSection(defs, section, mainEl) {
                 const existing = grid.querySelector(`[data-group-key="${group.key}"]`);
                 const rendered = buildErrcountGroup(errcountGroup, errcount);
                 if (existing) {
+                    // A live poll (e.g. wozi.json/dev.json's "status" section, pollGroup "live")
+                    // rebuilds this card from scratch every tick - without restoring "Show
+                    // flagged"/"Show all" here, a visitor's expand choice was silently collapsed back
+                    // to the default rollup mid-read, every few seconds. Found in a pre-merge audit.
+                    const prevModuleList = existing.querySelector(".errcount-module-list");
+                    const wasExpanded = prevModuleList instanceof HTMLElement && !prevModuleList.classList.contains("hidden");
+                    const wasShowingAll = wasExpanded && [...prevModuleList.children].every((el) => el instanceof HTMLElement && !el.classList.contains("hidden"));
                     existing.replaceWith(rendered);
+                    if (wasExpanded) {
+                        // Re-clicking the real button (rather than duplicating its hidden-class
+                        // toggling logic here) keeps this in lockstep with buildErrcountGroup()'s own
+                        // click handlers if that logic ever changes.
+                        const action = wasShowingAll ? "all" : "flagged";
+                        /** @type {HTMLButtonElement | null} */ (rendered.querySelector(`[data-errcount-action="${action}"]`))?.click();
+                    }
                 } else {
                     grid.appendChild(rendered);
                 }

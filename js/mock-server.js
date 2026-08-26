@@ -478,7 +478,10 @@ export function installMockFetch(defs, initialData, controls) {
             return applySensorQuirksForGet(state.sensorsConfig);
         }
         if (path === "/networking") {
-            return state.networkingConfig;
+            // Mirrors src/asy_wifi_service.py's _mask_pw() callback overlay: PW is a real credential,
+            // never returned in plaintext over GET, on real hardware or here (found diverging from
+            // the real backend in a pre-merge audit - the mock previously echoed the raw stored value).
+            return { ...state.networkingConfig, PW: "********" };
         }
         if (path === "/system") {
             return state.systemConfig;

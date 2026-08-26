@@ -31,10 +31,15 @@
  * (a fixed 400 for ForceCalRef, total omission for the other two), which this generic matrix's
  * own "resubmit -> Unchanged" and "valid value -> reflected in the next GET" categories both
  * assume doesn't hold - see mock-server.test.js's own dedicated tests for these three instead.
- * Excluded locally (SENSOR_QUIRK_FIELDS below), not via _put_field_cases.js's shared
- * DISPATCH_ONLY_KEYS, since tests_js/live-backend-put-matrix.test.js also consumes that shared
- * list and already exercises these three correctly against real hardware via its own
- * ALWAYS_REMOUNTS_AS override - excluding them there too would silently drop that coverage.
+ * PW has the same shape of quirk for a different reason: js/mock-server.js masks it on every GET
+ * (mirroring src/asy_wifi_service.py's own _mask_pw() overlay - a real credential is never echoed
+ * in plaintext, on real hardware or here), so a GET never reflects what was actually just written
+ * for this field either - found diverging in a pre-merge audit (the mock previously echoed PW
+ * unmasked). Excluded locally (GET_READBACK_QUIRK_FIELDS below), not via _put_field_cases.js's
+ * shared DISPATCH_ONLY_KEYS, since tests_js/live-backend-put-matrix.test.js also consumes that
+ * shared list and already exercises these fields correctly against real hardware via its own
+ * ALWAYS_REMOUNTS_AS override (ForceCalRef/ContMeas/SGPResetVOC) and its own masked-field
+ * "resubmittable" exclusion (PW) - excluding them there too would silently drop that coverage.
  */
 import { describe, expect, it } from "vitest";
 import wozi from "../html/definitions/wozi.json";
@@ -53,7 +58,7 @@ const DEV_UNIQUE_GROUPS = new Set(["SHTC3", "MPRLS", "ISL29125"]);
 
 // Excluded from this file's own CASES only - see this file's header comment for why this can't be
 // folded into _put_field_cases.js's shared DISPATCH_ONLY_KEYS.
-const SENSOR_QUIRK_FIELDS = new Set(["ForceCalRef", "ContMeas", "SGPResetVOC"]);
+const GET_READBACK_QUIRK_FIELDS = new Set(["ForceCalRef", "ContMeas", "SGPResetVOC", "PW"]);
 
 /**
  * @param {string} device
@@ -63,7 +68,7 @@ const SENSOR_QUIRK_FIELDS = new Set(["ForceCalRef", "ContMeas", "SGPResetVOC"]);
  */
 function collectMockPutFieldCases(device, defs, data) {
     return collectPutFieldCases(device, defs, data)
-        .filter((c) => !SENSOR_QUIRK_FIELDS.has(c.field.key))
+        .filter((c) => !GET_READBACK_QUIRK_FIELDS.has(c.field.key))
         .map((c) => ({ ...c, data }));
 }
 

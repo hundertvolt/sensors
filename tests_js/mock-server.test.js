@@ -37,7 +37,17 @@ const DEFS = {
             label: "Networking",
             rest: { get: "/networking", put: "/networking" },
             pollGroup: "settings",
-            groups: [{ key: "identity", label: "Identity", submit: true, fields: [{ key: "Hostname", label: "Hostname", kind: "string", minLength: 1, maxLength: 63 }] }],
+            groups: [
+                {
+                    key: "identity",
+                    label: "Identity",
+                    submit: true,
+                    fields: [
+                        { key: "Hostname", label: "Hostname", kind: "string", minLength: 1, maxLength: 63 },
+                        { key: "PW", label: "Wi-Fi Password", kind: "string", minLength: 8, maxLength: 63, mask: true },
+                    ],
+                },
+            ],
         },
         {
             key: "status",
@@ -118,7 +128,7 @@ const DEFS = {
 const DATA = {
     measurements: { SCD30: { CO2: 600, TS: 1000, Model: "SCD30" } },
     sensorsConfig: { SCD30: { MeasInt: 5, ForceCalRef: 400 }, SGP40: {} },
-    networkingConfig: { Hostname: "wozi" },
+    networkingConfig: { Hostname: "wozi", PW: "hunter2hunter2" },
     systemConfig: {},
     notificationConfig: {},
     status: {
@@ -352,6 +362,19 @@ describe("installMockFetch", () => {
         // SGPResetVOC is a special-alone schema field, deliberately excluded from get_dict_cfg() -
         // never in ConfigManager's cache, so never shows up in GET /sensors at all.
         expect("SGPResetVOC" in (await (await fetch("/sensors")).json()).SGP40).toBe(false);
+    });
+
+    it("masks PW on every GET /networking like the real backend's _mask_pw(), regardless of what was actually applied", async () => {
+        uninstall = installMockFetch(DEFS, DATA);
+
+        // Fixture-seeded value is never echoed in plaintext, even before any write.
+        expect((await (await fetch("/networking")).json()).PW).toBe("********");
+
+        const applied = await fetch("/networking", { method: "PUT", body: JSON.stringify({ PW: "a-real-new-password" }) });
+        expect((await applied.json()).result.PW).toBe("Valid");
+
+        // Still masked after a real, accepted write - GET never reflects the actual stored value.
+        expect((await (await fetch("/networking")).json()).PW).toBe("********");
     });
 
     it("increments a TS-suffixed leaf by exactly 1 on jitter, jitters a plain number, and leaves a non-number leaf untouched", async () => {

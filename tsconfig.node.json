@@ -16,5 +16,5 @@
         "strict": true,
         "skipLibCheck": true
     },
-    "include": ["tests_js/_live_twin_command.js", "tests_js/_live_matrix_command.js"]
+    "include": ["tests_js/_live_twin_command.js", "tests_js/_live_matrix_command.js", "scripts/cross_browser_smoke.mjs"]
 }

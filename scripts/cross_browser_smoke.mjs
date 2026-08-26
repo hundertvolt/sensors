@@ -78,7 +78,7 @@ function sleep(ms) {
     });
 }
 
-/** @param {number} timeoutMs */
+/** @param {string} url @param {number} timeoutMs */
 async function waitUntilServing(url, timeoutMs) {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
@@ -97,16 +97,39 @@ async function waitUntilServing(url, timeoutMs) {
     throw new Error(`nothing answered ${url} within ${timeoutMs}ms`);
 }
 
+// Every spawned child (twin/Xvfb/driver) is tracked here from the moment it's created until
+// stopProcess() (or a SIGINT/SIGTERM handler below) reaps it - a real, confirmed gap otherwise:
+// Node crashes synchronously on an unhandled ChildProcess 'error' event (spawn failure - e.g. a
+// missing binary) from *outside* any of this file's own try/catch frames, skipping every
+// try/finally cleanup below and leaking whatever else is already running. Tracking every process
+// here, and killing whatever's left on the way out (a crash or a local Ctrl-C alike), closes that
+// gap. See WEBSITE_PLAN.md §7's "Cross-browser coverage" for this script's overall design.
+/** @type {Set<import("node:child_process").ChildProcess>} */
+const activeProcesses = new Set();
+
+/** @param {import("node:child_process").ChildProcess} proc @param {string} label */
+function trackProcess(proc, label) {
+    activeProcesses.add(proc);
+    proc.on("error", (err) => {
+        console.error(`${label} process failed to spawn/run: ${err.message}`);
+    });
+    return proc;
+}
+
 function spawnTwin() {
-    return spawn(
-        MICROPYTHON_BIN,
-        ["digital_twin/run_wozi_integration.py", "--host", HOST, "--port", String(PORT), "--fram-state-path", "", "--scd30-state-path", ""],
-        { cwd: REPO_ROOT, env: { ...process.env, MICROPYPATH, TZ: "UTC" }, stdio: ["ignore", "ignore", "pipe"] },
+    return trackProcess(
+        spawn(
+            MICROPYTHON_BIN,
+            ["digital_twin/run_wozi_integration.py", "--host", HOST, "--port", String(PORT), "--fram-state-path", "", "--scd30-state-path", ""],
+            { cwd: REPO_ROOT, env: { ...process.env, MICROPYPATH, TZ: "UTC" }, stdio: ["ignore", "ignore", "pipe"] },
+        ),
+        "twin",
     );
 }
 
 /** @param {import("node:child_process").ChildProcess} proc @param {NodeJS.Signals} [signal] */
 async function stopProcess(proc, signal = "SIGINT") {
+    activeProcesses.delete(proc);
     if (proc.exitCode !== null || proc.signalCode !== null) {
         return;
     }
@@ -133,7 +156,7 @@ let nextDisplayNumber = 90;
 function spawnVirtualDisplay() {
     nextDisplayNumber += 1;
     const display = `:${nextDisplayNumber}`;
-    const xvfbProc = spawn("Xvfb", [display, "-screen", "0", "1280x1024x24", "-nolisten", "tcp"], { stdio: ["ignore", "ignore", "pipe"] });
+    const xvfbProc = trackProcess(spawn("Xvfb", [display, "-screen", "0", "1280x1024x24", "-nolisten", "tcp"], { stdio: ["ignore", "ignore", "pipe"] }), "Xvfb");
     return { display, xvfbProc };
 }
 
@@ -154,10 +177,10 @@ async function waitForVirtualDisplay(display, timeoutMs) {
 // --- Minimal raw W3C WebDriver HTTP client - used for WebKitWebDriver and geckodriver, neither of
 // which Playwright can drive directly (see this file's own header comment). ---
 
-/** @param {string} base @param {object} capabilities */
+/** @param {string} base @param {object} capabilities @returns {Promise<string>} */
 async function wdCreateSession(base, capabilities) {
     const res = await fetch(`${base}/session`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ capabilities: { alwaysMatch: capabilities } }) });
-    const body = await res.json();
+    const body = /** @type {{value?: {sessionId?: string}}} */ (await res.json());
     if (body.value?.sessionId === undefined) {
         throw new Error(`WebDriver session creation failed: ${JSON.stringify(body)}`);
     }
@@ -179,10 +202,10 @@ async function wdSetWindowRect(base, sid, width, height) {
     await fetch(`${base}/session/${sid}/window/rect`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ width, height }) });
 }
 
-/** @param {string} base @param {string} sid @param {string} script */
+/** @param {string} base @param {string} sid @param {string} script @returns {Promise<unknown>} */
 async function wdExecute(base, sid, script) {
     const res = await fetch(`${base}/session/${sid}/execute/sync`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ script, args: [] }) });
-    const body = await res.json();
+    const body = /** @type {{value?: unknown}} */ (await res.json());
     if (body.value && typeof body.value === "object" && "error" in body.value) {
         throw new Error(`WebDriver script execution failed: ${JSON.stringify(body.value)}`);
     }
@@ -206,6 +229,7 @@ function fieldPresentScript() {
     return `return document.querySelector('[data-field-key="${PROBE_FIELD}"]') !== null;`;
 }
 
+/** @param {number} probeValue */
 function fillAndApplyScript(probeValue) {
     return `
         const input = document.querySelector('[data-field-key="${PROBE_FIELD}"]');
@@ -233,10 +257,12 @@ function readAppliedResultScript() {
  * Polls `readFn` (a zero-arg async function returning a plain value) until `isReady` accepts its
  * result, or throws after `timeoutMs`. Shared by both the "has the target field rendered yet"
  * wait and the "has the apply status attribute appeared yet" wait below.
- * @param {() => Promise<unknown>} readFn
- * @param {(value: unknown) => boolean} isReady
+ * @template T
+ * @param {() => Promise<T>} readFn
+ * @param {(value: T) => boolean} isReady
  * @param {number} timeoutMs
  * @param {string} timeoutMessage
+ * @returns {Promise<T>}
  */
 async function pollUntil(readFn, isReady, timeoutMs, timeoutMessage) {
     const deadline = Date.now() + timeoutMs;
@@ -260,6 +286,7 @@ async function runViaRawWebDriver({ engine, viewport, probeValue, driverProcessF
     const { display, xvfbProc } = spawnVirtualDisplay();
     let driverProc;
     let driverStderr = "";
+    /** @type {string | undefined} */
     let sid;
     try {
         await waitForVirtualDisplay(display, READY_TIMEOUT_MS);
@@ -273,15 +300,20 @@ async function runViaRawWebDriver({ engine, viewport, probeValue, driverProcessF
         const target = viewport === "mobile" ? MOBILE_VIEWPORT : DESKTOP_VIEWPORT;
         await wdSetWindowRect(driverBase, sid, target.width, target.height);
         await wdNavigate(driverBase, sid, TWIN_URL);
-        const readyTitle = await pollUntil(() => wdExecute(driverBase, sid, "return document.title;"), (t) => typeof t === "string" && t.includes("Sensor Station"), READY_TIMEOUT_MS, "page never reached \"Sensor Station\" title");
+        const readyTitle = await pollUntil(
+            () => /** @type {Promise<string>} */ (wdExecute(driverBase, /** @type {string} */ (sid), "return document.title;")),
+            (t) => typeof t === "string" && t.includes("Sensor Station"),
+            READY_TIMEOUT_MS,
+            "page never reached \"Sensor Station\" title",
+        );
         if (!readyTitle.includes("Sensor Station")) {
             throw new Error(`unexpected page title: ${readyTitle}`);
         }
 
         await wdExecute(driverBase, sid, NAV_TO_SENSORS_SCRIPT);
-        await pollUntil(() => wdExecute(driverBase, sid, fieldPresentScript()), (present) => present === true, 5000, `${PROBE_FIELD} field never rendered after navigating to Sensors`);
+        await pollUntil(() => wdExecute(driverBase, /** @type {string} */ (sid), fieldPresentScript()), (present) => present === true, 5000, `${PROBE_FIELD} field never rendered after navigating to Sensors`);
 
-        const fillResult = await wdExecute(driverBase, sid, fillAndApplyScript(probeValue));
+        const fillResult = /** @type {{title: string, innerWidth: number}} */ (await wdExecute(driverBase, sid, fillAndApplyScript(probeValue)));
         if (viewport === "mobile" && fillResult.innerWidth >= RESPONSIVE_BREAKPOINT_PX) {
             throw new Error(`requested a mobile viewport but window.innerWidth was ${fillResult.innerWidth}px (>= ${RESPONSIVE_BREAKPOINT_PX}px breakpoint)`);
         }
@@ -293,10 +325,10 @@ async function runViaRawWebDriver({ engine, viewport, probeValue, driverProcessF
         // reading back the previous check's stale value instead of this one's freshly-applied one.
         const expectedCaption = `Current value: ${probeValue}`;
         const applied = await pollUntil(
-            () => wdExecute(driverBase, sid, readAppliedResultScript()),
+            () => /** @type {Promise<{applyStatus: string | null, caption: string | null}>} */ (wdExecute(driverBase, /** @type {string} */ (sid), readAppliedResultScript())),
             (r) => r.applyStatus !== null && r.applyStatus !== undefined && r.caption === expectedCaption,
             10000,
-            `apply status/caption never settled within 10s (last seen: ${JSON.stringify(await wdExecute(driverBase, sid, readAppliedResultScript()))})`,
+            `apply status/caption never settled within 10s (last seen: ${JSON.stringify(await wdExecute(driverBase, /** @type {string} */ (sid), readAppliedResultScript()))})`,
         );
         if (applied.applyStatus !== "valid") {
             throw new Error(`expected applyStatus "valid", got ${JSON.stringify(applied.applyStatus)}`);
@@ -321,18 +353,20 @@ async function runViaRawWebDriver({ engine, viewport, probeValue, driverProcessF
     }
 }
 
+/** @param {"desktop" | "mobile"} viewport @param {number} probeValue */
 function runWebKit(viewport, probeValue) {
     return runViaRawWebDriver({
         engine: "WebKit",
         viewport,
         probeValue,
-        driverProcessFactory: (display) => spawn(WEBKIT_DRIVER_BIN, [`--port=${WEBKIT_DRIVER_PORT}`], { env: { ...process.env, DISPLAY: display }, stdio: ["ignore", "ignore", "pipe"] }),
+        driverProcessFactory: (display) => trackProcess(spawn(WEBKIT_DRIVER_BIN, [`--port=${WEBKIT_DRIVER_PORT}`], { env: { ...process.env, DISPLAY: display }, stdio: ["ignore", "ignore", "pipe"] }), "WebKitWebDriver"),
         driverBase: `http://127.0.0.1:${WEBKIT_DRIVER_PORT}`,
         driverPort: WEBKIT_DRIVER_PORT,
         capabilities: {},
     });
 }
 
+/** @param {"desktop" | "mobile"} viewport @param {number} probeValue */
 function runFirefox(viewport, probeValue) {
     return runViaRawWebDriver({
         engine: "Firefox",
@@ -341,7 +375,7 @@ function runFirefox(viewport, probeValue) {
         // Given a real DISPLAY, `-headless` Firefox still uses it rather than requiring it be
         // unset - confirmed directly (harmless either way; kept for consistency with the WebKit
         // path above rather than special-casing Firefox's own process/env setup).
-        driverProcessFactory: (display) => spawn(GECKODRIVER_BIN, ["--port", String(GECKODRIVER_PORT), "--binary", FIREFOX_BIN], { env: { ...process.env, DISPLAY: display }, stdio: ["ignore", "ignore", "pipe"] }),
+        driverProcessFactory: (display) => trackProcess(spawn(GECKODRIVER_BIN, ["--port", String(GECKODRIVER_PORT), "--binary", FIREFOX_BIN], { env: { ...process.env, DISPLAY: display }, stdio: ["ignore", "ignore", "pipe"] }), "geckodriver"),
         driverBase: `http://127.0.0.1:${GECKODRIVER_PORT}`,
         driverPort: GECKODRIVER_PORT,
         capabilities: { "moz:firefoxOptions": { args: ["-headless"] } },
@@ -414,6 +448,20 @@ async function runChromiumFamily(which, viewport, probeValue) {
     }
 }
 
+// A local Ctrl-C (SIGINT) or SIGTERM would otherwise skip every try/finally cleanup below entirely
+// (Node's default action for both is to terminate immediately) - confirmed as a real gap, orphaning
+// whatever's currently in activeProcesses (the twin, and/or an in-progress engine's Xvfb+driver).
+// Harmless in CI (an ephemeral VM reclaims everything on job end regardless) but real for local dev.
+for (const sig of /** @type {const} */ (["SIGINT", "SIGTERM"])) {
+    process.on(sig, () => {
+        console.error(`\nReceived ${sig} - killing ${activeProcesses.size} still-running process(es) before exit.`);
+        for (const proc of activeProcesses) {
+            proc.kill("SIGKILL");
+        }
+        process.exit(1);
+    });
+}
+
 async function main() {
     if (!existsSync(MICROPYTHON_BIN)) {
         console.error(`MicroPython Unix port not built at ${MICROPYTHON_BIN} - run 'uv run toolchain/setup_toolchain.py setup' first.`);
@@ -432,6 +480,7 @@ async function main() {
     try {
         await waitUntilServing(TWIN_URL, READY_TIMEOUT_MS);
 
+        /** @type {{name: string, available: boolean, run: (viewport: "desktop" | "mobile", probeValue: number) => Promise<{label: string, ok: boolean, detail?: string}>}[]} */
         const engines = [
             { name: "WebKit", available: existsSync(WEBKIT_DRIVER_BIN), run: runWebKit },
             { name: "Firefox", available: existsSync(FIREFOX_BIN) && existsSync(GECKODRIVER_BIN), run: runFirefox },

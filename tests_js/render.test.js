@@ -300,6 +300,43 @@ describe("renderSection", () => {
         expect(list.querySelectorAll(".history-entry")).toHaveLength(2);
     });
 
+    it("preserves an expanded errcount card's 'Show flagged'/'Show all' state across a live poll rebuild", async () => {
+        // Regression test for a bug found in pre-merge audit: both real definitions files
+        // (wozi.json/dev.json) declare "status" as pollGroup "live" - this fixture's own DEFS
+        // deliberately doesn't (see its own comment), so this scenario needs its own local variant
+        // to actually exercise the poll-rebuild path, same pattern as the "readonly field embedded
+        // in a writable, live-polled group" test above.
+        /** @type {import("../js/definitions.js").SiteDefinitions} */
+        const defsWithLiveErrcount = {
+            ...DEFS,
+            sections: [
+                ...DEFS.sections.filter((s) => s.key !== "status"),
+                { ...getSection("status"), pollGroup: "live", pollIntervalMs: 1000 },
+            ],
+        };
+        uninstall = installMockFetch(defsWithLiveErrcount, DATA);
+        const main = mount();
+        const section = /** @type {import("../js/definitions.js").Section} */ (defsWithLiveErrcount.sections.find((s) => s.key === "status"));
+        stop = renderSection(defsWithLiveErrcount, section, main);
+        await waitFor(() => main.querySelector(".errcount-rollup") !== null);
+
+        mustQuery(main, '[data-errcount-action="flagged"]').click();
+        expect(mustQuery(main, ".errcount-module-list").classList.contains("hidden")).toBe(false);
+
+        // Fake timers only from here on - js/mock-server.js's own fetch adds up to ~200ms of
+        // randomized latency via a real setTimeout, which the waitFor() above (real timers) needs
+        // to observe directly; switching earlier would hang waitFor's own real-timer polling loop.
+        vi.useFakeTimers();
+        await vi.advanceTimersByTimeAsync(1200); // one live-poll tick (1000ms) + its own fetch latency
+
+        // Before the fix, the poll rebuild unconditionally reset to the default collapsed state -
+        // a visitor mid-read of the flagged rows would see them vanish underneath them.
+        expect(mustQuery(main, ".errcount-module-list").classList.contains("hidden")).toBe(false);
+        expect(mustQuery(main, ".errcount-row").textContent).toContain("2");
+
+        vi.useRealTimers();
+    });
+
     it("shows Valid (not Failed) after a successful Reset All Errors submission, even though /status's PUT never returns a per-field result", async () => {
         // src/asy_webserver_service.py's _put_status() never builds a `result` dict at all
         // (ar.make_response(0), no result kwarg) - unlike every other writable endpoint, /status's

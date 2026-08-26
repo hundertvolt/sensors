@@ -113,7 +113,13 @@ if (boot.skipped) {
 
         // An empty-string current value has no real "resubmit" gesture - typing nothing is
         // indistinguishable from untouched under the sparse-PUT convention (WEBSITE_PLAN.md §4).
-        const resubmittable = currentValue !== undefined && !(field.kind === "string" && currentValue === "");
+        // A masked field (PW) has no real "resubmit its own current value" gesture either: its GET
+        // readback is always the fixed placeholder "********" (src/asy_wifi_service.py's own
+        // _mask_pw() overlay), never the real stored credential - resubmitting that placeholder
+        // isn't a no-op probe, it's a genuinely new (if coincidentally valid-length) password that
+        // the real backend would accept and persist, silently overwriting the twin's actual Wi-Fi
+        // credential and firing a real reconnect. Found and fixed in a pre-merge audit.
+        const resubmittable = currentValue !== undefined && !(field.kind === "string" && currentValue === "") && field.mask !== true;
         if (resubmittable) {
             it(
                 "resubmitting the field's own current value renders correctly (Valid or Unchanged)",

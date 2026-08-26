@@ -63,7 +63,7 @@ async function waitUntilServing(timeoutMs) {
 }
 
 function spawnTwin() {
-    return spawn(
+    const proc = spawn(
         MICROPYTHON_BIN,
         [
             "digital_twin/run_wozi_integration.py",
@@ -86,6 +86,13 @@ function spawnTwin() {
             stdio: ["ignore", "ignore", "pipe"],
         },
     );
+    // An unhandled ChildProcess 'error' event (e.g. a spawn failure) crashes the whole Node/Vitest
+    // process synchronously, skipping this file's own try/finally cleanup entirely - confirmed as a
+    // real gap (pre-merge audit). A no-op listener is enough: it just prevents the crash: the
+    // existing waitUntilServing()/goto() error paths already surface a spawn failure via their own
+    // timeouts.
+    proc.on("error", () => {});
+    return proc;
 }
 
 /** @param {import("node:child_process").ChildProcess} proc */

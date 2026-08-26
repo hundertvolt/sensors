@@ -53,7 +53,7 @@ async function waitUntilServing(timeoutMs) {
 }
 
 function spawnTwin() {
-    return spawn(
+    const proc = spawn(
         MICROPYTHON_BIN,
         ["digital_twin/run_wozi_integration.py", "--host", HOST, "--port", String(PORT), "--fram-state-path", "", "--scd30-state-path", ""],
         {
@@ -64,6 +64,10 @@ function spawnTwin() {
             stdio: ["ignore", "ignore", "pipe"],
         },
     );
+    // See tests_js/_live_twin_command.js's own identical comment: an unhandled 'error' event would
+    // otherwise crash the whole Vitest process, skipping this file's own cleanup entirely.
+    proc.on("error", () => {});
+    return proc;
 }
 
 /** @param {import("node:child_process").ChildProcess} proc */
@@ -113,6 +117,21 @@ export async function startLiveMatrix({ context }) {
         await livePage.waitForSelector("[data-section-key]");
         return { skipped: false };
     } catch (err) {
+        // A failure here means the test file's top-level `await commands.startLiveMatrix()` throws
+        // before its own afterAll(() => commands.stopLiveMatrix()) is ever registered - without
+        // tearing the twin down right here, a boot failure (a slow/flaky page load, most commonly)
+        // orphans the twin subprocess for the rest of the process's lifetime, pinning PORT for
+        // every subsequent run until someone manually kills it. Confirmed directly (pre-merge audit).
+        if (livePage) {
+            await livePage.close().catch(() => {});
+            // eslint-disable-next-line require-atomic-updates -- see stopLiveMatrix()'s own comment below
+            livePage = null;
+        }
+        if (twinProc) {
+            await stopTwin(twinProc);
+            // eslint-disable-next-line require-atomic-updates -- see stopLiveMatrix()'s own comment below
+            twinProc = null;
+        }
         const message = err instanceof Error ? err.message : String(err);
         throw new Error(`startLiveMatrix failed: ${message}\n--- twin stderr ---\n${twinStderr}`, { cause: err });
     }

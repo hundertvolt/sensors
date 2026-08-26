@@ -265,10 +265,12 @@ export function buildErrcountGroup(group, errcount) {
     flaggedButton.type = "button";
     flaggedButton.className = "action-button";
     flaggedButton.textContent = "Show flagged";
+    flaggedButton.dataset.errcountAction = "flagged";
     const allButton = document.createElement("button");
     allButton.type = "button";
     allButton.className = "action-button";
     allButton.textContent = "Show all";
+    allButton.dataset.errcountAction = "all";
     rollup.append(errorsSpan, warningsSpan, flaggedButton, allButton);
     card.appendChild(rollup);
 
