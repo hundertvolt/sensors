@@ -56,6 +56,20 @@ import tempfile
 import tomllib
 from pathlib import Path
 
+# Confirmed GCC >=14 false positive (not a real bug): GCC's array-bounds analyzer misjudges the
+# trailing-byte loop in mbedtls_xor() (library/common.h), inlined into ctr_drbg.c - flagged
+# upstream as Mbed-TLS/mbedtls's own GCC14 issue and Debian bug #1085354 ("mbedtls FTBFS on
+# arm64 with gcc 14"), fixed only in mbedtls 3.6.6 by adding compile-time bailouts purely to
+# appease the analyzer. The MicroPython ref pinned in versions.toml vendors its own mbedtls
+# submodule commit, predating that fix, so this recurs on any host whose default GCC is >=14
+# (confirmed live on a Raspberry Pi OS/Debian trixie host, GCC 14.2) even though it never
+# surfaced on this project's Ubuntu 24.04 "noble" (GCC 13.x) verification baseline - see
+# SPECIFICATION.md Part B.7. Suppressed outright (not just downgraded from error to warning)
+# because both build_unix_port() and build_firmware() below treat any "warning:" in build output
+# as a hard failure, matching this project's zero-warnings bar. Harmless to pass unconditionally
+# on GCC <14 too, where this warning class never fires anyway.
+_MBEDTLS_GCC14_ARRAY_BOUNDS_WORKAROUND = "-Wno-array-bounds"
+
 MICROPYTHON_URL = "https://github.com/micropython/micropython.git"
 PICO_SDK_URL = "https://github.com/raspberrypi/pico-sdk.git"
 PICOTOOL_URL = "https://github.com/raspberrypi/picotool.git"
@@ -333,7 +347,7 @@ def build_firmware(micropython_dir: Path, board: str, jobs: int, frozen_manifest
     build_dir = rp2_dir / f"build-{board}"
     if build_dir.exists():
         shutil.rmtree(build_dir)
-    make_cmd = ["make", f"BOARD={board}", f"-j{jobs}"]
+    make_cmd = ["make", f"BOARD={board}", f"-j{jobs}", f"CFLAGS_EXTRA={_MBEDTLS_GCC14_ARRAY_BOUNDS_WORKAROUND}"]
     if frozen_manifest is not None:
         make_cmd.append(f"FROZEN_MANIFEST={frozen_manifest}")
     out = run(make_cmd, cwd=rp2_dir, env=build_env())
@@ -371,7 +385,11 @@ def build_unix_port(micropython_dir: Path, jobs: int, frozen_manifest: Path | No
     build_dir = unix_dir / "build-standard"
     if build_dir.exists():
         shutil.rmtree(build_dir)
-    make_cmd = ["make", f"-j{jobs}", "CFLAGS_EXTRA=-DMICROPY_PY_SYS_SETTRACE=1"]
+    make_cmd = [
+        "make",
+        f"-j{jobs}",
+        f"CFLAGS_EXTRA=-DMICROPY_PY_SYS_SETTRACE=1 {_MBEDTLS_GCC14_ARRAY_BOUNDS_WORKAROUND}",
+    ]
     if frozen_manifest is not None:
         make_cmd.append(f"FROZEN_MANIFEST={frozen_manifest}")
     out = run(make_cmd, cwd=unix_dir, env=build_env())
