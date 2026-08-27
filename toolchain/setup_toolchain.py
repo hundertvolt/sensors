@@ -68,6 +68,11 @@ from pathlib import Path
 # because both build_unix_port() and build_firmware() below treat any "warning:" in build output
 # as a hard failure, matching this project's zero-warnings bar. Harmless to pass unconditionally
 # on GCC <14 too, where this warning class never fires anyway.
+#
+# NOT YET FIXED UPSTREAM as of when this was added - GCC's own bugzilla report for this exact
+# false positive (https://gcc.gnu.org/bugzilla/show_bug.cgi?id=121044, filed against GCC 14.3.0)
+# was still UNCONFIRMED, i.e. not accepted as a bug GCC intends to fix. See SPECIFICATION.md Part
+# B.7.1 for the full periodic-recheck instructions before ever removing this workaround.
 _MBEDTLS_GCC14_ARRAY_BOUNDS_WORKAROUND = "-Wno-array-bounds"
 
 MICROPYTHON_URL = "https://github.com/micropython/micropython.git"
