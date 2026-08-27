@@ -1109,6 +1109,38 @@ isolation") is verified against, not just designed against. See CLAUDE.md's "Pre
 verification" for the standing recipe to re-run this kind of check after a change to this script
 or `versions.toml`.
 
+## B.7.1 GCC >=14 host: mbedtls array-bounds workaround
+
+Confirmed live (not just researched) on a Raspberry Pi 4 running Raspberry Pi OS on Debian
+trixie (GCC 14.2, default): both `build_unix_port()` and `build_firmware()` fail — `ctr_drbg.c`
+fails to compile with `-Werror=array-bounds` inside `mbedtls_xor()` (`lib/mbedtls/library/
+common.h`). This is a confirmed GCC >=14 false positive in the analyzer's handling of that
+function's trailing-byte loop, not a real bug — filed upstream as Debian bug #1085354 ("mbedtls
+FTBFS on arm64 with gcc 14") and fixed in mbedtls release 3.6.6 purely by adding compile-time
+bailouts to appease the analyzer. The MicroPython ref this project pins vendors its own mbedtls
+submodule commit, which predates that upstream fix, so this recurs on any host whose default GCC
+is >=14 — it never surfaced against this project's Ubuntu 24.04 "noble" (GCC 13.x) verification
+baseline (B.7 above), which is why it wasn't caught earlier. Worked around unconditionally (safe
+on GCC <14 too, where the warning class never fires) via `-Wno-array-bounds` appended to both
+build functions' `CFLAGS_EXTRA`, in `_MBEDTLS_GCC14_ARRAY_BOUNDS_WORKAROUND` — suppressed
+outright rather than just downgraded from error to warning, since both build functions already
+treat any `warning:` in build output as a hard failure (this project's zero-warnings bar).
+
+**Not yet fixed upstream, as of this writing — recheck periodically.** This is *not* a case of
+"known and fixed, just not yet picked up here": GCC's own bugzilla report for this exact false
+positive, [Bug #121044](https://gcc.gnu.org/bugzilla/show_bug.cgi?id=121044) ("False positive
+-Warray-bounds with GCC 14 and NEON intrinsics"), filed against GCC 14.3.0, was still
+**UNCONFIRMED** (unreviewed by a GCC maintainer, not accepted as a bug to fix) as of this
+writing — mbedtls's own 3.6.6 release worked around it in their code rather than waiting on a
+compiler fix, and this project's `_MBEDTLS_GCC14_ARRAY_BOUNDS_WORKAROUND` follows the same
+pattern. Whenever this Part is next revisited (see CLAUDE.md's periodic MicroPython-facing
+re-check practice — the same standing-practice spirit applies here even though this isn't a
+MicroPython fact specifically), check GCC bug #121044's status: if a GCC release has since fixed
+the analyzer itself, or if a later MicroPython ref this project might pin vendors an mbedtls
+commit at/past 3.6.6 (its own fix, independent of the GCC bug), re-verify whether
+`_MBEDTLS_GCC14_ARRAY_BOUNDS_WORKAROUND` is still load-bearing on a real GCC >=14 host before
+removing it — don't remove it on the strength of a changelog alone.
+
 ## B.8 Why not a full venv
 
 This mostly isn't Python-package territory: apt packages, multi-gigabyte git source trees,
