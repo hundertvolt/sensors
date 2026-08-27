@@ -455,3 +455,15 @@ correctly by the dedicated pass instead - see `digital_twin/typecheck.ini`'s own
   poll object has no `pollfd` field or array to grow at all) — real hardware was never affected.
   Fixed by `unix_port_poll_prewarm.py` (see "What's here" above and that module's own comments for
   the pre-warming mechanism itself).
+  **Related upstream prior art, not the same bug**: the general shape of this — `pollfds`
+  reallocation leaving stale pointers in already-registered `poll_obj_t`s — was filed as
+  [micropython/micropython#12887](https://github.com/micropython/micropython/issues/12887) ("Use
+  After Free at modselect.c:151", CVE-2023-7152) and fixed by
+  [PR #12895](https://github.com/jimmo/micropython/commit/8b24aa36ba978eafc6114b6798b47b7bfecdca26)
+  (merged into the 1.22.0 milestone, long before this project's v1.28.0 pin). Verified directly
+  against `extmod/modselect.c` at the real `v1.28.0` tag: that fix's pointer-update loop only skips
+  a poll object when the map slot itself is empty (`if (!poll_obj) continue;`) — it does not skip a
+  poll object whose `pollfd` field is legitimately `NULL` (the non-fd/stream-wrapper case this
+  project hit), so it still runs pointer arithmetic on that `NULL` and corrupts it. No separate
+  upstream issue for this narrower residual case was found as of this check — worth filing one
+  upstream (with `segfault_stress_repro.py` as a ready-made repro) as a future follow-up.
