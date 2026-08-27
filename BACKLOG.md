@@ -174,6 +174,14 @@ constraints.
    rp2/lwIP transport itself (POLLERR/POLLHUP delivery, truncation, connected-socket source
    filtering) — that half of this entry, and the "Explicitly deferred by the project owner" note
    above, still stands.
+   **Real-hardware access now exists** (README.md's "Real hardware access (mpremote)" section): a
+   real Pico W is reachable over USB serial via `scripts/mpremote_connect.sh`, flash-free
+   (`exec`/`run`/`ls`, no `cp`/flashing). This makes the deferred rp2/lwIP transport verification
+   above newly possible, but doing it is still a separate future task, not done by adding the
+   tooling itself — and it's a genuinely different tier from the mocked `tests/` suite (which
+   resolves ahead of the real `machine` module by `MICROPYPATH` design), not a drop-in extension of
+   it. Worth deciding deliberately with the project owner what a hardware-in-the-loop test tier
+   should look like before assuming `tests/test_*.py` just runs unmodified on the device.
 
 ## Deferred / explicitly out-of-scope work
 

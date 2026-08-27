@@ -160,6 +160,28 @@ every push/PR; `scripts/test.sh` (above) covers both scripts' own logic fast and
 `tests_scripts/test_build_firmware.py`'s `RUN_SLOW_FIRMWARE_BUILD=1` opt-in for running that real
 compile locally.
 
+## Real hardware access (mpremote)
+
+`mpremote` (dev dependency, installed by `uv sync`) talks to a real RP2040/Pico W over its USB
+serial port for flash-free iteration: `exec`/`run`/`ls`/`cat` execute or read against the device
+without writing flash, unlike `cp`/`rm`/`mkdir`/`rmdir`, which do. `scripts/mpremote_connect.sh`
+wraps `uv run mpremote connect <device>` with a default device path of `/dev/ttyACM0`, overridable
+via `MPREMOTE_DEVICE`:
+
+```sh
+scripts/mpremote_connect.sh ls                                  # list the device's filesystem
+scripts/mpremote_connect.sh exec "import sys; print(sys.implementation)"   # RAM-only REPL exec
+scripts/mpremote_connect.sh run some_script.py                  # run a local script from RAM
+MPREMOTE_DEVICE=/dev/ttyACM1 scripts/mpremote_connect.sh ls     # different serial device
+```
+
+Non-root serial access needs the connecting user in the `dialout` group (`sudo usermod -aG dialout
+$USER`, then re-login). This is a genuinely different tier from the mocked `tests/` suite (which
+runs under the Unix port against `tests/machine.py`'s fake `machine` module — see
+`SPECIFICATION.md` Part E) and from `scripts/build_firmware.py` (which builds a `.uf2` but never
+flashes or touches real hardware, see above) — real-hardware-in-the-loop testing against this repo
+is not otherwise set up yet; see BACKLOG.md.
+
 ## Digital twin (hardware simulator)
 
 `digital_twin/` is a fake `machine`/`network`/`neopixel` implementation that mirrors the real `wozi` bus wiring — real-time-firing
@@ -381,6 +403,14 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   decide to fold it into `SPECIFICATION.md` the way `src/README.md`/`tests/README.md` were) —
   listed here for now so it isn't only locatable by cross-reference in the meantime. See
   `SPECIFICATION.md` Part A.10 for how it fits into the rest of the architecture.
+
+**`dev_legacy/README.md`** (permanent, reference-only, not `src/` scope):
+
+- **`dev_legacy/README.md`** — a verbatim snapshot of the physical "dev" RP2040 bench unit's
+  onboard filesystem (MicroPython 1.24.1, the deployed-fleet target), pulled over USB serial via
+  `mpremote` (see "Real hardware access (mpremote)" above) because it holds code changes made
+  directly on-device that were never copied to any host machine. Reference material for future
+  `src/` promotion work — not itself reviewed, promoted, or covered by lint/type/test config.
 
 `WIRING_CONTRACT.md`, `FINAL_WIRING_PLAN.md`, and `WEBSITE_PLAN.md` — temporary planning docs for,
 respectively, the `improved-quality/` → `src/` wiring effort (`src/sensortask_wozi.py`'s

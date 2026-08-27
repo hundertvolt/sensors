@@ -21,6 +21,7 @@ dev = [
     "mypy",
     "ruff",
     "pytest",
+    "mpremote",
 ]
 
 # RPI_PICO_W-specific MicroPython stubs (version auto-derived by scripts/typecheck.sh from
