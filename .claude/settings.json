@@ -2,7 +2,7 @@
   "permissions": {
     "allow": [
       "Bash(sudo -n true*)",
-      "Bash(curl -s http://192.168.85.67:8080/*)",
+      "Bash(curl -s http://*)",
       "Bash(curl -s -o /dev/null -w *)",
       "Bash(python3 -m json.tool*)",
       "Bash(getcap *)"
