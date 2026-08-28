@@ -179,8 +179,10 @@ Non-root serial access needs the connecting user in the `dialout` group (`sudo u
 $USER`, then re-login). This is a genuinely different tier from the mocked `tests/` suite (which
 runs under the Unix port against `tests/machine.py`'s fake `machine` module — see
 `SPECIFICATION.md` Part E) and from `scripts/build_firmware.py` (which builds a `.uf2` but never
-flashes or touches real hardware, see above) — real-hardware-in-the-loop testing against this repo
-is not otherwise set up yet; see BACKLOG.md.
+flashes or touches real hardware, see above). Real-hardware-in-the-loop testing against a physical
+bench unit — full workflow, including a frozen-firmware full-system bring-up and a bridged-AP
+WiFi/NTP/DNS integration setup — is documented as its own single source of truth in
+`dev_legacy/README.md` (see "Further reading" below).
 
 ## Digital twin (hardware simulator)
 
@@ -407,13 +409,14 @@ When a new doc is added, add it here too instead of letting the map go stale aga
 **`dev_legacy/README.md`** (permanent, kept current):
 
 - **`dev_legacy/README.md`** — the single source of truth for the physical "dev" RP2040 bench
-  unit: wiring, chip identities, confirmed-working status per peripheral, current bench state, and
-  the `mpremote` workflow for testing `src/` drivers against it (see "Real hardware access
-  (mpremote)" above). Now running MicroPython 1.28.0 (the refactor/`src/` target, not the
-  deployed-fleet 1.26 pin) with an empty flash filesystem. Also holds, in its own clearly-marked
-  final section, a historical, frozen-in-time snapshot of this unit's onboard filesystem from
-  2026-08-27 (back when it still ran 1.24.1) — reference material for future `src/` promotion
-  work, not itself reviewed, promoted, or covered by lint/type/test config.
+  unit: wiring, chip identities, confirmed-working status (per peripheral and for the full
+  assembled system), current bench state, the `mpremote` workflow for testing `src/` drivers
+  against it (see "Real hardware access (mpremote)" above), building/flashing a frozen firmware for
+  a full-system bring-up, and the bridged-AP setup for real WiFi/NTP/DNS integration testing — see
+  that file itself for specifics, not restated here. Also holds, in its own clearly-marked final
+  section, a historical, frozen-in-time snapshot of this unit's onboard filesystem from 2026-08-27
+  (back when it still ran 1.24.1) — reference material for future `src/` promotion work, not
+  itself reviewed, promoted, or covered by lint/type/test config.
 
 `WIRING_CONTRACT.md`, `FINAL_WIRING_PLAN.md`, and `WEBSITE_PLAN.md` — temporary planning docs for,
 respectively, the `improved-quality/` → `src/` wiring effort (`src/sensortask_wozi.py`'s

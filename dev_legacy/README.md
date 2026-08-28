@@ -11,13 +11,16 @@ Two things live in this directory:
    2026-08-27 (the "Legacy on-device filesystem snapshot" section at the end) — kept as reference
    for `src/` promotion work. Not itself reviewed, promoted, or covered by lint/type/test config.
 
-As of 2026-08-28 this unit runs **MicroPython 1.28.0** (matching `toolchain/versions.toml`'s
-`[micropython] ref` — the refactor/`src/` target, not the deployed-fleet 1.26 pin) with an
-**empty flash filesystem** — it was reflashed and wiped at some point after the 2026-08-27
-snapshot below was taken, and no longer represents deployed-fleet (1.26, `python/`/`modules/`)
-behavior. It's now used purely as a live test bench for the promoted `src/` drivers, exercised via
-`mpremote mount` (see "Testing real hardware from a session" below) rather than by flashing files
-onto it.
+As of 2026-08-28 this unit runs a **custom-built firmware** based on **MicroPython 1.28.0**
+(matching `toolchain/versions.toml`'s `[micropython] ref` — the refactor/`src/` target, not the
+deployed-fleet 1.26 pin), with every `src/*.py` module plus `ext/microdot.py` **frozen in** (see
+"Frozen firmware for a full-system bring-up" below) — importable directly with zero mount and
+near-zero heap cost. Its onboard **flash filesystem (VFS) is still empty** — no autostart script,
+no config files; frozen modules live in flash/XIP, not the VFS, so `os.listdir("/")` genuinely
+still returns `[]` (confirmed directly). No longer represents deployed-fleet (1.26,
+`python/`/`modules/`) behavior. Used as a live test bench for the promoted `src/` drivers and the
+full assembled system, exercised via `mpremote mount` for whichever entry/wiring script is under
+test (see "Testing real hardware from a session" below) rather than by flashing user files onto it.
 
 ## Hardware wiring (single source of truth)
 
@@ -87,27 +90,24 @@ this bench unit:
   ~26.2°C). The broken trace was the sole root cause; driver code, MicroPython version, and the
   RP2040 I2C peripheral were never at fault.
 
-## Current bench state (as of 2026-08-28)
+## Confirmed working — full assembled system bring-up (2026-08-28)
 
-Facts a future session should know before assuming anything about what's currently on this board:
-
-- Flash filesystem is **empty** — no autostart script, no config files. `src/` drivers are tested
-  by mounting the repo (or a precompiled `.mpy` scratch dir) over serial, not by flashing.
-- **FRAM currently holds test data, not meaningful production data**: the full 256 KB was
-  overwritten by the FRAM range-sweep test's pattern bytes, and a since-cleared SGP40 VOC-backup
-  chunk sits at `base_addr=0`. Treat any pre-existing FRAM content as garbage until deliberately
-  re-provisioned.
-- **SCD30 temperature offset is currently 1.5°C**, not the sensor's power-on default of 0.0°C —
-  changed during this session's config test and never reverted (it's NVM-persisted, so it will
-  still read 1.5°C after a power cycle). Ambient pressure and altitude compensation are both 0
-  (disabled/default). Continuous measurement is currently running.
-- **SGP40's VOC algorithm is currently freshly reset** (FRAM backup cleared, blackout re-engaged)
-  — a fresh read will start back at `VOC=0` for the first ~45 cycles.
+Beyond the per-peripheral checks above, a `sensornode-dev` wiring (this bench unit's real pins,
+per the table above) assembling the exact same top-level functionality as the deployed `wozi`
+config — SCD30, SGP40+VOC, BMP3xx, Neopixel, FRAM, WiFi/NTP/DNS, REST webserver — was built and run
+in full, via the frozen-firmware approach below (watchdog deliberately spared as a debugging aid,
+not a standing bench convention). Confirmed end-to-end over the real REST API: every sensor reading
+and storing on its own independent cycle, WiFi associating through the bridged AP below and
+reaching real NTP, and a real SGP40→FRAM VOC backup firing on schedule. Also exercised the real
+`DebugLevel` live-reconfiguration mechanism (`PUT /system {"DebugLevel": 5}`) end-to-end against
+the running system, confirming it reaches every module's own logger with no reboot needed.
 
 ## Testing real hardware from a session (mpremote workflow)
 
 `scripts/mpremote_connect.sh` (see README.md's "Real hardware access" section) wraps `mpremote
-connect <device>`; `exec`/`run`/`mount` stay RAM-only, `cp`/`rm`/`mkdir`/`rmdir` write flash.
+connect <device>`; `exec`/`run`/`mount` stay RAM-only, `cp`/`rm`/`mkdir`/`rmdir` write flash. This
+section covers testing one driver (or a partial closure) at a time; for assembling the *whole*
+system together, see "Frozen firmware for a full-system bring-up" below instead.
 
 - Since this bench unit's flash is empty, a `src/` module needs `mpremote mount src <exec|run>
   ...` (or `mount` a directory of precompiled `.mpy` files, see below) to become importable —
@@ -134,6 +134,116 @@ connect <device>`; `exec`/`run`/`mount` stay RAM-only, `cp`/`rm`/`mkdir`/`rmdir`
   persisted" requires constructing a **fresh** `AsyFramManager` per simulated restart, so its
   single chunk allocation lands back at the same `base_addr` — not a fresh reader sharing one
   already-allocated manager instance, which would allocate a second, non-overlapping chunk.
+
+## Frozen firmware for a full-system bring-up
+
+Assembling the *whole* system (every sensor driver + `AsyConnTime`/`AsyNtpClient`/`asy_dns_client`
++ `WebserverService`/Microdot together, not just one driver) exceeds even the `.mpy` mount-import
+workaround above: the full dependency closure costs ~140-180 KB of heap to import raw/`.mpy` over
+a mount, against ~196 KB free on this board — too tight in practice (confirmed: a real
+`MemoryError` mid-import). **Freezing every module into the firmware itself instead** (flash/
+XIP-resident bytecode, not heap-parsed at import time) drops that same closure's cost to ~33 KB.
+
+Build a bench-only frozen firmware — freezes `src/*.py` + `ext/microdot.py` on top of the stock
+`RPI_PICO_W` board manifest, with none of `scripts/build_firmware.py`'s wozi-specific
+`boot_entry`/website coupling — by reusing `toolchain/setup_toolchain.py`'s own `build_firmware()`
+function directly from a small ad-hoc script:
+
+```python
+import sys, shutil, tempfile
+from pathlib import Path
+sys.path.insert(0, "toolchain")
+import setup_toolchain as st
+
+versions = st.load_versions(Path("toolchain/versions.toml"))
+board = versions["toolchain"]["board"]
+with tempfile.TemporaryDirectory() as tmp:
+    stage_dir = Path(tmp) / "stage"
+    stage_dir.mkdir()
+    for py_file in sorted(Path("src").glob("*.py")):
+        shutil.copy(py_file, stage_dir / py_file.name)
+    shutil.copy("ext/microdot.py", stage_dir / "microdot.py")
+    manifest = Path(tmp) / "manifest.py"
+    manifest.write_text(f'include("$(PORT_DIR)/boards/RPI_PICO_W/manifest.py")\nfreeze({str(stage_dir)!r})\n')
+    uf2 = st.build_firmware(Path.home() / "pico-toolchain" / "micropython", board, 4, frozen_manifest=manifest)
+    shutil.copy(uf2, "build/firmware-dev-bench.uf2")
+```
+
+Flash it (a real, deliberate flash write — the one accepted exception to the usual "no RP2040
+flash writes for bench testing" default, since it's a reproducible toolchain build, not ad hoc
+device state):
+
+```sh
+scripts/mpremote_connect.sh bootloader   # reboot into BOOTSEL mode
+picotool load -f -x build/firmware-dev-bench.uf2
+```
+
+If `picotool` reports a version mismatch (`Requires version X, you have version Y`), a stale
+system-wide install is shadowing the toolchain's own rebuilt copy — rerun `uv run
+toolchain/setup_toolchain.py` (its `setup` subcommand) to rebuild and reinstall it properly rather
+than working around it locally.
+
+After flashing, only the entry/wiring script itself needs to stay live-mounted (everything it
+imports is already frozen in) — fast to edit and rerun without a firmware rebuild:
+
+```sh
+scripts/mpremote_connect.sh mount path/to/dir/containing/only/the/entry_script.py run entry_script.py
+```
+
+## WiFi/NTP/DNS integration testing (bridged AP on the host Rpi4)
+
+Exercising the real `AsyConnTime`/`AsyNtpClient`/`asy_dns_client` code paths (not a bypass script)
+needs the bench unit to reach a real WiFi network with real internet/NTP access. The session host
+(an Rpi4) bridges its own uplink (`eth0`) with a WiFi AP it hosts (`wlan0`) via NetworkManager, so
+the RP2040 joins the exact same LAN/internet path the host itself has. This is real, persistent
+host infrastructure (survives a host reboot; verify with `nmcli connection show`), not a
+one-off/torn-down-after-use setup:
+
+```sh
+nmcli connection add type bridge ifname br0 con-name br0
+nmcli connection add type ethernet ifname eth0 master br0 con-name br0-eth0 slave-type bridge
+nmcli connection add type wifi ifname wlan0 con-name br0-wifi-ap ssid <ssid> \
+    802-11-wireless.mode ap 802-11-wireless.band bg master br0 slave-type bridge
+nmcli connection modify br0-wifi-ap wifi-sec.key-mgmt wpa-psk wifi-sec.psk <password> \
+    wifi-sec.proto rsn wifi-sec.pairwise ccmp wifi-sec.group ccmp wifi-sec.pmf disable
+nmcli connection up br0-eth0; nmcli connection up br0-wifi-ap
+```
+
+**`wifi-sec.pmf disable` (not `optional`/`required`) is load-bearing** — the Pico W's `cyw43439`
+WiFi chip's WPA2 handshake silently fails against a PMF-enabled/mixed config (observed: `iw event`
+showed `new station` immediately followed by `del station`, no explicit error anywhere).
+`wifi-sec.proto rsn`/`pairwise ccmp`/`group ccmp` (WPA2-only, AES-only, no TKIP/WPA3 fallback) is
+the rest of the tuning that made the handshake succeed reliably. `bridge.stp` stays at its default
+(off isn't required, wasn't found necessary).
+
+Generate a fresh test-only SSID/password per session rather than reusing a fixed one, and never
+commit real credentials to this file (see CLAUDE.md's credential-handling rule). Connect the
+RP2040 the intended way — through the real production code path (`PUT /networking` with
+`SSID`/`PW`, or the mount-proxied `config_WIFI.cfg`; mount-proxied config is the accepted default
+for bench testing, not real device flash — see "Testing real hardware from a session" above), not
+a bypass script, so the test actually exercises `asy_wifi_service.py`'s own connect state machine.
+
+## Current bench state (as of 2026-08-28)
+
+Facts a future session should know before assuming anything about what's currently on this board:
+
+- Onboard flash filesystem (VFS) is **empty** — no autostart script, no config files (frozen
+  modules live in flash/XIP, not the VFS — see the top of this file). Currently flashed with the
+  custom frozen firmware above, not stock MicroPython; nothing auto-starts, so the board sits at
+  the REPL until a script is explicitly mounted and run.
+- **FRAM's first ~720 bytes hold real, structured data again** — 7 chunks, in `sensortask_dev`'s
+  own `build_system()` construction order (sysfunct's error log, sgp_reader's error log + VOC-backup
+  chunk, bmp_reader's, scd_reader's, pixel's, notify_service's — see CLAUDE.md's FRAM chunk
+  determinism rule), from the full-system bring-up above, overwriting the earlier range-sweep
+  test's pattern bytes at those same addresses. Anything past that offset is still stale
+  test-pattern garbage from the earlier per-peripheral FRAM sweep — treat only the unclaimed tail
+  as garbage, not the whole chip.
+- **SCD30 temperature offset is still 1.5°C** (unchanged by the full-system bring-up, which only
+  set `trigger_sec=3`) — not the sensor's power-on default of 0.0°C; NVM-persisted, so it survives
+  a power cycle. Ambient pressure and altitude compensation are both 0 (disabled/default).
+- **SGP40's VOC algorithm holds real backup state again** (no longer freshly reset/in blackout) —
+  the full-system bring-up's own periodic backup cycle fired repeatedly and wrote real algorithm
+  state to its FRAM chunk.
 
 ## Legacy on-device filesystem snapshot (2026-08-27, historical)
 

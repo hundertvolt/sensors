@@ -349,3 +349,13 @@ constraints.
   gets built, matching only a bare `TYPE_CHECKING`/`mod.TYPE_CHECKING` test (leave any compound
   condition untouched rather than guess) and sanity-`ast.parse()`-checking its own output before
   compiling.
+- **Network fault injection against the real dev bench unit (nftables/`tc netem` on the host
+  Rpi4's bridge) — not yet built.** `dev_legacy/README.md`'s "WiFi/NTP/DNS integration testing"
+  section documents the bridge (`br0` = `eth0` + a hosted `wlan0` AP) the physical RP2040 bench
+  unit connects through for real WiFi/NTP/DNS testing; the natural next step is scripting
+  packet-loss/latency/DNS-blackhole fault injection on that same bridge (`tc netem` for loss/delay,
+  `nftables` for selective drops, e.g. NTP-only or DNS-only outages) to exercise
+  `asy_wifi_service.py`/`asy_ntp_client.py`/`asy_dns_client.py`'s own retry/give-up/hotspot-fallback
+  paths against real, not simulated, network failure — the digital twin's own fault injection
+  (`--fault`/`--hang` in `digital_twin/launch.py`/`run_wozi_integration.py`) only ever faults the
+  I2C/SPI/FRAM bus layer, never the network layer. No script or recipe exists for this yet.
