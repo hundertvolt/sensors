@@ -1467,14 +1467,20 @@ C.1-C.2 phrase the I2C convention that way. What genuinely differs from the I2C 
   over from the I2C case unchanged; `SPIDevice`'s own CS-assert/deassert and settle-time handling
   (`asy_spi_driver.py`) is already transparent to the protocol layer, the same way `I2CDevice`'s
   bus session is.
-- **`FRAM_SPI._setup_addr_buffer()` trusts its caller-supplied `max_size` without re-deriving it
-  from `_check_device_id()`'s own chip-ID read.** `max_size` fixes the address-buffer width (3 vs.
-  4 bytes) once in `__init__`, and the class's RDID check is hardwired to one real 8KB chip
-  (0x0000-0x1FFF) — a caller passing a `max_size` larger than the chip actually has would let
-  addresses validate and silently alias on real hardware rather than being caught. Not a bug (the
-  one real construction site passes the correct, matching constant), but a real SPI sensor driver
-  reusing this pattern should decide deliberately whether its own address-buffer width should be
-  derived from the verified chip ID instead of trusted from the constructor argument.
+- **`FRAM_SPI._setup_addr_buffer()` trusts its caller-supplied `max_size` for the address-buffer
+  width (3 vs. 4 bytes), set once in `__init__` — but `_check_device_id()` now cross-validates that
+  same `max_size` against the chip's own reported identity, closing the aliasing gap this bullet
+  originally flagged.** Real hardware now backs two chips: `MB85RS64V` (8KB, `max_size=0x2000`) and
+  `MB85RS2MTA` (256KB, `max_size=0x40000`, found via the same real-hardware promotion process this
+  Part describes — device ID `04H`/`7FH`/`48H`/`03H`, `datasheets/fram/MB85RS2MTA-DS501-00032-3v0-E.pdf`
+  p.10). `_KNOWN_PRODUCT_IDS` (`asy_fram_driver.py`) maps `max_size` to that size's own expected
+  product ID; `setup()` raises `OSError` if the reported chip doesn't match the *configured* size
+  (not just "isn't a known chip at all"), and raises `ValueError` if `max_size` itself isn't one of
+  the two recognized entries at all — both close the "larger `max_size` than the chip actually has"
+  risk this bullet described, for any size actually in the table. A third real chip would still need
+  its own table entry added deliberately (the risk this bullet's closing sentence described stays
+  real for a genuinely new, un-catalogued size) — this isn't now fully generic, just closed for the
+  two sizes this codebase actually uses.
 
 ### C.3.2 UART variant — orphan module, harmonized late, precedent now settled
 
@@ -2097,7 +2103,7 @@ pass-1/pass-2 process this table is pass 2's own output.
 |---|---|---|---|
 | `base_classes.py` (inherited by every `SensorReader`/`SensorReaderConfig` subclass) | 1-9 | 1-2 | Reserved base range — see the bullet above; every driver's own numbering starts at 10+ to avoid colliding with this. |
 | `config_manager.py` (`"CFGMGR_" + name`, per instance) | 1-14 | 1-6 | Sequential in source order (`setup()`'s load/validate/first-write paths, then the three already-async accessor methods). |
-| `asy_fram_manager.py`/`asy_fram_driver.py` (shared `"FRAM"` logger — `AsyFramManager`, its chunk classes, and `FRAM_SPI` all share one stream) | 10-97 | 60-83 | `AsyFramManager`: 10-88, non-sequential — the shared `_handle_status_bytes()`/`_set_check_sb()` busy/idle-status-byte helper spreads its caller-supplied base `err` across 2 values when `check_idle=False` (`err`/`err+1`, one per status byte) or up to 7 when `check_idle=True` (`err` through `err+6`, covering both bytes' read-fail/mismatch/write-fail outcomes plus the two-bytes-disagree case) - confirmed directly from `_set_check_sb()`'s own branches, not just the inline comments at each call site. `_write_chunk()`=10-11 (busy-check, `check_idle=False`)/17 (CRC)/18 (write failed)/19-20 (idle-check, `check_idle=False`)/26 (exception), `_read_chunk()`=30-36 (busy-check, `check_idle=True`)/37 (read error)/38 (incremental CRC)/39-40 (idle-check, `check_idle=False`)/46 (final CRC)/47 (exception)/48 (zero-length buffer), `_clear_chunk()`=50-51 (busy-check, `check_idle=False`)/57 (write failed)/58 (exception), the block-pair `_write()`/`_read()`/`clear()` helpers reuse 60-64/70-73/80 for both their own `errno` and matching `wrnno` (pause/invalid-block-data warnings), the remaining higher-level methods (`write()`, timestamp write/sync/`setup()`)=81-88. `FRAM_SPI`: 89-97, continuing sequentially (not-initialized ×5, invalid-range ×2, readback mismatch, lock-timeout) + `wrnno`=81-83 (WRDI-stuck, WEL-didn't-set ×2). |
+| `asy_fram_manager.py`/`asy_fram_driver.py` (shared `"FRAM"` logger — `AsyFramManager`, its chunk classes, and `FRAM_SPI` all share one stream) | 10-98 | 60-83 | `AsyFramManager`: 10-88, non-sequential — the shared `_handle_status_bytes()`/`_set_check_sb()` busy/idle-status-byte helper spreads its caller-supplied base `err` across 2 values when `check_idle=False` (`err`/`err+1`, one per status byte) or up to 7 when `check_idle=True` (`err` through `err+6`, covering both bytes' read-fail/mismatch/write-fail outcomes plus the two-bytes-disagree case) - confirmed directly from `_set_check_sb()`'s own branches, not just the inline comments at each call site. `_write_chunk()`=10-11 (busy-check, `check_idle=False`)/17 (CRC)/18 (write failed)/19-20 (idle-check, `check_idle=False`)/26 (exception), `_read_chunk()`=30-36 (busy-check, `check_idle=True`)/37 (read error)/38 (incremental CRC)/39-40 (idle-check, `check_idle=False`)/46 (final CRC)/47 (exception)/48 (zero-length buffer), `_clear_chunk()`=50-51 (busy-check, `check_idle=False`)/57 (write failed)/58 (exception), the block-pair `_write()`/`_read()`/`clear()` helpers reuse 60-64/70-73/80 for both their own `errno` and matching `wrnno` (pause/invalid-block-data warnings), the remaining higher-level methods (`write()`, timestamp write/sync/`setup()`)=81-88. `FRAM_SPI`: 89-98, continuing sequentially (not-initialized ×5, invalid-range ×2, readback mismatch, lock-timeout, `verify_present()`'s device-ID-check-raised guard — see C.3.1) + `wrnno`=81-83 (WRDI-stuck, WEL-didn't-set ×2). |
 | `asy_bmp3xx_driver.py` (`"BMP3XX"`) | 10-22 | — | 10=init (common slot), 11=periodic read failed (common slot), 12=config data read failed at init (common slot), 13=config data write failed at init, 14=config data read failed at store-time (`_store_bmp()`), 15-20=oversampling/filter forwards, 21=trigger-interval, 22=batched oversampling/filter-coefficient snapshot read (`_read_sensor_dict()`). See the common-error-class bullet above the table. |
 | `asy_scd30_driver.py` (`"SCD30"`) | 10-25 | — | 10=init (common slot), 11=periodic read failed (common slot; already matched the common slot before it existed), 12=reserved/unused (SCD30 has no init-time persisted-config-read step - see the common-error-class bullet above), 13=stop-continuous-measurement, 14-25=per-field get/set forwards in pairs. |
 | `asy_sgp40_driver.py` (`"SGP40"`) | 10-18 | 10-14 | 10=init (common slot), 11=periodic read failed (common slot), 12=config data read failed at init (common slot), 13-18=per-cycle backup-config-read/write/clear-FRAM/deserialize/serialize/compensation-callback. `wrnno`=backup-missing/stale conditions. |
