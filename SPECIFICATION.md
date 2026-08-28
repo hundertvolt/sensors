@@ -1233,6 +1233,28 @@ needed, since that file is never in this script's path. `build_stage_dir()` rais
 any `src/` filename collides with one of its own reserved staging names (`microdot.py`,
 `wozi_boot.py`, `_boot.py`, `frozen_html.py`) rather than silently overwriting one or the other.
 
+Every `.py` file `build_stage_dir()` copies into the stage directory (`src/*.py`, `ext/microdot.py`,
+`boot_entry/wozi_boot.py`) is passed through `scripts/_strip_type_checking.py`'s
+`strip_type_checking_blocks()` first — an `ast`-based transform (parse → drop each bare
+`if TYPE_CHECKING:`/`if mod.TYPE_CHECKING:` block, with no `elif`/`else`, plus its defining
+`try: from typing import TYPE_CHECKING / except ImportError: TYPE_CHECKING = False` header → hand
+the result to `ast.unparse()` → re-parse that output as a validity check) rather than a plain
+`shutil.copy()`. This is CLAUDE.md's D.6 checklist item made concrete: `mpy-cross` does not
+dead-code-eliminate `if TYPE_CHECKING:` the way it does an `if micropython.const(0):` branch, so
+the guarded imports/`Protocol` classes/type aliases would otherwise survive into the `.mpy`
+bytecode as pure dead weight (measured ~3.6KB across the files promoted to `src/` at the time this
+was prototyped) — safe to drop because nothing on this platform ever does runtime annotation
+introspection (CLAUDE.md's "Platform target"). Only the *bare* form is matched; a file whose
+`except ImportError:` handler does more than the plain `TYPE_CHECKING = False` assignment (e.g.
+`asy_scd30_driver.py`'s `cast()` no-op fallback, called at real runtime outside any
+`TYPE_CHECKING` block) is left with its import guard intact — only the block itself is
+guaranteed to disappear, not this header, when that handler is doing legitimate extra work. Only
+the *staged temp copy* is ever rewritten; the real `src/`/`ext` files are untouched, per CLAUDE.md's
+hard rule. `tests_scripts/test_strip_type_checking.py` covers the transform in isolation (bare
+vs. compound conditions, `if`/`else`, multiple blocks per file, the real-file round-trip);
+`tests_scripts/test_build_firmware.py` covers the wiring (a real staged file loses its guard, the
+real `src/` file it came from does not).
+
 `tests_scripts/` (CPython/pytest — see `tests_scripts/conftest.py` and CLAUDE.md's "Code quality
 tooling") covers `build_frozen_html.sh`'s recursive merge, `build_website.sh`'s staging, and
 `build_firmware.py`'s assembly logic (`_BOOT_PY`/`_MANIFEST_TEMPLATE` content, `build_stage_dir()`'s
@@ -2560,9 +2582,9 @@ is not a machine with memory or cycles to spare:
       write differently in a file going through this checklist — the `if TYPE_CHECKING:` guard
       convention above is still correct and required — but don't assume the guard is "free" at
       build time the way a `const()`-gated branch is; stripping these blocks from the frozen build
-      is a real, measured space saving (~3.6KB across the files promoted at time of measurement)
-      still tracked as unbuilt future work in BACKLOG.md's "Firmware build script should strip..."
-      item, not something any individual file's own promotion needs to act on.
+      is a real, measured space saving (~3.6KB across the files promoted at time of measurement),
+      now implemented by `scripts/build_firmware.py`'s staging step (see Part B.11) — not
+      something any individual file's own promotion needs to act on itself.
 
 ## D.7 Always-defined return values
 

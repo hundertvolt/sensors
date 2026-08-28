@@ -75,6 +75,17 @@ def test_build_stage_dir_assembles_every_expected_file(build_firmware, repo_root
     assert (tmp_path / "microdot.py").read_text() == (repo_root / "ext" / "microdot.py").read_text()
 
 
+def test_build_stage_dir_strips_type_checking_blocks_from_staged_src_files(build_firmware, repo_root, tmp_path):
+    # config_manager.py is a real, known if TYPE_CHECKING: user (BACKLOG.md's measured baseline
+    # for this saving) - its staged copy must have the guard stripped even though the real src/
+    # file (never touched by this build) keeps it, per CLAUDE.md's hard rule against editing src/
+    # itself for a build-only concern.
+    build_firmware.build_stage_dir(tmp_path, "wozi")
+    staged_text = (tmp_path / "config_manager.py").read_text()
+    assert "TYPE_CHECKING" not in staged_text
+    assert "TYPE_CHECKING" in (repo_root / "src" / "config_manager.py").read_text()
+
+
 def test_build_stage_dir_frozen_html_contains_the_real_website_not_the_stub(build_firmware, tmp_path):
     build_firmware.build_stage_dir(tmp_path, "wozi")
     frozen_html_text = (tmp_path / "frozen_html.py").read_text()

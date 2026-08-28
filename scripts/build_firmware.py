@@ -50,6 +50,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "toolchain"))
 import setup_toolchain as st  # noqa: E402
 
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
+from _strip_type_checking import strip_type_checking_blocks  # noqa: E402
+
 # The port's own stock ports/rp2/modules/_boot.py content (confirmed directly against the pinned
 # v1.28.0 checkout - identical to what boards/manifest.py's freeze("$(PORT_DIR)/modules") would
 # otherwise freeze), plus the one line that makes it ours: importing boot_entry/wozi_boot.py's
@@ -92,6 +95,14 @@ def log(msg: str) -> None:
     print(f"\n== {msg}")
 
 
+def _stage_stripped(src_file: Path, dest: Path) -> None:
+    # Strips this build's temp staged copy only - never the real src/ext files (CLAUDE.md's
+    # hard rule; see _strip_type_checking.py's own docstring for why this is safe and what it
+    # saves). A file with no if TYPE_CHECKING: blocks (e.g. ext/microdot.py today) is written back
+    # byte-for-byte unchanged.
+    dest.write_text(strip_type_checking_blocks(src_file.read_text()))
+
+
 def build_stage_dir(stage_dir: Path, device: str) -> None:
     # This script freezes src/*.py alongside its own infra files (microdot.py, wozi_boot.py,
     # _boot.py, frozen_html.py) into the SAME flat stage_dir - a future src/ file sharing one of
@@ -104,9 +115,9 @@ def build_stage_dir(stage_dir: Path, device: str) -> None:
         raise RuntimeError(f"src/ file(s) collide with this build's own reserved staging names: {sorted(collisions)}")
 
     for py_file in src_files:
-        shutil.copy(py_file, stage_dir / py_file.name)
-    shutil.copy(REPO_ROOT / "ext" / "microdot.py", stage_dir / "microdot.py")
-    shutil.copy(REPO_ROOT / "boot_entry" / "wozi_boot.py", stage_dir / "wozi_boot.py")
+        _stage_stripped(py_file, stage_dir / py_file.name)
+    _stage_stripped(REPO_ROOT / "ext" / "microdot.py", stage_dir / "microdot.py")
+    _stage_stripped(REPO_ROOT / "boot_entry" / "wozi_boot.py", stage_dir / "wozi_boot.py")
     (stage_dir / "_boot.py").write_text(_BOOT_PY)
 
     # The real website, built fresh for this device and frozen under the same "frozen_html" name
