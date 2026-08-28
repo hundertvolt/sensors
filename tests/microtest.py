@@ -25,5 +25,15 @@ def run(namespace: dict) -> None:
         else:
             print(f"PASS {name}")
     print(f"{total - failed}/{total} passed")
-    if failed:
-        sys.exit(1)
+    # Always exits explicitly, not just on failure: a test that spins up the real
+    # sensortask_wozi.build_system()/start_and_check_tasks() task graph (the digital-twin
+    # integration files) leaves independently-scheduled sibling tasks (WiFi, sensor readers, the
+    # webserver, ...) parked in the shared, process-wide asyncio task queue after its own test
+    # function returns - Task.cancel() on the one Task a test explicitly awaited (e.g. main_task in
+    # digital_twin/run_wozi_integration.py) never cascades to those siblings, since asyncio doesn't
+    # track parent/child task relationships. Falling off the end of this script used to leave the
+    # Unix-port process waiting on that leftover queue instead of exiting - confirmed by direct
+    # reproduction (system_service.py's own _timer_sequencer() fix was what first let a soak test
+    # run its real task graph to a clean, non-cancelled completion instead of always timing out
+    # first). sys.exit() forces the process down immediately regardless of what's still parked.
+    sys.exit(1 if failed else 0)

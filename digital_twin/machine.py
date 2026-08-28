@@ -363,7 +363,24 @@ class Timer:
 
     def deinit(self) -> None:
         if self._task is not None:
-            self._task.cancel()
+            try:
+                is_own_callback = self._task is asyncio.current_task()
+            except RuntimeError:  # no running event loop (e.g. a synchronous test calling deinit()
+                # directly, outside asyncio.run()) - definitely not this Timer's own callback either way.
+                is_own_callback = False
+            if not is_own_callback:
+                self._task.cancel()
+            # Re-.init()-ing a Timer from within its own currently-firing callback is a real,
+            # valid MicroPython pattern (self-rearming/chained timers - e.g.
+            # src/system_service.py's own _timer_sequencer(), which reuses one preallocated Timer
+            # across every chain step rather than constructing a fresh one per step - see
+            # CLAUDE.md/SPECIFICATION.md Part F.1). On real rp2 hardware this just reprograms the
+            # alarm pool - the just-fired ONE_SHOT alarm is already consumed, nothing to cancel.
+            # asyncio.Task.cancel() has no such carve-out (MicroPython's own extmod/asyncio/task.py
+            # raises RuntimeError("can't cancel self") - a task can't cancel itself), so this twin
+            # must skip the self-cancel instead of calling it unconditionally: the old _run() task
+            # is about to return on its own (ONE_SHOT) or continue its own loop (PERIODIC) right
+            # after this callback returns, without needing to be torn down here.
             self._task = None
         self.callback = None
 

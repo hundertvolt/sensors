@@ -270,7 +270,11 @@ class NotificationCoordinator(SensorReaderConfig):
             return
         await self.pr.setup()  # required for all logged warnings and errors
         self._err_cnt_internal = 0
-        self._auto_active = True
+        # No self._auto_active = True here (unlike __init__/auto_led_override(), which own it) -
+        # this task only ever reads it (line below). A restart of *this* task (supervisor-driven,
+        # after too many own-config-read failures) used to unconditionally reset it, silently
+        # clobbering an LED override auto_led_override() had legitimately set active mid-run - a
+        # race between two independently-restartable tasks over one shared, unlocked flag.
         while True:
             t0 = time.ticks_ms()
             await self._flush_pending_registration_warnings()

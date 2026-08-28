@@ -469,13 +469,43 @@ def test_start_timers_sequences_all_starters_in_order_and_sets_timers_running() 
         task = asyncio.create_task(svc.start_timers(starters))
         await asyncio.sleep(0)  # let start_timers begin: _timer_sequencer starts timer[0] synchronously
         assert started == [1]
-        assert len(Timer.all_timers) == 1
-        Timer.all_timers[-1].trigger()
+        # No fresh Timer() ever constructed for the chain - svc.sequencer_timer (preallocated in
+        # __init__, same as uptime_timer/reset_timer/storage_timer) is reused via .init() for every
+        # step instead, so Timer.all_timers (only grows on a real __init__) stays empty throughout.
+        assert Timer.all_timers == []
+        svc.sequencer_timer.trigger()
         assert started == [1, 2]
-        assert len(Timer.all_timers) == 2
-        Timer.all_timers[-1].trigger()
+        assert Timer.all_timers == []
+        svc.sequencer_timer.trigger()
         assert started == [1, 2, 3]
         await task  # completes now: timers_running was set by the last _timer_sequencer step
+        return True
+
+    assert run(scenario())
+
+
+def test_timer_sequencer_reuses_the_same_preallocated_timer_object_across_every_step() -> None:
+    # Regression test for a real GC-drop bug: _timer_sequencer() used to construct a fresh, unstored
+    # Timer(...) for every chain step - unreferenced by anything on the Python side, so it was
+    # GC-eligible before its own ONE_SHOT callback ever fired on real hardware (confirmed by
+    # reproduction: start_timers() hung forever - see CLAUDE.md/SPECIFICATION.md Part F.1's
+    # documented soft-Timer-callback-drop gotcha). Fixed by reusing self.sequencer_timer, preallocated
+    # in __init__ exactly like uptime_timer/reset_timer/storage_timer - proven here by object
+    # identity staying constant across every chain step.
+    svc = make_service()
+    Timer.all_timers.clear()
+    starters = [lambda: None, lambda: None, lambda: None]
+
+    async def scenario() -> bool:
+        task = asyncio.create_task(svc.start_timers(starters))
+        await asyncio.sleep(0)
+        first_id = id(svc.sequencer_timer)
+        assert Timer.all_timers == []
+        svc.sequencer_timer.trigger()
+        assert id(svc.sequencer_timer) == first_id
+        assert Timer.all_timers == []
+        svc.sequencer_timer.trigger()
+        await task
         return True
 
     assert run(scenario())
@@ -495,8 +525,8 @@ def test_timer_sequencer_starter_exception_is_logged_and_sequencing_continues() 
         task = asyncio.create_task(svc.start_timers(starters))
         await asyncio.sleep(0)
         assert started == []  # bad_starter raised, never appended
-        assert len(Timer.all_timers) == 1
-        Timer.all_timers[-1].trigger()
+        assert Timer.all_timers == []  # no fresh Timer() constructed for the chain step
+        svc.sequencer_timer.trigger()
         assert started == [2]  # sequencing continued to the next starter regardless
         await task
         return True
@@ -994,6 +1024,72 @@ def test_start_and_check_tasks_restarts_a_dead_task_and_logs_a_warning() -> None
         run(scenario())
     assert call_count[0] >= 2  # started once at startup, restarted at least once after dying
     assert svc.pr.err_count >= 1  # the "Task ended - attempting restart" warning persisted
+
+
+def test_start_and_check_tasks_logs_the_real_exception_of_a_crashed_task() -> None:
+    # Regression test: MicroPython's asyncio Task has no .exception()/.result() (extmod/asyncio/
+    # task.py) - before _log_dead_task() existed, a crashed task's own exception was silently
+    # discarded, and every restart logged the same content-free "Task ended - attempting restart"
+    # warning regardless of whether the task returned cleanly, was cancelled, or hit a real bug.
+    svc = make_service()
+    call_count = [0]
+
+    def crashing_starter() -> "asyncio.Task[None]":
+        call_count[0] += 1
+        attempt = call_count[0]
+
+        async def _c() -> None:
+            if attempt == 1:
+                raise RuntimeError("simulated task crash")
+            await asyncio.sleep(3600)  # second attempt: stay alive so the loop settles
+
+        return asyncio.create_task(_c())
+
+    async def scenario() -> None:
+        task = asyncio.create_task(svc.start_and_check_tasks([crashing_starter]))
+        for _ in range(10):
+            await asyncio.sleep(0)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    with _FastAsyncSleep():
+        run(scenario())
+    assert call_count[0] >= 2
+    log = run(svc.get_error_counter())["SYSTEM"]
+    assert 5 in log["ErrNum"]  # type: ignore[operator]  # _log_dead_task's own errno=5, distinct from wrn_s's own wrnno
+
+
+def test_start_and_check_tasks_clean_task_return_does_not_log_a_spurious_exception() -> None:
+    # Sibling of the crash test above: a task that returns cleanly (no exception) must still be
+    # restarted and logged via the routine "Task ended" warning, but _log_dead_task() itself must
+    # not report a phantom exception for it - awaiting a cleanly-finished Task raises nothing.
+    svc = make_service()
+    call_count = [0]
+
+    def quick_dying_starter() -> "asyncio.Task[None]":
+        call_count[0] += 1
+
+        async def _c() -> None:
+            return None
+
+        return asyncio.create_task(_c())
+
+    async def scenario() -> None:
+        task = asyncio.create_task(svc.start_and_check_tasks([quick_dying_starter]))
+        await asyncio.sleep(0)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    with _FastAsyncSleep():
+        run(scenario())
+    log = run(svc.get_error_counter())["SYSTEM"]
+    assert 5 not in log["ErrNum"]  # type: ignore[operator]  # no real exception occurred - errno=5 must never fire
 
 
 def test_start_and_check_tasks_gives_up_and_reboots_past_the_failure_budget() -> None:
