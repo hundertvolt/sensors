@@ -404,13 +404,16 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   listed here for now so it isn't only locatable by cross-reference in the meantime. See
   `SPECIFICATION.md` Part A.10 for how it fits into the rest of the architecture.
 
-**`dev_legacy/README.md`** (permanent, reference-only, not `src/` scope):
+**`dev_legacy/README.md`** (permanent, kept current):
 
-- **`dev_legacy/README.md`** — a verbatim snapshot of the physical "dev" RP2040 bench unit's
-  onboard filesystem (MicroPython 1.24.1, the deployed-fleet target), pulled over USB serial via
-  `mpremote` (see "Real hardware access (mpremote)" above) because it holds code changes made
-  directly on-device that were never copied to any host machine. Reference material for future
-  `src/` promotion work — not itself reviewed, promoted, or covered by lint/type/test config.
+- **`dev_legacy/README.md`** — the single source of truth for the physical "dev" RP2040 bench
+  unit: wiring, chip identities, confirmed-working status per peripheral, current bench state, and
+  the `mpremote` workflow for testing `src/` drivers against it (see "Real hardware access
+  (mpremote)" above). Now running MicroPython 1.28.0 (the refactor/`src/` target, not the
+  deployed-fleet 1.26 pin) with an empty flash filesystem. Also holds, in its own clearly-marked
+  final section, a historical, frozen-in-time snapshot of this unit's onboard filesystem from
+  2026-08-27 (back when it still ran 1.24.1) — reference material for future `src/` promotion
+  work, not itself reviewed, promoted, or covered by lint/type/test config.
 
 `WIRING_CONTRACT.md`, `FINAL_WIRING_PLAN.md`, and `WEBSITE_PLAN.md` — temporary planning docs for,
 respectively, the `improved-quality/` → `src/` wiring effort (`src/sensortask_wozi.py`'s
