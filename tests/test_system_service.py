@@ -1302,42 +1302,6 @@ def test_get_cfg_schema_returns_the_debug_level_field() -> None:
     assert schema[0][0] == "DebugLevel"
 
 
-def test_get_cfg_schema_returns_the_task_check_secs_field() -> None:
-    svc = make_service()
-    schema = svc.get_cfg_schema()
-    assert schema[1][0] == "TaskCheckSecs"
-
-
-def test_task_check_secs_defaults_to_the_task_check_time_constant() -> None:
-    svc = make_service(cfg_path=_tmp_cfg_dir())
-    run(svc.setup())
-    assert svc._task_check_secs == 2  # _TASK_CHECK_TIME: micropython.const(), compiled away, hardcoded per SPECIFICATION.md Part E.5.1
-
-
-def test_task_check_secs_can_be_set_live_without_a_reflash_and_survives_a_reboot() -> None:
-    # The point of this field (see system_service.py's own schema comment): dial in a tighter
-    # task-supervisor poll cadence remotely, via the same REST-settable path as DebugLevel, without
-    # rebuilding/reflashing firmware.
-    cfg_path = _tmp_cfg_dir()
-    svc = make_service(cfg_path=cfg_path)
-    run(svc.setup())
-    results = run(svc._set_dict_cfg({"TaskCheckSecs": 1}, svc.cfg_schema))
-    assert results.get("TaskCheckSecs") == "Valid"
-    assert svc._task_check_secs == 1
-
-    svc_after_reboot = make_service(cfg_path=cfg_path)
-    run(svc_after_reboot.setup())
-    assert svc_after_reboot._task_check_secs == 1
-
-
-def test_task_check_secs_out_of_range_is_rejected_and_leaves_the_live_value_unchanged() -> None:
-    svc = make_service(cfg_path=_tmp_cfg_dir())
-    run(svc.setup())
-    results = run(svc._set_dict_cfg({"TaskCheckSecs": 999}, svc.cfg_schema))  # outside the schema's 1-60 range
-    assert results.get("TaskCheckSecs") == "Invalid"
-    assert svc._task_check_secs == 2  # _TASK_CHECK_TIME: micropython.const(), compiled away, hardcoded per SPECIFICATION.md Part E.5.1
-
-
 def test_set_level_setters_replaces_any_previously_registered_list() -> None:
     first: list[int] = []
     second: list[int] = []

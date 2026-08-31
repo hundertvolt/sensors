@@ -399,7 +399,7 @@ async def build_system(
                 SettingsGroup(ntp, ("NTP_Host", "NTP_Offset_S", "NTP_Interv_H"), post_asy_fct=ntp.ntp_force_sync),  # type: ignore[arg-type]
             ],
             "system": [
-                SettingsGroup(sysfunct, ("DebugLevel", "TaskCheckSecs")),  # type: ignore[arg-type]
+                SettingsGroup(sysfunct, ("DebugLevel",)),  # type: ignore[arg-type]
                 SettingsGroup(ntp, ("GMTOffset", "DSTOffset")),  # type: ignore[arg-type]  # cettime() reads these live - no post hook needed
             ],
             "notification": [

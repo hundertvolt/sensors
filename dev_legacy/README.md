@@ -190,6 +190,14 @@ imports is already frozen in) — fast to edit and rerun without a firmware rebu
 scripts/mpremote_connect.sh mount path/to/dir/containing/only/the/entry_script.py run entry_script.py
 ```
 
+**Before starting a fresh diagnostic run against this bench's FRAM-backed error/warning history**,
+clear it first (`PUT /status {"ResetErrors": true}` once the system is up and reachable over REST) —
+it survives everything short of that, including a firmware reflash (FRAM is a separate SPI chip,
+untouched by `picotool load`). See SPECIFICATION.md Part C.7 for the full rule and the real
+investigation this caught out (a stale, never-cleared entry misread as a bug reproducing on every
+boot). Don't treat a nonzero `errcount` entry as evidence from *this* run until you've confirmed the
+counter was at zero right after your own last reset.
+
 ## WiFi/NTP/DNS integration testing (bridged AP on the host Rpi4)
 
 Exercising the real `AsyConnTime`/`AsyNtpClient`/`asy_dns_client` code paths (not a bypass script)
