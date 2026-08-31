@@ -34,6 +34,29 @@ uv run toolchain/setup_toolchain.py --latest      # detect + pin + install newes
 uv run toolchain/setup_toolchain.py test          # offline re-verify an existing install (~30s)
 ```
 
+## Dev environment setup (generic / flash / bench)
+
+`toolchain/setup_toolchain.py`'s `env` subcommand sets up one of three tiers, each a strict
+superset of the one before it:
+
+| Tier | Adds on top of the previous tier | Command |
+|---|---|---|
+| generic | Python (`uv sync`) + website (`npm ci`) deps, the firmware/Unix-port toolchain above | `uv run toolchain/setup_toolchain.py env --tier generic` |
+| flash | Non-root USB serial access (`dialout` group) + an auto-detected real RP2040/Pico W board | `uv run toolchain/setup_toolchain.py env --tier flash` |
+| bench | A real WiFi bridge/AP on this host (NetworkManager), so a flashed board reaches genuine internet/NTP | `uv run toolchain/setup_toolchain.py env --tier bench` |
+
+Every tier needs only itself run once on a given host — `flash`/`bench` call straight through to
+the tier(s) below rather than needing them run separately first. apt packages, `dialout` group
+membership, and the `bench` NetworkManager bridge/AP all install/configure automatically via
+`sudo` (pass `--skip-apt` to opt out of all of them). USB device detection (by Raspberry Pi's USB
+vendor ID) and network interface detection (uplink = default-route interface, WiFi = a free
+adapter that isn't the uplink) are automatic but overridable with `--device`/`--uplink-iface`/
+`--wifi-iface` if a host has more than one candidate and auto-detection is ambiguous. `bench` is
+idempotent: re-running it against an already-configured bridge reports the existing AP's SSID
+rather than recreating (and re-randomizing) it — see `dev_legacy/README.md`'s WiFi/NTP/DNS section
+for the manual `nmcli` recipe this automates, including the Pico W `cyw43439`-specific WPA2/PMF
+tuning it applies.
+
 ## Code quality tooling
 
 Ruff and mypy checks, scoped to `src/`, `tests/`, and `digital_twin/` (the
@@ -176,7 +199,11 @@ MPREMOTE_DEVICE=/dev/ttyACM1 scripts/mpremote_connect.sh ls     # different seri
 ```
 
 Non-root serial access needs the connecting user in the `dialout` group (`sudo usermod -aG dialout
-$USER`, then re-login). This is a genuinely different tier from the mocked `tests/` suite (which
+$USER`, then re-login) and a real board plugged in — both checked/added automatically, including
+USB-vendor-ID auto-detection of which `/dev/ttyACM*` is the board (still pass it as
+`MPREMOTE_DEVICE` yourself, or override with `--device` if more than one is plugged in), by
+`uv run toolchain/setup_toolchain.py env --tier flash` (see "Dev environment setup" above). This
+is a genuinely different tier from the mocked `tests/` suite (which
 runs under the Unix port against `tests/machine.py`'s fake `machine` module — see
 `SPECIFICATION.md` Part E) and from `scripts/build_firmware.py` (which builds a `.uf2` but never
 flashes or touches real hardware, see above). Real-hardware-in-the-loop testing against a physical

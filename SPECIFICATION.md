@@ -1274,6 +1274,71 @@ firmware-build stage" gap for this `src/`-based toolchain specifically — the s
 twin serves the real website end to end. It does not prove anything about real rp2040 hardware —
 nothing produced by this pipeline has been flashed or booted on one.
 
+## B.12 Tiered dev-environment setup (`env` subcommand)
+
+`toolchain/setup_toolchain.py env --tier {generic,flash,bench}` (README.md's "Dev environment
+setup" table) folds three previously-manual setup paths into one command, each a strict superset
+of the one before it: `generic` (Python/Node deps + the toolchain build above — everything
+`scripts/test.sh` and the digital twin need), `flash` (+ real USB serial access), `bench` (+ a
+real WiFi bridge/AP so a flashed board reaches genuine internet/NTP, automating the manual
+`nmcli` recipe in `dev_legacy/README.md`'s "WiFi/NTP/DNS integration testing" section).
+
+**USB device detection** (`detect_pico_serial_devices()`) reads `/sys/class/tty/<name>/device`'s
+resolved USB device node for an `idVendor` of `2e8a` (Raspberry Pi Foundation — covers both
+BOOTSEL/UF2 mode and a running MicroPython's CDC ACM port) across every `ttyACM*`/`ttyUSB*` entry,
+rather than shelling out to `lsusb`/`udevadm` — neither binary is guaranteed present on a minimal
+host, while `/sys` introspection needs nothing beyond a mounted sysfs. Exactly one match is
+required; zero or multiple is a hard `SetupError` naming `--device` as the escape hatch, never a
+silent guess (the same pattern `resolve_pico_device()`'s docstring documents, and the same
+"ambiguous is an error, not a guess" principle `detect_free_wifi_interface()` applies to WiFi
+adapter selection below).
+
+**`bench`'s bridge/AP creation is deliberately idempotent** (`ensure_bench_bridge()`): since
+`dev_legacy/README.md` already documents this as real, persistent host infrastructure that
+survives a reboot, a *second* run against an already-configured `br0-wifi-ap` connection must
+never recreate or re-randomize it — doing so would silently invalidate whatever device is already
+associated to the existing AP. It's recognized purely by nmcli connection name (`br0`/`br0-eth0`/
+`br0-wifi-ap`, matching the manual recipe's own names exactly), so a bridge set up by hand is
+recognized as "already configured" too. A genuinely new bridge gets fresh, random,
+`secrets`-generated SSID/password (`generate_bench_ap_credentials()`) unless `--ssid`/`--password`
+override them, per `dev_legacy/README.md`'s existing "fresh test-only credentials per session"
+guidance — printed once at creation time, never re-printed or logged again on a later idempotent
+run. The uplink (default-route) and free-WiFi-adapter interfaces are auto-detected the same
+"exactly one candidate or hard error" way as USB device detection, overridable with
+`--uplink-iface`/`--wifi-iface` — but `run_env()` only runs that detection when actually creating
+a bridge, checking `bench_ap_exists()` itself first: a no-op re-run against an already-configured
+bridge must stay a no-op even if, say, a second WiFi adapter got added to the host later and would
+now make `detect_free_wifi_interface()` ambiguous. Detecting interfaces unconditionally before the
+idempotency check was the initial (wrong) ordering, corrected during implementation.
+
+**A real bug this design caught during local testing**: `run_project_dependency_install()`
+(the `uv sync`/`npm ci` step every tier runs) initially reused `network_env()` — the same fixed,
+deterministic `PATH` every other subprocess in this script uses specifically so a stray shadowing
+binary can never silently change what the ARM/firmware toolchain builds with. That's the wrong
+choice for `uv`/`npm` themselves: confirmed directly, `network_env()`'s fixed `PATH` doesn't
+contain either binary in practice (they live wherever the host's own installer put them — e.g.
+`~/.local/bin`, `~/.nvm/...`, `~/.cargo/bin` — never the fixed system-tool `PATH`). Fixed by
+running those two calls with `env=None` (inherit the caller's real environment) instead — the one
+deliberate exception to this script's "never trust the caller's raw environment" convention,
+documented at the call site. `ip`/`nmcli` stay on the fixed `PATH` correctly (they're genuine
+system packages that belong under `/usr/sbin`, not a per-user tool install) — the same
+`ensure_network_manager()`/`ensure_iproute2()` pattern installs either automatically via `apt` if
+missing, both real end-to-end apt installs, verified directly in a sandbox lacking `iproute2` by
+default.
+
+**Local-test scope and boundary**: `generic` was verified fully end-to-end in a cloud sandbox
+that already had a cached toolchain — a real, unmocked `uv sync` + `npm ci` + full toolchain
+verification sequence, not a dry run. USB/network *detection* logic (`detect_pico_serial_devices()`
+against a real, empty `/sys/class/tty`; `ip`/`iproute2` install-and-parse against this sandbox's
+real (initially absent) networking stack) was also exercised for real where safe to do so. What
+was **not** exercised for real here: actually flashing/talking to a physical RP2040 (`flash`, no
+board attached) and actually creating the NetworkManager bridge/AP (`bench` — deliberately not
+installing/enabling NetworkManager in a shared cloud sandbox, since it could disrupt that
+container's own outbound networking for the rest of the session). `tests_scripts/
+test_setup_toolchain_env.py` covers every other code path (idempotency, credential generation,
+error messages, CLI wiring) against mocked `run()`/`/sys` fixtures instead. Full `flash`/`bench`
+real-hardware verification is the next step, on the real bench Rpi4 (see BACKLOG.md).
+
 ---
 
 # Part C — Sensor Driver Architecture Specification

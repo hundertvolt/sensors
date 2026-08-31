@@ -47,8 +47,10 @@ See SPECIFICATION.md Part B for the full picture (what this does and does not co
 from __future__ import annotations
 
 import argparse
+import grp
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import sys
@@ -671,6 +673,279 @@ def run_test(args: argparse.Namespace, versions: dict) -> int:
     return print_verification_summary(board, mpy_cross_binary, unix_binary)
 
 
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# Raspberry Pi Foundation's USB vendor ID - covers both RP2040 BOOTSEL/UF2 mode (product 0003)
+# and a running MicroPython's own CDC ACM serial port (product 0005), so matching on vendor ID
+# alone is enough to find "some Pico-family board", without hardcoding either product ID.
+PICO_USB_VENDOR_ID = "2e8a"
+
+
+def _read_usb_id_vendor(tty_name: str, sys_tty_dir: Path) -> str | None:
+    """Walks up from <sys_tty_dir>/<name>/device (a USB *interface* node) to find the
+    idVendor file on its parent USB *device* node - pure /sys introspection, no lsusb/udevadm
+    binary needed (neither is guaranteed present on a minimal host)."""
+    device_link = sys_tty_dir / tty_name / "device"
+    if not device_link.exists():
+        return None
+    node = device_link.resolve()
+    for candidate in (node, *node.parents):
+        vendor_file = candidate / "idVendor"
+        if vendor_file.exists():
+            return vendor_file.read_text().strip()
+    return None
+
+
+def detect_pico_serial_devices(sys_tty_dir: Path = Path("/sys/class/tty"), dev_dir: Path = Path("/dev")) -> list[Path]:
+    """Every <dev_dir>/ttyACM*/ttyUSB* whose USB idVendor (read under sys_tty_dir) matches
+    PICO_USB_VENDOR_ID. Order is sorted-by-name for determinism, not connection order.
+    sys_tty_dir/dev_dir default to the real /sys and /dev but are overridable for tests."""
+    if not sys_tty_dir.is_dir():
+        return []
+    found = []
+    for entry in sorted(sys_tty_dir.iterdir(), key=lambda p: p.name):
+        if not (entry.name.startswith("ttyACM") or entry.name.startswith("ttyUSB")):
+            continue
+        if _read_usb_id_vendor(entry.name, sys_tty_dir) == PICO_USB_VENDOR_ID:
+            dev_path = dev_dir / entry.name
+            if dev_path.exists():
+                found.append(dev_path)
+    return found
+
+
+def resolve_pico_device(explicit: str | None) -> Path:
+    """--device always wins over auto-detection. Otherwise requires exactly one vendor-ID match
+    - ambiguous (multiple boards plugged in) or absent (nothing plugged in / permissions issue)
+    is a hard error naming the escape hatch, never a silent guess at which device to use."""
+    if explicit:
+        return Path(explicit)
+    candidates = detect_pico_serial_devices()
+    if len(candidates) == 1:
+        log(f"Auto-detected Pico serial device: {candidates[0]}")
+        return candidates[0]
+    if not candidates:
+        raise SetupError(
+            "no Raspberry Pi USB serial device found (USB vendor ID 2e8a) - plug in the board, "
+            "or pass --device /dev/ttyACMx explicitly"
+        )
+    names = ", ".join(str(c) for c in candidates)
+    raise SetupError(f"multiple Raspberry Pi USB serial devices found ({names}) - pass --device to pick one explicitly")
+
+
+def ensure_dialout_group(skip: bool) -> None:
+    """Non-root USB serial access needs group membership, not a one-off chmod - see README.md's
+    "Real hardware access" section. Idempotent: does nothing if already a member."""
+    if skip:
+        log("Skipping dialout group check (--skip-apt)")
+        return
+    user = os.environ.get("USER") or os.environ.get("LOGNAME")
+    if not user:
+        raise SetupError("cannot determine the current user (USER/LOGNAME unset) to check dialout group membership")
+    try:
+        dialout_members = grp.getgrnam("dialout").gr_mem
+    except KeyError:
+        raise SetupError("no 'dialout' group exists on this system - is this a supported Linux host?") from None
+    if user in dialout_members:
+        log(f"{user} is already in the dialout group")
+        return
+    log(f"Adding {user} to the dialout group (needed for non-root USB serial access)")
+    run(["sudo", "usermod", "-aG", "dialout", user], env=build_env())
+    print("NOTE: group membership only takes effect after logging out and back in (or `newgrp dialout`).")
+
+
+NETWORK_MANAGER_APT_PACKAGE = "network-manager"
+IPROUTE2_APT_PACKAGE = "iproute2"
+
+
+def ensure_network_manager(skip_apt: bool) -> None:
+    if shutil.which("nmcli"):
+        return
+    log("nmcli not found - installing NetworkManager")
+    ensure_apt_packages([NETWORK_MANAGER_APT_PACKAGE], skip_apt)
+    if not shutil.which("nmcli"):
+        raise SetupError("nmcli still not found on PATH after installing network-manager")
+
+
+def ensure_iproute2(skip_apt: bool) -> None:
+    """detect_uplink_interface() below needs the real `ip` command - present by default on
+    essentially every real Linux host (including Raspberry Pi OS), but not guaranteed on a
+    minimal/stripped-down one, so this is checked/installed the same way ensure_network_manager()
+    handles nmcli rather than assumed."""
+    if shutil.which("ip"):
+        return
+    log("'ip' command not found - installing iproute2")
+    ensure_apt_packages([IPROUTE2_APT_PACKAGE], skip_apt)
+    if not shutil.which("ip"):
+        raise SetupError("'ip' command still not found on PATH after installing iproute2")
+
+
+def detect_uplink_interface() -> str:
+    """The network interface currently carrying the default route - i.e. "has internet" -
+    parsed from `ip route get`, which reports the real interface the kernel would actually
+    route a packet through rather than just reading static config."""
+    out = run(["ip", "-o", "route", "get", "1.1.1.1"], env=build_env())
+    match = re.search(r"\bdev\s+(\S+)", out)
+    if not match:
+        raise SetupError("could not determine the default-route (uplink) network interface - pass --uplink-iface explicitly")
+    return match.group(1)
+
+
+def detect_free_wifi_interface(exclude: str) -> str:
+    """A WiFi adapter not already acting as the uplink - requires exactly one candidate for the
+    same reason resolve_pico_device() does: an ambiguous pick is a hard error, not a guess."""
+    out = run(["nmcli", "-t", "-f", "DEVICE,TYPE", "device", "status"], env=build_env())
+    candidates = []
+    for line in out.strip().splitlines():
+        fields = line.split(":")
+        if len(fields) != 2:
+            continue
+        device, dtype = fields
+        if dtype == "wifi" and device != exclude:
+            candidates.append(device)
+    if not candidates:
+        raise SetupError(f"no free WiFi adapter found (excluding uplink interface {exclude!r}) - pass --wifi-iface explicitly")
+    if len(candidates) > 1:
+        raise SetupError(f"multiple candidate WiFi adapters found ({', '.join(candidates)}) - pass --wifi-iface to pick one explicitly")
+    return candidates[0]
+
+
+# Connection names match dev_legacy/README.md's manual nmcli recipe exactly, so a bridge/AP
+# created by that recipe by hand is recognized as "already configured" here too, and vice versa.
+BENCH_BRIDGE_CONN = "br0"
+BENCH_ETH_CONN = "br0-eth0"
+BENCH_AP_CONN = "br0-wifi-ap"
+
+
+def bench_ap_exists() -> bool:
+    out = run(["nmcli", "-t", "-f", "NAME", "connection", "show"], env=build_env())
+    return BENCH_AP_CONN in out.splitlines()
+
+
+def existing_bench_ap_ssid() -> str:
+    out = run(["nmcli", "-g", "802-11-wireless.ssid", "connection", "show", BENCH_AP_CONN], env=build_env())
+    return out.strip()
+
+
+def generate_bench_ap_credentials() -> tuple[str, str]:
+    """A fresh, random, test-only SSID/password - never a fixed default - per
+    dev_legacy/README.md's "generate a fresh test-only SSID/password per session" guidance."""
+    ssid = f"sensors-bench-{secrets.token_hex(3)}"
+    password = secrets.token_urlsafe(12)
+    return ssid, password
+
+
+def ensure_bench_bridge(uplink_iface: str, wifi_iface: str, ssid: str | None, password: str | None) -> str:
+    """Idempotent: this bridge+AP is real, persistent host infrastructure that survives a
+    reboot (dev_legacy/README.md) - if br0-wifi-ap already exists, it's left completely alone
+    and this just reports its current SSID, rather than recreating (and re-randomizing) a
+    bench network that other in-flight work may already depend on. Only a genuinely missing
+    bridge gets created, using explicit --ssid/--password if given, otherwise freshly generated
+    ones. `wifi-sec.pmf disable` and the WPA2/AES-only tuning below are load-bearing for the
+    Pico W's cyw43439 chip - see dev_legacy/README.md's own note on this."""
+    if bench_ap_exists():
+        current_ssid = existing_bench_ap_ssid()
+        log(f"Bench WiFi bridge already configured ({BENCH_AP_CONN!r}, SSID {current_ssid!r}) - reusing, not recreating")
+        return current_ssid
+
+    if ssid is None or password is None:
+        ssid, password = generate_bench_ap_credentials()
+
+    log(f"Creating bench WiFi bridge: {uplink_iface} (uplink) + {wifi_iface} (hosted AP, SSID {ssid!r})")
+    env = build_env()
+    run(["sudo", "nmcli", "connection", "add", "type", "bridge", "ifname", BENCH_BRIDGE_CONN, "con-name", BENCH_BRIDGE_CONN], env=env)
+    run(
+        ["sudo", "nmcli", "connection", "add", "type", "ethernet", "ifname", uplink_iface,
+         "master", BENCH_BRIDGE_CONN, "con-name", BENCH_ETH_CONN, "slave-type", "bridge"],
+        env=env,
+    )
+    run(
+        ["sudo", "nmcli", "connection", "add", "type", "wifi", "ifname", wifi_iface, "con-name", BENCH_AP_CONN,
+         "ssid", ssid, "802-11-wireless.mode", "ap", "802-11-wireless.band", "bg",
+         "master", BENCH_BRIDGE_CONN, "slave-type", "bridge"],
+        env=env,
+    )
+    run(
+        ["sudo", "nmcli", "connection", "modify", BENCH_AP_CONN,
+         "wifi-sec.key-mgmt", "wpa-psk", "wifi-sec.psk", password,
+         "wifi-sec.proto", "rsn", "wifi-sec.pairwise", "ccmp", "wifi-sec.group", "ccmp",
+         "wifi-sec.pmf", "disable"],
+        env=env,
+    )
+    run(["sudo", "nmcli", "connection", "up", BENCH_ETH_CONN], env=env)
+    run(["sudo", "nmcli", "connection", "up", BENCH_AP_CONN], env=env)
+    print(f"Bench AP created - SSID: {ssid}  password: {password}")
+    print("Save this password now: a later idempotent run will report the SSID again, but never re-prints the password.")
+    return ssid
+
+
+def run_project_dependency_install(repo_root: Path, skip_npm: bool) -> None:
+    """The Python (`uv sync`) and, where applicable, website (`npm ci`) dev-tooling dependency
+    installs every tier needs - see README.md's "Code quality tooling"/"Website tooling"
+    sections. Missing npm/no package.json is a soft skip, not a failure: the website tooling is
+    optional for a pure sensor-firmware workflow.
+
+    Deliberately runs with env=None (inherit the caller's real environment), unlike every other
+    subprocess in this script: build_env()/network_env()'s fixed, deterministic PATH exists to
+    stop a stray shadowing binary from silently changing what the ARM/firmware toolchain builds
+    with - but it would just as reliably hide the caller's own `uv`/`npm` install (e.g. under
+    `~/.local/bin`, `~/.nvm/...`, `~/.cargo/bin`), which is exactly the binary that must be
+    found here (confirmed directly: network_env()'s PATH doesn't contain either in practice)."""
+    log("Installing Python project dependencies (uv sync)")
+    run(["uv", "sync"], cwd=repo_root)
+    if skip_npm:
+        log("Skipping npm ci (--skip-npm)")
+        return
+    if not (repo_root / "package.json").exists():
+        log("No package.json found - skipping npm ci")
+        return
+    if shutil.which("npm") is None:
+        log("npm not found on PATH - skipping npm ci (see README.md's \"Website tooling\" section to install Node)")
+        return
+    log("Installing website tooling dependencies (npm ci)")
+    run(["npm", "ci"], cwd=repo_root)
+
+
+def run_env(args: argparse.Namespace, versions_path: Path, versions: dict) -> int:
+    """Tiered dev-environment setup (README.md's environment-tiers table): each tier is a
+    strict superset of the one before it.
+
+      generic - Python/Node project deps (uv sync/npm ci) + the firmware/Unix-port toolchain
+                (reuses run_setup() unchanged) - everything scripts/test.sh and the digital
+                twin need, no physical hardware involved.
+      flash   - + non-root USB serial access (dialout group) and an auto-detected (or
+                --device-overridden) real RP2040 board.
+      bench   - + a real WiFi bridge/AP on this host (NetworkManager), so a flashed board can
+                reach genuine internet/NTP - idempotent, see ensure_bench_bridge().
+    """
+    run_setup(args, versions_path, versions)
+    run_project_dependency_install(REPO_ROOT, args.skip_npm)
+
+    if args.tier == "generic":
+        log("Generic environment ready: Python/Node deps installed, firmware/Unix-port toolchain verified")
+        return 0
+
+    ensure_dialout_group(args.skip_apt)
+    device = resolve_pico_device(args.device)
+    log(f"Flash environment ready: {device} reachable via scripts/mpremote_connect.sh")
+    if args.tier == "flash":
+        return 0
+
+    ensure_network_manager(args.skip_apt)
+    ensure_iproute2(args.skip_apt)
+    # Interface auto-detection only runs when actually creating a bridge - a no-op re-run against
+    # an already-configured bridge must stay a no-op even if e.g. a second WiFi adapter was added
+    # to the host later and would now make detect_free_wifi_interface() ambiguous.
+    if bench_ap_exists():
+        ssid = existing_bench_ap_ssid()
+        log(f"Bench WiFi bridge already configured ({BENCH_AP_CONN!r}, SSID {ssid!r}) - reusing, not recreating")
+    else:
+        uplink_iface = args.uplink_iface or detect_uplink_interface()
+        wifi_iface = args.wifi_iface or detect_free_wifi_interface(exclude=uplink_iface)
+        ssid = ensure_bench_bridge(uplink_iface, wifi_iface, args.ssid, args.password)
+    log(f"Bench environment ready: bridge {BENCH_BRIDGE_CONN!r} up, hosted AP SSID {ssid!r}")
+    return 0
+
+
 def main() -> int:
     toolchain_dir_default = Path(os.environ.get("PICO_TOOLCHAIN_DIR", Path.home() / "pico-toolchain"))
 
@@ -706,10 +981,32 @@ def main() -> int:
         help="Re-verify an already-installed toolchain with no network/apt access — the CI-friendly check",
     )
 
+    env_parser = subparsers.add_parser(
+        "env",
+        parents=[common],
+        help="Set up a tiered dev environment (generic/flash/bench) - project deps, toolchain, and "
+        "(flash/bench) real-hardware access - see README.md's environment-tiers table",
+    )
+    env_parser.add_argument("--tier", required=True, choices=("generic", "flash", "bench"), help="Environment tier to set up")
+    env_parser.add_argument("--micropython-ref", help="Override the MicroPython tag/ref to build (default: from versions.toml)")
+    env_parser.add_argument("--latest", action="store_true", help="Detect the newest stable MicroPython release and pin versions.toml to it")
+    env_parser.add_argument("--skip-apt", action="store_true", help="Skip apt packages, dialout group, and network-manager install (all steps needing sudo)")
+    env_parser.add_argument("--skip-npm", action="store_true", help="Skip npm ci even if package.json is present")
+    env_parser.add_argument(
+        "--clean",
+        action="store_true",
+        help="Wipe all build-artifact directories before building, without re-cloning the git sources",
+    )
+    env_parser.add_argument("--device", help="[flash/bench] explicit serial device path, skips USB vendor-ID auto-detection")
+    env_parser.add_argument("--uplink-iface", help="[bench] explicit uplink (internet-bearing) network interface, skips auto-detection")
+    env_parser.add_argument("--wifi-iface", help="[bench] explicit WiFi adapter to host the AP on, skips auto-detection")
+    env_parser.add_argument("--ssid", help="[bench] explicit AP SSID - only used when creating a new bridge, ignored if one already exists")
+    env_parser.add_argument("--password", help="[bench] explicit AP password - only used when creating a new bridge, ignored if one already exists")
+
     # Backward/convenience compat: `setup_toolchain.py [--some-setup-flag ...]` (no subcommand)
     # still means "setup", so existing invocations and muscle memory keep working.
     argv = sys.argv[1:]
-    if argv and argv[0] not in ("setup", "test", "-h", "--help"):
+    if argv and argv[0] not in ("setup", "test", "env", "-h", "--help"):
         argv = ["setup", *argv]
     elif not argv:
         argv = ["setup"]
@@ -720,6 +1017,8 @@ def main() -> int:
 
     if args.command == "test":
         return run_test(args, versions)
+    if args.command == "env":
+        return run_env(args, versions_path, versions)
     return run_setup(args, versions_path, versions)
 
 

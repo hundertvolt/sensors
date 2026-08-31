@@ -185,6 +185,16 @@ constraints.
 
 ## Deferred / explicitly out-of-scope work
 
+- **`env --tier flash`/`--tier bench` real-hardware verification — not yet done.**
+  `toolchain/setup_toolchain.py env` (SPECIFICATION.md Part B.12) folds Generic/Flash/Bench dev-
+  environment setup into one tiered command. `generic` was verified fully end-to-end in a cloud
+  sandbox (real `uv sync`/`npm ci`/toolchain build); the USB/network *detection* logic was also
+  exercised for real where safe (empty-`/sys` USB scan, a real `iproute2` apt-install-and-parse).
+  Not yet exercised for real: `flash` against an actual RP2040 board, and `bench` actually creating
+  the NetworkManager bridge/AP (deliberately not installed/enabled in the shared cloud sandbox this
+  was built in, to avoid disrupting that container's own networking). Next step: run both tiers for
+  real on the bench Rpi4, the same dedicated-session pattern used for the earlier `build_firmware.py`
+  autolaunch verification (see this branch's own commit history).
 - **Real-hardware re-test of the segfault fix and the memory-leak soak test (owner's standing
   future plan, not yet actionable)** — the project owner has real future plans to run tests directly
   on the actual rp2040 target hardware. Once that's possible, repeat both Unix-port soak tests

@@ -205,7 +205,16 @@ needs the bench unit to reach a real WiFi network with real internet/NTP access.
 (an Rpi4) bridges its own uplink (`eth0`) with a WiFi AP it hosts (`wlan0`) via NetworkManager, so
 the RP2040 joins the exact same LAN/internet path the host itself has. This is real, persistent
 host infrastructure (survives a host reboot; verify with `nmcli connection show`), not a
-one-off/torn-down-after-use setup:
+one-off/torn-down-after-use setup.
+
+**Automated**: `uv run toolchain/setup_toolchain.py env --tier bench` (see README.md's "Dev
+environment setup" table) runs exactly the recipe below — auto-detecting the uplink/WiFi
+interfaces, generating a fresh SSID/password unless `--ssid`/`--password` are given, and applying
+the same PMF/WPA2 tuning. It's idempotent: if `br0-wifi-ap` already exists (e.g. from a prior run,
+or from following the manual recipe by hand), it's left alone and only its current SSID is
+reported — nothing gets recreated or re-randomized. The manual recipe below remains the documented
+mechanism it wraps, and the fallback for a host where interface auto-detection is ambiguous
+(`--uplink-iface`/`--wifi-iface` override it explicitly):
 
 ```sh
 nmcli connection add type bridge ifname br0 con-name br0
