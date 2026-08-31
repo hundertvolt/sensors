@@ -7,6 +7,7 @@ Every method returns a well-defined value, never raises.
 # is the intent, not a failure.
 
 import asyncio
+import gc
 import random
 import time
 
@@ -52,6 +53,13 @@ _NAME = const("SYSTEM")
 # SPECIFICATION.md Part C), not a mechanism that needs revisiting per new field.
 _VAL_DEBUG_LEVEL = const((("DebugLevel", "int", 0, 0, 5, None),))  # range matches print_log.py's
 # PrintLog.level_off()..level_info() (0-5); default 0 matches the reference file's own debug=False.
+# TaskCheckSecs overrides the task-supervisor loop's own poll cadence (start_and_check_tasks()'s
+# asyncio.sleep(), default _TASK_CHECK_TIME=2s below) live, via the same REST-settable path as
+# DebugLevel - lets a tighter check cadence be dialed in remotely for hunting a timing-sensitive
+# task-restart bug, without a firmware reflash. Upper bound (60s) is arbitrary headroom past the
+# default, not a hardware limit; lower bound (1s) keeps the watchdog fed comfortably inside
+# _RESET_DELAY/the WDT's own 8388ms cap either way (SPECIFICATION.md Part F).
+_VAL_TASK_CHECK_SECS = const((("TaskCheckSecs", "int", _TASK_CHECK_TIME, 1, 60, None),))
 
 
 class SystemService:
@@ -95,11 +103,15 @@ class SystemService:
         # unused), just its own directly-embedded ConfigManager, same underlying class and file
         # convention every other module already uses. self.cfg_schema stays public, matching
         # SPECIFICATION.md's convention for a module whose caller writes to cfgmgr directly.
-        self.cfg_schema: ConfigSchema = _VAL_DEBUG_LEVEL
+        self.cfg_schema: ConfigSchema = _VAL_DEBUG_LEVEL + _VAL_TASK_CHECK_SECS
         self.cfgmgr = ConfigManager(cfg_path + "config_" + _NAME + ".cfg", self.cfg_schema, _NAME)
         # get_debug_level()'s own source of truth - starts at the schema default; setup()/
         # set_debug_level() keep it current from there.
         self._current_debug_level = 0
+        # start_and_check_tasks()'s own live poll cadence - starts at the schema default (matches
+        # _TASK_CHECK_TIME); setup()/_set_dict_cfg() keep it current from there, same split as
+        # _current_debug_level above.
+        self._task_check_secs = int(_TASK_CHECK_TIME)
         # Registry of every other logger's own set_level() bound method (print_log.py's
         # PrintLog.set_level - already exists, nothing new added there), set up once at boot via
         # set_level_setters() below, the same style as get_task_starters()/get_timer_starters():
@@ -187,10 +199,25 @@ class SystemService:
         # Without this, start_and_check_tasks()'s own "Task ended - attempting restart" warning
         # below had zero diagnostic content - every restart looked identical whether the task
         # returned cleanly, was cancelled, or crashed on a real bug.
+        # `all()`-gated (DebugLevel=5) task-identity/heap snapshot, live-settable without a reflash
+        # via PUT /system {"DebugLevel": 5} - was the missing piece while chasing a real, on-hardware
+        # spurious-restart bug (see CLAUDE.md/SPECIFICATION.md's "wrnno=10"/"errno=6" writeup):
+        # confirms whether the same Task object keeps reappearing across restarts, and whether the
+        # restart correlates with heap pressure.
+        self.pr.all("Task", n, "id=", id(task), "mem_free=", gc.mem_free())
         try:
             await task
         except asyncio.CancelledError:
-            self.pr.err("Task", n, "ended: was cancelled")
+            # Previously logged via the non-persisting self.pr.err() - a task ending via
+            # CancelledError left zero trace in errcount, indistinguishable from a clean return.
+            # Fixed to persist (own errno=6, distinct from errno=5's real-exception case) - this is
+            # what actually explained the "wrnno=10" restart: err_count staying at exactly the
+            # number of wrn_s() calls (never higher) already proved neither this branch's old
+            # non-persisting call nor a real exception could be the cause, which only left a clean
+            # return - except auto_led_override()'s only clean-return path (the _finalized guard)
+            # was independently confirmed True at every entry. CancelledError was the one remaining,
+            # then-invisible possibility this fix makes observable.
+            await self.pr.err_s("Task", n, "ended: was cancelled", errno=6)
         except Exception as e:
             await self.pr.err_s("Task", n, "ended with exception:", e, errno=5)
 
@@ -226,6 +253,12 @@ class SystemService:
                 if tasks[n] is None or tasks[n].done():  # type: ignore[union-attr]
                     if tasks[n] is not None:
                         await self._log_dead_task(tasks[n], n)  # type: ignore[arg-type]
+                    else:
+                        # Previously silent - a starter that raised on start (_start_task()'s own
+                        # errno=3, already persisted) left this specific re-detection with no trace
+                        # of its own; now visible at the same all()-gated diagnostic tier as
+                        # _log_dead_task()'s.
+                        self.pr.all("Task", n, "was None (previous start failed)")
                     task_errors += _TASK_FAIL_INCREMENT
                     tasks[n] = await self._start_task(task_starters[n], n)
                     no_fail = False
@@ -247,7 +280,7 @@ class SystemService:
                 self.reboot_system()
                 return
 
-            await asyncio.sleep(_TASK_CHECK_TIME)
+            await asyncio.sleep(self._task_check_secs)
 
     def get_task_starters(self) -> "list[Callable[[], asyncio.Task[Any]]]":
         return [self.start_asy_uptime_counter]
@@ -277,11 +310,13 @@ class SystemService:
         # setter, so every other logger reflects the real, persisted level from here on, not
         # whatever it started at.
         await self.cfgmgr.setup()
-        level = await self.cfgmgr.get_int_values(self.cfg_schema)
-        if level is None:
-            return
-        self._current_debug_level = level[0]
-        self._apply_level(level[0])
+        level = await self.cfgmgr.get_int_values(_VAL_DEBUG_LEVEL)
+        if level is not None:
+            self._current_debug_level = level[0]
+            self._apply_level(level[0])
+        secs = await self.cfgmgr.get_int_values(_VAL_TASK_CHECK_SECS)
+        if secs is not None:
+            self._task_check_secs = secs[0]
 
     def get_cfg_schema(self) -> "ConfigSchema":
         return self.cfg_schema
@@ -310,6 +345,10 @@ class SystemService:
             if level is not None:
                 self._current_debug_level = level[0]
                 self._apply_level(level[0])
+        if results.get("TaskCheckSecs") in ("Valid", "Unchanged"):
+            secs = await self.cfgmgr.get_int_values(_VAL_TASK_CHECK_SECS)
+            if secs is not None:
+                self._task_check_secs = secs[0]
         return results
 
     def set_level_setters(self, setters: "list[Callable[[int], None]]") -> None:

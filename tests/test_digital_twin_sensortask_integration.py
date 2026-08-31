@@ -210,9 +210,9 @@ def test_every_get_endpoint_is_reachable_over_real_http_and_shaped_correctly() -
 
             res = await _http_client.fetch("127.0.0.1", port, "GET", "/system")
             assert res.status_code == 200
-            # DebugLevel is sourced from sysfunct (flat) - GMTOffset/DSTOffset from ntp (nested),
-            # same fix as /networking above.
-            assert res.json() == {"DebugLevel": 0, "GMTOffset": 3600, "DSTOffset": 3600}
+            # DebugLevel/TaskCheckSecs are sourced from sysfunct (flat) - GMTOffset/DSTOffset from
+            # ntp (nested), same fix as /networking above.
+            assert res.json() == {"DebugLevel": 0, "TaskCheckSecs": 2, "GMTOffset": 3600, "DSTOffset": 3600}
 
             res = await _http_client.fetch("127.0.0.1", port, "GET", "/notification")
             assert res.status_code == 200

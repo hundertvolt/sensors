@@ -1062,6 +1062,45 @@ def test_start_and_check_tasks_logs_the_real_exception_of_a_crashed_task() -> No
     assert 5 in log["ErrNum"]  # type: ignore[operator]  # _log_dead_task's own errno=5, distinct from wrn_s's own wrnno
 
 
+def test_start_and_check_tasks_logs_a_self_cancelled_task_as_a_persisted_error() -> None:
+    # Regression test for the real "wrnno=10" bench-hardware bug (see CLAUDE.md/SPECIFICATION.md):
+    # _log_dead_task()'s CancelledError branch used to log via the non-persisting self.pr.err(),
+    # so a task ending via CancelledError left zero trace in errcount - indistinguishable from a
+    # clean return, and the actual explanation for a real restart that had already ruled out both
+    # the clean-return path (auto_led_override()'s only one, the _finalized guard) and a real
+    # exception (errno=5 never fired). Fixed to persist via its own errno=6.
+    svc = make_service()
+    call_count = [0]
+
+    def self_cancelling_starter() -> "asyncio.Task[None]":
+        call_count[0] += 1
+        attempt = call_count[0]
+
+        async def _c() -> None:
+            if attempt == 1:
+                raise asyncio.CancelledError()
+            await asyncio.sleep(3600)  # second attempt: stay alive so the loop settles
+
+        return asyncio.create_task(_c())
+
+    async def scenario() -> None:
+        task = asyncio.create_task(svc.start_and_check_tasks([self_cancelling_starter]))
+        for _ in range(10):
+            await asyncio.sleep(0)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    with _FastAsyncSleep():
+        run(scenario())
+    assert call_count[0] >= 2
+    log = run(svc.get_error_counter())["SYSTEM"]
+    assert 6 in log["ErrNum"]  # type: ignore[operator]  # _log_dead_task's own errno=6 for a self-cancelled task
+    assert svc.pr.err_count >= 2  # the errno=6 entry plus the routine "Task ended" warning
+
+
 def test_start_and_check_tasks_clean_task_return_does_not_log_a_spurious_exception() -> None:
     # Sibling of the crash test above: a task that returns cleanly (no exception) must still be
     # restarted and logged via the routine "Task ended" warning, but _log_dead_task() itself must
@@ -1261,6 +1300,42 @@ def test_get_cfg_schema_returns_the_debug_level_field() -> None:
     svc = make_service()
     schema = svc.get_cfg_schema()
     assert schema[0][0] == "DebugLevel"
+
+
+def test_get_cfg_schema_returns_the_task_check_secs_field() -> None:
+    svc = make_service()
+    schema = svc.get_cfg_schema()
+    assert schema[1][0] == "TaskCheckSecs"
+
+
+def test_task_check_secs_defaults_to_the_task_check_time_constant() -> None:
+    svc = make_service(cfg_path=_tmp_cfg_dir())
+    run(svc.setup())
+    assert svc._task_check_secs == 2  # _TASK_CHECK_TIME: micropython.const(), compiled away, hardcoded per SPECIFICATION.md Part E.5.1
+
+
+def test_task_check_secs_can_be_set_live_without_a_reflash_and_survives_a_reboot() -> None:
+    # The point of this field (see system_service.py's own schema comment): dial in a tighter
+    # task-supervisor poll cadence remotely, via the same REST-settable path as DebugLevel, without
+    # rebuilding/reflashing firmware.
+    cfg_path = _tmp_cfg_dir()
+    svc = make_service(cfg_path=cfg_path)
+    run(svc.setup())
+    results = run(svc._set_dict_cfg({"TaskCheckSecs": 1}, svc.cfg_schema))
+    assert results.get("TaskCheckSecs") == "Valid"
+    assert svc._task_check_secs == 1
+
+    svc_after_reboot = make_service(cfg_path=cfg_path)
+    run(svc_after_reboot.setup())
+    assert svc_after_reboot._task_check_secs == 1
+
+
+def test_task_check_secs_out_of_range_is_rejected_and_leaves_the_live_value_unchanged() -> None:
+    svc = make_service(cfg_path=_tmp_cfg_dir())
+    run(svc.setup())
+    results = run(svc._set_dict_cfg({"TaskCheckSecs": 999}, svc.cfg_schema))  # outside the schema's 1-60 range
+    assert results.get("TaskCheckSecs") == "Invalid"
+    assert svc._task_check_secs == 2  # _TASK_CHECK_TIME: micropython.const(), compiled away, hardcoded per SPECIFICATION.md Part E.5.1
 
 
 def test_set_level_setters_replaces_any_previously_registered_list() -> None:
