@@ -3102,18 +3102,21 @@ holds tests that need a human's hands — printed instructions, human-feasible b
 explicit confirmation prompts — kept structurally apart so an unattended automated pass can never
 silently stall waiting on an absent human.
 
-**As of this writing, nothing in `tests_hardware/` has been run against real hardware** — the
-session that wrote it had no board or bench rig attached; every test was verified only for
-correct collection (`pytest tests_hardware --collect-only` succeeds with nothing attached, every
-fixture skips cleanly rather than erroring), lint-cleanliness, and (where applicable) faithful
-grounding against real source/datasheets. See `tests_hardware/README.md` for provisioning
-instructions and — importantly — a list of mechanisms flagged as unverified during implementation
-(e.g. whether `mpremote`'s always-implicit soft-reset on raw-REPL entry re-executes
-`boot.py`/`main.py`) that a first real run should specifically check rather than assume. `src/`,
-`tests/`, and `digital_twin/`'s own lint/type-check scope (`pyproject.toml`'s `[tool.ruff]`/
-`[tool.mypy]`) does **not** currently extend to `tests_hardware/`, matching the same deliberate,
-not-yet-decided non-scoping `tests_scripts/` already has (see CLAUDE.md's "Code quality tooling")
-— extending either scope to cover `tests_hardware/` is a separate future decision.
+**Real-hardware execution is in progress**, on the bench Pi4, at the project owner's go-ahead — the
+session that wrote `tests_hardware/` had no board or bench rig attached, so every test was
+originally verified only for correct collection (`pytest tests_hardware --collect-only` succeeds
+with nothing attached, every fixture skips cleanly rather than erroring), lint-cleanliness, and
+(where applicable) faithful grounding against real source/datasheets. The flash tier is now
+confirmed green against real hardware (real bugs found and fixed along the way — wrong pin wiring
+in a few device scripts, a couple of MicroPython-behavior misassumptions); the bench tier is
+partially run, with a real, not-yet-fully-root-caused WiFi reconnection flakiness under active
+investigation. See `REAL_HARDWARE_RUN_LOG.md` (repo root, temporary) for current status/history and
+`tests_hardware/README.md` for the durable reference (provisioning, env vars, and the mechanisms
+still flagged as genuinely unverified). `src/`, `tests/`, and `digital_twin/`'s own lint/type-check
+scope (`pyproject.toml`'s `[tool.ruff]`/`[tool.mypy]`) does **not** currently extend to
+`tests_hardware/`, matching the same deliberate, not-yet-decided non-scoping `tests_scripts/`
+already has (see CLAUDE.md's "Code quality tooling") — extending either scope to cover
+`tests_hardware/` is a separate future decision.
 
 ---
 

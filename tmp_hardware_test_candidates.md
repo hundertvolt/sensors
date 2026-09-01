@@ -12,9 +12,9 @@ the same as verified; no board/bench rig was attached to the session that wrote 
 
 Every `[AUTO]` item below (Part 1) now has real, committed code in `tests_hardware/flash/` or
 `tests_hardware/bench/`; every `[MANUAL]` item (Part 2) has real code in `tests_hardware/manual/`.
-None of it has run against real hardware yet — see `tests_hardware/README.md` for what a dedicated
-session needs to do next, including a list of mechanisms flagged as unverified during
-implementation. Two deviations from this list worth knowing before reading further (a third,
+**Real-hardware execution is now in progress** on the bench Pi4 — see `REAL_HARDWARE_RUN_LOG.md`
+(repo root, temporary) for current status and `tests_hardware/README.md` for how to run it and the
+mechanisms still flagged as unverified. Two deviations from this list worth knowing before reading further (a third,
 originally listed here, was a mistake this session made and then corrected — item 4 IS implemented
 as originally framed: `src/asy_scd30_driver.py` does wire a real GPIO IRQ pin plus a staged
 self-healing fallback, an earlier pass here wrongly claimed otherwise from an incomplete grep, and

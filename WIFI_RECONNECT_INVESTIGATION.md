@@ -29,9 +29,9 @@ during a failing cycle — and never used the bench harness's own existing tools
 *intervene* in AP-side state as a diagnostic, only to passively observe it. That's the gap this doc
 targets first, because the existing evidence fits it unusually well (see §2).
 
-Everything below assumes you've already read `tests_hardware/README.md`'s "First real run" WiFi
-section and `REAL_HARDWARE_RUN_LOG.md`'s Phase 2 section in full — this doc builds directly on both
-and doesn't restate their content except where needed for context.
+Everything below assumes you've already read `tests_hardware/README.md`'s "Known assumptions and
+open findings" WiFi bullet and `REAL_HARDWARE_RUN_LOG.md`'s Phase 2 section in full — this doc
+builds directly on both and doesn't restate their content except where needed for context.
 
 ## 1. Bird's-eye picture: three separable layers, only one still genuinely open
 
@@ -40,8 +40,8 @@ destructively soft-resetting the DUT's WiFi connection attempt on every poll (fi
 `bdfc0716`, then fixed *again*, more fundamentally, in `b802d7b0` — see `REAL_HARDWARE_RUN_LOG.md`).
 **Status: fixed in code, not yet verified end-to-end** (session paused mid-verification). This alone
 could have inflated the observed failure rate — a bug layered *on top of* whatever real flakiness
-exists, not the whole explanation for it (the "First real run" list's own 2/5 reproduction predates
-`tests_hardware/` entirely and used no `board.exec()` polling at all).
+exists, not the whole explanation for it (the original 2/5 reproduction, in an earlier session
+before `tests_hardware/` existed at all, used no `board.exec()` polling at all).
 
 **Layer B — the application-level retry/hotspot-fallback state machine**
 (`src/asy_wifi_service.py`'s `wlan_connect()`/`_register_sta_connection_failure()`). Confirmed

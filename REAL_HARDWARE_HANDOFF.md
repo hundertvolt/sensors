@@ -110,6 +110,12 @@ to do).
 
 ## Suggested run order
 
+**This section describes the original, never-yet-started order.** Real-hardware execution is now
+under way - **read `REAL_HARDWARE_RUN_LOG.md`'s "Next session should start here" list for the
+current, up-to-date next step** rather than restarting from item 1 below. Kept here for the general
+shape (fast/no-network first, longest/highest-risk scenario watched closely, opt-in soaks/flash-
+cycle last), which still holds even though the specific starting point has moved on:
+
 1. `scripts/run_flash_hardware_suite.sh -v` - fast, no bench/WiFi needed, confirms basic
    `mpremote`/board access works before anything more elaborate. Fix or report anything that fails
    here before moving on - a flash-tier failure likely points at something more fundamental

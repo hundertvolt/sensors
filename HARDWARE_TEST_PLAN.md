@@ -166,7 +166,8 @@ Concretely, going forward: whenever a genuinely shared behavior is added to
 be stated in that function's own docstring (see its two current functions,
 `assert_named_modules_constructed`/`assert_sensor_payload_not_self_wrapped`, for the pattern) —
 plain, human-maintained convention, not a machine-checked manifest. `tests_hardware/README.md`'s
-own "first real run" section plays the equivalent role for flash/bench-specific findings.
+own "Known assumptions and open findings" section plays the equivalent role for flash/bench-specific
+findings.
 
 ~~A single checked-in table... fails CI when violated.~~ *(superseded above - kept struck through
 rather than deleted, so a reader mid-document doesn't wonder whether this was ever proposed.)*
@@ -279,10 +280,10 @@ coverage story for real-hardware runs was built or is planned — SPECIFICATION.
     item B.5) from `[MANUAL]` to `[AUTO]`.
   Neither is assumed to be worth building — flag to the project owner as an explicit choice, not a
   default plan.
-- **Whether `mpremote`'s implicit soft-reset re-executes `boot.py`/`main.py`** — a real mechanism
-  question found while building the harness (see `tests_hardware/harness.py`'s
-  `Board.run_isolated()` docstring and `tests_hardware/README.md`'s "first real run" list for the
-  full account and every other item flagged there the same way).
+- ~~Whether `mpremote`'s implicit soft-reset re-executes `boot.py`/`main.py`~~ — **resolved during
+  the real-hardware run**: no. See `tests_hardware/harness.py`'s `Board.run_isolated()` docstring
+  and `REAL_HARDWARE_RUN_LOG.md`'s Phase 2 for the full finding — only a genuine `hard_reset()`
+  resumes the live system.
 - ~~The SCD30 real-hardware RDY-pin finding~~ — **corrected, not real**: an earlier pass through
   this section wrongly claimed `asy_scd30_driver.py` never wires a GPIO to the SCD30's own RDY
   pin. It does — a real `irq_pin.irq(trigger=IRQ_RISING, ...)` plus a genuine staged self-healing

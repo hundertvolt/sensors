@@ -3,15 +3,18 @@
 Implements HARDWARE_TEST_PLAN.md's flash/bench/manual backends: automated tests driven from the
 host over `mpremote`/`nmcli`/`iptables` (never the MicroPython Unix port `tests/` uses - see
 SPECIFICATION.md Part E.1), plus a structurally separate manual runner for tests that need a human's
-hands. **Nothing in this directory has been run against real hardware yet** - it was written and
-verified collectible/lint-clean/type-correct in a session with no board or bench rig attached (see
-HARDWARE_TEST_PLAN.md's own provenance note). This file is what a dedicated session *with* real
-hardware needs to actually start running it.
+hands. Written in a session with no board or bench rig attached; **real-hardware execution is now in
+progress** on the bench Pi4 - the flash tier is confirmed green, the bench tier is partially run.
+Current status/history: `REAL_HARDWARE_RUN_LOG.md` (repo root, temporary, live). This file stays the
+durable reference: prerequisites, environment variables, how to run it, and the facts/assumptions
+worth knowing before trusting a run's results.
 
-**If you're the session about to actually run this tier for the first time, read
-`REAL_HARDWARE_HANDOFF.md` (repo root) first** - it's a waiting-for-go-ahead handoff doc with a
-suggested run order and the critical safety facts, and explicitly must not be acted on without the
-project owner's go-ahead given directly in your own conversation.
+**Any session about to run real-hardware tests against this tier needs the project owner's
+go-ahead first** - see `REAL_HARDWARE_HANDOFF.md` (repo root) for the critical safety facts (the
+`--allow-flash-cycle`/long-soak opt-in gates, the stage-6 permanent-WLAN-deactivation risk,
+`BENCH_AP_PASSWORD` handling) and `REAL_HARDWARE_RUN_LOG.md`'s "Next session should start here" for
+the current, up-to-date run order - a go-ahead given to a different or earlier session does not
+carry over.
 
 ## Prerequisites
 
@@ -74,19 +77,20 @@ Both automated scripts are plain `uv run pytest` wrappers - any pytest flag work
 `-m role_reversal`, `-v`, `--tb=short`, ...). `--collect-only` works with nothing attached at all
 (every fixture skips cleanly, never errors, when the hardware it needs isn't reachable).
 
-## First real run - things flagged as genuinely unverified, not silently assumed
+## Known assumptions and open findings
 
-These were found and explicitly flagged while writing this tier against real source/datasheets, but
-could not be checked further without hardware. Read them before trusting the first real run's
-results blindly - a failure in one of these areas may point at the flagged assumption being wrong,
-not at a real product bug:
+Flagged while writing this tier against real source/datasheets, or found once real-hardware runs
+started. Read them before trusting a run's results blindly - a failure in one of these areas may
+point at a flagged assumption being wrong, not at a real product bug. Resolved items are struck
+through, kept (not deleted) so a reader mid-investigation doesn't wonder whether something was ever
+a live question:
 
-- **Does `mpremote`'s implicit soft-reset (every `exec()`/`run_isolated()` call, confirmed against
-  real mpremote 1.29.0 source - see `harness.Board.run_isolated()`'s own docstring) re-execute
-  `modules/_boot.py`/`boot.py`/`main.py`, or does raw-REPL mode suppress that?** Tests that need to
-  observe the *real* boot sequence deliberately use `hard_reset()` + `tail_log()` instead of
-  `exec()`/`run_isolated()` specifically to sidestep this, but the underlying question itself is
-  still open.
+- ~~Does `mpremote`'s implicit soft-reset re-execute `modules/_boot.py`/`boot.py`/`main.py`?~~ —
+  **resolved: no.** Confirmed against the pinned MicroPython C source and empirically on real
+  hardware: only a genuine `hard_reset()` resumes the live system; `exec()`/`run_isolated()` never
+  do, regardless of `soft_reset_after`. See `harness.Board.run_isolated()`'s own docstring for the
+  full finding. Tests that need to observe the *real* boot sequence correctly use `hard_reset()` +
+  `tail_log()` instead, for exactly this reason.
 - **Does `machine.soft_reset()` reset the hardware counter `time.ticks_ms()` reads from?** Matters
   for `test_bus_electrical_timing.py::test_ticks_ms_real_2pow30_rollover`'s multi-day polling design
   (deliberately uses `board.exec()`, never `run_isolated()`, for exactly this reason - but confirm
@@ -124,153 +128,39 @@ not at a real product bug:
   `test_real_ws2812_neopixel_signal_timing` test is deliberately qualitative (visual/scope check,
   human judgment) rather than asserting any specific timing value pulled from memory, per CLAUDE.md's
   "say so explicitly if the datasheet isn't there" rule.
-- **WiFi reconnection flakiness - root-caused further (not fully), during the first real run.**
-  Previously: across ~5 boots in an earlier session, WiFi reconnection after a hardware reset
-  succeeded cleanly 3 times and fell back to hotspot mode twice, and `sudo iw dev wlan0 station
-  dump` on the bench host still showed the device associated at the link layer during a failure,
-  suggesting a DHCP/L3-timing issue rather than the WPA2 handshake itself.
-
-  **New evidence from this real run** (8 fresh `hard_reset()` trials, each with concurrent
-  `iw dev wlan0 station dump` polling and one trial with a live `tcpdump port 67 or port 68`
-  capture spanning a full failure-to-hotspot cycle):
-  - **Failure rate was far higher in this session's bursts: 6/8 trials fell back to hotspot**
-    (each following the exact same shape - `conn_fail_to_hotspot=5` consecutive "WLAN connection
-    failed" cycles, each cycle taking ~4-8s from "Establishing WLAN connection" to the failure
-    log line). Small sample, but notably worse than the previously observed 2/5.
-  - **Zero DHCP packets (port 67/68) were captured during a full failing cycle**, directly
-    contradicting the earlier "DHCP/L3-timing" hypothesis - if the CYW43 firmware's own internal
-    DHCP client were even attempting a lease, a broadcast DHCPDISCOVER would appear on the wire.
-    None did, across an entire capture window spanning multiple retry-and-fail cycles.
-  - **The AP-side station entry's `rx bytes` counter never grows during a failing cycle, but its
-    `inactive time` periodically resets to a low value** (e.g. dropping from ~40000ms back to
-    ~1000ms right around each "WLAN connection failed" log line) - meaning *some* frame from the
-    DUT's MAC does land at the AP around each retry (enough to reset the inactivity timer), but
-    never a data-plane frame (no `rx bytes` growth, no DHCP). This is consistent with a
-    management-frame-only interaction (e.g. an association/re-association attempt) that never
-    progresses far enough for the CYW43 firmware to consider itself ready to start DHCP.
-  - **Revised working hypothesis**: the failure is most plausibly at or before WPA2
-    association/key-handshake completion on a *rapid* reconnect shortly after a previous session
-    with the same AP - not a DHCP-server-side timing issue as previously suspected. This bench
-    AP/CYW43 pairing already has one confirmed real handshake fragility (`dev_legacy/README.md`'s
-    `wifi-sec.pmf disable` fix, without which the handshake silently fails outright) - this could
-    be an adjacent, not-yet-identified issue in the same area (e.g. the AP's own hostapd backend
-    not fully clearing a very recent prior association's state before a fast reconnect, or the
-    CYW43 chip's own onboard wireless firmware retaining stale association state across an
-    RP2040-only `machine.reset()`/hard reset that doesn't necessarily power-cycle the WiFi chip
-    itself).
-  - **Recovery note**: cycling the bench AP profile itself (`nmcli connection down/up
-    br0-wifi-ap`) before a subsequent `hard_reset()` was followed by a clean, stable connection in
-    this session - not confirmed as a reliable fix (one data point), but worth trying if
-    reconnection issues seem to worsen over a long session.
-  - **Deliberately not fixed in `src/`**: this looks like CYW43-firmware/hostapd-adjacent
-    behavior, the same "outside this project's own code, a different backstop applies" bucket
-    CLAUDE.md already places I2C-bus-wedge recovery and (this same file's Fourth-pass section)
-    DHCP-client behavior in - `src/asy_wifi_service.py`'s own retry/hotspot-fallback logic is
-    behaving exactly as designed given what the CYW43 firmware reports back; widening
-    `_poll_sta_connect_status()`'s ~5s poll window wouldn't obviously help, since the firmware
-    itself reports `STAT_CONNECT_FAIL` well inside that window on every observed failure, not
-    after our own poll loop gives up first. Needs the project owner's call on whether this is
-    worth pursuing further (e.g. with a monitor-mode capture or a second WiFi test client -
-    HARDWARE_TEST_PLAN.md §9's own "not currently provisioned" list), not something to patch
-    blind here.
-  - Confirmed NOT the cause: `harness.py`'s own `hard_reset()`/hardware DTR reset mechanism itself
-    (the same failure reproduces identically whether triggered by this tier's harness or an ad hoc
-    `mpremote ... reset`), and not a `tests_hardware/`-side artifact (reproduced against the live,
-    normally-booting system with no test code involved at all).
-  - **Confirmed NOT new-code-introduced**: `python/CommonDrivers/async_connect.py`'s legacy
-    `wlanConnect()` (the deployed, field-proven code) has the exact same shape - `wlan.connect()`
-    then poll `wlan.status()` up to 10x0.5s, treat `STAT_CONNECT_FAIL` as a failure, the same
-    `conn_fail_to_hotspot` streak. The refactor carried this forward faithfully; it didn't
-    introduce a new bug here.
-  - **Checked directly against the pinned MicroPython C source** (project-owner-prompted, rather
-    than assumed) whether the CYW43 chip could be silently staying associated across a reset
-    without the RP2040 side knowing: `ports/rp2/main.c` calls `cyw43_init()` exactly once, *before*
-    the soft-reset loop - a **soft reset genuinely never re-touches the WiFi chip at all**, so a
-    soft-reset-based test (none of this tier's automated tests use one for this) could plausibly
-    see stale, chip-retained association state. This tier's reproduction (and this tier's own
-    `hard_reset()`) exclusively uses a **hard** reset, which restarts `main()` from scratch;
-    `cyw43_ensure_up()` in the vendored `cyw43-driver` genuinely toggles the chip's own
-    `WL_REG_ON` power pin low then high on that path (`cyw43_ctrl.c`), confirmed by reading that
-    function directly - so stale chip-side association state is not the explanation for what this
-    tier reproduced, though it's a real, separate fact worth knowing about soft resets specifically.
-  - **This is a known class of upstream issue, not unique to this project** (checked directly via
-    web search, not assumed): `raspberrypi/pico-sdk#2186` is a maintainer-acknowledged, since-fixed
-    bug where rapid repeated WiFi-connect attempts hit a real timing bug in `cyw43_do_ioctl()`'s
-    own polling loop - a bare `sleep_ms(10)` insert fixed it. `pico-sdk#1373`/`#2316` are further
-    open reports of Pico W connect failures specifically tied to reset/reboot sequences. This is
-    consistent with genuine CYW43-driver-level timing sensitivity around reconnects being a real,
-    recognized hardware/firmware characteristic, not something specific to this codebase.
-  - **A more specific, testable hypothesis this leaves open**: this bench's own `main.py` runs at
-    a fairly chatty debug level (a sensor-trigger print roughly every 1-2s from three drivers
-    concurrently) under MicroPython's single-threaded cooperative asyncio scheduler, while
-    `_poll_sta_connect_status()`'s entire connect budget is only ~5s - real print-heavy USB-serial
-    I/O contending for the same event loop during that narrow window is a plausible source of
-    exactly the kind of timing jitter the upstream `cyw43_do_ioctl()` bug above shows this driver
-    can be sensitive to. Not confirmed (would need a lower-debug-verbosity A/B comparison to test),
-    but a concrete, actionable next step if this is investigated further - and notably would NOT
-    require any `src/asy_wifi_service.py` change to test, only a temporary debug-level change.
-  - `test_real_sta_connect_reaches_established_after_a_hard_reset` (item 7 in
-    `bench/test_wifi_networking.py`) and `bench/test_network_resilience.py`'s WiFi-outage tests
-    remain the natural regression coverage for this - they don't retry past a single hard_reset(),
-    so an unlucky run can legitimately fail there; that's a real, disclosed flake risk in this
-    tier's own bench-tier WiFi tests, not a test bug to fix away.
-  - **See `WIFI_RECONNECT_INVESTIGATION.md` (repo root) for a deep-research pass and an ordered,
-    fast-first test plan prepared specifically to continue this investigation** - written after the
-    findings above, including a new candidate root cause (AP-side stale station-table state on
-    `br0-wifi-ap`'s own backend, tested via this file's own already-existing but never-yet-used
-    `bench_control.BenchBridge.kick_client()`) that this tier's own evidence-gathering never
-    considered. Read it before spending more time on the debug-verbosity-jitter hypothesis above -
-    that doc's test plan sequences it after a cheaper, more directly-supported experiment.
-
-## A mistake this session made and then corrected - SCD30 RDY pin
-
-An earlier pass through this file claimed `src/asy_scd30_driver.py` never wires a real GPIO to the
-SCD30's own RDY pin, and skipped `test_scd30_rdy_pin_real_irq_edge` on that basis. **That claim was
-wrong**, caught by the project owner: the driver's own module docstring says plainly "SCD30_Reader
-runs the read loop plus an IRQ-pin self-healing trigger", and the mechanism is fully real -
-`SCD30_Reader`'s own `irq_pin: int` constructor parameter (production value GPIO 8, via
-`SCD30_Reader(i2c0, 8, ...)` in `sensortask_wozi.py`), a real `irq_pin.irq(trigger=IRQ_RISING,
-...)` wired in `start_timer()`, and a genuine staged self-healing fallback in `scd_init_irq()` (a
-500ms software poll that manually fires the same trigger event if the real IRQ was somehow missed
-and the pin is stuck HIGH). The earlier check grepped for the literal string "rdy" and found
-nothing (the code calls it "irq_pin"/"IRQ" throughout, not "rdy"), then stopped there instead of
-reading the rest of the file - the module's own header sentence would have caught this immediately.
-Fixed: `test_scd30_rdy_pin_real_irq_edge` is now a real, implemented test
-(`test_scd30_real_irq_edge_drives_a_real_read`, `tests_hardware/device_scripts/
-scd30_real_irq_edge.py`) - see that script's own docstring for the corrected design and its one
-genuine, disclosed limit (software alone can't fully distinguish a genuine hardware IRQ firing from
-the self-healing fallback firing instead; only a scope on the pin itself could).
-
-## More findings from a second, deeper re-audit (requested directly, after the mistake above)
-
-Re-reading every driver this tier makes claims about in full (not just the narrow greps that caused
-the SCD30 mistake) surfaced two more real issues, both fixed:
-
-- **`scd30_plausibility_read.py` polled sensor data without ever starting the read loop that would
-  populate it.** `get_data()` only ever returns whatever `_store_scd()` last wrote via
-  `_set_meas_data()` (confirmed directly against `base_classes.py`), which only happens from inside
-  `read_loop()` - a task that was never started. The script could only ever have printed FAIL.
-  Fixed: it now calls `start_timer()` and starts `read_loop()`/`scd_init_irq()` before polling, the
-  same three calls `sensortask_wozi.py`'s own real wiring makes.
-- **A permanent-WLAN-deactivation risk in the hotspot role-reversal scenario's own stage 6** - see
-  this file's own "first real run" list above for the full account (`asy_wifi_service.py`'s
-  `_register_sta_connection_failure()`). Fixed with a `hard_reset()` recovery fallback in
-  `joined_hotspot`'s own fixture teardown.
-- **Bare `uv run pytest tests_hardware` (no path scoping) used to also collect and would have run
-  the manual tests as if they were ordinary pytest tests** - each calls `input()`, so running them
-  this way would hang forever, directly against this tier's own "manual tests must never be silently
-  mixed into an unattended pass" design principle. `scripts/run_flash_hardware_suite.sh`/
-  `run_bench_hardware_suite.sh` were always scoped to avoid this, but the underlying structural gap
-  was real. Fixed by renaming every file in `tests_hardware/manual/` away from the `test_*.py` glob
-  pytest's default collection matches (e.g. `test_wifi_manual.py` -> `manual_wifi.py`) - confirmed
-  directly: `uv run pytest tests_hardware --collect-only` at the time showed exactly the 44 automated
-  tests this tier held then, zero from `manual/`, where it previously showed 56 (wrongly including
-  all 12 manual ones). See the section below for the count as of the third pass (54).
-
-Also positively confirmed (not previously verified live) during this same re-audit, for what it's
-worth to a future reader: `nmcli device wifi connect`'s exact syntax and `iw dev <iface> station
-del/dump`'s exact syntax, both checked directly against the real tools' own `--help` output
-(`network-manager`/`iw` packages installed into this sandbox specifically to check them).
+- **WiFi reconnection flakiness after a hardware reset - real, not yet root-caused.** A hard reset
+  followed by a fresh STA connect attempt sometimes falls back to hotspot mode instead of
+  reconnecting (across two sessions' worth of trials, failure rates ranged from 2/5 to 6/8 - small
+  samples, not a stable rate). Confirmed genuine (reproduces with no test code involved at all, not
+  a `tests_hardware/`-side artifact) and confirmed not a refactor bug (the legacy, field-proven
+  `python/CommonDrivers/async_connect.py` has the exact same connect/poll/streak shape). Current
+  best evidence points at something at or before WPA2 handshake completion on a *rapid* reconnect,
+  not DHCP (a live capture during a failing cycle showed zero DHCP packets), and is consistent with
+  a recognized class of upstream Pico W/`cyw43` reconnect-timing sensitivity
+  (`raspberrypi/pico-sdk#2186` et al.) - full evidence trail in `REAL_HARDWARE_RUN_LOG.md`'s Phase
+  2. **See `WIFI_RECONNECT_INVESTIGATION.md` (repo root) for the current research/test plan** -
+  including a candidate root cause (AP-side stale station-table state on `br0-wifi-ap`'s own
+  backend, testable via this file's own existing but never-yet-used
+  `bench_control.BenchBridge.kick_client()`) this tier's own evidence-gathering hadn't considered.
+  Deliberately not patched in `src/asy_wifi_service.py` pending root-cause confirmation - this looks
+  CYW43-firmware/AP-backend-adjacent, the same "outside this project's own code, a different
+  backstop applies" bucket CLAUDE.md already places I2C-bus-wedge recovery in.
+  `test_real_sta_connect_reaches_established_after_a_hard_reset` (`bench/test_wifi_networking.py`)
+  and `bench/test_network_resilience.py`'s WiFi-outage tests are the natural regression coverage for
+  this - they don't retry past a single `hard_reset()`, so an unlucky run can legitimately fail
+  there; that's a real, disclosed flake risk in this tier's own bench-tier WiFi tests, not a test
+  bug to fix away.
+- **SCD30's RDY pin is real and wired**: `SCD30_Reader`'s `irq_pin` constructor parameter (GPIO 8 in
+  production), a real `irq_pin.irq(trigger=IRQ_RISING, ...)` in `start_timer()`, plus a staged
+  500ms software self-healing fallback in `scd_init_irq()` if the real IRQ is ever missed.
+  `test_scd30_real_irq_edge_drives_a_real_read` (`device_scripts/scd30_real_irq_edge.py`) exercises
+  it - its one genuine, disclosed limit: software alone can't fully distinguish a genuine hardware
+  IRQ firing from the self-healing fallback firing instead; only a scope on the pin itself could.
+- **`tests_hardware/manual/`'s files are deliberately named away from the `test_*.py` glob**
+  (`manual_wifi.py`, not `test_wifi_manual.py`) - a bare `uv run pytest tests_hardware` (no path
+  scoping) would otherwise collect and run them as ordinary pytest tests, each calling `input()`
+  and hanging forever. `scripts/run_flash_hardware_suite.sh`/`run_bench_hardware_suite.sh` are
+  scoped to avoid this either way, but the naming is the structural backstop.
 
 ## Third pass - closing real coverage gaps (found via a direct project-owner audit question)
 

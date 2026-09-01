@@ -169,18 +169,27 @@ class Board:
         was in at the moment of interrupt; every isolated-driver call starts from a freshly
         soft-reset interpreter. `soft_reset_after` instead controls a *second*, trailing
         `soft-reset` chained as this same invocation's next_command: without it, the board is left
-        sitting at the raw-REPL prompt (not auto-running main.py) once this call returns; with it
-        (the default), the board is handed back to its normal auto-booted state before the next
-        test. Soft resets are free/unlimited either way - only flashing is capped.
+        sitting at the raw-REPL prompt once this call returns; with it (the default), the
+        connection returns to an idle **friendly**-REPL prompt instead. Soft resets are
+        free/unlimited either way - only flashing is capped.
 
-        NEEDS VERIFICATION ON FIRST REAL RUN: whether the *implicit* entry soft-reset above
-        re-executes `modules/_boot.py`/`boot.py`/`main.py` the way a genuine power-on or
-        `hard_reset()` does, or whether raw-REPL mode suppresses that normal auto-run sequence
-        (the conventional mpremote/rshell/ampy assumption, but not independently confirmed against
-        this project's own pinned MicroPython source as of this writing). Tests that need to
-        observe the *real* boot sequence (tests_hardware/flash/test_reboot_persistence.py's boot-
-        import check) deliberately use `hard_reset()` + `tail_log()` instead of this method, to
-        sidestep the question rather than depend on an unverified answer to it."""
+        RESOLVED against real hardware (bench Pi4 session, see REAL_HARDWARE_RUN_LOG.md's Phase 2
+        "Fifth, foundational real finding" and tests_hardware/conftest.py's own `dut_ip` fixture
+        docstring): a trailing `soft-reset` does **not** hand the board back to its normal
+        auto-booted state, and does **not** re-execute `modules/_boot.py`/`boot.py`/`main.py`.
+        Confirmed against the pinned MicroPython C source (`ports/rp2/main.c`): entering raw REPL
+        sets `pyexec_mode_kind` to `RAW_REPL`; the soft-reset boot path only re-runs `main.py`
+        when that's `FRIENDLY_REPL`. A trailing soft-reset returns to an idle friendly-REPL
+        *prompt* only - it does not retroactively make the already-completed soft-reset's own boot
+        sequence re-check that condition, so `main.py` stays stopped regardless of
+        `soft_reset_after`. Confirmed empirically too (an A/B test: bare `exec`, `exec ...
+        soft-reset`, and `run <script> soft-reset` all left the board completely silent
+        afterward - no `main.py` output at all). **Only a genuine `hard_reset()` resumes the live
+        system** - `run_isolated()`/`exec()` must never be used when a caller needs `main.py` to
+        keep running afterward (`dut_ip` used to get this wrong; see its own docstring for the
+        fix). Tests that need to observe the *real* boot sequence
+        (tests_hardware/flash/test_reboot_persistence.py's boot-import check) correctly use
+        `hard_reset()` + `tail_log()` instead of this method, for exactly this reason."""
         args = ["run", str(script_path)]
         if soft_reset_after:
             args.append("soft-reset")

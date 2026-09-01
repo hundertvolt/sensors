@@ -91,7 +91,7 @@ addressed:
    `ensure_network_manager()`/`ensure_iproute2()` pattern exactly, called from the same bench-tier
    branch of `run_env()`. Installed directly on this bench machine to unblock testing rather than
    re-running the full (~8min) `env --tier bench` provisioning flow just for one package.
-2. **The WiFi reconnection flakiness (see tests_hardware/README.md's "First real run" list, now
+2. **The WiFi reconnection flakiness (see tests_hardware/README.md's "Known assumptions and open findings" list, now
    substantially updated) cascaded into a long chain of unrelated-looking failures** once the DUT
    fell back to hotspot mode mid-run: every subsequent bench test depending on the session-scoped
    `dut_ip` fixture then failed with `ConnectionRefusedError`/`OSError: No route to host`, since
@@ -107,7 +107,8 @@ addressed:
      never reaches DHCP - revised hypothesis: a WPA2 association/handshake-adjacent issue on rapid
      reconnects, in the same problem area as the already-fixed `wifi-sec.pmf disable` fragility
      (`dev_legacy/README.md`), not a new `src/` bug. Full account and reasoning for not touching
-     `src/asy_wifi_service.py` blind: `tests_hardware/README.md`'s updated "First real run" list.
+     `src/asy_wifi_service.py` blind: `tests_hardware/README.md`'s "Known assumptions and open
+     findings" list.
    - Recovered a stable connection this session by cycling the bench AP profile
      (`nmcli connection down/up br0-wifi-ap`) before the next `hard_reset()` - one data point, not
      confirmed reliable.
@@ -129,7 +130,7 @@ repeated connect attempts. Left open as a concrete, testable next step: this ben
 per-cycle debug logging under a single-threaded asyncio scheduler, contending with
 `_poll_sta_connect_status()`'s tight ~5s budget, is a plausible jitter source matching that known
 driver sensitivity - worth an A/B test at lower debug verbosity, not confirmed. Full account:
-tests_hardware/README.md's "First real run" list.
+tests_hardware/README.md's "Known assumptions and open findings" list.
 
 **Fifth, foundational real finding** (found after the project owner directly pushed back on the
 WiFi writeup above - "are you sure you didn't miss something", then asked for legacy/forum
@@ -142,7 +143,7 @@ completely silent afterward) and against the pinned MicroPython C source: enteri
 retroactively make the already-completed soft-reset's boot sequence re-check that condition, so
 `main.py` stays stopped. **This directly answers, the wrong way, this tier's own long-standing
 open question** (`harness.py`'s `run_isolated()` docstring's "NEEDS VERIFICATION ON FIRST REAL
-RUN" note, and this file's own "First real run" list item 1) - both assumed a trailing soft-reset
+RUN" note, and tests_hardware/README.md's corresponding list item) - both assumed a trailing soft-reset
 "hands the board back to its normal auto-booted state"; it does not. Harmless everywhere else in
 this tier (every isolated-driver test builds its own driver objects directly, never depending on
 `main.py` staying up afterward) but exactly wrong for `dut_ip`'s own purpose. Only a genuine

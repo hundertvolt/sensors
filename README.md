@@ -454,13 +454,13 @@ the shared-behavior-catalog + per-backend-adapter design, and the no-extra-flash
 real-hardware harness), produced by an ideation session with the project owner and then implemented
 by a later session on the same branch — see **`tests_hardware/`** (real code: automated flash/bench
 tests over `pytest`, a separate manual-test runner) and **`tests/_shared_rest_roundtrip.py`** (the
-shared-behavior extraction), plus `tests_hardware/README.md` for how a dedicated session with real
-hardware runs it (**not yet run against real hardware** — no board/bench rig was attached to the
-session that wrote it). Its own §8 points at **`tmp_hardware_test_candidates.md`** (also temporary,
-repo root), the itemized real-hardware test list this plan's inventory section summarizes and
-`tests_hardware/`'s own implementation status now tracks against. Both planning docs are deleted
-once real-hardware verification actually happens, following the same pattern as
-`WIRING_CONTRACT.md`/`WEBSITE_PLAN.md`/`AUDIT_PLAN.md` below — see `HARDWARE_TEST_PLAN.md`'s own §8
+shared-behavior extraction). **Real-hardware execution is now in progress** on the bench Pi4 — see
+`REAL_HARDWARE_RUN_LOG.md` below for current status, `tests_hardware/README.md` for how to run it.
+Its own §8 points at **`tmp_hardware_test_candidates.md`** (also temporary, repo root), the itemized
+real-hardware test list this plan's inventory section summarizes and `tests_hardware/`'s own
+implementation status now tracks against. Both planning docs are deleted once real-hardware
+verification is complete and verified (not just started), following the same pattern as the earlier
+temporary planning docs listed at the end of this section — see `HARDWARE_TEST_PLAN.md`'s own §8
 for what must be migrated into `SPECIFICATION.md` first.
 
 **`REAL_HARDWARE_HANDOFF.md`** (temporary handoff doc, current): a **waiting-for-go-ahead** set of
@@ -482,25 +482,14 @@ delete-once-verified lifecycle as the other real-hardware planning docs above.
 
 **`WIFI_RECONNECT_INVESTIGATION.md`** (temporary planning doc, current): a deep-research pass and
 ordered, fast-first test plan for the not-yet-root-caused real WiFi reconnection flakiness
-`REAL_HARDWARE_RUN_LOG.md`'s Phase 2 and `tests_hardware/README.md`'s "First real run" section
-found — prepared by a separate cloud session at the project owner's request, for whoever picks up
-`REAL_HARDWARE_RUN_LOG.md`'s own Phase 4. Includes a new candidate root cause (AP-side stale
-station-table state) the original investigation's evidence-gathering never considered. Same
-lifecycle as the other real-hardware planning docs above.
+`REAL_HARDWARE_RUN_LOG.md`'s Phase 2 and `tests_hardware/README.md`'s "Known assumptions and open
+findings" section found — prepared by a separate cloud session at the project owner's request, for
+whoever picks up `REAL_HARDWARE_RUN_LOG.md`'s own Phase 4. Includes a new candidate root cause
+(AP-side stale station-table state) the original investigation's evidence-gathering never
+considered. Same lifecycle as the other real-hardware planning docs above.
 
-`WIRING_CONTRACT.md`, `FINAL_WIRING_PLAN.md`, and `WEBSITE_PLAN.md` — temporary planning docs for,
-respectively, the `improved-quality/` → `src/` wiring effort (`src/sensortask_wozi.py`'s
-construction restructure, generic webserver/API service, digital-twin simulator, website placeholder
-scaffold, full Unix-port integration, and the self-healing-system failure-mode audit) and the
-JS/HTML/CSS website redesign — were each deleted once their effort merged back. Everything permanent
-they settled was migrated into `SPECIFICATION.md` first: `WIRING_CONTRACT.md`/`FINAL_WIRING_PLAN.md`'s
-construction order/FRAM-chunk order/dependency graph/debug-level registry (Part A.7), the REST API
-endpoint reference (Part A.8), the website-stub/frozen-HTML pipeline (Part A.9), the digital-twin
-pointer (Part A.10), and two new checkable conventions found during the audit (the
-silent-failure-masking and cascading-recovery-storm rules, Parts C.7/C.9); `WEBSITE_PLAN.md`'s
-settled website architecture (Part H) and its `src/`-based firmware-assembly pipeline (Part B.11) —
-plus, in both cases, a handful of still-open items folded into `BACKLOG.md`. `AUDIT_PLAN.md`, the
-master action list for the earlier full `src/` audit, was deleted the same way once that audit
-closed — everything permanent it
-settled was migrated into `SPECIFICATION.md` (the style-guideline harmonization it drove lives in
-Parts C/D) first.
+`DRIVER_SPEC.md`, `src/README.md`, `tests/README.md`, `toolchain/README.md`, `WIRING_CONTRACT.md`,
+`FINAL_WIRING_PLAN.md`, `WEBSITE_PLAN.md`, and `AUDIT_PLAN.md` — earlier temporary planning/spec
+docs, each deleted once its own effort closed, with everything permanent it settled migrated into
+`SPECIFICATION.md` first. See `SPECIFICATION.md`'s own front matter for the full provenance
+(which doc's content became which Part) — not restated here to avoid the two drifting apart.
