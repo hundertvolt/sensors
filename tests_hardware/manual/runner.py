@@ -83,13 +83,13 @@ def register(name: str, description: str, tier: str) -> Callable[[Callable[[], N
 def main() -> int:
     # Import side effect: registers every manual test with the decorator above. Done here, not at
     # module level, so `--list` stays fast and `runner.py` itself has no hard dependency on every
-    # individual test module's own imports (e.g. test_wifi_manual.py's harness.Board) unless a run
+    # individual test module's own imports (e.g. manual_wifi.py's harness.Board) unless a run
     # actually needs them.
-    import test_bus_electrical_manual  # noqa: F401
-    import test_persistence_manual  # noqa: F401
-    import test_sensor_accuracy_manual  # noqa: F401
-    import test_toolchain_manual  # noqa: F401
-    import test_wifi_manual  # noqa: F401
+    import manual_bus_electrical  # noqa: F401
+    import manual_persistence  # noqa: F401
+    import manual_sensor_accuracy  # noqa: F401
+    import manual_toolchain  # noqa: F401
+    import manual_wifi  # noqa: F401
 
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--list", action="store_true", help="List every registered manual test and exit")

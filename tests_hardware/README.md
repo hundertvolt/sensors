@@ -17,14 +17,14 @@ hardware needs to actually start running it.
 2. The board must already be running the real, unmodified production firmware
    (HARDWARE_TEST_PLAN.md §6.1's "one allowed flash" - `uv run scripts/build_firmware.py wozi` +
    `picotool load -x -v`, or the manual BOOTSEL-button first flash for a genuinely blank board, see
-   `tests_hardware/manual/test_toolchain_manual.py`).
+   `tests_hardware/manual/manual_toolchain.py`).
 3. **`picotool` needs real USB support to actually flash anything.** The toolchain build this
    session ran (`uv run toolchain/setup_toolchain.py setup`) produced a `picotool` explicitly
    compiled *without* USB support (confirmed directly: its own `--help` output prints "This version
    of picotool was compiled without USB support. Some commands are not available." - this sandbox
    had no real USB device for the build to detect/link against). Before running anything that calls
    `picotool load` (`tests_hardware/flash/test_toolchain_flash_boot.py`'s
-   `test_real_uf2_reflash_and_boot_smoke_test`, `tests_hardware/manual/test_toolchain_manual.py`),
+   `test_real_uf2_reflash_and_boot_smoke_test`, `tests_hardware/manual/manual_toolchain.py`),
    rebuild picotool on the real hardware session's own machine (or confirm the apt-packaged
    `picotool` there already has USB support - check for the same warning line) rather than assuming
    this session's cached build works.
@@ -92,9 +92,28 @@ not at a real product bug:
   `test_hotspot_role_reversal.py::test_spoofed_off_subnet_source_address_is_ignored` is `@pytest.mark.skip`
   pending this; implement once a concrete mechanism (CAP_NET_RAW, a second netns, ...) is confirmed
   to work on the real bench host.
-- **`kick_client()`'s `iw dev <iface> station del <mac>`** against NetworkManager's own AP-mode
-  hostapd backend is unverified - not currently called by any test in this tier, but flagged in
-  `bench_control.py`'s own docstring for whoever reaches for it next.
+- **`kick_client()`'s `iw dev <iface> station del <mac>`** - the *syntax* is confirmed correct
+  (checked directly against real `iw 6.7`'s own `iw help` output during this session's re-audit:
+  `dev <devname> station del <MAC address>` matches exactly), but whether NetworkManager's own
+  AP-mode hostapd backend actually *honors* a raw `iw station del` command issued alongside it is
+  still unverified and can only be confirmed on real hardware. Not currently called by any test in
+  this tier, but flagged in `bench_control.py`'s own docstring for whoever reaches for it next.
+- **`nmcli -g IP4.ADDRESS`/`IP4.GATEWAY device show <iface>`'s exact output shape** (CIDR-suffixed
+  address vs. plain gateway) is well-established, long-stable nmcli behavior, but this session's
+  sandbox has no systemd/D-Bus to actually run NetworkManager against and confirm live - unlike
+  `nmcli device wifi connect`'s own syntax, which *was* confirmed directly against real `nmcli
+  --help` output (installed in this sandbox specifically to check it) during this same session. See
+  `bench_control.BenchBridge.own_ip_on()`/`gateway_ip()`'s own docstrings.
+- **A permanent-WLAN-deactivation risk in the role-reversal scenario's own stage 6, found during a
+  second, deeper re-audit of this tier's claims against `src/asy_wifi_service.py`**: by stage 6 the
+  DUT has necessarily already been in hotspot mode since stage 0 (`hotspot_started_once == True`),
+  so a failed real credential PUT (5 failed STA attempts) leads to `_PHASE_DEACTIVATED` - a terminal
+  state only a real power-cycle clears (SPECIFICATION.md Part A.4's own documented, deliberate
+  safety feature) - NOT a graceful fall-back to hotspot the way an *earlier* failure in the scenario
+  would. `test_hotspot_role_reversal.py`'s `joined_hotspot` fixture already recovers from this via a
+  `board.hard_reset()` fallback in its own teardown, but a first real run hitting this path is worth
+  recognizing for what it is (an expected, designed-for recovery, not a new bug) rather than being
+  surprised by it.
 - **WS2812/Neopixel timing has no datasheet in this repo's `datasheets/` folder at all** (only
   bmp3xx/fram/pico w/scd30/sgp40 - confirmed by listing the directory) - the manual
   `test_real_ws2812_neopixel_signal_timing` test is deliberately qualitative (visual/scope check,
@@ -119,3 +138,33 @@ Fixed: `test_scd30_rdy_pin_real_irq_edge` is now a real, implemented test
 scd30_real_irq_edge.py`) - see that script's own docstring for the corrected design and its one
 genuine, disclosed limit (software alone can't fully distinguish a genuine hardware IRQ firing from
 the self-healing fallback firing instead; only a scope on the pin itself could).
+
+## More findings from a second, deeper re-audit (requested directly, after the mistake above)
+
+Re-reading every driver this tier makes claims about in full (not just the narrow greps that caused
+the SCD30 mistake) surfaced two more real issues, both fixed:
+
+- **`scd30_plausibility_read.py` polled sensor data without ever starting the read loop that would
+  populate it.** `get_data()` only ever returns whatever `_store_scd()` last wrote via
+  `_set_meas_data()` (confirmed directly against `base_classes.py`), which only happens from inside
+  `read_loop()` - a task that was never started. The script could only ever have printed FAIL.
+  Fixed: it now calls `start_timer()` and starts `read_loop()`/`scd_init_irq()` before polling, the
+  same three calls `sensortask_wozi.py`'s own real wiring makes.
+- **A permanent-WLAN-deactivation risk in the hotspot role-reversal scenario's own stage 6** - see
+  this file's own "first real run" list above for the full account (`asy_wifi_service.py`'s
+  `_register_sta_connection_failure()`). Fixed with a `hard_reset()` recovery fallback in
+  `joined_hotspot`'s own fixture teardown.
+- **Bare `uv run pytest tests_hardware` (no path scoping) used to also collect and would have run
+  the manual tests as if they were ordinary pytest tests** - each calls `input()`, so running them
+  this way would hang forever, directly against this tier's own "manual tests must never be silently
+  mixed into an unattended pass" design principle. `scripts/run_flash_hardware_suite.sh`/
+  `run_bench_hardware_suite.sh` were always scoped to avoid this, but the underlying structural gap
+  was real. Fixed by renaming every file in `tests_hardware/manual/` away from the `test_*.py` glob
+  pytest's default collection matches (e.g. `test_wifi_manual.py` -> `manual_wifi.py`) - confirmed
+  directly: `uv run pytest tests_hardware --collect-only` now shows exactly the 44 automated tests,
+  zero from `manual/`, where it previously showed 56 (wrongly including all 12 manual ones).
+
+Also positively confirmed (not previously verified live) during this same re-audit, for what it's
+worth to a future reader: `nmcli device wifi connect`'s exact syntax and `iw dev <iface> station
+del/dump`'s exact syntax, both checked directly against the real tools' own `--help` output
+(`network-manager`/`iw` packages installed into this sandbox specifically to check them).

@@ -356,11 +356,21 @@ the design for that, with the concrete driver behavior it depends on verified di
   to the DUT issuing its first real STA connect attempt. Not a hard real-time race — a scripted
   `nmcli connection up br0-wifi-ap` (typically low single-digit seconds) comfortably fits inside
   that window if fired immediately after the PUT call returns.
-- **A missed window degrades gracefully, doesn't strand the board**: `connection_failures` retries
-  up to `conn_fail_to_hotspot` (constructor default **5**) STA attempts before falling back to its
-  own hotspot again on its own. So even if the bench radio's flip-back is somehow delayed past the
-  ~15–20s window, the DUT doesn't get stuck — it re-enters hotspot mode and the whole scenario can
-  retry from stage 6 (§11.4) rather than needing a full reset.
+- **CORRECTED — a missed window at stage 6 does NOT degrade gracefully, it can strand the board**:
+  the "falls back to hotspot again" behavior only applies before the DUT has ever entered hotspot
+  mode this task-lifetime (`hotspot_started_once == False`). By stage 6, the DUT has necessarily
+  already been sitting in hotspot mode since stage 0 — `hotspot_started_once` is `True` — so
+  `_register_sta_connection_failure()`'s own branch (confirmed directly, `asy_wifi_service.py` lines
+  421-431) takes the *other* path: after `conn_fail_to_hotspot` (default **5**) failed STA attempts,
+  it calls `_deactivate_wlan_permanently()`, landing in `_PHASE_DEACTIVATED` — a terminal state
+  `_reset_wlan_connect_state()` deliberately never clears on a task restart (SPECIFICATION.md Part
+  A.4: "a physical power-cycle is the accepted recovery path", a deliberate safety feature, not a
+  bug). **A failed stage-6 real credential PUT (wrong bench password, AP not up in time, ...) can
+  permanently strand the DUT until it's rebooted** — "retry the scenario in place" is not a safe
+  recovery for this specific stage. `tests_hardware/bench/test_hotspot_role_reversal.py`'s
+  `joined_hotspot` fixture teardown accounts for this: if the post-flip-back reachability wait times
+  out, it falls back to `board.hard_reset()` (a real, deliberate recovery action, not a routine
+  step) rather than leaving the board stuck for whatever test runs next.
 - **While a client stays associated to the DUT's hotspot, the DUT's own *idle* reconnect-retry timer
   is suppressed** (`_hotspot_client_connected()`: "if client connected, do not stop hotspot"). Only
   the explicit REST-triggered `reconnect_wifi()` cuts through this — which is exactly what makes
@@ -527,7 +537,7 @@ every field in that PUT is invalid together, not just one, so `post_fct` never f
   captured `dut_ip` as an indirect proxy instead, and says so in its own docstring.
 - Item 25 — whether observing a real phone's OS behavior is worth automating in any way (e.g.
   scripted against a spare Android device via `adb`) or is intentionally manual-only; not decided.
-  Implemented as manual-only for now (`tests_hardware/manual/test_wifi_manual.py`'s
+  Implemented as manual-only for now (`tests_hardware/manual/manual_wifi.py`'s
   `test_real_phone_captive_portal_auto_detection`), explicitly exploratory (always reports PASS,
   records what was observed rather than asserting a specific outcome — the outcome itself is the
   open question).

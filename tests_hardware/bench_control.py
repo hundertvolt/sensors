@@ -77,9 +77,11 @@ class BenchBridge:
 
     def kick_client(self, mac_address: str) -> None:
         """Best-effort deauth of one associated station by MAC, via `iw` (NetworkManager's own AP
-        mode has no per-client kick command) - needs verification on first real-hardware run
-        whether the hostapd-backed AP NetworkManager creates actually honors this (see
-        HARDWARE_TEST_PLAN.md §9's "not yet verified" list; not assumed to work blind)."""
+        mode has no per-client kick command). Syntax confirmed directly against real `iw 6.7`'s own
+        `iw help` output ("dev <devname> station del <MAC address>") during this session's re-audit -
+        still needs verification on first real-hardware run whether the hostapd-backed AP
+        NetworkManager creates actually *honors* it (see HARDWARE_TEST_PLAN.md §9's "not yet
+        verified" list; the command syntax being right doesn't guarantee the effect is)."""
         iface = self.wifi_iface()
         proc = subprocess.run(["sudo", "iw", "dev", iface, "station", "del", mac_address], capture_output=True, text=True, timeout=10.0)
         if proc.returncode != 0:
@@ -120,7 +122,15 @@ class BenchBridge:
         """The bench radio's own DHCP-leased IP while joined to the DUT's hotspot - confirms stage 2
         of HARDWARE_TEST_PLAN.md §11.4 (a real lease was actually obtained), and is also how the
         harness would reach the DUT's own webserver during stages 3-6 (the DUT's own IP is the AP's
-        gateway address, not derived from this call - see gateway_ip())."""
+        gateway address, not derived from this call - see gateway_ip()).
+
+        NEEDS VERIFICATION ON FIRST REAL RUN: `nmcli -g IP4.ADDRESS device show <iface>`'s exact
+        output shape (CIDR-suffixed, e.g. "192.168.1.5/24") is well-established, long-stable nmcli
+        behavior, but this session's sandbox has no systemd/D-Bus to actually run NetworkManager
+        against and confirm live (unlike `device wifi connect`'s own syntax below, verified directly
+        against real `nmcli --help` output in this same session). The `.split("/")` defends against
+        the CIDR suffix either way, so a wrong assumption here would show up as an outright parse
+        failure, not a silent wrong value - but flagged rather than claimed fully confirmed."""
         iface = iface or self.wifi_iface()
         out = _nmcli("-g", "IP4.ADDRESS", "device", "show", iface).strip()
         if not out:
@@ -129,7 +139,10 @@ class BenchBridge:
 
     def gateway_ip(self, iface: str | None = None) -> str:
         """The DUT's own IP as seen by the bench radio while it's a client of the DUT's hotspot -
-        the address every stage-3+ REST/DNS check in HARDWARE_TEST_PLAN.md §11.5 talks to."""
+        the address every stage-3+ REST/DNS check in HARDWARE_TEST_PLAN.md §11.5 talks to. Same
+        "needs verification on first real run" caveat as own_ip_on() above - IP4.GATEWAY is not
+        CIDR-suffixed (a plain address, not a subnet), so no `.split("/")` is needed here, but the
+        field's exact presence/emptiness-while-no-lease behavior is equally unconfirmed live."""
         iface = iface or self.wifi_iface()
         out = _nmcli("-g", "IP4.GATEWAY", "device", "show", iface).strip()
         if not out:

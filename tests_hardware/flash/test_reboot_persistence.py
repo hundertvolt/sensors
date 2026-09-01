@@ -1,7 +1,7 @@
 """Flash-tier automated tests, Part 1 category C (tmp_hardware_test_candidates.md items 13-14) -
 real reboot/persistence via a genuine `hard_reset()` (mpremote's DTR-based `reset`, the closest
 real-hardware equivalent to a power-cycle without actually pulling power - see Part 2's
-test_persistence_manual.py for genuine power-loss instead). Deliberately uses hard_reset()
+manual_persistence.py for genuine power-loss instead). Deliberately uses hard_reset()
 + tail_log(), never run_isolated()/exec(), for anything that needs to observe the *real* boot
 sequence - see harness.Board.run_isolated()'s own docstring for why an isolated-driver call's
 implicit soft-reset can't be trusted to exercise the same boot.py/main.py path a real reboot does.

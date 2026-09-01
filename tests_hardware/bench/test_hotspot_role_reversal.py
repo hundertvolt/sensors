@@ -16,9 +16,12 @@ functions without preserving that constraint, and don't run this file with `-p r
 Resolved during this session (was flagged as open in §11.6, now settled by reading
 src/api_response.py's handle_set_cmd() directly): `post_fct` (SettingsGroup's post-write hook,
 `conn.reconnect_wifi` for the /networking group) fires "if any(status == 'Valid' for status in
-results.values())" - i.e. once per PUT call, if AT LEAST ONE field in that call validated. This
-means test_invalid_credentials_rejected_without_triggering_reconnect() below must make EVERY field
-in its PUT invalid together, not just one, or post_fct would still fire on the other valid field(s)."""
+results.values())" - i.e. once per PUT call, if AT LEAST ONE field in that call validated.
+`_apply_settings_groups()` narrows `results` to just the fields actually present in that one PUT
+body, so `test_invalid_credentials_rejected_without_triggering_reconnect()` below only needs to send
+a *single* invalid field (PW alone) to keep `results` free of any "Valid" entry - it does not need
+every group field (SSID/PW/Country/Hostname) present and invalid at once, since a field absent from
+the request body is never in `results` to begin with."""
 
 from __future__ import annotations
 
@@ -72,7 +75,21 @@ def joined_hotspot(board: Board, bench: BenchBridge, dut_ip: str, hotspot_ssid: 
     bench.leave_dut_hotspot_and_restore_bridge()
     # Stage 8 - confirm the DUT is reachable again over the normal bridge network (§11.3's own
     # concrete use of wait_until() for exactly this transition).
-    wait_until(lambda: _dut_reachable_again(dut_ip), timeout_s=90.0, poll_interval_s=3.0, description="DUT reachable again over the bridge network after role-flip-back")
+    #
+    # Safety net, not a routine step (see HARDWARE_TEST_PLAN.md §11.1's own corrected note): by this
+    # point hotspot_started_once is True on the DUT (it's been in hotspot mode since stage 0), so a
+    # failed stage-6 STA reconnect (confirmed directly against asy_wifi_service.py's
+    # _register_sta_connection_failure()) leads to _PHASE_DEACTIVATED - a terminal state that only a
+    # real power-cycle/reboot clears (SPECIFICATION.md Part A.4), NOT a graceful fall-back to
+    # hotspot. If the normal reachability wait times out, that's the likely cause - recover with a
+    # real hard_reset() rather than leaving the board stuck for whatever test runs next, and still
+    # confirm reachability afterward so a genuinely broken run fails loudly instead of silently.
+    try:
+        wait_until(lambda: _dut_reachable_again(dut_ip), timeout_s=90.0, poll_interval_s=3.0, description="DUT reachable again over the bridge network after role-flip-back")
+    except TimeoutError:
+        board.hard_reset()
+        wait_until(lambda: _dut_reachable_again(dut_ip), timeout_s=30.0, poll_interval_s=1.0, description="DUT reachable again after a recovery hard_reset() (see this fixture's own comment)")
+        raise
 
 
 def _dut_reachable_again(dut_ip: str) -> bool:
@@ -299,9 +316,10 @@ def test_concurrent_multi_client_burst_is_out_of_scope_here(joined_hotspot: str)
 
 def test_invalid_credentials_rejected_without_triggering_reconnect(bench: BenchBridge, joined_hotspot: str) -> None:
     # Resolved finding (see this module's own docstring): post_fct fires if ANY field in the PUT
-    # validates, so every field here must be invalid together, not just one, or this test would
-    # itself trigger an unwanted early reconnect. A too-short WPA2 password (<8 chars) is invalid
-    # per config_manager's own field-length validation for PW's schema entry.
+    # validates. Sending PW alone (not the full SSID/PW/Country/Hostname group) keeps `results` to
+    # just that one entry, so a single invalid field is already sufficient to keep post_fct from
+    # firing - no unwanted early reconnect. A too-short WPA2 password (<8 chars) is invalid per
+    # _VAL_PW's own schema bounds (asy_wifi_service.py: min length 8).
     res = http_client.fetch(joined_hotspot, 80, "PUT", "/networking", {"PW": "short"})
     assert res.status_code == 200
     result = res.json().get("result", {})

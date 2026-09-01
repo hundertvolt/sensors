@@ -1,6 +1,6 @@
 """Flash-tier automated test, Part 1 category F (tmp_hardware_test_candidates.md item 21): real
 SCD30 CO2/temperature/humidity plausibility (sane bounds, not exact-reference calibration - see
-tests_hardware/manual/test_sensor_accuracy_manual.py's item 9/10 for the reference-calibrated
+tests_hardware/manual/manual_sensor_accuracy.py's item 9/10 for the reference-calibrated
 variant that needs a human-supplied known-good reading)."""
 
 from __future__ import annotations
