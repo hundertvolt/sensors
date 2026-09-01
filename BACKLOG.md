@@ -182,6 +182,15 @@ constraints.
    resolves ahead of the real `machine` module by `MICROPYPATH` design), not a drop-in extension of
    it. Worth deciding deliberately with the project owner what a hardware-in-the-loop test tier
    should look like before assuming `tests/test_*.py` just runs unmodified on the device.
+   **Update**: `HARDWARE_TEST_PLAN.md` (repo root, temporary planning doc) captures the
+   mock/twin/flash/bench/manual backend architecture from an ideation session with the project
+   owner, and a later session on the same branch implemented it — `tests/_shared_rest_roundtrip.py`
+   plus the full `tests_hardware/` tier (flash/bench automated `pytest` tests, a separate
+   `tests_hardware/manual/` runner) closing this entry's own UDP/lwIP/captive-DNS gap in code, not
+   just in design. **Still not run against real hardware** — see `tests_hardware/README.md` for what
+   a dedicated session with a board/bench rig needs to do to actually execute it and what to verify
+   first. Read `HARDWARE_TEST_PLAN.md` before extending this tier further rather than re-deriving
+   the design from scratch.
 
 ## Deferred / explicitly out-of-scope work
 

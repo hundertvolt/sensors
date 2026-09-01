@@ -11,6 +11,11 @@ Two things live in this directory:
    2026-08-27 (the "Legacy on-device filesystem snapshot" section at the end) — kept as reference
    for `src/` promotion work. Not itself reviewed, promoted, or covered by lint/type/test config.
 
+For a **structured, repeatable** automated test tier against this same kind of bench unit (rather
+than the ad hoc/exploratory sessions this file documents), see **`tests_hardware/`** at the repo
+root (`tests_hardware/README.md`) — a `pytest`-based flash/bench suite plus a separate manual-test
+runner, built on the same `mpremote`/bridged-AP access this file describes.
+
 As of 2026-08-28 this unit runs a **custom-built firmware** based on **MicroPython 1.28.0**
 (matching `toolchain/versions.toml`'s `[micropython] ref` — the refactor/`src/` target, not the
 deployed-fleet 1.26 pin), with every `src/*.py` module plus `ext/microdot.py` **frozen in** (see

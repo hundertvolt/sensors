@@ -14,6 +14,7 @@ import _http_client  # noqa: E402
 # digital_twin's own fake machine module - configure_fram_state_path()/flush_fram(), used only by
 # this file's own reboot-survival section below.
 import machine  # noqa: E402
+from _shared_rest_roundtrip import assert_named_modules_constructed, assert_sensor_payload_not_self_wrapped  # noqa: E402
 
 import sensortask_wozi  # noqa: E402
 from asy_scd30_driver import SCD30  # noqa: E402  # used only by this file's own reboot-survival section below
@@ -137,25 +138,30 @@ def test_build_system_boots_against_the_real_twin_buses_without_exception() -> N
     # Confirms every FRAM chunk (see SPECIFICATION.md Part A.7 for the seven-chunk order) still allocates cleanly
     # against the twin's own real FramChip, not just tests/machine.py's fake - a real gap nothing
     # before this file ever exercised (Step 1/2's own tests/test_sensortask_wozi.py never touches
-    # digital_twin at all).
+    # digital_twin at all). Shared shape with the mock's own equivalent test
+    # (tests/_shared_rest_roundtrip.py) - see HARDWARE_TEST_PLAN.md §2.2 for why this pair was the
+    # one genuine near-duplicate here; this list adds "webserver" over the mock's own tuple since
+    # this file's whole point is exercising real HTTP against it.
     run(_boot(_next_test_port()))
-    for name in (
-        "conn",
-        "ntp",
-        "i2c0",
-        "i2c1",
-        "spi0",
-        "fram",
-        "sysfunct",
-        "sgp_reader",
-        "bmp_reader",
-        "scd_reader",
-        "pixel",
-        "notify_service",
-        "webserver",
-        "watchdog",
-    ):
-        assert getattr(sensortask_wozi, name) is not None, f"sensortask_wozi.{name} was not constructed"
+    assert_named_modules_constructed(
+        sensortask_wozi,
+        (
+            "conn",
+            "ntp",
+            "i2c0",
+            "i2c1",
+            "spi0",
+            "fram",
+            "sysfunct",
+            "sgp_reader",
+            "bmp_reader",
+            "scd_reader",
+            "pixel",
+            "notify_service",
+            "webserver",
+            "watchdog",
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -170,27 +176,19 @@ def test_every_get_endpoint_is_reachable_over_real_http_and_shaped_correctly() -
         await _boot(port)
         task = await _start_webserver()
         try:
+            # Shared shape with the mock's own equivalent check (tests/_shared_rest_roundtrip.py) -
+            # see HARDWARE_TEST_PLAN.md §2.2 for why this pair was the one genuine near-duplicate
+            # here (real bug found via a real user report: every driver's own get_dict_data()
+            # already returns a {name: {...}} self-wrapped shape, and _get_measurements()/
+            # _get_sensors() used to index that by name again - see src/asy_webserver_service.py's
+            # own comments there for the full account).
             res = await _http_client.fetch("127.0.0.1", port, "GET", "/measurements")
             assert res.status_code == 200
-            measurements = res.json()
-            assert set(measurements.keys()) == {"SCD30", "BMP3XX", "SGP40"}
-            # Regression coverage for a real bug found via a real user report against the real
-            # assembled system (not caught here before, since this only ever checked top-level keys):
-            # every real driver's own get_dict_data() already returns a {name: {...}} self-wrapped
-            # shape, and _get_measurements() used to index that by name again, producing
-            # {"SCD30": {"SCD30": {...}}} for every sensor - see src/asy_webserver_service.py's own
-            # _get_measurements()/_get_sensors() comments for the full account.
-            for name, fields in measurements.items():
-                assert name not in fields, f"{name}'s own value is still self-wrapped: {fields!r}"
-                assert fields, f"{name} returned no fields at all"
+            assert_sensor_payload_not_self_wrapped(res.json(), {"SCD30", "BMP3XX", "SGP40"})
 
             res = await _http_client.fetch("127.0.0.1", port, "GET", "/sensors")
             assert res.status_code == 200
-            sensors = res.json()
-            assert set(sensors.keys()) == {"SCD30", "BMP3XX", "SGP40"}
-            for name, fields in sensors.items():
-                assert name not in fields, f"{name}'s own value is still self-wrapped: {fields!r}"
-                assert fields, f"{name} returned no fields at all"
+            assert_sensor_payload_not_self_wrapped(res.json(), {"SCD30", "BMP3XX", "SGP40"})
 
             res = await _http_client.fetch("127.0.0.1", port, "GET", "/networking")
             assert res.status_code == 200
