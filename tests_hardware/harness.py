@@ -94,20 +94,42 @@ class Board:
         self.default_timeout_s = default_timeout_s
 
     def _mpremote(self, *args: str, timeout_s: float | None = None) -> MpremoteResult:
+        """REAL FINDING: right after any mpremote subprocess exits (most commonly a `reset`), the
+        very next `uv run mpremote connect <device> ...` call can transiently fail to establish a
+        fresh connection - a genuine OS/USB-level race (the just-exited process's own file
+        descriptor/tty claim, or the device's own raw-REPL state, hasn't fully settled yet), not a
+        real "someone else has the port open" condition or a real device-side problem. Confirmed
+        directly, repeatedly, on real hardware, in at least two different observed shapes: "failed
+        to access <device> (it may be in use by another program)" and "could not enter raw repl" -
+        both purely connection-establishment failures, distinct from a real error surfaced *after*
+        a connection was actually established (e.g. a real Python traceback from a bad script,
+        which must still be reported immediately, not masked by retrying). This is the same class
+        of transient USB-settle race tail_log() already retries around for its own "device reports
+        readiness to read but returned no data" symptom. Retried here, at the lowest common layer
+        every public method goes through, rather than duplicated per caller - matched by phrase
+        rather than blanket-retrying every nonzero exit, specifically so a genuine on-device
+        failure still surfaces on the first attempt."""
         cmd = ["uv", "run", "mpremote", "connect", self.device, *args]
-        try:
-            proc = subprocess.run(
-                cmd,
-                cwd=REPO_ROOT,
-                capture_output=True,
-                text=True,
-                timeout=timeout_s or self.default_timeout_s,
-            )
-        except FileNotFoundError as exc:
-            raise HardwareNotAvailable(f"uv/mpremote not on PATH: {exc}") from exc
-        except subprocess.TimeoutExpired as exc:
-            raise HardwareTestFailure(f"mpremote {' '.join(args)} timed out after {timeout_s or self.default_timeout_s}s") from exc
-        return MpremoteResult(proc.returncode, proc.stdout, proc.stderr)
+        transient_markers = ("may be in use by another program", "could not enter raw repl", "could not open")
+        grace_deadline = time.monotonic() + 10.0
+        while True:
+            try:
+                proc = subprocess.run(
+                    cmd,
+                    cwd=REPO_ROOT,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout_s or self.default_timeout_s,
+                )
+            except FileNotFoundError as exc:
+                raise HardwareNotAvailable(f"uv/mpremote not on PATH: {exc}") from exc
+            except subprocess.TimeoutExpired as exc:
+                raise HardwareTestFailure(f"mpremote {' '.join(args)} timed out after {timeout_s or self.default_timeout_s}s") from exc
+            transient = proc.returncode != 0 and any(marker in proc.stderr.lower() for marker in transient_markers)
+            if transient and time.monotonic() < grace_deadline:
+                time.sleep(0.5)
+                continue
+            return MpremoteResult(proc.returncode, proc.stdout, proc.stderr)
 
     def is_reachable(self) -> bool:
         try:
