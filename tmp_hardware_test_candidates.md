@@ -80,6 +80,13 @@ mixed into an unattended pass that could stall waiting on a human who isn't ther
 
 ## B. Real WiFi / lwIP networking
 
+**See `HARDWARE_TEST_PLAN.md` §11 for a much deeper, staged design of the DUT's own hotspot/AP role**
+(real DHCP, real captive-DNS, full REST accessibility, fault injection, and a bench-radio role-flip
+to push real STA credentials as the very last step) — that section supersedes the informal framing
+of item 10 below and Part 2 items B.4/B.5 with a verified, code-grounded design and ~25 individual
+tests. Kept here as the original flat-list entries; don't implement them independently of §11's
+design once that work starts.
+
 7. **Real STA connect/disconnect against a genuine AP** [USB+WiFi][AUTO] — real
    `SEEKING→ESTABLISHED` timing/RSSI, replacing the twin's instant/no-delay `WLAN.connect()`; the
    bench AP is already real infrastructure, no human involved per run.
