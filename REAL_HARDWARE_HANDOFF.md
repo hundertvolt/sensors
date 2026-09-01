@@ -95,6 +95,11 @@ to do).
   deliberately-provoked fault. Not a correctness risk (a stale entry doesn't affect the running
   system), but worth a manual `PUT /status {"ResetErrors": true}` before treating the error history
   as a clean baseline for anything else.
+- **A real, not-yet-root-caused WiFi reconnection flakiness was found on the bench unit before this
+  tier existed** (intermittent hotspot fallback after a hard reset, ~2/5 boots in an earlier
+  session) - fold chasing it down into this tier's real-hardware work rather than treating it as a
+  separate task. Full details and the tests to use for it: `tests_hardware/README.md`'s "First real
+  run" list.
 - **`bench/test_sensor_config_push_over_real_hardware.py` mutates the board's real, persisted
   BMP3xx config** (PressOvers/TempOvers/FiltCoeff) and restores the original values in a `finally`
   block. If that test is ever killed (Ctrl-C, a crash, a `--timeout` kill) between the PUT and the

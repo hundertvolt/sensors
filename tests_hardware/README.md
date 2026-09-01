@@ -124,6 +124,20 @@ not at a real product bug:
   `test_real_ws2812_neopixel_signal_timing` test is deliberately qualitative (visual/scope check,
   human judgment) rather than asserting any specific timing value pulled from memory, per CLAUDE.md's
   "say so explicitly if the datasheet isn't there" rule.
+- **A real, not-yet-root-caused WiFi reconnection flakiness, found on the bench unit before this
+  tier existed - fold investigating/fixing it into this tier's real-hardware work rather than
+  treating it as a separate task.** Across ~5 boots in an earlier session, WiFi reconnection after a
+  hardware reset succeeded cleanly 3 times and fell back to hotspot mode twice, following
+  `asy_wifi_service.py`'s `conn_fail_to_hotspot` streak. When it failed, `sudo iw dev wlan0 station
+  dump` on the bench host still showed the device associated at the link layer, suggesting a
+  DHCP/L3-timing issue rather than the WPA2 handshake itself (a separate handshake issue was already
+  fixed earlier - see `dev_legacy/README.md`'s WiFi section for the `pmf disable` fix). Plausibly the
+  upstream router's DHCP behavior on rapid reconnects rather than a `src/` bug, but this was never
+  confirmed either way. `test_real_sta_connect_reaches_established_after_a_hard_reset` (item 7 in
+  `bench/test_wifi_networking.py`) and `bench/test_network_resilience.py` are the natural place to
+  chase this down on the first real run - watch for a hotspot fallback across repeated `hard_reset()`
+  cycles, not just a single clean pass, since the failure was intermittent (2/5) rather than
+  reproducing every time.
 
 ## A mistake this session made and then corrected - SCD30 RDY pin
 
