@@ -445,6 +445,16 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   (back when it still ran 1.24.1) — reference material for future `src/` promotion work, not
   itself reviewed, promoted, or covered by lint/type/test config.
 
+**`HARDWARE_TEST_PLAN.md`** (temporary planning doc, current): the architecture for extending the
+test suite onto real rp2 hardware over `mpremote` (the mock/twin/flash/bench/manual backend model,
+the shared-behavior-catalog + per-backend-adapter design, the anti-drift manifest, and the
+no-extra-flash-cycles-constrained real-hardware harness) — not yet implemented, produced by an
+ideation session with the project owner. Its own §8 points at **`tmp_hardware_test_candidates.md`**
+(also temporary, repo root), the itemized 33-candidate real-hardware test list this plan's inventory
+section summarizes. Both are deleted once this effort merges back, following the same pattern as
+`WIRING_CONTRACT.md`/`WEBSITE_PLAN.md`/`AUDIT_PLAN.md` below — see `HARDWARE_TEST_PLAN.md`'s own §8
+for what must be migrated into `SPECIFICATION.md` first.
+
 `WIRING_CONTRACT.md`, `FINAL_WIRING_PLAN.md`, and `WEBSITE_PLAN.md` — temporary planning docs for,
 respectively, the `improved-quality/` → `src/` wiring effort (`src/sensortask_wozi.py`'s
 construction restructure, generic webserver/API service, digital-twin simulator, website placeholder

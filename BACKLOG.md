@@ -182,6 +182,10 @@ constraints.
    resolves ahead of the real `machine` module by `MICROPYPATH` design), not a drop-in extension of
    it. Worth deciding deliberately with the project owner what a hardware-in-the-loop test tier
    should look like before assuming `tests/test_*.py` just runs unmodified on the device.
+   **That deliberate decision is now underway**: `HARDWARE_TEST_PLAN.md` (repo root, temporary
+   planning doc) captures the mock/twin/flash/bench/manual backend architecture from an ideation
+   session with the project owner — not yet implemented. Read it before starting real-hardware test
+   work rather than re-deriving this design from scratch.
 
 ## Deferred / explicitly out-of-scope work
 
