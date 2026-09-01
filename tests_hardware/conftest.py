@@ -76,14 +76,24 @@ def bench(board: Board) -> Iterator[BenchBridge]:
 def dut_ip(board: Board, bench: BenchBridge) -> str:
     """The DUT's real STA-mode IP on the bench bridge network, for live-system HTTP checks.
 
-    NEEDS VERIFICATION ON FIRST REAL RUN: whether `board.exec()`'s always-implicit soft-reset
-    (see harness.Board.run_isolated()'s own docstring for the confirmed mechanism) disrupts an
-    already-established real WiFi association or leaves it alone - `network.WLAN(network.STA_IF)`
-    reads persistent hardware/firmware-level state either way (a well-established MicroPython
-    pattern - the real driver itself, asy_wifi_service.py, calls it fresh each time rather than
-    caching a handle), so this is robust to either answer: wait_until() below retries until the
-    interface reports connected with a real IP, whether that takes one attempt (untouched) or a
-    few (a real ~15-20s reconnect, per HARDWARE_TEST_PLAN.md §11.1's traced timing budget)."""
+    CONFIRMED ON FIRST REAL RUN: `board.exec()`'s always-implicit soft-reset (see
+    harness.Board.run_isolated()'s own docstring) does interrupt whatever's currently running,
+    but `network.WLAN(network.STA_IF)` reads persistent hardware/firmware-level state that
+    survives it either way - the real driver itself, asy_wifi_service.py, calls it fresh each
+    time rather than caching a handle - so `_check()` below is safe to call repeatedly.
+
+    REAL FINDING, fixed: a real, not-yet-fully-root-caused WiFi reconnection flakiness exists on
+    this bench unit (see tests_hardware/README.md's "First real run" list for the full
+    investigation - confirmed independent of this fixture's own polling, reproduced identically
+    via plain hard_reset() + passive observation with no test code involved at all: 6/8 trials in
+    one session fell back to hotspot mode). A single bad boot used to fail this fixture outright
+    (TimeoutError after 60s), which - being session-scoped - then cascaded into every other bench
+    test failing/erroring for a reason with nothing to do with what that test actually checks.
+    Fixed the same way `joined_hotspot`'s own fixture teardown already recovers from an analogous
+    stuck-state risk: one bounded `hard_reset()` retry if the first wait_until() times out, before
+    giving up for real. This does not paper over the underlying flakiness (still fully documented
+    and still worth the project owner's attention) - it just stops one unlucky boot from taking
+    down bench coverage that has nothing to do with WiFi at all."""
     ip_holder: list[str] = []
 
     def _check() -> bool:
@@ -99,5 +109,14 @@ def dut_ip(board: Board, bench: BenchBridge) -> str:
                 return True
         return False
 
-    wait_until(_check, timeout_s=60.0, poll_interval_s=3.0, description="DUT reports a real STA IP address")
+    try:
+        wait_until(_check, timeout_s=60.0, poll_interval_s=3.0, description="DUT reports a real STA IP address")
+    except TimeoutError:
+        board.hard_reset()
+        wait_until(
+            _check,
+            timeout_s=60.0,
+            poll_interval_s=3.0,
+            description="DUT reports a real STA IP address (after one hard_reset() retry - see this fixture's own docstring)",
+        )
     return ip_holder[-1]
