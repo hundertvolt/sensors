@@ -8,6 +8,11 @@ verified collectible/lint-clean/type-correct in a session with no board or bench
 HARDWARE_TEST_PLAN.md's own provenance note). This file is what a dedicated session *with* real
 hardware needs to actually start running it.
 
+**If you're the session about to actually run this tier for the first time, read
+`REAL_HARDWARE_HANDOFF.md` (repo root) first** - it's a waiting-for-go-ahead handoff doc with a
+suggested run order and the critical safety facts, and explicitly must not be acted on without the
+project owner's go-ahead given directly in your own conversation.
+
 ## Prerequisites
 
 1. `uv run toolchain/setup_toolchain.py env --tier flash` (real USB board attached) or `--tier

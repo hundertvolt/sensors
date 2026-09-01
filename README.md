@@ -463,6 +463,18 @@ once real-hardware verification actually happens, following the same pattern as
 `WIRING_CONTRACT.md`/`WEBSITE_PLAN.md`/`AUDIT_PLAN.md` below — see `HARDWARE_TEST_PLAN.md`'s own §8
 for what must be migrated into `SPECIFICATION.md` first.
 
+**`REAL_HARDWARE_HANDOFF.md`** (temporary handoff doc, current): a **waiting-for-go-ahead** set of
+instructions for the dedicated session that runs locally on the real bench machine (the only place
+with actual `mpremote`/bench-WiFi/board access) to pick up when told to start actually executing
+`tests_hardware/` against real hardware — critical safety facts (a real UF2 reflash's own
+`--allow-flash-cycle` gate, a real permanent-WLAN-deactivation risk in the hotspot role-reversal
+scenario's own stage 6, the `BENCH_AP_PASSWORD` credential-handoff requirement), a suggested run
+order, and what to do with whatever real hardware disagrees with. Explicitly must not be acted on
+by any session without the project owner's go-ahead given directly in that session's own
+conversation. Deleted once the real-hardware integration it describes is complete and verified,
+migrating anything still permanently true into `tests_hardware/README.md`/`SPECIFICATION.md`/
+`BACKLOG.md` first — same close-out convention as every other temporary planning doc here.
+
 `WIRING_CONTRACT.md`, `FINAL_WIRING_PLAN.md`, and `WEBSITE_PLAN.md` — temporary planning docs for,
 respectively, the `improved-quality/` → `src/` wiring effort (`src/sensortask_wozi.py`'s
 construction restructure, generic webserver/API service, digital-twin simulator, website placeholder
