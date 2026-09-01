@@ -283,9 +283,13 @@ coverage story for real-hardware runs was built or is planned — SPECIFICATION.
   question found while building the harness (see `tests_hardware/harness.py`'s
   `Board.run_isolated()` docstring and `tests_hardware/README.md`'s "first real run" list for the
   full account and every other item flagged there the same way).
-- **The SCD30 real-hardware RDY-pin finding** (`tests_hardware/README.md`'s own dedicated section) —
-  a real product decision (wire a GPIO into `asy_scd30_driver.py`, or adjust
-  `digital_twin/_scd30_chip.py`'s own docstring), not this session's to make.
+- ~~The SCD30 real-hardware RDY-pin finding~~ — **corrected, not real**: an earlier pass through
+  this section wrongly claimed `asy_scd30_driver.py` never wires a GPIO to the SCD30's own RDY
+  pin. It does — a real `irq_pin.irq(trigger=IRQ_RISING, ...)` plus a genuine staged self-healing
+  fallback in `scd_init_irq()`, confirmed directly (and caught by the project owner after an
+  earlier grep for the literal string "rdy" missed it and the file wasn't read in full). See
+  `tests_hardware/README.md`'s own corrected section for the full account -
+  `test_scd30_rdy_pin_real_irq_edge` is now a real, implemented test, not a skip.
 
 ## 10. Suggested next step for whoever picks this up
 

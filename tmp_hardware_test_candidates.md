@@ -14,14 +14,12 @@ Every `[AUTO]` item below (Part 1) now has real, committed code in `tests_hardwa
 `tests_hardware/bench/`; every `[MANUAL]` item (Part 2) has real code in `tests_hardware/manual/`.
 None of it has run against real hardware yet — see `tests_hardware/README.md` for what a dedicated
 session needs to do next, including a list of mechanisms flagged as unverified during
-implementation. Three deviations from this list worth knowing before reading further:
-
-- **Item 4** (SCD30 RDY pin) — descoped, not implemented as originally framed: the real driver
-  (`src/asy_scd30_driver.py`) never wires a GPIO to the SCD30's own real RDY pin at all (confirmed
-  directly), so there's no real code path to test the way this item's own text assumed. Recorded as
-  a skipped test with the finding in its own skip reason
-  (`tests_hardware/flash/test_bus_electrical_timing.py::test_scd30_rdy_pin_real_irq_edge`), flagged
-  to the project owner in `tests_hardware/README.md` rather than silently dropped.
+implementation. Two deviations from this list worth knowing before reading further (a third,
+originally listed here, was a mistake this session made and then corrected — item 4 IS implemented
+as originally framed: `src/asy_scd30_driver.py` does wire a real GPIO IRQ pin plus a staged
+self-healing fallback, an earlier pass here wrongly claimed otherwise from an incomplete grep, and
+`test_scd30_rdy_pin_real_irq_edge` is a real test now, not a skip — see
+`tests_hardware/README.md`'s own corrected section for the full account):
 - **Items 15 and 16** — retagged from `[USB]` to `[USB+WiFi]` and moved into `tests_hardware/bench/`:
   both need real REST/HTTP traffic per their own descriptions, which flash tier (no network) can't
   provide. See `tests_hardware/bench/test_end_to_end_timing.py`/`test_memory_stress_bench.py`'s own

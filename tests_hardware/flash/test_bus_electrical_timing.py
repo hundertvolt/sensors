@@ -49,32 +49,29 @@ def test_timer_init_raises_enomem_when_real_alarm_pool_is_exhausted(board) -> No
 
 
 # ---------------------------------------------------------------------------
-# Item 4 - SCD30 RDY pin real IRQ edge. DESCOPED - see finding below, not silently dropped.
+# Item 4 - SCD30 RDY pin real IRQ edge.
+#
+# CORRECTED (see this file's git history / HARDWARE_TEST_PLAN.md's own note for the full account):
+# an earlier draft of this test was skipped with a claimed finding that src/asy_scd30_driver.py
+# never wires a real GPIO to the SCD30's own RDY pin - wrong, caught by the project owner. The
+# driver's own module docstring says plainly: "SCD30_Reader runs the read loop plus an IRQ-pin
+# self-healing trigger." A real GPIO IS wired (SCD30_Reader's own `irq_pin: int` constructor
+# parameter, production value GPIO 8 via `SCD30_Reader(i2c0, 8, ...)` in sensortask_wozi.py),
+# `start_timer()` wires a real `irq_pin.irq(trigger=IRQ_RISING, ...)`, and `scd_init_irq()`
+# implements a staged self-healing fallback (a 500ms software poll that manually fires the same
+# trigger event if the real IRQ was somehow missed and the pin is stuck HIGH). The earlier grep for
+# the literal string "rdy" simply missed this - the code calls it "irq_pin"/"IRQ", not "rdy" - and
+# the file wasn't read in full before concluding the capability didn't exist. See
+# tests_hardware/device_scripts/scd30_real_irq_edge.py's own docstring for the full corrected
+# design and its real, disclosed limit (can't fully disambiguate a genuine hardware IRQ from the
+# software fallback purely from software - a scope on the pin would be the only certain check).
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skip(
-    reason=(
-        "Descoped, not just unimplemented - a real finding from this session's own datasheet/source "
-        "cross-check, not an oversight: the physical SCD30 module does have a real RDY pin "
-        "('Data ready pin. High when data is ready for read-out' - datasheets/scd30/"
-        "Sensirion_CO2_Sensors_SCD30_Datasheet.pdf, Figure 2 pin-out), and digital_twin/_scd30_chip.py "
-        "does model a simulated RDY-pin IRQ edge (Scd30Chip's rdy_pin/simulate_edge()) - but "
-        "src/asy_scd30_driver.py never wires a GPIO to it: sensortask_wozi.py constructs "
-        "SCD30_Reader(i2c0, 8, trigger_sec=3, ...) with no pin argument at all, and grepping "
-        "asy_scd30_driver.py for 'rdy' finds nothing. The real driver polls the I2C 'get data ready "
-        "status' command (0x0202) on a timer instead. So there is no real code path this candidate's "
-        "own framing ('confirm a real rising edge... drives the same code path the twin's simulated "
-        "RDY pin exercises') can actually test - the twin models a capability the real wiring never "
-        "uses. Flagged to the project owner rather than silently dropped or silently faked: either "
-        "wire a real RDY pin into asy_scd30_driver.py (a real src/ change, its own scoped decision) "
-        "and reinstate this test, or treat digital_twin/_scd30_chip.py's rdy_pin support as covering "
-        "a capability not currently exercised by any real wiring and adjust its own docstring "
-        "accordingly - not this session's call to make either way."
-    )
-)
-def test_scd30_rdy_pin_real_irq_edge() -> None:
-    raise AssertionError("should never run - see skip reason")
+def test_scd30_real_irq_edge_drives_a_real_read(board) -> None:
+    output = board.run_isolated(DEVICE_SCRIPTS / "scd30_real_irq_edge.py", timeout_s=30.0)
+    ok, detail = _parse_result(output)
+    assert ok, f"SCD30 real IRQ-edge probe failed: {detail}\nfull output:\n{output}"
 
 
 # ---------------------------------------------------------------------------

@@ -101,14 +101,21 @@ not at a real product bug:
   human judgment) rather than asserting any specific timing value pulled from memory, per CLAUDE.md's
   "say so explicitly if the datasheet isn't there" rule.
 
-## A real, closable gap surfaced by this session, not yet acted on
+## A mistake this session made and then corrected - SCD30 RDY pin
 
-`SCD30_Reader` polls its "data ready" status over I2C on a timer (`trigger_sec=3` in
-`sensortask_wozi.py`) - it never wires a GPIO to the SCD30's own real RDY pin, even though that pin
-genuinely exists on the physical module (datasheets/scd30/..._Datasheet.pdf's own pin-out) and
-`digital_twin/_scd30_chip.py` models a simulated RDY-pin IRQ capability the real driver never uses.
-`tests_hardware/flash/test_bus_electrical_timing.py::test_scd30_rdy_pin_real_irq_edge` is skipped
-with this finding recorded in its own skip reason rather than silently dropped or faked. This is a
-real product decision (wire a real RDY pin into `asy_scd30_driver.py`, or adjust the twin's own
-docstring to be explicit that this models an unused capability) that needs the project owner's
-input, not something this session assumed permission to resolve either way.
+An earlier pass through this file claimed `src/asy_scd30_driver.py` never wires a real GPIO to the
+SCD30's own RDY pin, and skipped `test_scd30_rdy_pin_real_irq_edge` on that basis. **That claim was
+wrong**, caught by the project owner: the driver's own module docstring says plainly "SCD30_Reader
+runs the read loop plus an IRQ-pin self-healing trigger", and the mechanism is fully real -
+`SCD30_Reader`'s own `irq_pin: int` constructor parameter (production value GPIO 8, via
+`SCD30_Reader(i2c0, 8, ...)` in `sensortask_wozi.py`), a real `irq_pin.irq(trigger=IRQ_RISING,
+...)` wired in `start_timer()`, and a genuine staged self-healing fallback in `scd_init_irq()` (a
+500ms software poll that manually fires the same trigger event if the real IRQ was somehow missed
+and the pin is stuck HIGH). The earlier check grepped for the literal string "rdy" and found
+nothing (the code calls it "irq_pin"/"IRQ" throughout, not "rdy"), then stopped there instead of
+reading the rest of the file - the module's own header sentence would have caught this immediately.
+Fixed: `test_scd30_rdy_pin_real_irq_edge` is now a real, implemented test
+(`test_scd30_real_irq_edge_drives_a_real_read`, `tests_hardware/device_scripts/
+scd30_real_irq_edge.py`) - see that script's own docstring for the corrected design and its one
+genuine, disclosed limit (software alone can't fully distinguish a genuine hardware IRQ firing from
+the self-healing fallback firing instead; only a scope on the pin itself could).
