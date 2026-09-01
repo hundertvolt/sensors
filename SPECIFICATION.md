@@ -3070,6 +3070,51 @@ symmetry with the `_NO_ERR` arm (which *is* reachable, via `reset()`'s history-r
 because a fresh/reset history slot needs a well-defined "nothing recorded" value regardless of
 which sentinel a future caller might end up storing there.
 
+## E.6 Shared behaviors and the real-hardware test tier
+
+Two additions to the testing architecture above, both from an ideation-then-implementation session
+on `claude/unit-tests-future-ideation` (see `HARDWARE_TEST_PLAN.md`, repo root, temporary planning
+doc, for the full design discussion this section summarizes):
+
+**`tests/_shared_rest_roundtrip.py`** — a small, flat module (matching this directory's own
+existing convention for shared-but-nonpublic test modules, e.g. `_fram_chip_fake.py`,
+`_coverage_runner.py` — deliberately not a `_shared/` subpackage, to avoid depending on
+MicroPython Unix-port package-import support) holding the only two genuine near-duplicate
+assertion *shapes* found scanning the mock (`tests/test_sensortask_wozi.py`) against the digital
+twin (`tests/test_digital_twin_sensortask_integration.py`): a "every long-lived module got
+constructed" check, and a "GET /measurements or /sensors payload isn't self-wrapped" shape check
+(regression coverage for a real, previously-shipped bug — see either call site's own comment for
+the full account). Both backends call the same shared function with their own applicable
+arguments; every other REST-round-trip pair scanned during that session turned out to be either
+too structurally different or too trivial (a single equality check) to be worth a shared
+abstraction — see `HARDWARE_TEST_PLAN.md` §2.2 for the full scan and reasoning, and don't force
+further sharing onto genuinely backend-specific coverage (mock's byte/frame assertions, twin's
+persistence/IRQ/random-walk behavior) just because this precedent exists.
+
+**`tests_hardware/`** — a new top-level tier, sibling to `tests/` and `tests_scripts/`, for tests
+that need real RP2040 hardware over `mpremote` (flash tier) and/or a real WiFi bridge (bench tier,
+a strict superset of flash). Runs under CPython/`pytest` on the *host*, orchestrating
+`mpremote`/`nmcli`/`iptables` subprocess calls — never the MicroPython Unix port `tests/` uses
+(same "not MicroPython-target code" reasoning as `tests_scripts/`'s own E.1-adjacent rationale,
+applied here to host-side hardware orchestration instead of build tooling). A separate
+`tests_hardware/manual/` package (its own `__main__.py` entry point, never collected by `pytest`)
+holds tests that need a human's hands — printed instructions, human-feasible breadboard timing,
+explicit confirmation prompts — kept structurally apart so an unattended automated pass can never
+silently stall waiting on an absent human.
+
+**As of this writing, nothing in `tests_hardware/` has been run against real hardware** — the
+session that wrote it had no board or bench rig attached; every test was verified only for
+correct collection (`pytest tests_hardware --collect-only` succeeds with nothing attached, every
+fixture skips cleanly rather than erroring), lint-cleanliness, and (where applicable) faithful
+grounding against real source/datasheets. See `tests_hardware/README.md` for provisioning
+instructions and — importantly — a list of mechanisms flagged as unverified during implementation
+(e.g. whether `mpremote`'s always-implicit soft-reset on raw-REPL entry re-executes
+`boot.py`/`main.py`) that a first real run should specifically check rather than assume. `src/`,
+`tests/`, and `digital_twin/`'s own lint/type-check scope (`pyproject.toml`'s `[tool.ruff]`/
+`[tool.mypy]`) does **not** currently extend to `tests_hardware/`, matching the same deliberate,
+not-yet-decided non-scoping `tests_scripts/` already has (see CLAUDE.md's "Code quality tooling")
+— extending either scope to cover `tests_hardware/` is a separate future decision.
+
 ---
 
 # Part F — Platform Target & MicroPython Runtime Facts

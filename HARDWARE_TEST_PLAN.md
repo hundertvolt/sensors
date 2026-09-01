@@ -6,11 +6,17 @@ into `SPECIFICATION.md`/`BACKLOG.md`/`CLAUDE.md` first — see README.md's "Furt
 
 Produced on branch `claude/unit-tests-future-ideation` (branched off
 `claude/digital-twin-oserror-7y00lb`) during an ideation/discussion session with the project owner
-about where unit testing goes next — **no implementation has happened yet**. This document is the
-refined-scope deliverable from that discussion (CLAUDE.md's "Step-session workflow" step (1)); a
-future session picking this up should treat it as the starting point for step (2) (clarifying
-questions — most already resolved below, but re-check with the project owner before assuming
-anything marked "not yet decided" is settled) through step (6).
+about where unit testing goes next. **Update: implementation now exists** (a later session on the
+same branch, after the project owner said to start building) — `tests/_shared_rest_roundtrip.py`
+(the shared-behavior extraction from §2.2/§4) and the full `tests_hardware/` tier (flash/bench
+automated tests over `pytest`, plus a structurally separate `tests_hardware/manual/` runner) are
+real, committed code, collectible/lint-clean/type-checked, but **not yet run against real
+hardware** — no board or bench rig was attached to the session that wrote them. See
+`tests_hardware/README.md` for what a dedicated session with real hardware needs to do next
+(provisioning, environment variables, and — importantly — a list of mechanisms flagged as
+unverified during implementation that the first real run should specifically check, not assume).
+This document's own §9/§11.6 "unsettled" lists are updated below to reflect what's now resolved vs.
+still genuinely open.
 
 **Read this whole document before writing any code against it.** It assumes familiarity with
 SPECIFICATION.md Part E (testing architecture), Part D (the `src/` promotion checklist), Part F
@@ -149,28 +155,21 @@ force-fit into a common shape.
 
 ## 5. Anti-drift mechanism: one manifest, not memory
 
-A single checked-in table — behavior name → which backends apply, with an explicit stated reason for
-any "N/A" — is what actually prevents this architecture from drifting apart over time, as opposed to
-trusting whoever adds a new test to remember every backend it should also cover. Concretely:
+**Resolved by the project owner**: convention, not an automated CI-enforced consistency check. The
+automated-consistency-check idea below was this document's own proposal, offered without having
+been explicitly requested — the project owner's actual ask was a simpler documentation discipline.
+No `tests/_shared/backend_matrix.py` module or consistency-check test exists or is planned; this
+section is kept for the historical reasoning, not as a live design.
 
-- Location/format not yet decided — candidates: a plain Python module (`tests/_shared/
-  backend_matrix.py`, a dict literal, importable by both the shared-behavior module and a
-  consistency-check test) or a small JSON/TOML manifest read by both. Prefer whichever format the
-  MicroPython Unix-port interpreter can also read directly if the consistency check itself should
-  run as a `tests/test_*.py` file (matching this project's existing testing architecture, per
-  SPECIFICATION.md Part E) rather than a separate CPython-only script.
-- A consistency check (same spirit as the existing `tests/test_reset_call_site_invariant.py`'s
-  static-scan pattern) walks the shared-behavior module against the manifest and fails if: a shared
-  behavior has no manifest row, a manifest row names a backend with no adapter actually registered
-  for it, or an adapter exists with no manifest row acknowledging it.
-- This is the mechanism that answers the project owner's original ask directly: "ensure they will
-  not drift apart, stay synced and complete" is not a process discipline to maintain by hand, it's
-  something that fails CI when violated.
+Concretely, going forward: whenever a genuinely shared behavior is added to
+`tests/_shared_rest_roundtrip.py` (or a future sibling module), the applicable/N/A backends should
+be stated in that function's own docstring (see its two current functions,
+`assert_named_modules_constructed`/`assert_sensor_payload_not_self_wrapped`, for the pattern) —
+plain, human-maintained convention, not a machine-checked manifest. `tests_hardware/README.md`'s
+own "first real run" section plays the equivalent role for flash/bench-specific findings.
 
-**Not yet decided — flag to the project owner or resolve in step (2) of the next session**: exact
-manifest schema; whether the consistency check also needs to verify each adapter's *interface
-shape* (e.g. via a `Protocol`, consistent with BACKLOG.md's own noted future typing-strategy work
-for test-wrapper classes) or only its *presence*.
+~~A single checked-in table... fails CI when violated.~~ *(superseded above - kept struck through
+rather than deleted, so a reader mid-document doesn't wonder whether this was ever proposed.)*
 
 ## 6. Real-hardware harness: honoring "no extra flash cycles"
 
@@ -206,19 +205,15 @@ runs, only as a deliberate re-provisioning step.
 
 ### 6.3 Orchestrator shape
 
-Mirrors what already exists for the digital twin (`digital_twin/run_wozi_integration.py` /
-`scripts/run_digital_twin_ci.sh`, see `digital_twin/README.md`'s "Automated CI suite" section for
-the model to follow): one real script per tier (`scripts/run_flash_hardware_suite.sh` /
-`scripts/run_bench_hardware_suite.sh`, names not yet settled) drives live-system checks first, then
-the isolated-driver batch, then a final soft reset — never touching flash again after the initial
-provisioning step covered in §6.1. Not yet designed: the concrete script(s), their flag vocabulary
-(should probably mirror `digital_twin/launch.py`'s/`run_wozi_integration.py`'s existing
-`--fault DEVICE:OP[:TIMES]` vocabulary for the bench fault-injection adapter, for consistency with
-what a project owner already knows from the twin), and how results get reported/aggregated across a
-run (does it reuse `tests/microtest.py`'s PASS/FAIL convention somehow, given these are
-`mpremote`-driven rather than direct Unix-port-interpreter invocations?).
+**Implemented**: `scripts/run_flash_hardware_suite.sh` / `scripts/run_bench_hardware_suite.sh` —
+simpler than this section originally anticipated: plain `uv run pytest tests_hardware/...` wrappers
+with full flag pass-through (`-k`, `-m`, `--run-long-soak`, `--allow-flash-cycle`, ...), not a
+bespoke `--fault DEVICE:OP[:TIMES]`-style vocabulary mirroring the twin's own orchestrator — pytest's
+own fixture/marker/skip machinery turned out to cover live-system-vs-isolated-driver sequencing and
+result reporting without needing a custom layer on top. `scripts/run_manual_hardware_tests.sh` wraps
+the separate `tests_hardware/manual/__main__.py` entry point (§7).
 
-## 7. Manual-test runner: design note (from the discussion, not yet implemented)
+## 7. Manual-test runner: design note (implemented — `tests_hardware/manual/`)
 
 Kept structurally separate from the automated flash/bench runner (§6.3) — a different script/entry
 point, never silently mixed into an unattended pass:
@@ -238,10 +233,13 @@ point, never silently mixed into an unattended pass:
   ending in a human visual/instrument check (Neopixel timing, sensor-accuracy-vs-reference checks)
   rather than a script-only assertion.
 
-Not yet decided: concrete script name/entry point; whether it reuses the same shared-behavior
-functions/adapters as the automated runner where a check applies to both modes (the design intent
-is yes — e.g. the FRAM power-loss test should reuse the same "read back FRAM contents" shared check,
-just wrapped in a human power-cycle step — but this hasn't been built or verified).
+**Implemented**: `tests_hardware/manual/__main__.py` is the entry point (never `runner.py` directly
+— see that file's own docstring for a real duplicate-module-instance bug this found and fixed).
+Code reuse with the automated tier turned out to be lighter than originally anticipated: the manual
+tests mostly drive real REST calls directly (same `http_client`/`harness.Board` primitives the
+automated tier uses) rather than sharing whole check *functions* with it, since every manual test's
+own shape (print instruction → physical action → confirm) doesn't map cleanly onto the automated
+tier's plain assert-and-return shape.
 
 ## 8. Candidate test inventory
 
@@ -259,14 +257,20 @@ this repo's standing "resolved items move into a permanent doc, not silently dro
 
 ## 9. What's genuinely unsettled — do not assume these are decided
 
-- **Manifest file format/location** (§5) — sketched, not chosen.
-- **Adapter interface signatures** (§4) — described narratively (`driver_factory()`, `http_client`,
-  `reboot()`, `raise_on(...)`), never written as actual code/types.
-- **Orchestrator script names, flag vocabulary, result-reporting convention** (§6.3) — not designed.
-- **Manual-runner entry point and code reuse with the automated runner** (§7) — intent stated, not
-  built.
-- **Two real-hardware capabilities flagged as "not currently provisioned"** during the discussion,
-  each with a candidate-list item depending on it:
+**Resolved since this section was first written** (implementation now exists, see the intro's
+"Update" note): manifest mechanism (§5, resolved as convention-only), adapter interface signatures
+(real code now: `tests_hardware/harness.py`'s `Board`, `tests_hardware/bench_control.py`'s
+`BenchBridge`, `tests_hardware/http_client.py`'s `fetch()`), orchestrator scripts (`scripts/
+run_flash_hardware_suite.sh`/`run_bench_hardware_suite.sh`, plain `pytest tests_hardware/...`
+wrappers with flag pass-through, not a bespoke vocabulary), manual-runner entry point
+(`tests_hardware/manual/__main__.py` — see its own docstring for a real duplicate-module-instance
+bug found and fixed while building it), and result-reporting (plain pytest pass/fail/skip; no
+coverage story for real-hardware runs was built or is planned — SPECIFICATION.md Part E.5's
+`sys.settrace` pipeline stays Unix-port-only).
+
+**Still genuinely unsettled**, carried forward:
+- **Two real-hardware capabilities flagged as "not currently provisioned"** during the original
+  discussion, each with a candidate-list item depending on it:
   - A programmable GPIO fault-injection harness on the bench rig, which would upgrade the
     "genuinely wedged I2C bus → watchdog backstop" test (candidate list Part 2, item A.2) from
     `[MANUAL]` to `[AUTO]`.
@@ -275,19 +279,27 @@ this repo's standing "resolved items move into a permanent doc, not silently dro
     item B.5) from `[MANUAL]` to `[AUTO]`.
   Neither is assumed to be worth building — flag to the project owner as an explicit choice, not a
   default plan.
-- **Result-reporting/coverage story for real-hardware runs** — SPECIFICATION.md Part E.5's coverage
-  pipeline is Unix-port-`sys.settrace`-specific; whether/how real-hardware runs report anything
-  analogous (or whether that's simply out of scope for this backend) hasn't been discussed.
+- **Whether `mpremote`'s implicit soft-reset re-executes `boot.py`/`main.py`** — a real mechanism
+  question found while building the harness (see `tests_hardware/harness.py`'s
+  `Board.run_isolated()` docstring and `tests_hardware/README.md`'s "first real run" list for the
+  full account and every other item flagged there the same way).
+- **The SCD30 real-hardware RDY-pin finding** (`tests_hardware/README.md`'s own dedicated section) —
+  a real product decision (wire a GPIO into `asy_scd30_driver.py`, or adjust
+  `digital_twin/_scd30_chip.py`'s own docstring), not this session's to make.
 
 ## 10. Suggested next step for whoever picks this up
 
-Per CLAUDE.md's "Step-session workflow": this document is step (1)'s deliverable. Step (2)
-(clarifying questions) has already had a substantial real discussion behind it (captured throughout
-this document), but the open items in §9 above are genuine step-(2)-shaped questions that still need
-the project owner's input before step (3) (writing tests first, TDD) can start in earnest. Don't
-skip straight to implementation without resolving at least the adapter interface shapes and manifest
-format — those are foundational enough that guessing wrong means rework across every backend, not
-just one file.
+**Update**: steps (1)-(5) of CLAUDE.md's "Step-session workflow" are now done for this unit of work
+— scope refined (this document), clarifying questions resolved (§9/§11.6, updated above), and a full
+implementation written (`tests/_shared_rest_roundtrip.py` + `tests_hardware/`), verified
+collectible/lint-clean/type-correct with the rest of the suite's own existing tests confirmed
+unaffected (identical pass counts before/after). What's left is step (6)'s own boundary and beyond:
+**running this against real hardware, in a dedicated local session** — see
+`tests_hardware/README.md` for exactly what that needs (provisioning, env vars, and the specific
+list of mechanisms flagged as unverified during implementation that the first real run should check
+first, not assume away). This document and `tmp_hardware_test_candidates.md` stay in the repo until
+that real-hardware verification actually happens and their own "delete once verified running"
+criterion is met (see §8) — not deleted just because code now exists.
 
 ## 11. Deep-dive scenario: full hotspot role-reversal test (bench, single-radio)
 
@@ -491,13 +503,34 @@ roughly 25 candidates:
 
 ### 11.6 Still open / needs verification before implementation
 
+**Resolved during implementation** (`tests_hardware/bench/test_hotspot_role_reversal.py`, not yet
+run against real hardware but the design question itself is settled): item 20's `post_fct` question
+— read directly from `src/api_response.py`'s `handle_set_cmd()`: it fires once per PUT call if `any(status
+== "Valid" for status in results.values())`, i.e. once if *at least one* field in that call
+validated. `test_invalid_credentials_rejected_without_triggering_reconnect()` is built around this:
+every field in that PUT is invalid together, not just one, so `post_fct` never fires.
+
+**Still open**:
 - Item 12 above (spoofed off-subnet source address) — raw-socket feasibility on the bench Rpi4 not
-  yet checked.
-- Item 20 above — whether `post_fct=conn.reconnect_wifi` fires on every PUT to those field names or
-  only after successful validation; changes whether item 20 is safe to run as designed.
-- Item 24 above — whether `/networking`'s GET response actually exposes a connection-phase/mode
-  field a test could assert on, or whether that needs a small, deliberate addition to the REST
-  response shape (a real `src/` change, not test-only, and therefore its own scoped decision — flag
-  to the project owner rather than assuming it's fine to add).
+  yet checked; the corresponding test is `@pytest.mark.skip`-marked with this reason in-file
+  (`test_hotspot_role_reversal.py::test_spoofed_off_subnet_source_address_is_ignored`), not silently
+  omitted.
+- Item 24 above — confirmed during implementation that `/networking`'s GET response has no
+  connection-phase/mode field (`src/asy_webserver_service.py`'s `SettingsGroup`/`_get_settings_flat()`
+  wiring has nothing registered for it) — adding one would be a real `src/` change and its own scoped
+  decision, not assumed here. The implemented test
+  (`test_post_condition_sta_connected_state_inferred_from_reachability`) uses reachability at the
+  captured `dut_ip` as an indirect proxy instead, and says so in its own docstring.
 - Item 25 — whether observing a real phone's OS behavior is worth automating in any way (e.g.
   scripted against a spare Android device via `adb`) or is intentionally manual-only; not decided.
+  Implemented as manual-only for now (`tests_hardware/manual/test_wifi_manual.py`'s
+  `test_real_phone_captive_portal_auto_detection`), explicitly exploratory (always reports PASS,
+  records what was observed rather than asserting a specific outcome — the outcome itself is the
+  open question).
+
+**New finding from implementation, not anticipated when this section was first written**: candidate
+list items 15 and 16 (originally tagged `[USB]`/flash-tier) both need real REST/HTTP traffic in
+their own descriptions, which needs bench's network — flash tier has none
+(HARDWARE_TEST_PLAN.md §2.3). Retagged `[USB+WiFi]` and moved into `tests_hardware/bench/` (item 15
+→ `test_end_to_end_timing.py`, item 16 → `test_memory_stress_bench.py`) rather than left as
+unrunnable flash-tier tests — see those files' own docstrings for the full account.

@@ -209,7 +209,10 @@ runs under the Unix port against `tests/machine.py`'s fake `machine` module — 
 flashes or touches real hardware, see above). Real-hardware-in-the-loop testing against a physical
 bench unit — full workflow, including a frozen-firmware full-system bring-up and a bridged-AP
 WiFi/NTP/DNS integration setup — is documented as its own single source of truth in
-`dev_legacy/README.md` (see "Further reading" below).
+`dev_legacy/README.md` (see "Further reading" below); `dev_legacy/`'s own sessions are exploratory/
+ad hoc bring-up logs, distinct from **`tests_hardware/`**, the newer structured, repeatable
+`pytest`-based automated test tier (plus a separate manual-test runner) built against this same
+`mpremote`/bench-bridge access — see `tests_hardware/README.md` for how to run it.
 
 ## Digital twin (hardware simulator)
 
@@ -447,11 +450,16 @@ When a new doc is added, add it here too instead of letting the map go stale aga
 
 **`HARDWARE_TEST_PLAN.md`** (temporary planning doc, current): the architecture for extending the
 test suite onto real rp2 hardware over `mpremote` (the mock/twin/flash/bench/manual backend model,
-the shared-behavior-catalog + per-backend-adapter design, the anti-drift manifest, and the
-no-extra-flash-cycles-constrained real-hardware harness) — not yet implemented, produced by an
-ideation session with the project owner. Its own §8 points at **`tmp_hardware_test_candidates.md`**
-(also temporary, repo root), the itemized 33-candidate real-hardware test list this plan's inventory
-section summarizes. Both are deleted once this effort merges back, following the same pattern as
+the shared-behavior-catalog + per-backend-adapter design, and the no-extra-flash-cycles-constrained
+real-hardware harness), produced by an ideation session with the project owner and then implemented
+by a later session on the same branch — see **`tests_hardware/`** (real code: automated flash/bench
+tests over `pytest`, a separate manual-test runner) and **`tests/_shared_rest_roundtrip.py`** (the
+shared-behavior extraction), plus `tests_hardware/README.md` for how a dedicated session with real
+hardware runs it (**not yet run against real hardware** — no board/bench rig was attached to the
+session that wrote it). Its own §8 points at **`tmp_hardware_test_candidates.md`** (also temporary,
+repo root), the itemized real-hardware test list this plan's inventory section summarizes and
+`tests_hardware/`'s own implementation status now tracks against. Both planning docs are deleted
+once real-hardware verification actually happens, following the same pattern as
 `WIRING_CONTRACT.md`/`WEBSITE_PLAN.md`/`AUDIT_PLAN.md` below — see `HARDWARE_TEST_PLAN.md`'s own §8
 for what must be migrated into `SPECIFICATION.md` first.
 

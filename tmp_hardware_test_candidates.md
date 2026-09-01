@@ -4,8 +4,31 @@ Scratch/temp file, not yet wired into BACKLOG.md or SPECIFICATION.md. Produced d
 `claude/unit-tests-future-ideation` branch discussion (branched off
 `claude/digital-twin-oserror-7y00lb`) about extending the test suite onto real rp2 hardware over
 mpremote, in addition to the existing mock (`tests/machine.py`) and digital-twin (`digital_twin/`)
-backends — not a replacement for either. To be deleted once the tests it lists are implemented and
-verified running.
+backends — not a replacement for either. To be deleted once the tests it lists are implemented **and
+verified running against real hardware** (see "Implementation status" below — implemented is not
+the same as verified; no board/bench rig was attached to the session that wrote the implementation).
+
+## Implementation status (update — a later session on this branch)
+
+Every `[AUTO]` item below (Part 1) now has real, committed code in `tests_hardware/flash/` or
+`tests_hardware/bench/`; every `[MANUAL]` item (Part 2) has real code in `tests_hardware/manual/`.
+None of it has run against real hardware yet — see `tests_hardware/README.md` for what a dedicated
+session needs to do next, including a list of mechanisms flagged as unverified during
+implementation. Three deviations from this list worth knowing before reading further:
+
+- **Item 4** (SCD30 RDY pin) — descoped, not implemented as originally framed: the real driver
+  (`src/asy_scd30_driver.py`) never wires a GPIO to the SCD30's own real RDY pin at all (confirmed
+  directly), so there's no real code path to test the way this item's own text assumed. Recorded as
+  a skipped test with the finding in its own skip reason
+  (`tests_hardware/flash/test_bus_electrical_timing.py::test_scd30_rdy_pin_real_irq_edge`), flagged
+  to the project owner in `tests_hardware/README.md` rather than silently dropped.
+- **Items 15 and 16** — retagged from `[USB]` to `[USB+WiFi]` and moved into `tests_hardware/bench/`:
+  both need real REST/HTTP traffic per their own descriptions, which flash tier (no network) can't
+  provide. See `tests_hardware/bench/test_end_to_end_timing.py`/`test_memory_stress_bench.py`'s own
+  docstrings.
+- **Items 10/11** (real captive-DNS/unprivileged bind) — implemented as part of
+  `HARDWARE_TEST_PLAN.md` §11's role-reversal scenario instead of standalone, per this file's own
+  pre-existing cross-reference in section B below.
 
 ## Tags
 

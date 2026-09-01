@@ -1,0 +1,114 @@
+# tests_hardware/ - real-hardware test tier
+
+Implements HARDWARE_TEST_PLAN.md's flash/bench/manual backends: automated tests driven from the
+host over `mpremote`/`nmcli`/`iptables` (never the MicroPython Unix port `tests/` uses - see
+SPECIFICATION.md Part E.1), plus a structurally separate manual runner for tests that need a human's
+hands. **Nothing in this directory has been run against real hardware yet** - it was written and
+verified collectible/lint-clean/type-correct in a session with no board or bench rig attached (see
+HARDWARE_TEST_PLAN.md's own provenance note). This file is what a dedicated session *with* real
+hardware needs to actually start running it.
+
+## Prerequisites
+
+1. `uv run toolchain/setup_toolchain.py env --tier flash` (real USB board attached) or `--tier
+   bench` (also needs a WiFi adapter for the bridge) - see README.md's own environment-tiers table
+   and `toolchain/setup_toolchain.py`'s own docstring for the full recipe (dialout group, device
+   auto-detection, `br0-wifi-ap` bridge creation via `ensure_bench_bridge()`).
+2. The board must already be running the real, unmodified production firmware
+   (HARDWARE_TEST_PLAN.md §6.1's "one allowed flash" - `uv run scripts/build_firmware.py wozi` +
+   `picotool load -x -v`, or the manual BOOTSEL-button first flash for a genuinely blank board, see
+   `tests_hardware/manual/test_toolchain_manual.py`).
+3. **`picotool` needs real USB support to actually flash anything.** The toolchain build this
+   session ran (`uv run toolchain/setup_toolchain.py setup`) produced a `picotool` explicitly
+   compiled *without* USB support (confirmed directly: its own `--help` output prints "This version
+   of picotool was compiled without USB support. Some commands are not available." - this sandbox
+   had no real USB device for the build to detect/link against). Before running anything that calls
+   `picotool load` (`tests_hardware/flash/test_toolchain_flash_boot.py`'s
+   `test_real_uf2_reflash_and_boot_smoke_test`, `tests_hardware/manual/test_toolchain_manual.py`),
+   rebuild picotool on the real hardware session's own machine (or confirm the apt-packaged
+   `picotool` there already has USB support - check for the same warning line) rather than assuming
+   this session's cached build works.
+
+## Environment variables
+
+- `MPREMOTE_DEVICE` (or `--device` on any `pytest tests_hardware` invocation) - serial device path
+  for the flash-tier board. Defaults to `/dev/ttyACM0`, same convention as
+  `scripts/mpremote_connect.sh`.
+- `BENCH_AP_PASSWORD` - the real bench bridge AP's own password, needed only by
+  `tests_hardware/bench/test_hotspot_role_reversal.py::test_real_credentials_put_succeeds_and_confirms_accepted_values`
+  (stage 6's real credential handoff). `toolchain/setup_toolchain.py`'s own `ensure_bench_bridge()`
+  deliberately never re-prints this on an idempotent re-run ("a later idempotent run will report the
+  SSID again, but never re-prints the password") - find it from wherever it was recorded when the
+  bridge was first created (or reset the bridge and re-run `env --tier bench` to generate + print a
+  fresh one, if that's acceptable for this session). Without it, that one test skips cleanly rather
+  than failing or guessing.
+
+## Running
+
+```bash
+# Automated, flash tier only (real USB board, no network):
+scripts/run_flash_hardware_suite.sh
+
+# Automated, flash + bench tier (real USB board + real WiFi bridge):
+scripts/run_bench_hardware_suite.sh
+
+# Add --run-long-soak to also run the multi-hour/multi-day passive soaks (skipped by default):
+scripts/run_bench_hardware_suite.sh --run-long-soak --long-soak-seconds 21600
+
+# Add --allow-flash-cycle to also run the one deliberate re-provisioning-flash test (skipped by
+# default - this genuinely re-flashes the board, see HARDWARE_TEST_PLAN.md §6.1):
+scripts/run_flash_hardware_suite.sh --allow-flash-cycle
+
+# Manual tests (interactive, prints instructions, waits for confirmation):
+scripts/run_manual_hardware_tests.sh --list          # see what's registered, run nothing
+scripts/run_manual_hardware_tests.sh --only <name>   # run just one
+scripts/run_manual_hardware_tests.sh                 # run all of them, in sequence
+```
+
+Both automated scripts are plain `uv run pytest` wrappers - any pytest flag works (`-k <substring>`,
+`-m role_reversal`, `-v`, `--tb=short`, ...). `--collect-only` works with nothing attached at all
+(every fixture skips cleanly, never errors, when the hardware it needs isn't reachable).
+
+## First real run - things flagged as genuinely unverified, not silently assumed
+
+These were found and explicitly flagged while writing this tier against real source/datasheets, but
+could not be checked further without hardware. Read them before trusting the first real run's
+results blindly - a failure in one of these areas may point at the flagged assumption being wrong,
+not at a real product bug:
+
+- **Does `mpremote`'s implicit soft-reset (every `exec()`/`run_isolated()` call, confirmed against
+  real mpremote 1.29.0 source - see `harness.Board.run_isolated()`'s own docstring) re-execute
+  `modules/_boot.py`/`boot.py`/`main.py`, or does raw-REPL mode suppress that?** Tests that need to
+  observe the *real* boot sequence deliberately use `hard_reset()` + `tail_log()` instead of
+  `exec()`/`run_isolated()` specifically to sidestep this, but the underlying question itself is
+  still open.
+- **Does `machine.soft_reset()` reset the hardware counter `time.ticks_ms()` reads from?** Matters
+  for `test_bus_electrical_timing.py::test_ticks_ms_real_2pow30_rollover`'s multi-day polling design
+  (deliberately uses `board.exec()`, never `run_isolated()`, for exactly this reason - but confirm
+  this before trusting a multi-day run's result).
+- **`scheduler_saturation_drop.py`'s `BUSY_WAIT_MS`/`TIMER_PERIOD_MS` are a starting guess**, not
+  measured on real hardware - widen `BUSY_WAIT_MS` if `dropped` comes back `False` on a real run.
+- **Raw-socket off-subnet DNS spoofing feasibility on the bench Rpi4 is unchecked** -
+  `test_hotspot_role_reversal.py::test_spoofed_off_subnet_source_address_is_ignored` is `@pytest.mark.skip`
+  pending this; implement once a concrete mechanism (CAP_NET_RAW, a second netns, ...) is confirmed
+  to work on the real bench host.
+- **`kick_client()`'s `iw dev <iface> station del <mac>`** against NetworkManager's own AP-mode
+  hostapd backend is unverified - not currently called by any test in this tier, but flagged in
+  `bench_control.py`'s own docstring for whoever reaches for it next.
+- **WS2812/Neopixel timing has no datasheet in this repo's `datasheets/` folder at all** (only
+  bmp3xx/fram/pico w/scd30/sgp40 - confirmed by listing the directory) - the manual
+  `test_real_ws2812_neopixel_signal_timing` test is deliberately qualitative (visual/scope check,
+  human judgment) rather than asserting any specific timing value pulled from memory, per CLAUDE.md's
+  "say so explicitly if the datasheet isn't there" rule.
+
+## A real, closable gap surfaced by this session, not yet acted on
+
+`SCD30_Reader` polls its "data ready" status over I2C on a timer (`trigger_sec=3` in
+`sensortask_wozi.py`) - it never wires a GPIO to the SCD30's own real RDY pin, even though that pin
+genuinely exists on the physical module (datasheets/scd30/..._Datasheet.pdf's own pin-out) and
+`digital_twin/_scd30_chip.py` models a simulated RDY-pin IRQ capability the real driver never uses.
+`tests_hardware/flash/test_bus_electrical_timing.py::test_scd30_rdy_pin_real_irq_edge` is skipped
+with this finding recorded in its own skip reason rather than silently dropped or faked. This is a
+real product decision (wire a real RDY pin into `asy_scd30_driver.py`, or adjust the twin's own
+docstring to be explicit that this models an unused capability) that needs the project owner's
+input, not something this session assumed permission to resolve either way.
