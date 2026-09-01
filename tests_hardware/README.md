@@ -214,6 +214,13 @@ not at a real product bug:
     remain the natural regression coverage for this - they don't retry past a single hard_reset(),
     so an unlucky run can legitimately fail there; that's a real, disclosed flake risk in this
     tier's own bench-tier WiFi tests, not a test bug to fix away.
+  - **See `WIFI_RECONNECT_INVESTIGATION.md` (repo root) for a deep-research pass and an ordered,
+    fast-first test plan prepared specifically to continue this investigation** - written after the
+    findings above, including a new candidate root cause (AP-side stale station-table state on
+    `br0-wifi-ap`'s own backend, tested via this file's own already-existing but never-yet-used
+    `bench_control.BenchBridge.kick_client()`) that this tier's own evidence-gathering never
+    considered. Read it before spending more time on the debug-verbosity-jitter hypothesis above -
+    that doc's test plan sequences it after a cheaper, more directly-supported experiment.
 
 ## A mistake this session made and then corrected - SCD30 RDY pin
 

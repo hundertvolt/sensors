@@ -178,9 +178,16 @@ mid-test or mid-diagnostic state.
      `BENCH_AP_PASSWORD` was obtained and used earlier this session but not persisted anywhere
      (per the credential-handling hard rule) - it will need to be re-obtained from the project
      owner again if the real-credential-handoff test's own coverage is wanted.
-   - Phase 4: further WiFi reconnection investigation, if the project owner wants to keep chasing
-     it - the debug-verbosity-jitter hypothesis in Phase 2's own writeup above is the concrete next
-     experiment, not yet run.
+   - Phase 4: further WiFi reconnection investigation - the project owner does want to keep chasing
+     it. **Read `WIFI_RECONNECT_INVESTIGATION.md` (repo root) before starting this phase** - a
+     dedicated research/planning doc prepared by a cloud session specifically for this phase: a
+     bird's-eye read of the evidence so far, a new candidate root cause this session's own
+     evidence-gathering never considered (AP-side stale station-table state - see that doc's §2),
+     deep research findings (pico-sdk issues, general hostapd/AP station-lifecycle behavior), and an
+     ordered, fast-first test plan (most steps are single-`hard_reset()`-cycle diagnostics, not full
+     suite runs - see that doc's §6 for why and how). The debug-verbosity-jitter hypothesis from
+     this file's own Phase 2 writeup is still in scope but is Step 5 in that doc's ordered plan, not
+     the first thing to try.
    - Phase 5: a bounded soak window (`--run-long-soak --long-soak-seconds 1200 -k "not
      ticks_ms_real_2pow30_rollover"` per the plan agreed at the start of this session - the
      rollover test can't honor a short window at all, see that plan for why).

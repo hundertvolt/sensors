@@ -475,6 +475,19 @@ conversation. Deleted once the real-hardware integration it describes is complet
 migrating anything still permanently true into `tests_hardware/README.md`/`SPECIFICATION.md`/
 `BACKLOG.md` first — same close-out convention as every other temporary planning doc here.
 
+**`REAL_HARDWARE_RUN_LOG.md`** (temporary, live progress log, current): the running account of the
+first actual real-hardware pass through `tests_hardware/` on the bench Pi4 — what's been found and
+fixed phase by phase, current status, and a "Next session should start here" list. Same
+delete-once-verified lifecycle as the other real-hardware planning docs above.
+
+**`WIFI_RECONNECT_INVESTIGATION.md`** (temporary planning doc, current): a deep-research pass and
+ordered, fast-first test plan for the not-yet-root-caused real WiFi reconnection flakiness
+`REAL_HARDWARE_RUN_LOG.md`'s Phase 2 and `tests_hardware/README.md`'s "First real run" section
+found — prepared by a separate cloud session at the project owner's request, for whoever picks up
+`REAL_HARDWARE_RUN_LOG.md`'s own Phase 4. Includes a new candidate root cause (AP-side stale
+station-table state) the original investigation's evidence-gathering never considered. Same
+lifecycle as the other real-hardware planning docs above.
+
 `WIRING_CONTRACT.md`, `FINAL_WIRING_PLAN.md`, and `WEBSITE_PLAN.md` — temporary planning docs for,
 respectively, the `improved-quality/` → `src/` wiring effort (`src/sensortask_wozi.py`'s
 construction restructure, generic webserver/API service, digital-twin simulator, website placeholder
