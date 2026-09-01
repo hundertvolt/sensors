@@ -245,3 +245,104 @@ datasheet in this repo to assert real timing values against, and no scope/logic-
 bench rig's own automated toolchain); a genuine power-loss test of the FRAM backup/restore or
 error-log mechanisms specifically (only `manual/manual_persistence.py`'s raw-persistence power-loss
 tests touch real power loss at all, and those don't drive `AsyFramManager`'s own chunk logic).
+
+## Fourth pass - real networking-robustness gaps against the API/website/internals
+
+Asked directly: real WiFi outage, WiFi flapping, "WiFi available but no internet", NTP unresponsive
+or slow, DHCP flaky/slow, connections at/above the real socket limit, nonsense GET/PUT requests,
+and stale/broken-mid-transmission connections - "imagine more". A grep-first check
+(`grep -rn "ap_down\|ap_up" tests_hardware/`, `grep -rln "malformed\|garbage\|nonsense"
+tests_hardware/`, etc.) confirmed real gaps: `ap_down()`/`ap_up()` were only ever used *inside* the
+hotspot role-reversal scenario's own internal join/leave mechanics, never as a standalone "the DUT
+was already connected and the AP just disappeared" fault; the only "malformed request" test was
+GET-only, hotspot-mode-only, and never checked the response was actually shaped correctly; nothing
+checked the real `max_connections=4` ceiling under genuine concurrency (the pre-existing 8-client
+burst test in `test_end_to_end_timing.py` never holds a connection open long enough to occupy more
+than a couple of real slots); and BACKLOG.md's own open question #5 ("real-hardware verification
+gap for `asy_udp_socket.py`/`captive_dns.py`") was still open - every existing NTP/DNS fault test
+only ever *dropped* traffic (`block_udp_ports()`), never fed the DUT a real garbage response. Eleven
+tests closed these (54 -> 65, `bench/test_network_resilience.py` plus two new
+`bench_control.BenchBridge` primitives and a shared `rogue_udp_responder.py` helper):
+
+- **WiFi outage / flap while already connected**: grounded directly against
+  `src/asy_wifi_service.py`'s `_on_sta_disconnected()` - once `_conn_phase` is
+  `_PHASE_STA_ESTABLISHED` (which it necessarily already is, since these tests depend on `dut_ip`),
+  a disconnect takes the "retrying previously successful connection in one minute" branch, which
+  never increments `connection_failures` and never reaches the hotspot-fallback path at all. This is
+  a structurally *different, safer* branch than the one `HARDWARE_TEST_PLAN.md` §11's role-reversal
+  scenario exercises (a never-yet-connected DUT) - confirmed by reading the real source before
+  designing these tests, specifically to rule out accidentally tripping that scenario's own disclosed
+  permanent-WLAN-deactivation risk. "WiFi available but no internet access" is treated as equivalent
+  to "NTP/DNS unreachable" for this device: it has no other internet-dependent feature (no outbound
+  fetch of remote content) to distinguish a general internet outage from an NTP/DNS-specific one -
+  the pre-existing `test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing` already
+  covers the *unresponsive* case; deliberately not duplicated here.
+- **NTP/DNS servers answering with real garbage** (`rogue_udp_responder.py`,
+  `bench_control.py`'s new `redirect_udp_port_to_local()`/`clear_udp_port_redirect()`): a real `nat`
+  table PREROUTING DNAT-to-loopback redirects the real port to a local rogue UDP responder that
+  answers every query with a fixed non-protocol payload, closing BACKLOG.md's open question #5's
+  "garbage response" half specifically (the *unresponsive* half was already covered). Flagged the
+  same way `own_ip_on()`/`gateway_ip()` already were: this session's sandbox has no systemd/D-Bus to
+  confirm the DNAT combination against a real NetworkManager-managed bridge, so it's a standard,
+  well-documented iptables pattern, not something verified live here.
+- **Real socket-limit degradation** (`test_connections_at_and_above_the_real_socket_limit_degrade_cleanly`):
+  grounded against `asy_webserver_service.py`'s own `_serve()` - `_open_conns` increments the instant
+  a TCP connection is *accepted*, before any byte is read, which is what lets this test hold exactly
+  `max_connections=4` real slots open with bare `connect()` calls and deterministically observe the
+  5th being rejected (closed with zero bytes written, matching `_serve()`'s own "silently close, no
+  accept, no response ever written" reject-when-full comment).
+- **Nonsense GET/PUT over the normal network**: a genuine 404 (shaped per `_ERROR_SHAPES`), a
+  genuinely malformed raw JSON body (needs a raw socket - `http_client.fetch()` can only ever
+  serialize valid JSON), a real 413 over `max_content_length=4096`, and syntactically valid but
+  nonsensical field values (wrong type, out-of-range, an entirely unknown sensor key) - each
+  confirmed against `_body_as_dict()`/`base_classes.py`'s `_set_dict_cfg()` to land exactly where the
+  real source says it should, including confirming none of these paths ever reach
+  `ConfigManager.write_config()` (so nothing needed restoring afterward, unlike the third pass's
+  BMP3xx config-push test).
+- **Slowloris-style partial requests and abrupt mid-response disconnects**: grounded against
+  `_serve()`'s own outer `asyncio.wait_for(..., outer_cap_s)` (production default 15.0s, confirmed
+  not overridden anywhere in `sensortask_wozi.py`) - the exact mechanism the code's own comment says
+  bounds "a Slowloris-paced client no single per-call timeout alone would catch".
+
+**Deliberately not covered, and why** (see `test_network_resilience.py`'s own module docstring for
+the full account): DHCP flakiness/slowness/rubbish responses. The DUT's DHCP *client* behavior lives
+entirely inside MicroPython's own lwIP stack, not this project's own code (no DHCP-handling code
+anywhere in `src/`) - the same "outside this project's own code, a different backstop applies"
+bucket CLAUDE.md already places I2C-bus-wedge recovery in. Unlike `ap_down()`/`ap_up()` (fully
+reversible via `nmcli` in seconds) or the UDP-port redirects above (a plain iptables rule, trivially
+removed), the bench bridge's own DHCP server is NetworkManager's managed `dnsmasq` instance with no
+exposed per-request delay/corruption knob - a custom rogue DHCP responder risks leaving the DUT
+without any valid lease at all, in a way nothing in this tier could then recover from short of
+physical intervention.
+
+**Standing policy from this pass on, applied everywhere it's practical**: reset the real, REST-
+exposed error/warning history (`PUT /status {"ResetErrors": true}`) before a fault-injecting test,
+confirm the *specific* expected `err_s()`/`wrn_s()` entry actually landed on the *right* module's
+log afterward (not just "the system didn't crash"), then reset again so a real bench rig's live
+error history is never left showing a test's own deliberately-provoked faults - `error_log_helpers.py`
+(new shared module) is the reusable primitive for this. `/status`'s own `errcount` shape
+(`asy_webserver_service.py`'s `_shape_errcount_entry()`: `{"counter": int, "history": [{"num": int,
+"type": "E"|"W"}, ...]}`) is *not* the same shape as `print_log.py`'s raw `get_log()` several
+`device_scripts/` files already consume directly - confirmed directly before writing the helper,
+not assumed from that other shape. Applied to every fault-injecting test in
+`test_network_resilience.py`, the two `test_sensor_config_push_over_real_hardware.py` tests (confirming
+a fully valid push-and-restore leaves nothing behind), and retrofitted onto the pre-existing
+`test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing` (`test_wifi_networking.py`).
+One real design bug this same grounding pass caught in itself, fixed before this even shipped: the
+first draft of the slowloris test asserted the wrong response shape and attributed it to the wrong
+timeout mechanism - a single stall over 5s actually hits `_TimeoutStreamProxy`'s own *per-call*
+read timeout, which Microdot itself silently absorbs and recovers from by writing an ordinary
+response (confirmed directly against that class's own module comment), not the *outer* 15s
+`outer_cap_s` backstop the test meant to exercise. Fixed with a genuine trickle-feed pace (one extra
+header line every 3s, 6 of them - each individual gap safely under the 5s per-call timeout, the 18s
+cumulative total safely over the 15s outer one) that actually reaches the outer path instead.
+Not every fault has a groundable expected log entry: `_serve()`'s own reject-when-full,
+`_shaped_error_handler()`, and `_body_as_dict() is None` paths call no `pr.err_s()`/`wrn_s()` at all
+(confirmed directly, not assumed) - those tests assert the log stays *empty* instead, which is
+itself the real, meaningful check for a benign/expected outcome. One case (`test_abrupt_disconnect_
+mid_response_does_not_hang_the_server`) has a real but genuinely timing-dependent expected log entry
+(whether the server is still mid-write when the client's RST lands) - documented as a deliberate
+non-assertion rather than a flaky one. This retrofit was **not** extended to the rest of the tier in
+this pass (the hotspot role-reversal scenario's own dozen-plus fault tests, the flash-tier timer-
+exhaustion/scheduler-saturation scripts, etc.) - a real, larger remaining gap, flagged here rather
+than silently left looking finished.

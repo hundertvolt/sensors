@@ -12,8 +12,10 @@ latter can't be trusted not to disturb a real WiFi association mid-test."""
 
 from __future__ import annotations
 
+import http_client
 from bench_control import BenchBridge
-from harness import Board
+from error_log_helpers import assert_module_error_log_empty, reset_all_error_logs
+from harness import Board, wait_until
 
 # ---------------------------------------------------------------------------
 # Item 7 - real STA connect/disconnect against a genuine AP: real SEEKING->ESTABLISHED
@@ -63,7 +65,8 @@ def test_real_dns_resolution_succeeds_over_genuine_udp(board: Board) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing(board: Board, bench: BenchBridge) -> None:
+def test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+    reset_all_error_logs(dut_ip)
     bench.block_udp_ports([123])
     try:
         board.hard_reset()  # forces a fresh NTP sync attempt against the now-unreachable server
@@ -77,3 +80,20 @@ def test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing(board:
     # The system must still finish booting (webserver etc.) even with NTP unreachable - a real
     # observable equivalent of "NTP sync failure doesn't block the rest of build_system()".
     assert "CFGMGR_" in joined or "FRAM" in joined, f"system did not appear to finish booting with NTP blocked:\n{joined}"
+
+    wait_until(lambda: _http_ok(dut_ip), timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable over REST again after the hard_reset() above")
+    # asy_ntp_client.py's own _handle_ntp_sync_failure() (confirmed directly): its entire
+    # errno=16/errno=17 retry-logging block is gated on `if await self.ntp_issynced():` - only
+    # reached for a *re*-sync failure after a prior successful sync. This is a fresh boot
+    # (hard_reset() above) with NTP unreachable for the whole window, so ntp_issynced() stays False
+    # throughout and that whole block is never entered - a first-ever unresponsive NTP server is
+    # expected to log nothing at all (the "if not synced at all, ntp_time_hours_counter() will
+    # permanently try to sync" case its own comment names), not just "no crash".
+    assert_module_error_log_empty(dut_ip, "NTP")
+
+
+def _http_ok(dut_ip: str) -> bool:
+    try:
+        return http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=5.0).status_code == 200
+    except OSError:
+        return False

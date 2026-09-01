@@ -18,7 +18,7 @@ silently dropped" convention (CLAUDE.md's "Working agreements").
 
 ## Why this file exists
 
-`tests_hardware/` (54 automated `pytest` tests across a flash tier and a bench tier, plus a
+`tests_hardware/` (65 automated `pytest` tests across a flash tier and a bench tier, plus a
 structurally separate 12-test manual runner) was designed and implemented on branch
 `claude/unit-tests-future-ideation` (GitHub PR #52, based on `claude/digital-twin-oserror-7y00lb`)
 by a cloud session with **no board or bench rig attached at all**. Every test is
@@ -82,6 +82,19 @@ to do).
   test) and the flash-cycle test (`--allow-flash-cycle`) are opt-in and skipped by default** - don't
   add these flags to what should be a routine run without deciding deliberately, this session, that
   you want them running.
+- **`bench/test_network_resilience.py`'s NTP/DNS garbage-response tests use a real `nat` table
+  PREROUTING DNAT rule** (`bench_control.py`'s `redirect_udp_port_to_local()`) to hijack UDP 123/53
+  traffic to a local rogue responder - flagged there as unverified against a real NetworkManager-
+  managed bridge (same caveat as `own_ip_on()`/`gateway_ip()`). If a test using it is ever killed
+  mid-run, check for a stray `iptables -t nat -L PREROUTING` rule tagged
+  `sensors-bench-fault-injection` and remove it by hand (`clear_udp_port_redirect()`'s own args) -
+  a leftover rule would otherwise silently break real NTP/DNS for every subsequent run.
+- **Every fault-injecting test resets the real `/status` error/warning history before and after
+  itself** (`PUT /status {"ResetErrors": true}`, via `error_log_helpers.py`) - if any such test is
+  ever killed mid-run, the board's live error history may be left showing that test's own
+  deliberately-provoked fault. Not a correctness risk (a stale entry doesn't affect the running
+  system), but worth a manual `PUT /status {"ResetErrors": true}` before treating the error history
+  as a clean baseline for anything else.
 - **`bench/test_sensor_config_push_over_real_hardware.py` mutates the board's real, persisted
   BMP3xx config** (PressOvers/TempOvers/FiltCoeff) and restores the original values in a `finally`
   block. If that test is ever killed (Ctrl-C, a crash, a `--timeout` kill) between the PUT and the
@@ -124,7 +137,7 @@ to do).
   in `tests_hardware/README.md` resolves in a way that changes the test's own design): flag it to
   the project owner rather than guessing, the same as any other architecturally significant
   decision (CLAUDE.md's "Working agreements").
-- **Once a real-hardware pass is genuinely representative** (not necessarily 100% of all 54+12
+- **Once a real-hardware pass is genuinely representative** (not necessarily 100% of all 65+12
   tests on the first try - long-soaks and the flash-cycle test are opt-in for a reason, and a
   first pass finding real things to fix is expected, not a failure of this plan): tell the project
   owner, then migrate anything from `HARDWARE_TEST_PLAN.md`/`tmp_hardware_test_candidates.md` that's

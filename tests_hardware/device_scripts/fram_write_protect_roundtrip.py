@@ -4,6 +4,12 @@ get_write_protected(), the WPEN|BP0|BP1 bits - datasheet MB85RS64V-DS501-00015 s
 table) against the real MB85RS64V chip - not just "can a chunk be written", but "does the real
 WP hardware mechanism actually gate a real write, and can it be turned back off again".
 
+No error-log check for the blocked write itself (unlike bench/test_network_resilience.py's fault-
+injection tests): flash tier has no network, so there is no /status to check against at all here;
+separately, FRAM_SPI._write()'s own write-protected rejection calls the plain self.pr.wrn() (not
+wrn_s()), confirmed directly - never persisted to the history this device script's own chunk shares
+with fram_error_log_roundtrip.py, so nothing would show up there either way.
+
 Run via `mpremote run <this> soft-reset`."""
 
 import asyncio

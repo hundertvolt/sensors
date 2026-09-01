@@ -17,6 +17,7 @@ from __future__ import annotations
 from typing import Any
 
 import http_client
+from error_log_helpers import assert_module_error_log_empty, reset_all_error_logs
 from harness import Board
 
 # Deliberately different from every driver default (_VAL_POV/_VAL_TOV/_VAL_FC in
@@ -27,6 +28,7 @@ _BMP3XX_TEST_VALUES = {"PressOvers": 4, "TempOvers": 2, "FiltCoeff": 3}
 
 
 def test_bmp3xx_oversampling_and_filter_push_over_real_rest_and_readback(board: Board, dut_ip: str) -> None:
+    reset_all_error_logs(dut_ip)
     get_before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=10.0)
     assert get_before.status_code == 200, f"GET /sensors failed: {get_before.status_code} {get_before.body!r}"
     original: dict[str, Any] = {k: get_before.json()["BMP3XX"][k] for k in _BMP3XX_TEST_VALUES}
@@ -50,8 +52,15 @@ def test_bmp3xx_oversampling_and_filter_push_over_real_rest_and_readback(board: 
         restore_results = restore_res.json()["result"]["BMP3XX"]
         assert all(v == "Valid" for v in restore_results.values()), f"restoring original BMP3XX config was rejected: {restore_results!r}"
 
+    # A fully valid push-and-restore round trip is not a fault - config_manager.py's own errno=12
+    # (see test_network_resilience.py's nonsense-field-values test) only fires on a rejected
+    # key, which none of these were. Both BMP3XX and its own CFGMGR_BMP3XX log are checked.
+    assert_module_error_log_empty(dut_ip, "BMP3XX")
+    assert_module_error_log_empty(dut_ip, "CFGMGR_BMP3XX")
+
 
 def test_sgp40_reset_voc_command_push_over_real_rest(board: Board, dut_ip: str) -> None:
+    reset_all_error_logs(dut_ip)
     # SGPResetVOC is command-only (never persisted - see asy_sgp40_driver.py's _VAL_RESET comment),
     # so there is no "original value" to restore afterward, unlike the BMP3xx fields above.
     put_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"SGPResetVOC": True}}, timeout_s=10.0)
@@ -63,3 +72,4 @@ def test_sgp40_reset_voc_command_push_over_real_rest(board: Board, dut_ip: str) 
     # the real algorithm/hardware would otherwise only surface as a silent later gap.
     get_res = http_client.fetch(dut_ip, 80, "GET", "/measurements", timeout_s=10.0)
     assert get_res.status_code == 200, f"GET /measurements after a real VOC reset failed: {get_res.status_code} {get_res.body!r}"
+    assert_module_error_log_empty(dut_ip, "SGP40")

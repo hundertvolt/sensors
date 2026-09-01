@@ -101,6 +101,30 @@ class BenchBridge:
             # never actually reached (e.g. an earlier assertion in the same test failed first).
             _run_iptables(["-D", "FORWARD", "-p", "udp", "--dport", str(port), "-j", "DROP", "-m", "comment", "--comment", comment], allow_missing=True)
 
+    def redirect_udp_port_to_local(self, port: int, local_port: int, comment: str = "sensors-bench-fault-injection") -> None:
+        """Redirects UDP traffic destined for `port` (as forwarded through this bridge) to a local
+        rogue responder on 127.0.0.1:<local_port> on the bench host itself, instead of letting it
+        reach the real upstream server - simulates a real NTP/DNS server answering with garbage
+        rather than block_udp_ports()'s own "silently unreachable" fault (BACKLOG.md's open
+        question #5, "real-hardware verification gap for asy_udp_socket.py/captive_dns.py" -
+        garbage-response robustness specifically, not just unreachability, had no coverage before
+        rogue_udp_responder.py/this method). A standard `nat` table PREROUTING DNAT-to-loopback
+        pattern.
+
+        NEEDS VERIFICATION ON FIRST REAL RUN: unlike block_udp_ports()'s plain FORWARD-chain DROP
+        (already an established, trusted pattern in this file), this session's sandbox has no
+        systemd/D-Bus to run a real NetworkManager-managed bridge against and confirm this DNAT
+        combination live (same caveat as own_ip_on()/gateway_ip() above). Scoped to the `nat` table
+        PREROUTING chain with no interface filter, mirroring block_udp_ports()'s own "only DUT
+        traffic transits this chain in practice on this dedicated bench rig" scoping assumption -
+        see that method's own comment."""
+        _run_iptables(["-t", "nat", "-A", "PREROUTING", "-p", "udp", "--dport", str(port), "-j", "DNAT", "--to-destination", f"127.0.0.1:{local_port}", "-m", "comment", "--comment", comment])
+
+    def clear_udp_port_redirect(self, port: int, local_port: int, comment: str = "sensors-bench-fault-injection") -> None:
+        # iptables -D matches on the exact rule spec, same as unblock_udp_ports() above - allow_missing
+        # so this is always safe to call even if redirect_udp_port_to_local() was never reached.
+        _run_iptables(["-t", "nat", "-D", "PREROUTING", "-p", "udp", "--dport", str(port), "-j", "DNAT", "--to-destination", f"127.0.0.1:{local_port}", "-m", "comment", "--comment", comment], allow_missing=True)
+
     # -- role reversal: the bridge's one radio temporarily becomes the DUT's own hotspot client --
     # See HARDWARE_TEST_PLAN.md §11.2 for why this is a sequential flip, not simultaneous AP+client
     # (the bench Rpi4 has a single WiFi radio, confirmed directly by the project owner).
