@@ -81,10 +81,39 @@ correctly gated behind opt-in flags; the memory-stress soak also gated behind --
 0 failed. Confirmed via a clean full re-run after all fixes above landed together.
 
 ## Phase 2 - bench tier (minus hotspot role-reversal)
-(pending)
 
-## Phase 2 - bench tier (minus hotspot role-reversal)
-(pending)
+First run (before fixes): 20 failed, 17 passed, 5 skipped. Two distinct root causes, both now
+addressed:
+
+1. **`iptables` not installed on this bench Pi4** (`sudo: iptables: command not found`) - a real
+   gap in `env --tier bench` provisioning, never previously exercised on a Raspberry Pi OS bench
+   host. Fixed: added `ensure_iptables()` to `toolchain/setup_toolchain.py`, matching the existing
+   `ensure_network_manager()`/`ensure_iproute2()` pattern exactly, called from the same bench-tier
+   branch of `run_env()`. Installed directly on this bench machine to unblock testing rather than
+   re-running the full (~8min) `env --tier bench` provisioning flow just for one package.
+2. **The WiFi reconnection flakiness (see tests_hardware/README.md's "First real run" list, now
+   substantially updated) cascaded into a long chain of unrelated-looking failures** once the DUT
+   fell back to hotspot mode mid-run: every subsequent bench test depending on the session-scoped
+   `dut_ip` fixture then failed with `ConnectionRefusedError`/`OSError: No route to host`, since
+   that IP no longer routed to the DUT once it left STA mode. Not a test bug - a real consequence
+   of the underlying flakiness. Spent focused effort here (see tests_hardware/README.md) since the
+   project owner explicitly asked for this to be chased down this session:
+   - Reproduced via 8 fresh `hard_reset()` trials with concurrent `iw dev wlan0 station dump`
+     polling: **6/8 fell back to hotspot** (worse than the previously documented 2/5).
+   - A live `tcpdump port 67 or port 68` capture spanning a full failure cycle showed **zero DHCP
+     packets** - directly overturning the prior "DHCP/L3-timing" hypothesis.
+   - AP-side station entry stays present throughout (never removed) with flat `rx bytes` but a
+     periodically-resetting `inactive time`, consistent with management-frame-only activity that
+     never reaches DHCP - revised hypothesis: a WPA2 association/handshake-adjacent issue on rapid
+     reconnects, in the same problem area as the already-fixed `wifi-sec.pmf disable` fragility
+     (`dev_legacy/README.md`), not a new `src/` bug. Full account and reasoning for not touching
+     `src/asy_wifi_service.py` blind: `tests_hardware/README.md`'s updated "First real run" list.
+   - Recovered a stable connection this session by cycling the bench AP profile
+     (`nmcli connection down/up br0-wifi-ap`) before the next `hard_reset()` - one data point, not
+     confirmed reliable.
+
+Status: re-running the bench suite (minus hotspot role-reversal) now that both root causes are
+addressed, to see what genuinely remains.
 
 ## Phase 3 - hotspot role-reversal
 (pending)

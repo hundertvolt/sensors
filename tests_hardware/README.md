@@ -124,20 +124,64 @@ not at a real product bug:
   `test_real_ws2812_neopixel_signal_timing` test is deliberately qualitative (visual/scope check,
   human judgment) rather than asserting any specific timing value pulled from memory, per CLAUDE.md's
   "say so explicitly if the datasheet isn't there" rule.
-- **A real, not-yet-root-caused WiFi reconnection flakiness, found on the bench unit before this
-  tier existed - fold investigating/fixing it into this tier's real-hardware work rather than
-  treating it as a separate task.** Across ~5 boots in an earlier session, WiFi reconnection after a
-  hardware reset succeeded cleanly 3 times and fell back to hotspot mode twice, following
-  `asy_wifi_service.py`'s `conn_fail_to_hotspot` streak. When it failed, `sudo iw dev wlan0 station
-  dump` on the bench host still showed the device associated at the link layer, suggesting a
-  DHCP/L3-timing issue rather than the WPA2 handshake itself (a separate handshake issue was already
-  fixed earlier - see `dev_legacy/README.md`'s WiFi section for the `pmf disable` fix). Plausibly the
-  upstream router's DHCP behavior on rapid reconnects rather than a `src/` bug, but this was never
-  confirmed either way. `test_real_sta_connect_reaches_established_after_a_hard_reset` (item 7 in
-  `bench/test_wifi_networking.py`) and `bench/test_network_resilience.py` are the natural place to
-  chase this down on the first real run - watch for a hotspot fallback across repeated `hard_reset()`
-  cycles, not just a single clean pass, since the failure was intermittent (2/5) rather than
-  reproducing every time.
+- **WiFi reconnection flakiness - root-caused further (not fully), during the first real run.**
+  Previously: across ~5 boots in an earlier session, WiFi reconnection after a hardware reset
+  succeeded cleanly 3 times and fell back to hotspot mode twice, and `sudo iw dev wlan0 station
+  dump` on the bench host still showed the device associated at the link layer during a failure,
+  suggesting a DHCP/L3-timing issue rather than the WPA2 handshake itself.
+
+  **New evidence from this real run** (8 fresh `hard_reset()` trials, each with concurrent
+  `iw dev wlan0 station dump` polling and one trial with a live `tcpdump port 67 or port 68`
+  capture spanning a full failure-to-hotspot cycle):
+  - **Failure rate was far higher in this session's bursts: 6/8 trials fell back to hotspot**
+    (each following the exact same shape - `conn_fail_to_hotspot=5` consecutive "WLAN connection
+    failed" cycles, each cycle taking ~4-8s from "Establishing WLAN connection" to the failure
+    log line). Small sample, but notably worse than the previously observed 2/5.
+  - **Zero DHCP packets (port 67/68) were captured during a full failing cycle**, directly
+    contradicting the earlier "DHCP/L3-timing" hypothesis - if the CYW43 firmware's own internal
+    DHCP client were even attempting a lease, a broadcast DHCPDISCOVER would appear on the wire.
+    None did, across an entire capture window spanning multiple retry-and-fail cycles.
+  - **The AP-side station entry's `rx bytes` counter never grows during a failing cycle, but its
+    `inactive time` periodically resets to a low value** (e.g. dropping from ~40000ms back to
+    ~1000ms right around each "WLAN connection failed" log line) - meaning *some* frame from the
+    DUT's MAC does land at the AP around each retry (enough to reset the inactivity timer), but
+    never a data-plane frame (no `rx bytes` growth, no DHCP). This is consistent with a
+    management-frame-only interaction (e.g. an association/re-association attempt) that never
+    progresses far enough for the CYW43 firmware to consider itself ready to start DHCP.
+  - **Revised working hypothesis**: the failure is most plausibly at or before WPA2
+    association/key-handshake completion on a *rapid* reconnect shortly after a previous session
+    with the same AP - not a DHCP-server-side timing issue as previously suspected. This bench
+    AP/CYW43 pairing already has one confirmed real handshake fragility (`dev_legacy/README.md`'s
+    `wifi-sec.pmf disable` fix, without which the handshake silently fails outright) - this could
+    be an adjacent, not-yet-identified issue in the same area (e.g. the AP's own hostapd backend
+    not fully clearing a very recent prior association's state before a fast reconnect, or the
+    CYW43 chip's own onboard wireless firmware retaining stale association state across an
+    RP2040-only `machine.reset()`/hard reset that doesn't necessarily power-cycle the WiFi chip
+    itself).
+  - **Recovery note**: cycling the bench AP profile itself (`nmcli connection down/up
+    br0-wifi-ap`) before a subsequent `hard_reset()` was followed by a clean, stable connection in
+    this session - not confirmed as a reliable fix (one data point), but worth trying if
+    reconnection issues seem to worsen over a long session.
+  - **Deliberately not fixed in `src/`**: this looks like CYW43-firmware/hostapd-adjacent
+    behavior, the same "outside this project's own code, a different backstop applies" bucket
+    CLAUDE.md already places I2C-bus-wedge recovery and (this same file's Fourth-pass section)
+    DHCP-client behavior in - `src/asy_wifi_service.py`'s own retry/hotspot-fallback logic is
+    behaving exactly as designed given what the CYW43 firmware reports back; widening
+    `_poll_sta_connect_status()`'s ~5s poll window wouldn't obviously help, since the firmware
+    itself reports `STAT_CONNECT_FAIL` well inside that window on every observed failure, not
+    after our own poll loop gives up first. Needs the project owner's call on whether this is
+    worth pursuing further (e.g. with a monitor-mode capture or a second WiFi test client -
+    HARDWARE_TEST_PLAN.md §9's own "not currently provisioned" list), not something to patch
+    blind here.
+  - Confirmed NOT the cause: `harness.py`'s own `hard_reset()`/hardware DTR reset mechanism itself
+    (the same failure reproduces identically whether triggered by this tier's harness or an ad hoc
+    `mpremote ... reset`), and not a `tests_hardware/`-side artifact (reproduced against the live,
+    normally-booting system with no test code involved at all).
+  - `test_real_sta_connect_reaches_established_after_a_hard_reset` (item 7 in
+    `bench/test_wifi_networking.py`) and `bench/test_network_resilience.py`'s WiFi-outage tests
+    remain the natural regression coverage for this - they don't retry past a single hard_reset(),
+    so an unlucky run can legitimately fail there; that's a real, disclosed flake risk in this
+    tier's own bench-tier WiFi tests, not a test bug to fix away.
 
 ## A mistake this session made and then corrected - SCD30 RDY pin
 

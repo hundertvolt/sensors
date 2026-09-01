@@ -755,6 +755,7 @@ def ensure_dialout_group(skip: bool) -> None:
 
 NETWORK_MANAGER_APT_PACKAGE = "network-manager"
 IPROUTE2_APT_PACKAGE = "iproute2"
+IPTABLES_APT_PACKAGE = "iptables"
 
 
 def ensure_network_manager(skip_apt: bool) -> None:
@@ -777,6 +778,23 @@ def ensure_iproute2(skip_apt: bool) -> None:
     ensure_apt_packages([IPROUTE2_APT_PACKAGE], skip_apt)
     if not shutil.which("ip"):
         raise SetupError("'ip' command still not found on PATH after installing iproute2")
+
+
+def ensure_iptables(skip_apt: bool) -> None:
+    """tests_hardware/bench_control.py's real fault-injection helpers (block_udp_ports(),
+    redirect_udp_port_to_local(), the hotspot-role-reversal AP down/up path's own comment) all
+    shell out to `sudo iptables` - REAL FINDING, confirmed directly on a real bench Raspberry Pi 4
+    running Raspberry Pi OS: `iptables` is not installed by default there (unlike a typical desktop
+    Ubuntu image), which surfaced as a real-hardware test run failing with a plain
+    "sudo: iptables: command not found" rather than any actual fault-injection behavior being
+    exercised. Checked/installed the same way ensure_network_manager()/ensure_iproute2() handle
+    their own commands, rather than assumed present."""
+    if shutil.which("iptables"):
+        return
+    log("'iptables' command not found - installing iptables")
+    ensure_apt_packages([IPTABLES_APT_PACKAGE], skip_apt)
+    if not shutil.which("iptables"):
+        raise SetupError("'iptables' command still not found on PATH after installing iptables")
 
 
 def detect_uplink_interface() -> str:
@@ -932,6 +950,7 @@ def run_env(args: argparse.Namespace, versions_path: Path, versions: dict) -> in
 
     ensure_network_manager(args.skip_apt)
     ensure_iproute2(args.skip_apt)
+    ensure_iptables(args.skip_apt)
     # Interface auto-detection only runs when actually creating a bridge - a no-op re-run against
     # an already-configured bridge must stay a no-op even if e.g. a second WiFi adapter was added
     # to the host later and would now make detect_free_wifi_interface() ambiguous.
