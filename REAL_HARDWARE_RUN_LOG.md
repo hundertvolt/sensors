@@ -76,8 +76,12 @@ Two more real findings from re-running after the above fixes landed:
   was fixed and this one became visible on its own. Fixed the same way: prime `cfgmgr.valid`/
   `_cache` directly instead of calling `setup()`.
 
-Status: full flash suite re-run in progress to confirm all fixes together - see final result
-in the next update.
+**Status: GREEN.** Full flash suite: 15 passed, 4 skipped (2 long-soaks + the flash-cycle test,
+correctly gated behind opt-in flags; the memory-stress soak also gated behind --run-long-soak).
+0 failed. Confirmed via a clean full re-run after all fixes above landed together.
+
+## Phase 2 - bench tier (minus hotspot role-reversal)
+(pending)
 
 ## Phase 2 - bench tier (minus hotspot role-reversal)
 (pending)
