@@ -177,6 +177,38 @@ not at a real product bug:
     (the same failure reproduces identically whether triggered by this tier's harness or an ad hoc
     `mpremote ... reset`), and not a `tests_hardware/`-side artifact (reproduced against the live,
     normally-booting system with no test code involved at all).
+  - **Confirmed NOT new-code-introduced**: `python/CommonDrivers/async_connect.py`'s legacy
+    `wlanConnect()` (the deployed, field-proven code) has the exact same shape - `wlan.connect()`
+    then poll `wlan.status()` up to 10x0.5s, treat `STAT_CONNECT_FAIL` as a failure, the same
+    `conn_fail_to_hotspot` streak. The refactor carried this forward faithfully; it didn't
+    introduce a new bug here.
+  - **Checked directly against the pinned MicroPython C source** (project-owner-prompted, rather
+    than assumed) whether the CYW43 chip could be silently staying associated across a reset
+    without the RP2040 side knowing: `ports/rp2/main.c` calls `cyw43_init()` exactly once, *before*
+    the soft-reset loop - a **soft reset genuinely never re-touches the WiFi chip at all**, so a
+    soft-reset-based test (none of this tier's automated tests use one for this) could plausibly
+    see stale, chip-retained association state. This tier's reproduction (and this tier's own
+    `hard_reset()`) exclusively uses a **hard** reset, which restarts `main()` from scratch;
+    `cyw43_ensure_up()` in the vendored `cyw43-driver` genuinely toggles the chip's own
+    `WL_REG_ON` power pin low then high on that path (`cyw43_ctrl.c`), confirmed by reading that
+    function directly - so stale chip-side association state is not the explanation for what this
+    tier reproduced, though it's a real, separate fact worth knowing about soft resets specifically.
+  - **This is a known class of upstream issue, not unique to this project** (checked directly via
+    web search, not assumed): `raspberrypi/pico-sdk#2186` is a maintainer-acknowledged, since-fixed
+    bug where rapid repeated WiFi-connect attempts hit a real timing bug in `cyw43_do_ioctl()`'s
+    own polling loop - a bare `sleep_ms(10)` insert fixed it. `pico-sdk#1373`/`#2316` are further
+    open reports of Pico W connect failures specifically tied to reset/reboot sequences. This is
+    consistent with genuine CYW43-driver-level timing sensitivity around reconnects being a real,
+    recognized hardware/firmware characteristic, not something specific to this codebase.
+  - **A more specific, testable hypothesis this leaves open**: this bench's own `main.py` runs at
+    a fairly chatty debug level (a sensor-trigger print roughly every 1-2s from three drivers
+    concurrently) under MicroPython's single-threaded cooperative asyncio scheduler, while
+    `_poll_sta_connect_status()`'s entire connect budget is only ~5s - real print-heavy USB-serial
+    I/O contending for the same event loop during that narrow window is a plausible source of
+    exactly the kind of timing jitter the upstream `cyw43_do_ioctl()` bug above shows this driver
+    can be sensitive to. Not confirmed (would need a lower-debug-verbosity A/B comparison to test),
+    but a concrete, actionable next step if this is investigated further - and notably would NOT
+    require any `src/asy_wifi_service.py` change to test, only a temporary debug-level change.
   - `test_real_sta_connect_reaches_established_after_a_hard_reset` (item 7 in
     `bench/test_wifi_networking.py`) and `bench/test_network_resilience.py`'s WiFi-outage tests
     remain the natural regression coverage for this - they don't retry past a single hard_reset(),

@@ -112,6 +112,25 @@ addressed:
      (`nmcli connection down/up br0-wifi-ap`) before the next `hard_reset()` - one data point, not
      confirmed reliable.
 
+Also added a bounded `hard_reset()` retry to the `dut_ip` fixture itself (mirroring `joined_hotspot`'s
+own established recovery pattern) - a single unlucky boot was cascading into ~15 unrelated bench
+tests failing/erroring, which has nothing to do with what any of them actually check.
+
+**Further WiFi investigation, prompted directly by the project owner** ("I don't remember ever
+seeing this on real WiFi - check legacy, check if this is new, check docs/forums"): confirmed the
+legacy deployed code (`python/CommonDrivers/async_connect.py`) has the exact same connect/poll/
+streak shape - not a refactor-introduced bug. Checked the pinned MicroPython C source directly:
+a **soft** reset never re-touches the CYW43 chip at all (`cyw43_init()` runs once, before the
+soft-reset loop in `ports/rp2/main.c`) - real, but not what this tier's `hard_reset()` uses, which
+does genuinely power-cycle the chip via `WL_REG_ON` (confirmed in `cyw43_ctrl.c`). Web research
+found this is a recognized *class* of upstream Pico W/cyw43 issue, including a maintainer-fixed
+timing bug in `cyw43_do_ioctl()`'s own polling (`raspberrypi/pico-sdk#2186`) triggered by rapid
+repeated connect attempts. Left open as a concrete, testable next step: this bench's own chatty
+per-cycle debug logging under a single-threaded asyncio scheduler, contending with
+`_poll_sta_connect_status()`'s tight ~5s budget, is a plausible jitter source matching that known
+driver sensitivity - worth an A/B test at lower debug verbosity, not confirmed. Full account:
+tests_hardware/README.md's "First real run" list.
+
 Status: re-running the bench suite (minus hotspot role-reversal) now that both root causes are
 addressed, to see what genuinely remains.
 
