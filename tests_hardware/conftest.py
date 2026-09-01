@@ -97,15 +97,39 @@ def dut_ip(board: Board, bench: BenchBridge) -> str:
     finding stands; this fixture's own polling was very likely making things meaningfully worse
     on top of it, not the whole explanation for it).
 
-    Fixed: `_get_ip_if_connected()` below is now a single, non-repeated `board.exec()` call - it
-    costs one soft-reset-worth of disruption at most (unavoidable: reading `network.WLAN`'s state
-    genuinely does need a Python-level call), but is never called again in a tight retry loop.
-    If it doesn't already report a real IP, this fixture switches to passively watching
-    (`board.tail_log()`, which opens the serial port directly and sends nothing - see that
-    method's own docstring) for `asy_wifi_service.py`'s own real log lines ("WLAN connection
-    established" / "Permanently no WLAN connection - activating hotspot!") instead of disrupting
-    the in-progress attempt again. Only once the log shows a real success does it call
-    `_get_ip_if_connected()` one more time to actually read the IP back out.
+    FOURTH REAL FINDING, fixed (supersedes the "single exec() call" fix originally described here):
+    a single `board.exec()` call is not actually safe either. Empirically confirmed on real
+    hardware (an A/B test: `exec "..."` alone vs. `exec "..." soft-reset` vs. `run <script>
+    soft-reset` - all three left the board completely silent afterward, no `main.py` output at
+    all, for as long as observed): entering raw REPL sets the interpreter's `pyexec_mode_kind` to
+    `RAW_REPL`; `ports/rp2/main.c`'s own soft-reset path only re-runs `main.py` when
+    `pyexec_mode_kind == PYEXEC_MODE_FRIENDLY_REPL`. A trailing `soft-reset` command (or
+    `run_isolated()`'s `soft_reset_after=True`) returns the connection to an idle friendly-REPL
+    *prompt*, but does not retroactively make the *already-completed* soft-reset's boot sequence
+    re-check that condition - `main.py` stays stopped. This directly answers (the wrong way) this
+    tier's own long-standing open question, `harness.py`'s `run_isolated()` docstring's "NEEDS
+    VERIFICATION ON FIRST REAL RUN" note and this file's "First real run" list item 1 - both
+    assumed the trailing soft-reset "hands the board back to its normal auto-booted state"; it
+    does not. That assumption was harmless everywhere else in this tier (every isolated-driver
+    test constructs its own driver objects directly and never depends on the live `main.py`
+    system still running afterward) but is exactly wrong for this fixture's own purpose. Only a
+    genuine `hard_reset()` (a real `machine.reset()`, confirmed throughout this session to
+    reliably resume normal auto-boot - the RP2040 restarts from its own reset vector, where
+    `pyexec_mode_kind` starts fresh at its compiled-in `FRIENDLY_REPL` default) is safe to use here.
+
+    Fixed: this fixture now never calls `board.exec()`/`board.run_isolated()` while expecting
+    `main.py` to keep running afterward. It passively watches (`board.tail_log()`, which opens the
+    serial port directly and sends nothing) for `asy_wifi_service.py`'s own real log lines ("WLAN
+    connection established" / "Permanently no WLAN connection - activating hotspot!"). Reading the
+    actual IP back still needs one `board.exec()` call - unavoidable, no other way to ask the
+    running interpreter for `network.WLAN(...).ifconfig()` - so that call is always immediately
+    followed by a real `board.hard_reset()` to resume normal operation before anything else uses
+    the board. Since the CYW43 chip's own already-good radio association survives a soft reset
+    (it's the *chip*, not `main.py`, that stays connected) and only `main.py`'s own object graph
+    needed rebuilding, the post-hard_reset reconnect is expected to be the same "already
+    associated, `_run_sta_mode()`'s fast isconnected() path" case, not a fresh cold connect - still
+    given the same hard_reset()-retry tolerance as everywhere else in this fixture, since it's
+    still a real reconnect attempt subject to the same underlying flakiness either way.
 
     SECOND REAL FINDING, fixed earlier: having a real STA IP does NOT mean the webserver is
     already serving - confirmed directly, real hardware: `sensortask_wozi.main()` only starts the
@@ -126,15 +150,18 @@ def dut_ip(board: Board, bench: BenchBridge) -> str:
     they stop this fixture's own mechanics from making it worse than it has to be."""
     ip_holder: list[str] = []
 
-    def _get_ip_if_connected() -> bool:
-        # Deliberately a single call, never polled in a tight loop - see this fixture's own
-        # docstring for why repeated calls here were actively self-defeating.
-        output = board.exec(
-            "import network\n"
-            "w = network.WLAN(network.STA_IF)\n"
-            "print('DUT_IP=' + (w.ifconfig()[0] if w.isconnected() else ''))",
-            timeout_s=15.0,
-        )
+    def _read_ip_and_resume() -> bool:
+        # This call itself strands main.py (see this fixture's own docstring) - always followed
+        # immediately by a real hard_reset() to resume normal operation, never left dangling.
+        try:
+            output = board.exec(
+                "import network\n"
+                "w = network.WLAN(network.STA_IF)\n"
+                "print('DUT_IP=' + (w.ifconfig()[0] if w.isconnected() else ''))",
+                timeout_s=15.0,
+            )
+        finally:
+            board.hard_reset()
         for line in output.splitlines():
             if line.startswith("DUT_IP=") and len(line) > len("DUT_IP="):
                 ip_holder.append(line[len("DUT_IP=") :].strip())
@@ -145,15 +172,16 @@ def dut_ip(board: Board, bench: BenchBridge) -> str:
         return http_client.fetch(ip_holder[-1], 80, "GET", "/status", timeout_s=5.0).status_code == 200
 
     def _wait_for_sta_ip(timeout_s: float) -> None:
-        if _get_ip_if_connected():
-            return
+        # Purely passive - never touches the board via exec()/run(), which would strand main.py
+        # (see this fixture's own docstring). board.hard_reset() must have already put the board
+        # into a real, currently-booting state before this is called.
         lines = board.tail_log(duration_s=timeout_s)
         joined = "\n".join(lines)
         if "Permanently no WLAN connection" in joined:
             raise HardwareTestFailure(f"DUT fell back to hotspot mode instead of establishing a real STA connection:\n{joined}")
         if "WLAN connection established" not in joined:
-            raise TimeoutError(f"no real STA IP and no 'WLAN connection established' observed within {timeout_s}s of passive log observation:\n{joined}")
-        if not _get_ip_if_connected():
+            raise TimeoutError(f"no 'WLAN connection established' observed within {timeout_s}s of passive log observation:\n{joined}")
+        if not _read_ip_and_resume():
             raise HardwareTestFailure(f"log showed 'WLAN connection established' but a follow-up check found no real IP:\n{joined}")
 
     def _wait_for_ip_and_http(timeout_s: float, description_suffix: str = "") -> None:
@@ -165,6 +193,7 @@ def dut_ip(board: Board, bench: BenchBridge) -> str:
             description=f"DUT serves real HTTP at {ip_holder[-1]} (webserver task starts only after ntp_force_sync(), up to ~20s after STA connects){description_suffix}",
         )
 
+    board.hard_reset()  # start from a known, genuinely-booting state - see this fixture's own docstring on why only a real hard_reset() is safe here
     try:
         _wait_for_ip_and_http(60.0)
     except (TimeoutError, HardwareTestFailure):

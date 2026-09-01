@@ -131,20 +131,66 @@ per-cycle debug logging under a single-threaded asyncio scheduler, contending wi
 driver sensitivity - worth an A/B test at lower debug verbosity, not confirmed. Full account:
 tests_hardware/README.md's "First real run" list.
 
-Status: re-running the bench suite (minus hotspot role-reversal) now that both root causes are
-addressed, to see what genuinely remains.
+**Fifth, foundational real finding** (found after the project owner directly pushed back on the
+WiFi writeup above - "are you sure you didn't miss something", then asked for legacy/forum
+comparison, which led here): `dut_ip`'s own `hard_reset()`-retry fix (above) was itself built on a
+single `board.exec()` call, which is **not safe either**. Confirmed empirically on real hardware
+(an A/B test: bare `exec`, `exec ... soft-reset`, and `run <script> soft-reset` all left the board
+completely silent afterward) and against the pinned MicroPython C source: entering raw REPL sets
+`pyexec_mode_kind` to `RAW_REPL`; the soft-reset boot path only re-runs `main.py` when that's
+`FRIENDLY_REPL`. A trailing `soft-reset` returns to an idle friendly-REPL *prompt* - it does not
+retroactively make the already-completed soft-reset's boot sequence re-check that condition, so
+`main.py` stays stopped. **This directly answers, the wrong way, this tier's own long-standing
+open question** (`harness.py`'s `run_isolated()` docstring's "NEEDS VERIFICATION ON FIRST REAL
+RUN" note, and this file's own "First real run" list item 1) - both assumed a trailing soft-reset
+"hands the board back to its normal auto-booted state"; it does not. Harmless everywhere else in
+this tier (every isolated-driver test builds its own driver objects directly, never depending on
+`main.py` staying up afterward) but exactly wrong for `dut_ip`'s own purpose. Only a genuine
+`hard_reset()` (a real `machine.reset()`, confirmed throughout this session to reliably resume
+normal auto-boot) is safe. Rewrote `dut_ip` to never call `board.exec()`/`run_isolated()` while
+expecting `main.py` to keep running: it passively watches (`board.tail_log()`) for the real
+"WLAN connection established"/hotspot-fallback log lines, and the one `board.exec()` call still
+needed to actually read the IP back out is now always immediately followed by a real
+`hard_reset()` to resume operation, never left dangling. See `tests_hardware/conftest.py`'s own
+`dut_ip` docstring for the full, current account (now four documented real findings deep).
 
-## Phase 3 - hotspot role-reversal
-(pending)
+**Session paused here at the project owner's request, mid-verification of this fifth fix** - the
+corrected `dut_ip` design has NOT yet been confirmed working end-to-end on real hardware (the
+verification run in progress when the pause was requested was stopped, not completed). The board
+was left on a clean, real `hard_reset()` (confirmed exit 0, no leftover mpremote/pytest processes)
+before ending the session - a safe, known-good resting state for whoever resumes next, not a
+mid-test or mid-diagnostic state.
 
-## Phase 4 - WiFi reconnection flakiness investigation
-(pending)
+## Next session should start here
 
-## Phase 5 - bounded soak window
-(pending)
-
-## Phase 6 - global lint/typecheck/unit-test regression pass
-(pending)
-
-## Phase 7 - wrap-up
-(pending)
+1. Re-verify the corrected `dut_ip` fixture (`tests_hardware/conftest.py`) actually works end to
+   end before trusting it - run a small `-k` subset first (e.g.
+   `test_get_nonsense_path_is_shaped_404_over_the_normal_network`), not the full bench suite
+   immediately.
+2. Once confirmed, re-run the full bench suite (`scripts/run_bench_hardware_suite.sh -v -k "not
+   hotspot_role_reversal"`) and update this log with the real pass/fail result - Phase 2 is not
+   yet closed out with a clean run.
+3. Remaining phases, still fully pending, in the order the original plan set out:
+   - Phase 3: hotspot role-reversal (`bench/test_hotspot_role_reversal.py`), run alone and watched
+     closely per `REAL_HARDWARE_HANDOFF.md`'s own suggested order - highest-risk file this tier
+     has (can strand the board in `_PHASE_DEACTIVATED` until a real hard_reset(), though
+     `joined_hotspot`'s own fixture teardown already recovers from that automatically).
+     `BENCH_AP_PASSWORD` was obtained and used earlier this session but not persisted anywhere
+     (per the credential-handling hard rule) - it will need to be re-obtained from the project
+     owner again if the real-credential-handoff test's own coverage is wanted.
+   - Phase 4: further WiFi reconnection investigation, if the project owner wants to keep chasing
+     it - the debug-verbosity-jitter hypothesis in Phase 2's own writeup above is the concrete next
+     experiment, not yet run.
+   - Phase 5: a bounded soak window (`--run-long-soak --long-soak-seconds 1200 -k "not
+     ticks_ms_real_2pow30_rollover"` per the plan agreed at the start of this session - the
+     rollover test can't honor a short window at all, see that plan for why).
+   - Phase 6: a global regression pass (`scripts/lint.sh`, `scripts/typecheck.sh`, `scripts/
+     test.sh`) to confirm none of this session's `tests_hardware/`/`toolchain/setup_toolchain.py`
+     changes broke anything in the existing mock/twin suite.
+   - Phase 7: wrap-up - update `tests_hardware/README.md`/`REAL_HARDWARE_HANDOFF.md`'s own status
+     once a genuinely clean pass exists, but do not unilaterally delete/migrate the temporary
+     planning docs (`HARDWARE_TEST_PLAN.md` etc.) without the project owner's sign-off, per
+     `REAL_HARDWARE_HANDOFF.md`'s own close-out instructions.
+4. All fixes so far are committed and pushed to `claude/digital-twin-oserror-7y00lb` (through
+   commit `bdfc071` at the time of this pause). No PR opened yet - better to open one once Phase 2
+   is genuinely closed out with a clean bench-tier run, not before.
