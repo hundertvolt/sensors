@@ -166,10 +166,82 @@ the SCD30 mistake) surfaced two more real issues, both fixed:
   `run_bench_hardware_suite.sh` were always scoped to avoid this, but the underlying structural gap
   was real. Fixed by renaming every file in `tests_hardware/manual/` away from the `test_*.py` glob
   pytest's default collection matches (e.g. `test_wifi_manual.py` -> `manual_wifi.py`) - confirmed
-  directly: `uv run pytest tests_hardware --collect-only` now shows exactly the 44 automated tests,
-  zero from `manual/`, where it previously showed 56 (wrongly including all 12 manual ones).
+  directly: `uv run pytest tests_hardware --collect-only` at the time showed exactly the 44 automated
+  tests this tier held then, zero from `manual/`, where it previously showed 56 (wrongly including
+  all 12 manual ones). See the section below for the count as of the third pass (54).
 
 Also positively confirmed (not previously verified live) during this same re-audit, for what it's
 worth to a future reader: `nmcli device wifi connect`'s exact syntax and `iw dev <iface> station
 del/dump`'s exact syntax, both checked directly against the real tools' own `--help` output
 (`network-manager`/`iw` packages installed into this sandbox specifically to check them).
+
+## Third pass - closing real coverage gaps (found via a direct project-owner audit question)
+
+Asked directly: "did you also add tests for the sensors and the on-board hardware itself and
+standalone, up through the integration, and at the top level checking the API delivering sensible
+values, including the VOC algorithm producing good results, FRAM backup working, FRAM error storage
+working, website working... (all of which are tests of the twin, partially simulated, but now
+running for real)?" Answer at the time, honestly: no - only SCD30 had any automated real-hardware
+value check at all, and several real mechanisms (FRAM, the VOC algorithm, website-over-the-normal-
+network, multi-sensor REST value sanity) had zero automated coverage. Confirmed by grep before
+writing anything (`grep -rln "AsyFramManager\|asy_fram" tests_hardware/` etc. all came back with
+nothing but this README/manual-test references). Ten tests closed these gaps (44 -> 54):
+
+- **BMP3xx/SGP40 standalone plausibility** (`flash/test_sensor_accuracy.py`, `device_scripts/
+  bmp3xx_plausibility_read.py` / `sgp40_voc_algorithm_quality.py`): same isolated-driver-plus-
+  datasheet-bounds shape as the pre-existing SCD30 test, now covering all three real sensors.
+- **VOC algorithm quality** (same `sgp40_voc_algorithm_quality.py`): SGP40's raw signal and
+  `voc_algorithm.py`'s Sensirion Gas Index Algorithm can't be exercised independently of each other
+  (the driver always runs one straight into the other), so one script covers both - waits out the
+  algorithm's own documented 45s initial blackout, then samples several real post-blackout readings
+  and checks they're in range *and* neither frozen nor erratic. Deliberately a stability/sanity
+  check, not a numerical-accuracy claim against a calibrated reference (that needs a human-supplied
+  VOC stimulus - `manual/manual_sensor_accuracy.py` item 10).
+- **FRAM backup working** (`device_scripts/fram_manager_roundtrip.py`,
+  `sgp40_fram_backup_restore.py`, `flash/test_fram_storage.py`): a real chunk write/read/CRC/dual-
+  copy round trip against the physical MB85RS64V chip, plus the real SGP40 VOC-state backup/restore
+  pathway specifically, driven through `SGP40_Reader`'s own real production `read_loop()` (natural
+  ~60s `BackupPeriod` schedule) rather than synthetic internal calls. A "fresh boot" is simulated by
+  constructing a brand-new `AsyFramManager` Python object against the same physical chip (allocator
+  state is per-object, so this lands on the identical chunk address a real reboot's own fresh
+  `build_system()` call would) rather than requiring an actual `hard_reset()` - the real chip's
+  bytes are untouched by a plain object-level restart either way.
+- **FRAM error storage working** (`device_scripts/fram_error_log_roundtrip.py`):
+  `PrintLogHistoryStore` (every FRAM-chunk-owning module's own `err_s()`/`wrn_s()` persistence)
+  against the real chip, same fresh-boot-simulation pattern as the backup/restore test above.
+- **Website over the normal network** (`bench/test_rest_endpoints_over_sta.py`): the only prior
+  `GET "/"` check anywhere in this tier was hotspot-mode-only, inside
+  `test_hotspot_role_reversal.py`.
+- **Top-level API delivering sensible values, across all three real sensors together, via REST**
+  (same file): the pre-existing endpoint check
+  (`test_end_to_end_timing.py::test_real_concurrent_client_burst_does_not_crash_the_webserver`) only
+  ever checked HTTP status, never values.
+
+A follow-up clarification then widened scope further, on the same audit thread: not just twin-
+parity, but (1) bottom-level hardware *function* checks, not just readings, and (2) a real-hardware
+counterpart for every mock-driven integration test in `tests/` "wherever possible". Two more
+additions from that:
+
+- **FRAM write protection actually gates a real write** (`device_scripts/
+  fram_write_protect_roundtrip.py`, `flash/test_fram_storage.py`): sets the real WPEN|BP0|BP1
+  status-register bits, confirms a real write is genuinely rejected while protected and succeeds
+  once cleared again - not just "can a chunk be written at all" (the roundtrip test above already
+  covers that).
+- **Real PUT /sensors config pushes** (`bench/test_sensor_config_push_over_real_hardware.py`): the
+  real-hardware counterpart to `tests/test_setter_microdot_integration.py`'s mock-driven coverage.
+  BMP3xx's oversampling/filter-coefficient fields are pushed to non-default values over a real REST
+  call, confirmed `"Valid"` (proof the real I2C write succeeded), then read back via a second real
+  REST call and restored to their original values in a `finally` block (this mutates the bench
+  board's real persisted config). SGP40's `SGPResetVOC` command-only field is pushed the same way.
+  **SCD30 has no live-push config fields at all** (confirmed directly: zero `_push_callbacks`
+  registrations in `asy_scd30_driver.py`) - there is nothing to add real-push-parity coverage for on
+  that sensor, not a gap.
+
+**Still not automated even after this pass** (flagged honestly, not silently left implicit):
+real-hardware numerical-accuracy validation against a calibrated reference for any sensor (needs a
+human-supplied known-good stimulus - `manual/manual_sensor_accuracy.py` items 9/10, inherently
+manual); WS2812/Neopixel notification-signal validation beyond the manual qualitative check (no
+datasheet in this repo to assert real timing values against, and no scope/logic-analyzer in this
+bench rig's own automated toolchain); a genuine power-loss test of the FRAM backup/restore or
+error-log mechanisms specifically (only `manual/manual_persistence.py`'s raw-persistence power-loss
+tests touch real power loss at all, and those don't drive `AsyFramManager`'s own chunk logic).

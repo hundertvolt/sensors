@@ -28,6 +28,16 @@ self-healing fallback, an earlier pass here wrongly claimed otherwise from an in
   `HARDWARE_TEST_PLAN.md` §11's role-reversal scenario instead of standalone, per this file's own
   pre-existing cross-reference in section B below.
 
+**Beyond this list entirely**: a later audit found this candidate list, despite covering every
+numbered item, still left real gaps against what a full real-hardware mirror of the mock/twin test
+suites needs — BMP3xx/SGP40 standalone plausibility, the VOC algorithm itself, FRAM
+backup/error-storage, website-over-the-normal-network, top-level multi-sensor REST value sanity,
+bottom-level hardware-function checks (not just readings), and real-hardware counterparts of
+mock-driven integration tests (`tests/test_setter_microdot_integration.py`'s REST config-push
+coverage). Ten more tests closed these (see `tests_hardware/README.md`'s "Third pass" section for
+the full account) — this list was never updated item-by-item for them since they were never numbered
+candidates here to begin with.
+
 ## Tags
 
 **Tier** (follows `toolchain/setup_toolchain.py env --tier {flash,bench}`):

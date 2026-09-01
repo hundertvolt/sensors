@@ -18,7 +18,7 @@ silently dropped" convention (CLAUDE.md's "Working agreements").
 
 ## Why this file exists
 
-`tests_hardware/` (44 automated `pytest` tests across a flash tier and a bench tier, plus a
+`tests_hardware/` (54 automated `pytest` tests across a flash tier and a bench tier, plus a
 structurally separate 12-test manual runner) was designed and implemented on branch
 `claude/unit-tests-future-ideation` (GitHub PR #52, based on `claude/digital-twin-oserror-7y00lb`)
 by a cloud session with **no board or bench rig attached at all**. Every test is
@@ -82,6 +82,13 @@ to do).
   test) and the flash-cycle test (`--allow-flash-cycle`) are opt-in and skipped by default** - don't
   add these flags to what should be a routine run without deciding deliberately, this session, that
   you want them running.
+- **`bench/test_sensor_config_push_over_real_hardware.py` mutates the board's real, persisted
+  BMP3xx config** (PressOvers/TempOvers/FiltCoeff) and restores the original values in a `finally`
+  block. If that test is ever killed (Ctrl-C, a crash, a `--timeout` kill) between the PUT and the
+  restore, the board is left with non-default oversampling/filter settings - check `GET /sensors`'
+  BMP3XX fields against this repo's own defaults (PressOvers=1, TempOvers=1, FiltCoeff=0,
+  `asy_bmp3xx_driver.py`'s `_VAL_POV`/`_VAL_TOV`/`_VAL_FC`) if this test is ever interrupted, and
+  restore by hand via `PUT /sensors` if so.
 
 ## Suggested run order
 
@@ -117,7 +124,7 @@ to do).
   in `tests_hardware/README.md` resolves in a way that changes the test's own design): flag it to
   the project owner rather than guessing, the same as any other architecturally significant
   decision (CLAUDE.md's "Working agreements").
-- **Once a real-hardware pass is genuinely representative** (not necessarily 100% of all 44+12
+- **Once a real-hardware pass is genuinely representative** (not necessarily 100% of all 54+12
   tests on the first try - long-soaks and the flash-cycle test are opt-in for a reason, and a
   first pass finding real things to fix is expected, not a failure of this plan): tell the project
   owner, then migrate anything from `HARDWARE_TEST_PLAN.md`/`tmp_hardware_test_candidates.md` that's
