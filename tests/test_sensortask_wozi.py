@@ -14,6 +14,7 @@ sys.path.insert(0, "ext")
 
 import machine  # noqa: E402
 from _fram_chip_fake import FakeMB85RS64V  # noqa: E402
+from _shared_rest_roundtrip import assert_named_modules_constructed, assert_sensor_payload_not_self_wrapped  # noqa: E402
 from microdot import Request  # type: ignore[import-not-found]  # noqa: E402
 
 import asy_spi_driver  # noqa: E402
@@ -169,24 +170,27 @@ def test_sweep_stale_tmp_dirs_tolerates_a_missing_tmp_dir_entirely() -> None:
 def test_build_system_constructs_every_legacy_named_module() -> None:
     run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
     # Bare module-level attributes - Step 2 (and this test) reaches every long-lived object the
-    # same way the legacy reference file's own module-level names would be reached.
-    for name in (
-        "conn",
-        "ntp",
-        "i2c0",
-        "i2c1",
-        "spi0",
-        "fram",
-        "sysfunct",
-        "sgp_reader",
-        "bmp_reader",
-        "scd_reader",
-        "pixel",
-        "notify_service",
-        "watchdog",
-    ):
-        assert hasattr(sensortask_wozi, name), f"sensortask_wozi.{name} was not constructed"
-        assert getattr(sensortask_wozi, name) is not None
+    # same way the legacy reference file's own module-level names would be reached. Shared shape
+    # with the twin's own equivalent test (tests/_shared_rest_roundtrip.py) - see
+    # HARDWARE_TEST_PLAN.md §2.2 for why this pair was the one genuine near-duplicate here.
+    assert_named_modules_constructed(
+        sensortask_wozi,
+        (
+            "conn",
+            "ntp",
+            "i2c0",
+            "i2c1",
+            "spi0",
+            "fram",
+            "sysfunct",
+            "sgp_reader",
+            "bmp_reader",
+            "scd_reader",
+            "pixel",
+            "notify_service",
+            "watchdog",
+        ),
+    )
 
 
 def test_scd30s_own_i2c_bus_uses_a_clock_stretch_timeout_wide_enough_for_it() -> None:
@@ -733,27 +737,17 @@ def test_webserver_pr_is_ram_only_not_fram_backed() -> None:
 
 
 def test_webserver_measurements_and_sensors_get_include_every_real_sensor() -> None:
+    # Shared shape with the twin's own equivalent check (tests/_shared_rest_roundtrip.py) - see
+    # HARDWARE_TEST_PLAN.md §2.2 for why this pair was the one genuine near-duplicate here.
     run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
     res = _dispatch("GET", "/measurements")
     assert res.status_code == 200
     measurements = json.loads(res.body)
-    assert set(measurements.keys()) == {"SCD30", "BMP3XX", "SGP40"}
-    # Regression coverage for a real bug found via a real user report against the real assembled
-    # system: every real driver's own get_dict_data()/get_dict_cfg() already returns a
-    # {name: {...}} self-wrapped shape, and _get_measurements()/_get_sensors() used to index that
-    # by name again, producing {"SCD30": {"SCD30": {...}}} for every sensor - see
-    # src/asy_webserver_service.py's own comments there for the full account. Only checking
-    # top-level keys (as this test used to) doesn't catch that.
-    for name, fields in measurements.items():
-        assert name not in fields, f"{name}'s own value is still self-wrapped: {fields!r}"
-        assert fields, f"{name} returned no fields at all"
+    assert_sensor_payload_not_self_wrapped(measurements, {"SCD30", "BMP3XX", "SGP40"})
 
     res = _dispatch("GET", "/sensors")
     sensors = json.loads(res.body)
-    assert set(sensors.keys()) == {"SCD30", "BMP3XX", "SGP40"}
-    for name, fields in sensors.items():
-        assert name not in fields, f"{name}'s own value is still self-wrapped: {fields!r}"
-        assert fields, f"{name} returned no fields at all"
+    assert_sensor_payload_not_self_wrapped(sensors, {"SCD30", "BMP3XX", "SGP40"})
 
 
 def test_webserver_sensors_put_round_trips_a_real_field_through_the_real_driver() -> None:
