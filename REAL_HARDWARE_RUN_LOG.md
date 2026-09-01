@@ -58,7 +58,26 @@ Also found and fixed, all in test-only code (`tests_hardware/`), none in `src/`:
   blocked-write's data after clearing protection again (which cannot itself alter stored bytes),
   preserving the test's intent without depending on this behavior either way.
 
-Status once these fixes land: re-running the full flash suite to confirm - see below.
+Two more real findings from re-running after the above fixes landed:
+- `harness.py`'s `tail_log()` fix above was too narrow - it only retried the initial `open()`,
+  but the same transient error can also hit the very first `readline()` on an already-opened port
+  (a real `hard_reset()`'s DTR pulse returns before the USB CDC-ACM device has actually finished
+  re-enumerating). Widened to retry the whole open+read attempt within a bounded 10s grace window
+  from when `tail_log()` was first called, confirmed fixed (`test_boot_import_mechanism_actually_
+  boots_the_real_system` now passes reliably).
+- `bmp3xx_plausibility_read.py` had the exact same missing-`cfgmgr`-initialization bug as
+  `sgp40_fram_backup_restore.py` (`BMP3xx_Reader._init_bmp()` also reads its own config via
+  `cfgmgr.get_int_values()` as its first step) - confirmed reproducible 3/3 in isolation
+  (not the intermittent flakiness it first looked like), then confirmed root cause directly with
+  `debug=5` diagnostics ("Error reading config data!" every cycle). This one was masked for
+  longer than the SGP40 case: the script's own final `task.cancel()` cleanup ran unconditionally
+  either way, so the CancelledError-swallowing bug (fixed in the same earlier pass) produced an
+  identical-looking test failure that hid this real root cause underneath it until that first bug
+  was fixed and this one became visible on its own. Fixed the same way: prime `cfgmgr.valid`/
+  `_cache` directly instead of calling `setup()`.
+
+Status: full flash suite re-run in progress to confirm all fixes together - see final result
+in the next update.
 
 ## Phase 2 - bench tier (minus hotspot role-reversal)
 (pending)

@@ -16,6 +16,21 @@ and a real i2c.scan() (0x77 on I2C0, nothing on I2C1(19,18)) before fixing this 
 wrong assumption that it was exercising "the real production wiring" - it wasn't; it was silently
 probing an empty bus on this specific unit.
 
+REAL FINDING, fixed: like sgp40_fram_backup_restore.py's own finding, this script never
+initialized reader.cfgmgr - no setup() call, no primed cache. BMP3xx_Reader._init_bmp() (called
+from read_loop()) reads its own oversampling/filter/sample-interval config via
+`self.cfgmgr.get_int_values(...)` as its very first real step; with cfgmgr.valid left False this
+returns None, _init_bmp() logs "Error reading config data!" (errno=12) and returns False, and
+read_loop() never proceeds to a real sensor read at all - confirmed directly on real hardware with
+debug=5 (this exact log line printed every time, get_data() staying (None, None, None, None) for
+the entire 10s+ this was watched). This was masked in an earlier pass: the script's own final
+`task.cancel(); await task` cleanup ran unconditionally regardless of whether a reading was ever
+obtained, so a real CancelledError-swallowing bug (fixed separately, see the except clause below)
+produced the same visible test failure and hid this actual root cause underneath it. Fixed the
+same way as sgp40_fram_backup_restore.py: prime `cfgmgr.valid`/`_cache` directly (dev_legacy/
+README.md's documented no-real-flash-write pattern) with the schema's own defaults, never
+`cfgmgr.setup()`.
+
 Run via `mpremote run <this> soft-reset`."""
 
 import asyncio
@@ -30,6 +45,14 @@ TEMP_MIN_C, TEMP_MAX_C = -40.0, 85.0
 async def _main() -> None:
     i2c0 = asy_i2c_driver.I2C(0, 13, 12, frequency=50000)
     reader = BMP3xx_Reader(i2c0, max_module_error=999, fram=None, debug=None)
+    # Prime config directly rather than reader.cfgmgr.setup() - no real flash file I/O. Defaults
+    # straight from asy_bmp3xx_driver.py's own _VAL_SI/_VAL_POV/_VAL_TOV/_VAL_FC/_VAL_PO/_VAL_TO/
+    # _VAL_SLO/_VAL_ATM (covers both _init_bmp()'s and _store_bmp()'s own config reads).
+    reader.cfgmgr.valid = True
+    reader.cfgmgr._cache = {
+        "SampleInterv": 2, "PressOvers": 1, "TempOvers": 1, "FiltCoeff": 0,
+        "PressOffset": 0.0, "TempOffset": 0.0, "SeaLevelOffs": 0.0, "MeanAtmTemp": 15.0,
+    }
     reader.start_timer()  # wires the real 1s hardware timer driving _base_trigger()
     trigger_task = reader.start_asy_trigger()
     read_task = reader.start_asy_read()

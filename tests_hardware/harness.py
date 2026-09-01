@@ -211,38 +211,31 @@ class Board:
         whatever the device is already writing, entering no REPL mode and sending nothing.
 
         A real `hard_reset()` (or a genuine power-on) makes the RP2040 re-enumerate its own USB
-        CDC-ACM device, which the host can take up to a couple of seconds to settle - opening the
-        port immediately after issuing a hard reset can transiently fail with "device reports
-        readiness to read but returned no data" even though the board is fine (confirmed directly:
-        a first real run hit exactly this calling tail_log() right after hard_reset()). The initial
-        open is therefore retried for a bounded grace window; a failure to open at all after that
-        window is a real HardwareNotAvailable, same as before. Once open, a mid-tail drop is still
-        raised immediately, unretried - this tier's own "the board should already be up and stable
-        before observation starts" boundary, not something to paper over silently."""
-        port_holder: list[serial.Serial] = []
-
-        def _try_open() -> bool:
-            port_holder.append(serial.Serial(self.device, baudrate, timeout=0.5))
-            return True
-
-        try:
-            wait_until(
-                _try_open,
-                timeout_s=10.0,
-                poll_interval_s=0.5,
-                description=f"{self.device} to become openable for passive log tailing (USB re-enumeration after a reset)",
-            )
-        except TimeoutError as exc:
-            raise HardwareNotAvailable(f"could not open {self.device} for passive log tailing: {exc}") from exc
-        port = port_holder[-1]
+        CDC-ACM device, which the host can take up to a couple of seconds to settle -
+        `mpremote reset` itself returns as soon as it has issued the DTR pulse, without waiting for
+        that re-enumeration to finish, so opening (or even an early read on an already-open) the
+        port can transiently fail with "device reports readiness to read but returned no data" even
+        though the board is fine. Confirmed directly on real hardware, and confirmed the transient
+        window isn't limited to the initial open() call alone: an open can succeed against a
+        not-yet-fully-settled device node and then the very first readline() hits the same error.
+        Both the open and any read are therefore retried (reopening each time, since a failed read
+        can leave the port in a bad state) within a bounded grace window from when this method was
+        first called; a failure still happening once that grace window has elapsed is a real
+        HardwareNotAvailable, same as before - this tier's own "the board should already be up and
+        stable before observation starts" boundary, not something to paper over indefinitely."""
+        grace_deadline = time.monotonic() + 10.0
+        overall_deadline = time.monotonic() + duration_s
         lines: list[str] = []
-        deadline = time.monotonic() + duration_s
-        try:
-            with port:
-                while time.monotonic() < deadline:
-                    raw = port.readline()
-                    if raw:
-                        lines.append(raw.decode("utf-8", errors="replace").rstrip("\r\n"))
-        except serial.SerialException as exc:
-            raise HardwareNotAvailable(f"could not read {self.device} for passive log tailing: {exc}") from exc
+        while True:
+            try:
+                with serial.Serial(self.device, baudrate, timeout=0.5) as port:
+                    while time.monotonic() < overall_deadline:
+                        raw = port.readline()
+                        if raw:
+                            lines.append(raw.decode("utf-8", errors="replace").rstrip("\r\n"))
+                return lines
+            except serial.SerialException as exc:
+                if time.monotonic() >= grace_deadline:
+                    raise HardwareNotAvailable(f"could not read {self.device} for passive log tailing: {exc}") from exc
+                time.sleep(0.5)
         return lines
