@@ -125,7 +125,12 @@ class Board:
         single expression rather than a whole script file (run_isolated()'s job)."""
         result = self._mpremote("exec", expr, timeout_s=timeout_s)
         if result.returncode != 0:
-            raise HardwareTestFailure(f"mpremote exec {expr!r} failed (exit {result.returncode}):\n{result.stderr}")
+            # Include both streams: a real device-side traceback from a raw-REPL script prints
+            # over the same muxed serial channel mpremote surfaces as its own stdout, not stderr -
+            # an earlier version of this method only included stderr and silently dropped the one
+            # piece of output that actually explains a real failure (confirmed directly: several
+            # early real-hardware runs showed "failed (exit 1):" with nothing after it).
+            raise HardwareTestFailure(f"mpremote exec {expr!r} failed (exit {result.returncode}):\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
         return result.stdout
 
     def run_isolated(self, script_path: str | Path, *, soft_reset_after: bool = True, timeout_s: float | None = None) -> str:
@@ -159,7 +164,9 @@ class Board:
             args.append("soft-reset")
         result = self._mpremote(*args, timeout_s=timeout_s)
         if result.returncode != 0:
-            raise HardwareTestFailure(f"mpremote run {script_path} failed (exit {result.returncode}):\n{result.stderr}")
+            # See exec()'s own comment: a device-side traceback lands on mpremote's stdout, not
+            # stderr - both are included here for the same reason.
+            raise HardwareTestFailure(f"mpremote run {script_path} failed (exit {result.returncode}):\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
         return result.stdout
 
     def soft_reset(self) -> None:
@@ -201,15 +208,41 @@ class Board:
         exec() nor run_isolated() can ever be used for passive live-system observation; this
         method instead opens the serial port directly via pyserial (already an mpremote
         dependency), the same way `mpremote repl`'s own "friendly REPL" attaches - reading
-        whatever the device is already writing, entering no REPL mode and sending nothing."""
+        whatever the device is already writing, entering no REPL mode and sending nothing.
+
+        A real `hard_reset()` (or a genuine power-on) makes the RP2040 re-enumerate its own USB
+        CDC-ACM device, which the host can take up to a couple of seconds to settle - opening the
+        port immediately after issuing a hard reset can transiently fail with "device reports
+        readiness to read but returned no data" even though the board is fine (confirmed directly:
+        a first real run hit exactly this calling tail_log() right after hard_reset()). The initial
+        open is therefore retried for a bounded grace window; a failure to open at all after that
+        window is a real HardwareNotAvailable, same as before. Once open, a mid-tail drop is still
+        raised immediately, unretried - this tier's own "the board should already be up and stable
+        before observation starts" boundary, not something to paper over silently."""
+        port_holder: list[serial.Serial] = []
+
+        def _try_open() -> bool:
+            port_holder.append(serial.Serial(self.device, baudrate, timeout=0.5))
+            return True
+
+        try:
+            wait_until(
+                _try_open,
+                timeout_s=10.0,
+                poll_interval_s=0.5,
+                description=f"{self.device} to become openable for passive log tailing (USB re-enumeration after a reset)",
+            )
+        except TimeoutError as exc:
+            raise HardwareNotAvailable(f"could not open {self.device} for passive log tailing: {exc}") from exc
+        port = port_holder[-1]
         lines: list[str] = []
         deadline = time.monotonic() + duration_s
         try:
-            with serial.Serial(self.device, baudrate, timeout=0.5) as port:
+            with port:
                 while time.monotonic() < deadline:
                     raw = port.readline()
                     if raw:
                         lines.append(raw.decode("utf-8", errors="replace").rstrip("\r\n"))
         except serial.SerialException as exc:
-            raise HardwareNotAvailable(f"could not open {self.device} for passive log tailing: {exc}") from exc
+            raise HardwareNotAvailable(f"could not read {self.device} for passive log tailing: {exc}") from exc
         return lines

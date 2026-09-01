@@ -41,11 +41,17 @@ above = 2**24 + 1
 ok, coerced = coerce_numeric(above, float)
 if not ok:
     failures.append(f"coerce_numeric() rejected an int->float coercion it should always accept per its own documented behavior: ok={ok} coerced={coerced!r}")
-elif coerced == float(above):
+elif int(coerced) == above:
+    # NOTE: deliberately NOT `coerced == float(above)` - float(above) is itself recomputed on this
+    # same real single-precision hardware, so it would always equal `coerced` regardless of whether
+    # precision was actually lost, making that comparison unable to ever catch anything. Comparing
+    # against the exact mathematical int `above` is precision-independent.
     failures.append(
         f"2**24+1 unexpectedly round-tripped exactly ({coerced!r}) - either this build isn't really "
         "single-precision float, or MicroPython's own int->float conversion is more precise than assumed here"
     )
+elif coerced != float(2**24):
+    failures.append(f"2**24+1 coerced to an unexpected value {coerced!r}, expected {float(2**24)!r} (round-to-even)")
 
 if failures:
     print(f"RESULT: FAIL {'; '.join(failures)}")

@@ -12,7 +12,8 @@ the read loop plus an IRQ-pin self-healing trigger"), and a narrower-than-necess
 not reading the rest of the file, missed it entirely. The project owner caught this and pointed at
 the real mechanism directly. Re-read in full this time: `SCD30_Reader.__init__`'s own `irq_pin: int`
 constructor parameter (wired in production as `SCD30_Reader(i2c0, 8, ...)` - sensortask_wozi.py,
-GPIO 8), `start_timer()`'s real `self.irq_pin.irq(trigger=IRQ_RISING, handler=...)`, and
+GPIO 8; this bench unit instead wires SCD30 to I2C1 with IRQ on GPIO11 - see the wiring note
+below), `start_timer()`'s real `self.irq_pin.irq(trigger=IRQ_RISING, handler=...)`, and
 `scd_init_irq()`'s own staged self-healing fallback (a 500ms software poll that manually fires the
 same trigger event if the pin has been stuck HIGH for `trigger_half_sec` consecutive intervals - i.e.
 if the real hardware IRQ was somehow missed) - both paths feed the exact same `irq_trigger_event`
@@ -30,6 +31,11 @@ path (not the fallback) actually drove it. This can't fully disambiguate the two
 alone (both set the same event) - a scope on the IRQ pin itself would be the only fully certain
 confirmation, out of this script's own reach; the timing margin here is the practical proxy.
 
+Wiring note: this bench unit puts SCD30 on I2C1 (scl=15, sda=14) with IRQ/RDY on GPIO11, not
+I2C0/GPIO8 as production wozi does (dev_legacy/README.md's own wiring table) - confirmed directly
+against this bench's live main.py and a real i2c.scan(). An earlier version of this script used the
+production pins and would have silently probed an empty bus on this specific unit.
+
 Run via `mpremote run <this> soft-reset`. Prints "RESULT: PASS ..." or "RESULT: FAIL <reason>"."""
 
 import asyncio
@@ -44,8 +50,8 @@ TRIGGER_SEC = 10
 
 
 async def _main() -> None:
-    i2c0 = asy_i2c_driver.I2C(0, 13, 12, frequency=50000, timeout=200000)
-    reader = SCD30_Reader(i2c0, 8, trigger_sec=TRIGGER_SEC, max_module_error=999, fram=None, debug=None)
+    i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000, timeout=200000)
+    reader = SCD30_Reader(i2c1, 11, trigger_sec=TRIGGER_SEC, max_module_error=999, fram=None, debug=None)
     reader.start_timer()  # wires the real GPIO IRQ (rising edge) + the 500ms self-healing poll timer
 
     read_task = asyncio.create_task(reader.read_loop())
@@ -65,7 +71,7 @@ async def _main() -> None:
     for task in (read_task, init_irq_task):
         try:
             await task
-        except Exception:  # noqa: BLE001 - CancelledError or whatever the loop itself raised, not this script's concern once we have our own answer above
+        except (asyncio.CancelledError, Exception):  # noqa: BLE001 - CancelledError (real hardware confirmed: MicroPython's, like CPython's, subclasses BaseException, not Exception - SPECIFICATION.md Part F.2) or whatever the loop itself raised, not this script's concern once we have our own answer above
             pass
 
     if data is not None and data.CO2 is not None:

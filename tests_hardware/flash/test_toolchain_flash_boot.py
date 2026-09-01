@@ -30,12 +30,21 @@ def test_mpremote_connection_is_stable_across_repeated_calls(board: Board) -> No
 
 
 def test_env_tier_flash_recurring_run_is_idempotent(board: Board) -> None:
+    # REAL FINDING: "idempotent" here means "same result on a re-run," not "fast" - run_setup()
+    # (SPECIFICATION.md Part B.3) always re-verifies from scratch: a fresh git fetch, a full
+    # picotool CMake+make rebuild (build_and_install_picotool() unconditionally rmtree()s its own
+    # build dir first), and a full mpy-cross/Unix-port/firmware freeze-verify pass - never a
+    # no-op short-circuit. Confirmed directly: a real run on this bench's Raspberry Pi 4 took
+    # ~481s wall clock (8m33s of CPU time across 4 cores) with nothing else needing to change -
+    # the original 300s timeout was calibrated for faster (x86, or more cores) dev/CI hardware,
+    # not a Pi4 doing real parallel compilation. 1200s leaves comfortable headroom without being
+    # so generous a genuine hang would go unnoticed for a very long time.
     proc = subprocess.run(
         ["uv", "run", "toolchain/setup_toolchain.py", "env", "--tier", "flash", "--device", board.device],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
-        timeout=300,
+        timeout=1200,
     )
     assert proc.returncode == 0, f"env --tier flash re-run failed (exit {proc.returncode}):\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
 

@@ -8,9 +8,14 @@ datasheets/scd30/Sensirion_CO2_Sensors_SCD30_Datasheet.pdf Tables 1-3, not assum
               its 0-50 degC *accuracy-specified* range, since a real bench/office environment is
               expected to sit well inside the accuracy range anyway and this check is deliberately
               loose (plausibility, not precision).
-Uses the exact same i2c0 construction sensortask_wozi.py's build_system() uses (frequency=50000,
-timeout=200000 - see that file's own comment for why), so this exercises the real production wiring,
-not an arbitrary one.
+This bench unit wires SCD30 to I2C1 (scl=15, sda=14) with IRQ/RDY on GPIO11, not I2C0/GPIO8 -
+dev_legacy/README.md's own wiring table (wozi's deployed wiring puts SCD30 on I2C0/GPIO8 instead;
+this bench moved it to I2C1 alongside SGP40). Confirmed directly against this bench's own live
+main.py (build_system()) and a real i2c.scan() (0x61 on I2C1(15,14), nothing on I2C0(13,12) besides
+BMP3xx/MPRLS) before fixing this script's earlier wrong assumption that it was exercising "the real
+production wiring" - it wasn't; it was silently probing the wrong bus on this specific unit. The
+`frequency=50000, timeout=200000` values themselves are unaffected by this fix (same on both buses,
+per asy_i2c_driver.I2C's own construction and this bench's main.py).
 
 Correction (see this session's own history): an earlier draft of this script polled get_data()
 without ever starting read_loop()/scd_init_irq()/the IRQ timer - get_data() only ever returns
@@ -34,8 +39,8 @@ TEMP_MIN_C, TEMP_MAX_C = -40.0, 70.0
 
 
 async def _main() -> None:
-    i2c0 = asy_i2c_driver.I2C(0, 13, 12, frequency=50000, timeout=200000)
-    reader = SCD30_Reader(i2c0, 8, trigger_sec=3, max_module_error=999, fram=None, debug=None)
+    i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000, timeout=200000)
+    reader = SCD30_Reader(i2c1, 11, trigger_sec=3, max_module_error=999, fram=None, debug=None)
     reader.start_timer()  # wires the real GPIO IRQ + the 500ms self-healing poll timer
     read_task = asyncio.create_task(reader.read_loop())
     init_irq_task = asyncio.create_task(reader.scd_init_irq())
@@ -57,11 +62,11 @@ async def _main() -> None:
     for task in (read_task, init_irq_task):
         try:
             await task
-        except Exception:  # noqa: BLE001 - CancelledError or whatever the loop itself raised, not this script's concern once we have our own answer above
+        except (asyncio.CancelledError, Exception):  # noqa: BLE001 - CancelledError (real hardware confirmed: MicroPython's, like CPython's, subclasses BaseException, not Exception - SPECIFICATION.md Part F.2) or whatever the loop itself raised, not this script's concern once we have our own answer above
             pass
 
     if data is None or data.CO2 is None:
-        print("RESULT: FAIL no CO2 reading obtained within the wait window - sensor not responding or not wired to i2c0")
+        print("RESULT: FAIL no CO2 reading obtained within the wait window - sensor not responding or not wired to i2c1")
         return
 
     failures = []

@@ -16,7 +16,9 @@ human-supplied VOC stimulus - see tests_hardware/manual/manual_sensor_accuracy.p
      for real, continuously-sampled air) - a sanity check on the algorithm actually running against
      real hardware, not a numerical-accuracy claim.
 
-Uses the exact same i2c1 construction sensortask_wozi.py's build_system() uses for BMP3xx/SGP40.
+This bench unit wires SGP40 to I2C1 on GPIO15/14 (scl/sda), not GPIO19/18 as production wozi does
+(dev_legacy/README.md's own wiring table) - confirmed directly against this bench's live main.py
+and a real i2c.scan() (0x59 on I2C1(15,14), nothing on I2C1(19,18)).
 No FRAM storage (fram_storage=None) - this script only exercises the algorithm/raw-signal path;
 see fram-backed backup/restore coverage in fram_manager_roundtrip.py / sgp40_fram_backup_restore.py.
 A fixed [25.0, 50.0] degC/%RH compensation callback stands in for the real SCD30 cross-callback
@@ -44,7 +46,7 @@ async def _fixed_comp() -> list[float | None]:
 
 
 async def _main() -> None:
-    i2c1 = asy_i2c_driver.I2C(1, 19, 18, frequency=50000)
+    i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000)
     reader = SGP40_Reader(i2c1, _fixed_comp, max_module_error=999, fram_storage=None, fram_ntp_callback=None, debug=None)
     reader.start_timer()  # 1s fixed period - the algorithm's own sampling interval assumption
     read_task = reader.start_asy_read()
@@ -53,7 +55,7 @@ async def _main() -> None:
         read_task.cancel()
         try:
             await read_task
-        except Exception:  # noqa: BLE001 - CancelledError or whatever the loop itself raised
+        except (asyncio.CancelledError, Exception):  # noqa: BLE001 - CancelledError (real hardware confirmed: MicroPython's, like CPython's, subclasses BaseException, not Exception - SPECIFICATION.md Part F.2) or whatever the loop itself raised
             pass
 
     # Wait out the documented blackout window before sampling for real data.

@@ -1,8 +1,9 @@
 """Isolated-driver device script, flash-tier gap fix: PrintLogHistoryStore (print_log.py) - the
 FRAM-backed error/warning history every FRAM-chunk-owning module in production uses (SystemService,
-BMP3xx_Reader, SCD30_Reader, SGP40_Reader's own err_s()/wrn_s() calls) - against the real MB85RS64V
-chip. The "FRAM error storage working" gap: no automated real-hardware test of this mechanism
-existed before this file.
+BMP3xx_Reader, SCD30_Reader, SGP40_Reader's own err_s()/wrn_s() calls) - against the real
+MB85RS2MTA chip this bench unit carries (CS=GPIO5, not the deployed wozi unit's MB85RS64V at
+CS=GPIO1 - dev_legacy/README.md's own wiring table). The "FRAM error storage working" gap: no
+automated real-hardware test of this mechanism existed before this file.
 
 Drives make_logger()'s own real FRAM path (print_log.py's shared fram-vs-memory selection - the
 same factory every production module goes through, not a hand-rolled PrintLogHistoryStore
@@ -11,8 +12,7 @@ sgp40_fram_backup_restore.py does (a brand new AsyFramManager Python object agai
 chip, landing on the same physical chunk 0 address) and confirms get_log() reports the recorded
 error read back from the real chip, not from in-process state.
 
-Uses the exact same spi0/cs construction sensortask_wozi.py's build_system() uses for the real FRAM
-chip. Run via `mpremote run <this> soft-reset`."""
+Run via `mpremote run <this> soft-reset`."""
 
 import asyncio
 
@@ -28,9 +28,9 @@ LOG_NAME = "TEST"
 async def _main() -> None:
     spi0 = asy_spi_driver.SPI(0, 2, 3, 4)
 
-    fram_a = AsyFramManager(spi0, 1, max_size=0x2000, debug=None)
+    fram_a = AsyFramManager(spi0, 5, max_size=0x40000, debug=None)
     if not await fram_a.setup():
-        print("RESULT: FAIL fram_a.setup() failed - real FRAM chip not responding on spi0/cs1")
+        print("RESULT: FAIL fram_a.setup() failed - real FRAM chip not responding on spi0/cs5")
         return
 
     pr1 = make_logger(fram_a, history_length=HISTORY_LENGTH, debug=None, name=LOG_NAME)
@@ -44,7 +44,7 @@ async def _main() -> None:
 
     # Simulate a fresh boot: a brand new AsyFramManager Python object against the same real chip,
     # allocating its own chunk 0 at the same physical address pr1's did.
-    fram_b = AsyFramManager(spi0, 1, max_size=0x2000, debug=None)
+    fram_b = AsyFramManager(spi0, 5, max_size=0x40000, debug=None)
     if not await fram_b.setup():
         print("RESULT: FAIL fram_b.setup() failed - real FRAM chip not responding on second probe")
         return

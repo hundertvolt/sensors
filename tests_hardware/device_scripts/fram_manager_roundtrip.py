@@ -1,5 +1,5 @@
 """Isolated-driver device script, flash-tier gap fix: AsyFramManager/FRAM_SPI (asy_fram_manager.py/
-asy_fram_driver.py) against the real MB85RS64V SPI FRAM chip - the "FRAM working at all" gap (no
+asy_fram_driver.py) against the real MB85RS2MTA SPI FRAM chip - the "FRAM working at all" gap (no
 automated real-hardware test of this chip existed before this file; the pre-existing reboot-
 persistence tests in flash/test_reboot_persistence.py exercise config_manager's littlefs-backed
 storage, a structurally different mechanism - see that file's own module docstring).
@@ -11,8 +11,11 @@ against the datasheet-documented values - see asy_fram_driver.py's _KNOWN_PRODUC
 add-then-check, dual-copy comparison). A deterministic non-trivial byte pattern (not all-zero/
 all-0xFF) is used so a real round trip is actually being verified, not just "some bytes came back".
 
-Uses the exact same spi0/cs construction sensortask_wozi.py's build_system() uses for the real FRAM
-chip (SPI(0, 2, 3, 4), cs=1, max_size=0x2000).
+This bench unit's FRAM chip is a 256KB MB85RS2MTA at CS=GPIO5, not the deployed wozi unit's 8KB
+MB85RS64V at CS=GPIO1 (dev_legacy/README.md's own wiring table) - confirmed directly against this
+bench's live main.py and a real RDID probe (cs=5 returns the MB85RS2MTA's real product ID bytes
+0x48/0x03 - asy_fram_driver.py's own _KNOWN_PRODUCT_IDS[0x40000]; cs=1 returns nothing on this
+unit).
 
 Run via `mpremote run <this> soft-reset`."""
 
@@ -28,9 +31,9 @@ PATTERN = bytes((i * 7 + 3) % 256 for i in range(CHUNK_SIZE))  # non-trivial, no
 
 async def _main() -> None:
     spi0 = asy_spi_driver.SPI(0, 2, 3, 4)
-    fram = AsyFramManager(spi0, 1, max_size=0x2000, debug=None)
+    fram = AsyFramManager(spi0, 5, max_size=0x40000, debug=None)
     if not await fram.setup():
-        print("RESULT: FAIL fram.setup() failed - real FRAM chip not responding on spi0/cs1 (RDID probe failed)")
+        print("RESULT: FAIL fram.setup() failed - real FRAM chip not responding on spi0/cs5 (RDID probe failed)")
         return
 
     chunk = fram.get_chunk(CHUNK_SIZE, crc=CRC8())
