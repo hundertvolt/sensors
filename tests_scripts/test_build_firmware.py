@@ -57,15 +57,15 @@ def test_manifest_template_states_every_required_module_and_no_default_board_man
     assert "$(PORT_DIR)/modules" not in manifest
 
 
-def test_build_stage_dir_assembles_every_expected_file(build_firmware, repo_root, tmp_path):
-    build_firmware.build_stage_dir(tmp_path, "wozi")
+def test_build_stage_dir_assembles_every_expected_file(build_firmware, repo_root, micropython_dir, tmp_path):
+    build_firmware.build_stage_dir(tmp_path, "wozi", micropython_dir)
 
     staged = {p.name for p in tmp_path.iterdir()}
     src_files = {p.name for p in (repo_root / "src").glob("*.py")}
     assert src_files, "sanity: src/ should contain at least one .py file"
     assert src_files <= staged
 
-    for expected in ("microdot.py", "wozi_boot.py", "_boot.py", "frozen_html.py"):
+    for expected in ("microdot.py", "wozi_boot.py", "_boot.py", "frozen_html.py", "rp2.py"):
         assert expected in staged, expected
 
     assert (tmp_path / "_boot.py").read_text() == build_firmware._BOOT_PY
@@ -75,19 +75,21 @@ def test_build_stage_dir_assembles_every_expected_file(build_firmware, repo_root
     assert (tmp_path / "microdot.py").read_text() == (repo_root / "ext" / "microdot.py").read_text()
 
 
-def test_build_stage_dir_strips_type_checking_blocks_from_staged_src_files(build_firmware, repo_root, tmp_path):
+def test_build_stage_dir_strips_type_checking_blocks_from_staged_src_files(
+    build_firmware, repo_root, micropython_dir, tmp_path
+):
     # config_manager.py is a real, known if TYPE_CHECKING: user (BACKLOG.md's measured baseline
     # for this saving) - its staged copy must have the guard stripped even though the real src/
     # file (never touched by this build) keeps it, per CLAUDE.md's hard rule against editing src/
     # itself for a build-only concern.
-    build_firmware.build_stage_dir(tmp_path, "wozi")
+    build_firmware.build_stage_dir(tmp_path, "wozi", micropython_dir)
     staged_text = (tmp_path / "config_manager.py").read_text()
     assert "TYPE_CHECKING" not in staged_text
     assert "TYPE_CHECKING" in (repo_root / "src" / "config_manager.py").read_text()
 
 
-def test_build_stage_dir_frozen_html_contains_the_real_website_not_the_stub(build_firmware, tmp_path):
-    build_firmware.build_stage_dir(tmp_path, "wozi")
+def test_build_stage_dir_frozen_html_contains_the_real_website_not_the_stub(build_firmware, micropython_dir, tmp_path):
+    build_firmware.build_stage_dir(tmp_path, "wozi", micropython_dir)
     frozen_html_text = (tmp_path / "frozen_html.py").read_text()
     assert "/index.html.gz" in frozen_html_text
     # /js/app.js.gz alone already distinguishes this from html_stub's own frozen build (which has
