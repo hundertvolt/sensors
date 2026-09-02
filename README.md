@@ -488,14 +488,6 @@ whoever picks up `REAL_HARDWARE_RUN_LOG.md`'s own Phase 4. Includes a new candid
 (AP-side stale station-table state) the original investigation's evidence-gathering never
 considered. Same lifecycle as the other real-hardware planning docs above.
 
-**`CAPTIVE_PORTAL_HOTSPOT_REDIRECT_PLAN.md`** (temporary planning doc, current): facts and a full
-implementation plan for making the hotspot's captive portal trigger phones' automatic "Sign in to
-network" popup (currently every OS probe request 404s instead of redirecting) — two research passes
-(external sources, then a project-wide code read), resolved design decisions, an exhaustive
-file-by-file action list, a regression analysis, and a staged test plan. Prepared for a separate
-implementation session branched off `claude/digital-twin-oserror-7y00lb`. Same
-delete-once-migrated-and-verified lifecycle as the other temporary planning docs here.
-
 `DRIVER_SPEC.md`, `src/README.md`, `tests/README.md`, `toolchain/README.md`, `WIRING_CONTRACT.md`,
 `FINAL_WIRING_PLAN.md`, `WEBSITE_PLAN.md`, and `AUDIT_PLAN.md` — earlier temporary planning/spec
 docs, each deleted once its own effort closed, with everything permanent it settled migrated into

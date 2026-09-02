@@ -219,7 +219,7 @@ class WebserverService:
         # registers no static routes at all - every existing route/registration above is unaffected.
         static_index: str = "index.html",  # served for both "/" and "/<static_index>" verbatim.
         is_hotspot_active: "HotspotActiveFct | None" = None,  # e.g. AsyConnTime.is_hotspot_active
-        # (CAPTIVE_PORTAL_HOTSPOT_REDIRECT_PLAN.md) - only consulted by _serve_static()'s own
+        # (see SPECIFICATION.md Part A.5) - only consulted by _serve_static()'s own
         # unmatched-path fallback, and only when static_mount is not None. None (default) reproduces
         # today's plain-404 fallback exactly - every existing call site omits this and is unaffected.
     ) -> None:
@@ -529,7 +529,7 @@ class WebserverService:
                 # Captive-portal OS probes (generate_204, hotspot-detect.html, connecttest.txt, ...)
                 # hit exactly this branch while the device is its own hotspot - redirecting them back
                 # to "/" (rather than a plain 404) is what makes phones' automatic "Sign in to
-                # network" popup trigger (CAPTIVE_PORTAL_HOTSPOT_REDIRECT_PLAN.md §1.2). No
+                # network" popup trigger (see SPECIFICATION.md Part A.5). No
                 # try/except needed here: any exception from is_hotspot_active() is already safely
                 # caught and shaped by Microdot's own blanket app.errorhandler(Exception) (see
                 # SPECIFICATION.md Part A.5) like every other route-handler exception.

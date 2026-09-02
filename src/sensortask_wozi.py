@@ -425,7 +425,7 @@ async def build_system(
         # freezefs `--target /html` (see scripts/build_frozen_html.sh), mounted as a side effect of
         # this module's own top-level `import frozen_html` above.
         is_hotspot_active=conn.is_hotspot_active,  # captive-portal redirect fallback - see
-        # CAPTIVE_PORTAL_HOTSPOT_REDIRECT_PLAN.md and asy_webserver_service.py's own _serve_static().
+        # SPECIFICATION.md Part A.5/A.7 and asy_webserver_service.py's own _serve_static().
         host=web_host,
         port=web_port,
     )

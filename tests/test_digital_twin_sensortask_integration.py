@@ -549,8 +549,8 @@ def test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_a
         wifi_task = conn.start_asy_wlan_connect()
         webserver_task = await _start_webserver()  # real WebserverService(..., is_hotspot_active=
         # conn.is_hotspot_active) wiring (sensortask_wozi.py's own build_system()) - free coverage
-        # once this test already drives conn into real hotspot mode below (CAPTIVE_PORTAL_
-        # HOTSPOT_REDIRECT_PLAN.md §5.2): no twin-side network.py simulation change needed.
+        # once this test already drives conn into real hotspot mode below (see SPECIFICATION.md
+        # Part A.5): no twin-side network.py simulation change needed.
         try:
             await asyncio.sleep(0.2)  # let wlan_connect()'s own synchronous prefix
             # (_reset_wlan_connect_state(), which unconditionally zeroes connection_failures) run

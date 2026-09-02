@@ -1677,7 +1677,7 @@ def test_g_static_index_filename_is_configurable() -> None:
     assert res.body.read() == b"custom index"
 
 
-# G.2 - hotspot-mode captive-portal redirect fallback (CAPTIVE_PORTAL_HOTSPOT_REDIRECT_PLAN.md).
+# G.2 - hotspot-mode captive-portal redirect fallback (see SPECIFICATION.md Part A.5).
 # `is_hotspot_active` is an optional constructor callback; it only changes the *fallback* branch of
 # _serve_static()'s `except OSError` - a real file hit or a real API route must stay unaffected
 # regardless of its value, and its constructor default (None) must reproduce today's plain-404

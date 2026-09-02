@@ -276,7 +276,7 @@ def test_real_static_website_content_serves_over_the_hotspot_link(joined_hotspot
 
 
 def test_nonsense_path_redirects_to_root_over_the_hotspot_link(joined_hotspot: str) -> None:
-    # CAPTIVE_PORTAL_HOTSPOT_REDIRECT_PLAN.md's real-hardware counterpart to
+    # SPECIFICATION.md Part A.5's real-hardware counterpart to
     # test_network_resilience.py's own test_get_nonsense_path_is_shaped_404_over_the_normal_network
     # (the load-bearing regression guard that STA-mode 404 behavior stays byte-for-byte unchanged) -
     # this is the additive hotspot-mode-only branch: joined_hotspot only ever yields once the DUT is

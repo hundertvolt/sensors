@@ -1050,7 +1050,7 @@ def test_network_available_false_on_a_status_exception() -> None:
 
 # ---------------------------------------------------------------------------
 # is_hotspot_active() - lock-free getter for asy_webserver_service.py's captive-portal redirect
-# fallback (CAPTIVE_PORTAL_HOTSPOT_REDIRECT_PLAN.md). All four _conn_phase values are exercised
+# fallback (see SPECIFICATION.md Part A.5). All four _conn_phase values are exercised
 # deliberately, not just the True case and one False case - a regression narrowed to, say,
 # _PHASE_DEACTIVATED alone would slip past a two-case test.
 # ---------------------------------------------------------------------------
