@@ -1261,10 +1261,18 @@ the filesystem is ever mounted, silently dropping to a bare, unmounted REPL with
 ever running — no build-time error or warning of any kind. Fixed: `build_stage_dir()` copies
 `ports/rp2/modules/rp2.py` unmodified into the same staging directory as its own generated
 `_boot.py`, so it freezes normally with no second manifest `freeze()` call needed.
-`build_stage_dir()` also cleans `mpy-cross`'s own `build/` directory before every build (the one
-build directory `st.build_firmware()` doesn't already wipe unconditionally — see B.6/B.7 above for
-its handling of `ports/rp2/build-<board>`), so a firmware build never depends on stale artifacts
-from a previous session.
+`main()` also cleans `mpy-cross`'s own `build/` directory before every build (the one build
+directory `st.build_firmware()` doesn't already wipe unconditionally — see B.6/B.7 above for its
+handling of `ports/rp2/build-<board>`), so a firmware build never depends on stale artifacts from a
+previous session — **and immediately rebuilds it via `st.build_mpy_cross()` before continuing**.
+Wiping alone is not enough: the rp2 port's own `BUILD_FROZEN_CONTENT` step invokes `mpy-cross` as
+an implicit sub-build to cross-compile the frozen manifest, which fails from a wiped `build/`
+directory with a linker error (`undefined reference to 'mp_qstr_frozen_const_pool'`) rather than
+regenerating it — confirmed via a real CI break the first time this cleaning step shipped.
+`st.clean_build_dirs()` wipes the same directory safely only because every one of its own callers
+immediately follows it with a full `setup()` that rebuilds `mpy-cross` before anything else touches
+it; this script's own wipe needed the same explicit rebuild, not just the wipe half of that
+pattern.
 
 Every `.py` file `build_stage_dir()` copies into the stage directory (`src/*.py`, `ext/microdot.py`,
 `boot_entry/wozi_boot.py`) is passed through `scripts/_strip_type_checking.py`'s

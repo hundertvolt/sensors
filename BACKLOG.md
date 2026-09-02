@@ -149,14 +149,45 @@ constraints.
    associated, `GET /networking` reachable at the DUT's own hotspot gateway IP), a real
    `GET /generate_204` returned a plain 404 instead of the expected 302 redirect to `/`. This
    contradicts every mock/twin-level test for the same code path (all passing — see
-   `tests_hardware/README.md`'s corresponding entry). Not root-caused yet. Candidates not yet
-   checked: whether `is_hotspot_active()` genuinely returns `True` at the exact moment
-   `_serve_static()`'s fallback runs, and whether `/generate_204` is even reaching that fallback at
-   all rather than some other route. **Investigation pitfall already hit once**: don't use
-   `mpremote exec()` to inspect live state — its default `enter_raw_repl()` soft-resets the board,
-   wiping the very live state being observed (see `tests_hardware/README.md`'s liveness-polling
-   finding). Use a passive method instead (a second REST/network-level check, or a code-level
-   trace).
+   `tests_hardware/README.md`'s corresponding entry).
+
+   **`src/` logic itself is now confirmed correct end-to-end, ruling out one whole class of
+   explanation**: re-running
+   `tests/test_digital_twin_sensortask_integration.py::test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_and_status_led`
+   directly against the real MicroPython Unix-port interpreter drives `AsyConnTime` through a
+   genuine scripted STA-failure streak into a real `_PHASE_HOTSPOT` transition (not a hand-poked
+   `_conn_phase`), then gets a real `302`/`Location: /` from a real `GET /generate_204` once
+   `is_hotspot_active()` is confirmed `True` — 11/11 passing. A hand-trace of the full
+   `wlan_connect()`/`_register_sta_connection_failure()`/`_run_hotspot_mode()`/`is_hotspot_active()`/
+   `_serve_static()` chain confirms `_conn_phase` is set to `_PHASE_HOTSPOT` *before* the AP is ever
+   brought up on the air — no ordering window where the flag could lag the real broadcast. So the
+   real-hardware 404 is not a reproducible `src/` bug as currently written.
+
+   **Two candidates remain, most likely first:**
+   1. **Unverified flashed-firmware provenance.** The flash history around this finding was messy
+      (a build that never booted at all due to the `rp2.py` bug, then a transient I2C hiccup causing
+      a boot-loop, only the third flash booting cleanly) — nothing confirmed the exact UF2 actually
+      tested was built from the commit believed current, only inferred it. Cheapest next step:
+      confirm the exact commit before re-testing (a clean `git status` immediately before the build
+      that gets flashed), and/or add a git-SHA-stamped build marker to `scripts/build_firmware.py`'s
+      output so a running device's firmware provenance can be confirmed directly (e.g. via
+      `/status`) instead of inferred.
+   2. **A pre-existing "which 404" ambiguity.** A plain 404 is externally indistinguishable between
+      (a) `_serve_static()`'s own `abort(404)` firing because `is_hotspot_active()` returned
+      `False`, and (b) Microdot never matching any route for that path at all (a routing miss
+      resolves through the same `@app.errorhandler(404)`, same JSON shape) — meaning the request
+      may never have reached `_serve_static()`'s fallback in the first place. The twin test above
+      only proves branch (a) is correct when reached; it says nothing about whether a real request
+      is even reaching that code path. Distinguishing the two needs a positive signal from the
+      device itself (a temporary debug log line in `_serve_static()`, or checking `/status`'s own
+      WEBSERVER error count is still empty — a routing miss and a correct redirect both log
+      nothing, but a genuine crash inside `is_hotspot_active()` would show up there and rule out
+      candidate 2 by elimination).
+
+   **Investigation pitfall already hit once**: don't use `mpremote exec()` to inspect live state —
+   its default `enter_raw_repl()` soft-resets the board, wiping the very live state being observed
+   (see `tests_hardware/README.md`'s liveness-polling finding). Use a passive method instead (a
+   second REST/network-level check, or a code-level trace).
 
 ## Deferred / explicitly out-of-scope work
 

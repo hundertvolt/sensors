@@ -140,9 +140,13 @@ a live question:
   every unit/digital-twin-level test for the same code path
   (`tests/test_asy_webserver_service.py`, `tests/test_asy_wifi_service.py`,
   `tests/test_sensortask_wozi.py`, `tests/test_digital_twin_sensortask_integration.py`,
-  `tests/test_digital_twin_real_website_integration.py`), all of which pass. Not yet root-caused —
-  tracked as BACKLOG.md's open questions list, item 7, which has the investigation candidates and
-  next steps. **Pitfall already hit once investigating this**: don't reach for `mpremote exec()` to
+  `tests/test_digital_twin_real_website_integration.py`), all of which pass — including a fresh,
+  direct re-run of the digital-twin integration test against the real Unix-port interpreter, which
+  confirmed `src/`'s own `is_hotspot_active()`/`_serve_static()` logic is correct end to end, ruling
+  out a reproducible `src/` bug as the explanation. Not yet root-caused — tracked as BACKLOG.md's
+  open questions list, item 7, which has the two remaining candidates (unverified flashed-firmware
+  provenance; a routing-miss-vs-false-condition "which 404" ambiguity) and next steps.
+  **Pitfall already hit once investigating this**: don't reach for `mpremote exec()` to
   inspect `is_hotspot_active()`'s live value — per the liveness-polling finding above, `exec()`
   soft-resets the board and wipes the very live state you're trying to observe. Use a passive method
   (a second REST/network-level check, or a genuinely code-level trace) instead.
