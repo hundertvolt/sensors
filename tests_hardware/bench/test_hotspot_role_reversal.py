@@ -34,7 +34,7 @@ import http_client
 import pytest
 from bench_control import BenchBridge
 from error_log_helpers import assert_module_error_log_empty, reset_all_error_logs
-from harness import Board, wait_until
+from harness import Board, HardwareTestFailure, wait_until
 
 pytestmark = pytest.mark.role_reversal
 
@@ -61,10 +61,30 @@ def joined_hotspot(board: Board, bench: BenchBridge, dut_ip: str, hotspot_ssid: 
     # Stage 0 - precondition: force hotspot mode on demand rather than waiting for organic failure.
     res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"SSID": ""})
     assert res.status_code == 200 and res.json().get("result", {}).get("SSID") == "Valid", f"PUT /networking SSID='' failed: {res.status_code} {res.json() if res.status_code == 200 else res.body!r}"
-    time.sleep(2.0)  # brief settle for the DUT's own reconnect_wifi()/hotspot switchover to begin before the bench radio tries to associate
 
     # Stage 1 - association.
-    bench.join_dut_hotspot(hotspot_ssid, _HOTSPOT_PASSWORD, timeout_s=45.0)
+    # REAL FINDING: a fixed 2s settle sleep before joining is not always enough - confirmed
+    # directly, on real hardware: `nmcli device wifi connect` failed once with "No network with
+    # SSID ... found" even after the 2s sleep, because the DUT's own hotspot beacon hadn't
+    # actually started yet (asy_wifi_service.py's _configure_hotspot_ap() needs a moment after the
+    # SSID="" PUT triggers the real mode switch). Fixed the same way
+    # test_network_resilience.py's own garbage-SSID recovery test fixes the identical race:
+    # poll bench.is_ssid_visible() (a real scan) instead of guessing a fixed delay - see that
+    # method's own docstring for the full account.
+    bench.ap_down()  # is_ssid_visible() needs the radio free to scan - see its own docstring
+    wait_until(lambda: bench.is_ssid_visible(hotspot_ssid), timeout_s=30.0, poll_interval_s=2.0, description=f"DUT's own hotspot ({hotspot_ssid!r}) to become scannable")
+    # is_ssid_visible() being True one moment doesn't guarantee `nmcli device wifi connect`'s own
+    # internal (re)scan sees it a moment later (confirmed directly: failed once with "Wi-Fi network
+    # could not be found" right after a successful is_ssid_visible() check) - ap_down() is
+    # idempotent (see its own docstring) so retrying the whole join here is safe.
+    for attempt in range(3):
+        try:
+            bench.join_dut_hotspot(hotspot_ssid, _HOTSPOT_PASSWORD, timeout_s=45.0)
+            break
+        except HardwareTestFailure:
+            if attempt == 2:
+                raise
+            time.sleep(3.0)
 
     # Stage 2 - DHCP.
     wait_until(lambda: bool(bench.gateway_ip()), timeout_s=45.0, poll_interval_s=2.0, description="bench radio DHCP lease + gateway on the DUT hotspot")

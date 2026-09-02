@@ -4,11 +4,15 @@
 # dependencies = []
 # ///
 """Assembles a real, deployable firmware.uf2 from src/ + ext/microdot.py + the real website
-(scripts/build_website.sh) for one device (SPECIFICATION.md Part B.11). Build-only, like every
-other RP2 build this toolchain produces (toolchain/setup_toolchain.py's own verification build is
-the existing precedent) - nothing in this project's tooling flashes/tests real hardware, so
-"verified" here means "compiles clean and produces a firmware.uf2", not an on-device functional
-check.
+(scripts/build_website.sh) for one device (SPECIFICATION.md Part B.11). This script's own
+automated checks (this module's own docstring used to say so) are build-only - "compiles clean and
+produces a firmware.uf2", not an on-device functional check - but `tests_hardware/flash/
+test_toolchain_flash_boot.py::test_real_uf2_reflash_and_boot_smoke_test` (gated behind
+`--allow-flash-cycle`, a deliberate real flash cycle) DOES exercise this script's own output on
+real hardware, and the first time it actually ran (this session) it immediately caught a real bug
+here - see build_stage_dir()'s own comment for the full account (a UF2 that "built clean" per this
+script's own checks left the board unable to mount its filesystem or run any application at all).
+Treat this script's own success as necessary, not sufficient, for a real device to actually boot.
 
 What gets frozen, and why this needs its own manifest.py rather than reusing the board's default
 one (boards/RPI_PICO_W/manifest.py -> boards/manifest.py): that default manifest's own
@@ -28,6 +32,13 @@ content - the *port's own stock* ports/rp2/modules/_boot.py content plus one add
 wozi_boot` line (no literal ".py" - unlike the still-unresolved BACKLOG.md #1 case, this is new
 code, free to do it the documented way) - this repo's own top-level modules/_boot.py is never read,
 copied from, or touched by this script, per CLAUDE.md's hard rule.
+
+REAL FINDING, confirmed on real hardware (see build_stage_dir()'s own comment for the full
+account): skipping `freeze("$(PORT_DIR)/modules")` entirely also drops ports/rp2/modules/rp2.py -
+the pure-Python module _boot.py's own `import machine, rp2` line needs (a separate module from the
+low-level `_rp2` C extension) - not just this script's replaced _boot.py. build_stage_dir() now
+copies that one file into the same staging directory unmodified alongside its own generated
+_boot.py, so it freezes normally without needing a second manifest freeze() call at all.
 
 Usage (from anywhere, via uv):
 
@@ -103,12 +114,12 @@ def _stage_stripped(src_file: Path, dest: Path) -> None:
     dest.write_text(strip_type_checking_blocks(src_file.read_text()))
 
 
-def build_stage_dir(stage_dir: Path, device: str) -> None:
+def build_stage_dir(stage_dir: Path, device: str, micropython_dir: Path) -> None:
     # This script freezes src/*.py alongside its own infra files (microdot.py, wozi_boot.py,
-    # _boot.py, frozen_html.py) into the SAME flat stage_dir - a future src/ file sharing one of
-    # those names would be silently overwritten (or would silently overwrite the infra file copied
-    # after it) with no error, shipping wrong firmware content. Fail loud instead.
-    reserved = {"microdot.py", "wozi_boot.py", "_boot.py", "frozen_html.py"}
+    # _boot.py, frozen_html.py, rp2.py) into the SAME flat stage_dir - a future src/ file sharing
+    # one of those names would be silently overwritten (or would silently overwrite the infra file
+    # copied after it) with no error, shipping wrong firmware content. Fail loud instead.
+    reserved = {"microdot.py", "wozi_boot.py", "_boot.py", "frozen_html.py", "rp2.py"}
     src_files = sorted((REPO_ROOT / "src").glob("*.py"))
     collisions = reserved & {f.name for f in src_files}
     if collisions:
@@ -119,6 +130,21 @@ def build_stage_dir(stage_dir: Path, device: str) -> None:
     _stage_stripped(REPO_ROOT / "ext" / "microdot.py", stage_dir / "microdot.py")
     _stage_stripped(REPO_ROOT / "boot_entry" / "wozi_boot.py", stage_dir / "wozi_boot.py")
     (stage_dir / "_boot.py").write_text(_BOOT_PY)
+    # REAL FINDING, confirmed on real hardware (a genuine flash+boot smoke test - the very check
+    # this module's own docstring says this tooling never does - immediately failed): omitting the
+    # board's default manifest.py entirely (see this module's docstring for why) also throws away
+    # its own `freeze("$(PORT_DIR)/modules")` line - which doesn't just freeze this script's own
+    # replaced _boot.py, it ALSO freezes ports/rp2/modules/rp2.py, the pure-Python module providing
+    # the friendly `rp2.Flash`/`rp2.PIO`/etc. names our own _BOOT_PY's `import machine, rp2` line
+    # depends on (the low-level C extension is a separate, differently-named module - confirmed
+    # directly, `import rp2` raised ImportError while `_rp2` remained importable). Without it,
+    # _boot.py's own `rp2.Flash()` call fails before the filesystem is ever mounted, silently
+    # dropping to a bare, unmounted REPL with no application ever starting - no build-time error or
+    # warning of any kind (matching this module's own "verified means compiles clean, not an
+    # on-device check" caveat exactly). ports/rp2/modules/_boot_fat.py (the FAT-filesystem
+    # alternative to this board's real lfs2 _boot.py) is deliberately NOT staged here - unused by
+    # this board, and this script's own _BOOT_PY already fully replaces the lfs2 variant.
+    shutil.copy(micropython_dir / "ports" / "rp2" / "modules" / "rp2.py", stage_dir / "rp2.py")
 
     # The real website, built fresh for this device and frozen under the same "frozen_html" name
     # src/sensortask_wozi.py's own `import frozen_html` already expects (SPECIFICATION.md Part
@@ -166,10 +192,21 @@ def main() -> int:
         # directory: freeze()'s own directory walk must never pick up manifest.py itself.
         stage_dir = tmp_path / "stage"
         stage_dir.mkdir()
-        build_stage_dir(stage_dir, args.device)
+        build_stage_dir(stage_dir, args.device, micropython_dir)
 
         manifest_path = tmp_path / "manifest.py"
         manifest_path.write_text(_MANIFEST_TEMPLATE.format(stage_dir=str(stage_dir)))
+
+        # st.build_firmware() already wipes ports/rp2/build-{board} unconditionally before every
+        # call (its own shutil.rmtree()) - the one directory that doesn't self-clean per build is
+        # mpy-cross's own build/ (st.build_mpy_cross() relies on make's incremental rebuild
+        # instead, same as toolchain/setup_toolchain.py's own default flow). Wiped here too so a
+        # firmware build never depends on a previous session's mpy-cross artifacts - mirrors
+        # st.clean_build_dirs()'s own handling of this exact directory for the same reason.
+        mpy_cross_build_dir = micropython_dir / "mpy-cross" / "build"
+        if mpy_cross_build_dir.exists():
+            log(f"Cleaning {mpy_cross_build_dir} before rebuilding")
+            shutil.rmtree(mpy_cross_build_dir)
 
         log(f"Building firmware for BOARD={board}, device={args.device!r}")
         uf2 = st.build_firmware(micropython_dir, board, args.jobs, frozen_manifest=manifest_path)
