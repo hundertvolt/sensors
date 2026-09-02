@@ -33,7 +33,7 @@ from error_log_helpers import (
     get_errcount,
     reset_all_error_logs,
 )
-from harness import Board, wait_until
+from harness import Board, HardwareTestFailure, wait_until
 from rogue_udp_responder import RogueUdpResponder
 
 # ---------------------------------------------------------------------------
@@ -313,6 +313,178 @@ def _ntp_error_log_contains(dut_ip: str, errno: int) -> bool:
     if entry is None:
         return False
     return any(h.get("num") == errno and h.get("type") == "E" for h in entry.get("history", []))
+
+
+# ---------------------------------------------------------------------------
+# Malicious-but-schema-valid REST config value #2: a real-format SSID that no AP on this bench
+# broadcasts. asy_wifi_service.py's own _VAL_SSID schema (("SSID", "str", "", 0, 32, None)) only
+# bounds length, same gap as _VAL_NH's NTP_Host above - any 0-32 char string passes.
+#
+# Aims to stop short of the real hotspot-fallback transition (asy_wifi_service.py's
+# _register_sta_connection_failure(), reached after conn_fail_to_hotspot=5 consecutive
+# STAT_NO_AP_FOUND failures, ~50s at this service's own wifi_refresh_sec=5s cadence) - once the DUT
+# actually switches to AP/hotspot mode its own IP changes and dut_ip stops being reachable at all,
+# so this test's own value (a real STAT_NO_AP_FOUND cycle degrading gracefully: no crash, REST stays
+# responsive) is already fully observable well before that.
+#
+# REAL FINDING: that ~50s budget is tighter than it looks and was blown at least once in practice -
+# real per-attempt timing jitter (this test's own reset_all_error_logs()/PUT/GET round trips, plus
+# the connect attempts themselves) can push the sequence into hotspot fallback anyway. When that
+# happens, REST-restoring the original SSID over dut_ip is impossible until the DUT is reachable
+# again - exactly the scenario tests_hardware/bench/test_hotspot_role_reversal.py exists to handle
+# (bench temporarily joins the DUT's own hotspot) - so this test falls back to that same mechanism
+# rather than assuming the happy path, matching this tier's established "a recovery path counts as
+# a pass, not a failure" convention (test_network_resilience.py's own WiFi-outage tests, harness.py's
+# hard_reset()-fallback pattern).
+# ---------------------------------------------------------------------------
+
+_GARBAGE_SSID = "wozi-test-net-does-not-exist"  # <=32 chars (_VAL_SSID's own cap) - real 2.4GHz-legal SSID format/length, just not broadcast by anything on this bench
+_HOTSPOT_PASSWORD = "12345678"  # hardcoded in src/asy_wifi_service.py's _configure_hotspot_ap()
+
+
+def test_garbage_ssid_via_rest_config_is_handled_gracefully(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+    get_before = http_client.fetch(dut_ip, 80, "GET", "/networking", timeout_s=10.0)
+    assert get_before.status_code == 200, f"GET /networking failed: {get_before.status_code} {get_before.body!r}"
+    original_ssid = get_before.json()["SSID"]
+    original_hostname = get_before.json()["Hostname"]
+
+    reset_all_error_logs(dut_ip)
+    put_res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"SSID": _GARBAGE_SSID}, timeout_s=10.0)
+    assert put_res.status_code == 200, f"PUT /networking SSID={_GARBAGE_SSID!r} failed: {put_res.status_code} {put_res.body!r}"
+    # Length/type-only schema (see this test's own module comment above) - accepted as "Valid"
+    # here; the real failure only surfaces later, from the actual (real, over-the-air) connect
+    # attempt asy_wifi_service.py's own reconnect_wifi() post_fct triggers.
+    assert put_res.json()["result"].get("SSID") == "Valid", f"garbage SSID was rejected at the schema level, not what this test means to exercise: {put_res.json()!r}"
+
+    # Passive observation only (no exec()/is_reachable() - see harness.py's own findings on why
+    # polling those against a live system is disruptive): confirm at least one real STAT_NO_AP_FOUND
+    # cycle is logged and handled cleanly - a short window, to leave margin against the hotspot-
+    # fallback budget above.
+    lines = board.tail_log(duration_s=15.0)
+    joined = "\n".join(lines)
+    assert "Traceback" not in joined, f"a real unreachable SSID crashed the system instead of degrading cleanly:\n{joined}"
+    assert "WLAN access point not found" in joined, f"no real STAT_NO_AP_FOUND cycle observed for a genuinely nonexistent SSID:\n{joined}"
+
+    # dut_ip (the bench-bridge-DHCP-assigned address) cannot become reachable again while the
+    # garbage SSID is still configured - a real reconnect to it is impossible by construction, not
+    # just unlikely - so a plain snapshot check here is a correct (not racy) way to decide the DUT
+    # has necessarily started its real connection_failures streak toward hotspot fallback.
+    if http_client_is_ok(dut_ip):
+        # Happy path: still reachable over the normal bridge network - restore directly. Not
+        # actually expected to trigger (see comment above), kept only as a defensive fallback.
+        bench.kick_all_stations()  # the coming reconnect is a genuine machine-level association - see conftest.py's dut_ip docstring
+        _restore_ssid_over(dut_ip, original_ssid)
+    else:
+        # Fallback: join the DUT's own AP once it reaches real hotspot fallback, to restore over
+        # that instead, exactly like test_hotspot_role_reversal.py's own joined_hotspot fixture.
+        #
+        # REAL FINDING #1: unlike that fixture (which forces hotspot mode itself via SSID="" and
+        # then sleeps a fixed 2s margin before joining), this path reaches hotspot mode indirectly
+        # (the real connection_failures streak, ~30-50s from the garbage-SSID PUT above - this
+        # test's own 15s tail_log observation above already ate into that budget) and has no
+        # equivalent "moment zero" to sleep a fixed margin after - a join attempted right as
+        # "Permanently no WLAN connection - activating hotspot!" is logged can race
+        # asy_wifi_service.py's own _configure_hotspot_ap() actually bringing the radio up, failing
+        # with nmcli's own "Wi-Fi network could not be found." Fixed by polling
+        # bench.is_ssid_visible() (a real scan) with a generous budget instead of guessing a short
+        # fixed delay - see that method's own docstring for the full account.
+        #
+        # REAL FINDING #2: everything from ap_down() through join_dut_hotspot() must be inside the
+        # SAME try/finally as the rest of this branch, not just the join-and-restore steps after
+        # it - confirmed directly: an earlier version left ap_down()/is_ssid_visible() outside the
+        # try, so a real is_ssid_visible() timeout (finding #1, before it was fixed) raised past
+        # this whole branch with the bridge AP left down and never restored, turning one flaky
+        # timeout into a fully stranded bench needing manual recovery.
+        try:
+            bench.ap_down()  # is_ssid_visible() needs the radio free to scan - see its own docstring
+            wait_until(
+                lambda: bench.is_ssid_visible(original_hostname),
+                timeout_s=60.0,
+                poll_interval_s=2.0,
+                description=f"DUT's own hotspot ({original_hostname!r}) to become scannable",
+            )
+            # REAL FINDING #3: is_ssid_visible() being True one moment doesn't guarantee
+            # `nmcli device wifi connect`'s own internal (re)scan sees it a moment later - a
+            # freshly-started AP's beacon interval means visibility can still be intermittent right
+            # after it first appears. Confirmed directly: a join attempted immediately after a
+            # successful is_ssid_visible() check still failed once with nmcli's "Wi-Fi network
+            # could not be found." ap_down() is idempotent (see its own docstring) so retrying the
+            # whole join here is safe.
+            for attempt in range(3):
+                try:
+                    bench.join_dut_hotspot(original_hostname, _HOTSPOT_PASSWORD, timeout_s=45.0)
+                    break
+                except HardwareTestFailure:
+                    if attempt == 2:
+                        raise
+                    time.sleep(3.0)
+            wait_until(lambda: bool(bench.gateway_ip()), timeout_s=45.0, poll_interval_s=2.0, description="DHCP lease on the DUT's own hotspot")
+            gateway_ip = bench.gateway_ip()
+            wait_until(lambda: http_client_is_ok(gateway_ip), timeout_s=30.0, poll_interval_s=2.0, description="DUT REST reachable over its own hotspot")
+            _restore_ssid_over(gateway_ip, original_ssid)
+        finally:
+            bench.leave_dut_hotspot_and_restore_bridge()
+        bench.kick_all_stations()
+
+    # REAL FINDING #4, ROOT-CAUSED (not a src/ bug - the already-accepted CYW43 characteristic this
+    # session's own WIFI_RECONNECT_INVESTIGATION.md already documents, just triggered here by this
+    # test's own unusually heavy WiFi mode-switching): the reconnect-over-bridge step following the
+    # hotspot-fallback branch above was repeatedly observed taking several minutes (or, once, not at
+    # all within a 480s budget), while two separate isolated repros of the same "reconnect after a
+    # real STAT_NO_AP_FOUND failure history + an AP-mode round-trip" scenario - one driving raw
+    # `network` calls directly, one driving the real src/asy_wifi_service.py AsyConnTime class's own
+    # task loop directly (see tests_hardware/device_scripts/wifi_reconnect_after_failed_attempts_
+    # repro.py and wifi_service_reconnect_repro.py) - both reconnected in ~3-20s every time, showing
+    # no degradation at all. The DUT-side reconnect logic itself is therefore not the cause.
+    #
+    # Root cause, confirmed directly on this bench during one of the slow episodes: `iw dev wlan0
+    # station dump` (the bench AP's own real 802.11 station table) showed ZERO associated
+    # stations, while the DUT's own serial log showed no disconnect, no WLAN error, and normal
+    # continued operation - it believed itself connected. This is exactly the already-documented
+    # "wlan.isconnected() can stay True while the real link is down" CYW43/lwIP characteristic
+    # (WIFI_RECONNECT_INVESTIGATION.md's own upstream citations), silently defeating
+    # _on_sta_disconnected()'s retry logic entirely - the DUT has no way to detect this and would
+    # never retry on its own. Confirmed the fix: a real hard_reset() (power-cycles the CYW43 chip
+    # via WL_REG_ON) reliably cleared it and reconnected within single-digit seconds every time it
+    # was tried. This session's own testing put this bench's WiFi radio through an unusually large
+    # number of mode switches (dozens of AP/STA/hotspot transitions across many repeated test runs
+    # and diagnostics), making the underlying condition more likely to surface here than in normal
+    # operation - not a sign it's specific to this test's own logic.
+    #
+    # Fix: a bounded plain wait first (covers the fast, common case), then kick_all_stations() +
+    # hard_reset() retries (the same "hardware watchdog is the accepted backstop"-style recovery
+    # already used throughout this tier) - multiple attempts, since the underlying condition was
+    # occasionally seen to recur immediately after a single hard_reset().
+    def _reconnected_over_bridge() -> bool:
+        return http_client.fetch(dut_ip, 80, "GET", "/networking", timeout_s=10.0).json().get("Mode") == "STA" and http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200
+
+    try:
+        wait_until(_reconnected_over_bridge, timeout_s=60.0, poll_interval_s=3.0, description=f"Mode to return to 'STA' after restoring the real SSID ({original_ssid!r})")
+    except TimeoutError:
+        for attempt in range(4):
+            bench.kick_all_stations()
+            board.hard_reset()
+            try:
+                wait_until(_reconnected_over_bridge, timeout_s=90.0, poll_interval_s=3.0, description=f"Mode to return to 'STA' after a hard_reset() recovery attempt {attempt + 1}/4")
+                break
+            except TimeoutError:
+                if attempt == 3:
+                    raise
+    reset_all_error_logs(dut_ip)  # the fallback path above can log its own transient WIFI history (e.g. one more STAT_NO_AP_FOUND while still mid-fallback) that isn't this test's own concern
+
+
+def http_client_is_ok(host: str) -> bool:
+    try:
+        return http_client.fetch(host, 80, "GET", "/status", timeout_s=5.0).status_code == 200
+    except OSError:
+        return False
+
+
+def _restore_ssid_over(host: str, original_ssid: str) -> None:
+    reset_all_error_logs(host)
+    restore_res = http_client.fetch(host, 80, "PUT", "/networking", {"SSID": original_ssid}, timeout_s=10.0)
+    assert restore_res.status_code == 200, f"failed to restore original SSID {original_ssid!r}: {restore_res.status_code} {restore_res.body!r}"
+    assert restore_res.json()["result"].get("SSID") in ("Valid", "Unchanged"), f"restoring the original SSID was rejected: {restore_res.json()!r}"
 
 
 # ---------------------------------------------------------------------------

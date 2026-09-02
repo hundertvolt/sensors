@@ -64,7 +64,15 @@ class BenchBridge:
     # -- fault injection: attacking the DUT's *uplink* (the bridge is the AP the DUT connects to) --
 
     def ap_down(self) -> None:
-        _nmcli("connection", "down", self.ap_conn)
+        # Idempotent: nmcli's own "connection down" errors ("not an active connection") if called
+        # a second time while already down - a real finding from a retry loop around
+        # join_dut_hotspot() (which calls this internally) needing to call ap_down() again after an
+        # earlier attempt in the same loop already took it down but failed a later step.
+        try:
+            _nmcli("connection", "down", self.ap_conn)
+        except HardwareTestFailure as e:
+            if "is not an active connection" not in str(e):
+                raise
 
     def ap_up(self) -> None:
         _nmcli("connection", "up", self.ap_conn)
@@ -150,13 +158,46 @@ class BenchBridge:
     # See HARDWARE_TEST_PLAN.md §11.2 for why this is a sequential flip, not simultaneous AP+client
     # (the bench Rpi4 has a single WiFi radio, confirmed directly by the project owner).
 
+    def is_ssid_visible(self, ssid: str) -> bool:
+        """A real, fresh (`--rescan yes`) scan for `ssid` on the same radio `br0-wifi-ap`/
+        join_dut_hotspot() use - lets a caller confirm a DUT-hosted hotspot has actually started
+        beaconing before attempting to join it. REAL FINDING this exists to fix: a DUT reaching
+        hotspot fallback organically (via its own real connection-failure streak, not a caller-
+        forced `SSID=""`) gives no "moment zero" to sleep a fixed margin after - a join attempted
+        right as the DUT's own log line announces the switch can still race
+        asy_wifi_service.py's own _configure_hotspot_ap() actually bringing the radio up, failing
+        with nmcli's "Wi-Fi network could not be found." Poll this (see harness.wait_until) instead
+        of guessing a fixed delay.
+
+        Requires `ap_down()` already called - this single-radio bench (HARDWARE_TEST_PLAN.md
+        §11.2) can't scan for other networks while still hosting br0-wifi-ap as an AP itself, the
+        same reason join_dut_hotspot() below calls ap_down() before its own connect attempt."""
+        iface = self.wifi_iface()
+        output = _nmcli("-t", "-f", "SSID", "device", "wifi", "list", "ifname", iface, "--rescan", "yes", timeout_s=15.0)
+        return ssid in output.splitlines()
+
     def join_dut_hotspot(self, ssid: str, password: str, *, timeout_s: float = 30.0) -> None:
         """Stops hosting `br0-wifi-ap` and joins the DUT's own hotspot as a client instead, via a
         fresh, clearly-named temporary connection profile. `nmcli device wifi connect` handles
         scan+associate+DHCP in one call; the explicit `wifi_iface()` binds it to the same physical
-        radio `br0-wifi-ap` was using, never guessing which adapter to use."""
+        radio `br0-wifi-ap` was using, never guessing which adapter to use. Callers reaching hotspot
+        mode organically (not via a self-forced `SSID=""`) should confirm is_ssid_visible() first -
+        see that method's own docstring.
+
+        REAL FINDING: idempotent against a stale profile from an earlier failed call - `nmcli
+        device wifi connect ... name <same name>` doesn't always cleanly recreate an existing
+        profile of that name from scratch; a profile left behind by an earlier failed attempt (e.g.
+        one that failed after nmcli had already written a partial profile) can make a later retry
+        fail differently and more confusingly (observed directly: "802-11-wireless-security.key-
+        mgmt: property is missing" on a retry, instead of the original failure repeating) - deleting
+        any leftover profile of the same name first guarantees every call starts from the same
+        clean state, matching leave_dut_hotspot_and_restore_bridge()'s own tolerant delete."""
         iface = self.wifi_iface()
         self.ap_down()
+        try:
+            _nmcli("connection", "delete", ROLE_REVERSAL_CLIENT_CONN)
+        except HardwareTestFailure:
+            pass  # no leftover profile from an earlier call - fine, nothing to clean up
         _nmcli(
             "device", "wifi", "connect", ssid, "password", password,
             "ifname", iface, "name", ROLE_REVERSAL_CLIENT_CONN,
