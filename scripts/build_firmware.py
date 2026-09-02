@@ -201,12 +201,25 @@ def main() -> int:
         # call (its own shutil.rmtree()) - the one directory that doesn't self-clean per build is
         # mpy-cross's own build/ (st.build_mpy_cross() relies on make's incremental rebuild
         # instead, same as toolchain/setup_toolchain.py's own default flow). Wiped here too so a
-        # firmware build never depends on a previous session's mpy-cross artifacts - mirrors
-        # st.clean_build_dirs()'s own handling of this exact directory for the same reason.
+        # firmware build never depends on a previous session's mpy-cross artifacts.
+        #
+        # REAL FINDING, confirmed via CI (firmware-build-verify): wiping mpy-cross/build/ alone,
+        # without an explicit rebuild, breaks the rp2 port's own BUILD_FROZEN_CONTENT step - it
+        # invokes mpy-cross as an implicit sub-build to cross-compile the frozen manifest, which
+        # (from a wiped build/ dir specifically) fails to regenerate `mp_qstr_frozen_const_pool`,
+        # a linker error ("undefined reference to `mp_qstr_frozen_const_pool'") that only surfaces
+        # here, never in a plain `st.build_mpy_cross()` standalone call. st.clean_build_dirs()
+        # never hits this: every one of its callers immediately follows it with a full setup() that
+        # explicitly calls st.build_mpy_cross() again (its own step 2) before anything else ever
+        # touches mpy-cross - the earlier comment here ("mirrors st.clean_build_dirs()'s own
+        # handling") only mirrored the wipe half of that pattern, not the required rebuild half.
+        # Fixed the same way: rebuild mpy-cross explicitly, through the same already-proven
+        # st.build_mpy_cross() path, right after wiping it and before it's ever needed again.
         mpy_cross_build_dir = micropython_dir / "mpy-cross" / "build"
         if mpy_cross_build_dir.exists():
             log(f"Cleaning {mpy_cross_build_dir} before rebuilding")
             shutil.rmtree(mpy_cross_build_dir)
+        st.build_mpy_cross(micropython_dir, args.jobs)
 
         log(f"Building firmware for BOARD={board}, device={args.device!r}")
         uf2 = st.build_firmware(micropython_dir, board, args.jobs, frozen_manifest=manifest_path)
