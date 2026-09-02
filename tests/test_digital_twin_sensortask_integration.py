@@ -547,6 +547,10 @@ def test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_a
         pixel_task = pixel.start_asy_neopixel_led_overl()  # the one real pixel task that turns
         # conn's own on()/off()/toggle() LED calls into real committed NeoPixel frames.
         wifi_task = conn.start_asy_wlan_connect()
+        webserver_task = await _start_webserver()  # real WebserverService(..., is_hotspot_active=
+        # conn.is_hotspot_active) wiring (sensortask_wozi.py's own build_system()) - free coverage
+        # once this test already drives conn into real hotspot mode below (CAPTIVE_PORTAL_
+        # HOTSPOT_REDIRECT_PLAN.md §5.2): no twin-side network.py simulation change needed.
         try:
             await asyncio.sleep(0.2)  # let wlan_connect()'s own synchronous prefix
             # (_reset_wlan_connect_state(), which unconditionally zeroes connection_failures) run
@@ -569,13 +573,22 @@ def test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_a
             # _led_off()), landing as real committed frames on the real (twin) NeoPixel.
             assert conn.led is pixel
             assert len(pixel.pixel.writes) > 0, "the real status LED never actually wrote a frame"
+            assert conn.is_hotspot_active() is True
+            # Real end-to-end captive-portal redirect: a real HTTP request, through the real
+            # webserver, consulting the real conn.is_hotspot_active() now that hotspot mode is
+            # genuinely active - not a unit-level fake callback like test_asy_webserver_service.py's
+            # own Section G.2 coverage.
+            res = await _http_client.fetch("127.0.0.1", port, "GET", "/generate_204")
+            assert res.status_code == 302
+            assert res.headers["Location"] == "/"
         finally:
             await _cancel(wifi_task)
             await _cancel(pixel_task)
+            await _cancel(webserver_task)
             if conn.dns_server_task is not None:
                 await _cancel(conn.dns_server_task)
             gc.collect()  # see the task-supervisor-restart section's own comment above - this test
-            # starts several real background tasks (wifi, pixel, hotspot DNS) too.
+            # starts several real background tasks (wifi, pixel, hotspot DNS, webserver) too.
 
     run_timed(scenario(), timeout_s=35.0)
 

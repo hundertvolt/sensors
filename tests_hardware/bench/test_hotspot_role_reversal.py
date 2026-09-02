@@ -33,6 +33,7 @@ import dns_probe
 import http_client
 import pytest
 from bench_control import BenchBridge
+from error_log_helpers import assert_module_error_log_empty, reset_all_error_logs
 from harness import Board, wait_until
 
 pytestmark = pytest.mark.role_reversal
@@ -272,6 +273,38 @@ def test_real_static_website_content_serves_over_the_hotspot_link(joined_hotspot
     res = http_client.fetch(joined_hotspot, 80, "GET", "/", timeout_s=10.0)
     assert res.status_code == 200
     assert len(res.body) > 0
+
+
+def test_nonsense_path_redirects_to_root_over_the_hotspot_link(joined_hotspot: str) -> None:
+    # CAPTIVE_PORTAL_HOTSPOT_REDIRECT_PLAN.md's real-hardware counterpart to
+    # test_network_resilience.py's own test_get_nonsense_path_is_shaped_404_over_the_normal_network
+    # (the load-bearing regression guard that STA-mode 404 behavior stays byte-for-byte unchanged) -
+    # this is the additive hotspot-mode-only branch: joined_hotspot only ever yields once the DUT is
+    # genuinely in real hotspot mode, so is_hotspot_active() is genuinely True for this request.
+    # A raw socket is required here, not http_client.fetch(): urllib.request's default opener
+    # silently follows a 3xx GET redirect (HTTPRedirectHandler), which would land on "/" itself
+    # (a real 200 page) and hide the 302/Location this test exists to check.
+    import socket
+
+    reset_all_error_logs(joined_hotspot)
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(10.0)
+        sock.connect((joined_hotspot, 80))
+        sock.sendall(b"GET /generate_204 HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+        response = b""
+        try:
+            while True:
+                chunk = sock.recv(4096)
+                if not chunk:
+                    break
+                response += chunk
+        except TimeoutError:
+            pass
+    assert response.startswith(b"HTTP/1.0 302") or response.startswith(b"HTTP/1.1 302"), f"GET to a nonsense path over the hotspot link did not return 302: {response!r}"
+    assert b"Location: /\r\n" in response or b"location: /\r\n" in response, f"redirect Location header was not '/': {response!r}"
+    # Matches the STA-mode test's own "a routine response must not log an error" assertion, applied
+    # to the new hotspot-mode redirect path.
+    assert_module_error_log_empty(joined_hotspot, "WEBSERVER")
 
 
 # ---------------------------------------------------------------------------

@@ -1049,6 +1049,38 @@ def test_network_available_false_on_a_status_exception() -> None:
 
 
 # ---------------------------------------------------------------------------
+# is_hotspot_active() - lock-free getter for asy_webserver_service.py's captive-portal redirect
+# fallback (CAPTIVE_PORTAL_HOTSPOT_REDIRECT_PLAN.md). All four _conn_phase values are exercised
+# deliberately, not just the True case and one False case - a regression narrowed to, say,
+# _PHASE_DEACTIVATED alone would slip past a two-case test.
+# ---------------------------------------------------------------------------
+
+
+def test_is_hotspot_active_true_in_hotspot_phase() -> None:
+    client = make_client()
+    client._conn_phase = _PHASE_HOTSPOT
+    assert client.is_hotspot_active() is True
+
+
+def test_is_hotspot_active_false_in_sta_seeking_phase() -> None:
+    client = make_client()
+    client._conn_phase = _PHASE_STA_SEEKING
+    assert client.is_hotspot_active() is False
+
+
+def test_is_hotspot_active_false_in_sta_established_phase() -> None:
+    client = make_client()
+    client._conn_phase = _PHASE_STA_ESTABLISHED
+    assert client.is_hotspot_active() is False
+
+
+def test_is_hotspot_active_false_in_deactivated_phase() -> None:
+    client = make_client()
+    client._conn_phase = _PHASE_DEACTIVATED
+    assert client.is_hotspot_active() is False
+
+
+# ---------------------------------------------------------------------------
 # get_wlan_rssi() / wlan_isconnected() / reconnect_wifi() - previously untested public accessors
 # ---------------------------------------------------------------------------
 
