@@ -1,5 +1,39 @@
 # WIFI_RECONNECT_INVESTIGATION.md
 
+## CAUTIONARY TALE - a later session's own "reconnect flakiness" chase turned out to be a test bug
+
+A later session added `tests_hardware/bench/test_network_resilience.py::
+test_garbage_ssid_via_rest_config_is_handled_gracefully` (a real, unreachable SSID pushed via REST,
+expected to degrade gracefully and recover). Its own final "did the DUT reconnect" check
+consistently failed - across many runs, with retry budgets escalated from 60s up to 900s, with
+multiple `hard_reset()` retries, with a deliberate settle delay, and even after a full physical
+power-cycle of both the bench Pi4 and the DUT (ruling out every accumulated-software-state theory).
+Two isolated device-script repros (raw `network` calls; the real `AsyConnTime` class's own task
+loop) both reconnected in seconds every time, contradicting the "DUT problem" theory. The two
+findings above (C1's stale-station-table fix, and the CYW43 `isconnected()`-lies mechanism) were
+both seriously considered as explanations and partially "confirmed" via `iw station dump` snapshots
+during genuinely slow episodes.
+
+**The actual cause, found only after all of that: the check itself was wrong, not the hardware.**
+It called `GET /networking` and read a `"Mode"` field from the response - but `GET /networking`
+never has that field (`asy_webserver_service.py`'s `_get_networking()` returns only the WiFi
+settings-group's own fields; `"Mode"` exists exclusively under `GET /status`'s nested `"networking"`
+object). The check was therefore unconditionally `None == "STA"` → `False`, regardless of how long
+the DUT had actually been reconnected - it could never have passed, at any timeout. The DUT was
+reconnecting normally and quickly (~10-75s) the entire time; every "slow episode" observed was this
+same check still polling a field that would never appear. Fixed by reading `Mode` from `GET
+/status`'s nested object instead - the test then passed twice in a row, cleanly, in ~150s each
+(most of that being the test's own deliberate observation windows, not reconnect time).
+
+**Lesson for future WiFi-flakiness investigations on this bench**: before trusting an "it's flaky"
+signal from a real-hardware test enough to spend serious time chasing a hardware/firmware
+explanation, first re-verify the test's own check is actually asking the right question of the
+right endpoint/field - a plain `curl` of both endpoints side by side would have caught this in
+under a minute, far cheaper than the many-hours investigation that preceded finding it. This
+doesn't invalidate C1 or the CYW43-masking finding below - both are real, independently confirmed
+mechanisms worth keeping in mind - it just means neither was the explanation for *this specific*
+symptom.
+
 ## RESOLVED (mostly) - findings from the session that ran this plan
 
 **C1 (§2's hidden-cause candidate) is confirmed, decisively, as the dominant cause of the

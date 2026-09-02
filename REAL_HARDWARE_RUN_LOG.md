@@ -193,6 +193,42 @@ failure - confirmed working exactly as designed on real hardware.
 Full evidence trail for both findings: `WIFI_RECONNECT_INVESTIGATION.md`'s own "RESOLVED" section
 at the top of that file.
 
+## Phase 4b - is_reachable() harness bug, malicious-value REST tests, captive-portal merge
+
+A later session found and fixed a genuinely serious harness bug while chasing an unrelated
+`test_real_reboot_sequencing_via_rest_completes_cleanly` failure: `Board.is_reachable()` is built on
+`mpremote exec`, and mpremote's own `enter_raw_repl()` unconditionally sends Ctrl-C plus, by
+default, a real Ctrl-D `machine.soft_reset()` before running anything - polling it against a live,
+already-running system (as that test's own `wait_until(lambda: not board.is_reachable(), ...)` did)
+was self-resetting the board's live heap on every single poll, wiping the very `reset_timer` state
+being waited on. Fixed with a new, genuinely passive `Board.is_device_present()` (opens/closes the
+serial port, sends nothing) for any future poll against a live system - `is_reachable()` stays
+`mpremote`-based deliberately, since some callers (flash tier's own connection-stability test) are
+specifically testing that mechanism.
+
+Added `test_garbage_ssid_via_rest_config_is_handled_gracefully` (a real, unreachable SSID pushed via
+REST) plus an isolated device script confirming `network.country()`/`network.hostname()` degrade
+gracefully on bogus values. Building the SSID test's own hotspot-fallback recovery path surfaced
+several real `bench_control.py` bugs, all fixed: `ap_down()` wasn't idempotent (broke retries),
+`join_dut_hotspot()` left a stale connection profile behind on a failed attempt (broke retries
+differently and more confusingly on the next try), and joining a just-activated hotspot could race
+its own beacon interval (fixed with a new `is_ssid_visible()` real-scan check). The test's own
+final check then went through a long, expensive false trail (see `WIFI_RECONNECT_INVESTIGATION.md`'s
+own new top section for the full account) before the real bug was found: it read a `"Mode"` field
+from `GET /networking`, which never has that field - `"Mode"` only exists under `GET /status`'s
+nested object. Fixed; the test now passes in ~150s consistently, not 15+ minutes then a failure.
+
+Also merged `claude/captive-portal-hotspot-redirect` (PR #53, per the project owner's own request,
+gated on that PR's CI being green first - confirmed green before merging): adds
+`AsyConnTime.is_hotspot_active()` and wires it into `WebserverService`'s static-route fallback so a
+captive-portal OS probe gets a 302 redirect instead of a 404 while the DUT is its own hotspot. No
+file overlap with this branch's own `tests_hardware/` work; merged cleanly. `scripts/lint.sh`/
+`scripts/typecheck.sh` confirmed clean post-merge; `scripts/test.sh` (full mock suite) and the PR's
+own two new real-hardware bench tests (`test_hotspot_role_reversal.py`'s
+`test_nonsense_path_redirects_to_root_over_the_hotspot_link`/`test_put_to_nonsense_path_is_405_
+not_a_redirect_over_the_hotspot_link`, never run on real hardware before this) still pending -
+continue at "Next session should start here" below.
+
 ## Next session should start here
 
 1. Re-run the full bench suite (`scripts/run_bench_hardware_suite.sh -v -k "not
