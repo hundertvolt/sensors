@@ -70,6 +70,20 @@ if [ ! -x "$micropython_bin" ]; then
     uv run toolchain/setup_toolchain.py setup --toolchain-dir "$toolchain_dir" "${skip_apt_flag[@]}"
 fi
 
+# tests/test_digital_twin_sensortask_integration.py's own hotspot/DNS test binds the real
+# privileged port 53 (src/captive_dns.py's DNSServer) from a genuine, organically-triggered hotspot
+# scenario - a GitHub Actions runner (or any non-root dev environment) can't bind that port without
+# either running as root or holding this specific capability on the interpreter binary. Same
+# mechanism, same "reapply every invocation" reasoning (GNU tar doesn't preserve xattrs, so a
+# capability baked into a cached binary wouldn't survive the cache round-trip) as
+# scripts/run_digital_twin_ci.sh's own identical grant for its own real-port-53 DNS proof.
+echo "== Granting CAP_NET_BIND_SERVICE to $micropython_bin (needed for the real port-53 DNS server test)"
+if [ "$(id -u)" -eq 0 ]; then
+    setcap 'cap_net_bind_service=+ep' "$micropython_bin"
+else
+    sudo setcap 'cap_net_bind_service=+ep' "$micropython_bin"
+fi
+
 # frozen_modules/frozen_html.py (SPECIFICATION.md Part A.9) is a plain build artifact, never
 # committed (see .gitignore) - regenerated fresh on every run, cheap (sub-second, no toolchain
 # involved), unlike the Unix-port build above. src/sensortask_wozi.py does a module-level `import

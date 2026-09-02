@@ -339,7 +339,12 @@ shared FRAM SPI bus — to actually reach its hung `writeto` before the run exit
 the same way, module-level before `import sensortask_wozi`, by `tests/
 test_digital_twin_sensortask_integration.py` (its own hotspot/DNS section drives a genuine UDP round
 trip against the real `captive_dns.py` `DNSServer` the same way `run_wozi_integration.py`'s run 7
-does — see that test's own comment). Works
+does — see that test's own comment). That same test also needs the real privileged port 53 itself
+to actually be bindable, same as run 7 — `scripts/test.sh` now grants the built interpreter binary
+`CAP_NET_BIND_SERVICE` unconditionally (mirroring `scripts/run_digital_twin_ci.sh`'s own identical
+grant, see that script's own comment for the full mechanism/rationale), not just
+`run_digital_twin_ci.sh`, since this test now runs as part of the plain unit-tests suite too, not
+only the separate digital-twin-e2e job. Works
 around three confirmed MicroPython-Unix-port-only `socket` quirks that otherwise make a real UDP
 round trip (DNS, NTP) impossible under this harness, entirely from twin-side code:
 
