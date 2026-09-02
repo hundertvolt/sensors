@@ -463,30 +463,24 @@ verification is complete and verified (not just started), following the same pat
 temporary planning docs listed at the end of this section — see `HARDWARE_TEST_PLAN.md`'s own §8
 for what must be migrated into `SPECIFICATION.md` first.
 
-**`REAL_HARDWARE_HANDOFF.md`** (temporary handoff doc, current): a **waiting-for-go-ahead** set of
-instructions for the dedicated session that runs locally on the real bench machine (the only place
-with actual `mpremote`/bench-WiFi/board access) to pick up when told to start actually executing
-`tests_hardware/` against real hardware — critical safety facts (a real UF2 reflash's own
-`--allow-flash-cycle` gate, a real permanent-WLAN-deactivation risk in the hotspot role-reversal
-scenario's own stage 6, the `BENCH_AP_PASSWORD` credential-handoff requirement), a suggested run
-order, and what to do with whatever real hardware disagrees with. Explicitly must not be acted on
-by any session without the project owner's go-ahead given directly in that session's own
-conversation. Deleted once the real-hardware integration it describes is complete and verified,
-migrating anything still permanently true into `tests_hardware/README.md`/`SPECIFICATION.md`/
-`BACKLOG.md` first — same close-out convention as every other temporary planning doc here.
+**`REAL_HARDWARE_HANDOFF.md`** (temporary handoff doc, current): the onboarding doc for a dedicated
+session running locally on the real bench machine (the only place with actual `mpremote`/bench-WiFi/
+board access) to actually execute `tests_hardware/` against real hardware — critical safety facts (a
+real UF2 reflash's own `--allow-flash-cycle` gate, a real permanent-WLAN-deactivation risk in the
+hotspot role-reversal scenario's own stage 6, the `BENCH_AP_PASSWORD` credential-handoff
+requirement), a suggested run order, and what to do with whatever real hardware disagrees with.
+Real-hardware execution is already substantially under way under a prior go-ahead (see
+`REAL_HARDWARE_RUN_LOG.md` for current status) — but that go-ahead does not carry over to a new
+session: this doc's own standing rule still applies, that nothing here may be acted on without the
+project owner's go-ahead given directly in that session's own conversation. Deleted once the
+real-hardware integration it describes is complete and verified, migrating anything still
+permanently true into `tests_hardware/README.md`/`SPECIFICATION.md`/`BACKLOG.md` first — same
+close-out convention as every other temporary planning doc here.
 
 **`REAL_HARDWARE_RUN_LOG.md`** (temporary, live progress log, current): the running account of the
 first actual real-hardware pass through `tests_hardware/` on the bench Pi4 — what's been found and
 fixed phase by phase, current status, and a "Next session should start here" list. Same
 delete-once-verified lifecycle as the other real-hardware planning docs above.
-
-**`WIFI_RECONNECT_INVESTIGATION.md`** (temporary planning doc, current): a deep-research pass and
-ordered, fast-first test plan for the not-yet-root-caused real WiFi reconnection flakiness
-`REAL_HARDWARE_RUN_LOG.md`'s Phase 2 and `tests_hardware/README.md`'s "Known assumptions and open
-findings" section found — prepared by a separate cloud session at the project owner's request, for
-whoever picks up `REAL_HARDWARE_RUN_LOG.md`'s own Phase 4. Includes a new candidate root cause
-(AP-side stale station-table state) the original investigation's evidence-gathering never
-considered. Same lifecycle as the other real-hardware planning docs above.
 
 `DRIVER_SPEC.md`, `src/README.md`, `tests/README.md`, `toolchain/README.md`, `WIRING_CONTRACT.md`,
 `FINAL_WIRING_PLAN.md`, `WEBSITE_PLAN.md`, and `AUDIT_PLAN.md` — earlier temporary planning/spec

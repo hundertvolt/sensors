@@ -1,13 +1,15 @@
 # REAL_HARDWARE_HANDOFF.md
 
-**STATUS: WAITING FOR GO-AHEAD.** If you are a Claude Code session reading this file: reading it is
+**STATUS: real-hardware execution is already substantially under way** (under a go-ahead given to a
+prior session) — see `REAL_HARDWARE_RUN_LOG.md` for current progress and the up-to-date next step.
+That does not carry over to you: if you are a Claude Code session reading this file, reading it is
 fine at any time, but do not run anything against real hardware because of it - no `mpremote`
 command, no `nmcli`/`iw`/`iptables` call, no `picotool`, no `scripts/run_flash_hardware_suite.sh`/
 `run_bench_hardware_suite.sh`/`run_manual_hardware_tests.sh` invocation, not even a "just to see if
 it works" dry run - until the project owner has explicitly told **you, in this conversation**, to
-start the real-hardware integration described here. A go-ahead given to a different session, or to
-an earlier session that already ended, does not carry over - if there is any doubt whether you have
-it, ask first rather than assume.
+start real-hardware work. A go-ahead given to a different session, or to an earlier session that
+already ended, does not carry over - if there is any doubt whether you have it, ask first rather
+than assume.
 
 Temporary handoff doc, same lifecycle as `HARDWARE_TEST_PLAN.md`/`tmp_hardware_test_candidates.md`
 (see `README.md`'s "Further reading"): **delete this file once the real-hardware integration it
@@ -95,11 +97,11 @@ to do).
   deliberately-provoked fault. Not a correctness risk (a stale entry doesn't affect the running
   system), but worth a manual `PUT /status {"ResetErrors": true}` before treating the error history
   as a clean baseline for anything else.
-- **A real, not-yet-root-caused WiFi reconnection flakiness was found on the bench unit before this
-  tier existed** (intermittent hotspot fallback after a hard reset, ~2/5 boots in an earlier
-  session) - fold chasing it down into this tier's real-hardware work rather than treating it as a
-  separate task. Full details and the tests to use for it: `tests_hardware/README.md`'s "First real
-  run" list.
+- **A WiFi reconnection flakiness found on the bench unit early in this tier's real-hardware work
+  is now root-caused and fixed** (intermittent hotspot fallback after a hard reset) - see
+  `tests_hardware/README.md`'s "Known assumptions and open findings" for the two confirmed
+  mechanisms and their fixes/mitigations, and BACKLOG.md's open questions item 6 for the one
+  remaining architectural question it left open (not a reason to re-chase the flakiness itself).
 - **`bench/test_sensor_config_push_over_real_hardware.py` mutates the board's real, persisted
   BMP3xx config** (PressOvers/TempOvers/FiltCoeff) and restores the original values in a `finally`
   block. If that test is ever killed (Ctrl-C, a crash, a `--timeout` kill) between the PUT and the

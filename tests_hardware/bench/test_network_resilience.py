@@ -443,8 +443,8 @@ def test_garbage_ssid_via_rest_config_is_handled_gracefully(board: Board, bench:
     # own check had already given up and raised TimeoutError. Multiple earlier (wrong) theories
     # chased at length before finding this - a CYW43 "phantom disconnect" state, accumulated bench/
     # NetworkManager state, dut_ip fixture churn carryover - are real, separately-confirmed
-    # mechanisms in general (see WIFI_RECONNECT_INVESTIGATION.md), but were not what was actually
-    # happening in this specific test; none of the "fixes" tried for them (multiple hard_reset()
+    # mechanisms in general (see tests_hardware/README.md's "Known assumptions and open findings"),
+    # but were not what was actually happening in this specific test; none of the "fixes" tried for them (multiple hard_reset()
     # retries, a settle delay, a full physical power-cycle of both this Pi4 and the DUT) had any
     # effect, which in hindsight makes sense since the check itself could never have passed regardless.
     def _reconnected_over_bridge() -> bool:

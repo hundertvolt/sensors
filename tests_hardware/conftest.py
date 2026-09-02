@@ -77,10 +77,10 @@ def bench(board: Board) -> Iterator[BenchBridge]:
 def dut_ip(board: Board, bench: BenchBridge) -> str:
     """The DUT's real STA-mode IP on the bench bridge network, for live-system HTTP checks.
 
-    FIFTH REAL FINDING, fixed (the dominant root cause, found via
-    WIFI_RECONNECT_INVESTIGATION.md's own suggested A/B test): the WiFi reconnection flakiness
-    documented at length in `tests_hardware/README.md`/`REAL_HARDWARE_RUN_LOG.md` is, overwhelmingly,
-    a stale AP-side station-table entry - `bench.wifi_iface()`'s AP backend (confirmed on this bench
+    FIFTH REAL FINDING, fixed (the dominant root cause, found via a real-hardware A/B test): the
+    WiFi reconnection flakiness documented at length in `tests_hardware/README.md`'s "Known
+    assumptions and open findings" is, overwhelmingly, a stale AP-side station-table entry -
+    `bench.wifi_iface()`'s AP backend (confirmed on this bench
     host to be NetworkManager's own internal `wpa_supplicant`, not a separate `hostapd` process)
     still lists the DUT's MAC as associated from before a `hard_reset()` (a real power-cycle, no
     clean 802.11 deauth frame ever sent), and a fresh association attempt racing against that stale
@@ -91,8 +91,8 @@ def dut_ip(board: Board, bench: BenchBridge) -> str:
     own retry/hotspot-fallback logic is textbook-correct given what the CYW43 firmware reports back;
     the AP's own stale bookkeeping is what was actually wrong, and only this bench-host-side test
     harness can see or fix it. See `bench_control.BenchBridge.kick_client()`'s own docstring and
-    `WIFI_RECONNECT_INVESTIGATION.md` for the full evidence trail. One real caveat worth keeping in
-    mind, not a reason to distrust this fix: a device WDT-looping in the *field* would hit the same
+    `tests_hardware/README.md`'s "Known assumptions and open findings" for the full evidence trail.
+    One real caveat worth keeping in mind, not a reason to distrust this fix: a device WDT-looping in the *field* would hit the same
     stale-entry pattern against a real router, with no bench harness able to `kick_client()` on its
     behalf - this fix makes bench testing representative of a *clean* reconnect, not proof the field
     scenario is risk-free, though a real router's own AP stack may well behave differently than this

@@ -90,8 +90,8 @@ class BenchBridge:
         directly against real `iw 6.7`'s own `iw help` output ("dev <devname> station del <MAC
         address>").
 
-        CONFIRMED EFFECTIVE on real hardware (WIFI_RECONNECT_INVESTIGATION.md's Step 3 A/B test):
-        this is the fix for the dominant real cause of this bench unit's WiFi reconnection
+        CONFIRMED EFFECTIVE on real hardware (a real-hardware A/B test - see tests_hardware/README.md's
+        "Known assumptions and open findings"): this is the fix for the dominant real cause of this bench unit's WiFi reconnection
         flakiness - a stale AP-side station-table entry for the DUT's MAC, left over because a
         `hard_reset()` (a real power-cycle, no clean 802.11 deauth) never tells the AP the station
         is gone. 10/10 trials fell back to hotspot mode with the stale entry left in place; 10/10

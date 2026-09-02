@@ -282,8 +282,8 @@ coverage story for real-hardware runs was built or is planned — SPECIFICATION.
   default plan.
 - ~~Whether `mpremote`'s implicit soft-reset re-executes `boot.py`/`main.py`~~ — **resolved during
   the real-hardware run**: no. See `tests_hardware/harness.py`'s `Board.run_isolated()` docstring
-  and `REAL_HARDWARE_RUN_LOG.md`'s Phase 2 for the full finding — only a genuine `hard_reset()`
-  resumes the live system.
+  and `tests_hardware/README.md`'s "Known assumptions and open findings" for the full finding — only
+  a genuine `hard_reset()` resumes the live system.
 - ~~The SCD30 real-hardware RDY-pin finding~~ — **corrected, not real**: an earlier pass through
   this section wrongly claimed `asy_scd30_driver.py` never wires a GPIO to the SCD30's own RDY
   pin. It does — a real `irq_pin.irq(trigger=IRQ_RISING, ...)` plus a genuine staged self-healing

@@ -29,9 +29,9 @@ def test_real_sta_connect_reaches_established_after_a_hard_reset(board: Board, b
     #
     # kick_all_stations() first: the dominant real cause of a hard_reset()-triggered reconnect
     # failing on this bench rig is a stale AP-side station-table entry for the DUT's own MAC, left
-    # over because a hard reset never sends a clean 802.11 deauth (WIFI_RECONNECT_INVESTIGATION.md's
-    # A/B test: 10/10 fallback without this, 10/10 clean connects with it - see
-    # bench_control.BenchBridge.kick_client()'s own docstring for the full account). This test is
+    # over because a hard reset never sends a clean 802.11 deauth (see tests_hardware/README.md's
+    # "Known assumptions and open findings" - A/B test: 10/10 fallback without this, 10/10 clean
+    # connects with it - see bench_control.BenchBridge.kick_client()'s own docstring for the full account). This test is
     # the primary regression coverage for that exact scenario, so it must clear stale AP state the
     # same way dut_ip's own fixture now does, not just document the finding elsewhere.
     bench.kick_all_stations()

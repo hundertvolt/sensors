@@ -276,8 +276,8 @@ class Board:
         connection returns to an idle **friendly**-REPL prompt instead. Soft resets are
         free/unlimited either way - only flashing is capped.
 
-        RESOLVED against real hardware (bench Pi4 session, see REAL_HARDWARE_RUN_LOG.md's Phase 2
-        "Fifth, foundational real finding" and tests_hardware/conftest.py's own `dut_ip` fixture
+        RESOLVED against real hardware (bench Pi4 session, see tests_hardware/README.md's "Known
+        assumptions and open findings" and tests_hardware/conftest.py's own `dut_ip` fixture
         docstring): a trailing `soft-reset` does **not** hand the board back to its normal
         auto-booted state, and does **not** re-execute `modules/_boot.py`/`boot.py`/`main.py`.
         Confirmed against the pinned MicroPython C source (`ports/rp2/main.c`): entering raw REPL

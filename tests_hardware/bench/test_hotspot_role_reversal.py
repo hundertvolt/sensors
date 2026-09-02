@@ -110,8 +110,8 @@ def joined_hotspot(board: Board, bench: BenchBridge, dut_ip: str, hotspot_ssid: 
     except TimeoutError:
         # kick_all_stations() first - a stale AP-side station-table entry for the DUT's MAC is the
         # dominant real cause of a hard_reset()-triggered reconnect failing on this bench rig
-        # (WIFI_RECONNECT_INVESTIGATION.md's A/B test: 10/10 fallback without this vs. 10/10 clean
-        # connects with it - see bench_control.BenchBridge.kick_client()'s own docstring).
+        # (see tests_hardware/README.md's "Known assumptions and open findings" - A/B test: 10/10
+        # fallback without this vs. 10/10 clean connects with it - see bench_control.BenchBridge.kick_client()'s own docstring).
         bench.kick_all_stations()
         board.hard_reset()
         wait_until(lambda: _dut_reachable_again(dut_ip), timeout_s=30.0, poll_interval_s=1.0, description="DUT reachable again after a recovery hard_reset() (see this fixture's own comment)")

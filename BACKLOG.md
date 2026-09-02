@@ -129,6 +129,34 @@ constraints.
    section for the full three-quirk account. That workaround closes the "can't even run this code
    path in CI" half of the gap; it does not replace real-hardware verification of the actual
    rp2/lwIP transport, which is what this entry is still tracking.
+6. **Should `asy_wifi_service.py` gain an independent WiFi reachability check?** Confirmed on real
+   hardware (`tests_hardware/README.md`'s "Known assumptions and open findings"): the CYW43
+   firmware/lwIP stack can silently mask a real link disruption from `wlan.isconnected()`/
+   `wlan.status()` entirely — a real `arping` probe got zero responses from the DUT while
+   `iw station dump` showed it continuously "associated: yes" for hundreds of seconds spanning a
+   whole AP outage. This is a well-documented, long-standing upstream MicroPython characteristic
+   (`micropython/micropython#9455`/`#9505`/`#18797`, open since v1.19.1/2022), not project-specific.
+   `_wlan_isconnected_or_false()` is a bare pass-through to `wlan.isconnected()` with no independent
+   check, so `_on_sta_disconnected()`'s retry logic structurally cannot fire if the firmware never
+   reports the disconnect. **Not decided**: whether to add one (e.g. a periodic ping/HTTP
+   self-check) beyond trusting `isconnected()` alone. Mitigated at the test-harness level only for
+   now (`bench/test_network_resilience.py`'s outage/flap tests recover via a real `hard_reset()` if
+   the graceful wait times out, but still re-raise so the real limitation stays visible as a test
+   failure).
+7. **Captive-portal hotspot-mode redirect: real hardware returns 404, not the expected 302.** With
+   the DUT confirmed running current HEAD (including the captive-portal merge, `SPECIFICATION.md`
+   Part A.5) and confirmed genuinely in hotspot mode (`iw station dump` showing the bench radio
+   associated, `GET /networking` reachable at the DUT's own hotspot gateway IP), a real
+   `GET /generate_204` returned a plain 404 instead of the expected 302 redirect to `/`. This
+   contradicts every mock/twin-level test for the same code path (all passing — see
+   `tests_hardware/README.md`'s corresponding entry). Not root-caused yet. Candidates not yet
+   checked: whether `is_hotspot_active()` genuinely returns `True` at the exact moment
+   `_serve_static()`'s fallback runs, and whether `/generate_204` is even reaching that fallback at
+   all rather than some other route. **Investigation pitfall already hit once**: don't use
+   `mpremote exec()` to inspect live state — its default `enter_raw_repl()` soft-resets the board,
+   wiping the very live state being observed (see `tests_hardware/README.md`'s liveness-polling
+   finding). Use a passive method instead (a second REST/network-level check, or a code-level
+   trace).
 
 ## Deferred / explicitly out-of-scope work
 

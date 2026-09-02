@@ -91,6 +91,16 @@ a live question:
   do, regardless of `soft_reset_after`. See `harness.Board.run_isolated()`'s own docstring for the
   full finding. Tests that need to observe the *real* boot sequence correctly use `hard_reset()` +
   `tail_log()` instead, for exactly this reason.
+- ~~Is it safe to poll a live, already-running system with `board.exec()`/`is_reachable()`?~~ —
+  **resolved: no, never.** `mpremote`'s `enter_raw_repl()` unconditionally sends Ctrl-C plus, by
+  default, a real Ctrl-D `machine.soft_reset()` before running anything — polling either one against
+  a live system self-resets its heap on every single poll, wiping the very state being waited on
+  (this once made a real reboot's own transient unreachable window look like the reboot silently
+  never happened). **Rule**: use the genuinely passive `Board.is_device_present()` (opens/closes the
+  serial port, sends nothing) for any liveness poll against a live system. `is_reachable()` stays
+  `mpremote`-based deliberately, for the few callers specifically testing that reset mechanism
+  itself (e.g. the flash tier's own connection-stability test) — see both methods' own docstrings in
+  `harness.py`.
 - **Does `machine.soft_reset()` reset the hardware counter `time.ticks_ms()` reads from?** Matters
   for `test_bus_electrical_timing.py::test_ticks_ms_real_2pow30_rollover`'s multi-day polling design
   (deliberately uses `board.exec()`, never `run_isolated()`, for exactly this reason - but confirm
@@ -101,12 +111,9 @@ a live question:
   `test_hotspot_role_reversal.py::test_spoofed_off_subnet_source_address_is_ignored` is `@pytest.mark.skip`
   pending this; implement once a concrete mechanism (CAP_NET_RAW, a second netns, ...) is confirmed
   to work on the real bench host.
-- **`kick_client()`'s `iw dev <iface> station del <mac>`** - the *syntax* is confirmed correct
-  (checked directly against real `iw 6.7`'s own `iw help` output during this session's re-audit:
-  `dev <devname> station del <MAC address>` matches exactly), but whether NetworkManager's own
-  AP-mode hostapd backend actually *honors* a raw `iw station del` command issued alongside it is
-  still unverified and can only be confirmed on real hardware. Not currently called by any test in
-  this tier, but flagged in `bench_control.py`'s own docstring for whoever reaches for it next.
+- ~~`kick_client()`'s `iw dev <iface> station del <mac>` — does NetworkManager's own AP-mode backend
+  actually honor it?~~ — **resolved: yes.** See the "WiFi reconnection flakiness" finding below —
+  `kick_all_stations()` (built on this primitive) is the confirmed fix.
 - **`nmcli -g IP4.ADDRESS`/`IP4.GATEWAY device show <iface>`'s exact output shape** (CIDR-suffixed
   address vs. plain gateway) is well-established, long-stable nmcli behavior, but this session's
   sandbox has no systemd/D-Bus to actually run NetworkManager against and confirm live - unlike
@@ -124,17 +131,21 @@ a live question:
   recognizing for what it is (an expected, designed-for recovery, not a new bug) rather than being
   surprised by it.
 - **Captive-portal hotspot-mode redirect fallback (SPECIFICATION.md Part A.5) - real-hardware
-  verification status.** `test_hotspot_role_reversal.py::test_nonsense_path_redirects_to_root_over_the_hotspot_link`/
+  verification status: OPEN, a real discrepancy found.** `test_hotspot_role_reversal.py::test_nonsense_path_redirects_to_root_over_the_hotspot_link`/
   `test_put_to_nonsense_path_is_405_not_a_redirect_over_the_hotspot_link` exist and exercise the
-  real 302-vs-405 behavior over the real hotspot link, but this feature's actual run-on-real-bench-
-  hardware verification hasn't happened yet as of this writing - everything confirmed so far
+  real 302-vs-405 behavior over the real hotspot link, and have now actually been attempted against
+  real hardware running current HEAD (including this fallback's own merge) — but a plain
+  `GET /generate_204` while the DUT was confirmed genuinely in hotspot mode (`iw station dump`
+  showing the bench radio associated) returned a bare 404, not the expected 302. This contradicts
+  every unit/digital-twin-level test for the same code path
   (`tests/test_asy_webserver_service.py`, `tests/test_asy_wifi_service.py`,
   `tests/test_sensortask_wozi.py`, `tests/test_digital_twin_sensortask_integration.py`,
-  `tests/test_digital_twin_real_website_integration.py`) is unit/digital-twin level only. Nothing
-  about the mechanism is hardware-dependent (`is_hotspot_active()` is a plain in-memory int-compare,
-  `_serve_static()`'s redirect branch has no hardware surface of its own), so no specific risk is
-  flagged here beyond "not yet run for real" - update this entry once these two bench tests have
-  actually executed against a real DUT.
+  `tests/test_digital_twin_real_website_integration.py`), all of which pass. Not yet root-caused —
+  tracked as BACKLOG.md's open questions list, item 7, which has the investigation candidates and
+  next steps. **Pitfall already hit once investigating this**: don't reach for `mpremote exec()` to
+  inspect `is_hotspot_active()`'s live value — per the liveness-polling finding above, `exec()`
+  soft-resets the board and wipes the very live state you're trying to observe. Use a passive method
+  (a second REST/network-level check, or a genuinely code-level trace) instead.
 - **WS2812/Neopixel timing has no datasheet in this repo's `datasheets/` folder at all** (only
   bmp3xx/fram/pico w/scd30/sgp40 - confirmed by listing the directory) - the manual
   `test_real_ws2812_neopixel_signal_timing` test is deliberately qualitative (visual/scope check,
@@ -142,8 +153,8 @@ a live question:
   "say so explicitly if the datasheet isn't there" rule.
 - **WiFi reconnection flakiness after a hardware reset - root-caused and mitigated.** A hard reset
   followed by a fresh STA connect attempt used to sometimes fall back to hotspot mode instead of
-  reconnecting. **Root cause, confirmed decisively via a real-hardware A/B test**
-  (`WIFI_RECONNECT_INVESTIGATION.md`): NetworkManager's own AP-mode backend for `br0-wifi-ap`
+  reconnecting. **Root cause, confirmed decisively via a real-hardware A/B test**:
+  NetworkManager's own AP-mode backend for `br0-wifi-ap`
   (confirmed to be its internal `wpa_supplicant`, not a separate `hostapd` process) retains a stale
   station-table entry for the DUT's MAC across a hard reset (a real power-cycle, no clean 802.11
   deauth), and a fresh association racing against that stale entry doesn't reliably get treated as
@@ -175,7 +186,17 @@ a live question:
   if the graceful wait times out (the one thing confirmed to reliably clear this), but still fail
   loudly afterward so the real limitation stays visible rather than being silently papered over -
   confirmed working as designed (a failure recovers the board cleanly for whatever test runs next).
-  Full evidence trail: `WIFI_RECONNECT_INVESTIGATION.md`.
+- **Lesson from a since-fixed test bug, worth keeping as standing practice**:
+  `test_garbage_ssid_via_rest_config_is_handled_gracefully`'s own final "did the DUT reconnect"
+  check spent many hours looking like unexplained hardware flakiness (escalating retry budgets,
+  multiple `hard_reset()` retries, even a full physical power-cycle) before the real cause was
+  found: the check read a `"Mode"` field from `GET /networking`, which never has that field
+  (`"Mode"` exists only under `GET /status`'s nested `"networking"` object) — so it was
+  unconditionally `False` regardless of how long the DUT had actually been reconnected. The DUT was
+  reconnecting normally the whole time. **Before trusting an "it's flaky" signal from a
+  real-hardware test enough to spend serious time chasing a hardware/firmware explanation, first
+  re-verify the test's own check is asking the right question of the right endpoint/field** — a
+  plain `curl` of both endpoints side by side would have caught this in under a minute.
 - **SCD30's RDY pin is real and wired**: `SCD30_Reader`'s `irq_pin` constructor parameter (GPIO 8 in
   production), a real `irq_pin.irq(trigger=IRQ_RISING, ...)` in `start_timer()`, plus a staged
   500ms software self-healing fallback in `scd_init_irq()` if the real IRQ is ever missed.

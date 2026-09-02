@@ -1232,7 +1232,8 @@ done, see BACKLOG.md.
 **The `src/`-based build (parallel, separate pipeline)**: `scripts/build_firmware.py <device>
 [--output PATH]` is a self-contained `uv run` script assembling a real `firmware.uf2` from `src/` +
 `ext/microdot.py` + the real website (Part H) for one device — build-only, like the legacy path
-above; nothing here flashes or tests real hardware. It needs its own `manifest.py` rather than the
+above; this script itself never flashes or tests real hardware (see the "Production-readiness
+scope" note below for what does). It needs its own `manifest.py` rather than the
 board's default one: the default's `freeze("$(PORT_DIR)/modules")` line freezes
 `ports/rp2/modules/_boot.py` under the exact frozen name `shared/runtime/pyexec.c`'s rp2 `main.c`
 looks up via `pyexec_frozen_module("_boot.py", ...)` at every boot, but `src/`'s own real entry point
@@ -1248,7 +1249,22 @@ flattened + `ext/microdot.py` + the real website frozen as `frozen_html.py`, so
 copied from, or touched by this script — consistent with CLAUDE.md's hard rule with no exception
 needed, since that file is never in this script's path. `build_stage_dir()` raises immediately if
 any `src/` filename collides with one of its own reserved staging names (`microdot.py`,
-`wozi_boot.py`, `_boot.py`, `frozen_html.py`) rather than silently overwriting one or the other.
+`wozi_boot.py`, `_boot.py`, `frozen_html.py`, `rp2.py`) rather than silently overwriting one or the
+other.
+
+**Real finding, confirmed on real hardware (see below — the first real flash+boot of this script's
+own output caught it immediately)**: skipping `freeze("$(PORT_DIR)/modules")` entirely also drops
+`ports/rp2/modules/rp2.py` — the pure-Python module `_boot.py`'s own `import machine, rp2` line
+needs (a separate module from the low-level `_rp2` C extension; `import rp2` raises `ImportError`
+while `_rp2` stays importable without it). Without it, `_boot.py`'s `rp2.Flash()` call fails before
+the filesystem is ever mounted, silently dropping to a bare, unmounted REPL with no application
+ever running — no build-time error or warning of any kind. Fixed: `build_stage_dir()` copies
+`ports/rp2/modules/rp2.py` unmodified into the same staging directory as its own generated
+`_boot.py`, so it freezes normally with no second manifest `freeze()` call needed.
+`build_stage_dir()` also cleans `mpy-cross`'s own `build/` directory before every build (the one
+build directory `st.build_firmware()` doesn't already wipe unconditionally — see B.6/B.7 above for
+its handling of `ports/rp2/build-<board>`), so a firmware build never depends on stale artifacts
+from a previous session.
 
 Every `.py` file `build_stage_dir()` copies into the stage directory (`src/*.py`, `ext/microdot.py`,
 `boot_entry/wozi_boot.py`) is passed through `scripts/_strip_type_checking.py`'s
@@ -1288,8 +1304,14 @@ firmware-build stage" gap for this `src/`-based toolchain specifically — the s
 
 **Production-readiness scope**: this pipeline proves the build assembles correctly and (via
 `tests/test_digital_twin_real_website_integration.py`, Part H.7) that the booted Unix-port digital
-twin serves the real website end to end. It does not prove anything about real rp2040 hardware —
-nothing produced by this pipeline has been flashed or booted on one.
+twin serves the real website end to end. This script's own compiling-clean/producing-a-uf2 checks
+are still build-only, not an on-device functional check — but `tests_hardware/flash/
+test_toolchain_flash_boot.py::test_real_uf2_reflash_and_boot_smoke_test` (gated behind
+`--allow-flash-cycle`, a deliberate real flash cycle) does exercise this script's own output on real
+rp2040 hardware, and the first time it actually ran it immediately caught the real `rp2.py` bug
+documented above (a UF2 that "built clean" left the board unable to mount its filesystem or run any
+application at all). Treat this script's own success as necessary, not sufficient, for a real
+device to actually boot.
 
 ## B.12 Tiered dev-environment setup (`env` subcommand)
 
