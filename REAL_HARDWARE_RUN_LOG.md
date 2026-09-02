@@ -162,16 +162,44 @@ was left on a clean, real `hard_reset()` (confirmed exit 0, no leftover mpremote
 before ending the session - a safe, known-good resting state for whoever resumes next, not a
 mid-test or mid-diagnostic state.
 
+## Phase 4 - WiFi reconnection investigation - RESOLVED (mostly)
+
+Session resumed, `dut_ip` fixture fix confirmed working (Step 1 of the resume plan below), then
+ran `WIFI_RECONNECT_INVESTIGATION.md`'s own Step 3 A/B test exactly as designed: 10 control trials
+(plain `hard_reset()`) vs. 10 treatment trials (`bench.kick_all_stations()` first). **Result: 10/10
+control fell back to hotspot; 10/10 treatment connected cleanly.** Decisive confirmation of the
+AP-side stale-station-table hypothesis. Fixed: `BenchBridge.kick_all_stations()` wired into every
+`hard_reset()` call site expecting a real reconnect (`dut_ip`, `joined_hotspot`'s recovery
+fallback, `test_real_sta_connect_reaches_established_after_a_hard_reset`).
+
+While confirming this at scale, found a second, genuinely different mechanism: `test_network_
+resilience.py`'s `ap_down()`/`ap_up()`-based outage/flap tests still failed even with a clean
+AP-side station table. Root cause, confirmed both by direct real-hardware evidence (`arping`
+getting zero responses while `iw station dump` showed continuous "associated: yes" for hundreds of
+seconds) and by the project owner's own prior field observation ("the WiFi module rather tries to
+resolve connectivity internally... isconnected stays True for long"): the CYW43 firmware/lwIP
+stack can silently mask a real link disruption from `wlan.isconnected()`/`wlan.status()` entirely -
+confirmed as a well-documented, long-standing (open since MicroPython v1.19.1, 2022), not
+project-specific upstream characteristic (`micropython/micropython#9455`/`#9505`/`#18797`, an
+independent field account at alanedwardes.com). `asy_wifi_service.py`'s own `_wlan_isconnected_
+or_false()` has no independent reachability check, so `_on_sta_disconnected()`'s retry cannot fire
+if the firmware never reports the disconnect. **Not fixed in `src/`** - flagged as a real
+architectural question for the project owner (whether to add an independent reachability check).
+Mitigated at the test level only, per the project owner's own explicit choice: both tests now
+recover via a real `hard_reset()` if the graceful wait times out (matching `joined_hotspot`'s own
+established pattern), but still re-raise afterward so the real limitation stays visible as a test
+failure - confirmed working exactly as designed on real hardware.
+
+Full evidence trail for both findings: `WIFI_RECONNECT_INVESTIGATION.md`'s own "RESOLVED" section
+at the top of that file.
+
 ## Next session should start here
 
-1. Re-verify the corrected `dut_ip` fixture (`tests_hardware/conftest.py`) actually works end to
-   end before trusting it - run a small `-k` subset first (e.g.
-   `test_get_nonsense_path_is_shaped_404_over_the_normal_network`), not the full bench suite
-   immediately.
-2. Once confirmed, re-run the full bench suite (`scripts/run_bench_hardware_suite.sh -v -k "not
-   hotspot_role_reversal"`) and update this log with the real pass/fail result - Phase 2 is not
-   yet closed out with a clean run.
-3. Remaining phases, still fully pending, in the order the original plan set out:
+1. Re-run the full bench suite (`scripts/run_bench_hardware_suite.sh -v -k "not
+   hotspot_role_reversal"`) now that the WiFi fixes are in, and update this log with the real
+   pass/fail result - Phase 2 is not yet closed out with a clean run (it was last attempted before
+   these fixes landed).
+2. Remaining phases, still fully pending, in the order the original plan set out:
    - Phase 3: hotspot role-reversal (`bench/test_hotspot_role_reversal.py`), run alone and watched
      closely per `REAL_HARDWARE_HANDOFF.md`'s own suggested order - highest-risk file this tier
      has (can strand the board in `_PHASE_DEACTIVATED` until a real hard_reset(), though
@@ -179,16 +207,6 @@ mid-test or mid-diagnostic state.
      `BENCH_AP_PASSWORD` was obtained and used earlier this session but not persisted anywhere
      (per the credential-handling hard rule) - it will need to be re-obtained from the project
      owner again if the real-credential-handoff test's own coverage is wanted.
-   - Phase 4: further WiFi reconnection investigation - the project owner does want to keep chasing
-     it. **Read `WIFI_RECONNECT_INVESTIGATION.md` (repo root) before starting this phase** - a
-     dedicated research/planning doc prepared by a cloud session specifically for this phase: a
-     bird's-eye read of the evidence so far, a new candidate root cause this session's own
-     evidence-gathering never considered (AP-side stale station-table state - see that doc's §2),
-     deep research findings (pico-sdk issues, general hostapd/AP station-lifecycle behavior), and an
-     ordered, fast-first test plan (most steps are single-`hard_reset()`-cycle diagnostics, not full
-     suite runs - see that doc's §6 for why and how). The debug-verbosity-jitter hypothesis from
-     this file's own Phase 2 writeup is still in scope but is Step 5 in that doc's ordered plan, not
-     the first thing to try.
    - Phase 5: a bounded soak window (`--run-long-soak --long-soak-seconds 1200 -k "not
      ticks_ms_real_2pow30_rollover"` per the plan agreed at the start of this session - the
      rollover test can't honor a short window at all, see that plan for why).
@@ -198,7 +216,9 @@ mid-test or mid-diagnostic state.
    - Phase 7: wrap-up - update `tests_hardware/README.md`/`REAL_HARDWARE_HANDOFF.md`'s own status
      once a genuinely clean pass exists, but do not unilaterally delete/migrate the temporary
      planning docs (`HARDWARE_TEST_PLAN.md` etc.) without the project owner's sign-off, per
-     `REAL_HARDWARE_HANDOFF.md`'s own close-out instructions.
-4. All fixes so far are committed and pushed to `claude/digital-twin-oserror-7y00lb` (through
-   commit `bdfc071` at the time of this pause). No PR opened yet - better to open one once Phase 2
-   is genuinely closed out with a clean bench-tier run, not before.
+     `REAL_HARDWARE_HANDOFF.md`'s own close-out instructions. `WIFI_RECONNECT_INVESTIGATION.md`
+     itself can very likely be folded into `tests_hardware/README.md`/deleted at that point too,
+     now that its own questions are resolved - confirm with the project owner first.
+3. All fixes so far are committed and pushed to `claude/digital-twin-oserror-7y00lb`. No PR opened
+   yet - better to open one once Phase 2 is genuinely closed out with a clean bench-tier run, not
+   before.

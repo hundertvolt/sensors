@@ -1,5 +1,63 @@
 # WIFI_RECONNECT_INVESTIGATION.md
 
+## RESOLVED (mostly) - findings from the session that ran this plan
+
+**C1 (§2's hidden-cause candidate) is confirmed, decisively, as the dominant cause of the
+hard_reset()-triggered flakiness.** Ran this doc's own §6 Step 3 A/B test exactly as designed:
+10 control trials (plain `hard_reset()`, no AP-side intervention) vs. 10 treatment trials
+(`bench.kick_all_stations()` immediately before each `hard_reset()`). **Result: 10/10 control
+trials fell back to hotspot mode; 10/10 treatment trials connected cleanly.** About as clean a
+signal as a real-hardware A/B test produces. Fixed: added `BenchBridge.kick_all_stations()`
+(wrapping the already-existing `kick_client()`/`bench_associated_station_macs()` primitives this
+doc's §2 already pointed at) and wired it into every `hard_reset()` call site that expects a real
+STA reconnect afterward - the `dut_ip` fixture (both attempts), `joined_hotspot`'s recovery
+fallback, and `test_real_sta_connect_reaches_established_after_a_hard_reset` (now also asserts a
+real connection, not just any WiFi-related log line). Step 0's answer: only `wpa_supplicant` (via
+NetworkManager's D-Bus control) runs on this bench host - no separate `hostapd` process.
+
+**A second, distinct, real mechanism was found while confirming C1 at scale (§6 Step 6)** -
+applying `kick_all_stations()` to the `ap_down()`/`ap_up()`-based outage/flap tests in
+`test_network_resilience.py` did NOT fix them the same way, and direct investigation (prompted by
+the project owner's own prior field observation: "the WiFi module rather tries to resolve
+connectivity internally... isconnected stays True for long") found why: **the CYW43
+firmware/lwIP stack can silently mask a real link disruption from `wlan.isconnected()`/
+`wlan.status()` entirely.** Confirmed directly on real hardware: `iw station dump` showed the DUT
+continuously "associated: yes" with a multi-hundred-second connected-time spanning an entire
+`ap_down()`/`ap_up()` outage, while a real `arping` probe got zero responses and the webserver was
+genuinely unreachable. Confirmed as a well-documented, long-standing (still open since MicroPython
+v1.19.1, October 2022), *not* project-specific upstream characteristic via web research:
+`micropython/micropython#9455` ("network becomes inaccessible when not used for some time" -
+official SDK docs cited there: "both the low-level cyw43_driver and the lwIP stack require
+periodic servicing"), `#9505` ("IPv4 address can persist well after wifi AP connection is lost"),
+`#18797` (`socket.getaddrinfo()` blocking indefinitely under the same condition), and
+[Alan Edwardes' "Raspberry Pi Pico W WiFi Resiliency"](https://alanedwardes.com/blog/posts/raspberry-pi-pico-w-wifi-resiliency/)
+(independent field account, recommends an explicit connection timeout + `wlan.deinit()` before
+reconnecting, since `isconnected()`/`status()` alone can't be trusted). One of the known
+mitigations (disabling power-save via `wlan.config(pm=0xa11140)`) is **already** applied by
+`_trigger_sta_connect()` - this project already does part of what the community recommends.
+
+`src/asy_wifi_service.py`'s own `_wlan_isconnected_or_false()` is a bare pass-through to
+`wlan.isconnected()` with no independent reachability check anywhere in that module - meaning
+`_on_sta_disconnected()`'s retry logic structurally cannot fire if the firmware never reports the
+disconnect. **Not fixed in `src/` - flagged as a real, disclosed architectural question for the
+project owner** (whether to add an independent reachability check, e.g. periodic ping/HTTP
+self-check, beyond trusting `isconnected()` alone), per this doc's own standing guardrail (§8: no
+`src/` change without explicit sign-off). Mitigated at the test-harness level instead, matching
+this project's own already-established `joined_hotspot` pattern: `test_real_wifi_outage_and_
+recovery_while_in_normal_sta_mode`/`test_real_wifi_flaps_repeatedly_without_wedging_the_system` now
+recover via a real `hard_reset()` (the one thing confirmed to reliably clear this) if the graceful
+wait times out, but still re-raise afterward so the real limitation stays visible as a test
+failure rather than being silently papered over - confirmed working as designed on real hardware
+(the outage test failed loudly on one run, its own recovery fallback brought the board back
+cleanly, and the very next test then passed normally).
+
+**Not yet exercised**: §6 Steps 4/5 (backend `journalctl` log capture, the debug-verbosity C3
+A/B test) - superseded in priority by the clean C1 confirmation and the CYW43-masking finding
+above, which together account for everything observed. Worth revisiting only if a *new*,
+unexplained WiFi symptom shows up later.
+
+---
+
 **Prepared by a cloud session, for the session resuming real-hardware work on the bench Pi4.**
 Temporary planning doc, same lifecycle as `HARDWARE_TEST_PLAN.md`/`REAL_HARDWARE_HANDOFF.md`/
 `REAL_HARDWARE_RUN_LOG.md` (see README.md's "Further reading"): fold anything permanently true into

@@ -128,28 +128,42 @@ a live question:
   `test_real_ws2812_neopixel_signal_timing` test is deliberately qualitative (visual/scope check,
   human judgment) rather than asserting any specific timing value pulled from memory, per CLAUDE.md's
   "say so explicitly if the datasheet isn't there" rule.
-- **WiFi reconnection flakiness after a hardware reset - real, not yet root-caused.** A hard reset
-  followed by a fresh STA connect attempt sometimes falls back to hotspot mode instead of
-  reconnecting (across two sessions' worth of trials, failure rates ranged from 2/5 to 6/8 - small
-  samples, not a stable rate). Confirmed genuine (reproduces with no test code involved at all, not
-  a `tests_hardware/`-side artifact) and confirmed not a refactor bug (the legacy, field-proven
-  `python/CommonDrivers/async_connect.py` has the exact same connect/poll/streak shape). Current
-  best evidence points at something at or before WPA2 handshake completion on a *rapid* reconnect,
-  not DHCP (a live capture during a failing cycle showed zero DHCP packets), and is consistent with
-  a recognized class of upstream Pico W/`cyw43` reconnect-timing sensitivity
-  (`raspberrypi/pico-sdk#2186` et al.) - full evidence trail in `REAL_HARDWARE_RUN_LOG.md`'s Phase
-  2. **See `WIFI_RECONNECT_INVESTIGATION.md` (repo root) for the current research/test plan** -
-  including a candidate root cause (AP-side stale station-table state on `br0-wifi-ap`'s own
-  backend, testable via this file's own existing but never-yet-used
-  `bench_control.BenchBridge.kick_client()`) this tier's own evidence-gathering hadn't considered.
-  Deliberately not patched in `src/asy_wifi_service.py` pending root-cause confirmation - this looks
-  CYW43-firmware/AP-backend-adjacent, the same "outside this project's own code, a different
-  backstop applies" bucket CLAUDE.md already places I2C-bus-wedge recovery in.
-  `test_real_sta_connect_reaches_established_after_a_hard_reset` (`bench/test_wifi_networking.py`)
-  and `bench/test_network_resilience.py`'s WiFi-outage tests are the natural regression coverage for
-  this - they don't retry past a single `hard_reset()`, so an unlucky run can legitimately fail
-  there; that's a real, disclosed flake risk in this tier's own bench-tier WiFi tests, not a test
-  bug to fix away.
+- **WiFi reconnection flakiness after a hardware reset - root-caused and mitigated.** A hard reset
+  followed by a fresh STA connect attempt used to sometimes fall back to hotspot mode instead of
+  reconnecting. **Root cause, confirmed decisively via a real-hardware A/B test**
+  (`WIFI_RECONNECT_INVESTIGATION.md`): NetworkManager's own AP-mode backend for `br0-wifi-ap`
+  (confirmed to be its internal `wpa_supplicant`, not a separate `hostapd` process) retains a stale
+  station-table entry for the DUT's MAC across a hard reset (a real power-cycle, no clean 802.11
+  deauth), and a fresh association racing against that stale entry doesn't reliably get treated as
+  a clean new session - 10/10 trials fell back to hotspot with the stale entry left in place, 10/10
+  connected cleanly once it was cleared first. Not a `src/` bug - `asy_wifi_service.py`'s own
+  retry/hotspot-fallback logic behaves exactly as designed. **Fixed**: `bench_control.BenchBridge.
+  kick_all_stations()` (wrapping the `kick_client()`/`bench_associated_station_macs()` primitives)
+  is now called before every `hard_reset()` that expects a real reconnect afterward - the `dut_ip`
+  fixture, `joined_hotspot`'s recovery fallback, and `test_real_sta_connect_reaches_established_
+  after_a_hard_reset` (`bench/test_wifi_networking.py`, now also asserts a real connection, not
+  just any WiFi-related log line).
+  - One real caveat for the field, not a reason to distrust this fix: a device WDT-looping against
+    a real router would hit the same stale-entry pattern with no bench harness able to
+    `kick_client()` on its behalf.
+- **A second, distinct, real WiFi mechanism - a well-documented upstream characteristic, not
+  something to fix in `src/` without a project-owner decision.** Found while confirming the fix
+  above at scale: `bench/test_network_resilience.py`'s `ap_down()`/`ap_up()`-based outage/flap
+  tests can still fail even with a clean AP-side station table, because the CYW43 firmware/lwIP
+  stack can silently mask a real link disruption from `wlan.isconnected()`/`wlan.status()`
+  entirely - confirmed directly (a real `arping` probe got zero responses from the DUT while
+  `iw station dump` showed it continuously "associated: yes" for hundreds of seconds spanning the
+  whole outage) and confirmed as a long-standing, still-open upstream MicroPython characteristic,
+  not project-specific, via `micropython/micropython#9455`/`#9505`/`#18797` and independent field
+  reports. `asy_wifi_service.py`'s own `_wlan_isconnected_or_false()` is a bare pass-through to
+  `wlan.isconnected()` with no independent reachability check, so `_on_sta_disconnected()`'s retry
+  logic structurally cannot fire if the firmware never reports the disconnect. Whether to add an
+  independent reachability check is a real architectural question for the project owner, not
+  decided here. Mitigated at the test level only: both tests now recover via a real `hard_reset()`
+  if the graceful wait times out (the one thing confirmed to reliably clear this), but still fail
+  loudly afterward so the real limitation stays visible rather than being silently papered over -
+  confirmed working as designed (a failure recovers the board cleanly for whatever test runs next).
+  Full evidence trail: `WIFI_RECONNECT_INVESTIGATION.md`.
 - **SCD30's RDY pin is real and wired**: `SCD30_Reader`'s `irq_pin` constructor parameter (GPIO 8 in
   production), a real `irq_pin.irq(trigger=IRQ_RISING, ...)` in `start_timer()`, plus a staged
   500ms software self-healing fallback in `scd_init_irq()` if the real IRQ is ever missed.

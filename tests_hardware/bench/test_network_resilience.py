@@ -51,7 +51,7 @@ from rogue_udp_responder import RogueUdpResponder
 # ---------------------------------------------------------------------------
 
 
-def test_real_wifi_outage_and_recovery_while_in_normal_sta_mode(bench: BenchBridge, dut_ip: str) -> None:
+def test_real_wifi_outage_and_recovery_while_in_normal_sta_mode(board: Board, bench: BenchBridge, dut_ip: str) -> None:
     reset_all_error_logs(dut_ip)
     bench.ap_down()
     try:
@@ -61,20 +61,39 @@ def test_real_wifi_outage_and_recovery_while_in_normal_sta_mode(bench: BenchBrid
         time.sleep(15.0)
     finally:
         bench.ap_up()
+        bench.kick_all_stations()  # clears any stale AP-side entry - see this module's own finding below
 
-    # REAL FINDING: 150s was too tight. asy_wifi_service.py's own _on_sta_disconnected() ESTABLISHED
-    # branch sleeps a real 60s between each failed retry attempt (confirmed directly, the module's
-    # own comment: "retry previously successful connection in one minute") - if even one intervening
-    # attempt fails before a successful one, total time already exceeds 120s before the successful
-    # attempt's own connect/DHCP time is added, leaving too little margin at 150s. Widened to 240s,
-    # comfortably covering two full failed-retry cycles plus a real connect - confirmed on real
-    # hardware that the DUT does reliably reconnect, just sometimes past 150s.
-    wait_until(
-        lambda: _sta_reconnected(dut_ip),
-        timeout_s=240.0,
-        poll_interval_s=5.0,
-        description="DUT to re-establish its real STA connection after the bridge AP comes back up",
-    )
+    # REAL FINDING, not fully explained by AP-side stale state alone (confirmed directly against
+    # real hardware, with the project owner's own prior field observation matching): the CYW43
+    # firmware appears to attempt reconnection *internally* on a real link disruption without
+    # reliably surfacing that through `wlan.isconnected()`/`wlan.status()` - the only signals
+    # `asy_wifi_service.py`'s own `_wlan_isconnected_or_false()` has to work with (confirmed
+    # directly: it's a bare pass-through to `wlan.isconnected()`, no independent reachability
+    # check anywhere in that module). Observed directly: `iw station dump` showed the DUT
+    # continuously "associated: yes" with a multi-hundred-second connected-time spanning an entire
+    # `ap_down()`/`ap_up()` outage, while a real `arping` probe got zero responses and the webserver
+    # was genuinely unreachable - i.e. the link *looked* fine to both sides' bookkeeping while
+    # actually being dead, and neither `kick_all_stations()` above nor `_on_sta_disconnected()`'s
+    # own retry logic (which never fires if `isconnected()` never reports False) reliably clears it.
+    # This is a real, disclosed architectural gap worth a project-owner conversation about whether
+    # `asy_wifi_service.py` should add an independent reachability check - not something to fix
+    # blind here. The mitigation applied here matches this project's own established
+    # `joined_hotspot`-fixture pattern: recover via a real `hard_reset()` if the graceful wait
+    # doesn't work (a genuine chip-level power-cycle is the one thing confirmed to reliably clear
+    # this), but still fail the test loudly afterward so the real limitation stays visible rather
+    # than being silently papered over.
+    try:
+        wait_until(
+            lambda: _sta_reconnected(dut_ip),
+            timeout_s=150.0,
+            poll_interval_s=5.0,
+            description="DUT to re-establish its real STA connection after the bridge AP comes back up",
+        )
+    except TimeoutError:
+        bench.kick_all_stations()
+        board.hard_reset()
+        wait_until(lambda: _sta_reconnected(dut_ip), timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable again after a recovery hard_reset() (see this test's own comment)")
+        raise
     assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after a real WiFi outage and recovery"
     # _on_sta_disconnected()'s ESTABLISHED branch (see this section's own docstring) calls only
     # pr.evt() - never err_s()/wrn_s() - so a real outage-and-recovery this size is expected to
@@ -82,22 +101,32 @@ def test_real_wifi_outage_and_recovery_while_in_normal_sta_mode(bench: BenchBrid
     assert_module_error_log_empty(dut_ip, "WIFI")
 
 
-def test_real_wifi_flaps_repeatedly_without_wedging_the_system(bench: BenchBridge, dut_ip: str) -> None:
+def test_real_wifi_flaps_repeatedly_without_wedging_the_system(board: Board, bench: BenchBridge, dut_ip: str) -> None:
     reset_all_error_logs(dut_ip)
     for _cycle in range(3):
         bench.ap_down()
         time.sleep(3.0)  # short relative to the 60s retry cadence above - the DUT is still mid-wait, not yet retrying
         bench.ap_up()
         time.sleep(3.0)
+    # kick_all_stations() once, after the last flap - see test_real_wifi_outage_and_recovery_while_
+    # in_normal_sta_mode's own comment for the full finding (a real, disclosed CYW43-firmware-level
+    # gap, not fully explained or fixed by this alone).
+    bench.kick_all_stations()
 
-    # Same 240s widening as test_real_wifi_outage_and_recovery_while_in_normal_sta_mode above, same
-    # reason - see that test's own comment.
-    wait_until(
-        lambda: _sta_reconnected(dut_ip),
-        timeout_s=240.0,
-        poll_interval_s=5.0,
-        description="DUT to re-establish its real STA connection after repeated AP flapping",
-    )
+    # Same hard_reset()-fallback pattern as test_real_wifi_outage_and_recovery_while_in_normal_sta_
+    # mode above, same reason - see that test's own comment.
+    try:
+        wait_until(
+            lambda: _sta_reconnected(dut_ip),
+            timeout_s=150.0,
+            poll_interval_s=5.0,
+            description="DUT to re-establish its real STA connection after repeated AP flapping",
+        )
+    except TimeoutError:
+        bench.kick_all_stations()
+        board.hard_reset()
+        wait_until(lambda: _sta_reconnected(dut_ip), timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable again after a recovery hard_reset() (see this test's own comment)")
+        raise
     assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after repeated real WiFi flapping"
     assert_module_error_log_empty(dut_ip, "WIFI")  # same reasoning as the single-outage test above
 
