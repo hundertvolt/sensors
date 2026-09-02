@@ -1080,6 +1080,23 @@ def test_is_hotspot_active_false_in_deactivated_phase() -> None:
     assert client.is_hotspot_active() is False
 
 
+def test_is_hotspot_active_dynamic_mode_switch_reflects_live_state_not_cached() -> None:
+    # Dynamic-mode-switch coverage: a plain int-compare getter with no internal caching must track
+    # _conn_phase live, on the SAME client instance, across repeated calls - not just once per phase
+    # on a fresh instance (every other test above uses a fresh make_client() per phase, which alone
+    # wouldn't catch an accidental memoization bug).
+    client = make_client()
+    for phase, expected in (
+        (_PHASE_STA_SEEKING, False),
+        (_PHASE_HOTSPOT, True),
+        (_PHASE_STA_ESTABLISHED, False),
+        (_PHASE_HOTSPOT, True),
+        (_PHASE_DEACTIVATED, False),
+    ):
+        client._conn_phase = phase
+        assert client.is_hotspot_active() is expected, f"phase {phase} -> expected {expected}"
+
+
 # ---------------------------------------------------------------------------
 # get_wlan_rssi() / wlan_isconnected() / reconnect_wifi() - previously untested public accessors
 # ---------------------------------------------------------------------------

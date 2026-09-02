@@ -25,6 +25,12 @@ from print_log import PrintLog, PrintLogHistory, PrintLogHistoryStore  # noqa: E
 # comments) - sensortask_wozi.build_system() constructs a real SPI-backed AsyFramManager.
 asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
 
+# Mirrors asy_wifi_service.py's own _PHASE_STA_SEEKING/_PHASE_HOTSPOT values - same
+# not-importable-once-const()-folded reasoning as tests/test_asy_wifi_service.py's own copy; keep in
+# sync with asy_wifi_service.py's own definitions if those ever change.
+_PHASE_STA_SEEKING = 0
+_PHASE_HOTSPOT = 2
+
 try:
     from typing import TYPE_CHECKING
 except ImportError:  # typing isn't available on the real MicroPython test interpreter
@@ -973,6 +979,91 @@ def test_webserver_status_put_reset_errors_clears_a_real_modules_history() -> No
     res = _dispatch("PUT", "/status", {"ResetErrors": True})
     assert json.loads(res.body)["res"] == "OK"
     assert (run(sensortask_wozi.conn.get_error_counter()))["WIFI"]["ErrCount"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Captive-portal hotspot-mode redirect wiring (SPECIFICATION.md Part A.5/A.7) - confirms
+# `is_hotspot_active=conn.is_hotspot_active` (build_system()'s own real WebserverService(...) call)
+# actually reaches the real, wired conn instance, through the real construction graph - not a fake
+# callback like tests/test_asy_webserver_service.py's own Section G.2 coverage. No real WiFi task is
+# started here (deliberately - see test_digital_twin_real_website_integration.py's own note for the
+# same reasoning): conn._conn_phase is set directly, the same test-seam convention this file's own
+# test_webserver_networking_put_ssid_group_reconnects_but_led_group_alone_does_not() and others
+# already use for a real driver's internal state.
+# ---------------------------------------------------------------------------
+
+
+def test_is_hotspot_active_wiring_redirects_when_conn_is_in_hotspot_phase() -> None:
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    assert sensortask_wozi.conn is not None
+    sensortask_wozi.conn._conn_phase = _PHASE_HOTSPOT
+    res = _dispatch("GET", "/generate_204")
+    assert res.status_code == 302
+    assert res.headers["Location"] == "/"
+
+
+def test_is_hotspot_active_wiring_default_sta_phase_still_404s() -> None:
+    # Error-path/good-outcome baseline: AsyConnTime.__init__ starts in _PHASE_STA_SEEKING - the real
+    # wiring must not accidentally redirect before hotspot mode is ever reached.
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    assert sensortask_wozi.conn is not None
+    assert sensortask_wozi.conn._conn_phase == _PHASE_STA_SEEKING
+    res = _dispatch("GET", "/generate_204")
+    assert res.status_code == 404
+
+
+def test_is_hotspot_active_wiring_dynamic_phase_switch_is_reflected_live() -> None:
+    # Dynamic-mode-switch coverage through the real construction graph: flips the real conn's phase
+    # back and forth on the same built system and confirms each dispatch reflects the phase at call
+    # time, not whatever it was when WebserverService(...) was constructed.
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    assert sensortask_wozi.conn is not None
+    conn = sensortask_wozi.conn
+
+    assert _dispatch("GET", "/generate_204").status_code == 404
+
+    conn._conn_phase = _PHASE_HOTSPOT
+    res = _dispatch("GET", "/generate_204")
+    assert res.status_code == 302
+    assert res.headers["Location"] == "/"
+
+    conn._conn_phase = _PHASE_STA_SEEKING
+    assert _dispatch("GET", "/generate_204").status_code == 404
+
+
+def test_is_hotspot_active_wiring_real_static_root_and_api_route_unaffected_in_hotspot_mode() -> None:
+    # Upstream/downstream error handling: real content must keep flowing through cleanly - the
+    # redirect fallback must never shadow an actual file hit or a real API route, hotspot mode or not.
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    assert sensortask_wozi.conn is not None
+    sensortask_wozi.conn._conn_phase = _PHASE_HOTSPOT
+
+    res = _dispatch("GET", "/")
+    assert res.status_code == 200  # real (stub) index.html, not a redirect loop
+
+    res = _dispatch("GET", "/measurements")
+    assert res.status_code == 200
+    assert_sensor_payload_not_self_wrapped(json.loads(res.body), {"SCD30", "BMP3XX", "SGP40"})
+
+
+def test_is_hotspot_active_wiring_directory_traversal_still_404s_in_hotspot_mode() -> None:
+    # All-paths coverage through the real wiring: the ".." guard clause in _serve_static() runs
+    # before is_hotspot_active() is ever consulted (see asy_webserver_service.py's own source order).
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    assert sensortask_wozi.conn is not None
+    sensortask_wozi.conn._conn_phase = _PHASE_HOTSPOT
+    res = _dispatch("GET", "/foo/../../index.html")
+    assert res.status_code == 404
+
+
+def test_is_hotspot_active_wiring_put_to_unmatched_path_still_405_in_hotspot_mode() -> None:
+    # All-paths coverage: a non-GET request to an unmatched path resolves to 405 inside Microdot's
+    # own routing before _serve_static() is ever reached - real hotspot state must not change that.
+    run(sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir()))
+    assert sensortask_wozi.conn is not None
+    sensortask_wozi.conn._conn_phase = _PHASE_HOTSPOT
+    res = _dispatch("PUT", "/generate_204", {})
+    assert res.status_code == 405
 
 
 if __name__ == "__main__":

@@ -1753,6 +1753,59 @@ def test_g2_is_hotspot_active_raising_gets_the_shaped_500_via_the_existing_catch
     assert log["WEBSERVER"]["ErrCount"] == 1
 
 
+def test_g2_directory_traversal_still_404s_even_when_hotspot_active() -> None:
+    # Error-path/all-paths coverage: the ".." guard clause runs and aborts(404) BEFORE the
+    # try/except OSError block that consults is_hotspot_active() is ever reached (see
+    # _serve_static()'s own source order) - a traversal attempt must never be redirected, hotspot
+    # mode or not.
+    mount = _mount_static_fixture({"index.html": b"<h1>hi</h1>"})
+    _, app = _make_service(static_mount=mount, is_hotspot_active=lambda: True)
+    res = run(app.dispatch_request(_make_request(app, "GET", "/foo/../../index.html", None)))
+    assert res.status_code == 404
+
+
+def test_g2_put_to_unmatched_path_is_405_regardless_of_hotspot_state() -> None:
+    # All-paths coverage: the wildcard route is registered GET-only (app.get("/<path:filename>")) -
+    # ext/microdot.py's own find_route() resolves a PUT against a path-matching-but-method-mismatched
+    # route to 405 before _get_static()/_serve_static() is ever invoked, so is_hotspot_active() is
+    # never even consulted for a non-GET request. Confirms the redirect fallback can't leak into an
+    # unrelated error path.
+    mount = _mount_static_fixture({"index.html": b"<h1>hi</h1>"})
+    _, app = _make_service(static_mount=mount, is_hotspot_active=lambda: True)
+    res = run(app.dispatch_request(_make_request(app, "PUT", "/generate_204", None)))
+    assert res.status_code == 405
+
+
+def test_g2_dynamic_is_hotspot_active_value_change_is_reflected_per_request() -> None:
+    # Dynamic-mode-switch coverage: is_hotspot_active is called fresh on every request, not read once
+    # at construction/first-call and cached - proven with a stateful callable whose return value
+    # changes between two successive requests on the same WebserverService/app instance.
+    state = {"active": False}
+    mount = _mount_static_fixture({"index.html": b"<h1>hi</h1>"})
+    _, app = _make_service(static_mount=mount, is_hotspot_active=lambda: state["active"])
+
+    res = run(app.dispatch_request(_make_request(app, "GET", "/generate_204", None)))
+    assert res.status_code == 404  # inactive -> old behavior
+
+    state["active"] = True
+    res = run(app.dispatch_request(_make_request(app, "GET", "/generate_204", None)))
+    assert res.status_code == 302
+    assert res.headers["Location"] == "/"
+
+    state["active"] = False
+    res = run(app.dispatch_request(_make_request(app, "GET", "/generate_204", None)))
+    assert res.status_code == 404  # switched back live, not stuck on the first-seen value
+
+
+def test_g2_static_mount_none_with_is_hotspot_active_set_registers_no_routes() -> None:
+    # Defensive combo: is_hotspot_active is only ever consulted from inside _serve_static(), which is
+    # only reachable through the static routes - passing it with static_mount=None (no static routes
+    # registered at all) must not crash and must not somehow force route registration.
+    _, app = _make_service(is_hotspot_active=lambda: True)  # static_mount defaults to None
+    res = run(app.dispatch_request(_make_request(app, "GET", "/", None)))
+    assert res.status_code == 404  # no route matches "/" at all - same as the plain static_mount=None case
+
+
 # H.1 - app.errorhandler(Exception) catch-all (Step 8 audit finding: closes BACKLOG.md's former
 # "No @app.errorhandler registrations exist anywhere yet" item - the 400/404/405/413/500 status-code
 # handlers section G already exercises were the reply-shape half; this is the still-missing logging

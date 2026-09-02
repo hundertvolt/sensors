@@ -307,6 +307,21 @@ def test_nonsense_path_redirects_to_root_over_the_hotspot_link(joined_hotspot: s
     assert_module_error_log_empty(joined_hotspot, "WEBSERVER")
 
 
+def test_put_to_nonsense_path_is_405_not_a_redirect_over_the_hotspot_link(joined_hotspot: str) -> None:
+    # All-paths/no-crash coverage over real hardware: a non-GET request to an unmatched path resolves
+    # to 405 inside Microdot's own routing before _serve_static() (and therefore is_hotspot_active())
+    # is ever reached - confirms the redirect fallback can't leak into an unrelated error path over a
+    # genuine wireless link either. Deliberately does NOT repeat the dynamic hotspot<->STA toggle
+    # already proven at the unit/wireup/twin tiers (SPECIFICATION.md Part A.5): a real join/leave
+    # cycle costs ~15-30s each and stage 6 below already spends the module's one real "leave hotspot"
+    # transition intentionally last - duplicating that here would only re-prove coverage already
+    # settled more cheaply elsewhere.
+    reset_all_error_logs(joined_hotspot)
+    res = http_client.fetch(joined_hotspot, 80, "PUT", "/generate_204", {}, timeout_s=10.0)
+    assert res.status_code == 405, f"PUT to a nonsense path over the hotspot link did not return 405: {res.status_code} {res.body!r}"
+    assert_module_error_log_empty(joined_hotspot, "WEBSERVER")
+
+
 # ---------------------------------------------------------------------------
 # Stage 5 - client-side fault injection against the DUT's server role (items 17-19).
 # ---------------------------------------------------------------------------
