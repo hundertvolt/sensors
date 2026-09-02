@@ -76,16 +76,37 @@ class BenchBridge:
         _nmcli("connection", "up", self.ap_conn)
 
     def kick_client(self, mac_address: str) -> None:
-        """Best-effort deauth of one associated station by MAC, via `iw` (NetworkManager's own AP
-        mode has no per-client kick command). Syntax confirmed directly against real `iw 6.7`'s own
-        `iw help` output ("dev <devname> station del <MAC address>") during this session's re-audit -
-        still needs verification on first real-hardware run whether the hostapd-backed AP
-        NetworkManager creates actually *honors* it (see HARDWARE_TEST_PLAN.md §9's "not yet
-        verified" list; the command syntax being right doesn't guarantee the effect is)."""
+        """Forcibly clears one associated station's table entry by MAC, via `iw` (NetworkManager's
+        AP-mode backend - confirmed on this bench host to be its own internal `wpa_supplicant`, not
+        a separate `hostapd` process - has no per-client kick command of its own). Syntax confirmed
+        directly against real `iw 6.7`'s own `iw help` output ("dev <devname> station del <MAC
+        address>").
+
+        CONFIRMED EFFECTIVE on real hardware (WIFI_RECONNECT_INVESTIGATION.md's Step 3 A/B test):
+        this is the fix for the dominant real cause of this bench unit's WiFi reconnection
+        flakiness - a stale AP-side station-table entry for the DUT's MAC, left over because a
+        `hard_reset()` (a real power-cycle, no clean 802.11 deauth) never tells the AP the station
+        is gone. 10/10 trials fell back to hotspot mode with the stale entry left in place; 10/10
+        trials connected cleanly once this method cleared it first. See `kick_all_stations()` below
+        for the actual call site pattern - not a clean 802.11 deauth exchange with the DUT itself
+        (irrelevant here: the DUT is about to be power-cycled anyway), only a forced clear of the
+        AP's own stale bookkeeping."""
         iface = self.wifi_iface()
         proc = subprocess.run(["sudo", "iw", "dev", iface, "station", "del", mac_address], capture_output=True, text=True, timeout=10.0)
         if proc.returncode != 0:
             raise HardwareTestFailure(f"iw dev {iface} station del {mac_address} failed: {proc.stderr.strip()}")
+
+    def kick_all_stations(self) -> None:
+        """Clears every currently-associated station's table entry on this bridge's own AP
+        interface - the actual mitigation call site for the real WiFi-reconnection-flakiness fix
+        (see kick_client()'s own docstring). Call this immediately before a real hard_reset() that
+        expects the DUT to re-establish a genuine STA connection afterward. On this dedicated bench
+        rig every entry is expected to be the DUT's own MAC, but this clears whatever is actually
+        there rather than assuming - a second, unexpected MAC would be a real surprise worth its
+        own investigation, not silently ignored."""
+        iface = self.wifi_iface()
+        for mac in bench_associated_station_macs(iface):
+            self.kick_client(mac)
 
     def block_udp_ports(self, ports: Iterable[int], comment: str = "sensors-bench-fault-injection") -> None:
         """Scoped, temporary iptables DROP rules on the bridge's own OUTPUT/FORWARD chains for the

@@ -26,10 +26,20 @@ from harness import Board, wait_until
 def test_real_sta_connect_reaches_established_after_a_hard_reset(board: Board, bench: BenchBridge, dut_ip: str) -> None:
     # dut_ip (session-scoped) already proves a real STA connection was reached at least once this
     # session - this test's own value is confirming it happens again, cleanly, from a cold boot.
+    #
+    # kick_all_stations() first: the dominant real cause of a hard_reset()-triggered reconnect
+    # failing on this bench rig is a stale AP-side station-table entry for the DUT's own MAC, left
+    # over because a hard reset never sends a clean 802.11 deauth (WIFI_RECONNECT_INVESTIGATION.md's
+    # A/B test: 10/10 fallback without this, 10/10 clean connects with it - see
+    # bench_control.BenchBridge.kick_client()'s own docstring for the full account). This test is
+    # the primary regression coverage for that exact scenario, so it must clear stale AP state the
+    # same way dut_ip's own fixture now does, not just document the finding elsewhere.
+    bench.kick_all_stations()
     board.hard_reset()
     lines = board.tail_log(duration_s=45.0)
     joined = "\n".join(lines)
-    assert "CONN" in joined or "WIFI" in joined or "wlan" in joined.lower(), f"no WiFi-connection-related log line observed after hard reset:\n{joined}"
+    assert "Permanently no WLAN connection" not in joined, f"DUT fell back to hotspot mode instead of establishing a real STA connection after a hard reset:\n{joined}"
+    assert "WLAN connection established" in joined, f"no 'WLAN connection established' log line observed after hard reset:\n{joined}"
 
 
 # ---------------------------------------------------------------------------

@@ -62,11 +62,16 @@ def test_real_wifi_outage_and_recovery_while_in_normal_sta_mode(bench: BenchBrid
     finally:
         bench.ap_up()
 
-    # The 60s retry cadence means a real reconnect can take a while - generous relative to that,
-    # not a guess. dut_ip's own fixture-level polling already validates this same signal shape.
+    # REAL FINDING: 150s was too tight. asy_wifi_service.py's own _on_sta_disconnected() ESTABLISHED
+    # branch sleeps a real 60s between each failed retry attempt (confirmed directly, the module's
+    # own comment: "retry previously successful connection in one minute") - if even one intervening
+    # attempt fails before a successful one, total time already exceeds 120s before the successful
+    # attempt's own connect/DHCP time is added, leaving too little margin at 150s. Widened to 240s,
+    # comfortably covering two full failed-retry cycles plus a real connect - confirmed on real
+    # hardware that the DUT does reliably reconnect, just sometimes past 150s.
     wait_until(
         lambda: _sta_reconnected(dut_ip),
-        timeout_s=150.0,
+        timeout_s=240.0,
         poll_interval_s=5.0,
         description="DUT to re-establish its real STA connection after the bridge AP comes back up",
     )
@@ -85,9 +90,11 @@ def test_real_wifi_flaps_repeatedly_without_wedging_the_system(bench: BenchBridg
         bench.ap_up()
         time.sleep(3.0)
 
+    # Same 240s widening as test_real_wifi_outage_and_recovery_while_in_normal_sta_mode above, same
+    # reason - see that test's own comment.
     wait_until(
         lambda: _sta_reconnected(dut_ip),
-        timeout_s=150.0,
+        timeout_s=240.0,
         poll_interval_s=5.0,
         description="DUT to re-establish its real STA connection after repeated AP flapping",
     )
