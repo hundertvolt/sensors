@@ -9,6 +9,7 @@ import threading
 import time
 
 import http_client
+from bench_control import BenchBridge
 from harness import Board, wait_until
 
 # ---------------------------------------------------------------------------
@@ -17,10 +18,14 @@ from harness import Board, wait_until
 # ---------------------------------------------------------------------------
 
 
-def test_real_reboot_sequencing_via_rest_completes_cleanly(board: Board, dut_ip: str) -> None:
+def test_real_reboot_sequencing_via_rest_completes_cleanly(board: Board, bench: BenchBridge, dut_ip: str) -> None:
     res = http_client.fetch(dut_ip, 80, "PUT", "/system", {"SystemCmd": "reboot"})
     assert res.status_code == 200, f"PUT /system SystemCmd=reboot failed: {res.status_code} {res.body!r}"
     assert res.json()["result"]["SystemCmd"] == "Valid", f"reboot command was rejected: {res.json()!r}"
+    # kick_all_stations() before the real reboot fires - this is a genuine machine.reset() under the
+    # hood, subject to the same stale-AP-station-table finding as every other real reboot in this
+    # tier (see conftest.py's dut_ip docstring for the full account).
+    bench.kick_all_stations()
 
     # The real reset_timer fires after SystemService's own configured delay (not this test's to
     # assume a specific value for) - poll for the board actually going unreachable, then coming
@@ -68,7 +73,10 @@ def test_real_concurrent_client_burst_does_not_crash_the_webserver(dut_ip: str, 
 # ---------------------------------------------------------------------------
 
 
-def test_cold_boot_to_first_http_response_latency_is_sane(board: Board, dut_ip: str) -> None:
+def test_cold_boot_to_first_http_response_latency_is_sane(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+    # kick_all_stations() first - see conftest.py's dut_ip docstring for the full stale-AP-station-
+    # table finding this real hard_reset() would otherwise be exposed to.
+    bench.kick_all_stations()
     board.hard_reset()
     start = time.monotonic()
     wait_until(

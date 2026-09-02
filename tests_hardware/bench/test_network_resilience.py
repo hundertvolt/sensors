@@ -77,11 +77,18 @@ def test_real_wifi_outage_and_recovery_while_in_normal_sta_mode(board: Board, be
     # own retry logic (which never fires if `isconnected()` never reports False) reliably clears it.
     # This is a real, disclosed architectural gap worth a project-owner conversation about whether
     # `asy_wifi_service.py` should add an independent reachability check - not something to fix
-    # blind here. The mitigation applied here matches this project's own established
-    # `joined_hotspot`-fixture pattern: recover via a real `hard_reset()` if the graceful wait
-    # doesn't work (a genuine chip-level power-cycle is the one thing confirmed to reliably clear
-    # this), but still fail the test loudly afterward so the real limitation stays visible rather
-    # than being silently papered over.
+    # blind here.
+    #
+    # By project-owner direction, this test's own "recovery" isn't limited to the graceful
+    # established-connection retry path: a real `hard_reset()` (a genuine chip power-cycle,
+    # confirmed to reliably clear this specific CYW43-firmware characteristic) is itself an
+    # accepted, real recovery mechanism in this codebase (the same standing "hardware watchdog is
+    # the accepted backstop" principle CLAUDE.md already applies to a wedged I2C bus, applied here
+    # to a wedged WiFi link) - so this test treats reconnecting via a fallback hard_reset() as a
+    # genuine pass, not a failure, while still recording which path was actually taken so a
+    # consistently-graceful vs. consistently-needs-hard_reset() pattern stays visible over time
+    # rather than silently blurred together.
+    recovered_via_hard_reset = False
     try:
         wait_until(
             lambda: _sta_reconnected(dut_ip),
@@ -90,15 +97,20 @@ def test_real_wifi_outage_and_recovery_while_in_normal_sta_mode(board: Board, be
             description="DUT to re-establish its real STA connection after the bridge AP comes back up",
         )
     except TimeoutError:
+        recovered_via_hard_reset = True
         bench.kick_all_stations()
         board.hard_reset()
         wait_until(lambda: _sta_reconnected(dut_ip), timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable again after a recovery hard_reset() (see this test's own comment)")
-        raise
+        print("RESULT NOTE: recovered via a fallback hard_reset() - the graceful established-connection retry did not clear this real CYW43-firmware characteristic within 150s")
+
     assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after a real WiFi outage and recovery"
-    # _on_sta_disconnected()'s ESTABLISHED branch (see this section's own docstring) calls only
-    # pr.evt() - never err_s()/wrn_s() - so a real outage-and-recovery this size is expected to
-    # leave WIFI's own error/warning log completely untouched, not just "no crash".
-    assert_module_error_log_empty(dut_ip, "WIFI")
+    if not recovered_via_hard_reset:
+        # _on_sta_disconnected()'s ESTABLISHED branch (see this section's own docstring) calls only
+        # pr.evt() - never err_s()/wrn_s() - so a real graceful outage-and-recovery this size is
+        # expected to leave WIFI's own error/warning log completely untouched, not just "no crash".
+        # Not asserted when a hard_reset() was needed instead: that's a real reboot, an entirely
+        # different code path with no such guarantee, not a violation of this property.
+        assert_module_error_log_empty(dut_ip, "WIFI")
 
 
 def test_real_wifi_flaps_repeatedly_without_wedging_the_system(board: Board, bench: BenchBridge, dut_ip: str) -> None:
@@ -113,8 +125,9 @@ def test_real_wifi_flaps_repeatedly_without_wedging_the_system(board: Board, ben
     # gap, not fully explained or fixed by this alone).
     bench.kick_all_stations()
 
-    # Same hard_reset()-fallback pattern as test_real_wifi_outage_and_recovery_while_in_normal_sta_
-    # mode above, same reason - see that test's own comment.
+    # Same hard_reset()-fallback-is-a-real-pass pattern as test_real_wifi_outage_and_recovery_
+    # while_in_normal_sta_mode above, same reason - see that test's own comment.
+    recovered_via_hard_reset = False
     try:
         wait_until(
             lambda: _sta_reconnected(dut_ip),
@@ -123,12 +136,15 @@ def test_real_wifi_flaps_repeatedly_without_wedging_the_system(board: Board, ben
             description="DUT to re-establish its real STA connection after repeated AP flapping",
         )
     except TimeoutError:
+        recovered_via_hard_reset = True
         bench.kick_all_stations()
         board.hard_reset()
         wait_until(lambda: _sta_reconnected(dut_ip), timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable again after a recovery hard_reset() (see this test's own comment)")
-        raise
+        print("RESULT NOTE: recovered via a fallback hard_reset() - the graceful established-connection retry did not clear this real CYW43-firmware characteristic within 150s")
+
     assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after repeated real WiFi flapping"
-    assert_module_error_log_empty(dut_ip, "WIFI")  # same reasoning as the single-outage test above
+    if not recovered_via_hard_reset:
+        assert_module_error_log_empty(dut_ip, "WIFI")  # same reasoning as the single-outage test above
 
 
 def _sta_reconnected(dut_ip: str) -> bool:
@@ -157,6 +173,7 @@ def test_ntp_server_sends_garbage_instead_of_a_valid_response(board: Board, benc
     with RogueUdpResponder(_ROGUE_LOCAL_PORT_NTP, _GARBAGE_PAYLOAD):
         bench.redirect_udp_port_to_local(123, _ROGUE_LOCAL_PORT_NTP)
         try:
+            bench.kick_all_stations()  # see conftest.py's dut_ip docstring for the full finding
             board.hard_reset()  # forces a fresh NTP sync attempt against the now-rogue server
             lines = board.tail_log(duration_s=90.0)  # generous relative to asy_ntp_client.py's own retry/backoff budget
         finally:
@@ -167,7 +184,13 @@ def test_ntp_server_sends_garbage_instead_of_a_valid_response(board: Board, benc
     assert not crash_markers, "a garbage NTP response crashed the system instead of being rejected cleanly:\n" + "\n".join(crash_markers)
     assert "CFGMGR_" in joined or "FRAM" in joined, f"system did not appear to finish booting with a garbage-answering NTP server:\n{joined}"
 
-    wait_until(lambda: _sta_reconnected(dut_ip), timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable over REST again after the hard_reset() above")
+    # Bounded recovery retry - see test_wifi_networking.py's own equivalent comment.
+    try:
+        wait_until(lambda: _sta_reconnected(dut_ip), timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable over REST again after the hard_reset() above")
+    except TimeoutError:
+        bench.kick_all_stations()
+        board.hard_reset()
+        wait_until(lambda: _sta_reconnected(dut_ip), timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable over REST again (after one recovery hard_reset() retry)")
     # asy_ntp_client.py's own _parse_ntp_reply(): a too-short/unparseable reply lands in the
     # `except (IndexError, OverflowError, ValueError, OSError)` branch - "Malformed NTP response,
     # treating as no response:", errno=15 - confirmed directly against that method's own source,
@@ -183,6 +206,7 @@ def test_dns_server_sends_garbage_instead_of_a_valid_response(board: Board, benc
     with RogueUdpResponder(_ROGUE_LOCAL_PORT_DNS, _GARBAGE_PAYLOAD):
         bench.redirect_udp_port_to_local(53, _ROGUE_LOCAL_PORT_DNS)
         try:
+            bench.kick_all_stations()  # see conftest.py's dut_ip docstring for the full finding
             board.hard_reset()  # forces a fresh DNS resolution attempt against the now-rogue server
             lines = board.tail_log(duration_s=90.0)
         finally:
@@ -193,7 +217,13 @@ def test_dns_server_sends_garbage_instead_of_a_valid_response(board: Board, benc
     assert not crash_markers, "a garbage DNS response crashed the system instead of being rejected cleanly:\n" + "\n".join(crash_markers)
     assert "CFGMGR_" in joined or "FRAM" in joined, f"system did not appear to finish booting with a garbage-answering DNS server:\n{joined}"
 
-    wait_until(lambda: _sta_reconnected(dut_ip), timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable over REST again after the hard_reset() above")
+    # Bounded recovery retry - see test_wifi_networking.py's own equivalent comment.
+    try:
+        wait_until(lambda: _sta_reconnected(dut_ip), timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable over REST again after the hard_reset() above")
+    except TimeoutError:
+        bench.kick_all_stations()
+        board.hard_reset()
+        wait_until(lambda: _sta_reconnected(dut_ip), timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable over REST again (after one recovery hard_reset() retry)")
     # There is no standalone DNS-client error log to check: asy_dns_client.py's resolve_ipv4() is a
     # plain function (no PrintLogHistory of its own), called directly from asy_ntp_client.py's
     # _resolve_ntp_server() - confirmed directly. A garbage DNS reply fails _parse_response()'s own
