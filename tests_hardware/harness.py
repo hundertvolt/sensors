@@ -129,7 +129,7 @@ class Board:
         self.device = device or os.environ.get("MPREMOTE_DEVICE", "/dev/ttyACM0")
         self.default_timeout_s = default_timeout_s
 
-    def _mpremote(self, *args: str, timeout_s: float | None = None) -> MpremoteResult:
+    def _mpremote(self, *args: str, timeout_s: float | None = None, allow_recovery: bool = True) -> MpremoteResult:
         """REAL FINDING: right after any mpremote subprocess exits (most commonly a `reset`), the
         very next `uv run mpremote connect <device> ...` call can transiently fail to establish a
         fresh connection - a genuine OS/USB-level race (the just-exited process's own file
@@ -144,7 +144,20 @@ class Board:
         readiness to read but returned no data" symptom. Retried here, at the lowest common layer
         every public method goes through, rather than duplicated per caller - matched by phrase
         rather than blanket-retrying every nonzero exit, specifically so a genuine on-device
-        failure still surfaces on the first attempt."""
+        failure still surfaces on the first attempt.
+
+        REAL FINDING, `allow_recovery=False` added: the retry/USB-reset recovery below cannot
+        distinguish "a flaky USB glitch, not a real device state" from "the device is genuinely,
+        expectedly unreachable right now" - a real reboot's own multi-second USB re-enumeration
+        window produces the *exact same* transient-marker error text a flaky glitch would.
+        Confirmed directly: `is_reachable()` used inside a `wait_until(lambda: not board.
+        is_reachable(), ...)` poll (waiting to *observe* a real reboot actually happening) was
+        having its own genuine, expected unreachable window fully absorbed by this recovery logic
+        before ever surfacing as a `False` return, making the poll never see the disconnect at all
+        within its own timeout. `is_reachable()` below passes `allow_recovery=False` for exactly
+        this reason - it must report the *honest, current* connection state immediately, never
+        retrying past a real transient failure, so both `True`- and `False`-polling callers get a
+        result they can actually trust."""
         cmd = ["uv", "run", "mpremote", "connect", self.device, *args]
         transient_markers = ("may be in use by another program", "could not enter raw repl", "could not open")
         grace_deadline = time.monotonic() + 10.0
@@ -163,7 +176,7 @@ class Board:
             except subprocess.TimeoutExpired as exc:
                 raise HardwareTestFailure(f"mpremote {' '.join(args)} timed out after {timeout_s or self.default_timeout_s}s") from exc
             transient = proc.returncode != 0 and any(marker in proc.stderr.lower() for marker in transient_markers)
-            if not transient:
+            if not transient or not allow_recovery:
                 return MpremoteResult(proc.returncode, proc.stdout, proc.stderr)
             if time.monotonic() < grace_deadline:
                 time.sleep(0.5)
@@ -185,8 +198,12 @@ class Board:
             return MpremoteResult(proc.returncode, proc.stdout, proc.stderr)
 
     def is_reachable(self) -> bool:
+        # allow_recovery=False - see _mpremote()'s own docstring for why: this method's whole
+        # contract is reporting the honest, current connection state, including a real transient
+        # "no" a caller is deliberately polling to observe (e.g. waiting for a real reboot to
+        # actually happen) - it must never retry past that.
         try:
-            result = self._mpremote("exec", "print('mpremote-ok')", timeout_s=10.0)
+            result = self._mpremote("exec", "print('mpremote-ok')", timeout_s=10.0, allow_recovery=False)
         except (HardwareNotAvailable, HardwareTestFailure):
             return False
         return result.returncode == 0 and "mpremote-ok" in result.stdout

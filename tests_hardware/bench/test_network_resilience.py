@@ -239,6 +239,83 @@ def test_dns_server_sends_garbage_instead_of_a_valid_response(board: Board, benc
 
 
 # ---------------------------------------------------------------------------
+# A config-level NTP fault, not a network-level one (project-owner suggestion): with a completely
+# normal, already-connected WiFi link, PUT a garbage NTP_Host via the real REST API, confirm the
+# real DNS-resolution failure this causes is handled cleanly (not a crash), then PUT a real,
+# sensible host back and confirm NTP actually recovers. This exercises a different code path than
+# the two DNS/NTP tests above: those force a *fresh boot* (hard_reset()) with an already-bad
+# server, so `_handle_ntp_sync_failure()`'s own `if await self.ntp_issynced():` guard is never
+# reached (confirmed directly, that method's own module comment: the block is gated on a *re*-sync
+# failure after a prior successful sync). This test starts from a real, already-synced state
+# (dut_ip only ever returns once NTP has had a real chance to sync), so a bad `NTP_Host` here is a
+# genuine re-sync failure - the other branch of that same guard, previously untested.
+# ---------------------------------------------------------------------------
+
+# RFC 2606 reserves .invalid specifically so it can never resolve to a real address - a genuine,
+# permanent DNS-resolution failure, not a flaky "might resolve to something on some networks" guess.
+_GARBAGE_NTP_HOST = "this-host-will-never-resolve.invalid"
+
+
+def test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly(dut_ip: str) -> None:
+    get_before = http_client.fetch(dut_ip, 80, "GET", "/networking", timeout_s=10.0)
+    assert get_before.status_code == 200, f"GET /networking failed: {get_before.status_code} {get_before.body!r}"
+    original_host = get_before.json()["NTP_Host"]
+
+    try:
+        reset_all_error_logs(dut_ip)
+        put_res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"NTP_Host": _GARBAGE_NTP_HOST}, timeout_s=10.0)
+        assert put_res.status_code == 200, f"PUT /networking NTP_Host={_GARBAGE_NTP_HOST!r} failed: {put_res.status_code} {put_res.body!r}"
+        # _VAL_NH's own schema (asy_ntp_client.py) only bounds string length (3-1024) - it has no
+        # hostname-format validation, so a syntactically-garbage-but-length-valid host is accepted
+        # as "Valid" here; the real failure only surfaces later, from the actual DNS resolution
+        # attempt ntp_force_sync() (this field's own post_asy_fct) triggers.
+        assert put_res.json()["result"].get("NTP_Host") == "Valid", f"garbage NTP_Host was rejected at the schema level, not what this test means to exercise: {put_res.json()!r}"
+
+        # post_asy_fct fires the real resync asynchronously - poll for the real DNS-resolution
+        # failure to land (asy_ntp_client.py's own _resolve_ntp_server(): resolve_ipv4() failing
+        # logs "No valid NTP server:", errno=12 - the same real code path/errno the network-level
+        # DNS-garbage-response test above exercises, just reached via a bad hostname instead of a
+        # bad response).
+        wait_until(
+            lambda: _ntp_error_log_contains(dut_ip, 12),
+            timeout_s=30.0,
+            poll_interval_s=2.0,
+            description="NTP module to log errno=12 (No valid NTP server) for the garbage NTP_Host",
+        )
+        # The rest of the system must stay fully healthy throughout - a bad NTP host degrading
+        # gracefully means exactly this, not just "the error got logged".
+        assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive while NTP_Host was garbage"
+    finally:
+        # Restore the real, original NTP_Host regardless of outcome - this PUT mutates the board's
+        # real, persisted config on a shared bench rig.
+        reset_all_error_logs(dut_ip)
+        restore_res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"NTP_Host": original_host}, timeout_s=10.0)
+        assert restore_res.status_code == 200, f"failed to restore original NTP_Host {original_host!r}: {restore_res.status_code} {restore_res.body!r}"
+        assert restore_res.json()["result"].get("NTP_Host") == "Valid", f"restoring the original NTP_Host was rejected: {restore_res.json()!r}"
+
+    # Recovery: once a real, resolvable host is configured again, the next forced resync
+    # (post_asy_fct fires on this restore PUT too, per handle_set_cmd()'s "fires if ANY field in
+    # this call validated" rule - already confirmed directly, HARDWARE_TEST_PLAN.md §11.6) must
+    # actually succeed - checked via /networking's own real NtpSynced field, not just "no error
+    # logged" (a sync that silently never re-attempted would otherwise look identical to one that
+    # attempted and failed silently).
+    wait_until(
+        lambda: http_client.fetch(dut_ip, 80, "GET", "/networking", timeout_s=10.0).json().get("NtpSynced") is True,
+        timeout_s=30.0,
+        poll_interval_s=2.0,
+        description=f"NTP to report synced again after restoring a real NTP_Host ({original_host!r})",
+    )
+    assert_module_error_log_empty(dut_ip, "NTP")
+
+
+def _ntp_error_log_contains(dut_ip: str, errno: int) -> bool:
+    entry = get_errcount(dut_ip).get("NTP")
+    if entry is None:
+        return False
+    return any(h.get("num") == errno and h.get("type") == "E" for h in entry.get("history", []))
+
+
+# ---------------------------------------------------------------------------
 # The real webserver connection ceiling (asy_webserver_service.py's WebserverService(max_connections=4),
 # one slot of margin below the confirmed lwIP MEMP_NUM_TCP_PCB=5 rp2-port ceiling) actually degrades
 # cleanly at and above the limit - not just under light concurrency (test_end_to_end_timing.py's own
