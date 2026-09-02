@@ -28,6 +28,42 @@ BENCH_ETH_CONN = "br0-eth0"
 BENCH_AP_CONN = "br0-wifi-ap"
 
 
+def _usb_reset_device(device: str) -> bool:
+    """Unbind then rebind `device`'s underlying USB device from the kernel's generic `usb` driver -
+    the same effect a physical unplug/replug would have, without needing physical access. Resolves
+    the real USB bus-port ID (e.g. "1-1.4") from `/sys/class/tty/<name>/device`'s own symlink
+    target, rather than hardcoding one - this must work on whatever port the board is actually
+    plugged into, not just this bench's own current wiring. Returns True if the reset was actually
+    attempted (the caller should retry after a settle delay), False if the device path couldn't be
+    resolved (e.g. `device` doesn't exist at all - a real HardwareNotAvailable case the caller's own
+    subsequent mpremote attempt will surface properly).
+
+    Confirmed directly, real hardware: this specific bench's USB connection to the board has, more
+    than once, wedged into a state where raw-REPL entry fails indefinitely (not just for the usual
+    few-hundred-ms settle window) until the USB device is unbound/rebound this way - physically
+    unplugging and replugging the cable has the exact same recovering effect, this just does it in
+    software. Needs root (writing to `/sys/bus/usb/drivers/usb/{unbind,bind}`), consistent with
+    every other real-hardware-control call in this tier already requiring `sudo`."""
+    name = Path(device).name  # e.g. "ttyACM0"
+    sys_tty_device = Path("/sys/class/tty") / name / "device"
+    if not sys_tty_device.exists():
+        return False
+    # The tty device node's own symlink target is the USB *interface* (e.g. .../1-1.4:1.0); the USB
+    # *device* one level up is what actually needs unbinding - its own directory name is the real
+    # bus-port ID ("1-1.4").
+    resolved = sys_tty_device.resolve()
+    usb_device_dir = resolved.parent
+    usb_id = usb_device_dir.name
+    try:
+        subprocess.run(["sudo", "tee", "/sys/bus/usb/drivers/usb/unbind"], input=usb_id, capture_output=True, text=True, timeout=10.0)
+        time.sleep(2.0)
+        subprocess.run(["sudo", "tee", "/sys/bus/usb/drivers/usb/bind"], input=usb_id, capture_output=True, text=True, timeout=10.0)
+        time.sleep(3.0)
+    except (subprocess.TimeoutExpired, OSError):
+        return False
+    return True
+
+
 class HardwareNotAvailable(RuntimeError):
     """Raised when a real board/bench isn't reachable. Tests catch this via the pytest fixtures in
     conftest.py (which turn it into a skip, not a failure) - this tier is meant to be collected and
@@ -112,6 +148,7 @@ class Board:
         cmd = ["uv", "run", "mpremote", "connect", self.device, *args]
         transient_markers = ("may be in use by another program", "could not enter raw repl", "could not open")
         grace_deadline = time.monotonic() + 10.0
+        usb_reset_attempted = False
         while True:
             try:
                 proc = subprocess.run(
@@ -126,9 +163,25 @@ class Board:
             except subprocess.TimeoutExpired as exc:
                 raise HardwareTestFailure(f"mpremote {' '.join(args)} timed out after {timeout_s or self.default_timeout_s}s") from exc
             transient = proc.returncode != 0 and any(marker in proc.stderr.lower() for marker in transient_markers)
-            if transient and time.monotonic() < grace_deadline:
+            if not transient:
+                return MpremoteResult(proc.returncode, proc.stdout, proc.stderr)
+            if time.monotonic() < grace_deadline:
                 time.sleep(0.5)
                 continue
+            # REAL FINDING: the plain 10s settle-wait grace window above is sometimes not enough -
+            # confirmed directly, repeatedly, on real hardware: this specific USB device can wedge
+            # into a state where raw-REPL entry keeps failing indefinitely, not just transiently,
+            # until the USB device is actually unbound and rebound from its kernel driver (the same
+            # effect physically unplugging/replugging the cable would have). One such escalation is
+            # attempted here, once, before finally giving up - confirmed to reliably clear this
+            # exact symptom in-session. Never attempted more than once per _mpremote() call (a
+            # second failure after this means something more is genuinely wrong, not just a slow
+            # USB settle).
+            if not usb_reset_attempted:
+                usb_reset_attempted = True
+                if _usb_reset_device(self.device):
+                    grace_deadline = time.monotonic() + 10.0
+                    continue
             return MpremoteResult(proc.returncode, proc.stdout, proc.stderr)
 
     def is_reachable(self) -> bool:
