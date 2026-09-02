@@ -19,6 +19,25 @@ from harness import Board, wait_until
 
 
 def test_real_reboot_sequencing_via_rest_completes_cleanly(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+    # REAL FINDING (this test was previously self-sabotaging, not hitting a real src/ bug): an
+    # earlier version of this test polled `board.is_reachable()` to wait for the real reboot to
+    # fire. is_reachable() is built on `mpremote exec`, and mpremote's own enter_raw_repl()
+    # (transport_serial.py) unconditionally sends Ctrl-C, then - by default, true for every fresh
+    # `mpremote` subprocess's own State() - a genuine Ctrl-D `machine.soft_reset()` before running
+    # anything. Confirmed directly against that source, then confirmed empirically here: polling
+    # is_reachable() once a second while waiting for SystemService's real, REST-armed ~4s
+    # reset_timer to fire was itself soft-resetting the board's entire live Python heap - wiping the
+    # very Timer object being waited on - before the real hardware reset ever got a chance to run.
+    # This isn't the already-known "exec() never resumes main.py afterward" finding
+    # (harness.py's exec()/run_isolated() docstrings) - it's a step earlier: entering raw REPL at
+    # all destroys the live heap first, on every single call. A direct, isolated repro on this same
+    # board (a bare `machine.Timer(mode=ONE_SHOT, period=4000, callback=lambda t: machine.reset())`
+    # run via a single mpremote exec, with no REST/webserver involved) fired reliably in ~3s with
+    # zero load - confirming SPECIFICATION.md Part F.1's soft-Timer-callback-drop gotcha was NOT
+    # the cause here (that's a real, separately-documented platform characteristic, just not this
+    # bug) and that the real reboot mechanism itself is fine. Fixed below by polling
+    # board.is_device_present() instead - a passive open()/close() of the serial port that never
+    # touches the running system - see that method's own docstring for the full account.
     res = http_client.fetch(dut_ip, 80, "PUT", "/system", {"SystemCmd": "reboot"})
     assert res.status_code == 200, f"PUT /system SystemCmd=reboot failed: {res.status_code} {res.body!r}"
     assert res.json()["result"]["SystemCmd"] == "Valid", f"reboot command was rejected: {res.json()!r}"
@@ -30,7 +49,7 @@ def test_real_reboot_sequencing_via_rest_completes_cleanly(board: Board, bench: 
     # The real reset_timer fires after SystemService's own configured delay (not this test's to
     # assume a specific value for) - poll for the board actually going unreachable, then coming
     # back, rather than sleeping a guessed duration.
-    wait_until(lambda: not board.is_reachable(), timeout_s=60.0, poll_interval_s=1.0, description="board to go unreachable (real reboot firing)")
+    wait_until(lambda: not board.is_device_present(), timeout_s=30.0, poll_interval_s=0.5, description="board to go unreachable (real reboot firing)")
     wait_until(board.is_reachable, timeout_s=30.0, poll_interval_s=1.0, description="board reachable again after the real reboot completes")
 
 
@@ -63,7 +82,9 @@ def test_real_concurrent_client_burst_does_not_crash_the_webserver(dut_ip: str, 
     assert not failures, f"{len(failures)}/{n_clients} concurrent requests failed or errored: {results}"
     # The webserver must still be responsive afterward - a crash that only surfaces after the
     # burst (not during it) would otherwise slip through the per-request results above.
-    assert board.is_reachable() or http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after the concurrent burst"
+    # is_device_present(), not is_reachable() - see that method's own docstring for why polling
+    # (or even a single incidental call to) is_reachable() against a live system is disruptive.
+    assert board.is_device_present() or http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after the concurrent burst"
 
 
 # ---------------------------------------------------------------------------

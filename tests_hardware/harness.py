@@ -202,11 +202,44 @@ class Board:
         # contract is reporting the honest, current connection state, including a real transient
         # "no" a caller is deliberately polling to observe (e.g. waiting for a real reboot to
         # actually happen) - it must never retry past that.
+        #
+        # REAL FINDING: this method (like exec()/run_isolated()) always enters raw REPL, which
+        # unconditionally sends Ctrl-C first and, by default, a genuine Ctrl-D machine.soft_reset()
+        # too (confirmed directly against mpremote's own transport_serial.py enter_raw_repl() -
+        # every fresh `mpremote` subprocess's own State() starts with _auto_soft_reset=True). That
+        # makes it actively disruptive, not just "may strand main.py afterward" - polling it against
+        # an already-running live system interrupts (and by default resets) that system on every
+        # single call. Confirmed to have self-sabotaged an earlier version of
+        # test_real_reboot_sequencing_via_rest_completes_cleanly: polling this method once a second
+        # while waiting to observe the real, REST-armed reset actually fire was itself soft-
+        # resetting the live heap - wiping the very SystemService.reset_timer the test was waiting
+        # on - before the real ~4s hardware timer ever got a chance to run. Never use is_reachable()
+        # to poll a live, currently-running system without expecting to disturb it - use
+        # is_device_present() instead (below), which touches nothing on the device at all. This
+        # method stays mpremote/raw-REPL-based deliberately, since some callers (e.g. flash tier's
+        # own test_mpremote_connection_is_stable_across_repeated_calls) are specifically testing
+        # that connection mechanism itself, not just USB presence.
         try:
             result = self._mpremote("exec", "print('mpremote-ok')", timeout_s=10.0, allow_recovery=False)
         except (HardwareNotAvailable, HardwareTestFailure):
             return False
         return result.returncode == 0 and "mpremote-ok" in result.stdout
+
+    def is_device_present(self) -> bool:
+        """Passive, non-disruptive USB-presence check - opens (and immediately closes) the CDC-ACM
+        serial port without writing a single byte, so it never sends the Ctrl-C/Ctrl-D raw-REPL
+        entry sequence is_reachable() always does (see that method's own docstring for the real
+        finding this exists to fix). Correctly reports False during a real hard_reset()'s USB
+        re-enumeration window (the device node briefly disappears) and True once it's back -
+        exactly what a `wait_until(lambda: not board.is_device_present(), ...)` poll needs to
+        observe a real reboot firing, without the poll itself destroying the thing it's watching
+        for. Never use this to run any actual command - it's presence-only, deliberately."""
+        try:
+            probe = serial.Serial(self.device, baudrate=115200, timeout=0.2)
+        except (OSError, serial.SerialException):
+            return False
+        probe.close()
+        return True
 
     def exec(self, expr: str, timeout_s: float | None = None) -> str:
         """`mpremote exec "<expr>"` - like run_isolated(), this ALWAYS interrupts whatever's
