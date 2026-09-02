@@ -183,6 +183,345 @@ scripts/mpremote_connect.sh bootloader   # reboot into BOOTSEL mode
 picotool load -f -x build/firmware-dev-bench.uf2
 ```
 
+**The entry/wiring script itself** (mounted, never flashed — see "After flashing" below), matching
+`src/sensortask_wozi.py`'s own current shape but rewired for this bench's real pins per the table
+above (this exact content lived on the device's own flash filesystem as `/main.py` for a long
+stretch, confirmed working repeatedly; it was removed during a 2026-09-02 full-flash-erase — see
+"Current bench state" below — so it's captured here in full instead of only living
+device-side again):
+
+```python
+"""Bench bring-up adaptation of src/sensortask_wozi.py: same top-level functionality (SCD30, SGP40+VOC,
+BMP3xx, Neopixel, FRAM, WiFi/NTP/DNS, notification, webserver), rewired for the dev bench unit's real
+hardware (dev_legacy/README.md) instead of wozi's. Not a promoted src/ file - a scratch bring-up
+script, run via mpremote mount, never flashed by itself (everything it imports IS frozen - see the
+bench-only frozen firmware recipe in dev_legacy/README.md)."""
+
+import asyncio
+import gc
+import time
+from asyncio import ThreadSafeFlag
+
+
+def _mem(label):
+    gc.collect()
+    print("MEM %-24s free=%d" % (label, gc.mem_free()))
+
+
+_mem("post-import")
+
+import asy_i2c_driver
+import asy_spi_driver
+import config_manager as cm
+from asy_fram_manager import AsyFramManager
+from asy_bmp3xx_driver import BMP3xx_Reader
+from asy_neopixel_driver import NeopixelDriver
+from asy_scd30_driver import SCD30_Reader
+from asy_sgp40_driver import SGP40_Reader
+from asy_wifi_service import AsyConnTime
+from asy_ntp_client import AsyNtpClient
+from asy_notification_service import NotificationCoordinator, NotificationSignal
+from system_service import SystemService
+from microdot import Microdot
+from asy_webserver_service import SettingsGroup, WebserverService
+
+_MAX_MODULE_ERROR = 5
+_DNS_TIMEOUT_MS = 500
+_DNS_TRIES = 1
+_NTP_FETCH_TIMEOUT_MS = 5000
+
+_FIELD_WARN_CO2 = (("WarnCO2", "int", 1600, 0, 3000, None),)
+_FIELD_WARN_VOC = (("WarnVOC", "int", 350, 0, 500, None),)
+_FIELD_WARN_HUM = (("WarnHum", "float", 65.0, 0.0, 100.0, None),)
+
+watchdog = None  # deliberately spared for this bring-up - debugging aid, see module docstring
+conn = None
+ntp = None
+i2c0 = None
+i2c1 = None
+spi0 = None
+fram = None
+sysfunct = None
+sgp_reader = None
+bmp_reader = None
+scd_reader = None
+pixel = None
+notify_service = None
+webserver = None
+
+
+async def sgp_comp_callback():
+    data = await scd_reader.get_data()
+    try:
+        return [float(data.Temp), float(data.Hum)]
+    except Exception:
+        return [None, None]
+
+
+async def co2_value_callback():
+    scd_data = await scd_reader.get_data()
+    if scd_data is None or scd_data.CO2 is None:
+        return None
+    return float(scd_data.CO2)
+
+
+async def voc_value_callback():
+    sgp_data = await sgp_reader.get_data()
+    if sgp_data is None or sgp_data.VOC is None:
+        return None
+    return int(sgp_data.VOC)
+
+
+async def hum_value_callback():
+    scd_data = await scd_reader.get_data()
+    if scd_data is None or scd_data.Hum is None:
+        return None
+    return float(scd_data.Hum)
+
+
+def _gmtimestruct_to_dict(t):
+    if t is None:
+        return None
+    return {
+        "year": t[0], "month": t[1], "mday": t[2], "hour": t[3],
+        "minute": t[4], "second": t[5], "weekday": t[6], "yearday": t[7],
+    }
+
+
+async def _system_cmd_callback(cmd):
+    if cmd == "reboot":
+        sysfunct.reboot_system()
+    elif cmd == "bootloader":
+        sysfunct.reboot_bootloader()
+    elif cmd == "mempause":
+        sysfunct.pause_permanent_storage(300)
+    else:
+        return False
+    return True
+
+
+_FIELD_LED_R = ("r", "int", None, 0, 255, None)
+_FIELD_LED_G = ("g", "int", None, 0, 255, None)
+_FIELD_LED_B = ("b", "int", None, 0, 255, None)
+_FIELD_LED_T = ("t", "float", None, 0.5, 60.0, None)
+
+
+async def _notification_led_callback(payload):
+    try:
+        r_err, r = cm.type_or_range_error(payload["r"], _FIELD_LED_R)
+        g_err, g = cm.type_or_range_error(payload["g"], _FIELD_LED_G)
+        b_err, b = cm.type_or_range_error(payload["b"], _FIELD_LED_B)
+        t_err, t = cm.type_or_range_error(payload["t"], _FIELD_LED_T)
+    except KeyError:
+        return False
+    if r_err or g_err or b_err or t_err:
+        return False
+    return await pixel.request_signal(r, g, b, t)
+
+
+async def _notification_pause_callback(payload):
+    await notify_service.set_override_led(payload)
+    return True
+
+
+async def _sgp_maintenance_status():
+    backup_ts, restore_ts = await sgp_reader.get_mem_status()
+    return {"BackupTS": backup_ts, "RestoreTS": restore_ts}
+
+
+async def _networking_status():
+    wifi_data = await conn.get_data()
+    ifcfg = conn.get_wlan_ifconfig()
+    ntp_data = await ntp.get_data()
+    return {
+        "WifiUptime": await conn.get_wifi_uptime(),
+        "Mode": wifi_data.Mode,
+        "Connected": wifi_data.Connected,
+        "IP": wifi_data.IP,
+        "IPv4": None if ifcfg is None else ifcfg[0],
+        "Subnet": None if ifcfg is None else ifcfg[1],
+        "Gateway": None if ifcfg is None else ifcfg[2],
+        "DNS": None if ifcfg is None else ifcfg[3],
+        "Rssi": conn.get_wlan_rssi(),
+        "NtpSynced": ntp_data.Synced,
+        "NtpLastSyncAge": ntp_data.LastSyncAge,
+        "NtpLastSync": ntp_data.TS,
+    }
+
+
+async def _system_status():
+    local_time = await ntp.cettime()
+    return {
+        "SysUptime": await sysfunct.get_uptime(),
+        "BootSignature": await sysfunct.get_boot_signature(),
+        "MemPaused": fram.get_pause(),
+        "LocalTime": _gmtimestruct_to_dict(local_time),
+        "UtcTime": _gmtimestruct_to_dict(time.gmtime()),
+    }
+
+
+async def _notification_status():
+    data = await notify_service.get_data()
+    return {"Triggered": data.Triggered, "TS": data.TS, "PauseTime": await notify_service.get_override_led()}
+
+
+def _collect_error_sources():
+    return [
+        conn, conn.cfgmgr, conn.dns_server, ntp, ntp.cfgmgr, fram, sysfunct, sysfunct.cfgmgr,
+        sgp_reader, sgp_reader.cfgmgr, bmp_reader, bmp_reader.cfgmgr, scd_reader, pixel,
+        notify_service, notify_service.cfgmgr,
+    ]
+
+
+def _collect_level_setters():
+    return [
+        conn.pr.set_level, conn.cfgmgr.pr.set_level, conn.dns_server.pr.set_level,
+        ntp.pr.set_level, ntp.cfgmgr.pr.set_level, fram.pr.set_level,
+        sysfunct.pr.set_level, sysfunct.cfgmgr.pr.set_level,
+        sgp_reader.pr.set_level, sgp_reader.cfgmgr.pr.set_level,
+        bmp_reader.pr.set_level, bmp_reader.cfgmgr.pr.set_level,
+        scd_reader.pr.set_level, pixel.pr.set_level,
+        notify_service.pr.set_level, notify_service.cfgmgr.pr.set_level,
+        webserver.pr.set_level,
+    ]
+
+
+async def build_system(*, cfg_path="", debug=None, web_host="0.0.0.0", web_port=80):
+    global conn, ntp, i2c0, i2c1, spi0, fram, sysfunct
+    global sgp_reader, bmp_reader, scd_reader, pixel, notify_service, webserver
+
+    _mem("build_system start")
+    conn = AsyConnTime(
+        conn_fail_to_hotspot=5, hotspot_time_min=8, max_module_error=_MAX_MODULE_ERROR,
+        cfg_path=cfg_path, debug=debug,
+    )
+    ntp = AsyNtpClient(
+        conn.get_wifi_mode_lock(), conn.network_available, conn.get_dns_server_ip,
+        max_module_error=_MAX_MODULE_ERROR, dns_timeout_ms=_DNS_TIMEOUT_MS, dns_tries=_DNS_TRIES,
+        ntp_fetch_timeout_ms=_NTP_FETCH_TIMEOUT_MS, cfg_path=cfg_path, debug=debug,
+    )
+    # dev_legacy/README.md wiring table (bench unit, not wozi):
+    # I2C0 (13,12) = BMP3xx only. I2C1 (15,14) = SCD30 + SGP40 (shared bus, distinct addresses) -
+    # SCD30's clock-stretch timeout extension (wozi's own i2c0 comment) follows SCD30 onto whichever
+    # bus it's actually on here, i.e. i2c1, not i2c0.
+    i2c0 = asy_i2c_driver.I2C(0, 13, 12, frequency=50000)
+    i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000, timeout=200000)
+    spi0 = asy_spi_driver.SPI(0, 2, 3, 4)
+    # FRAM: dev bench chip is a 256KB MB85RS2MTA at CS=GPIO5 (wozi: 8KB MB85RS64V at CS=1).
+    fram = AsyFramManager(spi0, 5, max_size=0x40000, debug=debug)
+    _mem("after fram")
+    sysfunct = SystemService(ntp.ntp_issynced, watchdog=watchdog, fram=fram, cfg_path=cfg_path, debug=debug)
+    _mem("after sysfunct")
+    sgp_reader = SGP40_Reader(
+        i2c1, sgp_comp_callback, fram_storage=fram, fram_ntp_callback=ntp.ntp_issynced,
+        max_module_error=_MAX_MODULE_ERROR, cfg_path=cfg_path, debug=debug,
+    )
+    _mem("after sgp_reader")
+    bmp_reader = BMP3xx_Reader(i2c0, max_module_error=_MAX_MODULE_ERROR, cfg_path=cfg_path, fram=fram, debug=debug)
+    _mem("after bmp_reader")
+    # IRQ/RDY = GPIO11 on this bench unit (wozi: GPIO8).
+    scd_reader = SCD30_Reader(i2c1, 11, trigger_sec=3, max_module_error=_MAX_MODULE_ERROR, fram=fram, debug=debug)
+    _mem("after scd_reader")
+    # GPIO18 on this bench unit (wozi: GPIO15).
+    pixel = NeopixelDriver(18, fram=fram, debug=debug)
+    notify_service = NotificationCoordinator(
+        pixel.request_signal, ntp.cettime, max_module_error=_MAX_MODULE_ERROR,
+        cfg_path=cfg_path, fram=fram, debug=debug,
+    )
+    notify_service.register(NotificationSignal("WarnCO2", co2_value_callback, _FIELD_WARN_CO2, (1, 0, 0)))
+    notify_service.register(NotificationSignal("WarnVOC", voc_value_callback, _FIELD_WARN_VOC, (0, 1, 0)))
+    notify_service.register(NotificationSignal("WarnHum", hum_value_callback, _FIELD_WARN_HUM, (0, 0, 1)))
+    notify_service.finalize()
+    conn.set_ext_led(pixel)
+    _mem("after pixel+notify_service")
+
+    app = Microdot()
+    _mem("after Microdot()")
+    webserver = WebserverService(
+        app,
+        sensors=(scd_reader, bmp_reader, sgp_reader),
+        settings={
+            "networking": [
+                SettingsGroup(conn, ("SSID", "PW", "Country", "Hostname"), post_fct=conn.reconnect_wifi),
+                SettingsGroup(conn, ("LedWifiOn",)),
+                SettingsGroup(ntp, ("NTP_Host", "NTP_Offset_S", "NTP_Interv_H"), post_asy_fct=ntp.ntp_force_sync),
+            ],
+            "system": [
+                SettingsGroup(sysfunct, ("DebugLevel", "TaskCheckSecs")),
+                SettingsGroup(ntp, ("GMTOffset", "DSTOffset")),
+            ],
+            "notification": [
+                SettingsGroup(notify_service, cm.schema_names(notify_service.get_cfg_schema())),
+            ],
+        },
+        system_cmd=_system_cmd_callback,
+        notification_led=_notification_led_callback,
+        notification_pause=_notification_pause_callback,
+        status_sources={
+            "networking": _networking_status,
+            "system": _system_status,
+            "notification": _notification_status,
+        },
+        maintenance_sensors=(("SGP40", _sgp_maintenance_status),),
+        error_sources=_collect_error_sources(),
+        debug=debug,
+        host=web_host,
+        port=web_port,
+    )
+    _mem("after WebserverService()")
+
+    sysfunct.set_level_setters(_collect_level_setters())
+
+    await sysfunct.setup()
+    await fram.setup()
+    await conn.setup()
+    await ntp.setup()
+    await sgp_reader.setup()
+    await bmp_reader.setup()
+    await notify_service.setup()
+    _mem("after setup() batch")
+
+
+def _collect_task_starters():
+    return (
+        scd_reader.get_task_starters() + bmp_reader.get_task_starters() + sgp_reader.get_task_starters()
+        + pixel.get_task_starters() + notify_service.get_task_starters() + sysfunct.get_task_starters()
+        + conn.get_task_starters() + ntp.get_task_starters() + webserver.get_task_starters()
+    )
+
+
+def _collect_timer_starters():
+    return (
+        scd_reader.get_timer_starters() + bmp_reader.get_timer_starters() + sgp_reader.get_timer_starters()
+        + pixel.get_timer_starters() + notify_service.get_timer_starters() + sysfunct.get_timer_starters()
+        + conn.get_timer_starters() + ntp.get_timer_starters() + webserver.get_timer_starters()
+    )
+
+
+async def main(*, cfg_path="", debug=None, web_host="0.0.0.0", web_port=80):
+    await build_system(cfg_path=cfg_path, debug=debug, web_host=web_host, web_port=web_port)
+
+    task_starters = _collect_task_starters()
+    timer_starters = _collect_timer_starters()
+    print("MEM task/timer starters collected: %d tasks, %d timers" % (len(task_starters), len(timer_starters)))
+
+    # Real sysfunct.start_timers() now - the _timer_sequencer() Timer-GC bug is fixed (frozen into
+    # this firmware), no manual bypass loop needed anymore.
+    await sysfunct.start_timers(timer_starters)
+    _mem("after start_timers()")
+
+    try:
+        await asyncio.wait_for(ntp.ntp_force_sync(), 20)
+    except asyncio.TimeoutError:
+        print("NTP force-sync did not complete within 20s - continuing anyway")
+    _mem("after ntp_force_sync()")
+
+    await sysfunct.start_and_check_tasks(task_starters)  # never returns under normal operation
+
+
+asyncio.run(main(cfg_path=""))
+```
+
 If `picotool` reports a version mismatch (`Requires version X, you have version Y`), a stale
 system-wide install is shadowing the toolchain's own rebuilt copy — rerun `uv run
 toolchain/setup_toolchain.py` (its `setup` subcommand) to rebuild and reinstall it properly rather
@@ -245,14 +584,54 @@ RP2040 the intended way — through the real production code path (`PUT /network
 for bench testing, not real device flash — see "Testing real hardware from a session" above), not
 a bypass script, so the test actually exercises `asy_wifi_service.py`'s own connect state machine.
 
-## Current bench state (as of 2026-08-28)
+## Current bench state (as of 2026-09-02 — supersedes 2026-08-28 where they conflict)
 
-Facts a future session should know before assuming anything about what's currently on this board:
+Facts a future session should know before assuming anything about what's currently on this board.
+The 2026-08-28 facts below (FRAM chunk layout, SCD30 NVM temperature offset) are about the
+external FRAM/SCD30 chips specifically — unaffected by an RP2040-internal-flash erase — and stay
+believed-true; the flash-filesystem/firmware facts from that date are superseded by this section.
 
-- Onboard flash filesystem (VFS) is **empty** — no autostart script, no config files (frozen
-  modules live in flash/XIP, not the VFS — see the top of this file). Currently flashed with the
-  custom frozen firmware above, not stock MicroPython; nothing auto-starts, so the board sits at
-  the REPL until a script is explicitly mounted and run.
+- **A stray `/main.py` was found on the device's own flash filesystem and deleted (2026-09-02,
+  full `picotool erase -a` + owner sign-off).** It was byte-for-byte the entry script now embedded
+  in full above — apparently it had been `cp`'d onto the device's real VFS at some point rather
+  than only ever used via `mpremote mount` as this doc's own recipe describes, and this caused real
+  confusion: MicroPython's rp2 `main.c` runs a frozen `_boot.py` first, then falls back to a
+  **filesystem** `boot.py`/`main.py` if the frozen path returns instead of blocking forever — so a
+  session's attempt to test a "no-autostart" frozen `_boot.py` variant kept auto-starting anyway,
+  from this stale file, with nothing to indicate why. **Standing lesson for this bench going
+  forward**: never `cp` this entry script (or any equivalent) onto the device's real VFS — mount it
+  per this doc's own recipe every time, precisely so stale copies like this can't accumulate again.
+  A quick `os.listdir('/')` (via `exec()`, one-shot — see `tests_hardware/README.md`'s
+  liveness-polling finding for why this is fine as a one-shot check but never a polling one) is a
+  cheap way to confirm the VFS is actually empty before trusting "nothing auto-starts" again.
+- **Onboard flash filesystem (VFS) is empty again** after the full erase above — no autostart
+  script, no config files. Currently flashed with a freshly-rebuilt copy of the "bench-only frozen
+  firmware" recipe above (`build/firmware-dev-bench.uf2`, not committed — rebuild from the recipe
+  above, it's fully reproducible); the entry script is running **mounted**, not flashed, per the
+  recipe's own intent this time. This is a scratch/debug state, not a final one — no watchdog is
+  armed (see the entry script's own `watchdog = None`, unchanged from this doc's existing
+  convention) and WiFi has no saved credentials (falls back to hotspot mode, SSID `SensorNode`).
+- **Real finding: `scripts/build_firmware.py`'s custom `_boot.py`→`boot_entry/wozi_boot.py`
+  autostart chain reproduces a real I2C failure that this doc's own mounted-entry-script recipe
+  does not, with byte-identical wiring/timing values.** Discovered while root-causing what turned
+  out to be an unrelated bug first (`scripts/build_firmware.py` was missing this bench's own pin
+  wiring entirely — it only ever encoded `wozi`'s production pins, since no per-variant
+  `sensortask-*.py` exists yet, see `BACKLOG.md`'s "per-variant generator" item). After patching a
+  scratch copy of `src/sensortask_wozi.py` with this doc's exact wiring table values (verified
+  correct independently via direct `machine.I2C.scan()` + chip-ID/address readback: BMP390
+  chip_id=0x50 at i2c0/0x77, SGP40 at i2c1/0x59, SCD30 at i2c1/0x61) and flashing it through
+  `scripts/build_firmware.py`'s own autostart chain, BMP3xx came up completely clean but
+  SCD30+SGP40 (sharing i2c1) still failed with real `errno=11` ("Read failed") under the full
+  18-task system — despite both sensors working perfectly when driven manually and concurrently at
+  the REPL in isolation (no other tasks running). Re-running the *exact* mounted-entry-script
+  recipe from this doc, with the identical wiring, resolved it completely (100+s stable, zero
+  errors, hotspot broadcasting correctly). **Not yet root-caused**: what specifically differs
+  between "frozen `_boot.py` immediately importing and blocking in `main()`" and "stock `_boot.py`
+  mounts the filesystem only, then `mpremote run` explicitly loads and starts the entry script"
+  that would affect I2C reliability on the *shared* i2c1 bus specifically (i2c0/BMP3xx was clean in
+  both). Tracked as `BACKLOG.md`'s open questions list, item 8, for whoever next needs
+  `scripts/build_firmware.py`'s own autostart chain to work against this bench's real wiring rather
+  than just the mounted-script workaround.
 - **FRAM's first ~720 bytes hold real, structured data again** — 7 chunks, in `sensortask_dev`'s
   own `build_system()` construction order (sysfunct's error log, sgp_reader's error log + VOC-backup
   chunk, bmp_reader's, scd_reader's, pixel's, notify_service's — see CLAUDE.md's FRAM chunk

@@ -50,25 +50,68 @@ Manual tests and the flash-cycle re-provisioning test are out of scope.
 - A transient I2C/SPI hiccup (all sensors + FRAM briefly unresponsive right after a reflash,
   triggering a WDT boot-loop) self-resolved on a later flash and was never reproduced again — not
   chased further, no permanent fact to record.
+- **Selectively pulled in a concurrent session's fixes without its documentation.** A parallel
+  session pushed three commits: two pure code/CI fixes (a `tests_scripts/test_build_firmware.py`
+  call-site fix; a real `scripts/build_firmware.py` bug where wiping `mpy-cross/build/` without
+  rebuilding it broke `firmware-build-verify` in CI) — both cherry-picked in directly — and one
+  investigation finding (the digital-twin integration test proves `src/`'s `is_hotspot_active()`/
+  `_serve_static()` logic is correct end-to-end, narrowing the captive-portal 404 to two candidates)
+  that only added its findings to a pre-consolidation, now-superseded version of this file. That one
+  was *not* cherry-picked as a commit — its substance was folded directly into `BACKLOG.md`'s open
+  questions list, item 7, instead, to avoid reintroducing the bloat this file was just cleaned of.
+- **A follow-up debugging session found and resolved the real cause of the earlier "boot loop"
+  boot loop** (the one namedropped two bullets up as "self-resolved... never reproduced again") —
+  it *did* recur, reproducibly, and got fully root-caused this time. Full account:
+  `dev_legacy/README.md`'s "Current bench state" (2026-09-02) and `BACKLOG.md`'s open questions list,
+  item 8. Short version: a stale, undocumented `/main.py` was found on the device's real flash
+  filesystem (deleted, along with a full `picotool erase -a` at the project owner's explicit
+  direction); `scripts/build_firmware.py` was then found to have zero awareness of this dev bench's
+  own real pin wiring (it only ever encodes `wozi`'s production pins); once patched with this
+  bench's own confirmed-correct wiring (verified directly via `machine.I2C.scan()` + chip-ID
+  readback, matching `dev_legacy/README.md`'s existing wiring table exactly) it still reproducibly
+  failed under `scripts/build_firmware.py`'s own autostart chain specifically (SCD30/SGP40 sharing
+  i2c1 fail under the full 18-task system, though they work perfectly alone) — while the *identical*
+  wiring via `dev_legacy/README.md`'s own documented mounted-entry-script recipe ran the full system
+  cleanly for 100+s, zero errors. That discrepancy (frozen autostart chain vs. mounted-entry-script)
+  is the one thing left unresolved — tracked as `BACKLOG.md` item 8.
+
+## Current physical board state (as of 2026-09-02, end of this session)
+
+**Not a resting/idle state — read before touching the board.** The device is currently running
+`build/firmware-dev-bench.uf2` (a scratch build from `dev_legacy/README.md`'s own recipe, not
+committed — trivially rebuildable from that doc), with the dev-bench entry script (embedded in full
+in `dev_legacy/README.md`) running **mounted** via `mpremote run` (per that doc's own intent), not
+flashed. No watchdog is armed. WiFi has no saved credentials (fresh erase) and is running its own
+hotspot, SSID `SensorNode`. This is exactly the state that proved `BACKLOG.md` item 8's fix works —
+left running rather than torn down, so the next session can inspect it live if useful, but it is a
+debug/scratch state, not anything to build on directly. Re-flash real `wozi` production firmware
+(`uv run scripts/build_firmware.py wozi` + the normal flash procedure) before resuming any bench-tier
+`pytest` work that expects the real production system.
 
 ## Open, not yet resolved
 
+- **`scripts/build_firmware.py`'s autostart chain vs. the mounted-entry-script recipe — see above
+  and `BACKLOG.md` item 8.** This is now the top priority for whoever wants
+  `scripts/build_firmware.py` usable for real dev-bench testing again (the mounted-script recipe is
+  a full functional workaround in the meantime, just not what a real deployable image needs).
 - **Captive-portal redirect returns 404 instead of the expected 302 in real hotspot mode** — full
   detail, investigation candidates, and the diagnostic pitfall already hit once (don't use
   `mpremote exec()` to inspect live state) are now the durable record at **BACKLOG.md's open
-  questions list, item 7** and `tests_hardware/README.md`'s corresponding entry. This is the current
-  first priority for whoever picks this up next — check those two places for the latest state
-  before starting, since another session may be investigating it concurrently.
+  questions list, item 7** and `tests_hardware/README.md`'s corresponding entry. Still open; not
+  touched further this session.
 
 ## Next session should start here
 
-1. Check BACKLOG.md item 7 / `tests_hardware/README.md`'s captive-portal entry for whether the
-   404-vs-302 question above has already been resolved by a concurrent session before re-starting
-   that investigation.
-2. Re-run the full bench suite (`scripts/run_bench_hardware_suite.sh -v -k "not
+1. Decide which is the priority: `BACKLOG.md` item 8 (`scripts/build_firmware.py`'s autostart-chain
+   discrepancy) or item 7 (captive-portal 404) — both are real, both are open, neither blocks the
+   other. Check both entries for whether either has been resolved by a concurrent session first.
+2. Before any bench-tier `pytest` work: re-flash real `wozi` production firmware (see "Current
+   physical board state" above — the board is currently running dev-bench scratch firmware, not
+   production).
+3. Re-run the full bench suite (`scripts/run_bench_hardware_suite.sh -v -k "not
    hotspot_role_reversal"`) — the bench tier is not yet closed out with a clean run since the WiFi
    fixes landed.
-3. Remaining work, in order:
+4. Remaining work, in order:
    - Hotspot role-reversal (`bench/test_hotspot_role_reversal.py`), run alone and watched closely
      per `REAL_HARDWARE_HANDOFF.md`'s suggested order — highest-risk file in this tier (can strand
      the board in `_PHASE_DEACTIVATED` until a real `hard_reset()`, though `joined_hotspot`'s own
@@ -83,5 +126,5 @@ Manual tests and the flash-cycle re-provisioning test are out of scope.
    - Wrap-up: update `tests_hardware/README.md`/`REAL_HARDWARE_HANDOFF.md`'s status once a
      genuinely clean pass exists, but don't unilaterally delete/migrate the temporary planning docs
      without the project owner's sign-off.
-4. All fixes so far are committed and pushed to `claude/digital-twin-oserror-7y00lb`. No PR opened
+5. All fixes so far are committed and pushed to `claude/digital-twin-oserror-7y00lb`. No PR opened
    yet — better to open one once the bench tier is genuinely closed out with a clean run.

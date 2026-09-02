@@ -188,6 +188,32 @@ constraints.
    its default `enter_raw_repl()` soft-resets the board, wiping the very live state being observed
    (see `tests_hardware/README.md`'s liveness-polling finding). Use a passive method instead (a
    second REST/network-level check, or a code-level trace).
+8. **`scripts/build_firmware.py`'s frozen `_boot.py`→`boot_entry/wozi_boot.py` autostart chain
+   reproduces a real I2C failure on the dev bench that an otherwise-identical mounted-entry-script
+   build does not.** Full account: `dev_legacy/README.md`'s "Current bench state" (2026-09-02).
+   Short version: with byte-identical wiring/timing values (this bench's real pins, confirmed via
+   direct `machine.I2C.scan()` + chip-ID/address readback — BMP390 alone on i2c0, SCD30+SGP40
+   sharing i2c1, SCD30 IRQ=GPIO11), a scratch build flashed through `scripts/build_firmware.py`'s
+   own autostart chain gets BMP3xx completely clean but SCD30/SGP40 (the two sharing i2c1) fail
+   with real `errno=11` ("Read failed") once the full 18-task system is running — even though both
+   sensors work perfectly when driven manually/concurrently at the REPL with nothing else running,
+   and even though the *exact* same wiring via `dev_legacy/README.md`'s own mounted-entry-script
+   recipe (stock board manifest, entry script run via `mpremote run` rather than frozen into
+   `_boot.py`) runs the identical full system completely cleanly (100+s, zero errors). **Not
+   root-caused**: what specifically differs between "frozen `_boot.py` immediately importing and
+   blocking in `main()`" and "stock `_boot.py` mounts the filesystem only, then `mpremote run`
+   explicitly loads and starts the entry script" that would affect I2C reliability on the *shared*
+   i2c1 bus specifically (i2c0/BMP3xx was clean under both). Candidates not yet checked: GC
+   heap/fragmentation differences between frozen vs. mounted orchestration code; whether the
+   task-start stagger (`await asyncio.sleep(1.0 / len(task_starters))` in
+   `sensortask_wozi.py`/the entry script) ends up timed differently; whether
+   `boot_entry/wozi_boot.py`'s own `finally: asyncio.new_event_loop()` matters here. This blocks
+   `scripts/build_firmware.py` from being usable for real dev-bench testing until resolved — the
+   mounted-entry-script recipe is the accepted workaround in the meantime. Also note:
+   `scripts/build_firmware.py` itself has no dev-bench-pin awareness at all (it only ever encodes
+   `wozi`'s production pins, via the single existing `src/sensortask_wozi.py` — see the "per-variant
+   `sensortask-*.py` generator" item above); reproducing this bug again needs the same kind of
+   scratch source patch this investigation used, not a plain `--device dev` build.
 
 ## Deferred / explicitly out-of-scope work
 
