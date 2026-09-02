@@ -426,50 +426,39 @@ def test_garbage_ssid_via_rest_config_is_handled_gracefully(board: Board, bench:
             bench.leave_dut_hotspot_and_restore_bridge()
         bench.kick_all_stations()
 
-    # REAL FINDING #4, ROOT-CAUSED (not a src/ bug - the already-accepted CYW43 characteristic this
-    # session's own WIFI_RECONNECT_INVESTIGATION.md already documents, just triggered here by this
-    # test's own unusually heavy WiFi mode-switching): the reconnect-over-bridge step following the
-    # hotspot-fallback branch above was repeatedly observed taking several minutes (or, once, not at
-    # all within a 480s budget), while two separate isolated repros of the same "reconnect after a
-    # real STAT_NO_AP_FOUND failure history + an AP-mode round-trip" scenario - one driving raw
-    # `network` calls directly, one driving the real src/asy_wifi_service.py AsyConnTime class's own
-    # task loop directly (see tests_hardware/device_scripts/wifi_reconnect_after_failed_attempts_
-    # repro.py and wifi_service_reconnect_repro.py) - both reconnected in ~3-20s every time, showing
-    # no degradation at all. The DUT-side reconnect logic itself is therefore not the cause.
-    #
-    # Root cause, confirmed directly on this bench during one of the slow episodes: `iw dev wlan0
-    # station dump` (the bench AP's own real 802.11 station table) showed ZERO associated
-    # stations, while the DUT's own serial log showed no disconnect, no WLAN error, and normal
-    # continued operation - it believed itself connected. This is exactly the already-documented
-    # "wlan.isconnected() can stay True while the real link is down" CYW43/lwIP characteristic
-    # (WIFI_RECONNECT_INVESTIGATION.md's own upstream citations), silently defeating
-    # _on_sta_disconnected()'s retry logic entirely - the DUT has no way to detect this and would
-    # never retry on its own. Confirmed the fix: a real hard_reset() (power-cycles the CYW43 chip
-    # via WL_REG_ON) reliably cleared it and reconnected within single-digit seconds every time it
-    # was tried. This session's own testing put this bench's WiFi radio through an unusually large
-    # number of mode switches (dozens of AP/STA/hotspot transitions across many repeated test runs
-    # and diagnostics), making the underlying condition more likely to surface here than in normal
-    # operation - not a sign it's specific to this test's own logic.
-    #
-    # Fix: a bounded plain wait first (covers the fast, common case), then kick_all_stations() +
-    # hard_reset() retries (the same "hardware watchdog is the accepted backstop"-style recovery
-    # already used throughout this tier) - multiple attempts, since the underlying condition was
-    # occasionally seen to recur immediately after a single hard_reset().
+    # REAL FINDING #4 - a genuine test bug, not a hardware issue (the whole "several-minutes-to-
+    # never reconnects" saga chased at length before finding this): `GET /networking` returns ONLY
+    # the WiFi settings-group's own fields (SSID/PW/Country/Hostname/NTP_Host/...) -
+    # asy_webserver_service.py's own _get_networking() = _get_settings_flat("networking") iterates
+    # self._settings[...] (SettingsGroup registrations) only, never the status_sources dict. "Mode"
+    # is exclusively a field of `GET /status`'s nested "networking" object
+    # (sensortask_wozi.py's _networking_status()), confirmed directly by querying both endpoints on
+    # real hardware. An earlier version of this check called
+    # `http_client.fetch(dut_ip, 80, "GET", "/networking", ...).json().get("Mode")` - a field that
+    # endpoint never has - so it was unconditionally `None`, and `None == "STA"` is always False:
+    # this check could never pass, regardless of how long the DUT had actually been reconnected or
+    # how large a timeout was given (up to 900s tried). The DUT itself was reconnecting normally the
+    # entire time - confirmed directly, repeatedly: `iw dev wlan0 station dump` and a real HTTP
+    # `GET /status` both showed a long-stable, fully healthy connection immediately after this test's
+    # own check had already given up and raised TimeoutError. Multiple earlier (wrong) theories
+    # chased at length before finding this - a CYW43 "phantom disconnect" state, accumulated bench/
+    # NetworkManager state, dut_ip fixture churn carryover - are real, separately-confirmed
+    # mechanisms in general (see WIFI_RECONNECT_INVESTIGATION.md), but were not what was actually
+    # happening in this specific test; none of the "fixes" tried for them (multiple hard_reset()
+    # retries, a settle delay, a full physical power-cycle of both this Pi4 and the DUT) had any
+    # effect, which in hindsight makes sense since the check itself could never have passed regardless.
     def _reconnected_over_bridge() -> bool:
-        return http_client.fetch(dut_ip, 80, "GET", "/networking", timeout_s=10.0).json().get("Mode") == "STA" and http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200
+        return http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).json()["networking"].get("Mode") == "STA"
 
     try:
         wait_until(_reconnected_over_bridge, timeout_s=60.0, poll_interval_s=3.0, description=f"Mode to return to 'STA' after restoring the real SSID ({original_ssid!r})")
     except TimeoutError:
-        for attempt in range(4):
-            bench.kick_all_stations()
-            board.hard_reset()
-            try:
-                wait_until(_reconnected_over_bridge, timeout_s=90.0, poll_interval_s=3.0, description=f"Mode to return to 'STA' after a hard_reset() recovery attempt {attempt + 1}/4")
-                break
-            except TimeoutError:
-                if attempt == 3:
-                    raise
+        # Genuine fallback, matching this tier's established "a recovery path counts as a pass"
+        # convention - not expected to trigger now that the check above is actually correct, but a
+        # real reconnect could still, in principle, occasionally need a nudge.
+        bench.kick_all_stations()
+        board.hard_reset()
+        wait_until(_reconnected_over_bridge, timeout_s=60.0, poll_interval_s=3.0, description="Mode to return to 'STA' after a hard_reset() recovery attempt")
     reset_all_error_logs(dut_ip)  # the fallback path above can log its own transient WIFI history (e.g. one more STAT_NO_AP_FOUND while still mid-fallback) that isn't this test's own concern
 
 
