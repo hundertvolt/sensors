@@ -6,7 +6,7 @@ import asyncio
 # Vendored ext/microdot.py isn't on this project's mypy search path (mypy_path=["typings","src"]) -
 # real device firmware freezes ext/ and src/ flat together, so this resolves fine at runtime; see
 # CLAUDE.md's vendoring hard rule.
-from microdot import Request, abort, send_file  # type: ignore[import-not-found]
+from microdot import Request, abort, redirect, send_file  # type: ignore[import-not-found]
 from micropython import const
 
 import api_response as ar
@@ -48,6 +48,7 @@ if TYPE_CHECKING:
     SystemCmdFct = Callable[[str], Coroutine[Any, Any, bool]]
     NotificationLedFct = Callable[[dict[str, Any]], Coroutine[Any, Any, bool]]
     NotificationPauseFct = Callable[[int], Coroutine[Any, Any, bool]]
+    HotspotActiveFct = Callable[[], bool]
 
 _NAME = const("WEBSERVER")
 _SYSTEM_CMDS = ("reboot", "bootloader", "mempause")  # the only enum values ever forwarded to
@@ -217,6 +218,10 @@ class WebserverService:
         # freezefs mount point of an already-`import`ed frozen static-content module. None (default)
         # registers no static routes at all - every existing route/registration above is unaffected.
         static_index: str = "index.html",  # served for both "/" and "/<static_index>" verbatim.
+        is_hotspot_active: "HotspotActiveFct | None" = None,  # e.g. AsyConnTime.is_hotspot_active
+        # (see SPECIFICATION.md Part A.5) - only consulted by _serve_static()'s own
+        # unmatched-path fallback, and only when static_mount is not None. None (default) reproduces
+        # today's plain-404 fallback exactly - every existing call site omits this and is unaffected.
     ) -> None:
         self.pr: PrintLogHistory = make_logger(fram, history_length, debug, _NAME)
         self._app = app
@@ -236,6 +241,7 @@ class WebserverService:
         self._open_conns = LockedCounter(init_value=0, max_val=0xFFFFFFFF)
         self._static_mount = static_mount
         self._static_index = static_index
+        self._is_hotspot_active = is_hotspot_active
 
         Request.max_content_length = max_content_length  # a Request *class* attribute, not
         # per-app-instance (ext/microdot.py's own module docstring example) - see
@@ -519,6 +525,15 @@ class WebserverService:
             return send_file(self._static_mount + "/" + filename, compressed=True, file_extension=".gz")
         except OSError:  # no such file in the mounted filesystem (freezefs's VfsFrozen.open()
             # raises OSError(ENOENT), matching a real missing-file open() everywhere else)
+            if self._is_hotspot_active is not None and self._is_hotspot_active():
+                # Captive-portal OS probes (generate_204, hotspot-detect.html, connecttest.txt, ...)
+                # hit exactly this branch while the device is its own hotspot - redirecting them back
+                # to "/" (rather than a plain 404) is what makes phones' automatic "Sign in to
+                # network" popup trigger (see SPECIFICATION.md Part A.5). No
+                # try/except needed here: any exception from is_hotspot_active() is already safely
+                # caught and shaped by Microdot's own blanket app.errorhandler(Exception) (see
+                # SPECIFICATION.md Part A.5) like every other route-handler exception.
+                return redirect("/")
             abort(404)
 
     # -- error handling ----------------------------------------------------------------------------

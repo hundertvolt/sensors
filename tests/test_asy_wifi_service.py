@@ -1049,6 +1049,55 @@ def test_network_available_false_on_a_status_exception() -> None:
 
 
 # ---------------------------------------------------------------------------
+# is_hotspot_active() - lock-free getter for asy_webserver_service.py's captive-portal redirect
+# fallback (see SPECIFICATION.md Part A.5). All four _conn_phase values are exercised
+# deliberately, not just the True case and one False case - a regression narrowed to, say,
+# _PHASE_DEACTIVATED alone would slip past a two-case test.
+# ---------------------------------------------------------------------------
+
+
+def test_is_hotspot_active_true_in_hotspot_phase() -> None:
+    client = make_client()
+    client._conn_phase = _PHASE_HOTSPOT
+    assert client.is_hotspot_active() is True
+
+
+def test_is_hotspot_active_false_in_sta_seeking_phase() -> None:
+    client = make_client()
+    client._conn_phase = _PHASE_STA_SEEKING
+    assert client.is_hotspot_active() is False
+
+
+def test_is_hotspot_active_false_in_sta_established_phase() -> None:
+    client = make_client()
+    client._conn_phase = _PHASE_STA_ESTABLISHED
+    assert client.is_hotspot_active() is False
+
+
+def test_is_hotspot_active_false_in_deactivated_phase() -> None:
+    client = make_client()
+    client._conn_phase = _PHASE_DEACTIVATED
+    assert client.is_hotspot_active() is False
+
+
+def test_is_hotspot_active_dynamic_mode_switch_reflects_live_state_not_cached() -> None:
+    # Dynamic-mode-switch coverage: a plain int-compare getter with no internal caching must track
+    # _conn_phase live, on the SAME client instance, across repeated calls - not just once per phase
+    # on a fresh instance (every other test above uses a fresh make_client() per phase, which alone
+    # wouldn't catch an accidental memoization bug).
+    client = make_client()
+    for phase, expected in (
+        (_PHASE_STA_SEEKING, False),
+        (_PHASE_HOTSPOT, True),
+        (_PHASE_STA_ESTABLISHED, False),
+        (_PHASE_HOTSPOT, True),
+        (_PHASE_DEACTIVATED, False),
+    ):
+        client._conn_phase = phase
+        assert client.is_hotspot_active() is expected, f"phase {phase} -> expected {expected}"
+
+
+# ---------------------------------------------------------------------------
 # get_wlan_rssi() / wlan_isconnected() / reconnect_wifi() - previously untested public accessors
 # ---------------------------------------------------------------------------
 

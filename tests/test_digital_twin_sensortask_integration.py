@@ -3,13 +3,27 @@
 import asyncio
 import gc
 import os
+import select
+import socket
 import sys
+import time
 
 sys.path.insert(0, "ext")  # same convention as test_sensortask_wozi.py's own comment - reaches the
 # real, vendored ext/microdot.py that sensortask_wozi.py transitively imports.
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
 
 import _http_client  # noqa: E402
+from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port  # noqa: E402
+
+# Must run before anything constructs a real AsyUDPSocket (captive_dns.py's DNSServer, built inside
+# AsyConnTime.__init__ during sensortask_wozi.build_system() below): this MicroPython Unix-port
+# build's socket.bind()/connect()/sendto() reject a plain (host, port) tuple - the same quirk
+# tests/test_asy_udp_socket.py's own make_addr() documents - and AsyUDPSocket's own plain-tuple
+# addr is correct, untouched production code for the real rp2 target, so the workaround belongs
+# here, twin-side, not in src/. Same convention digital_twin/run_wozi_integration.py's own main()
+# uses. Only this file's own hotspot/DNS section below (real UDP round trip) actually needs this;
+# every other test in this file is unaffected by the patch being applied unconditionally.
+patch_asy_udp_socket_for_unix_port()
 
 # digital_twin's own fake machine module - configure_fram_state_path()/flush_fram(), used only by
 # this file's own reboot-survival section below.
@@ -114,6 +128,62 @@ async def _cancel(task: "asyncio.Task[Any]") -> None:
         await task
     except asyncio.CancelledError:
         pass
+
+
+def _make_dns_query(labels: "list[str]", query_id: bytes = b"\x12\x34") -> bytes:
+    # Mirrors tests/test_captive_dns.py's own make_query(): a minimal, well-formed standard-query
+    # datagram DNSQuery.__init__ accepts (RFC 1035 section 4.1.1/4.1.2).
+    question = b"".join(bytes([len(label)]) + label.encode("ascii") for label in labels)
+    question += b"\x00\x00\x01\x00\x01"
+    header = query_id + b"\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00"
+    return header + question
+
+
+async def _query_dns_and_get_answer_ip(query: bytes, timeout_s: float = 5.0) -> str:
+    # Genuine end-to-end DNS round trip against the real conn.dns_server_task's real AsyUDPSocket
+    # (bound at ("0.0.0.0", 53) - captive_dns.py's own DNSServer.__init__, unchanged by this
+    # feature). Uses tests/test_asy_udp_socket.py's own AdversarialPeer.recv() polling shape (a
+    # real, independent socket.socket(), non-blocking + select.poll() + a bounded ticks_ms() loop,
+    # cooperatively yielding via asyncio.sleep_ms() so the server task's own recvfrom()/sendto()
+    # actually get scheduled) rather than a plain socket.recv(), since this MicroPython Unix-port
+    # build's socket module is not guaranteed to support settimeout() the way CPython's does.
+    peer = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    peer.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    peer.setblocking(False)
+    data: bytes = b""
+    try:
+        # This MicroPython Unix-port build's sendto() rejects a plain (host, port) tuple - the
+        # resolved getaddrinfo() address object is required instead (same quirk
+        # tests/test_asy_udp_socket.py's own make_addr()/resolve_addr() document and work around).
+        addr = socket.getaddrinfo("127.0.0.1", 53)[0][-1]
+        peer.sendto(query, addr)
+        poller = select.poll()
+        poller.register(peer, select.POLLIN)
+        t0 = time.ticks_ms()
+        ready = False
+        while True:
+            # Check the actual per-fd event flags, not just ipoll()'s truthiness: a returned entry
+            # can carry POLLERR/POLLHUP with no POLLIN set (src/asy_udp_socket.py's own real
+            # ready() does the same `event & mask` check for exactly this reason) - confirmed
+            # directly that treating any non-empty ipoll() result as "data is ready" here raised
+            # OSError(EAGAIN) from the following recv/recvfrom call.
+            for _, event in poller.ipoll(0):
+                if event & select.POLLIN:
+                    ready = True
+            if ready:
+                # recvfrom(), not recv(): the same choice tests/test_asy_udp_socket.py's own
+                # AdversarialPeer.recv() makes for this unconnected socket.
+                data, _ = peer.recvfrom(512)
+                break
+            if time.ticks_diff(time.ticks_ms(), t0) > int(timeout_s * 1000):
+                raise OSError("DNS query timed out waiting for a reply from the real DNSServer")
+            await asyncio.sleep_ms(5)
+    finally:
+        peer.close()
+    # DNSQuery.response()'s own fixed layout (tests/test_captive_dns.py's own
+    # test_response_builds_expected_packet_for_valid_domain confirms this byte-for-byte): the
+    # answer's 4 raw IPv4 bytes are always the last 4 bytes of the packet, regardless of query shape.
+    return ".".join(str(b) for b in data[-4:])
 
 
 async def _wait_until(predicate: "Callable[[], bool]", timeout_s: float, interval_s: float = 0.25) -> bool:
@@ -547,6 +617,10 @@ def test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_a
         pixel_task = pixel.start_asy_neopixel_led_overl()  # the one real pixel task that turns
         # conn's own on()/off()/toggle() LED calls into real committed NeoPixel frames.
         wifi_task = conn.start_asy_wlan_connect()
+        webserver_task = await _start_webserver()  # real WebserverService(..., is_hotspot_active=
+        # conn.is_hotspot_active) wiring (sensortask_wozi.py's own build_system()) - free coverage
+        # once this test already drives conn into real hotspot mode below (see SPECIFICATION.md
+        # Part A.5): no twin-side network.py simulation change needed.
         try:
             await asyncio.sleep(0.2)  # let wlan_connect()'s own synchronous prefix
             # (_reset_wlan_connect_state(), which unconditionally zeroes connection_failures) run
@@ -569,13 +643,36 @@ def test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_a
             # _led_off()), landing as real committed frames on the real (twin) NeoPixel.
             assert conn.led is pixel
             assert len(pixel.pixel.writes) > 0, "the real status LED never actually wrote a frame"
+            assert conn.is_hotspot_active() is True
+            # Networking level, combined: a genuine DNS query against the real, already-running
+            # conn.dns_server_task (bound to real port 53 - captive_dns.py's DNSServer.__init__,
+            # unchanged by this feature) resolves to the AP's own IP, exactly like a real captive
+            # portal's DNS spoofing (src/captive_dns.py, untouched by this PR). Read live from
+            # conn.wlan.ifconfig() rather than hardcoded: digital_twin/network.py's fake WLAN never
+            # updates its ifconfig() on AP activation (confirmed by reading it directly - active()
+            # only flips a bool, config() only logs its kwargs), so this currently resolves to
+            # "0.0.0.0" rather than a realistic AP address - a twin-fidelity gap worth knowing about,
+            # not a real product bug (real hardware's cyw43 driver does return the real configured AP
+            # IP here) and not something this PR's own scope touches.
+            answer_ip = await _query_dns_and_get_answer_ip(_make_dns_query(["captive", "example"]))
+            assert answer_ip == conn.wlan.ifconfig()[0]
+            # Real end-to-end captive-portal redirect: a real HTTP request, through the real
+            # webserver, consulting the real conn.is_hotspot_active() now that hotspot mode is
+            # genuinely active - not a unit-level fake callback like test_asy_webserver_service.py's
+            # own Section G.2 coverage. Combined with the real DNS query above, this proves the full
+            # captive-portal networking mechanism (DNS spoof + HTTP redirect) end-to-end in one real,
+            # organically-triggered hotspot scenario.
+            res = await _http_client.fetch("127.0.0.1", port, "GET", "/generate_204")
+            assert res.status_code == 302
+            assert res.headers["Location"] == "/"
         finally:
             await _cancel(wifi_task)
             await _cancel(pixel_task)
+            await _cancel(webserver_task)
             if conn.dns_server_task is not None:
                 await _cancel(conn.dns_server_task)
             gc.collect()  # see the task-supervisor-restart section's own comment above - this test
-            # starts several real background tasks (wifi, pixel, hotspot DNS) too.
+            # starts several real background tasks (wifi, pixel, hotspot DNS, webserver) too.
 
     run_timed(scenario(), timeout_s=35.0)
 

@@ -477,6 +477,20 @@ versus what our own REST layer still has to add.
   (`@app.errorhandler(SomeException)`, matched by exact class then MRO walk). Registering
   `@app.errorhandler(HTTPException)` would never fire for an `abort()` call; the status-code form is
   required for that.
+- **Captive-portal hotspot-mode redirect fallback** (see `tests_hardware/README.md`'s "Known
+  assumptions and open findings" for the real-hardware verification status): `_serve_static()`'s
+  `except OSError` branch (no matching static file) now redirects to `/` (302) instead of a plain
+  404 whenever an optional `is_hotspot_active: Callable[[], bool] | None` constructor callback is
+  both provided and returns `True` (default `None` reproduces the old always-404 behavior exactly,
+  so every pre-existing `WebserverService(...)` call site is unaffected). `sensortask_wozi.py` wires
+  this to the real `AsyConnTime.is_hotspot_active()` (a lock-free `self._conn_phase ==
+  _PHASE_HOTSPOT` compare, no hardware touch). This is what makes phones' OS-level captive-portal
+  probes (`generate_204`, `hotspot-detect.html`, `connecttest.txt`, ...) — which all hit this exact
+  fallback branch, since none of them are real frozen files — trigger the automatic "Sign in to
+  network" popup instead of a silent 404, while the DNS spoofer (`captive_dns.py`) already answers
+  every domain with the AP's own IP. No bespoke try/except wraps the `is_hotspot_active()` call: any
+  exception it raises is already safely caught and shaped by the blanket
+  `app.errorhandler(Exception)` above, same as any other route-handler exception.
 - The deployed, out-of-scope `python/CommonDrivers/microdot.py` copy already implements essentially
   the same protective architecture (blanket per-request catch, exception-class + status-code error
   handlers with MRO fallback) — this safety model predates the `ext/microdot.py` v2.6.2 vendoring,
@@ -563,16 +577,19 @@ existing stored data to keep decoding correctly (the "FRAM chunk determinism rul
     sgp_reader), settings={...}, system_cmd=..., notification_led=..., notification_pause=...,
     status_sources={...},
     maintenance_sensors=(("SGP40", ...),), error_sources=_collect_error_sources(),
-    static_mount="/html", host=web_host, port=web_port)` — registers every real driver's REST
-    surface; built here because every module it registers must already exist. **No `fram=`** —
-    deliberately RAM-only: a per-call/outer-cap connection-reclaim warning (see A.8's "Connection
-    hardening" below) could churn far faster than any sensor's rare-hardware-fault log, and this
-    keeps the seven-chunk FRAM order above unchanged. `static_mount="/html"`
-    registers the generic `/`+`/<path:filename>` static-file route pair *last*, after every API
-    route, so an exact-match API route always wins over the wildcard (Microdot's `find_route()`
-    returns the first registered pattern that matches). `web_host`/`web_port` default to today's
-    production values (`"0.0.0.0"`/`80`); a Unix-port integration run overrides them to a
-    non-privileged host/port (see `digital_twin/run_wozi_integration.py`).
+    static_mount="/html", is_hotspot_active=conn.is_hotspot_active, host=web_host, port=web_port)` —
+    registers every real driver's REST surface; built here because every module it registers must
+    already exist. **No `fram=`** — deliberately RAM-only: a per-call/outer-cap connection-reclaim
+    warning (see A.8's "Connection hardening" below) could churn far faster than any sensor's
+    rare-hardware-fault log, and this keeps the seven-chunk FRAM order above unchanged.
+    `static_mount="/html"` registers the generic `/`+`/<path:filename>` static-file route pair
+    *last*, after every API route, so an exact-match API route always wins over the wildcard
+    (Microdot's `find_route()` returns the first registered pattern that matches).
+    `is_hotspot_active=conn.is_hotspot_active` wires the captive-portal redirect fallback (see A.5)
+    to `conn`'s own real state — one more bound-method argument in the same pattern `ntp`'s own
+    construction (step 3) already uses. `web_host`/`web_port` default to today's production values
+    (`"0.0.0.0"`/`80`); a Unix-port integration run overrides them to a non-privileged host/port
+    (see `digital_twin/run_wozi_integration.py`).
 15. `sysfunct.set_level_setters(_collect_level_setters())` — collects every logger's own
     `set_level()` bound method (see "Debug-level registry" below) into `sysfunct`'s registry, sync,
     after every module (including `notify_service.finalize()` and the webserver from step 14) has
