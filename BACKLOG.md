@@ -203,17 +203,46 @@ constraints.
    root-caused**: what specifically differs between "frozen `_boot.py` immediately importing and
    blocking in `main()`" and "stock `_boot.py` mounts the filesystem only, then `mpremote run`
    explicitly loads and starts the entry script" that would affect I2C reliability on the *shared*
-   i2c1 bus specifically (i2c0/BMP3xx was clean under both). Candidates not yet checked: GC
-   heap/fragmentation differences between frozen vs. mounted orchestration code; whether the
-   task-start stagger (`await asyncio.sleep(1.0 / len(task_starters))` in
-   `sensortask_wozi.py`/the entry script) ends up timed differently; whether
-   `boot_entry/wozi_boot.py`'s own `finally: asyncio.new_event_loop()` matters here. This blocks
-   `scripts/build_firmware.py` from being usable for real dev-bench testing until resolved — the
-   mounted-entry-script recipe is the accepted workaround in the meantime. Also note:
-   `scripts/build_firmware.py` itself has no dev-bench-pin awareness at all (it only ever encodes
-   `wozi`'s production pins, via the single existing `src/sensortask_wozi.py` — see the "per-variant
-   `sensortask-*.py` generator" item above); reproducing this bug again needs the same kind of
-   scratch source patch this investigation used, not a plain `--device dev` build.
+   i2c1 bus specifically (i2c0/BMP3xx was clean under both). This blocks `scripts/build_firmware.py`
+   from being usable for real dev-bench testing until resolved — the mounted-entry-script recipe is
+   the accepted workaround in the meantime. Also note: `scripts/build_firmware.py` itself has no
+   dev-bench-pin awareness at all (it only ever encodes `wozi`'s production pins, via the single
+   existing `src/sensortask_wozi.py` — see the "per-variant `sensortask-*.py` generator" item above);
+   reproducing this bug again needs the same kind of scratch source patch this investigation used,
+   not a plain `--device dev` build.
+
+   **Two of the three originally-listed candidates are now ruled out by code-level analysis alone
+   (no hardware needed — checked directly against the actual source, not reasoned about in the
+   abstract):** the task-start stagger (`await asyncio.sleep(1.0 / len(task_starters))`) lives inside
+   `system_service.py`'s own `start_and_check_tasks()` — one frozen module both the autostart chain
+   and the mounted-entry-script call identically, with an identical nine-component task-starter list
+   in both, so the interval is necessarily the same in both runs, not a candidate difference at all.
+   `boot_entry/wozi_boot.py`'s `finally: asyncio.new_event_loop()` only runs after `main()` returns or
+   raises — `start_and_check_tasks()` never returns under normal operation, so that line is never
+   reached while the system is actually up and can't explain an in-flight I2C read failure.
+
+   **A real, previously-undocumented difference found instead: the two runs were not actually
+   byte-identical applications.** The frozen chain used a scratch-patched copy of the *full*
+   `src/sensortask_wozi.py`, which does `import frozen_html` at module scope — mounting the real
+   ~85KB gzipped website into a freezefs VFS at `/html`, a one-time cost directly measured at ~9.7KB
+   of heap under the pinned Unix-port interpreter — and passes `static_mount="/html"` to
+   `WebserverService`, registering the extra static-file route. The working mounted-entry-script
+   recipe (embedded in full in `dev_legacy/README.md`) is a separate, hand-written scratch module
+   that does neither — no `frozen_html` import, no `static_mount`. So "byte-identical wiring/timing
+   values" (true for the I2C pins/addresses/clock-stretch timeout) did not mean byte-identical
+   applications: only the frozen run carries this extra one-time VFS-mount allocation and wider
+   route table, ahead of any task ever starting. This is the most promising remaining candidate —
+   plausible enough on its own to shift GC timing/fragmentation enough to matter on the *shared*
+   i2c1 bus specifically (already carries a widened `timeout=200000` clock-stretch allowance for
+   exactly this kind of GC-latency tolerance, so it's a bus already known to be marginal on timing).
+
+   **Still needs real hardware to confirm — out of reach of a cloud session with no bench access.**
+   The clean next test is a real bench A/B: add `import frozen_html` + `static_mount="/html"` to the
+   working entry script (or, equivalently, strip both from the scratch-patched `sensortask_wozi.py`
+   used for the frozen build) and see whether the `errno=11` failure follows the import rather than
+   the boot mechanism. This entry's two other candidates are now ruled out and this one is
+   identified and heap-measured, but confirming or refuting it against the real failure needs the
+   physical bench — left for whoever has hardware access next.
 
 ## Deferred / explicitly out-of-scope work
 

@@ -93,7 +93,12 @@ debug/scratch state, not anything to build on directly. Re-flash real `wozi` pro
 - **`scripts/build_firmware.py`'s autostart chain vs. the mounted-entry-script recipe — see above
   and `BACKLOG.md` item 8.** This is now the top priority for whoever wants
   `scripts/build_firmware.py` usable for real dev-bench testing again (the mounted-script recipe is
-  a full functional workaround in the meantime, just not what a real deployable image needs).
+  a full functional workaround in the meantime, just not what a real deployable image needs). A
+  follow-up cloud session (no bench access) narrowed this further by code-level analysis alone: two
+  of the three originally-listed candidates are ruled out, and a real, previously-undocumented
+  application difference between the two compared runs was found and heap-measured under the
+  Unix-port interpreter — see `BACKLOG.md` item 8 for the full account and the proposed real-bench
+  A/B test to confirm or refute it. Still open; needs the physical bench to actually resolve.
 - **Captive-portal redirect returns 404 instead of the expected 302 in real hotspot mode** — full
   detail, investigation candidates, and the diagnostic pitfall already hit once (don't use
   `mpremote exec()` to inspect live state) are now the durable record at **BACKLOG.md's open
@@ -120,9 +125,12 @@ debug/scratch state, not anything to build on directly. Re-flash real `wozi` pro
      rule) if the real-credential-handoff test's coverage is wanted.
    - A bounded soak window (`--run-long-soak --long-soak-seconds 1200 -k "not
      ticks_ms_real_2pow30_rollover"` — the rollover test can't honor a short window at all).
-   - A global regression pass (`scripts/lint.sh`, `scripts/typecheck.sh`, `scripts/test.sh`) to
+   - ~~A global regression pass (`scripts/lint.sh`, `scripts/typecheck.sh`, `scripts/test.sh`) to
      confirm none of this branch's `tests_hardware/`/`toolchain/setup_toolchain.py` changes broke
-     the existing mock/twin suite.
+     the existing mock/twin suite.~~ **Done** by the same follow-up cloud session referenced above
+     (2026-09-02): all three clean (`lint.sh`/`typecheck.sh` zero findings, `scripts/test.sh` full
+     MicroPython Unix-port suite + `tests_scripts` all passing). Not a substitute for the bench-tier
+     `pytest` run above — this only confirms the mock/twin suite, which has no bench dependency.
    - Wrap-up: update `tests_hardware/README.md`/`REAL_HARDWARE_HANDOFF.md`'s status once a
      genuinely clean pass exists, but don't unilaterally delete/migrate the temporary planning docs
      without the project owner's sign-off.
