@@ -335,7 +335,11 @@ shared FRAM SPI bus — to actually reach its hung `writeto` before the run exit
 ### `_unix_port_udp_addr_shim.py` (real UDP round trips under the Unix port)
 
 `patch_asy_udp_socket_for_unix_port()` — called once, early, as `run_wozi_integration.py`'s own
-`main()` does (right after `prewarm_poll_set()`, before anything constructs a socket) — works
+`main()` does (right after `prewarm_poll_set()`, before anything constructs a socket) — also called
+the same way, module-level before `import sensortask_wozi`, by `tests/
+test_digital_twin_sensortask_integration.py` (its own hotspot/DNS section drives a genuine UDP round
+trip against the real `captive_dns.py` `DNSServer` the same way `run_wozi_integration.py`'s run 7
+does — see that test's own comment). Works
 around three confirmed MicroPython-Unix-port-only `socket` quirks that otherwise make a real UDP
 round trip (DNS, NTP) impossible under this harness, entirely from twin-side code:
 

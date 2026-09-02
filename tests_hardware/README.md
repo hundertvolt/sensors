@@ -123,6 +123,18 @@ a live question:
   `board.hard_reset()` fallback in its own teardown, but a first real run hitting this path is worth
   recognizing for what it is (an expected, designed-for recovery, not a new bug) rather than being
   surprised by it.
+- **Captive-portal hotspot-mode redirect fallback (SPECIFICATION.md Part A.5) - real-hardware
+  verification status.** `test_hotspot_role_reversal.py::test_nonsense_path_redirects_to_root_over_the_hotspot_link`/
+  `test_put_to_nonsense_path_is_405_not_a_redirect_over_the_hotspot_link` exist and exercise the
+  real 302-vs-405 behavior over the real hotspot link, but this feature's actual run-on-real-bench-
+  hardware verification hasn't happened yet as of this writing - everything confirmed so far
+  (`tests/test_asy_webserver_service.py`, `tests/test_asy_wifi_service.py`,
+  `tests/test_sensortask_wozi.py`, `tests/test_digital_twin_sensortask_integration.py`,
+  `tests/test_digital_twin_real_website_integration.py`) is unit/digital-twin level only. Nothing
+  about the mechanism is hardware-dependent (`is_hotspot_active()` is a plain in-memory int-compare,
+  `_serve_static()`'s redirect branch has no hardware surface of its own), so no specific risk is
+  flagged here beyond "not yet run for real" - update this entry once these two bench tests have
+  actually executed against a real DUT.
 - **WS2812/Neopixel timing has no datasheet in this repo's `datasheets/` folder at all** (only
   bmp3xx/fram/pico w/scd30/sgp40 - confirmed by listing the directory) - the manual
   `test_real_ws2812_neopixel_signal_timing` test is deliberately qualitative (visual/scope check,
