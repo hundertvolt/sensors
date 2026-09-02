@@ -223,11 +223,56 @@ gated on that PR's CI being green first - confirmed green before merging): adds
 `AsyConnTime.is_hotspot_active()` and wires it into `WebserverService`'s static-route fallback so a
 captive-portal OS probe gets a 302 redirect instead of a 404 while the DUT is its own hotspot. No
 file overlap with this branch's own `tests_hardware/` work; merged cleanly. `scripts/lint.sh`/
-`scripts/typecheck.sh` confirmed clean post-merge; `scripts/test.sh` (full mock suite) and the PR's
-own two new real-hardware bench tests (`test_hotspot_role_reversal.py`'s
-`test_nonsense_path_redirects_to_root_over_the_hotspot_link`/`test_put_to_nonsense_path_is_405_
-not_a_redirect_over_the_hotspot_link`, never run on real hardware before this) still pending -
-continue at "Next session should start here" below.
+`scripts/typecheck.sh` confirmed clean post-merge; `scripts/test.sh` (full mock suite, 2320 PASS,
+0 FAIL) confirmed clean.
+
+## Phase 4c - first real flash+boot of scripts/build_firmware.py's own output: a real build bug,
+## a transient hardware hiccup, and an open captive-portal question
+
+Running the PR's own two new real-hardware bench tests required the DUT to actually run firmware
+built from current HEAD (merely merging into git doesn't change what's flashed) - this session's
+first-ever real flash of `scripts/build_firmware.py`'s own output (that script's own docstring
+already flagged it as "build-only... not an on-device functional check", never exercised before).
+
+**Real build bug found and fixed**: the custom manifest that replaces the board's default
+manifest.py (to avoid a `_boot.py` name collision) also silently dropped
+`ports/rp2/modules/rp2.py` - the pure-Python module `_boot.py`'s own `import machine, rp2` line
+needs (a separate module from the low-level `_rp2` C extension). The first flash with this bug
+left the board with an unmounted filesystem and no application running at all - no build error,
+no warning, matching the "build-only" caveat exactly. Fixed (now committed): `rp2.py` is copied
+into the same staging directory as the custom `_boot.py`. Also added an explicit clean of
+mpy-cross's own build/ directory before every build, per the project owner's own request, so a
+firmware build never depends on stale artifacts from a previous session.
+
+**A separate, transient issue, self-resolved**: after the fix, a second flash briefly showed every
+I2C sensor (SCD30/BMP3XX/SGP40) and the FRAM chip failing to respond ("No I2C device at address"),
+causing a real watchdog boot-loop (WDT starving every ~9s since the affected setup tasks kept
+failing and restarting past `_TASK_FAIL_MAX`). A third flash (attempted as a diagnostic build with
+autostart disabled, to investigate under manual control without watchdog pressure - the attempt to
+disable autostart itself did not take effect, for reasons not tracked down) booted completely
+normally: FRAM and all three sensors initialized cleanly. The most likely explanation is a genuine
+transient I2C/SPI bus hiccup around the busy first reflash cycle, cleared by the subsequent power
+cycles - not a regression in current `src/` HEAD. Flagging as unresolved/unconfirmed rather than
+closed, since the exact trigger was never isolated.
+
+**Open question, NOT resolved**: with the DUT confirmed running current HEAD (including the
+captive-portal merge) and confirmed genuinely in hotspot mode (`iw station dump` showing the bench
+radio associated, `GET /networking` reachable at the DUT's own hotspot gateway IP), a real
+`GET /generate_204` still returned a plain 404 instead of the expected 302 redirect to `/`. This
+contradicts every mock/twin-level test for the same code path (all passing, see Phase 4b above).
+Not root-caused before this session ran out of budget for it - candidates not yet checked: whether
+`is_hotspot_active()` genuinely returns `True` at the exact moment `_serve_static()`'s fallback
+runs (a live check attempted here was itself confounded by mpremote's own exec()-always-soft-resets
+behavior - see harness.py's own `is_reachable()` finding - wiping the very live instance being
+inspected before its value could be read), and whether `/generate_204` is even reaching
+`_serve_static()`'s fallback at all rather than some other route. **Next session: re-verify this
+specific behavior first** (force hotspot mode, confirm real device is on current firmware, curl
+`/generate_204` from a joined hotspot client, and if still 404, investigate `is_hotspot_active()`'s
+live value via a passive/non-disruptive method - not `mpremote exec`, which corrupts the very state
+being observed).
+
+The DUT was left in a fully healthy, recovered state (STA mode, correct SSID, reachable) after this
+investigation - confirmed directly before ending this session's hardware work.
 
 ## Next session should start here
 
