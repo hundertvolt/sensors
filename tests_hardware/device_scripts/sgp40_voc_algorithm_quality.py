@@ -26,9 +26,15 @@ A fixed [25.0, 50.0] degC/%RH compensation callback stands in for the real SCD30
 not a value this driver treats specially.
 
 Run via `mpremote run <this> soft-reset`. Takes ~70s (45s blackout + sampling window) - not
-instant, unlike the other plausibility scripts in this directory."""
+instant, unlike the other plausibility scripts in this directory, and well past the RP2040
+hardware watchdog's 8.388s ceiling (SPECIFICATION.md Part F.1); `run_isolated()`'s soft reset stops
+the live system's own feed loop (system_service.py) without resetting that hardware timer
+(confirmed against ports/rp2/machine_wdt.c), so this script re-arms/feeds its own WDT handle
+during every long wait rather than relying on anything outside itself."""
 
 import asyncio
+
+import machine
 
 import asy_i2c_driver
 from asy_sgp40_driver import SGP40_Reader
@@ -39,13 +45,23 @@ BLACKOUT_WAIT_S = 60.0  # 45s documented blackout + margin for a real 1s-cadence
 N_QUALITY_SAMPLES = 8
 SAMPLE_INTERVAL_S = 2.0
 MAX_SINGLE_STEP_JUMP = 300  # generous relative to the algorithm's own adaptive-lowpass smoothing
+_WDT_FEED_INTERVAL_S = 2.0  # comfortably under the 8.388s hardware ceiling
 
 
 async def _fixed_comp() -> list[float | None]:
     return [25.0, 50.0]  # datasheet Table 10 compensation defaults - fixed, not sensor-derived
 
 
+async def _sleep_feeding_wdt(duration_s: float, wdt: machine.WDT) -> None:
+    remaining = duration_s
+    while remaining > 0:
+        await asyncio.sleep(min(_WDT_FEED_INTERVAL_S, remaining))
+        wdt.feed()
+        remaining -= _WDT_FEED_INTERVAL_S
+
+
 async def _main() -> None:
+    wdt = machine.WDT(timeout=8000)  # matches src/system_service.py's own production value
     i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000)
     reader = SGP40_Reader(i2c1, _fixed_comp, max_module_error=999, fram_storage=None, fram_ntp_callback=None, debug=None)
     reader.start_timer()  # 1s fixed period - the algorithm's own sampling interval assumption
@@ -59,13 +75,13 @@ async def _main() -> None:
             pass
 
     # Wait out the documented blackout window before sampling for real data.
-    await asyncio.sleep(BLACKOUT_WAIT_S)
+    await _sleep_feeding_wdt(BLACKOUT_WAIT_S, wdt)
 
     samples: list[tuple[int | None, int | None]] = []
     for _ in range(N_QUALITY_SAMPLES):
         data = await reader.get_data()
         samples.append((data.VOC, data.Raw))
-        await asyncio.sleep(SAMPLE_INTERVAL_S)
+        await _sleep_feeding_wdt(SAMPLE_INTERVAL_S, wdt)
 
     await _cancel()
 

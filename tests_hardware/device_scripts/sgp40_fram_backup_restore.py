@@ -33,9 +33,15 @@ and `cfgmgr._cache = {...}` directly with the schema's own defaults, instead of 
 `cfgmgr.setup()` (which would do a real littlefs file write/read).
 
 Run via `mpremote run <this> soft-reset`. Takes ~90s (60s to the first natural backup trigger, plus
-restore-cycle margin)."""
+restore-cycle margin) - well past the RP2040 hardware watchdog's 8.388s ceiling
+(SPECIFICATION.md Part F.1), and `run_isolated()`'s soft reset stops the live system's own feed
+loop (system_service.py) without resetting that hardware timer (confirmed against
+ports/rp2/machine_wdt.c), so this script re-arms/feeds its own WDT handle during every long wait
+rather than relying on anything outside itself."""
 
 import asyncio
+
+import machine
 
 import asy_i2c_driver
 import asy_spi_driver
@@ -44,6 +50,7 @@ from asy_sgp40_driver import SGP40_Reader
 
 BACKUP_WAIT_S = 75.0  # 60s to the first natural BackupPeriod=1min trigger, plus margin
 RESTORE_WAIT_S = 10.0
+_WDT_FEED_INTERVAL_S = 2.0  # comfortably under the 8.388s hardware ceiling
 
 
 async def _fixed_comp() -> list[float | None]:
@@ -54,9 +61,13 @@ async def _always_synced() -> bool:
     return True  # stands in for the real ntp.ntp_issynced - no NTP subsystem in this isolated script
 
 
-async def _run_until_cancelled(reader: SGP40_Reader, duration_s: float) -> None:
+async def _run_until_cancelled(reader: SGP40_Reader, duration_s: float, wdt: machine.WDT) -> None:
     task = reader.start_asy_read()
-    await asyncio.sleep(duration_s)
+    remaining = duration_s
+    while remaining > 0:
+        await asyncio.sleep(min(_WDT_FEED_INTERVAL_S, remaining))
+        wdt.feed()
+        remaining -= _WDT_FEED_INTERVAL_S
     task.cancel()
     try:
         await task
@@ -65,6 +76,7 @@ async def _run_until_cancelled(reader: SGP40_Reader, duration_s: float) -> None:
 
 
 async def _main() -> None:
+    wdt = machine.WDT(timeout=8000)  # matches src/system_service.py's own production value
     i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000)
     spi0 = asy_spi_driver.SPI(0, 2, 3, 4)
 
@@ -83,7 +95,7 @@ async def _main() -> None:
     reader1.cfgmgr.valid = True
     reader1.cfgmgr._cache = {"BackupPeriod": 1, "BackupMaxAge": 7200, "WaitTimeNTP": 30}
     reader1.start_timer()
-    await _run_until_cancelled(reader1, BACKUP_WAIT_S)
+    await _run_until_cancelled(reader1, BACKUP_WAIT_S, wdt)
     reader1.stop_timer()
 
     last_backup, _ = await reader1.get_mem_status()
@@ -108,7 +120,7 @@ async def _main() -> None:
     reader2.cfgmgr.valid = True
     reader2.cfgmgr._cache = {"BackupPeriod": 1, "BackupMaxAge": 7200, "WaitTimeNTP": 30}
     reader2.start_timer()
-    await _run_until_cancelled(reader2, RESTORE_WAIT_S)
+    await _run_until_cancelled(reader2, RESTORE_WAIT_S, wdt)
     reader2.stop_timer()
 
     _, restored_from = await reader2.get_mem_status()

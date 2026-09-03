@@ -2,7 +2,12 @@
 against datasheet-sourced sane bounds (plausibility only, not an exact reference - see Part 2 item
 9's manual reference-calibrated variant for that). Bounds sourced directly from
 datasheets/scd30/Sensirion_CO2_Sensors_SCD30_Datasheet.pdf Tables 1-3, not assumed from memory:
-  CO2:      measurement range 400-10'000 ppm (Table 1)
+  CO2:      measurement range 400-10'000 ppm (Table 1), but per the project owner's own domain
+            knowledge this 400 ppm figure is a typical calibration reference point, not a hard
+            physical floor - real readings in the 300s are unremarkable (a real one at 368.17 was
+            observed on this bench's very first post-boot sample and is not a fault). CO2_MIN_PPM
+            is set to 200 instead: below that is suspicious (though still not necessarily a bus
+            fault), and an exact 0 would be extremely strange.
   Humidity: measurement range 0-100 %RH (Table 2)
   Temperature: measurement range -40-70 degC (Table 3) - the sensor's own *measurement* range, not
               its 0-50 degC *accuracy-specified* range, since a real bench/office environment is
@@ -26,19 +31,26 @@ by actually starting the reader's real task graph (start_timer() + read_loop() +
 same three calls sensortask_wozi.py's own get_task_starters()/get_timer_starters() wiring makes)
 before polling.
 
-Run via `mpremote run <this> soft-reset`."""
+Run via `mpremote run <this> soft-reset`. Worst case (30 x 0.5s poll) is ~15s, past the RP2040
+hardware watchdog's 8.388s ceiling (SPECIFICATION.md Part F.1); `run_isolated()`'s soft reset stops
+the live system's own feed loop (system_service.py) without resetting that hardware timer
+(confirmed against ports/rp2/machine_wdt.c), so this script feeds its own WDT handle once per poll
+rather than relying on anything outside itself."""
 
 import asyncio
+
+import machine
 
 import asy_i2c_driver
 from asy_scd30_driver import SCD30_Reader
 
-CO2_MIN_PPM, CO2_MAX_PPM = 400, 10_000
+CO2_MIN_PPM, CO2_MAX_PPM = 200, 10_000
 HUMIDITY_MIN_RH, HUMIDITY_MAX_RH = 0.0, 100.0
 TEMP_MIN_C, TEMP_MAX_C = -40.0, 70.0
 
 
 async def _main() -> None:
+    wdt = machine.WDT(timeout=8000)  # matches src/system_service.py's own production value
     i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000, timeout=200000)
     reader = SCD30_Reader(i2c1, 11, trigger_sec=3, max_module_error=999, fram=None, debug=None)
     reader.start_timer()  # wires the real GPIO IRQ + the 500ms self-healing poll timer
@@ -55,6 +67,7 @@ async def _main() -> None:
         data = await reader.get_data()
         if data.CO2 is not None:
             break
+        wdt.feed()
         await asyncio.sleep(0.5)
 
     read_task.cancel()

@@ -31,9 +31,15 @@ same way as sgp40_fram_backup_restore.py: prime `cfgmgr.valid`/`_cache` directly
 README.md's documented no-real-flash-write pattern) with the schema's own defaults, never
 `cfgmgr.setup()`.
 
-Run via `mpremote run <this> soft-reset`."""
+Run via `mpremote run <this> soft-reset`. Worst case (30 x 0.5s poll) is ~15s, past the RP2040
+hardware watchdog's 8.388s ceiling (SPECIFICATION.md Part F.1); `run_isolated()`'s soft reset stops
+the live system's own feed loop (system_service.py) without resetting that hardware timer
+(confirmed against ports/rp2/machine_wdt.c), so this script feeds its own WDT handle once per poll
+rather than relying on anything outside itself."""
 
 import asyncio
+
+import machine
 
 import asy_i2c_driver
 from asy_bmp3xx_driver import BMP3xx_Reader
@@ -43,6 +49,7 @@ TEMP_MIN_C, TEMP_MAX_C = -40.0, 85.0
 
 
 async def _main() -> None:
+    wdt = machine.WDT(timeout=8000)  # matches src/system_service.py's own production value
     i2c0 = asy_i2c_driver.I2C(0, 13, 12, frequency=50000)
     reader = BMP3xx_Reader(i2c0, max_module_error=999, fram=None, debug=None)
     # Prime config directly rather than reader.cfgmgr.setup() - no real flash file I/O. Defaults
@@ -62,6 +69,7 @@ async def _main() -> None:
         data = await reader.get_data()
         if data.Pres is not None:
             break
+        wdt.feed()
         await asyncio.sleep(0.5)
 
     for task in (trigger_task, read_task):

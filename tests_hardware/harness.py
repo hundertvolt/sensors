@@ -292,8 +292,25 @@ class Board:
         keep running afterward (`dut_ip` used to get this wrong; see its own docstring for the
         fix). Tests that need to observe the *real* boot sequence
         (tests_hardware/flash/test_reboot_persistence.py's boot-import check) correctly use
-        `hard_reset()` + `tail_log()` instead of this method, for exactly this reason."""
-        args = ["run", str(script_path)]
+        `hard_reset()` + `tail_log()` instead of this method, for exactly this reason.
+
+        REAL FINDING, confirmed on real hardware (a real watchdog-armed build - the tier's own
+        documented precondition, tests_hardware/README.md's prerequisites): `machine.WDT` wraps a
+        genuine RP2040 hardware peripheral (`ports/rp2/machine_wdt.c`'s `watchdog_enable()`) that
+        keeps counting down through a *soft* reset - only a real hard reset clears it, and nothing
+        feeds it once the live system is interrupted into raw REPL. If entering raw REPL plus the
+        isolated script's own runtime exceeds however much of the watchdog's ~8.4s budget was left
+        at the moment of interrupt, the watchdog fires a genuine hardware reset mid-`mpremote`
+        session - observed directly as a real `OSError: [Errno 5] Input/output error` from
+        `pyserial`, indistinguishable at first glance from a flaky USB glitch. Fixed by re-arming
+        the watchdog with a full fresh window as the very first thing this method does on-device,
+        chained into the same `mpremote` invocation before the real script runs -
+        `machine.WDT(timeout=...)`'s own constructor unconditionally calls `watchdog_enable()`
+        again regardless of prior state (confirmed directly against the pinned source), so
+        re-constructing it here is a genuine refresh, not a no-op. Uses the same `8000`ms value
+        `src/system_service.py`'s own real construction call does, not `WDT_TIMEOUT_MAX` (8388ms) -
+        deliberately matching production's own margin rather than maximizing it."""
+        args = ["exec", "import machine; machine.WDT(timeout=8000)", "run", str(script_path)]
         if soft_reset_after:
             args.append("soft-reset")
         result = self._mpremote(*args, timeout_s=timeout_s)
