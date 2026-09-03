@@ -1,5 +1,5 @@
 """Digital-twin fake `machine` module — same raw I2C/SPI bus-transaction mocking boundary as `tests/machine.py`, but built to behave like real attached hardware instead: real-time-firing `Timer`, and I2C/SPI buses wired to per-address chip simulators. Deliberately independent, does not import `tests/machine.py`.
-Bus wiring mirrors `sensortask_wozi.build_system()` exactly; any other bus id/address NAKs. See `digital_twin/README.md`'s "What's here" section for the full wiring/`Pin`-identity account."""
+Bus wiring mirrors whichever `sensortask_*.build_system()` variant is selected via `configure_i2c_wiring()` (default "wozi", matching `sensortask_wozi.build_system()` exactly - `configure_i2c_wiring("dev")` selects `sensortask_dev.build_system()`'s own layout instead); any other bus id/address NAKs. See `digital_twin/README.md`'s "What's here" section for the full wiring/`Pin`-identity account."""
 
 import asyncio
 import errno
@@ -153,18 +153,50 @@ def flush_scd30() -> None:
         _current_scd30_chip.save_state()
 
 
+_i2c_wiring_profile = "wozi"  # DEV_HARDWARE_BASELINE_PLAN.md's dev-bench variant flipped which bus
+# carries which sensors (and SCD30's own IRQ pin number) relative to wozi - same module-level-hook
+# pattern as configure_random_source()/configure_fram_state_path() above, applied to bus wiring
+# instead. Default "wozi" keeps every existing test/twin user (which never calls
+# configure_i2c_wiring()) on today's exact, unchanged behavior.
+
+
+def configure_i2c_wiring(profile: str) -> None:
+    # Called once, before build_system()-equivalent code constructs i2c0/i2c1, by whatever entry
+    # point wants a non-default wiring (digital_twin/run_dev_integration.py's own main() calls this
+    # with "dev"). Validated eagerly here rather than only inside _wire_i2c_devices() below, so a
+    # typo surfaces immediately at the call site instead of silently NAKing every I2C transaction
+    # later.
+    if profile not in ("wozi", "dev"):
+        raise ValueError(f"unknown I2C wiring profile {profile!r} - expected 'wozi' or 'dev'")
+    global _i2c_wiring_profile
+    _i2c_wiring_profile = profile
+
+
 def _wire_i2c_devices(id: int) -> "dict[int, Any]":
     global _current_scd30_chip
-    if id == 0:
-        from _scd30_chip import Scd30Chip
+    from _bmp3xx_chip import Bmp3xxChip
+    from _scd30_chip import Scd30Chip
+    from _sgp40_chip import Sgp40Chip
 
+    if _i2c_wiring_profile == "dev":
+        # dev_legacy/README.md's wiring table: i2c0 (id=0) carries BMP3xx alone; i2c1 (id=1)
+        # carries SCD30 (IRQ/RDY=GPIO11) + SGP40 sharing the bus - the reverse pairing from wozi's
+        # own layout below.
+        if id == 0:
+            return {0x77: Bmp3xxChip(random_source=_random_source)}
+        if id == 1:
+            chip = Scd30Chip(rdy_pin=Pin(11, mode=Pin.IN), random_source=_random_source, state_path=_scd30_state_path)
+            _current_scd30_chip = chip
+            return {0x61: chip, 0x59: Sgp40Chip(random_source=_random_source)}
+        return {}
+
+    # "wozi" (default): i2c0 (id=0) carries SCD30 alone (IRQ/RDY=GPIO8); i2c1 (id=1) carries
+    # SGP40 + BMP3xx sharing the bus.
+    if id == 0:
         chip = Scd30Chip(rdy_pin=Pin(8, mode=Pin.IN), random_source=_random_source, state_path=_scd30_state_path)
         _current_scd30_chip = chip
         return {0x61: chip}
     if id == 1:
-        from _bmp3xx_chip import Bmp3xxChip
-        from _sgp40_chip import Sgp40Chip
-
         return {0x59: Sgp40Chip(random_source=_random_source), 0x77: Bmp3xxChip(random_source=_random_source)}
     return {}
 
