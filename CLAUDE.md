@@ -140,6 +140,16 @@ information):
 - **Long-blocking operations must not stall timing-sensitive work** — standing design principle
   for all new code; full reasoning (including the retired `get_long_block_lock()` mechanism) is in
   SPECIFICATION.md Part F.3.
+- **A new bus-facing (I2C/SPI) device gets bus-hazard test coverage across all four test tiers that
+  apply to it — never forget this** (project owner's explicit, standing direction): same-device
+  read-vs-write concurrency, cross-device interleaving if it shares a bus in either variant, and an
+  address/command sweep, in `tests/test_bus_hazard_multi_device.py` (mock), `tests/
+  test_digital_twin_bus_hazard_concurrency.py` (digital twin), `tests_hardware/flash/
+  test_bus_concurrency.py` + `tests_hardware/bus_topology.py` (real hardware, dev bench), and
+  `tests_hardware/bench/test_bus_concurrency_under_api_load.py` (real hardware, full HTTP stack).
+  Full checklist, plus the two real-hardware write-safety constraints any new device's own on-chip
+  NVM or the RP2040's own flash filesystem must respect: SPECIFICATION.md Part C.8's own standing
+  rule, right after its general-call hazard finding.
 
 ## Working agreements
 
