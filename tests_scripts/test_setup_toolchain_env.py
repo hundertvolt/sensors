@@ -248,52 +248,75 @@ def test_generate_bench_ap_credentials_are_fresh_and_random(setup_toolchain):
     assert len(password1) >= 12
 
 
-def test_ensure_bench_bridge_reuses_existing_ap_without_recreating(setup_toolchain, monkeypatch):
+def test_ensure_bench_bridge_reuses_existing_ap_without_recreating(setup_toolchain, monkeypatch, recorded_run):
+    # ensure_br_netfilter() and the channel self-heal check now run unconditionally on every
+    # call (see ensure_bench_bridge()'s own docstring) - the channel query is stubbed to "6" so
+    # the self-heal branch (covered separately below) doesn't also fire here.
     monkeypatch.setattr(setup_toolchain, "bench_ap_exists", lambda: True)
     monkeypatch.setattr(setup_toolchain, "existing_bench_ap_ssid", lambda: "sensors-bench-abc123")
-    calls = []
 
     def fake_run(cmd, cwd=None, check=True, env=None):
-        calls.append(cmd)
+        recorded_run.append(cmd)
         # Already the fixed channel - the self-heal branch below must be a no-op.
-        return "6\n" if cmd[:3] == ["nmcli", "-g", "802-11-wireless.channel"] else ""
+        return "6\n" if cmd[:2] == ["nmcli", "-g"] else ""
 
     monkeypatch.setattr(setup_toolchain, "run", fake_run)
 
     ssid = setup_toolchain.ensure_bench_bridge("eth0", "wlan0", None, None)
 
     assert ssid == "sensors-bench-abc123"
-    # ensure_br_netfilter() and the channel *check* always run (host-kernel-level settings
-    # independent of whether the bridge profile itself needs recreating - see that function's own
-    # docstring for the real bug this fixes: a duplicate bench_ap_exists() short-circuit used to
-    # bypass both entirely on every idempotent re-run), but no nmcli connection add/modify/up call
-    # (bridge recreation, or a channel repair - already correct here) happens.
-    joined = [" ".join(c) for c in calls]
-    assert any("modprobe br_netfilter" in c for c in joined)
-    assert any("802-11-wireless.channel" in c and "connection show" in c for c in joined)
-    assert not any("connection add" in c or "connection modify" in c or "connection up" in c for c in joined)
+    joined = [" ".join(c) for c in recorded_run]
+    # no bridge/AP recreation - nothing that would add a new connection profile or rewrite its
+    # WiFi security settings
+    assert not any("connection add" in c for c in joined)
+    assert not any("wifi-sec.psk" in c for c in joined)
 
 
-def test_ensure_bench_bridge_repairs_channel_on_an_existing_ap_with_the_wrong_one(setup_toolchain, monkeypatch):
+def test_ensure_bench_bridge_self_heals_wrong_channel(setup_toolchain, monkeypatch, recorded_run):
     monkeypatch.setattr(setup_toolchain, "bench_ap_exists", lambda: True)
     monkeypatch.setattr(setup_toolchain, "existing_bench_ap_ssid", lambda: "sensors-bench-abc123")
-    calls = []
 
     def fake_run(cmd, cwd=None, check=True, env=None):
-        calls.append(cmd)
-        # A bridge created before the channel-pinning fix - e.g. an auto-selected channel 13.
-        return "13\n" if cmd[:3] == ["nmcli", "-g", "802-11-wireless.channel"] else ""
+        recorded_run.append(cmd)
+        if cmd[:2] == ["nmcli", "-g"]:
+            return "13\n"  # a bridge created before the channel-pinning fix
+        return ""
 
     monkeypatch.setattr(setup_toolchain, "run", fake_run)
 
-    ssid = setup_toolchain.ensure_bench_bridge("eth0", "wlan0", None, None)
+    setup_toolchain.ensure_bench_bridge("eth0", "wlan0", None, None)
 
-    assert ssid == "sensors-bench-abc123"
-    joined = [" ".join(c) for c in calls]
-    assert any("connection modify" in c and setup_toolchain.BENCH_AP_CONN in c and "802-11-wireless.channel 6" in c for c in joined)
-    assert any("connection up" in c and setup_toolchain.BENCH_AP_CONN in c for c in joined)
-    # Still not a full recreation - only the channel gets repaired.
-    assert not any("connection add" in c for c in joined)
+    joined = [" ".join(c) for c in recorded_run]
+    assert any("connection modify br0-wifi-ap 802-11-wireless.channel 6" in c for c in joined)
+    assert any(c == "sudo nmcli connection up br0-wifi-ap" for c in joined)
+
+
+def test_ensure_bench_bridge_no_channel_repair_when_already_pinned(setup_toolchain, monkeypatch, recorded_run):
+    monkeypatch.setattr(setup_toolchain, "bench_ap_exists", lambda: True)
+    monkeypatch.setattr(setup_toolchain, "existing_bench_ap_ssid", lambda: "sensors-bench-abc123")
+
+    def fake_run(cmd, cwd=None, check=True, env=None):
+        recorded_run.append(cmd)
+        if cmd[:2] == ["nmcli", "-g"]:
+            return "6\n"
+        return ""
+
+    monkeypatch.setattr(setup_toolchain, "run", fake_run)
+
+    setup_toolchain.ensure_bench_bridge("eth0", "wlan0", None, None)
+
+    joined = [" ".join(c) for c in recorded_run]
+    assert not any("802-11-wireless.channel 6" in c and "modify" in c for c in joined)
+
+
+def test_ensure_br_netfilter_loads_module_and_persists_config(setup_toolchain, recorded_run):
+    setup_toolchain.ensure_br_netfilter()
+
+    joined = [" ".join(c) for c in recorded_run]
+    assert any(c == "sudo modprobe br_netfilter" for c in joined)
+    assert any("sysctl -w net.bridge.bridge-nf-call-iptables=1" in c for c in joined)
+    assert any("sensors-bench-br-netfilter.conf" in c and "modules-load.d" in c for c in joined)
+    assert any("sensors-bench-br-netfilter.conf" in c and "sysctl.d" in c for c in joined)
 
 
 def test_ensure_bench_bridge_creates_with_explicit_credentials_when_missing(setup_toolchain, monkeypatch, recorded_run):
