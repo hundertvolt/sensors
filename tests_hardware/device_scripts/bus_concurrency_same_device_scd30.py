@@ -43,7 +43,11 @@ async def _main() -> None:
     i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000, timeout=200000)
     scd = SCD30_I2C(i2c1)
     await scd.setup()
-    await scd.set_ambient_pressure(1013)  # 0x0010 doubles as "trigger continuous measurement"
+    # Deliberately never calls set_ambient_pressure() here - that's the one NVM-persisted write
+    # this whole test group makes, done exactly once per session by
+    # scd30_same_device_rw_concurrency.py (via tests_hardware/flash/conftest.py's session-scoped
+    # scd30_continuous_measurement_triggered fixture, which this test depends on) - see that
+    # script's own docstring for the real-hardware NVM-wear-budget reasoning.
 
     reader_errors = []
     reader_completed = 0

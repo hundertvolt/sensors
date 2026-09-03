@@ -44,7 +44,10 @@ async def _main() -> None:
     scd = SCD30_I2C(i2c1)
     sgp = SGP40_I2C(i2c1)
     await scd.setup()
-    await scd.set_ambient_pressure(1013)
+    # Deliberately never calls set_ambient_pressure() here - see
+    # scd30_same_device_rw_concurrency.py's own docstring for the one NVM-persisted write this
+    # whole test group makes, exactly once per session, via tests_hardware/flash/conftest.py's
+    # scd30_continuous_measurement_triggered fixture (which this test depends on).
     await sgp.setup()  # includes one initialize() call already - fine, just warms things up
 
     scd_windows = []  # (start_ms, end_ms) for each completed read_measurement()
