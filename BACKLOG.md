@@ -143,102 +143,34 @@ constraints.
    now (`bench/test_network_resilience.py`'s outage/flap tests recover via a real `hard_reset()` if
    the graceful wait times out, but still re-raise so the real limitation stays visible as a test
    failure).
-7. **Captive-portal hotspot-mode redirect: a real hardware run returned 404, not the expected 302 —
-   status: unconfirmed, not a live bug.** A `GET /generate_204` while the DUT was confirmed genuinely
-   in hotspot mode (`iw station dump` showing the bench radio associated) returned a plain 404
-   instead of the expected 302 redirect to `/`, contradicting every mock/twin-level test for the same
-   code path (`tests_hardware/README.md`'s corresponding entry has the full list, all passing).
-   `src/` logic itself is confirmed correct end-to-end for this exact scenario: re-running
-   `tests/test_digital_twin_sensortask_integration.py::test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_and_status_led`
-   against the real MicroPython Unix-port interpreter drives `AsyConnTime` through a genuine scripted
-   STA-failure streak into a real `_PHASE_HOTSPOT` transition, then gets a real `302`/`Location: /`
-   from a real `GET /generate_204` — 11/11 passing, and a hand-trace of the full chain confirms
-   `_conn_phase` is set to `_PHASE_HOTSPOT` before the AP is ever brought up on the air, so there's no
-   ordering window where the flag could lag the real broadcast.
+7. **Real-hardware verification of the captive-portal hotspot redirect, and of
+   `scripts/build_firmware.py`'s frozen autostart chain against the dev bench — both still
+   genuinely untested, not confirmed bugs (2026-09-03 cleanup).** An earlier investigation flashed
+   `scripts/build_firmware.py wozi` (wozi's own hardcoded pins and full feature set, including
+   `frozen_html`/`static_mount`) onto the dev bench's differently-wired hardware and treated the
+   resulting oddities as open bugs: a 404 instead of the expected 302 on `GET /generate_204`, and a
+   real `errno=11` I2C read failure on the shared i2c1 bus. Neither was a valid test of anything —
+   wozi's own build has no business running on the dev bench at all, since its pin assignments and
+   feature set target different hardware, and no `--device dev`/per-variant equivalent exists yet
+   (see "per-variant `sensortask-*.py` generator" below — the real gap this stood in for). Both
+   findings are dropped as noise from that mismatch, not tracked as bugs to chase; don't re-run
+   `scripts/build_firmware.py wozi` against the dev bench expecting a meaningful result until that
+   generator exists.
 
-   **Why this isn't treated as a confirmed regression**: the run that produced this 404 flashed
-   `scripts/build_firmware.py wozi` (the only variant that existed at the time, hardcoded to wozi's
-   own pin assignments) onto the dev bench's physically differently-wired hardware — the *third* flash
-   of that same build, after the first two didn't even boot cleanly (a missing-`rp2.py` build bug,
-   then an I2C/SPI hiccup and WDT boot-loop that item 8 below later traced to this exact
-   wozi-pins-on-dev-hardware mismatch). Sensor drivers were being initialized against the wrong GPIO
-   pins for the entire session that produced this finding — not a clean run of either target. The one
-   run that *did* test cleanly (`dev_legacy/README.md`'s own mounted-entry-script recipe, using the
-   bench's real pins) never exercises the captive-portal path at all — it has no
-   `frozen_html`/`static_mount` wiring — so this 404 has never actually been observed under an aligned
-   configuration in either direction.
-
-   **Next step**: re-test on a properly aligned build (real wozi hardware, or a real per-variant
-   dev-pin build once that generator exists — see "Refactor targets not yet done") before treating
-   this as a live bug to fix. If it reproduces there, the remaining open question is a "which 404"
-   ambiguity: a plain 404 is externally indistinguishable between `_serve_static()`'s own
-   `abort(404)` firing because `is_hotspot_active()` returned `False`, and Microdot never matching any
-   route for that path at all (a routing miss resolves through the same `@app.errorhandler(404)`,
-   same JSON shape) — distinguishing the two needs a positive signal from the device itself (a
-   temporary debug log line in `_serve_static()`, or checking `/status`'s own WEBSERVER error count is
-   still empty). **Investigation pitfall already hit once**: don't use `mpremote exec()` to inspect
-   live state — its default `enter_raw_repl()` soft-resets the board, wiping the very live state being
-   observed (see `tests_hardware/README.md`'s liveness-polling finding). Use a passive method instead
-   (a second REST/network-level check, or a code-level trace).
-8. **`scripts/build_firmware.py`'s frozen `_boot.py`→`boot_entry/wozi_boot.py` autostart chain
-   reproduced a real I2C failure on the dev bench that an otherwise-identical mounted-entry-script
-   build did not — status: unconfirmed as a real bug, likely another instance of item 7's same
-   underlying mismatch.** Full account: `dev_legacy/README.md`'s "Current bench state" (2026-09-02).
-   Short version: with byte-identical wiring/timing values (this bench's real pins, confirmed via
-   direct `machine.I2C.scan()` + chip-ID/address readback — BMP390 alone on i2c0, SCD30+SGP40
-   sharing i2c1, SCD30 IRQ=GPIO11), a scratch build flashed through `scripts/build_firmware.py`'s
-   own autostart chain gets BMP3xx completely clean but SCD30/SGP40 (the two sharing i2c1) fail
-   with real `errno=11` ("Read failed") once the full 18-task system is running — even though both
-   sensors work perfectly when driven manually/concurrently at the REPL with nothing else running,
-   and even though the *exact* same wiring via `dev_legacy/README.md`'s own mounted-entry-script
-   recipe (stock board manifest, entry script run via `mpremote run` rather than frozen into
-   `_boot.py`) runs the identical full system completely cleanly (100+s, zero errors).
-
-   **Why this isn't treated as a confirmed regression**: the "scratch build" here is a scratch-patched
-   copy of `src/sensortask_wozi.py` — wozi's own production module, unchanged apart from swapping in
-   the dev bench's pin numbers — flashed through `scripts/build_firmware.py`'s own autostart chain,
-   which itself has zero dev-bench-pin awareness (it only ever encodes `wozi`'s production pins; no
-   per-variant `sensortask-*.py` generator exists yet — see "Refactor targets not yet done"). That
-   makes this the same category of mixed configuration as item 7 above: neither a genuine wozi-target
-   test (no real wozi board exists to test against) nor a genuine dev-native test through the
-   production build path (the working comparison run used a hand-written scratch script, not
-   `scripts/build_firmware.py`'s own chain at all). Reproducing this again needs the same kind of
-   scratch source patch this investigation used, not a plain `--device dev` build — there's no
-   `--device dev` today.
-
-   **Two of the three originally-listed candidates are ruled out by code-level analysis alone (no
-   hardware needed — checked directly against the actual source, not reasoned about in the
-   abstract):** the task-start stagger (`await asyncio.sleep(1.0 / len(task_starters))`) lives inside
-   `system_service.py`'s own `start_and_check_tasks()` — one frozen module both the autostart chain
-   and the mounted-entry-script call identically, with an identical nine-component task-starter list
-   in both, so the interval is necessarily the same in both runs, not a candidate difference at all.
-   `boot_entry/wozi_boot.py`'s `finally: asyncio.new_event_loop()` only runs after `main()` returns or
-   raises — `start_and_check_tasks()` never returns under normal operation, so that line is never
-   reached while the system is actually up and can't explain an in-flight I2C read failure.
-
-   **A real, previously-undocumented difference found instead: the two runs were not actually
-   byte-identical applications.** The frozen chain used the scratch-patched copy of the *full*
-   `src/sensortask_wozi.py` mentioned above, which does `import frozen_html` at module scope —
-   mounting the real ~85KB gzipped website into a freezefs VFS at `/html`, a one-time cost directly
-   measured at ~9.7KB of heap under the pinned Unix-port interpreter — and passes
-   `static_mount="/html"` to `WebserverService`, registering the extra static-file route. The working
-   mounted-entry-script recipe (embedded in full in `dev_legacy/README.md`) is a separate,
-   hand-written scratch module that does neither — no `frozen_html` import, no `static_mount`. So
-   "byte-identical wiring/timing values" (true for the I2C pins/addresses/clock-stretch timeout) did
-   not mean byte-identical
-   applications: only the frozen run carries this extra one-time VFS-mount allocation and wider
-   route table, ahead of any task ever starting. This is the most promising remaining candidate —
-   plausible enough on its own to shift GC timing/fragmentation enough to matter on the *shared*
-   i2c1 bus specifically (already carries a widened `timeout=200000` clock-stretch allowance for
-   exactly this kind of GC-latency tolerance, so it's a bus already known to be marginal on timing).
-
-   **Still needs real hardware to confirm — out of reach of a cloud session with no bench access.**
-   The clean next test is a real bench A/B: add `import frozen_html` + `static_mount="/html"` to the
-   working entry script (or, equivalently, strip both from the scratch-patched `sensortask_wozi.py`
-   used for the frozen build) and see whether the `errno=11` failure follows the import rather than
-   the boot mechanism. This entry's two other candidates are now ruled out and this one is
-   identified and heap-measured, but confirming or refuting it against the real failure needs the
-   physical bench — left for whoever has hardware access next.
+   What's still a genuine, unaffected gap: **the captive-portal redirect has never been verified on
+   real hardware under a valid configuration.** The one dev-native path that does run cleanly
+   (`dev_legacy/README.md`'s mounted-entry-script recipe) never wires up `frozen_html`/`static_mount`
+   at all, so it doesn't exercise this code path either — the gap isn't "confirmed broken on
+   hardware," it's "never actually run on hardware, full stop." `src/`'s own logic is already proven
+   correct end-to-end against the real MicroPython Unix-port interpreter
+   (`tests/test_digital_twin_sensortask_integration.py::test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_and_status_led`,
+   11/11 passing, including a real `_PHASE_HOTSPOT` transition and a real `302`/`Location: /`), so
+   this isn't a `src/` question — it's specifically about real rp2/lwIP sockets and real Microdot
+   request handling, which no amount of Unix-port testing substitutes for. Closing it needs either a
+   real wozi board, or extending the dev bench's own entry script (embedded in
+   `dev_legacy/README.md`) with `frozen_html`/`static_mount` so hotspot-mode redirect can be
+   validated on hardware that's actually available today — a real, dev-verifiable next step, not one
+   that needs to wait on wozi hardware.
 
 ## Deferred / explicitly out-of-scope work
 
@@ -319,7 +251,15 @@ constraints.
   `i2cN` name. `tests/test_sensortask_wozi.py`'s own
   `test_scd30s_own_i2c_bus_uses_a_clock_stretch_timeout_wide_enough_for_it` is the worked example
   this generalizes from (both the bus lookup and the FRAM assertions), not a template to copy
-  unconditionally.
+  unconditionally. **This is also the real blocker for using `scripts/build_firmware.py` on the dev
+  bench at all**: with only the `wozi` variant hardcoded, an earlier session tried to work around
+  the gap by scratch-patching `src/sensortask_wozi.py`'s pin numbers and flashing that through
+  `scripts/build_firmware.py`'s own autostart chain — a mixed, neither-wozi-nor-dev configuration
+  that produced noise mistaken for real bugs (open questions list, item 7, before this cleanup).
+  Until this generator exists, don't flash `scripts/build_firmware.py wozi` (or a hand-patched copy
+  of it) onto the dev bench expecting a meaningful result — `dev_legacy/README.md`'s own
+  mounted-entry-script recipe is the only currently-valid way to run the real, wired-together system
+  on that hardware.
 - **`dev.json`'s SHTC3/MPRLS/ISL29125 field entries remain an unconfirmed projection.** These sensors
   have no real driver under `src/` yet, so their `html/definitions/dev.json` entries follow the same
   pattern every promoted sensor's entry does, without a real driver to confirm the projection against.

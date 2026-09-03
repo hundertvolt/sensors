@@ -611,27 +611,26 @@ believed-true; the flash-filesystem/firmware facts from that date are superseded
   recipe's own intent this time. This is a scratch/debug state, not a final one — no watchdog is
   armed (see the entry script's own `watchdog = None`, unchanged from this doc's existing
   convention) and WiFi has no saved credentials (falls back to hotspot mode, SSID `SensorNode`).
-- **Real finding: `scripts/build_firmware.py`'s custom `_boot.py`→`boot_entry/wozi_boot.py`
-  autostart chain reproduces a real I2C failure that this doc's own mounted-entry-script recipe
-  does not, with byte-identical wiring/timing values.** Discovered while root-causing what turned
-  out to be an unrelated bug first (`scripts/build_firmware.py` was missing this bench's own pin
-  wiring entirely — it only ever encoded `wozi`'s production pins, since no per-variant
-  `sensortask-*.py` exists yet, see `BACKLOG.md`'s "per-variant generator" item). After patching a
-  scratch copy of `src/sensortask_wozi.py` with this doc's exact wiring table values (verified
-  correct independently via direct `machine.I2C.scan()` + chip-ID/address readback: BMP390
-  chip_id=0x50 at i2c0/0x77, SGP40 at i2c1/0x59, SCD30 at i2c1/0x61) and flashing it through
-  `scripts/build_firmware.py`'s own autostart chain, BMP3xx came up completely clean but
-  SCD30+SGP40 (sharing i2c1) still failed with real `errno=11` ("Read failed") under the full
-  18-task system — despite both sensors working perfectly when driven manually and concurrently at
-  the REPL in isolation (no other tasks running). Re-running the *exact* mounted-entry-script
-  recipe from this doc, with the identical wiring, resolved it completely (100+s stable, zero
-  errors, hotspot broadcasting correctly). **Not yet root-caused**: what specifically differs
-  between "frozen `_boot.py` immediately importing and blocking in `main()`" and "stock `_boot.py`
-  mounts the filesystem only, then `mpremote run` explicitly loads and starts the entry script"
-  that would affect I2C reliability on the *shared* i2c1 bus specifically (i2c0/BMP3xx was clean in
-  both). Tracked as `BACKLOG.md`'s open questions list, item 8, for whoever next needs
-  `scripts/build_firmware.py`'s own autostart chain to work against this bench's real wiring rather
-  than just the mounted-script workaround.
+- **`scripts/build_firmware.py`'s own autostart chain was tried against this bench once and produced
+  a real I2C failure that this doc's own mounted-entry-script recipe does not — since re-classified
+  as noise from an invalid mixed test, not a real bug (2026-09-03 cleanup, see `BACKLOG.md`'s
+  "per-variant `sensortask-*.py` generator" item for the full account).** `scripts/build_firmware.py`
+  only ever encodes `wozi`'s production pins — no per-variant `sensortask-*.py` exists yet — so an
+  earlier session worked around that by scratch-patching a copy of `src/sensortask_wozi.py` with
+  this doc's own wiring table values (verified correct independently via direct
+  `machine.I2C.scan()` + chip-ID/address readback: BMP390 chip_id=0x50 at i2c0/0x77, SGP40 at
+  i2c1/0x59, SCD30 at i2c1/0x61) and flashing *that* through `scripts/build_firmware.py`'s own
+  autostart chain. BMP3xx came up clean but SCD30+SGP40 (sharing i2c1) failed with real `errno=11`
+  ("Read failed") under the full 18-task system, while the identical wiring via this doc's own
+  mounted-entry-script recipe ran cleanly (100+s, zero errors). The patched module was still wozi's
+  own full production `sensortask_wozi.py` — including its `import frozen_html`/`static_mount`
+  static-website plumbing, which has no reason to run in a dev-bench diagnostic at all — flashed
+  through wozi's own boot chain, which has zero awareness this bench exists. That's not a
+  representative test of either target, so the `errno=11` finding isn't tracked as a bug to fix.
+  **Standing rule for this bench going forward**: don't flash `scripts/build_firmware.py wozi` (or a
+  hand-patched copy of it) here expecting a meaningful result — the mounted-entry-script recipe above
+  is the only currently-valid way to run the real, wired-together system on this hardware, until the
+  per-variant generator exists.
 - **FRAM's first ~720 bytes hold real, structured data again** — 7 chunks, in `sensortask_dev`'s
   own `build_system()` construction order (sysfunct's error log, sgp_reader's error log + VOC-backup
   chunk, bmp_reader's, scd_reader's, pixel's, notify_service's — see CLAUDE.md's FRAM chunk
