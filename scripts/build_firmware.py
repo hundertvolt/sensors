@@ -21,15 +21,16 @@ filesystem-mount boot file) under the frozen name "_boot.py" - the exact name
 shared/runtime/pyexec.c's rp2 main.c looks up via `pyexec_frozen_module("_boot.py", ...)` at every
 boot (confirmed directly against the pinned v1.28.0 source, same verification standard as every
 other MicroPython-facing fact in this repo - see CLAUDE.md's "Platform target" section). src/'s own
-real entry point needs a _boot.py that imports `wozi_boot` (boot_entry/wozi_boot.py, this repo's
-own "the real 'import triggers boot' behavior" module) instead of anything from ports/rp2/modules -
+real entry point needs a _boot.py that imports this device's own boot module
+(boot_entry/<device>_boot.py, e.g. boot_entry/wozi_boot.py/boot_entry/dev_boot.py, this repo's own
+"the real 'import triggers boot' behavior" module) instead of anything from ports/rp2/modules -
 freezing a second, different file under the same "_boot.py" name via a second freeze() call would
 either collide with or silently shadow the default manifest's own copy, so this script skips
 including the board's default manifest.py entirely and instead re-states its other `require()`s
 verbatim (bundle-networking, aioble, asyncio, onewire, ds18x20, dht, neopixel) alongside its own
-single freeze() of a self-built staging directory. See _BOOT_PY below for the new boot file's own
+single freeze() of a self-built staging directory. See _boot_py() below for the new boot file's own
 content - the *port's own stock* ports/rp2/modules/_boot.py content plus one added `import
-wozi_boot` line (no literal ".py" - unlike the still-unresolved BACKLOG.md #1 case, this is new
+{device}_boot` line (no literal ".py" - unlike the still-unresolved BACKLOG.md #1 case, this is new
 code, free to do it the documented way) - this repo's own top-level modules/_boot.py is never read,
 copied from, or touched by this script, per CLAUDE.md's hard rule.
 
@@ -66,9 +67,12 @@ from _strip_type_checking import strip_type_checking_blocks  # noqa: E402
 
 # The port's own stock ports/rp2/modules/_boot.py content (confirmed directly against the pinned
 # v1.28.0 checkout - identical to what boards/manifest.py's freeze("$(PORT_DIR)/modules") would
-# otherwise freeze), plus the one line that makes it ours: importing boot_entry/wozi_boot.py's
-# real entry point instead of leaving the filesystem mounted with nothing to run.
-_BOOT_PY = '''\
+# otherwise freeze), plus the one line that makes it ours: importing this device's own
+# boot_entry/<device>_boot.py real entry point instead of leaving the filesystem mounted with
+# nothing to run. Every device needs its own boot_entry/<device>_boot.py (see build_stage_dir())
+# - `device` selects which one gets frozen under the fixed "_boot.py" name every device build
+# needs (see this module's own docstring for why that name is fixed and can't collide).
+_BOOT_PY_TEMPLATE = '''\
 import vfs
 import machine, rp2
 
@@ -84,8 +88,12 @@ vfs.mount(fs, "/")
 
 del vfs, bdev, fs
 
-import wozi_boot
+import {boot_module}
 '''
+
+
+def _boot_py(device: str) -> str:
+    return _BOOT_PY_TEMPLATE.format(boot_module=f"{device}_boot")
 
 # Mirrors boards/RPI_PICO_W/manifest.py + boards/manifest.py combined, minus their own
 # freeze("$(PORT_DIR)/modules") line (see this file's own docstring for why) - the {stage_dir}
@@ -115,11 +123,22 @@ def _stage_stripped(src_file: Path, dest: Path) -> None:
 
 
 def build_stage_dir(stage_dir: Path, device: str, micropython_dir: Path) -> None:
-    # This script freezes src/*.py alongside its own infra files (microdot.py, wozi_boot.py,
+    # Every device needs its own boot_entry/<device>_boot.py real entry point (see
+    # boot_entry/wozi_boot.py's/boot_entry/dev_boot.py's own docstrings) - `device` used to pick
+    # nothing (this script always staged boot_entry/wozi_boot.py under the hardcoded "wozi_boot.py"
+    # name regardless of `device`, and _boot.py always imported it unconditionally - the exact gap
+    # DEV_HARDWARE_BASELINE_PLAN.md's decision 2 fixes). Fail loud, before staging anything, if the
+    # device this build was asked for has no boot entry point at all.
+    boot_module = f"{device}_boot"
+    boot_entry_file = REPO_ROOT / "boot_entry" / f"{boot_module}.py"
+    if not boot_entry_file.is_file():
+        raise RuntimeError(f"no boot_entry/{boot_module}.py for device {device!r} - every device needs its own boot_entry/<device>_boot.py")
+
+    # This script freezes src/*.py alongside its own infra files (microdot.py, <device>_boot.py,
     # _boot.py, frozen_html.py, rp2.py) into the SAME flat stage_dir - a future src/ file sharing
     # one of those names would be silently overwritten (or would silently overwrite the infra file
     # copied after it) with no error, shipping wrong firmware content. Fail loud instead.
-    reserved = {"microdot.py", "wozi_boot.py", "_boot.py", "frozen_html.py", "rp2.py"}
+    reserved = {"microdot.py", f"{boot_module}.py", "_boot.py", "frozen_html.py", "rp2.py"}
     src_files = sorted((REPO_ROOT / "src").glob("*.py"))
     collisions = reserved & {f.name for f in src_files}
     if collisions:
@@ -128,14 +147,14 @@ def build_stage_dir(stage_dir: Path, device: str, micropython_dir: Path) -> None
     for py_file in src_files:
         _stage_stripped(py_file, stage_dir / py_file.name)
     _stage_stripped(REPO_ROOT / "ext" / "microdot.py", stage_dir / "microdot.py")
-    _stage_stripped(REPO_ROOT / "boot_entry" / "wozi_boot.py", stage_dir / "wozi_boot.py")
-    (stage_dir / "_boot.py").write_text(_BOOT_PY)
+    _stage_stripped(boot_entry_file, stage_dir / f"{boot_module}.py")
+    (stage_dir / "_boot.py").write_text(_boot_py(device))
     # REAL FINDING, confirmed on real hardware (a genuine flash+boot smoke test - the very check
     # this module's own docstring says this tooling never does - immediately failed): omitting the
     # board's default manifest.py entirely (see this module's docstring for why) also throws away
     # its own `freeze("$(PORT_DIR)/modules")` line - which doesn't just freeze this script's own
     # replaced _boot.py, it ALSO freezes ports/rp2/modules/rp2.py, the pure-Python module providing
-    # the friendly `rp2.Flash`/`rp2.PIO`/etc. names our own _BOOT_PY's `import machine, rp2` line
+    # the friendly `rp2.Flash`/`rp2.PIO`/etc. names our own _boot_py()'s `import machine, rp2` line
     # depends on (the low-level C extension is a separate, differently-named module - confirmed
     # directly, `import rp2` raised ImportError while `_rp2` remained importable). Without it,
     # _boot.py's own `rp2.Flash()` call fails before the filesystem is ever mounted, silently
@@ -143,7 +162,7 @@ def build_stage_dir(stage_dir: Path, device: str, micropython_dir: Path) -> None
     # warning of any kind (matching this module's own "verified means compiles clean, not an
     # on-device check" caveat exactly). ports/rp2/modules/_boot_fat.py (the FAT-filesystem
     # alternative to this board's real lfs2 _boot.py) is deliberately NOT staged here - unused by
-    # this board, and this script's own _BOOT_PY already fully replaces the lfs2 variant.
+    # this board, and this script's own _boot_py() already fully replaces the lfs2 variant.
     shutil.copy(micropython_dir / "ports" / "rp2" / "modules" / "rp2.py", stage_dir / "rp2.py")
 
     # The real website, built fresh for this device and frozen under the same "frozen_html" name
