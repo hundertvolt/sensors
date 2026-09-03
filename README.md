@@ -482,6 +482,14 @@ first actual real-hardware pass through `tests_hardware/` on the bench Pi4 — w
 fixed phase by phase, current status, and a "Next session should start here" list. Same
 delete-once-verified lifecycle as the other real-hardware planning docs above.
 
+**`DEV_HARDWARE_BASELINE_PLAN.md`** (temporary planning doc, current): the plan for building one
+real, fully-reviewed, physically-flashed `src/`-quality firmware variant for the dev bench itself
+(not wozi's own pins scratch-patched onto it) — the project owner's named prerequisite for the
+per-variant `sensortask-*.py` generator work (BACKLOG.md). Facts already established, open
+questions needing a decision, and the full action list split into what's doable ahead of the
+physical session (code/tests) versus what needs it (the real flash and on-bench verification). Same
+delete-once-verified lifecycle as the other real-hardware planning docs above.
+
 `DRIVER_SPEC.md`, `src/README.md`, `tests/README.md`, `toolchain/README.md`, `WIRING_CONTRACT.md`,
 `FINAL_WIRING_PLAN.md`, `WEBSITE_PLAN.md`, and `AUDIT_PLAN.md` — earlier temporary planning/spec
 docs, each deleted once its own effort closed, with everything permanent it settled migrated into

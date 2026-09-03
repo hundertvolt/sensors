@@ -100,9 +100,17 @@ resuming any bench-tier `pytest` work that expects the real production system.
 
 ## Next session should start here
 
-1. Before any bench-tier `pytest` work: re-flash real `wozi` production firmware (see "Current
-   physical board state" above — the board is currently running dev-bench scratch firmware, not
-   production).
+**Current priority, per the project owner: `DEV_HARDWARE_BASELINE_PLAN.md`** (repo root) — building
+and physically flashing one real, fully-reviewed dev-native firmware variant, the named prerequisite
+for the per-variant generator work. Read that plan first; it supersedes item 1 below for whichever
+firmware actually gets flashed next (its own §4a is code work doable ahead of the physical session,
+§4b is the real-hardware sequence). The bench-tier `pytest` re-run items 2-4 below are a separate,
+still-valid track (that tier drives sensors via its own scripts, independent of which application is
+flashed — see the plan's own §2) and can proceed on whatever firmware is currently on the board.
+
+1. Before any bench-tier `pytest` work *on the existing tier* (separate from the plan above): re-flash
+   real `wozi` production firmware (see "Current physical board state" above — the board is
+   currently running dev-bench scratch firmware, not production).
 2. Re-run the full bench suite (`scripts/run_bench_hardware_suite.sh -v -k "not
    hotspot_role_reversal"`) — the bench tier is not yet closed out with a clean run since the WiFi
    fixes landed.
