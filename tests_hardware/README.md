@@ -143,7 +143,9 @@ a live question:
   correct end-to-end against the real Unix-port interpreter, so this isn't a `src/` question. The
   mounted-entry-script recipe that *does* run cleanly on this bench never wires up
   `frozen_html`/`static_mount` at all, so it doesn't exercise this path either — closing this gap for
-  real needs either real wozi hardware, or extending that entry script with those two things.
+  real needs extending that entry script with those two things. Per CLAUDE.md's hard rule, wozi is
+  never physically flashed — a passing result on this bench is the real verification, valid for wozi
+  too, not a stand-in pending a wozi board.
   **Pitfall already hit once investigating this**: don't reach for `mpremote exec()` to
   inspect `is_hotspot_active()`'s live value — per the liveness-polling finding above, `exec()`
   soft-resets the board and wipes the very live state you're trying to observe. Use a passive method

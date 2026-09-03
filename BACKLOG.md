@@ -166,11 +166,12 @@ constraints.
    (`tests/test_digital_twin_sensortask_integration.py::test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_and_status_led`,
    11/11 passing, including a real `_PHASE_HOTSPOT` transition and a real `302`/`Location: /`), so
    this isn't a `src/` question — it's specifically about real rp2/lwIP sockets and real Microdot
-   request handling, which no amount of Unix-port testing substitutes for. Closing it needs either a
-   real wozi board, or extending the dev bench's own entry script (embedded in
-   `dev_legacy/README.md`) with `frozen_html`/`static_mount` so hotspot-mode redirect can be
-   validated on hardware that's actually available today — a real, dev-verifiable next step, not one
-   that needs to wait on wozi hardware.
+   request handling, which no amount of Unix-port testing substitutes for. Closing it needs
+   extending the dev bench's own entry script (embedded in `dev_legacy/README.md`) with
+   `frozen_html`/`static_mount` so hotspot-mode redirect can be validated on the dev bench — per
+   CLAUDE.md's hard rule, a passing dev-bench result is treated as valid for wozi too, so this is a
+   real, complete next step on hardware that's actually available today, not a placeholder pending a
+   wozi board that will never exist.
 
 ## Deferred / explicitly out-of-scope work
 

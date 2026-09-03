@@ -66,8 +66,10 @@ Manual tests and the flash-cycle re-provisioning test are out of scope.
   test of either target. Both findings are dropped as noise, not tracked as bugs. The captive-portal
   redirect itself remains genuinely unverified on real hardware (this bench's own working
   mounted-entry-script recipe doesn't wire up `frozen_html`/`static_mount` at all, so it's never
-  actually exercised that path) — closing that gap needs either real wozi hardware or extending the
-  entry script with those two things, not a re-run of the mismatched build.
+  actually exercised that path) — closing that gap needs extending the entry script with those two
+  things and testing on this bench, not a re-run of the mismatched build. Per CLAUDE.md's hard rule,
+  wozi is never physically flashed — a passing dev-bench result is the real, complete verification
+  for this, not a stand-in for one.
 
 ## Current physical board state (as of 2026-09-02, end of this session)
 
@@ -91,9 +93,10 @@ resuming any bench-tier `pytest` work that expects the real production system.
   session's cleanup traced two false "bugs" back to.
 - **Captive-portal redirect on real hardware — never actually verified under a valid
   configuration.** Full detail and next steps are the durable record at `BACKLOG.md`'s open
-  questions list and `tests_hardware/README.md`'s corresponding entry. Closing it needs either real
-  wozi hardware, or extending the dev bench's own entry script with `frozen_html`/`static_mount` so
-  the redirect can be exercised on hardware that's actually available today.
+  questions list and `tests_hardware/README.md`'s corresponding entry. Closing it needs extending
+  the dev bench's own entry script with `frozen_html`/`static_mount` so the redirect can be
+  exercised on this bench — wozi is never physically flashed, so this is the real verification, not
+  a placeholder for one.
 
 ## Next session should start here
 

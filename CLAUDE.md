@@ -97,6 +97,17 @@ information):
 - **`dev` config is a bench rig only** — its quirks (e.g. LED/Neopixel REST routes referencing an
   object that's never instantiated) are explicitly out of scope. Don't fix them as if they were
   bugs.
+- **WoZi is the exemplary/base variant the whole `src/` promotion is built and validated against —
+  it is never physically flashed or bench-tested; only the dev board is, and only ever will be.**
+  WoZi's own correctness is established entirely through the mock/twin/unit-test suite (`tests/`),
+  which stays the source of truth for it and is unaffected by any real-hardware work. The dev bench
+  exists solely to physically validate the underlying shared mechanisms (I2C/SPI/WiFi/webserver/
+  etc.) that wozi's own code also uses — **a passing dev-bench result is treated as valid for wozi
+  too**, provided the code actually under test is genuinely dev-native (dev's own correct pins/
+  config via its own entry point), never wozi's own hardcoded build forced onto dev hardware. That
+  specific mismatch (`scripts/build_firmware.py wozi` — wozi's hardcoded pins — flashed onto the dev
+  bench) produced two false "bugs" once (see BACKLOG.md's git history around 2026-09-02/03) — it
+  isn't a shortcut for testing wozi, it's testing nothing at all, and must not be repeated.
 - **No unit tests against the current (deployed, pre-refactor) codebase — `python/`, `modules/`.**
   The agreed plan is: fully understand the current system first, confirm what's already
   promoted into `src/`, and write tests as part of that refactor — not before, and
