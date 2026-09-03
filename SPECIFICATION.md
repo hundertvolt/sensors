@@ -1233,49 +1233,44 @@ done, see BACKLOG.md.
 [--output PATH]` is a self-contained `uv run` script assembling a real `firmware.uf2` from `src/` +
 `ext/microdot.py` + the real website (Part H) for one device — build-only, like the legacy path
 above; this script itself never flashes or tests real hardware (see the "Production-readiness
-scope" note below for what does). It needs its own `manifest.py` rather than the
-board's default one: the default's `freeze("$(PORT_DIR)/modules")` line freezes
-`ports/rp2/modules/_boot.py` under the exact frozen name `shared/runtime/pyexec.c`'s rp2 `main.c`
-looks up via `pyexec_frozen_module("_boot.py", ...)` at every boot, but `src/`'s own real entry point
-needs a different `_boot.py` — one that mounts the filesystem (identical to the port's own stock
-logic) and then imports `wozi_boot` (`boot_entry/wozi_boot.py`) instead of anything from
-`ports/rp2/modules`. Freezing a second file under the same name would collide with the default
-manifest's own copy, so `build_firmware.py` skips the default manifest entirely and re-states its
-other `require()`s verbatim (`bundle-networking`, `aioble`, `asyncio`, `onewire`, `ds18x20`, `dht`,
-`neopixel`) alongside its own single `freeze()` of a self-built staging directory (`src/*.py`
-flattened + `ext/microdot.py` + the real website frozen as `frozen_html.py`, so
-`src/sensortask_wozi.py`'s existing `import frozen_html` resolves with no code change, + the new
-`_boot.py` + `boot_entry/wozi_boot.py`). This repo's own top-level `modules/_boot.py` is never read,
-copied from, or touched by this script — consistent with CLAUDE.md's hard rule with no exception
-needed, since that file is never in this script's path. `build_stage_dir()` raises immediately if
-any `src/` filename collides with one of its own reserved staging names (`microdot.py`,
-`wozi_boot.py`, `_boot.py`, `frozen_html.py`, `rp2.py`) rather than silently overwriting one or the
-other.
+scope" note below for what does). Every device needs its own `boot_entry/<device>_boot.py` (e.g.
+`boot_entry/wozi_boot.py`/`boot_entry/dev_boot.py`, DEV_HARDWARE_BASELINE_PLAN.md decision 2) —
+`build_stage_dir()` raises immediately if the requested device has none, and its `reserved` staging
+names (`microdot.py`, `main.py`, `frozen_html.py`) block a future `src/` file from silently
+colliding with any of them.
 
-**Real finding, confirmed on real hardware (see below — the first real flash+boot of this script's
-own output caught it immediately)**: skipping `freeze("$(PORT_DIR)/modules")` entirely also drops
-`ports/rp2/modules/rp2.py` — the pure-Python module `_boot.py`'s own `import machine, rp2` line
-needs (a separate module from the low-level `_rp2` C extension; `import rp2` raises `ImportError`
-while `_rp2` stays importable without it). Without it, `_boot.py`'s `rp2.Flash()` call fails before
-the filesystem is ever mounted, silently dropping to a bare, unmounted REPL with no application
-ever running — no build-time error or warning of any kind. Fixed: `build_stage_dir()` copies
-`ports/rp2/modules/rp2.py` unmodified into the same staging directory as its own generated
-`_boot.py`, so it freezes normally with no second manifest `freeze()` call needed.
-`main()` also cleans `mpy-cross`'s own `build/` directory before every build (the one build
-directory `st.build_firmware()` doesn't already wipe unconditionally — see B.6/B.7 above for its
-handling of `ports/rp2/build-<board>`), so a firmware build never depends on stale artifacts from a
-previous session — **and immediately rebuilds it via `st.build_mpy_cross()` before continuing**.
-Wiping alone is not enough: the rp2 port's own `BUILD_FROZEN_CONTENT` step invokes `mpy-cross` as
-an implicit sub-build to cross-compile the frozen manifest, which fails from a wiped `build/`
-directory with a linker error (`undefined reference to 'mp_qstr_frozen_const_pool'`) rather than
-regenerating it — confirmed via a real CI break the first time this cleaning step shipped.
-`st.clean_build_dirs()` wipes the same directory safely only because every one of its own callers
-immediately follows it with a full `setup()` that rebuilds `mpy-cross` before anything else touches
-it; this script's own wipe needed the same explicit rebuild, not just the wipe half of that
-pattern.
+**That entry point is frozen under the literal name `"main.py"`, NOT imported from a custom
+`_boot.py` — this is load-bearing, not a style choice, confirmed directly against the pinned
+v1.28.0 source.** `ports/rp2/main.c`'s own boot sequence is `pyexec_frozen_module("_boot.py", ...)`
+-> `pyexec_file_if_exists("boot.py")` -> `mp_usbd_init()` -> `pyexec_file_if_exists("main.py")` —
+USB is only initialized *after* the frozen `_boot.py` module call *returns*.
+`pyexec_file_if_exists()` (`shared/runtime/pyexec.c`) checks the frozen module table before the
+filesystem, so a module frozen under `"main.py"` is picked up and run automatically — and,
+critically, *after* USB is already up. This script used to do the opposite: a custom `_boot.py`
+(mounting the filesystem, then `import <device>_boot`, whose own `asyncio.run(main())` never
+returns under normal operation) frozen under the name `"_boot.py"` itself, which meant skipping the
+default board manifest entirely (to avoid a second, colliding `freeze()` of that name) and
+re-stating its other `require()`s by hand. **That `_boot.py` never returning meant `mp_usbd_init()`
+was never reached, so every device built this way never initialized USB on a real hard reset, for
+as long as this shipped** — never a practical problem for a deployed, headless unit (nothing needs
+a host serial console attached to one), but a real gap for `tests_hardware/`'s own bench-tier
+design, which assumes `board.hard_reset()` yields a serial-observable boot. Independently confirmed
+as a known, documented rp2-port behavior via `micropython/micropython#15230` (upstream maintainer:
+"after a hard reset USB isn't initialised until after boot.py finishes running... put the program
+in main.py instead of boot.py"), not project-specific. Fixed: freeze the real entry point under
+`"main.py"` instead, reusing the board's default `manifest.py` unchanged (its own `require()`s and
+its `freeze("$(PORT_DIR)/modules")`, the stock, always-returns `_boot.py` + `rp2.py`) rather than
+re-stating anything by hand. **Confirmed working on real hardware** (via
+`tests_hardware/flash/test_toolchain_flash_boot.py::test_real_uf2_reflash_and_boot_smoke_test`,
+`--allow-flash-cycle`-gated — USB enumerates immediately after a fresh flash, and again after a
+real software-triggered reboot). This repo's own top-level `modules/_boot.py` is never read, copied
+from, or touched by this script, per CLAUDE.md's hard rule — unaffected either way, since the stock
+manifest freezes the *port's own* `ports/rp2/modules/_boot.py`, not this repo's file of the same
+name.
 
 Every `.py` file `build_stage_dir()` copies into the stage directory (`src/*.py`, `ext/microdot.py`,
-`boot_entry/wozi_boot.py`) is passed through `scripts/_strip_type_checking.py`'s
+`boot_entry/<device>_boot.py`, the last staged under the name `main.py`) is passed through
+`scripts/_strip_type_checking.py`'s
 `strip_type_checking_blocks()` first — an `ast`-based transform (parse → drop each bare
 `if TYPE_CHECKING:`/`if mod.TYPE_CHECKING:` block, with no `elif`/`else`, plus its defining
 `try: from typing import TYPE_CHECKING / except ImportError: TYPE_CHECKING = False` header → hand
@@ -1298,9 +1293,11 @@ real `src/` file it came from does not).
 
 `tests_scripts/` (CPython/pytest — see `tests_scripts/conftest.py` and CLAUDE.md's "Code quality
 tooling") covers `build_frozen_html.sh`'s recursive merge, `build_website.sh`'s staging, and
-`build_firmware.py`'s assembly logic (`_BOOT_PY`/`_MANIFEST_TEMPLATE` content, `build_stage_dir()`'s
-file set, CLI error paths) fast and offline. One test in that suite,
-`test_real_firmware_build_produces_a_valid_uf2`, does the real end-to-end build, gated behind
+`build_firmware.py`'s assembly logic (`_MANIFEST_TEMPLATE` content, `build_stage_dir()`'s
+file set including its per-device boot-module selection, CLI error paths) fast and offline. One
+test in that suite, `test_real_firmware_build_produces_a_valid_uf2`, does the real end-to-end
+build — parametrized over every real device (`wozi`, `dev`), since each has its own distinct
+`boot_entry/<device>_boot.py` that must actually compile and freeze cleanly — gated behind
 `RUN_SLOW_FIRMWARE_BUILD=1` so it stays opt-in for fast local iteration. `scripts/test.sh` runs the
 fast `tests_scripts/` suite as one more step alongside the MicroPython one;
 `.github/workflows/ci.yml`'s `firmware-build-verify` job (`needs: unit-tests`, reusing its toolchain
@@ -1316,10 +1313,15 @@ twin serves the real website end to end. This script's own compiling-clean/produ
 are still build-only, not an on-device functional check — but `tests_hardware/flash/
 test_toolchain_flash_boot.py::test_real_uf2_reflash_and_boot_smoke_test` (gated behind
 `--allow-flash-cycle`, a deliberate real flash cycle) does exercise this script's own output on real
-rp2040 hardware, and the first time it actually ran it immediately caught the real `rp2.py` bug
-documented above (a UF2 that "built clean" left the board unable to mount its filesystem or run any
-application at all). Treat this script's own success as necessary, not sufficient, for a real
-device to actually boot.
+rp2040 hardware, and the first time it actually ran it immediately caught a real bug (an early
+version of this script's own manifest omitted `ports/rp2/modules/rp2.py`, leaving the board unable
+to mount its filesystem or run any application at all — since fixed, and no longer even a live
+concern now that the stock board manifest is reused unchanged rather than re-stated by hand — see
+above). Treat this script's own success as necessary, not sufficient, for a real device to actually
+boot. The `main.py`-freezing fix above is itself verified this same way in spirit (build-only,
+`--allow-flash-cycle`-gated real-hardware exercise) — confirmed on real hardware for the `dev`
+variant specifically; not yet re-confirmed with a real flash+boot of `firmware-wozi.uf2` on actual
+`wozi`-target hardware, since `wozi` is never physically flashed (CLAUDE.md's hard rule).
 
 ## B.12 Tiered dev-environment setup (`env` subcommand)
 
@@ -3199,6 +3201,20 @@ this Part — see this document's front matter for that tradeoff.
   - `machine.WDT` hard-caps at **8388ms** on RP2040. Current code uses `WDT(timeout=8000)` — only
     388ms of margin. Don't casually increase this without checking the cap still holds against
     current docs.
+  - **On rp2, USB (`mp_usbd_init()`) is only initialized *after* the frozen `_boot.py` module call
+    returns — a `_boot.py` that blocks forever means USB never initializes at all, on every real
+    hard reset.** Confirmed directly against the pinned v1.28.0 source: `ports/rp2/main.c`'s boot
+    sequence is `pyexec_frozen_module("_boot.py", ...)` -> `pyexec_file_if_exists("boot.py")` ->
+    `mp_usbd_init()` -> `pyexec_file_if_exists("main.py")`. `pyexec_file_if_exists()`
+    (`shared/runtime/pyexec.c`) checks the frozen module table *before* the filesystem, so a real
+    application entry point that needs to run automatically and block forever belongs frozen under
+    the literal name `"main.py"`, never imported from inside a custom `_boot.py` — `scripts/
+    build_firmware.py` made exactly this mistake and then fixed it (Part B.11 above has the full
+    account). Independently confirmed as a known, documented rp2-port behavior via
+    `micropython/micropython#15230` (not project-specific). Never a practical problem for a
+    deployed, headless unit (nothing needs a host serial console attached to one) — but directly
+    relevant to any real-hardware test harness that expects `board.hard_reset()` to yield a
+    serial-observable boot.
   - `RP2040`: dual-core Cortex-M0+ @ up to 133MHz, 264KB SRAM (6 banks), 2×I2C, 2×SPI, 2×UART,
     8×PIO state machines.
   - Pico W's littlefs partition (~848KB) is smaller than plain Pico's (~1.37MB) because Pico W's
