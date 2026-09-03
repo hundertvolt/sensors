@@ -131,22 +131,25 @@ a live question:
   recognizing for what it is (an expected, designed-for recovery, not a new bug) rather than being
   surprised by it.
 - **Captive-portal hotspot-mode redirect fallback (SPECIFICATION.md Part A.5) - real-hardware
-  verification status: OPEN, a real discrepancy found.** `test_hotspot_role_reversal.py::test_nonsense_path_redirects_to_root_over_the_hotspot_link`/
+  verification status: UNCONFIRMED, not a live bug (2026-09-03 review).** `test_hotspot_role_reversal.py::test_nonsense_path_redirects_to_root_over_the_hotspot_link`/
   `test_put_to_nonsense_path_is_405_not_a_redirect_over_the_hotspot_link` exist and exercise the
-  real 302-vs-405 behavior over the real hotspot link, and have now actually been attempted against
-  real hardware running current HEAD (including this fallback's own merge) — but a plain
-  `GET /generate_204` while the DUT was confirmed genuinely in hotspot mode (`iw station dump`
-  showing the bench radio associated) returned a bare 404, not the expected 302. This contradicts
-  every unit/digital-twin-level test for the same code path
-  (`tests/test_asy_webserver_service.py`, `tests/test_asy_wifi_service.py`,
+  real 302-vs-405 behavior over the real hotspot link. A plain `GET /generate_204`, while the DUT was
+  confirmed genuinely in hotspot mode (`iw station dump` showing the bench radio associated), once
+  returned a bare 404 instead of the expected 302 — contradicting every unit/digital-twin-level test
+  for the same code path (`tests/test_asy_webserver_service.py`, `tests/test_asy_wifi_service.py`,
   `tests/test_sensortask_wozi.py`, `tests/test_digital_twin_sensortask_integration.py`,
   `tests/test_digital_twin_real_website_integration.py`), all of which pass — including a fresh,
   direct re-run of the digital-twin integration test against the real Unix-port interpreter, which
   confirmed `src/`'s own `is_hotspot_active()`/`_serve_static()` logic is correct end to end, ruling
-  out a reproducible `src/` bug as the explanation. Not yet root-caused — tracked as BACKLOG.md's
-  open questions list, item 7, which has the two remaining candidates (unverified flashed-firmware
-  provenance; a routing-miss-vs-false-condition "which 404" ambiguity) and next steps.
-  **Pitfall already hit once investigating this**: don't reach for `mpremote exec()` to
+  out a reproducible `src/` bug as the explanation. **But that run flashed `scripts/build_firmware.py
+  wozi` (wozi's own hardcoded pins) onto this dev bench's differently-wired hardware** — the same
+  mismatched configuration BACKLOG.md item 8 later root-caused a real I2C boot-loop against — so
+  sensor drivers were running against the wrong GPIO pins for that entire session, and the one run
+  that *did* test cleanly (the mounted-entry-script recipe) never exercises this code path at all.
+  Not disproven, just never observed under an aligned configuration in either direction — needs a
+  re-test on real wozi hardware or a real per-variant dev-pin build before treating it as a live bug.
+  Full account, remaining "which 404" candidate, and next steps: BACKLOG.md's open questions list,
+  item 7. **Pitfall already hit once investigating this**: don't reach for `mpremote exec()` to
   inspect `is_hotspot_active()`'s live value — per the liveness-polling finding above, `exec()`
   soft-resets the board and wipes the very live state you're trying to observe. Use a passive method
   (a second REST/network-level check, or a genuinely code-level trace) instead.
