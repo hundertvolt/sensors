@@ -21,20 +21,11 @@ example to generalize from and test against; wozi itself can never be that examp
 never physically flashed (CLAUDE.md hard rule) — only the dev bench is. This plan's scope is
 **one hand-written variant, reviewed and tested to the same bar wozi itself was promoted at**
 (SPECIFICATION.md Part D's checklist) — not the generator. Building the generator is deliberately
-out of scope here; see §6.
+out of scope here; see §6. **Everything this plan produces is an interim, hand-written baseline —
+it gets replaced once the automated per-variant generator lands. Don't over-invest in permanence.**
 
 **Scope, confirmed by the project owner**: at this stage, this variant carries **exactly the same
-three sensors wozi has — SCD30, BMP3xx, SGP40 — wired differently, nothing added or removed.** No
-SHTC3/MPRLS/ISL29125 (those belong to the unrelated `dev.json` kitchen-sink fixture, see §2) and no
-new sensor drivers. This keeps the variant a pure "same logic, different pins/FRAM" exercise, which
-is exactly what makes it a valid stand-in for wozi under CLAUDE.md's hard rule.
-
-**Done when**: a real UF2 built for the dev bench boots cleanly with the watchdog armed, every
-sensor reads correctly on its actual wiring, the real website serves and the captive-portal
-redirect works over a real hotspot link, and this has survived a real on-bench soak — plus the
-existing `tests_hardware/` flash/bench pytest tiers re-run cleanly against it. At that point CLAUDE.md's
-rule applies in full: this result stands for wozi too, and BACKLOG's still-open real-hardware items
-(captive-portal verification, the per-variant generator's blocking dependency) close out for real.
+three sensors wozi has — SCD30, BMP3xx, SGP40 — wired differently, nothing added or removed.**
 
 ## 2. Facts already established — don't re-derive these
 
@@ -52,21 +43,22 @@ rule applies in full: this result stands for wozi too, and BACKLOG's still-open 
   `scripts/build_firmware.py <anything>` today always produces a UF2 that boots into
   `sensortask_wozi.main()` — this is the exact gap the earlier scratch-patch investigation stood in
   for, and the real, concrete thing this plan needs to fix.
-- **`html/definitions/dev.json` already exists but describes something else.** Read directly: it's
-  a broad kitchen-sink fixture (SCD30 + SGP40 + SHTC3 + MPRLS + ISL29125 — three of which have no
-  real `src/` driver yet per BACKLOG's "unconfirmed projection" entry), used for exercising the
-  website/definitions system generically. It is **not** a description of the physical dev bench's
-  real, currently-wired sensor set. Using the device id `dev` for this variant would collide with
-  this existing file's own meaning — resolved as decision 1 below by using a different id.
-- **The existing scratch bring-up script already proves the wiring/logic works.** The "bench
-  bring-up adaptation" entry script embedded in full in `dev_legacy/README.md` is a hand-written,
-  already-validated module with the bench's correct pins, run via `mpremote run` (mounted, not
-  flashed) — 100+s clean, zero errors, confirmed multiple times. It is **not** a real `src/` file
-  (never reviewed/tested to Part D's bar, not wired into `scripts/build_firmware.py`), has **no
-  watchdog armed** (deliberately, "a debugging aid"), and has **no `import frozen_html`/
-  `static_mount`** — so it never serves the real website and has never exercised the captive-portal
-  redirect at all. Promoting it into a real `src/sensortask_devbench.py` is most of this plan's
-  actual work, not a from-scratch design exercise.
+- **There is only one "dev" device — no separate name, no separate fixture.**
+  `html/definitions/dev.json` already exists today as a broad kitchen-sink projection (SCD30 +
+  SGP40 + SHTC3 + MPRLS + ISL29125 — three of which have no real `src/` driver yet). Per the project
+  owner: **that fixture is wrong and doesn't get kept alongside anything new — there is only "dev",
+  and "dev" now means the real, limited, actually-wired sensor set.** `dev.json` gets rewritten in
+  place to describe exactly SCD30/SGP40/BMP3xx, replacing its current kitchen-sink content, not
+  supplemented by a second file under a different name.
+- **The existing scratch bring-up script already proves the wiring/logic works, and stays as the
+  separate debug-only path it always was.** The "bench bring-up adaptation" entry script embedded in
+  full in `dev_legacy/README.md` is a hand-written, already-validated module with the bench's
+  correct pins, run via `mpremote run` (mounted, not flashed) — 100+s clean, zero errors, confirmed
+  multiple times, watchdog deliberately disarmed as a debugging aid. **This script is not being
+  replaced** — it remains the dedicated-debug-run path (mounted, watchdog off). The new
+  `src/sensortask_dev.py` this plan produces is a separate, real, flashable `src/` file (watchdog
+  armed, same as wozi) for actual verification/soak use — the two coexist for different purposes,
+  same relationship `sensortask_wozi.py` already has to any ad hoc REPL debugging on that side.
 - **`tests_hardware/`'s flash/bench pytest tier is unaffected by any of this and stays as-is.** It
   drives sensors directly via its own pin-correct `device_scripts/*.py` over `mpremote`, independent
   of whichever application the flashed firmware boots into — confirmed by reading
@@ -76,60 +68,74 @@ rule applies in full: this result stands for wozi too, and BACKLOG's still-open 
 - **CLAUDE.md's standing rule** (added this session): wozi is never physically flashed, only dev is,
   and a passing dev-bench result — on genuinely dev-native code — counts as valid for wozi too.
 
-## 3. Resolved decisions (were open questions; settled by the project owner 2026-09-03)
+## 3. Resolved decisions (settled by the project owner 2026-09-03; corrected once after an initial
+misreading — this is the current, authoritative version)
 
-1. **Device id / definitions-file naming: `devbench`.** Not `dev` (already taken by the
-   kitchen-sink projection fixture, left untouched) and not `bench` (too close to `tests_hardware/`'s
-   own "bench tier" terminology, which means something else). Matches the terminology already used
-   throughout `dev_legacy/README.md`/`REAL_HARDWARE_RUN_LOG.md`. File/module names, fixed:
-   `src/sensortask_devbench.py`, `boot_entry/devbench_boot.py`, `html/definitions/devbench.json`.
-2. **`scripts/build_firmware.py`'s device→boot-module mechanism: approved as scoped.** Require
-   `boot_entry/<device>_boot.py` to exist; `build_stage_dir()`/`_BOOT_PY` generation picks it by
-   name (`import {device}_boot`) instead of the hardcoded `import wozi_boot`. An explicit,
-   minimal convention — not the full per-variant generator, which stays out of scope (§6).
-3. **FRAM chunk order: same order as wozi, only `max_size` changes.** Confirmed by the "exactly
-   wozi's sensors, different wiring" scope above — same modules constructed, same relative order,
-   same seven chunks (`SystemService` → `SGP40_Reader` ×2 → `BMP3xx_Reader` → `SCD30_Reader` →
-   `NeopixelDriver` → `NotificationCoordinator`). Only `max_size=0x40000` (256KB chip) differs from
-   wozi's `0x2000`.
-4. **Digital-twin equivalent: yes.** Build `digital_twin/run_devbench_integration.py`, mirroring
-   `run_wozi_integration.py`. Keeps this variant on the same "prove it virtually first" footing every
-   future change to it should get, rather than a real flash cycle being the only way to test it.
-5. **Watchdog: armed.** `WDT(timeout=8000)`, matching wozi's own construction step 1. A baseline
-   meant to stand in for production shouldn't ship with the scratch script's debugging-only
-   leniency — a wedged bus should produce a real, observable reboot during the soak, not a silent
-   hang that only a human watching the REPL would notice.
-6. **Unit-test bar: full parity with `test_sensortask_wozi.py`.** Construction order, FRAM chunk
-   order/size, setup-batch order, task/timer starter collection, debug-level registry — adapted to
-   `devbench`'s own pins/FRAM size. Not optional; this is what CLAUDE.md's hard rules and
-   SPECIFICATION.md Part D already require for anything landing in `src/`.
+1. **Device id: `dev`. No second name, no kept-alongside kitchen-sink fixture.** File/module names,
+   fixed: `src/sensortask_dev.py`, `boot_entry/dev_boot.py`, `html/definitions/dev.json` (rewritten
+   in place — not a new file, the existing kitchen-sink content is replaced, not preserved).
+2. **Wiring/entry-point baseline to build from: whichever configuration is confirmed to still
+   enumerate over USB for `mpremote`.** Use `dev_legacy/README.md`'s own most recently confirmed-
+   working wiring table + entry-script recipe (§2 above) as the starting point — it's already the
+   one proven to keep the board reachable over USB serial. Don't introduce an untested wiring
+   tweak while porting it into `src/sensortask_dev.py`. This is explicitly a temporary baseline that
+   the automated per-variant generator will replace later — implement it straightforwardly, don't
+   gold-plate it. (Separately, unrelated to wiring: `scripts/build_firmware.py`'s device→boot-module
+   mechanism is still needed and still approved as scoped — require `boot_entry/<device>_boot.py` to
+   exist, staging/generation picks it by name instead of the hardcoded `wozi_boot`.)
+3. **FRAM chunk order: does not need to match wozi's.** The only real requirement is the existing
+   FRAM chunk determinism rule (SPECIFICATION.md Part A.4/A.7): whatever order
+   `sensortask_dev.py`'s own `build_system()` constructs modules in, that order must stay identical
+   across every future rebuild of *this* variant (so on-chip FRAM offsets keep decoding correctly) —
+   it does not need to reproduce wozi's own specific seven-chunk sequence. In practice, mirroring
+   wozi's order is still the simplest choice (same sensor set, no reason to deviate) — just don't
+   treat matching wozi as a hard requirement if there's a reason to differ. `max_size=0x40000` for
+   the 256KB chip either way (not wozi's `0x2000`).
+4. **Digital-twin equivalent: yes, exactly as originally planned.** Build
+   `digital_twin/run_dev_integration.py`, mirroring `run_wozi_integration.py`.
+5. **Watchdog: armed in `sensortask_dev.py`, same as wozi (hardcoded, no injection point) — this
+   does not conflict with dedicated debug runs, because those use the separate scratch script, not
+   this file.** The real, flashable `src/sensortask_dev.py` arms the watchdog unconditionally,
+   matching wozi's own construction step 1 and CLAUDE.md's hard rule that it must be hardcoded so no
+   code path can ever disable it. Debug runs needing the watchdog off keep using the existing
+   mounted scratch-script path (§2 above), which is untouched by this plan and stays watchdog-free
+   as it always has been — the two paths don't compete for the same file.
+6. **Unit-test bar: full parity with `test_sensortask_wozi.py`, understood as an interim
+   investment.** Construction order, FRAM chunk order/size, setup-batch order, task/timer starter
+   collection, debug-level registry — adapted to `dev`'s own pins/FRAM size. This is what CLAUDE.md's
+   hard rules and SPECIFICATION.md Part D already require for anything landing in `src/`; the project
+   owner's own framing is that this hand-written test suite (like the rest of this plan) will
+   eventually fold into whatever the automated generator produces — write it properly now regardless,
+   don't skip it because it's provisional.
 
 ## 4. Action list
 
 ### 4a. Code work — no hardware needed, can be done ahead of the physical session
 
-1. Write `src/sensortask_devbench.py` — same shape and construction order as `sensortask_wozi.py`
+1. Write `src/sensortask_dev.py` — same shape as `sensortask_wozi.py`
    (SPECIFICATION.md Part A.7), with: the bench's own pins from §2 above, `max_size=0x40000` for
    FRAM, `import frozen_html` + `static_mount="/html"` + `is_hotspot_active=conn.is_hotspot_active`
-   (the captive-portal wiring the current scratch script lacks), watchdog armed. Full review pass
-   against CLAUDE.md's hard rules and SPECIFICATION.md Part D's checklist — including D.9 (check
-   against current MicroPython) and D.10/the "bird's-eye scan" hard rule (API consistency against
-   every other file already in `src/`, run whenever a new file lands there).
-2. Write `boot_entry/devbench_boot.py`, mirroring `boot_entry/wozi_boot.py` exactly, importing from
-   `sensortask_devbench`.
-3. Extend `scripts/build_firmware.py` per decision 2; extend `tests_scripts/test_build_firmware.py`
-   so both `wozi` and `devbench` are covered by a regression test (each produces a UF2 whose staged
-   `_boot.py` imports the *correct*, distinct boot module — this is exactly the class of bug that let
-   the mismatch happen unnoticed the first time).
-4. Add `html/definitions/devbench.json`, describing exactly the three sensors from §1's scope
-   (SCD30/SGP40/BMP3xx) — not a copy of the existing kitchen-sink `dev.json`.
-5. Write `tests/test_sensortask_devbench.py` per decision 6 — mirroring `test_sensortask_wozi.py`'s
+   (the captive-portal wiring the current scratch script lacks), watchdog armed (decision 5).
+   Construction/FRAM-chunk order per decision 3 (mirroring wozi's is fine; not a hard requirement).
+   Full review pass against CLAUDE.md's hard rules and SPECIFICATION.md Part D's checklist —
+   including D.9 (check against current MicroPython) and D.10/the "bird's-eye scan" hard rule (API
+   consistency against every other file already in `src/`, run whenever a new file lands there).
+2. Write `boot_entry/dev_boot.py`, mirroring `boot_entry/wozi_boot.py` exactly, importing from
+   `sensortask_dev`.
+3. Extend `scripts/build_firmware.py` per decision 2's mechanism; extend
+   `tests_scripts/test_build_firmware.py` so both `wozi` and `dev` are covered by a regression test
+   (each produces a UF2 whose staged `_boot.py` imports the *correct*, distinct boot module — this
+   is exactly the class of bug that let the mismatch happen unnoticed the first time).
+4. Rewrite `html/definitions/dev.json` in place, describing exactly the three sensors from §1's
+   scope (SCD30/SGP40/BMP3xx) — replacing its current kitchen-sink content entirely, modeled on
+   `html/definitions/wozi.json`'s shape.
+5. Write `tests/test_sensortask_dev.py` per decision 6 — mirroring `test_sensortask_wozi.py`'s
    coverage, adapted to this variant's pins/FRAM size.
-6. `digital_twin/run_devbench_integration.py` per decision 4.
+6. `digital_twin/run_dev_integration.py` per decision 4.
 7. Full virtual regression chain, clean, before this ever goes near real hardware: `scripts/lint.sh`,
-   `scripts/typecheck.sh`, `scripts/test.sh` — plus a bounded twin soak of `devbench`'s `main()`.
-8. Build-only real check (no flash): `uv run scripts/build_firmware.py devbench` succeeds, and the
-   staged output actually imports `devbench_boot` — confirm via `tests_scripts/`'s own assembly
+   `scripts/typecheck.sh`, `scripts/test.sh` — plus a bounded twin soak of `dev`'s `main()`.
+8. Build-only real check (no flash): `uv run scripts/build_firmware.py dev` succeeds, and the
+   staged output actually imports `dev_boot` — confirm via `tests_scripts/`'s own assembly
    tests plus a manual inspection of the staged files.
 9. Commit, push, open a draft PR, confirm CI green, subscribe to its activity — standard workflow,
    nothing hardware-specific about this step.
@@ -139,10 +145,12 @@ rule applies in full: this result stands for wozi too, and BACKLOG's still-open 
 10. Flash the new build for real (`picotool load`, one real flash cycle — not the mount-and-run
     scratch workaround) onto the dev bench.
 11. Confirm a clean boot with the watchdog armed: every sensor reads correctly
-    (`GET /measurements`/REPL), no I2C errors on the shared i2c1 bus specifically — this is the
-    concrete test that finally confirms or refutes the frozen_html/static_mount heap-fragmentation
-    lead already on record (see BACKLOG.md's "per-variant `sensortask-*.py` generator" entry), now
-    under a build that's actually correct for this hardware instead of the earlier mismatched one.
+    (`GET /measurements`/REPL), no I2C errors on the shared i2c1 bus specifically, and the board is
+    still reachable over USB/`mpremote` after boot (decision 2's own criterion, only fully
+    confirmable with real hardware) — this is the concrete test that finally confirms or refutes the
+    frozen_html/static_mount heap-fragmentation lead already on record (see BACKLOG.md's
+    "per-variant `sensortask-*.py` generator" entry), now under a build that's actually correct for
+    this hardware instead of the earlier mismatched one.
 12. Captive-portal hotspot-mode redirect over a real hotspot link (`GET /generate_204` → real
     `302`/`Location: /`) — this is the concrete step that closes the gap BACKLOG.md's open questions
     list currently records as "never actually verified under a valid configuration."
@@ -156,7 +164,7 @@ rule applies in full: this result stands for wozi too, and BACKLOG's still-open 
     `dev_legacy/README.md` to record this as the project's one standing physically-verified
     baseline. Specifically: `tests_hardware/README.md` line ~26 and `HARDWARE_TEST_PLAN.md` §6.1
     currently document "the one allowed flash" as `scripts/build_firmware.py wozi` — repoint that at
-    `devbench` once it exists (a real doc fix this plan deliberately defers to this step, since the
+    `dev` once it exists (a real doc fix this plan deliberately defers to this step, since the
     *existing* flash/bench tier's already-accepted results don't need to be re-earned first — see
     §2's facts on why that tier is unaffected).
 
@@ -166,7 +174,7 @@ rule applies in full: this result stands for wozi too, and BACKLOG's still-open 
    correctly, serve the real website, and redirect hotspot-mode captive-portal probes?
 2. **Stability / no crashes or raises**: a bounded twin soak first (action 7), then a real on-bench
    soak once flashed (action 14).
-3. **Max coverage**: `tests/test_sensortask_devbench.py` at the same bar as `test_sensortask_wozi.py`
+3. **Max coverage**: `tests/test_sensortask_dev.py` at the same bar as `test_sensortask_wozi.py`
    (action 5); the existing, already-built `tests_hardware/` flash+bench tiers re-run against the
    corrected build (action 13).
 
@@ -176,7 +184,8 @@ rule applies in full: this result stands for wozi too, and BACKLOG's still-open 
   produces one more hand-written variant, the same way wozi itself was hand-written — not the tool
   that would generate variants like this one automatically. That is the explicit next step *after*
   this baseline exists, per the project owner's own framing, not something to fold in here.
-- **Any sensor devbench doesn't physically have** (SHTC3/MPRLS/ISL29125, or anything else). Scope is
+  Everything this plan builds is interim — expect it to be replaced once that generator lands.
+- **Any sensor `dev` doesn't physically have** (SHTC3/MPRLS/ISL29125, or anything else). Scope is
   fixed at exactly wozi's three sensors, per the project owner's direction in §1 — adding more is a
   separate future decision, not something this plan opens the door to by default.
 - **Re-litigating `tests_hardware/`'s already-accepted results.** Nothing here calls those into
