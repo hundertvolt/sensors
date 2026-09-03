@@ -51,6 +51,32 @@ def test_real_reboot_sequencing_via_rest_completes_cleanly(board: Board, bench: 
     # back, rather than sleeping a guessed duration.
     wait_until(lambda: not board.is_device_present(), timeout_s=30.0, poll_interval_s=0.5, description="board to go unreachable (real reboot firing)")
     wait_until(board.is_reachable, timeout_s=30.0, poll_interval_s=1.0, description="board reachable again after the real reboot completes")
+    # REAL FINDING, fixed: is_reachable() only confirms bare mpremote/raw-REPL reachability, not
+    # that the webserver task is actually listening - confirmed directly (dut_ip's own fixture
+    # docstring, "SECOND REAL FINDING"): sensortask_wozi.main() only starts the webserver's own
+    # task after ntp_force_sync(), itself bounded by a 20s asyncio.wait_for() - so a fresh
+    # reconnect can have up to ~20s with nothing listening on port 80 yet. Without this wait, the
+    # very next test in this file (a concurrent HTTP burst) could race a webserver that isn't up
+    # yet, or is still busy with startup work competing for the single CPU core - producing
+    # spurious timeouts that have nothing to do with what that test actually checks.
+    # Bounded recovery retry - same pattern as dut_ip's own fixture and every other real-reboot
+    # wait in this tier (see conftest.py's dut_ip docstring, "FIFTH REAL FINDING"): a real STA
+    # reconnect after a genuine reboot is still subject to this bench's already-documented
+    # intermittent WiFi flakiness (tests_hardware/README.md's "Known assumptions and open
+    # findings"; whether asy_wifi_service.py should gain its own independent reachability check is
+    # tracked as BACKLOG.md's open question 6, not decided - not something to patch here blind).
+    # kick_all_stations() was already called above, but a real reconnect can still race a stale
+    # entry re-created by this exact reboot - one bounded hard_reset() retry before failing for
+    # real, matching this tier's established convention.
+    def _webserver_up() -> bool:
+        return http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=5.0).status_code == 200
+
+    try:
+        wait_until(_webserver_up, timeout_s=30.0, poll_interval_s=2.0, description="webserver actually serving again after the real reboot completes")
+    except TimeoutError:
+        bench.kick_all_stations()
+        board.hard_reset()
+        wait_until(_webserver_up, timeout_s=30.0, poll_interval_s=2.0, description="webserver actually serving again (after one recovery hard_reset() retry)")
 
 
 # ---------------------------------------------------------------------------
@@ -62,7 +88,21 @@ def test_real_reboot_sequencing_via_rest_completes_cleanly(board: Board, bench: 
 
 
 def test_real_concurrent_client_burst_does_not_crash_the_webserver(dut_ip: str, board: Board) -> None:
+    # REAL FINDING, fixed: this test predates (or never accounted for) the real, deliberate
+    # max_connections=4 reject-when-full policy (asy_webserver_service.py's _serve(): "silently
+    # close, no accept, no response ever written" beyond the cap - the same policy
+    # test_connections_at_and_above_the_real_socket_limit_degrade_cleanly explicitly exercises).
+    # Firing 8 concurrent requests and requiring every one to succeed directly contradicts that
+    # documented design - confirmed directly, reproducibly, from a clean reboot: some subset
+    # legitimately gets a silent close, surfacing client-side as a ConnectionResetError or a
+    # timeout depending on exact timing, not a crash. The real property this test cares about (per
+    # this file's own module comment: "standing robustness validation of the burst scenario
+    # itself, not chasing a specific [segfault] bug") is that the server survives the burst and
+    # keeps serving - not that every single concurrent request over the connection cap succeeds.
+    # At least the cap's own worth of requests must still get through cleanly, though - anything
+    # less would point at a genuine problem, not just the expected reject-when-full behavior.
     n_clients = 8
+    _max_connections = 4  # matches asy_webserver_service.py's own max_connections default
     results: list[int | str] = [0] * n_clients
 
     def _client(i: int) -> None:
@@ -78,8 +118,8 @@ def test_real_concurrent_client_burst_does_not_crash_the_webserver(dut_ip: str, 
     for t in threads:
         t.join(timeout=15.0)
 
-    failures = [r for r in results if r != 200]
-    assert not failures, f"{len(failures)}/{n_clients} concurrent requests failed or errored: {results}"
+    successes = [r for r in results if r == 200]
+    assert len(successes) >= _max_connections, f"only {len(successes)}/{n_clients} concurrent requests succeeded (expected at least the {_max_connections}-connection admission ceiling to be served): {results}"
     # The webserver must still be responsive afterward - a crash that only surfaces after the
     # burst (not during it) would otherwise slip through the per-request results above.
     # is_device_present(), not is_reachable() - see that method's own docstring for why polling

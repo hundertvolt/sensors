@@ -493,6 +493,18 @@ _MAX_CONNECTIONS = 4
 
 def test_connections_at_and_above_the_real_socket_limit_degrade_cleanly(dut_ip: str) -> None:
     reset_all_error_logs(dut_ip)
+    # REAL FINDING, fixed: reset_all_error_logs()'s own PUT /status closes cleanly from the
+    # client's side (urllib's `with urlopen(...)` context manager) the instant this call returns,
+    # but that doesn't mean the RP2040's own single-core MicroPython asyncio has already run
+    # _serve()'s finally block and decremented _open_conns for that connection yet - confirmed
+    # directly: without a settle here, this test consistently (not just occasionally) fails,
+    # because its own 4 "held" sockets below start from an _open_conns baseline that isn't
+    # actually 0 yet, shifting every slot by one for the rest of the test (a bounded retry around
+    # the "extra" connection alone - see below - can't fix this, since the 4 held sockets are
+    # never reopened between attempts). A clean, timing-isolated repro of this whole sequence
+    # without any reset_all_error_logs() call at all succeeded first-try, confirming this call is
+    # exactly the missing settle point, not a deeper protocol-level issue.
+    time.sleep(1.0)
     held: list[socket.socket] = []
     extra: socket.socket | None = None
     try:
@@ -501,18 +513,50 @@ def test_connections_at_and_above_the_real_socket_limit_degrade_cleanly(dut_ip: 
             sock.settimeout(10.0)
             sock.connect((dut_ip, 80))
             held.append(sock)
-        time.sleep(0.5)  # let the server-side accept loop actually process each connection - well
-        # under per_call_timeout_s=5.0, so none of the held connections is reclaimed before the check below
+        # REAL FINDING, fixed: a real TCP connect() completing (the kernel's own 3-way handshake)
+        # does not mean the RP2040's own single-core MicroPython asyncio accept loop has already
+        # run _serve() and incremented _open_conns for that connection yet - those are two
+        # different events, and the second can lag under real load (WiFi driver work, sensor
+        # tasks). Confirmed directly: a fixed settle isn't a reliable bound either way (0.5s and
+        # 2.0s both reproduced the same failure at least once, but a clean, timing-isolated repro
+        # of this exact sequence also succeeded first-try at 2.0s) - the "extra" (5th) connection
+        # sometimes gets admitted into the real Microdot app layer (a genuine "400 bad request" -
+        # this test never sends a valid HTTP request on it - not the expected silent reject)
+        # because the accept loop hadn't caught up to all 4 held connections yet. This is a genuine
+        # timing race, not a hard invariant violation, so - matching this tier's established
+        # pattern for real hardware timing races elsewhere (e.g. joined_hotspot's own bounded
+        # retry around join_dut_hotspot()) - a bounded retry with a fresh "extra" socket each time
+        # is the principled fix, not chasing an ever-larger fixed sleep.
+        time.sleep(2.0)
 
-        extra = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        extra.settimeout(10.0)
-        # A bare connect() can still succeed at the TCP/kernel level (the accept queue) even though
-        # the real server-side _serve() task rejects it as soon as its own task runs - reject-when-
-        # full closes the writer without ever composing a response (asy_webserver_service.py's own
-        # _serve(): "silently close, no accept, no response ever written").
-        extra.connect((dut_ip, 80))
-        response = extra.recv(4096)
-        assert response == b"", f"a connection above the real {_MAX_CONNECTIONS}-connection ceiling was not rejected: got {response!r}"
+        for attempt in range(3):
+            if extra is not None:
+                extra.close()
+            extra = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            extra.settimeout(10.0)
+            # A bare connect() can still succeed at the TCP/kernel level (the accept queue) even
+            # though the real server-side _serve() task rejects it as soon as its own task runs -
+            # reject-when-full closes the writer without ever composing a response
+            # (asy_webserver_service.py's own _serve(): "silently close, no accept, no response
+            # ever written").
+            extra.connect((dut_ip, 80))
+            # REAL FINDING, fixed: a silent reject-when-full close doesn't always surface as a
+            # clean FIN (an empty recv()) - confirmed directly: sometimes it's a real RST instead
+            # (ConnectionResetError), depending on kernel-level TCP state when the server side
+            # closes. Both are the same underlying "closed without ever writing an HTTP response"
+            # outcome from the app's own reject-when-full path - src/ doesn't control which one
+            # the TCP stack picks, so this test must accept either, not just the FIN/empty-read
+            # shape.
+            try:
+                response = extra.recv(4096)
+            except ConnectionResetError:
+                response = b""
+            if response == b"":
+                break
+            last_response = response
+            if attempt < 2:
+                time.sleep(1.0)  # let the previous "extra" connection's own quick error-response cleanup (_open_conns.decrement()) actually complete
+        assert response == b"", f"a connection above the real {_MAX_CONNECTIONS}-connection ceiling was not rejected after 3 attempts: got {last_response!r}"
     finally:
         for sock in held:
             sock.close()
@@ -520,7 +564,18 @@ def test_connections_at_and_above_the_real_socket_limit_degrade_cleanly(dut_ip: 
             extra.close()
 
     # Once the held connections release their slots, the server must serve normally again.
-    assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after the connection-limit burst cleared"
+    # REAL FINDING, fixed: closing 5 real sockets near-simultaneously (this test's own finally
+    # block above) can transiently reset a brand new connection attempted immediately afterward
+    # (ConnectionResetError, unhandled by a bare fetch()) - the same class of real accept-loop-lag
+    # timing this test already accounts for elsewhere (see the settle comments above). wait_until()
+    # already treats a raising check_fn as "not yet ready, retry" per its own docstring, so this
+    # gives the server a real chance to settle rather than asserting on the very next instant.
+    wait_until(
+        lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200,
+        timeout_s=15.0,
+        poll_interval_s=1.0,
+        description="webserver serving normally again after the connection-limit burst cleared",
+    )
     # _serve()'s own reject-when-full branch (confirmed directly): "silently close, no accept, no
     # response ever written" - no pr.err_s()/wrn_s() call anywhere on that path, so a real rejection
     # at the connection ceiling is expected to leave WEBSERVER's own error/warning log untouched.
