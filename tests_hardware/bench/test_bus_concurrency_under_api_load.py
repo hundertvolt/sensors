@@ -30,15 +30,24 @@ import threading
 
 import http_client
 from error_log_helpers import assert_module_error_log_empty, reset_all_error_logs
-from harness import Board
+from harness import Board, wait_until
 
 CO2_MIN_PPM, CO2_MAX_PPM = 200, 10_000
 PRESSURE_MIN_HPA, PRESSURE_MAX_HPA = 300.0, 1250.0
 
-# Held safely under the real max_connections=4 ceiling (asy_webserver_service.py) - see
-# test_end_to_end_timing.py's own connections-at-the-limit test for that boundary itself; this
-# test's own job is bus contention under load, not re-proving the connection-accept limit.
-_GET_WORKERS = 3
+# REAL FINDING, fixed: the total concurrent worker count is _GET_WORKERS + 1 (the SGP40 reset
+# thread runs alongside, not instead of, the GET workers) - the original _GET_WORKERS=3 made that
+# 4, exactly *at* the real max_connections=4 ceiling (asy_webserver_service.py) with zero margin,
+# not "safely under" it as this comment claimed. Confirmed directly on real hardware: a first real
+# run failed with a genuine ConnectionResetError on the SGP40 reset thread's very first request -
+# the same real accept-loop-lag/reject-when-full behavior
+# test_connections_at_and_above_the_real_socket_limit_degrade_cleanly already proves is correct,
+# just with no headroom here to absorb even a brief overlap between two workers' own real HTTP
+# request/response cycles over a genuine wireless link. 2 (+1 SGP40 thread = 3 total) leaves real
+# margin; this test's own job is bus contention under load, not re-proving the connection-accept
+# limit (see test_end_to_end_timing.py's own connections-at-the-limit test for that boundary
+# itself).
+_GET_WORKERS = 2
 _GET_ITERATIONS_PER_WORKER = 8
 _PUT_RESET_COUNT = 2
 
@@ -92,6 +101,22 @@ def test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_c
         assert not t.is_alive(), "a worker thread never finished within 120s - possible real deadlock under concurrent load"
 
     assert not errors, f"{len(errors)} issue(s) under concurrent API load: {'; '.join(errors[:10])}"
+
+    # REAL FINDING, fixed: a real WiFi reconnect blip (this bench's own already-documented,
+    # unresolved flakiness - BACKLOG.md open question 6, not a bus-hazard-specific issue) can land
+    # right after this heavy concurrent load finishes, surfacing as a transient GET /status 500 on
+    # the very next call - confirmed directly, on real hardware: a real run hit exactly this, then
+    # self-healed within seconds (a follow-up GET /status came back 200, WifiUptime reset to a low
+    # value confirming a recent reconnect). Give the server a real chance to settle before the
+    # error-log checks below, the same pattern already used elsewhere in this tier for a heavy-load
+    # settle (e.g. test_connections_at_and_above_the_real_socket_limit_degrade_cleanly's own final
+    # check).
+    wait_until(
+        lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200,
+        timeout_s=30.0,
+        poll_interval_s=2.0,
+        description="webserver serving normally again after the concurrent bus-load test",
+    )
 
     # The whole system must have stayed genuinely healthy through this, not just "no thread hung" -
     # per the standing error-log policy (tests_hardware/README.md), a clean pass leaves nothing
