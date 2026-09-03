@@ -852,21 +852,80 @@ def generate_bench_ap_credentials() -> tuple[str, str]:
     return ssid, password
 
 
-def ensure_bench_bridge(uplink_iface: str, wifi_iface: str, ssid: str | None, password: str | None) -> str:
+def ensure_br_netfilter() -> None:
+    """Idempotent: loads br_netfilter and enables net.bridge.bridge-nf-call-iptables=1, both
+    persisted across a reboot - REAL FINDING, confirmed directly on a real bench run: this
+    bridge's own DUT traffic is switched at Layer 2 (br0-wifi-ap <-> br0-eth0 via br0), and without
+    br_netfilter loaded, iptables' FORWARD/nat-PREROUTING chains never see any of it at all -
+    `lsmod | grep br_netfilter` was empty and the sysctl didn't even exist. This made every one of
+    bench_control.py's iptables-based fault-injection methods (block_udp_ports(),
+    redirect_udp_port_to_local()) a complete no-op: real DUT traffic flowed straight through
+    untouched. redirect_udp_port_to_local()'s own docstring already flagged this exact mechanism as
+    "NEEDS VERIFICATION ON FIRST REAL RUN" - this was that verification, and it failed until this
+    fix. Runs on every `env --tier bench` call (not gated behind bench_ap_exists()) since it's a
+    host-kernel-level setting independent of whether the bridge connection profile itself already
+    exists - a bridge created before this fix would otherwise stay broken even after an "idempotent"
+    re-run."""
+    run(["sudo", "modprobe", "br_netfilter"])
+    run(["sudo", "sysctl", "-w", "net.bridge.bridge-nf-call-iptables=1"])
+
+    modules_load_line = "br_netfilter\n"
+    modules_load_path = Path("/etc/modules-load.d/sensors-bench-br-netfilter.conf")
+    with tempfile.NamedTemporaryFile("w", delete=False, suffix=".conf") as f:
+        f.write(modules_load_line)
+        tmp_path = f.name
+    run(["sudo", "cp", tmp_path, str(modules_load_path)])
+    run(["sudo", "chmod", "644", str(modules_load_path)])
+    os.unlink(tmp_path)
+
+    sysctl_line = "net.bridge.bridge-nf-call-iptables=1\n"
+    sysctl_path = Path("/etc/sysctl.d/99-sensors-bench-br-netfilter.conf")
+    with tempfile.NamedTemporaryFile("w", delete=False, suffix=".conf") as f:
+        f.write(sysctl_line)
+        tmp_path = f.name
+    run(["sudo", "cp", tmp_path, str(sysctl_path)])
+    run(["sudo", "chmod", "644", str(sysctl_path)])
+    os.unlink(tmp_path)
+
+    log(f"br_netfilter loaded and net.bridge.bridge-nf-call-iptables=1 set, persisted via {modules_load_path} and {sysctl_path}")
+
+
+def ensure_bench_bridge(uplink_iface: str | None, wifi_iface: str | None, ssid: str | None, password: str | None) -> str:
     """Idempotent: this bridge+AP is real, persistent host infrastructure that survives a
     reboot (dev_legacy/README.md) - if br0-wifi-ap already exists, it's left completely alone
     and this just reports its current SSID, rather than recreating (and re-randomizing) a
     bench network that other in-flight work may already depend on. Only a genuinely missing
     bridge gets created, using explicit --ssid/--password if given, otherwise freshly generated
     ones. `wifi-sec.pmf disable` and the WPA2/AES-only tuning below are load-bearing for the
-    Pico W's cyw43439 chip - see dev_legacy/README.md's own note on this."""
+    Pico W's cyw43439 chip - see dev_legacy/README.md's own note on this. Also always ensures
+    br_netfilter (see ensure_br_netfilter()'s own docstring) and pins the AP to a fixed 2.4GHz
+    channel (see the channel comment below) - both run unconditionally, even when the bridge
+    connection profile already exists, since they're independent host/radio-level settings a
+    pre-existing bridge could still be missing."""
+    ensure_br_netfilter()
+
     if bench_ap_exists():
         current_ssid = existing_bench_ap_ssid()
         log(f"Bench WiFi bridge already configured ({BENCH_AP_CONN!r}, SSID {current_ssid!r}) - reusing, not recreating")
+        # Self-heal a bridge created before the channel-pinning fix above (e.g. auto-selected
+        # channel 13) - a genuinely idempotent re-run must actually converge on the fixed
+        # configuration, not just skip past it because a bridge of some kind already exists.
+        current_channel = run(["nmcli", "-g", "802-11-wireless.channel", "connection", "show", BENCH_AP_CONN]).strip()
+        if current_channel != "6":
+            log(f"Bench AP channel is {current_channel!r}, not the fixed 6 - repairing")
+            run(["sudo", "nmcli", "connection", "modify", BENCH_AP_CONN, "802-11-wireless.channel", "6"])
+            run(["sudo", "nmcli", "connection", "up", BENCH_AP_CONN])
         return current_ssid
 
     if ssid is None or password is None:
         ssid, password = generate_bench_ap_credentials()
+    # Interface auto-detection only runs here, when actually creating a bridge - callers that
+    # already confirmed a bridge exists (the branch above) never reach this, so a second WiFi
+    # adapter added to the host later can't make detection ambiguous for a no-op re-run.
+    if uplink_iface is None:
+        uplink_iface = detect_uplink_interface()
+    if wifi_iface is None:
+        wifi_iface = detect_free_wifi_interface(exclude=uplink_iface)
 
     log(f"Creating bench WiFi bridge: {uplink_iface} (uplink) + {wifi_iface} (hosted AP, SSID {ssid!r})")
     env = build_env()
@@ -876,9 +935,15 @@ def ensure_bench_bridge(uplink_iface: str, wifi_iface: str, ssid: str | None, pa
          "master", BENCH_BRIDGE_CONN, "con-name", BENCH_ETH_CONN, "slave-type", "bridge"],
         env=env,
     )
+    # REAL FINDING: an unset (auto, channel 0) channel let NetworkManager pick channel 13 on a
+    # real run, which the Pico W's cyw43439 didn't associate with reliably (confirmed directly:
+    # repeated real "WLAN access point not found"/hotspot-fallback failures at channel 13, clean
+    # real STA connects immediately after pinning channel 6 instead - a universally-supported
+    # 2.4GHz channel, unlike 12-13 which are EU/DE-only and not guaranteed supported by every
+    # regulatory-domain/firmware combination).
     run(
         ["sudo", "nmcli", "connection", "add", "type", "wifi", "ifname", wifi_iface, "con-name", BENCH_AP_CONN,
-         "ssid", ssid, "802-11-wireless.mode", "ap", "802-11-wireless.band", "bg",
+         "ssid", ssid, "802-11-wireless.mode", "ap", "802-11-wireless.band", "bg", "802-11-wireless.channel", "6",
          "master", BENCH_BRIDGE_CONN, "slave-type", "bridge"],
         env=env,
     )
@@ -951,16 +1016,14 @@ def run_env(args: argparse.Namespace, versions_path: Path, versions: dict) -> in
     ensure_network_manager(args.skip_apt)
     ensure_iproute2(args.skip_apt)
     ensure_iptables(args.skip_apt)
-    # Interface auto-detection only runs when actually creating a bridge - a no-op re-run against
-    # an already-configured bridge must stay a no-op even if e.g. a second WiFi adapter was added
-    # to the host later and would now make detect_free_wifi_interface() ambiguous.
-    if bench_ap_exists():
-        ssid = existing_bench_ap_ssid()
-        log(f"Bench WiFi bridge already configured ({BENCH_AP_CONN!r}, SSID {ssid!r}) - reusing, not recreating")
-    else:
-        uplink_iface = args.uplink_iface or detect_uplink_interface()
-        wifi_iface = args.wifi_iface or detect_free_wifi_interface(exclude=uplink_iface)
-        ssid = ensure_bench_bridge(uplink_iface, wifi_iface, args.ssid, args.password)
+    # REAL FINDING, fixed: this used to have its own separate bench_ap_exists() short-circuit
+    # here, bypassing ensure_bench_bridge() (and everything it does - br_netfilter, the channel
+    # self-heal) entirely whenever a bridge already existed - confirmed directly, a real re-run
+    # against an already-configured bridge never even ran the new br_netfilter/channel fixes
+    # below. Always call ensure_bench_bridge() now - it already handles the already-exists case
+    # itself (including lazy interface detection only when actually creating a bridge), so there
+    # is exactly one place this logic lives, not two that can silently drift apart.
+    ssid = ensure_bench_bridge(args.uplink_iface, args.wifi_iface, args.ssid, args.password)
     log(f"Bench environment ready: bridge {BENCH_BRIDGE_CONN!r} up, hosted AP SSID {ssid!r}")
     return 0
 
