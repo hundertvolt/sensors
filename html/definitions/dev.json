@@ -33,31 +33,12 @@
                     ]
                 },
                 {
-                    "key": "SHTC3",
-                    "label": "SHTC3 — Temperature, Humidity",
-                    "fields": [
-                        { "key": "Temp", "label": "Temperature", "unit": "°C", "kind": "readonly" },
-                        { "key": "Hum", "label": "Relative Humidity", "unit": "%", "kind": "readonly" },
-                        { "key": "WetBulb", "label": "Wet Bulb Temperature", "unit": "°C", "kind": "readonly" },
-                        { "key": "DewPoint", "label": "Dew Point", "unit": "°C", "kind": "readonly" },
-                        { "key": "TS", "label": "Timestamp", "unit": "s", "kind": "readonly" }
-                    ]
-                },
-                {
-                    "key": "MPRLS",
-                    "label": "MPRLS — Pressure",
+                    "key": "BMP3XX",
+                    "label": "BMP388 — Pressure, Temperature",
                     "fields": [
                         { "key": "Pres", "label": "Pressure", "unit": "hPa", "kind": "readonly" },
-                        { "key": "TS", "label": "Timestamp", "unit": "s", "kind": "readonly" }
-                    ]
-                },
-                {
-                    "key": "ISL29125",
-                    "label": "ISL29125 — RGB Brightness",
-                    "fields": [
-                        { "key": "Red", "label": "Red Value", "unit": "ticks", "kind": "readonly" },
-                        { "key": "Green", "label": "Green Value", "unit": "ticks", "kind": "readonly" },
-                        { "key": "Blue", "label": "Blue Value", "unit": "ticks", "kind": "readonly" },
+                        { "key": "Temp", "label": "Temperature", "unit": "°C", "kind": "readonly" },
+                        { "key": "SLPres", "label": "Sea Level Pressure", "unit": "hPa", "kind": "readonly" },
                         { "key": "TS", "label": "Timestamp", "unit": "s", "kind": "readonly" }
                     ]
                 }
@@ -120,67 +101,32 @@
                     ]
                 },
                 {
-                    "key": "SHTC3",
-                    "label": "SHTC3 — Temperature, Humidity",
+                    "key": "BMP3XX",
+                    "label": "BMP388 — Pressure, Temperature",
                     "submit": true,
                     "fields": [
                         { "key": "SampleInterv", "label": "Measurement Interval", "unit": "s", "kind": "number", "min": 1, "max": 3600 },
+                        { "key": "PressOvers", "label": "Pressure Oversampling", "kind": "enum", "options": [
+                            { "value": 1, "label": "×1" }, { "value": 2, "label": "×2" }, { "value": 4, "label": "×4" },
+                            { "value": 8, "label": "×8" }, { "value": 16, "label": "×16" }, { "value": 32, "label": "×32" }
+                        ] },
+                        { "key": "PressOffset", "label": "Pressure Offset", "unit": "hPa", "kind": "number", "min": -500.0, "max": 500.0, "float": true },
+                        { "key": "TempOvers", "label": "Temperature Oversampling", "kind": "enum", "options": [
+                            { "value": 1, "label": "×1" }, { "value": 2, "label": "×2" }, { "value": 4, "label": "×4" },
+                            { "value": 8, "label": "×8" }, { "value": 16, "label": "×16" }, { "value": 32, "label": "×32" }
+                        ] },
                         { "key": "TempOffset", "label": "Temperature Offset", "unit": "K", "kind": "number", "min": -10.0, "max": 10.0, "float": true },
                         {
-                            "key": "FiltCoeff", "label": "Filter Coefficient", "kind": "number", "min": 0.0, "max": 1.0, "float": true,
+                            "key": "FiltCoeff", "label": "Filter Coefficient", "kind": "enum",
                             "description": "First-order IIR lowpass filter coefficient.",
-                            "specialValues": [{ "value": -1.0, "meaning": "Off" }]
-                        }
-                    ]
-                },
-                {
-                    "key": "MPRLS",
-                    "label": "MPRLS — Pressure",
-                    "submit": true,
-                    "fields": [
-                        { "key": "SampleInterv", "label": "Measurement Interval", "unit": "s", "kind": "number", "min": 1, "max": 3600 },
-                        { "key": "PressOffset", "label": "Pressure Offset", "unit": "hPa", "kind": "number", "min": -500.0, "max": 500.0, "float": true },
-                        {
-                            "key": "FiltCoeff", "label": "Filter Coefficient", "kind": "number", "min": 0.0, "max": 1.0, "float": true,
-                            "description": "First-order IIR lowpass filter coefficient.",
-                            "specialValues": [{ "value": -1.0, "meaning": "Off" }]
-                        }
-                    ]
-                },
-                {
-                    "key": "ISL29125",
-                    "label": "ISL29125 — RGB Brightness",
-                    "submit": true,
-                    "fields": [
-                        { "key": "SampleInterv", "label": "Measurement Interval", "unit": "s", "kind": "number", "min": 1, "max": 3600 },
-                        { "key": "OperationMode", "label": "Operation Mode", "kind": "enum", "options": [
-                            { "value": 0, "label": "Powerdown" }, { "value": 1, "label": "Green only" }, { "value": 2, "label": "Red only" },
-                            { "value": 3, "label": "Blue only" }, { "value": 4, "label": "Standby" }, { "value": 5, "label": "Red + Green + Blue" },
-                            { "value": 6, "label": "Green + Red" }, { "value": 7, "label": "Green + Blue" }
-                        ] },
-                        { "key": "SensingRange", "label": "Sensing Range", "kind": "enum", "options": [
-                            { "value": 0, "label": "375 lux" }, { "value": 1, "label": "10,000 lux" }
-                        ] },
-                        { "key": "AdcResolution", "label": "ADC Resolution", "kind": "enum", "options": [
-                            { "value": 0, "label": "16 bits" }, { "value": 1, "label": "12 bits" }
-                        ] },
-                        {
-                            "key": "IrCompensation", "label": "Infrared Compensation", "kind": "number", "min": 0, "max": 63,
-                            "specialValues": [{ "value": -1, "meaning": "Off" }]
+                            "options": [
+                                { "value": 0, "label": "Off" }, { "value": 1, "label": "1" }, { "value": 3, "label": "3" },
+                                { "value": 7, "label": "7" }, { "value": 15, "label": "15" }, { "value": 31, "label": "31" },
+                                { "value": 63, "label": "63" }, { "value": 127, "label": "127" }
+                            ]
                         },
-                        { "key": "InterruptAssignment", "label": "Interrupt Assignment", "kind": "enum", "options": [
-                            { "value": 0, "label": "No interrupt" }, { "value": 1, "label": "Green" }, { "value": 2, "label": "Red" }, { "value": 3, "label": "Blue" }
-                        ] },
-                        { "key": "InterruptHighThres", "label": "Interrupt High Threshold", "kind": "number", "min": 0, "max": 65535 },
-                        { "key": "InterruptLowThres", "label": "Interrupt Low Threshold", "kind": "number", "min": 0, "max": 65535 },
-                        {
-                            "key": "InterruptAutoClear", "label": "Interrupt Auto Clear", "unit": "ms", "kind": "number", "min": -1, "max": 3600000,
-                            "specialValues": [{ "value": -1, "meaning": "Off" }],
-                            "description": "0 clears immediately; >0 is the wait time until next clear."
-                        },
-                        { "key": "PersistentControl", "label": "Interrupt Persistent Control", "kind": "enum", "options": [
-                            { "value": 0, "label": "IC1" }, { "value": 1, "label": "IC2" }, { "value": 2, "label": "IC4" }, { "value": 3, "label": "IC8" }
-                        ] }
+                        { "key": "SeaLevelOffs", "label": "Sensor Sea Level Offset", "unit": "m", "kind": "number", "min": -1000.0, "max": 5000.0, "float": true },
+                        { "key": "MeanAtmTemp", "label": "Mean Atmospheric Temperature", "unit": "°C", "kind": "number", "min": -50.0, "max": 50.0, "float": true }
                     ]
                 }
             ]
@@ -326,12 +272,8 @@
                         { "key": "SCD30", "label": "SCD30" },
                         { "key": "SGP40", "label": "SGP40" },
                         { "key": "CFGMGR_SGP40", "label": "SGP40 Config Store" },
-                        { "key": "SHTC3", "label": "SHTC3" },
-                        { "key": "CFGMGR_SHTC3", "label": "SHTC3 Config Store" },
-                        { "key": "MPRLS", "label": "MPRLS" },
-                        { "key": "CFGMGR_MPRLS", "label": "MPRLS Config Store" },
-                        { "key": "ISL29125", "label": "ISL29125" },
-                        { "key": "CFGMGR_ISL29125", "label": "ISL29125 Config Store" },
+                        { "key": "BMP3XX", "label": "BMP388" },
+                        { "key": "CFGMGR_BMP3XX", "label": "BMP388 Config Store" },
                         { "key": "NEOPIXEL", "label": "Neopixel LED" },
                         { "key": "NOTIFY", "label": "Notification Service" },
                         { "key": "CFGMGR_NOTIFY", "label": "Notification Config Store" },

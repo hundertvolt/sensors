@@ -18,13 +18,20 @@ Kept completely separate so nothing here can accidentally affect the determinist
   schedule via an internal `asyncio` task, not `_thread` (upstream's own `_thread.rst` docs state
   outright that it "is highly experimental and its API is not yet fully settled" — not a fit for
   load-bearing behavior here, and every real `Timer` callback in this codebase is already trivial
-  enough that true preemption buys nothing). `I2C`/`SPI` wire the real "wozi" variant's bus layout
-  exactly, mirroring `sensortask_wozi.build_system()`'s own construction: `I2C(0, ...)` carries the SCD30 at `0x61`, `I2C(1, ...)`
-  carries the SGP40 at `0x59` and BMP3xx at `0x77`, `SPI(0, ...)` carries the FRAM chip. Any other
+  enough that true preemption buys nothing). `I2C`/`SPI` wire one of two selectable bus-layout
+  profiles (`configure_i2c_wiring("wozi" | "dev")`, called once before any bus is constructed —
+  default `"wozi"` if never called, so every caller that predates this option keeps its exact prior
+  behavior unchanged): `"wozi"` mirrors `sensortask_wozi.build_system()`'s own construction
+  (`I2C(0, ...)` carries the SCD30 at `0x61`, `I2C(1, ...)` carries the SGP40 at `0x59` and BMP3xx at
+  `0x77`), `"dev"` mirrors `sensortask_dev.build_system()`'s own reversed layout instead (`I2C(0,
+  ...)` carries the BMP3xx at `0x77` alone, `I2C(1, ...)` carries the SCD30 at `0x61` — IRQ/RDY pin
+  11, not wozi's 8 — and SGP40 at `0x59`); `SPI(0, ...)` carries the FRAM chip either way. Any other
   address NAKs — a real bus with a fixed, known set of devices on it, not an unbounded fixture. `Pin`
   identity is shared by id (`Pin(8)` constructed twice returns the same underlying pin state), since
   a real GPIO pin is one fixed physical resource and chip fakes and drivers may each construct their
-  own `Pin` object for the same id.
+  own `Pin` object for the same id — this is exactly why the two profiles' differing SCD30 IRQ pin
+  numbers (8 vs. 11) matter: the chip fake's own `rdy_pin` must be constructed with the same id the
+  real driver's own IRQ `Pin` uses, or a simulated edge never reaches its handler.
 - `_sgp40_chip.py` / `_scd30_chip.py` / `_bmp3xx_chip.py` — one chip fake per sensor, each verified
   against its own datasheet in `datasheets/` for the raw transaction shape and sensible value
   ranges. `_scd30_chip.py`'s RDY pin fires a real rising edge on its own internal measurement-
@@ -398,9 +405,11 @@ started with. For a new **I2C** sensor this is a small, mechanical addition:
      answering the *exact* raw transaction shape the real `*_I2C` driver class sends — confirmed
      directly against that file's own source, never assumed.
 2. Wire it into `machine.py`'s `_wire_i2c_devices()`: add the new chip to the `dict` for whichever
-   bus id (`0` or `1`) the real wiring puts it on (cross-check `src/sensortask_wozi.py`'s
-   `build_system()` for the real pin/address assignment), or add a new `if id == N:` branch if it
-   lands on a bus id neither SCD30 nor SGP40/BMP3xx already use.
+   bus id (`0` or `1`) the real wiring puts it on, under the matching `_i2c_wiring_profile` branch
+   (`"wozi"` or `"dev"` — cross-check `src/sensortask_wozi.py`'s/`src/sensortask_dev.py`'s own
+   `build_system()` for the real pin/address assignment, since the two profiles put sensors on
+   different buses), or add a new `if id == N:` branch if it lands on a bus id neither profile
+   already uses on that bus.
 3. Add `tests/test_digital_twin_<name>.py` — deterministic unit tests of the chip fake in isolation
    (no real `machine.I2C` involved, matching every existing `tests/test_digital_twin_{sgp40,scd30,
    bmp3xx}.py`) — then extend `tests/test_digital_twin_machine.py`'s own dispatch tests if the new
