@@ -2314,6 +2314,74 @@ holds `wifi_mode_lock` for up to a minute, and `asy_ntp_client.py`'s sync task w
 shared lock — a known, accepted priority-inversion-shaped cost (NTP sync can be delayed up to a
 minute during active WLAN instability), not a correctness bug.
 
+**Known structural gap, accepted risk (`asy_sgp40_driver.py`'s `SGP40_I2C._reset()`)**: unlike every
+other bus operation in this codebase, this one is not addressed to a single device.
+`i2c.i2c.writeto(0x00, b"\x06")` is a true I2C **general-call broadcast** (reserved address `0x00`) -
+documented by Sensirion (SGP40 datasheet Table 17, p.14) as resetting "all devices connected to the
+same I2C bus". Neither lock layer above protects a *sibling* device on the bus from this: the
+device-session lock (2) only serializes SGP40's *own* multi-transaction sequences against another
+SGP40 caller, and the bus lock (1) is only held by `_reset()` for the single broadcast transaction
+itself, not for the sibling's own, independently-device-session-locked in-flight sequence that
+broadcast could land in the middle of. This fires on every SGP40 task-supervisor restart during
+normal operation (`SGP40_Reader.read_loop()` -> `_init_sgp()` -> `setup()` -> `initialize()` ->
+`_reset()`; `system_service.py`'s `start_and_check_tasks()` restarts any task that returns), not just
+at cold boot. The bus this actually lands on differs by variant - confirmed directly from
+`sensortask_wozi.py`/`sensortask_dev.py`'s own construction code, not assumed to match: production
+wozi pairs SGP40 with BMP3xx on i2c1 (SCD30 alone on i2c0); the dev bench instead pairs SGP40 with
+SCD30 on i2c1 (BMP3xx alone on i2c0). Evaluated as **low-risk, not fixed**: both potential sibling
+datasheets (SCD30 Interface Description/Datasheet, BMP388/BMP384) were read in full and neither
+documents any general-call/broadcast-address listening behavior - both sensors' only documented
+reset mechanisms are commands addressed to their own I2C address - and this was confirmed against
+the pinned MicroPython v1.28.0 rp2 `machine_i2c.c` source too: address `0x00` gets no special
+handling at all, it's passed straight through to the Pico SDK's `i2c_write_timeout_us()` like any
+other address, so an unacknowledged broadcast just times out/NAKs like any other unaddressed write
+(already handled by the existing `except OSError: pass`). A real-hardware regression test now
+exists for this specific pairing (`tests_hardware/flash/test_bus_concurrency.py::
+test_sgp40_general_call_reset_does_not_corrupt_a_concurrent_scd30_transaction`). **Not applied,
+flagged for a project-owner decision if ever revisited**: the only structural fix would be a
+bus-wide "quiesce every sibling device session before broadcasting" mechanism - a real architectural
+addition (today's model has no notion of "every device session on this bus," only independent
+per-device locks) - not a small change, and not justified without evidence the current risk is live.
+
+**Standing rule - bus-hazard test coverage, read before adding a new bus-facing device to `src/` or
+rewiring an existing bus (project owner's explicit direction - "note down to never forget this"):**
+every promoted I2C/SPI device gets same-device read-vs-write concurrency coverage, cross-device
+interleaving coverage (if it shares a bus with another device in either variant), and an
+address/command sweep confirming it never touches a foreign or reserved address - across as many of
+the four tiers below as apply, in this preferred order (cheapest/fastest/most deterministic first):
+
+1. **Mock/unit** (`tests/test_bus_hazard_multi_device.py`, real MicroPython Unix-port interpreter,
+   `tests/machine.py`'s fake bus) - byte-exact wire-log proof of serialization/interleaving, and the
+   full address/command sweep. Extend this file's own per-driver method lists for a new driver.
+2. **Digital twin** (`tests/test_digital_twin_bus_hazard_concurrency.py`) - boots the REAL
+   `sensortask_wozi.py`/`sensortask_dev.py` object graph against `digital_twin/machine.py`'s
+   higher-fidelity per-chip fakes (real per-address NAK semantics, not a permissive stub) under
+   genuine concurrent task-graph load. Add a chip fake to `digital_twin/machine.py`'s
+   `_wire_i2c_devices()`/`_wire_spi_device()` first - this file's own boot fails loudly (a real NAK)
+   if that's missing, never silently skipping coverage.
+3. **Flash tier** (`tests_hardware/flash/test_bus_concurrency.py` + `device_scripts/`) - real
+   hardware, dev bench only (wozi is never physically flashed). Add the new device to
+   `tests_hardware/bus_topology.py`'s `KNOWN_ADDRESSES`/`DEV_I2C_BUSES` and to
+   `device_scripts/bus_topology_autodetect_and_hazard_sweep.py`'s own inline copy (its live
+   `i2c.scan()`-based auto-detection already picks up an *unrecognized* address generically, but a
+   *named*, fully-checked device needs a read handler added there) - see that script's own
+   docstring. **Real-hardware write-safety constraints, both project-owner-mandated, apply to any
+   new device's own flash-tier tests too**: (a) if the new device has any real on-chip
+   NVM/EEPROM-backed config (like SCD30's), its own write-endurance budget must be respected the
+   same way `scd30_same_device_rw_concurrency.py`'s own docstring documents - ideally at most one
+   real NVM write for the device's whole bus-hazard test group, coordinated through a session-scoped
+   pytest fixture (`tests_hardware/flash/conftest.py`), never repeated per-test; (b) any concurrency
+   test exercising persisted config must construct the real production protocol-layer driver
+   directly (the `*_I2C`/`*_SPI` class that does the actual bus arbitration/locking - the DUT here),
+   never the higher `*_Reader` layer, so it never touches `ConfigManager`/the RP2040's own flash
+   filesystem.
+4. **Bench tier** (`tests_hardware/bench/test_bus_concurrency_under_api_load.py`) - real hardware,
+   full production HTTP stack, concurrent multi-client load. Extend this file's worker set for a new
+   device only via requests that are safe under both constraints above (a pure `GET` that triggers a
+   live bus read like `GET /sensors` is always safe; a `PUT` is only safe if - like SGP40's
+   `SGPResetVOC` - it's documented as command-only/never-persisted, never a real `ConfigManager`
+   write).
+
 ## C.9 Timer/task/IRQ integration contract
 
 - Every `Reader`/service class exposes both:
