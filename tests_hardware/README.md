@@ -150,6 +150,25 @@ a live question:
   inspect live state — per the liveness-polling finding above, `exec()` soft-resets the board and
   wipes the very live state you're trying to observe. Use a passive method (a second REST/
   network-level check, or a genuinely code-level trace) instead.
+- **A real phone can fail to show the captive-portal "Sign in to network" prompt even though the
+  DUT's own server-side behavior is textbook-correct** (real-hardware production-hotspot session,
+  2026-09-03, Samsung Galaxy A54 5G / One UI 8.5): connecting showed Android's "No internet" badge
+  in the WiFi list, with no sign-in popup, despite a direct check confirming the DUT answered every
+  captive-portal probe host with a real `302`/`Location: /` and DNS-spoofed every hostname to its
+  own IP exactly as `SPECIFICATION.md` Part A.5/`captive_dns.py` describe. Not a `src/` bug — this
+  is almost certainly phone-side: (1) **Private DNS (DNS-over-HTTPS)**, when enabled in Android's
+  network settings, bypasses the DUT's local DNS spoofing entirely for the connectivity-check
+  request, so on an isolated hotspot with no real internet the check simply times out with no
+  signal, instead of getting the redirect that would trigger the popup — turning it off (or setting
+  it to "Automatic", which most Android versions correctly skip on a network with no working DNS
+  resolution to a public DoH provider) is the fix to try first; (2) Android can cache a "no
+  internet" verdict per-SSID, which would also explain the badge appearing before even tapping to
+  connect, if the same SSID (`"SensorNode"`, the config default) was already seen failing this
+  check on a previous connection (this bench's own repeated automated test runs are a plausible
+  source) — forgetting the saved network and rejoining fresh rules this out. No code changed as a
+  result of this investigation.
+- **`max_connections=4` real client-visible rejection under a realistic multi-client burst** — see
+  BACKLOG.md open question 7 for the full finding and the still-open raise-the-cap decision.
 - **WS2812/Neopixel timing has no datasheet in this repo's `datasheets/` folder at all** (only
   bmp3xx/fram/pico w/scd30/sgp40 - confirmed by listing the directory) - the manual
   `test_real_ws2812_neopixel_signal_timing` test is deliberately qualitative (visual/scope check,

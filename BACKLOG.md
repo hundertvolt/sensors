@@ -143,6 +143,17 @@ constraints.
    now (`bench/test_network_resilience.py`'s outage/flap tests recover via a real `hard_reset()` if
    the graceful wait times out, but still re-raise so the real limitation stays visible as a test
    failure).
+7. **Should `asy_webserver_service.py`'s `max_connections=4` be raised?** Confirmed on real
+   hardware (dev-bench, hotspot mode): a realistic 8-way concurrent client burst against `/`
+   (simulating several phones/tabs hitting the DUT at once) got 7/8 real `302` responses (some
+   queued 0.5-1.5s behind Microdot's own accept loop) and 1/8 flatly connection-refused (`000` in
+   ~37ms) — `_serve()`'s existing "silently close, no accept, no response ever written"
+   reject-when-full behavior working exactly as designed (see `tests_hardware/README.md`'s Fourth
+   pass section for the mechanism), just with real, measurable client-visible impact under a more
+   realistic burst shape than the pre-existing exactly-at-the-limit tests use. Not fixed — raising
+   the cap costs RAM per additional held-open connection buffer on an RP2040 with a fixed, already
+   tight budget, a real tradeoff only the project owner should weigh in on; left exactly as-is
+   pending that decision.
 
 ## Deferred / explicitly out-of-scope work
 

@@ -1853,6 +1853,19 @@ still real protection against a future caller that skips that validation, and ar
 by direct unit tests (`tests/test_config_manager.py`) independent of caller discipline (see
 BACKLOG.md).
 
+**A real operational hazard, confirmed directly, for anything that constructs a `ConfigManager`
+with a schema narrower than the full one a production config file actually holds** (a one-off
+live-device provisioning/ops script, most plausibly — every real `src/` call site always
+constructs with the module's own full schema, so this has never actually fired against production
+code): `setup()`'s own on-disk-vs-schema reconciliation treats any on-disk key that isn't in the
+schema it was constructed with as unexpected/invalid, and silently drops it on `setup()`'s own
+rewrite — there is no warning, and no distinction from a key that was genuinely never valid. A
+script that only means to touch one or two fields of a multi-field config file (e.g.
+`config_WIFI.cfg`'s `SSID`/`PW`/`Country`/`Hostname`/`LedWifiOn`) must still construct the
+`ConfigManager` with the *entire* real production schema for that file, not just the field(s)
+being changed, or every sibling field gets silently reset to its schema default on that
+`setup()` call alone, before `write_config()` is even reached.
+
 `ConfigManager` also exposes four typed accessor methods — `get_int_values()`/`get_float_values()`/
 `get_str_values()`/`get_bool_values()` — a driver's typed-read half of the config API, returning
 already-narrowed values straight from `self._cache` for a given key list without the caller doing
@@ -3338,6 +3351,19 @@ this Part — see this document's front matter for that tradeoff.
   - **`struct.pack()`/`pack_into()` silently zero-pad or truncate on a value/argument-count
     mismatch instead of raising**, unlike CPython. Don't rely on a mismatch surfacing as an
     exception; validate shape before packing if it matters.
+  - **A `micropython.const()`-wrapped value does not survive as a real, importable module
+    attribute in a frozen build** — confirmed empirically (a genuine `ImportError: can't import
+    name _VAL_CTRY` trying `from asy_wifi_service import _VAL_CTRY`, a real module-level
+    `const()`-wrapped `ConfigSchema` tuple, from a separate one-off script run against the real
+    device). mpy-cross inlines every `const()`-wrapped value at each of its own use sites at
+    compile time (same mechanism as the `if micropython.const(0):` dead-code-elimination and
+    coverage-tracer folding already documented above/in E.5.1) rather than leaving a real name
+    bound in the defining module's namespace, so nothing is left for another module's `import` to
+    find. Any one-off script (a live-device provisioning/ops script, a REPL one-liner) that needs
+    the same schema tuple a promoted driver already declares as `const()` must hand-copy the tuple
+    literal verbatim (as a plain, non-`const()` name in the script itself) rather than importing
+    it — this is not a bug to fix in the driver, `const()`-wrapping the schema is deliberate and
+    correct there (see A.8's numeric-coercion/schema policy).
   - **`time.ticks_ms()` wraps every `2**30` ms (~12.4 days)** — confirmed directly against the
     pinned v1.28.0 source: `py/mpconfig.h`'s `MICROPY_PY_TIME_TICKS_PERIOD` is
     `MP_SMALL_INT_POSITIVE_MASK + 1`, which resolves to `2**30` for `MICROPY_OBJ_REPR_A` (the rp2
