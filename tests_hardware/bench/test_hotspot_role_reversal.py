@@ -186,9 +186,22 @@ def test_repeated_associate_disassociate_cycles_dont_wedge_the_dhcp_server(bench
     # Fault injection against the CYW43 firmware's own DHCP server, not src/ (§11.1's own note: no
     # dedicated Python DHCP code exists to test here). Three quick reassociate cycles, confirming a
     # lease is still obtainable each time - a firmware/driver robustness check.
+    #
+    # REAL FINDING, fixed: a fixed 2.0s settle between leave_dut_hotspot_and_restore_bridge() (which
+    # brings br0-wifi-ap back UP, leaving the radio scan-incapable per is_ssid_visible()'s own
+    # docstring) and the next join_dut_hotspot() isn't reliably enough time for this bench's single
+    # radio to come back down from AP mode and see the DUT's own already-beaconing hotspot in a scan
+    # - confirmed directly: "Error: No network with SSID 'SensorNode' found." on a rapid cycle.
+    # is_ssid_visible() (a real, fresh --rescan yes poll) exists for exactly this race - its own
+    # docstring already documents it as the fix for "a join attempted right as ... can still race" a
+    # radio-mode transition, just not yet wired into this specific test. Needs an explicit
+    # ap_down() first (is_ssid_visible()'s own precondition) since leave_dut_hotspot_and_restore_
+    # bridge() just brought the AP back up - join_dut_hotspot()'s own internal ap_down() is
+    # idempotent against this (see its own docstring), so calling it twice here is harmless.
     for cycle in range(3):
         bench.leave_dut_hotspot_and_restore_bridge()
-        time.sleep(2.0)  # settle between cycles, not a condition to poll for
+        bench.ap_down()
+        wait_until(lambda: bench.is_ssid_visible(hotspot_ssid), timeout_s=15.0, poll_interval_s=1.0, description=f"DUT hotspot {hotspot_ssid!r} visible again on reassociate cycle {cycle}")
         bench.join_dut_hotspot(hotspot_ssid, _HOTSPOT_PASSWORD, timeout_s=45.0)
         wait_until(lambda: bool(bench.gateway_ip()), timeout_s=45.0, poll_interval_s=2.0, description=f"DHCP lease on reassociate cycle {cycle}")
 
@@ -282,9 +295,16 @@ def test_representative_put_round_trips_over_the_hotspot_link(joined_hotspot: st
     # /notification's WarnCO2 - the same shared REST-round-trip shape as tests/_shared_rest_roundtrip.py's
     # mock/twin coverage (see HARDWARE_TEST_PLAN.md §2.2), now over a genuine wireless hotspot link.
     # Deliberately excludes /networking's SSID/PW/Country/Hostname fields - reserved for stage 6.
+    #
+    # REAL FINDING, fixed: "Unchanged" (not just "Valid") is itself a correct, intentional REST
+    # response - system_service.py's own write_config() comment confirms this: a PUT requesting the
+    # value already persisted is accepted and reported "Unchanged", not treated as a failure. A
+    # rerun of this test (e.g. a prior real-hardware session already left WarnCO2=1700 persisted)
+    # would otherwise fail on a value that's genuinely fine, for reasons unrelated to what this test
+    # actually checks - the REST round-trip itself. Accept either, matching every starting state.
     res = http_client.fetch(joined_hotspot, 80, "PUT", "/notification", {"WarnCO2": 1700})
     assert res.status_code == 200
-    assert res.json().get("result") == {"WarnCO2": "Valid"}, f"unexpected PUT result over the hotspot link: {res.json()!r}"
+    assert res.json().get("result") == {"WarnCO2": "Valid"} or res.json().get("result") == {"WarnCO2": "Unchanged"}, f"unexpected PUT result over the hotspot link: {res.json()!r}"
 
 
 def test_real_static_website_content_serves_over_the_hotspot_link(joined_hotspot: str) -> None:
@@ -365,9 +385,13 @@ def test_malformed_http_request_over_real_wireless_degrades_cleanly(joined_hotsp
 
 
 def test_rapid_associate_disassociate_churn_doesnt_wedge_station_management(bench: BenchBridge, hotspot_ssid: str, joined_hotspot: str) -> None:
-    for _cycle in range(3):
+    # See test_repeated_associate_disassociate_cycles_dont_wedge_the_dhcp_server's own comment for
+    # why this polls is_ssid_visible() (after an explicit ap_down()) instead of a fixed settle -
+    # same real single-radio AP-to-client transition race, same fix.
+    for cycle in range(3):
         bench.leave_dut_hotspot_and_restore_bridge()
-        time.sleep(1.0)  # brief settle, not a condition to poll for
+        bench.ap_down()
+        wait_until(lambda: bench.is_ssid_visible(hotspot_ssid), timeout_s=15.0, poll_interval_s=1.0, description=f"DUT hotspot {hotspot_ssid!r} visible again on churn cycle {cycle}")
         bench.join_dut_hotspot(hotspot_ssid, _HOTSPOT_PASSWORD, timeout_s=45.0)
     assert http_client.fetch(bench.gateway_ip(), 80, "GET", "/status", timeout_s=10.0).status_code == 200, "webserver unresponsive after rapid associate/disassociate churn"
 
@@ -417,7 +441,13 @@ def test_real_credentials_put_succeeds_and_confirms_accepted_values(bench: Bench
     res = http_client.fetch(joined_hotspot, 80, "PUT", "/networking", {"SSID": ssid, "PW": password, "Hostname": hotspot_ssid})
     assert res.status_code == 200
     result = res.json().get("result", {})
-    assert result.get("SSID") == "Valid" and result.get("PW") == "Valid", f"real credential PUT was not accepted: {result!r}"
+    # REAL FINDING, fixed: "Unchanged" (not just "Valid") is itself a correct, intentional REST
+    # response for a field that already holds the requested value (system_service.py's own
+    # write_config() comment confirms this) - e.g. the DUT's config_WIFI.cfg already carrying this
+    # exact PW from an earlier provisioning step in the same session. Only a real rejection
+    # ("Invalid" or absent) should fail this test; either acceptance outcome is a genuine pass.
+    accepted = {"Valid", "Unchanged"}
+    assert result.get("SSID") in accepted and result.get("PW") in accepted, f"real credential PUT was not accepted: {result!r}"
 
 
 # ---------------------------------------------------------------------------
