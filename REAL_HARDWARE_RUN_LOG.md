@@ -71,50 +71,50 @@ Manual tests and the flash-cycle re-provisioning test are out of scope.
   wozi is never physically flashed — a passing dev-bench result is the real, complete verification
   for this, not a stand-in for one.
 
-## Current physical board state (as of 2026-09-02, end of this session)
+**Update, same day: both real findings this cleanup pointed at (`DEV_HARDWARE_BASELINE_PLAN.md`'s
+own §4b) are now closed for real.** `src/sensortask_dev.py` (the real, hand-written dev-native
+variant this cleanup named as the actual gap) exists, and a real flash+boot found and fixed one
+more genuine bug along the way: `scripts/build_firmware.py`'s frozen `_boot.py`→`<device>_boot.py`
+chain never returns, so rp2 never reaches `mp_usbd_init()` — USB never enumerated after any real
+hard reset, for any device, confirmed against the pinned v1.28.0 source and independently via
+`micropython/micropython#15230`. Fixed by freezing each device's boot entry under the literal name
+`"main.py"` instead (`SPECIFICATION.md` Part B.11/F.1). With that fixed, a real flash of
+`scripts/build_firmware.py dev` came up clean: USB reachable immediately, 6.5 minutes of real
+stability with zero errors, all three sensors reading plausible real values, and a real
+`GET /generate_204` → genuine `302`/`Location: /`. See "Current physical board state" below for the
+board's current, real state.
+
+## Current physical board state (as of 2026-09-03)
 
 **Not a resting/idle state — read before touching the board.** The device is currently running
-`build/firmware-dev-bench.uf2` (a scratch build from `dev_legacy/README.md`'s own recipe, not
-committed — trivially rebuildable from that doc), with the dev-bench entry script (embedded in full
-in `dev_legacy/README.md`) running **mounted** via `mpremote run` (per that doc's own intent), not
-flashed. No watchdog is armed. WiFi has no saved credentials (fresh erase) and is running its own
-hotspot, SSID `SensorNode`. This is the state that confirmed the mounted-entry-script recipe itself
-runs cleanly — left running rather than torn down, so the next session can inspect it live if
-useful, but it is a debug/scratch state, not anything to build on directly. Re-flash real `wozi`
-production firmware (`uv run scripts/build_firmware.py wozi` + the normal flash procedure) before
-resuming any bench-tier `pytest` work that expects the real production system.
+`build/firmware-dev.uf2` — the real, promoted `src/sensortask_dev.py` via
+`boot_entry/dev_boot.py`, **flashed for real** (`scripts/build_firmware.py dev` + `picotool load`),
+watchdog armed, same as a real deployed unit. WiFi has no saved credentials (fresh erase) and is
+running its own hotspot, SSID `SensorNode`. Confirmed clean over a real 6.5-minute stability window
+(`SysUptime` climbing monotonically, zero real errors on any module), all three sensors reading
+plausible real values, and the captive-portal redirect confirmed working (`GET /generate_204` → real
+`302`). Left running rather than torn down, so the next session can inspect it live if useful.
 
 ## Open, not yet resolved
 
-- **Real per-variant pin/module support for `scripts/build_firmware.py`** (`BACKLOG.md`'s
-  "per-variant `sensortask-*.py` generator" item) — until this exists, `scripts/build_firmware.py`
-  can't be validly used against this bench at all; use `dev_legacy/README.md`'s mounted-entry-script
-  recipe instead. Not new work created by this session — an existing, already-tracked gap that this
-  session's cleanup traced two false "bugs" back to.
-- **Captive-portal redirect on real hardware — never actually verified under a valid
-  configuration.** Full detail and next steps are the durable record at `BACKLOG.md`'s open
-  questions list and `tests_hardware/README.md`'s corresponding entry. Closing it needs extending
-  the dev bench's own entry script with `frozen_html`/`static_mount` so the redirect can be
-  exercised on this bench — wozi is never physically flashed, so this is the real verification, not
-  a placeholder for one.
+- **`tests_hardware/`'s flash + bench pytest tiers have not yet been re-run against this corrected
+  build.** Expected to already pass (independent of which application is flashed — that tier drives
+  sensors via its own scripts), but worth confirming rather than assuming
+  (`DEV_HARDWARE_BASELINE_PLAN.md` §4b item 4).
+- **Hotspot role-reversal test + a bounded soak window** — both still outstanding
+  (`DEV_HARDWARE_BASELINE_PLAN.md` §4b item 5).
 
 ## Next session should start here
 
-**Current priority, per the project owner: `DEV_HARDWARE_BASELINE_PLAN.md`** (repo root) — building
-and physically flashing one real, fully-reviewed dev-native firmware variant, the named prerequisite
-for the per-variant generator work. Read that plan first; it supersedes item 1 below for whichever
-firmware actually gets flashed next (its own §4a is code work doable ahead of the physical session,
-§4b is the real-hardware sequence). The bench-tier `pytest` re-run items 2-4 below are a separate,
-still-valid track (that tier drives sensors via its own scripts, independent of which application is
-flashed — see the plan's own §2) and can proceed on whatever firmware is currently on the board.
+**`scripts/build_firmware.py dev` is now the real, confirmed-working way to build/flash for this
+bench** (2026-09-03) — `wozi` is never physically flashed (CLAUDE.md's hard rule); don't re-flash
+`wozi` here. The board is already running this build (see "Current physical board state" above), so
+bench-tier work can proceed without re-flashing first.
 
-1. Before any bench-tier `pytest` work *on the existing tier* (separate from the plan above): re-flash
-   real `wozi` production firmware (see "Current physical board state" above — the board is
-   currently running dev-bench scratch firmware, not production).
-2. Re-run the full bench suite (`scripts/run_bench_hardware_suite.sh -v -k "not
+1. Re-run the full bench suite (`scripts/run_bench_hardware_suite.sh -v -k "not
    hotspot_role_reversal"`) — the bench tier is not yet closed out with a clean run since the WiFi
    fixes landed.
-3. Remaining work, in order:
+2. Remaining work, in order:
    - Hotspot role-reversal (`bench/test_hotspot_role_reversal.py`), run alone and watched closely
      per `REAL_HARDWARE_HANDOFF.md`'s suggested order — highest-risk file in this tier (can strand
      the board in `_PHASE_DEACTIVATED` until a real `hard_reset()`, though `joined_hotspot`'s own
@@ -132,5 +132,5 @@ flashed — see the plan's own §2) and can proceed on whatever firmware is curr
    - Wrap-up: update `tests_hardware/README.md`/`REAL_HARDWARE_HANDOFF.md`'s status once a
      genuinely clean pass exists, but don't unilaterally delete/migrate the temporary planning docs
      without the project owner's sign-off.
-4. All fixes so far are committed and pushed to `claude/digital-twin-oserror-7y00lb`. No PR opened
+3. All fixes so far are committed and pushed to `claude/digital-twin-oserror-7y00lb`. No PR opened
    yet — better to open one once the bench tier is genuinely closed out with a clean run.

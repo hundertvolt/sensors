@@ -142,31 +142,40 @@ misreading — this is the current, authoritative version)
 
 ### 4b. Real-hardware work — needs the physical session, cannot be done from a cloud sandbox
 
-10. Flash the new build for real (`picotool load`, one real flash cycle — not the mount-and-run
-    scratch workaround) onto the dev bench.
-11. Confirm a clean boot with the watchdog armed: every sensor reads correctly
-    (`GET /measurements`/REPL), no I2C errors on the shared i2c1 bus specifically, and the board is
-    still reachable over USB/`mpremote` after boot (decision 2's own criterion, only fully
-    confirmable with real hardware) — this is the concrete test that finally confirms or refutes the
-    frozen_html/static_mount heap-fragmentation lead already on record (see BACKLOG.md's
-    "per-variant `sensortask-*.py` generator" entry), now under a build that's actually correct for
-    this hardware instead of the earlier mismatched one.
-12. Captive-portal hotspot-mode redirect over a real hotspot link (`GET /generate_204` → real
-    `302`/`Location: /`) — this is the concrete step that closes the gap BACKLOG.md's open questions
-    list currently records as "never actually verified under a valid configuration."
-13. Re-run the existing `tests_hardware/` flash + bench pytest tiers against this new build. Expected
-    to already pass (§2's facts explain why), but worth confirming against the corrected build rather
-    than assuming.
-14. Hotspot role-reversal test + a bounded soak window — both already listed as outstanding in
-    `REAL_HARDWARE_RUN_LOG.md`'s "Next session should start here," unchanged by this plan, just now
-    run against the corrected build instead of production wozi-booting firmware.
-15. Once genuinely green: update `BACKLOG.md`/`REAL_HARDWARE_RUN_LOG.md`/`tests_hardware/README.md`/
-    `dev_legacy/README.md` to record this as the project's one standing physically-verified
-    baseline. Specifically: `tests_hardware/README.md` line ~26 and `HARDWARE_TEST_PLAN.md` §6.1
-    currently document "the one allowed flash" as `scripts/build_firmware.py wozi` — repoint that at
-    `dev` once it exists (a real doc fix this plan deliberately defers to this step, since the
-    *existing* flash/bench tier's already-accepted results don't need to be re-earned first — see
-    §2's facts on why that tier is unaffected).
+1. ~~Flash the new build for real...~~ **Done (2026-09-03).** `uv run scripts/build_firmware.py dev`
+   + `picotool load -f -x -v` — but not before finding and fixing one more real bug this step's own
+   criterion (11, USB reachability) was designed to catch: the frozen `_boot.py`→`<device>_boot.py`
+   chain never returns, so rp2 never reaches `mp_usbd_init()` at all, meaning USB never enumerated
+   after any real hard reset regardless of device (confirmed against the pinned v1.28.0 source,
+   independently against `micropython/micropython#15230`). Fixed by freezing each device's boot
+   entry under the literal name `"main.py"` instead of a custom `_boot.py` (`scripts/
+   build_firmware.py`'s own docstring, `SPECIFICATION.md` Part B.11/F.1) — with that fix, this step
+   passed cleanly.
+2. ~~Confirm a clean boot with the watchdog armed...~~ **Done (2026-09-03).** Board reachable over
+   USB immediately after flash; a 6.5-minute real stability window afterward (`SysUptime` climbing
+   monotonically, watchdog armed throughout, no crash-triggered reset) showed zero real (type "E")
+   errors on `SCD30`/`BMP3XX`/`WEBSERVER`/`WIFI`; `SGP40` only ever logged benign FRAM-backup-
+   timestamp warnings. `GET /measurements` returned real, plausible values for all three sensors
+   (BMP3xx, SCD30, SGP40) — this directly confirms the frozen_html/static_mount heap-fragmentation
+   lead was never the real explanation; the actual root cause was the USB-boot-sequencing bug above,
+   unrelated to heap footprint.
+3. ~~Captive-portal hotspot-mode redirect...~~ **Done (2026-09-03).** A real `GET /generate_204` over
+   the real hotspot link returned a genuine `302`/`Location: /`; `GET /` served the real site
+   (`200`). Closes the gap `tests_hardware/README.md`'s own entry tracked as "never actually
+   verified under a valid configuration."
+4. Re-run the existing `tests_hardware/` flash + bench pytest tiers against this new build. Expected
+   to already pass (§2's facts explain why), but worth confirming against the corrected build rather
+   than assuming. **Not yet done.**
+5. Hotspot role-reversal test + a bounded soak window — both already listed as outstanding in
+   `REAL_HARDWARE_RUN_LOG.md`'s "Next session should start here," unchanged by this plan, just now
+   run against the corrected build instead of production wozi-booting firmware. **Not yet done.**
+6. ~~Once genuinely green: update `BACKLOG.md`/`REAL_HARDWARE_RUN_LOG.md`/`tests_hardware/README.md`/
+   `dev_legacy/README.md`...~~ **Partially done (2026-09-03)**: `tests_hardware/README.md`'s
+   precondition and its captive-portal entry, `HARDWARE_TEST_PLAN.md` §6.1/§6.2, and both
+   `wozi`-flashing spots in `tests_hardware/manual/manual_toolchain.py`/`tests_hardware/flash/
+   test_toolchain_flash_boot.py` are now repointed at `dev`. `BACKLOG.md`/`REAL_HARDWARE_RUN_LOG.md`
+   still need a pass once items 4/5 above are also done — this plan itself should be deleted at that
+   point, per its own header.
 
 ## 5. Test plan (three stages, this project's own standing practice)
 

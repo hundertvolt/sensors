@@ -189,10 +189,11 @@ runs, only as a deliberate re-provisioning step.
 
 ### 6.2 Two execution modes after provisioning
 
-- **Live-system mode**: the board just runs, auto-booted, normally (via `boot_entry/wozi_boot.py` /
-  `sensortask_wozi.main()`, same as a real deployed unit). Tests interact only through its real
-  external interfaces: HTTP (via the live-system adapter, §4), real WiFi/NTP/DNS (bench only), real
-  serial log tailing. **No `mpremote run` script injection in this mode at all.** This is where
+- **Live-system mode**: the board just runs, auto-booted, normally (via `boot_entry/dev_boot.py` /
+  `sensortask_dev.main()` on the dev bench - `wozi` is never physically flashed, CLAUDE.md's hard
+  rule; a passing dev-bench result counts as valid for wozi too). Tests interact only through its
+  real external interfaces: HTTP (via the live-system adapter, §4), real WiFi/NTP/DNS (bench only),
+  real serial log tailing. **No `mpremote run` script injection in this mode at all.** This is where
   almost all of §7 Part 1's automated items live, plus several manual items (real sensor stimulus
   observed via `/measurements`, real hotspot join observed by a human).
 - **Isolated-driver mode**: for object-level checks that want direct control rather than going

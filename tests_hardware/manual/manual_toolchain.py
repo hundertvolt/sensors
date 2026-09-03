@@ -18,10 +18,12 @@ from runner import confirm, print_instruction, register, state_expected_outcome
     "[USB][MANUAL]",
 )
 def test_first_ever_uf2_flash_of_a_blank_board() -> None:
-    uf2_path = REPO_ROOT / "build" / "firmware-wozi.uf2"
-    print_instruction(f"Building the real production UF2 first (uv run scripts/build_firmware.py wozi --output {uf2_path})...")
+    # dev, never wozi - wozi is never physically flashed (CLAUDE.md's hard rule), and its
+    # hardcoded pins don't match this bench's real wiring.
+    uf2_path = REPO_ROOT / "build" / "firmware-dev.uf2"
+    print_instruction(f"Building the real dev UF2 first (uv run scripts/build_firmware.py dev --output {uf2_path})...")
     build = subprocess.run(
-        ["uv", "run", "scripts/build_firmware.py", "wozi", "--output", str(uf2_path)],
+        ["uv", "run", "scripts/build_firmware.py", "dev", "--output", str(uf2_path)],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,

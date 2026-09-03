@@ -22,10 +22,12 @@ carry over.
    bench` (also needs a WiFi adapter for the bridge) - see README.md's own environment-tiers table
    and `toolchain/setup_toolchain.py`'s own docstring for the full recipe (dialout group, device
    auto-detection, `br0-wifi-ap` bridge creation via `ensure_bench_bridge()`).
-2. The board must already be running the real, unmodified production firmware
-   (HARDWARE_TEST_PLAN.md §6.1's "one allowed flash" - `uv run scripts/build_firmware.py wozi` +
+2. The board must already be running the real `dev` firmware
+   (HARDWARE_TEST_PLAN.md §6.1's "one allowed flash" - `uv run scripts/build_firmware.py dev` +
    `picotool load -x -v`, or the manual BOOTSEL-button first flash for a genuinely blank board, see
-   `tests_hardware/manual/manual_toolchain.py`).
+   `tests_hardware/manual/manual_toolchain.py`). **Never `scripts/build_firmware.py wozi` against
+   this bench** - `wozi` is never physically flashed, only `dev` is (CLAUDE.md's hard rule); `wozi`'s
+   own hardcoded pins don't match this bench's real wiring.
 3. **`picotool` needs real USB support to actually flash anything.** The toolchain build this
    session ran (`uv run toolchain/setup_toolchain.py setup`) produced a `picotool` explicitly
    compiled *without* USB support (confirmed directly: its own `--help` output prints "This version
@@ -130,26 +132,24 @@ a live question:
   `board.hard_reset()` fallback in its own teardown, but a first real run hitting this path is worth
   recognizing for what it is (an expected, designed-for recovery, not a new bug) rather than being
   surprised by it.
-- **Captive-portal hotspot-mode redirect fallback (SPECIFICATION.md Part A.5) - real-hardware
-  verification status: NEVER ACTUALLY RUN under a valid configuration (2026-09-03 review).**
-  `test_hotspot_role_reversal.py::test_nonsense_path_redirects_to_root_over_the_hotspot_link`/
-  `test_put_to_nonsense_path_is_405_not_a_redirect_over_the_hotspot_link` exist and exercise the
-  real 302-vs-405 behavior over the real hotspot link, but have not yet been run on hardware in a
-  configuration worth trusting: an earlier attempt flashed `scripts/build_firmware.py wozi` (wozi's
-  own hardcoded pins) onto this dev bench's differently-wired hardware and saw a bare 404 instead of
-  the expected 302 on `GET /generate_204` — that finding is dropped as noise from the pin mismatch,
-  not tracked as a bug (see BACKLOG.md's "per-variant `sensortask-*.py` generator" item for the full
-  account). `src/`'s own `is_hotspot_active()`/`_serve_static()` logic is separately confirmed
-  correct end-to-end against the real Unix-port interpreter, so this isn't a `src/` question. The
-  mounted-entry-script recipe that *does* run cleanly on this bench never wires up
-  `frozen_html`/`static_mount` at all, so it doesn't exercise this path either — closing this gap for
-  real needs extending that entry script with those two things. Per CLAUDE.md's hard rule, wozi is
-  never physically flashed — a passing result on this bench is the real verification, valid for wozi
-  too, not a stand-in pending a wozi board.
-  **Pitfall already hit once investigating this**: don't reach for `mpremote exec()` to
-  inspect `is_hotspot_active()`'s live value — per the liveness-polling finding above, `exec()`
-  soft-resets the board and wipes the very live state you're trying to observe. Use a passive method
-  (a second REST/network-level check, or a genuinely code-level trace) instead.
+- ~~Captive-portal hotspot-mode redirect fallback (SPECIFICATION.md Part A.5) - real-hardware
+  verification status: NEVER ACTUALLY RUN under a valid configuration.~~ — **resolved: confirmed
+  working on real hardware (2026-09-03), on the real `src/sensortask_dev.py` build via
+  `scripts/build_firmware.py dev`** (DEV_HARDWARE_BASELINE_PLAN.md §4b steps 10-12). A real
+  `GET /generate_204` over the real hotspot link returned a genuine `302`/`Location: /`, `GET /`
+  served the real site (`200`), and all three sensors (BMP3xx/SCD30/SGP40) read plausible real
+  values — a 6.5-minute stability window afterward showed zero real errors on any module, watchdog
+  armed throughout. The earlier "dropped as noise" finding (a bare 404 on a mismatched
+  `scripts/build_firmware.py wozi`-on-dev-bench test) is now doubly moot: not only was that
+  configuration invalid, the *real*, valid `dev`-native configuration has since been directly
+  confirmed working. `src/`'s own `is_hotspot_active()`/`_serve_static()` logic was already proven
+  correct against the real Unix-port interpreter; this closes the one remaining "never run on real
+  rp2/lwIP" gap. Per CLAUDE.md's hard rule, `wozi` is never physically flashed — this dev-bench
+  result is the real, complete verification, valid for `wozi` too.
+  **Pitfall found investigating this, still worth keeping**: don't reach for `mpremote exec()` to
+  inspect live state — per the liveness-polling finding above, `exec()` soft-resets the board and
+  wipes the very live state you're trying to observe. Use a passive method (a second REST/
+  network-level check, or a genuinely code-level trace) instead.
 - **WS2812/Neopixel timing has no datasheet in this repo's `datasheets/` folder at all** (only
   bmp3xx/fram/pico w/scd30/sgp40 - confirmed by listing the directory) - the manual
   `test_real_ws2812_neopixel_signal_timing` test is deliberately qualitative (visual/scope check,

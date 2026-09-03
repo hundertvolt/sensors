@@ -61,9 +61,11 @@ def test_real_uf2_reflash_and_boot_smoke_test(board: Board, request: pytest.Fixt
     if not request.config.getoption("--allow-flash-cycle"):
         pytest.skip("this IS a real flash cycle (HARDWARE_TEST_PLAN.md §6.1) - pass --allow-flash-cycle to deliberately run it")
 
-    uf2_path = REPO_ROOT / "build" / "firmware-wozi.uf2"
+    # dev, never wozi - wozi is never physically flashed (CLAUDE.md's hard rule), and its
+    # hardcoded pins don't match this bench's real wiring.
+    uf2_path = REPO_ROOT / "build" / "firmware-dev.uf2"
     build = subprocess.run(
-        ["uv", "run", "scripts/build_firmware.py", "wozi", "--output", str(uf2_path)],
+        ["uv", "run", "scripts/build_firmware.py", "dev", "--output", str(uf2_path)],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
