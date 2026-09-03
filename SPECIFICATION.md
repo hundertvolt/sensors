@@ -2314,6 +2314,35 @@ holds `wifi_mode_lock` for up to a minute, and `asy_ntp_client.py`'s sync task w
 shared lock — a known, accepted priority-inversion-shaped cost (NTP sync can be delayed up to a
 minute during active WLAN instability), not a correctness bug.
 
+**Known structural gap, accepted risk (`asy_sgp40_driver.py`'s `SGP40_I2C._reset()`)**: unlike every
+other bus operation in this codebase, this one is not addressed to a single device.
+`i2c.i2c.writeto(0x00, b"\x06")` is a true I2C **general-call broadcast** (reserved address `0x00`) -
+documented by Sensirion (SGP40 datasheet Table 17, p.14) as resetting "all devices connected to the
+same I2C bus". Neither lock layer above protects a *sibling* device on the bus from this: the
+device-session lock (2) only serializes SGP40's *own* multi-transaction sequences against another
+SGP40 caller, and the bus lock (1) is only held by `_reset()` for the single broadcast transaction
+itself, not for the sibling's own, independently-device-session-locked in-flight sequence that
+broadcast could land in the middle of. This fires on every SGP40 task-supervisor restart during
+normal operation (`SGP40_Reader.read_loop()` -> `_init_sgp()` -> `setup()` -> `initialize()` ->
+`_reset()`; `system_service.py`'s `start_and_check_tasks()` restarts any task that returns), not just
+at cold boot. The bus this actually lands on differs by variant - confirmed directly from
+`sensortask_wozi.py`/`sensortask_dev.py`'s own construction code, not assumed to match: production
+wozi pairs SGP40 with BMP3xx on i2c1 (SCD30 alone on i2c0); the dev bench instead pairs SGP40 with
+SCD30 on i2c1 (BMP3xx alone on i2c0). Evaluated as **low-risk, not fixed**: both potential sibling
+datasheets (SCD30 Interface Description/Datasheet, BMP388/BMP384) were read in full and neither
+documents any general-call/broadcast-address listening behavior - both sensors' only documented
+reset mechanisms are commands addressed to their own I2C address - and this was confirmed against
+the pinned MicroPython v1.28.0 rp2 `machine_i2c.c` source too: address `0x00` gets no special
+handling at all, it's passed straight through to the Pico SDK's `i2c_write_timeout_us()` like any
+other address, so an unacknowledged broadcast just times out/NAKs like any other unaddressed write
+(already handled by the existing `except OSError: pass`). A real-hardware regression test now
+exists for this specific pairing (`tests_hardware/flash/test_bus_concurrency.py::
+test_sgp40_general_call_reset_does_not_corrupt_a_concurrent_scd30_transaction`). **Not applied,
+flagged for a project-owner decision if ever revisited**: the only structural fix would be a
+bus-wide "quiesce every sibling device session before broadcasting" mechanism - a real architectural
+addition (today's model has no notion of "every device session on this bus," only independent
+per-device locks) - not a small change, and not justified without evidence the current risk is live.
+
 ## C.9 Timer/task/IRQ integration contract
 
 - Every `Reader`/service class exposes both:
