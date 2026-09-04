@@ -29,6 +29,7 @@ from __future__ import annotations
 import threading
 
 import http_client
+from bench_control import BenchBridge
 from error_log_helpers import assert_module_error_log_empty, reset_all_error_logs
 from harness import Board, wait_until
 
@@ -142,4 +143,90 @@ def test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_c
     if pressure is not None:
         assert PRESSURE_MIN_HPA <= pressure <= PRESSURE_MAX_HPA, f"post-load Pres={pressure!r} outside plausible bounds"
 
+    reset_all_error_logs(dut_ip)
+
+
+# ---------------------------------------------------------------------------
+# Compound fault: the same real bus contention above, but with a real, sustained network
+# degradation also active - the "everything realistic happens at once" axis identified via a
+# bird's-eye gap review (2026-09-04): every other test in this file proves bus-hazard concurrency
+# under a clean network, and every degradation test in test_network_resilience.py proves recovery
+# under a clean, single-client load - nothing combines the two, even though a real deployed unit
+# experiences imperfect WiFi and concurrent client traffic simultaneously as a matter of course, not
+# as two separate incidents. Uses test_network_resilience.py's own researched "everyday congestion"
+# range (loss_pct=2, delay_ms=30, jitter_ms=20 - test_real_operations_unaffected_by_light_realistic_
+# wifi_congestion's own parameters), not the severe/sustained range: the property under test here is
+# bus-lock correctness surviving realistic background network noise stacked on top of concurrent
+# load, not a second, redundant proof that severe degradation alone is survivable (already proven
+# above without bus contention in the mix).
+# ---------------------------------------------------------------------------
+
+
+def test_concurrent_get_sensors_under_real_multi_client_load_survives_light_network_degradation(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+    reset_all_error_logs(dut_ip)
+
+    corruption: list[str] = []
+    corruption_lock = threading.Lock()
+
+    def _record(msg: str) -> None:
+        with corruption_lock:
+            corruption.append(msg)
+
+    def get_sensors_worker(worker_id: int) -> None:
+        for i in range(_GET_ITERATIONS_PER_WORKER):
+            try:
+                res = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=20.0)
+            except Exception:  # noqa: BLE001 - an individual request failing under real, injected network
+                # degradation is expected here, not itself a finding (test_network_resilience.py's own
+                # "a bounded retry loop eventually gets through" philosophy) - only genuine data
+                # corruption below is what this test actually exists to catch.
+                continue
+            if res.status_code != 200:
+                continue
+            body = res.json()
+            scd30 = body.get("SCD30", {})
+            bmp = body.get("BMP3XX", {})
+            meas_int = scd30.get("MeasInt")
+            if meas_int is not None and not (2 <= meas_int <= 1800):
+                _record(f"worker {worker_id} iter {i}: SCD30 MeasInt={meas_int!r} outside valid schema range under degraded network - possible torn/corrupted config read")
+            press_overs = bmp.get("PressOvers")
+            if press_overs is not None and press_overs not in (1, 2, 4, 8, 16, 32):
+                _record(f"worker {worker_id} iter {i}: BMP3XX PressOvers={press_overs!r} outside valid schema range under degraded network - possible torn/corrupted config read")
+
+    def sgp40_reset_trigger_worker() -> None:
+        for i in range(_PUT_RESET_COUNT):
+            try:
+                res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"SGPResetVOC": True}}, timeout_s=20.0)
+            except Exception:  # noqa: BLE001 - same "expected under degradation" reasoning as above
+                continue
+            if res.status_code == 200:
+                result = res.json().get("result", {}).get("SGP40", {}).get("SGPResetVOC")
+                if result not in ("Valid", None):  # None = this specific PUT's own body didn't even parse right under the noise - a connection-level symptom already covered by the bare except above, not a bus-corruption finding
+                    _record(f"sgp40 reset {i}: unexpected non-Valid result under degraded network: {result!r}")
+
+    bench.inject_network_degradation(loss_pct=2, delay_ms=30, jitter_ms=20)
+    try:
+        threads = [threading.Thread(target=get_sensors_worker, args=(w,)) for w in range(_GET_WORKERS)]
+        threads.append(threading.Thread(target=sgp40_reset_trigger_worker))
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=180.0)  # generous over the plain-load test's 120s - real, individually-retried requests under injected loss/latency legitimately take longer
+            assert not t.is_alive(), "a worker thread never finished within 180s under degraded network - possible real deadlock, not just slow requests"
+    finally:
+        bench.clear_network_degradation()
+
+    assert not corruption, f"{len(corruption)} real data-corruption finding(s) under concurrent bus load + degraded network: {'; '.join(corruption[:10])}"
+
+    # Full recovery once the degradation clears - same "not left in some lingering half-degraded
+    # state" property test_real_operations_survive_and_recover_under_sustained_packet_loss_and_latency
+    # already proves for the no-bus-load case.
+    wait_until(
+        lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0).status_code == 200,
+        timeout_s=30.0,
+        poll_interval_s=2.0,
+        description="webserver serving normally again after concurrent bus load + degraded network",
+    )
+    for module in ("SCD30", "BMP3XX", "SGP40", "FRAM"):
+        assert_module_error_log_empty(dut_ip, module)
     reset_all_error_logs(dut_ip)

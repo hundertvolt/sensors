@@ -7,6 +7,50 @@ operating constraints/architecture reference) or README.md (human-facing orienta
 migrated there rather than duplicated here. See README.md for orientation, CLAUDE.md for operating
 constraints.
 
+## HIGH PRIORITY — ready for a local Pi4 (real-hardware) session to run
+
+- **New compound-fault real-hardware test, written and ready, never yet run**:
+  `tests_hardware/bench/test_bus_concurrency_under_api_load.py::
+  test_concurrent_get_sensors_under_real_multi_client_load_survives_light_network_degradation`
+  (2026-09-04, cloud-session bird's-eye gap review). Combines the file's existing concurrent-
+  multi-client bus-load pattern with `test_network_resilience.py`'s own researched "everyday
+  congestion" `tc netem` range (`loss_pct=2, delay_ms=30, jitter_ms=20`) run simultaneously - the
+  first test in this tier where a bus-hazard axis and a network-fault axis are both live at once,
+  identified as a real, previously-untested gap (every other test in the tier proves one axis
+  clean of the other). Needs a real bench run to confirm it actually passes as designed (verified
+  clean under ruff/mypy only - never exercised against real hardware). If it fails, the failure
+  itself is real signal (see the test's own docstring for what "corruption" vs. "expected
+  individual request failure under injected loss" means here) - don't treat a first failure as a
+  test-authoring bug without checking the corruption list it prints first.
+- **`asy_wifi_service.py`'s own reconnect-trigger logic (`_run_sta_mode()`/
+  `_handle_sta_connection_result()`) has no independent reachability check** - `isconnected()`
+  reporting a false positive here has no backstop the way `network_available()`'s NTP consumer
+  does (that one's own independently-timeout-bounded UDP round trip degrades benignly regardless -
+  proven, `tests/test_ntp_wifi_dns_integration.py`'s `test_full_chain_degrades_cleanly_when_wifi_
+  reports_connected_but_the_ntp_server_never_answers`). Real-hardware finding
+  (`test_network_resilience.py`'s own account): the CYW43 firmware's `associated: yes`/
+  `isconnected()` bookkeeping can stay stuck true well past a 150s wait window after a real outage,
+  with no observed upper bound - the existing tests accept a `hard_reset()` fallback as a real pass
+  rather than proving the graceful path always wins within some bound. Project-owner's own working
+  model (2026-09-04): while `isconnected()` reports true, the CYW43 module is itself attempting
+  silent self-resolution, and this is correct/desired for a normally-stable link with short,
+  self-resolving outages and for a permanently-disabled AP the DUT was never previously established
+  against - matches `_on_sta_disconnected()`'s own code shape exactly for the "never established"
+  path (`_register_sta_connection_failure()` -> hotspot fallback once `isconnected()` does flip
+  false). The one case confirmed **not** to match this model: an **already-established** connection
+  whose AP is gone **permanently** - `_on_sta_disconnected()`'s ESTABLISHED branch retries every 60s
+  forever and never reaches `_register_sta_connection_failure()`/hotspot fallback at all, so even a
+  correctly-flipping `isconnected()` doesn't converge to hotspot mode here, only to an unbounded
+  retry loop - a real, distinct question from the "does isconnected() flip at all" one, not yet put
+  to the project owner directly. No unit/twin/real-hardware test proves or disproves the "usually
+  self-resolves quickly, bounded in practice" empirical claim - only the "if it doesn't self-resolve,
+  a hard_reset() fallback is an accepted real pass" reaction to it. Real-hardware next step: log real
+  wall-clock recovery times across several genuine `ap_down()`/`ap_up()` cycles (the existing
+  `test_real_wifi_outage_and_recovery_while_in_normal_sta_mode`/`test_real_wifi_flaps_repeatedly_
+  without_wedging_the_system` already print `RESULT NOTE` lines distinguishing graceful vs.
+  hard-reset recovery - collect these across enough real runs to say whether "usually resolves
+  within N seconds" is actually true, not assumed) before treating this as settled either way.
+
 ## Refactor targets not yet done
 
 - **`boot_entry/` isn't in `pyproject.toml`'s lint/typecheck `files` scope yet.**

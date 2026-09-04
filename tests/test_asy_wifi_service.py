@@ -1137,6 +1137,64 @@ def test_wlan_isconnected_returns_the_real_value_when_unlocked() -> None:
     assert client.wlan_isconnected() is True
 
 
+# ---------------------------------------------------------------------------
+# Compound scenario: every "returns a locked default" test above proves the getter's own defensive
+# check works against a synthetically pre-acquired lock, not against a genuinely suspended real
+# competing task - identified via a bird's-eye gap review (2026-09-04). This drives the actual
+# real-world case: an established connection's own real outage-retry (_on_sta_disconnected()'s
+# asyncio.sleep(60) branch, proven suspended-not-finished the same way
+# test_on_sta_disconnected_retries_after_a_minute_when_previously_connected already does) genuinely
+# holding wifi_mode_lock for real, while a REST-facing getter is called from a second, real,
+# concurrently-scheduled coroutine mid-hold - the actual shape GET /status or GET /networking would
+# see if it landed during a live 60s retry window, not just what the getter does when told the lock
+# is held.
+# ---------------------------------------------------------------------------
+
+
+def test_status_getters_return_locked_defaults_during_a_real_concurrent_outage_retry() -> None:
+    client = make_client(conn_fail_to_hotspot=2)
+    client._conn_phase = _PHASE_STA_ESTABLISHED
+    _wlan(client)._connected = True  # the real "phantom connected" shape: isconnected() still True,
+    # but _run_sta_mode()'s caller (simulated here) has independently decided a retry is needed -
+    # matches this project's own real-hardware finding (test_network_resilience.py's own
+    # "the link *looked* fine to both sides' bookkeeping while actually being dead" account) that
+    # this branch can be reached and held for a long time regardless of what isconnected() reports.
+
+    async def hold_lock_via_established_retry() -> None:
+        # Mirrors _run_sta_mode()'s own acquire-then-call shape (src/asy_wifi_service.py:527-533) -
+        # the real lock, held by the real code path this scenario is grounded against, not a bare
+        # client.wifi_mode_lock.acquire() with no real caller behind it.
+        async with client.wifi_mode_lock:
+            await client._on_sta_disconnected()
+
+    async def scenario() -> "tuple[bool, tuple[str, str, str, str] | None, str | None, int | None, bool, bool]":
+        task = asyncio.create_task(hold_lock_via_established_retry())
+        for _ in range(10):
+            await asyncio.sleep(0)
+        held = client.wifi_mode_lock.locked()
+        ifconfig = client.get_wlan_ifconfig()
+        dns = client.get_dns_server_ip()
+        rssi = client.get_wlan_rssi()
+        connected = client.wlan_isconnected()
+        still_running = not task.done()
+        await _cancel(task)
+        return held, ifconfig, dns, rssi, connected, still_running
+
+    held, ifconfig, dns, rssi, connected, still_running = run(scenario())
+    assert held is True, "the real outage-retry task never actually reached/held wifi_mode_lock - scenario setup didn't exercise what it claims to"
+    assert still_running is True, "the real 60s retry sleep finished early - scenario didn't actually observe a held lock"
+    # Every REST-facing getter must degrade to its documented "don't know yet" sentinel while a real
+    # retry cycle is in flight, never block waiting for it and never surface a stale/misleading value.
+    assert ifconfig is None
+    assert dns is None
+    assert rssi is None
+    assert connected is False
+    # Never reached _register_sta_connection_failure() (hotspot fallback) either - the ESTABLISHED
+    # branch's whole point is a silent, patient retry, not an escalation, matching this file's own
+    # test_on_sta_disconnected_retries_after_a_minute_when_previously_connected.
+    assert client.connection_failures == 0
+
+
 def test_reconnect_wifi_sets_the_trigger_and_tears_down_hotspot_bookkeeping() -> None:
     client = make_client(hotspot_time_min=1)
     client._hotspot_client_absent()  # arms hotspot_timer + starts a real ledflash task
