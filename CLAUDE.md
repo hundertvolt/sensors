@@ -161,6 +161,21 @@ information):
   `--allow-flash-cycle`/long-soak opt-in gates and the hotspot role-reversal scenario's stage-6
   permanent-WLAN-deactivation risk) for what a session with that go-ahead actually needs to know —
   this rule is just the standing gate for whether to start at all.
+- **A destructive test of the bench host's own network/access config (tearing down `br0`/its
+  slaves, revoking `dialout`, anything that can cut the very connection a session is using to reach
+  the host) must keep a recovery dead-man's-switch continuously re-armed — immediately before every
+  individual destructive command, not just once before the whole sequence.** A one-shot
+  `systemd-run --on-active=N` timer consumed by an earlier dry run provides zero protection for the
+  real run that follows it; confirmed the hard way (2026-09-04, see `dev_legacy/README.md`'s
+  "Current bench state" and `BACKLOG.md`'s `env --tier bench` item for the full account) — the
+  bench Pi4's own SSH access was lost exactly this way (`eth0`'s LAN IP lives on the bridge once
+  enslaved to it, so deleting `br0-eth0`/`br0` drops it synchronously, no grace period). Recovered
+  without console/HDMI access by editing the SD card's `/etc/NetworkManager/system-connections/
+  Wired connection 1.nmconnection` from a second machine — NetworkManager auto-suppresses its own
+  default per-interface profile (`autoconnect=false`, a deeply negative `autoconnect-priority`) once
+  a more specific profile claims that device, so restoring it after a lockout is normally a one-line
+  edit, not a new profile — worth knowing as a fallback, but re-arming the switch properly is what
+  avoids needing it.
 
 ## Working agreements
 

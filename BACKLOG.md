@@ -198,25 +198,38 @@ constraints.
 
 ## Deferred / explicitly out-of-scope work
 
-- **`env --tier flash`/`--tier bench` real-hardware verification — not yet done, project owner's
-  explicitly stated top priority (2026-09-04).** The standalone dev-environment setup script —
-  `toolchain/setup_toolchain.py env` (SPECIFICATION.md Part B.12) — folds Generic/Flash/Bench dev-
-  environment setup into one tiered command. `generic` was verified fully end-to-end in a cloud
-  sandbox (real `uv sync`/`npm ci`/toolchain build); the USB/network *detection* logic was also
-  exercised for real where safe (empty-`/sys` USB scan, a real `iproute2` apt-install-and-parse).
-  Not yet exercised for real: `flash` against an actual RP2040 board, and — the real gap — `bench`
-  actually *creating* the NetworkManager bridge/AP from a genuinely blank host, as opposed to
-  reusing one. Every real-hardware session on this branch to date, including the extensive
-  September 2026 bus-hazard/networking-robustness/dev-firmware work, has always run against an
-  already-provisioned bench Pi4 (`br0-wifi-ap` pre-existing, `dialout` group membership already
-  granted) — the actual from-blank bootstrap path itself has never been exercised. This is the
-  literal single-command answer to "stand this whole system up from a blank Pi4 + blank RP2040 with
-  zero manual steps," the project's standing fully-automated-bootstrap goal — prioritize this over
-  other items below once it's safe to tear down/reset the bench's current bridge/dialout state
-  (i.e. not while another real-hardware test run depends on the bridge being up). Next step: run
-  both tiers for
-  real on the bench Rpi4, the same dedicated-session pattern used for the earlier `build_firmware.py`
-  autolaunch verification (see this branch's own commit history).
+- **`env --tier flash`/`--tier bench` real-hardware verification — still not done, project owner's
+  explicitly stated top priority (2026-09-04); an actual attempt on 2026-09-04 was interrupted by a
+  real access-loss incident (see below), not completed.** The standalone dev-environment setup
+  script — `toolchain/setup_toolchain.py env` (SPECIFICATION.md Part B.12) — folds Generic/Flash/
+  Bench dev-environment setup into one tiered command. `generic` was verified fully end-to-end in a
+  cloud sandbox (real `uv sync`/`npm ci`/toolchain build); the USB/network *detection* logic was
+  also exercised for real where safe (empty-`/sys` USB scan, a real `iproute2` apt-install-and-
+  parse). Not yet exercised for real: `flash` against an actual RP2040 board, and — the real gap —
+  `bench` actually *creating* the NetworkManager bridge/AP from a genuinely blank host, as opposed
+  to reusing one. **The bench Pi4 is, as of 2026-09-04, actually in that genuinely-blank state** —
+  `br0`/`br0-eth0`/`br0-wifi-ap` were deliberately deleted and `nico` was removed from `dialout` to
+  set up the from-blank test for real, so unlike every earlier real-hardware session (which always
+  ran against an already-provisioned bench), the next session doesn't need to tear anything down
+  first — just re-grant `dialout` (`sudo gpasswd -a nico dialout`) if that part isn't being tested
+  too, and run both tiers for real, same dedicated-session pattern as the earlier
+  `build_firmware.py` autolaunch verification (see this branch's own commit history).
+  **Standing rule for this and any future destructive test of the bench host's own network/access
+  config, added after a real incident**: keep a recovery dead-man's-switch (e.g. a `systemd-run
+  --on-active=N` timer that rebuilds the bridge/reachability) continuously re-armed — immediately
+  before *every* individual destructive command, not just once before the whole sequence. A one-shot
+  timer that's fired and been garbage-collected during a dry run provides zero protection for the
+  real run that follows it. This is exactly how SSH access to the bench Pi4 was lost on 2026-09-04:
+  a dry run of the recovery script was correctly verified working, then consumed; the real
+  `nmcli connection delete br0-eth0`/`br0` that followed ran unprotected, and dropped the host's own
+  LAN IP synchronously (it lives on the bridge once `eth0` is enslaved to it, per
+  `dev_legacy/README.md`'s own bridge recipe) with zero grace period. Recovered without a monitor/
+  HDMI cable by pulling the SD card into a second machine and re-enabling NetworkManager's own
+  auto-generated default wired profile (`/etc/NetworkManager/system-connections/Wired connection
+  1.nmconnection` — NM auto-suppresses this with `autoconnect=false` and a deeply negative
+  `autoconnect-priority` once a more specific profile like a bridge slave claims the device; flipping
+  `autoconnect` back to `true` and dropping the priority override was the entire fix, no new profile
+  needed). Worth knowing as a fallback for any future lockout, not just this one.
 - **Real-hardware re-test of the segfault fix and the memory-leak soak test — real-hardware forms
   now exist and are wired into `tests_hardware/`, but the actual long-soak run is still opt-in and
   has not yet been executed.** Corrects a stale claim (this entry used to say neither soak-test

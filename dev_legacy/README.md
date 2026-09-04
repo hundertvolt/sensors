@@ -644,6 +644,27 @@ believed-true; the flash-filesystem/firmware facts from that date are superseded
 - **SGP40's VOC algorithm holds real backup state again** (no longer freshly reset/in blackout) —
   the full-system bring-up's own periodic backup cycle fired repeatedly and wrote real algorithm
   state to its FRAM chunk.
+- **The bench *host* (the Rpi4 itself, not the RP2040 DUT) is currently in a genuinely blank
+  network state (2026-09-04)** — `br0`/`br0-eth0`/`br0-wifi-ap` were deliberately deleted and `nico`
+  removed from `dialout`, to set up a real from-blank `env --tier bench` test (BACKLOG.md's top
+  priority). That test was interrupted mid-way by a real SSH-access-loss incident: a
+  `systemd-run`-based recovery dead-man's-switch was verified working on a dry run, then consumed
+  (one-shot timers don't survive their own successful run) and **not re-armed** before the actual
+  `nmcli connection delete br0-eth0`/`br0` — which drops the host's own LAN IP synchronously (it
+  lives on the bridge once `eth0` is enslaved to it, per this doc's own recipe above), with zero
+  grace period. No HDMI/console was available; recovery was done by pulling the SD card into a
+  second machine and re-enabling NetworkManager's own auto-generated default wired profile
+  (`/etc/NetworkManager/system-connections/Wired connection 1.nmconnection`, which NM itself had
+  suppressed with `autoconnect=false` + a deeply negative `autoconnect-priority` once the bridge
+  slave profile claimed `eth0` — restoring it was a one-line `autoconnect=true` edit plus dropping
+  the priority override, no new profile needed). **Standing rule, not just for this item**: a
+  recovery dead-man's-switch for a destructive host-network test must be re-armed immediately before
+  *every* individual destructive command, not once before the whole sequence — see BACKLOG.md's own
+  copy of this rule on the `env --tier bench` item for the full account. Net effect: the host is
+  currently sitting exactly where the from-blank test needs it (bridge gone, `dialout` revoked) —
+  the next session doesn't need to tear anything down first, just re-grant `dialout`
+  (`sudo gpasswd -a nico dialout`) if that part isn't also under test, and finish the run with the
+  dead-man's-switch actually held armed throughout.
 
 ## Legacy on-device filesystem snapshot (2026-08-27, historical)
 
