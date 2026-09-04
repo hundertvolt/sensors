@@ -51,23 +51,52 @@ def test_config_value_survives_a_genuine_hard_reset(board: Board) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Item 14 - modules/_boot.py's `import sensortask.py` (literal .py in the import statement)
-# mechanism, BACKLOG.md open question #1. Read-only observation, never modifies _boot.py itself -
-# CLAUDE.md explicitly forbids "fixing" that line blind without this exact real-hardware evidence.
+# Item 14, corrected scope: this bench only ever flashes the new, refactored `src/` build (`dev`,
+# via boot_entry/dev_boot.py frozen as the literal name "main.py" - see SPECIFICATION.md Part
+# B.11/F.1) - never the legacy deployed codebase's `modules/_boot.py`/`import sensortask.py`
+# mechanism BACKLOG.md's open question #1 is actually about (that question targets the *currently
+# deployed* 1.26 firmware specifically, per CLAUDE.md's hard rule against touching/testing it blind,
+# and was separately resolved by tracing the pinned 1.28 source directly - see BACKLOG.md item 1).
+# What this test actually verifies, and can: a genuine hard reset on real hardware brings the whole
+# refactored application layer (ConfigManager/FRAM setup, not just the bare interpreter) back up
+# cleanly - the real-hardware equivalent of "the frozen boot chain's own import machinery resolves
+# and sensortask_dev.build_system() actually runs," which no twin/mock backend can prove.
 # ---------------------------------------------------------------------------
 
 
 def test_boot_import_mechanism_actually_boots_the_real_system(board: Board) -> None:
-    board.hard_reset()
-    # Passive observation only (tail_log(), never exec()/run_isolated()) - a real reboot's own
-    # boot.py/main.py sequence must run completely undisturbed for this to mean anything. If
-    # `import sensortask.py` silently failed (the plausible-looking ModuleNotFoundError
-    # BACKLOG.md's open question #1 worries about), none of sensortask_wozi's own startup log
-    # lines would ever appear - this is the empirical answer that question has been missing.
-    lines = board.tail_log(duration_s=20.0)
-    joined = "\n".join(lines)
-    assert "CFGMGR_" in joined or "FRAM" in joined, (
-        "no sensortask_wozi startup log lines observed after a genuine hard reset - "
-        f"modules/_boot.py's `import sensortask.py` may not be resolving on this real hardware/firmware build.\n"
-        f"captured log:\n{joined}"
-    )
+    # REAL FINDING: this bench's board is deliberately left at its own production-quiet
+    # DebugLevel=0 (print_log.py's _LOG_OFF) between sessions, which unconditionally suppresses
+    # every pr.one()-level boot-chatter line (`_LOG_ONCE`, level 3) this check looks for -
+    # confirmed directly against real source (print_log.py's `one()`), not assumed. A first real
+    # run against a DebugLevel=0 board failed here for exactly this reason, not a real boot
+    # regression. Raise DebugLevel for the one hard_reset() this test needs, then always restore it
+    # to 0 afterward (`finally`) - see the two device_scripts' own docstrings for the full design.
+    raise_output = board.run_isolated(DEVICE_SCRIPTS / "system_debug_level_raise_for_boot_log_check.py")
+    ok, detail = _parse_result(raise_output)
+    assert ok, f"failed to raise DebugLevel before the boot check: {detail}\nfull output:\n{raise_output}"
+
+    try:
+        board.hard_reset()
+        # Passive observation only (tail_log(), never exec()/run_isolated()) from here on - a real
+        # reboot's own boot.py/main.py sequence must run completely undisturbed for this to mean
+        # anything.
+        lines = board.tail_log(duration_s=20.0)
+        joined = "\n".join(lines)
+        assert "CFGMGR_" in joined or "FRAM" in joined, (
+            "no sensortask_dev startup log lines observed after a genuine hard reset (with DebugLevel "
+            "raised, so this isn't the known DebugLevel=0 suppression) - the frozen boot chain's "
+            "import machinery may not be resolving on this real hardware/firmware build.\n"
+            f"captured log:\n{joined}"
+        )
+    finally:
+        # write_config() only persists to disk - it does not push the new value into the already-
+        # running system's live debug-level registry (that push is REST PUT's own _set_dict_cfg()
+        # job, not exercised here). One more real hard_reset() makes the restored 0 genuinely live
+        # again, not just correct-on-disk-until-the-next-reboot - "soft/hard resets are free and
+        # unlimited" per this tier's own design (HARDWARE_TEST_PLAN.md §6.2), so this costs nothing.
+        restore_output = board.run_isolated(DEVICE_SCRIPTS / "system_debug_level_restore_after_boot_log_check.py")
+        ok, detail = _parse_result(restore_output)
+        assert ok, f"failed to restore DebugLevel to 0 after the boot check - board may be left non-default: {detail}\nfull output:\n{restore_output}"
+        board.hard_reset()
+        wait_until(board.is_reachable, timeout_s=30.0, poll_interval_s=1.0, description="board reachable again after restoring DebugLevel=0")

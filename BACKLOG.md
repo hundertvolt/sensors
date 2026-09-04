@@ -157,14 +157,23 @@ constraints.
 
 ## Deferred / explicitly out-of-scope work
 
-- **`env --tier flash`/`--tier bench` real-hardware verification — not yet done.**
-  `toolchain/setup_toolchain.py env` (SPECIFICATION.md Part B.12) folds Generic/Flash/Bench dev-
+- **`env --tier flash`/`--tier bench` real-hardware verification — not yet done, project owner's
+  explicitly stated top priority (2026-09-04).** The standalone dev-environment setup script —
+  `toolchain/setup_toolchain.py env` (SPECIFICATION.md Part B.12) — folds Generic/Flash/Bench dev-
   environment setup into one tiered command. `generic` was verified fully end-to-end in a cloud
   sandbox (real `uv sync`/`npm ci`/toolchain build); the USB/network *detection* logic was also
   exercised for real where safe (empty-`/sys` USB scan, a real `iproute2` apt-install-and-parse).
-  Not yet exercised for real: `flash` against an actual RP2040 board, and `bench` actually creating
-  the NetworkManager bridge/AP (deliberately not installed/enabled in the shared cloud sandbox this
-  was built in, to avoid disrupting that container's own networking). Next step: run both tiers for
+  Not yet exercised for real: `flash` against an actual RP2040 board, and — the real gap — `bench`
+  actually *creating* the NetworkManager bridge/AP from a genuinely blank host, as opposed to
+  reusing one. Every real-hardware session on this branch to date, including the extensive
+  September 2026 bus-hazard/networking-robustness/dev-firmware work, has always run against an
+  already-provisioned bench Pi4 (`br0-wifi-ap` pre-existing, `dialout` group membership already
+  granted) — the actual from-blank bootstrap path itself has never been exercised. This is the
+  literal single-command answer to "stand this whole system up from a blank Pi4 + blank RP2040 with
+  zero manual steps," the project's standing fully-automated-bootstrap goal — prioritize this over
+  other items below once it's safe to tear down/reset the bench's current bridge/dialout state
+  (i.e. not while another real-hardware test run depends on the bridge being up). Next step: run
+  both tiers for
   real on the bench Rpi4, the same dedicated-session pattern used for the earlier `build_firmware.py`
   autolaunch verification (see this branch's own commit history).
 - **Real-hardware re-test of the segfault fix and the memory-leak soak test (owner's standing

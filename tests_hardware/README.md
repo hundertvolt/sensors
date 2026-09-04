@@ -169,6 +169,28 @@ a live question:
   result of this investigation.
 - **`max_connections=4` real client-visible rejection under a realistic multi-client burst** — see
   BACKLOG.md open question 7 for the full finding and the still-open raise-the-cap decision.
+- **This whole tier's log-based synchronization depends on the DUT's live `DebugLevel` being high
+  enough — confirmed directly, the hard way (2026-09-04): a full 77-test bench run produced 2 real
+  failures + 48 errors, none of them a real regression.** `tests_hardware/conftest.py`'s `dut_ip`
+  fixture (every bench test depends on it) passively watches serial for `asy_wifi_service.py`'s own
+  `self.pr.one("WLAN connection established")`/`self.pr.one("Permanently no WLAN connection -
+  activating hotspot!")` lines — both gated on `DebugLevel >= 3` (`print_log.py`'s `_LOG_ONCE`).
+  `test_real_ntp_sync_succeeds_over_genuine_udp` needs `asy_ntp_client.py`'s own
+  `self.pr.all("Received NTP time:", ...)`, gated at `_LOG_ALL` (5) — the single highest level. At
+  `DebugLevel=0` (this project's own production-quiet default — see DEVICE_REFERENCE.md/CLAUDE.md
+  for when a board is deliberately left there, e.g. after a "clean production hotspot" request) none
+  of these ever print, so `dut_ip` always times out waiting for a signal that can structurally never
+  arrive, cascading into every bench test that depends on it — this looks exactly like the WiFi
+  reconnection flakiness documented above, but isn't. **Before chasing a fresh "WiFi flakiness" or
+  "NTP won't sync" signal from this tier, first confirm the DUT's live `DebugLevel` is 5** (`GET
+  /system`, or a passive `tail_log()` for any routine chatter at all) — a real regression stays
+  distinguishable by *which* specific check fails once logging itself is confirmed working, not by
+  the blanket "log stayed empty" symptom this causes. `test_boot_import_mechanism_actually_boots_
+  the_real_system` (`tests_hardware/flash/test_reboot_persistence.py`) now handles this itself
+  (temporarily raises/restores `DebugLevel` around its own one hard reset); every other bench test
+  still assumes the DUT is already at a workable level going in — this tier was written and
+  originally verified against a board logging at `DebugLevel=5`, and that's an implicit
+  precondition of the whole tier, not stated anywhere until this entry.
 - **WS2812/Neopixel timing has no datasheet in this repo's `datasheets/` folder at all** (only
   bmp3xx/fram/pico w/scd30/sgp40 - confirmed by listing the directory) - the manual
   `test_real_ws2812_neopixel_signal_timing` test is deliberately qualitative (visual/scope check,
