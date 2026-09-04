@@ -3,9 +3,11 @@ bus/electrical timing that no simulation (mock or digital twin) can produce. Iso
 throughout (HARDWARE_TEST_PLAN.md §6.2) - each check is a small `mpremote run` script in
 tests_hardware/device_scripts/, chosen so this file never needs to know it's talking over serial.
 
-Run via `uv run pytest tests_hardware/flash/test_bus_electrical_timing.py` (fast items) or with
-`--run-long-soak` for items 1 and 6, which are inherently multi-hour/multi-day passive observations,
-not something a single mpremote invocation can force to happen on demand."""
+Run via `uv run pytest tests_hardware/flash/test_bus_electrical_timing.py` (fast items). Item 1
+needs its own dedicated `--soak-tier` run (scripts/run_bench_soak_tests.sh) - an inherently passive
+observation, not something a single mpremote invocation can force to happen on demand. Item 6 is
+a real, fixed ~12.4-day wait, not tier-selectable - its own separate `--allow-multi-day-rollover-wait`
+flag, never bundled with item 1's soak tiers."""
 
 from __future__ import annotations
 
@@ -14,6 +16,7 @@ import time
 from pathlib import Path
 
 import pytest
+from soak_tiers import SOAK_TIER_SECONDS
 
 DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
 RESULT_RE = re.compile(r"^RESULT: (PASS|FAIL)(.*)$", re.MULTILINE)
@@ -96,16 +99,19 @@ def test_single_precision_float_boundary_at_2pow24(board) -> None:
 
 @pytest.mark.long_soak
 def test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout(board, request) -> None:
-    if not request.config.getoption("--run-long-soak"):
-        pytest.skip("real SCD30 clock-stretch events are opportunistic (~once/day) - pass --run-long-soak to actually watch for one")
-    # A multi-day watch: tails the live, already-running system's own log output (harness.Board.tail_log()
-    # - never interrupts it, see that method's docstring for why exec()/run_isolated() can't be used
-    # here) for an unexpected OSError/ETIMEDOUT line from the SCD30's own I2C bus. Absence of such a
-    # line over the watch window is the pass condition - there's no positive "a stretch definitely
-    # happened and was within budget" signal available without instrumenting asy_scd30_driver.py
-    # itself (out of scope for a test-only change), so this is a "never observed to fail" soak, not a
-    # "confirmed to have been exercised" one - worth being explicit about that limit, not overselling it.
-    duration_s = request.config.getoption("--long-soak-seconds")
+    tier = request.config.getoption("--soak-tier")
+    if tier is None:
+        pytest.skip("real SCD30 clock-stretch events are opportunistic (~once/day) - run via scripts/run_bench_soak_tests.sh --tier {short,mid,long} to actually watch for one")
+    # A watch (duration set by the named tier): tails the live, already-running system's own log
+    # output (harness.Board.tail_log() - never interrupts it, see that method's docstring for why
+    # exec()/run_isolated() can't be used here) for an unexpected OSError/ETIMEDOUT line from the
+    # SCD30's own I2C bus. Absence of such a line over the watch window is the pass condition -
+    # there's no positive "a stretch definitely happened and was within budget" signal available
+    # without instrumenting asy_scd30_driver.py itself (out of scope for a test-only change), so
+    # this is a "never observed to fail" soak, not a "confirmed to have been exercised" one - worth
+    # being explicit about that limit, not overselling it. Only the "long" tier (hours) has any real
+    # chance of actually observing the ~once/day event; "short"/"mid" mainly exercise the mechanism.
+    duration_s = SOAK_TIER_SECONDS[tier]
     lines = board.tail_log(duration_s=duration_s)
     suspicious = [ln for ln in lines if "ETIMEDOUT" in ln or ("SCD30" in ln and "OSError" in ln)]
     assert not suspicious, "observed a suspicious SCD30/I2C error during the soak window:\n" + "\n".join(suspicious)
@@ -117,10 +123,13 @@ def test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout(board, re
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.long_soak
+@pytest.mark.multi_day_rollover
 def test_ticks_ms_real_2pow30_rollover(board, request) -> None:
-    if not request.config.getoption("--run-long-soak"):
-        pytest.skip("real ~12.4-day wait for the actual 2**30 rollover - pass --run-long-soak to actually run this")
+    # Deliberately its own separate marker/flag, never bundled with the long_soak/--soak-tier system
+    # above - this wait is fixed by the real hardware counter's own current value (~12.4 days from
+    # whenever it happens to run), not something any duration tier could meaningfully shorten.
+    if not request.config.getoption("--allow-multi-day-rollover-wait"):
+        pytest.skip("real ~12.4-day wait for the actual 2**30 rollover - pass --allow-multi-day-rollover-wait to actually run this (never bundled with --soak-tier)")
     # NEEDS VERIFICATION FIRST (see harness.py's tail_log() docstring and this module's own header):
     # whether machine.soft_reset() resets the hardware counter time.ticks_ms() is derived from. If it
     # does, board.exec() calls spaced across this multi-day window would themselves corrupt the
@@ -132,7 +141,7 @@ def test_ticks_ms_real_2pow30_rollover(board, request) -> None:
     target_wait_s = ((2**30) - before) / 1000.0 + 60  # +60s headroom past the exact boundary
     deadline = time.monotonic() + target_wait_s
     wrapped = False
-    poll_interval_s = max(request.config.getoption("--long-soak-seconds") / 20, 3600.0)  # coarse polling - this is a multi-day wait, not a tight loop
+    poll_interval_s = 3600.0  # coarse polling - this is a multi-day wait, not a tight loop
     while time.monotonic() < deadline:
         time.sleep(min(poll_interval_s, max(deadline - time.monotonic(), 0)))
         check_output = board.exec("import time; print('RESULT: PASS ticks_ms=' + str(time.ticks_ms()))")

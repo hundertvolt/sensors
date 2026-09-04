@@ -243,19 +243,22 @@ constraints.
     fix), but as standing on-target validation of the wider stress scenario itself.
   - The **memory-leak soak test** equivalent is
     `tests_hardware/bench/test_memory_stress_bench.py::test_real_hardware_memory_does_not_leak_under_real_http_soak_traffic`
-    — real, committed, but `@pytest.mark.long_soak` (skipped unless `--run-long-soak` is passed) and
-    **not yet actually run** as of 2026-09-04. Deliberately does **not** use the Unix-port twin's own
-    `gc.mem_free()` recovery-peak-trend methodology — confirmed impossible on real hardware without
-    disturbing the very system being measured (`mpremote exec()` always interrupts the live system
-    first, and a live `asyncio.run()` doesn't resume once interrupted — see the test's own module
-    docstring). Instead watches real HTTP soak traffic passively for the two disqualifying symptoms
-    observable without disturbing anything: a `MemoryError` traceback, or an unexpected mid-soak
-    reboot — a real but coarser signal than an actual trend measurement. Not because the "no
-    confirmed leak on the Unix port" conclusion is in doubt (four independent, properly-powered
-    replication experiments found no reproducible decline, on either idle or HTTP-soak traffic), but
-    because the Unix port's allocator/heap behavior isn't guaranteed identical to rp2040's real one.
-    **Next step**: run `scripts/run_bench_hardware_suite.sh --run-long-soak --long-soak-seconds
-    <N>` for real and record the result here.
+    — real, committed, `@pytest.mark.long_soak`, and **still not yet actually completed cleanly**
+    as of 2026-09-04 (one real attempt this session was aborted by an unrelated cascading DUT-
+    unreachable failure elsewhere in the same run - see this file's own `BENCH_AP_PASSWORD` entry -
+    before this test itself ever got a genuine clean pass/fail). Deliberately does **not** use the
+    Unix-port twin's own `gc.mem_free()` recovery-peak-trend methodology — confirmed impossible on
+    real hardware without disturbing the very system being measured (`mpremote exec()` always
+    interrupts the live system first, and a live `asyncio.run()` doesn't resume once interrupted —
+    see the test's own module docstring). Instead watches real HTTP soak traffic passively for the
+    two disqualifying symptoms observable without disturbing anything: a `MemoryError` traceback,
+    or an unexpected mid-soak reboot — a real but coarser signal than an actual trend measurement.
+    Not because the "no confirmed leak on the Unix port" conclusion is in doubt (four independent,
+    properly-powered replication experiments found no reproducible decline, on either idle or
+    HTTP-soak traffic), but because the Unix port's allocator/heap behavior isn't guaranteed
+    identical to rp2040's real one. **Next step**: run `scripts/run_bench_soak_tests.sh --tier
+    long` for real (its own dedicated invocation now - see this file's own soak-tier entry below)
+    and record the result here.
 - **Website definitions-file autogeneration — not yet built.** `html/definitions/<device>.json`
   (Part H.5) is currently hand-written. A worked, already-checked-against-real-code *sketch* exists
   for deriving most of it at build time from `#`-prefixed comment tags placed above each driver's
@@ -599,14 +602,20 @@ constraints.
     gap) or on zero real passes - not just a nonzero exit code. Caught for real during this same
     pass: a mass-skip (60/60) on a bench run that followed directly after the BOOTSEL-stuck board
     above, which the old bare-exit-code check had silently treated as a clean run.
-  - **Not a bug, but a real, easy-to-trip footgun confirmed while enabling `--run-long-soak` for
-    this pass**: `--long-soak-seconds`'s own help text already documents that
-    `test_ticks_ms_real_2pow30_rollover` computes its own real ~12.4-day wait independent of that
-    flag - `--run-long-soak` alone does not bound it. Already known/documented, not newly found,
-    but worth restating here since it's easy to miss: never pass `--run-long-soak` without also
-    `--deselect
-    tests_hardware/flash/test_bus_electrical_timing.py::test_ticks_ms_real_2pow30_rollover` unless a
-    session genuinely intends a multi-day run.
+  - **Fixed properly (2026-09-04, project owner's own explicit direction), not just documented as
+    a footgun to remember to work around**: the single blanket `--run-long-soak`/`--long-soak-seconds`
+    pair used to bundle three genuinely different things under one flag - a real, easy trap (its
+    own help text already warned the rollover test's ~12.4-day wait ignores the duration value
+    entirely, but nothing stopped it firing anyway). Replaced with: (1) `--soak-tier
+    {short,mid,long}` (`tests_hardware/conftest.py`'s own `SOAK_TIER_SECONDS` = 60s/600s/6h) for the
+    three real `@pytest.mark.long_soak` tests, always skipped unless passed; (2) a completely
+    separate `@pytest.mark.multi_day_rollover` marker + `--allow-multi-day-rollover-wait` flag for
+    `test_ticks_ms_real_2pow30_rollover` alone, structurally incapable of being bundled with a soak
+    tier now; (3) a new dedicated `scripts/run_bench_soak_tests.sh --tier {short,mid,long}` wrapper
+    - the only intended way to run soak tests at all, requiring the tier explicitly, never implicit
+    or bundled into a general suite run; (4) `run_flash_hardware_suite.sh`/`run_bench_hardware_suite.sh`
+    now always pass `-m "not long_soak and not multi_day_rollover"`, so neither category can run
+    through those general wrappers even if a caller mistakenly passes one of the new flags to them.
 - **Real finding, recovered: a missing `BENCH_AP_PASSWORD` cascades into ~25 real test failures,
   not just one clean skip (2026-09-04).** `test_hotspot_role_reversal.py`'s own
   `test_real_credentials_put_succeeds_and_confirms_accepted_values` (the one step that PUTs the
@@ -627,3 +636,28 @@ constraints.
   `BENCH_AP_PASSWORD` first** (`tests_hardware/README.md`'s own credential-handoff section already
   documents how to find/record it) - this is not optional/best-effort the way the test's own quiet
   skip message might suggest.
+- **Real infrastructure bug, fixed: both memory-soak tests' own "unexpected reboot" detection was a
+  near-guaranteed false positive.** `"CFGMGR_" in line` was meant as a one-time boot marker, but
+  it's actually the module-tag prefix `PrintLogHistory` stamps on *every* log line from a given
+  `ConfigManager`, including ordinary routine reads - confirmed directly against a real soak run's
+  own log, where it fired dozens of times from SGP40's own periodic backup-period check
+  (`"CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list."`, once per read cycle), with
+  no real reboot anywhere in that run. Fixed in both
+  `tests_hardware/bench/test_memory_stress_bench.py` and `tests_hardware/flash/test_memory_stress.py`:
+  now checks for `config_manager.py`'s own two genuinely one-time-per-`setup()` completion messages
+  (`"...- config is ready."`) instead.
+- **Open, flagged, not chased further given the time already spent on this pass**: the very first
+  real `--soak-tier short` run (before the reboot-detection fix above) also showed one real device-
+  side traceback at boot - `AttributeError: 'NoneType' object has no attribute '__aexit__'` in
+  `asy_sgp40_driver.py`'s `_store_sgp()` calling `base_classes.py`'s `_set_meas_data()`
+  (`async with self._datalock:`) - the task supervisor caught and restarted the task cleanly
+  (`"Task ended - attempting restart, error counter increased to 100"`), and the system ran
+  normally for the rest of that whole session afterward. **Real doubt this reflects the current
+  code, not chased to a conclusion**: the reported line numbers (`_store_sgp` at line 224,
+  `_set_meas_data` at line 159) don't match the current `src/` checkout at all (349 and 211
+  respectively as of `c177608`, and `self._datalock = asyncio.Lock()` is set unconditionally,
+  synchronously, in `SensorReader.__init__()` - there's no code path where it should ever be
+  `None`) - strong circumstantial evidence the DUT was still running an earlier-flashed firmware
+  image at that exact moment, not this session's own latest reflash. Worth a real, dedicated
+  investigation (reproduce cleanly against a freshly-confirmed-current flash, or drop it if it
+  never recurs) before treating it as either a real bug or a non-issue.

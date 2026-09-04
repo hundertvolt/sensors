@@ -61,8 +61,17 @@ scripts/run_flash_hardware_suite.sh
 # Automated, flash + bench tier (real USB board + real WiFi bridge):
 scripts/run_bench_hardware_suite.sh
 
-# Add --run-long-soak to also run the multi-hour/multi-day passive soaks (skipped by default):
-scripts/run_bench_hardware_suite.sh --run-long-soak --long-soak-seconds 21600
+# Soak tests (long_soak marker) are NEVER bundled into either suite runner above - they always
+# need their own deliberate, dedicated invocation, one of three named tiers (short=60s/mid=600s/
+# long=6h - see tests_hardware/conftest.py's own SOAK_TIER_SECONDS):
+scripts/run_bench_soak_tests.sh --tier short   # quick mechanism/assertion check, CI-time
+scripts/run_bench_soak_tests.sh --tier mid     # a few minutes
+scripts/run_bench_soak_tests.sh --tier long    # the real 6h production duration
+
+# The one real, fixed ~12.4-day wait (time.ticks_ms()'s 2**30 rollover) is its own separate flag,
+# never bundled with any soak tier - run directly, on purpose, only when a session genuinely
+# intends a multi-day wait:
+uv run pytest tests_hardware/flash --allow-multi-day-rollover-wait -k test_ticks_ms_real_2pow30_rollover
 
 # Add --allow-flash-cycle to also run the one deliberate re-provisioning-flash test (skipped by
 # default - this genuinely re-flashes the board, see SPECIFICATION.md Part E.6.3):

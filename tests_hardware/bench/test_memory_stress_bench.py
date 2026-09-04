@@ -20,13 +20,15 @@ import threading
 import http_client
 import pytest
 from harness import Board
+from soak_tiers import SOAK_TIER_SECONDS
 
 
 @pytest.mark.long_soak
 def test_real_hardware_memory_does_not_leak_under_real_http_soak_traffic(board: Board, dut_ip: str, request: pytest.FixtureRequest) -> None:
-    if not request.config.getoption("--run-long-soak"):
-        pytest.skip("multi-minute+ real HTTP soak - pass --run-long-soak to actually run this")
-    duration_s = request.config.getoption("--long-soak-seconds")
+    tier = request.config.getoption("--soak-tier")
+    if tier is None:
+        pytest.skip("real HTTP soak, one of three named duration tiers - run via scripts/run_bench_soak_tests.sh --tier {short,mid,long}")
+    duration_s = SOAK_TIER_SECONDS[tier]
     stop = threading.Event()
     request_errors: list[str] = []
 
@@ -54,7 +56,18 @@ def test_real_hardware_memory_does_not_leak_under_real_http_soak_traffic(board: 
 
     joined = "\n".join(lines)
     crash_markers = [ln for ln in lines if "MemoryError" in ln or "Traceback" in ln]
-    reboot_markers = [ln for ln in lines if "CFGMGR_" in ln or "FRAM SPI FRAM Driver Setup complete" in ln]
+    # REAL FINDING, fixed (2026-09-04): "CFGMGR_" is NOT a one-time boot marker - it's the module-
+    # tag prefix ConfigManager's PrintLogHistory logger stamps on EVERY log line from that logger,
+    # including ordinary, routine per-cycle reads (e.g. SGP40's own periodic backup-period check
+    # logs "CFGMGR_SGP40 config_SGP40.cfg - Reading config data into list." once per read cycle,
+    # confirmed directly against a real soak run's own log - this fired constantly, not once).
+    # This made the old check a near-guaranteed false positive on any real soak run long enough to
+    # see one ordinary config read, and false negative on a real reboot that had no such read yet.
+    # config_manager.py's own three genuinely one-time-per-setup() messages all end "- config is
+    # ready." / "found." after a fresh load - "config is ready" (config_manager.py's own two
+    # setup-completion lines) is the correct, confirmed-real one-time signal; "SPI FRAM Driver
+    # Setup complete" (asy_fram_driver.py, tagged "FRAM" by its own logger) was already correct.
+    reboot_markers = [ln for ln in lines if "config is ready" in ln or "FRAM SPI FRAM Driver Setup complete" in ln]
     assert not crash_markers, "observed a crash/MemoryError during the HTTP soak:\n" + "\n".join(crash_markers)
     assert not reboot_markers, "observed an unexpected mid-soak reboot (real memory exhaustion -> WDT reset?):\n" + "\n".join(reboot_markers) + f"\nfull log:\n{joined}"
     assert len(request_errors) < 5, f"too many failed/non-200 requests during the soak ({len(request_errors)}): {request_errors[:10]}"

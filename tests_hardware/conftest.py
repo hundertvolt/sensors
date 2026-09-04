@@ -18,15 +18,21 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))  # tests_hardware/ itse
 import http_client  # noqa: E402
 from bench_control import BenchBridge  # noqa: E402
 from harness import Board, HardwareTestFailure, wait_until  # noqa: E402
+from soak_tiers import SOAK_TIER_SECONDS  # noqa: E402
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption("--device", default=None, help="Serial device path for the flash-tier board (default: $MPREMOTE_DEVICE or /dev/ttyACM0)")
     parser.addoption(
-        "--run-long-soak",
-        action="store_true",
-        default=False,
-        help="Actually run @pytest.mark.long_soak tests (multi-hour/multi-day passive observations - see HARDWARE_TEST_PLAN.md item A.1/A.6). Skipped by default.",
+        "--soak-tier",
+        choices=sorted(SOAK_TIER_SECONDS),
+        default=None,
+        help=(
+            "Actually run @pytest.mark.long_soak tests, for this one named duration tier only "
+            f"({', '.join(f'{k}={v:.0f}s' for k, v in SOAK_TIER_SECONDS.items())}) - see "
+            "scripts/run_bench_soak_tests.sh, the only intended way to pass this. Not set by "
+            "default, so long_soak tests always skip in a general suite run."
+        ),
     )
     parser.addoption(
         "--allow-flash-cycle",
@@ -35,15 +41,20 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         help="Actually run @pytest.mark.flash_cycle tests (a deliberate re-provisioning flash, per HARDWARE_TEST_PLAN.md §6.1 - counts against the 'no extra flash cycles' constraint, never run as part of a routine pass). Skipped by default.",
     )
     parser.addoption(
-        "--long-soak-seconds",
-        type=float,
-        default=6 * 3600.0,
-        help="Duration for a long_soak test's own watch window (default 6h) - independent of any test's own internally-computed wait (e.g. the ticks-rollover test computes its own ~12.4-day target from a live reading, this flag only bounds tests that watch for a fixed window instead).",
+        "--allow-multi-day-rollover-wait",
+        action="store_true",
+        default=False,
+        help=(
+            "Actually run @pytest.mark.multi_day_rollover tests - a real, fixed ~12.4-day wait "
+            "(time.ticks_ms()'s own 2**30 rollover) that cannot be shortened by any duration tier; "
+            "deliberately its own separate flag, never bundled with --soak-tier. Skipped by default."
+        ),
     )
 
 
 def pytest_configure(config: pytest.Config) -> None:
-    config.addinivalue_line("markers", "long_soak: multi-hour/multi-day passive real-hardware observation, skipped unless --run-long-soak is passed")
+    config.addinivalue_line("markers", "long_soak: real-hardware passive observation over one of three named duration tiers (short/mid/long) - skipped unless --soak-tier is passed; see scripts/run_bench_soak_tests.sh")
+    config.addinivalue_line("markers", "multi_day_rollover: a real, fixed ~12.4-day wait, not tier-selectable - skipped unless --allow-multi-day-rollover-wait is passed")
     config.addinivalue_line("markers", "flash_cycle: a deliberate re-provisioning flash (counts against the 'no extra flash cycles' constraint), skipped unless --allow-flash-cycle is passed")
     config.addinivalue_line("markers", "role_reversal: bench radio temporarily stops hosting br0-wifi-ap to join the DUT's own hotspot (HARDWARE_TEST_PLAN.md §11) - informational marker, not skip-gated")
 

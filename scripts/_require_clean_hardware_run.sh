@@ -10,10 +10,15 @@
 # hardware, so that ambiguity must never pass through silently here - every expected test must show
 # PASSED, not quietly skip or fail. (`pytest tests_hardware --collect-only`, the genuinely
 # no-hardware-attached case, bypasses this file entirely - it's a plain manual invocation, not run
-# through either wrapper script.) The two opt-in-gated categories (--allow-flash-cycle/
-# --run-long-soak, tests_hardware/conftest.py) are handled contextually below, not just whitelisted
-# outright - their own tests skipping is only acceptable when the matching flag was genuinely
-# omitted from this invocation; passing the flag and still getting a skip is a real failure.
+# through either wrapper script.) The opt-in-gated categories (--allow-flash-cycle/--soak-tier/
+# --allow-multi-day-rollover-wait, tests_hardware/conftest.py) are handled contextually below, not
+# just whitelisted outright - their own tests skipping is only acceptable when the matching flag
+# was genuinely omitted from this invocation; passing the flag and still getting a skip is a real
+# failure. Soak tests (long_soak/multi_day_rollover markers) are never run through the general
+# wrapper scripts at all (they pass -m "not long_soak and not multi_day_rollover", so those tests
+# are deselected, not skipped) - this whitelist only matters for a direct invocation of this file
+# that doesn't apply that marker exclusion, e.g. scripts/run_bench_soak_tests.sh's own -m long_soak
+# selection (where --soak-tier IS expected to be passed, so these become "must pass", not "may skip").
 set -uo pipefail  # deliberately not -e: this script inspects pytest's own output before deciding its own exit code
 
 # The one currently-known, deliberate, permanent skip: raw-socket off-subnet-source-address
@@ -22,26 +27,30 @@ set -uo pipefail  # deliberately not -e: this script inspects pytest's own outpu
 # deliberate, documented, permanent skip - never to silence a real, unexpected one.
 KNOWN_PERMANENT_SKIPS=("test_spoofed_off_subnet_source_address_is_ignored")
 
-# The two opt-in gates (tests_hardware/conftest.py's own pytest_addoption()) are, by design, an
+# The opt-in gates (tests_hardware/conftest.py's own pytest_addoption()) are, by design, an
 # EXPECTED skip whenever their own flag isn't passed - only add their own tests to the acceptable
 # list when the corresponding flag is genuinely absent from this invocation's own args; if the flag
 # WAS passed and one of these still skipped, that's a real, unexpected problem and must still fail.
 allow_flash_cycle=0
-run_long_soak=0
+soak_tier=0
+allow_multi_day_rollover=0
 for arg in "$@"; do
     [ "$arg" = "--allow-flash-cycle" ] && allow_flash_cycle=1
-    [ "$arg" = "--run-long-soak" ] && run_long_soak=1
+    [ "$arg" = "--soak-tier" ] && soak_tier=1
+    [ "$arg" = "--allow-multi-day-rollover-wait" ] && allow_multi_day_rollover=1
 done
 if [ "$allow_flash_cycle" = 0 ]; then
     KNOWN_PERMANENT_SKIPS+=("test_real_uf2_reflash_and_boot_smoke_test")
 fi
-if [ "$run_long_soak" = 0 ]; then
+if [ "$soak_tier" = 0 ]; then
     KNOWN_PERMANENT_SKIPS+=(
         "test_real_hardware_memory_does_not_leak_under_real_http_soak_traffic"
         "test_single_core_timing_headroom_holds_under_normal_full_task_load"
         "test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout"
-        "test_ticks_ms_real_2pow30_rollover"
     )
+fi
+if [ "$allow_multi_day_rollover" = 0 ]; then
+    KNOWN_PERMANENT_SKIPS+=("test_ticks_ms_real_2pow30_rollover")
 fi
 
 logfile="$(mktemp)"

@@ -21,13 +21,15 @@ from __future__ import annotations
 
 import pytest
 from harness import Board
+from soak_tiers import SOAK_TIER_SECONDS
 
 
 @pytest.mark.long_soak
 def test_single_core_timing_headroom_holds_under_normal_full_task_load(board: Board, request: pytest.FixtureRequest) -> None:
-    if not request.config.getoption("--run-long-soak"):
-        pytest.skip("multi-minute passive soak - pass --run-long-soak to actually run this")
-    duration_s = request.config.getoption("--long-soak-seconds")
+    tier = request.config.getoption("--soak-tier")
+    if tier is None:
+        pytest.skip("passive soak, one of three named duration tiers - run via scripts/run_bench_soak_tests.sh --tier {short,mid,long}")
+    duration_s = SOAK_TIER_SECONDS[tier]
     # Passive observation only (tail_log(), never exec()/run_isolated() - see
     # harness.Board.run_isolated()'s own docstring for why those can't be trusted to leave the
     # live system's normal task graph undisturbed). The real, closable signal available without
@@ -37,7 +39,12 @@ def test_single_core_timing_headroom_holds_under_normal_full_task_load(board: Bo
     # exception/traceback line, over an extended window of otherwise-normal live operation.
     lines = board.tail_log(duration_s=duration_s)
     joined = "\n".join(lines)
-    reboot_markers = [ln for ln in lines if "CFGMGR_" in ln or "FRAM SPI FRAM Driver Setup complete" in ln]
+    # REAL FINDING, fixed (2026-09-04) - see test_memory_stress_bench.py's own sibling comment for
+    # the full account: "CFGMGR_" is a per-log-line module-tag prefix, not a one-time boot marker -
+    # it fires on every ordinary, routine config read (confirmed directly against a real soak run's
+    # log, which showed it firing dozens of times with zero real reboots), not just at boot. Fixed
+    # to the two genuinely one-time-per-setup() ConfigManager/FRAM messages instead.
+    reboot_markers = [ln for ln in lines if "config is ready" in ln or "FRAM SPI FRAM Driver Setup complete" in ln]
     traceback_markers = [ln for ln in lines if "Traceback" in ln or "MemoryError" in ln]
-    assert len(reboot_markers) <= 1, f"observed what looks like an unexpected mid-soak reboot (WDT starvation?) - boot markers: {reboot_markers}\nfull log:\n{joined}"
+    assert not reboot_markers, f"observed what looks like an unexpected mid-soak reboot (WDT starvation?) - boot markers: {reboot_markers}\nfull log:\n{joined}"
     assert not traceback_markers, "observed an unexpected traceback/MemoryError during the soak window:\n" + "\n".join(traceback_markers)
