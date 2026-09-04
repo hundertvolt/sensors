@@ -726,14 +726,36 @@ constraints.
   have plenty of total free bytes yet still fail one large single allocation if it's fragmented into
   scattered smaller gaps - this is why this specific allocation site was disproportionately vulnerable
   versus the many small allocations elsewhere in the system.
-  **Agreed plan for the next session**: (1) build real sub-second-resolution instrumentation (a
-  dedicated polling task, not piggybacked on the 1Hz uptime tick - MicroPython's GC has no
-  refcounting, so any `gc.mem_free()` increase between two closely-spaced samples is unambiguous proof
-  a real collection just fired) and re-measure the threshold candidates under both realistic and
-  hammer load with real frequency/CPU-time numbers, deciding the final value together rather than
-  unilaterally; (2) once a value is picked and committed, run the real-hardware bench suite; (3) if
-  that passes, run the full test suite three times. Not to be started without the project owner's
-  go-ahead in that session.
+  **Real, verified-in-source alternative mitigation found (2026-09-05): Microdot supports streaming
+  response bodies from a generator.** Confirmed directly against `ext/microdot.py`: `Response.write()`/
+  `body_iter()` (lines 665-759) iterate any body object exposing `__next__` (sync generator) or
+  `__anext__` (async generator) and `await stream.awrite()` each yielded chunk to the socket
+  immediately, never assembling the full body into one buffer first - unlike the `dict`/`list` path
+  (`Response.__init__`, line 588), which is the one `json.dumps()` call actually responsible for
+  today's single ~5.7KB contiguous allocation. Streaming `/status` would need its own hand-written
+  generator yielding valid JSON fragments (the `dict`/`list` auto-encode branch doesn't apply to
+  generators) and an explicit `Content-Type` header (also not auto-set for a generator body) - real,
+  fiddly application code, not a config flag. No `Content-Length` concern: this vendored Microdot
+  speaks plain `HTTP/1.0` with no keep-alive handling anywhere (confirmed via grep), so every
+  connection closes after one response and a client reading until connection-close is correct,
+  standard behavior. Reduces the *demand side* of the problem (shrinks the largest single contiguous
+  allocation any route ever needs, down from ~5.7KB to roughly one field's worth) rather than the
+  *supply side* (`gc.threshold()`'s collection proactiveness) - complementary to a threshold choice,
+  not a replacement for it, but worth testing on its own to see whether it resolves the reproduction
+  even independent of any `gc.threshold()` change.
+  **Agreed plan for the next session** (updated 2026-09-05): (1) build real sub-second-resolution
+  instrumentation (a dedicated polling task, not piggybacked on the 1Hz uptime tick - MicroPython's GC
+  has no refcounting, so any `gc.mem_free()` increase between two closely-spaced samples is
+  unambiguous proof a real collection just fired) and re-measure the threshold candidates under both
+  realistic and hammer load with real frequency/CPU-time numbers, storing the results for a joint
+  decision rather than deciding unilaterally; (2) build JSON streaming for `/status` specifically (it's
+  already assembled from several independent per-module sources in `_get_status()`, a natural fit for
+  yielding one source at a time); (3) test whether streaming alone resolves the real-hardware
+  reproduction, even with no `gc.threshold()` change at all; (4) decide the actual fix - some
+  `gc.threshold()` value, the streaming change, or both - based on steps 1 and 3's real results
+  together, not before; (5) once a build is decided and committed, run the real-hardware bench suite;
+  (6) if that passes, run the full test suite three times. Not to be started without the project
+  owner's go-ahead in that session.
   **Not fixed, deliberately**: the actual allocation site is inside vendored `ext/microdot.py`
   (pinned `v2.6.2`, hands-off per CLAUDE.md's own rule) - not something to patch directly. No `src/`
   change was made; the temporary trace instrumentation was fully reverted (`git diff` clean) and the
