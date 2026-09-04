@@ -198,52 +198,21 @@ constraints.
 
 ## Deferred / explicitly out-of-scope work
 
-- **`env --tier flash`/`--tier bench` real-hardware verification — still not done, project owner's
-  explicitly stated top priority (2026-09-04); an actual attempt on 2026-09-04 was interrupted by a
-  real access-loss incident (see below), not completed.** The standalone dev-environment setup
-  script — `toolchain/setup_toolchain.py env` (SPECIFICATION.md Part B.12) — folds Generic/Flash/
-  Bench dev-environment setup into one tiered command. `generic` was verified fully end-to-end in a
-  cloud sandbox (real `uv sync`/`npm ci`/toolchain build); the USB/network *detection* logic was
-  also exercised for real where safe (empty-`/sys` USB scan, a real `iproute2` apt-install-and-
-  parse). Not yet exercised for real: `flash` against an actual RP2040 board, and — the real gap —
-  `bench` actually *creating* the NetworkManager bridge/AP from a genuinely blank host, as opposed
-  to reusing one. **The bench Pi4 is, as of 2026-09-04, still in that genuinely-blank state** —
-  `br0`/`br0-eth0`/`br0-wifi-ap` remain deleted, so the next session doesn't need to tear anything
-  down first, just run both tiers for real, same dedicated-session pattern as the earlier
-  `build_firmware.py` autolaunch verification (see this branch's own commit history). `nico`'s
-  `dialout` membership (also revoked to set up the from-blank test) has since been restored
-  (`sudo gpasswd -a nico dialout`, confirmed 2026-09-04) — that part of the from-blank state no
-  longer needs separate testing unless deliberately revoked again first.
-  **Standing rule for this and any future destructive test of the bench host's own network/access
-  config, added after a real incident**: keep a recovery dead-man's-switch (e.g. a `systemd-run
-  --on-active=N` timer that rebuilds the bridge/reachability) continuously re-armed — immediately
-  before *every* individual destructive command, not just once before the whole sequence. A one-shot
-  timer that's fired and been garbage-collected during a dry run provides zero protection for the
-  real run that follows it. This is exactly how SSH access to the bench Pi4 was lost on 2026-09-04:
-  a dry run of the recovery script was correctly verified working, then consumed; the real
-  `nmcli connection delete br0-eth0`/`br0` that followed ran unprotected, and dropped the host's own
-  LAN IP synchronously (it lives on the bridge once `eth0` is enslaved to it, per
-  `dev_legacy/README.md`'s own bridge recipe) with zero grace period. Recovered without a monitor/
-  HDMI cable by pulling the SD card into a second machine and re-enabling NetworkManager's own
-  auto-generated default wired profile (`/etc/NetworkManager/system-connections/Wired connection
-  1.nmconnection` — NM auto-suppresses this with `autoconnect=false` and a deeply negative
-  `autoconnect-priority` once a more specific profile like a bridge slave claims the device; flipping
-  `autoconnect` back to `true` and dropping the priority override was the entire fix, no new profile
-  needed). Worth knowing as a fallback for any future lockout, not just this one.
-  **Second real finding from the same incident, fixed 2026-09-04**: recovering onto plain,
-  unbridged `eth0` exposed its real hardware MAC to the router for the first time — the bridge it
-  replaced had been presenting a NetworkManager-synthesized MAC (inherited from a slave port, and
-  can drift across the bridge's own lifetime) that the router's static DHCP reservation was actually
-  keyed to, so the router silently treated the host as a brand-new device (new pool IP, synthesized
-  `PC-<mac>` hostname) rather than honoring the old reservation. `ensure_bench_bridge()` and
-  `dev_legacy/README.md`'s manual recipe now pin `bridge.mac-address` to the uplink interface's real
-  hardware MAC on every bridge creation (and warn, without auto-repairing, if an already-existing
-  bridge's MAC doesn't match) — so a reservation keyed to that MAC survives any future
-  teardown/recreate. **Still open, needs the router's own admin UI (not automatable from here)**:
-  re-key the existing reservation to `eth0`'s real MAC (`d8:3a:dd:28:ea:5a`) and rename the entry
-  back to `raspberrypi` if the router doesn't infer it automatically — see
-  `dev_legacy/README.md`'s "Current bench state" for the full account, including confirmation that
-  the Pi's own `/etc/hostname` was never actually wrong.
+- **`env --tier flash`/`--tier bench` real-hardware verification — DONE, verified for real on the
+  bench Pi4 (2026-09-04).** The standalone dev-environment setup script —
+  `toolchain/setup_toolchain.py env` (SPECIFICATION.md Part B.12) — was the project owner's
+  explicitly stated top priority; a first attempt earlier the same day was interrupted by a real
+  access-loss incident (full account: `dev_legacy/README.md`'s "Current bench state", CLAUDE.md's
+  "Hard rules" for the two standing rules it produced). Re-run to completion the same day: `flash`
+  ran full and unmodified (real toolchain rebuild, real `/dev/ttyACM0` auto-detection); `bench`'s
+  own previously-unverified gap — actually *creating* the NetworkManager bridge/AP from a genuinely
+  blank host, not just reusing one — was exercised directly under a properly-armed and promptly-
+  disarmed recovery dead-man's-switch (see `dev_legacy/README.md` for the full timing/verification
+  account, including the fix's own MAC-pinning working as intended: the recreated bridge got back
+  the *same* DHCP lease `eth0` already held, no drift). **Only remaining open item, needs the
+  router's own admin UI (not automatable from here)**: re-key its existing static reservation to
+  `eth0`'s real MAC (`d8:3a:dd:28:ea:5a`) and rename the entry back to `raspberrypi` if the router
+  doesn't infer it automatically.
 - **Real-hardware re-test of the segfault fix and the memory-leak soak test — real-hardware forms
   now exist and are wired into `tests_hardware/`, but the actual long-soak run is still opt-in and
   has not yet been executed.** Corrects a stale claim (this entry used to say neither soak-test

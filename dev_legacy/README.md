@@ -685,10 +685,37 @@ believed-true; the flash-filesystem/firmware facts from that date are superseded
     never an on-device regression, only the router's stale MAC-keyed bookkeeping.
   - `nico`'s `dialout` membership, also revoked during the same test, has been restored
     (`sudo gpasswd -a nico dialout`, confirmed 2026-09-04).
-  - `br0`/`br0-eth0`/`br0-wifi-ap` are **still deleted, not recreated** — the host remains in the
-    genuinely-blank state the interrupted `env --tier bench` test needs, so the actual bootstrap-
-    from-blank run (with the MAC-pinning fix now in place, and the dead-man's-switch held
-    continuously re-armed per BACKLOG.md's standing rule) is still the next real step.
+  - **`env --tier bench`'s real from-blank bridge creation is now verified working, for real, on
+    this bench Pi4 (2026-09-04)** — the last open gap in BACKLOG.md's `env --tier bench` item is
+    closed. `env --tier flash` was run first, full and unmodified end to end (real toolchain
+    rebuild, real `/dev/ttyACM0` USB auto-detection) — no network changes, so no dead-man's-switch
+    needed for that part. `ensure_bench_bridge()`'s own creation path was then exercised directly
+    (calling it in-process rather than re-running `run_env()`'s multi-minute, already-verified
+    `run_setup()` prefix a third time) under a freshly-armed `systemd-run` recovery timer, sized
+    from a first, deliberately-observed real timing run: `nmcli connection up br0-eth0`/
+    `br0-wifi-ap` both report success in ~1s, but the bridge doesn't actually get a DHCP lease and
+    become the default route until ~30s later (STP carrier/forwarding delay), confirmed directly
+    via `journalctl -u NetworkManager`. First attempt's own recovery timer (120s) fired and tore
+    the freshly-created bridge back down before it could be confirmed+disarmed — the agent spent
+    that time on unplanned diagnosis instead of promptly checking and disarming, not a bug in the
+    bridge logic itself (`journalctl -u bench-recovery.service` timestamps confirm the bridge had
+    in fact come up cleanly, ~90s before the timer fired) - itself a real proof that the dead-man's-
+    switch mechanism works exactly as designed. **Redone properly**: armed again (150s), then a
+    short bounded poll (3s interval) for `br0` to actually carry an IP, then immediate
+    verify-and-disarm the moment it did (~30s in, leaving ample unused margin) — this is the
+    validated pattern for any future single-atomic-sequence network test: one arm covering the
+    whole sequence generously (not a per-command re-arm, since there is no dry-run/real-run gap
+    within one continuous script call), then check-and-disarm *immediately* on completion, with no
+    detour in between. **Confirms the MAC-pinning fix works as intended**: `br0`'s live MAC came up
+    as `d8:3a:dd:28:ea:5a` (`eth0`'s real hardware MAC, pinned by `ensure_bench_bridge()` before the
+    bridge was ever brought up) and the DHCP lease it got back was the *same* IP
+    (`192.168.85.75`) `eth0` already held unbridged - no drift, exactly the property this fix
+    exists to guarantee for any future teardown/recreate. The router's *existing* reservation is
+    still keyed to the old, pre-incident synthesized MAC, not this real one - that manual
+    re-keying (see above) remains open and is unaffected by this verification.
+  - `br0`/`br0-eth0`/`br0-wifi-ap` are **live again** as of the verification above (a fresh
+    randomly-generated SSID/password per session, not committed anywhere - see
+    `generate_bench_ap_credentials()`) - no longer in the deliberately-blank state.
 
 ## Legacy on-device filesystem snapshot (2026-08-27, historical)
 
