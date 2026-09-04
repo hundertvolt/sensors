@@ -7,6 +7,22 @@ operating constraints/architecture reference) or README.md (human-facing orienta
 migrated there rather than duplicated here. See README.md for orientation, CLAUDE.md for operating
 constraints.
 
+## HIGH PRIORITY — hand off to a cloud agent, not a local Pi4 session
+
+- **CI's `web-unit-tests` job (Vitest, real-browser/Playwright mode, coverage step) is intermittently
+  hitting its 20-minute job timeout and getting cancelled** — confirmed on this branch's own PR
+  (#50) current HEAD as of 2026-09-04: run `33856690559`'s `web-unit-tests` job succeeded through
+  "Run unit tests (Vitest, real-browser mode)" but was killed mid-"Run unit tests with coverage"
+  by `.github/workflows/ci.yml`'s own `timeout-minutes: 20`, which also skipped the downstream
+  `web-cross-browser-smoke` job (`needs: [web-changes, web-unit-tests]`). Not deterministic — two
+  runs earlier the same day (`33849432338`, `33844419303`) passed clean; several others this same
+  day did not. Not caused by this session's own changes (only `toolchain/`/`tests_scripts/`/docs
+  were touched here, never `js/`/`tests_js/`/the website suite). **Project owner's own direction:
+  investigate/fix this via a cloud agent, explicitly not from a local bench-Pi4 session** — this
+  branch's local sessions are reserved for real-hardware work the cloud can't do; a slow/flaky
+  browser-mode coverage run isn't that. Root cause not yet investigated at all (no theory recorded
+  here beyond the raw timeout).
+
 ## Refactor targets not yet done
 
 - **`boot_entry/` isn't in `pyproject.toml`'s lint/typecheck `files` scope yet.**
@@ -46,13 +62,33 @@ constraints.
   wrappers (e.g. `Protocol` classes matching just the overridden methods, plus `__getattr__`
   delegation) and a decision on how to type the genuinely-variadic/opaque `src/` cases, not just a
   flag flip.
-- **FRAM bus-recovery is only partially wired up.** `asy_fram_driver.py`'s own `src/` promotion
-  added device-identification/write-protect verification, but there's still no periodic/triggered
-  re-probe policy — `verify_present()` and `set_write_protected()` have zero callers anywhere;
-  `get_write_protected()` has exactly one, `_write()`'s own write-protection gate, which isn't a
-  re-probe of anything — and no task supervisor for FRAM specifically. Whoever wires this up must wrap
-  the calls in the same `try/except Exception` discipline this file's other methods already use —
-  `asy_fram_driver.py` doesn't catch its own inherited `RuntimeError` path on these three itself.
+- **FRAM bus-recovery is only partially wired up — flagged as the next thing to build (2026-09-04).**
+  `asy_fram_driver.py`'s own `src/` promotion added device-identification/write-protect
+  verification, but there's still no periodic/triggered re-probe policy — `verify_present()` and
+  `set_write_protected()` have zero callers anywhere; `get_write_protected()` has exactly one,
+  `_write()`'s own write-protection gate, which isn't a re-probe of anything — and no task
+  supervisor for FRAM specifically. Whoever wires this up must wrap the calls in the same
+  `try/except Exception` discipline this file's other methods already use — `asy_fram_driver.py`
+  doesn't catch its own inherited `RuntimeError` path on these three itself.
+  **Investigated 2026-09-04, for "is there an existing test to extend":** `verify_present()` itself
+  is already correctness-tested in isolation
+  (`tests/test_asy_fram_driver.py::test_verify_present_true_for_the_256kb_chip`/
+  `test_verify_present_false_for_the_256kb_chip_after_id_changes`) — the gap is specifically that no
+  *production* code path ever calls it, not that the method is unverified. `digital_twin/launch.py`'s
+  fault-injection vocabulary already has FRAM wired in
+  (`_FAULT_DEVICE_OPS["fram"] = ("write", "readinto")`, i.e. `--fault fram:write`/
+  `--fault fram:readinto` already work) — but no test yet drives that fault and checks for recovery,
+  because there's nothing in production code that would recover yet. **This is the natural extension
+  point once the supervisor/re-probe policy itself is written**, not something to extend today as-is.
+  Separately, also confirmed: unlike SCD30/SGP40/BMP3xx, **FRAM currently has zero presence in any of
+  CLAUDE.md's four hard-rule bus-hazard tiers**
+  (`tests/test_bus_hazard_multi_device.py`, `tests/test_digital_twin_bus_hazard_concurrency.py`,
+  `tests_hardware/flash/test_bus_concurrency.py`, `tests_hardware/bench/test_bus_concurrency_under_api_load.py`)
+  — a distinct, pre-existing gap against that same standing rule, worth closing alongside this one
+  since a supervisor/re-probe policy is exactly the kind of new bus-facing behavior that rule exists
+  to cover. Real-hardware fault injection (physically disturbing the SPI bus, as opposed to the
+  twin's software fault hook) is blocked on the same missing GPIO fault-injection harness as the
+  "genuinely wedged I2C bus" manual test (open question 8 above) — not buildable today regardless.
 - **No standardized timeout/cancellation mechanism yet for blocking calls that genuinely can be
   timeout-wrapped** (FRAM SPI transactions, `src/asy_udp_socket.py`'s own `select.poll`-driven
   `ready()`/`write_and_recvfrom()` — anything that isn't a raw blocking `machine.I2C` call
@@ -197,22 +233,6 @@ constraints.
    the project owner as an explicit choice, not a default plan, if either ever becomes relevant.
 
 ## Deferred / explicitly out-of-scope work
-
-- **`env --tier flash`/`--tier bench` real-hardware verification — DONE, verified for real on the
-  bench Pi4 (2026-09-04).** The standalone dev-environment setup script —
-  `toolchain/setup_toolchain.py env` (SPECIFICATION.md Part B.12) — was the project owner's
-  explicitly stated top priority; a first attempt earlier the same day was interrupted by a real
-  access-loss incident (full account: `dev_legacy/README.md`'s "Current bench state", CLAUDE.md's
-  "Hard rules" for the two standing rules it produced). Re-run to completion the same day: `flash`
-  ran full and unmodified (real toolchain rebuild, real `/dev/ttyACM0` auto-detection); `bench`'s
-  own previously-unverified gap — actually *creating* the NetworkManager bridge/AP from a genuinely
-  blank host, not just reusing one — was exercised directly under a properly-armed and promptly-
-  disarmed recovery dead-man's-switch (see `dev_legacy/README.md` for the full timing/verification
-  account, including the fix's own MAC-pinning working as intended: the recreated bridge got back
-  the *same* DHCP lease `eth0` already held, no drift). **Only remaining open item, needs the
-  router's own admin UI (not automatable from here)**: re-key its existing static reservation to
-  `eth0`'s real MAC (`d8:3a:dd:28:ea:5a`) and rename the entry back to `raspberrypi` if the router
-  doesn't infer it automatically.
 - **Real-hardware re-test of the segfault fix and the memory-leak soak test — real-hardware forms
   now exist and are wired into `tests_hardware/`, but the actual long-soak run is still opt-in and
   has not yet been executed.** Corrects a stale claim (this entry used to say neither soak-test
@@ -380,13 +400,23 @@ constraints.
   `asy_ntp_client.py`'s sync task waits on that same shared lock — NTP sync can be delayed up to a
   minute during active WLAN instability. A priority-inversion-shaped cost worth having in view, not
   a correctness bug; not acted on.
-- **Network fault injection against the real dev bench unit (nftables/`tc netem` on the host
-  Rpi4's bridge) — not yet built.** `dev_legacy/README.md`'s "WiFi/NTP/DNS integration testing"
+- **Network fault injection against the real dev bench unit — flagged as the next thing to build
+  (project owner, 2026-09-04).** `dev_legacy/README.md`'s "WiFi/NTP/DNS integration testing"
   section documents the bridge (`br0` = `eth0` + a hosted `wlan0` AP) the physical RP2040 bench
-  unit connects through for real WiFi/NTP/DNS testing; the natural next step is scripting
-  packet-loss/latency/DNS-blackhole fault injection on that same bridge (`tc netem` for loss/delay,
-  `nftables` for selective drops, e.g. NTP-only or DNS-only outages) to exercise
-  `asy_wifi_service.py`/`asy_ntp_client.py`/`asy_dns_client.py`'s own retry/give-up/hotspot-fallback
-  paths against real, not simulated, network failure — the digital twin's own fault injection
+  unit connects through for real WiFi/NTP/DNS testing; the digital twin's own fault injection
   (`--fault`/`--hang` in `digital_twin/launch.py`/`run_wozi_integration.py`) only ever faults the
-  I2C/SPI/FRAM bus layer, never the network layer. No script or recipe exists for this yet.
+  I2C/SPI/FRAM bus layer, never the network layer.
+  **Re-scoped 2026-09-04 after checking what `bench_control.py` already has**: selective
+  port-level fault injection already exists and is already exercised
+  (`BenchBridge.block_udp_ports()`/`redirect_udp_port_to_local()`, plain `iptables` DROP/DNAT rules
+  — `tests_hardware/bench/test_wifi_networking.py::test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing`
+  and `test_network_resilience.py` already use these for NTP/DNS-port-specific outage/garbage-
+  response scenarios) — the original "DNS-blackhole" framing of this item is therefore already
+  substantially covered. **The genuine remaining gap is `tc netem`-style partial-degradation fault
+  injection (packet loss %, added latency/jitter) on the bridge**, as opposed to the binary
+  block/allow this file already has — this exercises a different code shape entirely: retry/backoff
+  under *slow or intermittent* responses, not just a hard-unreachable server. No script or recipe
+  exists for this yet; the natural home is a new `BenchBridge.inject_packet_loss()`/
+  `inject_latency()` pair (via `tc qdisc add dev <bridge-wifi-iface> root netem loss <pct>%`/
+  `delay <ms>`, paired `tc qdisc del` teardown, same idempotent-cleanup shape as
+  `unblock_udp_ports()`) plus new bench-tier test(s) in `test_network_resilience.py` or a new file.
