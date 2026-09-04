@@ -218,7 +218,11 @@ constraints.
    realistic burst shape than the pre-existing exactly-at-the-limit tests use. Not fixed — raising
    the cap costs RAM per additional held-open connection buffer on an RP2040 with a fixed, already
    tight budget, a real tradeoff only the project owner should weigh in on; left exactly as-is
-   pending that decision.
+   pending that decision. **New real evidence for this same tradeoff (2026-09-04)**: this file's own
+   "real, easily-reproducible `MemoryError` under sustained real concurrent HTTP load" entry -
+   concrete confirmation that concurrent request handling can already push the heap into real,
+   if transient, near-exhaustion troughs at the *current* `max_connections=4` - a data point against
+   raising the cap without also addressing headroom, not just a RAM-per-buffer cost argument.
 8. **Two real-hardware bench-rig capabilities, flagged as "not currently provisioned" during the
    original `tests_hardware/` design discussion, each gating one test candidate from `[MANUAL]` to
    `[AUTO]`** (migrated from the now-deleted `HARDWARE_TEST_PLAN.md` — see SPECIFICATION.md Part
@@ -661,3 +665,40 @@ constraints.
   image at that exact moment, not this session's own latest reflash. Worth a real, dedicated
   investigation (reproduce cleanly against a freshly-confirmed-current flash, or drop it if it
   never recurs) before treating it as either a real bug or a non-issue.
+- **Real finding, fully investigated and root-caused (2026-09-04): a real, easily-reproducible
+  `MemoryError` under sustained real concurrent HTTP load - not a leak, already gracefully handled
+  by the existing architecture, but real evidence worth folding into open question 7's own
+  `max_connections` decision.** Confirmed reproducible in well under 10 minutes of concentrated
+  real load (5+ concurrent HTTP client threads hammering `/measurements`/`/sensors`/`/status`/
+  `/networking` plus a periodic `PUT /sensors SGPResetVOC` every 3s) - dozens of real, distinct
+  `MemoryError` tracebacks (4KB-5.7KB range) over a 6.5-minute window, first one within 45 seconds.
+  **Root cause, pinpointed exactly**: `microdot.py:1492` (`dispatch_request`) ->
+  `microdot.py:589` (`Response.__init__`) - vendored, hands-off third-party code (CLAUDE.md's own
+  "don't restyle" rule) building a real per-request response buffer, occasionally landing in one of
+  the heap's own natural low points under real concurrent load.
+  **Confirmed NOT a leak** - a temporary, investigation-only `gc.mem_free()` trace (piggybacked on
+  `system_service.py`'s existing 1Hz uptime tick, reverted immediately after - `git diff` confirmed
+  clean, never committed) showed a classic sawtooth pattern (troughs as low as ~2.8KB, peaks over
+  110KB) with **no monotonic downward drift** across the full 6.5-minute heavy-load window - the
+  late-window peaks (113KB, 115KB) were as good as or better than the early ones. MicroPython's own
+  threshold-based incremental GC, under genuine sustained concurrent allocation pressure, produces
+  real troughs low enough that a single ~5KB response-buffer allocation can occasionally lose the
+  race and fail - a genuine, reproducible headroom/GC-timing sensitivity under concurrent load, not
+  a reference leak.
+  **Already gracefully handled, confirmed directly, not assumed**: every occurrence was caught by
+  this project's own existing blanket exception handling (`"WEBSERVER Unhandled exception in route
+  handler:"`, matching SPECIFICATION.md Part A.5's already-documented Microdot exception-catch
+  architecture) - the one affected request fails cleanly (shaped 500), logged, and the system keeps
+  running normally; no crash, no reboot, no corruption, confirmed by the same MEMTRACE run showing
+  healthy oscillation the whole time with zero real reboots.
+  **Real, actionable input for open question 7 ("should `max_connections=4` be raised?")**: this is
+  new, concrete evidence *against* raising it without also addressing headroom - more concurrent
+  connections means more simultaneous response-buffer allocations landing in the same heap, which
+  would only make these troughs deeper/more frequent. Not acted on here (that's the project owner's
+  own call, same as the rest of open question 7) - recorded as real, first-hand data for that
+  decision, not a recommendation.
+  **Not fixed, deliberately**: the actual allocation site is inside vendored `ext/microdot.py`
+  (pinned `v2.6.2`, hands-off per CLAUDE.md's own rule) - not something to patch directly. No `src/`
+  change was made; the temporary trace instrumentation was fully reverted (`git diff` clean) and the
+  board reflashed back to the exact, unmodified production firmware before this investigation
+  concluded.
