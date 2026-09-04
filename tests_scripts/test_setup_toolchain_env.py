@@ -239,6 +239,24 @@ def test_detect_free_wifi_interface_raises_when_ambiguous(setup_toolchain, monke
 # --- bench AP credentials + idempotent bridge creation --------------------------------------------
 
 
+def test_get_interface_mac_parses_real_ip_link_show_output(setup_toolchain, monkeypatch, recorded_run):
+    def fake_run(cmd, cwd=None, check=True, env=None):
+        recorded_run.append(cmd)
+        assert cmd == ["ip", "-o", "link", "show", "eth0"]
+        return "2: eth0    <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP mode DEFAULT group default qlen 1000\\    link/ether d8:3a:dd:28:ea:5a brd ff:ff:ff:ff:ff:ff"
+
+    monkeypatch.setattr(setup_toolchain, "run", fake_run)
+
+    assert setup_toolchain.get_interface_mac("eth0") == "d8:3a:dd:28:ea:5a"
+
+
+def test_get_interface_mac_raises_when_no_mac_found(setup_toolchain, monkeypatch, recorded_run):
+    monkeypatch.setattr(setup_toolchain, "run", lambda cmd, cwd=None, check=True, env=None: "")
+
+    with pytest.raises(setup_toolchain.SetupError, match="eth0"):
+        setup_toolchain.get_interface_mac("eth0")
+
+
 def test_generate_bench_ap_credentials_are_fresh_and_random(setup_toolchain):
     ssid1, password1 = setup_toolchain.generate_bench_ap_credentials()
     ssid2, password2 = setup_toolchain.generate_bench_ap_credentials()
@@ -248,19 +266,38 @@ def test_generate_bench_ap_credentials_are_fresh_and_random(setup_toolchain):
     assert len(password1) >= 12
 
 
-def test_ensure_bench_bridge_reuses_existing_ap_without_recreating(setup_toolchain, monkeypatch, recorded_run):
-    # ensure_br_netfilter() and the channel self-heal check now run unconditionally on every
-    # call (see ensure_bench_bridge()'s own docstring) - the channel query is stubbed to "6" so
-    # the self-heal branch (covered separately below) doesn't also fire here.
-    monkeypatch.setattr(setup_toolchain, "bench_ap_exists", lambda: True)
-    monkeypatch.setattr(setup_toolchain, "existing_bench_ap_ssid", lambda: "sensors-bench-abc123")
+def _fake_run_for_existing_bridge(recorded_run, channel="6", eth_iface="eth0", bridge_mac="aa:bb:cc:dd:ee:ff", real_mac="aa:bb:cc:dd:ee:ff"):
+    """A field-aware fake_run() for ensure_bench_bridge()'s "already exists" branch - dispatches
+    each of its three distinct `nmcli -g` queries (channel, interface-name, bridge MAC) plus the
+    `ip -o link show` real-MAC lookup by their actual field/command, rather than one blanket
+    return value for every `nmcli -g` call regardless of which field it asked for (which used to
+    let get_interface_mac() silently receive "6\\n" as an interface name and swallow the
+    resulting SetupError - never actually exercising the mismatch-detection logic this fixture
+    now models directly)."""
 
     def fake_run(cmd, cwd=None, check=True, env=None):
         recorded_run.append(cmd)
-        # Already the fixed channel - the self-heal branch below must be a no-op.
-        return "6\n" if cmd[:2] == ["nmcli", "-g"] else ""
+        if cmd[:3] == ["nmcli", "-g", "802-11-wireless.channel"]:
+            return f"{channel}\n"
+        if cmd[:3] == ["nmcli", "-g", "connection.interface-name"]:
+            return f"{eth_iface}\n"
+        if cmd[:3] == ["nmcli", "-g", "bridge.mac-address"]:
+            return f"{bridge_mac}\n"
+        if cmd[:4] == ["ip", "-o", "link", "show"]:
+            return f"2: {eth_iface}    link/ether {real_mac} brd ff:ff:ff:ff:ff:ff"
+        return ""
 
-    monkeypatch.setattr(setup_toolchain, "run", fake_run)
+    return fake_run
+
+
+def test_ensure_bench_bridge_reuses_existing_ap_without_recreating(setup_toolchain, monkeypatch, recorded_run):
+    # ensure_br_netfilter(), the channel self-heal check, and the MAC-mismatch check now all run
+    # unconditionally on every call (see ensure_bench_bridge()'s own docstring) - channel and MAC
+    # are stubbed already-correct so neither self-heal/warning branch (covered separately below)
+    # also fires here.
+    monkeypatch.setattr(setup_toolchain, "bench_ap_exists", lambda: True)
+    monkeypatch.setattr(setup_toolchain, "existing_bench_ap_ssid", lambda: "sensors-bench-abc123")
+    monkeypatch.setattr(setup_toolchain, "run", _fake_run_for_existing_bridge(recorded_run))
 
     ssid = setup_toolchain.ensure_bench_bridge("eth0", "wlan0", None, None)
 
@@ -275,14 +312,7 @@ def test_ensure_bench_bridge_reuses_existing_ap_without_recreating(setup_toolcha
 def test_ensure_bench_bridge_self_heals_wrong_channel(setup_toolchain, monkeypatch, recorded_run):
     monkeypatch.setattr(setup_toolchain, "bench_ap_exists", lambda: True)
     monkeypatch.setattr(setup_toolchain, "existing_bench_ap_ssid", lambda: "sensors-bench-abc123")
-
-    def fake_run(cmd, cwd=None, check=True, env=None):
-        recorded_run.append(cmd)
-        if cmd[:2] == ["nmcli", "-g"]:
-            return "13\n"  # a bridge created before the channel-pinning fix
-        return ""
-
-    monkeypatch.setattr(setup_toolchain, "run", fake_run)
+    monkeypatch.setattr(setup_toolchain, "run", _fake_run_for_existing_bridge(recorded_run, channel="13"))  # a bridge created before the channel-pinning fix
 
     setup_toolchain.ensure_bench_bridge("eth0", "wlan0", None, None)
 
@@ -294,19 +324,49 @@ def test_ensure_bench_bridge_self_heals_wrong_channel(setup_toolchain, monkeypat
 def test_ensure_bench_bridge_no_channel_repair_when_already_pinned(setup_toolchain, monkeypatch, recorded_run):
     monkeypatch.setattr(setup_toolchain, "bench_ap_exists", lambda: True)
     monkeypatch.setattr(setup_toolchain, "existing_bench_ap_ssid", lambda: "sensors-bench-abc123")
-
-    def fake_run(cmd, cwd=None, check=True, env=None):
-        recorded_run.append(cmd)
-        if cmd[:2] == ["nmcli", "-g"]:
-            return "6\n"
-        return ""
-
-    monkeypatch.setattr(setup_toolchain, "run", fake_run)
+    monkeypatch.setattr(setup_toolchain, "run", _fake_run_for_existing_bridge(recorded_run, channel="6"))
 
     setup_toolchain.ensure_bench_bridge("eth0", "wlan0", None, None)
 
     joined = [" ".join(c) for c in recorded_run]
     assert not any("802-11-wireless.channel 6" in c and "modify" in c for c in joined)
+
+
+def test_ensure_bench_bridge_warns_without_auto_repairing_mac_mismatch(setup_toolchain, monkeypatch, recorded_run, capsys):
+    # REAL FINDING, 2026-09-04 bench Pi4 lockout incident (see CLAUDE.md's "Hard rules"): a bridge
+    # created before the MAC-pinning fix (or whose MAC has since drifted) must be flagged, never
+    # silently auto-repaired - cycling a live bridge's MAC risks the exact same SSH-drop class of
+    # incident this check exists to prevent.
+    monkeypatch.setattr(setup_toolchain, "bench_ap_exists", lambda: True)
+    monkeypatch.setattr(setup_toolchain, "existing_bench_ap_ssid", lambda: "sensors-bench-abc123")
+    monkeypatch.setattr(
+        setup_toolchain,
+        "run",
+        _fake_run_for_existing_bridge(recorded_run, bridge_mac="11:11:11:11:11:11", real_mac="aa:bb:cc:dd:ee:ff"),
+    )
+
+    setup_toolchain.ensure_bench_bridge("eth0", "wlan0", None, None)
+
+    joined = [" ".join(c) for c in recorded_run]
+    assert not any("bridge.mac-address" in c and "modify" in c for c in joined)  # never auto-repaired
+    captured_out = capsys.readouterr().out
+    assert "WARNING" in captured_out
+    assert "11:11:11:11:11:11" in captured_out
+    assert "aa:bb:cc:dd:ee:ff" in captured_out
+
+
+def test_ensure_bench_bridge_no_warning_when_mac_already_matches(setup_toolchain, monkeypatch, recorded_run, capsys):
+    monkeypatch.setattr(setup_toolchain, "bench_ap_exists", lambda: True)
+    monkeypatch.setattr(setup_toolchain, "existing_bench_ap_ssid", lambda: "sensors-bench-abc123")
+    monkeypatch.setattr(
+        setup_toolchain,
+        "run",
+        _fake_run_for_existing_bridge(recorded_run, bridge_mac="aa:bb:cc:dd:ee:ff", real_mac="aa:bb:cc:dd:ee:ff"),
+    )
+
+    setup_toolchain.ensure_bench_bridge("eth0", "wlan0", None, None)
+
+    assert "WARNING" not in capsys.readouterr().out
 
 
 def test_ensure_br_netfilter_loads_module_and_persists_config(setup_toolchain, recorded_run):
@@ -319,24 +379,52 @@ def test_ensure_br_netfilter_loads_module_and_persists_config(setup_toolchain, r
     assert any("sensors-bench-br-netfilter.conf" in c and "sysctl.d" in c for c in joined)
 
 
+def _fake_run_with_real_eth0_mac(recorded_run, mac="aa:bb:cc:dd:ee:ff"):
+    """A fake_run() that also answers ensure_bench_bridge()'s get_interface_mac(uplink_iface)
+    lookup realistically, mirroring a real `ip -o link show eth0` line closely enough for
+    get_interface_mac()'s own `link/ether\\s+(\\S+)` regex to match - the plain recorded_run
+    fixture's blanket "" default doesn't, which is exactly what made these two tests fail for
+    real once get_interface_mac() was added (confirmed directly against a real CI run,
+    2026-09-04): SetupError propagated uncaught through the bridge-creation path instead of
+    exercising it."""
+
+    def fake_run(cmd, cwd=None, check=True, env=None):
+        recorded_run.append(cmd)
+        if cmd[:4] == ["ip", "-o", "link", "show"]:
+            return f"2: eth0    link/ether {mac} brd ff:ff:ff:ff:ff:ff"
+        return ""
+
+    return fake_run
+
+
 def test_ensure_bench_bridge_creates_with_explicit_credentials_when_missing(setup_toolchain, monkeypatch, recorded_run):
     monkeypatch.setattr(setup_toolchain, "bench_ap_exists", lambda: False)
+    monkeypatch.setattr(setup_toolchain, "run", _fake_run_with_real_eth0_mac(recorded_run))
 
     ssid = setup_toolchain.ensure_bench_bridge("eth0", "wlan0", "my-test-ssid", "my-test-password")
 
     assert ssid == "my-test-ssid"
     joined = [" ".join(c) for c in recorded_run]
     assert any("connection add type bridge" in c and "br0" in c for c in joined)
+    # REAL FINDING, 2026-09-04 bench Pi4 lockout incident: the bridge's own MAC must be pinned to
+    # the uplink interface's real hardware MAC before anything is brought up - see
+    # ensure_bench_bridge()'s own docstring and CLAUDE.md's "Hard rules".
+    assert any(c == "sudo nmcli connection modify br0 bridge.mac-address aa:bb:cc:dd:ee:ff" for c in joined)
     assert any("connection add type ethernet" in c and "eth0" in c for c in joined)
     assert any("connection add type wifi" in c and "wlan0" in c and "my-test-ssid" in c for c in joined)
     assert any("wifi-sec.pmf disable" in c for c in joined)  # load-bearing cyw43439 tuning
     assert any(c == "sudo nmcli connection up br0-eth0" for c in joined)
     assert any(c == "sudo nmcli connection up br0-wifi-ap" for c in joined)
+    # the MAC pin must happen before the bridge slave/uplink is ever brought up, not after
+    mac_pin_index = joined.index("sudo nmcli connection modify br0 bridge.mac-address aa:bb:cc:dd:ee:ff")
+    eth_up_index = joined.index("sudo nmcli connection up br0-eth0")
+    assert mac_pin_index < eth_up_index
 
 
 def test_ensure_bench_bridge_generates_credentials_when_none_given(setup_toolchain, monkeypatch, recorded_run):
     monkeypatch.setattr(setup_toolchain, "bench_ap_exists", lambda: False)
     monkeypatch.setattr(setup_toolchain, "generate_bench_ap_credentials", lambda: ("generated-ssid", "generated-pw"))
+    monkeypatch.setattr(setup_toolchain, "run", _fake_run_with_real_eth0_mac(recorded_run))
 
     ssid = setup_toolchain.ensure_bench_bridge("eth0", "wlan0", None, None)
 
@@ -344,6 +432,7 @@ def test_ensure_bench_bridge_generates_credentials_when_none_given(setup_toolcha
     joined = [" ".join(c) for c in recorded_run]
     assert any("generated-ssid" in c for c in joined)
     assert any("generated-pw" in c for c in joined)
+    assert any(c == "sudo nmcli connection modify br0 bridge.mac-address aa:bb:cc:dd:ee:ff" for c in joined)
 
 
 # --- project dependency install (uv sync / npm ci) -------------------------------------------------
