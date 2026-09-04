@@ -10,7 +10,10 @@
 # hardware, so that ambiguity must never pass through silently here - every expected test must show
 # PASSED, not quietly skip or fail. (`pytest tests_hardware --collect-only`, the genuinely
 # no-hardware-attached case, bypasses this file entirely - it's a plain manual invocation, not run
-# through either wrapper script.)
+# through either wrapper script.) The two opt-in-gated categories (--allow-flash-cycle/
+# --run-long-soak, tests_hardware/conftest.py) are handled contextually below, not just whitelisted
+# outright - their own tests skipping is only acceptable when the matching flag was genuinely
+# omitted from this invocation; passing the flag and still getting a skip is a real failure.
 set -uo pipefail  # deliberately not -e: this script inspects pytest's own output before deciding its own exit code
 
 # The one currently-known, deliberate, permanent skip: raw-socket off-subnet-source-address
@@ -18,6 +21,28 @@ set -uo pipefail  # deliberately not -e: this script inspects pytest's own outpu
 # tests_hardware/bench/test_hotspot_role_reversal.py). Add a new name here only for an equally
 # deliberate, documented, permanent skip - never to silence a real, unexpected one.
 KNOWN_PERMANENT_SKIPS=("test_spoofed_off_subnet_source_address_is_ignored")
+
+# The two opt-in gates (tests_hardware/conftest.py's own pytest_addoption()) are, by design, an
+# EXPECTED skip whenever their own flag isn't passed - only add their own tests to the acceptable
+# list when the corresponding flag is genuinely absent from this invocation's own args; if the flag
+# WAS passed and one of these still skipped, that's a real, unexpected problem and must still fail.
+allow_flash_cycle=0
+run_long_soak=0
+for arg in "$@"; do
+    [ "$arg" = "--allow-flash-cycle" ] && allow_flash_cycle=1
+    [ "$arg" = "--run-long-soak" ] && run_long_soak=1
+done
+if [ "$allow_flash_cycle" = 0 ]; then
+    KNOWN_PERMANENT_SKIPS+=("test_real_uf2_reflash_and_boot_smoke_test")
+fi
+if [ "$run_long_soak" = 0 ]; then
+    KNOWN_PERMANENT_SKIPS+=(
+        "test_real_hardware_memory_does_not_leak_under_real_http_soak_traffic"
+        "test_single_core_timing_headroom_holds_under_normal_full_task_load"
+        "test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout"
+        "test_ticks_ms_real_2pow30_rollover"
+    )
+fi
 
 logfile="$(mktemp)"
 trap 'rm -f "$logfile"' EXIT
