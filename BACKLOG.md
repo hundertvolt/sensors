@@ -156,7 +156,25 @@ constraints.
    tests recover via a real `hard_reset()` if the graceful wait times out, but still re-raise so the
    real limitation stays visible as a test failure; `test_hotspot_role_reversal.py`'s own
    `joined_hotspot` fixture teardown has the same fallback for its own role-flip-back reachability
-   wait).
+   wait). **Regression coverage added across every tier this scenario meaningfully applies to**
+   (2026-09-04, per the project owner's own follow-up request - "prove the benign behavior of
+   every isconnected() consumer under a false-positive, don't just assert it from reading the
+   code"): mock tier
+   (`tests/test_ntp_wifi_dns_integration.py::test_full_chain_degrades_cleanly_when_wifi_reports_connected_but_the_ntp_server_never_answers`
+   - the real `network_available()` chain reports connected via a real `AsyConnTime`/fake-`WLAN`
+   object graph while a real, bound-but-never-answering UDP server proves the "sent, then nothing
+   back" shape end to end, not just the pre-existing isolated-mock version in
+   `tests/test_asy_ntp_client.py::test_asy_ntp_time_gives_up_after_repeated_sync_failures_and_persists_errno_20`);
+   bench tier (`tests_hardware/bench/test_wifi_networking.py::test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing`,
+   already existing, now cross-referenced as this scenario's own real-hardware proof - the real STA
+   link stays up and `isconnected()` genuinely True throughout, only NTP's own port is blocked).
+   Deliberately not extended to two tiers: **flash** (no network capability at all - this scenario
+   is inherently WiFi/link-shaped, so the tier genuinely doesn't apply, not an oversight) and
+   **digital twin** (`digital_twin/network.py`'s `WLAN` fake models a scripted connect sequence,
+   not an independently-overridable "looks connected but everything downstream is broken" state
+   without twin-internal changes the project owner didn't ask for here - the mock-tier test above
+   already proves the same property through the real object graph, which is what the twin would
+   have added beyond the mock tier anyway).
 7. **Should `asy_webserver_service.py`'s `max_connections=4` be raised?** Confirmed on real
    hardware (dev-bench, hotspot mode): a realistic 8-way concurrent client burst against `/`
    (simulating several phones/tabs hitting the DUT at once) got 7/8 real `302` responses (some

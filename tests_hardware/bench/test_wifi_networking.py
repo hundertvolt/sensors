@@ -76,6 +76,14 @@ def test_real_dns_resolution_succeeds_over_genuine_udp(board: Board) -> None:
 
 
 def test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+    # Doubles as this tier's own real-hardware proof for BACKLOG.md open question 6 (closed
+    # 2026-09-04, "investigated, no src/ change"): the real STA link stays fully up and
+    # wlan.isconnected() genuinely True throughout (only UDP 123 is blocked, not the AP itself),
+    # so this is the real-hardware shape of "isconnected()==True but a specific downstream
+    # operation is unreachable" - see
+    # tests/test_ntp_wifi_dns_integration.py::test_full_chain_degrades_cleanly_when_wifi_reports_connected_but_the_ntp_server_never_answers
+    # for the same property proven at the mock/unit level through the real network_available()
+    # chain.
     reset_all_error_logs(dut_ip)
     bench.block_udp_ports([123])
     try:
